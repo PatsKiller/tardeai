@@ -1,13 +1,10 @@
 """catalyst_enrichment.py — Multi-source catalyst enrichment for each ticker.
 
 Sources (in priority order for dedup):
-  1. Finnhub company news
-  2. NewsAPI everything endpoint
-  3. Polygon ticker news
-  4. FMP (Financial Modeling Prep) stock news
-  5. Alpha Vantage news sentiment
-  6. Finviz News API  (news_export.ashx — token auth, NEW)
-  7. Yahoo Finance    (RSS + JSON fallback, no key, NEW)
+  1. Alpha Vantage news sentiment
+  2. Finviz News API  (news_export.ashx — token auth)
+  3. Yahoo Finance    (RSS + JSON fallback, no key)
+Finnhub, NewsAPI, Polygon and FMP retired 2026-09-13 (config/data_source_authority.json).
 
 Rules:
   - Lookback: max 72 hours; preferred window 30 min – 12 hours
@@ -164,176 +161,6 @@ def _recency_multiplier(tier: str) -> float:
 
 
 # ── Per-API fetchers ─────────────────────────────────────────────────────────
-
-def _fetch_finnhub(symbol: str, from_dt: datetime, to_dt: datetime) -> List[Dict]:
-    try:
-        from api_budget import spend as _ab_spend
-        if not _ab_spend("finnhub"):
-            return []
-    except Exception:
-        pass
-    key = _env("FINNHUB_API_KEY")
-    if not key:
-        return []
-    try:
-        from datetime import timezone
-        url = "https://finnhub.io/api/v1/company-news"
-        # Finnhub requires YYYY-MM-DD format in Eastern or UTC
-        _from = from_dt.astimezone(timezone.utc).strftime("%Y-%m-%d") if from_dt.tzinfo else from_dt.strftime("%Y-%m-%d")
-        _to   = to_dt.astimezone(timezone.utc).strftime("%Y-%m-%d")   if to_dt.tzinfo   else to_dt.strftime("%Y-%m-%d")
-        params = {
-            "symbol": symbol,
-            "from":   _from,
-            "to":     _to,
-            "token":  key,
-        }
-        resp = requests.get(url, params=params, timeout=(5, 8))
-        if resp.status_code == 422:
-            return []   # Unprocessable — skip silently
-        resp.raise_for_status()
-        items = resp.json() or []
-        results = []
-        for item in items:
-            dt = datetime.fromtimestamp(item.get("datetime", 0), tz=timezone.utc)
-            results.append({
-                "title": item.get("headline", ""),
-                "summary": item.get("summary", ""),
-                "url": item.get("url", ""),
-                "source": item.get("source", "Finnhub"),
-                "published_at": dt.isoformat(),
-                "provider": "finnhub",
-            })
-        return results
-    except Exception:
-        return []
-
-def _fetch_newsapi(symbol: str, company: str, from_dt: datetime) -> List[Dict]:
-    try:
-        from api_budget import spend as _ab_spend
-        if not _ab_spend("newsapi"):
-            return []
-    except Exception:
-        pass
-    key = _env("NEWSAPI_KEY")
-    if not key:
-        return []
-    try:
-        url = "https://newsapi.org/v2/everything"
-        query = f"{symbol} stock" if not company else f"{symbol} OR \"{company}\""
-        params = {
-            "q": query,
-            "from": from_dt.strftime("%Y-%m-%dT%H:%M:%S"),
-            "sortBy": "publishedAt",
-            "language": "en",
-            "pageSize": 20,
-            "apiKey": key,
-        }
-        resp = requests.get(url, params=params, timeout=(5, 8))
-        resp.raise_for_status()
-        articles = resp.json().get("articles", [])
-        results = []
-        for a in articles:
-            results.append({
-                "title": a.get("title", ""),
-                "summary": a.get("description", ""),
-                "url": a.get("url", ""),
-                "source": a.get("source", {}).get("name", "NewsAPI"),
-                "published_at": a.get("publishedAt", ""),
-                "provider": "newsapi",
-            })
-        return results
-    except Exception:
-        return []
-
-def _fetch_polygon(symbol: str, from_dt: datetime) -> List[Dict]:
-    try:
-        from api_budget import spend as _ab_spend
-        if not _ab_spend("polygon"):
-            return []
-    except Exception:
-        pass
-    key = _env("POLYGON_API_KEY")
-    if not key:
-        return []
-    try:
-        url = "https://api.polygon.io/v2/reference/news"
-        params = {
-            "ticker": symbol,
-            "published_utc.gte": from_dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
-            "order": "desc",
-            "limit": 20,
-            "apiKey": key,
-        }
-        resp = requests.get(url, params=params, timeout=(5, 8))
-        resp.raise_for_status()
-        items = resp.json().get("results", [])
-        results = []
-        for item in items:
-            results.append({
-                "title": item.get("title", ""),
-                "summary": item.get("description", ""),
-                "url": item.get("article_url", ""),
-                "source": (item.get("publisher") or {}).get("name", "Polygon"),
-                "published_at": item.get("published_utc", ""),
-                "provider": "polygon",
-            })
-        return results
-    except Exception:
-        return []
-
-def _fetch_fmp(symbol: str, limit: int = 20) -> List[Dict]:
-    try:
-        from api_budget import spend as _ab_spend
-        if not _ab_spend("fmp"):
-            return []
-    except Exception:
-        pass
-    key = _env("FMP_API_KEY")
-    if not key:
-        return []
-    try:
-        # Try v3 stable endpoint first, fall back silently on 403
-        url = "https://financialmodelingprep.com/stable/stock-news"
-        params = {"tickers": symbol, "limit": limit, "apikey": key}
-        resp = requests.get(url, params=params, timeout=(5, 8))
-        if resp.status_code == 403:
-            # v3 stock_news requires higher plan — try v4 general search
-            url2 = "https://financialmodelingprep.com/api/v4/general_news"
-            params2 = {"page": 0, "apikey": key}
-            try:
-                resp = requests.get(url2, params=params2, timeout=(5, 8))
-                if not resp.ok:
-                    return []
-                # Filter for this symbol
-                all_news = resp.json() or []
-                sym_upper = symbol.upper()
-                filtered = [n for n in all_news
-                           if sym_upper in (n.get("symbol","") or "").upper()
-                           or sym_upper in (n.get("title","") or "").upper()]
-                return [{
-                    "provider": "fmp",
-                    "title": n.get("title",""),
-                    "summary": n.get("text",""),
-                    "published_at": n.get("publishedDate",""),
-                    "url": n.get("url",""),
-                } for n in filtered[:limit]]
-            except Exception:
-                return []
-        resp.raise_for_status()
-        items = resp.json() or []
-        results = []
-        for item in items:
-            results.append({
-                "title": item.get("title", ""),
-                "summary": item.get("text", ""),
-                "url": item.get("url", ""),
-                "source": item.get("site", "FMP"),
-                "published_at": item.get("publishedDate", ""),
-                "provider": "fmp",
-            })
-        return results
-    except Exception:
-        return []
 
 def _fetch_alpha_vantage(symbol: str) -> List[Dict]:
     try:
@@ -604,12 +431,9 @@ def enrich_ticker(symbol: str, company: str = "") -> Dict[str, Any]:
     now    = _now_utc()
     cutoff = _cutoff_utc(LOOKBACK_MAX_HOURS)
 
-    # Gather from all 7 providers
+    # Gather from the live providers
     raw: List[Dict] = []
-    raw += _fetch_finnhub(symbol, cutoff, now)
-    raw += _fetch_newsapi(symbol, company, cutoff)
-    raw += _fetch_polygon(symbol, cutoff)
-    raw += _fetch_fmp(symbol)
+    # finnhub / newsapi / polygon / fmp retired 2026-09-13 — config/data_source_authority.json
     raw += _fetch_alpha_vantage(symbol)
     raw += _fetch_finviz_news(symbol)     # ← Source 6: Finviz News API
     raw += _fetch_yahoo_news(symbol)      # ← Source 7: Yahoo Finance

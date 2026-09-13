@@ -27,21 +27,9 @@ def _env(k: str) -> str:
 # ── Polygon options fetch ─────────────────────────────────────────────────────
 
 def _fetch_polygon_options(symbol: str) -> List[Dict]:
-    key = _env("POLYGON_API_KEY")
-    if not key:
-        return []
-    try:
-        url = f"https://api.polygon.io/v3/snapshot/options/{symbol}"
-        resp = requests.get(url, params={
-            "order": "desc",
-            "limit": 25,
-            "sort": "day.volume",
-            "apiKey": key,
-        }, timeout=(5, 8))
-        resp.raise_for_status()
-        return resp.json().get("results", [])
-    except Exception:
-        return []
+    """Polygon retired 2026-09-13 (config/data_source_authority.json). Options flow has no
+    declared provider; the caller renders a declared gap, never a stale or empty-as-zero flow."""
+    return []
 
 
 def _classify_direction(contract_type: str, delta: float) -> str:

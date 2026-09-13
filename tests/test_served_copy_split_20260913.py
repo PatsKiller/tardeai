@@ -122,8 +122,37 @@ def test_mtime_within_tolerance_and_same_size_is_not_drift(tmp_path):
     assert scs.diff_trees(dev / "data/runtime", served / "data/runtime")["differ"] == 0
 
 
-def test_declared_directories_are_the_served_stores():
-    assert set(scs.SPLIT_DIRS) == {"portfolios/state", "runtime", "cio"}
+def test_declared_directories_are_every_served_store():
+    """All seven directories CURRENT links into persistent-state. The first version
+    declared three; Phase 0 of the One Source of Truth plan found the other four
+    were split too (audit 24 dev-only files, state 13, paper_trading 1)."""
+    assert set(scs.SPLIT_DIRS) == {"audit", "cio", "health", "paper_trading", "portfolios/state", "runtime", "state"}
+
+
+# ── the archive tripwire ─────────────────────────────────────────────────────
+
+
+def test_tripwire_is_quiet_when_nothing_references_the_archive(tmp_path):
+    repo = tmp_path / "repo"; (repo / "scripts").mkdir(parents=True)
+    (repo / "scripts" / "ok.py").write_text("x = 1\n")
+    assert scs.archive_tripwire("/arch/served_copy_split", repo=repo, crontab_text="* * * * * echo hi\n", unit_dir=tmp_path / "nounits") == []
+
+
+def test_tripwire_fires_on_repo_crontab_and_unit_references(tmp_path):
+    repo = tmp_path / "repo"; (repo / "scripts").mkdir(parents=True); units = tmp_path / "units"; units.mkdir()
+    (repo / "scripts" / "bad.py").write_text('p = "/arch/served_copy_split/dev/runtime/x.json"\n')
+    (units / "x.service").write_text("ExecStart=/bin/cat /arch/served_copy_split/dev/cio/a.jsonl\n")
+    hits = scs.archive_tripwire("/arch/served_copy_split", repo=repo, crontab_text="5 * * * * cat /arch/served_copy_split/served/y\n", unit_dir=units)
+    assert sorted(h["where"] for h in hits) == ["crontab", "repo", "systemd"]
+
+
+def test_tripwire_finding_interrupts(wired, monkeypatch):
+    monkeypatch.setattr(scs, "archive_tripwire", lambda *a, **k: [{"where": "crontab", "ref": "line 12"}])
+    scs._alert([{"dir": "archive_tripwire", "status": "TRIPPED", "detail": "1 live reference(s) to the reconcile archive", "trips": [{"where": "crontab", "ref": "line 12"}]}])
+    body = wired.sent[0]
+    assert "ARCHIVE TRIPWIRE" in body and "crontab: line 12" in body
+    from telegram_alert_router import classify_alert
+    assert classify_alert(body) == "P0_INTERRUPT"
 
 
 # ── main: exit code and receipt ──────────────────────────────────────────────
@@ -131,6 +160,8 @@ def test_declared_directories_are_the_served_stores():
 
 def test_main_exits_1_on_split_and_writes_receipt(split, monkeypatch, capsys):
     dev, served = split
+    monkeypatch.setattr(scs, "archive_tripwire", lambda *a, **k: [])
+    monkeypatch.setattr(scs, "SPLIT_DIRS", ("runtime",))
     monkeypatch.setattr(scs, "PROJECT_ROOT", dev)
     monkeypatch.setattr(sys, "argv", ["x", "--dev-root", str(dev), "--served-root", str(served)])
     assert scs.main() == 1
@@ -143,8 +174,9 @@ def test_main_exits_1_on_split_and_writes_receipt(split, monkeypatch, capsys):
 
 def test_main_exits_0_when_every_dir_is_linked(linked, monkeypatch, tmp_path):
     dev, served = linked
-    # portfolios/state and cio absent on both sides would be MISSING; declare only runtime here.
+    # the other six dirs absent on both sides would be MISSING; declare only runtime here.
     monkeypatch.setattr(scs, "SPLIT_DIRS", ("runtime",))
+    monkeypatch.setattr(scs, "archive_tripwire", lambda *a, **k: [])
     monkeypatch.setattr(scs, "PROJECT_ROOT", tmp_path / "receipts")
     monkeypatch.setattr(sys, "argv", ["x", "--dev-root", str(dev), "--served-root", str(served)])
     assert scs.main() == 0

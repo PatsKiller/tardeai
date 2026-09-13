@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """api_budget.py — unified daily budget ledger for ALL external news/data APIs.
 
-Before: each provider's limit was tracked nowhere (NewsAPI 500/day could exhaust by lunch) or in a silo
+Before: each provider's limit was tracked nowhere or in a silo
 (Brave had its own 25/day). Now: one DB-backed ledger every caller checks BEFORE spending a request.
 
   from api_budget import spend, remaining
-  if spend("newsapi"):          # records the call, returns False if budget exhausted
+  if spend("finviz_news"):      # records the call, returns False if budget exhausted
       ... make the request ...
 
 Caps come from env (API_BUDGET_<PROVIDER>, with sane free-tier defaults below) — no hardcoding beyond
@@ -18,12 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-# documented free-tier defaults; override via env API_BUDGET_NEWSAPI etc.
+# documented free-tier defaults; override via env API_BUDGET_<PROVIDER>
 DEFAULT_CAPS = {
-    "newsapi": 450,       # 500/day free — headroom
-    "finnhub": 800,       # 60/min free; daily soft cap
-    "polygon": 250,       # 5/min free
-    "fmp": 230,           # 250/day free
+    # newsapi / finnhub / polygon / fmp retired 2026-09-13 — config/data_source_authority.json
     "brave": 25,          # existing budget honored
     "finviz_news": 1500,  # token-based, polite cap
     "alphavantage": 22,   # 25/day free — tight

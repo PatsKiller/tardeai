@@ -150,47 +150,6 @@ def yahoo_quote(symbol: str) -> Dict[str, Any]:
     }
 
 
-def fmp_profile(symbol: str, key: str) -> Dict[str, Any]:
-    if not key:
-        return {}
-    url = f"https://financialmodelingprep.com/api/v3/profile/{urllib.parse.quote(symbol)}?apikey={urllib.parse.quote(key)}"
-    data = http_json(url)
-    if isinstance(data, list) and data:
-        p = data[0]
-        return {
-            "provider": "fmp",
-            "price": p.get("price"),
-            "beta": p.get("beta"),
-            "market_cap": p.get("mktCap"),
-            "last_dividend": p.get("lastDiv"),
-            "range": p.get("range"),
-            "company_name": p.get("companyName"),
-            "currency": p.get("currency"),
-            "exchange": p.get("exchangeShortName"),
-            "industry": p.get("industry"),
-            "sector": p.get("sector"),
-            "description": p.get("description")
-        }
-    return {}
-
-
-def finnhub_recommendation(symbol: str, key: str) -> Dict[str, Any]:
-    if not key:
-        return {}
-    url = f"https://finnhub.io/api/v1/stock/recommendation?symbol={urllib.parse.quote(symbol)}&token={urllib.parse.quote(key)}"
-    data = http_json(url)
-    if isinstance(data, list) and data:
-        r = data[0]
-        return {
-            "provider": "finnhub",
-            "recommendation_period": r.get("period"),
-            "strong_buy": r.get("strongBuy"),
-            "buy": r.get("buy"),
-            "hold": r.get("hold"),
-            "sell": r.get("sell"),
-            "strong_sell": r.get("strongSell")
-        }
-    return {}
 
 
 def score_symbol(symbol: str, asset_type: str, merged: Dict[str, Any]) -> Dict[str, Any]:
@@ -272,19 +231,15 @@ def main() -> int:
 
     rows: List[Dict[str, Any]] = []
     missing_keys = []
-    if not env.get("FMP_API_KEY"):
-        missing_keys.append("FMP_API_KEY")
-    if not env.get("FINNHUB_API_KEY"):
-        missing_keys.append("FINNHUB_API_KEY")
 
     for sym, meta in list(symbols.items())[: args.limit]:
         holding = meta.get("holding")
         asset_type = classify_asset(sym, holding)
         profile = {}
         profile.update(yahoo_quote(sym))
-        fmp = fmp_profile(sym, env.get("FMP_API_KEY", ""))
-        profile.update({k: v for k, v in fmp.items() if v is not None})
-        analyst = finnhub_recommendation(sym, env.get("FINNHUB_API_KEY", ""))
+        # FMP profile and Finnhub recommendation retired 2026-09-13 (config/data_source_authority.json).
+        # Identity comes from symbol_profiles (yfinance); analyst opinion from yahoo_analyst_targets_history.
+        analyst: Dict[str, Any] = {}
         score = score_symbol(sym, asset_type, {**profile, **analyst})
         rows.append({
             "symbol": sym,

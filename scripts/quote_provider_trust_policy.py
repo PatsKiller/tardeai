@@ -5,11 +5,12 @@ Pure functions. No broker calls. No DB writes. No order submission.
 """
 from datetime import datetime, timezone
 
-EXEC_ELIGIBLE = {"alpaca", "polygon"}
+# polygon / finnhub / fmp retired 2026-09-13 — config/data_source_authority.json
+EXEC_ELIGIBLE = {"alpaca"}
 DISPLAY_ONLY = {"yfinance", "finviz", "finviz_cache"}
-INFORMATIONAL = {"finnhub", "fmp"}
+INFORMATIONAL: set = set()
 
-PROVIDER_RANK = {"alpaca": 1, "polygon": 2, "finnhub": 3, "fmp": 4, "yfinance": 5, "finviz": 6}
+PROVIDER_RANK = {"alpaca": 1, "yfinance": 5, "finviz": 6}
 
 # Max quote age (seconds) by strategy family + state
 MAX_AGE = {

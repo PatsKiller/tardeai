@@ -1166,6 +1166,103 @@ a quiet market; check the producer's schedule before believing the consumer.
 
 ---
 
+# 7A · One source of truth — the data broker and the authority registry
+
+**`config/data_source_authority.json` is the only place that says which store, which writer,
+which provider and which read path is authoritative for a domain.** `[VERIFIED]` 2026-09-13.
+`scripts/check_data_source_authority.py` enforces it in `ai_local_acceptance` and CI;
+`docs/SOURCE_OF_TRUTH.md` is rendered from it and is not edited by hand.
+
+Why it exists — three incidents in one week, each possible because the answer lived nowhere a
+program could read:
+
+- **Finviz column shift.** Two parsers mapped Finviz export columns by position. When v=141 gained
+  three Performance columns, `Performance (10 Years)` landed in a 1–5 analyst-rating column for
+  five months, 97.9% of rows, anti-correlated. Nothing declared the analyst source or its scale.
+- **Served-copy split.** `CURRENT/data/*` was linked to persistent-state on 08-27; the dev tree the
+  344 cron producers run from was not. Eighteen days: 297 files diverged, 79 append-only ledgers
+  grew on both sides, 40 of 192 API-read state files served stale beside a fresh copy. Nothing
+  declared where a store is served from.
+- **Dead chain slots.** The catalyst-news chain had six slots; the first four were dead (Finnhub
+  401 since 07-27, NewsAPI never ran, Polygon and FMP paid-only). Four scheduled callers fell
+  through them every run. Nothing declared a provider retired.
+
+### The rules, enforced
+
+1. **One writer per store.** A domain names exactly one writer module. Anything else that
+   `INSERT`s or `UPDATE`s that store is a defect; `WRITER_COUNT_ROSE` fails the build when the
+   count of writer files rises above `config/data_source_authority_baseline.json`. The baseline
+   may only fall.
+2. **One served copy.** Every directory in `served_from.linked_dirs` resolves to
+   `/home/johnclaw/trade-ai-releases/persistent-state/data/…` from **both** the release and the dev
+   tree. `check_served_copy_split.py` (hourly, `[PLATFORM_AVAILABILITY]`) alerts the moment they do
+   not. LINKED is the only OK — identical content in two directories is still a split.
+3. **One read path.** Hubs read a domain through its broker projection
+   (`scripts/lib/data_broker/`), never `FROM <table>` directly. `DIRECT_READ_ROSE` fails when a hub
+   file gains a direct read of a projection-owned table. Every projection response carries
+   `as_of`, `age`, `source`, `stale`.
+4. **A retired provider has zero call sites.** `status: "retired"` in the registry means
+   `RETIRED_CALL_SITE` fails on any reference outside the secret-hygiene allowlist. Chains consult
+   `scripts/lib/retired_providers.py` (which reads the registry) and refuse a retired slot up
+   front, in the receipt — no silent fall-through.
+5. **A backup answers the same question.** `backup` lists providers for the *same* domain.
+   Cross-domain substitution (a Finviz performance column for an analyst rating) is not a backup.
+   When the chain is exhausted the answer is the domain's declared `no_coverage` behaviour
+   (`say_so`, `refuse_up_front`, `carry_last_with_date`, `per_account_state_never_zero`) —
+   never a value from the wrong place, never a silent zero.
+6. **Health decays.** A `data_source_health` row is *healthy* only if it succeeded inside its
+   window; a row nobody touches decays to *unknown*. `healthy` on a 20-day-old success is a defect.
+
+### Adding or changing a source — the only procedure
+
+Any new provider host, SDK import, table, or state file that feeds a hub:
+
+1. Add or amend the domain / provider in `config/data_source_authority.json` **first**: store,
+   single writer, cadence, `stale_after_hours`, projection, `required_fields`, backup chain,
+   `no_coverage`.
+2. Add the broker projection if the domain has none (`scripts/lib/data_broker/catalog.py`).
+3. Add the provider's markers to `providers[].match` so `UNDECLARED_PROVIDER` recognises it.
+4. Add a row to the table in this section (below) in the same PR.
+5. Retiring: set `status: "retired"` with `retired_on` and `_why`; remove every call site; the
+   gate proves it. Never delete the module — archive it with a manifest row (§7, "never delete").
+
+A PR that adds a provider host without touching the registry fails
+`check_data_source_authority.py` with `UNDECLARED_PROVIDER`. That is the point.
+
+### Domains of record (rendered from the registry — do not edit by hand)
+
+<!-- SOURCE_OF_TRUTH_TABLE_START -->
+| Domain | Class | Store of record | Single writer | Cadence | Stale after | Read path | Primary | Backup (same question) | Retired | No coverage |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **quote_price** | ingested | `market_quotes` | **none — dead feed** | */15 09:30-16:00 Mon-Fri | 0.25h | `market_quote` | alpaca | yfinance, schwab_stream | polygon, finnhub, fmp | `last_price_with_age_and_source` |
+| **symbol_identity** | ingested | `symbol_profiles` | **none — dead feed** | 06:35 daily | 168h | `symbol_profile` | yfinance | finviz | fmp | `say_so` |
+| **analyst_opinion** | ingested | `yahoo_analyst_targets_history` | `scripts/pro_analyst_fetch.py` | daily | 168h | `analyst_detail` | yahoo | yfinance_on_demand | fmp, finnhub | `say_so` |
+| **catalyst_news** | ingested | `news_articles` | **none — dead feed** | 00:30 · 12:30 | 12h | `catalyst_record` | finviz | yahoo, brave, searxng | finnhub, newsapi, polygon, fmp | `say_so` |
+| **technicals** | derived | `ticker_prices` · `portfolios/state/technical_snapshot.json` | **none — dead feed** | hourly | 26h | `indicator_snapshot` | alpaca | yfinance | — | `say_so` |
+| **sector_momentum** | derived | `sector_rs_daily` · `runtime/sector_momentum_latest.json` | `scripts/sector_rs_daily.py` | 17:20 Mon-Fri | 26h | `sector_momentum` | internal:market_quotes | finviz_sector_view | — | `say_so` |
+| **industry_momentum** | ingested | `runtime/industry_momentum_latest.json` | `scripts/finviz_industry_groups.py` | 12:30 · 16:18 | 26h | `sector_momentum` | finviz | — | — | `show_sector_with_industry_unavailable` |
+| **market_regime** | derived | `market_regime_snapshots` | `scripts/market_regime_classifier.py` | 06:35 · 16:05 Mon-Fri (collector 06:30 feeds it) | 26h | `risk_snapshot` | yahoo | internal:trade_ai_scans | — | `carry_last_regime_with_date_never_neutral` |
+| **earnings_date** | ingested | `symbol_profiles` | `scripts/earnings_enrich.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | — | fmp | `UNKNOWN_blocks_options_gate` |
+| **holdings_accounts** | ingested | `portfolios/state/holdings.json` | `scripts/portfolio_loader.py` | broker sync + */15 repricer | 24h | `portfolio_snapshot` | schwab | alpaca | — | `per_account_state_never_zero` |
+| **options_iv** | live_external | `options_iv_history` | `scripts/lib/strategy_research/iv_history.py` | unscheduled | 4h | — | schwab | — | — | `call_out_at_read_time` |
+| **research_thesis** | native | `hermes_research_intelligence` | **none — dead feed** | 8 scheduled lanes | 168h | `research_card` | internal | research_insights, governed_pull:brave>searxng | — | `say_so_queue_only_if_producer_exists` |
+| **watch_directives** | native | `watch_directives` | **none — dead feed** | 3 scheduled | 48h | `watch_intelligence` | internal | — | — | `say_so` |
+| **watch_discovery** | dead_feed | `watch_candidate_events` | **none — dead feed** | — | 48h | `watch_intelligence` | internal | — | — | `declared_gap_no_producer` |
+| **web_search** | live_external | `runtime/search_budget.json` | `scripts/lib/brave_router.py` | on demand | — | — | brave | searxng, tavily | — | `declared_gap` |
+| **private_company** | manual | `private_company_proxies` | operator | — | — | — | none | — | — | `refuse_up_front` |
+| **dividends** | ingested | `ticker_dividend_data` | `scripts/sync_dividend_data.py` | 07:05 Mon-Fri | 168h | — | yfinance | — | fmp | `say_so` |
+<!-- SOURCE_OF_TRUTH_TABLE_END -->
+
+§0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an
+authoritative store are never reconciled by an agent alone.** Phase 1 of the One Source of Truth
+plan (2026-09-13) was run only after the dry run was quoted and the operator approved the merge
+rule (snapshots: newer wins, loser archived; append-only ledgers: line-level union, both archived;
+nothing deleted). The receipt is `persistent-state/data/runtime/served_copy_reconcile_receipt.json`;
+the archive is `/home/johnclaw/trade-ai-releases/archive/served_copy_split_20260913/` and any
+reference to that path from live code, cron or a unit file trips the split monitor.
+
+---
+
 # 8 · Validation and verification
 
 ## Local gates, before any push

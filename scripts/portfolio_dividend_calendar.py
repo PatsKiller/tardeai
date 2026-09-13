@@ -43,30 +43,39 @@ def _load_env(root: Path):
             if "=" in line and not line.startswith("#"):
                 k,v=line.split("=",1); os.environ.setdefault(k.strip(),v.strip().strip("\"'"))
 
-def _fetch_fmp_dividends(symbols: List[str], root: Path) -> Dict[str,Dict]:
-    """Fetch next ex-dividend date from FMP."""
-    _load_env(root)
-    key = _env("FMP_API_KEY")
-    if not key: return {}
-    result = {}
-    for sym in symbols[:20]:  # Rate limit
-        try:
-            url = f"https://financialmodelingprep.com/api/v3/stock_dividend/{sym}"
-            resp = requests.get(url, params={"apikey":key}, timeout=10)
-            if not resp.ok: continue
-            data = resp.json()
-            if isinstance(data, list) and data:
-                latest = data[0]
-                result[sym] = {
-                    "ex_date":     latest.get("date",""),
-                    "pay_date":    latest.get("paymentDate",""),
-                    "amount":      latest.get("dividend",0),
-                    "adj_amount":  latest.get("adjDividend",0),
-                }
-            time.sleep(0.15)
-        except Exception:
-            pass
-    return result
+def _fetch_dividend_dates(symbols: List[str], root: Path) -> Dict[str,Dict]:
+    """Next ex-dividend / pay date per symbol from ticker_dividend_data (store of record).
+
+    FMP retired 2026-09-13 (config/data_source_authority.json). ticker_dividend_data is
+    written by sync_dividend_data.py from yfinance.
+    """
+    if not symbols:
+        return {}
+    try:
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from session13_db import get_conn  # type: ignore
+        import psycopg2.extras
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(
+                    """SELECT symbol, ex_div_date::text AS ex_date, pay_date::text AS pay_date,
+                              annual_dividend_per_share, frequency
+                         FROM ticker_dividend_data WHERE symbol = ANY(%s)""",
+                    ([s.upper() for s in symbols],),
+                )
+                out = {}
+                for r in cur.fetchall():
+                    annual = float(r.get("annual_dividend_per_share") or 0)
+                    per = {"monthly": 12, "quarterly": 4, "semi-annual": 2, "annual": 1}.get(str(r.get("frequency") or "quarterly"), 4)
+                    out[r["symbol"]] = {
+                        "ex_date": r.get("ex_date") or "", "pay_date": r.get("pay_date") or "",
+                        "amount": round(annual / per, 4) if annual else 0, "adj_amount": round(annual / per, 4) if annual else 0,
+                        "source": "ticker_dividend_data",
+                    }
+                return out
+    except Exception:
+        return {}
 
 def _get_monthly_income_estimate(sym: str, shares: float, mv: float) -> float:
     """Estimate monthly dividend income."""
@@ -115,7 +124,7 @@ def build_dividend_calendar(portfolio: Dict, root: Path, state_dir: Path) -> Dic
         return {"has_data":False,"note":"No dividend payers identified"}
 
     # Fetch live ex-div dates
-    div_dates = _fetch_fmp_dividends([p["symbol"] for p in payers], root)
+    div_dates = _fetch_dividend_dates([p["symbol"] for p in payers], root)
 
     # Build monthly income projection
     total_annual  = sum(p.get("annual_income",0) or 0 for p in payers)

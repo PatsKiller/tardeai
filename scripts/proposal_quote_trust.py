@@ -9,13 +9,14 @@ Usage:
 """
 from datetime import datetime, timezone
 
-# Provider execution eligibility — only Alpaca and Polygon with real-time bid/ask qualify
-EXECUTION_ELIGIBLE_PROVIDERS = {"alpaca", "polygon"}
+# Provider execution eligibility — only Alpaca with real-time bid/ask qualifies.
+# polygon / finnhub / fmp retired 2026-09-13 — config/data_source_authority.json
+EXECUTION_ELIGIBLE_PROVIDERS = {"alpaca"}
 DISPLAY_ONLY_PROVIDERS = {"yfinance", "finviz", "finviz_cache"}
-INFORMATIONAL_PROVIDERS = {"finnhub", "fmp"}
+INFORMATIONAL_PROVIDERS: set = set()
 
 PROVIDER_RANK = {
-    "alpaca": 1, "polygon": 2, "finnhub": 3, "fmp": 4,
+    "alpaca": 1,
     "yfinance": 5, "finviz": 6, "finviz_cache": 7,
 }
 

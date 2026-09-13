@@ -1,6 +1,15 @@
 {
   "schema": "ArchiveManifest@v1",
-  "as_of": null,
-  "note": "Mechanism only (WAVE G4). Items empty by design — first archive batch is operator-only. Do not move files here without an approved manifest row.",
-  "items": []
+  "as_of": "2026-09-13",
+  "note": "Mechanism only (WAVE G4). Items empty by design \u2014 first archive batch is operator-only. Do not move files here without an approved manifest row.",
+  "items": [
+    {
+      "path": "archive/retired_providers_20260913/discovery_sources/polygon_source.py",
+      "verdict": "SUPERSEDED",
+      "evidence": "Polygon retired 2026-09-13 in config/data_source_authority.json (paid-only; 0 candidates ever recorded in data_source_health). Its only importer, candidate_discovery_orchestrator.py, no longer loads it. Operator approved Phase 2 of the One Source of Truth plan 2026-09-13.",
+      "date": "2026-09-13",
+      "review_by": "2026-10-13",
+      "restore_command": "git mv archive/retired_providers_20260913/discovery_sources/polygon_source.py scripts/discovery_sources/polygon_source.py"
+    }
+  ]
 }

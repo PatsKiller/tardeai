@@ -64,7 +64,7 @@ def main():
     cur.execute("SELECT COUNT(*) as c, MAX(published_at) as last FROM news_articles WHERE published_at > NOW() - INTERVAL '%s days'", [args.since_days])
     r = cur.fetchone()
     sources.append({"name": "News APIs", "records": r["c"], "last_update": str(r["last"]) if r["last"] else None,
-                     "key_configured": _check_env_key("NEWSAPI_KEY"), "health": "healthy" if r["c"] > 50 else "degraded" if r["c"] > 0 else "stale",
+                     "key_configured": _check_env_key("FINVIZ_API_TOKEN"), "health": "healthy" if r["c"] > 50 else "degraded" if r["c"] > 0 else "stale",
                      "impact": "medium", "used_by": "agents, intelligence"})
 
     # YouTube

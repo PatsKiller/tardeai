@@ -189,6 +189,11 @@ else
     # a 16-line edit). Mirror both steps here.
     "$PY" scripts/check_dark_contracts.py --fail-on-new || cio_failed+=("dark_contracts")
     "$PY" scripts/check_line_endings.py                   || cio_failed+=("line_endings")
+    # One Source of Truth (2026-09-13): the authority registry binds, and the rendered
+    # docs must match it. A retired provider creeping back, a new host without a
+    # registry row, or a writer count that rose all fail here before they reach CI.
+    "$PY" scripts/check_data_source_authority.py          || cio_failed+=("data_source_authority")
+    "$PY" scripts/render_source_of_truth.py --check       || cio_failed+=("source_of_truth_docs_stale")
     if (( ${#cio_failed[@]} )); then
       echo
       echo "CIO GATES FAILED: ${cio_failed[*]}" >&2

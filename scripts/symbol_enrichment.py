@@ -4,7 +4,7 @@ Trade AI v12 — Multi-Source Symbol Enrichment Engine
 
 Tiered enrichment for any symbol that surfaces as GO/WAIT:
   Tier 1: Finviz Elite (primary — 70+ columns)
-  Tier 2: Free on-demand (Yahoo RSS, Google News, StockTwits, Reddit, Finnhub, SEC)
+  Tier 2: Free on-demand (Yahoo RSS, Google News, StockTwits, Reddit, SEC)
   Tier 3: YouTube Intelligence (auto-discover channels)
   Tier 4: Keyed APIs (Alpha Vantage, Polygon — when Tier 2 thin)
   Tier 5: Brave Search (A+ only, max 3/day)
@@ -402,42 +402,7 @@ def pull_stocktwits(symbol: str, conn) -> dict:
         return {'mentions': 0, 'bullish': 0, 'bearish': 0}
 
 
-def pull_finnhub_news(symbol: str, conn) -> int:
-    """Finnhub company news — existing API key."""
-    try:
-        api_key = os.getenv('FINNHUB_API_KEY', '')
-        if not api_key:
-            return 0
-        from_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
-        to_date = datetime.now().strftime('%Y-%m-%d')
-        url = (f"https://finnhub.io/api/v1/company-news"
-               f"?symbol={symbol}&from={from_date}&to={to_date}&token={api_key}")
-        resp = requests.get(url, timeout=8)
-        if resp.status_code != 200:
-            _report_source('finnhub', False, error=f'HTTP {resp.status_code}')
-            return 0
-        _report_source('finnhub', True)
-        articles = resp.json()
-        if not isinstance(articles, list):
-            return 0
-        cur = conn.cursor()
-        added = 0
-        for art in articles[:10]:
-            try:
-                if _insert_news_article(cur, art.get('headline') or '', art.get('url') or '',
-                                        symbol, 'finnhub_live', 72):
-                    added += 1
-            except Exception:
-                conn.rollback()
-        conn.commit()
-        return added
-    except Exception:
-        return 0
-
-
-# ─────────────────────────────────────────────
-# TIER 3 — YOUTUBE INTELLIGENCE
-# ─────────────────────────────────────────────
+# pull_finnhub_news removed 2026-09-13: Finnhub retired (HTTP 401 since 07-27) — config/data_source_authority.json
 
 def search_youtube(symbol: str, conn) -> dict:
     """Search YouTube for recent videos about this symbol. Queue transcripts."""
@@ -693,8 +658,6 @@ def enrich_symbol(symbol: str, score: int, conn, force_full: bool = False) -> di
         except Exception:
             pass
 
-    n = pull_finnhub_news(symbol, conn)
-    if n > 0: summary['articles'] += n; summary['sources'].append('finnhub')
 
     # Tier 3: YouTube
     yt = search_youtube(symbol, conn)

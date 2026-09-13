@@ -1,8 +1,7 @@
 """economic_calendar.py — Economic & earnings calendar for Trade AI v11.
 
-Fetches via FMP:
-  - Economic events (Fed decisions, CPI, NFP, PPI, GDP, etc.)
-  - Earnings calendar (companies reporting today or tomorrow)
+Earnings calendar from symbol_profiles (the store of record, yfinance-fed).
+Macro events: no declared provider since FMP was retired 2026-09-13 — returns [].
 
 Flags any tickers in the current watchlist that are reporting earnings.
 """
@@ -10,7 +9,6 @@ from __future__ import annotations
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
-import requests
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -28,65 +26,56 @@ def _impact_label(impact: str) -> str:
     return mapping.get(impact or "", "⚪ LOW")
 
 
-# ── FMP fetchers ──────────────────────────────────────────────────────────────
+# ── Fetchers ──────────────────────────────────────────────────────────────────
+# FMP was retired 2026-09-13 (paid-only; HTTP 403/429 since July). Earnings dates
+# now come from the store of record, symbol_profiles.next_earnings_date (written by
+# earnings_enrich.py from yfinance). No macro-events calendar provider is declared
+# in config/data_source_authority.json, so fetch_economic_events returns the empty,
+# honest answer and the caller renders a declared gap — never a stale list.
 
-def fetch_economic_events(days_ahead: int = 1) -> List[Dict[str, Any]]:
-    """Fetch macro events (Fed, CPI, NFP, etc.) for today and upcoming days."""
-    key = _env("FMP_API_KEY")
-    if not key:
-        return []
+def _db_rows(sql: str, params: tuple) -> List[Dict[str, Any]]:
     try:
-        from_date, to_date = _date_range(days_ahead)
-        url = "https://financialmodelingprep.com/stable/economic-calendar"
-        resp = requests.get(url, params={
-            "from": from_date, "to": to_date, "apikey": key
-        }, timeout=10)
-        resp.raise_for_status()
-        events = []
-        for item in resp.json() or []:
-            events.append({
-                "date":       item.get("date", ""),
-                "event":      item.get("event", ""),
-                "country":    item.get("country", "US"),
-                "impact":     _impact_label(item.get("impact", "")),
-                "actual":     item.get("actual", "—"),
-                "forecast":   item.get("estimate", "—"),
-                "previous":   item.get("previous", "—"),
-            })
-        # Sort by date, high-impact first
-        events.sort(key=lambda e: (e["date"], 0 if "HIGH" in e["impact"] else 1))
-        return events
+        import sys
+        from pathlib import Path
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from session13_db import get_conn  # type: ignore
+        import psycopg2.extras
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                cur.execute(sql, params)
+                return [dict(r) for r in cur.fetchall()]
     except Exception:
         return []
+
+
+def fetch_economic_events(days_ahead: int = 1) -> List[Dict[str, Any]]:
+    """Macro events: no provider declared (FMP retired 2026-09-13). Declared gap."""
+    return []
 
 
 def fetch_earnings_calendar(days_ahead: int = 1) -> List[Dict[str, Any]]:
-    """Fetch earnings reports for today and tomorrow."""
-    key = _env("FMP_API_KEY")
-    if not key:
-        return []
-    try:
-        from_date, to_date = _date_range(days_ahead)
-        url = "https://financialmodelingprep.com/stable/earnings-calendar"
-        resp = requests.get(url, params={
-            "from": from_date, "to": to_date, "apikey": key
-        }, timeout=10)
-        resp.raise_for_status()
-        earnings = []
-        for item in resp.json() or []:
-            eps_est  = item.get("epsEstimated")
-            rev_est  = item.get("revenueEstimated")
-            earnings.append({
-                "symbol":       item.get("symbol", ""),
-                "company":      item.get("name", ""),
-                "date":         item.get("date", ""),
-                "time":         item.get("time", "bmo"),   # bmo / amc
-                "eps_est":      f"${eps_est:.2f}" if eps_est is not None else "—",
-                "revenue_est":  f"${rev_est/1e9:.1f}B" if rev_est else "—",
-            })
-        return earnings
-    except Exception:
-        return []
+    """Companies reporting between today and today+days_ahead, from symbol_profiles."""
+    from_date, to_date = _date_range(days_ahead)
+    rows = _db_rows(
+        """SELECT symbol, company_name, next_earnings_date::text AS date, last_eps_estimate
+             FROM symbol_profiles
+            WHERE next_earnings_date BETWEEN %s::date AND %s::date
+            ORDER BY next_earnings_date, symbol""",
+        (from_date, to_date),
+    )
+    out = []
+    for r in rows:
+        eps = r.get("last_eps_estimate")
+        out.append({
+            "symbol": r.get("symbol", ""),
+            "company": r.get("company_name") or "",
+            "date": r.get("date") or "",
+            "time": "",
+            "eps_est": f"${float(eps):.2f}" if eps is not None else "—",
+            "revenue_est": "—",
+            "source": "symbol_profiles",
+        })
+    return out
 
 
 # ── Watchlist cross-reference ─────────────────────────────────────────────────

@@ -1726,7 +1726,7 @@ def _protective_stop_refresh_quote(body=None):
         q = get_best_quote(sym) or {}
         if q.get("last_price") is not None:
             # Real-time broker providers carry event times; finviz_cache does not
-            evt = str(q.get("provider") or "") in ("schwab", "alpaca", "polygon", "finnhub")
+            evt = str(q.get("provider") or "") in ("schwab", "alpaca")  # polygon/finnhub retired 2026-09-13
             _add(
                 q.get("last_price"),
                 f"mqp:{q.get('provider') or 'unknown'}",
@@ -5733,7 +5733,6 @@ def _orchestration():
         lambda: (bool(os.getenv("FINVIZ_API_TOKEN")), f"Token: ...{os.getenv('FINVIZ_API_TOKEN', '')[-8:]}"),
         "Add FINVIZ_API_TOKEN to .env",
     )
-    _env_check("Finnhub API", lambda: (bool(os.getenv("FINNHUB_API_KEY")), "Configured"), "Add FINNHUB_API_KEY to .env")
     _env_check(
         "gcloud CLI",
         lambda: (Path(os.path.expanduser("~/openclaw-skills-john718/google-cloud-sdk/bin/gcloud")).exists(), "Found"),
@@ -10956,7 +10955,7 @@ def _search_sources_status():
         "brave_calls_today": brave_calls,
         "free_source_queries": free_queries,
         "free_pct": round(free_queries / max(1, total_queries) * 100),
-        "fallback_chain": "DB embeddings (RAG) → YouTube transcripts → Yahoo RSS + Finnhub + Google News → Brave (paid, last resort)",
+        "fallback_chain": "DB embeddings (RAG) → YouTube transcripts → Yahoo RSS + Google News → Brave (paid, last resort)",
     }
     return sources
 
