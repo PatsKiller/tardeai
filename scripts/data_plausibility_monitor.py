@@ -45,6 +45,14 @@ import psycopg2
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS_PATH = PROJECT_ROOT / "config" / "data_plausibility_contracts.json"
 
+SCHEMA = "DataPlausibilityReport@v1"
+
+NO_CONSUMER_REASON = (
+    "this IS a data-integrity gate; an operator or a scheduled run invokes it and "
+    "reads the report, nothing imports it. Same shape as check_test_coverage.py "
+    "and check_dark_contracts.py."
+)
+
 
 def _db_env() -> dict:
     env = {}

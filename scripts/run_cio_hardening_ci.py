@@ -547,6 +547,11 @@ GATES = [
             # "Performance (10 Years)" was stored as a 1-5 analyst rating for
             # five months, inverted (a -100% stock read "Strong Buy").
             "tests/test_finviz_column_map_20260913.py",
+            # Numeric scales are declared in config and measured against the
+            # live database. The Finviz shift survived 130,155 rows because a
+            # column's scale existed only in a docstring, where nothing could
+            # check it.
+            "tests/test_data_plausibility_contracts_20260913.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",
