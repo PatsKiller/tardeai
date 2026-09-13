@@ -1,10 +1,10 @@
 # Health Agent + Multi-Coder Auto-Fix
 
 Status:      ACTIVE
-as_of:       2026-08-08T18:02:23-04:00
-Measured at: efcc51365 / not measured
+as_of:       2026-09-13T18:00:00-04:00
+Measured at: e8a173e7d / not measured
 
-_Last updated: 2026-08-08_
+_Last updated: 2026-09-13 (data-source health decay view; prior 2026-08-08)_
 
 A centralized, proactive health layer that sits **on top of** the existing fragmented monitors and turns
 their scattered signals into a single score, proactive trend detection, and bounded auto-remediation —
@@ -202,6 +202,49 @@ one-txn-per-scan, agent-jobs context builder holding reads through LLM calls) �
 before slow non-DB work, and `db_adapter` sets `application_name` per script so future victims are
 attributable; (c) `scripts/rotate_runtime_logs.sh` (cron 01:15, copytruncate, size-based) after
 `telegram_callback_poller.log` reached 1.4GB unrotated.
+
+## Data-source health decays — the view (2026-09-13, One Source of Truth Phase 3)
+
+**Problem (measured 2026-09-13):** the `data_source_health` table held 18 rows. `yahoo_finance` read
+`healthy` with `last_success_at` 2026-08-24 — twenty days old — because `report_source()` writes the
+status column once and nothing ages it. `brave_search`, `fred` and `alpha_vantage` were `unknown` forever
+(no caller wired) while Brave made 163 governed calls that month. `finnhub` sat at `error` (HTTP 401) for
+seven weeks while four scheduled callers tried it first. `collect_data_source_health()` and the
+`_data_source_health` API both read the raw column, so the platform scored 75 with all of that true.
+This supersedes the "two disconnected data-source monitors" blind spot below: both now read one view.
+
+**Fix — a read-side view, one place (`scripts/lib/data_source_health_view.py`).** Pure functions, no I/O:
+
+| Function | What it does |
+|---|---|
+| `effective_status(row, now, window_minutes)` | `healthy` only if `last_success_at` is inside the window and no failure is newer; `error` if a failure is newer than the last success; otherwise `unknown`. The raw `status` column is never consulted. |
+| `window_minutes_for(source_key, registry)` | The window comes from `config/data_source_authority.json`: the smallest `stale_after_hours` of any domain whose `primary_provider` is that source (alias table `SOURCE_KEY_ALIASES` maps e.g. `yahoo_finance` → `yfinance`). No domain, or a null window → `DEFAULT_WINDOW_MINUTES` (24h). The registry is the only copy of "how fresh must this be". |
+| `view_row` / `view_rows` | Replace `status` with the effective one, keep the raw column as `raw_status`, flag `decayed`, add `age_minutes`. |
+| `not_healthy_with_scheduled_caller(viewed)` | The alert set: a source that is not healthy **and** has a job scheduled to feed it (`has_scheduled_caller`). Idle sources are listed, not alerted. |
+
+**Consumers (all three, so the same row cannot read two ways):** `health_agent.collect_data_source_health()`
+(category `data_quality`; `effective_status` on every finding), `api_v2._data_source_health` (board; raw
+column returned as `raw_status`), and the monitor `scripts/check_data_source_health.py` (hourly
+`tradeai-data-source-health.timer`, lane `data-source-health-audit`, receipt
+`data/runtime/data_source_health_last_run.json` written every run, `[PLATFORM_AVAILABILITY]` alert on
+transition only). The timer is **declared in `config/expected_services.json`, not asserted installed**
+— `check_expected_services.py` measures that on the host.
+
+**The clock.** The view has no market calendar of its own: a window is wall-clock hours from the
+registry. Two places carry market-time awareness and this document does not claim more than they do:
+(1) the broker envelope (`scripts/lib/data_broker/envelope.py`) accepts `market_closed=True` and then
+uses the domain's `stale_after_hours_closed` (declared today only for `quote_price`: 0.25h open → 72h
+closed), so a Friday-close quote is not `stale` on Sunday; (2) `collect_data_source_health()` keeps the
+house convention of downgrading a weekend staleness finding to `info` with a `[weekend]` tag. A source
+whose registry window is shorter than a weekend and whose producer is Mon–Fri only **will decay to
+`unknown` over the weekend** by design — that is the honest state, and the alert set filters it only
+through `has_scheduled_caller`, not through a calendar. `UNKNOWN` is the expected reading there.
+
+**Rule of record:** `AGENTS.md` §7A rule 6 — "a `data_source_health` row is healthy only if it succeeded
+inside its window; a row nobody touches decays to unknown." Tests:
+`tests/test_data_source_health_decay_20260913.py` (the 08-24 Yahoo row comes out `unknown`; raw status
+never consulted; window edge; the Finnhub never-succeeded-but-failed case; the health-agent collector uses
+the view; alert fires once on transition; unit files match the brief).
 
 ## Extending
 

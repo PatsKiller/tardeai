@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `0efe61a0ed6ec9bc8bfa9371a48a9a3257a10f5e96e4e880485f04209c7b8a80`
+**Tree fingerprint:** `7b1a5dbfaf304e4e014ce8edf24d43ce622a81ff7dfc1eb9a1c069a53550322d`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2494 |
-| Markdown (excl. this INDEX) | 2070 |
+| Files under `docs/` (excl. this INDEX) | 2495 |
+| Markdown (excl. this INDEX) | 2071 |
 | **MISSING HEADER** | **61** |
-| Header OK | 2009 |
+| Header OK | 2010 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2123 |
+| review_required | 2124 |
 
 ## Markdown tree
 
@@ -66,10 +66,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/FINANCIAL_RECONCILIATION.md` | Financial reconciliation and record-level migration | review_required | MISSING HEADER | `67a3455d1e52` |
 | `docs/FINVIZ_INTEGRATION_AND_DATA_SOURCE_MONITORING.md` | Finviz Integration + Data-Source Health Monitoring | review_required | OK | `d2c64a1e13d9` |
 | `docs/FINVIZ_SOURCE_AUTHORITY.md` | Finviz Source Authority & Phase 0 Reconciliation | review_required | OK | `93533d98e174` |
-| `docs/GAP_RESOLUTION.md` | Gap Resolution — when the answer is stale or missing, go find out | review_required | OK | `81e848563058` |
+| `docs/GAP_RESOLUTION.md` | Gap Resolution — when the answer is stale or missing, go find out | review_required | OK | `ae8291b4db81` |
 | `docs/GIT_HYGIENE.md` | Git Hygiene — protect the live primary tree (2026-07-01) | review_required | OK | `bb52d4d23b64` |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50: Trade AI Runtime Status | review_required | OK | `8c1dff864802` |
-| `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `f148baa2203c` |
+| `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `c1ee2ea7a621` |
 | `docs/HEALTH_AUTONOMOUS_LOOP.md` | Health autonomous fix loop (no manual operator / no one-off agent fixes) | review_required | OK | `e4865c52f780` |
 | `docs/HERMES_DATA_ACCESS.md` | Hermes Data Access — the one canonical way every consumer reads Hermes intelligence | review_required | OK | `e597b05f60f3` |
 | `docs/HERMES_DISCOVERY_COVERAGE.md` | Hermes Discovery Inbox — Current Coverage & Discovery Mechanics (2026-07-05) | review_required | OK | `28f9832642be` |
@@ -85,7 +85,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/LIVE_SYSTEM_FACTS.md` | Live System Facts — Authoritative Counts | review_required | OK | `1c3dcee8a3af` |
 | `docs/LLM_DATA_DICTIONARY.md` | LLM Data Dictionary — How Data Flows to Every Model Call | review_required | OK | `1960a201f17b` |
 | `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` | LLM Fleet Strategy v4.1 — Final Execution Revision | active_keep | OK | `c0f8815dff83` |
-| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Trade AI v12 -- Master System Documentation | active_keep | OK | `eb5b2c72213b` |
+| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Trade AI v12 -- Master System Documentation | active_keep | OK | `68403e7d632e` |
 | `docs/MISSION_LOG_2026_07_04_05.md` | Mission Log — 2026-07-04/05 (Due Diligence · Discovery Inbox · Incident Sweep) | review_required | OK | `424f1859cb37` |
 | `docs/MOMENTUM_SCALP_REGIME_DETECTION_ALGORITHM.md` | Momentum Scalp Regime Detection Algorithm | review_required | OK | `32c77f1fbc37` |
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | Momentum Scalp — Stop & Trailing-Stop Policy | review_required | OK | `354954d22052` |
@@ -108,7 +108,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
-| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `bb961ca10f0a` |
+| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `646ba1d213a8` |
 | `docs/STOP_METHODOLOGY.md` | Stop & Trailing-Stop Methodology (canonical) | review_required | OK | `5b9791931edc` |
 | `docs/STOP_SYSTEM_GAP_REPORT.md` | Trade AI v12 — Stop System Alignment / Gap Report | review_required | OK | `12d1dfe39ffb` |
 | `docs/STRATEGY_MONITORING_20260626.md` | Strategy & Monitoring — Audit Remediation (2026-06-26) | review_required | OK | `4655d328251e` |
@@ -1255,6 +1255,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `ba4903599982` |
+| `docs/implementation/sot/DOCS_AUDIT_20260913.md` | One Source of Truth — documentation and governance audit (Phase 8) | review_required | OK | `5da4931f6bd6` |
 | `docs/incidents/DAY_SCALP_PIPELINE_FIXES_2026-08-19.md` | Day-Scalp Pipeline — Fixes & Enhancements (2026-08-19) | review_required | OK | `c6c4a11b63fb` |
 | `docs/incidents/DAY_SCALP_PIPELINE_OUTAGE_2026-08-19.md` | Day-Scalp Pipeline Outage — Root Cause & Remediation Plan (2026-08-19) | review_required | OK | `304b9f0e8db6` |
 | `docs/incidents/PHASE67A_FINVIZ_AGENT_STALENESS_INCIDENT_INVENTORY.md` | Phase 67A — Finviz & Agent Staleness Incident Inventory | review_required | OK | `4e6a66d54dd5` |
