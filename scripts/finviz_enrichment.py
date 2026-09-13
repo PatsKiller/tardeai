@@ -128,6 +128,58 @@ SKIP_DUPLICATES = {"price", "change_pct", "volume", "market_cap_b2", "market_cap
                    "avg_vol_m2", "earnings_date2", "pe2", "price2", "change_pct2", "volume2"}
 
 
+def _classify_recom(recom_raw):
+    """Map a Finviz recom value to (score, rating, reject_reason).
+
+    Finviz recom is a 1-5 scale. Anything else is refused rather than coerced,
+    and the caller gets a reason instead of a fabricated rating.
+
+    This exists because the previous inline version did
+
+        rs = float(str(recom_raw).replace("%","").strip())
+
+    and the "%" was the one signal that the value was the WRONG FIELD. Stripping
+    it laundered a percentage into a rating: when the upstream view's columns
+    moved, values like "351.79%" arrived here, and 351.79 >= 4.5 rendered
+    "Strong Sell".
+
+    Measured on the live table 2026-09-13, before this change:
+
+        last 30 days    5,774 out-of-range vs 105 valid
+        since 2026-04   ~81,000 out-of-range vs ~1,800 valid
+        every out-of-range row rendered "Strong Sell"
+
+    WMT read "Strong Sell" on 351.79 while Yahoo had it at "buy" with 40
+    analysts and a 137.98 mean target. Refusing is the honest outcome: no rating
+    is a fact, an invented one is not.
+
+    Returns (None, None, reason) on refusal so callers can record WHY, rather
+    than being unable to distinguish "no data" from "bad data".
+    """
+    if recom_raw is None:
+        return None, None, "missing"
+    text = str(recom_raw).strip()
+    if not text:
+        return None, None, "empty"
+    if "%" in text:
+        # A percent sign means this is not a recommendation at all.
+        return None, None, "percent_sign_not_a_1_5_rating"
+    try:
+        rs = float(text)
+    except (ValueError, TypeError):
+        return None, None, "unparseable"
+    if not (1.0 <= rs <= 5.0):
+        return None, None, f"out_of_range_{rs:g}_not_in_1_5"
+    rating = (
+        "Strong Buy"  if rs < 1.5 else
+        "Buy"         if rs < 2.5 else
+        "Hold"        if rs < 3.5 else
+        "Sell"        if rs < 4.5 else
+        "Strong Sell"
+    )
+    return round(rs, 2), rating, None
+
+
 def _env(key: str, default: str = "") -> str:
     """Prefer SM tmpfs for Finviz auth keys; never log values."""
     if key in ("FINVIZ_COOKIE", "FINVIZ_API_TOKEN", "FINVIZ_USER_AGENT"):
@@ -404,22 +456,17 @@ def enrich_tickers(
             else:
                 merged["trend"] = "unknown"
 
-            # Fix recom: parse score + map to text label
             recom_raw = merged.get("recom")
             if recom_raw is not None:
-                try:
-                    rs = float(str(recom_raw).replace("%","").strip())
-                    merged["recom_score"] = round(rs, 2)
-                    merged["analyst_rating"] = (
-                        "Strong Buy"  if rs < 1.5 else
-                        "Buy"         if rs < 2.5 else
-                        "Hold"        if rs < 3.5 else
-                        "Sell"        if rs < 4.5 else
-                        "Strong Sell"
+                score, rating, reason = _classify_recom(recom_raw)
+                merged["recom_score"] = score
+                merged["analyst_rating"] = rating
+                merged["recom_reject_reason"] = reason
+                if reason:
+                    print(
+                        f"  [finviz-enrich] recom refused for {sym}: "
+                        f"{recom_raw!r} ({reason})"
                     )
-                except (ValueError, TypeError):
-                    merged["recom_score"] = None
-                    merged["analyst_rating"] = None
 
             cache[sym] = merged
 
