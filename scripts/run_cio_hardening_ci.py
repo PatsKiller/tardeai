@@ -577,6 +577,7 @@ GATES = [
             # answered from stop-curation research because nothing read
             # yahoo_analyst_targets_history. Freshness travels with the answer.
             "tests/test_analyst_view_domain_20260913.py",
+            "tests/test_pending_expiry_unanswerable_20260913.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",
