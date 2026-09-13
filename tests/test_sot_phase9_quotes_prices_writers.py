@@ -598,7 +598,10 @@ def test_negative_control_writer_count_fell_from_baseline_to_one(table, module):
 def test_registry_writer_targets_re_export_the_module():
     q = next(d for d in AUTH["domains"] if d["domain"] == "quote_price")
     t = next(d for d in AUTH["domains"] if d["domain"] == "technicals")
-    assert q["writer_target"] == "scripts/external_market_data_ingest.py"
-    assert t["writer_target"] == "scripts/portfolio_repricer.py"
-    assert "write_market_quotes" in (ROOT / q["writer_target"]).read_text(encoding="utf-8")
-    assert "write_ticker_prices" in (ROOT / t["writer_target"]).read_text(encoding="utf-8")
+    # Integrated 2026-09-13: the lib module is the declared writer; the producer is its facade.
+    assert q["writer"] == "scripts/lib/writers/market_quotes_writer.py"
+    assert t["writer"] == "scripts/lib/writers/ticker_prices_writer.py"
+    assert q["writer_facade"] == "scripts/external_market_data_ingest.py"
+    assert t["writer_facade"] == "scripts/portfolio_repricer.py"
+    assert "write_market_quotes" in (ROOT / q["writer_facade"]).read_text(encoding="utf-8")
+    assert "write_ticker_prices" in (ROOT / t["writer_facade"]).read_text(encoding="utf-8")

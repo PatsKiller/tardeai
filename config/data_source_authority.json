@@ -481,7 +481,7 @@
       "store": {
         "table": "market_quotes"
       },
-      "writer": null,
+      "writer": "scripts/lib/writers/market_quotes_writer.py",
       "cadence": "*/15 09:30-16:00 Mon-Fri",
       "stale_after_hours": 0.25,
       "stale_after_hours_closed": 72,
@@ -502,9 +502,7 @@
         "fmp"
       ],
       "no_coverage": "last_price_with_age_and_source",
-      "writer_status": "UNCONSOLIDATED",
-      "writer_target": "scripts/external_market_data_ingest.py",
-      "_writer_note": "3 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/external_market_data_ingest.py is the module the others must call.",
+      "_writer_note": "Phase 9 (2026-09-13): one write module; api_v2's operator-refresh write routed through it (kept: 13 readers take the newest row). Writers 3 -> 1. The facade re-exports the write function and carries no SQL.",
       "on_gap": [
         {
           "vector": "refresh_producer",
@@ -524,7 +522,8 @@
           "max_per_day": 1,
           "expected_seconds": 7200
         }
-      ]
+      ],
+      "writer_facade": "scripts/external_market_data_ingest.py"
     },
     {
       "domain": "symbol_identity",
@@ -538,7 +537,7 @@
       "store": {
         "table": "symbol_profiles"
       },
-      "writer": "scripts/build_symbol_profiles.py",
+      "writer": "scripts/lib/writers/symbol_profiles_writer.py",
       "cadence": "06:35 daily",
       "stale_after_hours": 168,
       "projection": "symbol_profile",
@@ -555,7 +554,7 @@
         "fmp"
       ],
       "no_coverage": "say_so",
-      "_writer_note": "Phase 9 (2026-09-13): one write module scripts/lib/writers/symbol_profiles_writer.py, re-exported by build_symbol_profiles.py; 8 producers call it with a per-lane column allow-list. Writers 8 -> 1.",
+      "_writer_note": "Phase 9 (2026-09-13): one write module with a per-lane column allow-list; earnings 3-state preserved. Writers 8 -> 1. The facade re-exports the write function and carries no SQL.",
       "on_gap": [
         {
           "vector": "refresh_producer",
@@ -587,7 +586,8 @@
           "max_per_day": 1,
           "expected_seconds": 7200
         }
-      ]
+      ],
+      "writer_facade": "scripts/build_symbol_profiles.py"
     },
     {
       "domain": "analyst_opinion",
@@ -678,7 +678,7 @@
       "store": {
         "table": "news_articles"
       },
-      "writer": null,
+      "writer": "scripts/lib/writers/news_articles_writer.py",
       "cadence": "00:30 · 12:30",
       "stale_after_hours": 18,
       "projection": "catalyst_record",
@@ -700,9 +700,7 @@
         "fmp"
       ],
       "no_coverage": "say_so",
-      "writer_status": "UNCONSOLIDATED",
-      "writer_target": "scripts/news_ingestion.py",
-      "_writer_note": "16 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/news_ingestion.py is the module the others must call.",
+      "_writer_note": "Phase 9 (2026-09-13): one write module; ONE dedupe rule (symbol + source_url|title); retired-provider rows rejected; subject_guid/issuer_guid populated (legacy wrote NULL). Writers 16 -> 1. The facade re-exports the write function and carries no SQL.",
       "answers": [
         "news",
         "news_feed",
@@ -749,7 +747,8 @@
           "expected_seconds": 7200
         }
       ],
-      "_stale_note": "Runs 00:30 and 12:30 (12h gap). A window equal to the gap decays on any delay; 18h = 1.5x the gap. Phase 8, 2026-09-13."
+      "_stale_note": "Runs 00:30 and 12:30 (12h gap). A window equal to the gap decays on any delay; 18h = 1.5x the gap. Phase 8, 2026-09-13.",
+      "writer_facade": "scripts/news_ingestion.py"
     },
     {
       "domain": "technicals",
@@ -764,7 +763,7 @@
         "table": "ticker_prices",
         "file": "portfolios/state/technical_snapshot.json"
       },
-      "writer": null,
+      "writer": "scripts/lib/writers/ticker_prices_writer.py",
       "cadence": "hourly",
       "stale_after_hours": 26,
       "projection": "indicator_snapshot",
@@ -779,9 +778,7 @@
       ],
       "retired": [],
       "no_coverage": "say_so",
-      "writer_status": "UNCONSOLIDATED",
-      "writer_target": "scripts/portfolio_repricer.py",
-      "_writer_note": "4 modules write this store today (2026-09-13). The gate's writer-count ceiling can only fall; scripts/portfolio_repricer.py is the module the others must call.",
+      "_writer_note": "Phase 9 (2026-09-13): one write module; scrub restore and price_db_sync bounded INSERT..SELECT kept verbatim as explicit functions; NaN closes now rejected. Writers 4 -> 1. The facade re-exports the write function and carries no SQL.",
       "projection_secondary": [
         "daily_bars"
       ],
@@ -804,7 +801,8 @@
           "max_per_day": 1,
           "expected_seconds": 7200
         }
-      ]
+      ],
+      "writer_facade": "scripts/portfolio_repricer.py"
     },
     {
       "domain": "sector_momentum",

@@ -606,6 +606,8 @@ GATES = [
             # Phase 9: one write module per store; golden tests prove row shape and
             # subject GUID are identical to every legacy writer.
             "tests/test_sot_p9_symbol_profiles_writer.py",
+            "tests/test_sot_phase9_quotes_prices_writers.py",
+            "tests/test_sot_p9_news_articles_writer.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",

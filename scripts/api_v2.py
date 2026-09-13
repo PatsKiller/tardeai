@@ -1784,16 +1784,17 @@ def _protective_stop_refresh_quote(body=None):
     if quote and parsed:
         try:
             import sys as _mq_sys
+
             _mq_sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
             from db_adapter import _get_conn as _mq_get_conn, USE_DB as _mq_use_db
             from lib.writers.market_quotes_writer import write_market_quotes as _write_market_quotes
+
             if _mq_use_db:
                 _mq_conn = _mq_get_conn()
                 try:
                     _write_market_quotes(
                         _mq_conn,
-                        [{"symbol": sym, "price": quote["price"],
-                          "fetched_at": parsed.astimezone(_dt.timezone.utc)}],
+                        [{"symbol": sym, "price": quote["price"], "fetched_at": parsed.astimezone(_dt.timezone.utc)}],
                         source=f"refresh:{source}",
                     )
                     _mq_conn.commit()
@@ -48729,6 +48730,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 try:
                     from db_adapter import _get_conn as _na_conn, USE_DB as _na_use_db
                     from lib.writers.news_articles_writer import reassign_strategy_type as _na_reassign
+
                     if _na_use_db:
                         _na_c = _na_conn()
                         _na_reassign(_na_c.cursor(), "defense_thesis", "investment_general")

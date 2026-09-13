@@ -279,8 +279,13 @@ def test_rendered_domain_table_carries_the_approval_column_and_the_real_writer_s
     assert header.endswith("| Approval |")
     assert "operator 2026-09-13" in t
     # An UNCONSOLIDATED store is not a dead feed and must not render as one.
+    # (quote_price was consolidated in Phase 9; pick whichever store still declares the state.)
+    unc = [d["domain"] for d in AUTH["domains"] if d.get("writer_status") == "UNCONSOLIDATED"]
+    assert unc, "no UNCONSOLIDATED store left — retire this assertion deliberately"
+    row = next(line for line in t.splitlines() if line.startswith(f"| **{unc[0]}**"))
+    assert "UNCONSOLIDATED" in row and "dead feed" not in row
     quote = next(line for line in t.splitlines() if line.startswith("| **quote_price**"))
-    assert "UNCONSOLIDATED" in quote and "dead feed" not in quote
+    assert "UNCONSOLIDATED" not in quote and "market_quotes_writer" in quote
     dead = next(line for line in t.splitlines() if line.startswith("| **watch_discovery**"))
     assert "dead feed" in dead
 

@@ -473,7 +473,8 @@ def test_registry_writer_target_re_exports_the_module():
     assert target.upsert_profile is w.upsert_profile and target.write_earnings is w.write_earnings
     domain = next(d for d in AUTH["domains"] if d["domain"] == "symbol_identity")
     # At integration the registry promoted the target to the single declared writer.
-    assert domain.get("writer") == "scripts/build_symbol_profiles.py"
+    assert domain.get("writer") == "scripts/lib/writers/symbol_profiles_writer.py"
+    assert domain.get("writer_facade") == "scripts/build_symbol_profiles.py"
     assert domain.get("writer_status") != "UNCONSOLIDATED"
 
 

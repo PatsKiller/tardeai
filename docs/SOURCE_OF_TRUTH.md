@@ -50,11 +50,11 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 
 | Domain | Class | Store of record | Single writer (how it is written) | Cadence | Stale after | Read path | Primary | Backup (same question) | Retired | No coverage | Approval |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| **quote_price** | ingested | `market_quotes` | UNCONSOLIDATED → `scripts/external_market_data_ingest.py` (3 writers today; ceiling may only fall) | */15 09:30-16:00 Mon-Fri | 0.25h | `market_quote` | alpaca | yfinance, schwab_stream | polygon, finnhub, fmp | `last_price_with_age_and_source` | operator 2026-09-13 |
-| **symbol_identity** | ingested | `symbol_profiles` | `scripts/build_symbol_profiles.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | finviz | fmp | `say_so` | operator 2026-09-13 |
+| **quote_price** | ingested | `market_quotes` | `scripts/lib/writers/market_quotes_writer.py` | */15 09:30-16:00 Mon-Fri | 0.25h | `market_quote` | alpaca | yfinance, schwab_stream | polygon, finnhub, fmp | `last_price_with_age_and_source` | operator 2026-09-13 |
+| **symbol_identity** | ingested | `symbol_profiles` | `scripts/lib/writers/symbol_profiles_writer.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | finviz | fmp | `say_so` | operator 2026-09-13 |
 | **analyst_opinion** | ingested | `yahoo_analyst_targets_history` | `scripts/pro_analyst_fetch.py` | daily | 168h | `analyst_detail` | yahoo | yfinance_on_demand | fmp, finnhub | `say_so` | operator 2026-09-13 |
-| **catalyst_news** | ingested | `news_articles` | UNCONSOLIDATED → `scripts/news_ingestion.py` (16 writers today; ceiling may only fall) | 00:30 · 12:30 | 18h | `catalyst_record` | finviz | yahoo, brave, searxng | finnhub, newsapi, polygon, fmp | `say_so` | operator 2026-09-13 |
-| **technicals** | derived | `ticker_prices` · `portfolios/state/technical_snapshot.json` | UNCONSOLIDATED → `scripts/portfolio_repricer.py` (4 writers today; ceiling may only fall) | hourly | 26h | `indicator_snapshot` | alpaca | yfinance | — | `say_so` | operator 2026-09-13 |
+| **catalyst_news** | ingested | `news_articles` | `scripts/lib/writers/news_articles_writer.py` | 00:30 · 12:30 | 18h | `catalyst_record` | finviz | yahoo, brave, searxng | finnhub, newsapi, polygon, fmp | `say_so` | operator 2026-09-13 |
+| **technicals** | derived | `ticker_prices` · `portfolios/state/technical_snapshot.json` | `scripts/lib/writers/ticker_prices_writer.py` | hourly | 26h | `indicator_snapshot` | alpaca | yfinance | — | `say_so` | operator 2026-09-13 |
 | **sector_momentum** | derived | `sector_rs_daily` · `runtime/sector_momentum_latest.json` | `scripts/sector_rs_daily.py` | 17:20 Mon-Fri | 26h | `sector_momentum` | internal:market_quotes | finviz_sector_view | — | `say_so` | operator 2026-09-13 |
 | **industry_momentum** | ingested | `runtime/industry_momentum_latest.json` | `scripts/finviz_industry_groups.py` | 12:30 · 16:18 | 26h | `sector_momentum` | finviz | — | — | `show_sector_with_industry_unavailable` | operator 2026-09-13 |
 | **market_regime** | derived | `market_regime_snapshots` | `scripts/market_regime_classifier.py` | 06:35 · 16:05 Mon-Fri (collector 06:30 feeds it) | 26h | `market_regime` | yahoo | internal:trade_ai_scans | — | `carry_last_regime_with_date_never_neutral` | operator 2026-09-13 |
@@ -84,9 +84,6 @@ module every other writer must call.
 
 | Domain | Store | Writers today (ceiling) | Consolidation target | Hub direct reads (ceiling) |
 |---|---|---|---|---|
-| **quote_price** | `market_quotes` | 3 | `scripts/external_market_data_ingest.py` | 13 |
-| **catalyst_news** | `news_articles` | 16 | `scripts/news_ingestion.py` | 45 |
-| **technicals** | `ticker_prices` | 4 | `scripts/portfolio_repricer.py` | 0 |
 | **research_thesis** | `hermes_research_intelligence` | 32 | `scripts/lib/hermes_librarian/librarian.py` | 31 |
 | **watch_directives** | `watch_directives` | 18 | `scripts/lib/two_way_curation.py` | 11 |
 | **macro** | `fred_economic_series` | 2 | `scripts/external_market_data_ingest.py` | — |

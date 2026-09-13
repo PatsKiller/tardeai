@@ -594,7 +594,8 @@ def test_the_one_writer_is_the_module_and_no_legacy_file_carries_sql():
 
 def test_news_ingestion_is_the_registry_target_and_re_exports_the_module():
     domain = next(d for d in AUTH["domains"] if d["store"]["table"] == "news_articles")
-    assert domain["writer_target"] == "scripts/news_ingestion.py"
+    assert domain["writer"] == "scripts/lib/writers/news_articles_writer.py"
+    assert domain["writer_facade"] == "scripts/news_ingestion.py"
     import news_ingestion as ni
     assert ni.write_news_articles is W.write_news_articles
     assert ni.set_region is W.set_region and ni.SQL_NOW is W.SQL_NOW
