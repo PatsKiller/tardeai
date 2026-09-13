@@ -139,6 +139,37 @@ def sample_wake():
 # ═══════════════════════════════════════════════════════════════════════════════
 
 
+def evidence_available() -> dict:
+    """A forced snapshot whose evidence gate passes.
+
+    These tests predate Gate C6, the pre-synthesis evidence gate. They call
+    execute(force_health_state="READY"), which bypasses the HEALTH boundary but
+    not the EVIDENCE one, so every run reached the gate, found no domain_states
+    in a tmp_path store, and returned BLOCKED/EVIDENCE_GAP. Seven tests were
+    failing for that one reason -- and nobody saw it, because this file is on
+    the DENY list in scripts/check_test_coverage.py and does not run in CI.
+
+    The product is not wrong here: a run genuinely must not synthesise without
+    evidence. What changed is the premise of these tests, which are about what
+    happens AFTER evidence is in hand. So they supply it, through the
+    force_snapshot affordance execute() already exposes, rather than the gate
+    being weakened to let them through.
+
+    Every registry domain is marked AVAILABLE so the helper does not need to
+    track which run purpose each test exercises. Tests that assert the gate
+    BLOCKS must not use this.
+    """
+    from scripts.lib.cio_domain_registry import CIODomainRegistry
+
+    registry = CIODomainRegistry.load()
+    domain_ids = list(registry.domain_ids)
+    return {
+        "snapshot_id": "snap-test-evidence-ok",
+        "content_hash": "test-evidence-ok",
+        "domain_states": {d: "AVAILABLE" for d in domain_ids},
+    }
+
+
 class TestFinancialSnapshot:
     """Tests for CIOFinancialSnapshot and build_canonical_snapshot."""
 
@@ -349,7 +380,7 @@ class TestCIORunWorker:
             required_domains=sample_wake.get("required_domains", []),
         )
         run_id = run_event["payload"]["run_id"]
-        result = worker.execute(run_id, force_health_state="READY")
+        result = worker.execute(run_id, force_health_state="READY", force_snapshot=evidence_available())
         assert result["status"] == "COMPLETED"
         assert result["cost_accrued"] <= 0.01  # Minimal shadow cost
         assert result["provider_calls"] <= 1
@@ -362,7 +393,7 @@ class TestCIORunWorker:
             required_domains=sample_wake.get("required_domains", []),
         )
         run_id = run_event["payload"]["run_id"]
-        result = worker.execute(run_id, force_health_state="READY")
+        result = worker.execute(run_id, force_health_state="READY", force_snapshot=evidence_available())
         assert result["run_id"] is not None
         assert result["status"] == "COMPLETED"
 
@@ -395,7 +426,7 @@ class TestCIORunWorker:
             required_domains=sample_wake.get("required_domains", []),
         )
         run_id = run_event["payload"]["run_id"]
-        result = worker.execute(run_id)
+        result = worker.execute(run_id, force_snapshot=evidence_available())
         assert result["status"] == "COMPLETED"  # DEGRADED allows run
         assert result["health_state"] == "DEGRADED"
 
@@ -469,7 +500,7 @@ class TestCIORunWorker:
             required_domains=domains,
         )
         run_id = run_event["payload"]["run_id"]
-        result = worker.execute(run_id, force_health_state="READY")
+        result = worker.execute(run_id, force_health_state="READY", force_snapshot=evidence_available())
         assert result["status"] == "WAITING_FOR_SPECIALISTS"
         # Specialist handoffs should be created for the required domains
         # (maria_portfolio for portfolio/risk/tax, steph_watchlist for watch)
@@ -489,7 +520,7 @@ class TestCIORunWorker:
             required_domains=sample_wake.get("required_domains", []),
         )
         run_id = run_event["payload"]["run_id"]
-        result = worker.execute(run_id, force_health_state="READY")
+        result = worker.execute(run_id, force_health_state="READY", force_snapshot=evidence_available())
         assert len(result.get("hermes_challenges", [])) > 0
 
     def test_hermes_not_triggered_when_not_material(self, worker, run_store, sample_wake):
@@ -531,7 +562,7 @@ class TestCIORunWorker:
             required_domains=sample_wake.get("required_domains", []),
         )
         run_id = run_event["payload"]["run_id"]
-        result = worker.execute(run_id, force_health_state="READY")
+        result = worker.execute(run_id, force_health_state="READY", force_snapshot=evidence_available())
 
         # Verify actions were created in the action ledger
         actions = worker.action_ledger.list_actions()
@@ -627,7 +658,7 @@ class TestCIORunWorker:
             required_domains=sample_wake.get("required_domains", []),
         )
         run_id = run_event["payload"]["run_id"]
-        r1 = worker.execute(run_id, force_health_state="READY")
+        r1 = worker.execute(run_id, force_health_state="READY", force_snapshot=evidence_available())
         assert r1["status"] == "COMPLETED"
 
         # Simulate crash: create new worker with same stores
@@ -649,7 +680,7 @@ class TestCIORunWorker:
             required_domains=sample_wake.get("required_domains", []),
         )
         run_id2 = run_event2["payload"]["run_id"]
-        r2 = new_worker.execute(run_id2, force_health_state="READY")
+        r2 = new_worker.execute(run_id2, force_health_state="READY", force_snapshot=evidence_available())
         assert r2["status"] == "COMPLETED"
 
     def test_all_baseline_modules(self):
