@@ -186,9 +186,25 @@ def _canonical_paths(store_ids: tuple[str, ...], fallbacks: tuple[str, ...] = ()
     except Exception:
         pass
     paths.extend(root / p for p in fallbacks)
-    # Preserve the historical PROJECT_ROOT fixture behavior when monkeypatched.
-    if root != PROJECT_ROOT:
-        paths.extend(PROJECT_ROOT / p for p in fallbacks)
+    # An explicitly pinned state root is honoured, not widened back to the repo.
+    #
+    # This used to also append PROJECT_ROOT/<fallback> whenever root differed,
+    # "to preserve the historical PROJECT_ROOT fixture behavior when
+    # monkeypatched". The effect was that TRADEAI_STATE_ROOT could not actually
+    # isolate anything: a caller pinning an empty root still read files out of
+    # the checkout. test_whole_site_truth::test_an_empty_state_root_is_never_
+    # reported_live passed only because those repo paths happened not to exist,
+    # so creating a single file --
+    #     data/cio/cio_workflow_lineage.jsonl
+    # -- made /v3/control-plane/workflows answer LIVE against an empty root and
+    # failed the gate. Reproduced exactly that way on 2026-09-13, which is what
+    # a fresh CI clone was doing once a test suite wrote into data/cio.
+    #
+    # Production is unaffected: none of TRADEAI_STATE_ROOT, TRADEAI_ROOT or
+    # TRADEAI_PERSISTENT_STATE_ROOT is set on the host, so _state_root() returns
+    # PROJECT_ROOT and this branch never fired there. It only ever changed
+    # behaviour for callers that pinned a root on purpose -- which is precisely
+    # the case where the pin should be obeyed.
     return tuple(dict.fromkeys(paths))
 
 
