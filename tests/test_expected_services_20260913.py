@@ -197,11 +197,21 @@ def test_alarm_fires_and_names_the_disabled_unit(wired):
 
 
 def test_a_newly_off_service_escalates_to_an_interrupt(wired):
-    """A service going down is not digest material."""
+    """A service going down must actually route P0, not merely sound urgent.
+
+    This asserted the word "CRITICAL" appeared in the body. The word was
+    decorative: telegram_alert_router returns on operator_alert_policy_v2's
+    verdict before _P0_PATTERNS is ever consulted, so the alert sounded urgent
+    and waited in the 4-hourly digest regardless. Assert the routing the
+    operator actually experiences.
+    """
     ces._alert([{"name": "tradeai-sm-render.timer", "status": "INACTIVE"}])
-    assert "CRITICAL" in wired.sent[0], (
-        "telegram_alert_router routes on CRITICAL; without it a service outage waits up to four hours in a digest."
-    )
+    body = wired.sent[0]
+    assert "[PLATFORM_AVAILABILITY]" in body, "the sentinel routes this, not the wording"
+
+    from telegram_alert_router import classify_alert
+
+    assert classify_alert(body) == "P0_INTERRUPT"
 
 
 def test_an_unchanged_off_set_stays_silent(wired):

@@ -78,16 +78,24 @@ def test_alarm_fires_and_names_the_column_and_the_counts(wired):
 
 
 def test_a_new_violation_escalates_to_an_interrupt(wired):
-    """A column that starts violating must carry the router's escalation word."""
+    """A new violation must actually route P0, not merely sound urgent.
+
+    This test used to assert the word "CRITICAL" was in the body. That was
+    wrong: telegram_alert_router consults operator_alert_policy_v2 FIRST and
+    returns on its verdict, so the prose never reached _P0_PATTERNS. The alert
+    said CRITICAL and sat in the 4-hourly digest anyway. Assert the routing.
+    """
     bad = _violation("indicator_confluence_cache", "stop_price", 17, 1817)
     dpm._alert([bad], [bad])
 
     body = wired.sent[0]["message"]
-    assert "CRITICAL" in body, (
-        "telegram_alert_router routes on CRITICAL. Without it a brand-new "
-        "integrity breach lands in a 4-hourly digest instead of interrupting."
-    )
+    assert "[DATA_INTEGRITY]" in body, "the sentinel is what routes this, not the wording"
     assert "NEW since the last run" in body
+
+    sys.path.insert(0, str(Path(dpm.PROJECT_ROOT) / "scripts"))
+    from telegram_alert_router import classify_alert
+
+    assert classify_alert(body) == "P0_INTERRUPT"
 
 
 def test_a_known_open_violation_does_not_escalate(wired, tmp_path):
