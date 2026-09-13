@@ -587,6 +587,18 @@ GATES = [
             # fails on a retired call site, an undeclared host, or a writer/direct-read
             # count that rose above its ceiling.
             "tests/test_data_source_authority_20260913.py",
+            # Phases 3-6 of One Source of Truth (2026-09-13): health decays to
+            # unknown; every projection carries as_of/age/source/stale/gap; Brave
+            # denials spill to SearXNG from the registry; an account is LIVE/STALE/
+            # SERVICE_DOWN/NO_API_MANUAL and never a silent $0.
+            "tests/test_data_source_health_decay_20260913.py",
+            "tests/test_data_plausibility_required_fields_20260913.py",
+            "tests/test_data_broker_envelope_20260913.py",
+            "tests/test_brave_router_spill.py",
+            "tests/test_data_source_authority_resolve_backup.py",
+            "tests/test_catalyst_news_search_backup.py",
+            "tests/test_account_state_classifier.py",
+            "tests/test_account_state_read_path.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
             "tests/test_p26_shadow_autonomy.py",

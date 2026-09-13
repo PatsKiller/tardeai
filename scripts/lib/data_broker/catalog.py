@@ -215,6 +215,17 @@ PROJECTIONS: list[dict[str, Any]] = [
         "provider_calls": 0,
     },
     {
+        "id": "desk_feeds",
+        "module": "lib.data_broker.desk_feeds",
+        "entrypoints": ["get_report_feed", "get_redeploy_cache_feed"],
+        "http": [],
+        "domain": "reports",
+        "description": "Envelope readers for the Reports (ai_reports) and Redeploy (redeploy_analytics_cache) dead stores — gap.kind=no_producer with the real last as_of",
+        "read_only": True,
+        "provider_calls": 0,
+        "status": "active",
+    },
+    {
         "id": "cio_portfolio",
         "module": "lib.data_broker.cio_portfolio",
         "entrypoints": [

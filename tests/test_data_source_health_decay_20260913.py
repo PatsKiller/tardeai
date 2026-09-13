@@ -112,14 +112,16 @@ def test_windows_are_read_from_the_authority_registry():
 
 
 def test_a_source_with_no_declared_domain_gets_the_default_window():
-    assert dsv.window_minutes_for("fred", REGISTRY) == dsv.DEFAULT_WINDOW_MINUTES
-    assert dsv.window_minutes_for("alpha_vantage", REGISTRY) == dsv.DEFAULT_WINDOW_MINUTES
+    # Phase 3 registry patch (applied at integration): macro window 48h, fundamentals 192h (weekly lane).
+    assert dsv.window_minutes_for("fred", REGISTRY) == 48 * 60
+    assert dsv.window_minutes_for("alpha_vantage", REGISTRY) == 192 * 60
     assert dsv.window_minutes_for("something_nobody_declared", REGISTRY) == dsv.DEFAULT_WINDOW_MINUTES
 
 
 def test_a_null_stale_after_hours_falls_through_to_the_default():
     """web_search declares stale_after_hours: null for brave. Null is not zero."""
-    assert dsv.window_minutes_for("brave_search", REGISTRY) == dsv.DEFAULT_WINDOW_MINUTES
+    # web_search.stale_after_hours = 72 covers Friday 15:00 -> Monday 09:00 without a weekend decay.
+    assert dsv.window_minutes_for("brave_search", REGISTRY) == 72 * 60
 
 
 def test_an_unreadable_registry_decays_sooner_not_later(tmp_path):

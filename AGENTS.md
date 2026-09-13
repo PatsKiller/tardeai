@@ -1241,16 +1241,23 @@ A PR that adds a provider host without touching the registry fails
 | **technicals** | derived | `ticker_prices` · `portfolios/state/technical_snapshot.json` | **none — dead feed** | hourly | 26h | `indicator_snapshot` | alpaca | yfinance | — | `say_so` |
 | **sector_momentum** | derived | `sector_rs_daily` · `runtime/sector_momentum_latest.json` | `scripts/sector_rs_daily.py` | 17:20 Mon-Fri | 26h | `sector_momentum` | internal:market_quotes | finviz_sector_view | — | `say_so` |
 | **industry_momentum** | ingested | `runtime/industry_momentum_latest.json` | `scripts/finviz_industry_groups.py` | 12:30 · 16:18 | 26h | `sector_momentum` | finviz | — | — | `show_sector_with_industry_unavailable` |
-| **market_regime** | derived | `market_regime_snapshots` | `scripts/market_regime_classifier.py` | 06:35 · 16:05 Mon-Fri (collector 06:30 feeds it) | 26h | `risk_snapshot` | yahoo | internal:trade_ai_scans | — | `carry_last_regime_with_date_never_neutral` |
+| **market_regime** | derived | `market_regime_snapshots` | `scripts/market_regime_classifier.py` | 06:35 · 16:05 Mon-Fri (collector 06:30 feeds it) | 26h | `market_regime` | yahoo | internal:trade_ai_scans | — | `carry_last_regime_with_date_never_neutral` |
 | **earnings_date** | ingested | `symbol_profiles` | `scripts/earnings_enrich.py` | 06:35 daily | 168h | `symbol_profile` | yfinance | — | fmp | `UNKNOWN_blocks_options_gate` |
 | **holdings_accounts** | ingested | `portfolios/state/holdings.json` | `scripts/portfolio_loader.py` | broker sync + */15 repricer | 24h | `portfolio_snapshot` | schwab | alpaca | — | `per_account_state_never_zero` |
-| **options_iv** | live_external | `options_iv_history` | `scripts/lib/strategy_research/iv_history.py` | unscheduled | 4h | — | schwab | — | — | `call_out_at_read_time` |
+| **options_iv** | live_external | `options_iv_history` | `scripts/lib/strategy_research/iv_history.py` | unscheduled | 4h | `option_chain` | schwab | — | — | `call_out_at_read_time` |
 | **research_thesis** | native | `hermes_research_intelligence` | **none — dead feed** | 8 scheduled lanes | 168h | `research_card` | internal | research_insights, governed_pull:brave>searxng | — | `say_so_queue_only_if_producer_exists` |
 | **watch_directives** | native | `watch_directives` | **none — dead feed** | 3 scheduled | 48h | `watch_intelligence` | internal | — | — | `say_so` |
-| **watch_discovery** | dead_feed | `watch_candidate_events` | **none — dead feed** | — | 48h | `watch_intelligence` | internal | — | — | `declared_gap_no_producer` |
-| **web_search** | live_external | `runtime/search_budget.json` | `scripts/lib/brave_router.py` | on demand | — | — | brave | searxng, tavily | — | `declared_gap` |
+| **watch_discovery** | dead_feed | `watch_candidate_events` | **none — dead feed** | — | 48h | `watch_discovery` | internal | — | — | `declared_gap_no_producer` |
+| **web_search** | live_external | `runtime/search_budget.json` | `scripts/lib/brave_router.py` | on demand | 72h | — | brave | searxng, tavily | — | `declared_gap` |
 | **private_company** | manual | `private_company_proxies` | operator | — | — | — | none | — | — | `refuse_up_front` |
 | **dividends** | ingested | `ticker_dividend_data` | `scripts/sync_dividend_data.py` | 07:05 Mon-Fri | 168h | — | yfinance | — | fmp | `say_so` |
+| **macro** | ingested | `fred_economic_series` | **none — dead feed** | 06:15 daily (fred_data_ingest.py --ingest) | 48h | — | fred | — | — | `say_so` |
+| **fundamentals** | ingested | `fundamental_data` | `scripts/external_market_data_ingest.py` | 08:00 Mon (--fundamentals) | 192h | — | alpha_vantage | yfinance | fmp | `say_so` |
+| **agent_opinion** | native | `watchlist_agent_results` | `scripts/process_watchlist_agent_jobs.py` | on watch events | 48h | `agent_opinion` | internal | — | — | `say_so` |
+| **agent_debate** | dead_feed | `agent_debate_log` | **none — dead feed** | — | 168h | `agent_opinion` | internal | — | — | `declared_gap_no_producer` |
+| **ai_reports** | dead_feed | `ai_reports` | **none — dead feed** | — | 168h | `desk_feeds` | internal | — | — | `declared_gap_no_producer` |
+| **redeploy_analytics** | dead_feed | `portfolios/state/redeploy_analytics_cache.json` | `scripts/api_v2.py` | on demand (30-min TTL cache) | 24h | `desk_feeds` | internal | — | — | `declared_gap_no_producer` |
+| **inverse_stoplights** | derived | `runtime/inverse_stoplights_latest.json` | `scripts/defense_inverse_stoplights.py` | 10:15 · 17:55 Mon-Fri | 26h | — | internal | — | — | `say_so` |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 §0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an

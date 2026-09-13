@@ -132,7 +132,7 @@ def test_with_the_proposed_phase5_patch_the_live_chains_still_resolve():
 
 def test_provider_budget_reads_only_declared_keys():
     assert dsa.provider_budget("brave") == {"daily": 120, "monthly": 1500}
-    assert dsa.provider_budget("searxng") == {"daily": 10000}
+    assert dsa.provider_budget("searxng") == {"daily": 10000, "monthly": 300000}
     assert dsa.provider_budget("not_a_provider") == {}
     reg = _reg([], {"x": {"budget": {"daily": "12", "monthly": "abc"}}})
     assert dsa.provider_budget("x", registry=reg) == {"daily": 12}
