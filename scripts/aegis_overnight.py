@@ -302,9 +302,12 @@ def main():
     handoff = _write_handoff_summary(run_id, results)
     results["handoff"] = handoff
 
-    # 3b: Deliver morning brief (Telegram + formal export)
-    from aegis_morning_brief_delivery import deliver as brief_deliver
-    results["brief_delivery"] = _run_phase("morning_brief_delivery", brief_deliver)
+    # 3b: The morning brief is NOT delivered from the overnight run.
+    # Operator 2026-09-14: "if you look ... receiving morning briefs at nighttime. I am
+    # eastern standard time." This phase ran at 20:00 ET (cron AND timer) and sent the
+    # MORNING CIO BRIEF every night. The brief now has one sender: send_morning_brief.py
+    # at 07:30 ET on weekdays.
+    results["brief_delivery"] = {"skipped": True, "reason": "morning_brief_owned_by_0730_et_sender"}
 
     # ── COMPLETE — Send synthesis summary to Telegram ────────────────────
     elapsed_total = time.time() - start_total
