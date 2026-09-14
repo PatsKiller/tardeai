@@ -321,8 +321,10 @@ def test_concurrent_global_cap(monkeypatch):
     # operator's budget). A global-cap concurrency test therefore cannot use test_*
     # ids — those reservations are invisible to ledger_paid_usd_today(None) and the
     # second reserve would wrongly succeed. Non-test ids count toward the global sum.
-    pid_a = f"caprace_ga_{int(time.time()*1000)}"
-    pid_b = f"caprace_gb_{int(time.time()*1000)}"
+    # test_ prefix: ledger_paid_usd_today excludes synthetic ids by prefix. As caprace_ these $0.60 rows
+    # counted as production spend (+$1.20 global on 2026-09-09).
+    pid_a = f"test_caprace_ga_{int(time.time()*1000)}"
+    pid_b = f"test_caprace_gb_{int(time.time()*1000)}"
     cfg = {
         "registered": True,
         "daily_cost_cap_usd": 10.0,

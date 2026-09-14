@@ -4,6 +4,24 @@ Status:      ACTIVE
 as_of:       2026-09-13T23:59:00-04:00
 Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
 
+## 2026-09-14 — Spend truth: real dollars by provider, model and process; caps on measured cost
+
+MATURITY_IMPACT: the operator can see and receive real AI and search spend daily, weekly and monthly, with the peak / off-peak split. Caps compare against measured cost, and one durable $2.00/day global cap replaces three conflicting overrides. Execution posture UNCHANGED.
+
+- **Three spend numbers were conflated.** Week to 09-14:
+  - real $4.73;
+  - counted $5.50;
+  - worst-case projected $214.61 for advisory opinions.
+  - A $0.50 cap therefore refused research on phantom money. The live cap was a forgotten $7.00 backfill override; the portfolio server carried $1.50.
+- **Measured projection.** `calibrated_projected_usd`: p90 of settled cost × 1.5, capped at the worst case.
+- **Test rows.** The cap-race test ids are now `test_caprace_` (as `caprace_` they added $1.20 on 09-09).
+- **Spend surfaces.**
+  - `lib/llm_spend.py` and `GET /api/v2/consumption/spend`;
+  - the Command Center Spend panel;
+  - `llm_spend_report.py` daily, weekly and monthly Telegram texts.
+- **First measurement.** Week of 09-07: $5.45 real, 38% on peak; Advisory Desk ran 8,424 scheduled calls on peak.
+- **Docs.** `docs/LLM_SPEND.md`.
+
 ## 2026-09-14 — The research heartbeat: detected, healed, locked
 
 MATURITY_IMPACT: the CIO Hermes research queue has a monitor, heals itself, and no longer loses requests. Execution posture UNCHANGED: research is READ_ONLY_ADVISORY, and the execution-language guard still refuses advice.

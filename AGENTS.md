@@ -1536,6 +1536,20 @@ Each line is something an agent got wrong today or was about to. The code carrie
   - `eod_consolidated_close_sync` replaces them at 17:15; `source_litmus_vs_yahoo` checks at 07:45.
 - **`ticker_snapshot_daily.data.rvol` before 2026-09-14 is unusable** (universe median 3.4–4.8).
 
+### Spend — three numbers, one of them real
+- **Real spend** is `llm_consumption_log.estimated_cost_usd` (provider tokens × price schedule).
+  - **Counted** (`llm_cost_reservations`) settles failed calls conservatively.
+  - **Projected** was the 32k-token worst case.
+  - Never quote a cap or a budget without saying which number it is compared against.
+  - Read spend from `lib/llm_spend.build_report` or `/v3/consumption` → Spend.
+- **Caps project measured cost.** `calibrated_projected_usd` is p90 settled × 1.5, never above the worst case.
+  - Do not reintroduce a worst-case pre-check: a $0.50 cap refused research on phantom money.
+- **The global cap lives in ONE host file,** `~/.config/tradeai/llm_global_daily_usd_cap.env` ($2.00/day, operator 2026-09-14).
+  - Each unit loads it last (`99-llm-global-cap.conf`).
+  - `EnvironmentFile` beats `Environment=`, and `%t/tradeai/env` (Bitwarden-rendered) carries 0.50.
+- **Synthetic ledger rows must start with `test_`, `test-`, `pytest_` or `fixture_`.** `caprace_` rows counted as production spend.
+- **Peak is DeepSeek's official peak hours** (`deepseek_offpeak.DEEPSEEK_PEAK_UTC`, Mon–Fri). Scheduled work runs off-peak. The daily spend text names scheduled work that ran on peak.
+
 ### Scheduling, env and liveness
 - **Cron lines do not load `.env`.**
   - A helper that reads only `os.environ` fails silently there. `data_source_report` never recorded alpha_vantage for four months.

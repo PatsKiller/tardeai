@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `0dd42852cf795a5a6f095fae0a111649eb2019ec6472f793b62007527575e772`
+**Tree fingerprint:** `ebe2a3916fa02482fd2509ed386f10b0441299485f2fb609aaf0a2d7fa1208ee`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2513 |
-| Markdown (excl. this INDEX) | 2089 |
+| Files under `docs/` (excl. this INDEX) | 2514 |
+| Markdown (excl. this INDEX) | 2090 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2022 |
+| Header OK | 2023 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2142 |
+| review_required | 2143 |
 
 ## Markdown tree
 
@@ -45,7 +45,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/BROKER_TRADE_PLAN_GATE.md` | Broker Trade Plan Gate — No Gambling on Generic 2×R | review_required | OK | `e73e70a22a5c` |
 | `docs/CC_V3_ACTIONABILITY_SPRINT_20260702.md` | CC v3 Actionability Sprint — Layered Document | review_required | OK | `26d05fe916e7` |
 | `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | OK | `401363e962e2` |
-| `docs/CHANGELOG.md` | Changelog | review_required | OK | `a877b0d8e940` |
+| `docs/CHANGELOG.md` | Changelog | review_required | OK | `092b21397377` |
 | `docs/CHEAT_SHEET.md` | Trade AI v12 -- Operator Cheat Sheet | active_keep | OK | `5fbf6fb2ebe7` |
 | `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO Prompt & Input Audit — 2026-07-01 | review_required | OK | `927dbe10051c` |
 | `docs/CLAUDE_CHALLENGER_AND_ANALYST_LANES.md` | Claude Challenger Cohort (A/B) + Analyst Lanes | review_required | OK | `3159e054b153` |
@@ -85,6 +85,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/LIVE_SYSTEM_FACTS.md` | Live System Facts — Authoritative Counts | review_required | OK | `1c3dcee8a3af` |
 | `docs/LLM_DATA_DICTIONARY.md` | LLM Data Dictionary — How Data Flows to Every Model Call | review_required | OK | `1960a201f17b` |
 | `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` | LLM Fleet Strategy v4.1 — Final Execution Revision | active_keep | OK | `c0f8815dff83` |
+| `docs/LLM_SPEND.md` | LLM and paid-API spend | review_required | OK | `53e80ab8df13` |
 | `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Trade AI v12 -- Master System Documentation | active_keep | OK | `477f1a2a13f7` |
 | `docs/MISSION_LOG_2026_07_04_05.md` | Mission Log — 2026-07-04/05 (Due Diligence · Discovery Inbox · Incident Sweep) | review_required | OK | `424f1859cb37` |
 | `docs/MOMENTUM_SCALP_REGIME_DETECTION_ALGORITHM.md` | Momentum Scalp Regime Detection Algorithm | review_required | OK | `32c77f1fbc37` |
