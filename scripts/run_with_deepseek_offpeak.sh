@@ -4,6 +4,7 @@
 # Default --gate: official UTC peaks OR outside 10:00–21:00 America/New_York
 #   (same policy as run_watchlist_agent_jobs_offpeak.sh).
 # --official: skip only official DeepSeek peak hours (01:00–04:00 and 06:00–10:00 UTC).
+# --scheduled: skip outside weekdays 09:00–21:00 ET / weekends, and inside official peak (operator rule 2026-09-14).
 #
 # Exit 0 on PEAK_SKIP. Does not retune hermes-autonomous-loop.timer.
 # READ_ONLY_ADVISORY. No broker / order / stop / 2FA.
@@ -13,12 +14,17 @@ GATE="--gate"
 if [[ "${1:-}" == "--official" ]]; then
   GATE="--gate-official"
   shift
+elif [[ "${1:-}" == "--scheduled" ]]; then
+  # Operator rule 2026-09-14: scheduled paid work only weekdays 09:00-21:00 ET or weekends, never in the
+  # official DeepSeek peak. Put this in front of the command on the crontab line, so manual runs are free.
+  GATE="--gate-scheduled"
+  shift
 fi
 if [[ "${1:-}" == "--" ]]; then
   shift
 fi
 if [[ "$#" -lt 1 ]]; then
-  echo "usage: run_with_deepseek_offpeak.sh [--official] -- <command>..." >&2
+  echo "usage: run_with_deepseek_offpeak.sh [--official|--scheduled] -- <command>..." >&2
   exit 2
 fi
 

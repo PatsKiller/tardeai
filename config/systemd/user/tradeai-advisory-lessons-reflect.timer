@@ -2,7 +2,7 @@
 Description=Nightly advisory lessons reflection (Iris-safe ratify + auto-retire)
 
 [Timer]
-OnCalendar=*-*-* 21:40:00
+OnCalendar=*-*-* 19:40:00
 Persistent=true
 Unit=tradeai-advisory-lessons-reflect.service
 
