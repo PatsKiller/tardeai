@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `f6ea2a2c58b4363321c681b4f4d7c873fd83c88d447ba19d2fe6f10d44daae30`
+**Tree fingerprint:** `64a1c43a1f2bb4eafd7aaac6002f546c8ff4604f938b0133252d274dc5617c50`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2511 |
-| Markdown (excl. this INDEX) | 2087 |
+| Files under `docs/` (excl. this INDEX) | 2512 |
+| Markdown (excl. this INDEX) | 2088 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2020 |
+| Header OK | 2021 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2140 |
+| review_required | 2141 |
 
 ## Markdown tree
 
@@ -103,6 +103,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/PROPOSAL_MATURITY_AUDIT.md` | Proposal Maturity Audit — 2026-06-22 | review_required | OK | `97d9e4588c72` |
 | `docs/PROTECTION_ATM_COUPLING.md` | Protection Adjustments → ATM Coupling (handoff) | review_required | OK | `3a4d6ecd3912` |
 | `docs/PULLBACK_MACD_SCREENER.md` | Pullback / MACD Screener | review_required | OK | `afc1169eccc2` |
+| `docs/RESEARCH_CIRCLE.md` | Research Escalation Circle | review_required | OK | `e5d2e488a9a5` |
 | `docs/RESEARCH_INGEST_TICKER_AUDIT_2026_06_20.md` | Research Ingestion + Ticker Extraction + Connector Audit — 2026-06-20 | review_required | OK | `d78b663bf596` |
 | `docs/RESEARCH_PRIORITIZATION.md` | Research Prioritization & Refresh Methodology (all Hermes lanes, 24/7) | review_required | OK | `139c93ab1bcd` |
 | `docs/RESEARCH_PROVIDER_ROUTING.md` | Research provider routing — when Brave should be used | review_required | OK | `9c61b2f7c573` |
