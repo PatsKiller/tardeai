@@ -1,6 +1,6 @@
 === FULL TEST MATRIX (reproducible; Layer 1) ===
 schema=SopFullTestMatrix@v1
-control_surface_digest=c5290f6f3b78bee139f4358075fba21a99e4e7043e5fcf0b5e087a110b49bb7a
+control_surface_digest=1f78614e24a9083ea4b2c3592e45c787a63ade5efff097902f9a1dff33b7ac52
 manifest=config/sop_120_control_surface.manifest.json
 base_ref=origin/main
 expected_pytest_core=121

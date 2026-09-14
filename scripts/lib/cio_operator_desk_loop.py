@@ -570,6 +570,15 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                     if isinstance(parsed.get("symbols"), list):
                         # Resolved subjects stay; Flash may only add verified ones.
                         _merge_flash_symbols(out, parsed["symbols"])
+                    # A price / levels / get-back-in ask the regexes matched is a desk
+                    # pull, and Flash may not demote it. 2026-09-14 AXTI: Flash said
+                    # freeform, the re-entry needs were dropped, and the reply said
+                    # price and support were DATA_UNAVAILABLE while the desk row held both.
+                    kept = [n for n in heuristic_needs if n in ("reentry_ready", "reentry_levels")]
+                    if kept and heuristic_intent != "meta_system" and out["intent"] != "meta_system":
+                        if out["intent"] in ("freeform", "unclear", "other", "desk_question"):
+                            out["intent"] = heuristic_intent
+                        out["needs"] = list(dict.fromkeys(list(out.get("needs") or []) + kept))
                     out["ok"] = True
                     out["source"] = "deepseek_flash"
                     out["model"] = llm.get("model") or "deepseek-flash"
@@ -1049,6 +1058,27 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
                 "reason": f"{s} not in holdings snapshot (may be flat/watch)", "gap_type": "soft",
             })
 
+    # A named stock's last close and desk levels. Without them the model was told
+    # to say DATA_UNAVAILABLE for price and support/resistance that the house held.
+    if symbols:
+        px = subject_price_facts(symbols[:3])
+        if px:
+            facts["price_for_symbols"] = {
+                s: {k: v for k, v in p.items() if k != "bars"} for s, p in px.items()
+            }
+            sources.append("ticker_prices")
+        lv, lv_as_of, _lv_path = _subject_levels(symbols[:3])
+        if lv:
+            facts["levels_for_symbols"] = {s: _level_facts(row) for s, row in lv.items()}
+            facts["levels_as_of"] = lv_as_of
+            sources.append("reentry_decision_desk")
+        for s in symbols[:3]:
+            if s not in (px or {}) and s not in (lv or {}):
+                soft_gaps.append({
+                    "domain": "quote_price", "symbol": s, "field": "price",
+                    "reason": f"no close or desk row on file for {s}", "gap_type": "soft",
+                })
+
     # Symbol theses (fail-soft)
     for sym in symbols[:6]:
         try:
@@ -1457,7 +1487,7 @@ def answer_freeform_with_flash(
             "ONLY from TRADE_AI_FACTS. If missing, say DATA_UNAVAILABLE. Never say a field is "
             "empty when TRADE_AI_FACTS carries it.\n"
             "2b) Anything from general market history or theory (seasonality, election cycles, "
-            "sector rotation lore) must be prefixed 'General market history (model knowledge, not "
+            "sector rotation lore) must be prefixed '🟣 General market history (model knowledge, not "
             "Trade-AI data):' and kept to one short paragraph.\n"
             "2c) If TRADE_AI_FACTS.research_status is present, repeat it verbatim as its own line.\n"
             "2d) House first: when TRADE_AI_FACTS.research_on_topic is present, cite what those rows "
@@ -1468,6 +1498,9 @@ def answer_freeform_with_flash(
             "2f) If TRADE_AI_FACTS.contract_findings is present, say those facts were available but not "
             "assembled for this reply — never that they are empty.\n"
             "2g) Never promise to follow up or say anything was queued.\n"
+            "2h) For a named stock, when TRADE_AI_FACTS.price_for_symbols or levels_for_symbols is "
+            "present, give its last close with the date, then support (entry zone, SMA50, stop) and "
+            "resistance and target from those facts — never DATA_UNAVAILABLE for them.\n"
             "3) Never invent holdings or re-entry candidate dumps.\n"
             "4) Mention SOFT_GAPS briefly when relevant.\n"
             "5) Keep reply under ~900 chars; Telegram markdown ok (*bold*, `code`).\n"
@@ -1549,7 +1582,7 @@ def answer_freeform_with_flash(
         }
 
 
-def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
+def _gather_tradeai_evidence_core(intent: dict[str, Any]) -> dict[str, Any]:
     """Pull vetted Trade-AI evidence only. Report gaps — never invent fills."""
     needs = list(intent.get("needs") or [])
     intent_name = str(intent.get("intent") or "")
@@ -2165,6 +2198,19 @@ def _subject_levels(symbols: list[str]) -> tuple[dict[str, dict[str, Any]], Opti
         return {}, None, None
     by = {str(r.get("symbol") or "").upper(): r for r in rows or [] if isinstance(r, dict)}
     return {s: by[s] for s in symbols if s in by}, as_of, path
+
+
+def _level_facts(row: dict[str, Any]) -> dict[str, Any]:
+    """The levels a price / support / resistance question needs, from one desk row."""
+    res = row.get("resistance")
+    out = {k: row.get(k) for k in ("price", "price_as_of", "rsi", "sma_20", "sma_50", "sma_200",
+                                   "entry_low", "entry_high", "stop", "target", "rr")
+           if row.get(k) is not None}
+    if isinstance(res, dict):
+        out["resistance"] = {k: res.get(k) for k in ("level", "state", "as_of") if res.get(k) is not None}
+    elif res is not None:
+        out["resistance"] = res
+    return out
 
 
 def _fmt_price(v: Any) -> str:
@@ -2789,7 +2835,7 @@ except ImportError:  # pragma: no cover -- hub import path (lib.* spelling)
     )
 
 
-def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[str, Any]:
+def _curate_from_evidence_core(operator_text: str, evidence: dict[str, Any]) -> dict[str, Any]:
     """Flash rewrites vetted facts only — fail-soft to raw card."""
     avail = evidence.get("available") or {}
 
@@ -3109,6 +3155,133 @@ def _format_no_coverage(summary: dict[str, Any], *, intent: dict[str, Any]) -> s
     lines.append("No pending opened — nothing declared can answer this today. Ask again tomorrow or name a source.")
     lines.append(f"No orders/stops · {AUTHORITY}")
     return "\n".join(lines)
+
+
+try:
+    from scripts.lib.reply_provenance import AUTHORITY_TAIL_RE as _AUTHORITY_TAIL_RE  # noqa: E402
+except ImportError:  # pragma: no cover
+    from lib.reply_provenance import AUTHORITY_TAIL_RE as _AUTHORITY_TAIL_RE  # noqa: E402
+
+
+def _dossier_enabled() -> bool:
+    return _env("CIO_SUBJECT_DOSSIER", "1").lower() not in ("0", "false", "off", "no")
+
+
+#: Intents that are not about a stock even when a ticker appears in the text.
+_DOSSIER_SKIP_INTENTS = ("meta_system", "attention", "unclear")
+
+#: Dossier section -> the store label the Sources line names.
+_DOSSIER_STORES = (
+    ("profile", "symbol_profiles"), ("catalysts", "catalyst_events"), ("news", "news_articles"),
+    ("analyst", "yahoo_analyst_targets_history"), ("sector", "sector_momentum_latest.json"),
+    ("industry", "industry_momentum_latest.json"), ("research", "hermes_research_intelligence"),
+    ("thesis", "symbol thesis store"), ("agents", "watchlist_agent_results"),
+    ("iv", "options_iv_history"), ("dividends", "ticker_dividend_data"),
+)
+
+
+def _attach_subject_dossier(intent: dict[str, Any], evidence: dict[str, Any]) -> None:
+    """Every stored fact about the named stock(s), pill-tagged, for any stock question.
+
+    2026-09-14 08:40 (operator): "What about analyst reviews? What about ... the
+    industry? ... not thorough and complete, and all the data is there." The desk
+    answered AXTI with the re-entry card alone while symbol_profiles, analyst
+    targets, catalysts, news, sector and industry momentum, research and the
+    thesis all held AXTI facts. The dossier rides under whatever answer the
+    intent produced, so no branch can leave them out.
+    """
+    syms = [str(s).upper() for s in (intent.get("symbols") or []) if str(s).strip()][:3]
+    if not syms or not _dossier_enabled() or str(intent.get("intent") or "") in _DOSSIER_SKIP_INTENTS:
+        return
+    avail = evidence.setdefault("available", {})
+    if avail.get("meta_card") or avail.get("unclear_card"):
+        return
+    try:
+        from scripts.lib import subject_dossier as sd  # noqa: PLC0415
+    except ImportError:
+        from lib import subject_dossier as sd  # noqa: PLC0415
+    try:
+        from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol  # noqa: PLC0415
+    except ImportError:
+        thesis_fields_for_symbol = None  # type: ignore[assignment]
+    dossier = sd.gather(
+        syms, db_query=_research_db_query, runtime_dir=PROJECT_ROOT / "data" / "runtime",
+        analyst_fn=subject_analyst_view, research_fn=subject_research,
+        thesis_fn=(lambda s: thesis_fields_for_symbol(s, root=PROJECT_ROOT)) if thesis_fields_for_symbol else None,
+        held=_held_positions_map(),
+    )
+    prices: dict[str, float] = {}
+    known = avail.get("subject_price") or subject_price_facts(syms)
+    for s, p in (known or {}).items():
+        if isinstance(p, dict) and p.get("close") is not None:
+            prices[str(s).upper()] = float(p["close"])
+    text = sd.format_dossier(syms, dossier, prices=prices)
+    if not text:
+        return
+    avail["subject_dossier_text"] = text
+    avail["subject_dossier"] = dossier
+    avail["subject_dossier_symbols"] = syms
+    avail["subject_dossier_prices"] = prices
+    sources = evidence.setdefault("sources", [])
+    for key, label in _DOSSIER_STORES:
+        if any((dossier.get(s) or {}).get(key) for s in syms) and label not in sources:
+            sources.append(label)
+    if any("held" in (dossier.get(s) or {}) for s in syms) and "holdings.json" not in sources:
+        sources.append("holdings.json")
+
+
+def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
+    """Pull vetted Trade-AI evidence only, plus the named stock's full pill-tagged picture."""
+    evidence = _gather_tradeai_evidence_core(intent)
+    try:
+        _attach_subject_dossier(intent, evidence)
+    except Exception as exc:  # noqa: BLE001 -- the answer still goes out without it
+        evidence["dossier_error"] = f"{type(exc).__name__}:{exc}"
+    return evidence
+
+
+def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[str, Any]:
+    """The branch's answer, then the dossier; a pill says who wrote each part."""
+    cur = _curate_from_evidence_core(operator_text, evidence)
+    avail = (evidence or {}).get("available") or {}
+    dossier = avail.get("subject_dossier_text")
+    src = str(cur.get("source") or "")
+    if not dossier or src in ("runtime_meta", "unclear_clarifier"):
+        return cur
+    try:
+        from scripts.lib import subject_dossier as sd  # noqa: PLC0415
+    except ImportError:
+        from lib import subject_dossier as sd  # noqa: PLC0415
+    body = "" if src == "empty_evidence" else str(cur.get("text") or "").strip()
+    # The answer's own authority tail stays the last line of the message.
+    tail = ""
+    if body:
+        head, _, last = body.rpartition("\n")
+        if _AUTHORITY_TAIL_RE.match(last):
+            body, tail = head.rstrip(), last.strip()
+    # A section the answer already printed is not printed twice.
+    skip = {k for k, marker in (("research", "Research on file"), ("analyst", "Analysts (")) if marker in body}
+    if skip:
+        dossier = sd.format_dossier(list(avail.get("subject_dossier_symbols") or []),
+                                    avail.get("subject_dossier") or {},
+                                    prices=avail.get("subject_dossier_prices") or {}, skip=skip) or dossier
+    text = sd.LEGEND + "\n"
+    if body:
+        if src in ("deepseek_flash", "freeform_flash"):
+            header = (f"{sd.PILL_MODEL} wrote the summary below from Trade-AI facts "
+                      "(numbers from 🟢 stores; general knowledge only where labelled):")
+        else:
+            header = f"{sd.PILL_HOUSE} desk answer (computed, no model):"
+        text += f"{header}\n{body}\n\n"
+    text += dossier
+    if tail:
+        text += "\n" + tail
+    out = dict(cur)
+    out["text"] = text
+    if src == "empty_evidence":
+        out.update({"ok": True, "source": "tradeai_deterministic", "model": None})
+    out["dossier"] = True
+    return out
 
 
 def handle_operator_desk_question(

@@ -84,6 +84,9 @@ _MONTHS = frozenset({
 _UPPER_TOKEN = re.compile(r"(?<![A-Za-z0-9_$])([A-Z]{1,5})(?![A-Za-z0-9_])")
 _ANYCASE_TOKEN = re.compile(r"(?<![A-Za-z0-9_$])([A-Za-z]{2,5})(?![A-Za-z0-9_])")
 _CASHTAG = re.compile(r"\$([A-Za-z]{1,5})\b")
+#: A ticker spelled letter by letter, as voice dictation writes it: "a x t i",
+#: "A.X.T.I", "a-x-t-i". Three to five single letters, one separator between.
+_SPELLED = re.compile(r"(?<![A-Za-z0-9])((?:[A-Za-z][ .\-]){2,4}[A-Za-z])\.?(?![A-Za-z0-9])")
 
 #: Sector vocabulary -> the name the CIO snapshot `sectors` domain uses.
 #: A vocabulary, not a symbol map: no issuer is named here.
@@ -199,11 +202,38 @@ def _tickers(text: str, book: frozenset[str], doc: Mapping[str, Any]) -> list[di
         out.append(_subject("ticker", sym, matched, conf,
                             "book" if in_book else ("registry" if ident else how), ident))
 
+    # 2026-09-14 08:23 "What is a x t i price right now ...": dictation spelled
+    # AXTI and nothing resolved, so the desk answered without the price and
+    # levels it held. Bind a spelled ticker only when the book or the registry
+    # holds it -- joined single letters are otherwise a guess. A run may carry a
+    # stray letter ("A X T I a buy"), so the longest held window wins; letters
+    # inside a bound spelling are not tickers of their own.
+    covered: list[tuple[int, int]] = []
+    for m in _SPELLED.finditer(text):
+        letters = [(m.start(1) + i, ch) for i, ch in enumerate(m.group(1)) if ch.isalpha()]
+        bound = False
+        for size in range(len(letters), 2, -1):
+            for start in range(0, len(letters) - size + 1):
+                win = letters[start:start + size]
+                up = "".join(ch for _, ch in win).upper()
+                if up in _STOP or up in _PSEUDO or not (up in book or _identity(doc, up)):
+                    continue
+                lo, hi = win[0][0], win[-1][0] + 1
+                add(up, text[lo:hi], "spelled")
+                covered.append((lo, hi))
+                bound = True
+                break
+            if bound:
+                break
+
+    def inside(pos: int) -> bool:
+        return any(lo <= pos < hi for lo, hi in covered)
+
     for m in _CASHTAG.finditer(text):
         add(m.group(1).upper(), m.group(0), "cashtag")
     for m in _UPPER_TOKEN.finditer(text):
         tok = m.group(1)
-        if tok not in _STOP:
+        if tok not in _STOP and not inside(m.start(1)):
             add(tok, tok, "uppercase")
     if book:
         for m in _ANYCASE_TOKEN.finditer(text):

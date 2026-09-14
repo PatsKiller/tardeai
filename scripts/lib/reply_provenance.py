@@ -68,6 +68,39 @@ AUTHORITY_TAIL_RE = re.compile(
 )
 SOURCES_PREFIX = "Sources: "
 OUTSIDE_PREFIX = "Went outside: "
+#: The pill line. Operator, 2026-09-14: "I don't see the pill icons of whether this is
+#: internal to trade AI, has any external information been looked up, or if it was a
+#: LLM like DeepSeek. I need those type of tags to determine where this data is coming
+#: from so how I can handle it." One line, three pills, on every reply.
+ORIGIN_PREFIX = "Origin: "
+PILL_HOUSE = "🟢 Trade-AI"
+PILL_OUTSIDE = "🔵 Outside"
+PILL_MODEL = "🟣 DeepSeek"
+#: Stores named on the Sources line. A stock question now reads up to a dozen.
+MAX_SOURCE_LABELS = 10
+
+_MODEL_ITEM = re.compile(r"(?i)deepseek|flash|grok|chatgpt|\bgpt|\bllm\b|model")
+
+
+def origin_line(stores: list[str], went_outside: list[str], model_label: Optional[str]) -> str:
+    """``Origin: 🟢 Trade-AI … · 🔵 Outside … · 🟣 DeepSeek …`` from the receipt.
+
+    Outside means fetched from beyond Trade-AI for THIS reply (governed search, a
+    provider pull, the gap resolver's external vectors). A model is never
+    "outside data": its role is stated on the 🟣 pill instead.
+    """
+    house = (f"{PILL_HOUSE} data ({len(stores)} store{'s' if len(stores) != 1 else ''})"
+             if stores else f"{PILL_HOUSE}: no store read")
+    ext = [o for o in went_outside or [] if not _MODEL_ITEM.search(o)]
+    outside = f"{PILL_OUTSIDE}: " + ("; ".join(ext[:3]) if ext else "nothing looked up")
+    roles: list[str] = []
+    for item in [o for o in went_outside or [] if _MODEL_ITEM.search(o)] + ([model_label] if model_label else []):
+        role = item.split(" — ", 1)[1].strip() if " — " in item else item.strip()
+        role = role.split(";", 1)[0].strip()
+        if role and role not in roles:
+            roles.append(role)
+    model = f"{PILL_MODEL}: " + (", ".join(roles) if roles else "not used")
+    return ORIGIN_PREFIX + " · ".join((house, outside, model))
 #: Between labels. NOT " · " -- that already appears INSIDE labels
 #: ("re-entry desk · computed 2026-09-13 22:52"), so parsing a line back split one
 #: store into two. Not ";" either: the model-role wording carries one.
@@ -212,7 +245,7 @@ def with_sources_footer(text: str, evidence: dict[str, Any], curated: dict[str, 
     labels = labels_from_evidence(evidence, curated)
     if not labels:
         return text
-    footer = SOURCES_PREFIX + SEP.join(labels[:6])
+    footer = SOURCES_PREFIX + SEP.join(labels[:MAX_SOURCE_LABELS])
     body = text.rstrip()
     # Split off the WHOLE last line when it carries the authority token, and keep it
     # once. The base version stripped only the trailing "READ_ONLY_ADVISORY" token
@@ -331,6 +364,8 @@ def _split_provenance_lines(text: str) -> tuple[list[str], Optional[str], Option
             if sources_line is None:
                 sources_line = s
             continue
+        if s.startswith(ORIGIN_PREFIX.strip()):
+            continue                      # rebuilt from the receipt at finalize
         if s.startswith("Went outside:"):
             if outside_line is None:
                 outside_line = s
@@ -392,7 +427,7 @@ def finalize_operator_reply(text: str, prov: ReplyProvenance) -> tuple[str, Repl
         prov.model_role = model_label.split(" — ", 1)[1].strip() if " — " in model_label else prov.model_role
     prov.stores_read = stores
 
-    parts = list(stores[:6]) if stores else ["none — no Command Center store was read for this reply"]
+    parts = list(stores[:MAX_SOURCE_LABELS]) if stores else ["none — no Command Center store was read for this reply"]
     if model_label:
         parts.append(model_label)
     sources_line = SOURCES_PREFIX + SEP.join(parts)
@@ -400,6 +435,7 @@ def finalize_operator_reply(text: str, prov: ReplyProvenance) -> tuple[str, Repl
     outside = _dedupe_exact(list(prov.went_outside or []))
     prov.went_outside = outside
     lines = list(body)
+    lines.append(origin_line(stores, outside, model_label))
     lines.append(sources_line)
     if outside:
         lines.append(OUTSIDE_PREFIX + "; ".join(outside[:6]))
