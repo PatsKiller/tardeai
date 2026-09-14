@@ -3002,3 +3002,5 @@ alone would have been PATCH; the higher class wins, per the version policy above
 
 **No prior version to supersede.** `Policy-Version:` appeared zero times in this file before
 1.0.0, measured on `origin/main` at the base of this change.
+
+- **`gog drive upload --dry-run` uploads anyway** (gog v0.12.0, observed 2026-09-14). Never use it as a dry run; search the destination folder first and upload once.
