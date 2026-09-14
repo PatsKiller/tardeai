@@ -16,9 +16,15 @@ from __future__ import annotations
 
 import json
 import os
+import fcntl
 import re
+import sys
+import threading
+import time
 import uuid
-from datetime import datetime, timezone
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from functools import wraps
 from pathlib import Path
 from typing import Any, Optional
 
@@ -57,6 +63,63 @@ REQUEST_PATH = Path("data/cio/hermes_research_requests.jsonl")
 RESULT_PATH = Path("data/cio/hermes_research_results.jsonl")
 PROJECTION_PATH = Path("data/cio/hermes_research_projection.json")
 
+_TXN = threading.local()
+PROJECTION_LOCK_WAIT_SECONDS = float(os.getenv("CIO_HERMES_PROJECTION_LOCK_WAIT_SECONDS", "30"))
+
+
+@contextmanager
+def projection_transaction():
+    """Hold an exclusive cross-process lock for one load -> modify -> save of the projection.
+
+    `_load_projection` / `_save_projection` had no lock. The Telegram desk, the situation
+    detector, the wake dispatcher and the worker each read the whole 30 MB projection, changed
+    it and replaced it, so the last writer won. Measured 2026-09-14: 32 enqueued requests were
+    missing from the projection (17 in 7 days, 7 that day) and were never claimed, never
+    researched and never reported. The lock is reentrant within a thread, so
+    claim_next -> reap / replay / restore can nest. After PROJECTION_LOCK_WAIT_SECONDS a
+    writer proceeds and says so on stderr rather than wedge the operator desk.
+    """
+    depth = getattr(_TXN, "depth", 0)
+    if depth:
+        _TXN.depth = depth + 1
+        try:
+            yield
+        finally:
+            _TXN.depth -= 1
+        return
+    lock_path = PROJECTION_PATH.with_suffix(".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "a+") as fh:
+        deadline = time.monotonic() + PROJECTION_LOCK_WAIT_SECONDS
+        locked = False
+        while True:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                locked = True
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    print(f"[cio_hermes_research] projection lock wait exceeded {PROJECTION_LOCK_WAIT_SECONDS}s; "
+                          "proceeding unlocked", file=sys.stderr)
+                    break
+                time.sleep(0.05)
+        _TXN.depth = 1
+        try:
+            yield
+        finally:
+            _TXN.depth = 0
+            if locked:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+
+
+def _in_projection_transaction(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        with projection_transaction():
+            return fn(*args, **kwargs)
+    return wrapper
+
+
 PRIORITIES = frozenset({"critical", "high", "normal", "low"})
 STATUSES = frozenset({
     "queued", "started", "running", "completed", "failed", "superseded", "cancelled",
@@ -93,6 +156,9 @@ __all__ = [
     "mark_failed",
     "get_request",
     "reap_stale_running",
+    "replay_retryable_failures",
+    "restore_lost_requests",
+    "projection_transaction",
 ]
 
 
@@ -239,6 +305,7 @@ def _list_open_by_plan(plan_id: str) -> list[dict[str, Any]]:
     return out
 
 
+@_in_projection_transaction
 def _patch_request(research_id: str, patch: dict[str, Any]) -> None:
     proj = _load_projection()
     rec = (proj.get("by_research_id") or {}).get(research_id)
@@ -281,23 +348,12 @@ def _patch_request(research_id: str, patch: dict[str, Any]) -> None:
     })
 
 
-def _save_new_request(req: dict[str, Any]) -> None:
+def _project_new_request(proj: dict[str, Any], req: dict[str, Any]) -> None:
+    """Index one request as queued in an already-loaded projection (no load, no save)."""
     research_id = req["research_id"]
     pid = req["plan_id"]
     fp = req["fingerprint"]
     pri = req.get("priority") or "normal"
-    _append_jsonl(REQUEST_PATH, {"event": "HERMES_RESEARCH_REQUESTED", **req})
-    _append_jsonl(REQUEST_PATH, {
-        "event": "HERMES_RESEARCH_ENQUEUE",
-        "created": True,
-        "reason": "created",
-        "research_id": research_id,
-        "fingerprint": fp,
-        "plan_id": pid,
-        "priority": pri,
-        "reuse_miss_reason": req.get("reuse_miss_reason"),
-    })
-    proj = _load_projection()
     by_rid = proj.setdefault("by_research_id", {})
     by_rid[research_id] = {
         "research_id": research_id,
@@ -321,6 +377,27 @@ def _save_new_request(req: dict[str, Any]) -> None:
         opens.append(research_id)
     bp["open"] = opens[-20:]
     proj.setdefault("by_fingerprint_open", {})[fp] = dict(by_rid[research_id])
+
+
+@_in_projection_transaction
+def _save_new_request(req: dict[str, Any]) -> None:
+    research_id = req["research_id"]
+    pid = req["plan_id"]
+    fp = req["fingerprint"]
+    pri = req.get("priority") or "normal"
+    _append_jsonl(REQUEST_PATH, {"event": "HERMES_RESEARCH_REQUESTED", **req})
+    _append_jsonl(REQUEST_PATH, {
+        "event": "HERMES_RESEARCH_ENQUEUE",
+        "created": True,
+        "reason": "created",
+        "research_id": research_id,
+        "fingerprint": fp,
+        "plan_id": pid,
+        "priority": pri,
+        "reuse_miss_reason": req.get("reuse_miss_reason"),
+    })
+    proj = _load_projection()
+    _project_new_request(proj, req)
     _save_projection(proj)
     # Best-effort durable lineage + CIOWorkflowEnvelope@v1. Canonical request
     # remains this module; lineage must never break enqueue.
@@ -634,12 +711,21 @@ def get_request(research_id: str) -> Optional[dict[str, Any]]:
     }
 
 
+@_in_projection_transaction
 def claim_next(*, worker_id: str, limit: int = 1) -> list[dict[str, Any]]:
     """
     Atomically claim up to `limit` queued jobs (priority desc, created_ts asc).
     Sets status=running, locked_by, locked_ts.
     """
     reap_stale_running()
+    try:
+        replay_retryable_failures()
+    except Exception:  # noqa: BLE001 -- self-healing must never block a claim
+        pass
+    try:
+        restore_lost_requests()
+    except Exception:  # noqa: BLE001
+        pass
     proj = _load_projection()
     by_rid = proj.get("by_research_id") or {}
     candidates: list[tuple[int, str, str, dict]] = []
@@ -746,6 +832,7 @@ def mark_running(research_id: str, *, worker_id: str) -> None:
         _save_projection(proj)
 
 
+@_in_projection_transaction
 def mark_failed(research_id: str, error: str) -> None:
     now = _now()
     proj = _load_projection()
@@ -799,6 +886,7 @@ def mark_completed(research_id: str, result: dict[str, Any]) -> dict[str, Any]:
     return {"ok": False, "error": "empty_result_body"}
 
 
+@_in_projection_transaction
 def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[str, Any]:
     try:
         proj = _load_projection()
@@ -958,6 +1046,7 @@ def _note_lineage_stall(*, research_id: str, request, error: Exception) -> None:
         fh.write(json.dumps(rec, default=str) + "\n")
 
 
+@_in_projection_transaction
 def complete_research_result(
     research_id: str,
     *,
@@ -1006,6 +1095,143 @@ def complete_research_result(
         return {"ok": False, "error": f"{type(e).__name__}:{e}"}
 
 
+#: Failure classes worth one more attempt (cio_research_fail_policy): the provider or bridge dropped
+#: the call, or the model's JSON was cut off. Cost cap and execution-language refusals are excluded
+#: by policy -- rerunning them spends money to be refused again.
+REPLAYABLE_FAILURE_CLASSES = frozenset({"provider_error", "timeout", "truncated"})
+MAX_REPLAYS_PER_REQUEST = 1
+#: The bridge opens its breaker for 900 s after 8 provider errors; replaying inside that window fails again.
+REPLAY_MIN_AGE_SECONDS = int(os.getenv("CIO_HERMES_REPLAY_MIN_AGE_SECONDS", "900"))
+REPLAY_MAX_AGE_SECONDS = int(os.getenv("CIO_HERMES_REPLAY_MAX_AGE_SECONDS", str(24 * 3600)))
+REPLAY_MAX_PER_RUN = int(os.getenv("CIO_HERMES_REPLAY_MAX_PER_RUN", "3"))
+
+
+@_in_projection_transaction
+def replay_retryable_failures(*, now: Optional[datetime] = None, max_per_run: int = REPLAY_MAX_PER_RUN) -> list[str]:
+    """Put a transiently failed request back in the queue, once.
+
+    Measured 2026-09-07..14: 30 of 136 failures were provider errors, dropped bridge connections or
+    breaker trips, yet `retryable=True` on the ledger row changed nothing -- no code path ever
+    re-queued a failed request, so each one stayed failed and the operator's question stayed open.
+    Called from `claim_next`, next to `reap_stale_running`, so the worker heals its own queue
+    every time it runs. Skips a request whose question a newer open request already owns.
+    """
+    try:
+        from scripts.lib.cio_research_fail_policy import classify_failure
+    except ImportError:                                               # pragma: no cover
+        from lib.cio_research_fail_policy import classify_failure  # type: ignore
+    now = now or datetime.now(timezone.utc)
+    proj = _load_projection()
+    by_rid = proj.get("by_research_id") or {}
+    open_fp = proj.setdefault("by_fingerprint_open", {})
+    failed = sorted(
+        ((rid, rec) for rid, rec in by_rid.items() if isinstance(rec, dict) and rec.get("status") == "failed"),
+        key=lambda kv: str(kv[1].get("updated_ts") or ""), reverse=True,
+    )
+    replayed: list[str] = []
+    for rid, rec in failed:
+        if len(replayed) >= max_per_run:
+            break
+        if int(rec.get("replay_count") or 0) >= MAX_REPLAYS_PER_REQUEST:
+            continue
+        failed_at = parse_ts(rec.get("updated_ts"))
+        if failed_at is None:
+            continue
+        age = (now - failed_at).total_seconds()
+        if age < REPLAY_MIN_AGE_SECONDS or age > REPLAY_MAX_AGE_SECONDS:
+            continue
+        cls = classify_failure(rec.get("error"))["class"]
+        if cls not in REPLAYABLE_FAILURE_CLASSES:
+            continue
+        fp = rec.get("fingerprint")
+        owner = open_fp.get(fp) if fp else None
+        if isinstance(owner, dict) and owner.get("research_id") not in (None, rid):
+            continue
+        rec.update({
+            "status": "queued", "replay_count": int(rec.get("replay_count") or 0) + 1,
+            "replayed_after_error": str(rec.get("error") or "")[:300], "replayed_after_class": cls,
+            "error": None, "locked_by": None, "locked_ts": None, "updated_ts": _now(),
+        })
+        by_rid[rid] = rec
+        if fp:
+            open_fp[fp] = dict(rec)
+        pid = rec.get("plan_id")
+        if pid:
+            bp = proj.setdefault("by_plan_id", {}).setdefault(pid, {"open": [], "latest_result_id": None})
+            if rid not in (bp.get("open") or []):
+                bp["open"] = (list(bp.get("open") or []) + [rid])[-20:]
+        replayed.append((rid, cls))
+    if replayed:
+        proj["by_research_id"] = by_rid
+        _save_projection(proj)
+        for rid, cls in replayed:
+            _append_jsonl(REQUEST_PATH, {"event": "HERMES_RESEARCH_REPLAYED", "research_id": rid, "status": "queued",
+                                         "failure_class": cls, "ts": _now()})
+    return [rid for rid, _ in replayed]
+
+
+RESTORE_MAX_AGE_HOURS = float(os.getenv("CIO_HERMES_RESTORE_MAX_AGE_HOURS", "48"))
+
+
+@_in_projection_transaction
+def restore_lost_requests(*, now: Optional[datetime] = None, max_age_hours: float = RESTORE_MAX_AGE_HOURS,
+                          apply: bool = True) -> list[str]:
+    """Re-project requests the ledger recorded but the projection lost to the unlocked-writer race.
+
+    The ledger row HERMES_RESEARCH_REQUESTED carries the full request, so nothing is invented.
+    A request is restored only when it is younger than `max_age_hours`, no open request owns
+    its question (fingerprint), and no result for that question completed after it was asked.
+    `apply=False` returns what would be restored and writes nothing.
+    """
+    now = now or datetime.now(timezone.utc)
+    if not REQUEST_PATH.exists():
+        return []
+    proj = _load_projection()
+    by_rid = proj.get("by_research_id") or {}
+    cutoff = now - timedelta(hours=max_age_hours)
+    candidates: dict[str, dict[str, Any]] = {}
+    with REQUEST_PATH.open(encoding="utf-8") as fh:
+        for line in fh:
+            if '"HERMES_RESEARCH_REQUESTED"' not in line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            rid = row.get("research_id")
+            if not rid or rid in by_rid or not row.get("fingerprint") or not row.get("plan_id"):
+                continue
+            asked = parse_ts(row.get("created_ts") or row.get("updated_ts"))
+            if asked is None or asked < cutoff or asked > now:
+                continue
+            candidates[rid] = row
+    open_fp = proj.get("by_fingerprint_open") or {}
+    done_fp = proj.get("by_fingerprint_completed") or {}
+    restored: list[str] = []
+    for rid, row in candidates.items():
+        fp = row["fingerprint"]
+        if fp in open_fp:
+            continue
+        done = done_fp.get(fp)
+        asked = parse_ts(row.get("created_ts") or row.get("updated_ts"))
+        if isinstance(done, dict):
+            done_ts = parse_ts(done.get("completed_ts") or done.get("as_of") or done.get("updated_ts"))
+            if done_ts is not None and asked is not None and done_ts >= asked:
+                continue
+        req = {k: v for k, v in row.items() if k != "event"}
+        req["status"] = "queued"
+        _project_new_request(proj, req)
+        open_fp = proj.get("by_fingerprint_open") or {}
+        restored.append(rid)
+    if restored and apply:
+        _save_projection(proj)
+        for rid in restored:
+            _append_jsonl(REQUEST_PATH, {"event": "HERMES_RESEARCH_RESTORED", "research_id": rid, "status": "queued",
+                                         "reason": "missing_from_projection", "ts": _now()})
+    return restored
+
+
+@_in_projection_transaction
 def reap_stale_running(*, max_age_seconds: int = CLAIM_STALE_SECONDS) -> list[str]:
     """Reset stale running jobs to queued once (or fail after reclaim)."""
     proj = _load_projection()

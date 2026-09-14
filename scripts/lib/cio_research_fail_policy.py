@@ -81,7 +81,12 @@ def classify_failure(error: Any) -> dict[str, Any]:
         cls = SCHEMA_INVALID
     elif "timed out" in low or "timeout" in low:
         cls = TIMEOUT
-    elif code in {"PROVIDER_ERROR"} or "provider failure" in low:
+    elif (code in {"PROVIDER_ERROR", "CIRCUIT_OPEN"} or "provider failure" in low
+          or "remotedisconnected" in low or "connection reset" in low
+          or "bridge unreachable" in low or "bridge http 503" in low or "bridge http 502" in low):
+        # CIRCUIT_OPEN and a dropped bridge connection are transient: the bridge opens its
+        # breaker for 15 minutes after 8 provider errors. Filed as OTHER (non-retryable) they
+        # were never replayed -- 22 of 136 failures on 2026-09-07..14.
         cls = PROVIDER_ERROR
     else:
         cls = OTHER
