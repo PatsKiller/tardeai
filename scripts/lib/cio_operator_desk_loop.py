@@ -1428,63 +1428,28 @@ def _enqueue_hermes_research(
 
 
 
-def _with_sources_footer(text: str, evidence: dict[str, Any], curated: dict[str, Any]) -> str:
-    """Append one line naming what the answer drew on. Operator instruction
-    2026-09-13 18:58: "it needs to quote the source ... whatever elements it
-    returns it needs to give the elements" -- a reply must say whether a number
-    came from the Command Center's stores or from the model's general knowledge.
-    """
-    if not (text or "").strip():
-        return text
-    avail = evidence.get("available") or {}
-    labels: list[str] = []
-    seen: set[str] = set()
-
-    def add(label: str) -> None:
-        if label and label not in seen:
-            seen.add(label)
-            labels.append(label)
-
-    for src in evidence.get("sources") or []:
-        src_s = str(src)
-        if "reentry_decision_desk" in src_s:
-            as_of = str(avail.get("reentry_as_of") or "")[:16].replace("T", " ")
-            add(f"re-entry desk{(' · computed ' + as_of) if as_of else ''}")
-        elif src_s == "get_cio_snapshot":
-            parts = [k for k in ("cash", "sector_exposure", "risk", "investment_policy", "portfolio")
-                     if (avail.get("freeform_context") or {}).get(k)]
-            add("CIO snapshot" + (f" ({', '.join(parts)})" if parts else ""))
-        elif src_s.endswith("holdings.json"):
-            add("holdings.json")
-        elif "yahoo_analyst" in src_s:
-            add("yahoo_analyst_targets_history")
-        elif src_s.startswith("/") and src_s.endswith(".json"):
-            add(src_s.rsplit("/", 1)[-1])
-        else:
-            add(src_s)
-    if avail.get("reentry_symbol_cards") or avail.get("reentry_card"):
-        add("re-entry desk")
-    if avail.get("analyst_view"):
-        add("yahoo_analyst_targets_history")
-    if avail.get("hermes_research"):
-        add("hermes_research_intelligence")
-    csrc = str(curated.get("source") or "")
-    model = curated.get("model")
-    if csrc == "deepseek_flash" and (avail.get("freeform_context") is not None):
-        add(f"{model or 'DeepSeek Flash'} — general knowledge where labelled; numbers from the stores above")
-    elif csrc == "deepseek_flash":
-        add(f"{model or 'DeepSeek Flash'} — wording only; every number from the stores above")
-    elif csrc.startswith("gap_resolver"):
-        add(csrc)
-    if not labels:
-        return text
-    footer = "Sources: " + " · ".join(labels[:6])
-    body = text.rstrip()
-    if body.endswith("READ_ONLY_ADVISORY"):
-        head = body[: -len("READ_ONLY_ADVISORY")].rstrip()
-        tail_line = body[body.rfind("\n") + 1:] if "\n" in body else "READ_ONLY_ADVISORY"
-        return f"{head}\n{footer}\n{tail_line}"
-    return f"{body}\n{footer}"
+# The Sources footer lives in ONE module now (scripts/lib/reply_provenance.py) so
+# every reply path -- not only this desk loop -- builds its line the same way and
+# the converse chokepoint can recognise it. Re-exported under the old name so
+# callers and tests that import it from here keep working.
+try:
+    from scripts.lib.reply_provenance import (  # noqa: E402
+        ROLE_GENERAL_KNOWLEDGE as _ROLE_GENERAL_KNOWLEDGE,
+        ROLE_WORDING_ONLY as _ROLE_WORDING_ONLY,
+        ReplyProvenance as _ReplyProvenance,
+        finalize_operator_reply as _finalize_operator_reply,
+        labels_from_evidence as _labels_from_evidence,
+        with_sources_footer as _with_sources_footer,
+    )
+except ImportError:  # pragma: no cover -- hub import path (lib.* spelling)
+    from lib.reply_provenance import (  # type: ignore  # noqa: E402
+        ROLE_GENERAL_KNOWLEDGE as _ROLE_GENERAL_KNOWLEDGE,
+        ROLE_WORDING_ONLY as _ROLE_WORDING_ONLY,
+        ReplyProvenance as _ReplyProvenance,
+        finalize_operator_reply as _finalize_operator_reply,
+        labels_from_evidence as _labels_from_evidence,
+        with_sources_footer as _with_sources_footer,
+    )
 
 
 def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[str, Any]:
@@ -1898,6 +1863,9 @@ def handle_operator_desk_question(
                     pending_id=pending_id,
                     operator_text=text or "",
                 )
+                result.setdefault("went_outside", []).append(
+                    "hermes_research queue — no house research on the subject; research requested"
+                )
             gap_bits = []
             for g in blocking[:6]:
                 sym = g.get("symbol") or "book"
@@ -1962,6 +1930,9 @@ def handle_operator_desk_question(
                 chat_id=str(chat_id),
                 pending_id=pending_id,
                 operator_text=text or "",
+            )
+            result.setdefault("went_outside", []).append(
+                f"hermes_research queue — no house research on {', '.join(syms[:6])}; research requested"
             )
             _append_jsonl(PENDING_PATH, {
                 "pending_id": pending_id,
@@ -2054,6 +2025,25 @@ def is_answerable(intent: dict[str, Any]) -> tuple[bool, str]:
     return True, ""
 
 
+def _pending_reply_provenance(kind: str, row: dict[str, Any], evidence: dict[str, Any],
+                              curated: Optional[dict[str, Any]] = None) -> "_ReplyProvenance":
+    """Receipt for a follow-up / retraction send. These do not pass through the
+    converse core, so they declare what they read here: the pending ledger row
+    (and when it was opened) plus whatever evidence the re-check gathered."""
+    opened = str(row.get("ts") or "")[:16].replace("T", " ")
+    stores = [PENDING_PATH.name + (f" · opened {opened}" if opened else "")]
+    stores += [lab for lab in _labels_from_evidence(evidence or {}, curated or {}) if " — " not in lab]
+    outside: list[str] = []
+    model = role = None
+    src = str((curated or {}).get("source") or "")
+    if src in ("deepseek_flash", "freeform_flash"):
+        model = (curated or {}).get("model") or "deepseek-flash"
+        freeform = ((evidence or {}).get("available") or {}).get("freeform_context") is not None
+        role = _ROLE_GENERAL_KNOWLEDGE if (freeform or src == "freeform_flash") else _ROLE_WORDING_ONLY
+        outside.append(f"{model} — {role}")
+    return _ReplyProvenance(kind=kind, stores_read=stores, went_outside=outside, model=model, model_role=role)
+
+
 def try_fulfill_pending_replies(
     send_fn: SendFn,
     *,
@@ -2088,13 +2078,13 @@ def try_fulfill_pending_replies(
                 )
                 chat_id = str(row.get("chat_id") or "")
                 if chat_id:
-                    send_fn(
-                        chat_id,
+                    body, _prov = _finalize_operator_reply(
                         f"📭 *Closing* `{row.get('pending_id')}` — I could not answer this.\n\n"
                         f"{reason}.\n\nAsk again if you want me to retry.\n"
                         f"{AUTHORITY}",
-                        row.get("message_id"),
+                        _pending_reply_provenance("pending_expired", row, evidence),
                     )
+                    send_fn(chat_id, body, row.get("message_id"))
                 _append_jsonl(PENDING_PATH, {
                     **{k: row.get(k) for k in (
                         "pending_id", "chat_id", "message_id", "channel", "operator_text",
@@ -2108,9 +2098,10 @@ def try_fulfill_pending_replies(
                 expired += 1
                 continue
             curated = _curate_from_evidence(str(row.get("operator_text") or ""), evidence)
-            body = (
+            body, _prov = _finalize_operator_reply(
                 f"📬 *Follow-up* `{row.get('pending_id')}` — Trade-AI data landed\n\n"
-                + (curated.get("text") or "")
+                + _with_sources_footer(curated.get("text") or "", evidence, curated),
+                _pending_reply_provenance("pending_fulfilled", row, evidence, curated),
             )
             chat_id = str(row.get("chat_id") or "")
             if not chat_id:
