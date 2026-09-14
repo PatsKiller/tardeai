@@ -1,0 +1,95 @@
+"""The Communications Editor at telegram_transport.deliver_text: off / shadow / live.
+
+Offline: a fake poster stands in for Telegram; registry and CIO reads are
+patched; ledger and receipts are temp files.
+"""
+from __future__ import annotations
+
+import json
+
+import pytest
+
+import scripts.lib.comms_editor as ce
+import scripts.telegram_transport as tt
+
+
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    monkeypatch.setenv("COMMS_EDITOR_LEDGER", str(tmp_path / "ledger.json"))
+    monkeypatch.setenv("COMMS_EDITOR_RECEIPTS", str(tmp_path / "receipts.jsonl"))
+    monkeypatch.setattr(ce, "subjects", lambda text, resolve=None: (
+        [{"symbol": "AXTI", "guid": "11111111-2222-3333-4444-555555555555"}] if "AXTI" in (text or "") else []))
+    monkeypatch.setattr(ce, "default_db_query", lambda sql, params=None, fetch="all": [])
+    monkeypatch.setattr(tt, "_interdicted", lambda: False)
+    monkeypatch.setattr(tt, "_comms_editor", lambda: ce)
+    sent = []
+
+    def post(url, payload):
+        sent.append(payload)
+        return {"ok": True, "status_code": 200, "response": {"ok": True, "result": {"message_id": len(sent)}}}
+    return tmp_path, sent, post
+
+
+def _send(post, text="⚠️ *STOP WARNING* AXTI near stop"):
+    return tt.deliver_text(token="t", chat_id="42", text=text, post=post)
+
+
+def test_off_sends_the_original_unchanged(env, monkeypatch):
+    tmp, sent, post = env
+    monkeypatch.setenv("COMMS_EDITOR_MODE", "off")
+    _send(post)
+    assert sent[0]["text"] == "⚠️ *STOP WARNING* AXTI near stop"
+    assert not (tmp / "receipts.jsonl").exists()
+
+
+def test_shadow_sends_the_original_and_writes_a_receipt(env, monkeypatch):
+    tmp, sent, post = env
+    monkeypatch.setenv("COMMS_EDITOR_MODE", "shadow")
+    _send(post)
+    _send(post)
+    assert [p["text"] for p in sent] == ["⚠️ *STOP WARNING* AXTI near stop"] * 2
+    rows = [json.loads(line) for line in (tmp / "receipts.jsonl").read_text().splitlines()]
+    assert len(rows) == 2 and rows[0]["mode"] == "shadow" and "text" not in rows[0]
+    assert rows[0]["subjects"][0]["symbol"] == "AXTI"
+
+
+def test_live_sends_html_with_links_and_guid_then_holds_the_duplicate(env, monkeypatch):
+    tmp, sent, post = env
+    monkeypatch.setenv("COMMS_EDITOR_MODE", "live")
+    first = _send(post)
+    assert first["ok"] and sent[0]["parse_mode"] == "HTML"
+    assert "<b>STOP WARNING</b>" in sent[0]["text"] and "finviz.com/quote.ashx?t=AXTI" in sent[0]["text"]
+    assert "🆔" in sent[0]["text"]
+    second = _send(post)
+    assert second["ok"] and second["suppressed"] == "duplicate" and len(sent) == 1
+
+
+def test_live_holds_an_invalid_operator_product(env, monkeypatch):
+    tmp, sent, post = env
+    monkeypatch.setenv("COMMS_EDITOR_MODE", "live")
+    out = _send(post, "[CIO DECISION] AXTI\nCompleteness: 3 of 5 · OPERATOR_PRODUCT_INVALID")
+    assert out["suppressed"] == "operator_product_invalid" and sent == []
+
+
+def test_editor_failure_never_blocks_the_send(env, monkeypatch):
+    tmp, sent, post = env
+    monkeypatch.setenv("COMMS_EDITOR_MODE", "live")
+
+    def boom(*a, **k):
+        raise RuntimeError("editor down")
+    monkeypatch.setattr(ce, "edit", boom)
+    out = _send(post)
+    assert out["ok"] and sent[0]["text"] == "⚠️ *STOP WARNING* AXTI near stop"
+
+
+def test_failed_send_is_not_recorded_so_a_retry_is_not_held(env, monkeypatch):
+    tmp, sent, post = env
+    monkeypatch.setenv("COMMS_EDITOR_MODE", "live")
+    calls = []
+
+    def failing(url, payload):
+        calls.append(payload)
+        return {"ok": False, "status_code": 500, "response": {"ok": False}}
+    tt.deliver_text(token="t", chat_id="42", text="AXTI plain", post=failing)
+    retry = tt.deliver_text(token="t", chat_id="42", text="AXTI plain", post=post)
+    assert retry["ok"] and not retry.get("suppressed") and len(sent) == 1

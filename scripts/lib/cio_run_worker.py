@@ -1182,6 +1182,15 @@ class CIORunWorker:
                 log.warning("Notification enqueue failed for action %s: %s", action_id, e)
 
         summary = synthesis_result.get("result", {}).get("summary")
+        # Telegram export audit 2026-09-14: 86 of 95 CIO Desk messages were
+        # "CIO Run Complete — <uuid>" check-ins from runs that produced no
+        # advisory action; the summary text differs slightly per run, so the
+        # 6-hour content dedupe never held. Operator decision: noise goes to the
+        # digest, not the chat. A run with no action writes no check-in; a run
+        # with actions still sends one alongside them.
+        if summary and not notification_ids:
+            log.info("CIO run %s: no advisory action; check-in not sent (digest only)", self._run_id)
+            summary = None
         if summary:
             try:
                 nid = f"notif-summary-{uuid.uuid4().hex[:12]}"

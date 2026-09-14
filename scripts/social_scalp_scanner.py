@@ -1003,10 +1003,26 @@ def run_scan():
         # route's actionability is authoritative. A social-only / watch_only / manual-review route
         # can NEVER fire a GO-style alert or mirror to the proposals channel, even if the score is high.
         _action = alert_action_for(decision, grade)
-        if _action == "GO" and route["actionability"] != "GO":
-            logger.info("%s — GO alert suppressed: route=%s actionability=%s (not auto-tradeable)",
-                        symbol, route["route"], route["actionability"])
-            _action = "WAIT"
+        # 2026-09-14 operator decision: a GO alert fires when the setup meets Trade-AI's
+        # scalp criteria (config/finviz_momentum_scalp_screen.yaml `tradeable`: price,
+        # float, RVOL, gap, volume, score, VERIFIED catalyst) -- not when a route tag says
+        # so. The route gate alone produced 0 GO alerts after 2026-07-13. The alert is a
+        # notification; the route still governs anything tradeable downstream.
+        if _action == "GO":
+            try:
+                from lib.scalp_go_criteria import evaluate as _go_eval
+            except ImportError:
+                from scripts.lib.scalp_go_criteria import evaluate as _go_eval  # type: ignore
+            _verdict = _go_eval({
+                "price": finviz_data.get("price"), "float_m": finviz_data.get("float_m"),
+                "rvol": finviz_data.get("rvol"), "gap_pct": finviz_data.get("gap_pct"),
+                "volume": finviz_data.get("volume_base") or finviz_data.get("volume"),
+                "score": score, "catalyst_verified": route["evidence"].get("catalyst_verified"),
+            })
+            if not _verdict.qualifies:
+                logger.info("%s — GO alert withheld: scalp criteria failed=%s missing=%s",
+                            symbol, _verdict.failed, _verdict.missing)
+                _action = "WAIT"
         if _action == "GO":
             send_scalp_alert(
                 symbol, score, grade, decision, finviz_data,

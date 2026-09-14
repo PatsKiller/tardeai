@@ -12,6 +12,7 @@ import json
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from scripts.lib.atomic_json_store import atomic_write_json
 
@@ -20,13 +21,22 @@ MBI = 0
 SCHEMA = "BriefSemanticDedupe@v1"
 
 
+ET = ZoneInfo("America/New_York")
+
+
 def session_date(now: datetime | None = None) -> str:
+    """The operator's session date, in Eastern time -- never the host's or UTC's."""
     n = now or datetime.now(timezone.utc)
-    return n.astimezone().strftime("%Y-%m-%d") if n.tzinfo else n.strftime("%Y-%m-%d")
+    if n.tzinfo is None:
+        n = n.replace(tzinfo=timezone.utc)
+    return n.astimezone(ET).strftime("%Y-%m-%d")
 
 
 def morning_key(session: str, material_generation: str) -> str:
-    return f"MORNING:{session}:{material_generation}"
+    # 2026-09-14: keyed on the session alone. Keyed on the CIO generation id, every
+    # new CIO run in the same day republished the identical brief (50 sends in 16
+    # days, 2-4 a morning). One morning brief per session.
+    return f"MORNING:{session}"
 
 
 def eod_key(session: str, material_generation: str) -> str:

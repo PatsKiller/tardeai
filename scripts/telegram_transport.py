@@ -196,7 +196,76 @@ def parse_mode_for(text: str, default: str | None = "Markdown") -> str | None:
     return default
 
 
+def _comms_editor():
+    try:
+        from lib import comms_editor as ce  # noqa: PLC0415
+    except ImportError:
+        try:
+            from scripts.lib import comms_editor as ce  # type: ignore  # noqa: PLC0415
+        except ImportError:
+            return None
+    return ce
+
+
 def deliver_text(
+    *,
+    token: str,
+    chat_id: str,
+    text: str,
+    thread_id: str | None = None,
+    reply_markup: dict | None = None,
+    parse_mode: str | None = "Markdown",
+    idempotency_key: str | None = None,
+    reply_to_message_id: Any = None,
+    post: Optional[Callable] = None,
+) -> dict:
+    """Every operator message passes the Communications Editor, then the raw send.
+
+    2026-09-14: the operator's Telegram exports showed the same morning brief 50
+    times, raw Markdown asterisks, messages with no links, and decisions sent
+    while marked invalid. ``COMMS_EDITOR_MODE`` decides what happens here:
+    ``off`` sends unchanged; ``shadow`` sends unchanged and writes the editor's
+    receipt; ``live`` sends the edited HTML, and holds duplicates and invalid
+    products (reported as ``suppressed``, never as a failure). The editor can
+    never block a send by raising: any editor error sends the original.
+    """
+    if _interdicted():
+        return _interdicted_result()
+    ce = _comms_editor()
+    decision = None
+    if ce is not None and ce.mode() != "off":
+        try:
+            decision = ce.edit(text, chat_id=chat_id, parse_mode=parse_mode, db_query=ce.default_db_query)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("comms editor failed, sending original: %s", exc)
+            decision = None
+    if decision is not None and decision.mode == "live":
+        if not decision.send:
+            ce.commit(decision, chat_id=chat_id)
+            return {"ok": True, "status_code": 200, "response": {}, "edited": False, "message_id": None,
+                    "suppressed": "duplicate" if decision.duplicate_of else decision.held_reason,
+                    "comms_editor": decision.receipt()}
+        result = _deliver_text_raw(
+            token=token, chat_id=chat_id, text=decision.text, thread_id=thread_id, reply_markup=reply_markup,
+            parse_mode="HTML", idempotency_key=idempotency_key, reply_to_message_id=reply_to_message_id, post=post,
+        )
+        if result.get("ok"):
+            ce.commit(decision, chat_id=chat_id)
+        result["comms_editor"] = decision.receipt()
+        return result
+    result = _deliver_text_raw(
+        token=token, chat_id=chat_id, text=text, thread_id=thread_id, reply_markup=reply_markup,
+        parse_mode=parse_mode, idempotency_key=idempotency_key, reply_to_message_id=reply_to_message_id, post=post,
+    )
+    if decision is not None:  # shadow: record what the editor would have done
+        try:
+            ce.commit(decision, chat_id=chat_id)
+        except Exception:  # noqa: BLE001
+            pass
+    return result
+
+
+def _deliver_text_raw(
     *,
     token: str,
     chat_id: str,
