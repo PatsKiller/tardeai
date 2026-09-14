@@ -271,14 +271,15 @@ def test_an_active_policy_carries_a_real_effective_date():
 
 # ---------------------------------------------------------- budget cap (1.1.0) --
 
-CAP = "0.50"
+CAP = "2.00"
 
 
 def test_the_ratified_cap_is_documented():
     """AGENTS.md documented NEITHER 0.25 nor 0.50 before 1.1.0, while runtime
-    enforced 0.50 -- the gap that made the Stage 5 budget gate unenforceable."""
+    enforced 0.50 -- the gap that made the Stage 5 budget gate unenforceable.
+    2026-09-14: the operator replaced 0.50 with a durable 2.00/day of actual spend."""
     t = _flat()
-    assert "LLM_GLOBAL_DAILY_USD_CAP = 0.50" in t, "the ruling cap is not stated"
+    assert "LLM_GLOBAL_DAILY_USD_CAP = 2.00" in t, "the ruling cap is not stated"
     assert "ratified by the operator" in t, "the cap carries no approval reference"
 
 
