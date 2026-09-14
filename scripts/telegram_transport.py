@@ -45,6 +45,25 @@ def smart_split(text: str, limit: int = MAX_MSG_LEN) -> list[str]:
     return chunks
 
 
+#: Telegram counts message length in UTF-16 code units; an emoji is two.
+TELEGRAM_TEXT_LIMIT = 4096
+
+
+def utf16_len(text: str) -> int:
+    return len((text or "").encode("utf-16-le")) // 2
+
+
+def split_for_telegram(text: str, limit: int = MAX_MSG_LEN) -> list[str]:
+    """`smart_split`, then re-split any part Telegram would count as over 4,096 UTF-16 units."""
+    parts: list[str] = []
+    for part in smart_split(text or "", limit):
+        if utf16_len(part) <= TELEGRAM_TEXT_LIMIT or limit <= 500:
+            parts.append(part)
+        else:
+            parts.extend(split_for_telegram(part, max(500, limit - 400)))
+    return parts
+
+
 def _safe_json(resp) -> dict:
     try:
         return resp.json()
@@ -424,6 +443,32 @@ def send_message(
     # only to avoid building a request that will be discarded.
     if _interdicted():
         return _interdicted_result()
+    # 2026-09-14 13:47: the desk's 4,571-character AXTI answer went to sendMessage whole.
+    # Telegram refused it (400, over 4,096), the plain-text retry was refused the same way,
+    # and the poller logged "replied". A long body is sent as ordered parts instead. An
+    # idempotent send edits one existing message, so it is never split.
+    parts = split_for_telegram(text) if (text and not idempotency_key) else [text]
+    if len(parts) > 1:
+        results: list[dict] = []
+        for i, part in enumerate(parts):
+            res = deliver_text(
+                token=token, chat_id=chat_id, text=part, thread_id=thread_id,
+                reply_markup=reply_markup if i == len(parts) - 1 else None,
+                parse_mode=parse_mode, idempotency_key=None,
+                reply_to_message_id=reply_to_message_id if i == 0 else None,
+            )
+            results.append(res)
+            if not res.get("ok"):
+                break
+        out = dict(results[-1])
+        out.update({
+            "ok": len(results) == len(parts) and all(r.get("ok") for r in results),
+            "message_id": results[0].get("message_id"),
+            "message_ids": [r.get("message_id") for r in results],
+            "parts": len(parts),
+            "parts_sent": sum(1 for r in results if r.get("ok")),
+        })
+        return out
     return deliver_text(
         token=token,
         chat_id=chat_id,

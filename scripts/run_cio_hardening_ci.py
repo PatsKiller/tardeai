@@ -597,6 +597,8 @@ GATES = [
             # 2026-09-14 Research Escalation Circle phase 1: question GUID, free-channel
             # laps, the grounded Context Analyzer, automatic check-ins.
             "tests/test_research_circle_20260914.py",
+            # 2026-09-14 13:47: a 4,571-character desk answer was refused by Telegram and logged as replied.
+            "tests/test_desk_reply_delivery_20260914.py",
             # 2026-09-14 litmus vs Yahoo + live Finviz header: sub-share position
             # values written as closes, a stale Alpaca prev_close, positional
             # Finviz parsing and 1,000x unit mislabels in screening gates.

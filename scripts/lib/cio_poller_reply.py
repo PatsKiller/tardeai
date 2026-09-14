@@ -125,6 +125,13 @@ def make_send_fn(*, token: str, reply_to_message_id: Any = None,
             parse_mode=None,
             reply_to_message_id=target_reply,
         )
+        # A reply that did not reach Telegram must say so. 2026-09-14: the AXTI answer was
+        # refused twice (400) and the poller logged "replied".
+        _deliver.last_result = res if isinstance(res, dict) else {"ok": bool(res)}
+        if not _deliver.last_result.get("ok"):
+            _log.error("cio_poller_reply: reply NOT delivered chat=%s len=%d status=%s reason=%s",
+                       chat_id, len(body or ""), _deliver.last_result.get("status_code"),
+                       _deliver.last_result.get("plain_fallback_reason") or _deliver.last_result.get("error"))
         # The AGENT half of the conversation. Captured here because this is the
         # single point every reply on this path passes through.
         try:
@@ -217,6 +224,10 @@ def maybe_answer(msg: Mapping[str, Any], *, text: str, chat_id: str, token: str,
             actor_id="cio_poller_reply",
         )
         out["answered"] = bool((res or {}).get("handled"))
+        last = getattr(send_fn, "last_result", None)
+        if isinstance(last, dict):
+            out["delivered"] = bool(last.get("ok"))
+            out["delivery_status"] = last.get("status_code")
         out["reason"] = str((res or {}).get("reason") or "")
         out["result"] = res
         return out
