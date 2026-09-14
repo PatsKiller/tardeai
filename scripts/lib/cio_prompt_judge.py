@@ -214,7 +214,7 @@ def llm_judge_plan(
     ]
     llm["max_tokens_flash"] = max(int(judge.get("max_tokens") or 900), 4096)
     pol["llm"] = llm
-    llm_res = call_governed_llm(messages, pol, use_pro=False)
+    llm_res = call_governed_llm(messages, pol, use_pro=False, task_type="prompt_judge")
     # One retry with even tighter user if empty_content
     if not llm_res.get("ok") and "empty" in str(llm_res.get("error") or "").lower():
         tight = (

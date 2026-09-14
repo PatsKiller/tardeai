@@ -1963,6 +1963,7 @@ def curate_reentry_reply_with_flash(
             ],
             policy,
             use_pro=False,
+            task_type="operator_reply",  # an answer to the operator: urgent, allowed at any hour
         )
     except Exception as exc:
         out["error"] = f"flash_call:{type(exc).__name__}:{exc}"
