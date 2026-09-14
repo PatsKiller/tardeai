@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `832a7c04ae5f9390a8fb49399be86d5002a5ddb6c5fde5e99b225b97579346c7`
+**Tree fingerprint:** `7914250bd2dc787cc3f0160b658baeb83598d6669d5721093ad48f5d3c65be90`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -35,7 +35,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | Path | Title | status_guess | header | sha12 |
 |------|-------|--------------|--------|------|
 | `docs/A1A.md` | A1A Documentation Protocol (Authoritative) | active_keep | OK | `18ef2a6322cf` |
-| `docs/AGENT_AND_HERMES_WORKFLOWS.md` | Agent & Hermes Workflows | review_required | OK | `0a17e850ce76` |
+| `docs/AGENT_AND_HERMES_WORKFLOWS.md` | Agent & Hermes Workflows | review_required | OK | `11e91b5186b2` |
 | `docs/AGENT_PAGES_DETAIL.md` | Agent Pages — Detailed Function Matrix | review_required | OK | `c52bb8ece19f` |
 | `docs/AGENT_ROSTER.md` | Trade AI v12 — Agent Roster | review_required | OK | `2421229298b1` |
 | `docs/AI_TRADE_CRITIQUE.md` | AI Trade Critique — Persistence & System Integration | review_required | OK | `a36de70f5d2c` |
@@ -85,7 +85,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/LIVE_SYSTEM_FACTS.md` | Live System Facts — Authoritative Counts | review_required | OK | `1c3dcee8a3af` |
 | `docs/LLM_DATA_DICTIONARY.md` | LLM Data Dictionary — How Data Flows to Every Model Call | review_required | OK | `1960a201f17b` |
 | `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` | LLM Fleet Strategy v4.1 — Final Execution Revision | active_keep | OK | `c0f8815dff83` |
-| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Trade AI v12 -- Master System Documentation | active_keep | OK | `68403e7d632e` |
+| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Trade AI v12 -- Master System Documentation | active_keep | OK | `ba903d70e85b` |
 | `docs/MISSION_LOG_2026_07_04_05.md` | Mission Log — 2026-07-04/05 (Due Diligence · Discovery Inbox · Incident Sweep) | review_required | OK | `424f1859cb37` |
 | `docs/MOMENTUM_SCALP_REGIME_DETECTION_ALGORITHM.md` | Momentum Scalp Regime Detection Algorithm | review_required | OK | `32c77f1fbc37` |
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | Momentum Scalp — Stop & Trailing-Stop Policy | review_required | OK | `354954d22052` |
@@ -1902,7 +1902,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/project/SESSION_2026_05_30_SUMMARY.md` | Session 2026-05-30 Summary | current_phase_keep | OK | `d79ac556972d` |
 | `docs/project/SESSION_2026_05_31_HERMES_FULL_CLOSEOUT_SUMMARY.md` | Session 2026-05-30/31 — Hermes Full Closeout Summary | current_phase_keep | OK | `f4b5281b1341` |
 | `docs/project/SESSION_2026_06_02_V3_BACKTEST_INTELLIGENCE.md` | Session 2026-06-02 — V3 Backtest Intelligence | current_phase_keep | OK | `170134994b7a` |
-| `docs/project/SKILLS.md` | Trade AI v12 — Skills & Agent Capabilities Reference | current_phase_keep | OK | `8f889f118aa6` |
+| `docs/project/SKILLS.md` | Trade AI v12 — Skills & Agent Capabilities Reference | current_phase_keep | OK | `0b33446a95ff` |
 | `docs/project/STABILIZATION_SESSION_2026_06_22.md` | Stabilization Session — 2026-06-22 | current_phase_keep | OK | `5583ab9c0b2c` |
 | `docs/project/STATE_OF_REPO_2026_06_02.md` | State of the Repo — 2026-06-02 Consolidated | current_phase_keep | OK | `29c8618fbf54` |
 | `docs/project/STRATEGY_SCOREBOARD_RR_EXPECTANCY_20260608.md` | Strategy Scoreboard — R:R, Expectancy & Self-Healing Freshness (2026-06-08) | current_phase_keep | OK | `e6ad36c90fd1` |
