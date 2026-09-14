@@ -158,6 +158,30 @@ def fix_hint(row: dict) -> str:
             )
         return "identity-spine firing; see the lane JSON `counts` and `firing`."
 
+    if lane == "cio-hermes-queue":
+        dominant = str(row.get("dominant_class") or "")
+        by_class = row.get("by_class") or {}
+        if "requests_lost" in firing:
+            return ("Requests are in the ledger but missing from the projection, so the worker cannot see "
+                    "them (a lost write). The worker restores those under 48h on its next claim "
+                    "(restore_lost_requests); if this persists, a writer bypasses projection_transaction.")
+        if "queue_stalled" in firing:
+            return ("CIO Hermes requests are queued and not being claimed. Check "
+                    "`systemctl --user status tradeai-hermes-cio-worker.timer` and the bridge on :8766.")
+        if dominant == "execution_language":
+            return (f"Research refused by the READ_ONLY guard ({by_class}). The backend rewrites once; "
+                    "repeated refusals mean the prompt or the question invites stance words — read the "
+                    "`last_failure` text. Never loosen the guard to pass advice through.")
+        if dominant == "cost_cap":
+            return (f"Process cost cap ({by_class}). Not a worker bug. Raising a cap is an operator decision: "
+                    "`llm_process_config.daily_soft_cap` for the calling process.")
+        if dominant == "provider_error":
+            return (f"Bridge/provider transient ({by_class}). The worker replays each such request once "
+                    "after the 15-minute breaker cooldown; persistent errors mean the provider or bridge is down.")
+        if dominant == "other":
+            return (f"Failures the classifier cannot place ({by_class}). Read `last_failure` and add the "
+                    "shape to cio_research_fail_policy.classify_failure.")
+        return f"CIO Hermes queue firing ({by_class}); read `last_failure`."
     if lane == "current-pin":
         return "CURRENT scripts/+docs/ must match SOURCE_COMMIT (git archive hashes). No docs overlay."
     if lane == "process-freshness":

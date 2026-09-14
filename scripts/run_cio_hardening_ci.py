@@ -597,6 +597,10 @@ GATES = [
             # 2026-09-14 Research Escalation Circle phase 1: question GUID, free-channel
             # laps, the grounded Context Analyzer, automatic check-ins.
             "tests/test_research_circle_20260914.py",
+            # 2026-09-14 research heartbeat: 62% of CIO Hermes requests failed in a week with
+            # no alarm; lost projection writes, guard false positives, unreplayed transients,
+            # and an escalation handler whose retries all exited 127.
+            "tests/test_research_heartbeat_20260914.py",
             # 2026-09-14 litmus vs Yahoo + live Finviz header: sub-share position
             # values written as closes, a stale Alpaca prev_close, positional
             # Finviz parsing and 1,000x unit mislabels in screening gates.

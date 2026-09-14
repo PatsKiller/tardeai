@@ -4,6 +4,23 @@ Status:      ACTIVE
 as_of:       2026-09-13T23:59:00-04:00
 Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
 
+## 2026-09-14 — The research heartbeat: detected, healed, locked
+
+MATURITY_IMPACT: the CIO Hermes research queue has a monitor, heals itself, and no longer loses requests. Execution posture UNCHANGED: research is READ_ONLY_ADVISORY, and the execution-language guard still refuses advice.
+
+- **Unmonitored queue.** 136 of 219 CIO Hermes requests failed in 7 days (62%) and nothing alarmed: the monitors watched the neighbouring `hermes_external_research` store.
+  - New lane `cio-hermes-queue` covers failure rate, no completions, stalled queue, lost requests and unclassified failures.
+  - The Health Agent now scores research lanes.
+- **Lost requests.** 32 requests vanished from `hermes_research_projection.json` because writers were unlocked. They included re-entry research for DIVI, AUUD, CACI, DXCM, IBIO and CAST.
+  - `projection_transaction()` now locks every writer.
+  - `restore_lost_requests` re-projects losses under 48 h. The dry run found 12.
+- **Transients were never retried.** `replay_retryable_failures` now re-queues provider, timeout and truncation failures once, after the breaker. Circuit-open and dropped connections now classify as provider errors.
+- **Guard false positives.** Research quoting "Strong Sell" was refused.
+  - Third-party labels are masked first.
+  - The bridge rewrites a refused draft once.
+  - Advice still refuses.
+- **Dead auto-fix.** The escalation handler's retries exited 127 36,365 times; the doubled interpreter path is fixed.
+
 ## 2026-09-14 — A repeated alert is recorded as a new communication
 
 MATURITY_IMPACT: the Communications page records every send, not only the first alert that opened a given way. Execution posture UNCHANGED.

@@ -1484,6 +1484,36 @@ Each line is something an agent got wrong today or was about to. The code carrie
   - A model is never "outside data": it goes on the 🟣 role, not in "Went outside".
 - **`MAX_SOURCE_LABELS` is 16.** At 10 the dossier's stores pushed "conversation memory" off the Sources line.
 
+### The research heartbeat — measure the queue, not the store next to it
+- **Two research stores exist. Watching the wrong one hid a week of failures.**
+  - `hermes_external_research` is the scheduled symbol research. It was healthy (56/57).
+  - `data/cio/hermes_research_requests.jsonl` holds operator questions and plan research. 62% of its requests failed in the week to 09-14 with no alarm.
+  - Lane `cio-hermes-queue` (`lib/cio_hermes_queue_health.py`) now watches the queue inside `research_lane_health`. It fires on:
+    - failure rate;
+    - no completions;
+    - stalled queue;
+    - lost requests;
+    - unclassified failures.
+- **Every projection writer holds `projection_transaction()`.**
+  - The unlocked load → modify → replace of the 30 MB `hermes_research_projection.json` lost 32 enqueued requests.
+  - Those requests were never claimed and never reported.
+  - A new writer in `cio_hermes_research` gets `@_in_projection_transaction`.
+  - `restore_lost_requests` re-projects losses under 48h from the ledger's `HERMES_RESEARCH_REQUESTED` rows.
+- **`retryable=True` on a ledger row does nothing by itself.**
+  - `replay_retryable_failures` (called from `claim_next`) re-queues provider errors, timeouts and truncations once, after the 15-minute bridge breaker.
+  - Cost-cap and execution-language failures are never replayed.
+- **The READ_ONLY guard refuses advice, not facts.**
+  - `assert_no_execution_language` masks third-party labels first ("Strong Sell", "institutional buy", "sought to buy").
+  - Stance is still refused ("would change to a buy").
+  - The bridge backend rewrites a refused draft once, still guarded.
+  - Never loosen `_EXEC_RE` to pass advice through.
+- **"Failed to start tradeai-hermes-cio-worker.service" is a request failure, not a crash.** The oneshot drain exits 1 when a request fails. Read the queue lane, not systemd.
+- **A self-healing loop is only real if its retries exit 0.**
+  - `claude_escalation_handler` rewrote `.venv/bin/python` inside absolute paths.
+  - Every retry exited 127 (36,365 times from 08-07 to 09-14) while logs said fixes were tried.
+  - `resolve_relative_venv` rewrites only a relative token.
+  - Check `rc=` in `logs/claude_escalation.log` before claiming auto-remediation works.
+
 - **A comms idempotency key must identify one observation.** For plain sends it is producer + type + `subject_key` (the first 48 characters) + action. Without `observation_version` (body hash plus minute), every later alert with the same opening became the first event again. Check `status_transition_illegal` counts in the logs before trusting the Communications page.
 
 ### Data correctness — litmus against an independent source before trusting a store
