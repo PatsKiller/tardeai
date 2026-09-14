@@ -165,7 +165,8 @@ def labels_from_evidence(evidence: dict[str, Any], curated: dict[str, Any]) -> l
             as_of = _short_ts(avail.get("reentry_as_of"))
             labels.append(f"re-entry desk{(' · computed ' + as_of) if as_of else ''}")
         elif src_s == "get_cio_snapshot":
-            parts = [k for k in ("cash", "sector_exposure", "risk", "investment_policy", "portfolio")
+            parts = [k for k in ("cash", "sector_exposure", "risk", "investment_policy", "portfolio",
+                                 "model_portfolio", "rotation")
                      if (avail.get("freeform_context") or {}).get(k)]
             labels.append("CIO snapshot" + (f" ({', '.join(parts)})" if parts else ""))
         elif src_s.endswith("holdings.json"):

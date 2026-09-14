@@ -610,6 +610,8 @@ GATES = [
             "tests/test_operator_answer_quality_20260913.py",
             # Every operator reply path goes through one chokepoint: Sources + Went outside + authority tail.
             "tests/test_operator_reply_routing_sources_20260913.py",
+            # Evidence coverage contract per intent: house facts first, false-empty claims rejected.
+            "tests/test_operator_evidence_contract_20260913.py",
             # Phase 9: one write module per store; golden tests prove row shape and
             # subject GUID are identical to every legacy writer.
             "tests/test_sot_p9_symbol_profiles_writer.py",

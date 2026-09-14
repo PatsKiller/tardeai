@@ -457,7 +457,11 @@ def test_litmus_seasonality_carries_house_facts_and_calls_nothing_empty(replays)
     sectors = [s for s in ("Industrials 6.77%", "Financial Services 3.84%", "Technology 2.51%") if s in txt]
     assert len(sectors) >= 2, sectors
     assert "MODERATE_AGGRESSIVE" in txt, "policy risk level"
-    assert "research" in txt.lower() and "Trade-AI holds no research on this topic" in txt, "research status line"
+    # Research status, Agent C wording: either house research was found, or it says
+    # plainly that none exists AND that nothing was queued (no unbacked follow-up).
+    assert ("Trade-AI research on file for this topic" in txt
+            or "Trade-AI holds no house research on this topic, and nothing was queued" in txt), "research status line"
+    assert "I will follow up" not in txt, "no follow-up promise without a pending row"
     assert "Sources:" in txt
     assert oaq.empty_claims(txt) == [], "no 'not available'/'empty' claim about cash, holdings, sectors or weights"
 

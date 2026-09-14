@@ -203,6 +203,16 @@ def replay(question: str, *, snapshot: Optional[dict], desk: Optional[dict], hol
         pending_rows = d._read_jsonl(d.PENDING_PATH)
     # The unanswerable branch returns its body as reply_preview, not text.
     reply = res.get("text") or res.get("reply_preview") or ""
+    # What the operator actually receives passes converse_core's chokepoint
+    # (Sources / Went outside / authority tail). Replay the same finalisation so
+    # the harness measures the sent text and its receipt, not the desk's draft.
+    provenance = res.get("reply_provenance")
+    try:
+        from scripts.lib.reply_provenance import finalize_operator_reply, provenance_for_desk  # noqa: PLC0415
+        final, prov = finalize_operator_reply(reply, provenance_for_desk(res))
+        reply, provenance = final, prov.to_dict()
+    except ImportError:
+        pass
     evidence = res.get("evidence") if isinstance(res.get("evidence"), dict) else {}
     return {
         "question": question,
@@ -219,7 +229,7 @@ def replay(question: str, *, snapshot: Optional[dict], desk: Optional[dict], hol
         # Agent C: evidence["contract_findings"]; Agent A: reply_provenance. None until they land.
         "contract_findings": res.get("contract_findings") if "contract_findings" in res
         else evidence.get("contract_findings"),
-        "reply_provenance": res.get("reply_provenance"),
+        "reply_provenance": provenance,
     }
 
 

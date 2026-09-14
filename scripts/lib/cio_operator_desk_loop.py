@@ -2363,6 +2363,9 @@ def handle_operator_desk_question(
         "gaps": evidence.get("gaps") or [],
         "blocking_gaps": evidence.get("blocking_gaps") or [],
         "sources": evidence.get("sources") or [],
+        # Agent C contract: surfaced on the result so the receipt and the answer-quality
+        # monitor see "facts were available but not assembled" findings.
+        "contract_findings": evidence.get("contract_findings"),
         "pending_id": None,
         "kind": "answered",
         "text": "",
