@@ -122,6 +122,9 @@ def test_no_memory_renders_nothing():
 def test_memory_reaches_the_reply_and_its_sources(monkeypatch):
     import scripts.lib.data_broker.cio_portfolio as cp
 
+    # Offline: with DB credentials in the environment the subject dossier read the
+    # live database here (2026-09-14, local acceptance).
+    monkeypatch.setenv("CIO_SUBJECT_DOSSIER", "0")
     monkeypatch.setattr(cp, "get_cio_snapshot", lambda max_age_s=60: {"domains": {}})
     monkeypatch.setattr(desk, "analyze_operator_intent", lambda text: {**INTENT, "source": "heuristic", "text": text})
     monkeypatch.setattr(desk, "subject_research", lambda symbols, **k: [
