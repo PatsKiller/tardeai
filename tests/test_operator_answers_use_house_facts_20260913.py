@@ -254,6 +254,8 @@ def test_empty_evidence_reply_promises_nothing():
 
 
 def test_soft_gap_note_says_queued_only_when_the_registry_accepted(monkeypatch):
+    # 2026-09-13: the desk writes the data gap queue through its write module;
+    # the note names the queue (and the resolver's next run), never a vague refresh.
     _rows_fixture(monkeypatch)
     monkeypatch.setattr(desk, "_register_gaps", lambda *a, **k: {"registered": 0, "error": "ModuleNotFoundError"})
     res = desk.handle_operator_desk_question("support and resistance levels for SCHG", chat_id="c", message_id="m")
@@ -263,4 +265,5 @@ def test_soft_gap_note_says_queued_only_when_the_registry_accepted(monkeypatch):
     monkeypatch.setattr(desk, "_register_gaps", lambda *a, **k: {"registered": 2})
     res2 = desk.handle_operator_desk_question("support and resistance levels for SCHG", chat_id="c", message_id="m")
     if "partial level gaps" in (res2.get("text") or ""):
-        assert "queued for Trade-AI refresh" in res2["text"]
+        assert "logged in the data gap queue" in res2["text"]
+        assert "queued for Trade-AI refresh" not in res2["text"]

@@ -23,6 +23,14 @@ from pathlib import Path
 PROJ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJ / "scripts"))
 
+# One write module owns data_gap_registry (One Source of Truth, phase 9 pattern).
+from lib.writers.data_gap_registry_writer import (  # noqa: E402
+    abandon_stale,
+    mark_enriching,
+    mark_resolved,
+    reopen,
+)
+
 
 def get_db_connection():
     import psycopg2
@@ -250,17 +258,13 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
             continue
 
         # Mark enriching
-        cur.execute("UPDATE data_gap_registry SET status = 'enriching' WHERE id = %s", [gap_id])
+        mark_enriching(cur, gap_id)
         conn.commit()
 
         try:
             success = resolver(symbol, conn)
             if success:
-                cur.execute("""
-                    UPDATE data_gap_registry
-                    SET status = 'resolved', resolved_at = NOW(), resolved_by = 'gap_resolver_v1'
-                    WHERE id = %s
-                """, [gap_id])
+                mark_resolved(cur, gap_id, resolved_by='gap_resolver_v1')
                 conn.commit()
                 # Re-queue source job with enriched data
                 if source_job_id:
@@ -269,13 +273,13 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
                 log(f"  OK {symbol}: {gap_type}")
             else:
                 conn.rollback()
-                cur.execute("UPDATE data_gap_registry SET status = 'open' WHERE id = %s", [gap_id])
+                reopen(cur, gap_id)
                 conn.commit()
                 failed += 1
                 log(f"  FAIL {symbol}: {gap_type}")
         except Exception as e:
             conn.rollback()
-            cur.execute("UPDATE data_gap_registry SET status = 'open' WHERE id = %s", [gap_id])
+            reopen(cur, gap_id)
             conn.commit()
             failed += 1
             import traceback
@@ -296,11 +300,7 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
             for sym, gt, det in persistent[:10]:
                 log(f"  {sym}: {gt} (since {det})")
             # Mark as abandoned if > 30 days
-            cur.execute("""
-                UPDATE data_gap_registry SET status = 'abandoned'
-                WHERE status = 'open' AND detected_at < NOW() - INTERVAL '30 days'
-            """)
-            abandoned = cur.rowcount
+            abandoned = abandon_stale(cur, older_than_days=30)
             if abandoned:
                 log(f"Abandoned {abandoned} gaps older than 30 days")
             conn.commit()

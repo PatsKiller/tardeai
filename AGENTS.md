@@ -1304,6 +1304,7 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 | **ai_reports** | dead_feed | `ai_reports` | **none — dead feed** | — | 168h | `desk_feeds` | internal | — | — | `declared_gap_no_producer` | operator 2026-09-13 |
 | **redeploy_analytics** | dead_feed | `portfolios/state/redeploy_analytics_cache.json` | `scripts/api_v2.py` | on demand (30-min TTL cache) | 24h | `desk_feeds` | internal | — | — | `declared_gap_no_producer` | operator 2026-09-13 |
 | **inverse_stoplights** | derived | `runtime/inverse_stoplights_latest.json` | `scripts/defense_inverse_stoplights.py` | 10:15 · 17:55 Mon-Fri | 26h | — | internal | — | — | `say_so` | operator 2026-09-13 |
+| **data_gaps** | native | `data_gap_registry` | `scripts/lib/writers/data_gap_registry_writer.py` | crontab: data_gap_resolver.py hourly 10:00-16:00 and --pre-overnight 18:00 on weekdays, --weekly-audit Sunday 08:00 (the desk reads these times from the crontab itself) | 168h | — | internal | — | — | `say_so` | operator 2026-09-13 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 §0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an

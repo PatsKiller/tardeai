@@ -1843,26 +1843,175 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
     return evidence
 
 
-def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str) -> dict[str, Any]:
-    """Best-effort enqueue into data_gap_registry / advisory ledger."""
-    registered = 0
-    try:
-        from scripts.lib.advisory_gap_requeue import register_advisory_gaps
+#: The desk's gap vocabulary mapped onto the resolver's. Only a gap the resolver
+#: has an action for is queued. Anything else is counted as not registered, so a
+#: reply never claims a refresh that nothing will perform.
+def _registry_gap_type(gap: dict[str, Any]) -> Optional[str]:
+    if not str((gap or {}).get("symbol") or "").strip():
+        return None
+    gap_type = str(gap.get("gap_type") or "")
+    domain = str(gap.get("domain") or "")
+    if gap_type == "missing_market_data":
+        return "missing_market_data"
+    if domain == "symbol_thesis":
+        return "missing_thesis"
+    if gap_type == "research":
+        return "stale_news"
+    return None
 
-        rows = []
-        for g in gaps:
-            sym = g.get("symbol") or "BOOK"
-            rows.append({
-                "symbol": sym,
-                "quality": "DATA_UNAVAILABLE",
-                "gaps": [g.get("field") or g.get("reason") or "missing"],
-                "setup": "WAIT_DATA",
-                "reentry_state": None,
-            })
-        res = register_advisory_gaps(rows, max_register=20)
-        registered = int(res.get("registered") or 0)
-    except Exception as exc:
-        return {"registered": 0, "error": f"{type(exc).__name__}:{exc}"}
+
+def _gap_registry_enabled() -> bool:
+    return _env("CIO_OPERATOR_GAP_REGISTRY", "1").lower() not in ("0", "false", "off", "no")
+
+
+def _gap_registry_write_conn():
+    """A write connection for the data gap queue, or None when there is no database."""
+    if os.environ.get("TRADE_AI_CI") == "1":
+        return None
+    password = os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD")
+    if not password:
+        return None
+    import psycopg2  # noqa: PLC0415
+
+    return psycopg2.connect(
+        host=os.environ.get("DB_HOST", "localhost"),
+        dbname=os.environ.get("DB_NAME", "trade_ai"),
+        user=os.environ.get("DB_USER", "trade_ai"),
+        password=password,
+        connect_timeout=3,
+        options="-c statement_timeout=5000",
+    )
+
+
+def _resolver_cron_exprs(crontab_text: str) -> list[str]:
+    """Schedules of the live data_gap_resolver lines; the weekly audit only abandons."""
+    exprs: list[str] = []
+    for line in (crontab_text or "").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or "data_gap_resolver.py" not in s or "--weekly-audit" in s:
+            continue
+        parts = s.split()
+        if len(parts) > 5 and not parts[0].startswith("@"):
+            exprs.append(" ".join(parts[:5]))
+    return exprs
+
+
+_RESOLVER_CRON_CACHE: dict[str, Any] = {"at": 0.0, "exprs": []}
+
+
+def _gap_resolver_schedule() -> list[str]:
+    """When the gap resolver runs, read from the crontab that runs it.
+
+    The crontab is the schedule's only source. Copying it into config would make
+    a second one that drifts. An unreadable crontab yields [] and the reply says
+    no run time is known.
+    """
+    import subprocess  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    now = time.monotonic()
+    if _RESOLVER_CRON_CACHE["exprs"] and now - float(_RESOLVER_CRON_CACHE["at"]) < 600:
+        return list(_RESOLVER_CRON_CACHE["exprs"])
+    try:
+        out = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=3).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    exprs = _resolver_cron_exprs(out)
+    _RESOLVER_CRON_CACHE.update(at=now, exprs=exprs)
+    return exprs
+
+
+def _next_gap_resolver_run(now: Optional[datetime] = None) -> Optional[datetime]:
+    try:
+        from lib.cron_schedule import next_run_any  # noqa: PLC0415
+    except ImportError:
+        from scripts.lib.cron_schedule import next_run_any  # noqa: PLC0415
+    # cron fires in the host's local time
+    return next_run_any(_gap_resolver_schedule(), now or datetime.now().astimezone())
+
+
+def _gap_queue_note(reg: dict[str, Any]) -> str:
+    """The soft-gap note when the queue accepted gaps: which rows, and when they are worked."""
+    ids = [f"#{i}" for i in (reg.get("gap_ids") or [])][:6]
+    head = "logged in the data gap queue" + (f" ({', '.join(ids)})" if ids else "")
+    when = None
+    try:
+        if reg.get("resolver_next_run"):
+            when = datetime.fromisoformat(str(reg["resolver_next_run"])).astimezone().strftime("%a %H:%M %Z")
+    except ValueError:
+        when = None
+    if when:
+        return f"{head}; the gap resolver picks it up {when}. Ask again after that._"
+    return f"{head}; no resolver run time is known, so no follow-up is promised._"
+
+
+def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str) -> dict[str, Any]:
+    """Queue the gaps the resolver can act on into data_gap_registry.
+
+    Writes only through the store's write module
+    (scripts/lib/writers/data_gap_registry_writer.py). The operator approved the
+    desk as a caller on 2026-09-13; the grant is on the `data_gaps` domain in
+    config/data_source_authority.json.
+
+    Returns ``registered`` (gaps now in the queue, new or already open),
+    ``gap_ids``, ``not_registered`` (gaps with no resolver action),
+    ``resolver_next_run`` and, on failure, ``error``. Before this the function
+    imported a bridge module that never reached main and registered 0 every call.
+    """
+    rows: list[dict[str, Any]] = []
+    skipped = 0
+    for g in gaps or []:
+        gap_type = _registry_gap_type(g)
+        if gap_type is None:
+            skipped += 1
+            continue
+        what = g.get("field") or g.get("reason") or "missing"
+        rows.append({
+            "symbol": g.get("symbol"),
+            "gap_type": gap_type,
+            "gap_detail": f"operator desk {pending_id}: {g.get('domain') or 'desk'} {what}",
+        })
+    out: dict[str, Any] = {"registered": 0, "gap_ids": [], "not_registered": skipped, "resolver_next_run": None}
+    if rows and not _gap_registry_enabled():
+        out["error"] = "gap registry disabled (CIO_OPERATOR_GAP_REGISTRY=0)"
+    elif rows:
+        conn = None
+        try:
+            conn = _gap_registry_write_conn()
+            if conn is None:
+                out["error"] = "no database credentials for the gap registry"
+            else:
+                try:
+                    from lib.writers.data_gap_registry_writer import register_gaps  # noqa: PLC0415
+                except ImportError:
+                    from scripts.lib.writers.data_gap_registry_writer import register_gaps  # noqa: PLC0415
+                rec = register_gaps(
+                    conn.cursor(), rows,
+                    detected_by="cio_operator_desk", source="cio_operator_desk_loop", run_id=pending_id,
+                )
+                conn.commit()
+                out["gap_ids"] = rec.queued_ids
+                out["registered"] = len(rec.queued_ids)
+                out["receipt"] = rec.as_dict()
+        except Exception as exc:  # noqa: BLE001
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:  # noqa: BLE001
+                    pass
+            out["error"] = f"{type(exc).__name__}:{exc}"
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:  # noqa: BLE001
+                    pass
+    if out["registered"]:
+        try:
+            nxt = _next_gap_resolver_run()
+        except Exception:  # noqa: BLE001
+            nxt = None
+        out["resolver_next_run"] = nxt.isoformat() if nxt else None
     _append_jsonl(
         PROJECT_ROOT / "data" / "cio" / "cio_operator_gap_requests.jsonl",
         {
@@ -1870,11 +2019,15 @@ def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str)
             "pending_id": pending_id,
             "chat_id": chat_id,
             "gaps": gaps,
-            "registered": registered,
+            "registered": out["registered"],
+            "gap_ids": out["gap_ids"],
+            "not_registered": skipped,
+            "resolver_next_run": out["resolver_next_run"],
+            "error": out.get("error"),
             "authority": AUTHORITY,
         },
     )
-    return {"registered": registered}
+    return out
 
 
 def subject_research(symbols: list[str], *, limit: int = 6) -> list[dict[str, Any]]:
@@ -2503,7 +2656,7 @@ def handle_operator_desk_question(
 
     blocking = evidence.get("blocking_gaps") or []
     if blocking:
-        _register_gaps(blocking, chat_id=str(chat_id), pending_id=pending_id)
+        result["gap_registry"] = _register_gaps(blocking, chat_id=str(chat_id), pending_id=pending_id)
         # Hermes when research is the blocker
         # Do not promise a reply about something that can never be answered.
         # "What's the outlook for SpaceX, what are options closing, what are
@@ -2704,11 +2857,12 @@ def handle_operator_desk_question(
             # returned registered=0 on every call (its bridge module is absent), and
             # the note said "queued for Trade-AI refresh" regardless.
             reg = _register_gaps(soft[:10], chat_id=str(chat_id), pending_id=pending_id) or {}
+            result["gap_registry"] = reg
             queued = int(reg.get("registered") or 0) > 0
             text_out = (
                 text_out.rstrip()
                 + f"\n_Note: partial level gaps on {', '.join(soft_syms[:6])} — "
-                + ("queued for Trade-AI refresh._" if queued else "not refreshed automatically; say 'research <ticker>' to queue it._")
+                + (_gap_queue_note(reg) if queued else "not refreshed automatically; say 'research <ticker>' to queue it._")
             )
 
     result.update({
@@ -2728,6 +2882,27 @@ def handle_operator_desk_question(
 #: with the operator waiting, and would have sat open indefinitely: no symbol
 #: resolved (the name index lacked SpaceX; it is SPCX, which the book holds), so the research gap could not close.
 PENDING_EXPIRY_HOURS = 2.0
+
+
+def _pending_expiry_hours(row: dict[str, Any]) -> float:
+    """How long this pending may stay open before it is retracted.
+
+    A pending opened with an ETA (the gap resolver queued a slow vector) was
+    retracted at 2 h even when the ETA itself was longer, so the operator was
+    told "could not answer" before the promised time. It now stays open until
+    the ETA plus a grace period (CIO_OPERATOR_PENDING_ETA_GRACE_HOURS, default 1).
+    """
+    try:
+        eta_s = float(row.get("eta_seconds"))
+    except (TypeError, ValueError):
+        return PENDING_EXPIRY_HOURS
+    if eta_s <= 0:
+        return PENDING_EXPIRY_HOURS
+    try:
+        grace_h = float(_env("CIO_OPERATOR_PENDING_ETA_GRACE_HOURS", "1"))
+    except ValueError:
+        grace_h = 1.0
+    return max(PENDING_EXPIRY_HOURS, eta_s / 3600.0 + max(0.0, grace_h))
 
 
 def _pending_age_hours(row: dict[str, Any]) -> Optional[float]:
@@ -2818,11 +2993,12 @@ def try_fulfill_pending_replies(
                 # re-checked silently forever while the operator waited.
                 age_h = _pending_age_hours(row)
                 answerable, why = is_answerable(intent)
-                if answerable and (age_h is None or age_h < PENDING_EXPIRY_HOURS):
+                limit_h = _pending_expiry_hours(row)
+                if answerable and (age_h is None or age_h < limit_h):
                     continue
                 reason = why or (
                     f"the required Trade-AI data did not arrive within "
-                    f"{PENDING_EXPIRY_HOURS:g}h"
+                    f"{round(limit_h, 1):g}h"
                 )
                 chat_id = str(row.get("chat_id") or "")
                 if chat_id:

@@ -708,20 +708,16 @@ def _extract_and_register_gaps(queue_id, symbol, parsed, conn):
             if any(p in text for p in patterns):
                 gaps.append((gap_type, f'Detected in {symbol} overnight response'))
 
-        for gap_type, detail in gaps:
-            # Skip if open gap already exists for same symbol+type
-            cur.execute("""
-                SELECT id FROM data_gap_registry
-                WHERE symbol = %s AND gap_type = %s AND status = 'open'
-            """, [symbol, gap_type])
-            if cur.fetchone():
-                continue
-            severity = 'high' if gap_type in ('missing_catalyst', 'missing_market_data', 'explicit') else 'medium'
-            cur.execute("""
-                INSERT INTO data_gap_registry
-                    (symbol, gap_type, gap_detail, detected_by, source_job_id, severity, status)
-                VALUES (%s, %s, %s, 'gemma3_overnight', %s, %s, 'open')
-            """, [symbol, gap_type, detail, queue_id, severity])
+        # One write module owns data_gap_registry: the dedup rule, the severity
+        # rule and the rails live there, not here.
+        from lib.writers.data_gap_registry_writer import register_gaps
+        register_gaps(
+            cur,
+            [{"symbol": symbol, "gap_type": gap_type, "gap_detail": detail, "source_job_id": queue_id}
+             for gap_type, detail in gaps],
+            detected_by='gemma3_overnight',
+            source='run_deep_overnight_llm_queue',
+        )
         conn.commit()
     except Exception as e:
         log(f"  gap extraction error: {e}")
