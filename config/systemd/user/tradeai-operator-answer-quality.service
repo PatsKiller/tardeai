@@ -1,0 +1,29 @@
+[Unit]
+# Measures the replies the operator actually received over the last 24h.
+#
+# 2026-09-13: "get back into schg" was answered with the whole re-entry book; a
+# sector question was answered from model knowledge while claiming cash and
+# holdings were empty (the CIO snapshot carried them); no reply said where its
+# content came from. The desk was fixed; this makes a regression a monitor
+# finding instead of an operator discovery.
+#
+# Read-only: it reads cio_events.jsonl, the pending ledger, holdings.json, a
+# persisted CIO snapshot, and SELECTs operator_conversation_turns on a read-only
+# session. It never replies, never edits a ledger, never calls a model.
+Description=Trade AI operator answer quality — sources line, false-empty claims, book dumps, unclosed pendings
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/check_operator_answer_quality.py
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
+    scripts/check_operator_answer_quality.py --alert
+
+# Exit 1 means "there is a finding" -- a report, not a unit failure. Treating it
+# as a failure would bury the report and make is-failed useless for spotting a
+# monitor that genuinely broke.
+SuccessExitStatus=0 1
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

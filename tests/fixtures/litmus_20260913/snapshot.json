@@ -1,0 +1,1026 @@
+{
+  "_fixture": "LIVE shape of get_cio_snapshot() captured 2026-09-13; values rounded, lists trimmed, no secrets",
+  "version": "cio-snapshot-v1",
+  "collected_at": "2026-09-13T23:19:02.768483+00:00",
+  "domains": {
+    "portfolio": {
+      "state": "AVAILABLE",
+      "total_value": 1268140.59,
+      "total_cost": 586468.85,
+      "day_change": 3492.83,
+      "day_change_pct": 0.28,
+      "holdings_count": 30,
+      "as_of": "2026-09-13T08:00:24-04:00",
+      "positions_as_of": "2026-09-11"
+    },
+    "risk": {
+      "state": "AVAILABLE",
+      "portfolio_heat_pct": 0.08,
+      "total_risk_dollars": 1003.08,
+      "positions_at_risk": 0,
+      "max_drawdown_pct": null,
+      "stops_active": 26
+    },
+    "watch": {
+      "domain_id": "watch",
+      "quality_state": "AVAILABLE",
+      "collected_at": "2026-09-13T23:19:02.774113+00:00",
+      "source_ref": "<served-state-tree>/portfolios/state/watchlist.json",
+      "data": {
+        "PLTR": {
+          "thesis": "AI/defense data analytics \u2014 direct AI WWIII exposure",
+          "target_intent": "growth_speculative",
+          "added": "2026-04-03",
+          "notes": "",
+          "watching_since": ""
+        },
+        "HII": {
+          "thesis": "Huntington Ingalls \u2014 only US nuclear carrier/submarine builder",
+          "target_intent": "long_term_hold",
+          "added": "2026-04-03",
+          "notes": "",
+          "watching_since": ""
+        },
+        "GD": {
+          "thesis": "General Dynamics \u2014 Stryker, submarines, Gulfstream",
+          "target_intent": "long_term_hold",
+          "added": "2026-04-03",
+          "notes": "",
+          "watching_since": ""
+        },
+        "BWXT": {
+          "thesis": "Nuclear propulsion systems \u2014 navy reactors",
+          "target_intent": "growth_speculative",
+          "added": "2026-04-03",
+          "notes": "",
+          "watching_since": ""
+        },
+        "AXON": {
+          "thesis": "AI-enabled law enforcement tech \u2014 defense adjacent",
+          "target_intent": "growth_speculative",
+          "added": "2026-04-03",
+          "notes": "",
+          "watching_since": ""
+        },
+        "MAIN": {
+          "thesis": "Main Street Capital \u2014 BDC with monthly dividend, internally managed",
+          "target_intent": "income",
+          "added": "2026-04-03",
+          "notes": "",
+          "watching_since": ""
+        },
+        "ARCC": {
+          "thesis": "Ares Capital \u2014 largest BDC, well-diversified",
+          "target_intent": "income",
+          "added": "2026-04-03",
+          "notes": "",
+          "watching_since": ""
+        },
+        "HTGC": {
+          "thesis": "Hercules Capital \u2014 tech-focused BDC",
+          "target_intent": "income",
+          "added": "2026-04-03",
+          "notes": "",
+          "watching_since": ""
+        },
+        "MSFT": {
+          "thesis": "Azure AI infrastructure \u2014 Copilot monetization",
+          "target_intent": "long_term_hold",
+          "added": "2026-04-03",
+          "notes": "",
+          "watching_since": ""
+        },
+        "NVDA": {
+          "thesis": "GPU dominance for AI training",
+          "target_intent": "growth_speculative",
+          "added": "2026-04-03",
+          "notes": "",
+          "watching_since": ""
+        },
+        "VCIT": {
+          "thesis": "Intermediate corporate bonds \u2014 reduce equity concentration",
+          "target_intent": "etf_broad",
+          "added": "2026-04-03",
+          "notes": "",
+          "watching_since": ""
+        },
+        "JEPI": {
+          "thesis": "JPM equity premium income \u2014 covered call ETF, 7%+ yield",
+          "target_intent": "income",
+          "added": "2026-04-03",
+          "notes": "",
+          "watching_since": ""
+        },
+        "PPC": {
+          "thesis": "Pilgrim's Pride \u2014 oversold chicken processor, watch for reversal after earnings reset",
+          "target_intent": "watchlist",
+          "added": "2026-05-08",
+          "notes": "Watch for reclaim of the 50-day / 200-day and RSI recovery off oversold levels.",
+          "watching_since": ""
+        }
+      }
+    },
+    "watch_intelligence": {
+      "domain_id": "watch_intelligence",
+      "quality_state": "AVAILABLE",
+      "collected_at": "2026-09-13T23:19:05.493154+00:00",
+      "source_ref": "lib.data_broker.watch_intelligence.list_watch_intelligence",
+      "as_of": "2026-09-13T23:19:05.491852+00:00",
+      "data": {
+        "ok": true,
+        "generated_at": "2026-09-13T23:19:05.491852+00:00",
+        "contract_version": "watch_intelligence.broker.v1",
+        "source": "watch_intelligence",
+        "projection": "cio_s7_status_v1",
+        "items": [
+          {
+            "symbol": "CECO",
+            "status": "BLOCK",
+            "score": null,
+            "watch_score": null,
+            "held": false,
+            "trade_ai_state": "WAIT",
+            "proposal_allowed": false,
+            "is_near_trigger": false,
+            "street_rating": "STRONG BUY",
+            "map_reason": "not_promotion_grade"
+          },
+          {
+            "symbol": "SWBI",
+            "status": "BLOCK",
+            "score": null,
+            "watch_score": null,
+            "held": false,
+            "trade_ai_state": "WAIT",
+            "proposal_allowed": false,
+            "is_near_trigger": false,
+            "street_rating": "STRONG BUY",
+            "map_reason": "not_promotion_grade"
+          }
+        ],
+        "candidates": [
+          {
+            "symbol": "CECO",
+            "status": "BLOCK",
+            "score": null,
+            "watch_score": null,
+            "held": false,
+            "trade_ai_state": "WAIT",
+            "proposal_allowed": false,
+            "is_near_trigger": false,
+            "street_rating": "STRONG BUY",
+            "map_reason": "not_promotion_grade"
+          },
+          {
+            "symbol": "SWBI",
+            "status": "BLOCK",
+            "score": null,
+            "watch_score": null,
+            "held": false,
+            "trade_ai_state": "WAIT",
+            "proposal_allowed": false,
+            "is_near_trigger": false,
+            "street_rating": "STRONG BUY",
+            "map_reason": "not_promotion_grade"
+          }
+        ],
+        "rows": [
+          {
+            "symbol": "CECO",
+            "status": "BLOCK",
+            "score": null,
+            "watch_score": null,
+            "held": false,
+            "trade_ai_state": "WAIT",
+            "proposal_allowed": false,
+            "is_near_trigger": false,
+            "street_rating": "STRONG BUY",
+            "map_reason": "not_promotion_grade"
+          },
+          {
+            "symbol": "SWBI",
+            "status": "BLOCK",
+            "score": null,
+            "watch_score": null,
+            "held": false,
+            "trade_ai_state": "WAIT",
+            "proposal_allowed": false,
+            "is_near_trigger": false,
+            "street_rating": "STRONG BUY",
+            "map_reason": "not_promotion_grade"
+          }
+        ],
+        "counts": {
+          "ready": 0,
+          "go": 0,
+          "near": 0,
+          "block": 80,
+          "total": 80,
+          "promotion_grade": 0
+        },
+        "broker_counts": {
+          "total_matched": 170,
+          "page": 1,
+          "page_size": 80,
+          "starred_universe": 12,
+          "held_universe": 23,
+          "screener_universe": 28,
+          "street_strong_buy": 14,
+          "street_buy": 23,
+          "trade_ai_wait": 4,
+          "proposal_eligible": 0,
+          "complete_reviews": 15,
+          "near_trigger": 0,
+          "material_change": 127
+        },
+        "summary": {
+          "street_strong_buy": 14,
+          "street_buy": 23,
+          "trade_ai_wait": 4,
+          "blocked_or_unavailable": 146,
+          "managing_held": 20,
+          "proposal_eligible": 0
+        }
+      }
+    },
+    "rotation": {
+      "domain_id": "rotation",
+      "quality_state": "AVAILABLE",
+      "collected_at": "2026-09-13T23:19:05.493593+00:00",
+      "source_ref": "<served-state-tree>",
+      "as_of": "2026-09-13T23:16:05.481747+00:00",
+      "data": {
+        "computed_at": "2026-09-13T23:16:05.481747+00:00",
+        "sectors": [
+          {
+            "etf": "XLK",
+            "name": "Technology",
+            "return_1m": null,
+            "return_3m": null,
+            "return_6m": null,
+            "rs_raw": null,
+            "data_quality": 0,
+            "rs_score": 50
+          },
+          {
+            "etf": "XLF",
+            "name": "Financials",
+            "return_1m": null,
+            "return_3m": null,
+            "return_6m": null,
+            "rs_raw": null,
+            "data_quality": 0,
+            "rs_score": 50
+          }
+        ],
+        "industries": [
+          {
+            "sector": "Communication Services",
+            "industries": [
+              {
+                "etf": "XLC",
+                "name": "Comm Services Broad",
+                "return_1m": null,
+                "return_3m": null,
+                "return_6m": null,
+                "rs_raw": null,
+                "data_quality": 0,
+                "rs_score": 50
+              }
+            ]
+          },
+          {
+            "sector": "Consumer Discretionary",
+            "industries": [
+              {
+                "etf": "XRT",
+                "name": "Retail",
+                "return_1m": null,
+                "return_3m": null,
+                "return_6m": null,
+                "rs_raw": null,
+                "data_quality": 0,
+                "rs_score": 50
+              },
+              {
+                "etf": "XLY",
+                "name": "Consumer Disc Broad",
+                "return_1m": null,
+                "return_3m": null,
+                "return_6m": null,
+                "rs_raw": null,
+                "data_quality": 0,
+                "rs_score": 50
+              }
+            ]
+          }
+        ],
+        "transitions": [
+          {
+            "symbol": "AVAV",
+            "thesis_status": "broken",
+            "escalation_reason": "Thesis broken \u2014 Steph should validate",
+            "what_changed": "2. WHAT CHANGED: Technical confluence now WEAK (0/100) in ranging regime; social spike (0.88 sentiment) lacks supporting news or price follow-through.",
+            "needs_review": true
+          },
+          {
+            "symbol": "BAH",
+            "thesis_status": "broken",
+            "escalation_reason": "Thesis broken \u2014 Steph should validate",
+            "what_changed": "2. WHAT CHANGED: social sentiment spiked to 1.00 with 30 mentions but technical confluence scored 0/100 WEAK on SMA/FIB/OBV/ATR",
+            "needs_review": true
+          }
+        ],
+        "source": "market_quotes + aegis_portfolio_briefs"
+      }
+    },
+    "income": {
+      "domain_id": "income",
+      "quality_state": "PARTIAL",
+      "collected_at": "2026-09-13T23:19:05.494600+00:00",
+      "source_ref": "<served-state-tree>/portfolios/state/holdings.json",
+      "as_of": "2026-09-11",
+      "data": {
+        "annual_dividend_est": null,
+        "annual_income_estimate": null,
+        "yield_pct": null,
+        "as_of": "2026-09-11"
+      },
+      "partial_fields": [
+        "yield_pct"
+      ],
+      "gap_reason": "yield_pct_not_yet_collected_by_income_collector"
+    },
+    "reconciliation": {
+      "domain_id": "reconciliation",
+      "quality_state": "AVAILABLE",
+      "collected_at": "2026-09-13T23:19:05.494710+00:00",
+      "source_ref": "<served-state-tree>/reconciliation/state/latest.json",
+      "as_of": "2026-09-12T22:39:47.385065+00:00",
+      "data": {
+        "actions_diagnostic": 0,
+        "actions_open": 0,
+        "actions_operator": 0,
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": false,
+        "holdings_source_age_hours": 46.66,
+        "holdings_source_as_of": "2026-09-11",
+        "holdings_source_freshness": "STALE",
+        "inconsistencies": [
+          {
+            "code": "HOLDINGS_SOURCE_STALE",
+            "detail": "holdings as_of=2026-09-11 age_h=46.66316251805556"
+          },
+          {
+            "code": "RESEARCH_PENDING",
+            "detail": "pending_challenges=154"
+          }
+        ],
+        "ok": false,
+        "plans_draft": 0,
+        "plans_proposed": 0,
+        "plans_total": 0,
+        "quality_state": "AVAILABLE",
+        "reconciled_at": "2026-09-12T22:39:47.385065+00:00",
+        "research_pending": 154,
+        "schema": "CIOReconciliation@v1"
+      }
+    },
+    "hermes_research": {
+      "state": "AVAILABLE",
+      "promoted_research_count": 2088,
+      "staged_research_count": 344,
+      "latest_topics": [
+        "ACHV deep research synthesis",
+        "ADBE deep research synthesis"
+      ],
+      "challenger_active": true,
+      "autonomous": true,
+      "model_provider": "deepseek-flash",
+      "fallback": "free-oauth (grok/chatgpt)"
+    },
+    "investment_policy": {
+      "state": "AVAILABLE",
+      "version": "1.0.0",
+      "status": "ACTIVE",
+      "next_review": "2026-11-01",
+      "risk_level": "MODERATE_AGGRESSIVE",
+      "max_drawdown_pct": 25.0,
+      "primary_objective": "Long-term growth with income generation \u2014 AI/technology sector tilt within diversified framework",
+      "target_return_pct": 7.0,
+      "max_single_position_pct": 8.0,
+      "active_trading_account": "schwab_taxable"
+    },
+    "model_portfolio": {
+      "state": "AVAILABLE",
+      "version": "1.0.0",
+      "status": "ACTIVE",
+      "equity_target_pct": 75.0,
+      "fixed_income_target_pct": 15.0,
+      "cash_target_pct": 5.0,
+      "actual_equity_pct": 43.9,
+      "drift_summary": [
+        {
+          "bucket": "equity",
+          "target_pct": 75.0,
+          "actual_pct": 43.9,
+          "drift_pct": -31.1,
+          "status": "DRIFT"
+        },
+        {
+          "bucket": "cash",
+          "target_pct": 5.0,
+          "actual_pct": 56.1,
+          "drift_pct": 51.1,
+          "status": "DRIFT"
+        }
+      ],
+      "rebalancing_threshold_pct": 4.0,
+      "income_target_usd": 55000,
+      "max_single_position_pct": 3.0
+    },
+    "cost_basis": {
+      "state": "AVAILABLE",
+      "positions_count": 20,
+      "loss_positions_count": 8,
+      "gain_positions_count": 12,
+      "total_unrealized_pnl": -10583.71,
+      "reconciled_count": 2,
+      "positions": [
+        {
+          "symbol": "SPCX",
+          "account": "schwab_rollover_ira",
+          "shares": 300.0,
+          "avg_cost_per_share": 168.46,
+          "total_cost_basis": 50537.35,
+          "current_price": 136.46,
+          "market_value": 40938.0,
+          "unrealized_pnl": -9599.35,
+          "unrealized_pnl_pct": -18.99,
+          "holding_months": 2,
+          "lot_count": 12,
+          "oldest_lot_date": "2026-06-16",
+          "reconciled": false,
+          "lot_data_status": "VERIFIED"
+        },
+        {
+          "symbol": "SPCX",
+          "account": "schwab_taxable",
+          "shares": 100.0,
+          "avg_cost_per_share": 168.46,
+          "total_cost_basis": 16845.78,
+          "current_price": 136.46,
+          "market_value": 13646.0,
+          "unrealized_pnl": -3199.78,
+          "unrealized_pnl_pct": -18.99,
+          "holding_months": 2,
+          "lot_count": 12,
+          "oldest_lot_date": "2026-06-16",
+          "reconciled": false,
+          "lot_data_status": "VERIFIED"
+        }
+      ]
+    },
+    "transactions": {
+      "state": "AVAILABLE",
+      "closed_trades_total": 121,
+      "recent_closed": [
+        {
+          "symbol": "AGMH",
+          "action": "",
+          "entry_date": "",
+          "exit_date": "2025-09-19",
+          "entry_price": null,
+          "exit_price": null,
+          "realized_pnl": 186.03,
+          "return_pct": null,
+          "account": "schwab_taxable",
+          "strategy": ""
+        },
+        {
+          "symbol": "AGMH",
+          "action": "",
+          "entry_date": "",
+          "exit_date": "2025-09-19",
+          "entry_price": null,
+          "exit_price": null,
+          "realized_pnl": -129.9,
+          "return_pct": null,
+          "account": "schwab_taxable",
+          "strategy": ""
+        }
+      ],
+      "open_lots_total": 102,
+      "active_lots": [
+        {
+          "symbol": "V",
+          "entry_date": "",
+          "entry_price": null,
+          "quantity": null,
+          "account": "schwab_rollover_ira",
+          "strategy": ""
+        },
+        {
+          "symbol": "FCNTX",
+          "entry_date": "",
+          "entry_price": null,
+          "quantity": null,
+          "account": "schwab_rollover_ira",
+          "strategy": ""
+        }
+      ],
+      "last_updated": "2026-09-11 07:31",
+      "all_symbols_traded": [
+        "ACHV",
+        "ADBE"
+      ],
+      "all_accounts": [
+        "schwab_rollover_ira",
+        "schwab_roth"
+      ]
+    },
+    "sectors": {
+      "state": "AVAILABLE",
+      "total_value": 1268140.59,
+      "sectors": [
+        {
+          "sector": "Industrials",
+          "value": 85864.86,
+          "weight_pct": 6.77,
+          "position_count": 7,
+          "symbols": [
+            "NOC",
+            "RTX",
+            "SPCX",
+            "BAH",
+            "XLI",
+            "XAR",
+            "SPCX"
+          ]
+        },
+        {
+          "sector": "Financial Services",
+          "value": 48723.38,
+          "weight_pct": 3.84,
+          "position_count": 4,
+          "symbols": [
+            "PFLT",
+            "CSWC",
+            "V",
+            "V"
+          ]
+        },
+        {
+          "sector": "Technology",
+          "value": 31869.2,
+          "weight_pct": 2.51,
+          "position_count": 2,
+          "symbols": [
+            "LDOS",
+            "ARKX"
+          ]
+        },
+        {
+          "sector": "Basic Materials",
+          "value": 25680.39,
+          "weight_pct": 2.03,
+          "position_count": 1,
+          "symbols": [
+            "XLB"
+          ]
+        },
+        {
+          "sector": "Consumer Defensive",
+          "value": 10705.0,
+          "weight_pct": 0.84,
+          "position_count": 1,
+          "symbols": [
+            "WMT"
+          ]
+        },
+        {
+          "sector": "Healthcare",
+          "value": 0.4,
+          "weight_pct": 0.0,
+          "position_count": 1,
+          "symbols": [
+            "SRNE"
+          ]
+        }
+      ],
+      "sector_count": 6,
+      "uncategorized_pct": 27.94,
+      "cash_pct": 56.06,
+      "concentration_flags": [],
+      "top_sectors": [
+        {
+          "sector": "Industrials",
+          "weight_pct": 6.77
+        },
+        {
+          "sector": "Financial Services",
+          "weight_pct": 3.84
+        },
+        {
+          "sector": "Technology",
+          "weight_pct": 2.51
+        },
+        {
+          "sector": "Basic Materials",
+          "weight_pct": 2.03
+        },
+        {
+          "sector": "Consumer Defensive",
+          "weight_pct": 0.84
+        }
+      ]
+    },
+    "holdings_detail": {
+      "state": "AVAILABLE",
+      "total_value": 1268140.59,
+      "position_count": 30,
+      "cash_positions": 4,
+      "equity_positions": 26,
+      "positions": [
+        {
+          "symbol": "SCHD",
+          "name": "SCHWAB U.S. DIVIDEND EQUITY ETF",
+          "account": "schwab_rollover_ira",
+          "sector": "",
+          "market_value": 341208.56,
+          "weight_pct": 26.91,
+          "day_change_pct": 0.38,
+          "quantity": 10000.25,
+          "current_price": 35.14,
+          "cost_basis": 19.05,
+          "unrealized_pnl": 341189.51,
+          "unrealized_pnl_pct": 1790996.17,
+          "is_cash": false,
+          "asset_type": ""
+        },
+        {
+          "symbol": "V",
+          "name": "VISA INC CLASS CLASS A",
+          "account": "schwab_roth",
+          "sector": "Financial Services",
+          "market_value": 48258.11,
+          "weight_pct": 3.81,
+          "day_change_pct": 0.88,
+          "quantity": 130.27,
+          "current_price": 382.85,
+          "cost_basis": null,
+          "unrealized_pnl": null,
+          "unrealized_pnl_pct": null,
+          "is_cash": false,
+          "asset_type": ""
+        }
+      ],
+      "accounts": {
+        "schwab_rollover_ira": {
+          "value": 1146348.18,
+          "weight_pct": 90.4,
+          "position_count": 15,
+          "top_symbols": [
+            "SCHD",
+            "SPCX"
+          ]
+        },
+        "schwab_taxable": {
+          "value": 67061.59,
+          "weight_pct": 5.29,
+          "position_count": 12,
+          "top_symbols": [
+            "SPCX",
+            "DIV"
+          ]
+        },
+        "schwab_roth": {
+          "value": 49730.82,
+          "weight_pct": 3.92,
+          "position_count": 2,
+          "top_symbols": [
+            "V"
+          ]
+        },
+        "alpaca_taxable_live": {
+          "value": 5000.0,
+          "weight_pct": 0.39,
+          "position_count": 1,
+          "top_symbols": []
+        }
+      },
+      "sector_breakdown": {
+        "Cash": 56.06,
+        "": 27.94,
+        "Industrials": 6.77,
+        "Financial Services": 3.84,
+        "Technology": 2.51,
+        "Basic Materials": 2.02,
+        "Consumer Defensive": 0.84,
+        "Healthcare": 0.0
+      },
+      "as_of": "2026-09-13T08:00:24-04:00",
+      "positions_as_of": "2026-09-11"
+    },
+    "cash_buying_power": {
+      "domain_id": "cash_buying_power",
+      "quality_state": "PARTIAL",
+      "collected_at": "2026-09-13T23:19:05.559302+00:00",
+      "source_ref": "<served-state-tree>/portfolios/state/holdings.json",
+      "as_of": "2026-09-13T08:00:24-04:00",
+      "data": {
+        "total_cash": 710933.07,
+        "total_buying_power_estimate": 710933.07,
+        "cash_positions": [
+          {
+            "symbol": "CASH",
+            "market_value": 5000.0,
+            "account": "alpaca_taxable_live"
+          },
+          {
+            "symbol": "CASH",
+            "market_value": 42712.15,
+            "account": "schwab_taxable"
+          },
+          {
+            "symbol": "CASH",
+            "market_value": 1472.71,
+            "account": "schwab_roth"
+          },
+          {
+            "symbol": "CASH",
+            "market_value": 661748.21,
+            "account": "schwab_rollover_ira"
+          }
+        ],
+        "cash_position_count": 4,
+        "as_of": "2026-09-13T08:00:24-04:00",
+        "source": "derived_from_holdings_NOT_verified_broker_buying_power"
+      },
+      "partial_fields": [
+        "verified_broker_buying_power"
+      ],
+      "gap_reason": "holdings_derived_cash_not_verified_broker_buying_power"
+    },
+    "retirement": {
+      "domain_id": "retirement",
+      "quality_state": "AVAILABLE",
+      "collected_at": "2026-09-13T23:19:05.559496+00:00",
+      "source_ref": "<served-state-tree>/portfolios/state/retirement_roadmap.json",
+      "as_of": "2026-09-11T09:16:02",
+      "data": {
+        "as_of": "2026-09-11",
+        "generated_at": "2026-09-11T09:16:02",
+        "current_age": 59.1,
+        "rate_assumptions": {
+          "conservative": 0.06,
+          "base": 0.07,
+          "aggressive": 0.1,
+          "fred_adjusted": false
+        },
+        "key_dates": {
+          "fra": "2034-08-20",
+          "disability_end": "2036-02-19",
+          "golden_window_start": "2036-02-19",
+          "golden_window_end": "2040-08-20",
+          "rmd_age": "2040-08-20",
+          "days_to_golden": 3448,
+          "years_to_golden": 9.4,
+          "loan_deadline": "2027-12-31",
+          "days_to_loan_deadline": 476
+        },
+        "accounts": {
+          "total": 1268011.0,
+          "roth": 49644.0,
+          "traditional": 1146396.0,
+          "taxable": 71971.0,
+          "roth_pct": 3.9
+        },
+        "loan": {
+          "balance": 21735,
+          "deadline": "2027-12-31",
+          "days_remaining": 476,
+          "monthly_to_payoff": 1370.0,
+          "urgent": false
+        },
+        "mortgage": {
+          "balance": 408347,
+          "rate": 0.04,
+          "maturity": "2042-01-01"
+        },
+        "timeline": [
+          {
+            "age": 59,
+            "year": 2026,
+            "conservative": 1268011.0,
+            "base": 1268011.0,
+            "aggressive": 1268011.0,
+            "milestone": "Age 59 \u2014 No Early Withdrawal Penalty"
+          },
+          {
+            "age": 60,
+            "year": 2027,
+            "conservative": 1344751.0,
+            "base": 1370112.0,
+            "aggressive": 1396740.0,
+            "milestone": ""
+          }
+        ],
+        "roth_ladder": [
+          {
+            "year": 2026,
+            "age": 59.1,
+            "conversion": 25000,
+            "balance": 78119.0,
+            "golden": false
+          },
+          {
+            "year": 2027,
+            "age": 60.1,
+            "conversion": 25000,
+            "balance": 108587.0,
+            "golden": false
+          }
+        ],
+        "income_floor": {
+          "ss_monthly": 3800,
+          "portfolio_4pct": 4227.0,
+          "schd_dividends": 2747.0,
+          "total_monthly": 8027.0,
+          "vs_current_disability": 4227.0
+        },
+        "golden_window": {
+          "start_age": 68.5,
+          "end_age": 73,
+          "years_available": 4.5,
+          "optimal_annual_conversion": 50000,
+          "projected_roth_at_start": 443068.0
+        },
+        "_authority_class": "AUTHORITATIVE_POLICY"
+      }
+    },
+    "reentry": {
+      "domain_id": "reentry",
+      "quality_state": "AVAILABLE",
+      "collected_at": "2026-09-13T23:19:05.562234+00:00",
+      "source_ref": "<served-state-tree>/runtime/reentry_decision_desk_latest.json",
+      "as_of": "2026-09-13T23:12:54.524386+00:00",
+      "data": {
+        "ok": true,
+        "version": "reentry-decision-desk-v2-data-broker",
+        "computed_at": "2026-09-13T23:12:54.524386+00:00",
+        "source": "reentry_decision_desk",
+        "projection": "cio_s3_status_v1",
+        "rows": [
+          {
+            "symbol": "ARKQ",
+            "status": "READY",
+            "intel_state": "READY TO REVIEW",
+            "held": false,
+            "price": 121.58,
+            "entry_low": 121.5,
+            "entry_high": 124.5,
+            "rr": 4.05,
+            "advisory_action": "Tactical Re-Entry / Buy Limit"
+          },
+          {
+            "symbol": "KBR",
+            "status": "READY",
+            "intel_state": "READY TO REVIEW",
+            "held": false,
+            "price": 36.59,
+            "entry_low": 36.5,
+            "entry_high": 36.9,
+            "rr": 9.26,
+            "advisory_action": "Tactical Re-Entry / Buy Limit"
+          }
+        ],
+        "candidates": [
+          {
+            "symbol": "ARKQ",
+            "status": "READY",
+            "intel_state": "READY TO REVIEW",
+            "held": false,
+            "price": 121.58,
+            "entry_low": 121.5,
+            "entry_high": 124.5,
+            "rr": 4.05,
+            "advisory_action": "Tactical Re-Entry / Buy Limit"
+          },
+          {
+            "symbol": "KBR",
+            "status": "READY",
+            "intel_state": "READY TO REVIEW",
+            "held": false,
+            "price": 36.59,
+            "entry_low": 36.5,
+            "entry_high": 36.9,
+            "rr": 9.26,
+            "advisory_action": "Tactical Re-Entry / Buy Limit"
+          }
+        ],
+        "counts": {
+          "ready": 3,
+          "near": 25,
+          "block": 78,
+          "total": 106
+        },
+        "freshness": {
+          "resistance_generated_at": "2026-09-11T20:40:48.221595+00:00",
+          "price_age_h_median": 43.64,
+          "price_age_h_max_actionable": 54.81,
+          "price_age_h_max": 54.81,
+          "stale_symbol_count": 0,
+          "heat_pct": 0.08,
+          "symbol_count": 106,
+          "actionable_count": 28
+        }
+      }
+    },
+    "reentry_decision_desk": {
+      "domain_id": "reentry",
+      "quality_state": "AVAILABLE",
+      "collected_at": "2026-09-13T23:19:05.564947+00:00",
+      "source_ref": "<served-state-tree>/runtime/reentry_decision_desk_latest.json",
+      "as_of": "2026-09-13T23:12:54.524386+00:00",
+      "data": {
+        "ok": true,
+        "version": "reentry-decision-desk-v2-data-broker",
+        "computed_at": "2026-09-13T23:12:54.524386+00:00",
+        "source": "reentry_decision_desk",
+        "projection": "cio_s3_status_v1",
+        "rows": [
+          {
+            "symbol": "ARKQ",
+            "status": "READY",
+            "intel_state": "READY TO REVIEW",
+            "held": false,
+            "price": 121.58,
+            "entry_low": 121.5,
+            "entry_high": 124.5,
+            "rr": 4.05,
+            "advisory_action": "Tactical Re-Entry / Buy Limit"
+          },
+          {
+            "symbol": "KBR",
+            "status": "READY",
+            "intel_state": "READY TO REVIEW",
+            "held": false,
+            "price": 36.59,
+            "entry_low": 36.5,
+            "entry_high": 36.9,
+            "rr": 9.26,
+            "advisory_action": "Tactical Re-Entry / Buy Limit"
+          }
+        ],
+        "candidates": [
+          {
+            "symbol": "ARKQ",
+            "status": "READY",
+            "intel_state": "READY TO REVIEW",
+            "held": false,
+            "price": 121.58,
+            "entry_low": 121.5,
+            "entry_high": 124.5,
+            "rr": 4.05,
+            "advisory_action": "Tactical Re-Entry / Buy Limit"
+          },
+          {
+            "symbol": "KBR",
+            "status": "READY",
+            "intel_state": "READY TO REVIEW",
+            "held": false,
+            "price": 36.59,
+            "entry_low": 36.5,
+            "entry_high": 36.9,
+            "rr": 9.26,
+            "advisory_action": "Tactical Re-Entry / Buy Limit"
+          }
+        ],
+        "counts": {
+          "ready": 3,
+          "near": 25,
+          "block": 78,
+          "total": 106
+        },
+        "freshness": {
+          "resistance_generated_at": "2026-09-11T20:40:48.221595+00:00",
+          "price_age_h_median": 43.64,
+          "price_age_h_max_actionable": 54.81,
+          "price_age_h_max": 54.81,
+          "stale_symbol_count": 0,
+          "heat_pct": 0.08,
+          "symbol_count": 106,
+          "actionable_count": 28
+        }
+      }
+    }
+  },
+  "health": {
+    "domains_total": 16,
+    "domains_available": 16,
+    "domains_missing": [],
+    "domains_stale": [],
+    "ok": true
+  }
+}

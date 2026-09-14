@@ -199,6 +199,10 @@
     {
       "unit": "tradeai-gap-resolution.timer",
       "_why": "One Source of Truth Phase 7 monitor (2026-09-13): gaps open >2h with no attempt, vectors failing, any vector that ran a retired provider."
+    },
+    {
+      "unit": "tradeai-operator-answer-quality.timer",
+      "_why": "Operator answer-quality monitor (2026-09-13): replies without Sources:, false 'empty' claims about house data, book dumps for a named symbol, pendings never closed."
     }
   ],
   "flags": [

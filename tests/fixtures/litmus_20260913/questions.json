@@ -1,0 +1,26 @@
+{
+  "_fixture": "The three operator questions of 2026-09-13 (Telegram message_ids 51679, 51681, 51668)",
+  "questions": [
+    {
+      "id": "schg",
+      "message_id": "51679",
+      "asked_at": "2026-09-13T22:50:54+00:00",
+      "text": "Is now a good time to get back into schg",
+      "incident": "answered with the WHOLE re-entry book (READY TO REVIEW / NEAR ENTRY), not SCHG's row"
+    },
+    {
+      "id": "seasonality",
+      "message_id": "51681",
+      "asked_at": "2026-09-13T22:56:06+00:00",
+      "text": "How does the market normally perform in September and normally during a mid-cycle election term what sectors should I be concentrated on going into the third and fourth quarter",
+      "incident": "model prose; claimed cash_pct/buying_power/holdings 'all empty' while the snapshot carried total_cash 710,933 and sector weights; no source stated"
+    },
+    {
+      "id": "spacex",
+      "message_id": "51668",
+      "asked_at": "2026-09-13T16:32:24+00:00",
+      "text": "What's the outlook for SpaceX in the next 3 months and what has its performance been over the last month what are options closing on SpaceX was the end of the year and analysts expectation of targets",
+      "incident": "pending opr_5bc20393b457 opened for a private company; sat open 72 min"
+    }
+  ]
+}

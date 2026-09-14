@@ -1483,6 +1483,21 @@
         "path": "data/runtime/gap_resolution_last_run.json"
       },
       "note": "Reports gaps open >2h with no resolver attempt, vectors with >=3 errors today, and any receipt where a RETIRED provider ran (must be 0). Phase 7 of One Source of Truth made stale/missing a declared, budgeted, receipted sequence of vectors (scripts/lib/gap_resolver.py); a declared sequence that never runs is the recurring defect here, so the receipts are measured against the gaps. Receipt written every run, findings or not. Unit files proposed in config/systemd/user; NOT installed -- operator-only (AGENTS 9.3)."
+    },
+    {
+      "lane_id": "operator-answer-quality-audit",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-operator-answer-quality.timer"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/operator_answer_quality_last_run.json"
+      },
+      "note": "Measures the last 24h of operator replies: NO_SOURCES_LINE, WENT_OUTSIDE_UNSTATED, FALSE_EMPTY_CLAIM (names the evidence rule: provenance / snapshot_health / store_health), BOOK_DUMP_FOR_NAMED_SYMBOL, PENDING_NEVER_CLOSED, MODEL_UNLABELLED. 2026-09-13: 'get back into schg' got the whole re-entry book; a sector question claimed cash/holdings empty while the CIO snapshot carried them; no reply named its sources. Receipt written every run, findings or not. Unit files proposed in config/systemd/user; NOT installed -- operator-only (AGENTS 9.3)."
     }
   ],
   "undeclared_baseline": [
