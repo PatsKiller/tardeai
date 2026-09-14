@@ -7,6 +7,11 @@ Pure functions. No DB writes. No proposal creation. No trades/orders.
 import json
 from pathlib import Path
 
+try:
+    from lib.finviz_csv import enrichment_avg_volume_shares, enrichment_market_cap_billions
+except ImportError:  # pragma: no cover -- repo-root import path
+    from scripts.lib.finviz_csv import enrichment_avg_volume_shares, enrichment_market_cap_billions
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 
@@ -114,7 +119,9 @@ def score_dividend_income_candidate(candidate: dict) -> dict:
 
     # ── Income Safety / Fundamentals (0-15 pts) ──
     pe = enrichment.get("pe") or enrichment.get("trailingPE")
-    market_cap = enrichment.get("market_cap_b")
+    # Finviz enrichment stores Market Cap in MILLIONS under ``market_cap_b``;
+    # read raw, every stock over $2M scored "institutional" (2026-09-14).
+    market_cap = enrichment_market_cap_billions(enrichment)
     roe = enrichment.get("roe_pct")
     debt_eq = enrichment.get("total_debt_equity") or enrichment.get("lt_debt_equity")
     safety_score = 0
@@ -146,13 +153,16 @@ def score_dividend_income_candidate(candidate: dict) -> dict:
         passed.append(f"debt/equity {float(debt_eq):.1f} (manageable)")
 
     # ── Liquidity (0-10 pts) ──
-    avg_vol = (candidate.get("avg_volume") or enrichment.get("avg_vol_m") or
-               enrichment.get("volume_base"))
+    # Millions of shares/day. The enrichment cache's ``avg_vol_m`` is Finviz
+    # 'Average Volume' in THOUSANDS (HPE 21374.39 = 21.4M); read raw as millions,
+    # any name trading 1,000 shares a day scored fully liquid (2026-09-14).
+    enrich_shares = enrichment_avg_volume_shares(enrichment)
+    avg_vol = (candidate.get("avg_volume")
+               or (enrich_shares / 1e6 if enrich_shares is not None else None))
     liq_score = 0
 
     if avg_vol is not None:
         vol = float(avg_vol)
-        # avg_vol_m is in millions for the enrichment cache
         if vol >= 1.0:  # 1M+ shares/day
             liq_score = 10
             passed.append(f"avg volume {vol:.1f}M (liquid)")

@@ -130,6 +130,30 @@ def _alpaca_creds():
             _env("ALPACA_SECRET_KEY") or _env("ALPACA_PAPER_SECRET_KEY") or _env("APCA_API_SECRET_KEY"))
 
 
+def _alpaca_prev_close(snap: dict):
+    """The last completed session's close, relative to the quote being stored.
+
+    Alpaca's ``prevDailyBar`` is the bar BEFORE ``dailyBar``. Before today's first
+    bar exists (overnight, pre-market, a Monday morning) ``dailyBar`` is still the
+    previous session, so ``prevDailyBar`` is two sessions back. Measured
+    2026-09-14 07:15-09:00 ET: HPE stored prev_close 55.23 (Thursday) against a
+    Friday close of 62.09 (Yahoo), so day_change_pct read +12.4% for a stock that
+    had not traded; 7 of 9 litmus symbols were wrong the same way.
+    """
+    daily = snap.get("dailyBar") or {}
+    prev = (snap.get("prevDailyBar") or {}).get("c")
+    try:
+        from zoneinfo import ZoneInfo
+        bar_day = datetime.fromisoformat(str(daily.get("t")).replace("Z", "+00:00")).astimezone(
+            ZoneInfo("America/New_York")).date()
+        today = datetime.now(ZoneInfo("America/New_York")).date()
+    except Exception:
+        return prev
+    if daily.get("c") and bar_day < today:
+        return daily.get("c")
+    return prev
+
+
 def ingest_alpaca_quotes(symbols: list = None) -> dict:
     """Live intraday quotes via Alpaca snapshots (IEX free feed). Primary source — no rate limits,
     unlike yfinance (rate-limited + once-daily). Batches up to 200 symbols/request. Returns the
@@ -158,7 +182,7 @@ def ingest_alpaca_quotes(symbols: list = None) -> dict:
                 price = (s.get("latestTrade") or {}).get("p") or (s.get("dailyBar") or {}).get("c")
                 if not price:
                     continue
-                prev = (s.get("prevDailyBar") or {}).get("c")
+                prev = _alpaca_prev_close(s)
                 vol = (s.get("dailyBar") or {}).get("v")
                 chg_pct = round((price - prev) / prev * 100, 4) if prev else None
                 rc = write_market_quotes(cur, [{"symbol": sym, "price": price, "prev_close": prev,
@@ -586,7 +610,7 @@ def test():
     # Context test
     print("\nyfinance context for V:")
     print(f"  {get_yfinance_context('V')}")
-    print(f"\nMacro context:")
+    print("\nMacro context:")
     print(f"  {get_macro_context()}")
 
     # Counts

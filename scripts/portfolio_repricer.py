@@ -649,7 +649,7 @@ def _recalc_totals(portfolio: Dict) -> None:
         drift_pct = abs(gt - prev_total) / prev_total * 100
         if drift_pct > 25:
             print(f"  [repricer] ⛔ TOTAL SANITY FAIL: ${prev_total:,.0f} → ${gt:,.0f} ({drift_pct:.1f}% drift)")
-            print(f"  [repricer]   Likely data corruption. Keeping previous total.")
+            print("  [repricer]   Likely data corruption. Keeping previous total.")
             return  # abort total update, keep previous values
 
     # total_cash is written here for the same reason as in portfolio_loader: it
@@ -866,6 +866,64 @@ def recompute_and_publish_portfolio_aggregate(state_dir: Path) -> dict[str, Any]
             "total_value": portfolio.get("portfolio_totals", {}).get("total_value")}
 
 
+#: A repriced close further than this from the latest live quote is not written.
+CLOSE_VS_QUOTE_MAX_DEVIATION = 0.50
+
+
+def _latest_quote_prices(cur, symbols) -> dict:
+    """{symbol: latest market_quotes price within 3 days}. Read-only; empty on any error."""
+    syms = sorted({str(s).upper() for s in symbols if s})
+    if not syms:
+        return {}
+    try:
+        cur.execute(
+            "SELECT DISTINCT ON (symbol) symbol, price FROM market_quotes "
+            "WHERE symbol = ANY(%s) AND fetched_at > now() - interval '3 days' AND price > 0 "
+            "ORDER BY symbol, fetched_at DESC", (syms,))
+        return {str(s).upper(): float(p) for s, p in cur.fetchall()}
+    except Exception:
+        return {}
+
+
+def close_price_for_holding(h: dict, quote_price=None):
+    """The per-share price to store as today's close for one holding, or None to skip.
+
+    2026-09-14: ticker_prices showed XLI 7.51 (real ~172), SCHG 8.03 (real ~35.16),
+    SCHD 18.64 (real ~34.5) -- the repricer wrote the holding's broker ``price``,
+    and for positions under one share the broker snapshot's price is the POSITION
+    VALUE (schwab parsing divides marketValue by max(quantity, 1)). XLI's sector
+    relative strength then read -94.9 and reached an operator answer.
+
+    Order: the canonical mark the repricer itself set from a live quote; otherwise
+    market_value / shares; the broker ``price`` only when it agrees with that.
+    Anything more than 50% away from the latest live quote is refused.
+    """
+    try:
+        shares = float(h.get("shares") or 0)
+    except (TypeError, ValueError):
+        shares = 0.0
+    candidates = []
+    if h.get("canonical_mark") and h.get("canonical_mark_type") != "proxy":
+        candidates.append(h.get("canonical_mark"))
+    mv = h.get("market_value")
+    if mv and shares > 0:
+        candidates.append(float(mv) / shares)
+    raw = h.get("price")
+    if raw and not (0 < shares < 1 and mv and abs(float(raw) - float(mv)) < 0.01):
+        candidates.append(raw)
+    for c in candidates:
+        try:
+            px = float(c)
+        except (TypeError, ValueError):
+            continue
+        if px <= 0:
+            continue
+        if quote_price and abs(px - float(quote_price)) / float(quote_price) > CLOSE_VS_QUOTE_MAX_DEVIATION:
+            continue
+        return px
+    return None
+
+
 def _sync_ticker_prices(portfolio, root):
     """Write each held symbol's repriced close into ticker_prices for today (today's row is replaced
     if present, else created) so surfaces reading ticker_prices match holdings.json. Best-effort;
@@ -885,9 +943,11 @@ def _sync_ticker_prices(portfolio, root):
                          dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
                          password=os.getenv("DB_PASSWORD"))
     cur = c.cursor()
+    latest_quotes = _latest_quote_prices(cur, [h.get("symbol") for h in portfolio.get("holdings", [])])
     for h in portfolio.get("holdings", []):
-        sym, px = h.get("symbol"), h.get("price")
-        if not sym or sym in seen or h.get("is_cash") or not px or px <= 0:
+        sym = h.get("symbol")
+        px = close_price_for_holding(h, latest_quotes.get(sym))
+        if not sym or sym in seen or h.get("is_cash") or not px:
             continue
         seen.add(sym)
         rows.append({"symbol": sym, "price_date": None, "close_price": px})

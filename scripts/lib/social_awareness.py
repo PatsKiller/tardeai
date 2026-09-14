@@ -171,12 +171,16 @@ def _merge_enrichment_cache(row: Dict[str, Any], enc: Optional[Dict[str, Any]]) 
         vb = enc.get("volume_base")
         if vb is not None:
             try:
-                _fill_volume(row, float(vb) * 1_000_000)
+                # symbol_enrichment maps Finviz 'Volume' (plain shares) to
+                # volume_base by header since 2026-09-07; x1,000,000 inflated it.
+                _fill_volume(row, float(vb))
             except (TypeError, ValueError):
                 pass
         elif enc.get("avg_vol_m") is not None:
             try:
-                _fill_volume(row, float(enc["avg_vol_m"]) * 1_000_000)
+                # Finviz 'Average Volume' is in THOUSANDS of shares (HPE 21374.39 =
+                # 21.4M on 2026-09-14); x1,000,000 overstated volume 1,000-fold.
+                _fill_volume(row, float(enc["avg_vol_m"]) * 1_000)
             except (TypeError, ValueError):
                 pass
 

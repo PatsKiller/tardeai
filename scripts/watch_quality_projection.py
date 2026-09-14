@@ -219,8 +219,16 @@ def assemble_projection_facts(
         _value(fundamentals_sources, "market_cap_usd_millions", "market_cap_m"),
     )
     if market_cap_m is None:
-        market_cap_b = _first_num(_value(fundamentals_sources, "market_cap_b"))
-        market_cap_m = market_cap_b * 1000 if market_cap_b is not None else None
+        # Same contract as watch_quality_projection_v2: the Finviz cache's
+        # ``market_cap_b`` is already MILLIONS (mislabelled); only the valuation
+        # supplement uses the suffix literally. x1000 on the Finviz value
+        # overstated market cap 1,000-fold.
+        finviz_mc = _first_num(_value([packet_fundamentals, finviz], "market_cap_b"))
+        if finviz_mc is not None:
+            market_cap_m = finviz_mc
+        else:
+            market_cap_b = _first_num(_value([supplement, watch_row], "market_cap_b"))
+            market_cap_m = market_cap_b * 1000 if market_cap_b is not None else None
     if market_cap_m is None:
         market_cap_raw = _first_num(_value(fundamentals_sources, "market_cap", "marketCap"))
         if market_cap_raw is not None:
