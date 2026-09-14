@@ -130,7 +130,14 @@ def test_the_operator_desk_loop_names_all_three_of_its_calls():
 
 
 def test_chat_json_passes_task_type_and_still_rejects_local_options(monkeypatch):
-    import hermes_llm_failover as hf
+    # Load this tree's copy by path: an earlier test in the one-process run may have
+    # imported another checkout's hermes_llm_failover under the same name.
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("hermes_llm_failover_label_split", ROOT / "scripts" / "hermes_llm_failover.py")
+    hf = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = hf
+    spec.loader.exec_module(hf)
 
     seen = {}
 
