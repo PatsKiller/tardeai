@@ -288,6 +288,55 @@ def ingest_quotes(symbols: list = None) -> dict:
 
 # ── Alpha Vantage ────────────────────────────────────────────────────
 
+def _alpha_vantage_symbols(cur, limit: int) -> list:
+    """Held and directive-watch names first, least recently fetched first.
+
+    ``_get_symbols()[:limit]`` took the first five rows of an unordered UNION --
+    mostly micro-caps Alpha Vantage does not cover -- so each Monday stored ONE
+    symbol (CLF 09-14, POLA 08-24, RGA/LVLU 08-03) and the names the operator
+    actually holds were never refreshed.
+    """
+    held: list = []
+    try:
+        doc = json.loads((PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text(encoding="utf-8"))
+        held = sorted({str(h.get("symbol") or "").upper() for h in (doc.get("holdings") or [])
+                       if not h.get("is_cash") and str(h.get("symbol") or "").isalpha()})
+    except Exception:
+        held = []
+    try:
+        # Priority first (the real book, then names the operator directs, then
+        # paper positions, then the active watchlist); oldest fetch within a tier.
+        cur.execute("""
+            WITH wanted AS (
+                SELECT unnest(%s::text[]) AS symbol, 0 AS pri
+                UNION ALL
+                SELECT symbol, 1 FROM watchlist_items WHERE in_directive_watch = TRUE AND symbol IS NOT NULL
+                UNION ALL
+                SELECT symbol, 2 FROM paper_trades WHERE status = 'open' AND symbol IS NOT NULL
+                UNION ALL
+                SELECT symbol, 3 FROM watchlist_items WHERE status = 'active' AND symbol IS NOT NULL
+            ), best AS (SELECT upper(symbol) AS symbol, min(pri) AS pri FROM wanted GROUP BY 1),
+            last AS (SELECT symbol, max(fetched_at) AS at FROM fundamental_data
+                     WHERE source = 'alpha_vantage' GROUP BY symbol)
+            SELECT b.symbol FROM best b LEFT JOIN last l ON l.symbol = b.symbol
+            WHERE b.symbol !~ '[^A-Z]' AND length(b.symbol) <= 5
+              AND b.symbol !~ '^[A-Z]{4}X$'  -- mutual funds (AMANX): OVERVIEW has no coverage
+              AND (l.at IS NULL OR l.at < now() - interval '6 days')
+            ORDER BY b.pri, l.at NULLS FIRST, b.symbol
+            LIMIT %s
+        """, (held, int(limit)))
+        rows = [r[0] for r in cur.fetchall()]
+        if rows:
+            return rows
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [av] symbol selection query failed, using the classification universe: {exc}")
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+    return _get_symbols()[:limit]
+
+
 def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
     """Fetch company fundamentals via Alpha Vantage (free tier: 25 calls/day)."""
     import urllib.request
@@ -296,11 +345,10 @@ def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
         print("[alpha-vantage] No ALPHA_VANTAGE_API_KEY — skipping")
         return {"source": "alpha_vantage", "fetched": 0, "reason": "no_key"}
 
-    if not symbols:
-        symbols = _get_symbols()[:limit]  # Free tier limited
-
     conn = _get_conn()
     cur = conn.cursor()
+    if not symbols:
+        symbols = _alpha_vantage_symbols(cur, limit)  # Free tier limited
     fetched = 0
 
     for sym in symbols[:limit]:
@@ -311,6 +359,12 @@ def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
                 data = json.loads(resp.read())
 
             if "Symbol" not in data:
+                # A rate-limit or quota notice arrives as HTTP 200 with
+                # "Information"/"Note" and no "Symbol". It was skipped silently:
+                # 4 of 5 symbols vanished every Monday with nothing logged.
+                notice = data.get("Information") or data.get("Note") or data.get("Error Message") or "no Symbol in response"
+                print(f"  [av] {sym}: not stored — {str(notice)[:120]}")
+                last_exc = str(notice)[:160]
                 continue
 
             metrics = {

@@ -18,17 +18,43 @@ _last_ok: dict[str, float] = {}
 OK_MIN_INTERVAL_S = float(os.getenv("DATA_SOURCE_REPORT_OK_INTERVAL_S", "60"))
 
 
+_ENV_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), ".env")
+_warned = False
+
+
+def _db_setting(key: str, default: str = "") -> str:
+    """os.environ first, then the project .env (names only are read, never printed).
+
+    2026-09-14: cron runs ``external_market_data_ingest.py --fundamentals``
+    without sourcing .env. The script's own writes read .env directly and
+    succeeded, but this connection had no DB_PASSWORD, failed inside the
+    swallowed exception, and alpha_vantage's health row stayed 'unknown' from
+    2026-05-09 while the lane ran every Monday.
+    """
+    val = os.getenv(key, "")
+    if val:
+        return val
+    try:
+        with open(_ENV_FILE, encoding="utf-8") as fh:
+            for line in fh:
+                if line.startswith(f"{key}="):
+                    return line.split("=", 1)[1].strip().strip("'\"")
+    except OSError:
+        pass
+    return default
+
+
 def _own_conn():
     global _conn
     if _conn is not None and not _conn.closed:
         return _conn
     import psycopg2
     _conn = psycopg2.connect(
-        host=os.getenv("DB_HOST", "localhost"),
-        port=int(os.getenv("DB_PORT", "5432")),
-        dbname=os.getenv("DB_NAME", "trade_ai"),
-        user=os.getenv("DB_USER", "trade_ai"),
-        password=os.getenv("DB_PASSWORD", ""),
+        host=_db_setting("DB_HOST", "localhost"),
+        port=int(_db_setting("DB_PORT", "5432")),
+        dbname=_db_setting("DB_NAME", "trade_ai"),
+        user=_db_setting("DB_USER", "trade_ai"),
+        password=_db_setting("DB_PASSWORD", ""),
         connect_timeout=5,
         application_name="data_source_report",
     )
@@ -68,7 +94,14 @@ def report_source(source_key: str, ok: bool, rows: int | None = None,
                        last_error=%s, updated_at=NOW()
                    WHERE source_key=%s""",
                 ((error or "")[:200], source_key))
-    except Exception:
+    except Exception as exc:
+        global _warned
+        if not _warned:
+            # Never raises, but never silent either: a lane whose health cannot be
+            # recorded reads "unknown" forever (alpha_vantage, 2026-05-09..09-14).
+            import sys
+            print(f"[data_source_report] could not record {source_key}: {type(exc).__name__}", file=sys.stderr)
+            _warned = True
         try:
             if _conn is not None:
                 _conn.close()
