@@ -450,6 +450,14 @@ def collect_report(*, now: Optional[datetime] = None) -> dict[str, Any]:
         # check, no coverage regression alarm, and build_catalyst_graph had no
         # scheduler. Deterministic only — no model runs in this lane.
         lanes.append(collect_identity_health(now=now))
+    # The CIO Hermes research queue (operator questions, plan research). Until 2026-09-14 no
+    # lane read it: 62% of its requests failed in a week while every lane here was green.
+    if os.getenv("RESEARCH_LANE_HEALTH_CIO_HERMES", "1").strip().lower() not in {"0", "false", "off", "no"}:
+        try:
+            from scripts.lib.cio_hermes_queue_health import collect_cio_hermes_queue_health
+        except Exception:
+            from cio_hermes_queue_health import collect_cio_hermes_queue_health  # type: ignore
+        lanes.append(collect_cio_hermes_queue_health(now=now))
     firing = [r for r in lanes if not r["ok"]]
     return {
         "schema": SCHEMA,

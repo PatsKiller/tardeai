@@ -597,6 +597,17 @@ GATES = [
             # 2026-09-14 Research Escalation Circle phase 1: question GUID, free-channel
             # laps, the grounded Context Analyzer, automatic check-ins.
             "tests/test_research_circle_20260914.py",
+            # 2026-09-14 spend truth: real spend by provider/model/process, peak vs off-peak,
+            # caps on measured cost, daily/weekly/monthly Telegram spend reports.
+            "tests/test_llm_spend_20260914.py",
+            # 2026-09-14 13:47: a 4,571-character desk answer was refused by Telegram and logged as replied.
+            "tests/test_desk_reply_delivery_20260914.py",
+            # 2026-09-14 "Gibberish": desk answers rendered for a phone, parts at paragraph breaks.
+            "tests/test_telegram_desk_render_20260914.py",
+            # 2026-09-14 research heartbeat: 62% of CIO Hermes requests failed in a week with
+            # no alarm; lost projection writes, guard false positives, unreplayed transients,
+            # and an escalation handler whose retries all exited 127.
+            "tests/test_research_heartbeat_20260914.py",
             # 2026-09-14 Telegram: rich layouts, and a written-but-undelivered reply is a finding.
             "tests/test_telegram_rich_20260914.py",
             "tests/test_answer_quality_reply_not_delivered_20260914.py",
@@ -1297,6 +1308,8 @@ GATES = [
         "comms_ledger_truth",
         [
             "tests/test_comms_ledger_says_what_happened.py",
+            # 2026-09-14: repeated alerts collided with the first event ever sent.
+            "tests/test_comms_repeat_alerts_20260914.py",
         ],
     ),
     (

@@ -4,6 +4,52 @@ Status:      ACTIVE
 as_of:       2026-09-13T23:59:00-04:00
 Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
 
+## 2026-09-14 — Spend truth: real dollars by provider, model and process; caps on measured cost
+
+MATURITY_IMPACT: the operator can see and receive real AI and search spend daily, weekly and monthly, with the peak / off-peak split. Caps compare against measured cost, and one durable $2.00/day global cap replaces three conflicting overrides. Execution posture UNCHANGED.
+
+- **Three spend numbers were conflated.** Week to 09-14:
+  - real $4.73;
+  - counted $5.50;
+  - worst-case projected $214.61 for advisory opinions.
+  - A $0.50 cap therefore refused research on phantom money. The live cap was a forgotten $7.00 backfill override; the portfolio server carried $1.50.
+- **Measured projection.** `calibrated_projected_usd`: p90 of settled cost × 1.5, capped at the worst case.
+- **Test rows.** The cap-race test ids are now `test_caprace_` (as `caprace_` they added $1.20 on 09-09).
+- **Spend surfaces.**
+  - `lib/llm_spend.py` and `GET /api/v2/consumption/spend`;
+  - the Command Center Spend panel;
+  - `llm_spend_report.py` daily, weekly and monthly Telegram texts.
+- **First measurement.** Week of 09-07: $5.45 real, 38% on peak; Advisory Desk ran 8,424 scheduled calls on peak.
+- **Docs.** `docs/LLM_SPEND.md`.
+
+## 2026-09-14 — The research heartbeat: detected, healed, locked
+
+MATURITY_IMPACT: the CIO Hermes research queue has a monitor, heals itself, and no longer loses requests. Execution posture UNCHANGED: research is READ_ONLY_ADVISORY, and the execution-language guard still refuses advice.
+
+- **Unmonitored queue.** 136 of 219 CIO Hermes requests failed in 7 days (62%) and nothing alarmed: the monitors watched the neighbouring `hermes_external_research` store.
+  - New lane `cio-hermes-queue` covers failure rate, no completions, stalled queue, lost requests and unclassified failures.
+  - The Health Agent now scores research lanes.
+- **Lost requests.** 32 requests vanished from `hermes_research_projection.json` because writers were unlocked. They included re-entry research for DIVI, AUUD, CACI, DXCM, IBIO and CAST.
+  - `projection_transaction()` now locks every writer.
+  - `restore_lost_requests` re-projects losses under 48 h. The dry run found 12.
+- **Transients were never retried.** `replay_retryable_failures` now re-queues provider, timeout and truncation failures once, after the breaker. Circuit-open and dropped connections now classify as provider errors.
+- **Guard false positives.** Research quoting "Strong Sell" was refused.
+  - Third-party labels are masked first.
+  - The bridge rewrites a refused draft once.
+  - Advice still refuses.
+- **Dead auto-fix.** The escalation handler's retries exited 127 36,365 times; the doubled interpreter path is fixed.
+
+## 2026-09-14 — A repeated alert is recorded as a new communication
+
+MATURITY_IMPACT: the Communications page records every send, not only the first alert that opened a given way. Execution posture UNCHANGED.
+
+- **The collision.** The ledger identity of a plain Telegram send was producer + type + the first 48 characters + action, so every later alert with the same opening collided with the first event ever sent and inherited its delivery row.
+  - Measured: 638 events for 638 subjects in 7 days, and 14,163 illegal settles in `claude_escalation.log` on 09-14.
+  - The 13:15 GO alerts that reached the operator stayed SUPPRESSED from the 12:15 run.
+- **The fix.** `_best_effort_comms_publish` sets `observation_version` to a body hash plus the UTC minute.
+  - A retry of the same text in the same minute still collides.
+  - Grouping (`subject_key`) is unchanged.
+
 ## 2026-09-14 — Operator answers come back, prices are proven, Telegram is edited (PRs #1004–#1009, `59d02f788` → `32897e80a`)
 
 MATURITY_IMPACT: operator research questions now close with the research that was done. Stored prices and Finviz fields are checked against an independent source every day. Every Telegram message passes one editor, which is in shadow mode first. Execution posture UNCHANGED: no order, stop, size or broker write. The Schwab transport itself was not edited.
