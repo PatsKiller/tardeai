@@ -167,6 +167,56 @@ CIRCUIT_ERROR_THRESHOLD = int(os.environ.get("CIO_BRIDGE_CIRCUIT_ERRORS", "8"))
 CIRCUIT_COOLDOWN_SEC = int(os.environ.get("CIO_BRIDGE_CIRCUIT_COOLDOWN_SEC", "900"))
 
 
+# ── Upstream deadline and in-flight slots (2026-09-14 bridge wedge) ────
+# From 14:45 ET DeepSeek held non-streaming requests ~906 s while trickling keep-alive bytes, so the
+# 90 s per-read timeout never fired, and this single-threaded server queued every caller (CIO research,
+# desk answers, advisory) behind one held call for ~90 minutes. Each call now has a wall-clock deadline,
+# the server is threaded with a bounded number of provider calls, and GET /health reports what is in flight.
+UPSTREAM_DEADLINE_S = float(os.environ.get("CIO_BRIDGE_UPSTREAM_DEADLINE_S", "150"))
+UPSTREAM_READ_TIMEOUT_S = float(os.environ.get("CIO_BRIDGE_UPSTREAM_READ_TIMEOUT_S", "60"))
+MAX_INFLIGHT = int(os.environ.get("CIO_BRIDGE_MAX_INFLIGHT", "4"))
+_INFLIGHT: dict[str, float] = {}
+_INFLIGHT_LOCK = threading.Lock()
+_INFLIGHT_SLOTS = threading.BoundedSemaphore(max(1, MAX_INFLIGHT))
+_STARTED_AT = time.time()
+
+
+class UpstreamDeadlineExceeded(Exception):
+    """The provider kept one request open past UPSTREAM_DEADLINE_S."""
+
+
+def read_body_with_deadline(resp: Any, started: float, deadline_s: float | None = None,
+                            clock: Any = time.time) -> bytes:
+    """Read a streamed response body, giving up at a wall-clock deadline measured from `started`.
+
+    Keep-alive bytes from a provider that is holding the request still turn this loop, so the deadline
+    is checked even when no single read ever times out.
+    """
+    limit = UPSTREAM_DEADLINE_S if deadline_s is None else float(deadline_s)
+    buf = bytearray()
+    try:
+        for chunk in resp.iter_content(chunk_size=8192):
+            if chunk:
+                buf.extend(chunk)
+            if clock() - started > limit:
+                raise UpstreamDeadlineExceeded(
+                    f"upstream kept the request open past {limit:g}s ({len(buf)} bytes received)")
+    finally:
+        try:
+            resp.close()
+        except (OSError, RuntimeError, AttributeError):
+            pass
+    return bytes(buf)
+
+
+def inflight_snapshot(now: float | None = None) -> dict[str, Any]:
+    t = time.time() if now is None else now
+    with _INFLIGHT_LOCK:
+        starts = list(_INFLIGHT.values())
+    return {"inflight": len(starts), "max_inflight": MAX_INFLIGHT,
+            "oldest_inflight_s": round(t - min(starts), 1) if starts else None}
+
+
 # ── Module-level global cap overrides ──────────────────────────────────
 GLOBAL_DAILY_USD_CAP = os.environ.get("LLM_GLOBAL_DAILY_USD_CAP")
 
@@ -577,9 +627,11 @@ class RealProvider:
                     "User-Agent": "tradeai-cio-bridge/1.0",
                     "X-TradeAI-Request-Id": client_rid,
                 },
-                timeout=90.0,
+                timeout=(10.0, min(UPSTREAM_READ_TIMEOUT_S, UPSTREAM_DEADLINE_S)),
+                stream=True,
             )
-        except _requests.Timeout:
+            raw = read_body_with_deadline(r, t0)
+        except (_requests.Timeout, UpstreamDeadlineExceeded) as timeout_exc:
             _emit_bridge_cost(
                 outcome="possibly_billable_attempt",
                 model=model_id,
@@ -589,7 +641,7 @@ class RealProvider:
                 possibly_billable=True,
                 error_class="TIMEOUT",
             )
-            err = RuntimeError("DeepSeek API timeout after 90s")
+            err = RuntimeError(f"DeepSeek API timeout after {time.time() - t0:.0f}s: {timeout_exc}")
             err.request_sent = True  # type: ignore[attr-defined]
             err.possibly_billable = True  # type: ignore[attr-defined]
             raise err
@@ -624,14 +676,14 @@ class RealProvider:
             )
             err = RuntimeError(
                 f"DeepSeek API returned HTTP {r.status_code}: "
-                f"{r.text[:500]}"
+                f"{raw[:500].decode('utf-8', 'replace')}"
             )
             err.request_sent = True  # type: ignore[attr-defined]
             err.possibly_billable = True  # type: ignore[attr-defined]
             raise err
 
         try:
-            payload = r.json()
+            payload = json.loads(raw)
         except Exception:
             _emit_bridge_cost(
                 outcome="possibly_billable_attempt",
@@ -682,7 +734,7 @@ class RealProvider:
 
         usage = payload.get("usage") or {}
         import hashlib
-        raw_hash = hashlib.sha256(r.content).hexdigest()[:24]
+        raw_hash = hashlib.sha256(raw).hexdigest()[:24]
         _emit_bridge_cost(
             outcome="success",
             model=returned_model or model_id,
@@ -1153,6 +1205,23 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
         """Override to use project logger with sanitization."""
         log.info("HTTP %s", fmt % args)
 
+    def do_GET(self) -> None:
+        """Liveness for the watchdog: answers even while provider calls are in flight."""
+        if self.path.split("?", 1)[0] != "/health":
+            self._send_error(404, "NOT_FOUND", "Only GET /health is supported")
+            return
+        self._send_json(200, {
+            "ok": not circuit_open(),
+            "mode": BIND_MODE,
+            "pid": os.getpid(),
+            "uptime_s": round(time.time() - _STARTED_AT, 1),
+            "circuit_open": circuit_open(),
+            "circuit_errors": int(_CIRCUIT.get("errors") or 0),
+            "last_error": _CIRCUIT.get("last_error"),
+            "upstream_deadline_s": UPSTREAM_DEADLINE_S,
+            **inflight_snapshot(),
+        })
+
     def do_POST(self) -> None:
         if self.path != "/v1/chat/completions":
             self._send_error(404, "NOT_FOUND", "Only /v1/chat/completions is supported")
@@ -1216,16 +1285,29 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
                              "Server resolves process from caller identity.")
             return
 
-        # Execute governed call
-        result = execute_governed_call(
-            messages,
-            process_id=process_id,
-            tools=tools,
-            tool_choice=tool_choice,
-            response_format=response_format,
-            stream=stream,
-            max_tokens=max_tokens,
-        )
+        # Execute governed call. A bounded number at once: when every slot is held, answer 503 now
+        # rather than queue the caller behind a provider that is holding requests (2026-09-14).
+        if not _INFLIGHT_SLOTS.acquire(blocking=False):
+            self._send_error(503, "BRIDGE_BUSY",
+                             f"{MAX_INFLIGHT} provider calls already in flight; retry later")
+            return
+        call_id = uuid.uuid4().hex
+        with _INFLIGHT_LOCK:
+            _INFLIGHT[call_id] = time.time()
+        try:
+            result = execute_governed_call(
+                messages,
+                process_id=process_id,
+                tools=tools,
+                tool_choice=tool_choice,
+                response_format=response_format,
+                stream=stream,
+                max_tokens=max_tokens,
+            )
+        finally:
+            with _INFLIGHT_LOCK:
+                _INFLIGHT.pop(call_id, None)
+            _INFLIGHT_SLOTS.release()
 
         # Check for governance error
         if "error" in result:
@@ -1302,7 +1384,9 @@ def start_server(host: str = BIND_HOST, port: int = BIND_PORT) -> http.server.HT
     if host not in ("127.0.0.1", "localhost", "::1"):
         raise ValueError(f"CIO bridge must bind to loopback only, got {host}")
 
-    server = http.server.HTTPServer((host, port), GovernedBridgeHandler)
+    # Threaded: one call held by the provider must not block every other caller (2026-09-14).
+    server = http.server.ThreadingHTTPServer((host, port), GovernedBridgeHandler)
+    server.daemon_threads = True
     log.info("CIO Governed Bridge starting on %s:%d", host, port)
     log.info("Caller map: %s", CALLER_PROCESS_MAP)
     log.info("Mode: %s", "REAL (canary)" if BIND_MODE == "canary" else "MOCK (P-1.2A)")

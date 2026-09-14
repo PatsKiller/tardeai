@@ -1746,6 +1746,23 @@
         "path": "data/cio/research_trigger_ledger.jsonl"
       },
       "note": "Research scheduler (research_scheduler.py) — tiered, SLA-driven external research dispatcher; docs/RESEARCH_PRIORITIZATION.md. Declared 2026-09-14 when the inline cap moved from LLM_GLOBAL_DAILY_USD_CAP=0.50 to LLM_GLOBAL_DAILY_USD_CAP=2.00 (operator decision: durable $2.00/day of actual spend) and the lines left the inherited baseline."
+    },
+    {
+      "lane_id": "cio-bridge-watchdog",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 * * * * cio_bridge_watchdog.py",
+        "match": "cio_bridge_watchdog.py"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio_bridge_watchdog.json",
+        "key": "checked_at"
+      },
+      "note": "2026-09-14 bridge wedge: DeepSeek held calls ~906 s and the single-threaded governed bridge blocked CIO research, desk answers and advisory for ~90 min with no alarm. Probes GET /health; restarts cio-governed-bridge.service after 2 consecutive unanswered probes (30 min cooldown); alerts on state changes."
     }
   ],
   "undeclared_baseline": [

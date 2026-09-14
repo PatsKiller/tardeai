@@ -608,6 +608,9 @@ GATES = [
             # no alarm; lost projection writes, guard false positives, unreplayed transients,
             # and an escalation handler whose retries all exited 127.
             "tests/test_research_heartbeat_20260914.py",
+            # 2026-09-14 15:15-16:30 bridge wedge: DeepSeek held calls ~906 s and the single-threaded bridge
+            # queued every caller behind them. Deadline, threaded server, /health, and the watchdog.
+            "tests/test_bridge_hang_20260914.py",
             # 2026-09-14 Telegram: rich layouts, and a written-but-undelivered reply is a finding.
             "tests/test_telegram_rich_20260914.py",
             "tests/test_answer_quality_reply_not_delivered_20260914.py",
