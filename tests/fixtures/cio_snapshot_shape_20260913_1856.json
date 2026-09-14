@@ -1,0 +1,650 @@
+{
+ "version": "cio-snapshot-v1",
+ "collected_at": "2026-09-14T00:19:14.017146+00:00",
+ "health": {
+  "domains_total": 16,
+  "domains_available": 16,
+  "domains_missing": [],
+  "domains_stale": [],
+  "ok": true
+ },
+ "domains": {
+  "portfolio": {
+   "state": "AVAILABLE",
+   "total_value": 1268141,
+   "total_cost": 586469,
+   "day_change": 3493,
+   "day_change_pct": 0.2762,
+   "holdings_count": 30,
+   "as_of": "2026-09-13T08:00:24-04:00",
+   "positions_as_of": "2026-09-11"
+  },
+  "risk": {
+   "state": "AVAILABLE",
+   "portfolio_heat_pct": 0.08,
+   "total_risk_dollars": 1003,
+   "positions_at_risk": 0,
+   "max_drawdown_pct": null,
+   "stops_active": 26
+  },
+  "watch": {
+   "domain_id": "watch",
+   "quality_state": "AVAILABLE",
+   "collected_at": "2026-09-14T00:19:14.021644+00:00",
+   "source_ref": "watchlist.json",
+   "data": {
+    "PLTR": {
+     "thesis": "AI/defense data analytics \u2014 direct AI WWIII exposure"
+    },
+    "HII": {
+     "thesis": "Huntington Ingalls \u2014 only US nuclear carrier/submarine build"
+    },
+    "GD": {
+     "thesis": "General Dynamics \u2014 Stryker, submarines, Gulfstream"
+    }
+   }
+  },
+  "watch_intelligence": {
+   "domain_id": "watch_intelligence",
+   "quality_state": "AVAILABLE",
+   "collected_at": "2026-09-14T00:19:16.919626+00:00",
+   "source_ref": "lib.data_broker.watch_intelligence.list_watch_intelligence",
+   "as_of": "2026-09-14T00:19:16.918204+00:00",
+   "data": {
+    "ok": true,
+    "counts": {
+     "ready": 0,
+     "go": 0,
+     "near": 0,
+     "block": 80,
+     "total": 80,
+     "promotion_grade": 0
+    },
+    "items": []
+   }
+  },
+  "rotation": {
+   "domain_id": "rotation",
+   "quality_state": "AVAILABLE",
+   "collected_at": "2026-09-14T00:19:16.920183+00:00",
+   "source_ref": "rotation_ladders.json",
+   "as_of": "2026-09-14T00:16:05.466897+00:00",
+   "data": {
+    "computed_at": "2026-09-14T00:16:05.466897+00:00",
+    "source": "market_quotes + aegis_portfolio_briefs",
+    "sectors": [
+     {
+      "etf": "XLK",
+      "name": "Technology",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     },
+     {
+      "etf": "XLF",
+      "name": "Financials",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     },
+     {
+      "etf": "XLE",
+      "name": "Energy",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     },
+     {
+      "etf": "XLI",
+      "name": "Industrials",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     },
+     {
+      "etf": "XLB",
+      "name": "Materials",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     },
+     {
+      "etf": "XLRE",
+      "name": "Real Estate",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     },
+     {
+      "etf": "XLV",
+      "name": "Health Care",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     },
+     {
+      "etf": "XLY",
+      "name": "Consumer Discretionary",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     },
+     {
+      "etf": "XLC",
+      "name": "Communication Services",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     },
+     {
+      "etf": "XLU",
+      "name": "Utilities",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     },
+     {
+      "etf": "XLP",
+      "name": "Consumer Staples",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     },
+     {
+      "etf": "SMH",
+      "name": "Semiconductors",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     },
+     {
+      "etf": "IBB",
+      "name": "Biotech",
+      "return_1m": null,
+      "return_3m": null,
+      "return_6m": null,
+      "rs_raw": null,
+      "data_quality": 0,
+      "rs_score": 50
+     }
+    ],
+    "industries": [
+     {
+      "sector": "Communication Services",
+      "industries": [
+       {
+        "etf": "XLC",
+        "name": "Comm Services Broad",
+        "return_1m": null,
+        "return_3m": null,
+        "return_6m": null,
+        "rs_raw": null,
+        "data_quality": 0,
+        "rs_score": 50
+       }
+      ]
+     }
+    ],
+    "transitions": [
+     {
+      "symbol": "RTX",
+      "thesis_status": "broken",
+      "needs_review": true
+     },
+     {
+      "symbol": "CACI",
+      "thesis_status": "broken",
+      "needs_review": true
+     },
+     {
+      "symbol": "DRS",
+      "thesis_status": "broken",
+      "needs_review": true
+     },
+     {
+      "symbol": "KBR",
+      "thesis_status": "broken",
+      "needs_review": true
+     }
+    ]
+   }
+  },
+  "income": {
+   "domain_id": "income",
+   "quality_state": "PARTIAL",
+   "collected_at": "2026-09-14T00:19:16.921252+00:00",
+   "source_ref": "holdings.json",
+   "as_of": "2026-09-11",
+   "partial_fields": [
+    "yield_pct"
+   ],
+   "gap_reason": "yield_pct_not_yet_collected_by_income_collector",
+   "data": {
+    "annual_dividend_est": null,
+    "annual_income_estimate": null,
+    "yield_pct": null,
+    "as_of": "2026-09-11"
+   }
+  },
+  "reconciliation": {
+   "domain_id": "reconciliation",
+   "quality_state": "AVAILABLE",
+   "collected_at": "2026-09-14T00:19:16.921383+00:00",
+   "source_ref": "latest.json",
+   "as_of": "2026-09-13T22:42:54.255520+00:00",
+   "data": {
+    "actions_open": 0,
+    "actions_operator": 0,
+    "actions_diagnostic": 0,
+    "inconsistencies": [
+     {
+      "code": "HOLDINGS_SOURCE_STALE",
+      "detail": "holdings as_of=2026-09-11 age_h=70.71507097777778"
+     },
+     {
+      "code": "RESEARCH_PENDING",
+      "detail": "pending_challenges=158"
+     }
+    ],
+    "holdings_source_freshness": "STALE",
+    "reconciled_at": "2026-09-13T22:42:54.255520+00:00",
+    "quality_state": "AVAILABLE",
+    "ok": false
+   }
+  },
+  "hermes_research": {
+   "state": "AVAILABLE",
+   "promoted_research_count": 2088,
+   "staged_research_count": 353,
+   "latest_topics": [
+    "ACHV deep research synthesis",
+    "ADBE deep research synthesis",
+    "Advanced option Greeks monitoring and dy"
+   ],
+   "challenger_active": true,
+   "autonomous": true,
+   "model_provider": "deepseek-flash",
+   "fallback": "free-oauth (grok/chatgpt)"
+  },
+  "investment_policy": {
+   "state": "AVAILABLE",
+   "version": "1.0.0",
+   "status": "ACTIVE",
+   "next_review": "2026-11-01",
+   "risk_level": "MODERATE_AGGRESSIVE",
+   "max_drawdown_pct": 25.0,
+   "primary_objective": "Long-term growth with income generation \u2014 AI/technology sector tilt within diversified framework",
+   "target_return_pct": 7.0,
+   "max_single_position_pct": 8.0,
+   "active_trading_account": "schwab_taxable"
+  },
+  "model_portfolio": {
+   "state": "AVAILABLE",
+   "version": "1.0.0",
+   "status": "ACTIVE",
+   "equity_target_pct": 75.0,
+   "fixed_income_target_pct": 15.0,
+   "cash_target_pct": 5.0,
+   "actual_equity_pct": 43.9,
+   "drift_summary": [
+    {
+     "bucket": "equity",
+     "target_pct": 75.0,
+     "actual_pct": 43.9,
+     "drift_pct": -31.1,
+     "status": "DRIFT"
+    },
+    {
+     "bucket": "cash",
+     "target_pct": 5.0,
+     "actual_pct": 56.1,
+     "drift_pct": 51.1,
+     "status": "DRIFT"
+    }
+   ],
+   "rebalancing_threshold_pct": 4.0,
+   "income_target_usd": 55000,
+   "max_single_position_pct": 3.0
+  },
+  "cost_basis": {
+   "state": "AVAILABLE",
+   "positions_count": 20,
+   "loss_positions_count": 8,
+   "gain_positions_count": 12,
+   "total_unrealized_pnl": -10584,
+   "reconciled_count": 2,
+   "positions": []
+  },
+  "transactions": {
+   "state": "AVAILABLE",
+   "closed_trades_total": 121,
+   "recent_closed": [
+    {
+     "symbol": "AGMH",
+     "exit_date": "2025-09-19",
+     "realized_pnl": 186.03,
+     "account": "schwab_taxable"
+    },
+    {
+     "symbol": "AGMH",
+     "exit_date": "2025-09-19",
+     "realized_pnl": -129.9,
+     "account": "schwab_taxable"
+    },
+    {
+     "symbol": "LASE",
+     "exit_date": "2025-09-18",
+     "realized_pnl": 180.0,
+     "account": "schwab_rollover_ira"
+    }
+   ],
+   "open_lots_total": 102,
+   "active_lots": [],
+   "last_updated": "2026-09-11 07:31",
+   "all_symbols_traded": [],
+   "all_accounts": [
+    "schwab_rollover_ira",
+    "schwab_roth",
+    "schwab_taxable"
+   ]
+  },
+  "sectors": {
+   "state": "AVAILABLE",
+   "total_value": 1268141,
+   "sectors": [
+    {
+     "sector": "Industrials",
+     "value": 85865,
+     "weight_pct": 6.77,
+     "position_count": 7,
+     "symbols": [
+      "NOC",
+      "RTX",
+      "SPCX",
+      "BAH",
+      "XLI",
+      "XAR",
+      "SPCX"
+     ]
+    },
+    {
+     "sector": "Financial Services",
+     "value": 48723,
+     "weight_pct": 3.84,
+     "position_count": 4,
+     "symbols": [
+      "PFLT",
+      "CSWC",
+      "V",
+      "V"
+     ]
+    },
+    {
+     "sector": "Technology",
+     "value": 31869,
+     "weight_pct": 2.51,
+     "position_count": 2,
+     "symbols": [
+      "LDOS",
+      "ARKX"
+     ]
+    },
+    {
+     "sector": "Basic Materials",
+     "value": 25680,
+     "weight_pct": 2.03,
+     "position_count": 1,
+     "symbols": [
+      "XLB"
+     ]
+    },
+    {
+     "sector": "Consumer Defensive",
+     "value": 10705,
+     "weight_pct": 0.84,
+     "position_count": 1,
+     "symbols": [
+      "WMT"
+     ]
+    },
+    {
+     "sector": "Healthcare",
+     "value": 0,
+     "weight_pct": 0.0,
+     "position_count": 1,
+     "symbols": [
+      "SRNE"
+     ]
+    }
+   ],
+   "sector_count": 6,
+   "uncategorized_pct": 27.94,
+   "cash_pct": 56.06,
+   "concentration_flags": [],
+   "top_sectors": [
+    {
+     "sector": "Industrials",
+     "weight_pct": 6.77
+    },
+    {
+     "sector": "Financial Services",
+     "weight_pct": 3.84
+    },
+    {
+     "sector": "Technology",
+     "weight_pct": 2.51
+    },
+    {
+     "sector": "Basic Materials",
+     "weight_pct": 2.03
+    },
+    {
+     "sector": "Consumer Defensive",
+     "weight_pct": 0.84
+    }
+   ]
+  },
+  "holdings_detail": {
+   "state": "AVAILABLE",
+   "total_value": 1268141,
+   "position_count": 30,
+   "cash_positions": 4,
+   "equity_positions": 26,
+   "as_of": "2026-09-13T08:00:24-04:00",
+   "positions_as_of": "2026-09-11",
+   "positions": [
+    {
+     "symbol": "SCHD",
+     "name": "SCHWAB U.S. DIVIDEND EQUITY ETF",
+     "account": "schwab_rollover_ira",
+     "sector": "",
+     "market_value": 341209,
+     "weight_pct": 26.9062,
+     "day_change_pct": 0.38,
+     "quantity": 10000.2508,
+     "current_price": 35.14,
+     "cost_basis": 19,
+     "unrealized_pnl": 341189.51,
+     "unrealized_pnl_pct": 1790996.17,
+     "is_cash": false,
+     "asset_type": ""
+    },
+    {
+     "symbol": "V",
+     "name": "VISA INC CLASS CLASS A",
+     "account": "schwab_roth",
+     "sector": "Financial Services",
+     "market_value": 48258,
+     "weight_pct": 3.8054,
+     "day_change_pct": 0.88,
+     "quantity": 130.2689,
+     "current_price": 382.85,
+     "cost_basis": null,
+     "unrealized_pnl": null,
+     "unrealized_pnl_pct": null,
+     "is_cash": false,
+     "asset_type": ""
+    },
+    {
+     "symbol": "SPCX",
+     "name": "SPCX",
+     "account": "schwab_rollover_ira",
+     "sector": "Industrials",
+     "market_value": 45270,
+     "weight_pct": 3.5698,
+     "day_change_pct": 2.04,
+     "quantity": 300.0,
+     "current_price": 136.46,
+     "cost_basis": 16846,
+     "unrealized_pnl": 28424.22,
+     "unrealized_pnl_pct": 168.73,
+     "is_cash": false,
+     "asset_type": ""
+    }
+   ],
+   "accounts": {},
+   "sector_breakdown": {}
+  },
+  "cash_buying_power": {
+   "domain_id": "cash_buying_power",
+   "quality_state": "PARTIAL",
+   "collected_at": "2026-09-14T00:19:16.984752+00:00",
+   "source_ref": "holdings.json",
+   "as_of": "2026-09-13T08:00:24-04:00",
+   "partial_fields": [
+    "verified_broker_buying_power"
+   ],
+   "gap_reason": "holdings_derived_cash_not_verified_broker_buying_power",
+   "data": {
+    "total_cash": 710933,
+    "total_buying_power_estimate": 710933,
+    "cash_positions": [
+     {
+      "symbol": "CASH",
+      "market_value": 5000,
+      "account": "alpaca_taxable_live"
+     },
+     {
+      "symbol": "CASH",
+      "market_value": 42712,
+      "account": "schwab_taxable"
+     },
+     {
+      "symbol": "CASH",
+      "market_value": 1473,
+      "account": "schwab_roth"
+     },
+     {
+      "symbol": "CASH",
+      "market_value": 661748,
+      "account": "schwab_rollover_ira"
+     }
+    ],
+    "cash_position_count": 4,
+    "as_of": "2026-09-13T08:00:24-04:00",
+    "source": "derived_from_holdings_NOT_verified_broker_buying_power"
+   }
+  },
+  "retirement": {
+   "domain_id": "retirement",
+   "quality_state": "AVAILABLE",
+   "collected_at": "2026-09-14T00:19:16.984931+00:00",
+   "source_ref": "retirement_roadmap.json",
+   "as_of": "2026-09-11T09:16:02",
+   "data": {
+    "as_of": "2026-09-11",
+    "_authority_class": "AUTHORITATIVE_POLICY"
+   }
+  },
+  "reentry": {
+   "domain_id": "reentry",
+   "quality_state": "AVAILABLE",
+   "collected_at": "2026-09-14T00:19:16.987757+00:00",
+   "source_ref": "reentry_decision_desk_latest.json",
+   "as_of": "2026-09-14T00:13:28.594871+00:00",
+   "data": {
+    "ok": true,
+    "computed_at": "2026-09-14T00:13:28.594871+00:00",
+    "counts": {
+     "ready": 3,
+     "near": 25,
+     "block": 78,
+     "total": 106
+    },
+    "rows": [
+     {
+      "symbol": "ARKQ",
+      "intel": null
+     },
+     {
+      "symbol": "KBR",
+      "intel": null
+     }
+    ]
+   }
+  },
+  "reentry_decision_desk": {
+   "domain_id": "reentry",
+   "quality_state": "AVAILABLE",
+   "collected_at": "2026-09-14T00:19:16.990481+00:00",
+   "source_ref": "reentry_decision_desk_latest.json",
+   "as_of": "2026-09-14T00:13:28.594871+00:00",
+   "data": {
+    "ok": true,
+    "computed_at": "2026-09-14T00:13:28.594871+00:00",
+    "counts": {
+     "ready": 3,
+     "near": 25,
+     "block": 78,
+     "total": 106
+    },
+    "rows": [
+     {
+      "symbol": "ARKQ",
+      "intel": null
+     },
+     {
+      "symbol": "KBR",
+      "intel": null
+     }
+    ]
+   }
+  }
+ }
+}

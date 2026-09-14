@@ -1,0 +1,160 @@
+{
+  "schema": "OperatorEvidenceContract@v1",
+  "as_of": "2026-09-13",
+  "authority": "READ_ONLY_ADVISORY",
+  "_why": [
+    "2026-09-13 18:56: the operator asked what sectors to concentrate on into Q3/Q4. The reply came from the model's general knowledge and said cash_pct / buying_power / holdings_for_symbols were 'all empty'.",
+    "At that moment get_cio_snapshot() carried 16 AVAILABLE domains: total_cash 710,933 (56% of 1.268M), sector weights, the investment policy (MODERATE_AGGRESSIVE, AI/tech tilt, max single 8%), risk, rotation ladders and 2,088 promoted research rows.",
+    "The freeform builder read keys that do not exist (cash_pct, buying_power) and never read sectors / investment_policy / rotation / hermes research by topic.",
+    "Operator rule: routing is Command Center FIRST; when the desk has to go outside for anything it says so.",
+    "This file says, per intent kind, which stores MUST be read and which facts keys MUST be populated when the store has them. scripts/lib/operator_evidence_contract.py enforces it fail-soft inside gather_tradeai_evidence / gather_freeform_context."
+  ],
+  "snapshot_domains_observed": {
+    "_source": "get_cio_snapshot()['domains'] keys, read from the live cio_snapshot.json 2026-09-13T23:14:55Z (health: 16/16 available; the file carries two extra keys: reentry_decision_desk is an alias envelope of reentry, watch_intelligence is the broker projection envelope).",
+    "domains": [
+      "portfolio", "risk", "watch", "rotation", "income", "reconciliation", "hermes_research",
+      "investment_policy", "model_portfolio", "cost_basis", "transactions", "sectors", "holdings_detail",
+      "cash_buying_power", "retirement", "reentry", "reentry_decision_desk", "watch_intelligence"
+    ],
+    "envelope_shapes": {
+      "legacy_flat": "{'state': 'AVAILABLE', ...fields}  (portfolio, risk, hermes_research, investment_policy, model_portfolio, cost_basis, transactions, sectors, holdings_detail)",
+      "broker_envelope": "{'domain_id', 'quality_state': 'AVAILABLE'|'PARTIAL', 'collected_at', 'source_ref', 'as_of', 'data': {...}} (watch, watch_intelligence, rotation, income, reconciliation, cash_buying_power, retirement, reentry, reentry_decision_desk)"
+    }
+  },
+  "broker_projections_observed": {
+    "_source": "scripts/lib/data_broker/catalog.py PROJECTIONS ids (23)",
+    "ids": [
+      "market_quote", "quote_batch", "symbol_profile", "analyst_rollup", "analyst_detail", "catalyst_record",
+      "indicator_snapshot", "portfolio_snapshot", "entry_plan", "reentry_decision_desk", "watch_intelligence",
+      "watch_decision_desk", "sector_momentum", "risk_snapshot", "research_card", "desk_feeds", "cio_portfolio",
+      "market_regime", "daily_bars", "subject_research", "agent_opinion", "option_chain", "watch_discovery"
+    ]
+  },
+  "fact_spec_format": {
+    "fact": "dotted path(s) into the evidence dict returned by the gatherer; a list means any one of them satisfies the contract",
+    "domain": "snapshot domain whose state decides whether the store HAS the fact",
+    "domain_field": "field inside the unwrapped domain payload that must be non-empty for the store to count as having it (dotted allowed)",
+    "codes": {
+      "MISSING_FACT": "the store has it (domain AVAILABLE/PARTIAL and domain_field populated) and the facts key is absent",
+      "FALSE_EMPTY_CLAIM": "the store has it and the facts key is PRESENT BUT None/empty -- the model will read null and tell the operator the field is empty"
+    }
+  },
+  "intents": {
+    "reentry": {
+      "routes_when": "intent == 'reentry' or needs contains reentry_ready / reentry_levels",
+      "snapshot_domains": ["reentry", "reentry_decision_desk", "holdings_detail", "watch_intelligence"],
+      "broker_projections": ["reentry_decision_desk", "market_quote", "quote_batch", "indicator_snapshot", "entry_plan", "daily_bars", "watch_intelligence"],
+      "state_files": ["data/runtime/reentry_decision_desk_latest.json", "data/portfolios/state/holdings.json"],
+      "read_path_today": "load_reentry_desk_rows() (desk file) + _held_positions_map() (holdings.json); a named symbol gets ITS row via format_reentry_symbol_reply",
+      "facts_required": [
+        {"fact": ["available.reentry_symbol_cards", "available.reentry_card"], "domain": "reentry", "domain_field": "rows",
+         "note": "the desk has rows -> the answer carries a card (symbol-scoped when a symbol was named)"}
+      ]
+    },
+    "portfolio": {
+      "routes_when": "intent == 'portfolio' or needs contains portfolio (desk path; freeform routes to the freeform kind)",
+      "snapshot_domains": ["portfolio", "holdings_detail", "sectors", "model_portfolio", "cost_basis", "income"],
+      "broker_projections": ["cio_portfolio", "portfolio_snapshot", "sector_momentum"],
+      "state_files": ["data/portfolios/state/holdings.json"],
+      "read_path_today": "get_cio_snapshot() -> portfolio / holdings_detail / cash_buying_power -> available.book (string) + available.book_facts (structured)",
+      "facts_required": [
+        {"fact": "available.book_facts.portfolio.total_value", "domain": "portfolio", "domain_field": "total_value"},
+        {"fact": "available.book_facts.portfolio.holdings_count", "domain": "portfolio", "domain_field": "holdings_count"}
+      ]
+    },
+    "cash": {
+      "routes_when": "intent == 'cash' or needs contains cash (desk path)",
+      "snapshot_domains": ["cash_buying_power", "portfolio", "model_portfolio", "holdings_detail"],
+      "broker_projections": ["cio_portfolio", "portfolio_snapshot"],
+      "state_files": ["data/portfolios/state/holdings.json"],
+      "read_path_today": "get_cio_snapshot() -> cash_buying_power.data.total_cash / total_buying_power_estimate / cash_positions (NOT cash_pct / buying_power -- those keys never existed)",
+      "facts_required": [
+        {"fact": "available.book_facts.cash.total_cash", "domain": "cash_buying_power", "domain_field": "total_cash"},
+        {"fact": "available.book_facts.cash.by_account", "domain": "cash_buying_power", "domain_field": "cash_positions"}
+      ]
+    },
+    "risk": {
+      "routes_when": "intent == 'risk' or needs contains risk (desk path)",
+      "snapshot_domains": ["risk", "cost_basis", "reconciliation"],
+      "broker_projections": ["cio_portfolio", "risk_snapshot"],
+      "state_files": [],
+      "read_path_today": "get_cio_snapshot() -> risk -> available.risk",
+      "facts_required": [
+        {"fact": "available.risk.stops_active", "domain": "risk", "domain_field": "stops_active"},
+        {"fact": "available.risk.portfolio_heat_pct", "domain": "risk", "domain_field": "portfolio_heat_pct"}
+      ]
+    },
+    "research": {
+      "routes_when": "intent == 'research' or needs contains research (desk path)",
+      "snapshot_domains": ["hermes_research"],
+      "broker_projections": ["subject_research", "research_card", "symbol_profile", "catalyst_record", "agent_opinion"],
+      "state_files": [],
+      "read_path_today": "subject_research(symbols) -> available.hermes_research.items (rows ABOUT the subject; never the pipeline counters)",
+      "facts_required": [],
+      "checker_note": "Whether the store has research about THIS subject is not decidable from the snapshot (hermes_research carries table-wide counts only), so no MISSING_FACT is raised here; an empty result is the declared missing_research gap and Phase 7 queues it."
+    },
+    "analyst": {
+      "routes_when": "intent == 'analyst_view' or needs contains analyst_view",
+      "snapshot_domains": ["holdings_detail"],
+      "broker_projections": ["analyst_detail", "analyst_rollup", "market_quote", "symbol_profile"],
+      "state_files": ["yahoo_analyst_targets_history (table)"],
+      "read_path_today": "subject_analyst_view(symbols) -> available.analyst_view.items with as_of; stale beyond ANALYST_STALE_DAYS is said, not hidden",
+      "facts_required": [],
+      "checker_note": "Coverage is per symbol in a table the snapshot does not carry; absence is the declared missing_analyst_coverage gap."
+    },
+    "freeform": {
+      "routes_when": "intent in ('freeform','unclear') without reentry needs -- thematic / macro / policy questions with or without a symbol",
+      "snapshot_domains": ["portfolio", "cash_buying_power", "risk", "sectors", "investment_policy", "model_portfolio", "rotation", "hermes_research", "holdings_detail"],
+      "broker_projections": ["cio_portfolio", "subject_research", "research_card", "sector_momentum", "market_regime", "symbol_profile"],
+      "state_files": ["data/portfolios/state/holdings.json", "state/data_broker/rotation_ladders.json"],
+      "read_path_today": "gather_freeform_context(): get_cio_snapshot() for every domain above; search_research(salient_keywords(question)) BEFORE any model call when no symbol is named; subject_research(symbols) when one is",
+      "facts_required": [
+        {"fact": "available.freeform_context.portfolio.total_value", "domain": "portfolio", "domain_field": "total_value"},
+        {"fact": "available.freeform_context.cash.total_cash", "domain": "cash_buying_power", "domain_field": "total_cash"},
+        {"fact": "available.freeform_context.cash.by_account", "domain": "cash_buying_power", "domain_field": "cash_positions"},
+        {"fact": "available.freeform_context.risk.stops_active", "domain": "risk", "domain_field": "stops_active"},
+        {"fact": "available.freeform_context.sector_exposure", "domain": "sectors", "domain_field": "sectors"},
+        {"fact": "available.freeform_context.investment_policy.risk_level", "domain": "investment_policy", "domain_field": "risk_level"},
+        {"fact": "available.freeform_context.model_portfolio.cash_target_pct", "domain": "model_portfolio", "domain_field": "cash_target_pct"},
+        {"fact": "available.freeform_context.rotation.ladder", "domain": "rotation", "domain_field": "sectors"},
+        {"fact": ["available.freeform_context.research_on_topic", "available.freeform_context.research_on_subject", "available.freeform_context.research_status"],
+         "domain": "hermes_research", "domain_field": "promoted_research_count",
+         "note": "the research store is alive -> the answer carries house research on the topic/subject, or an explicit research_status line saying there is none"}
+      ]
+    },
+    "meta_system": {
+      "routes_when": "intent == 'meta_system' or runtime needs only",
+      "snapshot_domains": [],
+      "broker_projections": [],
+      "state_files": ["config/cio_llm_policy.yaml"],
+      "read_path_today": "load_runtime_llm_facts() -> available.runtime_llm / meta_card; never a desk dump",
+      "facts_required": [],
+      "checker_note": "No snapshot domain backs this intent; the policy file is read directly and the meta card is deterministic."
+    },
+    "attention": {
+      "routes_when": "intent == 'attention' (what should I be paying attention to / anything today) -- needs portfolio + cash on the desk path",
+      "snapshot_domains": ["portfolio", "cash_buying_power", "reconciliation", "transactions", "watch", "watch_intelligence", "rotation", "reentry"],
+      "broker_projections": ["cio_portfolio", "watch_intelligence", "reentry_decision_desk", "desk_feeds", "catalyst_record", "market_regime"],
+      "state_files": ["data/reconciliation/state/latest.json", "data/portfolios/state/watchlist.json"],
+      "read_path_today": "desk path book_facts (portfolio + cash) plus available.office_state (reconciliation actions, transitions needing review, re-entry and watch counts, recent closed trades)",
+      "facts_required": [
+        {"fact": "available.book_facts.cash.total_cash", "domain": "cash_buying_power", "domain_field": "total_cash"},
+        {"fact": "available.office_state.reconciliation", "domain": "reconciliation", "domain_field": "actions_open"},
+        {"fact": "available.office_state.transitions_needing_review", "domain": "rotation", "domain_field": "transitions"},
+        {"fact": "available.office_state.reentry_counts", "domain": "reentry", "domain_field": "counts"},
+        {"fact": "available.office_state.watch_counts", "domain": "watch_intelligence", "domain_field": "counts"},
+        {"fact": "available.office_state.recent_closed_trades", "domain": "transactions", "domain_field": "closed_trades_total"}
+      ]
+    }
+  },
+  "never_needed": {
+    "domains": {
+      "retirement": "Retirement roadmap (Roth ladder, golden window, income floor) is a planning surface; no operator-desk intent asks it today. Claim it under a retirement intent when one exists -- do not fold it into freeform, where a model would restate it."
+    },
+    "broker_projections": {
+      "watch_decision_desk": "catalog status 'legacy'; watch_intelligence supersedes it and is claimed by reentry/attention.",
+      "option_chain": "options questions belong to the Options desk (2FA-gated lifecycle), not the operator Telegram desk; live_external provider calls at read time.",
+      "watch_discovery": "registry class dead_feed (declared_gap_no_producer); reading it would render a dead desk as today's activity."
+    }
+  }
+}
