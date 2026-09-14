@@ -259,23 +259,74 @@ def render(changes: list[dict], ctx: dict[str, dict]) -> str:
             lines.append(f"  {info['headline'][:150]}")
 
         # WHY IT IS IN FRONT OF YOU.
-        tier = c.get("universe_reason", "")
-        why = ("you hold this" if "held" in tier else
-               "you asked about this" if "operator" in tier else
-               "re-entry candidate" if "reentry" in tier else "on your watchlist")
-        if "operator" in tier:
-            why = "you asked about this"
-        lines.append(f"  · {why}")
+        lines.append(f"  · {_why_line(c)}")
 
         # WHAT TO DO. Never advice — the open question, or the absence of research.
-        if info.get("questions"):
-            lines.append(f"  · open question: {info['questions'][0]}")
-        elif not info.get("last_research"):
-            lines.append("  · never researched — questions are being generated now")
-        else:
-            lines.append(f"  · last researched {info['last_research']}")
+        lines.append(f"  · {_next_line(info)}")
     lines.append("\nAdvisory only. No position action taken or implied.")
     return "\n".join(lines)
+
+
+def _why_line(c: dict) -> str:
+    tier = c.get("universe_reason", "") or ""
+    if "operator" in tier:
+        return "you asked about this"
+    return ("you hold this" if "held" in tier else
+            "re-entry candidate" if "reentry" in tier else "on your watchlist")
+
+
+def _next_line(info: dict) -> str:
+    if info.get("questions"):
+        return f"open question: {info['questions'][0]}"
+    if not info.get("last_research"):
+        return "never researched — questions are being generated now"
+    return f"last researched {info['last_research']}"
+
+
+def rich_enabled(env: dict | None = None) -> bool:
+    e = env if env is not None else os.environ
+    return str(e.get("TELEGRAM_RICH_ALERTS", "1")).strip().lower() not in {"0", "false", "off", "no"}
+
+
+def render_rich(changes: list[dict], ctx: dict[str, dict]) -> dict:
+    """The same notice as `render`, in Telegram HTML with buttons.
+
+    Operator 2026-09-14: "no emphasis in links on everything that can go back to the command center or
+    to the source". Each ticker is bold and opens its Command Center page; Finviz and Yahoo sit under
+    it; what happened is quoted; one name gets its chart above the text. `render` stays the plain text
+    the router check and the outbound-turn capture read.
+    """
+    try:
+        from scripts.lib import telegram_rich as tr
+    except ImportError:  # pragma: no cover - scripts/ on path
+        from lib import telegram_rich as tr  # type: ignore
+    changes = dedupe_by_symbol(changes)
+    out = [f"⚡ <b>Material change — {len(changes)} name(s) worth a look</b>"]
+    symbols: list[str] = []
+    for c in changes:
+        sym = str(c["symbol"]).upper()
+        symbols.append(sym)
+        info = ctx.get(str(c["change_guid"]), {})
+        head = _headline_line(c)
+        rest = head[len(str(c["symbol"])):] if head.startswith(str(c["symbol"])) else f" — {head}"
+        out.append("")
+        out.append(f"<b>{tr.link(sym, tr.cc_symbol_url(sym))}</b>{tr.esc(rest)}")
+        said = info.get("narrative")[:2] if info.get("narrative") else (
+            [info["headline"][:150]] if info.get("headline") else [])
+        if said:
+            out.append("<blockquote>" + "\n".join(tr.esc(x) for x in said) + "</blockquote>")
+        out.append(f"· {tr.esc(_why_line(c))}")
+        out.append(f"· {tr.esc(_next_line(info))}")
+        out.append(f"{tr.link('Finviz', tr.finviz_url(sym))} · {tr.link('Yahoo', tr.yahoo_url(sym))}")
+    out.append("")
+    out.append("<i>Advisory only. No position action taken or implied.</i>")
+    buttons = [{"text": f"📊 {s} in Command Center", "url": tr.cc_symbol_url(s)} for s in symbols[:3]]
+    return {
+        "text": "\n".join(out),
+        "reply_markup": {"inline_keyboard": [[b] for b in buttons]} if buttons else None,
+        "link_preview_options": ({"url": tr.chart_image_url(symbols[0]), "prefer_large_media": True,
+                                  "show_above_text": True} if len(symbols) == 1 else {"is_disabled": True}),
+    }
 
 
 def route_check(message: str) -> str:
@@ -365,7 +416,7 @@ def capture_agent_turns(conn, *, message: str, rows: list[dict], gw: dict) -> in
     return written
 
 
-def deliver_notice(message: str, *, subject_key: str) -> tuple[bool, dict]:
+def deliver_notice(message: str, *, subject_key: str, rich: dict | None = None) -> tuple[bool, dict]:
     """Send one operator notice. Returns (accepted, gateway_report).
 
     Extracted from main() so the alarm can be FIRED by a test. An alarm that has
@@ -388,10 +439,15 @@ def deliver_notice(message: str, *, subject_key: str) -> tuple[bool, dict]:
     material_changes the detector actually found, not from an event invented to
     move a counter.
     """
+    # `rich` (render_rich) replaces the body and adds buttons + chart; `message` is the plain fallback.
+    extra: dict = {}
+    if rich and rich.get("text"):
+        message = rich["text"]
+        extra = {"reply_markup": rich.get("reply_markup"), "link_preview_options": rich.get("link_preview_options")}
     if not gateway_notice_enabled():
         from telegram_alert import send_telegram
 
-        return bool(send_telegram(message, message_class="operator_alert")), {"attempted": False}
+        return bool(send_telegram(message, message_class="operator_alert", **extra)), {"attempted": False}
 
     from scripts.lib.comms.channel_adapters import send_via_gateway
 
@@ -414,6 +470,7 @@ def deliver_notice(message: str, *, subject_key: str) -> tuple[bool, dict]:
         retention_class="operational_30d",
         deliver=True,
         severity="info",
+        **extra,
     )
     # SENT IS NOT SETTLED. `delivered` means the gateway owned the send and the
     # provider acknowledged it; `ok` can be true for a publish merely recorded,
@@ -510,8 +567,14 @@ def main() -> int:
     #
     # The flag defaults OFF and rollback needs no deploy: unset it and the very
     # next 15-minute run goes back down the legacy path.
+    rich = None
+    if rich_enabled():
+        try:
+            rich = render_rich(rows, ctx)
+        except Exception as exc:  # noqa: BLE001 -- formatting must never cost the notice
+            print(f"[rich] layout unavailable ({type(exc).__name__}: {exc}); sending plain text", file=sys.stderr)
     accepted, gw_result = deliver_notice(message, subject_key=str(
-        rows[0].get("subject_guid") or rows[0]["change_guid"]))
+        rows[0].get("subject_guid") or rows[0]["change_guid"]), rich=rich)
     result["gateway"] = gw_result
     result["outcome"] = "SENT" if accepted else "NOT_ACCEPTED"
     if accepted:

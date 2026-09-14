@@ -4,6 +4,22 @@ Status:      ACTIVE
 as_of:       2026-09-13T23:59:00-04:00
 Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
 
+## 2026-09-14 — Rich Telegram alerts: linked tickers, buttons, the chart on top
+
+MATURITY_IMPACT: GO, entry and material-change alerts reach the phone with the ticker bold and linked to its Command Center page, sources as real links, Command Center / Finviz / Yahoo buttons and the daily chart above the text. A desk answer that Telegram never accepted is now a monitor finding. Execution posture UNCHANGED: formatting only, READ_ONLY_ADVISORY.
+
+- **Plain alerts.** Operator: "no emphasis in links on everything that can go back to the command center or to the source". The layouts in `lib/telegram_rich.py` existed but no producer used them, and the transport could not send `link_preview_options`.
+- **Transport.**
+  - `link_preview_options` is carried through `telegram_transport`, `telegram_alert` and the gateway provider.
+  - When Telegram refuses an HTML send, the one plain retry now strips the tags and keeps link addresses (`html_to_plain`).
+- **Producers.**
+  - `screener_go_alerts` sends the rich GO layout.
+  - `watchlist_entry_planner` sends the rich ENTRY ALERT on the same router path.
+  - `notify_material_change` sends `render_rich` through the gateway; `render()` stays the plain text read by the router check and the outbound-turn capture.
+  - Each keeps its old text as the fallback. `TELEGRAM_RICH_ALERTS=0` reverts all three without a deploy.
+- **Undelivered replies.** Rule `REPLY_NOT_DELIVERED` in `check_operator_answer_quality.py`: an agent turn with no Telegram message id is a finding (the AXTI answer on 09-14 was logged "replied" and never arrived).
+- **Dry run on real rows (nothing sent).** ARMP A+ renders at 797 UTF-16 units, with 3 buttons and the Finviz daily chart preview.
+
 ## 2026-09-14 — Spend truth: real dollars by provider, model and process; caps on measured cost
 
 MATURITY_IMPACT: the operator can see and receive real AI and search spend daily, weekly and monthly, with the peak / off-peak split. Caps compare against measured cost, and one durable $2.00/day global cap replaces three conflicting overrides. Execution posture UNCHANGED.
