@@ -47,13 +47,20 @@ _DESK_NEEDS = frozenset({
 _RUNTIME_NEEDS = frozenset({"runtime_llm", "runtime_status"})
 _META_HEURISTIC = re.compile(
     r"(?is)\b("
-    r"llm|model|deepseek|flash|pro\b|"
-    r"which\s+(?:ai|model|llm)|"
-    r"what\s+(?:\w+\s+){0,4}(?:using|model|llm)|"
+    r"llm|model(?!\s+portfolios?)|deepseek|flash|pro\b|"
+    r"which\s+(?:ai|model(?!\s+portfolios?)|llm)|"
+    r"what\s+(?:\w+\s+){0,4}(?:using|model(?!\s+portfolios?)|llm)|"
     r"how\s+(?:do\s+)?you\s+work|"
-    r"read[_\s-]?only|authority|"
     r"bot\s+status|what\s+version|which\s+version"
     r")\b"
+    # "read only" / "authority" are meta only when ASKED about the bot. As a bare
+    # word they were a disclaimer: "What should I watch on SCHD this week?
+    # READ_ONLY advisory only." routed to runtime facts and never touched SCHD.
+    r"|\b(?:are|is)\s+(?:you|alex|it|this|the\s+bot)\s+(?:\w+\s+)?read[_\s-]?only\b"
+    r"|\bread[_\s-]?only\s*\?"
+    r"|\b(?:what|which)\s+(?:is\s+)?(?:your\s+)?authority\b"
+    r"|\b(?:your|alex'?s)\s+authority\b"
+    r"|\bauthority\s+(?:do|does)\s+(?:you|alex)\b"
 )
 _FREEFORM_HEURISTIC = re.compile(
     r"(?is)\b("
@@ -191,7 +198,16 @@ _KNOWN_SYMBOLS_CACHE: dict[str, Any] = {"at": 0.0, "syms": frozenset()}
 
 
 def _known_symbols(ttl_s: float = 120.0) -> frozenset[str]:
-    """Symbols Trade-AI knows about: holdings + re-entry desk (+ identity registry when readable)."""
+    """The operator's BOOK: holdings + re-entry desk. These match in any case.
+
+    The identity registry is deliberately NOT part of this set. Its branch below
+    read `symbol`/`ticker` keys that registry entities do not carry (they carry
+    `ticker_alias` and `aliases`), so in production it contributed nothing -- 106
+    known symbols on 2026-09-13, all from the book. Reading `by_symbol` instead
+    would add 5,391 symbols of which 514 are English words (BACK, INTO, CASH,
+    TECH), so "get back into" would bind issuers. Registry symbols are resolved in
+    `operator_subject_resolver`, upper-case or $cashtag only, with their GUID.
+    """
     import time as _time
     if _time.monotonic() - float(_KNOWN_SYMBOLS_CACHE["at"]) < ttl_s and _KNOWN_SYMBOLS_CACHE["syms"]:
         return _KNOWN_SYMBOLS_CACHE["syms"]
@@ -209,17 +225,6 @@ def _known_symbols(ttl_s: float = 120.0) -> frozenset[str]:
                 syms.add(str(r["symbol"]).upper())
     except Exception:
         pass
-    try:
-        from scripts.lib import identity_registry as _ir
-        reg = _ir.load_cached()
-        ents = reg.get("entities") if isinstance(reg, dict) else None
-        for e in (ents.values() if isinstance(ents, dict) else (ents or [])):
-            if isinstance(e, dict):
-                for key in ("symbol", "ticker"):
-                    if e.get(key):
-                        syms.add(str(e[key]).upper())
-    except Exception:
-        pass
     out = frozenset(s for s in syms if s and s.isalpha() and 1 <= len(s) <= 5)
     if out:
         _KNOWN_SYMBOLS_CACHE.update({"at": _time.monotonic(), "syms": out})
@@ -227,19 +232,19 @@ def _known_symbols(ttl_s: float = 120.0) -> frozenset[str]:
 
 
 def _extract_symbols(text: str) -> list[str]:
-    """Upper-case tokens (old rule) plus any-case tokens that name a known symbol."""
-    t = text or ""
-    found: list[str] = []
-    for tok in re.findall(r"\b([A-Z]{1,5})\b", t):
-        if tok not in _SYMBOL_STOP and tok not in found:
-            found.append(tok)
-    known = _known_symbols()
-    if known:
-        for tok in re.findall(r"\b([A-Za-z]{2,5})\b", t):
-            up = tok.upper()
-            if up in known and up not in _SYMBOL_STOP and up not in found:
-                found.append(up)
-    return found[:12]
+    """Symbols the question names: book tickers any case, registry/unknown tickers
+    upper-case, and company names the broker instrument feed resolves.
+
+    Kept as a thin wrapper because `cio_converse_core` imports it to decide whether
+    the book-wide re-entry interceptor must step aside.
+    """
+    try:
+        from scripts.lib.operator_subject_resolver import resolve_subjects, symbols_of
+        return symbols_of(resolve_subjects(text or "", book=_known_symbols()))
+    except Exception:
+        t = text or ""
+        return [tok for tok in dict.fromkeys(re.findall(r"\b([A-Z]{1,5})\b", t))
+                if tok not in _SYMBOL_STOP][:12]
 
 
 def _held_positions_map() -> dict[str, dict[str, Any]]:
@@ -264,6 +269,62 @@ def _held_positions_map() -> dict[str, dict[str, Any]]:
     return out
 
 
+def _merge_flash_symbols(out: dict[str, Any], flash_symbols: list[Any]) -> None:
+    """Flash may ADD a symbol, never remove a resolved one, and never invent one.
+
+    Before 2026-09-13 Flash's list REPLACED the heuristic's and was then unioned
+    with a re-extraction; any alphabetic string was accepted, so "SPACEX" would
+    have become a symbol and the unanswerable SpaceX question a pending that could
+    never close. Additions now bind only when the registry or the book holds them;
+    the rest are kept, visibly, in `flash_unverified_symbols`.
+    """
+    from scripts.lib.operator_subject_resolver import verify_added_symbol
+
+    symbols = list(out.get("symbols") or [])
+    subjects = list(out.get("subjects") or [])
+    unverified: list[str] = []
+    book = _known_symbols()
+    for raw in flash_symbols[:24]:
+        sym = str(raw or "").strip().lstrip("$").upper()
+        if not sym or sym in symbols:
+            continue
+        subj = verify_added_symbol(sym, book=book)
+        if subj is None:
+            if sym not in unverified:
+                unverified.append(sym)
+            continue
+        symbols.append(sym)
+        subjects.append(subj)
+    out["symbols"] = symbols[:12]
+    out["subjects"] = subjects
+    if unverified:
+        out["flash_unverified_symbols"] = unverified[:12]
+
+
+def _stamp_answerable(out: dict[str, Any]) -> dict[str, Any]:
+    """Record, on the intent itself, whether the ask can ever be answered.
+
+    `is_answerable` was consulted only when evidence produced a BLOCKING gap. The
+    SpaceX ask produced none (Agent D replay, 2026-09-13): intent analyst_view, no
+    symbol, no gap, reply "Queued a pull -- I'll reply when it lands", nothing
+    queued. The verdict is knowable at intent time, so it travels with the intent
+    and a handler can refuse before gathering anything.
+    """
+    if not out.get("symbols") and out.get("text_for_candidates"):
+        try:
+            from scripts.lib.operator_subject_resolver import ticker_candidates
+            cands = ticker_candidates(out["text_for_candidates"], book=_known_symbols())
+            if cands:
+                out["ticker_candidates"] = cands
+        except Exception:
+            pass
+    out.pop("text_for_candidates", None)
+    ok, why = is_answerable(out)
+    out["answerable"] = ok
+    out["unanswerable_reason"] = why or None
+    return out
+
+
 def analyze_operator_intent(text: str) -> dict[str, Any]:
     """DeepSeek Flash → structured intent. Numbers never come from this step."""
     out: dict[str, Any] = {
@@ -272,6 +333,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         "model": None,
         "intent": "freeform",
         "symbols": [],
+        "subjects": [],
         "needs": [],
         "error": None,
     }
@@ -282,6 +344,27 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         return out
 
     needs: list[str] = []
+
+    # Subjects FIRST, registry-first (operator_subject_resolver), on every path.
+    # `symbols` stays the flat list every caller reads; `subjects` adds kind,
+    # GUID and confidence. The book is passed from THIS module so a caller that
+    # patches `_known_symbols` is honoured.
+    scan = t
+    try:
+        from scripts.lib.operator_subject_resolver import name_spans, resolve_subjects, symbols_of
+
+        subjects = resolve_subjects(t, book=_known_symbols())
+        out["subjects"] = subjects
+        out["text_for_candidates"] = t   # consumed and removed by _stamp_answerable
+        out["symbols"] = symbols_of(subjects)
+        # A company name is not a request: "Nonesuch Holdings" asked about a
+        # company, not for the operator's holdings. Intent regexes read `scan`.
+        for span in name_spans(subjects):
+            scan = scan.replace(span, " ")
+    except Exception as exc:
+        out["symbols"] = [tok for tok in dict.fromkeys(re.findall(r"\b([A-Z]{1,5})\b", t))
+                          if tok not in _SYMBOL_STOP][:12]
+        out["error"] = f"subjects:{type(exc).__name__}:{exc}"
 
     # P0: attention / why-nothing is deterministic office state, not Flash.
     if re.search(
@@ -295,8 +378,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         out["needs"] = ["portfolio", "cash"]
         out["ok"] = True
         out["source"] = "heuristic"
-        out["symbols"] = _extract_symbols(t)
-        return out
+        return _stamp_answerable(out)
 
     # P0: meta_system BEFORE desk defaults — never fall through to re-entry dump
     if _looks_like_meta_system(t):
@@ -308,33 +390,62 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
     else:
         if re.search(
             r"(?is)\bre[\s\-]?(?:entr|enter)|rentr|ready\s+to\s+(?:buy|purchase|review)|buy\s+back|"
-            r"get\s+back\s+in(?:to)?\b|\bback\s+in(?:to)?\s+[A-Za-z]{1,5}\b|re-?buy|add\s+back|good\s+time\s+to\s+(?:get\s+)?(?:back\s+)?in(?:to)?\b",
-            t,
+            r"get\s+back\s+in(?:to)?\b|\bback\s+in(?:to)?\s+[A-Za-z]{1,5}\b|re-?buy|add\s+back|good\s+time\s+to\s+(?:get\s+)?(?:back\s+)?in(?:to)?\b|"
+            # Adding to a position is the re-entry decision: zone, gates, levels.
+            r"\badd(?:ing)?\s+(?:more\s+)?to\b(?!\s+(?:my\s+|the\s+|a\s+)?watch\s*list)|\badd\s+more\b|"
+            r"\bbuy\s+more\b|\baverag(?:e|ing)\s+down\b",
+            scan,
         ):
             needs.append("reentry_ready")
             out["intent"] = "reentry"
         if re.search(
-            r"(?is)\b(support|resistance|s/?r|50[\s\-]?day|sma\s*50|sma50|sma\s*20|levels?|stop)\b",
-            t,
+            r"(?is)\b(support|suport|resistance|resistence|s/?r|50[\s\-]?day|sma\s*50|sma50|sma\s*20|levels?|stop)\b",
+            scan,
         ):
             needs.append("reentry_levels")
             if out["intent"] in ("unclear", "general"):
                 out["intent"] = "reentry"
-        if re.search(r"(?is)\b(cash|buying\s+power)\b", t):
+        # "what's jepi doing" / "NOC price today" -- the desk row carries price,
+        # RSI, SMAs and levels. Only with a resolved symbol: without one there is
+        # no row, and the question belongs to the freeform agent.
+        if out["symbols"] and "reentry_levels" not in needs and re.search(
+            r"(?is)\b(?:what'?s|what\s+is|how'?s|how\s+is)\s+(?:my\s+)?\$?[A-Za-z]{1,5}\s+(?:doing|looking|trading)\b|"
+            r"\bwhere\s+is\s+\$?[A-Za-z]{1,5}\s+trading\b|\bprice\s+(?:today|now|right\s+now)\b",
+            scan,
+        ):
+            needs.append("reentry_levels")
+        if re.search(r"(?is)\b(cash|buying\s+power)\b", scan):
             needs.append("cash")
             if out["intent"] in ("unclear", "freeform"):
                 out["intent"] = "cash"
-        if re.search(r"(?is)\b(portfolio|holdings|book)\b", t):
+        if re.search(r"(?is)\b(portfolio|profolio|portfolo|portfollio|protfolio|porfolio|holdings|book)\b", scan):
             needs.append("portfolio")
             if out["intent"] in ("unclear", "freeform"):
                 out["intent"] = "portfolio"
-        if re.search(r"(?is)\b(risk|heat|drawdown)\b", t):
+        if re.search(r"(?is)\b(risk|heat|drawdown|concentration)\b", scan):
             needs.append("risk")
             if out["intent"] in ("unclear", "freeform"):
                 out["intent"] = "risk"
+        # Trimming is a sizing question about a held position: the book and its risk.
+        if re.search(
+            r"(?is)\btrim(?:ming)?\b|\btake\s+(?:some\s+)?profits?\b|\bsell\s+some\b|"
+            r"\breduce\s+(?:my\s+)?(?:position|exposure|stake)\b",
+            scan,
+        ):
+            needs.extend(n for n in ("portfolio", "risk") if n not in needs)
+            if out["intent"] in ("unclear", "freeform", "risk"):
+                out["intent"] = "portfolio"
+        # Rotation / over-/under-weight is allocation posture. A soft book hint;
+        # the intent stays freeform so the freeform builder reads sector weights
+        # and the investment policy.
+        if re.search(
+            r"(?is)\brotat(?:e|ing|ion)\s+(?:in)?to\b|\brotate\s+out\b|\b(?:over|under)[\s-]?weight(?:ed)?\b",
+            scan,
+        ) and "portfolio" not in needs:
+            needs.append("portfolio")
         if re.search(
             r"(?is)\b(research|hermes|thesis|why\s+(?:own|hold|watch)|deep\s+dive)\b",
-            t,
+            scan,
         ):
             needs.append("research")
             if out["intent"] in ("unclear", "freeform"):
@@ -342,40 +453,30 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         # Analyst opinion and price targets. Deliberately BEFORE the freeform
         # check so "is it a buy and what's the target" reaches the analyst
         # domain rather than falling through to whatever research happens to
-        # exist for the symbol.
+        # exist for the symbol. Valuation words ("is X cheap here") are the same
+        # question, and the operator's typos ("anaylst") are real inputs.
         if re.search(
-            r"(?is)\b(analysts?|price\s+target|target\s+price|\bpt\b|"
+            r"(?is)\b(analysts?|anaylsts?|analists?|anlysts?|analsyts?|annalysts?|price\s+target|target\s+price|\bpt\b|"
             r"\ba\s+buy\b|\bbuy\s+or\s+sell\b|upgrade|downgrade|consensus|"
-            r"rating|\btargets?\b)\b",
-            t,
+            r"rating|\btargets?\b|"
+            r"cheap|expensive|over[\s-]?valued|under[\s-]?valued|valuation|fair\s+value)\b",
+            scan,
         ):
             needs.append("analyst_view")
             if out["intent"] in ("unclear", "freeform"):
                 out["intent"] = "analyst_view"
 
         # Explainer/comparison language → freeform (soft desk hints OK, no reentry)
-        if _looks_like_freeform(t) and out["intent"] not in ("reentry", "meta_system"):
+        if _looks_like_freeform(scan) and out["intent"] not in ("reentry", "meta_system"):
             soft = [n for n in needs if n in ("portfolio", "cash", "risk", "research")]
             out["intent"] = "freeform"
-            out["needs"] = soft
+            out["needs"] = list(dict.fromkeys(soft))
         # P0: NO default reentry_ready/portfolio — unmatched → freeform agent
         elif not needs:
             out["intent"] = "freeform"
             out["needs"] = []
         else:
             out["needs"] = list(dict.fromkeys(needs))
-
-    syms = sorted(set(re.findall(r"\b([A-Z]{1,5})\b", t)))
-    stop = {
-        "I", "A", "THE", "AND", "OR", "TO", "FOR", "ON", "IN", "OF", "IS", "IT",
-        "WHAT", "CAN", "NOW", "ETC", "DAY", "SMA", "RSI", "CIO", "READ", "ONLY",
-        "USD", "READY", "NEAR", "ZONE", "STOP", "ALEX", "LLM", "YOU", "HOW",
-        "WHICH", "USING", "MODEL", "FLASH", "PRO", "AI",
-    }
-    out["symbols"] = [s for s in syms if s not in stop][:12]
-
-    if not out["symbols"]:
-        out["symbols"] = _extract_symbols(t)
 
     # Flash refine (intent only) — may not override clear heuristic meta_system
     heuristic_intent = out["intent"]
@@ -388,11 +489,12 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
             system = (
                 "You classify CIO Telegram operator questions. "
                 "Return ONE JSON object only with keys: "
-                "intent (meta_system|reentry|portfolio|cash|risk|research|desk_question|"
+                "intent (meta_system|reentry|portfolio|cash|risk|research|analyst_view|desk_question|"
                 "freeform|unclear|other), "
                 "symbols (list of tickers), "
                 "needs (subset of: runtime_llm, runtime_status, reentry_ready, reentry_levels, "
-                "cash, portfolio, risk, research). "
+                "cash, portfolio, risk, research, analyst_view). "
+                "Use analyst_view for analyst ratings, price targets, valuation or 'is it a buy'. "
                 "Use intent=meta_system and needs runtime_llm/runtime_status for questions about "
                 "which LLM/model/DeepSeek/Flash/Pro, how Alex works, authority, or bot status. "
                 "For meta_system do NOT include reentry_ready or portfolio. "
@@ -436,7 +538,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         out["intent"] = "meta_system"
                         out["needs"] = flash_needs or ["runtime_llm", "runtime_status"]
                     elif flash_intent in (
-                        "reentry", "portfolio", "cash", "risk", "research",
+                        "reentry", "portfolio", "cash", "risk", "research", "analyst_view",
                         "desk_question", "freeform", "unclear", "other",
                     ):
                         if flash_intent in ("other", "unclear", "desk_question"):
@@ -457,7 +559,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         out["needs"] = flash_needs or heuristic_needs
                     # Heuristic freeform stays freeform unless Flash picked a desk intent
                     if heuristic_intent == "freeform" and out["intent"] not in (
-                        "meta_system", "reentry", "portfolio", "cash", "risk", "research",
+                        "meta_system", "reentry", "portfolio", "cash", "risk", "research", "analyst_view",
                     ):
                         out["intent"] = "freeform"
                         out["needs"] = [
@@ -466,13 +568,10 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         ]
 
                     if isinstance(parsed.get("symbols"), list):
-                        out["symbols"] = [
-                            str(s).upper() for s in parsed["symbols"] if str(s).isalpha()
-                        ][:12]
+                        # Resolved subjects stay; Flash may only add verified ones.
+                        _merge_flash_symbols(out, parsed["symbols"])
                     out["ok"] = True
                     out["source"] = "deepseek_flash"
-                    # Flash may drop a lower-case ticker; the known-symbol rule keeps it.
-                    out["symbols"] = list(dict.fromkeys([*out.get("symbols", []), *_extract_symbols(t)]))[:12]
                     out["model"] = llm.get("model") or "deepseek-flash"
                     # Final guard: meta heuristic always blocks desk needs
                     if _looks_like_meta_system(t):
@@ -480,13 +579,13 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         out["needs"] = [
                             n for n in (out["needs"] or []) if n in _RUNTIME_NEEDS
                         ] or ["runtime_llm", "runtime_status"]
-                    return out
+                    return _stamp_answerable(out)
             out["error"] = str(llm.get("error") or "intent_flash_failed")
         except Exception as exc:
             out["error"] = f"intent:{type(exc).__name__}:{exc}"
 
     out["ok"] = True  # heuristic is acceptable
-    return out
+    return _stamp_answerable(out)
 
 
 def _domain_payload(snap: dict[str, Any], name: str) -> dict[str, Any]:
@@ -2624,9 +2723,18 @@ def is_answerable(intent: dict[str, Any]) -> tuple[bool, str]:
     symbols = [s for s in (intent.get("symbols") or []) if str(s).strip()]
     market_needs = needs & {"analyst_view", "reentry_ready", "reentry_levels", "risk"}
     if market_needs and not symbols:
+        # Name what failed to resolve. Never assert WHY (e.g. "private"): the name
+        # index only knows the broker instrument feed, and a listed name the feed
+        # has not swept is indistinguishable here from a private company.
+        names = [str(s.get("matched")) for s in (intent.get("subjects") or [])
+                 if isinstance(s, dict) and s.get("kind") == "company" and not s.get("symbol") and s.get("matched")]
+        named = (f" ({', '.join(dict.fromkeys(names))} did not resolve to an instrument in the broker feed)"
+                 if names else "")
+        cands = [str(c) for c in (intent.get("ticker_candidates") or [])][:3]
+        hint = (f". If you meant a ticker, write it in capitals ({', '.join(cands)})" if cands else "")
         return False, (
             "no tradable instrument resolved from that question, so there is no "
-            "quote, options chain, analyst coverage or research to wait for"
+            "quote, options chain, analyst coverage or research to wait for" + named + hint
         )
     return True, ""
 
