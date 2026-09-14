@@ -593,6 +593,7 @@ GATES = [
             "tests/test_price_unit_integrity_20260914.py",
             "tests/test_finviz_view_contracts_20260914.py",
             "tests/test_source_health_and_av_selection_20260914.py",
+            "tests/test_source_litmus_vs_yahoo_20260914.py",
             # 2026-09-13: the state tree existed twice for 18 days (dev tree vs
             # persistent-state). Identity of the directory is the check, not the
             # age of a file -- an age check on one copy is exactly what missed it.
