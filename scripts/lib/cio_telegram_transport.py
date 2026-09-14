@@ -312,7 +312,9 @@ def send_cio_message(
             # Default plain text: Markdown parse_mode eats underscores in
             # dec_… / ACT_NOW. Callers may opt into HTML for IIC cards.
             resp = send_message(
-                token=token, chat_id=cid, text=text[:4000],
+                # Whole text: send_message splits long bodies into ordered parts.
+                # `text[:4000]` cut the end off every long CIO message (2026-09-14).
+                token=token, chat_id=cid, text=text,
                 reply_markup=reply_markup,
                 parse_mode=parse_mode,
             )

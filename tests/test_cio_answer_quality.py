@@ -168,19 +168,25 @@ def test_distinct_topic_query_is_valid_postgres():
 # ── 3. the mangled authority rail ──────────────────────────────────────────
 
 def test_reply_is_sent_as_plain_text():
-    """READ_ONLY_ADVISORY must survive the wire. Markdown eats the underscores."""
+    """READ_ONLY_ADVISORY must survive the wire. Markdown eats the underscores.
+
+    2026-09-14: the rendered reply is sent as HTML (telegram_desk_render escapes every value, and HTML
+    does not treat underscores as markup), with the plain-text send kept as the fallback. The rule that
+    still holds: parse_mode is explicit on every send, and it is never Markdown.
+    """
     src = REPLY.read_text()
     tree = ast.parse(src)
-    found = False
+    modes = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) \
            and node.func.attr == "send_message":
             kw = {k.arg: k.value for k in node.keywords}
             assert "parse_mode" in kw, "parse_mode must be explicit, not defaulted"
             assert isinstance(kw["parse_mode"], ast.Constant)
-            assert kw["parse_mode"].value is None
-            found = True
-    assert found, "no send_message call found"
+            assert kw["parse_mode"].value in (None, "HTML"), "never Markdown: it eats underscores"
+            modes.append(kw["parse_mode"].value)
+    assert None in modes, "the plain-text fallback send must remain"
+    assert modes, "no send_message call found"
 
 
 def test_authority_footer_survives_plain_text():
