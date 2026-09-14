@@ -365,7 +365,7 @@ Every time an agent analyzes a symbol, it receives this full context stack:
 9. Prospects Context    — pipeline position (incubator, proposal, paper trade)
 10. Calibration Data    — agent's own win rate, avg confidence, past PnL on similar
 11. Strategy Playbook   — role instructions, entry/exit rules, risk parameters
-12. Global Rules G1-G10 — income protection, SSDI awareness, confidence gating
+12. Global Rules G0-G10 — use only supplied facts (numbers checked after the answer), income protection, SSDI awareness, confidence gating
 ```
 
 ### Demand-Driven Search Loop

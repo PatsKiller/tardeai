@@ -23,6 +23,14 @@ G7 ESCALATION: Auto-escalate to Alex when: agent conflict (BUY vs SELL same symb
 G10 NO DIRECT EXECUTION: No trade executes without human approval.
 === END GLOBAL RULES ==="""
 
+#: Rule G0 (2026-09-13). The facts were always gathered from the Command Center
+#: first; nothing told the model to use only them. The numbers in the answer are
+#: checked against the prompt afterwards (lib/agent_number_grounding.py).
+GROUNDING_RULE = """=== USE ONLY SUPPLIED FACTS (mandatory) ===
+G0 USE ONLY SUPPLIED FACTS: Every price, percentage, target, ratio, count and date you state must appear in the context supplied in this prompt, or be simple arithmetic on numbers that do (say which ones). Do not use remembered or outside knowledge about this company, its prices, its analysts or its news. If a fact you need is not supplied, name it in data_i_doubt and lower your confidence; never estimate it.
+Your numbers are checked against the supplied context after you answer; numbers not found there are flagged as unverified and can demote the answer to RESEARCH_MORE.
+=== END USE ONLY SUPPLIED FACTS ==="""
+
 PROPOSAL_GLOBAL_RULES = """=== GLOBAL RULES (paper proposals) ===
 G1 DATA FRESHNESS: Flag stale inputs (news >7d, prices >24h, indicators missing) in data_i_doubt; lower confidence.
 G4 CONFIDENCE GATING: If confidence <40% or only one weak source: vote WAIT_FOR_DATA.
@@ -80,6 +88,7 @@ def build_base_json_instruction(
         contract_header(),
         "Respond in JSON format with these fields:",
         *fields,
+        GROUNDING_RULE,
     ]
     if rules:
         parts.append(rules)
