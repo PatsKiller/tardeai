@@ -789,13 +789,13 @@
         "PRO_MAX"
       ],
       "output_schema": "cio_synthesis.v1",
-      "notes": " | 2026-09-10: alias so organic cron Flash votes do not PROCESS_NOT_REGISTERED",
+      "notes": " | 2026-09-10: alias so organic cron Flash votes do not PROCESS_NOT_REGISTERED | 2026-09-13: max_input_tokens 16000 to 32000, operator approved in session. DXCM synthesis failed 26 times on 2026-08-29/30 with prompts of 39k-44.5k tokens because run_synthesis included every stored agent result; the prompt now keeps the newest 2 results per agent within a 40000-character budget (SYNTHESIS_RESULTS_PER_AGENT, SYNTHESIS_NARRATIVE_CHAR_BUDGET). Peak cost per call at full input about $0.0096 to $0.0144; daily_cost_cap_usd 0.5 unchanged.",
       "allowed_lanes": [
         "grok",
         "chatgpt",
         "deepseek-flash"
       ],
-      "max_input_tokens": 16000,
+      "max_input_tokens": 32000,
       "max_output_tokens": 4000,
       "daily_soft_cap": 200,
       "daily_cost_cap_usd": 0.5,

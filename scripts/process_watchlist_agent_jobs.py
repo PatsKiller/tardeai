@@ -2077,6 +2077,39 @@ def _build_layer_status(conn) -> str:
     return "\n".join(lines)
 
 
+def _select_synthesis_rows(rows, *, per_agent=None, char_budget=None):
+    """The analyst results that go into a CIO synthesis prompt: newest per agent, inside a budget.
+
+    run_synthesis used to include EVERY completed result ever stored for the
+    symbol. DXCM failed 26 times on 2026-08-29/30 with prompts of ~39k-44.5k
+    tokens against the 16k synthesis cap and re-queued a retry each time; on
+    2026-09-13 CRXP held 86 results (~44.9k narrative tokens) and DIT 46
+    (~24.8k), both past the cap. Older results for the same agent are
+    superseded views, not extra evidence.
+
+    Keeps at most ``per_agent`` rows per agent (env SYNTHESIS_RESULTS_PER_AGENT,
+    default 2), newest first, while the estimated narrative size stays within
+    ``char_budget`` (env SYNTHESIS_NARRATIVE_CHAR_BUDGET, default 40000 chars,
+    about 10k tokens). Returns (kept_rows, omitted_count).
+    """
+    per = int(per_agent if per_agent is not None else os.environ.get("SYNTHESIS_RESULTS_PER_AGENT", "2"))
+    budget = int(char_budget if char_budget is not None else os.environ.get("SYNTHESIS_NARRATIVE_CHAR_BUDGET", "40000"))
+    counts = {}
+    kept = []
+    used = 0
+    for r in rows or []:
+        agent = str(r.get("agent") or "")
+        if counts.get(agent, 0) >= max(1, per):
+            continue
+        cost = len(str(r.get("full_narrative") or r.get("summary") or "")) + 600
+        if kept and used + cost > budget:
+            continue
+        kept.append(r)
+        used += cost
+        counts[agent] = counts.get(agent, 0) + 1
+    return kept, len(rows or []) - len(kept)
+
+
 def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False, dry_run: bool = False):
     """Run strategy-aware final synthesis combining all analyst narratives.
 
@@ -2110,9 +2143,10 @@ def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False, d
     weights = STRATEGY_WEIGHTS.get(strategy_type, STRATEGY_WEIGHTS["core_holding"])
     rules = weights.get("rules", [])
 
-    # Build narratives section
+    # Build narratives section: newest results per agent, inside a size budget.
+    narr_rows, narr_omitted = _select_synthesis_rows(results)
     narratives = ""
-    for r in results:
+    for r in narr_rows:
         narratives += f"\n--- {r['agent'].upper()} ({r['created_at'].strftime('%Y-%m-%d') if r.get('created_at') else '?'}) ---\n"
         narratives += f"Recommendation: {r.get('recommendation', '?')}, Confidence: {r.get('confidence', '?')}\n"
         _agent_struct = {"evidence": [], "data_i_doubt": "none"}
@@ -2129,6 +2163,9 @@ def run_synthesis(conn, symbol: str, lanes=None, manual_trigger: bool = False, d
         narratives += f"Narrative: {r.get('full_narrative') or r.get('summary', 'No narrative')}\n"
         if r.get('reason_codes'):
             narratives += f"Reason codes: {', '.join(r['reason_codes'])}\n"
+    if narr_omitted:
+        narratives += (f"\n({narr_omitted} older analyst result(s) omitted to fit the synthesis input budget; "
+                       f"the newest per agent are above.)\n")
 
     context = _get_context(conn, symbol)
 
