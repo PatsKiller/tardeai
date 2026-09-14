@@ -194,9 +194,14 @@ def entry_alert(item: dict[str, Any]) -> RichMessage:
         f" · zone {_num(item.get('zone_low'), '${:.2f}')}–{_num(item.get('zone_high'), '${:.2f}')}",
         f"Stop {_num(item.get('stop'), '${:.2f}')} · target {_num(item.get('target'), '${:.2f}')} · R:R {_num(item.get('rr'), '{:.1f}')}",
     ]
+    if item.get("advice"):
+        facts.append(f"Proposal advice: {item['advice']}")
     ladder = [str(x) for x in (item.get("exit_ladder") or [])]
-    return RichMessage(marker=marker, title=f"{state or 'ENTRY'} — {sym} (advisory)", symbols=[sym], facts=facts,
-                       why=item.get("why"), evidence=ladder, chart_symbol=sym, pills=["🟢 Trade-AI data"],
+    if item.get("invalidation"):
+        ladder.append(f"Invalidation: {item['invalidation']}")
+    ladder.append("Advisory only — nothing queued, nothing executed.")
+    return RichMessage(marker=marker, title=f"{state or 'ENTRY'} ENTRY ALERT — {sym} (advisory)", symbols=[sym],
+                       facts=facts, why=item.get("why"), evidence=ladder, chart_symbol=sym, pills=["🟢 Trade-AI data"],
                        sources=[(label, url) for label, url in (item.get("sources") or [])])
 
 

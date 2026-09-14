@@ -80,6 +80,7 @@ def _raw_send_telegram_result(
     *,
     reply_markup: dict | None = None,
     thread_id: str | None = None,
+    link_preview_options: dict | None = None,
 ) -> dict:
     """Low-level Telegram send with provider message ids. No routing."""
     # FQDN/v3 normalization at the send chokepoint: rewrite any internal IP/localhost + legacy /v2/
@@ -103,6 +104,7 @@ def _raw_send_telegram_result(
                     text=chunk,
                     reply_markup=markup,
                     thread_id=thread_id,
+                    link_preview_options=link_preview_options if i == 0 else None,
                 )
                 if not result.get("ok"):
                     print(f"[telegram] Error to {cid}: {result.get('status_code')}")
@@ -133,6 +135,7 @@ def _raw_send_telegram(
     *,
     reply_markup: dict | None = None,
     thread_id: str | None = None,
+    link_preview_options: dict | None = None,
 ) -> bool:
     """Low-level Telegram send. No routing — called after router approval."""
     return bool(
@@ -141,6 +144,7 @@ def _raw_send_telegram(
             chat_ids,
             reply_markup=reply_markup,
             thread_id=thread_id,
+            link_preview_options=link_preview_options,
         ).get("ok")
     )
 
@@ -152,6 +156,7 @@ def _legacy_send(
     reply_markup: dict | None = None,
     chat_ids: list | None = None,
     thread_id: str | None = None,
+    link_preview_options: dict | None = None,
 ) -> bool:
     """Pre-normalization behaviour, unchanged. Requires no new table."""
     targets = chat_ids or _chat_ids()
@@ -174,7 +179,8 @@ def _legacy_send(
         except ImportError:
             pass  # Router not available — send normally
     return _raw_send_telegram(
-        message, chat_ids=targets, reply_markup=reply_markup, thread_id=thread_id
+        message, chat_ids=targets, reply_markup=reply_markup, thread_id=thread_id,
+        link_preview_options=link_preview_options,
     )
 
 
@@ -389,6 +395,7 @@ def _send_via_comms_gateway(
     chat_ids: list | None = None,
     thread_id: str | None = None,
     producer: str = "telegram_alert.send_telegram",
+    link_preview_options: dict | None = None,
 ) -> bool:
     """Publish CommunicationEvent then gateway-deliver. No legacy dual-send.
 
@@ -436,6 +443,7 @@ def _send_via_comms_gateway(
         reply_markup=reply_markup,
         chat_ids=chat_ids,
         thread_id=thread_id,
+        link_preview_options=link_preview_options,
         _existing_delivery_id=existing_dlv,
     )
     if not result.get("delivered"):
@@ -456,6 +464,7 @@ def send_telegram(
     thread_id: str | None = None,
     message_class: str = "operator_alert",
     _gateway_owned: bool = False,
+    link_preview_options: dict | None = None,
 ) -> bool:
     """Send/publish an operator alert. Returns True when the event was ACCEPTED.
 
@@ -490,6 +499,7 @@ def send_telegram(
             reply_markup=reply_markup,
             chat_ids=chat_ids,
             thread_id=thread_id,
+            link_preview_options=link_preview_options,
         )
 
     mc = (message_class or "operator_alert").strip() or "operator_alert"
@@ -501,6 +511,7 @@ def send_telegram(
                 reply_markup=reply_markup,
                 chat_ids=chat_ids,
                 thread_id=thread_id,
+                link_preview_options=link_preview_options,
             )
         except Exception as e:
             print(
@@ -511,13 +522,14 @@ def send_telegram(
 
     # OFF/SHADOW or class not allowlisted: legacy send + best-effort ledger publish.
     # Keyboards / explicit destinations stay on legacy transport until outbox owns them.
-    if reply_markup is not None or chat_ids is not None or thread_id is not None:
+    if reply_markup is not None or chat_ids is not None or thread_id is not None or link_preview_options is not None:
         ok = _legacy_send(
             message,
             bypass_router,
             reply_markup=reply_markup,
             chat_ids=chat_ids,
             thread_id=thread_id,
+            link_preview_options=link_preview_options,
         )
         _best_effort_comms_publish(message, message_class=mc, delivered=bool(ok))
         return ok

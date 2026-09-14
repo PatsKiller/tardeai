@@ -594,9 +594,37 @@ def _alert(sym, p, urg, price) -> bool:
     # and land on the Command Center dashboard rather than interrupting the phone.
     try:
         from telegram_alert import send_telegram
-        return bool(send_telegram(text))
     except Exception:
         return False
+    rich = None
+    if os.environ.get("TELEGRAM_RICH_ALERTS", "1").strip().lower() not in ("0", "false", "off", "no"):
+        # 2026-09-14 operator: ticker bold and linked to its Command Center page, the chart on top,
+        # sources as real links. The plain text above stays the fallback.
+        try:
+            from lib.telegram_rich import entry_alert
+            rich = entry_alert(_entry_item(sym, p, urg, price)).render()
+        except Exception as exc:  # noqa: BLE001 -- formatting must never cost the alert
+            print(f"  rich entry layout unavailable ({type(exc).__name__}); sending plain text")
+    extra = ({"reply_markup": rich["reply_markup"], "link_preview_options": rich["link_preview_options"]}
+             if rich else {})
+    try:
+        return bool(send_telegram(rich["text"] if rich else text, **extra))
+    except Exception:
+        return False
+
+
+def _entry_item(sym, p, urg, price) -> dict:
+    prop = p.get("proposal") or {}
+    lad = p.get("exit_ladder") or {}
+    return {
+        "symbol": sym, "state": "READY" if urg == "ready" else "NEAR-ENTRY", "setup": p.get("setup_type"),
+        "price": price, "zone_low": p.get("entry_zone_low"), "zone_high": p.get("entry_zone_high"),
+        "stop": p.get("stop_price"), "target": p.get("target_price"), "rr": p.get("risk_reward"),
+        "why": str(p.get("entry_thesis") or "")[:280] or None,
+        "invalidation": str(p.get("invalidation") or "")[:200] or None,
+        "advice": f"{prop.get('tag', 'WAIT')} — {str(prop.get('sizing_rationale', ''))[:100]}".rstrip(" —"),
+        "exit_ladder": [f"{s['label']} ${s['px']} — {s['action']}" for s in (lad.get("steps") or [])],
+    }
 
 
 if __name__ == "__main__":
