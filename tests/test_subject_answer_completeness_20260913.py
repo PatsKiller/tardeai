@@ -94,6 +94,14 @@ def test_research_selection_puts_substance_first_and_collapses_the_options_repea
     assert "67.61000000000001" not in got[1]["summary"] and "67.61" in got[1]["summary"]
 
 
+def test_research_query_keeps_the_newest_rows_of_every_type():
+    # Newest-first over all rows let 56 options-desk and 110 stop-curation rows
+    # crowd out V's single deep-research note before selection ever saw it.
+    sql = " ".join(desk.SUBJECT_RESEARCH_SQL.split())
+    assert "PARTITION BY research_type ORDER BY created_at DESC" in sql and "WHERE rn <= %s" in sql
+    assert "status = 'promoted'" in sql and desk.SUBJECT_RESEARCH_PER_TYPE >= 1
+
+
 def test_operational_notes_only_when_the_question_is_about_stops():
     got = desk.select_subject_research(RAW_RESEARCH, include_operational=True)
     assert {"stop_curation", "stop_health"} <= {g["research_type"] for g in got}

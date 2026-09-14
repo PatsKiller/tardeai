@@ -2050,6 +2050,19 @@ def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str)
     return out
 
 
+#: Rows kept per research type before selection (see subject_research).
+SUBJECT_RESEARCH_PER_TYPE = 3
+SUBJECT_RESEARCH_SQL = """SELECT symbol, research_type, topic, body, confidence_score, created_at
+     FROM (SELECT symbol, research_type, topic, COALESCE(summary, thesis, '') AS body,
+                  confidence_score, created_at,
+                  row_number() OVER (PARTITION BY research_type ORDER BY created_at DESC) AS rn
+             FROM hermes_research_intelligence
+            WHERE upper(symbol) = ANY(%s) AND status = 'promoted') per_type
+    WHERE rn <= %s
+    ORDER BY created_at DESC
+    LIMIT %s"""
+
+
 #: Research rows that are operational notes about the book's own stops and
 #: protection, not research about the company. Shown only when the question is
 #: about stops or protection.
@@ -2423,14 +2436,11 @@ def subject_research(symbols: list[str], *, limit: int = 4,
         )
         cur = conn.cursor()
         cur.execute(
-            """SELECT symbol, research_type, topic,
-                      COALESCE(summary, thesis, ''), confidence_score,
-                      created_at
-                 FROM hermes_research_intelligence
-                WHERE upper(symbol) = ANY(%s) AND status = 'promoted'
-                ORDER BY created_at DESC
-                LIMIT %s""",
-            (syms, max(40, int(limit) * 15)),
+            # The newest few rows OF EACH research type. A plain newest-first window
+            # let the options desk's per-run rows and the stop-curation notes fill
+            # it: V's only deep-research note (2026-09-09) never reached selection.
+            SUBJECT_RESEARCH_SQL,
+            (syms, SUBJECT_RESEARCH_PER_TYPE, max(40, int(limit) * 15)),
         )
         out: list[dict[str, Any]] = []
         for sym, rtype, topic, body, conf, created in cur.fetchall():
