@@ -1455,6 +1455,21 @@
       "note": "Samples stored closes per source against Yahoo Finance's close for the same session. Operator-approved 2026-09-14 after the litmus found 29% of quote-derived closes off by >1%, sub-share position values written as closes, and a session-stale Alpaca previous close."
     },
     {
+      "lane_id": "eod-consolidated-close-sync",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-eod-consolidated-close.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/eod_consolidated_close_sync_last_run.json"
+      },
+      "note": "Replaces IEX-derived daily closes (source=market_quotes) that disagree with the consolidated close by more than 1%, via the ticker_prices write module (source=yfinance_eod); >50% disagreements are reported for quarantine review, not synced. Operator decision 2026-09-14."
+    },
+    {
       "lane_id": "finviz-view-contracts",
       "owner": "platform",
       "scheduler": {

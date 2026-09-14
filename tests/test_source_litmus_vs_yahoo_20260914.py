@@ -40,6 +40,14 @@ def test_small_differences_are_off_but_not_blocking():
     assert st["off"] == 1 and st["badly_off"] == 0 and out["block"] == []
 
 
+def test_closes_written_from_yahoo_are_not_scored_against_yahoo():
+    out = lit.evaluate([("MNSX", "yfinance_eod", 20.63), ("AAPL", "market_quotes", 332.55)],
+                       {"MNSX": 20.63, "AAPL": 332.27})
+    assert out["sources"]["yfinance_eod"]["not_independent"] == 1
+    assert out["sources"]["yfinance_eod"]["compared"] == 0
+    assert out["sources"]["market_quotes"]["compared"] == 1
+
+
 def test_no_reference_is_counted_not_compared():
     out = lit.evaluate([("DELISTED", "market_quotes", 1.0)], {"DELISTED": None})
     st = out["sources"]["market_quotes"]

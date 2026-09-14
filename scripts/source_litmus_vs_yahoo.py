@@ -51,6 +51,8 @@ BADLY_OFF = 0.10          # more than 10% is a wrong price, not a rounding diffe
 #: A source BLOCKs when more than this share of its compared rows is badly off.
 BLOCK_SHARE = {"default": 0.02}
 SAMPLE_PER_SOURCE = {"default": 40, "market_quotes": 120}
+#: Closes written from Yahoo itself (the EOD consolidated sync, the yfinance backfill).
+SELF_REFERENCED_SOURCES = frozenset({"yfinance_eod", "yfinance"})
 
 
 def evaluate(samples: Iterable[tuple[str, str, float]], reference: dict[str, Optional[float]]) -> dict:
@@ -58,6 +60,10 @@ def evaluate(samples: Iterable[tuple[str, str, float]], reference: dict[str, Opt
     per: dict[str, dict] = defaultdict(lambda: {"compared": 0, "within": 0, "off": 0, "badly_off": 0,
                                                 "no_reference": 0, "worst": []})
     for sym, src, stored in samples:
+        if src in SELF_REFERENCED_SOURCES:
+            # A close written FROM Yahoo checked AGAINST Yahoo proves nothing.
+            per[src]["not_independent"] = per[src].get("not_independent", 0) + 1
+            continue
         st = per[src]
         ref = reference.get(sym)
         if not ref or ref <= 0 or stored is None:
