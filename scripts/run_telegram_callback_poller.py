@@ -317,7 +317,10 @@ def poll_once(timeout=25):
                 )
                 if ans.get("answered"):
                     processed += 1
-                    log.info(f"replied: {text[:40]} from chat={chat_id}")
+                    if ans.get("delivered") is False:
+                        log.error(f"reply NOT delivered (status={ans.get('delivery_status')}): {text[:40]} from chat={chat_id}")
+                    else:
+                        log.info(f"replied: {text[:40]} from chat={chat_id}")
                 elif ans.get("reason") not in ("flag_off", "not_allowlisted"):
                     log.info(f"reply skipped ({ans.get('reason')}): {text[:40]}")
             except Exception as e:

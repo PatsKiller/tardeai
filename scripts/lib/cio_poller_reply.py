@@ -109,22 +109,59 @@ def make_send_fn(*, token: str, reply_to_message_id: Any = None,
         if tx is None:
             from scripts import telegram_transport as tx  # noqa: PLC0415
         target_reply = reply_to if reply_to is not None else reply_to_message_id
-        res = tx.send_message(
-            token=token,
-            chat_id=str(chat_id),
-            text=body,
-            # PLAIN TEXT, deliberately. The transport defaults to
-            # parse_mode="Markdown", under which Telegram eats the underscores
-            # in any identifier with an even count -- the first live reply came
-            # back reading "READONLYADVISORY" instead of READ_ONLY_ADVISORY,
-            # which is the authority rail on the message. cio_telegram_transport
-            # reached the same conclusion and says so in its own comment
-            # ("Markdown parse_mode eats underscores in dec_... / ACT_NOW"), so
-            # this matches the house convention rather than adding another.
-            # Losing *bold* costs nothing; mangling an identifier costs meaning.
-            parse_mode=None,
-            reply_to_message_id=target_reply,
-        )
+        res = None
+        if (os.environ.get("CIO_REPLY_RICH", "1").strip().lower() not in ("0", "false", "off", "no")) and body:
+            # Readable on a phone (2026-09-14 "Gibberish"): body with its formatting, one plain footer, the
+            # provenance collapsed, long answers as "Part 1 of N". The stored answer below stays unchanged.
+            try:
+                try:
+                    from lib.telegram_desk_render import render_desk_reply  # noqa: PLC0415
+                except ImportError:  # pragma: no cover
+                    from scripts.lib.telegram_desk_render import render_desk_reply  # type: ignore  # noqa: PLC0415
+                parts = render_desk_reply(body)
+                results = []
+                for i, part in enumerate(parts):
+                    r = tx.send_message(token=token, chat_id=str(chat_id), text=part, parse_mode="HTML",
+                                        reply_to_message_id=target_reply if i == 0 else None)
+                    results.append(r if isinstance(r, dict) else {"ok": bool(r)})
+                    if not results[-1].get("ok"):
+                        break
+                if results and len(results) == len(parts) and all(x.get("ok") for x in results):
+                    res = {**results[0], "ok": True, "parts": len(parts),
+                           "message_ids": [x.get("message_id") for x in results]}
+                elif results and results[0].get("ok"):
+                    res = {**results[-1], "ok": False, "parts": len(parts), "parts_sent": len(results) - 1}
+                else:
+                    _log.warning("cio_poller_reply: rich render refused (status=%s); sending plain parts",
+                                 (results[-1] if results else {}).get("status_code"))
+            except Exception as exc:  # noqa: BLE001 -- formatting must never cost the answer
+                # ALARM-DELIVERY-DECLARED: not a swallow -- res stays None, so the plain send below still
+                # delivers the answer, and its result is recorded and logged if that fails too.
+                _log.warning("cio_poller_reply: rich render failed: %s", exc)
+        if res is None:
+            res = tx.send_message(
+                token=token,
+                chat_id=str(chat_id),
+                text=body,
+                # PLAIN TEXT, deliberately. The transport defaults to
+                # parse_mode="Markdown", under which Telegram eats the underscores
+                # in any identifier with an even count -- the first live reply came
+                # back reading "READONLYADVISORY" instead of READ_ONLY_ADVISORY,
+                # which is the authority rail on the message. cio_telegram_transport
+                # reached the same conclusion and says so in its own comment
+                # ("Markdown parse_mode eats underscores in dec_... / ACT_NOW"), so
+                # this matches the house convention rather than adding another.
+                # Losing *bold* costs nothing; mangling an identifier costs meaning.
+                parse_mode=None,
+                reply_to_message_id=target_reply,
+            )
+        # A reply that did not reach Telegram must say so. 2026-09-14: the AXTI answer was
+        # refused twice (400) and the poller logged "replied".
+        _deliver.last_result = res if isinstance(res, dict) else {"ok": bool(res)}
+        if not _deliver.last_result.get("ok"):
+            _log.error("cio_poller_reply: reply NOT delivered chat=%s len=%d status=%s reason=%s",
+                       chat_id, len(body or ""), _deliver.last_result.get("status_code"),
+                       _deliver.last_result.get("plain_fallback_reason") or _deliver.last_result.get("error"))
         # The AGENT half of the conversation. Captured here because this is the
         # single point every reply on this path passes through.
         try:
@@ -217,6 +254,10 @@ def maybe_answer(msg: Mapping[str, Any], *, text: str, chat_id: str, token: str,
             actor_id="cio_poller_reply",
         )
         out["answered"] = bool((res or {}).get("handled"))
+        last = getattr(send_fn, "last_result", None)
+        if isinstance(last, dict):
+            out["delivered"] = bool(last.get("ok"))
+            out["delivery_status"] = last.get("status_code")
         out["reason"] = str((res or {}).get("reason") or "")
         out["result"] = res
         return out
