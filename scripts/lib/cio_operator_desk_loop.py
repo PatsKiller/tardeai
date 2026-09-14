@@ -21,7 +21,7 @@ import json
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -1770,7 +1770,9 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
         # Subject first. The pipeline counters that used to live here are
         # identical for every question and describe the machine, not the
         # company -- see subject_research() for what shipping them cost.
-        items = subject_research(symbols)
+        items = subject_research(
+            symbols, include_operational=bool(_STOP_QUESTION.search(str(intent.get("text") or ""))),
+        )
         if items:
             available["hermes_research"] = {
                 "items": items,
@@ -1806,6 +1808,24 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
                 "reason": f"no analyst coverage on file for {', '.join(symbols)}",
                 "gap_type": "missing_analyst_coverage",
             })
+
+    # How is the named stock doing: last close, 30-day change, its desk levels.
+    # 2026-09-13 "How is Visa doing ... analyst recommendations": the reply had no
+    # price, no levels and no analyst line although all three were on file.
+    subject_syms = [s for s in symbols[:3]] if (symbols and ({"research", "analyst_view"} & set(needs))
+                                                and not want_reentry) else []
+    if subject_syms:
+        available["subject_symbols"] = subject_syms
+        prices = subject_price_facts(subject_syms)
+        if prices:
+            available["subject_price"] = prices
+            sources.append("ticker_prices")
+        lv, lv_as_of, lv_path = _subject_levels(subject_syms)
+        if lv:
+            available["subject_levels"] = lv
+            available["subject_levels_as_of"] = lv_as_of
+            if lv_path:
+                sources.append(str(lv_path))
 
     # Blocking gaps
     blocking: list[dict[str, Any]] = []
@@ -2030,7 +2050,338 @@ def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str)
     return out
 
 
-def subject_research(symbols: list[str], *, limit: int = 6) -> list[dict[str, Any]]:
+#: Research rows that are operational notes about the book's own stops and
+#: protection, not research about the company. Shown only when the question is
+#: about stops or protection.
+_OPERATIONAL_RESEARCH = frozenset({"stop_curation", "stop_health", "protection_advisory"})
+#: Useful but repetitive: the options desk writes a near-identical covered-call
+#: row on every run. At most one, after the substantive research.
+_SECONDARY_RESEARCH = frozenset({"options_desk"})
+_STOP_QUESTION = re.compile(r"(?i)\b(stops?|stop[\s-]?loss|protect\w*|trailing|hedg\w*)\b")
+_LONG_FLOAT = re.compile(r"(\d+\.\d{2})\d{3,}")
+_MARKDOWN_CHARS = re.compile(r"[*_`\[\]]")
+
+
+def _tidy_numbers(text: Any) -> str:
+    """'edge 67.61000000000001' -> 'edge 67.61'. Stored summaries carry float noise."""
+    return _LONG_FLOAT.sub(r"\1", str(text or ""))
+
+
+def select_subject_research(items: list[dict[str, Any]], *, include_operational: bool = False,
+                            limit: int = 4) -> list[dict[str, Any]]:
+    """The research worth showing, from rows newest first.
+
+    2026-09-13, "How is Visa doing ... supporting research ... analyst
+    recommendations": V had 1,018 research rows. The newest four were the
+    options desk's covered-call note, three of them identical and one with
+    'edge 67.61000000000001'. 110 stop-curation notes and 'stop health' rows
+    ('if fired: -$4,224,901') sat behind them, and the one deep-research row
+    never surfaced. So: drop operational notes unless asked, one row per
+    research type, near-duplicates merged (numbers ignored when comparing),
+    substantive research before options-desk notes, float noise rounded.
+    """
+    seen: set[str] = set()
+    types: set[str] = set()
+    primary: list[dict[str, Any]] = []
+    secondary: list[dict[str, Any]] = []
+    for it in items or []:
+        rtype = str(it.get("research_type") or "")
+        if rtype in _OPERATIONAL_RESEARCH and not include_operational:
+            continue
+        key = re.sub(r"\d+(?:[.,]\d+)*", "#", str(it.get("summary") or "").lower())[:160]
+        if key in seen or rtype in types:
+            continue
+        seen.add(key)
+        types.add(rtype)
+        clean = {**it, "summary": _tidy_numbers(it.get("summary")), "topic": _tidy_numbers(it.get("topic"))}
+        (secondary if rtype in _SECONDARY_RESEARCH else primary).append(clean)
+    return (primary + secondary)[: max(1, int(limit))]
+
+
+def subject_price_facts(symbols: list[str], *, days: int = 45) -> dict[str, dict[str, Any]]:
+    """Last close and the change over about 30 days, read through the broker's daily bars.
+
+    Read-only. Degrades to {} per symbol when there are no bars or no database.
+    """
+    try:
+        from lib.data_broker import daily_bars  # noqa: PLC0415
+    except ImportError:
+        try:
+            from scripts.lib.data_broker import daily_bars  # noqa: PLC0415
+        except ImportError:
+            return {}
+    out: dict[str, dict[str, Any]] = {}
+    for sym in [str(s).upper() for s in symbols or [] if str(s).strip()]:
+        try:
+            res = daily_bars.get_daily_bars(_research_db_query, sym, days=days)
+        except Exception:  # noqa: BLE001
+            continue
+        bars = sorted((b for b in (res.get("bars") or []) if b.get("close")), key=lambda b: str(b.get("price_date")))
+        if not bars:
+            continue
+        last = bars[-1]
+        start = bars[0]
+        try:
+            cutoff = datetime.fromisoformat(str(last["price_date"])[:10]) - timedelta(days=30)
+            before = [b for b in bars if datetime.fromisoformat(str(b["price_date"])[:10]) <= cutoff]
+            start = before[-1] if before else bars[0]
+        except (ValueError, KeyError):
+            pass
+        change = None
+        if start is not last and start.get("close"):
+            change = round((float(last["close"]) - float(start["close"])) / float(start["close"]) * 100.0, 1)
+        out[sym] = {
+            "close": float(last["close"]), "price_date": str(last["price_date"])[:10],
+            "start_close": float(start["close"]) if start is not last else None,
+            "start_date": str(start["price_date"])[:10] if start is not last else None,
+            "change_30d_pct": change, "stale": res.get("stale"),
+        }
+    return out
+
+
+def _subject_levels(symbols: list[str]) -> tuple[dict[str, dict[str, Any]], Optional[str], Any]:
+    """Each symbol's re-entry desk row (price, zone, stop, target, resistance, SMAs, RSI)."""
+    try:
+        from scripts.lib.cio_telegram_converse import load_reentry_desk_rows  # noqa: PLC0415
+    except ImportError:
+        from lib.cio_telegram_converse import load_reentry_desk_rows  # noqa: PLC0415
+    try:
+        rows, as_of, path = load_reentry_desk_rows()
+    except Exception:  # noqa: BLE001
+        return {}, None, None
+    by = {str(r.get("symbol") or "").upper(): r for r in rows or [] if isinstance(r, dict)}
+    return {s: by[s] for s in symbols if s in by}, as_of, path
+
+
+def _fmt_price(v: Any) -> str:
+    try:
+        return f"${float(v):,.2f}"
+    except (TypeError, ValueError):
+        return "n/a"
+
+
+def _fmt_day(d: Any) -> str:
+    try:
+        dt = datetime.fromisoformat(str(d)[:10])
+    except ValueError:
+        return str(d or "")
+    return dt.strftime("%b %d") if dt.year == datetime.now().year else dt.strftime("%b %d %Y")
+
+
+def _research_label(rtype: str) -> str:
+    return {"deep_research_local": "deep research", "options_desk": "options desk",
+            "ticker_thesis_challenge": "thesis challenge"}.get(rtype, rtype.replace("_", " ") or "research")
+
+
+def _subject_takeaway(sym: str, price: dict[str, Any], row: Optional[dict[str, Any]],
+                      analyst: Optional[dict[str, Any]], research: list[dict[str, Any]]) -> str:
+    bits: list[str] = []
+    close = price.get("close") if price else None
+    if row and close:
+        res = row.get("resistance")
+        res_lvl = res.get("level") if isinstance(res, dict) else res
+        try:
+            if res_lvl:
+                gap = (float(res_lvl) - float(close)) / float(close) * 100.0
+                bits.append(f"price is {abs(gap):.1f}% {'below' if gap >= 0 else 'above'} resistance {_fmt_price(res_lvl)}")
+            if row.get("stop"):
+                cushion = (float(close) - float(row["stop"])) / float(close) * 100.0
+                bits.append(f"{abs(cushion):.1f}% {'above' if cushion >= 0 else 'below'} the stop {_fmt_price(row['stop'])}")
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+    if analyst and close and analyst.get("target_mean"):
+        try:
+            up = (float(analyst["target_mean"]) - float(close)) / float(close) * 100.0
+            s = (f"analysts' mean target {_fmt_price(analyst['target_mean'])} is {abs(up):.1f}% "
+                 f"{'above' if up >= 0 else 'below'} the last close")
+            if analyst.get("stale"):
+                s += f", but that view is {analyst.get('age_days')} days old"
+            bits.append(s)
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+    substantive = [r for r in research if str(r.get("research_type") or "") not in _SECONDARY_RESEARCH]
+    if not research:
+        bits.append(f"there is no house research on {sym}")
+    elif not substantive:
+        bits.append(f"house research on {sym} is thin, options-desk notes only")
+    if not bits:
+        return ""
+    text = "; ".join(bits)
+    text = text[0].upper() + text[1:] + "."
+    if not substantive or not analyst or (analyst and analyst.get("stale")):
+        text += f" Next: say 'research {sym}' to queue a fresh review."
+    return text
+
+
+def format_subject_brief(symbols: list[str], avail: dict[str, Any]) -> str:
+    """How a named stock is doing, from house data only: price, levels, analysts, research, meaning."""
+    prices = avail.get("subject_price") or {}
+    levels = avail.get("subject_levels") or {}
+    lv_asof = _fmt_day(avail.get("subject_levels_as_of")) if avail.get("subject_levels_as_of") else ""
+    analyst_domain = avail.get("analyst_view")
+    analysts = {str(v.get("symbol") or "").upper(): v for v in ((analyst_domain or {}).get("items") or [])}
+    research = (avail.get("hermes_research") or {}).get("items") or []
+    blocks: list[str] = []
+    for sym in symbols:
+        lines = [f"*{sym}*"]
+        p = prices.get(sym) or {}
+        if p.get("close") is not None:
+            line = f"Price {_fmt_price(p['close'])} (close {_fmt_day(p.get('price_date'))})"
+            if p.get("change_30d_pct") is not None:
+                line += (f" · 30-day {p['change_30d_pct']:+.1f}% from {_fmt_price(p.get('start_close'))} "
+                         f"on {_fmt_day(p.get('start_date'))}")
+            lines.append(line)
+        else:
+            lines.append("Price: no daily close on file.")
+        row = levels.get(sym)
+        if row:
+            res = row.get("resistance")
+            res_lvl = res.get("level") if isinstance(res, dict) else res
+            parts = []
+            if row.get("entry_low") and row.get("entry_high"):
+                parts.append(f"entry zone {_fmt_price(row['entry_low'])}-{_fmt_price(row['entry_high'])}")
+            for label, val in (("stop", row.get("stop")), ("target", row.get("target")),
+                               ("resistance", res_lvl), ("SMA20", row.get("sma_20")), ("SMA50", row.get("sma_50"))):
+                if val not in (None, "", 0):
+                    parts.append(f"{label} {_fmt_price(val)}")
+            if row.get("rsi") is not None:
+                try:
+                    parts.append(f"RSI {float(row['rsi']):.1f}")
+                except (TypeError, ValueError):
+                    pass
+            lines.append("Levels (re-entry desk" + (f", computed {lv_asof}" if lv_asof else "") + "): "
+                         + (" · ".join(parts) or "none recorded"))
+        else:
+            lines.append(f"Levels: {sym} is not on the re-entry desk, so no support, resistance or stop is on file.")
+        a = analysts.get(sym)
+        if a:
+            rating = str(a.get("rating") or "no rating").replace("_", " ").title()
+            age = (f", {a.get('age_days')} days old, may be out of date" if a.get("stale") else "")
+            line = f"Analysts (Yahoo, as of {_fmt_day(a.get('as_of'))}{age}): {rating}"
+            if a.get("analysts"):
+                line += f" · {a['analysts']} analysts"
+            if a.get("target_mean") is not None:
+                line += f" · mean target {_fmt_price(a['target_mean'])}"
+                if a.get("target_low") is not None and a.get("target_high") is not None:
+                    line += f" (low {_fmt_price(a['target_low'])}, high {_fmt_price(a['target_high'])})"
+            lines.append(line)
+        elif analyst_domain is not None or "analyst" in str(avail.get("subject_question") or "").lower():
+            lines.append(f"Analysts: no coverage on file for {sym}.")
+        items = [r for r in research if str(r.get("symbol") or "").upper() == sym]
+        if items:
+            lines.append("Research on file:")
+            for it in items:
+                body = _MARKDOWN_CHARS.sub(" ", str(it.get("summary") or it.get("topic") or "")).strip()
+                lines.append(f"- {_fmt_day(it.get('as_of'))} · {_research_label(str(it.get('research_type') or ''))}: {body[:260]}")
+        else:
+            lines.append(f"Research on file: none about {sym}.")
+        take = _subject_takeaway(sym, p, row, a, items)
+        if take:
+            lines.append("What this means: " + take)
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
+
+
+def _subject_required_tokens(symbols: list[str], avail: dict[str, Any]) -> list[str]:
+    """What a summary must keep: each symbol's close and, with coverage, the mean target and its date."""
+    req: list[str] = []
+    analysts = {str(v.get("symbol") or "").upper(): v for v in ((avail.get("analyst_view") or {}).get("items") or [])}
+    for sym in symbols:
+        p = (avail.get("subject_price") or {}).get(sym) or {}
+        if p.get("close") is not None:
+            req.append(_fmt_price(p["close"]))
+        a = analysts.get(sym)
+        if a and a.get("target_mean") is not None:
+            req += [_fmt_price(a["target_mean"]), _fmt_day(a.get("as_of"))]
+    return req
+
+
+def _subject_flash_enabled() -> bool:
+    return _env("CIO_SUBJECT_FLASH", "1").lower() not in ("0", "false", "off", "no")
+
+
+def _subject_flash_call(messages: list[dict[str, str]]) -> dict[str, Any]:
+    from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy  # noqa: PLC0415
+
+    return call_governed_llm(messages, load_llm_policy(), use_pro=False)
+
+
+_SUBJECT_FLASH_BANNED = ("ORDER PLACED", "BUYING NOW", "SUBMITTED", "FILLED", "I WILL BUY", "EXECUTING",
+                         "BROKER ORDER", "YOU SHOULD BUY", "YOU SHOULD SELL")
+
+
+def _subject_flash_problems(text: str, *, facts: str, symbols: list[str], required: list[str]) -> list[str]:
+    problems: list[str] = []
+    if not text or len(text) < 60 or len(text) > 2500:
+        problems.append("length")
+    upper = (text or "").upper()
+    for sym in symbols:
+        if not re.search(rf"(?<![A-Z]){re.escape(sym.upper())}(?![A-Z])", upper):
+            problems.append(f"missing_symbol:{sym}")
+    for tok in required:
+        if tok and tok not in (text or ""):
+            problems.append(f"missing:{tok}")
+    if any(b in upper for b in _SUBJECT_FLASH_BANNED):
+        problems.append("banned_phrase")
+    try:
+        try:
+            from lib.agent_number_grounding import check_grounding  # noqa: PLC0415
+        except ImportError:
+            from scripts.lib.agent_number_grounding import check_grounding  # noqa: PLC0415
+        rep_ = check_grounding([text or ""], facts, min_unsupported=1, max_share=0.0)
+        if rep_["unsupported"]:
+            problems.append("numbers_not_in_facts:" + "|".join(rep_["unsupported"][:5]))
+    except Exception as exc:  # noqa: BLE001
+        problems.append(f"grounding_check_failed:{type(exc).__name__}")
+    return problems
+
+
+def curate_subject_reply_with_flash(*, operator_text: str, facts: str, symbols: list[str],
+                                    required: list[str]) -> dict[str, Any]:
+    """A short DeepSeek Flash summary of the subject brief, kept only if it is faithful.
+
+    Rejected (and the brief itself is sent) unless every number in the summary is
+    in the brief, each symbol, close, mean target and as-of date survive, and it
+    carries no order language. The model words; the house supplies every fact.
+    """
+    out: dict[str, Any] = {"ok": False, "text": facts, "source": "deterministic", "model": None, "error": None}
+    system = (
+        "You are Alex, the CIO desk assistant on Telegram. Authority: READ_ONLY_ADVISORY. "
+        "Summarise the FACTS into a short, plain answer to the operator's question: how the stock is doing, "
+        "its levels, what analysts say with the as-of date and age, what the research on file says, and what it means. "
+        "Use only the FACTS. Every number you write must appear in the FACTS exactly as written there. "
+        "Keep the as-of dates. Say plainly when something is old, thin or missing. "
+        "Do not add facts, forecasts, or buy or sell instructions. Do not place orders. "
+        "Short lines with *bold* labels, about 12 lines at most."
+    )
+    user = f"Operator asked: {(operator_text or '')[:300]}\n\nFACTS (the only source you may use):\n{facts}"
+    try:
+        llm = _subject_flash_call([{"role": "system", "content": system}, {"role": "user", "content": user}])
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = f"flash_call:{type(exc).__name__}"
+        return out
+    if not llm.get("ok"):
+        out["error"] = str(llm.get("error") or llm.get("governance_code") or "flash_failed")
+        out["model"] = llm.get("model")
+        return out
+    text = str(llm.get("content") or "").strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:markdown|md|text)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text).strip()
+    problems = _subject_flash_problems(text, facts=facts, symbols=symbols, required=required)
+    if problems:
+        out["error"] = "flash_validation_rejected:" + ",".join(problems)[:300]
+        out["model"] = llm.get("model")
+        return out
+    if "READ_ONLY" not in text.upper():
+        text = text.rstrip() + "\nREAD_ONLY_ADVISORY"
+    out.update({"ok": True, "text": text, "source": "deepseek_flash",
+                "model": llm.get("model") or "deepseek-flash", "error": None})
+    return out
+
+
+def subject_research(symbols: list[str], *, limit: int = 4,
+                     include_operational: bool = False) -> list[dict[str, Any]]:
     """The research rows that are ABOUT these symbols, with their content.
 
     WHY THIS EXISTS. The `hermes_research` evidence domain carried four values:
@@ -2079,7 +2430,7 @@ def subject_research(symbols: list[str], *, limit: int = 6) -> list[dict[str, An
                 WHERE upper(symbol) = ANY(%s) AND status = 'promoted'
                 ORDER BY created_at DESC
                 LIMIT %s""",
-            (syms, int(limit)),
+            (syms, max(40, int(limit) * 15)),
         )
         out: list[dict[str, Any]] = []
         for sym, rtype, topic, body, conf, created in cur.fetchall():
@@ -2091,7 +2442,7 @@ def subject_research(symbols: list[str], *, limit: int = 6) -> list[dict[str, An
                 "confidence": float(conf) if conf is not None else None,
                 "as_of": created.strftime("%Y-%m-%d") if created else None,
             })
-        return out
+        return select_subject_research(out, include_operational=include_operational, limit=limit)
     except Exception:
         return []
     finally:
@@ -2323,6 +2674,24 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     book = avail.get("book") or ""
     risk = avail.get("risk")
     hermes = avail.get("hermes_research")
+    subject_syms = list(avail.get("subject_symbols") or [])
+    if subject_syms and not sym_cards and not card:
+        brief = format_subject_brief(subject_syms, avail)
+        findings = evidence.get("contract_findings") or []
+        if findings:
+            brief += ("\nFacts available but not assembled: "
+                      + "; ".join(f"{f.get('domain')} ({f.get('code')})" for f in findings[:6]))
+        if brief.strip():
+            if _subject_flash_enabled():
+                flash = curate_subject_reply_with_flash(
+                    operator_text=operator_text, facts=brief, symbols=subject_syms,
+                    required=_subject_required_tokens(subject_syms, avail),
+                )
+                if flash.get("ok"):
+                    return {"ok": True, "text": flash["text"], "source": "deepseek_flash",
+                            "model": flash.get("model"), "flash_error": None}
+            return {"ok": True, "text": brief + "\nREAD_ONLY_ADVISORY", "source": "tradeai_deterministic",
+                    "model": None}
     facts = card
     extras: list[str] = []
     if book:
