@@ -78,8 +78,23 @@ def test_breaker_and_dropped_connections_are_retryable_provider_errors(error):
 
 # ── the escalation handler: absolute interpreter paths are left alone ──────
 
+def _load_resolve_relative_venv():
+    """Only the function under test, from source: importing claude_escalation_handler opens a log file at a
+    fixed host path (logs/claude_escalation.log), which does not exist on a CI runner."""
+    import ast
+    import re
+    src = (ROOT / "scripts" / "claude_escalation_handler.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    keep = [n for n in tree.body
+            if (isinstance(n, ast.FunctionDef) and n.name == "resolve_relative_venv")
+            or (isinstance(n, ast.Assign) and any(getattr(t, "id", "") == "_RELATIVE_VENV_RE" for t in n.targets))]
+    ns: dict = {"re": re}
+    exec(compile(ast.Module(body=keep, type_ignores=[]), "claude_escalation_handler.py", "exec"), ns)  # noqa: S102
+    return type("esc", (), {"resolve_relative_venv": staticmethod(ns["resolve_relative_venv"])})
+
+
 def test_retry_command_venv_resolution_never_doubles_an_absolute_path():
-    import claude_escalation_handler as esc
+    esc = _load_resolve_relative_venv()
     dev = "/home/u/tree/.venv/bin/python"
     assert esc.resolve_relative_venv(".venv/bin/python scripts/x.py", dev) == f"{dev} scripts/x.py"
     absolute = "bash scripts/safe_flock.sh /tmp/l.lock /home/u/tree/.venv/bin/python scripts/y.py"
