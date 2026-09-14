@@ -611,6 +611,11 @@ GATES = [
             # 2026-09-14 15:15-16:30 bridge wedge: DeepSeek held calls ~906 s and the single-threaded bridge
             # queued every caller behind them. Deadline, threaded server, /health, and the watchdog.
             "tests/test_bridge_hang_20260914.py",
+            # 2026-09-14 Telegram: rich layouts, and a written-but-undelivered reply is a finding.
+            "tests/test_telegram_rich_20260914.py",
+            "tests/test_answer_quality_reply_not_delivered_20260914.py",
+            # Rich layouts on the wire: GO, entry and material-change alerts with buttons and the chart preview.
+            "tests/test_telegram_rich_wiring_20260914.py",
             # 2026-09-14 litmus vs Yahoo + live Finviz header: sub-share position
             # values written as closes, a stale Alpaca prev_close, positional
             # Finviz parsing and 1,000x unit mislabels in screening gates.

@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `9c91e612614ae3c1610196ffd1093af9dcca88ca6d38bf6ba722f5f1c5bb370b`
+**Tree fingerprint:** `5c65d7b9cc39fd6d260c1eff8bb3b8ad952b114ddf4b4e99155391c4c2f7b03e`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,11 +12,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2514 |
-| Markdown (excl. this INDEX) | 2090 |
+| Files under `docs/` (excl. this INDEX) | 2516 |
+| Markdown (excl. this INDEX) | 2092 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2023 |
-| Duplicate groups | 2 |
+| Header OK | 2025 |
+| Duplicate groups | 3 |
 
 ### By status_guess
 
@@ -27,8 +27,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_code_snapshot | 3 |
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
-| delete_candidate_duplicate | 2 |
-| review_required | 2143 |
+| delete_candidate_duplicate | 5 |
+| review_required | 2142 |
 
 ## Markdown tree
 
@@ -45,7 +45,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/BROKER_TRADE_PLAN_GATE.md` | Broker Trade Plan Gate — No Gambling on Generic 2×R | review_required | OK | `e73e70a22a5c` |
 | `docs/CC_V3_ACTIONABILITY_SPRINT_20260702.md` | CC v3 Actionability Sprint — Layered Document | review_required | OK | `26d05fe916e7` |
 | `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | OK | `401363e962e2` |
-| `docs/CHANGELOG.md` | Changelog | review_required | OK | `1e51e6db08a9` |
+| `docs/CHANGELOG.md` | Changelog | delete_candidate_duplicate | OK | `337ddbf3774d` |
+| `docs/CHANGELOG.md` | Changelog | delete_candidate_duplicate | OK | `337ddbf3774d` |
+| `docs/CHANGELOG.md` | Changelog | delete_candidate_duplicate | OK | `337ddbf3774d` |
 | `docs/CHEAT_SHEET.md` | Trade AI v12 -- Operator Cheat Sheet | active_keep | OK | `5fbf6fb2ebe7` |
 | `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO Prompt & Input Audit — 2026-07-01 | review_required | OK | `927dbe10051c` |
 | `docs/CLAUDE_CHALLENGER_AND_ANALYST_LANES.md` | Claude Challenger Cohort (A/B) + Analyst Lanes | review_required | OK | `3159e054b153` |

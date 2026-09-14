@@ -235,6 +235,7 @@ def _provider_send_telegram(
         chat_ids=targets,
         reply_markup=kwargs.get("reply_markup"),
         thread_id=kwargs.get("thread_id"),
+        link_preview_options=kwargs.get("link_preview_options"),
     )
     if not result.get("ok"):
         return {"ok": False, "error": "telegram_send_failed"}

@@ -91,6 +91,35 @@ def format_alert(item: dict) -> str:
     return "\n".join(lines)
 
 
+def rich_alert(item: dict) -> Optional[dict]:
+    """The Bot API rendering: bold linked ticker, one line of numbers, chart preview, CC/Finviz/Yahoo buttons.
+
+    Operator 2026-09-14: "no emphasis in links on everything that can go back to the command center or to
+    the source". None when the layout cannot be built; the caller then sends format_alert's text.
+    """
+    if os.environ.get("TELEGRAM_RICH_ALERTS", "1").strip().lower() in ("0", "false", "off", "no"):
+        return None
+    try:
+        from lib.telegram_rich import go_alert  # noqa: PLC0415
+
+        return go_alert(item["row"], tier=item["tier"], passed=item["passed"]).render()
+    except Exception as exc:  # noqa: BLE001 -- formatting must never cost the alert
+        print(f"rich GO layout unavailable ({type(exc).__name__}: {exc}); sending plain text", file=sys.stderr)
+        return None
+
+
+def _send_go(send_telegram: Callable[..., Any], item: dict) -> bool:
+    # bypass_router: the legacy router classified "momentum scalp setup" as
+    # job_telemetry -> DIGEST and send_telegram returned True for the digested
+    # message, so ARMP (A+) and ELMT were recorded as sent at 12:15 on
+    # 2026-09-14 and never reached the operator.
+    rich = rich_alert(item)
+    extra = ({"reply_markup": rich["reply_markup"], "link_preview_options": rich["link_preview_options"]}
+             if rich else {})
+    return bool(send_telegram(rich["text"] if rich else format_alert(item), bypass_router=True,
+                              message_class="operator_alert", **extra))
+
+
 def _load_ledger(path: Path) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -149,7 +178,7 @@ def main() -> int:
             # 2026-09-14 and never reached the operator -- the same silence that hid
             # GO signals for months. The operator asked for these in real time; the
             # Communications Editor still formats every message at the transport.
-            if send_telegram(format_alert(item), bypass_router=True, message_class="operator_alert"):
+            if _send_go(send_telegram, item):
                 ledger[f"{session.isoformat()}:{sym}"] = datetime.now(timezone.utc).isoformat()
                 sent_now.append(sym)
         LEDGER.parent.mkdir(parents=True, exist_ok=True)

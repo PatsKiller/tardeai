@@ -92,6 +92,7 @@ def _base_payload(
     parse_mode: str | None,
     message_id: Any = None,
     reply_to_message_id: Any = None,
+    link_preview_options: dict | None = None,
 ) -> dict:
     payload: dict[str, Any] = {"chat_id": chat_id, "text": text}
     if parse_mode:
@@ -108,6 +109,9 @@ def _base_payload(
         # later "ok" replying to THIS answer resolves its subject by pointing at
         # the parent, and the parent has to be reachable for that to work.
         payload["reply_to_message_id"] = int(reply_to_message_id)
+    if link_preview_options:
+        # Bot API: a chart image URL shown large above the text, or previews switched off.
+        payload["link_preview_options"] = link_preview_options
     return payload
 
 
@@ -215,6 +219,20 @@ def parse_mode_for(text: str, default: str | None = "Markdown") -> str | None:
     return default
 
 
+def html_to_plain(text: str) -> str:
+    """Readable plain text from Telegram HTML, for the one plain retry after an HTML send is refused.
+
+    Resending the HTML body without parse_mode would put the tags in front of the operator, which is the
+    Markdown-backslash failure again in another language. Links keep their address.
+    """
+    import html as _html  # noqa: PLC0415
+
+    t = _re_html.sub(r'<a\s+href="([^"]*)"[^>]*>(.*?)</a>', lambda m: f"{m.group(2)} ({_html.unescape(m.group(1))})",
+                     text or "", flags=_re_html.S)
+    t = _re_html.sub(r"</?(?:b|strong|i|em|u|ins|s|strike|del|code|pre|tg-spoiler|span|blockquote)(?:\s[^>]*)?>", "", t)
+    return _html.unescape(t)
+
+
 def _comms_editor():
     try:
         from lib import comms_editor as ce  # noqa: PLC0415
@@ -237,6 +255,7 @@ def deliver_text(
     idempotency_key: str | None = None,
     reply_to_message_id: Any = None,
     post: Optional[Callable] = None,
+    link_preview_options: dict | None = None,
 ) -> dict:
     """Every operator message passes the Communications Editor, then the raw send.
 
@@ -267,6 +286,7 @@ def deliver_text(
         result = _deliver_text_raw(
             token=token, chat_id=chat_id, text=decision.text, thread_id=thread_id, reply_markup=reply_markup,
             parse_mode="HTML", idempotency_key=idempotency_key, reply_to_message_id=reply_to_message_id, post=post,
+            link_preview_options=link_preview_options,
         )
         if result.get("ok"):
             ce.commit(decision, chat_id=chat_id)
@@ -275,6 +295,7 @@ def deliver_text(
     result = _deliver_text_raw(
         token=token, chat_id=chat_id, text=text, thread_id=thread_id, reply_markup=reply_markup,
         parse_mode=parse_mode, idempotency_key=idempotency_key, reply_to_message_id=reply_to_message_id, post=post,
+            link_preview_options=link_preview_options,
     )
     if decision is not None:  # shadow: record what the editor would have done
         try:
@@ -295,6 +316,7 @@ def _deliver_text_raw(
     idempotency_key: str | None = None,
     reply_to_message_id: Any = None,
     post: Optional[Callable] = None,
+    link_preview_options: dict | None = None,
 ) -> dict:
     """Send or edit one Telegram message.
 
@@ -354,7 +376,7 @@ def _deliver_text_raw(
     if edit_id is not None:
         payload = _base_payload(
             chat_id, text, thread_id=thread_id, reply_markup=reply_markup,
-            parse_mode=parse_mode, message_id=edit_id,
+            parse_mode=parse_mode, message_id=edit_id, link_preview_options=link_preview_options,
         )
         ok, code, body = _call(edit_url, payload)
         if not ok and parse_mode:
@@ -373,6 +395,7 @@ def _deliver_text_raw(
     payload = _base_payload(
         chat_id, text, thread_id=thread_id, reply_markup=reply_markup,
         parse_mode=parse_mode, reply_to_message_id=reply_to_message_id,
+        link_preview_options=link_preview_options,
     )
     ok, code, body = _call(send_url, payload)
     if ok:
@@ -391,9 +414,11 @@ def _deliver_text_raw(
     # backslashes. Nothing was wrong with the escaper; the fallback simply
     # spoke a different language than the text it was resending.
     payload_plain = _base_payload(
-        chat_id, unescape_markdown(text) if parse_mode == "Markdown" else text,
+        chat_id,
+        unescape_markdown(text) if parse_mode == "Markdown" else html_to_plain(text) if parse_mode == "HTML" else text,
         thread_id=thread_id, reply_markup=reply_markup, parse_mode=None,
         reply_to_message_id=reply_to_message_id,
+        link_preview_options=link_preview_options,
     )
     ok2, code2, body2 = _call(send_url, payload_plain)
     mid = _message_id_from(body2) if ok2 else None
@@ -437,6 +462,7 @@ def send_message(
     parse_mode: str | None = "Markdown",
     idempotency_key: str | None = None,
     reply_to_message_id: Any = None,
+    link_preview_options: dict | None = None,
 ) -> dict:
     # C4: the interdict now lives in deliver_text, the lowest common layer, so it
     # cannot be bypassed by calling that directly. Kept here as an early return
@@ -456,6 +482,7 @@ def send_message(
                 reply_markup=reply_markup if i == len(parts) - 1 else None,
                 parse_mode=parse_mode, idempotency_key=None,
                 reply_to_message_id=reply_to_message_id if i == 0 else None,
+                link_preview_options=link_preview_options if i == 0 else None,
             )
             results.append(res)
             if not res.get("ok"):
@@ -478,6 +505,7 @@ def send_message(
         parse_mode=parse_mode,
         idempotency_key=idempotency_key,
         reply_to_message_id=reply_to_message_id,
+        link_preview_options=link_preview_options,
     )
 
 
