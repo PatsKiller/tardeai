@@ -143,7 +143,13 @@ def main() -> int:
 
         for item in plan["alert"]:
             sym = str(item["row"]["symbol"]).upper()
-            if send_telegram(format_alert(item)):
+            # bypass_router: the legacy router classified "momentum scalp setup" as
+            # job_telemetry -> DIGEST and send_telegram returned True for the digested
+            # message, so ARMP (A+) and ELMT were recorded as sent at 12:15 on
+            # 2026-09-14 and never reached the operator -- the same silence that hid
+            # GO signals for months. The operator asked for these in real time; the
+            # Communications Editor still formats every message at the transport.
+            if send_telegram(format_alert(item), bypass_router=True, message_class="operator_alert"):
                 ledger[f"{session.isoformat()}:{sym}"] = datetime.now(timezone.utc).isoformat()
                 sent_now.append(sym)
         LEDGER.parent.mkdir(parents=True, exist_ok=True)

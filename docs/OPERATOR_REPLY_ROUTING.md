@@ -162,6 +162,21 @@ The contract above is unchanged; these change what the desk rows put in front of
   instruments; `operator_evidence_contract` (`config/operator_evidence_contract.json`) reports facts the store
   had but the evidence did not carry (`MISSING_FACT`, `FALSE_EMPTY_CLAIM`) as soft `contract` gaps.
 
+## What PRs #1006 and #1007 added (2026-09-14)
+
+- **Research answers come back.** A pending opened for missing research is joined to its Hermes result by pending id
+  (`cio_operator_gap_requests.jsonl` → `hermes_research_projection.json` → `hermes_research_results.jsonl`) in
+  `try_fulfill_pending_replies`; the follow-up quotes the question and carries Hermes' answer, findings (by severity),
+  open questions and limits, every line `🟣 AI model:`. A failed Hermes run closes the pending at once with the
+  reason. Monitor rule `RESEARCH_LANDED_UNSENT` flags research that landed > 10 min ago without a follow-up.
+- **Answer now.** A research-only ask replies immediately with the house facts plus "Deeper research queued: Hermes
+  … Pending `opr_…`" (`CIO_OPERATOR_RESEARCH_ANSWER_NOW`, default on); the follow-up omits the dossier.
+- **Hermes is asked the operator's question**, split to its 220-character limit, plus the thesis check.
+- **Pills are spelled out.** Every reply opens with `Key: 🟢 green = Trade-AI's own stored data · 🔵 blue = looked up
+  outside Trade-AI for this reply · 🟣 purple = written by an AI model (DeepSeek), check before acting`; labels are
+  defined once in `reply_provenance` (`PILL_HOUSE`, `PILL_OUTSIDE`, `PILL_MODEL`, `LEGEND`).
+- First live delivery: HPE research, asked 09:12 ET, delivered automatically 10:36 ET.
+
 ## Known limits — named, not closed
 
 - **Attention scans an empty office on the converse path** (R1, R5a). The Sources line now says so, but
