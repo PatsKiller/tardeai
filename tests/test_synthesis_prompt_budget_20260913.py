@@ -28,7 +28,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import process_watchlist_agent_jobs as W  # noqa: E402
 
-COVERS = ["scripts/process_watchlist_agent_jobs.py", "config/llm_process_registry.json"]
+# No COVERS for scripts/process_watchlist_agent_jobs.py: this file tests the synthesis
+# prompt budget, not that module's Telegram alerts, and the alarm-coverage detector
+# would count every send_telegram site in a declared file as tested.
+COVERS = ["config/llm_process_registry.json"]
 
 
 def _rows(n_per_agent: int, agents=("maria", "steph", "risk_agent", "tax_agent", "full_chain"), size=3000):
