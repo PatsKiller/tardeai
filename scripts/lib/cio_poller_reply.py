@@ -135,6 +135,8 @@ def make_send_fn(*, token: str, reply_to_message_id: Any = None,
                     _log.warning("cio_poller_reply: rich render refused (status=%s); sending plain parts",
                                  (results[-1] if results else {}).get("status_code"))
             except Exception as exc:  # noqa: BLE001 -- formatting must never cost the answer
+                # ALARM-DELIVERY-DECLARED: not a swallow -- res stays None, so the plain send below still
+                # delivers the answer, and its result is recorded and logged if that fails too.
                 _log.warning("cio_poller_reply: rich render failed: %s", exc)
         if res is None:
             res = tx.send_message(
