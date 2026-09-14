@@ -18,9 +18,10 @@ of them for that question.
 
 THE PILLS. Every line starts with one:
 
-    🟢 Trade-AI   read from a Trade-AI store (the store and its as-of are named)
-    🔵 Outside    fetched from outside Trade-AI for THIS reply
-    🟣 DeepSeek   written or classified by a model
+    🟢 Trade-AI data                 read from a Trade-AI store (the store and its as-of are named)
+    🔵 Looked up outside Trade-AI    fetched from outside Trade-AI for THIS reply
+    🟣 AI model (DeepSeek)           written or classified by a model
+    Spelled out in words on every line and in the key (operator 2026-09-14).
 
 A line never mixes origins. Data that Trade-AI ingested earlier from Yahoo or
 Finviz is 🟢 -- it was read from the house store, not looked up now -- and the
@@ -37,10 +38,11 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-PILL_HOUSE = "🟢 Trade-AI"
-PILL_OUTSIDE = "🔵 Outside"
-PILL_MODEL = "🟣 DeepSeek"
-LEGEND = "Tags: 🟢 Trade-AI data · 🔵 looked up outside Trade-AI · 🟣 DeepSeek (model)"
+# One definition of the pills and the key, shared with every reply's Origin line.
+try:
+    from scripts.lib.reply_provenance import LEGEND, PILL_HOUSE, PILL_MODEL, PILL_OUTSIDE
+except ImportError:  # pragma: no cover -- hub import path
+    from lib.reply_provenance import LEGEND, PILL_HOUSE, PILL_MODEL, PILL_OUTSIDE  # type: ignore
 
 #: yfinance sector names (symbol_profiles) -> the sector names sector_momentum_latest.json uses.
 SECTOR_ALIASES = {
@@ -220,7 +222,7 @@ def format_symbol(d: dict[str, Any], *, price: Optional[float] = None,
                   skip: frozenset[str] | set[str] = frozenset()) -> tuple[str, list[str]]:
     """(text, missing sections) for one symbol. Every line starts with a pill."""
     sym = d["symbol"]
-    H = PILL_HOUSE
+    H = PILL_HOUSE + " ·"
     lines = [f"*{sym} — full picture*"]
     missing: list[str] = []
 
@@ -422,7 +424,7 @@ def format_dossier(symbols: list[str], dossier: dict[str, dict[str, Any]],
     if not blocks:
         return ""
     out = "\n\n".join(blocks)
-    out += (f"\n{PILL_OUTSIDE}: nothing was looked up outside Trade-AI for these lines — "
+    out += (f"\n{PILL_OUTSIDE}: nothing for these lines — "
             f"say 'research {str(symbols[0]).upper()}' to queue a fresh pull.")
     if len(out) > MAX_CHARS:
         out = out[: MAX_CHARS - 1].rstrip() + "…"

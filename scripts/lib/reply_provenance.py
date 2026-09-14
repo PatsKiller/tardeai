@@ -73,9 +73,14 @@ OUTSIDE_PREFIX = "Went outside: "
 #: LLM like DeepSeek. I need those type of tags to determine where this data is coming
 #: from so how I can handle it." One line, three pills, on every reply.
 ORIGIN_PREFIX = "Origin: "
-PILL_HOUSE = "🟢 Trade-AI"
-PILL_OUTSIDE = "🔵 Outside"
-PILL_MODEL = "🟣 DeepSeek"
+#: Spelled out, never a bare dot. Operator 2026-09-14: "I don't know what the
+#: color bubbles represent. We need to spell it out." Every pill carries its
+#: meaning in words, and every reply opens with LEGEND.
+PILL_HOUSE = "🟢 Trade-AI data"
+PILL_OUTSIDE = "🔵 Looked up outside Trade-AI"
+PILL_MODEL = "🟣 AI model (DeepSeek)"
+LEGEND = ("Key: 🟢 green = Trade-AI's own stored data · 🔵 blue = looked up outside Trade-AI for this "
+          "reply · 🟣 purple = written by an AI model (DeepSeek), check before acting")
 #: Stores named on the Sources line. A stock question now reads up to a dozen.
 #: 2026-09-14: 10 dropped "conversation memory (operator_conversation_turns)" from
 #: every named-symbol reply once the subject dossier added its seven stores; the
@@ -86,16 +91,16 @@ _MODEL_ITEM = re.compile(r"(?i)deepseek|flash|grok|chatgpt|\bgpt|\bllm\b|model")
 
 
 def origin_line(stores: list[str], went_outside: list[str], model_label: Optional[str]) -> str:
-    """``Origin: 🟢 Trade-AI … · 🔵 Outside … · 🟣 DeepSeek …`` from the receipt.
+    """``Origin: 🟢 Trade-AI data … · 🔵 Looked up outside Trade-AI … · 🟣 AI model (DeepSeek) …``.
 
     Outside means fetched from beyond Trade-AI for THIS reply (governed search, a
     provider pull, the gap resolver's external vectors). A model is never
     "outside data": its role is stated on the 🟣 pill instead.
     """
-    house = (f"{PILL_HOUSE} data ({len(stores)} store{'s' if len(stores) != 1 else ''})"
+    house = (f"{PILL_HOUSE} ({len(stores)} store{'s' if len(stores) != 1 else ''})"
              if stores else f"{PILL_HOUSE}: no store read")
     ext = [o for o in went_outside or [] if not _MODEL_ITEM.search(o)]
-    outside = f"{PILL_OUTSIDE}: " + ("; ".join(ext[:3]) if ext else "nothing looked up")
+    outside = f"{PILL_OUTSIDE}: " + ("; ".join(ext[:3]) if ext else "nothing")
     roles: list[str] = []
     for item in [o for o in went_outside or [] if _MODEL_ITEM.search(o)] + ([model_label] if model_label else []):
         role = item.split(" — ", 1)[1].strip() if " — " in item else item.strip()
