@@ -2967,6 +2967,96 @@ def _pending_reply_provenance(kind: str, row: dict[str, Any], evidence: dict[str
     return _ReplyProvenance(kind=kind, stores_read=stores, went_outside=outside, model=model, model_role=role)
 
 
+def _open_for_text(age_h: Optional[float]) -> str:
+    if age_h is None:
+        return "for an unknown time"
+    if age_h < 1:
+        return f"{max(1, int(round(age_h * 60)))} minutes"
+    return f"{age_h:.1f} hours"
+
+
+def _asked_at_text(row: dict[str, Any]) -> str:
+    """When the question was asked, in the host's local time (date only if not today)."""
+    try:
+        ts = datetime.fromisoformat(str(row.get("ts")).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        local = ts.astimezone()
+        fmt = "%H:%M %Z" if local.date() == datetime.now().astimezone().date() else "%a %b %d %H:%M %Z"
+        return local.strftime(fmt)
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _describe_gap(gap: dict[str, Any]) -> str:
+    sym = str(gap.get("symbol") or "").strip()
+    what = str(gap.get("reason") or gap.get("field") or "").strip().replace("DATA_UNAVAILABLE", "not available")
+    if not what:
+        return ""
+    return f"{sym}: {what}" if sym and not what.upper().startswith(sym.upper()) else what
+
+
+def _retry_advice(row: dict[str, Any], intent: dict[str, Any]) -> str:
+    """Would asking again work now? Re-resolved with the deterministic subject resolver, no model."""
+    text = str(row.get("operator_text") or "")
+    before = {str(s).upper() for s in (intent.get("symbols") or []) if str(s).strip()}
+    try:
+        try:
+            from lib.operator_subject_resolver import resolve_subjects  # noqa: PLC0415
+        except ImportError:
+            from scripts.lib.operator_subject_resolver import resolve_subjects  # noqa: PLC0415
+        now_syms = list(dict.fromkeys(
+            str(s["symbol"]).upper() for s in resolve_subjects(text) if isinstance(s, dict) and s.get("symbol")
+        ))
+    except Exception:  # noqa: BLE001
+        return "Ask again if you want me to retry."
+    new = [s for s in now_syms if s not in before]
+    if new:
+        return (f"Ask again: this question now resolves to {', '.join(new[:4])}, "
+                "so I can answer it from house data.")
+    if now_syms:
+        return (f"Ask again to retry {', '.join(now_syms[:4])}. If the same data is still missing, "
+                "I will say so straight away instead of promising a follow-up.")
+    return ("Asking again the same way won't help, because no ticker resolves from it. "
+            "Name the ticker and I will answer from house data.")
+
+
+def _closing_message(
+    row: dict[str, Any], intent: dict[str, Any], *, age_h: Optional[float], limit_h: float, why: str,
+) -> tuple[str, str]:
+    """(message, reason) for retracting a pending question.
+
+    2026-09-13: the old text read "the required Trade-AI data did not arrive
+    within 2h" for a question that had been open 9.4 hours, named nothing that
+    was missing, and said "ask again" whether or not that could work. The
+    SpaceX ask was closed that way right after the name index learned SPCX.
+    """
+    q = " ".join(str(row.get("operator_text") or "").split())
+    q = re.sub(r"[*_`\[\]]", " ", q)
+    q = q if len(q) <= 160 else q[:157].rstrip() + "…"
+    asked = _asked_at_text(row)
+    missing = list(dict.fromkeys(
+        d for d in (_describe_gap(g) for g in (row.get("blocking_gaps") or []) if isinstance(g, dict)) if d
+    ))[:4]
+    if why:
+        reason = str(why).rstrip(". ")
+    elif row.get("eta_seconds"):
+        reason = f"the data it needed did not arrive by its ETA plus grace ({round(limit_h, 1):g} hours)"
+    else:
+        reason = f"the data it needed did not arrive within the {round(limit_h, 1):g}-hour limit"
+    lines = [
+        f"📭 *Closing* `{row.get('pending_id')}` — I could not answer this.",
+        "",
+        f"You asked{(' at ' + asked) if asked else ''}: \"{q}\"",
+        f"It was open {_open_for_text(age_h)}.",
+        f"Why: {reason}.",
+    ]
+    if missing:
+        lines.append("Missing: " + "; ".join(missing) + ".")
+    lines += ["", _retry_advice(row, intent), AUTHORITY]
+    return "\n".join(lines), reason
+
+
 def try_fulfill_pending_replies(
     send_fn: SendFn,
     *,
@@ -2996,16 +3086,13 @@ def try_fulfill_pending_replies(
                 limit_h = _pending_expiry_hours(row)
                 if answerable and (age_h is None or age_h < limit_h):
                     continue
-                reason = why or (
-                    f"the required Trade-AI data did not arrive within "
-                    f"{round(limit_h, 1):g}h"
+                closing_text, reason = _closing_message(
+                    row, intent, age_h=age_h, limit_h=limit_h, why=why,
                 )
                 chat_id = str(row.get("chat_id") or "")
                 if chat_id:
                     body, _prov = _finalize_operator_reply(
-                        f"📭 *Closing* `{row.get('pending_id')}` — I could not answer this.\n\n"
-                        f"{reason}.\n\nAsk again if you want me to retry.\n"
-                        f"{AUTHORITY}",
+                        closing_text,
                         _pending_reply_provenance("pending_expired", row, evidence),
                     )
                     send_fn(chat_id, body, row.get("message_id"))
