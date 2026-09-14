@@ -110,6 +110,7 @@ RULES = (
     "BOOK_DUMP_FOR_NAMED_SYMBOL",
     "PENDING_NEVER_CLOSED",
     "RESEARCH_LANDED_UNSENT",
+    "REPLY_NOT_DELIVERED",
     "MODEL_UNLABELLED",
     "REPLY_TEXT_UNAVAILABLE",
 )
@@ -270,6 +271,57 @@ def _load_agent_replies_db(since: datetime) -> tuple[dict[str, str], Optional[st
                 conn.close()
             except Exception:
                 pass
+
+
+def _load_reply_delivery_db(since: datetime) -> tuple[dict[str, bool], Optional[str]]:
+    """reply_to_message_id -> was any agent row for it stamped with a Telegram message_id. Never raises.
+
+    A reply is written to operator_conversation_turns whether or not Telegram accepted it; the
+    message_id is only present when it did. 2026-09-14 13:47: the 4,571-character AXTI answer was
+    refused (400) twice, its row carried message_id NULL, and every text rule passed it.
+    """
+    try:
+        import psycopg2  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001
+        return {}, f"psycopg2 unavailable: {type(exc).__name__}"
+    conn = None
+    try:
+        conn = psycopg2.connect(
+            host=os.environ.get("DB_HOST", "localhost"),
+            dbname=os.environ.get("DB_NAME", "trade_ai"),
+            user=os.environ.get("DB_USER", "trade_ai"),
+            password=os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD"),
+            connect_timeout=5,
+        )
+        conn.set_session(readonly=True, autocommit=True)
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT reply_to_message_id, BOOL_OR(message_id IS NOT NULL)
+                 FROM operator_conversation_turns
+                WHERE role = 'agent' AND reply_to_message_id IS NOT NULL AND occurred_at >= %s
+                GROUP BY reply_to_message_id""",
+            (since,),
+        )
+        return {str(rid): bool(ok) for rid, ok in cur.fetchall()}, None
+    except Exception as exc:  # noqa: BLE001
+        return {}, f"{type(exc).__name__}: {str(exc).splitlines()[0][:120] if str(exc) else ''}"
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+
+def replies_not_delivered(turns: list[dict], delivery: dict[str, bool]) -> list[dict]:
+    """Turns whose reply was written but never reached Telegram. Pure."""
+    out: list[dict] = []
+    for t in turns:
+        mid = str(t.get("message_id") or "")
+        if (t.get("reply") or "").strip() and delivery.get(mid) is False:
+            out.append({"message_id": mid, "ts": t.get("ts"), "question": (t.get("question") or "")[:60],
+                        "reply_chars": len(t.get("reply") or "")})
+    return out
 
 
 def _load_env_file(path: Path) -> None:
@@ -577,7 +629,8 @@ def collect(*, now: Optional[datetime] = None, root: Optional[Path] = None,
             events_path: Optional[Path] = None, pending_path: Optional[Path] = None,
             holdings_path: Optional[Path] = None, snapshot: Optional[dict] = None,
             replies: Optional[dict[str, str]] = None, extract: Optional[Callable[[str], list[str]]] = None,
-            reply_loader: Optional[Callable[[datetime], tuple[dict[str, str], Optional[str]]]] = None) -> dict:
+            reply_loader: Optional[Callable[[datetime], tuple[dict[str, str], Optional[str]]]] = None,
+            delivery_loader: Optional[Callable[[datetime], tuple[dict[str, bool], Optional[str]]]] = None) -> dict:
     now = now or datetime.now(timezone.utc)
     root = root or data_root()
     events = _jsonl(events_path or (root / "cio" / "cio_events.jsonl"))
@@ -594,6 +647,7 @@ def collect(*, now: Optional[datetime] = None, root: Optional[Path] = None,
 
     turns = operator_turns_from_events(events, now=now)
     reply_error: Optional[str] = None
+    replies_from_db = replies is None and reply_loader is None
     if replies is None:
         since = now - timedelta(hours=WINDOW_HOURS + 1)
         loader = reply_loader or _load_agent_replies_db
@@ -613,6 +667,12 @@ def collect(*, now: Optional[datetime] = None, root: Optional[Path] = None,
         projection = {}
     findings["RESEARCH_LANDED_UNSENT"] = research_landed_unsent(
         pending, _jsonl(root / "cio" / "cio_operator_gap_requests.jsonl"), projection, now=now)
+    delivery: dict[str, bool] = {}
+    if delivery_loader is not None:
+        delivery, _ = delivery_loader(now - timedelta(hours=WINDOW_HOURS + 1))
+    elif replies_from_db and reply_error is None:
+        delivery, _ = _load_reply_delivery_db(now - timedelta(hours=WINDOW_HOURS + 1))
+    findings["REPLY_NOT_DELIVERED"] = replies_not_delivered(turns, delivery)
     return {
         "schema": SCHEMA,
         "ran_at": now.isoformat(),
@@ -660,6 +720,7 @@ _WHAT_WILL_BE_DONE = {
     "FALSE_EMPTY_CLAIM": "the freeform builder must read the house payload it called empty; replay with the litmus snapshot fixture",
     "BOOK_DUMP_FOR_NAMED_SYMBOL": "a named symbol gets ITS row (format_reentry_symbol_reply), never the book; replay with the desk fixture",
     "PENDING_NEVER_CLOSED": "try_fulfill_pending_replies must expire it at 2h; check the poller is running",
+    "REPLY_NOT_DELIVERED": "the desk wrote this answer but Telegram never accepted it (no message_id); resend it and check the poller log for 'reply NOT delivered' (a body over 4,096 UTF-16 units must be sent as parts)",
     "RESEARCH_LANDED_UNSENT": "Hermes finished this pending's research but the operator has no follow-up; check the CIO bot's fulfilment loop joins the result (hermes_result_for_pending) and is running",
     "MODEL_UNLABELLED": "model prose must be labelled 'model knowledge' or 'wording only'; check the Flash prompt and footer",
     "REPLY_TEXT_UNAVAILABLE": "the monitor could not read the reply (operator_conversation_turns); text rules did not run for this turn",
@@ -688,6 +749,8 @@ def format_alert(report: dict, previous: dict[str, str]) -> str:
                 detail = f" — went outside to {', '.join(map(str, r.get('went_outside') or []))}"
             elif rule == "PENDING_NEVER_CLOSED":
                 detail = f" — {r.get('pending_id')} open {r.get('age_hours')}h"
+            elif rule == "REPLY_NOT_DELIVERED":
+                detail = f" — {r.get('reply_chars')}-character answer written, never delivered"
             elif rule == "RESEARCH_LANDED_UNSENT":
                 detail = (f" — {r.get('pending_id')}: Hermes result {r.get('result_id')} landed "
                           f"{r.get('landed_minutes_ago')} min ago, not delivered")

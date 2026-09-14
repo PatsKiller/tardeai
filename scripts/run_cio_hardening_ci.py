@@ -597,6 +597,9 @@ GATES = [
             # 2026-09-14 Research Escalation Circle phase 1: question GUID, free-channel
             # laps, the grounded Context Analyzer, automatic check-ins.
             "tests/test_research_circle_20260914.py",
+            # 2026-09-14 Telegram: rich layouts, and a written-but-undelivered reply is a finding.
+            "tests/test_telegram_rich_20260914.py",
+            "tests/test_answer_quality_reply_not_delivered_20260914.py",
             # 2026-09-14 litmus vs Yahoo + live Finviz header: sub-share position
             # values written as closes, a stale Alpaca prev_close, positional
             # Finviz parsing and 1,000x unit mislabels in screening gates.
