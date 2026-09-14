@@ -21,7 +21,9 @@ This module is the one place the table is written. It owns:
   * the ONE dedup rule: a symbol+gap_type already open OR enriching is not
     inserted again; its id comes back on the receipt as `existing_ids`
   * every status transition the resolver makes           (`mark_enriching`,
-    `mark_resolved`, `reopen`, `abandon_stale`)
+    `mark_dispatched`, `mark_resolved`, `reopen`, `abandon`, `abandon_stale`).
+    'resolved' means PROVEN: the data is present, or the dispatched agent job
+    completed with a result row. Queuing a job leaves the gap 'enriching'.
   * the rails: a tradable-looking symbol (never "BOOK"), a gap_type the
     resolver has an action for, a severity on its vocabulary, a non-empty
     `detected_by`, an integer `source_job_id` when one is given
@@ -34,6 +36,7 @@ Nothing here sizes, orders, stops, or touches a broker (MBI_BEHAVIOR = 0).
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 from dataclasses import dataclass, field
@@ -207,22 +210,81 @@ def mark_enriching(target: Any, gap_id: int) -> int:
     return rowcount_of(cur)
 
 
-def mark_resolved(target: Any, gap_id: int, *, resolved_by: str) -> int:
-    by = str(resolved_by or "").strip()
-    if not by:
-        raise ValueError("resolved_by is required")
+def mark_dispatched(target: Any, gap_id: int, *, job_id: str, action: str) -> int:
+    """The resolver queued work for this gap. It stays 'enriching' until that work is proven.
+
+    Before 2026-09-13 queuing a job marked the gap 'resolved' on the spot, so the
+    queue's resolved count said data had landed when only a job had been queued
+    (and most of those jobs were failing on an input-token cap).
+    """
+    jid = str(job_id or "").strip()
+    if not jid:
+        raise ValueError("job_id is required")
     cur = cursor_of(target)
     cur.execute(
-        "UPDATE data_gap_registry SET status = 'resolved', resolved_at = NOW(), resolved_by = %s "
+        "UPDATE data_gap_registry SET status = 'enriching', "
+        "resolution_data = COALESCE(resolution_data, '{}'::jsonb) "
+        "|| jsonb_build_object('job_id', %s, 'action', %s, 'dispatched_at', NOW()) "
         "WHERE id = %s",
-        [by, int(gap_id)],
+        [jid, str(action or ""), int(gap_id)],
     )
     return rowcount_of(cur)
 
 
-def reopen(target: Any, gap_id: int) -> int:
+def mark_resolved(target: Any, gap_id: int, *, resolved_by: str, evidence: Optional[dict[str, Any]] = None) -> int:
+    """Resolved means proven: the data is present, or the dispatched job completed with a result row.
+
+    ``evidence`` is merged into resolution_data so the row says what proved it.
+    """
+    by = str(resolved_by or "").strip()
+    if not by:
+        raise ValueError("resolved_by is required")
     cur = cursor_of(target)
-    cur.execute("UPDATE data_gap_registry SET status = 'open' WHERE id = %s", [int(gap_id)])
+    if evidence:
+        cur.execute(
+            "UPDATE data_gap_registry SET status = 'resolved', resolved_at = NOW(), resolved_by = %s, "
+            "resolution_data = COALESCE(resolution_data, '{}'::jsonb) || %s::jsonb "
+            "WHERE id = %s",
+            [by, json.dumps(evidence, default=str), int(gap_id)],
+        )
+    else:
+        cur.execute(
+            "UPDATE data_gap_registry SET status = 'resolved', resolved_at = NOW(), resolved_by = %s "
+            "WHERE id = %s",
+            [by, int(gap_id)],
+        )
+    return rowcount_of(cur)
+
+
+def reopen(target: Any, gap_id: int, *, reason: Optional[str] = None) -> int:
+    """Back to 'open'. With a reason, the failure is recorded and the attempt counted."""
+    cur = cursor_of(target)
+    if reason:
+        cur.execute(
+            "UPDATE data_gap_registry SET status = 'open', "
+            "resolution_data = COALESCE(resolution_data, '{}'::jsonb) "
+            "|| jsonb_build_object('last_failure', %s, "
+            "'attempts', COALESCE((resolution_data->>'attempts')::int, 0) + 1) "
+            "WHERE id = %s",
+            [str(reason), int(gap_id)],
+        )
+    else:
+        cur.execute("UPDATE data_gap_registry SET status = 'open' WHERE id = %s", [int(gap_id)])
+    return rowcount_of(cur)
+
+
+def abandon(target: Any, gap_id: int, *, reason: str) -> int:
+    """Give up on one gap after repeated failed work, saying why."""
+    why = str(reason or "").strip()
+    if not why:
+        raise ValueError("reason is required")
+    cur = cursor_of(target)
+    cur.execute(
+        "UPDATE data_gap_registry SET status = 'abandoned', "
+        "resolution_data = COALESCE(resolution_data, '{}'::jsonb) || jsonb_build_object('abandoned_reason', %s) "
+        "WHERE id = %s",
+        [why, int(gap_id)],
+    )
     return rowcount_of(cur)
 
 

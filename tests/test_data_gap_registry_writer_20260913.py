@@ -34,6 +34,26 @@ from lib import cron_schedule as C  # noqa: E402
 from lib.writers import data_gap_registry_writer as W  # noqa: E402
 
 
+def _load_script(name: str):
+    """Load scripts/<name>.py from THIS checkout by path.
+
+    A bare ``import data_gap_resolver`` resolves through sys.path, and other test
+    modules put other scripts directories ahead of this one, so the import could
+    return a different copy of the file (seen 2026-09-13: the resolver without
+    verify_dispatched). Loading by path always tests the code under review.
+    """
+    import importlib.util
+
+    key = f"_tested_{name}"
+    if key in sys.modules:
+        return sys.modules[key]
+    spec = importlib.util.spec_from_file_location(key, ROOT / "scripts" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[key] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
 class FakeCursor:
     def __init__(self, fetchone=None, fetchall=None, rowcount=1):
         self.calls: list[tuple[str, list | None]] = []
@@ -111,7 +131,7 @@ def test_overnight_row_renders_to_the_legacy_column_map():
 
 
 def test_overnight_extractor_goes_through_the_module():
-    import run_deep_overnight_llm_queue as rq
+    rq = _load_script("run_deep_overnight_llm_queue")
 
     assert set(rq._GAP_PATTERNS) <= set(W.GAP_TYPES), "every overnight gap type needs a resolver action"
     cur = FakeCursor(fetchone=[None, (5,)])
@@ -124,9 +144,10 @@ def test_overnight_extractor_goes_through_the_module():
 
 
 def test_resolver_issues_the_legacy_transitions_in_order(monkeypatch):
-    import data_gap_resolver as R
+    R = _load_script("data_gap_resolver")
 
-    cur = FakeCursor(fetchall=[[(1, "AAPL", "missing_sector", "d", None),
+    cur = FakeCursor(fetchall=[[],  # verify_dispatched: nothing enriching
+                               [(1, "AAPL", "missing_sector", "d", None),
                                 (2, "MSFT", "missing_catalyst", "d", None)]])
     conn = FakeConn(cur)
     monkeypatch.setattr(R, "get_db_connection", lambda: conn)
@@ -147,9 +168,10 @@ def test_resolver_issues_the_legacy_transitions_in_order(monkeypatch):
 
 
 def test_resolver_weekly_audit_abandons_through_the_module(monkeypatch):
-    import data_gap_resolver as R
+    R = _load_script("data_gap_resolver")
 
-    cur = FakeCursor(fetchall=[[(3, "NOC", "stale_news", "d", None)],
+    cur = FakeCursor(fetchall=[[],
+                               [(3, "NOC", "stale_news", "d", None)],
                                [("NOC", "stale_news", "2026-08-01")]])
     conn = FakeConn(cur)
     monkeypatch.setattr(R, "get_db_connection", lambda: conn)
@@ -157,6 +179,86 @@ def test_resolver_weekly_audit_abandons_through_the_module(monkeypatch):
     R.resolve_gaps(weekly_audit=True)
     assert ("UPDATE data_gap_registry SET status = 'abandoned' WHERE status = 'open' "
             "AND detected_at < NOW() - (%s * INTERVAL '1 day')", [30]) in cur.calls
+
+
+# ── 1b. resolved means proven (2026-09-13) ──────────────────────────────────
+
+
+def test_a_dispatched_job_leaves_the_gap_enriching_with_its_job_id(monkeypatch):
+    R = _load_script("data_gap_resolver")
+
+    cur = FakeCursor(fetchall=[[], [(4, "SCHG", "stale_news", "d", None)]])
+    conn = FakeConn(cur)
+    monkeypatch.setattr(R, "get_db_connection", lambda: conn)
+    monkeypatch.setattr(R, "GAP_RESOLVERS", {"stale_news": lambda s, c: (R.DISPATCHED, "gap_schg_catalyst_abc123")})
+    R.resolve_gaps()
+    updates = [(s, p) for s, p in cur.calls if s.startswith("UPDATE data_gap_registry")]
+    assert updates[0] == ("UPDATE data_gap_registry SET status = 'enriching' WHERE id = %s", [4])
+    assert "jsonb_build_object('job_id', %s, 'action', %s, 'dispatched_at', NOW())" in updates[1][0]
+    assert updates[1][1] == ["gap_schg_catalyst_abc123", "stale_news", 4]
+    assert not any("status = 'resolved'" in s for s, _ in updates)
+
+
+def test_real_dispatch_actions_report_the_job_instead_of_success():
+    R = _load_script("data_gap_resolver")
+
+    cur = FakeCursor(fetchone=[None])  # no job already queued -> insert one
+
+    class Conn(FakeConn):
+        pass
+
+    conn = Conn(cur)
+    out = R._resolve_missing_catalyst("SCHG", conn)
+    assert isinstance(out, tuple) and out[0] == R.DISPATCHED and out[1].startswith("gap_schg_catalyst_")
+    cur2 = FakeCursor(fetchone=[("gap_schg_catalyst_old",)])
+    assert R._resolve_missing_catalyst("SCHG", FakeConn(cur2)) == (R.DISPATCHED, "gap_schg_catalyst_old")
+    assert "status IN ('queued', 'pending', 'processing')" in cur2.calls[0][0]
+
+
+@pytest.mark.parametrize("job_status,result_id,attempts,expect", [
+    ("completed", "res-gap_1", 0, "resolved"),
+    ("completed", None, 0, "open"),
+    ("failed", None, 0, "open"),
+    (None, None, 1, "open"),
+    ("failed", None, 2, "abandoned"),
+    ("processing", None, 0, None),
+])
+def test_verify_dispatched_settles_on_proof_only(monkeypatch, job_status, result_id, attempts, expect):
+    R = _load_script("data_gap_resolver")
+
+    cur = FakeCursor(fetchall=[[(9, "SCHG", "stale_news", "gap_1", job_status, result_id, attempts)]])
+    conn = FakeConn(cur)
+    counts = R.verify_dispatched(conn, cur)
+    updates = [(s, p) for s, p in cur.calls if s.startswith("UPDATE data_gap_registry")]
+    if expect is None:
+        assert updates == [] and counts == (0, 0, 0, 1)
+        return
+    assert len(updates) == 1 and f"status = '{expect}'" in updates[0][0]
+    if expect == "resolved":
+        assert json.loads(updates[0][1][1]) == {"job_id": "gap_1", "result_id": "res-gap_1",
+                                                "proof": "agent job completed with a result row"}
+        assert updates[0][1][0] == "gap_resolver_v2"
+    if expect == "open":
+        assert "'attempts'" in updates[0][0] and "last_failure" in updates[0][0]
+    if expect == "abandoned":
+        assert "3 failed attempts" in updates[0][1][0]
+    assert conn.commits == 1
+
+
+def test_verify_dispatched_dry_run_writes_nothing():
+    R = _load_script("data_gap_resolver")
+
+    cur = FakeCursor(fetchall=[[(9, "SCHG", "stale_news", "gap_1", "completed", "res-1", 0)]])
+    conn = FakeConn(cur)
+    assert R.verify_dispatched(conn, cur, dry_run=True) == (1, 0, 0, 0)
+    assert [s for s, _ in cur.calls if s.startswith("UPDATE")] == [] and conn.commits == 0
+
+
+def test_new_transitions_refuse_blank_arguments():
+    with pytest.raises(ValueError):
+        W.mark_dispatched(FakeCursor(), 1, job_id="", action="stale_news")
+    with pytest.raises(ValueError):
+        W.abandon(FakeCursor(), 1, reason=" ")
 
 
 # ── 2. rails and the one dedup rule ──────────────────────────────────────────
