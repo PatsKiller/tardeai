@@ -1498,6 +1498,29 @@
         "path": "data/runtime/operator_answer_quality_last_run.json"
       },
       "note": "Measures the last 24h of operator replies: NO_SOURCES_LINE, WENT_OUTSIDE_UNSTATED, FALSE_EMPTY_CLAIM (names the evidence rule: provenance / snapshot_health / store_health), BOOK_DUMP_FOR_NAMED_SYMBOL, PENDING_NEVER_CLOSED, MODEL_UNLABELLED. 2026-09-13: 'get back into schg' got the whole re-entry book; a sector question claimed cash/holdings empty while the CIO snapshot carried them; no reply named its sources. Receipt written every run, findings or not. Unit files proposed in config/systemd/user; NOT installed -- operator-only (AGENTS 9.3)."
+    },
+    {
+      "lane_id": "moomoo-live-read-sync",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 9-16 * * 1-5 moomoo_live_read_sync.py",
+        "match": "moomoo_live_read_sync.py"
+      },
+      "expected_cadence_hours": 24,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/sync_receipts/moomoo_taxable_live.json"
+      },
+      "note": "Re-enabled 2026-09-13 at operator request: the account was never closed (cash $500, 0 positions); the 2026-09-01 'account closed' crontab note was wrong. Read-only positions and cash via OpenD into holdings.json through protected_holdings_write; the sync writes its receipt every run. The line now carries timeout --kill-after=30s 10m because the 2026-08-21 fire hung 11d8h holding the lock. Cadence 24h is deliberately conservative: the evaluator has no market-hours notion. The receipt first appears after the Monday 09:00 fire."
     }
   ],
   "undeclared_baseline": [
@@ -1531,7 +1554,6 @@
     "*/15 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/mkt_quotes_intraday.lock $PY scripts/external_market_data_ingest.py --quotes >> logs/market_data.log 2>&1  # intraday live quotes (Alpaca primary)",
     "*/15 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/trade_integrity_audit.lock $PY scripts/trade_integrity_audit.py >> logs/trade_integrity_audit.log 2>&1",
     "*/15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/safe_flock.sh /tmp/alpaca_live_read_sync.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/alpaca_live_read_sync.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/alpaca_live_read_sync.log 2>&1",
-    "*/15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/moomoo_live_read.lock .venv/bin/python scripts/moomoo_live_read_sync.py >> logs/moomoo_live_read_sync.log 2>&1  # positions + cash -> holdings.json via protected_holdings_write; totals left to portfolio_loader/repricer",
     "*/2 * * * * bash /home/johnclaw/.config/tradeai/bin/run_telegram_callback_poller_current.sh",
     "*/2 * * * * bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/portfolio_server_watchdog.sh",
     "*/2 6-11 * * 1-5 cd $PROJ && flock -n /tmp/momentum_scalp_validation_fp.lock $PY scripts/momentum_scalp_validation_fast_path.py --submit-sandbox >> logs/momentum_scalp_validation_fast_path.log 2>&1",

@@ -15,6 +15,8 @@ shows the gate goes red.
 
 from __future__ import annotations
 
+import re
+
 import json
 import sys
 from pathlib import Path
@@ -196,7 +198,9 @@ def test_every_provider_and_domain_carries_a_complete_operator_grant():
 def test_the_seed_grant_names_where_the_approval_is_recorded():
     """A reference must point somewhere a reader can go: PR numbers, a session, Telegram, a manifest row."""
     for d in AUTH["domains"]:
-        assert "#99" in d["approval"]["reference"] or "ARCHIVE_MANIFEST" in d["approval"]["reference"], d["domain"]
+        ref = d["approval"]["reference"]
+        # A PR number of any length (#992 ... #1001) or a manifest row.
+        assert re.search(r"#\d{3,}", ref) or "ARCHIVE_MANIFEST" in ref, d["domain"]
 
 
 def test_the_rules_state_the_grant_and_point_at_section_17():

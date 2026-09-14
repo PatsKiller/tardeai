@@ -2148,6 +2148,7 @@ def subject_price_facts(symbols: list[str], *, days: int = 45) -> dict[str, dict
             "start_close": float(start["close"]) if start is not last else None,
             "start_date": str(start["price_date"])[:10] if start is not last else None,
             "change_30d_pct": change, "stale": res.get("stale"),
+            "bars": [[str(b["price_date"])[:10], float(b["close"])] for b in bars],
         }
     return out
 
@@ -2391,6 +2392,149 @@ def curate_subject_reply_with_flash(*, operator_text: str, facts: str, symbols: 
     out.update({"ok": True, "text": text, "source": "deepseek_flash",
                 "model": llm.get("model") or "deepseek-flash", "error": None})
     return out
+
+
+#: Per-subject conversation recall (2026-09-13, operator: "connect chat memory
+#: recall per guid"). Operator questions and agent replies were already stored in
+#: operator_conversation_turns bound to subject_guid, but the desk never read them,
+#: so every question about a company started from nothing.
+SUBJECT_MEMORY_SQL = """SELECT o.message_id, o.occurred_at, o.symbol, o.subject_guid::text AS subject_guid,
+       o.text AS question,
+       (SELECT a.text FROM operator_conversation_turns a
+         WHERE a.role = 'agent' AND a.chat_id = o.chat_id
+           AND a.reply_to_message_id = o.message_id
+         ORDER BY a.occurred_at ASC LIMIT 1) AS answer
+  FROM operator_conversation_turns o
+ WHERE o.role = 'operator'
+   AND o.subject_guid = ANY(%s::uuid[])
+   AND o.chat_id = %s
+   AND o.message_id IS DISTINCT FROM %s
+   AND o.occurred_at > NOW() - (%s * INTERVAL '1 day')
+ ORDER BY o.occurred_at DESC
+ LIMIT %s"""
+_MEMORY_DROP_LINE = re.compile(r"(?i)^\s*(sources:|went outside|read_only_advisory|no orders|cc:|pending:)")
+
+
+def _subject_memory_enabled() -> bool:
+    return _env("CIO_SUBJECT_MEMORY", "1").lower() not in ("0", "false", "off", "no")
+
+
+def _subject_guids(intent: dict[str, Any]) -> dict[str, str]:
+    """symbol -> subject_guid for the named symbols: the intent's resolved subjects first, then the registry."""
+    out: dict[str, str] = {}
+    for s in intent.get("subjects") or []:
+        if isinstance(s, dict) and s.get("symbol") and s.get("guid"):
+            out.setdefault(str(s["symbol"]).upper(), str(s["guid"]))
+    for sym in [str(x).upper() for x in (intent.get("symbols") or []) if str(x).strip()]:
+        if sym in out:
+            continue
+        try:
+            try:
+                from lib.writers.receipt import resolve_subject_identity  # noqa: PLC0415
+            except ImportError:
+                from scripts.lib.writers.receipt import resolve_subject_identity  # noqa: PLC0415
+            guid, _verdict = resolve_subject_identity({"symbol": sym})
+        except Exception:  # noqa: BLE001
+            guid = None
+        if guid:
+            out[sym] = str(guid)
+    return out
+
+
+def subject_memory(intent: dict[str, Any], *, chat_id: str, message_id: Any,
+                   days: Optional[int] = None, per_symbol: int = 3) -> dict[str, list[dict[str, Any]]]:
+    """Earlier exchanges about each named subject in this chat, newest first. Read-only.
+
+    Keyed by subject_guid, so "Visa" and "V" are the same memory. The question
+    being answered is excluded by message id. Degrades to {} on any failure.
+    """
+    if not _subject_memory_enabled() or not str(chat_id or "").strip():
+        return {}
+    try:
+        window = int(days if days is not None else _env("CIO_SUBJECT_MEMORY_DAYS", "30"))
+    except ValueError:
+        window = 30
+    try:
+        current = int(message_id) if message_id not in (None, "") else None
+    except (TypeError, ValueError):
+        current = None
+    out: dict[str, list[dict[str, Any]]] = {}
+    for sym, guid in list(_subject_guids(intent).items())[:3]:
+        try:
+            rows = _research_db_query(SUBJECT_MEMORY_SQL, ([guid], str(chat_id), current, window, int(per_symbol)))
+        except Exception:  # noqa: BLE001
+            continue
+        exchanges = []
+        for r in rows or []:
+            asked = r.get("occurred_at")
+            exchanges.append({
+                "asked_at": asked.isoformat() if hasattr(asked, "isoformat") else (str(asked) if asked else None),
+                "question": str(r.get("question") or ""),
+                "answer": str(r.get("answer") or "") or None,
+                "message_id": r.get("message_id"),
+                "subject_guid": r.get("subject_guid") or guid,
+            })
+        if exchanges:
+            out[sym] = exchanges
+    return out
+
+
+def _memory_excerpt(text: Any, limit: int) -> str:
+    lines = [ln for ln in str(text or "").splitlines() if ln.strip() and not _MEMORY_DROP_LINE.match(ln)]
+    body = _MARKDOWN_CHARS.sub(" ", " ".join(lines))
+    body = " ".join(_tidy_numbers(body).split())
+    return body if len(body) <= limit else body[: limit - 1].rstrip() + "…"
+
+
+def _asked_label(iso: Any) -> str:
+    try:
+        dt = datetime.fromisoformat(str(iso).replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone().strftime("%b %d %H:%M")
+    except (TypeError, ValueError):
+        return ""
+
+
+def _close_on_or_before(bars: list[Any], day: str) -> Optional[tuple[str, float]]:
+    best = None
+    for d, c in bars or []:
+        if str(d)[:10] <= day and c:
+            best = (str(d)[:10], float(c))
+    return best
+
+
+def format_subject_memory(symbols: list[str], avail: dict[str, Any]) -> str:
+    """'Earlier on V': prior questions, what was answered, and the price move since."""
+    memory = avail.get("subject_memory") or {}
+    prices = avail.get("subject_price") or {}
+    blocks: list[str] = []
+    for sym in symbols:
+        exchanges = memory.get(sym) or []
+        if not exchanges:
+            continue
+        lines = [f"Earlier on {sym} (from our conversation):"]
+        for ex in exchanges:
+            when = _asked_label(ex.get("asked_at"))
+            q = _memory_excerpt(ex.get("question"), 90)
+            lines.append(f"- {when} you asked: \"{q}\"")
+            if ex.get("answer"):
+                lines.append(f"  I answered then: \"{_memory_excerpt(ex['answer'], 140)}\"")
+            else:
+                lines.append("  No reply to it is on record.")
+        p = prices.get(sym) or {}
+        last_asked = str(exchanges[0].get("asked_at") or "")[:10]
+        if p.get("close") is not None and last_asked:
+            then = _close_on_or_before(p.get("bars") or [], last_asked)
+            if then and str(p.get("price_date") or "")[:10] > then[0]:
+                move = (float(p["close"]) - then[1]) / then[1] * 100.0
+                lines.append(f"Since you last asked ({_fmt_day(last_asked)}): close {_fmt_price(then[1])} on "
+                             f"{_fmt_day(then[0])}, now {_fmt_price(p['close'])} ({move:+.1f}%).")
+            elif then:
+                lines.append(f"Since you last asked ({_fmt_day(last_asked)}): no new close yet; "
+                             f"last close {_fmt_price(p['close'])} on {_fmt_day(p.get('price_date'))}.")
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks)
 
 
 def subject_research(symbols: list[str], *, limit: int = 4,
@@ -2685,8 +2829,15 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     risk = avail.get("risk")
     hermes = avail.get("hermes_research")
     subject_syms = list(avail.get("subject_symbols") or [])
+    if sym_cards and avail.get("subject_memory"):
+        mem_cards = format_subject_memory(list(sym_cards), avail)
+        if mem_cards:
+            card = card + "\n\n" + mem_cards
     if subject_syms and not sym_cards and not card:
         brief = format_subject_brief(subject_syms, avail)
+        mem = format_subject_memory(subject_syms, avail)
+        if mem:
+            brief += "\n\n" + mem
         findings = evidence.get("contract_findings") or []
         if findings:
             brief += ("\nFacts available but not assembled: "
@@ -3171,6 +3322,13 @@ def handle_operator_desk_question(
             _emit_telegram_desk_payload(intent, result)
             return result
 
+    # Per-subject conversation memory, keyed by subject GUID, this chat only.
+    if intent.get("symbols") and isinstance(evidence.get("available"), dict):
+        memory = subject_memory(intent, chat_id=str(chat_id), message_id=message_id)
+        if memory:
+            evidence["available"]["subject_memory"] = memory
+            evidence.setdefault("sources", []).append("operator_conversation_turns")
+            result["memory_recall"] = {s: len(v) for s, v in memory.items()}
     curated = _curate_from_evidence(text, evidence)
     soft = [g for g in (evidence.get("gaps") or []) if g not in blocking]
     text_out = _with_sources_footer(curated.get("text") or "", evidence, curated)

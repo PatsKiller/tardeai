@@ -1703,6 +1703,41 @@
       ],
       "_note": "A queue, not a feed: an empty queue is healthy. 'resolved' means the resolver dispatched its action (for most gap types a Maria research job), not that the data landed; the desk's pending follow-up re-checks the evidence itself.",
       "_writer_note": "2026-09-13: one write module. Before it, run_deep_overnight_llm_queue.py (insert, dedup on open only) and data_gap_resolver.py (status updates) each carried SQL, and the desk's bridge module never reached main, so desk gaps registered 0. ONE dedup rule now: symbol+gap_type open or enriching. Writers 2 -> 1."
+    },
+    {
+      "domain": "operator_conversation",
+      "class": "native",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "Operator asked in session on 2026-09-13 to connect chat memory recall per subject GUID (\"yes connect chat memory recall per guid\"); shipped in PR #1001 (branch feat/chat-memory-recall)",
+        "scope": "authoritative record of operator questions and agent replies bound to subject_guid: table operator_conversation_turns, written only by scripts/lib/inbound_identity_tagger.py (persist_turn); read by the operator desk for per-subject recall (subject_memory) and by wake_comms_history"
+      },
+      "store": {
+        "table": "operator_conversation_turns"
+      },
+      "writer": "scripts/lib/inbound_identity_tagger.py",
+      "cadence": "event-driven: every operator message and every agent reply on Telegram",
+      "stale_after_hours": 720,
+      "required_fields": [
+        "role",
+        "occurred_at",
+        "text",
+        "subject_guid"
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_note": "A conversation log, not a feed: quiet periods are normal. Recall shows at most 3 earlier exchanges per subject from the last 30 days in the same chat, excluding the question being answered (CIO_SUBJECT_MEMORY, CIO_SUBJECT_MEMORY_DAYS)."
     }
   ]
 }
