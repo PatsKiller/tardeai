@@ -24,15 +24,16 @@ from scripts.lib import cio_hermes_research as h  # noqa: E402
 from scripts.lib.cio_research_fail_policy import classify_failure  # noqa: E402
 from scripts.lib.hermes_research_backend import HermesBackendError, assert_no_execution_language  # noqa: E402
 
+# COVERS is read by tests/test_alarm_coverage.py as "this test fires the file's send_telegram
+# sites". These tests exercise research_lane_health.fix_hint, health_agent.collect_research_heartbeat
+# and claude_escalation_handler.resolve_relative_venv, never their Telegram alarms, so those three
+# files are deliberately not listed.
 COVERS = [
     "scripts/lib/cio_hermes_queue_health.py",
     "scripts/lib/cio_hermes_research.py",
     "scripts/lib/hermes_research_backend.py",
     "scripts/lib/hermes_bridge_backend.py",
     "scripts/lib/cio_research_fail_policy.py",
-    "scripts/claude_escalation_handler.py",
-    "scripts/health_agent.py",
-    "scripts/research_lane_health.py",
     "scripts/lib/research_lane_health.py",
 ]
 NOW = datetime(2026, 9, 14, 17, 0, tzinfo=timezone.utc)
