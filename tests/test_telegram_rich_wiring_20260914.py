@@ -14,6 +14,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -21,12 +23,35 @@ sys.path.insert(0, str(ROOT / "scripts"))
 CHART = "charts2-node.finviz.com/chart.ashx"
 
 
-def _fresh_transport():
-    """A private copy: tests/conftest.py replaces send paths on the shared module."""
-    spec = importlib.util.spec_from_file_location("tt_rich_wiring", ROOT / "scripts" / "telegram_transport.py")
+def _load(name: str, rel: str):
+    """This tree's copy, by path. In the full hardening run earlier tests leave stand-ins or other copies
+    of these modules in sys.modules, so importing by name can return code without the change under test."""
+    spec = importlib.util.spec_from_file_location(f"rich_wiring_{name}", ROOT / rel)
     mod = importlib.util.module_from_spec(spec)
+    # Registered under its private name first: dataclasses resolve their module through sys.modules.
+    sys.modules[spec.name] = mod
     spec.loader.exec_module(mod)
     return mod
+
+
+def _fresh_transport():
+    """A private copy: tests/conftest.py replaces send paths on the shared module."""
+    return _load("telegram_transport", "scripts/telegram_transport.py")
+
+
+@pytest.fixture
+def rich(monkeypatch):
+    """This tree's telegram_rich wherever producers import it from."""
+    tr = _load("telegram_rich", "scripts/lib/telegram_rich.py")
+    monkeypatch.setitem(sys.modules, "lib.telegram_rich", tr)
+    monkeypatch.setitem(sys.modules, "scripts.lib.telegram_rich", tr)
+    return tr
+
+
+@pytest.fixture
+def alert_mod(monkeypatch):
+    monkeypatch.setitem(sys.modules, "telegram_transport", _fresh_transport())
+    return _load("telegram_alert", "scripts/telegram_alert.py")
 
 
 # ── transport ────────────────────────────────────────────────────────────────
@@ -63,8 +88,8 @@ def test_refused_html_is_resent_readable_not_with_tags(monkeypatch):
     assert posted[0]["link_preview_options"] == {"is_disabled": True}
 
 
-def test_send_telegram_threads_the_preview_to_the_legacy_sender(monkeypatch):
-    import telegram_alert as ta
+def test_send_telegram_threads_the_preview_to_the_legacy_sender(monkeypatch, alert_mod):
+    ta = alert_mod
 
     seen = {}
     monkeypatch.setattr(ta, "_enabled", lambda: True)
@@ -81,8 +106,8 @@ def test_send_telegram_threads_the_preview_to_the_legacy_sender(monkeypatch):
     assert seen["link_preview_options"] == lpo and seen["bypass_router"] is True
 
 
-def test_raw_send_puts_the_preview_on_the_first_part_only(monkeypatch):
-    import telegram_alert as ta
+def test_raw_send_puts_the_preview_on_the_first_part_only(monkeypatch, alert_mod):
+    ta = alert_mod
 
     calls = []
     monkeypatch.setitem(sys.modules, "report_capture", types.SimpleNamespace(capture=lambda *a, **k: None))
@@ -160,9 +185,9 @@ def test_go_alert_falls_back_to_plain_text_when_rich_is_off(monkeypatch):
 # ── entry alerts ─────────────────────────────────────────────────────────────
 
 
-def test_entry_alert_is_rich_and_keeps_the_entry_alert_words(monkeypatch):
+def test_entry_alert_is_rich_and_keeps_the_entry_alert_words(monkeypatch, rich):
     monkeypatch.delenv("TELEGRAM_RICH_ALERTS", raising=False)
-    import watchlist_entry_planner as wep
+    wep = _load("watchlist_entry_planner", "scripts/watchlist_entry_planner.py")
 
     calls = []
     fake = types.ModuleType("telegram_alert")
@@ -202,8 +227,8 @@ ROW = {
 }
 
 
-def test_material_change_rich_says_the_same_things_with_links():
-    import notify_material_change as mc
+def test_material_change_rich_says_the_same_things_with_links(rich):
+    mc = _load("notify_material_change", "scripts/notify_material_change.py")
 
     ctx = {
         "g-1": {
@@ -223,8 +248,8 @@ def test_material_change_rich_says_the_same_things_with_links():
         assert banned not in text.lower()
 
 
-def test_material_change_notice_sends_rich_through_the_gateway(monkeypatch):
-    import notify_material_change as mc
+def test_material_change_notice_sends_rich_through_the_gateway(monkeypatch, rich):
+    mc = _load("notify_material_change", "scripts/notify_material_change.py")
     from scripts.lib.comms import channel_adapters as ca
 
     seen = {}
