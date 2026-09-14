@@ -322,8 +322,11 @@ def test_alarm_fires_and_names_the_decayed_source(wired):
     assert len(wired.sent) == 1
     body = wired.sent[0]
     assert "yahoo_finance" in body
-    assert "unknown" in body
     assert "table still says healthy" in body
+    # operator copy (2026-09-13 18:32 feedback): what it feeds, what is wrong, next run, an Action line
+    assert "analyst targets" in body and "Health row last updated" in body
+    assert "Next run:" in body and "Action:" in body
+    assert "Escalation: none" in body
 
 
 def test_a_newly_unhealthy_source_escalates_to_an_interrupt(wired):
@@ -392,3 +395,65 @@ def test_unit_files_match_the_brief():
     assert "check_data_source_health.py --alert" in svc
     assert "OnCalendar=*-*-* *:27:00" in tmr
     assert "Persistent=true" in tmr
+
+
+# ── the alert is written for the operator, not the engineer ──────────────────
+# 2026-09-13 18:32, after the first live alert: "what does this mean to me ...
+# what actions do I need to take, who do I need to escalate it to". Cron strings
+# and script paths moved to a trailing Details block; every source gets a plain
+# phrase for what it feeds, one sentence on what is wrong, its next run, and an
+# Action line.
+
+from datetime import datetime as _dt
+
+
+def _offrow(key, status, age_min, win_min=1440, decayed=False, err=None):
+    return {"source_key": key, "status": status, "age_minutes": age_min, "window_minutes": win_min,
+            "decayed": decayed, "last_error": err, "scheduled_caller": True}
+
+
+def test_body_groups_failing_stale_and_waiting_and_gives_each_an_action():
+    now = _dt(2026, 9, 13, 22, 30, tzinfo=timezone.utc)   # Sunday 18:30 ET
+    body = cdh.build_alert_body([
+        _offrow("fred", "unknown", None, 48 * 60),
+        _offrow("yahoo_finance", "unknown", 498 * 60, 168 * 60, decayed=True),
+        _offrow("youtube_api", "error", 40, 24 * 60, err="HTTP 429"),
+    ], previous={}, now=now, registry=REGISTRY)
+    assert body.startswith("[PLATFORM_AVAILABILITY] 🚨 Data sources: 3 not healthy (2 expected to self-heal")
+    for heading in ("Failing:", "Stale health row:", "Waiting on first report:"):
+        assert heading in body
+    assert body.index("Failing:") < body.index("Stale health row:") < body.index("Waiting on first report:")
+    assert body.count("Action:") == 3
+    assert "macro series" in body and "YouTube transcript discovery" in body
+    assert "HTTP 429" in body and "still inside its window" in body
+    assert "20.8 days ago (allowed 7 days)" in body
+    # next runs are real times, not cron strings, above the Details block
+    head, details = body.split("Details (for the engineer):")
+    assert "Next run: tomorrow 06:15 ET" in head       # fred: 15 6 * * *  -> Monday 06:15
+    assert "Next run: tomorrow 07:30 ET" in head       # youtube_api: 30 7 * * 1-5
+    assert "* * 1-5" not in head and "scripts/" not in head, "cron and paths belong in Details only"
+    assert "[15 6 * * *]" in details
+
+
+def test_body_recovery_and_new_since_last_run_are_named():
+    now = _dt(2026, 9, 13, 22, 30, tzinfo=timezone.utc)
+    body = cdh.build_alert_body([_offrow("fred", "unknown", None, 48 * 60)], previous={"yahoo_finance": "unknown"}, now=now, registry=REGISTRY)
+    assert "New since the last run: fred" in body and "Recovered: yahoo_finance" in body
+    clear = cdh.build_alert_body([], previous={"fred": "unknown"}, now=now, registry=REGISTRY)
+    assert clear.startswith("[PLATFORM_AVAILABILITY] ✅") and "Recovered: fred" in clear
+
+
+def test_next_cron_run_handles_the_schedules_in_use():
+    sun = _dt(2026, 9, 13, 18, 30)                        # naive local, Sunday
+    assert cdh.next_cron_run("15 6 * * *", sun) == _dt(2026, 9, 14, 6, 15)
+    assert cdh.next_cron_run("30 7 * * 1-5", sun) == _dt(2026, 9, 14, 7, 30)
+    assert cdh.next_cron_run("0 8 * * 1", sun) == _dt(2026, 9, 14, 8, 0)
+    assert cdh.next_cron_run("0 11,15 * * 1-5", _dt(2026, 9, 14, 12, 0)) == _dt(2026, 9, 14, 15, 0)
+    assert cdh.next_cron_run("25 6-18/3 * * 1-5", _dt(2026, 9, 14, 7, 0)) == _dt(2026, 9, 14, 9, 25)
+    assert cdh.next_cron_run("garbage", sun) is None
+
+
+def test_what_it_feeds_falls_back_to_registry_supplies_then_the_key():
+    assert cdh.what_it_feeds("fred", REGISTRY) == "macro series (rates, CPI, jobs)"
+    assert "quotes" in cdh.what_it_feeds("alpaca", REGISTRY)
+    assert cdh.what_it_feeds("something_nobody_declared", REGISTRY) == "something_nobody_declared"
