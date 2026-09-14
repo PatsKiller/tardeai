@@ -1682,6 +1682,70 @@
         "path": "data/runtime/llm_spend_report_last_monthly.json"
       },
       "note": "Last calendar month's AI and search spend texted to the operator. Operator ask 2026-09-14."
+    },
+    {
+      "lane_id": "research-scheduler-holdings-0800",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 8 * * 1-5 research_scheduler.py --mode holdings",
+        "match": "research_scheduler.py --mode holdings"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/research_trigger_ledger.jsonl"
+      },
+      "note": "Research scheduler (research_scheduler.py) — tiered, SLA-driven external research dispatcher; docs/RESEARCH_PRIORITIZATION.md. Declared 2026-09-14 when the inline LLM_GLOBAL_DAILY_USD_CAP moved 0.50 -> 2.00 (operator decision: durable $2.00/day of actual spend) and the lines left the inherited baseline."
+    },
+    {
+      "lane_id": "research-scheduler-priority-hourly",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 10-16 * * 1-5 research_scheduler.py --mode priority",
+        "match": "research_scheduler.py --mode priority"
+      },
+      "expected_cadence_hours": 1,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/research_trigger_ledger.jsonl"
+      },
+      "note": "Research scheduler (research_scheduler.py) — tiered, SLA-driven external research dispatcher; docs/RESEARCH_PRIORITIZATION.md. Declared 2026-09-14 when the inline LLM_GLOBAL_DAILY_USD_CAP moved 0.50 -> 2.00 (operator decision: durable $2.00/day of actual spend) and the lines left the inherited baseline."
+    },
+    {
+      "lane_id": "research-scheduler-watchlist-2030",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 20 * * 1-5 research_scheduler.py --mode watchlist",
+        "match": "research_scheduler.py --mode watchlist"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/research_trigger_ledger.jsonl"
+      },
+      "note": "Research scheduler (research_scheduler.py) — tiered, SLA-driven external research dispatcher; docs/RESEARCH_PRIORITIZATION.md. Declared 2026-09-14 when the inline LLM_GLOBAL_DAILY_USD_CAP moved 0.50 -> 2.00 (operator decision: durable $2.00/day of actual spend) and the lines left the inherited baseline."
+    },
+    {
+      "lane_id": "research-scheduler-incubator-sun-1900",
+      "owner": "research",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 19 * * 0 research_scheduler.py --mode incubator",
+        "match": "research_scheduler.py --mode incubator"
+      },
+      "expected_cadence_hours": 168,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/research_trigger_ledger.jsonl"
+      },
+      "note": "Research scheduler (research_scheduler.py) — tiered, SLA-driven external research dispatcher; docs/RESEARCH_PRIORITIZATION.md. Declared 2026-09-14 when the inline LLM_GLOBAL_DAILY_USD_CAP moved 0.50 -> 2.00 (operator decision: durable $2.00/day of actual spend) and the lines left the inherited baseline."
     }
   ],
   "undeclared_baseline": [
@@ -1782,7 +1846,6 @@
     "0 10-15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/reconcile_alpaca_paper_options.sh",
     "0 10-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/alpaca_recon.lock $PY scripts/alpaca_paper_adapter.py --sync-only >> logs/alpaca_paper_adapter.log 2>&1",
     "0 10-16 * * 1-5 cd $PROJ && flock -n /tmp/social_scalp.lock $PY scripts/social_scalp_scanner.py >> logs/social_scalp_scanner.log 2>&1",
-    "0 10-16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/llm_priority_guard.sh && env LLM_GLOBAL_DAILY_USD_CAP=0.50 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/research_scheduler.py --mode priority --apply --budget 40 >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/research_scheduler.log 2>&1",
     "0 10-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/data_gap_resolver.py >> logs/data_gap_resolver.log 2>&1",
     "0 11 * * 0 cd $PROJ && $PY scripts/agent_outcome_scorer.py --apply >> logs/agent_outcome_scorer.log 2>&1",
     "0 11 * * 1-5 cd $PROJ && $PY scripts/agent_outcome_linker.py --apply >> logs/agent_outcome_linker.log 2>&1",
@@ -1818,7 +1881,6 @@
     "0 18,22 * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/catalyst_overnight.lock $PY scripts/catalyst_momentum_engine.py --band overnight --apply >> logs/catalyst_momentum_engine.log 2>&1",
     "0 19 * * * cd $PROJ && $PY scripts/aegis_nightly_ingestion.py >> logs/aegis_nightly.log 2>&1",
     "0 19 * * 0 cd $PROJ && flock -n /tmp/symbol_profiles.lock $PY scripts/build_symbol_profiles.py >> logs/symbol_profiles.log 2>&1  # weekly company-profile refresh (operator 2026-06-12)",
-    "0 19 * * 0 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && env LLM_GLOBAL_DAILY_USD_CAP=0.50 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/research_scheduler.py --mode incubator --apply --budget 30 >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/research_scheduler.log 2>&1",
     "0 19 * * 0 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/weekly_incubator_builder.py --run-label 1900 --apply >> logs/incubator_builder.log 2>&1",
     "0 19 * * 1-5 cd $PROJ && $PY scripts/youtube_transcript_ingest.py --all-channels >> logs/youtube_ingest.log 2>&1",
     "0 20 * * * cd $PROJ && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" -- $PY scripts/aegis_synthesis.py >> logs/aegis_synthesis.log 2>&1  # RETARGETED_OFFPEAK 2026-08-21 was 21:00 ET Peak A",
@@ -1870,7 +1932,6 @@
     "0 8 * * 1-5 cd $PROJ && $PY scripts/indicator_engine.py >> logs/indicator_engine.log 2>&1",
     "0 8 * * 1-5 cd $PROJ && $PY scripts/iterate_research_topics.py --telegram >> logs/research_iterate.log 2>&1",
     "0 8 * * 1-5 cd $PROJ && bash linux_launchers/run_inference_cycle.sh cron_preopen >> logs/inference_cron.log 2>&1",
-    "0 8 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && env LLM_GLOBAL_DAILY_USD_CAP=0.50 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/research_scheduler.py --mode holdings --apply --budget 70 >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/research_scheduler.log 2>&1",
     "0 8 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash scripts/market_day_gate.sh .venv/bin/python scripts/send_alert_digest.py morning >> logs/alert_digest.log 2>&1",
     "0 8 * * 6 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/oversight_weekly.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/oversight_weekly_digest.py\" >> logs/oversight_weekly.log 2>&1  # Defense v9 WS-E: Saturday 08:00 oversight weekly (deterministic, no LLM calls)",
     "0 8,20 * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/enh_report.lock $PY scripts/hermes_subject_enhance.py --type report --lanes grok,chatgpt --apply --limit 1 >> logs/hermes_enh.log 2>&1  # H-enh report (Grok+ChatGPT) — daily second-read of the morning brief",
@@ -1998,7 +2059,6 @@
     "30 11,15 * * 1-5 cd $PROJ && $PY scripts/sync_social_to_intelligence.py --apply >> logs/sync_social_to_intelligence.log 2>&1",
     "30 12 * * 1-5 cd $PROJ && $PY scripts/news_ingestion.py --priority >> logs/news_ingestion.log 2>&1",
     "30 12 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/industry_momentum.lock bash -c \"set -a; . ./.env >/dev/null 2>/dev/null; set +a; .venv/bin/python scripts/finviz_industry_groups.py\" >> logs/industry_momentum.log 2>&1  # Defense v2 B2: industry groups midday display refresh",
-    "30 12,16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && env LLM_GLOBAL_DAILY_USD_CAP=0.50 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/research_scheduler.py --mode holdings --apply --budget 70 >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/research_scheduler.log 2>&1",
     "30 13 * * 1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_port/launchers/run_warrior_weekly_audit.sh",
     "30 13 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && ./scripts/run_scheduled_watchpool_alerts.sh --mode maturity --limit 50 >> logs/watchpool_alerts_cron.log 2>&1",
     "30 15 * * 1-5 /usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_quote_refresh.sh --mode incubator --limit 100 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proactive_quote_refresh_cron.log 2>&1",
@@ -2020,7 +2080,6 @@
     "30 20 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_scalp_volume_profile_refresh.sh >> logs/scalp_volume_profile.log 2>&1",
     "30 20 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh bash scripts/run_protection_pipeline.sh >> logs/protection_pipeline_cron.log 2>&1  # phase194 protection after-close reconcile",
     "30 20 * * 1-5 cd $PROJ && flock -n /tmp/feedback_loop.lock $PY scripts/feedback_loop_processor.py >> logs/feedback_loop.log 2>&1",
-    "30 20 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && env LLM_GLOBAL_DAILY_USD_CAP=0.50 flock -n /tmp/research_sched.lock env RESEARCH_SKIP_GATE=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/research_scheduler.py --mode watchlist --apply --budget 50 >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/research_scheduler.log 2>&1",
     "30 20 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/non_trading_hours_gate.sh bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_research_intelligence_overnight.sh --phase full >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/ri_overnight.log 2>&1",
     "30 21 * * * cd $PROJ && flock -n /tmp/cio_dual_rerun.lock $PY scripts/rerun_cio_dual_consensus.py 1000 --skip-done >> logs/cio_dual_rerun.log 2>&1  # overnight: backfill Grok+ChatGPT dual-consensus on watchlist CIO verdicts (resumable, capped)",
     "30 21 1 * * cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/analyst_reports_monthly_oversight.lock env REPORT_CLAUDE_OVERSIGHT=1 .venv/bin/python scripts/generate_analyst_reports_autonomous.py --mode full >> logs/analyst_reports_autonomous.log 2>&1  # monthly: full prospectus refresh WITH Claude cloud oversight",
