@@ -588,6 +588,7 @@ GATES = [
             "tests/test_tg_chat_routing_20260914.py",
             "tests/test_cio_checkin_only_with_action_20260914.py",
             "tests/test_screener_go_alerts_20260914.py",
+            "tests/test_comms_editor_mode_file_20260914.py",
             # 2026-09-14 HPE: Hermes completed in 4 minutes and the answer never
             # reached the operator (pending waited on a store Hermes does not write).
             "tests/test_research_joinback_20260914.py",

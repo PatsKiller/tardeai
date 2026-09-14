@@ -83,8 +83,22 @@ _CIO_BULL = {"BUY", "ADD", "ADD_ON_PULLBACK", "ACCUMULATE", "INITIATE", "REENTER
 _CIO_BEAR = {"AVOID", "SELL", "EXIT", "TRIM", "REDUCE", "HOLD_REDUCE"}
 
 
+#: Host-level switch, one line: off | shadow | live. Most Telegram senders are cron
+#: jobs that never load an env file, so an environment variable alone would put
+#: only some processes in shadow mode -- and "shadow for one trading day" would
+#: review a partial sample. The file reaches every sender on the host.
+MODE_FILE_DEFAULT = Path.home() / ".config" / "tradeai" / "comms_editor_mode"
+
+
 def mode() -> str:
-    m = (os.environ.get("COMMS_EDITOR_MODE") or "off").strip().lower()
+    """COMMS_EDITOR_MODE from the environment, else the host mode file, else off."""
+    m = (os.environ.get("COMMS_EDITOR_MODE") or "").strip().lower()
+    if not m:
+        path = Path(os.environ.get("COMMS_EDITOR_MODE_FILE") or MODE_FILE_DEFAULT)
+        try:
+            m = path.read_text(encoding="utf-8").strip().splitlines()[0].strip().lower()
+        except (OSError, IndexError):
+            m = ""
     return m if m in ("off", "shadow", "live") else "off"
 
 
