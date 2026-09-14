@@ -2,8 +2,8 @@
 
 ```
 Status:      ACTIVE
-as_of:       2026-09-13T18:00:00-04:00
-Measured at: e8a173e7d (origin/main, PR #994 merge) / live pin not measured
+as_of:       2026-09-13T23:59:00-04:00
+Measured at: a8a62217e (origin/main, PR #1001 merge) / timers observed on the host 2026-09-13 23:54 ET
 ```
 
 **Status:** SHIPPED 2026-09-13 (One Source of Truth, Phase 7; integrated in `fee3e7737`, merged in
@@ -18,7 +18,10 @@ by a parallel agent and is not edited here" and that the per-domain chains lived
 `docs/implementation/sot/phase7_registry_patch.json`. That was true in the Phase 7 worktree and stopped
 being true at `fee3e7737` (integration): every domain's `on_gap` is now in the registry itself, the
 patch file is the historical proposal, and the monitor's lane and timer are declared (not installed —
-see below). The text below reflects the merged state.
+see below). The text below reflects the merged state. **Second correction (PR #998, 2026-09-13 night):**
+this document described only the registry resolver. The operator desk also writes the separate
+`data_gap_registry` queue, and "resolved" there used to mean "a job was queued" — see "The data gap queue"
+below. The registry now declares 26 domains, and the monitor timer has since been installed.
 
 ## The operator's question
 
@@ -60,8 +63,9 @@ Rules enforced in code, not left to the caller (`normalise_chain`, `resolve`):
 
 `config/data_source_authority.json` → `domains[].on_gap` (ordered list of
 `{vector, cost_class, max_per_day, expected_seconds}`). `gap_resolver.load_on_gap(domain)` reads it and
-falls back to `DEFAULT_ON_GAP` when a domain has none. All 24 domains declare a chain (measured
-2026-09-13 against `e8a173e7d`: `python3 -c "import json; a=json.load(open('config/data_source_authority.json')); print(sum('on_gap' in d for d in a['domains']))"` → `24`).
+falls back to `DEFAULT_ON_GAP` when a domain has none. All 26 domains declare a chain (measured
+2026-09-13 against `a8a62217e`: `python3 -c "import json; a=json.load(open('config/data_source_authority.json')); print(len(a['domains']), sum('on_gap' in d for d in a['domains']))"` → `26 26`;
+it was 24 at `e8a173e7d`, before `data_gaps` (PR #998) and `operator_conversation` (PR #1001), both `operator_ask` only).
 The historical proposal is `docs/implementation/sot/phase7_registry_patch.json`; the registry is
 authoritative. Highlights (verified against the registry, same measurement):
 
@@ -97,12 +101,43 @@ slow vector was queued, `operator_question`, `no_coverage_behaviour` (from the r
 | unanswerable (no instrument) | refused up front | unchanged — refused before any vector runs |
 | a fast vector answers | pending, silence | answer now: `*WMT* analyst opinion — via backup_provider:yfinance_on_demand · as of 2026-09-13T17:00, 1h old` |
 | the refresh makes the store complete | pending | the normal curated desk reply, from the store |
-| only a slow vector queued | "I'll reply when it lands" | pending opened **with the ETA**: "≈ 30 min until it lands · Pending opr_…" |
+| only a slow vector queued | "I'll reply when it lands" | pending opened **with the ETA**: "≈ 30 min until it lands · Pending opr_…"; it stays open until ETA + `CIO_OPERATOR_PENDING_ETA_GRACE_HOURS` (default 1 h), not a flat 2 h (PR #998) |
+| a pending is closed unanswered | "did not arrive within 2h" | the question and when it was asked, how long it was open, why it closed, what was missing, and retry advice from the deterministic subject resolver (PR #1000) |
 | every vector denied / exhausted | pending that expires in 2 h | "no coverage through any declared source — tried refresh_producer=no_answer, governed_search=budget_denied …; declared behaviour `say_so`". **No pending.** |
 | curation ran | — | text labelled "_curated by deepseek-v4-flash from gathered evidence — not a fact source_" |
 
 Switch: `CIO_GAP_RESOLVER=0` restores the pre-Phase-7 path (the negative-control test proves the old
 behaviour returns: a pending with no ETA).
+
+## The data gap queue — `data_gap_registry` (PR #998)
+
+A second, older mechanism with a similar name: `scripts/data_gap_resolver.py` (cron `0 10-16 * * 1-5`,
+`--pre-overnight` 18:00 weekdays, `--weekly-audit` Sunday 08:00) works a PostgreSQL queue of per-symbol
+gaps (`missing_catalyst`, `missing_sector`, `missing_thesis`, …) by refreshing enrichment or dispatching a
+Maria research job. Registry domain `data_gaps`; history in `docs/MASTER_SYSTEM_DOCUMENTATION.md` §5.5.
+
+* **One writer.** `scripts/lib/writers/data_gap_registry_writer.py` holds the INSERT, the one dedup rule
+  (a symbol + gap_type already `open` or `enriching` is not inserted again; its id comes back as
+  `existing_ids`) and every status transition. Callers: the resolver, the operator desk, and the retired
+  overnight lane. It rejects a non-tradable symbol (never `BOOK`), a gap type the resolver has no action
+  for, and an unknown severity — on the receipt, with a reason.
+* **The desk queues for real.** For a gap the resolver can act on, the desk writes it through the module and
+  the reply names the gap rows and the resolver's next run, **read from the crontab**
+  (`_gap_resolver_schedule`, cached 10 min). An unreadable crontab yields no time, and the reply then
+  promises no follow-up. Before PR #998 the desk imported a bridge module that never reached main and
+  registered 0 gaps on every call; the table had no new row since 2026-05-24.
+* **Resolved means proven.** A dispatched job leaves the gap `enriching` with the job id.
+  `verify_dispatched()` marks it `resolved` only when the job is `completed` **and** wrote a result row that
+  was not demoted for `UNGROUNDED_NUMBERS` (rule G0, `agent_number_grounding`); the proof is recorded. A
+  failed, expired or missing job — or a completed one without a result row — reopens the gap with the reason;
+  `DATA_GAP_MAX_DISPATCH_ATTEMPTS` (default 3) failures abandon it. Weekly audit abandons gaps open > 30 days.
+* **Not the same as a registry receipt.** `data/cio/gap_resolution_receipts.jsonl` records the declared vectors
+  above; `data_gap_registry` records per-symbol gaps for the hourly worker. A desk question can touch both.
+
+Stale text, kept visible: the registry's `data_gaps._note` still says "'resolved' means the resolver dispatched
+its action … not that the data landed". That described the pre-#998 behaviour; the writer module and resolver
+code above are current. The note lives in operator-granted config and is not rendered into
+`docs/SOURCE_OF_TRUTH.md`.
 
 ## The projection hook
 
@@ -121,7 +156,7 @@ run; alert state `~/.local/state/tradeai/gap_resolution_last_alert.json`; fires 
 * `VECTOR_FAILING` — a vector with ≥ 3 `error` receipts today
 * `RETIRED_RAN` — a receipt whose provider is retired and whose outcome is not `retired_skipped`. **Must be 0.**
 
-Schedule **declared, not installed**: `config/systemd/user/tradeai-gap-resolution.{service,timer}` (every
+Schedule **declared** (and, as a dated observation, installed: `systemctl --user list-timers` showed it scheduled at 2026-09-13 23:54 ET with a run at 23:37): `config/systemd/user/tradeai-gap-resolution.{service,timer}` (every
 30 min at :07/:37, `Persistent=true`, `SuccessExitStatus=0 1`), lane `gap-resolution-audit` in
 `config/lane_registry.json` (receipt `output_signal` = `data/runtime/gap_resolution_last_run.json`) and
 unit `tradeai-gap-resolution.timer` in `config/expected_services.json` so that the timer being OFF is
@@ -145,4 +180,7 @@ by `check_expected_services.py` on the host, never asserted by a document.
 
 `tests/test_gap_resolver_20260913.py` (chain order, retired skip, budget, fast-stop, ETA, no_coverage,
 receipts, curation labelling, arm flag, desk wiring, negative control, hook) ·
-`tests/test_gap_resolution_monitor_20260913.py` (findings, alarm firing with `COVERS`, units, lane).
+`tests/test_gap_resolution_monitor_20260913.py` (findings, alarm firing with `COVERS`, units, lane) ·
+`tests/test_data_gap_registry_writer_20260913.py` (dedup, rails, transitions, resolved-only-on-proof) ·
+`tests/test_desk_gap_queue_reconnect_20260913.py` (desk writes through the module, crontab-derived next run) ·
+`tests/test_pending_expiry_unanswerable_20260913.py` · `tests/test_pending_close_wording_20260913.py`.

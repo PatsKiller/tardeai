@@ -183,7 +183,7 @@ still shows `inactive`. `Failed: 0` on that page remains the real fault signal.
 | */30 | 7 days | `health_agent.py` | Centralized health score + portfolio price staleness + escalation queue | health_agent_snapshots, health_agent_cron.log | — |
 | */5 | 24/7 | `telegram_poller_watchdog.sh` | Watchdog for Telegram poller daemon | restart if dead | — |
 | */5 | 24/7 | `cleanup_stale_locks.sh` | Clean up stale lock files | /tmp/tradeai_*.lock | — |
-| */10 | M-F 10-16 | `data_gap_resolver.py` | Resolve data gaps (missing enrichment, quotes, etc.) | data_gap_resolutions | — |
+| hourly (:00) | M-F 10-16 | `data_gap_resolver.py` | Resolve data gaps (missing enrichment, quotes, etc.); a dispatched agent job resolves the gap only when it completes with a result row | data_gap_registry (through `scripts/lib/writers/data_gap_registry_writer.py`) | — |
 | */10 | M-F 10-16 | `alpaca_paper_adapter.py --sync-only` | Alpaca paper account sync (positions, orders) | paper_trades sync | `/tmp/alpaca_recon.lock` |
 | */15 | M-F 7-15 | `atm_auto_approver.py` | ATM auto-approval — evaluate pending proposals against risk/enrichment/strategy gates | paper_trade_proposals, atm_decision_log | `/tmp/tradeai_atm.lock` |
 | */15 | M-F 7-20 | `claude_escalation_handler.py` | Claude Code escalation handler — Tier 2 analysis, retry_cmd | escalation log, remediation actions | `/tmp/tradeai_escalation_handler.lock` |

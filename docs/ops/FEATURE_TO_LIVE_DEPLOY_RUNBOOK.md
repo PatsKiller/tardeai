@@ -1,8 +1,8 @@
 # Feature-to-live deploy runbook (single-approval)
 
 Status:      ACTIVE
-as_of:       2026-09-10
-Measured at: 9853e6b47f13b744287c588cc0dcb5bd8bfe0bf7 (Fib chart declutter — PR #947 + #949)
+as_of:       2026-09-13
+Measured at: 9853e6b47f13b744287c588cc0dcb5bd8bfe0bf7 (steps 0–6, Fib chart declutter — PR #947 + #949); a8a62217e (step 7, PRs #998–#1001)
 Authority:   AGENTS.md §Local gates / docs/GIT_HYGIENE.md / RELEASE_COORDINATOR boundary
 See also:    scripts/cio_phase2_exact_main_deploy.sh, scripts/new-worktree.sh, bin/guard
 
@@ -126,6 +126,41 @@ curl -fsS --max-time 5 http://localhost:7777/api/v2/health | python3 -c 'import 
 
 All four pins (CURRENT dir, SOURCE_COMMIT, BUILD_SHA, origin/main) must be the **same 40-char
 SHA**, `WorkingDirectory` must equal the CURRENT dir, and health must be `True`.
+
+### 7. Reach what `promote` does not
+
+`promote` restarts `portfolio-server` and the units in `TRADEAI_CURRENT_BOUND_UNITS` (default
+`tradeai-health-agent.service`). Three things it does not do (`AGENTS.md` §9.3, §10):
+
+1. **Restart the Telegram desk bot when desk or converse code changed.** `tradeai-cio-telegram.service`
+   is a long-lived loop that keeps the code it imported at start. The callback poller is a `*/2` cron
+   through the `CURRENT` launcher and needs nothing.
+
+   ```bash
+   systemctl --user restart tradeai-cio-telegram.service
+   pid=$(systemctl --user show -p MainPID --value tradeai-cio-telegram.service)
+   readlink /proc/$pid/cwd        # must equal: readlink -f ~/trade-ai-releases/portfolio-server/CURRENT
+   ```
+
+2. **Install a new user unit.** A `config/systemd/user/*.timer` added by the PR is copied into the release
+   but not into `~/.config/systemd/user`. Installing is operator-approved; the convention is
+   `scripts/install_cio_operator_runtime.sh`:
+
+   ```bash
+   SRC=~/trade-ai-releases/portfolio-server/CURRENT/config/systemd/user
+   install -m 0644 "$SRC/<unit>.service" "$SRC/<unit>.timer" ~/.config/systemd/user/
+   systemctl --user daemon-reload
+   systemctl --user enable --now <unit>.timer
+   systemctl --user list-timers <unit>.timer --no-pager
+   ```
+
+   Then confirm with `check_expected_services.py`, and wait for the lane's `output_signal` on its natural
+   schedule. *2026-09-13: `tradeai-operator-answer-quality.timer` shipped in a promoted release and ran
+   only after this step.*
+
+3. **Declare a crontab edit.** Any crontab line changed alongside the deploy (a new `timeout`, a
+   re-enabled job) needs its `config/lane_registry.json` row in the same PR, or
+   `check_lane_registry.py --fail-on-new` fails `ai_local_acceptance`. Editing the crontab is operator-only.
 
 ## Failure / rollback
 

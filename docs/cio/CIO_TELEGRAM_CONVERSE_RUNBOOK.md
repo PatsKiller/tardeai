@@ -66,6 +66,44 @@ Enforced at one chokepoint, `scripts/lib/reply_provenance.py::finalize_operator_
 [`docs/OPERATOR_REPLY_ROUTING.md`](../OPERATOR_REPLY_ROUTING.md). Tests:
 `tests/test_operator_reply_routing_sources_20260913.py`.
 
+**Named stocks, memory and pending questions (2026-09-13, PRs #998–#1001).** A question that names a
+company resolves to its instrument first (`scripts/lib/operator_subject_resolver.py`; "Visa" and "V" are one
+subject GUID). The reply is that subject's brief, never the whole re-entry book: last close and 30-day change,
+re-entry desk levels, analyst view with its as-of date and age, the newest research of each type, and "What
+this means". Below it, "Earlier on V" recalls up to three earlier questions about the same subject in this
+chat and what was answered. When facts are missing the reply names the data gap rows it queued and when the
+gap resolver next runs (read from the crontab), or promises nothing. A pending question closes with a
+message saying what was asked, how long it was open, why it closed and what was missing.
+
+| Switch | Default | Effect |
+|---|---|---|
+| `CIO_SUBJECT_FLASH` | `1` | DeepSeek Flash may reword a subject brief; its text is used only when every number is in the brief. `0` sends the deterministic brief |
+| `CIO_SUBJECT_MEMORY` | `1` | per-subject recall from `operator_conversation_turns`; `0` disables |
+| `CIO_SUBJECT_MEMORY_DAYS` | `30` | recall window |
+| `CIO_OPERATOR_PENDING_ETA_GRACE_HOURS` | `1` | a pending with an ETA stays open until ETA + grace; without an ETA it closes at 2 h |
+| `CIO_GAP_RESOLVER` | `1` | run the declared gap vectors for a blocking gap; `0` restores the pre-2026-09-13 pending path |
+| `GAP_RESOLVER_LIVE` | unset | unset = side-effecting vectors record what they would do (dry run) |
+
+Full map: [`docs/OPERATOR_REPLY_ROUTING.md`](../OPERATOR_REPLY_ROUTING.md); gap queue:
+[`docs/GAP_RESOLUTION.md`](../GAP_RESOLUTION.md).
+
+---
+
+## After a deploy
+
+`promote` does not restart this bot. After any deploy that changes desk or converse code
+(`scripts/lib/cio_operator_desk_loop.py`, `cio_converse_core.py`, `reply_provenance.py`,
+`operator_subject_resolver.py`, `cio_telegram_converse.py`):
+
+```bash
+systemctl --user restart tradeai-cio-telegram.service
+readlink /proc/$(systemctl --user show -p MainPID --value tradeai-cio-telegram.service)/cwd   # the new release
+```
+
+The half-hourly `tradeai-operator-answer-quality.timer` (`scripts/check_operator_answer_quality.py`) audits the
+replies actually sent — missing Sources line, false "empty" claims, book dumps for a named symbol, pendings
+never closed. Known limit: it flags a pending open past a flat 2 h even when the desk is honouring a longer ETA.
+
 ---
 
 ## Disable
@@ -108,4 +146,8 @@ Slash `/cio` status still works if you re-enable only allowlisted polls; with co
 
 ```bash
 .venv/bin/python -m pytest tests/test_cio_telegram_converse.py -q
+.venv/bin/python -m pytest -q tests/test_operator_reply_routing_sources_20260913.py \
+  tests/test_subject_answer_completeness_20260913.py tests/test_subject_memory_recall_20260913.py \
+  tests/test_pending_close_wording_20260913.py tests/test_pending_expiry_unanswerable_20260913.py \
+  tests/test_desk_gap_queue_reconnect_20260913.py
 ```

@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `ff189283c8c82891f98b13e2487a0554f37060c5a07fbd142715faeb7fba1146`
+**Tree fingerprint:** `1a69f2db3570d94f845e9003555a1a43576d8846ee54bd8f3422cf35a7686ed4`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2501 |
-| Markdown (excl. this INDEX) | 2077 |
-| **MISSING HEADER** | **66** |
-| Header OK | 2011 |
+| Files under `docs/` (excl. this INDEX) | 2503 |
+| Markdown (excl. this INDEX) | 2079 |
+| **MISSING HEADER** | **65** |
+| Header OK | 2014 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,14 +28,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2130 |
+| review_required | 2132 |
 
 ## Markdown tree
 
 | Path | Title | status_guess | header | sha12 |
 |------|-------|--------------|--------|------|
 | `docs/A1A.md` | A1A Documentation Protocol (Authoritative) | active_keep | OK | `18ef2a6322cf` |
-| `docs/AGENT_AND_HERMES_WORKFLOWS.md` | Agent & Hermes Workflows | review_required | OK | `11e91b5186b2` |
+| `docs/AGENT_AND_HERMES_WORKFLOWS.md` | Agent & Hermes Workflows | review_required | OK | `493f51c193ed` |
 | `docs/AGENT_PAGES_DETAIL.md` | Agent Pages — Detailed Function Matrix | review_required | OK | `c52bb8ece19f` |
 | `docs/AGENT_ROSTER.md` | Trade AI v12 — Agent Roster | review_required | OK | `2421229298b1` |
 | `docs/AI_TRADE_CRITIQUE.md` | AI Trade Critique — Persistence & System Integration | review_required | OK | `a36de70f5d2c` |
@@ -45,7 +45,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/BROKER_TRADE_PLAN_GATE.md` | Broker Trade Plan Gate — No Gambling on Generic 2×R | review_required | OK | `e73e70a22a5c` |
 | `docs/CC_V3_ACTIONABILITY_SPRINT_20260702.md` | CC v3 Actionability Sprint — Layered Document | review_required | OK | `26d05fe916e7` |
 | `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | OK | `401363e962e2` |
-| `docs/CHANGELOG.md` | Changelog | review_required | OK | `2b8eaaf19f6c` |
+| `docs/CHANGELOG.md` | Changelog | review_required | OK | `b5ed581ab00d` |
 | `docs/CHEAT_SHEET.md` | Trade AI v12 -- Operator Cheat Sheet | active_keep | OK | `5fbf6fb2ebe7` |
 | `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO Prompt & Input Audit — 2026-07-01 | review_required | OK | `927dbe10051c` |
 | `docs/CLAUDE_CHALLENGER_AND_ANALYST_LANES.md` | Claude Challenger Cohort (A/B) + Analyst Lanes | review_required | OK | `3159e054b153` |
@@ -66,10 +66,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/FINANCIAL_RECONCILIATION.md` | Financial reconciliation and record-level migration | review_required | MISSING HEADER | `67a3455d1e52` |
 | `docs/FINVIZ_INTEGRATION_AND_DATA_SOURCE_MONITORING.md` | Finviz Integration + Data-Source Health Monitoring | review_required | OK | `d2c64a1e13d9` |
 | `docs/FINVIZ_SOURCE_AUTHORITY.md` | Finviz Source Authority & Phase 0 Reconciliation | review_required | OK | `93533d98e174` |
-| `docs/GAP_RESOLUTION.md` | Gap Resolution — when the answer is stale or missing, go find out | review_required | OK | `ae8291b4db81` |
+| `docs/GAP_RESOLUTION.md` | Gap Resolution — when the answer is stale or missing, go find out | review_required | OK | `0bec00758192` |
 | `docs/GIT_HYGIENE.md` | Git Hygiene — protect the live primary tree (2026-07-01) | review_required | OK | `bb52d4d23b64` |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50: Trade AI Runtime Status | review_required | OK | `8c1dff864802` |
-| `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `c1ee2ea7a621` |
+| `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `e4b446053092` |
 | `docs/HEALTH_AUTONOMOUS_LOOP.md` | Health autonomous fix loop (no manual operator / no one-off agent fixes) | review_required | OK | `e4865c52f780` |
 | `docs/HERMES_DATA_ACCESS.md` | Hermes Data Access — the one canonical way every consumer reads Hermes intelligence | review_required | OK | `e597b05f60f3` |
 | `docs/HERMES_DISCOVERY_COVERAGE.md` | Hermes Discovery Inbox — Current Coverage & Discovery Mechanics (2026-07-05) | review_required | OK | `28f9832642be` |
@@ -85,13 +85,13 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/LIVE_SYSTEM_FACTS.md` | Live System Facts — Authoritative Counts | review_required | OK | `1c3dcee8a3af` |
 | `docs/LLM_DATA_DICTIONARY.md` | LLM Data Dictionary — How Data Flows to Every Model Call | review_required | OK | `1960a201f17b` |
 | `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` | LLM Fleet Strategy v4.1 — Final Execution Revision | active_keep | OK | `c0f8815dff83` |
-| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Trade AI v12 -- Master System Documentation | active_keep | OK | `ba903d70e85b` |
+| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Trade AI v12 -- Master System Documentation | active_keep | OK | `477f1a2a13f7` |
 | `docs/MISSION_LOG_2026_07_04_05.md` | Mission Log — 2026-07-04/05 (Due Diligence · Discovery Inbox · Incident Sweep) | review_required | OK | `424f1859cb37` |
 | `docs/MOMENTUM_SCALP_REGIME_DETECTION_ALGORITHM.md` | Momentum Scalp Regime Detection Algorithm | review_required | OK | `32c77f1fbc37` |
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | Momentum Scalp — Stop & Trailing-Stop Policy | review_required | OK | `354954d22052` |
 | `docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md` | Stop Monitoring & Adjustment Protocol | review_required | OK | `8196359bfabe` |
 | `docs/MONDAY_BURNIN_CHECKLIST.md` | Monday ATM Burn-In Checklist | review_required | OK | `362afe5ab3ac` |
-| `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | MISSING HEADER | `1896f4559700` |
+| `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | OK | `385d2c33609a` |
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator Runbook — LLM Fleet v4.1 Final Execution Pack | active_keep | OK | `22e1f1116a74` |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options & Broker Execution Flows | review_required | OK | `8b8b79559aae` |
 | `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `629259dafb19` |
@@ -399,7 +399,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md` | Schwab API — Phase 1 Read-Only Foundation (canonical) | review_required | OK | `a11674ef7b56` |
 | `docs/architecture/TICKER_KNOWLEDGE_GRAPH_GUID_LINEAGE.md` | Ticker Knowledge Graph GUID Lineage | review_required | OK | `a7c43967abca` |
 | `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | TradeAI System State & Autonomy Record — 2026-08-20 (updated 2026-08-21 evening) | review_required | OK | `d9303c3e9930` |
+| `docs/architecture/TRADE_AI_AS_IS_2026-09-14.md` | Trade AI Platform — AS-IS: Deployed & Tested Environment | review_required | OK | `4f3de57572bd` |
 | `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md` | Bitemporal memory data model | review_required | OK | `8491cfb5a15b` |
+| `docs/architecture/TRADE_AI_FUTURE_STATE_2026-09-14.md` | Trade AI Platform — FUTURE STATE: Target Architecture & Build Recommendation | review_required | OK | `be3b663de2b3` |
 | `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | Trade AI Institutional Memory + Autonomous Agent Architecture | review_required | OK | `27f6d0b5fa01` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_0.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.0 | review_required | OK | `f4df2050d710` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_1.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.1 | review_required | OK | `d51c0412e728` |
@@ -495,7 +497,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_overnight_20260912/STATE_ROOT_RECONCILIATION_RUNBOOK.md` | State-root reconciliation — operator adjudication required | review_required | OK | `e7194d7cddec` |
 | `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `e6f73da9013d` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
-| `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `dc0fb229b08c` |
+| `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `1cbdf5ccdf27` |
 | `docs/atm/PHASE180A_ATM_CURRENT_CONFIGURATION_AUDIT.md` | Phase 180A: ATM Current Configuration Audit | review_required | OK | `2d3ef26142a3` |
 | `docs/atm/PHASE180B_ATM_PAPER_SCALE_UP_RISK_POLICY.md` | Phase 180B: ATM Paper Scale-Up Risk Policy | review_required | OK | `ec9342bcaa35` |
 | `docs/atm/PHASE180C_ATM_PAPER_VOLUME_RAMP_SCHEDULE.md` | Phase 180C: ATM Paper Trade Volume Ramp Schedule | review_required | OK | `1f087f81f7ed` |
@@ -762,7 +764,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/CIO_NOTIFICATION_POLICY.md` | CIO Notification Policy — Signal over Spam | review_required | OK | `40a0bb623a7c` |
 | `docs/cio/CIO_NOTIFICATION_REPLAY_ACCEPTANCE.md` | CIO Notification Replay Acceptance | review_required | OK | `76573f672e2d` |
 | `docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md` | CIO Notification Runtime Topology | review_required | OK | `ab46eaffc931` |
-| `docs/cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md` | CIO Telegram converse — operator runbook | review_required | OK | `d9b9d10e07e6` |
+| `docs/cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md` | CIO Telegram converse — operator runbook | review_required | OK | `01ee6726efe4` |
 | `docs/cio/CIO_TELEGRAM_PRODUCT_STANDARD.md` | CIO Telegram Product Standard | review_required | OK | `8aad393f724c` |
 | `docs/cio/CIO_WHATSAPP_CONVERSE_RUNBOOK.md` | CIO WhatsApp converse — operator runbook (P4) | review_required | OK | `241130c46382` |
 | `docs/cio/CLOSED_LOOP_ARCHITECTURE.md` | CIO Desk Closed-Loop Intelligence Architecture | review_required | OK | `5e11dd3570d3` |
@@ -1427,7 +1429,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/operations/PHASE46C_SCHEDULED_JOB_HEALTH_UI_REPORT.md` | Phase 46C — Scheduled Job Health UI Report | review_required | OK | `c88717c8c453` |
 | `docs/operations/PHASE46D_SCHEDULED_JOB_HEALTH_SAFETY_AUDIT.md` | Phase 46D — Scheduled Job Health Safety Audit | review_required | OK | `b04a97b346bb` |
 | `docs/operations/PROMOTION_GATE_v1.md` | Promotion Gate v1 — Phase 10 (prepare-only) | review_required | OK | `0aa2bd3d8266` |
-| `docs/operations/SCHEDULED_JOBS_REFERENCE.md` | Trade AI v12 — Scheduled Jobs Reference | review_required | OK | `eaa8b76d62ef` |
+| `docs/operations/SCHEDULED_JOBS_REFERENCE.md` | Trade AI v12 — Scheduled Jobs Reference | review_required | OK | `f38105ec0cda` |
 | `docs/operations/WATCH_QUALITY_GOVERNANCE_2026-07-25.md` | Watch Quality Governance — 2026-07-25 | review_required | OK | `0191c9818079` |
 | `docs/operations/WATCH_QUALITY_PROJECTION_V2_2026-07-25.md` | Watch quality projection v2 — source-unit correction | review_required | OK | `ab142131545c` |
 | `docs/operations/overnight_activity_repair/00_README.md` | Overnight Activity Repair | current_phase_keep | OK | `7e5bcddb3828` |
@@ -1587,7 +1589,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 | review_required | OK | `3490029f050c` |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) | review_required | OK | `9b701b444eb7` |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs | review_required | OK | `991bedac8b13` |
-| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `cf65f2adaeb8` |
+| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `830380e580ce` |
 | `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md` | Flash activation + thesis canary — 2026-08-20 | review_required | OK | `2423165b9ce4` |
 | `docs/ops/GITHUB_ACTIONS_COST_REDUCTION_PLAN.md` | GitHub Actions cost-reduction plan | review_required | OK | `820bad46ce5f` |
 | `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` | GitHub Actions outage — repo visibility flip exhausted the private-repo minute quota | review_required | OK | `1d1b620b91db` |
@@ -1902,7 +1904,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/project/SESSION_2026_05_30_SUMMARY.md` | Session 2026-05-30 Summary | current_phase_keep | OK | `d79ac556972d` |
 | `docs/project/SESSION_2026_05_31_HERMES_FULL_CLOSEOUT_SUMMARY.md` | Session 2026-05-30/31 — Hermes Full Closeout Summary | current_phase_keep | OK | `f4b5281b1341` |
 | `docs/project/SESSION_2026_06_02_V3_BACKTEST_INTELLIGENCE.md` | Session 2026-06-02 — V3 Backtest Intelligence | current_phase_keep | OK | `170134994b7a` |
-| `docs/project/SKILLS.md` | Trade AI v12 — Skills & Agent Capabilities Reference | current_phase_keep | OK | `0b33446a95ff` |
+| `docs/project/SKILLS.md` | Trade AI v12 — Skills & Agent Capabilities Reference | current_phase_keep | OK | `153a2862579c` |
 | `docs/project/STABILIZATION_SESSION_2026_06_22.md` | Stabilization Session — 2026-06-22 | current_phase_keep | OK | `5583ab9c0b2c` |
 | `docs/project/STATE_OF_REPO_2026_06_02.md` | State of the Repo — 2026-06-02 Consolidated | current_phase_keep | OK | `29c8618fbf54` |
 | `docs/project/STRATEGY_SCOREBOARD_RR_EXPECTANCY_20260608.md` | Strategy Scoreboard — R:R, Expectancy & Self-Healing Freshness (2026-06-08) | current_phase_keep | OK | `e6ad36c90fd1` |

@@ -227,18 +227,30 @@ This supersedes the "two disconnected data-source monitors" blind spot below: bo
 column returned as `raw_status`), and the monitor `scripts/check_data_source_health.py` (hourly
 `tradeai-data-source-health.timer`, lane `data-source-health-audit`, receipt
 `data/runtime/data_source_health_last_run.json` written every run, `[PLATFORM_AVAILABILITY]` alert on
-transition only). The timer is **declared in `config/expected_services.json`, not asserted installed**
-— `check_expected_services.py` measures that on the host.
+transition only). The timer is **declared in `config/expected_services.json`** — `check_expected_services.py`
+measures on the host whether it is installed (dated observation: scheduled at 2026-09-13 23:54 ET).
 
-**The clock.** The view has no market calendar of its own: a window is wall-clock hours from the
-registry. Two places carry market-time awareness and this document does not claim more than they do:
-(1) the broker envelope (`scripts/lib/data_broker/envelope.py`) accepts `market_closed=True` and then
-uses the domain's `stale_after_hours_closed` (declared today only for `quote_price`: 0.25h open → 72h
-closed), so a Friday-close quote is not `stale` on Sunday; (2) `collect_data_source_health()` keeps the
-house convention of downgrading a weekend staleness finding to `info` with a `[weekend]` tag. A source
-whose registry window is shorter than a weekend and whose producer is Mon–Fri only **will decay to
-`unknown` over the weekend** by design — that is the honest state, and the alert set filters it only
-through `has_scheduled_caller`, not through a calendar. `UNKNOWN` is the expected reading there.
+**The alert is written for the operator (PR #997).** `build_alert_body` (pure, tested) gives each source what it
+feeds in a plain phrase, one sentence on what is wrong, its next scheduled run as a local time and an `Action`
+line; sources are grouped *Failing* / *Stale health row* / *Waiting on first report*; the header says how many
+are expected to self-heal, and escalation is stated (none — the system reporting to its operator). Cron
+strings and script paths are kept in a trailing *Details (for the engineer)* block. The `[PLATFORM_AVAILABILITY]`
+sentinel and change-only firing are unchanged.
+
+**The clock (corrected 2026-09-13, PR #995).** The first version of this paragraph said the view had no
+market calendar and that a weekday-only source would decay to `unknown` every weekend by design. Measured
+Sunday 17:20 ET, that would have interrupted the operator eight times before Monday's first cron, so the
+view now carries two clocks of its own:
+(1) **weekday minutes** — `weekday_only_for(source)` is true when the source has scheduled callers
+(`SCHEDULED_CALLERS`) and every one runs `1-5`; `effective_status` then counts age in Monday–Friday minutes
+only. A source with no caller, or any 7-day caller, keeps the plain clock — decaying sooner is the safer error;
+(2) **closed market** — `market_is_closed()` (shared `market_session.is_market_open`) selects a domain's
+`stale_after_hours_closed` when the market is shut (declared for `quote_price`: 0.25h open → 72h closed);
+when the helper cannot say, the stricter open window applies. The broker envelope
+(`scripts/lib/data_broker/envelope.py`) applies the same closed-market window, and
+`collect_data_source_health()` still downgrades a weekend staleness finding to `info` with a `[weekend]` tag.
+Six callers missing from `SCHEDULED_CALLERS` were declared from the live crontab, and the `catalyst_news`
+window went 12 h → 18 h (equal to its 12 h cadence gap, it decayed on any delay).
 
 **Rule of record:** `AGENTS.md` §7A rule 6 — "a `data_source_health` row is healthy only if it succeeded
 inside its window; a row nobody touches decays to unknown." Tests:

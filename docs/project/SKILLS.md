@@ -1,5 +1,5 @@
 # Trade AI v12 — Skills & Agent Capabilities Reference
-**Last updated:** 2026-08-22 (local-generation retirement)
+**Last updated:** 2026-09-13 (rule G0 use only supplied facts; prior 2026-08-22 local-generation retirement)
 
 ---
 
@@ -176,7 +176,7 @@ restore local judgment.
 
 ## Global Agent Rules (G0-G10)
 
-**G0 — Use only supplied facts** (2026-09-13). Every watchlist agent prompt (Maria, Steph, risk, tax, full chain) carries `GROUNDING_RULE` from `scripts/lib/cio_agent_contract.py`: every number stated must appear in the context the job supplied, or be simple arithmetic on it. After the answer is parsed, `scripts/lib/agent_number_grounding.py` checks its numbers against the prompt actually sent and stores the verdict as `number_grounding` in `watchlist_agent_results.full_result`. Default mode is `enforce`: an answer with at least 3 unsupported numbers, making up at least half of those checked, is demoted to RESEARCH_MORE below the 40% gate, and its summary names the numbers. A dry run over 300 stored results put that at no more than 3. `scripts/report_agent_number_grounding.py` shows the live rate; `AGENT_NUMBER_GROUNDING_MODE=record` flags without changing anything, `off` disables. The gap resolver never accepts a demoted result as proof.
+**G0 — Use only supplied facts** (2026-09-13). Every watchlist agent prompt (Maria, Steph, risk, tax, full chain) carries `GROUNDING_RULE` from `scripts/lib/cio_agent_contract.py`: every number stated must appear in the context the job supplied, or be simple arithmetic on it. After the answer is parsed, `scripts/lib/agent_number_grounding.py` checks its numbers against the prompt actually sent and stores the verdict as `number_grounding` in `watchlist_agent_results.full_result`. Default mode is `enforce`: an answer with at least 3 unsupported numbers, making up at least half of those checked, is demoted to RESEARCH_MORE below the 40% gate, and its summary names the numbers. Thresholds are `AGENT_NUMBER_GROUNDING_MIN_UNSUPPORTED` (3) and `AGENT_NUMBER_GROUNDING_MAX_SHARE` (0.5). A dry run over 300 stored results put that at no more than 3 — an upper bound, because stored results keep an input snapshot, not the full prompt. `scripts/report_agent_number_grounding.py` shows the live rate; `AGENT_NUMBER_GROUNDING_MODE=record` flags without changing anything, `off` disables. The gap resolver never accepts a demoted result as proof.
 
 1. **G1** — Never execute live trades without explicit 6-month paper validation
 2. **G2** — Income protection: SSDI awareness in all recommendations
