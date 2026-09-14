@@ -168,7 +168,7 @@ def test_answerable_but_overdue_pending_is_expired():
     assert len(sender.sent) == 1
     last = _rows(desk.PENDING_PATH)[-1]
     assert last["status"] == "expired"
-    assert f"{desk.PENDING_EXPIRY_HOURS:g}h" in last["expiry_reason"]
+    assert f"within the {desk.PENDING_EXPIRY_HOURS:g}-hour limit" in last["expiry_reason"]
     assert last["age_hours"] >= desk.PENDING_EXPIRY_HOURS
 
 

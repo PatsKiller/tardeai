@@ -135,6 +135,11 @@ def test_subject_research_filters_by_symbol_in_sql():
     src = DESK.read_text()
     i = src.index("def subject_research(")
     body = src[i:i + 3000]
+    # 2026-09-13: the query moved to SUBJECT_RESEARCH_SQL (newest rows per research
+    # type); the symbol and status filters must still be in that query.
+    assert "SUBJECT_RESEARCH_SQL" in body
+    j = src.index("SUBJECT_RESEARCH_SQL = ")
+    body += src[j:j + 900]
     assert "upper(symbol) = ANY(%s)" in body
     assert "status = 'promoted'" in body
 

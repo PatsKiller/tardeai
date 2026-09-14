@@ -173,6 +173,8 @@ def labels_from_evidence(evidence: dict[str, Any], curated: dict[str, Any]) -> l
             labels.append("holdings.json")
         elif "yahoo_analyst" in src_s:
             labels.append("yahoo_analyst_targets_history")
+        elif src_s == "ticker_prices":
+            labels.append("ticker_prices (daily closes)")
         elif src_s.startswith("/") and src_s.endswith(".json"):
             labels.append(src_s.rsplit("/", 1)[-1])
         else:
@@ -235,6 +237,8 @@ def store_labels_from_raw(sources: list[Any], *, as_of: Any = None) -> list[str]
             labels.append("holdings.json")
         elif s == "cio_operator_attention":
             labels.append("office situation scan")
+        elif s == "ticker_prices":
+            labels.append("ticker_prices (daily closes)")
         elif s.startswith("/") and s.endswith(".json"):
             labels.append(s.rsplit("/", 1)[-1])
         else:
