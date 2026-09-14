@@ -39,8 +39,10 @@ from lib.cio_agent_contract import (
     normalize_evidence,
     parse_agent_result,
     parse_synthesis_result,
+    GROUNDING_RULE,
 )
 from lib.hermes_discovery.symbol_validation import gate_watchlist_symbol
+from lib.agent_number_grounding import apply_number_grounding
 _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 _batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
@@ -1525,6 +1527,10 @@ Respond in JSON only:
     return combined
 
 
+#: The exact prompt the last Maria one-pass call sent, for the number check.
+_last_maria_prompt = ""
+
+
 def _run_maria_one_pass(symbol: str, context_text: str, note: str = "") -> str:
     """Single FAST governed call combining news + fundamentals (call-count contract).
 
@@ -1532,9 +1538,10 @@ def _run_maria_one_pass(symbol: str, context_text: str, note: str = "") -> str:
     Maria job makes exactly one provider request via task_type=agent_narrative
     → watchlist_maria_flash_narrative. Does not call _run_maria_two_pass.
     """
-    global _last_rag_sources, _last_peer_agents
+    global _last_rag_sources, _last_peer_agents, _last_maria_prompt
     _last_rag_sources = []
     _last_peer_agents = []
+    _last_maria_prompt = ""
     rag_block = ""
     try:
         from rag_retrieval import get_rag_context, format_rag_context_for_prompt
@@ -1589,6 +1596,8 @@ Fundamentals / notes:
 {intel}
 {note or ''}
 
+{GROUNDING_RULE}
+
 Respond in JSON only:
 {{"sentiment":"positive"|"neutral"|"negative",
   "catalyst_present": true|false,
@@ -1607,6 +1616,7 @@ Respond in JSON only:
   "next_action":"string"}}"""
 
     # Exactly one LLM invocation — no second pass
+    _last_maria_prompt = prompt
     raw = _llm(prompt, max_tokens=600, task_type="agent_narrative", high_impact=False)
     model = getattr(_llm, "_last_model", "unknown")
     print(f"  [maria-1pass] {symbol}: model={model}")
@@ -2785,6 +2795,14 @@ def process_jobs(limit: int = 10):
         # Parse result
         parsed = _parse_result(raw)
 
+        # Rule G0: the numbers in the answer must come from what the agent was sent.
+        # An answer with invented figures is demoted to RESEARCH_MORE below the 40% gate.
+        _supplied_text = _last_maria_prompt if agent == "maria" else prompt
+        parsed, number_grounding = apply_number_grounding(parsed, _supplied_text)
+        if number_grounding.get("demoted"):
+            print(f"  [grounding] {symbol} ({agent}): demoted to RESEARCH_MORE; "
+                  f"unverified numbers {number_grounding.get('unsupported', [])[:5]}")
+
         # Store result with full narrative
         result_id = f"res-{job_id}"
         cur.execute("""
@@ -2823,6 +2841,7 @@ def process_jobs(limit: int = 10):
                   "agent_contract": AGENT_JSON_CONTRACT_VERSION,
                   "evidence": parsed.get("evidence", []),
                   "data_i_doubt": parsed.get("data_i_doubt", "none"),
+                  "number_grounding": number_grounding,
               }),
               getattr(_llm, "_last_model", NO_MODEL), prompt_hash,
               json.dumps(context["snapshot"], default=str),

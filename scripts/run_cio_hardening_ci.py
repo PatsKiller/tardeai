@@ -608,6 +608,7 @@ GATES = [
             "tests/test_operator_answers_use_house_facts_20260913.py",
             "tests/test_data_gap_registry_writer_20260913.py",
             "tests/test_desk_gap_queue_reconnect_20260913.py",
+            "tests/test_agent_number_grounding_20260913.py",
             # Answer-quality monitor + offline litmus replay of the 2026-09-13 questions.
             "tests/test_operator_answer_quality_20260913.py",
             # Every operator reply path goes through one chokepoint: Sources + Went outside + authority tail.

@@ -226,7 +226,7 @@ def test_real_dispatch_actions_report_the_job_instead_of_success():
 def test_verify_dispatched_settles_on_proof_only(monkeypatch, job_status, result_id, attempts, expect):
     R = _load_script("data_gap_resolver")
 
-    cur = FakeCursor(fetchall=[[(9, "SCHG", "stale_news", "gap_1", job_status, result_id, attempts)]])
+    cur = FakeCursor(fetchall=[[(9, "SCHG", "stale_news", "gap_1", job_status, result_id, attempts, False)]])
     conn = FakeConn(cur)
     counts = R.verify_dispatched(conn, cur)
     updates = [(s, p) for s, p in cur.calls if s.startswith("UPDATE data_gap_registry")]
@@ -248,7 +248,7 @@ def test_verify_dispatched_settles_on_proof_only(monkeypatch, job_status, result
 def test_verify_dispatched_dry_run_writes_nothing():
     R = _load_script("data_gap_resolver")
 
-    cur = FakeCursor(fetchall=[[(9, "SCHG", "stale_news", "gap_1", "completed", "res-1", 0)]])
+    cur = FakeCursor(fetchall=[[(9, "SCHG", "stale_news", "gap_1", "completed", "res-1", 0, False)]])
     conn = FakeConn(cur)
     assert R.verify_dispatched(conn, cur, dry_run=True) == (1, 0, 0, 0)
     assert [s for s, _ in cur.calls if s.startswith("UPDATE")] == [] and conn.commits == 0
