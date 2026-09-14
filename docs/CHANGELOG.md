@@ -22,6 +22,17 @@ MATURITY_IMPACT: the operator can see and receive real AI and search spend daily
 - **First measurement.** Week of 09-07: $5.45 real, 38% on peak; Advisory Desk ran 8,424 scheduled calls on peak.
 - **Docs.** `docs/LLM_SPEND.md`.
 
+## 2026-09-14 — A repeated alert is recorded as a new communication
+
+MATURITY_IMPACT: the Communications page records every send, not only the first alert that opened a given way. Execution posture UNCHANGED.
+
+- **The collision.** The ledger identity of a plain Telegram send was producer + type + the first 48 characters + action, so every later alert with the same opening collided with the first event ever sent and inherited its delivery row.
+  - Measured: 638 events for 638 subjects in 7 days, and 14,163 illegal settles in `claude_escalation.log` on 09-14.
+  - The 13:15 GO alerts that reached the operator stayed SUPPRESSED from the 12:15 run.
+- **The fix.** `_best_effort_comms_publish` sets `observation_version` to a body hash plus the UTC minute.
+  - A retry of the same text in the same minute still collides.
+  - Grouping (`subject_key`) is unchanged.
+
 ## 2026-09-14 — Operator answers come back, prices are proven, Telegram is edited (PRs #1004–#1009, `59d02f788` → `32897e80a`)
 
 MATURITY_IMPACT: operator research questions now close with the research that was done. Stored prices and Finviz fields are checked against an independent source every day. Every Telegram message passes one editor, which is in shadow mode first. Execution posture UNCHANGED: no order, stop, size or broker write. The Schwab transport itself was not edited.

@@ -296,14 +296,27 @@ def _best_effort_comms_publish(
         # record of intent rather than of delivery.
         wire = operator_wire_text(message)
         subject_key = f"telegram:{message_class}:{(wire or '')[:48]}"
-        published = publish_communication(
-            from_plain_message(
-                producer=producer,
-                body=wire,
-                subject_key=subject_key,
-                message_class=message_class,
-            )
+        event = from_plain_message(
+            producer=producer,
+            body=wire,
+            subject_key=subject_key,
+            message_class=message_class,
         )
+        # One send is one observation. The idempotency key is producer + type + subject_key
+        # (the first 48 characters) + action, so every later alert that opens the same way,
+        # like a second "✅ GO ELMT — momentum scalp setup", collided with the FIRST event
+        # ever sent and inherited its delivery row. Measured 2026-09-14: 638 events for 638
+        # subjects in 7 days, 14,163 illegal settles in claude_escalation.log alone, and the
+        # 13:15 GO alerts that reached the operator stayed SUPPRESSED from 12:15. The body hash
+        # plus the UTC minute keeps a genuine retry of the same text colliding.
+        import hashlib
+        from datetime import datetime, timezone
+        if hasattr(event, "observation_version"):
+            event.observation_version = (
+                hashlib.sha256((wire or "").encode("utf-8")).hexdigest()[:16]
+                + "@" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M")
+            )
+        published = publish_communication(event)
         _tag_outbound(published, wire)
         # Say what was observed, not what is convenient. SUPPRESSED and UNKNOWN
         # are already valid terminal statuses; using LEGACY_DELIVERED for all
