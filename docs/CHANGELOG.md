@@ -4,6 +4,25 @@ Status:      ACTIVE
 as_of:       2026-09-13T23:59:00-04:00
 Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
 
+## 2026-09-14 — Scheduled paid work runs in the operator's window; spend checked against DeepSeek
+
+MATURITY_IMPACT: scheduled DeepSeek work runs only weekdays 09:00–21:00 ET or weekends, and never in DeepSeek's billing peak. The spend report names any scheduled work outside that window, and an hourly balance snapshot compares logged cost with what DeepSeek deducted. Execution posture UNCHANGED: READ_ONLY_ADVISORY.
+
+- **Last week was a one-time backfill.** From 09-06 to 09-09, a temporary $7 "usefulness backfill" scored about 31,000 old research rows around the clock.
+  - That was 60% of the week's $5.45 outside the operator window, and 38% at DeepSeek peak.
+  - Normal running is now about $0.49/day.
+- **Gate.** `deepseek_offpeak.should_scheduled_skip` plus `run_with_deepseek_offpeak.sh --scheduled` on cron lines; manual runs are never gated.
+  - The window alone is not enough. Sunday 21:00–24:00 ET and winter weekday 20:00–21:00 ET fall in DeepSeek's peak, so the gate refuses those too.
+- **Schedules.**
+  - holdings research 08:00 → 09:05;
+  - flash market agent 06–19 → 09–19;
+  - lessons reflection 21:40 → 19:40;
+  - shadow seed 21:45 → 19:45;
+  - advisory cache worker restricted to 09–19 ET;
+  - usefulness scorer and due-diligence questions gated.
+- **Report.** `outside_window_sql`, `scheduled_outside_window`, `reconcile_balance`, `deepseek_balance`; the daily text shows both.
+- **Verified against DeepSeek's pricing page.** Recomputing last week from tokens gives $5.42, against $5.45 logged.
+
 ## 2026-09-14 — The model bridge can no longer be wedged by one held call
 
 MATURITY_IMPACT: a provider that holds requests now costs one bounded call, not every caller for an hour. The bridge answers `/health` while calls are in flight, and a watchdog restarts it when it stops answering and tells the operator. Execution posture UNCHANGED: READ_ONLY_ADVISORY; caps, keys and brokers untouched.

@@ -62,6 +62,40 @@ Test suites also wrote $0.60 rows into the production ledger. Rows with `test_` 
   - Advisory Desk per-row opinions ran 8,424 scheduled calls on peak ($2.01).
 - **September to date:** $8.10 real ($0.60/day).
 
+## When scheduled work may run (operator rule, 2026-09-14)
+
+> "off peak hours ... are 9 a.m. to 9 p.m. Eastern Standard Time in the U.S. and on the weekends, and only
+> a la carte stuff that is urgent, that's requested by the operator, is ran during peak hours."
+
+**DeepSeek's billing.** From api-docs.deepseek.com/quick_start/pricing, checked 2026-09-14:
+- **Peak hours:** 01:00–04:00 and 06:00–10:00 UTC, Monday–Friday. Everything else is off-peak, at half price.
+- **deepseek-flash, per 1M tokens:** off-peak $0.003 cache hit / $0.15 cache miss / $0.60 output; peak is double.
+
+**The rule in code.** `scripts/lib/deepseek_offpeak.py::should_scheduled_skip`. A scheduled run proceeds only when both hold:
+- it is inside weekdays 09:00–21:00 ET, or any hour on a weekend;
+- it is outside DeepSeek's billing peak.
+
+The second check matters twice. Sunday 21:00–24:00 ET is Monday 01:00–04:00 UTC. In winter (EST), weekday 20:00–21:00 ET is 01:00–02:00 UTC.
+
+**Where it applies.**
+- **Cron lines:** `run_with_deepseek_offpeak.sh --scheduled -- <command>`. Manual runs never pass through the wrapper, so an operator run is never blocked. `TRADEAI_ALLOW_SCHEDULED_PEAK=1` overrides one scheduled run.
+- **Gated this way:** the usefulness scorer (`hermes_external_feedback_loop.py`) and due-diligence questions.
+- **Rescheduled:**
+  - holdings research 08:00 → 09:05;
+  - flash market agent 06–19 → 09–19;
+  - advisory lessons reflection 21:40 → 19:40;
+  - shadow seed 21:45 → 19:45;
+  - advisory cache worker 08–22 UTC → 09–19 ET.
+
+**Measured before the change** (Thu 09-10 → Mon 09-14):
+- $0.58 of $2.46 ran outside the window.
+- $0.19 of that was the 08:00 holdings run, $0.08 the usefulness scorer and $0.03 due-diligence questions.
+- $0.22 sat under the shared `advisory_desk_opinion` id and could not be attributed.
+
+**Cross-check against DeepSeek.** `scripts/deepseek_balance_snapshot.py` records the account balance hourly. The spend report compares the balance drops with the logged DeepSeek cost over the same span.
+
+Last week's logged $5.45 recomputed from token counts at the published prices, peak-aware, gives $5.42. 21,160 rows had no cache split and were priced as cache misses, an upper bound.
+
 ## Commands
 
 ```bash
