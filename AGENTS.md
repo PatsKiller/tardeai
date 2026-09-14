@@ -1484,6 +1484,8 @@ Each line is something an agent got wrong today or was about to. The code carrie
   - A model is never "outside data": it goes on the 🟣 role, not in "Went outside".
 - **`MAX_SOURCE_LABELS` is 16.** At 10 the dossier's stores pushed "conversation memory" off the Sources line.
 
+- **A comms idempotency key must identify one observation.** For plain sends it is producer + type + `subject_key` (the first 48 characters) + action. Without `observation_version` (body hash plus minute), every later alert with the same opening became the first event again. Check `status_transition_illegal` counts in the logs before trusting the Communications page.
+
 ### Data correctness — litmus against an independent source before trusting a store
 - **Finviz exports are read by header name through `lib/finviz_csv.parse_export`, never by position or `split(",")`.**
   - A saved view can be edited on finviz.com.

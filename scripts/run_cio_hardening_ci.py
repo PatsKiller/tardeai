@@ -1294,6 +1294,8 @@ GATES = [
         "comms_ledger_truth",
         [
             "tests/test_comms_ledger_says_what_happened.py",
+            # 2026-09-14: repeated alerts collided with the first event ever sent.
+            "tests/test_comms_repeat_alerts_20260914.py",
         ],
     ),
     (
