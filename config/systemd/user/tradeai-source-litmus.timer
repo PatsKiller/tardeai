@@ -1,0 +1,15 @@
+[Unit]
+Description=Trade AI source litmus — weekday evening close check
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/source_litmus_vs_yahoo.py
+
+[Timer]
+# 07:45 ET Tuesday-Saturday: checks the previous weekday session after every close
+# writer has run (repricer 16:10, overnight syncs) and before the day's pipelines
+# read those closes for RSI / SMA / levels.
+OnCalendar=Tue..Sat *-*-* 07:45:00
+AccuracySec=1min
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,25 @@
+[Unit]
+# Compares a sample of the day's stored closes, per source, with Yahoo Finance's
+# close for the same session, and alerts through its receipt when a source's
+# share of badly-off closes exceeds its limit.
+#
+# Exists because on 2026-09-14 29% of sampled quote-derived closes were off by
+# more than 1% (6 by more than 10%), the repricer had written sub-share position
+# values as closes, and Alpaca's previous close was a session stale -- and every
+# one of those values parsed and stored without complaint.
+#
+# Read-only: one batched Yahoo request; the database session is read-only.
+Description=Trade AI source litmus — stored closes vs an independent close
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/source_litmus_vs_yahoo.py
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/source_litmus_vs_yahoo.py
+# Exit 1 = BLOCK findings (a result, not a unit failure); 2 = could not run.
+SuccessExitStatus=0 1
+TimeoutStartSec=900
+
+[Install]
+WantedBy=default.target

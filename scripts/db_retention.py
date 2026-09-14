@@ -164,6 +164,31 @@ POLICIES = [
 # Note: market_quotes already in MEDIUM tier (90d) above.
 
 
+def fk_guard(cur, table: str) -> str:
+    """SQL that keeps rows another table still references out of the purge.
+
+    2026-09-14: aegis_steph_escalations (1,212 expired rows) and
+    watchlist_agent_jobs (69,248) were never pruned: the single DELETE aborted on
+    3 and 6 rows still referenced by a child table, so the whole policy failed
+    every night. Expired rows nothing references are deleted; referenced rows
+    wait until their children expire under their own policy. Single-column
+    foreign keys only; anything else keeps the old statement (and its loud error).
+    Operator decision the same day: retention may keep hard-deleting.
+    """
+    cur.execute("""
+        SELECT c.conrelid::regclass::text, a.attname, af.attname
+        FROM pg_constraint c
+        JOIN pg_attribute a  ON a.attrelid = c.conrelid  AND a.attnum = c.conkey[1]
+        JOIN pg_attribute af ON af.attrelid = c.confrelid AND af.attnum = c.confkey[1]
+        WHERE c.contype = 'f' AND c.confrelid = %s::regclass
+          AND array_length(c.conkey, 1) = 1
+    """, (table,))
+    parts = []
+    for child, child_col, parent_col in cur.fetchall():
+        parts.append(f' AND NOT EXISTS (SELECT 1 FROM {child} ch WHERE ch."{child_col}" = t."{parent_col}")')
+    return "".join(parts)
+
+
 def run(dry_run: bool = False):
     conn = _connect()
     cur = conn.cursor()
@@ -187,11 +212,12 @@ def run(dry_run: bool = False):
                 print(f"  WARN: {table}.{col} column not found — skipping")
                 continue
 
+            guard = fk_guard(cur, table)
             if dry_run:
-                cur.execute(f"SELECT count(*) FROM {table} WHERE {col} < now() - interval '{days} days'")
+                cur.execute(f"SELECT count(*) FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}")
                 count = cur.fetchone()[0]
             else:
-                cur.execute(f"DELETE FROM {table} WHERE {col} < now() - interval '{days} days'")
+                cur.execute(f"DELETE FROM {table} t WHERE t.{col} < now() - interval '{days} days'{guard}")
                 count = cur.rowcount
                 conn.commit()
 
