@@ -4,6 +4,23 @@ Status:      ACTIVE
 as_of:       2026-09-13T23:59:00-04:00
 Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
 
+## 2026-09-14 — The model bridge can no longer be wedged by one held call
+
+MATURITY_IMPACT: a provider that holds requests now costs one bounded call, not every caller for an hour. The bridge answers `/health` while calls are in flight, and a watchdog restarts it when it stops answering and tells the operator. Execution posture UNCHANGED: READ_ONLY_ADVISORY; caps, keys and brokers untouched.
+
+- **What happened.** From 15:15 ET, DeepSeek held the governed bridge's non-streaming calls about 906 s each.
+  - It trickled keep-alive bytes, so the 90 s per-read timeout never fired, then returned a 50-character body with no usage. Those calls were logged as successes at $0.
+  - The bridge was a single-threaded `HTTPServer`, so every caller queued behind each held call: CIO Hermes research (every job failed: "timed out" / "bridge unreachable"), desk answers and advisory opinions.
+  - `GET /health` returned 501, and nothing alarmed. A restart at 16:15 was re-wedged by the next call within seconds.
+- **Bridge (`lib/cio_governed_model_bridge.py`).**
+  - Wall-clock upstream deadline: `CIO_BRIDGE_UPSTREAM_DEADLINE_S`, default 150. The body is streamed and the deadline checked on every chunk, and a hit is reported as a timeout, so the circuit breaker counts it.
+  - `ThreadingHTTPServer`, with at most `CIO_BRIDGE_MAX_INFLIGHT` (default 4) provider calls at once. A full bridge answers 503 `BRIDGE_BUSY` immediately, which the research fail policy treats as a retryable provider error.
+  - `GET /health` reports in-flight count, oldest in-flight age, circuit state and deadline.
+- **Watchdog (`scripts/cio_bridge_watchdog.py`, cron every 5 minutes).** Classifies OK / BUSY_UPSTREAM / CIRCUIT_OPEN / WEDGED.
+  - After 2 unanswered probes it restarts the bridge (30 min cooldown) and re-probes.
+  - It alerts on every state change. A provider problem is alerted, never restarted.
+  - Dry run by default; receipt at `data/runtime/cio_bridge_watchdog.json`.
+
 ## 2026-09-14 — Spend truth: real dollars by provider, model and process; caps on measured cost
 
 MATURITY_IMPACT: the operator can see and receive real AI and search spend daily, weekly and monthly, with the peak / off-peak split. Caps compare against measured cost, and one durable $2.00/day global cap replaces three conflicting overrides. Execution posture UNCHANGED.
