@@ -176,14 +176,52 @@ the other channels."* This is the build target. Nothing below is live until its 
 - The answer joins back to the pending question by id (PR #1006) with an ETA stated up front; progress messages only
   when a lap completes, never per step.
 
+**Operator requirements added 2026-09-14 (second message) — the circle is a full-lifecycle product:**
+
+> *"We need something that's analyzing the context coming back from that circle — DeepSeek or whatever —
+> something that's scoring on maturity, so it decides whether to go to the next item in the circle or whether it
+> suffices. It can't be dumb, just look at everything. It should automatically queue check-ins — a week, two weeks.
+> We're tracking everything via the GUIDs. Make sure this is a full life cycle product."*
+
+1. **The Context Analyzer (the brain of every lap).** After each lap an analyzer reads *everything the lap brought
+   back* against the question and returns a structured verdict — not a keyword test:
+   - `sufficiency_score` 0–100 per operator sub-question and overall, against a written rubric (coverage of every
+     sub-question, freshness vs the domain's stale window, source independence and count, agreement between sources,
+     citation of evidence ids, and the maturity of the house view — thesis state, research age, specialist reviews);
+   - `maturity_level` for the answer (e.g. M0 facts only → M1 sourced facts → M2 cross-checked → M3 synthesised with
+     critic agreement → M4 decision-ready with falsifiers and a check-in date);
+   - `decision`: `sufficient` | `climb` (which next channel and why) | `targeted_lap` (the exact missing facts and
+     queries) | `ask_operator` (what no channel can supply) | `stop_bound`;
+   - `contradictions`, `missing_facts`, `next_best_channel`, `cost_to_climb`.
+   Model: DeepSeek Flash under the analyzer prompt with numbers only from evidence (the G0 grounding rule); a free
+   lane (Grok/ChatGPT) cross-checks the verdict on decision-relevant names; the analyzer never invents facts and its
+   verdict is receipted and shown as 🟣 with its score.
+2. **Automatic check-ins.** Every completed answer schedules its own follow-up, chosen by the analyzer from the
+   evidence: a dated catalyst (earnings, FDA, a filing) → check-in the day after; a thesis with a falsifier → at the
+   falsifier's horizon; otherwise 7 days (fast-moving: scalp/momentum names, open research gaps) or 14 days (quality
+   holdings). Each check-in re-runs a lap on the same question GUID, compares what changed ("what_changed /
+   what_did_not_change"), and messages the operator only on a material change or when the question is still open.
+   Implemented on the existing commitment/checkpoint store (`outcome_checkpoints`) with a concrete `due_at`,
+   settled by the hourly commitment sweep (architect gap #1, operator-approved).
+3. **GUIDs through the whole life cycle.** One `question_guid` per operator ask; every lap, channel call, evidence
+   item, analyzer verdict, answer, check-in and outcome carries it plus the subject GUIDs from the identity spine
+   (`security_identity` / `identity_registry`). The lifecycle for one question is therefore queryable end to end:
+   `asked → laps[n] → verdicts[n] → answer(M-level) → check-ins[k] → outcome (confirmed / invalidated / expired)`,
+   and the outcome feeds back as memory for the next question on the same subject GUID.
+4. **Lifecycle states (all reported, none silent):** `ASKED → GATHERING(lap n) → ANALYZED → ANSWERED(M-level) →
+   SCHEDULED(check-in due_at) → REVISITED(k) → SETTLED(confirmed | invalidated | superseded | expired)`; a question
+   stopped by a bound is `ANSWERED_PARTIAL` with the missing facts named, never a silent drop.
+
 **Phases (each one PR, tested, dry-run on real questions, then armed):**
 1. Cost-class arming (`GAP_RESOLVER_LIVE_CLASSES`) and FREE steps live for the desk: refresh producers,
    Yahoo/Finviz/EDGAR/FRED backups, SearXNG as its own vector; the sufficiency module with the table above.
 2. Brave for the desk behind the sufficiency test (desk caller cap in the Brave cost policy); web hits flow into the
    Hermes evidence packet.
-3. Critic step (free lanes) and DeepSeek Pro judgment under the rules above; the lap loop with targeted re-queries.
-4. "Push for more" intent ("dig deeper", "research X", "what else") starts a lap on the existing subject instead of a
-   fresh question; a monitor for questions that stopped on a bound rather than on sufficiency.
+3. The Context Analyzer (score, maturity, decision) and the critic cross-check; DeepSeek Pro judgment under the
+   rules above; the lap loop with targeted re-queries.
+4. Life cycle: `question_guid` everywhere, lifecycle states, automatic check-ins on `outcome_checkpoints` settled by
+   the hourly sweep, outcomes fed back as subject memory; "push for more" ("dig deeper", "research X", "what else")
+   starts a lap on the existing question GUID; monitors for questions stopped on a bound and check-ins past due.
 
 ## Where to look
 
