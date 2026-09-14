@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `603d08f9d33d42ff67e09965222d9045fcfe731d3ce991f12352461f79b8ddb5`
+**Tree fingerprint:** `1a69f2db3570d94f845e9003555a1a43576d8846ee54bd8f3422cf35a7686ed4`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2501 |
-| Markdown (excl. this INDEX) | 2077 |
+| Files under `docs/` (excl. this INDEX) | 2503 |
+| Markdown (excl. this INDEX) | 2079 |
 | **MISSING HEADER** | **65** |
-| Header OK | 2012 |
+| Header OK | 2014 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2130 |
+| review_required | 2132 |
 
 ## Markdown tree
 
@@ -399,7 +399,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md` | Schwab API — Phase 1 Read-Only Foundation (canonical) | review_required | OK | `a11674ef7b56` |
 | `docs/architecture/TICKER_KNOWLEDGE_GRAPH_GUID_LINEAGE.md` | Ticker Knowledge Graph GUID Lineage | review_required | OK | `a7c43967abca` |
 | `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | TradeAI System State & Autonomy Record — 2026-08-20 (updated 2026-08-21 evening) | review_required | OK | `d9303c3e9930` |
+| `docs/architecture/TRADE_AI_AS_IS_2026-09-14.md` | Trade AI Platform — AS-IS: Deployed & Tested Environment | review_required | OK | `4f3de57572bd` |
 | `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md` | Bitemporal memory data model | review_required | OK | `8491cfb5a15b` |
+| `docs/architecture/TRADE_AI_FUTURE_STATE_2026-09-14.md` | Trade AI Platform — FUTURE STATE: Target Architecture & Build Recommendation | review_required | OK | `be3b663de2b3` |
 | `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | Trade AI Institutional Memory + Autonomous Agent Architecture | review_required | OK | `27f6d0b5fa01` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_0.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.0 | review_required | OK | `f4df2050d710` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_1.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.1 | review_required | OK | `d51c0412e728` |
