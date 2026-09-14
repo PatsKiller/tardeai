@@ -64,6 +64,11 @@ def _offline(monkeypatch, tmp_path):
     monkeypatch.setattr(desk, "_register_gaps", lambda *a, **k: {"ok": True})
     monkeypatch.setattr(desk, "_enqueue_hermes_research", lambda *a, **k: {"ok": True})
 
+    def _no_db(*a, **k):
+        raise RuntimeError("offline test: no database")
+    # topic research reads the DB through the broker; offline it has no rows
+    monkeypatch.setattr(desk, "_research_db_query", _no_db)
+
 
 # ── 1. the symbol is recognised whatever its case, and the question is re-entry ──
 
