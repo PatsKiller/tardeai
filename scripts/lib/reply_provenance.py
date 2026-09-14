@@ -77,7 +77,10 @@ PILL_HOUSE = "🟢 Trade-AI"
 PILL_OUTSIDE = "🔵 Outside"
 PILL_MODEL = "🟣 DeepSeek"
 #: Stores named on the Sources line. A stock question now reads up to a dozen.
-MAX_SOURCE_LABELS = 10
+#: 2026-09-14: 10 dropped "conversation memory (operator_conversation_turns)" from
+#: every named-symbol reply once the subject dossier added its seven stores; the
+#: Origin line already carries the count, so the Sources line may name them all.
+MAX_SOURCE_LABELS = 16
 
 _MODEL_ITEM = re.compile(r"(?i)deepseek|flash|grok|chatgpt|\bgpt|\bllm\b|model")
 

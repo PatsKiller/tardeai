@@ -271,17 +271,34 @@ def test_desk_unclear_or_unmapped_text_still_carries_the_contract():
     assert out["reply_provenance"]["sources_line_present"] is True
 
 
-def test_desk_deferred_with_hermes_queue_declares_going_outside(monkeypatch):
-    """NOC is not on the re-entry desk: blocking gap, resolver off -> pending + Hermes."""
+def _research_blocked_noc(monkeypatch):
     _both(monkeypatch, "cio_operator_desk_loop", "is_answerable", lambda intent: (True, ""))
     _both(monkeypatch, "cio_operator_desk_loop", "gather_tradeai_evidence", lambda intent: {
         "complete": False, "available": {}, "sources": [str(DESK_PATH)],
         "gaps": [{"domain": "hermes_research", "symbol": "NOC", "field": "research"}],
         "blocking_gaps": [{"domain": "hermes_research", "symbol": "NOC", "field": "research"}]})
+
+
+def test_desk_deferred_with_hermes_queue_declares_going_outside(monkeypatch):
+    """NOC is not on the re-entry desk: blocking gap, resolver off -> pending + Hermes.
+
+    The queue-only reply is the answer-now switch turned off (2026-09-14)."""
+    monkeypatch.setenv("CIO_OPERATOR_RESEARCH_ANSWER_NOW", "0")
+    _research_blocked_noc(monkeypatch)
     out, txt = _ask("what does our research say about NOC")
     assert out["desk_kind"] == "deferred"
     lines = _assert_contract(txt, outside_expected=True)
     assert "re-entry desk" in next(ln for ln in lines if ln.startswith("Sources:"))
+    assert "hermes_research queue" in next(ln for ln in lines if ln.startswith("Went outside:"))
+
+
+def test_desk_research_answer_now_still_declares_the_hermes_queue(monkeypatch):
+    """Answer-now (default): house facts now, Hermes queued, the egress still stated."""
+    _research_blocked_noc(monkeypatch)
+    out, txt = _ask("what does our research say about NOC")
+    assert out["desk_kind"] == "answered" and out["pending_id"]
+    assert "Deeper research queued: Hermes" in txt
+    lines = _assert_contract(txt, outside_expected=True)
     assert "hermes_research queue" in next(ln for ln in lines if ln.startswith("Went outside:"))
 
 
