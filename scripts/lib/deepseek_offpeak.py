@@ -29,6 +29,14 @@ DEEPSEEK_PEAK_UTC = ((1, 4), (6, 10))
 BULK_ET_START_HOUR = 10
 BULK_ET_END_HOUR = 21
 
+# Operator scheduling rule (2026-09-14): "off peak hours ... are 9 a.m. to 9 p.m. Eastern ... and on the
+# weekends, and only a la carte stuff that is urgent, that's requested by the operator, is ran during peak
+# hours." Scheduled paid work therefore runs 09:00-21:00 America/New_York on weekdays and at any hour on
+# weekends -- and never inside DeepSeek's billing peak, which that window can still touch: Sunday
+# 21:00-24:00 ET is Monday 01:00-04:00 UTC, and in winter (EST) weekday 20:00-21:00 ET is 01:00-02:00 UTC.
+SCHEDULED_ET_START_HOUR = 9
+SCHEDULED_ET_END_HOUR = 21
+
 SOAK_DEFAULT_USD = 2.00
 TRUTHY = {"1", "true", "yes", "on"}
 
@@ -86,6 +94,32 @@ def is_bulk_deepseek_window(dt: datetime | None = None) -> bool:
     return in_operator_bulk_window_et(dt)
 
 
+def in_operator_scheduled_window_et(dt: datetime | None = None) -> bool:
+    """Operator window for scheduled work: weekdays 09:00 <= t < 21:00 ET; weekends (ET) at any hour."""
+    when = _as_et(dt)
+    if when.weekday() >= 5:
+        return True
+    hour = when.hour + when.minute / 60.0 + when.second / 3600.0
+    return SCHEDULED_ET_START_HOUR <= hour < SCHEDULED_ET_END_HOUR
+
+
+def is_scheduled_deepseek_window(dt: datetime | None = None) -> bool:
+    """Scheduled paid work may run: inside the operator window AND outside DeepSeek billing peak."""
+    return in_operator_scheduled_window_et(dt) and not is_deepseek_peak_utc(dt)
+
+
+def allow_scheduled_peak() -> bool:
+    """Explicit operator override for one scheduled run (TRADEAI_ALLOW_SCHEDULED_PEAK=1)."""
+    return os.getenv("TRADEAI_ALLOW_SCHEDULED_PEAK", "").strip().lower() in TRUTHY
+
+
+def should_scheduled_skip(dt: datetime | None = None) -> bool:
+    """True when a scheduled job should log PEAK_SKIP and exit 0. Manual runs never call this."""
+    if allow_scheduled_peak():
+        return False
+    return not is_scheduled_deepseek_window(dt)
+
+
 def allow_deepseek_peak() -> bool:
     """As-needed override (Hermes --allow-peak / HERMES_ALLOW_DEEPSEEK_PEAK=1)."""
     return os.getenv("HERMES_ALLOW_DEEPSEEK_PEAK", "").strip().lower() in TRUTHY
@@ -131,9 +165,10 @@ def _cli(argv: list[str] | None = None) -> int:
         args = ["--help"]
     if args[0] in {"-h", "--help"}:
         sys.stdout.write(
-            "usage: deepseek_offpeak.py --gate | --gate-official | --resolve-cap\n"
+            "usage: deepseek_offpeak.py --gate | --gate-official | --gate-scheduled | --resolve-cap\n"
             "  --gate           exit 10 if outside 10:00-21:00 ET or official UTC peak\n"
             "  --gate-official  exit 10 only inside official DeepSeek UTC peak hours\n"
+            "  --gate-scheduled exit 10 outside weekdays 09:00-21:00 ET / weekends, or inside official UTC peak\n"
             "  --resolve-cap    print origin=... cap=... ; exit 2 if invalid\n"
         )
         return 0
@@ -145,6 +180,12 @@ def _cli(argv: list[str] | None = None) -> int:
         return 0
     if args[0] == "--gate-official":
         if should_official_peak_skip():
+            sys.stdout.write("PEAK_SKIP\n")
+            return 10
+        sys.stdout.write("OFFPEAK\n")
+        return 0
+    if args[0] == "--gate-scheduled":
+        if should_scheduled_skip():
             sys.stdout.write("PEAK_SKIP\n")
             return 10
         sys.stdout.write("OFFPEAK\n")

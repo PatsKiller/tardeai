@@ -1292,17 +1292,17 @@
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/20 * * * * .../due_diligence_questions.py --apply --route",
+        "expression": "*/20 * * * * run_with_deepseek_offpeak.sh --scheduled -- .../due_diligence_questions.py --apply --route",
         "match": "scripts/due_diligence_questions.py --apply --route"
       },
-      "expected_cadence_hours": 0.333,
+      "expected_cadence_hours": 12.5,
       "state": "ACTIVE",
       "output_signal": {
         "kind": "db_max",
         "table": "due_diligence_questions",
         "column": "created_at"
       },
-      "note": "Stages 3-5 curation and routing."
+      "note": "Stages 3-5 curation and routing. | 2026-09-14: gated to the operator window; weekday 21:00-09:00 ET produces nothing by design. Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled)."
     },
     {
       "lane_id": "document-mentions-backfill",
@@ -1371,15 +1371,15 @@
       "owner": "hermes",
       "scheduler": {
         "kind": "cron",
-        "expression": "15 * * * * .../hermes_external_feedback_loop.py --apply --max-rows 2000",
+        "expression": "15 * * * * run_with_deepseek_offpeak.sh --scheduled -- .../hermes_external_feedback_loop.py --apply --max-rows 2000",
         "match": "scripts/hermes_external_feedback_loop.py --apply"
       },
-      "expected_cadence_hours": 1.0,
+      "expected_cadence_hours": 12.5,
       "state": "ACTIVE",
       "output_signal": {
         "kind": "none"
       },
-      "note": "Scores hermes_external_research.usefulness_score. The column it writes carries no companion timestamp, so there is nothing to take a max() of; a scored_at column or a run receipt would make this verifiable."
+      "note": "Scores hermes_external_research.usefulness_score. The column it writes carries no companion timestamp, so there is nothing to take a max() of; a scored_at column or a run receipt would make this verifiable. | 2026-09-14: gated to the operator window; weekday nights skip (up to 12 h without a run). Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled)."
     },
     {
       "lane_id": "hermes-librarian-retention",
@@ -1684,11 +1684,11 @@
       "note": "Last calendar month's AI and search spend texted to the operator. Operator ask 2026-09-14."
     },
     {
-      "lane_id": "research-scheduler-holdings-0800",
+      "lane_id": "research-scheduler-holdings",
       "owner": "research",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 8 * * 1-5 research_scheduler.py --mode holdings",
+        "expression": "5 9 * * 1-5 research_scheduler.py --mode holdings",
         "match": "research_scheduler.py --mode holdings"
       },
       "expected_cadence_hours": 24,
@@ -1697,7 +1697,7 @@
         "kind": "file_mtime",
         "path": "data/cio/research_trigger_ledger.jsonl"
       },
-      "note": "Research scheduler (research_scheduler.py) — tiered, SLA-driven external research dispatcher; docs/RESEARCH_PRIORITIZATION.md. Declared 2026-09-14 when the inline cap moved from LLM_GLOBAL_DAILY_USD_CAP=0.50 to LLM_GLOBAL_DAILY_USD_CAP=2.00 (operator decision: durable $2.00/day of actual spend) and the lines left the inherited baseline."
+      "note": "Research scheduler (research_scheduler.py) — tiered, SLA-driven external research dispatcher; docs/RESEARCH_PRIORITIZATION.md. Declared 2026-09-14 when the inline cap moved from LLM_GLOBAL_DAILY_USD_CAP=0.50 to LLM_GLOBAL_DAILY_USD_CAP=2.00 (operator decision: durable $2.00/day of actual spend) and the lines left the inherited baseline. | 2026-09-14: moved 08:00 -> 09:05 ET. Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled)."
     },
     {
       "lane_id": "research-scheduler-priority-hourly",
@@ -1763,6 +1763,45 @@
         "key": "checked_at"
       },
       "note": "2026-09-14 bridge wedge: DeepSeek held calls ~906 s and the single-threaded governed bridge blocked CIO research, desk answers and advisory for ~90 min with no alarm. Probes GET /health; restarts cio-governed-bridge.service after 2 consecutive unanswered probes (30 min cooldown); alerts on state changes."
+    },
+    {
+      "lane_id": "governed-agent-flash-market",
+      "owner": "agents",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 9-19 * * 1-5 run_governed_agent_flash_market.sh",
+        "match": "run_governed_agent_flash_market.sh"
+      },
+      "expected_cadence_hours": 31,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/governed_agent_flash_market.log"
+      },
+      "note": "One governed DeepSeek Flash market-hours agent call per 15 min. 2026-09-14: hours 06-19 -> 09-19 ET (last run 19:45, off DeepSeek peak year-round). Cadence 31 h covers the weekday overnight gap and Monday morning. Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled)."
+    },
+    {
+      "lane_id": "deepseek-balance-snapshot",
+      "owner": "comms",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "50 * * * * deepseek_balance_snapshot.py --apply",
+        "match": "scripts/deepseek_balance_snapshot.py --apply"
+      },
+      "expected_cadence_hours": 1,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/deepseek_balance_history.jsonl"
+      },
+      "note": "Hourly DeepSeek account balance (free API, no tokens). Drops = what DeepSeek deducted; the spend report compares them with logged DeepSeek cost. Operator 2026-09-14: 'research exactly what the complete costs are with DeepSeek's website'."
     }
   ],
   "undeclared_baseline": [
