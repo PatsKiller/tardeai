@@ -32,6 +32,7 @@ CONTRACT
 
 READ_ONLY_ADVISORY. Formatting only: nothing here sizes, orders or stops.
 """
+
 from __future__ import annotations
 
 import html
@@ -93,15 +94,16 @@ def symbol_links(symbol: str) -> str:
 @dataclass
 class RichMessage:
     """What a message says, in parts. `render()` turns it into Telegram HTML + buttons + preview."""
-    title: str                                   # plain text; rendered bold
-    marker: str = ""                             # leading emoji (colour by marker, not by text)
+
+    title: str  # plain text; rendered bold
+    marker: str = ""  # leading emoji (colour by marker, not by text)
     symbols: list[str] = field(default_factory=list)
-    facts: list[str] = field(default_factory=list)            # one line of key numbers each (plain text)
-    why: Optional[str] = None                                  # short reason -> quote
-    evidence: list[str] = field(default_factory=list)          # deep context -> expandable quote
-    sources: list[tuple[str, str]] = field(default_factory=list)   # (label, https url)
-    buttons: list[tuple[str, str]] = field(default_factory=list)   # (label, https url)
-    chart_symbol: Optional[str] = None                             # chart preview at the top
+    facts: list[str] = field(default_factory=list)  # one line of key numbers each (plain text)
+    why: Optional[str] = None  # short reason -> quote
+    evidence: list[str] = field(default_factory=list)  # deep context -> expandable quote
+    sources: list[tuple[str, str]] = field(default_factory=list)  # (label, https url)
+    buttons: list[tuple[str, str]] = field(default_factory=list)  # (label, https url)
+    chart_symbol: Optional[str] = None  # chart preview at the top
     pills: list[str] = field(default_factory=list)
     footer: Optional[str] = None
     authority: str = AUTHORITY
@@ -146,15 +148,24 @@ class RichMessage:
         buttons = [(label, url) for label, url in self.buttons if safe_url(url)]
         if not buttons and self.symbols:
             s = self.symbols[0].upper()
-            buttons = [("📊 Command Center", cc_symbol_url(s)), ("📈 Finviz", finviz_url(s)), ("💹 Yahoo", yahoo_url(s))]
-        reply_markup = ({"inline_keyboard": [[{"text": label, "url": url} for label, url in buttons[:3]]]}
-                        if buttons else None)
-        preview = ({"url": chart_image_url(self.chart_symbol), "prefer_large_media": True, "show_above_text": True}
-                   if self.chart_symbol else {"is_disabled": True})
+            buttons = [
+                ("📊 Command Center", cc_symbol_url(s)),
+                ("📈 Finviz", finviz_url(s)),
+                ("💹 Yahoo", yahoo_url(s)),
+            ]
+        reply_markup = (
+            {"inline_keyboard": [[{"text": label, "url": url} for label, url in buttons[:3]]]} if buttons else None
+        )
+        preview = (
+            {"url": chart_image_url(self.chart_symbol), "prefer_large_media": True, "show_above_text": True}
+            if self.chart_symbol
+            else {"is_disabled": True}
+        )
         return {"text": text, "parse_mode": "HTML", "reply_markup": reply_markup, "link_preview_options": preview}
 
 
 # ── layouts per message type ────────────────────────────────────────────────
+
 
 def _num(v: Any, fmt: str) -> str:
     try:
@@ -177,8 +188,10 @@ def go_alert(row: dict[str, Any], *, tier: str, passed: Iterable[str]) -> RichMe
             f"Score {_num(row.get('score'), '{:.0f}')} · scan {row.get('run_label') or ''} {str(row.get('scanned_at') or '')[:16]}",
         ],
         why=f"Catalyst: {catalyst}" if catalyst else None,
-        evidence=["Meets Trade-AI scalp criteria: " + ", ".join(passed),
-                  "Advisory only — no order, size or stop is placed from this alert."],
+        evidence=[
+            "Meets Trade-AI scalp criteria: " + ", ".join(passed),
+            "Advisory only — no order, size or stop is placed from this alert.",
+        ],
         sources=[(f"{sym} news", row.get("catalyst_url") or ""), ("Finviz", finviz_url(sym))],
         chart_symbol=sym,
         pills=["🟢 Trade-AI data"],
@@ -200,9 +213,17 @@ def entry_alert(item: dict[str, Any]) -> RichMessage:
     if item.get("invalidation"):
         ladder.append(f"Invalidation: {item['invalidation']}")
     ladder.append("Advisory only — nothing queued, nothing executed.")
-    return RichMessage(marker=marker, title=f"{state or 'ENTRY'} ENTRY ALERT — {sym} (advisory)", symbols=[sym],
-                       facts=facts, why=item.get("why"), evidence=ladder, chart_symbol=sym, pills=["🟢 Trade-AI data"],
-                       sources=[(label, url) for label, url in (item.get("sources") or [])])
+    return RichMessage(
+        marker=marker,
+        title=f"{state or 'ENTRY'} ENTRY ALERT — {sym} (advisory)",
+        symbols=[sym],
+        facts=facts,
+        why=item.get("why"),
+        evidence=ladder,
+        chart_symbol=sym,
+        pills=["🟢 Trade-AI data"],
+        sources=[(label, url) for label, url in (item.get("sources") or [])],
+    )
 
 
 def material_change(items: list[dict[str, Any]]) -> RichMessage:
@@ -214,16 +235,50 @@ def material_change(items: list[dict[str, Any]]) -> RichMessage:
         if it.get("url"):
             sources.append((f"{sym} source", it["url"]))
     syms = [str(it.get("symbol") or "").upper() for it in items if it.get("symbol")]
-    return RichMessage(marker="⚡", title=f"Material change — {len(items)} name(s) worth a look", symbols=syms[:3],
-                       facts=[", ".join(syms[:10])], evidence=lines, sources=sources, pills=["🟢 Trade-AI data"],
-                       buttons=[("📊 Command Center", f"{cc_base()}/v3/watch")] if syms else [])
+    return RichMessage(
+        marker="⚡",
+        title=f"Material change — {len(items)} name(s) worth a look",
+        symbols=syms[:3],
+        facts=[", ".join(syms[:10])],
+        evidence=lines,
+        sources=sources,
+        pills=["🟢 Trade-AI data"],
+        buttons=[("📊 Command Center", f"{cc_base()}/v3/watch")] if syms else [],
+    )
 
 
-def desk_answer(*, title: str, body_lines: list[str], symbols: list[str], sources: list[tuple[str, str]],
-                pills: list[str], evidence: Optional[list[str]] = None) -> RichMessage:
-    return RichMessage(marker="🧠", title=title, symbols=symbols, facts=body_lines, evidence=evidence or [],
-                       sources=sources, pills=pills, chart_symbol=symbols[0] if len(symbols) == 1 else None)
+def desk_answer(
+    *,
+    title: str,
+    body_lines: list[str],
+    symbols: list[str],
+    sources: list[tuple[str, str]],
+    pills: list[str],
+    evidence: Optional[list[str]] = None,
+) -> RichMessage:
+    return RichMessage(
+        marker="🧠",
+        title=title,
+        symbols=symbols,
+        facts=body_lines,
+        evidence=evidence or [],
+        sources=sources,
+        pills=pills,
+        chart_symbol=symbols[0] if len(symbols) == 1 else None,
+    )
 
 
-__all__ = ["RichMessage", "cc_symbol_url", "chart_image_url", "desk_answer", "entry_alert", "finviz_url",
-           "go_alert", "link", "material_change", "safe_url", "symbol_links", "yahoo_url"]
+__all__ = [
+    "RichMessage",
+    "cc_symbol_url",
+    "chart_image_url",
+    "desk_answer",
+    "entry_alert",
+    "finviz_url",
+    "go_alert",
+    "link",
+    "material_change",
+    "safe_url",
+    "symbol_links",
+    "yahoo_url",
+]
