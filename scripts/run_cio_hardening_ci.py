@@ -612,6 +612,9 @@ GATES = [
             "tests/test_operator_reply_routing_sources_20260913.py",
             # Evidence coverage contract per intent: house facts first, false-empty claims rejected.
             "tests/test_operator_evidence_contract_20260913.py",
+            # Subject resolution: registry-first tickers, company names incl. house-held names.
+            "tests/test_operator_intent_resolution_20260913.py",
+            "tests/test_company_names_from_house_20260913.py",
             # Phase 9: one write module per store; golden tests prove row shape and
             # subject GUID are identical to every legacy writer.
             "tests/test_sot_p9_symbol_profiles_writer.py",

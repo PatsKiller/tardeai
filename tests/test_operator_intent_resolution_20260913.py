@@ -106,22 +106,25 @@ def test_litmus_schg_resolves_with_its_registry_guid():
     assert schg["confidence"] >= 0.9
 
 
-def test_litmus_spacex_is_a_company_with_no_symbol_and_is_refused_up_front():
+def test_litmus_spacex_resolves_to_spcx_from_house_held_names():
+    """Corrected 2026-09-13: SpaceX is not private in Trade-AI's data. The book holds
+    SPCX, the registry has it CONFIRMED, and config/ipo_lockups.json names it
+    "SpaceX (Space Exploration Technologies Corp)". The Schwab instrument sweep
+    lacked it; house-held names now resolve it."""
     got = desk.analyze_operator_intent("what's the outlook for SpaceX, what are options closing, what are analysts expecting")
     companies = [s for s in got["subjects"] if s["kind"] == "company"]
-    assert companies == [{**companies[0], "symbol": None, "guid": None, "matched": "SpaceX"}]
-    assert got["symbols"] == []
-    ok, why = desk.is_answerable(got)
-    assert ok is False and "no tradable instrument" in why
+    assert companies and companies[0]["symbol"] == "SPCX" and companies[0]["matched"] == "SpaceX"
+    assert got["symbols"] == ["SPCX"]
+    assert desk.is_answerable(got) == (True, "")
 
 
 def test_the_verdict_travels_with_the_intent_so_a_handler_can_refuse_before_gathering():
     """Agent D replay: the SpaceX ask produced no blocking gap, so the handler never
     reached is_answerable and replied 'Queued a pull' with nothing queued."""
-    spacex = desk.analyze_operator_intent("what's the outlook for SpaceX, what are options closing, what are analysts expecting")
-    assert spacex["answerable"] is False
-    assert "SpaceX did not resolve to an instrument" in spacex["unanswerable_reason"]
-    assert "private" not in spacex["unanswerable_reason"]
+    unknown = desk.analyze_operator_intent("what are analysts expecting for Nonesuch Holdings")
+    assert unknown["answerable"] is False
+    assert "did not resolve to an instrument" in unknown["unanswerable_reason"]
+    assert "private" not in unknown["unanswerable_reason"], "never assert WHY a name failed to resolve"
     schg = desk.analyze_operator_intent("Is now a good time to get back into schg")
     assert schg["answerable"] is True and schg["unanswerable_reason"] is None
     seasonal = desk.analyze_operator_intent(FIXTURE["questions"][17]["text"])
@@ -302,17 +305,18 @@ def test_flash_cannot_remove_a_resolved_symbol(monkeypatch):
 def test_flash_may_add_only_a_verified_symbol(monkeypatch):
     _flash(monkeypatch, {"intent": "analyst_view", "symbols": ["SPACEX", "NVDA", "SCHG", "ZQXW"], "needs": ["analyst_view"]})
     got = desk.analyze_operator_intent("what are analysts expecting for SpaceX and schg")
-    assert got["symbols"] == ["SCHG", "NVDA"]
+    assert set(got["symbols"]) == {"SCHG", "SPCX", "NVDA"}, "SpaceX resolves by house name; Flash's SPACEX token does not"
     assert got["flash_unverified_symbols"] == ["SPACEX", "ZQXW"]
     added = [s for s in got["subjects"] if s.get("source") == "flash"]
     assert added and added[0]["symbol"] == "NVDA" and added[0]["guid"] == _guid("NVDA")
     assert got["intent"] == "analyst_view"
 
 
-def test_flash_invented_name_keeps_spacex_unanswerable(monkeypatch):
+def test_flash_invented_ticker_is_not_trusted_but_the_house_name_still_resolves(monkeypatch):
     _flash(monkeypatch, {"intent": "research", "symbols": ["SPACEX"], "needs": ["analyst_view"]})
     got = desk.analyze_operator_intent("what's the outlook for SpaceX, what are options closing, what are analysts expecting")
-    assert got["symbols"] == [] and desk.is_answerable(got)[0] is False
+    assert got["symbols"] == ["SPCX"] and "SPACEX" in got.get("flash_unverified_symbols", [])
+    assert desk.is_answerable(got)[0] is True
 
 
 def test_extract_symbols_wrapper_used_by_converse_core_agrees_with_the_analyzer():

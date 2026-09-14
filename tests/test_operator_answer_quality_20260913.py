@@ -466,21 +466,15 @@ def test_litmus_seasonality_carries_house_facts_and_calls_nothing_empty(replays)
     assert oaq.empty_claims(txt) == [], "no 'not available'/'empty' claim about cash, holdings, sectors or weights"
 
 
-def test_litmus_spacex_opens_no_pending(replays):
+def test_litmus_spacex_resolves_to_spcx_and_never_promises_without_an_eta(replays):
+    """Corrected 2026-09-13: SpaceX is SPCX, which the book holds. It must resolve and
+    be answered from house data, not refused and not given an empty promise."""
     r = replays["spacex"]
-    assert r["pending_id"] is None and r["pending_rows_written"] == 0
-
-
-@pytest.mark.xfail(strict=True, reason=(
-    "DEFECT on base ffc795f3c, Agent B's lane (intent resolution): offline the SpaceX question "
-    "resolves intent=analyst_view with no symbol, produces no blocking gap, so is_answerable() is "
-    "never consulted and the reply is 'Queued a pull — I'll reply when it lands' (reply_source="
-    "empty_evidence) with nothing queued. strict=True: this turns red the moment B's fix lands, "
-    "and the marker must then be removed."))
-def test_litmus_spacex_is_refused_up_front(replays):
-    r = replays["spacex"]
-    assert r["kind"] in ("unanswerable", "no_coverage"), (r["kind"], r["reply"])
+    assert r["intent"]["symbols"] == ["SPCX"], r["intent"]
+    assert r["kind"] != "unanswerable", r["reply"]
     assert "I'll reply when it lands" not in r["reply"]
+    if r["pending_id"]:
+        assert "≈" in r["reply"], "a pending is only opened with an ETA the operator can see"
 
 
 @pytest.mark.parametrize("qid", ["schg", "seasonality", "spacex"])

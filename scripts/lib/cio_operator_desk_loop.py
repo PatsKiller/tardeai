@@ -2224,9 +2224,12 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     if not str(facts).strip():
         return {
             "ok": False,
+            # No promise: nothing on this branch queues a pull or opens a pending.
+            # "Queued a pull -- I'll reply when it lands" went to the operator on
+            # 2026-09-13 with nothing queued (the gap bridge module does not exist).
             "text": (
-                "Trade-AI has no vetted facts for that yet. "
-                "Queued a pull — I'll reply when it lands.\n"
+                "Trade-AI has no vetted facts for that yet, and nothing was queued. "
+                "Say 'research <ticker>' and I will queue it with an ETA.\n"
                 "READ_ONLY_ADVISORY"
             ),
             "source": "empty_evidence",
@@ -2452,6 +2455,32 @@ def handle_operator_desk_question(
             "same_brain": True,
         }
     intent.setdefault("text", text)
+    # The analyzer already knows when a market ask names nothing that resolves
+    # (Agent B, 2026-09-13). Refuse before gathering: otherwise an ask with no
+    # blocking gap replied "Queued a pull -- I'll reply when it lands" with
+    # nothing queued.
+    if intent.get("answerable") is False:
+        why = intent.get("unanswerable_reason") or "no tradable instrument resolved from that question"
+        return {
+            "authority": AUTHORITY,
+            "intent": intent,
+            "evidence_complete": False,
+            "gaps": [],
+            "blocking_gaps": [],
+            "sources": [],
+            "contract_findings": None,
+            "pending_id": None,
+            "kind": "unanswerable",
+            "text": "",
+            "reply_preview": (
+                f"I can't answer that from Trade-AI: {why}.\n\n"
+                "If you meant a company I hold or watch, send its ticker and I will "
+                "answer from the house data.\n"
+                f"{AUTHORITY}"
+            ),
+            "reply_source": "unanswerable_up_front",
+            "model": None,
+        }
     evidence = gather_tradeai_evidence(intent)
     pending_id = f"opr_{uuid.uuid4().hex[:12]}"
 
@@ -2479,7 +2508,7 @@ def handle_operator_desk_question(
         # Do not promise a reply about something that can never be answered.
         # "What's the outlook for SpaceX, what are options closing, what are
         # analysts expecting" got a queue ticket and 72 minutes of silence
-        # because SpaceX is private: no symbol resolved, so the research gap
+        # because no symbol resolved (the name index lacked SpaceX -- it is SPCX, which the book holds), so the research gap
         # could not close and the pending could not complete. Say so now.
         _answerable, _why = is_answerable(intent)
         if not _answerable:
@@ -2488,8 +2517,8 @@ def handle_operator_desk_question(
                 "pending_id": None,
                 "reply_preview": (
                     f"I can't answer that from Trade-AI: {_why}.\n\n"
-                    "If it is a private company, there is no market data, options "
-                    "chain or analyst coverage for it here.\n"
+                    "If you meant a company I hold or watch, send its ticker and I "
+                    "will answer from the house data.\n"
                     f"{AUTHORITY}"
                 ),
             })
@@ -2671,12 +2700,16 @@ def handle_operator_desk_question(
     if soft and "DATA_UNAVAILABLE" not in text_out and intent_name != "meta_system":
         soft_syms = sorted({g.get("symbol") for g in soft if g.get("symbol")})
         if soft_syms:
+            # Claim "queued" only when the registry accepted the gaps. _register_gaps
+            # returned registered=0 on every call (its bridge module is absent), and
+            # the note said "queued for Trade-AI refresh" regardless.
+            reg = _register_gaps(soft[:10], chat_id=str(chat_id), pending_id=pending_id) or {}
+            queued = int(reg.get("registered") or 0) > 0
             text_out = (
                 text_out.rstrip()
                 + f"\n_Note: partial level gaps on {', '.join(soft_syms[:6])} — "
-                "queued for Trade-AI refresh._"
+                + ("queued for Trade-AI refresh._" if queued else "not refreshed automatically; say 'research <ticker>' to queue it._")
             )
-            _register_gaps(soft[:10], chat_id=str(chat_id), pending_id=pending_id)
 
     result.update({
         "kind": "answered",
@@ -2692,8 +2725,8 @@ def handle_operator_desk_question(
 #: `try_fulfill_pending_replies` skips an incomplete pending with a bare
 #: `continue`, so a question whose evidence can NEVER arrive was re-checked
 #: silently forever. opr_5bc20393b457 ("outlook for SpaceX") sat open 72 minutes
-#: with the operator waiting, and would have sat open indefinitely: SpaceX is
-#: private, so no symbol resolved, so the research gap could not close.
+#: with the operator waiting, and would have sat open indefinitely: no symbol
+#: resolved (the name index lacked SpaceX; it is SPCX, which the book holds), so the research gap could not close.
 PENDING_EXPIRY_HOURS = 2.0
 
 
@@ -2715,7 +2748,8 @@ def is_answerable(intent: dict[str, Any]) -> tuple[bool, str]:
     answered by waiting: no quote, no chain, no analyst coverage and no research
     row will ever arrive for it. Promising "I'll reply when it lands" is then a
     promise about data that cannot land -- which is what happened to the SpaceX
-    ask. SpaceX is private; that was knowable at the moment of asking.
+    ask. The name did not resolve -- knowable at the moment of asking. (It was
+    SPCX, held; the name index lacked it. Resolution now reads house-held names.)
 
     Returns (answerable, reason). The reason is operator-facing.
     """

@@ -3,7 +3,7 @@ left open forever.
 
 On 2026-09-13 the operator asked "what's the outlook for SpaceX, what are
 options closing, what are analysts expecting". The desk opened
-opr_5bc20393b457 and promised a follow-up. SpaceX is private: no symbol
+opr_5bc20393b457 and promised a follow-up. the name did not resolve (SpaceX is SPCX; the name index lacked it): no symbol
 resolved, so no quote, chain, analyst row or research could ever arrive.
 try_fulfill_pending_replies skipped the incomplete pending with a bare
 `continue` on every pass, so the operator waited 72 minutes for a reply that
@@ -118,7 +118,7 @@ def test_spacex_question_is_refused_not_promised(monkeypatch):
     assert res["kind"] == "unanswerable"
     assert res["pending_id"] is None
     assert "can't answer that from Trade-AI" in res["reply_preview"]
-    assert "private company" in res["reply_preview"]
+    assert "send its ticker" in res["reply_preview"]
     assert desk.AUTHORITY in res["reply_preview"]
     assert _rows(desk.PENDING_PATH) == [], "no pending may be opened for an unanswerable ask"
 

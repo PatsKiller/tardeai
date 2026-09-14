@@ -241,3 +241,26 @@ def test_sources_footer_names_stores_and_the_model_and_sits_above_the_authority_
 
 def test_sources_footer_is_silent_when_there_is_nothing_to_cite():
     assert desk._with_sources_footer("hi", {"sources": [], "available": {}}, {"source": "x"}) == "hi"
+
+
+# ── no promise without a fulfiller (2026-09-13, SpaceX reply) ────────────────
+
+
+def test_empty_evidence_reply_promises_nothing():
+    out = desk._curate_from_evidence("anything", {"available": {}, "sources": []})
+    assert out["source"] == "empty_evidence"
+    assert "I'll reply when it lands" not in out["text"] and "Queued a pull" not in out["text"]
+    assert "nothing was queued" in out["text"]
+
+
+def test_soft_gap_note_says_queued_only_when_the_registry_accepted(monkeypatch):
+    _rows_fixture(monkeypatch)
+    monkeypatch.setattr(desk, "_register_gaps", lambda *a, **k: {"registered": 0, "error": "ModuleNotFoundError"})
+    res = desk.handle_operator_desk_question("support and resistance levels for SCHG", chat_id="c", message_id="m")
+    if "partial level gaps" in (res.get("text") or ""):
+        assert "queued for Trade-AI refresh" not in res["text"]
+        assert "not refreshed automatically" in res["text"]
+    monkeypatch.setattr(desk, "_register_gaps", lambda *a, **k: {"registered": 2})
+    res2 = desk.handle_operator_desk_question("support and resistance levels for SCHG", chat_id="c", message_id="m")
+    if "partial level gaps" in (res2.get("text") or ""):
+        assert "queued for Trade-AI refresh" in res2["text"]

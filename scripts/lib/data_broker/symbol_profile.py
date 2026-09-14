@@ -20,7 +20,7 @@ def get_symbol_profiles(db_query, symbols: list[str]) -> dict[str, dict[str, Any
         return {}
     rows = db_query(
         """SELECT upper(symbol) AS symbol, sector, industry, instrument_type,
-                  next_earnings_date
+                  next_earnings_date, description_1s
            FROM symbol_profiles
            WHERE upper(symbol) = ANY(%s)""",
         (symbols,),
@@ -34,5 +34,6 @@ def get_symbol_profiles(db_query, symbols: list[str]) -> dict[str, dict[str, Any
                 "industry": row.get("industry"),
                 "instrument_type": row.get("instrument_type"),
                 "next_earnings_date": row.get("next_earnings_date"),
+                "description": row.get("description_1s"),
             }
     return out
