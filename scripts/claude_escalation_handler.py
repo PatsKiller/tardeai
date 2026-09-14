@@ -396,6 +396,21 @@ def _cmd_timeout_seconds(cmd: str, allowlist: dict | None) -> int:
     return base
 
 
+_RELATIVE_VENV_RE = re.compile(r"(?<![\w./-])\.venv/bin/python")
+
+
+def resolve_relative_venv(cmd: str, dev_venv_python: str) -> str:
+    """Point a RELATIVE `.venv/bin/python` at the dev venv; leave absolute paths alone.
+
+    The old `cmd.replace(".venv/bin/python", DEV_VENV_PYTHON)` also rewrote the
+    tail of an already-absolute interpreter path, producing
+    `/home/…/trade-ai-v12-rebuild//home/…/trade-ai-v12-rebuild/.venv/bin/python`.
+    Every such retry exited 127 (36,365 times from 2026-08-07 to 2026-09-14), so
+    the health agent's automatic fixes never ran while the log said they were tried.
+    """
+    return _RELATIVE_VENV_RE.sub(dev_venv_python, cmd)
+
+
 def _execute_retry_cmd(item, allowlist, dry_run=False):
     """Execute an allowlisted retry command with full logging.
     Returns (executed: bool, success: bool, output: str)."""
@@ -435,7 +450,7 @@ def _execute_retry_cmd(item, allowlist, dry_run=False):
     # Resolve .venv/bin/python to the dev venv (release dir has no .venv)
     from lib.live_project_root import DEV_VENV_PYTHON
     original_cmd = cmd
-    cmd = cmd.replace(".venv/bin/python", str(DEV_VENV_PYTHON))
+    cmd = resolve_relative_venv(cmd, str(DEV_VENV_PYTHON))
     if cmd != original_cmd:
         log.info(f"  🔀 Resolved venv: using {DEV_VENV_PYTHON}")
 

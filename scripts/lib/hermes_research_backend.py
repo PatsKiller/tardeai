@@ -93,9 +93,30 @@ def questions_from_request(request: dict[str, Any]) -> list[dict[str, str]]:
     return out
 
 
+#: Third-party labels and market nouns that contain "buy"/"sell" but instruct nobody.
+#: Measured 2026-09-14: of the refusals whose match was visible, a large share quoted an
+#: analyst rating ("rating is 'Strong Sell'"), an institutional buy event, or a company
+#: that "sought to buy" another -- research refused for reporting a fact. Advice and
+#: stance ("would change to a buy", "cautious buy", "buy now") are NOT masked and still refuse.
+_THIRD_PARTY_LABEL_RE = re.compile(
+    r"\bstrong[\s-]+(?:buy|sell)\b"
+    r"|\b(?:analyst|consensus|street|finviz|zacks|morningstar)?\s*rating\s*(?:is|of|now|remains|was|at|:|=)?\s*['\"(]?\s*(?:buy|sell)\b"
+    r"|\b(?:buy|sell)[\s-]+(?:rating|ratings|side)\b"
+    r"|\b(?:institutional|insider|fund|etf)[\s-]+(?:buy|sell)(?:ing|s|ers)?\b"
+    r"|\b(?:buy|sell)[\s-]+(?:signal|signals|event|events|volume|imbalance)\b"
+    r"|\bsell[\s-]+off\b"
+    r"|\b(?:sought|agreed|agrees|plans?|planned|offer(?:ed|s)?|bid|move[sd]?) to buy\b",
+    re.I,
+)
+
+
+def _mask_third_party_labels(text: str) -> str:
+    return _THIRD_PARTY_LABEL_RE.sub(" [label] ", text)
+
+
 def assert_no_execution_language(*texts: str) -> None:
     for t in texts:
-        if t and _EXEC_RE.search(t):
+        if t and _EXEC_RE.search(_mask_third_party_labels(t)):
             raise HermesBackendError(
                 f"execution language not allowed in research output: {t[:120]}",
                 retryable=False,
