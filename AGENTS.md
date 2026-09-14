@@ -2052,7 +2052,7 @@ or fix forward."
 ## The daily provider spend cap
 
 ```
-LLM_GLOBAL_DAILY_USD_CAP = 0.50     ratified by the operator 2026-09-01
+LLM_GLOBAL_DAILY_USD_CAP = 2.00     ratified by the operator 2026-09-14 (actual spend; was 0.50, ratified 2026-09-01)
 ```
 
 **Free-first is not advice, it is the order of operations.** Persistent cognition, the record's
@@ -2066,7 +2066,7 @@ a guarantee the runtime does not provide.**
 
 | | measured on `origin/main` |
 |---|---|
-| crontab lines that **set** `LLM_GLOBAL_DAILY_USD_CAP=0.50` | **6** |
+| crontab lines that **set** `LLM_GLOBAL_DAILY_USD_CAP=2.00` (measured 2026-09-14; 0 still set 0.50) | **6** |
 | active crontab lines that invoke an LLM-spending script | **84** |
 | python modules that **read** the variable | 11 |
 | per-process `daily_cost_cap_usd` values in `config/llm_process_registry.json` | 11 caps, **summing to $11.45/day** |
@@ -2075,8 +2075,8 @@ So roughly **78 of 84 LLM-invoking lanes run with the global cap unset** and fal
 per-process cap — `gate_d_bundle_2_advisory_canary.py:367` states the fallback plainly:
 *"LLM_GLOBAL_DAILY_USD_CAP not set. Will default to bridge's internal cap."*
 
-**Therefore: $0.50 is the ruling policy ceiling, not a universally enforced control.** Any claim
-that daily provider spend cannot exceed $0.50 is false today. Closing that gap — setting the
+**Therefore: $2.00 is the ruling policy ceiling, not a universally enforced control.** Any claim
+that daily provider spend cannot exceed $2.00 is false today. Closing that gap — setting the
 variable on every LLM lane, or moving the check into the shared transport so it cannot be omitted
 — is named debt, not a closed item.
 
@@ -2086,6 +2086,14 @@ variable on every LLM lane, or moving the check into the shared transport so it 
 (*"2026-08-11 P2b soak: … under global 0.25"* → *"2026-08-12: … under global 0.50"*), so the move
 was attributed but never operator-ratified and never documented here. Both are now fixed:
 the operator ratified **0.50** on 2026-09-01, and this is the entry that records it.
+
+**2026-09-14: 0.50 → 2.00 of actual spend.** Operator, approving the spend-truth recommendation:
+*"1. Make the caps count actual spend. 2. Set the durable global cap to $2.00/day of actual spend,
+which covers full refreshes twice over. 3. Retire the temporary $7 override."* Measured the same day:
+the cap was compared against worst-case projections ($214.61 projected against $4.73 real for one
+week), the live bridge carried a forgotten $7.00 backfill override and the portfolio server $1.50.
+One host file (`~/.config/tradeai/llm_global_daily_usd_cap.env`), a `99-llm-global-cap.conf`
+drop-in on every unit that reads it, and the 6 crontab lines now all say 2.00. See `docs/LLM_SPEND.md`.
 
 ---
 
@@ -3107,6 +3115,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.2.0 | 2026-09-14 | PROPOSED | MINOR | §12 records the operator's new daily provider spend cap, **$2.00/day of actual spend** (was $0.50), with the measured enforcement footprint (6 crontab lines, host cap file, unit drop-ins). Still policy rather than a universally enforced control. Does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-14 (instruction quoted verbatim in §12; PR #1015 and the cap consolidation). Ratification rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING |
 | 1.2.0 | 2026-09-13 | PROPOSED | MINOR | §7 gains "Operator replies, data gaps and agent numbers" (one reply chokepoint, house facts first, subject resolution, checked summaries, promise only what is queued, resolved means proven, rule G0, GUID-keyed memory) and two traps (duplicate `def` names; stored results lack the prompt). §9.3 gains "a crontab line edit is a lane registry edit". §10 gains the Telegram bot restart and "a deploy does not install new user units". Records merged work from PRs #992, #998–#1001; does not touch §0, §2, §17 or role authority. | Documentation of merged, operator-directed work (PRs #998–#1001); ratification rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING |
 | 1.2.0 | 2026-09-13 | PROPOSED | MAJOR | §7A gains "Ownership and the grant" and rule 7; §17 gains **adding, replacing or retiring a data source or a writer of an authoritative store**. Registry schema `DataSourceAuthority@v2` requires an `approval` record on every provider and domain; `check_data_source_authority.py` fails an ungranted source (`UNAPPROVED_SOURCE`). Classified MAJOR because it widens §17 (version policy) — it adds a restriction and weakens nothing. Version number left at the unreleased 1.2.0 PROPOSED; whether the widening makes the release 2.0.0 is the operator's call at ratification. | **Operator-directed** 2026-09-13 (instruction quoted verbatim in §7A; One Source of Truth PRs #992 #993 #994). Ratification of the §17 text rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING |
 | 1.2.0 | 2026-09-09 | PROPOSED | MINOR | Adds §9.1 rule: `settle_delivery` must stamp `delivery_owner`/`gateway_mode` into `provider_coordinates` (PR #926). Does not activate 1.2.0; does not weaken §0/§2/§17. | **INCLUDED** by operator live-ceiling execute 2026-09-09; full `APPROVE_AGENTS_POLICY_1_2_0` still PENDING |
