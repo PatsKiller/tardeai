@@ -21,7 +21,8 @@ ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/pyt
 Restart=on-failure
 RestartSec=5
 # Localhost-only server; low resource footprint.
-MemoryMax=256M
+# 2026-09-14: threaded bridge hit 256M 40,579 times in its first hour (318M swapped); host drop-in 90-memory.conf applied the same value live.
+MemoryMax=768M
 StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/cio_governed_bridge.log
 StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/cio_governed_bridge.log
 

@@ -91,7 +91,7 @@ cost, and two never settled and blocked a live hop.
 - **It had been running 10 days**, from the release of 2026-08-27, and logs into *that* release's
   `logs/` directory — not the current one. A bridge code change is not live until it is restarted,
   and `journalctl` shows almost nothing because output is redirected.
-- **`GET /health` returns 501.** It is POST-only. A 501 there is not a fault.
+- **`GET /health` returned 501 until 2026-09-14.** It now returns JSON: `ok`, `circuit_open`, `inflight`, `oldest_inflight_s`, `upstream_deadline_s` (§8).
 - **`curl` without `X-TradeAI-Agent` returns 401**, and with an unmapped agent returns
   `Unknown caller … not in server-side mapping`. Neither is the bug you are chasing.
 
@@ -111,6 +111,56 @@ UPDATE llm_process_config
 **Record the previous values in the change.** `advisory_desk_opinion` was `200 / $0.30` before
 2026-09-06.
 
-Adding a *new* process, by contrast, needs a code change to `CALLER_PROCESS_MAP` **and** a restart,
-because caller identity is server-side. That is the price of not letting callers name their own
-budget, and it is the right trade.
+Adding a *new* process, by contrast, needs a code change to `CALLER_PROCESS_MAP` or `CALLER_TASK_PROCESS_MAP`
+**and** a restart, because caller identity is server-side. That is the price of not letting callers name their
+own budget, and it is the right trade. §9 lists everything a new caller needs.
+
+## 8. One held call must not wedge it (2026-09-14)
+
+**What happened.** From 15:15 ET, DeepSeek held non-streaming calls about 906 s each.
+- It trickled keep-alive bytes, so the 90 s per-read timeout never fired.
+- It then returned a 50-character body with no usage, logged as a $0 success.
+- The bridge was a single-threaded `HTTPServer`, so every caller queued behind each held call: CIO Hermes
+  research (every job failed), desk answers and advisory.
+- A restart at 16:15 re-wedged within seconds, because a restart does not shorten a provider's queue.
+
+**What holds now:**
+
+| Control | Setting | Effect |
+|---|---|---|
+| Wall-clock upstream deadline | `CIO_BRIDGE_UPSTREAM_DEADLINE_S` = 150 | Body streamed, deadline checked per chunk; a hit is a TIMEOUT provider error, so the circuit counts it |
+| Threaded server | `ThreadingHTTPServer`, daemon threads | `/health` answers while calls are in flight |
+| In-flight slots | `CIO_BRIDGE_MAX_INFLIGHT` = 4 | A full bridge answers 503 `BRIDGE_BUSY` at once; research treats it as retryable |
+| `GET /health` | JSON | In-flight count and oldest age, circuit state, last error, deadline |
+| Watchdog | `scripts/cio_bridge_watchdog.py`, cron every 5 min, lane `cio-bridge-watchdog` | Restarts after 2 unanswered probes (30 min cooldown); alerts on state change; never restarts for a provider-side problem |
+| Memory | `MemoryMax=768M` | The threaded bridge hit 256M 40,579 times in its first hour |
+
+**Diagnose in this order:** `curl /health`; the accept queue (`ss -ltn`, port 8766); in-flight age;
+`ss -tinp` `lastsnd`/`lastrcv` on the :443 socket (bytes still arriving means the provider is holding the
+request); `pg_stat_activity` for lock waits.
+
+## 9. Callers name themselves (2026-09-14)
+
+The `advisory_desk` caller maps each task type to its own process id:
+
+| Task type | Process id | Mode | Sent by |
+|---|---|---|---|
+| `advisory_opinion` (and any unknown task) | `advisory_desk_opinion` | automated | advisory opinion engine |
+| `advisory_synthesis` | `advisory_desk_synthesis` | automated | advisory Pro synthesis |
+| `operator_reply` | `cio_operator_reply` | **manual** | Telegram converse, operator desk loop |
+| `plan_enrichment` | `cio_plan_enrichment` | automated | plan enrichment (default for `call_governed_llm`) |
+| `prompt_judge` | `cio_prompt_judge` | automated | CIO prompt judge |
+| `research_circle` | `research_circle_analyzer` | **manual** | Research Escalation Circle |
+| `hermes_cloud_json` | `hermes_cloud_json` | automated | `hermes_llm_failover.chat_json` default |
+| `usefulness_score` | `hermes_usefulness_score` | automated | `hermes_external_feedback_loop.py` |
+| `hermes_research_job` | `cio_hermes_research` | automated | CIO Hermes queue worker |
+| `golden_judge` | `hermes_golden_judge` | automated | Hermes golden judge |
+
+A process registered `manual` is logged with `trigger_mode="manual"`, so the spend report shows it as ad hoc
+and the scheduled-work window never applies to it.
+
+**A new caller needs, in the same change:**
+- the map entry and a `resolve_model_policy` entry;
+- a `config/llm_process_registry.json` row with caps and `default_mode`;
+- `sync_cio_process_caps.py`;
+- a bridge restart.

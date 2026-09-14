@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `db879cdb5d0fdd2ed2c540bc8099735f32a430a5197e4edea5127eb4c36ca95d`
+**Tree fingerprint:** `d86aa45e129cf0f11c77addefe7a5bcf044e838050b26d9f2f225111057bc77c`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -45,7 +45,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/BROKER_TRADE_PLAN_GATE.md` | Broker Trade Plan Gate — No Gambling on Generic 2×R | review_required | OK | `e73e70a22a5c` |
 | `docs/CC_V3_ACTIONABILITY_SPRINT_20260702.md` | CC v3 Actionability Sprint — Layered Document | review_required | OK | `26d05fe916e7` |
 | `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | OK | `401363e962e2` |
-| `docs/CHANGELOG.md` | Changelog | review_required | OK | `337ddbf3774d` |
+| `docs/CHANGELOG.md` | Changelog | review_required | OK | `2be6d3c459d8` |
 | `docs/CHEAT_SHEET.md` | Trade AI v12 -- Operator Cheat Sheet | active_keep | OK | `5fbf6fb2ebe7` |
 | `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO Prompt & Input Audit — 2026-07-01 | review_required | OK | `927dbe10051c` |
 | `docs/CLAUDE_CHALLENGER_AND_ANALYST_LANES.md` | Claude Challenger Cohort (A/B) + Analyst Lanes | review_required | OK | `3159e054b153` |
@@ -69,7 +69,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/GAP_RESOLUTION.md` | Gap Resolution — when the answer is stale or missing, go find out | review_required | OK | `f713acab76e6` |
 | `docs/GIT_HYGIENE.md` | Git Hygiene — protect the live primary tree (2026-07-01) | review_required | OK | `bb52d4d23b64` |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50: Trade AI Runtime Status | review_required | OK | `8c1dff864802` |
-| `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `b701dfb8498a` |
+| `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `e6f4cbc44b06` |
 | `docs/HEALTH_AUTONOMOUS_LOOP.md` | Health autonomous fix loop (no manual operator / no one-off agent fixes) | review_required | OK | `e4865c52f780` |
 | `docs/HERMES_DATA_ACCESS.md` | Hermes Data Access — the one canonical way every consumer reads Hermes intelligence | review_required | OK | `e597b05f60f3` |
 | `docs/HERMES_DISCOVERY_COVERAGE.md` | Hermes Discovery Inbox — Current Coverage & Discovery Mechanics (2026-07-05) | review_required | OK | `28f9832642be` |
@@ -106,7 +106,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/PULLBACK_MACD_SCREENER.md` | Pullback / MACD Screener | review_required | OK | `afc1169eccc2` |
 | `docs/RESEARCH_CIRCLE.md` | Research Escalation Circle | review_required | OK | `e5d2e488a9a5` |
 | `docs/RESEARCH_INGEST_TICKER_AUDIT_2026_06_20.md` | Research Ingestion + Ticker Extraction + Connector Audit — 2026-06-20 | review_required | OK | `d78b663bf596` |
-| `docs/RESEARCH_PRIORITIZATION.md` | Research Prioritization & Refresh Methodology (all Hermes lanes, 24/7) | review_required | OK | `139c93ab1bcd` |
+| `docs/RESEARCH_PRIORITIZATION.md` | Research Prioritization & Refresh Methodology (all Hermes lanes, 24/7) | review_required | OK | `0ab567d5d5c4` |
 | `docs/RESEARCH_PROVIDER_ROUTING.md` | Research provider routing — when Brave should be used | review_required | OK | `9c61b2f7c573` |
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
@@ -299,7 +299,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/FINDING_interface_contracts_not_in_repo.md` | Finding — `INTERFACE_CONTRACTS.md` is cited everywhere and version-controlled nowhere | review_required | OK | `f9c9cfc0beea` |
 | `docs/architecture/GAIN_GUARDIAN.md` | Gain Guardian — Holdings Exit Intelligence (Live Book, Advisory-Only) | review_required | OK | `1d3bec366edc` |
 | `docs/architecture/GOOGLE_NOTES_BITEMPORAL_DDL_ARCHITECT_RECONCILIATION_2026-08-24.md` | Google Notes bitemporal DDL — architect reconciliation | review_required | OK | `8d29266fc3e6` |
-| `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `7ef8f731bf1b` |
+| `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `8610ddf22d19` |
 | `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | Hermes Persistent Ticker Intelligence Architecture | review_required | OK | `3a4320625b1e` |
 | `docs/architecture/HOME_COMMAND_BRAIN_V2.md` | Home v2 — The Command Brain (2026-07-17) | review_required | OK | `6e695df9a86e` |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
@@ -776,7 +776,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/CIO_NOTIFICATION_REPLAY_ACCEPTANCE.md` | CIO Notification Replay Acceptance | review_required | OK | `76573f672e2d` |
 | `docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md` | CIO Notification Runtime Topology | review_required | OK | `ab46eaffc931` |
 | `docs/cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md` | CIO Telegram converse — operator runbook | review_required | OK | `01ee6726efe4` |
-| `docs/cio/CIO_TELEGRAM_PRODUCT_STANDARD.md` | CIO Telegram Product Standard | review_required | OK | `8aad393f724c` |
+| `docs/cio/CIO_TELEGRAM_PRODUCT_STANDARD.md` | CIO Telegram Product Standard | review_required | OK | `50f162d383ed` |
 | `docs/cio/CIO_WHATSAPP_CONVERSE_RUNBOOK.md` | CIO WhatsApp converse — operator runbook (P4) | review_required | OK | `241130c46382` |
 | `docs/cio/CLOSED_LOOP_ARCHITECTURE.md` | CIO Desk Closed-Loop Intelligence Architecture | review_required | OK | `5e11dd3570d3` |
 | `docs/cio/DESK_NOTE.md` | Desk note product (synthesis v1.3 — institutional book memo) | review_required | OK | `87c85d794cc6` |
