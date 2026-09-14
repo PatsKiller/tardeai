@@ -100,15 +100,21 @@ def _append_auth_token(url: str, token: str) -> str:
 
 
 def _csv_has_tickers(content: str) -> list:
+    """Tickers from a Finviz export, read by the 'Ticker' header (not column 1)."""
+    import csv
+    import io
+
     tickers = []
-    lines = content.strip().split("\n")
-    if len(lines) > 1:
-        for line in lines[1:]:
-            parts = line.split(",")
-            if len(parts) >= 2:
-                ticker = parts[1].strip().strip('"')
-                if re.match(r'^[A-Z]{1,6}$', ticker):
-                    tickers.append(ticker)
+    body = (content or "").lstrip("﻿").strip()
+    if not body:
+        return tickers
+    reader = csv.DictReader(io.StringIO(body))
+    if "Ticker" not in [h.strip() for h in (reader.fieldnames or [])]:
+        return tickers
+    for rec in reader:
+        ticker = str({(k or "").strip(): v for k, v in rec.items()}.get("Ticker") or "").strip()
+        if re.match(r'^[A-Z]{1,6}$', ticker):
+            tickers.append(ticker)
     return tickers
 
 

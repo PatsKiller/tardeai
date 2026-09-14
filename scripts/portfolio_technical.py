@@ -48,6 +48,10 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
+try:
+    from lib.finviz_csv import FinvizContractError, parse_export, to_number
+except ImportError:  # pragma: no cover -- repo-root import path
+    from scripts.lib.finviz_csv import FinvizContractError, parse_export, to_number
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -285,9 +289,9 @@ def _send_cookie_expiry_alert(
 
     if _send_telegram(msg, root):
         _mark_cookie_alert_fired(state_dir)
-        print(f"  [technical] 🍪 Cookie expiry alert sent to Telegram")
+        print("  [technical] 🍪 Cookie expiry alert sent to Telegram")
     else:
-        print(f"  [technical] ⚠️ Cookie expired — Telegram alert failed to send")
+        print("  [technical] ⚠️ Cookie expired — Telegram alert failed to send")
 
 # ── Finviz API Token — Tier 1 ─────────────────────────────────────────────────
 
@@ -350,28 +354,29 @@ def _finviz_api_batch(
             if not resp.ok or not resp.text.strip():
                 print(f"  [technical] v=152 HTTP {resp.status_code} for batch {i//BATCH_SIZE+1}")
                 continue
-            lines = resp.text.strip().split("\n")
-            for line in lines[1:]:  # skip header
-                parts = [p.strip().strip('"') for p in line.split(",")]
-                if len(parts) < 2:  # COL-FIX: was 47, v=152 now returns 11 cols
-                    continue
-                sym = parts[1].upper()
+            # By header name, through a real CSV reader, with the view's contract:
+            # a changed saved view raises instead of mapping the wrong columns
+            # (this block carried two positional "COL-FIX" edits: 47 -> 11 -> 15).
+            try:
+                rows = parse_export(resp.text, view=FV_VIEW_FUNDAMENTAL)
+            except FinvizContractError as exc:
+                print(f"  [technical] ⛔ v=152 contract broken, batch skipped: {exc}")
+                continue
+            for row in rows:
+                sym = str(row.get("Ticker") or "").upper()
                 if not sym:
                     continue
                 results[sym] = {
                     "symbol":       sym,
-                    # COL-FIX 2026-05-06: Finviz v=152 now returns 15 cols
-                    # No[0] Ticker[1] Company[2] Sector[3] Industry[4] Country[5]
-                    # MCap[6] PE[7] SharesFloat[8] Gap[9] AvgVol[10] RelVol[11]
-                    # Price[12] Change[13] Volume[14]
-                    "price":        _f(parts[12] if len(parts) > 12 else ""),
-                    "change_pct":   _f((parts[13] if len(parts) > 13 else "").replace("%","")),
+                    "price":        to_number(row.get("Price")) or 0.0,
+                    "change_pct":   to_number(row.get("Change")) or 0.0,
                     "analyst":      "",
                     "target":       0.0,
-                    "volume":       _f(parts[14] if len(parts) > 14 else ""),
-                    "gap_pct":      _f((parts[9] if len(parts) > 9 else "").replace("%","")),
-                    "relative_volume": _f(parts[11] if len(parts) > 11 else ""),
-                    "shares_float": _f(parts[8] if len(parts) > 8 else ""),
+                    "volume":       to_number(row.get("Volume")) or 0.0,
+                    "gap_pct":      to_number(row.get("Gap")) or 0.0,
+                    "relative_volume": to_number(row.get("Relative Volume")) or 0.0,
+                    # Finviz exports Shares Float in MILLIONS of shares (unchanged value).
+                    "shares_float": to_number(row.get("Shares Float")) or 0.0,
                     "data_source":  "api_v152",
                 }
         except Exception as e:
@@ -391,24 +396,27 @@ def _finviz_api_batch(
                 resp = requests.get(url, headers=headers, timeout=20)
             if not resp.ok or not resp.text.strip():
                 continue
-            lines = resp.text.strip().split("\n")
-            for line in lines[1:]:
-                parts = [p.strip().strip('"') for p in line.split(",")]
-                if len(parts) < 15:
+            try:
+                rows = parse_export(resp.text, view=FV_VIEW_PERFORMANCE)
+            except FinvizContractError as exc:
+                print(f"  [technical] ⛔ v=141 contract broken, batch skipped: {exc}")
+                continue
+            for row in rows:
+                sym = str(row.get("Ticker") or "").upper()
+                if not sym:
                     continue
-                sym = parts[1].upper()
                 if sym not in results:
                     results[sym] = {"symbol": sym}
                 results[sym].update({
-                    "perf_week":     _f(parts[2].replace("%", "")) if len(parts) > 2 else None,
-                    "perf_month":    _f(parts[3].replace("%", "")) if len(parts) > 3 else None,
-                    "perf_quarter":  _f(parts[4].replace("%", "")) if len(parts) > 4 else None,
-                    "perf_halfyr":   _f(parts[5].replace("%", "")) if len(parts) > 5 else None,
-                    "perf_ytd":      _f(parts[6].replace("%", "")) if len(parts) > 6 else None,
-                    "perf_year":     _f(parts[7].replace("%", "")) if len(parts) > 7 else None,
-                    "volatility_w":  _f(parts[11].replace("%", "")) if len(parts) > 11 else None,
-                    "volatility_m":  _f(parts[12].replace("%", "")) if len(parts) > 12 else None,
-                    "relative_volume": _f(parts[14]) if len(parts) > 14 else None,
+                    "perf_week":     to_number(row.get("Performance (Week)")),
+                    "perf_month":    to_number(row.get("Performance (Month)")),
+                    "perf_quarter":  to_number(row.get("Performance (Quarter)")),
+                    "perf_halfyr":   to_number(row.get("Performance (Half Year)")),
+                    "perf_ytd":      to_number(row.get("Performance (YTD)")),
+                    "perf_year":     to_number(row.get("Performance (Year)")),
+                    "volatility_w":  to_number(row.get("Volatility (Week)")),
+                    "volatility_m":  to_number(row.get("Volatility (Month)")),
+                    "relative_volume": to_number(row.get("Relative Volume")),
                 })
         except Exception as e:
             print(f"  [technical] v=141 batch error: {e}")

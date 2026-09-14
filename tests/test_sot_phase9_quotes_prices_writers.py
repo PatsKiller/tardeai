@@ -367,8 +367,10 @@ def test_producer_portfolio_repricer_sync_uses_module_with_legacy_contract(monke
         {"symbol": "BAD", "price": -3.0},                    # px <= 0: producer skips, as before
     ]}
     pr._sync_ticker_prices(portfolio, tmp_path)
-    assert len(conn.cur.calls) == 1
-    sql, params = conn.cur.calls[0]
+    # 2026-09-14: one read of the latest live quotes precedes the write, so a
+    # close far from the quote (a sub-share position's value) is refused.
+    assert len(conn.cur.calls) == 2 and "FROM market_quotes" in norm(conn.cur.calls[0][0])
+    sql, params = conn.cur.calls[1]
     assert "VALUES (%s, CURRENT_DATE, %s, %s, now())" in norm(sql)
     assert "DO UPDATE SET close_price = EXCLUDED.close_price, source = EXCLUDED.source" in norm(sql)
     assert params == ("NVDA", 182.5, "portfolio_repricer")

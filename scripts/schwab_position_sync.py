@@ -466,6 +466,13 @@ def _build_account_rows(account_key, live, existing_by_key):
                 return None
         price = _f(p.get("current_price")) or None
         mv = _f(p.get("market_value")) or 0.0
+        # The transport's current_price is marketValue / max(quantity, 1): for a
+        # position under one share that is the POSITION VALUE (SCHG 0.2294 sh ->
+        # "price" 8.03 vs 35.16; XLI 7.48 vs 172; NOC 123 vs 531). The transport is
+        # broker-subsystem code and is not edited; the per-share price is derived
+        # here from the same two broker facts. Operator-approved 2026-09-14.
+        if mv and qty and (price is None or (0 < abs(qty) < 1 and abs(price - mv) < 0.01)):
+            price = round(mv / qty, 6)
         avg = _f(p.get("avg_entry_price")) or None
         prior = existing_by_key.get((sym, account_key))
         row = dict(prior or {})   # preserve enrichment if tracked

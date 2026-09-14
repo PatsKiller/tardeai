@@ -253,18 +253,23 @@ def _fetch_finviz_quotes(symbols: List[str]) -> Dict[str, Dict]:
             resp = finviz_get(url, timeout=8, raise_on_429=False)
             if resp.status_code != 200:
                 continue
-            lines = resp.text.strip().split("\n")
-            if len(lines) < 2:
-                continue
-            headers_row = lines[0].split(",")
-            vals_row    = lines[1].split(",")
-            row         = dict(zip(headers_row, vals_row))
-            price = float(row.get("Price", 0) or 0)
-            chg   = row.get("Change", "0%").rstrip("%")
+            # Real CSV reader, by header name: a quoted company name with a comma
+            # ("Brookline Bancorp, Inc.") shifted Price/Change under the old
+            # naive split, and a changed saved view now raises instead of misreading.
             try:
-                change_pct = float(chg)
-            except ValueError:
-                change_pct = 0.0
+                from lib.finviz_csv import FinvizContractError, parse_export, to_number
+            except ImportError:  # pragma: no cover -- repo-root import path
+                from scripts.lib.finviz_csv import FinvizContractError, parse_export, to_number
+            try:
+                parsed = parse_export(resp.text, required=("Ticker", "Price", "Change"))
+            except FinvizContractError as exc:
+                print(f"  [market_context] ⛔ Finviz v=152 contract broken: {exc}")
+                continue
+            if not parsed:
+                continue
+            row = parsed[0]
+            price = to_number(row.get("Price")) or 0.0
+            change_pct = to_number(row.get("Change")) or 0.0
             if not price:
                 continue
             results[sym] = {
@@ -401,7 +406,7 @@ def get_market_session(now: datetime | None = None) -> dict:
         return {"session": "after_hours", "session_label": "After Hours",
                 "session_emoji": "🌙", "session_color": "#1A73E8",
                 "opens_in_min": None, "closes_in_min": mins(t, ah_end),
-                "description": f"After-hours trading. Closes at 8:00 PM ET"}
+                "description": "After-hours trading. Closes at 8:00 PM ET"}
     else:
         return {"session": "closed", "session_label": "Market Closed",
                 "session_emoji": "🔴", "session_color": "#9A9AB0",

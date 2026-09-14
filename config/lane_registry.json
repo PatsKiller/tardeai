@@ -1440,6 +1440,51 @@
       "note": "Measures declared numeric columns against their declared scale. Exists because Performance (10 Years) was stored as a 1-5 analyst rating for five months and nothing could check it: the scale lived only in a docstring."
     },
     {
+      "lane_id": "source-litmus-vs-yahoo",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-source-litmus.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/source_litmus_last_run.json"
+      },
+      "note": "Samples stored closes per source against Yahoo Finance's close for the same session. Operator-approved 2026-09-14 after the litmus found 29% of quote-derived closes off by >1%, sub-share position values written as closes, and a session-stale Alpaca previous close."
+    },
+    {
+      "lane_id": "eod-consolidated-close-sync",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-eod-consolidated-close.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/eod_consolidated_close_sync_last_run.json"
+      },
+      "note": "Replaces IEX-derived daily closes (source=market_quotes) that disagree with the consolidated close by more than 1%, via the ticker_prices write module (source=yfinance_eod); >50% disagreements are reported for quarantine review, not synced. Operator decision 2026-09-14."
+    },
+    {
+      "lane_id": "finviz-view-contracts",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-finviz-view-contracts.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/finviz_view_contracts_last_run.json"
+      },
+      "note": "Checks each Finviz saved export view's headers, units and prices before the day's readers use them. Operator-approved 2026-09-14 after positional Finviz parsing and a 1,000x unit mislabel were found in screening gates."
+    },
+    {
       "lane_id": "served-copy-split-audit",
       "owner": "platform",
       "scheduler": {

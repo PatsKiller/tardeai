@@ -109,7 +109,6 @@ scripts/run_proactive_quote_refresh.py 1
 scripts/scalp_critic_agent.py 1
 scripts/scalp_outcome_scorer.py 1
 scripts/schwab_auto_reauth.py 1
-scripts/schwab_position_sync.py 1
 scripts/schwab_token_manager.py 1
 scripts/secrets/render_env.py 1
 scripts/secrets/rotation_daemon.py 1

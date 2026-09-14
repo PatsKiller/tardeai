@@ -130,6 +130,30 @@ def _alpaca_creds():
             _env("ALPACA_SECRET_KEY") or _env("ALPACA_PAPER_SECRET_KEY") or _env("APCA_API_SECRET_KEY"))
 
 
+def _alpaca_prev_close(snap: dict):
+    """The last completed session's close, relative to the quote being stored.
+
+    Alpaca's ``prevDailyBar`` is the bar BEFORE ``dailyBar``. Before today's first
+    bar exists (overnight, pre-market, a Monday morning) ``dailyBar`` is still the
+    previous session, so ``prevDailyBar`` is two sessions back. Measured
+    2026-09-14 07:15-09:00 ET: HPE stored prev_close 55.23 (Thursday) against a
+    Friday close of 62.09 (Yahoo), so day_change_pct read +12.4% for a stock that
+    had not traded; 7 of 9 litmus symbols were wrong the same way.
+    """
+    daily = snap.get("dailyBar") or {}
+    prev = (snap.get("prevDailyBar") or {}).get("c")
+    try:
+        from zoneinfo import ZoneInfo
+        bar_day = datetime.fromisoformat(str(daily.get("t")).replace("Z", "+00:00")).astimezone(
+            ZoneInfo("America/New_York")).date()
+        today = datetime.now(ZoneInfo("America/New_York")).date()
+    except Exception:
+        return prev
+    if daily.get("c") and bar_day < today:
+        return daily.get("c")
+    return prev
+
+
 def ingest_alpaca_quotes(symbols: list = None) -> dict:
     """Live intraday quotes via Alpaca snapshots (IEX free feed). Primary source — no rate limits,
     unlike yfinance (rate-limited + once-daily). Batches up to 200 symbols/request. Returns the
@@ -158,7 +182,7 @@ def ingest_alpaca_quotes(symbols: list = None) -> dict:
                 price = (s.get("latestTrade") or {}).get("p") or (s.get("dailyBar") or {}).get("c")
                 if not price:
                     continue
-                prev = (s.get("prevDailyBar") or {}).get("c")
+                prev = _alpaca_prev_close(s)
                 vol = (s.get("dailyBar") or {}).get("v")
                 chg_pct = round((price - prev) / prev * 100, 4) if prev else None
                 rc = write_market_quotes(cur, [{"symbol": sym, "price": price, "prev_close": prev,
@@ -264,6 +288,55 @@ def ingest_quotes(symbols: list = None) -> dict:
 
 # ── Alpha Vantage ────────────────────────────────────────────────────
 
+def _alpha_vantage_symbols(cur, limit: int) -> list:
+    """Held and directive-watch names first, least recently fetched first.
+
+    ``_get_symbols()[:limit]`` took the first five rows of an unordered UNION --
+    mostly micro-caps Alpha Vantage does not cover -- so each Monday stored ONE
+    symbol (CLF 09-14, POLA 08-24, RGA/LVLU 08-03) and the names the operator
+    actually holds were never refreshed.
+    """
+    held: list = []
+    try:
+        doc = json.loads((PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json").read_text(encoding="utf-8"))
+        held = sorted({str(h.get("symbol") or "").upper() for h in (doc.get("holdings") or [])
+                       if not h.get("is_cash") and str(h.get("symbol") or "").isalpha()})
+    except Exception:
+        held = []
+    try:
+        # Priority first (the real book, then names the operator directs, then
+        # paper positions, then the active watchlist); oldest fetch within a tier.
+        cur.execute("""
+            WITH wanted AS (
+                SELECT unnest(%s::text[]) AS symbol, 0 AS pri
+                UNION ALL
+                SELECT symbol, 1 FROM watchlist_items WHERE in_directive_watch = TRUE AND symbol IS NOT NULL
+                UNION ALL
+                SELECT symbol, 2 FROM paper_trades WHERE status = 'open' AND symbol IS NOT NULL
+                UNION ALL
+                SELECT symbol, 3 FROM watchlist_items WHERE status = 'active' AND symbol IS NOT NULL
+            ), best AS (SELECT upper(symbol) AS symbol, min(pri) AS pri FROM wanted GROUP BY 1),
+            last AS (SELECT symbol, max(fetched_at) AS at FROM fundamental_data
+                     WHERE source = 'alpha_vantage' GROUP BY symbol)
+            SELECT b.symbol FROM best b LEFT JOIN last l ON l.symbol = b.symbol
+            WHERE b.symbol !~ '[^A-Z]' AND length(b.symbol) <= 5
+              AND b.symbol !~ '^[A-Z]{4}X$'  -- mutual funds (AMANX): OVERVIEW has no coverage
+              AND (l.at IS NULL OR l.at < now() - interval '6 days')
+            ORDER BY b.pri, l.at NULLS FIRST, b.symbol
+            LIMIT %s
+        """, (held, int(limit)))
+        rows = [r[0] for r in cur.fetchall()]
+        if rows:
+            return rows
+    except Exception as exc:  # noqa: BLE001
+        print(f"  [av] symbol selection query failed, using the classification universe: {exc}")
+        try:
+            cur.connection.rollback()
+        except Exception:
+            pass
+    return _get_symbols()[:limit]
+
+
 def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
     """Fetch company fundamentals via Alpha Vantage (free tier: 25 calls/day)."""
     import urllib.request
@@ -272,11 +345,10 @@ def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
         print("[alpha-vantage] No ALPHA_VANTAGE_API_KEY — skipping")
         return {"source": "alpha_vantage", "fetched": 0, "reason": "no_key"}
 
-    if not symbols:
-        symbols = _get_symbols()[:limit]  # Free tier limited
-
     conn = _get_conn()
     cur = conn.cursor()
+    if not symbols:
+        symbols = _alpha_vantage_symbols(cur, limit)  # Free tier limited
     fetched = 0
 
     for sym in symbols[:limit]:
@@ -287,6 +359,12 @@ def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
                 data = json.loads(resp.read())
 
             if "Symbol" not in data:
+                # A rate-limit or quota notice arrives as HTTP 200 with
+                # "Information"/"Note" and no "Symbol". It was skipped silently:
+                # 4 of 5 symbols vanished every Monday with nothing logged.
+                notice = data.get("Information") or data.get("Note") or data.get("Error Message") or "no Symbol in response"
+                print(f"  [av] {sym}: not stored — {str(notice)[:120]}")
+                last_exc = str(notice)[:160]
                 continue
 
             metrics = {
@@ -586,7 +664,7 @@ def test():
     # Context test
     print("\nyfinance context for V:")
     print(f"  {get_yfinance_context('V')}")
-    print(f"\nMacro context:")
+    print("\nMacro context:")
     print(f"  {get_macro_context()}")
 
     # Counts

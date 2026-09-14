@@ -587,6 +587,16 @@ GATES = [
             # reached the operator (pending waited on a store Hermes does not write).
             "tests/test_research_joinback_20260914.py",
             "tests/test_answer_quality_research_landed_20260914.py",
+            # 2026-09-14 litmus vs Yahoo + live Finviz header: sub-share position
+            # values written as closes, a stale Alpaca prev_close, positional
+            # Finviz parsing and 1,000x unit mislabels in screening gates.
+            "tests/test_price_unit_integrity_20260914.py",
+            "tests/test_finviz_view_contracts_20260914.py",
+            "tests/test_source_health_and_av_selection_20260914.py",
+            "tests/test_source_litmus_vs_yahoo_20260914.py",
+            "tests/test_social_discovery_monday_window_20260914.py",
+            "tests/test_retention_fk_and_schwab_fractional_20260914.py",
+            "tests/test_eod_consolidated_close_sync_20260914.py",
             # 2026-09-13: the state tree existed twice for 18 days (dev tree vs
             # persistent-state). Identity of the directory is the check, not the
             # age of a file -- an age check on one copy is exactly what missed it.

@@ -1,0 +1,22 @@
+[Unit]
+# Asks Finviz for each saved export view's header (one request per view) and
+# BLOCKs when a column our readers depend on is gone, when Market Cap is not in
+# millions or Average Volume not in thousands, or when a Finviz price is far from
+# market_quotes.
+#
+# Exists because readers mapped Finviz columns by position for months (two hand
+# "COL-FIX" edits), Performance (10 Years) was stored as a 1-5 analyst rating for
+# five months, and the unit mislabel let a $50M company pass a $50B floor.
+Description=Trade AI Finviz view contracts — header, unit and price gate
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/check_finviz_view_contracts.py
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/check_finviz_view_contracts.py
+SuccessExitStatus=0 1
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target

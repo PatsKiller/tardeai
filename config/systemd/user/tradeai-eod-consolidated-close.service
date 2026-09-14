@@ -1,0 +1,21 @@
+[Unit]
+# Replaces the session's IEX-derived daily closes (source=market_quotes) with the
+# consolidated close when they disagree by more than 1%, through the one
+# ticker_prices write module, source=yfinance_eod. Disagreements above 50% are not
+# synced; they are listed in the receipt for quarantine review.
+#
+# Operator decision 2026-09-14 after the litmus found 30 of 118 sampled
+# quote-derived closes off by more than 1% (6 by more than 10%) -- the free IEX
+# feed is one exchange's last print, not the consolidated tape.
+Description=Trade AI end-of-day consolidated close sync
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/eod_consolidated_close_sync.py
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/eod_consolidated_close_sync.py --apply
+TimeoutStartSec=1200
+
+[Install]
+WantedBy=default.target

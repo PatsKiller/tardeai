@@ -835,7 +835,8 @@ def run_scan():
             "sector": finviz_data.get("sector", ""),
             "company": finviz_data.get("company", ""),
             "volume": finviz_data.get("volume_base") or finviz_data.get("volume", 0),
-            "avg_volume": finviz_data.get("avg_vol_m", 0),
+            # Shares. ``avg_vol_m`` is Finviz 'Average Volume' in THOUSANDS.
+            "avg_volume": (float(finviz_data.get("avg_vol_m") or 0) * 1000.0),
             "sector_momentum_score": 0,  # not available in this pipeline
         }
 

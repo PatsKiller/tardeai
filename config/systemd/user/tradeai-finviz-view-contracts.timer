@@ -1,0 +1,14 @@
+[Unit]
+Description=Trade AI Finviz view contracts — weekday pre-market check
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/check_finviz_view_contracts.py
+
+[Timer]
+# 06:05 ET weekdays: before the 07:15 quote ingest, 07:30 enrichment, 10:00
+# screener and 13:00 Finviz enrichment consume the views.
+OnCalendar=Mon..Fri *-*-* 06:05:00
+AccuracySec=1min
+Persistent=true
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

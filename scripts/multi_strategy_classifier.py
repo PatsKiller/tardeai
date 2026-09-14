@@ -72,6 +72,15 @@ def merge_scan_with_enrichment(scan: dict, enrichment: dict) -> dict:
         if key not in merged or merged[key] is None:
             merged[key] = enrich[key]
 
+    # The enrichment cache's ``market_cap_b`` is Finviz 'Market Cap' in MILLIONS
+    # (AAPL 4842453.75 on 2026-09-14). Filled raw, a $600M name read as "$600B"
+    # and passed core_index's min_market_cap_b 50. Convert what came from the cache.
+    if scan.get("market_cap_b") is None and enrich.get("market_cap_b") is not None:
+        try:
+            merged["market_cap_b"] = float(enrich["market_cap_b"]) / 1000.0
+        except (TypeError, ValueError):
+            merged["market_cap_b"] = None
+
     return merged
 
 
@@ -763,7 +772,7 @@ def main():
         results = classify_batch_from_db(
             limit=args.limit, use_llm=args.llm
         )
-        print(f"\n=== BATCH RESULTS ===")
+        print("\n=== BATCH RESULTS ===")
         print(f"Classified: {len(results)} symbols")
         multi = sum(1 for r in results if r["strategy_count"] > 1)
         print(f"Multi-strategy matches: {multi}")
@@ -773,7 +782,7 @@ def main():
         for r in results:
             for s in r["strategies"]:
                 dist[s["strategy_id"]] = dist.get(s["strategy_id"], 0) + 1
-        print(f"\nStrategy distribution:")
+        print("\nStrategy distribution:")
         for sid, count in sorted(dist.items(), key=lambda x: -x[1]):
             print(f"  {sid:30s} {count}")
 
