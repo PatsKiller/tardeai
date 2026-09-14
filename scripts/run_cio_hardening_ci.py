@@ -606,6 +606,8 @@ GATES = [
             # 2026-09-13 litmus tests: answers are symbol-scoped, drawn from house facts
             # (cash/sectors/policy read from the snapshot), and carry a Sources line.
             "tests/test_operator_answers_use_house_facts_20260913.py",
+            # Answer-quality monitor + offline litmus replay of the 2026-09-13 questions.
+            "tests/test_operator_answer_quality_20260913.py",
             # Phase 9: one write module per store; golden tests prove row shape and
             # subject GUID are identical to every legacy writer.
             "tests/test_sot_p9_symbol_profiles_writer.py",
