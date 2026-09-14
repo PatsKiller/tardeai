@@ -4,6 +4,45 @@ Status:      ACTIVE
 as_of:       2026-09-13T23:59:00-04:00
 Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
 
+## 2026-09-14 — Operator answers come back, prices are proven, Telegram is edited (PRs #1004–#1009, `59d02f788` → `32897e80a`)
+
+MATURITY_IMPACT: operator research questions now close with the research that was done. Stored prices and Finviz fields are checked against an independent source every day. Every Telegram message passes one editor, which is in shadow mode first. Execution posture UNCHANGED: no order, stop, size or broker write. The Schwab transport itself was not edited.
+
+- **Lifecycle docs (#1004).** As-Is and Future lifecycle documents: 26 lifecycles, 57 feedback edges (11 fire).
+- **Desk answers (#1005).**
+  - A dictated "a x t i" resolves to AXTI.
+  - A levels question keeps its levels.
+  - A per-subject dossier covers company, earnings, analysts, catalysts, news, sector, industry, research, thesis and position, with a source pill on every line.
+- **Research join-back (#1006).**
+  - The HPE ask (09:12) was researched by Hermes at 09:16 but never delivered: the pending waited on a store Hermes does not write.
+  - It is now joined by pending id and delivered as a follow-up. First delivery: 10:36 ET.
+  - A research ask answers immediately with house facts.
+  - Hermes is asked the operator's own question.
+  - New monitor rule `RESEARCH_LANDED_UNSENT`.
+- **Spelled-out pills (#1007).** A `Key:` line on every reply; labels read "Trade-AI data" / "Looked up outside Trade-AI" / "AI model (DeepSeek)".
+- **Data integrity (#1008).**
+  - **Repricer closes:** it wrote sub-share position values as closes (XLI 7.49 vs 169). This was the architect's corrupt-price gap.
+  - **Alpaca prev_close** was a session stale.
+  - **Finviz** was read by position; units were mislabelled 1,000×, so a $50B screen admitted $50M names.
+  - **alpaca_vantage health** never recorded (cron without `.env`).
+  - **Social-scalp discovery** was empty every Monday.
+  - **Retention** aborted on referenced rows.
+  - **New daily controls:** Yahoo litmus, Finviz view contracts, EOD consolidated closes.
+- **Telegram (#1009).**
+  - **Communications Editor** (HTML, GUIDs, duplicate hold, CIO agreement, links), now in shadow mode.
+  - **Morning brief:** one 07:30 ET weekday brief; the 20:00 brief is removed.
+  - **Routing:** generic alerts no longer reach the Proposal Decisions group.
+  - **Noise:** no "CIO Run Complete" from runs with no action.
+  - **Scalp GO alerts** on Trade-AI criteria, screener and social.
+- **Research escalation, measured (docs).** `docs/architecture/RESEARCH_ESCALATION_2026-09-14.md`: no quality-based escalation exists. For operator questions, Brave is off and Hermes is the only step that runs.
+- **Known and named, not fixed.**
+  - `GAP_RESOLVER_LIVE` cannot yet arm free steps alone.
+  - No sufficiency test between research steps.
+  - Brave is not wired for the desk.
+  - Hermes gets no web evidence.
+  - The editor goes live only after one trading day of shadow receipts.
+  - `ticker_snapshot_daily` rvol history before 09-14 is unusable.
+
 ## 2026-09-13 (night) — Operator desk: every reply cites its sources, named stocks answered in full, memory per subject, gaps resolved only on proof (PRs #998–#1001, `8513d12e9` → `a8a62217e`)
 
 MATURITY_IMPACT: the Telegram desk answers from the Command Center first and says so; the data gap queue is reconnected and cannot report work it did not prove; agent answers are checked against the facts they were given. Execution posture UNCHANGED — every PR `READ_ONLY_ADVISORY`, no broker, order, stop or sizing code touched. Path map: `docs/OPERATOR_REPLY_ROUTING.md`; gap queue: `docs/GAP_RESOLUTION.md`; rules: `AGENTS.md` §7 "Operator replies, data gaps and agent numbers".
