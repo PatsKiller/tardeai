@@ -570,6 +570,15 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                     if isinstance(parsed.get("symbols"), list):
                         # Resolved subjects stay; Flash may only add verified ones.
                         _merge_flash_symbols(out, parsed["symbols"])
+                    # A price / levels / get-back-in ask the regexes matched is a desk
+                    # pull, and Flash may not demote it. 2026-09-14 AXTI: Flash said
+                    # freeform, the re-entry needs were dropped, and the reply said
+                    # price and support were DATA_UNAVAILABLE while the desk row held both.
+                    kept = [n for n in heuristic_needs if n in ("reentry_ready", "reentry_levels")]
+                    if kept and heuristic_intent != "meta_system" and out["intent"] != "meta_system":
+                        if out["intent"] in ("freeform", "unclear", "other", "desk_question"):
+                            out["intent"] = heuristic_intent
+                        out["needs"] = list(dict.fromkeys(list(out.get("needs") or []) + kept))
                     out["ok"] = True
                     out["source"] = "deepseek_flash"
                     out["model"] = llm.get("model") or "deepseek-flash"
@@ -1049,6 +1058,27 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
                 "reason": f"{s} not in holdings snapshot (may be flat/watch)", "gap_type": "soft",
             })
 
+    # A named stock's last close and desk levels. Without them the model was told
+    # to say DATA_UNAVAILABLE for price and support/resistance that the house held.
+    if symbols:
+        px = subject_price_facts(symbols[:3])
+        if px:
+            facts["price_for_symbols"] = {
+                s: {k: v for k, v in p.items() if k != "bars"} for s, p in px.items()
+            }
+            sources.append("ticker_prices")
+        lv, lv_as_of, _lv_path = _subject_levels(symbols[:3])
+        if lv:
+            facts["levels_for_symbols"] = {s: _level_facts(row) for s, row in lv.items()}
+            facts["levels_as_of"] = lv_as_of
+            sources.append("reentry_decision_desk")
+        for s in symbols[:3]:
+            if s not in (px or {}) and s not in (lv or {}):
+                soft_gaps.append({
+                    "domain": "quote_price", "symbol": s, "field": "price",
+                    "reason": f"no close or desk row on file for {s}", "gap_type": "soft",
+                })
+
     # Symbol theses (fail-soft)
     for sym in symbols[:6]:
         try:
@@ -1468,6 +1498,9 @@ def answer_freeform_with_flash(
             "2f) If TRADE_AI_FACTS.contract_findings is present, say those facts were available but not "
             "assembled for this reply — never that they are empty.\n"
             "2g) Never promise to follow up or say anything was queued.\n"
+            "2h) For a named stock, when TRADE_AI_FACTS.price_for_symbols or levels_for_symbols is "
+            "present, give its last close with the date, then support (entry zone, SMA50, stop) and "
+            "resistance and target from those facts — never DATA_UNAVAILABLE for them.\n"
             "3) Never invent holdings or re-entry candidate dumps.\n"
             "4) Mention SOFT_GAPS briefly when relevant.\n"
             "5) Keep reply under ~900 chars; Telegram markdown ok (*bold*, `code`).\n"
@@ -2165,6 +2198,19 @@ def _subject_levels(symbols: list[str]) -> tuple[dict[str, dict[str, Any]], Opti
         return {}, None, None
     by = {str(r.get("symbol") or "").upper(): r for r in rows or [] if isinstance(r, dict)}
     return {s: by[s] for s in symbols if s in by}, as_of, path
+
+
+def _level_facts(row: dict[str, Any]) -> dict[str, Any]:
+    """The levels a price / support / resistance question needs, from one desk row."""
+    res = row.get("resistance")
+    out = {k: row.get(k) for k in ("price", "price_as_of", "rsi", "sma_20", "sma_50", "sma_200",
+                                   "entry_low", "entry_high", "stop", "target", "rr")
+           if row.get(k) is not None}
+    if isinstance(res, dict):
+        out["resistance"] = {k: res.get(k) for k in ("level", "state", "as_of") if res.get(k) is not None}
+    elif res is not None:
+        out["resistance"] = res
+    return out
 
 
 def _fmt_price(v: Any) -> str:
