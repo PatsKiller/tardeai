@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `3b183786cccb492d880c9131b75bee323578df607afefe4390699de3c0df62c6`
+**Tree fingerprint:** `69b7c8e4f10fce3c032d1339073575984863bf71042db6985b524fee86deac0d`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2511 |
-| Markdown (excl. this INDEX) | 2087 |
+| Files under `docs/` (excl. this INDEX) | 2512 |
+| Markdown (excl. this INDEX) | 2088 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2020 |
+| Header OK | 2021 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2140 |
+| review_required | 2141 |
 
 ## Markdown tree
 
@@ -383,6 +383,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/QUOTE_PIPELINE_UNIFICATION_SCOPING_2026-08-27.md` | Quote Pipeline Unification — Scoping (Audit Finding H4) | review_required | OK | `d3580a82544b` |
 | `docs/architecture/REPORTS_DESK_V1.md` | Reports Desk v1 — Total Rebuild (2026-07-16, night) | review_required | OK | `3d92abab9c57` |
 | `docs/architecture/REPORTS_DESK_V3.md` | Reports Desk v3 — One Corpus · The System Rollup · Zero Garbage (2026-07-17) | review_required | OK | `d3698668ed8e` |
+| `docs/architecture/RESEARCH_ESCALATION_2026-09-14.md` | Research escalation — who researches what, and when one step hands off to the next | review_required | OK | `2129002af337` |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V1.md` | Research Intelligence v1 — Architecture (Command Center v3) | review_required | OK | `451e1ddbd60c` |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2.md` | Research Intelligence v2 — Freshness, Archive, Retirement Pillar | review_required | OK | `4849198f52a3` |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_1_NARRATIVE_UI.md` | Research Intelligence v2.1 — Narrative Quality + Editorial UI | review_required | OK | `742e4d1846ac` |
