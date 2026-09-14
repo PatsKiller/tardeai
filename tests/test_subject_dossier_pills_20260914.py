@@ -97,7 +97,7 @@ def test_every_fact_line_carries_the_house_pill_and_outside_is_stated(runtime):
         if ln.startswith(("*AXTI", "Not on file")):
             continue
         assert ln.startswith((sd.PILL_HOUSE, sd.PILL_OUTSIDE)), ln
-    assert "🔵 Outside: nothing was looked up outside Trade-AI" in text
+    assert "🔵 Looked up outside Trade-AI: nothing for these lines" in text
 
 
 def test_missing_sections_are_named_not_hidden(runtime):
@@ -143,7 +143,7 @@ def test_curate_puts_legend_pill_header_and_dossier_under_the_answer(monkeypatch
     out = desk._curate_from_evidence("axti?", {"available": {"subject_dossier_text": "*AXTI — full picture*\n🟢 Trade-AI x"}})
     lines = out["text"].split("\n")
     assert lines[0] == sd.LEGEND
-    assert lines[1].startswith("🟢 Trade-AI desk answer")
+    assert lines[1].startswith("🟢 Trade-AI data — desk answer")
     assert "*AXTI — full picture*" in out["text"] and out["dossier"] is True
 
 
@@ -151,7 +151,7 @@ def test_model_written_summary_gets_the_deepseek_pill(monkeypatch):
     monkeypatch.setattr(desk, "_curate_from_evidence_core",
                         lambda t, ev: {"ok": True, "text": "summary", "source": "freeform_flash", "model": "deepseek-flash"})
     out = desk._curate_from_evidence("x", {"available": {"subject_dossier_text": "*AXTI — full picture*"}})
-    assert out["text"].split("\n")[1].startswith("🟣 DeepSeek wrote the summary below")
+    assert out["text"].split("\n")[1].startswith("🟣 AI model (DeepSeek) wrote the summary below")
 
 
 def test_empty_evidence_becomes_the_dossier(monkeypatch):
@@ -197,8 +197,8 @@ def test_finalize_adds_the_origin_pill_line_above_sources():
     lines = final.split("\n")
     origin = [ln for ln in lines if ln.startswith("Origin: ")]
     assert len(origin) == 1
-    assert origin[0] == ("Origin: 🟢 Trade-AI data (2 stores) · 🔵 Outside: nothing looked up · "
-                         "🟣 DeepSeek: intent classification only")
+    assert origin[0] == ("Origin: 🟢 Trade-AI data (2 stores) · 🔵 Looked up outside Trade-AI: nothing · "
+                         "🟣 AI model (DeepSeek): intent classification only")
     assert lines.index(origin[0]) == lines.index(next(ln for ln in lines if ln.startswith("Sources:"))) - 1
     assert prov.sources_line_present and prov.authority_tail_present
 
@@ -207,8 +207,8 @@ def test_origin_names_an_outside_lookup_separately_from_the_model():
     line = rp.origin_line(["CIO snapshot"], ["governed_search — analyst view for SPCX had no house coverage (answered)",
                                              "deepseek-flash — general knowledge where labelled; numbers from the stores above"],
                           None)
-    assert "🔵 Outside: governed_search — analyst view for SPCX" in line
-    assert "🟣 DeepSeek: general knowledge where labelled" in line
+    assert "🔵 Looked up outside Trade-AI: governed_search — analyst view for SPCX" in line
+    assert "🟣 AI model (DeepSeek): general knowledge where labelled" in line
 
 
 def test_refinalizing_does_not_duplicate_the_origin_line():
@@ -219,5 +219,5 @@ def test_refinalizing_does_not_duplicate_the_origin_line():
 
 
 def test_no_store_and_no_model_is_said_out_loud():
-    assert rp.origin_line([], [], None) == ("Origin: 🟢 Trade-AI: no store read · 🔵 Outside: nothing looked up · "
-                                            "🟣 DeepSeek: not used")
+    assert rp.origin_line([], [], None) == ("Origin: 🟢 Trade-AI data: no store read · 🔵 Looked up outside Trade-AI: nothing · "
+                                            "🟣 AI model (DeepSeek): not used")

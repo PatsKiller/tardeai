@@ -138,13 +138,13 @@ def test_completed_hermes_result_is_delivered_as_a_follow_up(ledgers, monkeypatc
     assert out["fulfilled"] == 1 and _statuses(ledgers) == ["open", "fulfilled"]
     body = send.sent[0][1]
     assert "Hermes research landed" in body and "You asked" in body
-    assert "🟣 Entry only on a hold above the ~$55.99 breakout level." in body
+    assert "🟣 AI model: Entry only on a hold above the ~$55.99 breakout level." in body
     assert body.index("Finding (high)") < body.index("Finding (low)")
     assert "Still unknown: Q3 segment margins; Backlog and orders" in body
     # A model is not outside data: Hermes is named once, on the 🟣 model role.
     origin = next(ln for ln in body.split("\n") if ln.startswith("Origin:"))
-    assert "🟣 DeepSeek: Hermes research over Trade-AI evidence" in origin
-    assert "Outside: nothing looked up" in origin and "Went outside:" not in body
+    assert "🟣 AI model (DeepSeek): Hermes research over Trade-AI evidence" in origin
+    assert "🔵 Looked up outside Trade-AI: nothing" in origin and "Went outside:" not in body
     assert body.rstrip().endswith("READ_ONLY_ADVISORY")
 
 

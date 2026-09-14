@@ -1488,7 +1488,7 @@ def answer_freeform_with_flash(
             "ONLY from TRADE_AI_FACTS. If missing, say DATA_UNAVAILABLE. Never say a field is "
             "empty when TRADE_AI_FACTS carries it.\n"
             "2b) Anything from general market history or theory (seasonality, election cycles, "
-            "sector rotation lore) must be prefixed '🟣 General market history (model knowledge, not "
+            "sector rotation lore) must be prefixed '🟣 AI model (DeepSeek) — General market history (model knowledge, not "
             "Trade-AI data):' and kept to one short paragraph.\n"
             "2c) If TRADE_AI_FACTS.research_status is present, repeat it verbatim as its own line.\n"
             "2d) House first: when TRADE_AI_FACTS.research_on_topic is present, cite what those rows "
@@ -2963,8 +2963,9 @@ def _plain(text: Any, n: int) -> str:
 
 
 def format_hermes_section(result: dict[str, Any]) -> str:
-    """Hermes' answer, every line tagged 🟣 (a model wrote it from Trade-AI evidence)."""
-    pill = "🟣"
+    """Hermes' answer, every line labelled as AI-model output (it read Trade-AI evidence)."""
+    # Spelled out on every line (operator 2026-09-14: a bare coloured dot means nothing).
+    pill = "🟣 AI model:"
     model = str(result.get("model") or "deepseek-flash")
     try:
         done = datetime.fromisoformat(str(result.get("completed_ts")).replace("Z", "+00:00"))
@@ -2977,7 +2978,7 @@ def format_hermes_section(result: dict[str, Any]) -> str:
     if result.get("thesis_stance"):
         bits.append(f"stance {_plain(result['thesis_stance'], 20)}")
     n_ev = len(result.get("evidence_links") or result.get("source_refs") or [])
-    lines = [f"{pill} *Hermes research* — {model} read {n_ev} Trade-AI evidence item(s); "
+    lines = [f"{pill} Hermes research — {model} read {n_ev} Trade-AI evidence item(s); "
              f"model knowledge where it goes beyond them · " + " · ".join(bits)]
     for a in (result.get("answers") or [])[:4]:
         if isinstance(a, dict) and a.get("summary"):
@@ -2993,7 +2994,8 @@ def format_hermes_section(result: dict[str, Any]) -> str:
     lims = [x for x in (result.get("limitations") or []) if x][:2]
     if lims:
         lines.append(f"{pill} Limits: " + "; ".join(_plain(x, 160) for x in lims))
-    lines.append("🔵 Outside: Hermes did not search the web; it read Trade-AI evidence only.")
+    lines.append("🔵 Looked up outside Trade-AI: nothing — Hermes did not search the web; "
+                 "it read Trade-AI evidence only.")
     return "\n".join(lines)
 
 
@@ -3465,9 +3467,9 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     if body:
         if src in ("deepseek_flash", "freeform_flash"):
             header = (f"{sd.PILL_MODEL} wrote the summary below from Trade-AI facts "
-                      "(numbers from 🟢 stores; general knowledge only where labelled):")
+                      "(every number comes from 🟢 Trade-AI data; general knowledge only where labelled):")
         else:
-            header = f"{sd.PILL_HOUSE} desk answer (computed, no model):"
+            header = f"{sd.PILL_HOUSE} — desk answer, computed from stored data, no AI model:"
         text += f"{header}\n{body}\n\n"
     text += dossier
     if tail:
@@ -3682,7 +3684,7 @@ def handle_operator_desk_question(
                 # Answer with those now; Hermes' answer follows on the same pending.
                 curated_now = _curate_from_evidence(text, evidence)
                 queued_now = (
-                    "🟣 Deeper research queued: Hermes (DeepSeek reading Trade-AI evidence) — "
+                    "🟣 AI model (DeepSeek) · Deeper research queued: Hermes reads Trade-AI evidence — "
                     + (f"{eta_text} until it lands" if eta_text else "it lands when the worker runs")
                     + f". Its answer follows here as a reply. Pending: `{pending_id}`"
                 )
@@ -4068,8 +4070,13 @@ def try_fulfill_pending_replies(
             if hermes_result:
                 answer_text = _insert_before_authority_tail(answer_text, format_hermes_section(hermes_result))
             landed = "Hermes research landed" if hermes_result else "Trade-AI data landed"
+            try:
+                from scripts.lib.reply_provenance import LEGEND as _pill_key  # noqa: PLC0415
+            except ImportError:  # pragma: no cover -- hub import path
+                from lib.reply_provenance import LEGEND as _pill_key  # type: ignore  # noqa: PLC0415
             body, _prov = _finalize_operator_reply(
                 f"📬 *Follow-up* `{row.get('pending_id')}` — {landed}\n"
+                f"{_pill_key}\n"
                 f"You asked{(' at ' + _asked_at_text(row)) if _asked_at_text(row) else ''}: "
                 f"\"{_plain(row.get('operator_text'), 160)}\"\n\n"
                 + _with_sources_footer(answer_text, evidence, curated),
