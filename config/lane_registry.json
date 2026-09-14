@@ -1450,6 +1450,8 @@
       "state": "RETIRED",
       "state_since": "2026-09-14",
       "state_reason": "Duplicate morning-brief sender at 08:05 ET. Operator decision 2026-09-14: one brief at 07:30 ET (morning-brief-0730). Crontab line kept as a dated comment.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "Telegram export 2026-08-29..09-14: 50 identical morning briefs in 16 days, delivered by send_morning_brief (08:00), aegis_morning_brief_delivery (08:05) and aegis_overnight (20:00). Operator chose one 07:30 ET brief on 2026-09-14.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/aegis_brief.log"
@@ -1466,6 +1468,8 @@
       "state": "RETIRED",
       "state_since": "2026-09-14",
       "state_reason": "aegis_overnight.py ran at 20:00 from BOTH cron and aegis-overnight.timer, and its brief-delivery phase sent the morning brief at night. The timer stays; the cron duplicate is a dated comment; the brief phase is removed in code.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab '0 20 * * *' and aegis-overnight.timer (OnCalendar 20:00) both ran scripts/aegis_overnight.py; its brief-delivery phase sent the morning brief at ~20:00 ET (Telegram export). Operator decision 2026-09-14.",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/aegis_overnight.log"
