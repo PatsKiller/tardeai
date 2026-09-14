@@ -53,8 +53,8 @@ Agents never execute trades. Their outputs are advisory inputs to the proposal l
 | Fundamentals | `ticker_enrichment_cache.json`, strategy cards, `ticker_prices` | RSI, SMA, ATR, sector |
 | Intelligence | RAG (`rag_retrieval`), Hermes block, news/social sentiment | Agent-scoped; Iris content-gap warnings when thin |
 | Collaboration | Peer agent notes (same batch + 30d DB), fused signals | Confidence normalized 0–1 before injection |
-| Governance | Strategy YAML playbook, calibration context, G1–G10 global rules | Performance WR/PF adjusts confidence guidance |
-| Contract | `cio_agent_v2` JSON | `evidence[]`, `data_i_doubt`, reason codes |
+| Governance | Strategy YAML playbook, calibration context, G0 use-only-supplied-facts rule, G1–G10 global rules | Performance WR/PF adjusts confidence guidance |
+| Contract | `cio_agent_v2` JSON | `evidence[]`, `data_i_doubt`, reason codes; `number_grounding` verdict (numbers checked against the prompt, `lib/agent_number_grounding.py`) |
 
 **Symbol gate (2026-07-09):** `gate_watchlist_symbol()` runs before every job. Invalid shapes (numeric garbage), denylist tokens (CEO, AI, …), and unknown symbols are failed without LLM spend. Portfolio-held tickers pass shape check via `holdings.json` allowlist.
 

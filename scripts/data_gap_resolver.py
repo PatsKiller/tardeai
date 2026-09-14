@@ -231,23 +231,26 @@ def verify_dispatched(conn, cur, dry_run=False, limit=200):
     """Settle gaps whose agent job has finished. Returns (resolved, reopened, abandoned, waiting).
 
     Resolved only when the job completed AND wrote a result row (result_id) --
-    a durable artifact that would not exist had the work not run. A dead job
+    a durable artifact that would not exist had the work not run -- and that
+    result was not demoted for numbers missing from its supplied data (rule G0). A dead job
     reopens the gap with the failure recorded; after MAX_DISPATCH_ATTEMPTS
     failures the gap is abandoned with its reason instead of re-queued hourly.
     """
     cur.execute("""
         SELECT g.id, g.symbol, g.gap_type, g.resolution_data->>'job_id',
-               j.status, j.result_id, COALESCE((g.resolution_data->>'attempts')::int, 0)
+               j.status, j.result_id, COALESCE((g.resolution_data->>'attempts')::int, 0),
+               COALESCE('UNGROUNDED_NUMBERS' = ANY(r.reason_codes), false)
         FROM data_gap_registry g
         LEFT JOIN watchlist_agent_jobs j ON j.id = g.resolution_data->>'job_id'
+        LEFT JOIN watchlist_agent_results r ON r.id = j.result_id
         WHERE g.status = 'enriching' AND g.resolution_data ? 'job_id'
         ORDER BY g.id
         LIMIT %s
     """, [limit])
     rows = cur.fetchall()
     resolved = reopened = abandoned = waiting = 0
-    for gap_id, symbol, gap_type, job_id, job_status, result_id, attempts in rows:
-        if job_status == 'completed' and result_id:
+    for gap_id, symbol, gap_type, job_id, job_status, result_id, attempts, ungrounded in rows:
+        if job_status == 'completed' and result_id and not ungrounded:
             if not dry_run:
                 mark_resolved(cur, gap_id, resolved_by='gap_resolver_v2', evidence={
                     'job_id': job_id, 'result_id': result_id,
@@ -256,7 +259,10 @@ def verify_dispatched(conn, cur, dry_run=False, limit=200):
             resolved += 1
             log(f"  VERIFIED {symbol}: {gap_type} (job {job_id} -> {result_id})")
         elif job_status is None or job_status in _JOB_DEAD or job_status == 'completed':
-            why = f"job {job_id} {job_status or 'missing'}" + (" without a result row" if job_status == 'completed' else "")
+            if job_status == 'completed' and result_id:
+                why = f"job {job_id} result {result_id} was demoted for unverified numbers"
+            else:
+                why = f"job {job_id} {job_status or 'missing'}" + (" without a result row" if job_status == 'completed' else "")
             if attempts + 1 >= MAX_DISPATCH_ATTEMPTS:
                 if not dry_run:
                     abandon(cur, gap_id, reason=f"{why}; {attempts + 1} failed attempts")
