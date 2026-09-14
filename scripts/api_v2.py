@@ -13794,6 +13794,23 @@ def _consumption_lane_registry():
     return _json_clean({"ok": True, **_lc.registry_lane_map()})
 
 
+def _consumption_spend(query=None):
+    """GET /api/v2/consumption/spend?period=today|yesterday|week|last_week|month|last_month
+
+    Real paid AI and search spend by provider, model and process (scheduled vs ad hoc), with the
+    peak/off-peak split and what the cap ledger counted. Operator ask 2026-09-14. Read-only.
+    """
+    import sys as _sys
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib import llm_spend as _spend
+    q = query or {}
+    raw = q.get("period") or ["today"]
+    period = (raw[0] if isinstance(raw, list) else raw) or "today"
+    if period not in _spend.PERIODS:
+        return _json_clean({"ok": False, "error": f"period must be one of {list(_spend.PERIODS)}"})
+    return _json_clean({"ok": True, "report": _spend.build_report(period)})
+
+
 def _consumption_logs(query=None):
     import sys as _sys
 
@@ -46102,6 +46119,7 @@ ROUTES = {
     "/api/v2/consumption/processes": lambda: _consumption_processes(),
     "/api/v2/consumption/lane-registry": lambda: _consumption_lane_registry(),
     "/api/v2/consumption/logs": _consumption_logs,
+    "/api/v2/consumption/spend": _consumption_spend,
     "/api/v2/system-health": lambda: _system_health_dashboard(),
     "/api/v2/data-product-health": lambda: _data_product_health(),
     "/api/v2/cost-dashboard": lambda: _cost_dashboard(),

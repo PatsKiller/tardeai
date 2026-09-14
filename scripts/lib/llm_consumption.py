@@ -750,6 +750,47 @@ def test_ledger_writes_allowed() -> bool:
         "1", "true", "yes", "on")
 
 
+CALIBRATION_WINDOW_DAYS = int(os.environ.get("LLM_COST_CALIBRATION_DAYS", "7"))
+CALIBRATION_MIN_SAMPLES = int(os.environ.get("LLM_COST_CALIBRATION_MIN_SAMPLES", "20"))
+CALIBRATION_HEADROOM = float(os.environ.get("LLM_COST_CALIBRATION_HEADROOM", "1.5"))
+
+
+def calibrated_projected_usd(process_id: str, worst_case_usd: float, *, cur=None) -> dict:
+    """What one call of this process is expected to cost, measured from its own settled calls.
+
+    Operator decision 2026-09-14: caps count actual spend. The pre-call check used the WORST case
+    for every call (32,000 input tokens at list price, +15%): about $0.0085-0.0177 per call, when the
+    measured settled cost was $0.0002-0.0010. Advisory opinions projected $214.61 in the week to
+    2026-09-14 against $4.54 settled, so a $0.50 global cap refused research on phantom money.
+
+    Rule: the 90th percentile of this process's settled actual cost over the last
+    CALIBRATION_WINDOW_DAYS days, times CALIBRATION_HEADROOM, never above the worst case. With
+    fewer than CALIBRATION_MIN_SAMPLES settled calls it stays on the worst case -- an unmeasured
+    process is not trusted to be cheap. Settlement still records the real cost of every call.
+    """
+    worst = max(0.0, float(worst_case_usd or 0))
+    own = cur is None
+    if own:
+        ensure_schema()
+        cur = _conn().cursor()
+    cur.execute(
+        """
+        SELECT COUNT(*), percentile_cont(0.9) WITHIN GROUP (ORDER BY actual_usd)
+        FROM llm_cost_reservations
+        WHERE process_id = %s AND status = 'settled' AND actual_usd > 0
+          AND created_at >= NOW() - make_interval(days => %s)
+        """,
+        (str(process_id), int(CALIBRATION_WINDOW_DAYS)),
+    )
+    n, p90 = cur.fetchone()
+    n = int(n or 0)
+    if n < CALIBRATION_MIN_SAMPLES or p90 is None:
+        return {"projected_usd": worst, "basis": "worst_case_unmeasured", "samples": n, "worst_case_usd": worst}
+    est = min(worst, float(p90) * CALIBRATION_HEADROOM)
+    return {"projected_usd": est, "basis": f"p90_settled_{CALIBRATION_WINDOW_DAYS}d_x{CALIBRATION_HEADROOM:g}",
+            "samples": n, "worst_case_usd": worst}
+
+
 def reserve_projected_cost(
     process_id: str,
     projected_usd: float,

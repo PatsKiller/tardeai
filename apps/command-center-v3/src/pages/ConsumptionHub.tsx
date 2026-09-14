@@ -4,6 +4,7 @@ import { lanePolicyColor, lanePolicyHint, PROCESS_LANE_POLICIES, runManualCloud 
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
+import SpendPanel from '../components/SpendPanel'
 
 const GREEN = '#22c55e', RED = '#ef4444', AMBER = '#f59e0b', BLUE = '#60a5fa', MUTED = '#94a3b8', TEXT = '#f8fafc'
 
@@ -145,6 +146,9 @@ export default function ConsumptionHub() {
         <span>Grok only</span> · <span>Grok or ChatGPT (pick one)</span> · <span>Both preferred</span> · <span>Ensemble (run both)</span>.
         Stop advisories stay <b>Manual</b> — use Grok batch (top 6) on Portfolio → Stop Management or the batch row here.
       </div>
+
+      {/* Real paid spend: provider · model · process · peak/off-peak (operator ask 2026-09-14) */}
+      <SpendPanel />
 
       {/* OAuth lane status */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10, marginBottom: 16 }}>

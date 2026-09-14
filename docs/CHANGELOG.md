@@ -4,6 +4,24 @@ Status:      ACTIVE
 as_of:       2026-09-13T23:59:00-04:00
 Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
 
+## 2026-09-14 — Spend truth: real dollars by provider, model and process; caps on measured cost
+
+MATURITY_IMPACT: the operator can see and receive real AI and search spend daily, weekly and monthly, with the peak / off-peak split. Caps compare against measured cost, and one durable $2.00/day global cap replaces three conflicting overrides. Execution posture UNCHANGED.
+
+- **Three spend numbers were conflated.** Week to 09-14:
+  - real $4.73;
+  - counted $5.50;
+  - worst-case projected $214.61 for advisory opinions.
+  - A $0.50 cap therefore refused research on phantom money. The live cap was a forgotten $7.00 backfill override; the portfolio server carried $1.50.
+- **Measured projection.** `calibrated_projected_usd`: p90 of settled cost × 1.5, capped at the worst case.
+- **Test rows.** The cap-race test ids are now `test_caprace_` (as `caprace_` they added $1.20 on 09-09).
+- **Spend surfaces.**
+  - `lib/llm_spend.py` and `GET /api/v2/consumption/spend`;
+  - the Command Center Spend panel;
+  - `llm_spend_report.py` daily, weekly and monthly Telegram texts.
+- **First measurement.** Week of 09-07: $5.45 real, 38% on peak; Advisory Desk ran 8,424 scheduled calls on peak.
+- **Docs.** `docs/LLM_SPEND.md`.
+
 ## 2026-09-14 — Operator answers come back, prices are proven, Telegram is edited (PRs #1004–#1009, `59d02f788` → `32897e80a`)
 
 MATURITY_IMPACT: operator research questions now close with the research that was done. Stored prices and Finviz fields are checked against an independent source every day. Every Telegram message passes one editor, which is in shadow mode first. Execution posture UNCHANGED: no order, stop, size or broker write. The Schwab transport itself was not edited.

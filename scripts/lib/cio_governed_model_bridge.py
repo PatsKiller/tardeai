@@ -837,11 +837,18 @@ def execute_governed_call(
     except RuntimeError as e:
         return _error("COST_CONFIGURATION_INVALID", str(e), status=500)
 
-    projected = crm.projected_max_cost_usd(
+    worst_case = crm.projected_max_cost_usd(
         model_id=model_id,
         max_input_tokens=cfg.get("max_input_tokens") or 32000,
         max_output_tokens=max_tokens,
     )
+    # Caps count actual spend (operator decision 2026-09-14): project what this process's calls
+    # have actually cost, not the 32k-token worst case that made a $0.50 cap refuse on phantom money.
+    try:
+        calibration = lc.calibrated_projected_usd(process_id, worst_case)
+    except Exception as e:  # noqa: BLE001 -- an unmeasurable process stays on the worst case
+        calibration = {"projected_usd": worst_case, "basis": f"worst_case_calibration_error:{type(e).__name__}"}
+    projected = float(calibration["projected_usd"])
 
     try:
         gcap = float(GLOBAL_DAILY_USD_CAP) if GLOBAL_DAILY_USD_CAP not in (None, "") else None
