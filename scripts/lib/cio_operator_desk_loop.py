@@ -22,6 +22,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -2788,19 +2789,26 @@ def _enqueue_hermes_research(
             plan if isinstance(plan, dict) else {"plan_id": plan_id, "symbols": symbols},
             operator_forced=True,
             reason="operator_desk_research_need",
+            # 2026-09-14 HPE: the operator asked about entry, support/resistance,
+            # analysts and volume; Hermes was sent the generic "what research would
+            # change the advisory" question and answered that instead.
+            questions=operator_research_questions(symbols, operator_text),
         )
         out["ok"] = bool((emit or {}).get("ok", True)) if isinstance(emit, dict) else True
         out["emitted"] = 0 if isinstance(emit, dict) and emit.get("skipped") else 1
         out["plan_id"] = plan_id
         out["emit"] = emit if isinstance(emit, dict) else {"raw": str(emit)[:200]}
         _append_jsonl(
-            PROJECT_ROOT / "data" / "cio" / "cio_operator_gap_requests.jsonl",
+            OPERATOR_GAP_REQUESTS_PATH,
             {
                 "ts": _now(),
                 "pending_id": pending_id,
                 "chat_id": chat_id,
                 "kind": "hermes_operator_forced",
                 "plan_id": plan_id,
+                # A reused request answers from ANOTHER plan's result; the join
+                # needs the research id to find it.
+                "research_id": (emit or {}).get("research_id") if isinstance(emit, dict) else None,
                 "symbols": symbols,
                 "authority": AUTHORITY,
             },
@@ -2808,6 +2816,194 @@ def _enqueue_hermes_research(
     except Exception as exc:
         out["error"] = f"{type(exc).__name__}:{exc}"
     return out
+
+
+# ── Hermes join-back ─────────────────────────────────────────────────────────
+#
+# 2026-09-14 09:12 ET the operator asked "Do some more research on HPE ...".
+# Hermes claimed the request at 09:15, completed it at 09:16 (critic VALID) and
+# wrote hermes_research_results.jsonl. The pending opr_74cc87d6ae62 waited on a
+# PROMOTED row in hermes_research_intelligence, which the Hermes CIO worker
+# never writes, so the answer could not reach the operator: the pending would
+# have been retracted as "could not answer" at 11:12 with the research on disk.
+# 0 of 2 research pendings on file were ever fulfilled. The join key is the
+# pending id recorded next to the Hermes plan / research id at enqueue time.
+
+#: pending_id → Hermes plan_id / research_id, written by _enqueue_hermes_research.
+OPERATOR_GAP_REQUESTS_PATH = PROJECT_ROOT / "data" / "cio" / "cio_operator_gap_requests.jsonl"
+#: hermes_bridge_backend sends at most 220 characters of each question.
+_HERMES_QUESTION_CHARS = 220
+_HERMES_OPERATOR_QUESTIONS = 3
+_ET = ZoneInfo("America/New_York")
+
+
+def operator_research_questions(symbols: list[str], operator_text: str) -> Optional[list[dict[str, str]]]:
+    """The operator's own question, split into Hermes-sized pieces, then the thesis check.
+
+    None when there is no text, so the Hermes default question set applies.
+    """
+    words = " ".join(str(operator_text or "").split()).split()
+    if not words:
+        return None
+    subject = ", ".join(str(s).upper() for s in (symbols or []) if str(s).strip())[:40] or "the book"
+    prefix = f"{subject} — operator asked: "
+    room = _HERMES_QUESTION_CHARS - len(prefix)
+    pieces: list[str] = []
+    cur = ""
+    for w in words:
+        if cur and len(cur) + 1 + len(w) > room:
+            pieces.append(cur)
+            cur = w
+        else:
+            cur = f"{cur} {w}".strip()
+    if cur:
+        pieces.append(cur)
+    pieces = pieces[:_HERMES_OPERATOR_QUESTIONS]
+    out = [{"intent": "operator_question", "text": (prefix + p)[:_HERMES_QUESTION_CHARS]} for p in pieces]
+    out.append({"intent": "thesis_check",
+                "text": f"What research would change the advisory on {subject} under the live desk thesis?"})
+    return out
+
+
+def _hermes_store():
+    try:
+        from scripts.lib import cio_hermes_research as hr  # noqa: PLC0415
+    except ImportError:  # pragma: no cover -- hub import path
+        from lib import cio_hermes_research as hr  # type: ignore  # noqa: PLC0415
+    return hr
+
+
+def _hermes_requests_for_pending(pending_id: str) -> list[dict[str, Any]]:
+    """Hermes request metas (projection rows) this pending caused, newest last."""
+    if not pending_id:
+        return []
+    asks = [r for r in _read_jsonl(OPERATOR_GAP_REQUESTS_PATH)
+            if r.get("pending_id") == pending_id and r.get("kind") == "hermes_operator_forced"]
+    if not asks:
+        return []
+    try:
+        hr = _hermes_store()
+        by_rid = (hr._load_projection().get("by_research_id") or {})
+    except Exception:  # noqa: BLE001
+        return []
+    plan_ids = {str(a.get("plan_id")) for a in asks if a.get("plan_id")}
+    rids = {str(a.get("research_id")) for a in asks if a.get("research_id")}
+    metas = [dict(m, research_id=rid) for rid, m in by_rid.items()
+             if isinstance(m, dict) and (rid in rids or str(m.get("plan_id")) in plan_ids)]
+    return sorted(metas, key=lambda m: str(m.get("completed_ts") or m.get("created_ts") or ""))
+
+
+def _hermes_result_by_id(result_id: str) -> Optional[dict[str, Any]]:
+    path = _hermes_store().RESULT_PATH
+    try:
+        lines = Path(path).read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    for line in reversed(lines):
+        if result_id in line:
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if row.get("result_id") == result_id:
+                return row
+    return None
+
+
+def hermes_result_for_pending(pending_id: str) -> Optional[dict[str, Any]]:
+    """The newest completed Hermes result this pending asked for, or None."""
+    for meta in reversed(_hermes_requests_for_pending(pending_id)):
+        rid = meta.get("latest_result_id")
+        if str(meta.get("status")) == "completed" and rid:
+            res = _hermes_result_by_id(str(rid))
+            if res:
+                return res
+    return None
+
+
+def hermes_failure_for_pending(pending_id: str) -> Optional[str]:
+    """Why Hermes failed this pending's research, when every request it caused failed."""
+    metas = _hermes_requests_for_pending(pending_id)
+    if metas and all(str(m.get("status")) == "failed" for m in metas):
+        return str(metas[-1].get("error") or metas[-1].get("last_error") or "research run failed")[:160]
+    return None
+
+
+def join_hermes_result(evidence: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """Evidence with the Hermes result standing in for the research gap it closes."""
+    ev = dict(evidence or {})
+    avail = dict(ev.get("available") or {})
+    answer = next((a.get("summary") for a in (result.get("answers") or [])
+                   if isinstance(a, dict) and a.get("summary")), "") or result.get("summary") or ""
+    item = {
+        "symbol": str(result.get("symbol") or "").upper() or None,
+        "research_type": "hermes_operator_research",
+        "topic": "Hermes research on your question",
+        "summary": _tidy_numbers(answer)[:400],
+        "confidence": result.get("confidence"),
+        "as_of": str(result.get("completed_ts") or "")[:10] or None,
+    }
+    hermes = dict(avail.get("hermes_research") or {})
+    hermes["items"] = [item] + [i for i in (hermes.get("items") or []) if isinstance(i, dict)]
+    hermes["symbols"] = sorted({i["symbol"] for i in hermes["items"] if i.get("symbol")})
+    avail["hermes_research"] = hermes
+    avail["hermes_result"] = result
+    ev["available"] = avail
+    ev["gaps"] = [g for g in (ev.get("gaps") or []) if g.get("domain") != "hermes_research"]
+    ev["blocking_gaps"] = [g for g in (ev.get("blocking_gaps") or []) if g.get("domain") != "hermes_research"]
+    ev["complete"] = not ev["blocking_gaps"] and bool(avail)
+    ev["sources"] = list(ev.get("sources") or []) + [f"hermes_research_results · {result.get('result_id')}"]
+    return ev
+
+
+def _plain(text: Any, n: int) -> str:
+    s = _MARKDOWN_CHARS.sub(" ", _tidy_numbers(" ".join(str(text or "").split())))
+    s = " ".join(s.split())
+    return s if len(s) <= n else s[: n - 1].rstrip() + "…"
+
+
+def format_hermes_section(result: dict[str, Any]) -> str:
+    """Hermes' answer, every line tagged 🟣 (a model wrote it from Trade-AI evidence)."""
+    pill = "🟣"
+    model = str(result.get("model") or "deepseek-flash")
+    try:
+        done = datetime.fromisoformat(str(result.get("completed_ts")).replace("Z", "+00:00"))
+        when = done.astimezone(_ET).strftime("%H:%M ET")
+    except Exception:  # noqa: BLE001
+        when = "time unknown"
+    bits = [f"finished {when}"]
+    if result.get("confidence") is not None:
+        bits.append(f"confidence {float(result['confidence']):.2f}")
+    if result.get("thesis_stance"):
+        bits.append(f"stance {_plain(result['thesis_stance'], 20)}")
+    n_ev = len(result.get("evidence_links") or result.get("source_refs") or [])
+    lines = [f"{pill} *Hermes research* — {model} read {n_ev} Trade-AI evidence item(s); "
+             f"model knowledge where it goes beyond them · " + " · ".join(bits)]
+    for a in (result.get("answers") or [])[:4]:
+        if isinstance(a, dict) and a.get("summary"):
+            lines.append(f"{pill} {_plain(a['summary'], 420)}")
+    sev = {"high": 0, "medium": 1, "low": 2}
+    findings = sorted((f for f in (result.get("findings") or []) if isinstance(f, dict) and f.get("text")),
+                      key=lambda f: sev.get(str(f.get("severity")), 3))
+    for f in findings[:3]:
+        lines.append(f"{pill} Finding ({_plain(f.get('severity') or 'n/a', 10)}): {_plain(f['text'], 260)}")
+    gaps = [g for g in (result.get("research_gaps_remaining") or []) if g][:3]
+    if gaps:
+        lines.append(f"{pill} Still unknown: " + "; ".join(_plain(g, 140) for g in gaps))
+    lims = [x for x in (result.get("limitations") or []) if x][:2]
+    if lims:
+        lines.append(f"{pill} Limits: " + "; ".join(_plain(x, 160) for x in lims))
+    lines.append("🔵 Outside: Hermes did not search the web; it read Trade-AI evidence only.")
+    return "\n".join(lines)
+
+
+def _insert_before_authority_tail(text: str, block: str) -> str:
+    """Put a block above the trailing authority line, which must stay last."""
+    if not block:
+        return text
+    lines = (text or "").rstrip().split("\n")
+    tail = [lines.pop()] if lines and _AUTHORITY_TAIL_RE.match(lines[-1].strip()) else []
+    return "\n".join([*lines, "", block, *tail]).strip("\n")
 
 
 
@@ -3476,6 +3672,34 @@ def handle_operator_desk_question(
                 if eta_text else
                 "Queued into the controlled gap pipeline. "
             )
+            research_only = all(g.get("domain") == "hermes_research" for g in blocking)
+            if research_only and _env("CIO_OPERATOR_RESEARCH_ANSWER_NOW", "1").lower() not in (
+                "0", "false", "off", "no",
+            ):
+                # 2026-09-14 HPE: "Do some more research on HPE ..." got a queue
+                # ticket and nothing else, although price, levels, analysts,
+                # earnings, catalysts, news, sector and thesis were all on file.
+                # Answer with those now; Hermes' answer follows on the same pending.
+                curated_now = _curate_from_evidence(text, evidence)
+                queued_now = (
+                    "🟣 Deeper research queued: Hermes (DeepSeek reading Trade-AI evidence) — "
+                    + (f"{eta_text} until it lands" if eta_text else "it lands when the worker runs")
+                    + f". Its answer follows here as a reply. Pending: `{pending_id}`"
+                )
+                result.update({
+                    "kind": "answered",
+                    "pending_id": pending_id,
+                    "eta_seconds": eta_seconds,
+                    "text": _with_sources_footer(
+                        _insert_before_authority_tail(curated_now.get("text") or "", queued_now),
+                        evidence, curated_now,
+                    ),
+                    "reply_source": curated_now.get("source"),
+                    "model": curated_now.get("model"),
+                    "research_queued": True,
+                })
+                _emit_telegram_desk_payload(intent, result)
+                return result
             result.update({
                 "kind": "deferred",
                 "pending_id": pending_id,
@@ -3674,6 +3898,12 @@ def _pending_reply_provenance(kind: str, row: dict[str, Any], evidence: dict[str
         freeform = ((evidence or {}).get("available") or {}).get("freeform_context") is not None
         role = _ROLE_GENERAL_KNOWLEDGE if (freeform or src == "freeform_flash") else _ROLE_WORDING_ONLY
         outside.append(f"{model} — {role}")
+    hermes = ((evidence or {}).get("available") or {}).get("hermes_result")
+    if isinstance(hermes, dict) and not model:
+        # A model is never "outside data" (reply_provenance.origin_line): Hermes
+        # read Trade-AI evidence, so it is named on the 🟣 model role, once.
+        model = str(hermes.get("model") or "deepseek-flash")
+        role = f"Hermes research over Trade-AI evidence; {_ROLE_GENERAL_KNOWLEDGE}"
     return _ReplyProvenance(kind=kind, stores_read=stores, went_outside=outside, model=model, model_role=role)
 
 
@@ -3787,12 +4017,27 @@ def try_fulfill_pending_replies(
         try:
             intent = row.get("intent") or analyze_operator_intent(row.get("operator_text") or "")
             evidence = gather_tradeai_evidence(intent)
+            pending_key = str(row.get("pending_id") or "")
+            hermes_result = None
+            if not evidence.get("complete"):
+                # The research this pending asked for lands in the Hermes result
+                # ledger, not as a promoted research row. Join it by pending id.
+                hermes_result = hermes_result_for_pending(pending_key)
+                if hermes_result:
+                    evidence = join_hermes_result(evidence, hermes_result)
+                    # The first reply already carried the full dossier; the
+                    # follow-up is Hermes' answer, not the same picture again
+                    # (with it the HPE follow-up ran 5,316 characters).
+                    (evidence.get("available") or {}).pop("subject_dossier_text", None)
             if not evidence.get("complete"):
                 # A promise that cannot be kept must be RETRACTED, not abandoned.
                 # This used to be a bare `continue`: an unanswerable pending was
                 # re-checked silently forever while the operator waited.
                 age_h = _pending_age_hours(row)
                 answerable, why = is_answerable(intent)
+                hermes_failed = hermes_failure_for_pending(pending_key) if answerable else None
+                if hermes_failed:
+                    answerable, why = False, f"the Hermes research run failed ({hermes_failed})"
                 limit_h = _pending_expiry_hours(row)
                 if answerable and (age_h is None or age_h < limit_h):
                     continue
@@ -3819,9 +4064,15 @@ def try_fulfill_pending_replies(
                 expired += 1
                 continue
             curated = _curate_from_evidence(str(row.get("operator_text") or ""), evidence)
+            answer_text = curated.get("text") or ""
+            if hermes_result:
+                answer_text = _insert_before_authority_tail(answer_text, format_hermes_section(hermes_result))
+            landed = "Hermes research landed" if hermes_result else "Trade-AI data landed"
             body, _prov = _finalize_operator_reply(
-                f"📬 *Follow-up* `{row.get('pending_id')}` — Trade-AI data landed\n\n"
-                + _with_sources_footer(curated.get("text") or "", evidence, curated),
+                f"📬 *Follow-up* `{row.get('pending_id')}` — {landed}\n"
+                f"You asked{(' at ' + _asked_at_text(row)) if _asked_at_text(row) else ''}: "
+                f"\"{_plain(row.get('operator_text'), 160)}\"\n\n"
+                + _with_sources_footer(answer_text, evidence, curated),
                 _pending_reply_provenance("pending_fulfilled", row, evidence, curated),
             )
             chat_id = str(row.get("chat_id") or "")

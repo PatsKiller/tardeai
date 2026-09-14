@@ -109,9 +109,15 @@ RULES = (
     "FALSE_EMPTY_CLAIM",
     "BOOK_DUMP_FOR_NAMED_SYMBOL",
     "PENDING_NEVER_CLOSED",
+    "RESEARCH_LANDED_UNSENT",
     "MODEL_UNLABELLED",
     "REPLY_TEXT_UNAVAILABLE",
 )
+
+#: Hermes finished the research a pending asked for, and the pending is still
+#: open this long afterwards: the answer is on disk and the operator does not
+#: have it. 2026-09-14 opr_74cc87d6ae62 (HPE) sat in exactly this state.
+RESEARCH_LANDED_GRACE_MINUTES = 10.0
 
 #: The canonical dev tree; the served state tree is reached through its data/ link.
 DEV_TREE = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
@@ -477,6 +483,42 @@ def pending_never_closed(pending_rows: list[dict], *, now: datetime, open_hours:
     return sorted(out, key=lambda x: x["pending_id"])
 
 
+def research_landed_unsent(pending_rows: list[dict], gap_requests: list[dict], projection: dict, *,
+                           now: datetime, grace_minutes: float = RESEARCH_LANDED_GRACE_MINUTES) -> list[dict]:
+    """Open pendings whose Hermes research completed more than grace_minutes ago. Pure.
+
+    The join is the one the desk uses: pending_id → (plan_id, research_id) in the
+    gap-request ledger → the Hermes projection's request status and completion time.
+    """
+    latest: dict[str, dict] = {}
+    for r in pending_rows:
+        pid = str(r.get("pending_id") or "")
+        if pid:
+            latest[pid] = r
+    open_ids = {pid for pid, r in latest.items() if str(r.get("status") or "open") == "open"}
+    if not open_ids:
+        return []
+    by_rid = (projection or {}).get("by_research_id") or {}
+    cutoff = now - timedelta(minutes=grace_minutes)
+    out: dict[str, dict] = {}
+    for ask in gap_requests:
+        pid = str(ask.get("pending_id") or "")
+        if pid not in open_ids or ask.get("kind") != "hermes_operator_forced":
+            continue
+        plan_id, rid_hint = str(ask.get("plan_id") or ""), str(ask.get("research_id") or "")
+        for rid, meta in by_rid.items():
+            if not isinstance(meta, dict) or not (rid == rid_hint or (plan_id and str(meta.get("plan_id")) == plan_id)):
+                continue
+            done = _parse_ts(meta.get("completed_ts"))
+            if str(meta.get("status")) != "completed" or done is None or done > cutoff:
+                continue
+            row = latest[pid]
+            out[pid] = {"pending_id": pid, "question": str(row.get("operator_text") or "")[:60],
+                        "result_id": meta.get("latest_result_id"), "research_id": rid,
+                        "landed_minutes_ago": round((now - done).total_seconds() / 60), "chat_id": row.get("chat_id")}
+    return sorted(out.values(), key=lambda x: x["pending_id"])
+
+
 def evaluate_turns(turns: list[dict], *, extract: Optional[Callable[[str], list[str]]] = None,
                    snapshot: Optional[dict] = None, holdings: Optional[dict] = None) -> dict[str, list[dict]]:
     """Run every per-turn rule. Pure given its inputs."""
@@ -562,6 +604,15 @@ def collect(*, now: Optional[datetime] = None, root: Optional[Path] = None,
 
     findings = evaluate_turns(turns, extract=extract, snapshot=snapshot, holdings=holdings)
     findings["PENDING_NEVER_CLOSED"] = pending_never_closed(pending, now=now)
+    projection: dict = {}
+    try:
+        pp = root / "cio" / "hermes_research_projection.json"
+        if pp.is_file():
+            projection = json.loads(pp.read_text(encoding="utf-8"))
+    except Exception:
+        projection = {}
+    findings["RESEARCH_LANDED_UNSENT"] = research_landed_unsent(
+        pending, _jsonl(root / "cio" / "cio_operator_gap_requests.jsonl"), projection, now=now)
     return {
         "schema": SCHEMA,
         "ran_at": now.isoformat(),
@@ -609,6 +660,7 @@ _WHAT_WILL_BE_DONE = {
     "FALSE_EMPTY_CLAIM": "the freeform builder must read the house payload it called empty; replay with the litmus snapshot fixture",
     "BOOK_DUMP_FOR_NAMED_SYMBOL": "a named symbol gets ITS row (format_reentry_symbol_reply), never the book; replay with the desk fixture",
     "PENDING_NEVER_CLOSED": "try_fulfill_pending_replies must expire it at 2h; check the poller is running",
+    "RESEARCH_LANDED_UNSENT": "Hermes finished this pending's research but the operator has no follow-up; check the CIO bot's fulfilment loop joins the result (hermes_result_for_pending) and is running",
     "MODEL_UNLABELLED": "model prose must be labelled 'model knowledge' or 'wording only'; check the Flash prompt and footer",
     "REPLY_TEXT_UNAVAILABLE": "the monitor could not read the reply (operator_conversation_turns); text rules did not run for this turn",
 }
@@ -636,6 +688,9 @@ def format_alert(report: dict, previous: dict[str, str]) -> str:
                 detail = f" — went outside to {', '.join(map(str, r.get('went_outside') or []))}"
             elif rule == "PENDING_NEVER_CLOSED":
                 detail = f" — {r.get('pending_id')} open {r.get('age_hours')}h"
+            elif rule == "RESEARCH_LANDED_UNSENT":
+                detail = (f" — {r.get('pending_id')}: Hermes result {r.get('result_id')} landed "
+                          f"{r.get('landed_minutes_ago')} min ago, not delivered")
             lines.append(f"• [{rule}] \"{q}\"{detail}")
         if len(rows) > 6:
             lines.append(f"  … and {len(rows) - 6} more {rule}")

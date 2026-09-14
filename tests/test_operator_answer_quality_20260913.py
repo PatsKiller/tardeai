@@ -246,8 +246,8 @@ def test_collect_reproduces_the_2026_09_13_incident_from_injected_ledgers(tmp_pa
     counts = {k: len(v) for k, v in rep["findings"].items()}
     assert rep["turns"] == 4 and rep["turns_with_reply"] == 4
     assert counts == {"NO_SOURCES_LINE": 4, "WENT_OUTSIDE_UNSTATED": 0, "FALSE_EMPTY_CLAIM": 1,
-                      "BOOK_DUMP_FOR_NAMED_SYMBOL": 1, "PENDING_NEVER_CLOSED": 1, "MODEL_UNLABELLED": 1,
-                      "REPLY_TEXT_UNAVAILABLE": 0}
+                      "BOOK_DUMP_FOR_NAMED_SYMBOL": 1, "PENDING_NEVER_CLOSED": 1, "RESEARCH_LANDED_UNSENT": 0,
+                      "MODEL_UNLABELLED": 1, "REPLY_TEXT_UNAVAILABLE": 0}
     assert rep["findings"]["FALSE_EMPTY_CLAIM"][0]["rule"] == "store_health"
     assert rep["findings"]["BOOK_DUMP_FOR_NAMED_SYMBOL"][0]["question"].startswith("Is now a good time to get back into schg")
 

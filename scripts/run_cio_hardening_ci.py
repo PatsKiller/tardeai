@@ -583,6 +583,10 @@ GATES = [
             "tests/test_subject_memory_recall_20260913.py",
             "tests/test_desk_spelled_ticker_levels_20260914.py",
             "tests/test_subject_dossier_pills_20260914.py",
+            # 2026-09-14 HPE: Hermes completed in 4 minutes and the answer never
+            # reached the operator (pending waited on a store Hermes does not write).
+            "tests/test_research_joinback_20260914.py",
+            "tests/test_answer_quality_research_landed_20260914.py",
             # 2026-09-13: the state tree existed twice for 18 days (dev tree vs
             # persistent-state). Identity of the directory is the check, not the
             # age of a file -- an age check on one copy is exactly what missed it.
