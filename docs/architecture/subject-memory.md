@@ -7,6 +7,8 @@
 
 **Naming boundary:** This is **not** `cio_rehydrate` / instrument cognition. Do not overload that module. Subject memory is the communications-gateway answer to “What happened previously on this exact subject?” across channels, consulted **before** curation.
 
+**Same name, different thing (2026-09-13).** `cio_operator_desk_loop.subject_memory()` (PR #1001) is the Telegram operator desk's per-subject recall: it reads earlier operator questions and agent replies by `subject_guid` from `operator_conversation_turns` (registry domain `operator_conversation`) and renders "Earlier on V" in a reply. It does not read `communication_subjects` or this module, and this module does not feed it. See `docs/OPERATOR_REPLY_ROUTING.md`.
+
 ---
 
 ## Purpose

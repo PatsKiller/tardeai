@@ -2,7 +2,7 @@
 
 **Owner:** John W. Whiting
 **Server:** ms01-openclaw (Linux, Ubuntu)
-**Document version:** 2026-09-13 (§5.7 Data Authority, Broker Read Path and Gap Resolution added; §24 changelog. Prior: 2026-06-22 A1A consolidation — scale figures via `docs/LIVE_SYSTEM_FACTS.md`; regenerate with `scripts/generate_system_facts.py`)
+**Document version:** 2026-09-13 night (§5.5 data gap queue: one write module, resolved only on proof; §5.7 one write module per store, monitors measured; §11 operator desk replies, rule G0 and agent job caps; §24 changelog for PRs #992–#1001. Earlier the same day: §5.7 Data Authority, Broker Read Path and Gap Resolution added. Prior: 2026-06-22 A1A consolidation — scale figures via `docs/LIVE_SYSTEM_FACTS.md`; regenerate with `scripts/generate_system_facts.py`)
 **Status:** Paper trading validation -- 6-month window before live consideration
 
 
@@ -643,9 +643,11 @@ The system identifies its own knowledge gaps and dispatches workers to close the
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
-| `data_gap_registry` table | PostgreSQL | Structured tracking of every detected gap |
-| `_extract_and_register_gaps()` | `run_deep_overnight_llm_queue.py` | Parses every gemma3 output for explicit `data_gaps` + 7 implicit patterns |
-| `data_gap_resolver.py` | `scripts/` | Hourly worker that dispatches resolution actions |
+| `data_gap_registry` table | PostgreSQL | Structured tracking of every detected gap. Registry domain `data_gaps` (`config/data_source_authority.json`) |
+| `data_gap_registry_writer.py` | `scripts/lib/writers/` | **The only writer of the table** (2026-09-13, PR #998): INSERT column list, the one dedup rule (a symbol + gap_type already `open` or `enriching` is not re-inserted), and every status transition. Rejected rows come back on the receipt with a reason |
+| `_register_gaps()` | `scripts/lib/cio_operator_desk_loop.py` | Operator desk caller (operator-approved 2026-09-13): queues desk gaps that have a resolver action and tells the operator the gap ids and the resolver's next run, read from the crontab |
+| `_extract_and_register_gaps()` | `run_deep_overnight_llm_queue.py` | Parses overnight model output for explicit `data_gaps` + 7 implicit patterns. **Lane retired 2026-06-01** — no new row from it since 2026-05-24; now calls the writer module |
+| `data_gap_resolver.py` | `scripts/` | Hourly worker that dispatches resolution actions and settles dispatched jobs (`verify_dispatched`) |
 | `gap_resolution_outcomes` table | PostgreSQL | Measures whether resolutions improved next-day output |
 
 ### Gap Types Detected
@@ -671,11 +673,19 @@ The system identifies its own knowledge gaps and dispatches workers to close the
 ### Workflow
 
 ```
-gemma3 output → _extract_and_register_gaps() → data_gap_registry (open)
-    → hourly resolver dispatches: enrichment / Maria research / thesis recovery
-    → gap marked 'resolved' → source job re-queued at P1:80
-    → next overnight produces better answer with enriched data
+operator desk gap (or the retired overnight lane) → data_gap_registry_writer → data_gap_registry (open)
+    → hourly resolver: data already present → 'resolved' (proven now)
+                       action dispatched (enrichment / Maria research job at P1:80) → 'enriching' with the job id
+    → verify_dispatched(): job 'completed' WITH a result row, not demoted UNGROUNDED_NUMBERS → 'resolved' (proof recorded)
+                           job failed / expired / missing, or completed without a result row → reopened
+                           DATA_GAP_MAX_DISPATCH_ATTEMPTS (default 3) failures → 'abandoned' with the reason
+    → weekly audit: open > 30 days → 'abandoned'
 ```
+
+**`resolved` means proven** (PR #998). Before 2026-09-13 a dispatch marked the gap `resolved` the moment a
+job was queued — while most Maria, Steph and risk jobs were failing on a 4,000-token input cap before
+reaching the model. The desk's pending follow-up still re-checks the evidence itself; a pending that has
+an ETA stays open until ETA + `CIO_OPERATOR_PENDING_ETA_GRACE_HOURS` (default 1 h), otherwise 2 h.
 
 ### Dashboard Surface
 
@@ -758,6 +768,19 @@ secret-hygiene allowlist. **Brave** is live and paid (caps 120/day, 1,500/month 
 denials (`DAILY_EXHAUSTED`, `MONTHLY_EXHAUSTED`, `HTTP_429`) spill to the registry's `web_search.backup`
 chain (SearXNG, then Tavily) through `scripts/lib/brave_router.py` — Phase 5.
 
+### One write module per store (Phase 9, PR #996)
+
+Plural producers are by design; plural write paths were the defect (the Finviz column shift lived in a
+second parser's own INSERT). Each consolidated store's INSERT/UPDATE SQL lives in exactly one module under
+`scripts/lib/writers/` — `market_quotes_writer`, `ticker_prices_writer`, `news_articles_writer`,
+`symbol_profiles_writer`, `watch_directives_writer`, `hermes_research_writer`, and (PR #998)
+`data_gap_registry_writer` — re-exported by the producer facade the registry names. Golden tests prove each
+module issues the statement the legacy writers issued and resolves the same subject GUID (registry-first,
+never minted). Pre-Phase-9 writer counts are kept under `baseline.history` in
+`config/data_source_authority_baseline.json`. Two domains were added after Phase 9 with an operator grant
+each: `data_gaps` (PR #998) and `operator_conversation` (`operator_conversation_turns`, writer
+`scripts/lib/inbound_identity_tagger.py`, PR #1001).
+
 ### Accounts: absent is not zero (Phase 6)
 
 `scripts/lib/account_state.py` classifies every account in `assets/portfolio_accounts.yaml` as
@@ -767,6 +790,12 @@ no-API manual account (Fidelity rollover, statement entry) no longer both render
 carries the last known value with its date. Labelling only — no share count, value, order or stop is
 edited (`MBI_BEHAVIOR = 0`).
 
+**Moomoo taxable, 2026-09-13.** The account is open ($500 cash, 0 positions — the 2026-09-01 "account closed"
+crontab note was wrong). Its read-only sync `scripts/moomoo_live_read_sync.py` is re-enabled in cron
+(`*/15 9-16 * * 1-5`, `timeout --kill-after=30s 10m`) and declared as lane `moomoo-live-read-sync` with the
+sync receipt as its `output_signal`. The registry's `holdings_accounts` note still records the morning's
+SERVICE_DOWN measurement (OpenD exit 78); the account-state classifier, not this paragraph, decides what renders.
+
 ### Gap resolution (Phase 7)
 
 When a projection or the operator desk meets a stale or missing answer, `gap_resolver.resolve()` walks
@@ -775,10 +804,11 @@ the domain's `on_gap` chain — `refresh_producer` → `backup_provider` → `go
 attempt in `data/cio/gap_resolution_receipts.jsonl`, a fast answer stops the chain, a slow vector returns
 an ETA, and exhaustion returns the declared `no_coverage` behaviour. **Distinct from §5.5:**
 `scripts/data_gap_resolver.py` (2026-06) closes LLM-detected *knowledge* gaps in `data_gap_registry`;
-`scripts/lib/gap_resolver.py` (2026-09) closes *store freshness* gaps against the registry. Details:
-`docs/GAP_RESOLUTION.md`.
+`scripts/lib/gap_resolver.py` (2026-09) closes *store freshness* gaps against the registry. The operator
+desk uses both: the resolver's vectors for the answer, and the gap queue (through its write module) for gaps
+the hourly resolver can act on. Details: `docs/GAP_RESOLUTION.md`.
 
-### Monitors (declared, operator installs)
+### Monitors (declared; installing is operator-only)
 
 | Lane | Timer | Cadence | Receipt |
 |---|---|---|---|
@@ -787,10 +817,14 @@ an ETA, and exhaustion returns the declared `no_coverage` behaviour. **Distinct 
 | `data-plausibility-audit` | `tradeai-data-plausibility.timer` | 06:20 daily | `data/runtime/data_plausibility_last_run.json` |
 | `data-source-health-audit` | `tradeai-data-source-health.timer` | hourly (:27) | `data/runtime/data_source_health_last_run.json` |
 | `gap-resolution-audit` | `tradeai-gap-resolution.timer` | every 30 min (:07/:37) | `data/runtime/gap_resolution_last_run.json` |
+| `operator-answer-quality-audit` | `tradeai-operator-answer-quality.timer` | every 30 min (:22/:52) | `data/runtime/operator_answer_quality_last_run.json` |
 
 Each is declared in `config/lane_registry.json` (with a receipt `output_signal`), `config/systemd/user/`
 and `config/expected_services.json`, so a monitor that is OFF is itself a finding. Whether a timer is
-installed is measured on the host by `check_expected_services.py`; this document does not assert it.
+installed is measured on the host by `check_expected_services.py`. **A deploy does not install a new user
+unit** — see `AGENTS.md` §10. Dated observation, not a standing claim: `[VERIFIED]` 2026-09-13 23:54 ET,
+`systemctl --user list-timers` listed all six timers scheduled; `tradeai-data-plausibility.timer` had not
+yet fired.
 
 ### Gates that bind (local acceptance and CI)
 
@@ -1836,6 +1870,25 @@ Agents are accessible via Telegram and WhatsApp. Configuration is in `config/age
 
 **Full agent workflows** (fleet roster, schedules, allocation chain Maria→Steph→Risk→Tax→Alex, v3 AgentsHub surfaces): see `docs/AGENT_AND_HERMES_WORKFLOWS.md` Part 1.
 
+**Agent answers use only supplied facts (rule G0, 2026-09-13, PR #999).** Every watchlist agent contract carries `GROUNDING_RULE` (`scripts/lib/cio_agent_contract.py`); `scripts/lib/agent_number_grounding.py` checks each number in the parsed answer against the prompt sent and stores `number_grounding` on the result. Default `enforce`: ≥3 unsupported numbers that are ≥50% of those checked demote the answer to `RESEARCH_MORE` below the 40% gate (`AGENT_NUMBER_GROUNDING_MODE=record|off`). Live rate: `scripts/report_agent_number_grounding.py`. Detail: `docs/project/SKILLS.md` "Global Agent Rules". **Input caps:** `watchlist_{maria,risk,steph}_flash_narrative` `max_input_tokens` 8,000 in `config/llm_process_registry.json` (4,000 until PR #998; prompts ran ~4.0–5.4k tokens, so calls failed before reaching the model).
+
+### Operator desk — Telegram converse replies (2026-09-13, PRs #998–#1001)
+
+Free-text operator questions (Telegram callback poller, the dedicated CIO bot `tradeai-cio-telegram.service`, WhatsApp) converge on `cio_converse_core.process_operator_message` and the desk loop `scripts/lib/cio_operator_desk_loop.py`. `READ_ONLY_ADVISORY`: nothing on this path orders, stops or sizes. Branch-by-branch map: `docs/OPERATOR_REPLY_ROUTING.md`. Runbook: `docs/cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md`. Rules: `AGENTS.md` §7 "Operator replies, data gaps and agent numbers".
+
+| Stage | What it does | Code / switch |
+|---|---|---|
+| Subject resolution | Tickers (any case only for the operator's book; registry symbols UPPER-CASE or `$cashtag`), company names from the broker instrument feed, sectors, topics; GUIDs read, never minted | `scripts/lib/operator_subject_resolver.py` |
+| House facts first | CIO snapshot (cash, sectors, policy, holdings, risk), re-entry desk, research and analyst stores are read before any model call; the evidence contract reports `MISSING_FACT` / `FALSE_EMPTY_CLAIM` | `gather_tradeai_evidence`, `gather_freeform_context`, `scripts/lib/operator_evidence_contract.py` + `config/operator_evidence_contract.json` |
+| Named-stock brief | Last close and 30-day change via the broker `daily_bars` projection; levels from the symbol's re-entry desk row; analysts with as-of date and age; newest 3 research rows per type (operational stop notes only when asked); "What this means" and a next step | `format_subject_brief`, `subject_price_facts`, `subject_analyst_view`, `select_subject_research` |
+| Checked summary | DeepSeek Flash may reword the brief; used only when every number is in the brief, symbol / close / mean target / as-of survive, and there is no order language | `curate_subject_reply_with_flash`; `CIO_SUBJECT_FLASH=0` disables |
+| Memory recall | "Earlier on V": up to 3 earlier questions per subject GUID in the same chat, the reply to each, and the close move since | `subject_memory`, `format_subject_memory`; `CIO_SUBJECT_MEMORY`, `CIO_SUBJECT_MEMORY_DAYS` (30) |
+| Gaps and pendings | Blocking gaps go to the gap resolver and, where the hourly resolver has an action, the data gap queue; the reply names gap ids and the resolver's next run from the crontab; ETA-aware expiry; closing message says what happened | `_register_gaps`, `_next_gap_resolver_run`, `_pending_expiry_hours`, `_closing_message`, `try_fulfill_pending_replies` |
+| Provenance | `Sources:` / `Went outside:` / authority tail at one chokepoint; receipt `ReplyProvenance@v1` | `scripts/lib/reply_provenance.py` `finalize_operator_reply` |
+| Monitor | Half-hourly audit of the replies actually sent (`NO_SOURCES_LINE`, `FALSE_EMPTY_CLAIM`, `BOOK_DUMP_FOR_NAMED_SYMBOL`, `PENDING_NEVER_CLOSED`, …) | `scripts/check_operator_answer_quality.py`, `tradeai-operator-answer-quality.timer` |
+
+**After a deploy that changes desk or converse code, restart `tradeai-cio-telegram.service`** — `promote` restarts `portfolio-server` and the health agent only (`AGENTS.md` §10). Tests (registered in `scripts/run_cio_hardening_ci.py`): `test_operator_reply_routing_sources_20260913`, `test_operator_answers_use_house_facts_20260913`, `test_operator_evidence_contract_20260913`, `test_operator_intent_resolution_20260913`, `test_company_names_from_house_20260913`, `test_data_gap_registry_writer_20260913`, `test_desk_gap_queue_reconnect_20260913`, `test_agent_number_grounding_20260913`, `test_operator_answer_quality_20260913`, `test_pending_expiry_unanswerable_20260913`, `test_pending_close_wording_20260913`, `test_subject_answer_completeness_20260913`, `test_subject_memory_recall_20260913`.
+
 ### Backend Automation Agents
 
 | Agent | Role | Script |
@@ -2602,7 +2655,26 @@ actionable inferences. Advisory-only — no execution path. Full design:
 
 ## 24. Session Changelog
 
-### Session — 2026-09-13 (One Source of Truth, Phases 0–8 — PRs #992 #993 #994, `e8a173e7d`)
+### Session — 2026-09-13 night (Operator desk replies, gap queue, agent grounding, chat memory — PRs #998–#1001, `a8a62217e`)
+
+Map: §11 "Operator desk — Telegram converse replies" · path map `docs/OPERATOR_REPLY_ROUTING.md` · gap queue §5.5 and
+`docs/GAP_RESOLUTION.md` · rules `AGENTS.md` §7, §9.3, §10 · dated record `docs/CHANGELOG.md`.
+
+- **Every operator reply cites its sources** at one chokepoint and says when it went outside the Command Center;
+  house facts are read before any model call and an evidence contract catches false "empty" claims; questions
+  resolve to the subject named (misrouted answers 14 → 0 on 36 real questions) (#998).
+- **Data gap queue reconnected** through one write module; `resolved` only on proof (job completed with a result
+  row); ETA-aware pending expiry; flash narrative input caps 4,000 → 8,000 (#998).
+- **Rule G0** use only supplied facts, with a number check that demotes ungrounded agent answers by default (#999).
+- **Named-stock answers** with price, levels, analysts (as-of and age), per-type research and a checked Flash
+  summary; closing messages that say what happened (#1000). **Chat memory** per subject GUID from
+  `operator_conversation_turns` (#1001).
+- **Ops:** `tradeai-operator-answer-quality.timer` installed (deploys do not install new user units); Moomoo read-only
+  sync re-enabled with a 10-minute timeout and its lane declared; the Telegram bot is restarted after desk deploys.
+- **Known remaining gaps:** the answer-quality monitor flags an open pending at a flat 2 h while the desk honours ETAs;
+  attention replies on the converse path scan an empty office; `feat/synthesis-prompt-budget` is in flight, not merged.
+
+### Session — 2026-09-13 (One Source of Truth, Phases 0–9 — PRs #992–#997, `36c351c23` → `c00e23eda`)
 
 Registry: `config/data_source_authority.json` · rendered: `docs/SOURCE_OF_TRUTH.md` · rule: `AGENTS.md` §7A ·
 gap resolution: `docs/GAP_RESOLUTION.md` · documentation audit: `docs/implementation/sot/DOCS_AUDIT_20260913.md`
@@ -2617,10 +2689,13 @@ gap resolution: `docs/GAP_RESOLUTION.md` · documentation audit: `docs/implement
   unknown (Phase 3). **Broker envelope** on every projection; dead desks declare `gap.no_producer`
   (Phase 4). **Brave spill** to SearXNG/Tavily from the registry (Phase 5). **Account state** LIVE /
   STALE / SERVICE_DOWN / NO_API_MANUAL (Phase 6). **Gap resolver** with receipted, budgeted vectors
-  (Phase 7). Documentation and governance audit (Phase 8, this entry).
-- **Known remaining gaps:** seven stores are still `UNCONSOLIDATED` (writer ceilings in
-  `config/data_source_authority_baseline.json` may only fall); the five monitor timers are declared but
-  installation is operator-only and unmeasured here; `AGENTS.md` 1.2.0 remains PROPOSED pending
+  (Phase 7). Documentation and governance audit (Phase 8). **Weekend-aware decay clock** and six missing
+  scheduled callers (#995). **One write module per store** — six stores to one writer each — and the operator
+  grant `DataSourceAuthority@v2` (#996). **Operator-readable data-source-health alert** (#997).
+- **Known remaining gaps (as written at #994; see the night entry above for what changed):** seven stores were
+  `UNCONSOLIDATED` (Phase 9 took six of them to one writer; ceilings in
+  `config/data_source_authority_baseline.json` may only fall); the monitor timers were declared with installation
+  operator-only (all six measured scheduled at 23:54 ET, §5.7); `AGENTS.md` 1.2.0 remains PROPOSED pending
   `APPROVE_AGENTS_POLICY_1_2_0`.
 
 ### Session — 2026-08-27 (CIO Platform Audit Remediation — 19 PRs, `2ccee09a` → `b4b6ced7`)

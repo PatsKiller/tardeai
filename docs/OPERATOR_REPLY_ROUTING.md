@@ -1,6 +1,18 @@
 # Operator reply routing — every path from a free-text message to a sent reply
 
-`READ_ONLY_ADVISORY` · MBI_BEHAVIOR = 0 · written 2026-09-13 · branch `feat/route-a-every-reply-cites-sources`
+```
+Status:      ACTIVE
+as_of:       2026-09-13T23:59:00-04:00
+Measured at: 034ff2c90 (file:line references in the map) · a8a62217e (section "What PRs #1000 and #1001 added")
+```
+
+`READ_ONLY_ADVISORY` · MBI_BEHAVIOR = 0 · written 2026-09-13 · branch `feat/route-a-every-reply-cites-sources` (merged in PR #998)
+
+**Line numbers are pinned, symbols are the anchor.** The `file:line` references in the map were measured at
+`034ff2c90`. Later commits in PRs #998–#1001 grew `cio_operator_desk_loop.py` to 3,679 lines, so its line numbers
+have moved — at `a8a62217e`: `gather_tradeai_evidence` 898 → 1552, `handle_operator_desk_question`
+1729 → 3114, `try_fulfill_pending_replies` 2047 → 3597. Search by function name. The converse-core chokepoint
+has not moved (`_prepare_reply` `cio_converse_core.py:373`, `finalize_operator_reply` call `:378`).
 
 ## Why this exists
 
@@ -117,6 +129,39 @@ change **14 sent no Sources line at all** (R1, R2, R3, R4, R5a, R5c, R5f, R5g, R
 R8) — and R5g did not even send its refusal. **3 sent a wrong one**: R5d never named the model, R5k
 never declared the Hermes enqueue, R5e duplicated its tail and its desk label. **1 was correct** (R5b).
 
+## What PRs #1000 and #1001 added (measured at `a8a62217e`)
+
+The contract above is unchanged; these change what the desk rows put in front of it.
+
+- **Subject brief for a named stock (R5e, #1000).** `format_subject_brief` renders, per named symbol: last
+  close and 30-day change from the broker `daily_bars` projection (`subject_price_facts`); levels from that
+  symbol's re-entry desk row (`_subject_levels`); analysts with as-of date and age (`subject_analyst_view`,
+  "may be out of date" past `ANALYST_STALE_DAYS`); research — the newest `SUBJECT_RESEARCH_PER_TYPE` (3) rows
+  of each type (`SUBJECT_RESEARCH_SQL`), near-duplicates merged, operational stop/protection notes only when
+  the question is about stops (`select_subject_research`); and "What this means" with a next step. The
+  Sources line names only what the reply shows.
+- **Checked Flash summary.** `curate_subject_reply_with_flash` may reword the brief. `_subject_flash_problems`
+  rejects the summary unless every number is in the brief (`agent_number_grounding`, zero unsupported), the
+  symbol, close, mean target and as-of survive, and no order language appears; the brief is sent otherwise.
+  `CIO_SUBJECT_FLASH=0` disables.
+- **Memory recall (#1001).** `subject_memory()` reads up to 3 earlier operator questions per subject GUID in the
+  same chat within `CIO_SUBJECT_MEMORY_DAYS` (30) from `operator_conversation_turns`, pairs each with the reply
+  by `reply_to_message_id`, and excludes the question being answered. `format_subject_memory` appends
+  "Earlier on V" (what was asked, what was answered or "No reply to it is on record", and the close move since)
+  to the subject brief and to single-symbol re-entry cards. Old Sources and authority lines are stripped from
+  excerpts. The Sources line then names `conversation memory (operator_conversation_turns)`
+  (`reply_provenance.py:179`, `:245`). `CIO_SUBJECT_MEMORY=0` disables. Not the comms-gateway
+  `scripts/lib/comms/subject_memory.py`.
+- **Deferred (R5j) and closing (R8) replies (#998, #1000).** A deferred reply names the `data_gap_registry` rows
+  it queued and the gap resolver's next run from the crontab (`_gap_queue_note`), or promises nothing. Expiry is
+  `_pending_expiry_hours`: ETA + `CIO_OPERATOR_PENDING_ETA_GRACE_HOURS` when the pending has an ETA, else
+  `PENDING_EXPIRY_HOURS` (2). `_closing_message` states the question and when it was asked, how long it was
+  open, why it closed and what was missing; `_retry_advice` comes from the deterministic subject resolver, with
+  no model call.
+- **Before any of this: house facts and the subject (#998).** `operator_subject_resolver` binds the question to
+  instruments; `operator_evidence_contract` (`config/operator_evidence_contract.json`) reports facts the store
+  had but the evidence did not carry (`MISSING_FACT`, `FALSE_EMPTY_CLAIM`) as soft `contract` gaps.
+
 ## Known limits — named, not closed
 
 - **Attention scans an empty office on the converse path** (R1, R5a). The Sources line now says so, but
@@ -129,8 +174,16 @@ never declared the Hermes enqueue, R5e duplicated its tail and its desk label. *
   `operator_conversation_turns` on E1 (`cio_poller_reply.py:100`) and E2
   (`cio_telegram_converse.py:1448`), which a monitor can parse.
 - **R7 / R8 receipts are not persisted**; the ledger row records status, not provenance.
+- **The answer-quality monitor does not know about ETAs.** `check_operator_answer_quality.py`
+  `pending_never_closed` flags any pending still open after `PENDING_OPEN_HOURS` (2 h), while the desk keeps a
+  pending with an ETA open to ETA + grace. A long-ETA pending is reported before it is due.
 
 ## Tests
+
+Also: `tests/test_operator_answers_use_house_facts_20260913.py`, `tests/test_operator_evidence_contract_20260913.py`,
+`tests/test_operator_intent_resolution_20260913.py`, `tests/test_subject_answer_completeness_20260913.py`,
+`tests/test_subject_memory_recall_20260913.py`, `tests/test_pending_close_wording_20260913.py`,
+`tests/test_desk_gap_queue_reconnect_20260913.py`, `tests/test_operator_answer_quality_20260913.py`.
 
 `tests/test_operator_reply_routing_sources_20260913.py` — offline: injected send, replaced event bus
 and wake store, fixture desk rows / snapshot / pending ledger, every model patched, patches applied

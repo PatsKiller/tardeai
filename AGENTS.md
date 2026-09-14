@@ -616,6 +616,60 @@ P2 therefore reported a `TypeError` instead of a portfolio check, and portfolio 
 never once run from that path. **A finding that names an exception in the checker is not a finding
 about the system** — read the message before believing the subject.
 
+## Operator replies, data gaps and agent numbers `[VERIFIED]` 2026-09-13 (PRs #992, #998–#1001)
+
+Two operator litmus tests failed on one evening: a question about SCHG got the whole re-entry book,
+and a sector question was answered from model knowledge while the reply called cash and holdings
+empty. No reply said where its facts came from. Path map: `docs/OPERATOR_REPLY_ROUTING.md`.
+
+- **Every operator reply leaves through one chokepoint.** `reply_provenance.finalize_operator_reply`
+  adds `Sources:` (stores read with their as-of, the model and its role) and, only when the answer
+  used something outside the Command Center, `Went outside: <what> — <why>`, then the authority
+  tail. A new reply branch calls it; a `_send` of anything but `final_reply` in the converse core
+  fails `tests/test_operator_reply_routing_sources_20260913.py`. Slash and `ack` output is out of scope.
+- **House facts first, and the distance between store and prompt is measured.** Cash, sectors,
+  policy, model portfolio and rotation are read from Trade-AI before any model call.
+  `scripts/lib/operator_evidence_contract.py` (`config/operator_evidence_contract.json`) reports
+  `MISSING_FACT` and `FALSE_EMPTY_CLAIM`. A reply never tells the operator a store is empty when it is not.
+- **Answer the subject that was named.** `scripts/lib/operator_subject_resolver.py` is the one
+  resolver: tickers bind in any case only for the operator's own book, registry symbols only
+  UPPER-CASE or as a `$cashtag` (514 registry symbols are English words); names come from the broker
+  feed; GUIDs are read, never minted. A named symbol gets its own card and subject brief, never the book.
+- **A model may reword a subject brief only if every number survives the check.** The DeepSeek
+  Flash summary (`CIO_SUBJECT_FLASH`) is used only with zero unsupported numbers
+  (`agent_number_grounding`), the symbol, close, mean target and as-of intact, and no order language.
+  Otherwise the deterministic brief is sent.
+- **Promise only what is queued.** A deferred reply names its gap rows and the gap resolver's next
+  run **read from the crontab** — never a copied schedule; no known run time, no follow-up promised.
+  A pending with an ETA stays open until ETA + `CIO_OPERATOR_PENDING_ETA_GRACE_HOURS` (default 1),
+  otherwise 2 h; an ask with no resolvable instrument is refused at once. The closing message states
+  the question, how long it was open, why it closed and what was missing.
+- **`resolved` means proven.** `data_gap_registry` is written only by
+  `scripts/lib/writers/data_gap_registry_writer.py`. A queued Maria job leaves the gap `enriching`;
+  `resolved` requires the job `completed` **with a result row** that was not demoted for
+  `UNGROUNDED_NUMBERS`; a dead job reopens the gap and three failures abandon it. *Cause: gaps were
+  marked resolved when a job had only been queued, while most Maria, Steph and risk jobs were failing
+  on a 4,000-token input cap before reaching the model.*
+- **Agent numbers come from the prompt (rule G0).** `cio_agent_contract.GROUNDING_RULE` is in every
+  watchlist agent contract; `agent_number_grounding` checks each number after parsing and, in the
+  default `enforce` mode, demotes an answer with ≥3 unsupported numbers that are ≥50% of those
+  checked to `RESEARCH_MORE` below the 40% gate. `AGENT_NUMBER_GROUNDING_MODE=record` flags only,
+  `off` disables. Live rate: `scripts/report_agent_number_grounding.py`.
+- **Chat memory is keyed by subject GUID and read-only.** `cio_operator_desk_loop.subject_memory()`
+  reads up to 3 earlier exchanges per subject in the same chat within `CIO_SUBJECT_MEMORY_DAYS` (30)
+  from `operator_conversation_turns`, whose one writer is `scripts/lib/inbound_identity_tagger.py`.
+  It is **not** `scripts/lib/comms/subject_memory.py` (`SubjectThread@v1`) — two things share the name.
+
+Traps this work paid for:
+
+- **A second `def` of the same name in one module silently replaces the first.** Python raises
+  nothing and every earlier caller gets the new body. *Cause: a new `_fmt_usd` in the 3,700-line
+  desk module replaced the whole-dollar cash formatter; the price helper is now `_fmt_price`.* Grep
+  `^def <name>(` in the module before adding a helper.
+- **Stored agent results keep an input snapshot, not the prompt that was sent.** A calibration
+  replayed over stored rows checks numbers against less context than the model had, so its flag rate
+  is an **upper bound**, never the live rate. Measure live from `number_grounding` on new rows.
+
 ## The identity and tagging spine — CRITICAL PATH, keep it on
 
 **This is the substrate the agents' persistent memory is built on. If you find any part of it
@@ -1771,6 +1825,13 @@ accumulates the divergence this document exists to remove.
   `&auth=`; per-ticker enrichment prefers token first. Do not assume one credential covers all
   paths — §13.6.
 
+- **A crontab line edit is a lane registry edit.** Any change to a scheduled line — adding a
+  `timeout`, re-enabling a commented job, changing a flag — lands with the matching
+  `config/lane_registry.json` row (`scheduler.match`, `state`, `output_signal`) in the same change,
+  or `check_lane_registry.py --fail-on-new` fails `ai_local_acceptance`. *Cause 2026-09-13:
+  re-enabling the read-only Moomoo sync under `timeout --kill-after=30s 10m` left an undeclared job;
+  lane `moomoo-live-read-sync` was declared in PR #1001.*
+
 ## 9.4 Store writes
 
 - **One declared writer per store.** A second writer is a finding, not a convenience.
@@ -1817,6 +1878,18 @@ accumulates the divergence this document exists to remove.
   orphans evidence and makes the deploy **silently non-additive**.
 - One PR per finding, validation output quoted in the body.
 - **A push is not a deploy and a merge is not a deploy** — `AI_WORK_POLICY.md` §21, §27.
+- **`promote` restarts `portfolio-server` and the units in `TRADEAI_CURRENT_BOUND_UNITS` (default
+  `tradeai-health-agent.service`) — nothing else.** A long-lived process keeps the code it imported
+  at start. **After a deploy that changes desk or converse code, restart
+  `tradeai-cio-telegram.service`** and read back its cwd (`readlink /proc/<MainPID>/cwd` is the new
+  release). The Telegram callback poller is a `*/2` cron through the `CURRENT` launcher and picks
+  up the release on its next run.
+- **A deploy does not install new user units.** A new `config/systemd/user/*.timer` reaches the host
+  only by the `scripts/install_cio_operator_runtime.sh` convention — `install -m 0644` from
+  `CURRENT/config/systemd/user` into `~/.config/systemd/user`, `systemctl --user daemon-reload`,
+  `enable --now` — and installing is operator-approved (§9.3, §17). Prove it with
+  `check_expected_services.py`, not with the unit file existing. *Cause 2026-09-13:
+  `tradeai-operator-answer-quality.timer` was merged and promoted and ran only once installed separately.*
 
 ## Incident and rollback
 
@@ -2917,6 +2990,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.2.0 | 2026-09-13 | PROPOSED | MINOR | §7 gains "Operator replies, data gaps and agent numbers" (one reply chokepoint, house facts first, subject resolution, checked summaries, promise only what is queued, resolved means proven, rule G0, GUID-keyed memory) and two traps (duplicate `def` names; stored results lack the prompt). §9.3 gains "a crontab line edit is a lane registry edit". §10 gains the Telegram bot restart and "a deploy does not install new user units". Records merged work from PRs #992, #998–#1001; does not touch §0, §2, §17 or role authority. | Documentation of merged, operator-directed work (PRs #998–#1001); ratification rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING |
 | 1.2.0 | 2026-09-13 | PROPOSED | MAJOR | §7A gains "Ownership and the grant" and rule 7; §17 gains **adding, replacing or retiring a data source or a writer of an authoritative store**. Registry schema `DataSourceAuthority@v2` requires an `approval` record on every provider and domain; `check_data_source_authority.py` fails an ungranted source (`UNAPPROVED_SOURCE`). Classified MAJOR because it widens §17 (version policy) — it adds a restriction and weakens nothing. Version number left at the unreleased 1.2.0 PROPOSED; whether the widening makes the release 2.0.0 is the operator's call at ratification. | **Operator-directed** 2026-09-13 (instruction quoted verbatim in §7A; One Source of Truth PRs #992 #993 #994). Ratification of the §17 text rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING |
 | 1.2.0 | 2026-09-09 | PROPOSED | MINOR | Adds §9.1 rule: `settle_delivery` must stamp `delivery_owner`/`gateway_mode` into `provider_coordinates` (PR #926). Does not activate 1.2.0; does not weaken §0/§2/§17. | **INCLUDED** by operator live-ceiling execute 2026-09-09; full `APPROVE_AGENTS_POLICY_1_2_0` still PENDING |
 | 1.2.0 | 2026-09-03 | PROPOSED | MINOR | Multi-Agent SOP controls plus the operator-approval workflow for guarded remote push and live deployment. Does not weaken §0/§2/§17 or financial rails. | **PENDING** — `APPROVE_AGENTS_POLICY_1_2_0 <pr> <sha>` |
