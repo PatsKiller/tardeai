@@ -1462,6 +1462,77 @@ Descending strength. **Only the first two settle a claim about runtime.**
 - **A guard that reads prose will pass on a comment describing the defect.** Strip comments,
   docstrings and log strings — or walk the AST — before asserting a pattern is absent from source.
 
+## What 2026-09-14 taught — traps and rules for the next agent `[VERIFIED]` (PRs #1006–#1009)
+
+Each line is something an agent got wrong today or was about to. The code carries the detail; this is what to remember before you start.
+
+### Research and operator replies
+- **Research escalation is not quality-based.**
+  - The desk's `gap_resolver` stops at the first `answered` outcome.
+  - Brave spills to SearXNG only on quota or rate limit.
+  - Hermes never escalates to Brave.
+  - Read `docs/architecture/RESEARCH_ESCALATION_2026-09-14.md` before claiming anything "escalates when not enough".
+- **A pending answer must be joined back by id, not by store.**
+  - Hermes writes `hermes_research_results.jsonl`, never a promoted `hermes_research_intelligence` row.
+  - A pending that waits on the table never closes.
+  - Join path: pending_id → `cio_operator_gap_requests.jsonl` (plan_id, research_id) → `hermes_research_projection.json` → result.
+  - Monitor rule: `RESEARCH_LANDED_UNSENT`.
+- **Paths in `cio_hermes_research` are relative** (`data/cio/...`) and resolve against the process cwd. Run dry runs from `CURRENT`.
+- **Source pills are spelled out, never bare dots.**
+  - `🟢 Trade-AI data` · `🔵 Looked up outside Trade-AI` · `🟣 AI model (DeepSeek)`.
+  - Every reply opens with `LEGEND`, defined once in `reply_provenance`.
+  - A model is never "outside data": it goes on the 🟣 role, not in "Went outside".
+- **`MAX_SOURCE_LABELS` is 16.** At 10 the dossier's stores pushed "conversation memory" off the Sources line.
+
+### Data correctness — litmus against an independent source before trusting a store
+- **Finviz exports are read by header name through `lib/finviz_csv.parse_export`, never by position or `split(",")`.**
+  - A saved view can be edited on finviz.com.
+  - Quoted company names contain commas.
+  - `VIEW_CONTRACTS` raises on drift; `check_finviz_view_contracts.py` checks daily at 06:05.
+- **Finviz units:**
+  - Market Cap and Shares Float are **millions**; Average Volume is **thousands**.
+  - Enrichment stores them as `market_cap_b` / `avg_vol_m`, a 1,000× mislabel.
+  - Read them with `finviz_csv.enrichment_market_cap_billions` / `enrichment_avg_volume_shares`.
+- **A sub-one-share Schwab position's `price` is its value.** The transport divides by `max(quantity, 1)`.
+  - Use `canonical_mark` or value ÷ shares.
+  - The transport is broker-subsystem code and is not edited.
+- **Alpaca `prevDailyBar` is two sessions back before the day's first bar.** Use `dailyBar.c` when `dailyBar.t` predates today in ET.
+- **Compare like with like.** Friday's close vs today's `prev_close`, never a premarket quote vs a close.
+- **Yahoo's historical Close is split-adjusted.** Never backfill an old session from it without `--allow-backfill` and review.
+- **IEX-derived closes are not the consolidated tape.**
+  - 16% of `market_quotes` closes for 09-11 were >1% off.
+  - `eod_consolidated_close_sync` replaces them at 17:15; `source_litmus_vs_yahoo` checks at 07:45.
+- **`ticker_snapshot_daily.data.rvol` before 2026-09-14 is unusable** (universe median 3.4–4.8).
+
+### Scheduling, env and liveness
+- **Cron lines do not load `.env`.**
+  - A helper that reads only `os.environ` fails silently there. `data_source_report` never recorded alpha_vantage for four months.
+  - Read DB settings with an `.env` fallback, and make a switch that must reach every sender a **host file**, like `~/.config/tradeai/comms_editor_mode`.
+- **A date window in calendar days breaks on Mondays and holidays.**
+  - `CURRENT_DATE - 2` emptied social-scalp discovery every Monday.
+  - Reach back to the last session that has data.
+- **Editing a crontab line needs the lane registry in the same change.**
+  - A moved line is "undeclared"; a removed line leaves a stale baseline entry.
+  - RETIRED rows need `reason_confidence` and `reason_evidence`.
+  - Gate a proposed crontab with `lane_registry.discover_all(cron_text=...)` before installing it.
+- **Retention aborted a whole policy on a few referenced rows.** `db_retention.fk_guard` skips rows a child table still references.
+- **Unit files in `~/.config/systemd/user` are copies, not links.** Install with `install -m 0600`, then `daemon-reload`, then `enable --now <timer>`.
+
+### Telegram
+- **One chokepoint:** `telegram_transport.deliver_text`, with the Communications Editor.
+  - `tg_chat_ids.chat_ids()` is DM-only.
+  - `proposal_chat_ids()` is the Proposal Decisions group.
+  - `allowed_chat_ids()` is for inbound allowlists only.
+- **Orphaned-stop alerts stay IMMEDIATE** (capital-protection set). Dedupe them; never route them to digest.
+
+### Git and CI
+- **Branch protection requires a PR to be up to date.**
+  - `gh pr update-branch` does not exist in this gh.
+  - Merge `origin/main` into the branch locally and push. Never `--admin`.
+- **A pipeline ending in `| tail` hides pytest's exit code** under `set -e`. Save output to a file and test the exit status.
+- **Local acceptance must run with the venv first on PATH.** System `python3` has no ruff, and the ruff test fails for the environment, not the code.
+- **`pgrep -f <pattern>` matches the shell running it.** Check `/proc/<pid>/cwd` and skip `$$` before killing.
+
 ## Remote approval by Telegram — when the operator is not at the keyboard
 
 The workflow above needs someone at a terminal. When the operator is away, work that is finished,
