@@ -846,8 +846,8 @@ def execute_governed_call(
     # have actually cost, not the 32k-token worst case that made a $0.50 cap refuse on phantom money.
     try:
         calibration = lc.calibrated_projected_usd(process_id, worst_case)
-    except Exception as e:  # noqa: BLE001 -- an unmeasurable process stays on the worst case
-        calibration = {"projected_usd": worst_case, "basis": f"worst_case_calibration_error:{type(e).__name__}"}
+    except Exception as exc:  # noqa: BLE001 -- an unmeasurable process stays on the worst case
+        calibration = {"projected_usd": worst_case, "basis": f"worst_case_calibration_error:{type(exc).__name__}"}
     projected = float(calibration["projected_usd"])
 
     try:

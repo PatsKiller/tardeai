@@ -13801,8 +13801,10 @@ def _consumption_spend(query=None):
     peak/off-peak split and what the cap ledger counted. Operator ask 2026-09-14. Read-only.
     """
     import sys as _sys
+
     _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from lib import llm_spend as _spend
+
     q = query or {}
     raw = q.get("period") or ["today"]
     period = (raw[0] if isinstance(raw, list) else raw) or "today"
