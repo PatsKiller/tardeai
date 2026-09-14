@@ -1122,6 +1122,43 @@ def collect_hermes_scope_governor_health() -> list[dict]:
     return out
 
 
+RESEARCH_LANE_STATUS = PROJECT_ROOT / "data" / "runtime" / "research_lane_health.json"
+#: Lanes whose failure means research itself is not being produced, not a side store drifting.
+RESEARCH_HEARTBEAT_LANES = frozenset({"cio-hermes-queue", "deepseek", "coverage-stall"})
+
+
+def collect_research_heartbeat() -> list[dict]:
+    """Research is the heartbeat: fold research_lane_health's verdicts into the score.
+
+    Until 2026-09-14 this agent read neither the research lane monitor nor the CIO Hermes queue.
+    It reported DEGRADED 73/100 with intelligence_quality 85 while 62% of Hermes research requests
+    failed in a week. The lane monitor already alerts on its own; this makes the same verdicts count
+    toward the platform score and flags the monitor itself going quiet.
+    """
+    out = []
+    try:
+        age_h = _file_age_h(RESEARCH_LANE_STATUS)
+        if age_h is None:
+            return [_f("intelligence_quality", "research_heartbeat_unmonitored", "critical",
+                       "research lane monitor has never written its status file", path=str(RESEARCH_LANE_STATUS))]
+        if age_h > 1.0:
+            out.append(_f("intelligence_quality", "research_heartbeat_monitor_stale", "critical",
+                          f"research lane monitor status is {age_h}h old (timer runs every 15 min)", age_hours=age_h))
+        doc = json.loads(RESEARCH_LANE_STATUS.read_text(encoding="utf-8"))
+        lanes = doc.get("lanes") if isinstance(doc.get("lanes"), dict) else {}
+        for lane, row in sorted(lanes.items()):
+            if not isinstance(row, dict) or row.get("ok") is not False:
+                continue
+            severity = "critical" if lane in RESEARCH_HEARTBEAT_LANES else "warning"
+            out.append(_f("intelligence_quality", f"research_lane_firing:{lane}", severity,
+                          f"research lane {lane} firing: {', '.join(str(x) for x in row.get('firing') or [])}",
+                          lane=lane, firing=row.get("firing") or []))
+    except Exception as e:
+        out.append(_f("intelligence_quality", "research_heartbeat_check_error", "warning",
+                      f"research heartbeat check failed: {str(e)[:80]}"))
+    return out
+
+
 def collect_risk_protection() -> list[dict]:
     out = []
     try:
@@ -3288,6 +3325,7 @@ COLLECTORS = [
     collect_execution_hardening_health,
     collect_intelligence_quality,
     collect_hermes_scope_governor_health,
+    collect_research_heartbeat,
     collect_risk_protection,
     collect_retirement_planning,
     collect_strategy_output,

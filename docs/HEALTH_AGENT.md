@@ -258,6 +258,39 @@ inside its window; a row nobody touches decays to unknown." Tests:
 never consulted; window edge; the Finnhub never-succeeded-but-failed case; the health-agent collector uses
 the view; alert fires once on transition; unit files match the brief).
 
+## Research heartbeat (2026-09-14)
+
+**Operator:** "This is the heartbeat that can't go down." The operator asked why nothing monitored research,
+alerted, and fixed it. Measured the same day:
+
+| What | Measured | Why nothing caught it |
+|---|---|---|
+| CIO Hermes research queue | 136 of 219 requests failed in 7 days (62%). In the last 24 h, 13 of 18. | `research_lane_health` and `hermes_pipeline_health` both read `hermes_external_research`, which was healthy. No monitor read `data/cio/hermes_research_requests.jsonl`. |
+| Lost requests | 32 enqueued requests missing from `hermes_research_projection.json` (7 on 09-14). Among them: re-entry research for DIVI (asked 3 times), AUUD, CACI, DXCM, IBIO, CAST; NOC concentration. | Unlocked load → modify → replace of a 30 MB projection by several processes. The worker only claims from the projection. |
+| Execution-language refusals | 63 of the 136. A visible share quoted analyst labels ("Strong Sell", "institutional buy"). | Classified never-retry by design, so the research was paid for and discarded. |
+| Transient bridge failures | 22 breaker-open or dropped-connection failures, plus 8 provider errors. | Filed as `other` (non-retryable); nothing re-queued a `retryable` row. |
+| Health Agent auto-fix | Every `retry_cmd` exited 127 (36,365 times since 08-07). | The handler rewrote `.venv/bin/python` inside absolute paths. |
+| Health Agent score | DEGRADED 73/100, `intelligence_quality` 85. | The agent read neither the research lane monitor nor the queue. |
+
+**What runs now:**
+
+- **Detect.**
+  - Lane `cio-hermes-queue` in `research_lane_health`, every 15 min. It alerts with the router bypassed.
+  - It fires on `failure_rate_24h` (≥30%, ≥5 outcomes), `no_completions_24h`, `queue_stalled` (>3 h), `requests_lost` and `unclassified_24h`.
+  - `fix_hint` names the dominant class.
+- **Heal.** `claim_next` runs `reap_stale_running` → `replay_retryable_failures` → `restore_lost_requests` before every claim:
+  - replays provider, timeout and truncation failures once, after the 15-min breaker;
+  - restores lost requests under 48 h from the ledger.
+- **Prevent.**
+  - `projection_transaction()`: an exclusive, reentrant `flock` on every projection writer.
+  - The guard masks third-party labels, and the bridge backend rewrites a refused draft once (still guarded).
+- **Score.** `collect_research_heartbeat` folds firing research lanes into `intelligence_quality`:
+  - `critical` for the queue, the DeepSeek lane and the coverage stall;
+  - `critical` when the lane monitor's status file is older than 1 h.
+- **Repair the repairer.** `claude_escalation_handler.resolve_relative_venv` rewrites only a relative interpreter token.
+
+**Still operator decisions:** raising a process cost cap (`llm_process_config.daily_soft_cap`).
+
 ## Extending
 
 - **New health check** → add a collector in `health_agent.py` (`collect_*`), return findings; the scorer

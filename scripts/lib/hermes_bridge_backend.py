@@ -113,21 +113,57 @@ class BridgeHermesResearchBackend:
         parsed = self._parse_json_content(raw_text)
         body = self._normalize_body(parsed, request, qs)
 
-        texts = [a.get("summary") or "" for a in body.get("answers") or []]
-        texts += [a.get("detail") or "" for a in body.get("answers") or []]
-        texts += [f.get("text") or "" for f in body.get("findings") or []]
-        notes = (body.get("desk_implications") or {}).get("notes") or ""
-        texts.append(notes)
-        assert_no_execution_language(*texts)
+        try:
+            assert_no_execution_language(*self._guarded_texts(body))
+        except HermesBackendError as refusal:
+            # One rewrite, still guarded. Measured 2026-09-07..14: 63 of 136 failed requests
+            # were refused here and never retried (the refusal is non-retryable by design), so
+            # the research was paid for and thrown away. The guard is unchanged: a rewrite that
+            # still carries advice or stance language fails exactly as before.
+            body = self._rewrite_without_execution_language(messages, raw_text, str(refusal), request, qs)
 
         if not body.get("as_of"):
             body["as_of"] = utc_now_iso()
         return body
 
+    @staticmethod
+    def _guarded_texts(body: dict[str, Any]) -> list[str]:
+        texts = [a.get("summary") or "" for a in body.get("answers") or []]
+        texts += [a.get("detail") or "" for a in body.get("answers") or []]
+        texts += [f.get("text") or "" for f in body.get("findings") or []]
+        texts.append((body.get("desk_implications") or {}).get("notes") or "")
+        return texts
+
+    def _rewrite_without_execution_language(
+        self, messages: list[dict], draft: str, refusal: str, request: dict, qs: list[dict],
+    ) -> dict[str, Any]:
+        repair = messages + [
+            {"role": "assistant", "content": draft[:12000]},
+            {"role": "user", "content": (
+                "The READ_ONLY guard refused that JSON: " + refusal[:240] + ". Return the same JSON with the "
+                "same findings and citations, rewritten so no sentence uses buy, sell, trim, order or stop as "
+                "advice or as a stance. State the evidence conditions instead (for example 'the thesis "
+                "strengthens if …', 'the thesis weakens if …'). Quote a third-party rating only as "
+                "'analyst rating: <label>'. JSON only."
+            )},
+        ]
+        try:
+            raw = self._chat_completions(repair)
+        except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
+            raise HermesBackendError(refusal, retryable=False)
+        body = self._normalize_body(self._parse_json_content(raw), request, qs)
+        assert_no_execution_language(*self._guarded_texts(body))
+        limitations = body.setdefault("limitations", [])
+        if isinstance(limitations, list):
+            limitations.append("rewritten once after the READ_ONLY execution-language guard refused the first draft")
+        return body
+
     def _system_prompt(self) -> str:
         # Keep compact: Flash can spend entire max_tokens on reasoning with long prompts.
         return (
-            "Hermes READ_ONLY research for CIO desk. No orders/stops language. "
+            "Hermes READ_ONLY research for CIO desk. No orders/stops language: never write buy, sell, trim, "
+            "order or stop as advice or stance; state evidence conditions ('the thesis strengthens if …'). "
+            "Quote third-party ratings as 'analyst rating: <label>'. "
             "Do not invent portfolio numbers outside context_snapshot. "
             "Use catalyst.events as the event calendar. Cite event_id in citations. "
             "as_of must be today's UTC ISO timestamp, not a historical guess. "
