@@ -109,6 +109,28 @@ slow vector was queued, `operator_question`, `no_coverage_behaviour` (from the r
 Switch: `CIO_GAP_RESOLVER=0` restores the pre-Phase-7 path (the negative-control test proves the old
 behaviour returns: a pending with no ETA).
 
+## Measured 2026-09-14 — what the chain actually does for an operator question
+
+The walk is correct as coded (88 resolver/router tests pass); what limits it is which switches the calling process
+has. The CIO bot process has **none** of `GAP_RESOLVER_LIVE`, `BRAVE_ROUTER_ENABLED`, `BRAVE_ROUTER_LIVE`.
+
+| Step | Effect in the bot today |
+|---|---|
+| refresh_producer | dry run ("would run <writer>") |
+| backup_provider | nothing — research/news backups have no adapter; analyst backup is dry run |
+| governed_search | skipped — `router_disabled` |
+| hermes_research | **real** — enqueues regardless of `GAP_RESOLVER_LIVE`; one DeepSeek Flash call over house evidence, no web |
+| llm_curation | nothing — curates only gathered evidence |
+| operator_ask | no message — embedded in the desk reply; 1/day across domains |
+
+Real receipts, HPE ask 09:12 ET: refresh dry-run → backup no_adapter → Brave router_disabled → **Hermes queued** →
+curation nothing → operator_ask embedded. Hermes completed 09:16; delivered 10:36 after PR #1006.
+
+Brave IS live for scheduled lanes (hourly `run_governed_research_producer.py` with `BRAVE_ROUTER_LIVE`; `web_research`)
+and never for the desk. SearXNG takes a Brave search only on `DAILY_EXHAUSTED` / `MONTHLY_EXHAUSTED` / `HTTP_429`.
+Nothing escalates on insufficient results. Full picture, due-diligence test and the approved target design (the
+Research Escalation Circle): `docs/architecture/RESEARCH_ESCALATION_2026-09-14.md`.
+
 ## The data gap queue — `data_gap_registry` (PR #998)
 
 A second, older mechanism with a similar name: `scripts/data_gap_resolver.py` (cron `0 10-16 * * 1-5`,
