@@ -486,13 +486,15 @@ def test_finalize_keeps_an_existing_desk_sources_line_and_does_not_duplicate_it(
     body = "Answer.\nSources: re-entry desk · computed 2026-09-13 22:52 | re-entry desk\nREAD_ONLY_ADVISORY"
     final, prov = rp.finalize_operator_reply(body, rp.ReplyProvenance(kind="t", stores_read=["re-entry desk"]))
     lines = final.split("\n")
-    assert lines == ["Answer.", "Sources: re-entry desk · computed 2026-09-13 22:52", "READ_ONLY_ADVISORY"]
+    assert lines == ["Answer.", rp.origin_line(["re-entry desk"], [], None),
+                     "Sources: re-entry desk · computed 2026-09-13 22:52", "READ_ONLY_ADVISORY"]
     assert prov.stores_read == ["re-entry desk · computed 2026-09-13 22:52"]
 
 
 def test_finalize_adds_the_default_tail_and_says_none_when_nothing_was_read():
     final, prov = rp.finalize_operator_reply("Hello", rp.ReplyProvenance(kind="t"))
-    assert final.split("\n") == ["Hello", "Sources: none — no Command Center store was read for this reply",
+    assert final.split("\n") == ["Hello", rp.origin_line([], [], None),
+                                 "Sources: none — no Command Center store was read for this reply",
                                  rp.DEFAULT_TAIL]
     assert prov.sources_line_present and prov.authority_tail_present and prov.went_outside == []
 
@@ -554,7 +556,10 @@ def test_negative_control_the_base_footer_orphaned_half_the_tail_and_doubled_the
 def test_schg_turn_sent_to_the_operator_ends_with_the_exact_footer():
     _out, txt = _ask("Is now a good time to get back into schg")
     lines = txt.split("\n")
-    assert lines[-2:] == ["Sources: re-entry desk · computed 2026-09-13 22:52",
-                          "No orders/stops from chat · READ_ONLY_ADVISORY"], lines[-4:]
+    # 2026-09-14: the Origin pill line sits above Sources, and a stock question now
+    # reads the dossier stores too; the desk label still leads and appears once.
+    assert lines[-1] == "No orders/stops from chat · READ_ONLY_ADVISORY", lines[-4:]
+    assert lines[-2].startswith("Sources: re-entry desk · computed 2026-09-13 22:52"), lines[-4:]
+    assert lines[-3].startswith("Origin: 🟢 Trade-AI data"), lines[-4:]
     assert "No orders/stops from chat ·" not in lines
     assert lines[-2].count("re-entry desk") == 1
