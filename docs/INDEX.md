@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `c2e1fca3b8acb9a5d68ef486f63d4a3e7ba5e077e87805aee3f03ee17214fe5c`
+**Tree fingerprint:** `dbe6ccac014b6211ba6062dd4be42aaf4999f2250ae5c9cd30a2b0188a73fe59`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -109,7 +109,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
-| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `9734c36cc780` |
+| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `84f8d74e4617` |
 | `docs/STOP_METHODOLOGY.md` | Stop & Trailing-Stop Methodology (canonical) | review_required | OK | `5b9791931edc` |
 | `docs/STOP_SYSTEM_GAP_REPORT.md` | Trade AI v12 — Stop System Alignment / Gap Report | review_required | OK | `12d1dfe39ffb` |
 | `docs/STRATEGY_MONITORING_20260626.md` | Strategy & Monitoring — Audit Remediation (2026-06-26) | review_required | OK | `4655d328251e` |
