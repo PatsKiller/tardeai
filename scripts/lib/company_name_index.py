@@ -78,10 +78,14 @@ def normalize_name(name: Any) -> str:
 
 
 def _instruments() -> dict[str, Any]:
+    # scripts.lib FIRST (scripts/lib/__init__.py: "prefer scripts.lib.X"). Bare
+    # `lib.` first loaded a second copy of schwab_instrument_evidence beside the
+    # scripts.lib one as soon as the desk intent analyzer began resolving company
+    # names, and assert_single_import_identity() then raised in the same process.
     try:
-        from lib.schwab_instrument_evidence import load  # noqa: PLC0415
+        from scripts.lib.schwab_instrument_evidence import load  # noqa: PLC0415
     except Exception:
-        from scripts.lib.schwab_instrument_evidence import load  # type: ignore  # noqa: PLC0415
+        from lib.schwab_instrument_evidence import load  # type: ignore  # noqa: PLC0415
     return (load() or {}).get("instruments") or {}
 
 
