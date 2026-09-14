@@ -103,6 +103,19 @@ def format_report(r: dict, *, cadence: str, mtd: dict | None = None) -> str:
         worst = ", ".join(f"{e(x['process_name'])} ({x['calls_peak']:,} calls, {money(x['usd_peak'])})"
                           for x in r["scheduled_on_peak"][:4])
         lines.append(f"⚠️ <b>Scheduled work ran on peak</b>: {worst}")
+    outside = r.get("scheduled_outside_window") or []
+    if outside:
+        # Operator rule 2026-09-14: scheduled work runs weekdays 9 a.m.-9 p.m. ET or weekends.
+        names = ", ".join(f"{e(x['process_name'])} ({x['calls']:,} calls, {money(x['usd'])})" for x in outside[:4])
+        lines.append(f"🕘 <b>Scheduled work outside 9 a.m.–9 p.m. ET weekdays</b>: {names}")
+    bal = r.get("deepseek_balance")
+    if bal:
+        gap = bal["deducted_usd"] - bal.get("logged_usd", 0.0)
+        span = f"{bal['from'][5:16].replace('T', ' ')}→{bal['to'][5:16].replace('T', ' ')} UTC"
+        lines.append(f"🏦 DeepSeek balance: {money(bal['deducted_usd'])} deducted vs {money(bal.get('logged_usd', 0.0))} logged"
+                     f" ({'+' if gap >= 0 else '−'}{money(abs(gap))}) · {span}"
+                     + (f" · topped up {money(bal['topped_up_usd'])}" if bal.get("topped_up_usd") else "")
+                     + f" · balance {money(bal['balance_usd'])}" + (" · partial window" if bal.get("partial") else ""))
     brave = r.get("brave") or {}
     if brave.get("requests") is not None:
         lines.append(f"🔎 Brave Search: {int(brave['requests']):,} requests (paid plan, per-request price not configured)")
@@ -110,7 +123,7 @@ def format_report(r: dict, *, cadence: str, mtd: dict | None = None) -> str:
     if link:
         lines.append("")
         lines.append(f'<a href="{e(link, quote=True)}">Open spend in Command Center</a>')
-    lines.append(f"<i>{AUTHORITY} · real = provider tokens × price schedule; peak = DeepSeek official peak hours (Mon–Fri)</i>")
+    lines.append(f"<i>{AUTHORITY} · real = provider tokens × price schedule; peak = DeepSeek official peak hours (Mon–Fri); window = weekdays 9 a.m.–9 p.m. ET + weekends</i>")
     return "\n".join(lines)
 
 

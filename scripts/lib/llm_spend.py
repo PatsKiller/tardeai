@@ -47,6 +47,7 @@ SYNTHETIC_PREFIXES = ("test\\_%%", "test-%%", "pytest\\_%%", "fixture\\_%%", "ca
 PERIODS = ("today", "yesterday", "week", "last_week", "month", "last_month")
 CAP_FILE = Path(os.path.expanduser("~/.config/tradeai/llm_global_daily_usd_cap.env"))
 SEARCH_BUDGET = PROJECT_ROOT / "data" / "runtime" / "search_budget.json"
+BALANCE_HISTORY = PROJECT_ROOT / "data" / "runtime" / "deepseek_balance_history.jsonl"
 
 
 def period_bounds(period: str, *, now: Optional[datetime] = None) -> tuple[datetime, datetime, str]:
@@ -89,6 +90,52 @@ def peak_sql(column: str = "created_at") -> str:
     dow = f"EXTRACT(ISODOW FROM ({column} AT TIME ZONE 'UTC'))"
     windows = " OR ".join(f"({hour} >= {int(a)} AND {hour} < {int(b)})" for a, b in DEEPSEEK_PEAK_UTC)
     return f"({dow} BETWEEN 1 AND 5 AND ({windows}))"
+
+
+def outside_window_sql(column: str = "created_at") -> str:
+    """SQL boolean: the row falls outside the operator's scheduled-work window.
+
+    Operator rule 2026-09-14: scheduled paid work runs 09:00-21:00 ET on weekdays and at any hour on weekends;
+    weekday 21:00-09:00 ET is for urgent, operator-requested work only. Calendar and hours in ET (DST-aware).
+    """
+    try:
+        from scripts.lib.deepseek_offpeak import SCHEDULED_ET_END_HOUR, SCHEDULED_ET_START_HOUR
+    except ImportError:                                              # pragma: no cover
+        from lib.deepseek_offpeak import SCHEDULED_ET_END_HOUR, SCHEDULED_ET_START_HOUR  # type: ignore
+    local = f"({column} AT TIME ZONE 'America/New_York')"
+    hour = f"EXTRACT(HOUR FROM {local})"
+    return (f"(EXTRACT(ISODOW FROM {local}) BETWEEN 1 AND 5 AND "
+            f"({hour} < {int(SCHEDULED_ET_START_HOUR)} OR {hour} >= {int(SCHEDULED_ET_END_HOUR)}))")
+
+
+def reconcile_balance(snapshots: list[dict[str, Any]], start: datetime, end: datetime) -> Optional[dict[str, Any]]:
+    """Pure. What the DeepSeek balance says was deducted in [start, end], from hourly snapshots.
+
+    Drops between consecutive snapshots are deductions; rises are top-ups (never netted against spend).
+    None when there are not two snapshots to compare. `partial` when the first usable snapshot is after start.
+    """
+    rows = []
+    for r in snapshots:
+        try:
+            ts = datetime.fromisoformat(str(r.get("ts")).replace("Z", "+00:00"))
+            bal = float(r.get("total_balance"))
+        except (TypeError, ValueError):
+            continue
+        rows.append((ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc), bal))
+    rows.sort()
+    before = [x for x in rows if x[0] <= start]
+    inside = [x for x in rows if start < x[0] <= end]
+    series = ([before[-1]] if before else []) + inside
+    if len(series) < 2:
+        return None
+    deducted = topped_up = 0.0
+    for (_, a), (_, b) in zip(series, series[1:]):
+        if b < a:
+            deducted += a - b
+        else:
+            topped_up += b - a
+    return {"from": series[0][0].isoformat(), "to": series[-1][0].isoformat(), "deducted_usd": round(deducted, 6),
+            "topped_up_usd": round(topped_up, 6), "balance_usd": series[-1][1], "partial": not before}
 
 
 def provider_of(model_lane: Optional[str], model_name: Optional[str], cost: float) -> str:
@@ -175,6 +222,7 @@ def build_report(period: str, *, now: Optional[datetime] = None,
                  db_query: Callable[..., list[dict[str, Any]]] = default_db_query) -> dict[str, Any]:
     start, end, label = period_bounds(period, now=now)
     peak = peak_sql()
+    outside = outside_window_sql()
     synth = _synthetic_filter()
     base = f"FROM llm_consumption_log WHERE created_at >= %s AND created_at < %s AND {synth}"
     params = (start, end)
@@ -187,7 +235,9 @@ def build_report(period: str, *, now: Optional[datetime] = None,
                    COALESCE(SUM(reasoning_tokens), 0) AS reasoning_tokens,
                    COALESCE(SUM(cache_hit_tokens), 0) AS cache_hit_tokens,
                    COALESCE(SUM(estimated_cost_usd) FILTER (WHERE {peak}), 0) AS usd_peak,
-                   COUNT(*) FILTER (WHERE {peak}) AS calls_peak
+                   COUNT(*) FILTER (WHERE {peak}) AS calls_peak,
+                   COALESCE(SUM(estimated_cost_usd) FILTER (WHERE {outside}), 0) AS usd_outside_window,
+                   COUNT(*) FILTER (WHERE {outside} AND estimated_cost_usd > 0) AS calls_outside_window
             {base}""", params) or [{}])[0]
     models = db_query(
         f"""SELECT model_lane, model_name, COUNT(*) AS calls, COALESCE(SUM(estimated_cost_usd), 0) AS usd,
@@ -201,6 +251,8 @@ def build_report(period: str, *, now: Optional[datetime] = None,
                    COALESCE(SUM(tokens_in), 0) AS tokens_in, COALESCE(SUM(tokens_out), 0) AS tokens_out,
                    COUNT(*) FILTER (WHERE {peak}) AS calls_peak,
                    COALESCE(SUM(estimated_cost_usd) FILTER (WHERE {peak}), 0) AS usd_peak,
+                   COUNT(*) FILTER (WHERE {outside} AND estimated_cost_usd > 0) AS calls_outside_window,
+                   COALESCE(SUM(estimated_cost_usd) FILTER (WHERE {outside}), 0) AS usd_outside_window,
                    STRING_AGG(DISTINCT COALESCE(model_name, model_lane), ', ') AS models,
                    MAX(created_at) AS last_call
             {base} GROUP BY process_id, trigger_mode ORDER BY usd DESC, calls DESC""", params)
@@ -240,12 +292,27 @@ def build_report(period: str, *, now: Optional[datetime] = None,
             "calls": int(num(r.get("calls"))), "failures": int(num(r.get("failures"))), "usd": num(r.get("usd")),
             "tokens_in": int(num(r.get("tokens_in"))), "tokens_out": int(num(r.get("tokens_out"))),
             "calls_peak": int(num(r.get("calls_peak"))), "usd_peak": num(r.get("usd_peak")),
+            "calls_outside_window": int(num(r.get("calls_outside_window"))),
+            "usd_outside_window": num(r.get("usd_outside_window")),
             "models": r.get("models"), "last_call": str(r.get("last_call") or "")[:19],
             "daily_cost_cap_usd": (num(cfg["daily_cost_cap_usd"]) if cfg.get("daily_cost_cap_usd") is not None else None),
             "daily_request_cap": cfg.get("daily_soft_cap"),
         })
     scheduled_on_peak = sorted((p for p in process_rows if p["kind"] == "scheduled" and p["calls_peak"] > 0),
                                key=lambda p: (-p["usd_peak"], -p["calls_peak"]))
+    scheduled_outside = sorted((p for p in process_rows if p["kind"] == "scheduled" and p["usd_outside_window"] > 0),
+                               key=lambda p: -p["usd_outside_window"])
+    balance = None
+    history = _balance_history()
+    if history:
+        balance = reconcile_balance(history, start, end)
+        if balance:
+            logged = (db_query(
+                f"""SELECT COALESCE(SUM(estimated_cost_usd), 0) AS usd FROM llm_consumption_log
+                    WHERE created_at >= %s AND created_at < %s AND {synth}
+                      AND (model_name ILIKE 'deepseek%%' OR model_lane IN ('fast', 'pro', 'deepseek-flash'))""",
+                (datetime.fromisoformat(balance["from"]), datetime.fromisoformat(balance["to"]))) or [{}])[0]
+            balance["logged_usd"] = num(logged.get("usd"))
     usd = num(totals.get("usd"))
     usd_peak = num(totals.get("usd_peak"))
     days = max(1.0, (end - start).total_seconds() / 86400.0)
@@ -262,6 +329,8 @@ def build_report(period: str, *, now: Optional[datetime] = None,
             "usd_peak": usd_peak, "usd_offpeak": max(0.0, usd - usd_peak),
             "calls_peak": int(num(totals.get("calls_peak"))),
             "calls_offpeak": int(num(totals.get("calls"))) - int(num(totals.get("calls_peak"))),
+            "usd_outside_window": num(totals.get("usd_outside_window")),
+            "calls_outside_window": int(num(totals.get("calls_outside_window"))),
         },
         "counted_by_caps_usd": num(counted.get("usd")),
         "global_cap_usd_per_day": configured_global_cap(),
@@ -270,13 +339,34 @@ def build_report(period: str, *, now: Optional[datetime] = None,
         "by_process": process_rows,
         "scheduled_on_peak": [{"process_id": p["process_id"], "process_name": p["process_name"],
                                "calls_peak": p["calls_peak"], "usd_peak": p["usd_peak"]} for p in scheduled_on_peak],
+        "scheduled_outside_window": [{"process_id": p["process_id"], "process_name": p["process_name"],
+                                      "calls": p["calls_outside_window"], "usd": p["usd_outside_window"]}
+                                     for p in scheduled_outside],
+        "deepseek_balance": balance,
         "brave": brave_requests(start, end),
         "definitions": {
             "peak": "DeepSeek official peak hours 01:00–04:00 and 06:00–10:00 UTC (09:00–12:00, 14:00–18:00 Beijing), Mon–Fri; everything else incl. China night and weekends is off-peak",
             "scheduled": "trigger_mode automated (cron, timers, workers); ad hoc = manual/desk requests",
+            "outside_window": "operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET and any hour on weekends; weekday 21:00-09:00 ET is for urgent operator requests only",
+            "deepseek_balance": "drops between hourly balance snapshots (deepseek_balance_snapshot.py) = what DeepSeek deducted; compared with logged DeepSeek cost over the same span",
             "real_vs_counted": "real = provider tokens × price schedule; counted = what the cap ledger held (conservative on failed calls)",
         },
     }
 
 
-__all__ = ["PERIODS", "brave_requests", "build_report", "configured_global_cap", "peak_sql", "period_bounds", "provider_of"]
+def _balance_history(path: Optional[Path] = None) -> list[dict[str, Any]]:
+    target = path or BALANCE_HISTORY
+    rows: list[dict[str, Any]] = []
+    try:
+        for line in target.read_text(encoding="utf-8").splitlines():
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                continue
+    except OSError:
+        return []
+    return rows
+
+
+__all__ = ["PERIODS", "brave_requests", "build_report", "configured_global_cap", "outside_window_sql", "peak_sql",
+           "period_bounds", "provider_of", "reconcile_balance"]
