@@ -120,8 +120,10 @@ def test_pills_name_the_origin(tmp_path):
     assert ce.pills_for("🔵 Outside: nothing was looked up outside Trade-AI") == [ce.PILL_HOUSE]
 
 
-def test_mode_defaults_off_and_rejects_unknown(monkeypatch):
+def test_mode_defaults_off_and_rejects_unknown(monkeypatch, tmp_path):
     monkeypatch.delenv("COMMS_EDITOR_MODE", raising=False)
+    # The host mode file (~/.config/tradeai/comms_editor_mode, "shadow" since 2026-09-14) must not leak in.
+    monkeypatch.setenv("COMMS_EDITOR_MODE_FILE", str(tmp_path / "absent_mode_file"))
     assert ce.mode() == "off"
     monkeypatch.setenv("COMMS_EDITOR_MODE", "LIVE")
     assert ce.mode() == "live"
