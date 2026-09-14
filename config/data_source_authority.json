@@ -1673,7 +1673,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-13",
-        "reference": "Operator approved reconnecting the operator desk to the data gap queue in session on 2026-09-13 (\"yess reconect approved\"); the desk becomes a caller of the store's one write module",
+        "reference": "Operator approved reconnecting the operator desk to the data gap queue in session on 2026-09-13 (\"yess reconect approved\"); shipped in PR #998; the desk becomes a caller of the store's one write module",
         "scope": "authoritative queue of data gaps awaiting the gap resolver: table data_gap_registry, written only by scripts/lib/writers/data_gap_registry_writer.py; callers data_gap_resolver.py (status transitions), cio_operator_desk_loop.py (operator desk gaps), run_deep_overnight_llm_queue.py (retired lane)"
       },
       "store": {
