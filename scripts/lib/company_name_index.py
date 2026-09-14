@@ -37,8 +37,11 @@ CANDIDATE only.
 
 from __future__ import annotations
 
+import json
+import os
 import re
 from functools import lru_cache
+from pathlib import Path
 from typing import Any, Optional
 
 SCHEMA = "CompanyNameIndex@v1"
@@ -78,12 +81,148 @@ def normalize_name(name: Any) -> str:
 
 
 def _instruments() -> dict[str, Any]:
+    # scripts.lib FIRST (scripts/lib/__init__.py: "prefer scripts.lib.X"). Bare
+    # `lib.` first loaded a second copy of schwab_instrument_evidence beside the
+    # scripts.lib one as soon as the desk intent analyzer began resolving company
+    # names, and assert_single_import_identity() then raised in the same process.
     try:
-        from lib.schwab_instrument_evidence import load  # noqa: PLC0415
+        from scripts.lib.schwab_instrument_evidence import load  # noqa: PLC0415
     except Exception:
-        from scripts.lib.schwab_instrument_evidence import load  # type: ignore  # noqa: PLC0415
+        from lib.schwab_instrument_evidence import load  # type: ignore  # noqa: PLC0415
     return (load() or {}).get("instruments") or {}
 
+
+
+# ── names the house already holds ────────────────────────────────────────────
+# 2026-09-13 litmus test: "what's the outlook for SpaceX" resolved no symbol and
+# was treated as unanswerable, while the book holds 400 SPCX, the identity
+# registry has SPCX CONFIRMED (CUSIP 84615Q103), config/ipo_lockups.json records
+# "SpaceX (Space Exploration Technologies Corp)" and symbol_profiles describes it
+# as "Space Exploration Technologies Corp. provides ...". The index knew only the
+# Schwab instrument sweep, which had not swept SPCX. House-held names are merged
+# in: the same exact/prefix maps, lists never collapsed, ambiguity still refuses.
+_REPO = Path(__file__).resolve().parents[2]
+_COMPANY_PHRASE_END = re.compile(
+    r"\s(?:provides|is|are|operates|engages|designs|develops|offers|manufactures|focuses|"
+    r"through|together|invests|seeks)\b|,",
+    re.IGNORECASE,
+)
+
+
+def company_phrase(description: Any) -> Optional[str]:
+    """Leading company name of a profile description, or None.
+
+    "Space Exploration Technologies Corp. provides satellite-based ..." ->
+    "Space Exploration Technologies Corp". More than 8 words is not a name.
+    """
+    s = str(description or "").strip()
+    if not s:
+        return None
+    m = _COMPANY_PHRASE_END.search(s)
+    head = (s[: m.start()] if m else s).strip().rstrip(".").strip()
+    if not head or len(head.split()) > 8:
+        return None
+    # "The fund seeks ...", "This ETF invests ...": a description, not a name.
+    if head.lower().split(" ", 1)[0] in ("the", "this", "it", "a", "an", "our", "its"):
+        return None
+    return head
+
+
+def _lockup_names() -> list[tuple[str, str, str]]:
+    """(name, symbol, source) from config/ipo_lockups.json `company` fields.
+
+    "SpaceX (Space Exploration Technologies Corp)" yields the whole string, the
+    brand before the parenthesis and the legal name inside it.
+    """
+    path = Path(os.environ.get("TRADEAI_IPO_LOCKUPS") or (_REPO / "config" / "ipo_lockups.json"))
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    out: list[tuple[str, str, str]] = []
+    for sym, rec in ((doc or {}).get("lockups") or {}).items():
+        company = str((rec or {}).get("company") or "").strip() if isinstance(rec, dict) else ""
+        if not company or not sym:
+            continue
+        names = [company]
+        m = re.match(r"^\s*([^()]+?)\s*\(([^()]+)\)\s*$", company)
+        if m:
+            names += [m.group(1), m.group(2)]
+        for n in names:
+            out.append((n, str(sym).upper(), "ipo_lockups"))
+    return out
+
+
+def _held_symbols() -> list[str]:
+    path = Path(os.environ.get("TRADEAI_HOLDINGS_PATH")
+                or (_REPO / "data" / "portfolios" / "state" / "holdings.json"))
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    rows = doc.get("holdings") or doc.get("positions") or [] if isinstance(doc, dict) else []
+    return sorted({str(r.get("symbol")).upper() for r in rows if isinstance(r, dict) and r.get("symbol")})
+
+
+def _readonly_query(sql: str, params: Any = None, fetch: str = "all") -> list[dict[str, Any]]:
+    """Read-only session, 3 s statement timeout, lazy driver import."""
+    import psycopg2  # noqa: PLC0415
+    import psycopg2.extras  # noqa: PLC0415
+
+    conn = psycopg2.connect(
+        host=os.environ.get("DB_HOST", "localhost"),
+        dbname=os.environ.get("DB_NAME", "trade_ai"),
+        user=os.environ.get("DB_USER", "trade_ai"),
+        password=os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD"),
+        connect_timeout=3,
+        options="-c statement_timeout=3000",
+    )
+    try:
+        conn.set_session(readonly=True, autocommit=True)
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall() if fetch == "all" else [cur.fetchone()]
+        return [dict(r) for r in rows if r is not None]
+    finally:
+        conn.close()
+
+
+def _profile_names() -> list[tuple[str, str, str]]:
+    """(company phrase, symbol, source) for HELD symbols, through the broker's
+    symbol_profile projection. Off in CI, without DB credentials, or when
+    TRADEAI_HOUSE_NAMES_DB=0 -- offline tests never touch the database."""
+    if os.environ.get("TRADEAI_HOUSE_NAMES_DB", "1") == "0" or os.environ.get("TRADE_AI_CI") == "1":
+        return []
+    if not (os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD")):
+        return []
+    held = _held_symbols()
+    if not held:
+        return []
+    try:
+        try:
+            from scripts.lib.data_broker.symbol_profile import get_symbol_profiles  # noqa: PLC0415
+        except Exception:
+            from lib.data_broker.symbol_profile import get_symbol_profiles  # type: ignore  # noqa: PLC0415
+        profiles = get_symbol_profiles(_readonly_query, held)
+    except Exception:
+        return []
+    out: list[tuple[str, str, str]] = []
+    for sym, p in (profiles or {}).items():
+        phrase = company_phrase((p or {}).get("description"))
+        if phrase:
+            out.append((phrase, str(sym).upper(), "symbol_profiles"))
+    return out
+
+
+def _house_names() -> list[tuple[str, str, str]]:
+    seen: set[tuple[str, str]] = set()
+    out: list[tuple[str, str, str]] = []
+    for name, sym, src in _lockup_names() + _profile_names():
+        key = (normalize_name(name), sym)
+        if key[0] and key not in seen:
+            seen.add(key)
+            out.append((name, sym, src))
+    return out
 
 @lru_cache(maxsize=1)
 def _build() -> tuple[dict[str, list[str]], dict[str, list[str]]]:
@@ -102,6 +241,20 @@ def _build() -> tuple[dict[str, list[str]], dict[str, list[str]]]:
         head = norm.split(" ", 1)[0]
         if len(head) >= 3:
             first.setdefault(head, []).append(sym)
+    # Names the house holds (IPO lockups, held symbols' profiles). Appended, never
+    # overriding: a name that now maps to two symbols stays ambiguous and refuses.
+    for name, sym, _src in _house_names():
+        norm = normalize_name(name)
+        if not norm:
+            continue
+        bucket = exact.setdefault(norm, [])
+        if sym not in bucket:
+            bucket.append(sym)
+        head = norm.split(" ", 1)[0]
+        if len(head) >= 3:
+            fb = first.setdefault(head, [])
+            if sym not in fb:
+                fb.append(sym)
     return exact, first
 
 

@@ -39,6 +39,12 @@ from scripts.lib.cio_telegram_converse import (
     _now,
 )
 from scripts.lib.cio_operator_desk_loop import handle_operator_desk_question
+from scripts.lib.reply_provenance import (
+    ROLE_WORDING_ONLY,
+    ReplyProvenance,
+    finalize_operator_reply,
+    provenance_for_desk,
+)
 
 
 SendFn = Callable[..., dict[str, Any]]
@@ -229,6 +235,57 @@ def enqueue_operator_wake_channel(
         return None
 
 
+def _wa_plain(text: str) -> str:
+    return re.sub(r"\*([^*]+)\*", r"\1", text).replace("`", "")
+
+
+# ── reply provenance per path ────────────────────────────────────────────────
+# Operator, 2026-09-13 19:05: "the routing should be internal Command Center
+# first and when it has to go out for other stuff it needs to let us know".
+# Each builder declares what ITS path actually read -- never what it might have.
+
+
+def _attention_provenance(ans: dict[str, Any]) -> ReplyProvenance:
+    label = f"office situation scan · decision {ans.get('reason') or 'unknown'}"
+    if not ans.get("same_brain"):
+        # answer_attention_query is called here without office= / envelope=, so
+        # detect_office_situations runs on an EMPTY office. Say so; do not dress
+        # it up as a read of the office state.
+        label += " · no office state loaded (scan ran on an empty office)"
+    return ReplyProvenance(kind="attention", stores_read=[label])
+
+
+def _reentry_facts_provenance(ans: dict[str, Any]) -> ReplyProvenance:
+    path = ans.get("desk_path")
+    as_of = str(ans.get("as_of") or "")[:16].replace("T", " ")
+    if path:
+        stores = [Path(str(path)).name + (f" · computed {as_of}" if as_of else "")]
+    else:
+        stores = ["reentry_decision_desk_latest.json — not found on any candidate path"]
+    prov = ReplyProvenance(kind="reentry_facts", stores_read=stores)
+    if str(ans.get("source") or "") == "deepseek_flash":
+        prov.model = ans.get("model") or "deepseek-flash"
+        prov.model_role = ROLE_WORDING_ONLY
+        prov.went_outside = [f"{prov.model} — {ROLE_WORDING_ONLY} (polish of the desk card)"]
+    return prov
+
+
+def _decision_thread_provenance(decision_id: str, thread: dict[str, Any]) -> ReplyProvenance:
+    stores: list[str] = []
+    if thread.get("catalog_error"):
+        stores.append(f"decision catalog — unreadable ({thread.get('catalog_error')})")
+    elif thread.get("symbol"):
+        stores.append(f"decision catalog · {decision_id} · {thread.get('symbol')}")
+    else:
+        stores.append(f"decision catalog — no row for {decision_id}")
+    if thread.get("disposition"):
+        at = str(thread.get("disposition_at") or "")[:16].replace("T", " ")
+        stores.append("operator dispositions" + (f" · recorded {at}" if at else ""))
+    if thread.get("why_now") or thread.get("action_label"):
+        stores.append("capital plan (position_decisions)")
+    return ReplyProvenance(kind="decision_thread", stores_read=stores)
+
+
 def process_operator_message(
     *,
     channel: str,
@@ -313,16 +370,28 @@ def process_operator_message(
             # message may already be on its way to the operator.
             return {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
 
-    # Deterministic commands (slash or plain)
-    if is_cmd and cmd_text:
-        reply = handle_cio_slash(cmd_text)
+    def _prepare_reply(body: str, prov: ReplyProvenance) -> str:
+        """THE chokepoint for operator replies. Nothing reaches `_send` on an
+        operator-reply branch without passing here: Sources line, Went outside
+        line when anything left the Command Center, authority tail last. The
+        receipt lands on the result as `reply_provenance`."""
+        final, prov = finalize_operator_reply(body, prov)
         if channel == "whatsapp":
-            reply = re.sub(r"\*([^*]+)\*", r"\1", reply).replace("`", "")
-        sent = _send(reply)
+            final = _wa_plain(final)
+        out["reply_provenance"] = prov.to_dict()
+        return final
+
+    # Deterministic commands (slash or plain). Command output, not an answer:
+    # outside the Sources contract (docs/OPERATOR_REPLY_ROUTING.md).
+    if is_cmd and cmd_text:
+        cmd_reply = handle_cio_slash(cmd_text)
+        if channel == "whatsapp":
+            cmd_reply = _wa_plain(cmd_reply)
+        sent = _send(cmd_reply)
         out.update({
             "handled": True,
             "kind": "slash",
-            "reply_preview": reply[:200],
+            "reply_preview": cmd_reply[:200],
             "telegram_out_message_id": sent.get("message_id"),
             "outbound_message_id": sent.get("message_id"),
         })
@@ -337,10 +406,10 @@ def process_operator_message(
             if not pid and reply_to_text:
                 pid = parse_reply_footer(reply_to_text).get("plan_id")
         if pid:
-            reply = handle_cio_slash(f"/cio ack {pid}")
+            cmd_reply = handle_cio_slash(f"/cio ack {pid}")
             if channel == "whatsapp":
-                reply = re.sub(r"\*([^*]+)\*", r"\1", reply).replace("`", "")
-            sent = _send(reply)
+                cmd_reply = _wa_plain(cmd_reply)
+            sent = _send(cmd_reply)
             out.update({
                 "handled": True,
                 "kind": "ack",
@@ -368,34 +437,40 @@ def process_operator_message(
 
     if looks_like_attention_query and looks_like_attention_query(text) and answer_attention_query:
         ans = answer_attention_query(text)
-        reply = ans.get("text") or "No material page. READ_ONLY_ADVISORY."
-        if channel == "whatsapp":
-            reply = re.sub(r"\*([^*]+)\*", r"\1", reply).replace("`", "")
-        sent = _send(reply, reply_to=reply_to_message_id)
+        final_reply = _prepare_reply(ans.get("text") or "No material page. READ_ONLY_ADVISORY.",
+                                     _attention_provenance(ans))
+        sent = _send(final_reply, reply_to=reply_to_message_id)
         out.update({
             "handled": True,
             "kind": "attention",
             "attention_reason": ans.get("reason"),
             "same_brain": True,
-            "reply_preview": reply[:500],
+            "reply_preview": final_reply[:500],
             "outbound_message_id": sent.get("message_id"),
             "telegram_out_message_id": sent.get("message_id") if channel == "telegram" else None,
         })
         return out
 
     # Desk facts + optional DeepSeek Flash polish (skip S0 template wall)
-    if looks_like_reentry_purchase_query(text):
+    # A question that names a symbol is the desk loop's to answer (its own row,
+    # gates, levels); the book-wide interceptor only serves "what's ready to buy".
+    _named = []
+    try:
+        from scripts.lib.cio_operator_desk_loop import _extract_symbols
+        _named = _extract_symbols(text)
+    except Exception:
+        _named = []
+    if looks_like_reentry_purchase_query(text) and not _named:
         ans = answer_reentry_purchase_query(text, use_flash=True)
-        reply = ans.get("text") or format_reentry_purchase_reply()
-        if channel == "whatsapp":
-            reply = re.sub(r"\*([^*]+)\*", r"\1", reply).replace("`", "")
-        sent = _send(reply, reply_to=reply_to_message_id)
+        final_reply = _prepare_reply(ans.get("text") or format_reentry_purchase_reply(),
+                                     _reentry_facts_provenance(ans))
+        sent = _send(final_reply, reply_to=reply_to_message_id)
         out.update({
             "handled": True,
             "kind": "reentry_facts",
             "reentry_source": ans.get("source"),
             "reentry_model": ans.get("model"),
-            "reply_preview": reply[:500],
+            "reply_preview": final_reply[:500],
             "outbound_message_id": sent.get("message_id"),
             "telegram_out_message_id": sent.get("message_id") if channel == "telegram" else None,
         })
@@ -403,7 +478,11 @@ def process_operator_message(
 
     # free-text converse
     if not rate_limit_ok(chat_id, path=rate_path, limit=wakes_limit):
-        _send("Rate limit: too many converse wakes this hour. Try: status or plans.")
+        final_reply = _prepare_reply(
+            "Rate limit: too many converse wakes this hour. Try: status or plans.",
+            ReplyProvenance(kind="rate_limited", stores_read=[f"{Path(rate_path).name} (converse wake rate ledger)"]),
+        )
+        _send(final_reply)
         out["reason"] = "rate_limited"
         out["handled"] = True
         return out
@@ -428,14 +507,11 @@ def process_operator_message(
 
     if decision_id and str(decision_id).startswith("dec_"):
         thread = load_decision_thread_context(decision_id)
-        reply = format_decision_thread_reply(
-            decision_id=decision_id,
-            operator_text=text,
-            thread=thread,
+        final_reply = _prepare_reply(
+            format_decision_thread_reply(decision_id=decision_id, operator_text=text, thread=thread),
+            _decision_thread_provenance(str(decision_id), thread if isinstance(thread, dict) else {}),
         )
-        if channel == "whatsapp":
-            reply = re.sub(r"\*([^*]+)\*", r"\1", reply).replace("`", "")
-        sent = _send(reply, reply_to=reply_to_message_id)
+        sent = _send(final_reply, reply_to=reply_to_message_id)
         if not dry_run:
             record_decision_thread_note(
                 decision_id,
@@ -448,7 +524,7 @@ def process_operator_message(
             "decision_id": decision_id,
             "plan_id": None,
             "attached_plan_id": plan_id,
-            "reply_preview": reply[:500],
+            "reply_preview": final_reply[:500],
             "outbound_message_id": sent.get("message_id"),
             "telegram_out_message_id": sent.get("message_id") if channel == "telegram" else None,
         })
@@ -462,15 +538,19 @@ def process_operator_message(
         message_id=message_id_s,
         channel=channel,
     )
-    reply = (desk.get("text") or "").strip()
+    # The unanswerable branch carries its refusal in `reply_preview`, not `text`;
+    # reading only `text` replaced "I can't answer that from Trade-AI" with a
+    # generic line claiming a pull was queued.
+    desk_prov = provenance_for_desk(desk, kind="operator_desk")
+    reply = (desk.get("text") or desk.get("reply_preview") or "").strip()
     if not reply:
+        desk_prov.kind = "failsoft_empty"
         reply = (
-            "Trade-AI had no vetted answer yet. Queued a pull if needed — "
+            "Trade-AI had no vetted answer for that yet — "
             "try `/cio reentry` or `/cio portfolio`.\n"
             "No orders/stops from chat · READ_ONLY_ADVISORY"
         )
-    if channel == "whatsapp":
-        reply = re.sub(r"\*([^*]+)\*", r"\1", reply).replace("`", "")
+    final_reply = _prepare_reply(reply, desk_prov)
 
     # Audit wake / rate only — do not use plan enrichment as the Telegram body
     event_id = None
@@ -492,6 +572,10 @@ def process_operator_message(
             "reply_source": desk.get("reply_source"),
             "desk_kind": desk.get("kind"),
             "pending_id": desk.get("pending_id"),
+            # Stores read, what went outside the Command Center, the model and
+            # whether the Sources line was on the text that was sent. Field
+            # names are the answer-quality monitor's contract.
+            "reply_provenance": out.get("reply_provenance"),
         }
         try:
             from scripts.lib.cio_event_bus import CIOEventBus
@@ -519,7 +603,7 @@ def process_operator_message(
         )
         mark_wake_rate(chat_id, path=rate_path)
 
-    sent = _send(reply, reply_to=reply_to_message_id)
+    sent = _send(final_reply, reply_to=reply_to_message_id)
     out.update({
         "handled": True,
         "kind": "operator_desk",
@@ -538,7 +622,7 @@ def process_operator_message(
         # answered in order to know which key to read -- and reading the wrong
         # one returns None, which is indistinguishable from "no plan".
         "attached_plan_id": plan_id,
-        "reply_preview": reply[:500],
+        "reply_preview": final_reply[:500],
         "outbound_message_id": sent.get("message_id"),
         "telegram_out_message_id": sent.get("message_id") if channel == "telegram" else None,
     })

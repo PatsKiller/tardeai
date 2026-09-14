@@ -1,0 +1,98 @@
+{
+  "_fixture": "LIVE shape of data/portfolios/state/holdings.json captured 2026-09-13; subset of rows, values rounded",
+  "generated_at": "2026-09-13 08:00:24 ET",
+  "portfolio_totals": {
+    "as_of": "2026-09-11",
+    "day_change": 3492.83,
+    "day_change_pct": 0.28,
+    "excluded_count": 6,
+    "last_pipeline_run": "2026-09-11T07:30:00.503810",
+    "note": "fidelity_rollover_ira closed; SSOT schwab_rollover_ira after ACATS 2026-07-16; combined SCHG/SCHD/JEPQ basis applied",
+    "total_cash": 710933.07,
+    "total_cash_source": "position_rows",
+    "total_cash_written_at": "2026-09-13T12:00:24.608380+00:00",
+    "total_cost": 586468.85,
+    "total_cost_basis": 1027308.02,
+    "total_gain": -29261.33,
+    "total_gain_pct": -4.99,
+    "total_mv_excluded": 710933.07,
+    "total_mv_with_cost": 557207.52,
+    "total_value": 1268140.59,
+    "total_value_recomputed_at_write": true
+  },
+  "holdings": [
+    {
+      "symbol": "CASH",
+      "shares": 5000.0,
+      "quantity": 5000.0,
+      "market_value": 5000.0,
+      "account": "alpaca_taxable_live",
+      "account_id": "alpaca_taxable_live",
+      "as_of": "2026-09-11",
+      "updated_at": "2026-09-11T20:45:02.597888+00:00"
+    },
+    {
+      "symbol": "NOC",
+      "shares": 0.23,
+      "market_value": 120.25,
+      "account": "schwab_taxable",
+      "account_id": "schwab_taxable",
+      "as_of": "2026-09-11",
+      "updated_at": "2026-09-11T20:52:21.309649+00:00"
+    },
+    {
+      "symbol": "SCHG",
+      "shares": 0.23,
+      "market_value": 8.07,
+      "account": "schwab_taxable",
+      "account_id": "schwab_taxable",
+      "as_of": "2026-09-11",
+      "updated_at": "2026-09-11T20:52:21.309649+00:00"
+    },
+    {
+      "symbol": "RTX",
+      "shares": 0.5,
+      "market_value": 97.89,
+      "account": "schwab_taxable",
+      "account_id": "schwab_taxable",
+      "as_of": "2026-09-11",
+      "updated_at": "2026-09-11T20:52:21.309649+00:00"
+    },
+    {
+      "symbol": "CASH",
+      "shares": 42712.15,
+      "market_value": 42712.15,
+      "account": "schwab_taxable",
+      "account_id": "schwab_taxable",
+      "as_of": "2026-09-11",
+      "updated_at": "2026-09-11T20:52:21.671322+00:00"
+    },
+    {
+      "symbol": "CASH",
+      "shares": 1472.71,
+      "market_value": 1472.71,
+      "account": "schwab_roth",
+      "account_id": "schwab_roth",
+      "as_of": "2026-09-11",
+      "updated_at": "2026-09-11T20:52:22.334682+00:00"
+    },
+    {
+      "symbol": "WMT",
+      "shares": 100.0,
+      "market_value": 10705.0,
+      "account": "schwab_rollover_ira",
+      "account_id": "schwab_rollover_ira",
+      "as_of": "2026-09-11",
+      "updated_at": "2026-09-11T20:52:22.716232+00:00"
+    },
+    {
+      "symbol": "CASH",
+      "shares": 661748.21,
+      "market_value": 661748.21,
+      "account": "schwab_rollover_ira",
+      "account_id": "schwab_rollover_ira",
+      "as_of": "2026-09-11",
+      "updated_at": "2026-09-11T20:52:22.960681+00:00"
+    }
+  ]
+}

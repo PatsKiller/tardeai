@@ -1666,6 +1666,43 @@
           "expected_seconds": 60
         }
       ]
+    },
+    {
+      "domain": "data_gaps",
+      "class": "native",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-13",
+        "reference": "Operator approved reconnecting the operator desk to the data gap queue in session on 2026-09-13 (\"yess reconect approved\"); shipped in PR #998; the desk becomes a caller of the store's one write module",
+        "scope": "authoritative queue of data gaps awaiting the gap resolver: table data_gap_registry, written only by scripts/lib/writers/data_gap_registry_writer.py; callers data_gap_resolver.py (status transitions), cio_operator_desk_loop.py (operator desk gaps), run_deep_overnight_llm_queue.py (retired lane)"
+      },
+      "store": {
+        "table": "data_gap_registry"
+      },
+      "writer": "scripts/lib/writers/data_gap_registry_writer.py",
+      "writer_facade": "scripts/data_gap_resolver.py",
+      "cadence": "crontab: data_gap_resolver.py hourly 10:00-16:00 and --pre-overnight 18:00 on weekdays, --weekly-audit Sunday 08:00 (the desk reads these times from the crontab itself)",
+      "stale_after_hours": 168,
+      "required_fields": [
+        "symbol",
+        "gap_type",
+        "status",
+        "detected_at"
+      ],
+      "primary_provider": "internal",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 7200
+        }
+      ],
+      "_note": "A queue, not a feed: an empty queue is healthy. 'resolved' means the resolver dispatched its action (for most gap types a Maria research job), not that the data landed; the desk's pending follow-up re-checks the evidence itself.",
+      "_writer_note": "2026-09-13: one write module. Before it, run_deep_overnight_llm_queue.py (insert, dedup on open only) and data_gap_resolver.py (status updates) each carried SQL, and the desk's bridge module never reached main, so desk gaps registered 0. ONE dedup rule now: symbol+gap_type open or enriching. Writers 2 -> 1."
     }
   ]
 }

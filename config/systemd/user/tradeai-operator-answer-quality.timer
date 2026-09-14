@@ -1,0 +1,18 @@
+[Unit]
+Description=Trade AI operator answer quality — half-hourly audit of replies sent
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/check_operator_answer_quality.py
+
+[Timer]
+# Every 30 minutes, at :22 and :52, clear of the :07/:37 gap-resolution audit and
+# the crowded top and half of the hour. Half-hourly because a pending is retracted
+# at 2h; an answer the operator is still waiting on must be seen inside that window.
+OnCalendar=*-*-* *:22,52:00
+AccuracySec=1min
+
+# This host loses power hard. Without Persistent a cut spanning the boundary
+# skips the audit silently, which is the failure mode being guarded against.
+Persistent=true
+RandomizedDelaySec=60
+
+[Install]
+WantedBy=timers.target

@@ -47,13 +47,20 @@ _DESK_NEEDS = frozenset({
 _RUNTIME_NEEDS = frozenset({"runtime_llm", "runtime_status"})
 _META_HEURISTIC = re.compile(
     r"(?is)\b("
-    r"llm|model|deepseek|flash|pro\b|"
-    r"which\s+(?:ai|model|llm)|"
-    r"what\s+(?:\w+\s+){0,4}(?:using|model|llm)|"
+    r"llm|model(?!\s+portfolios?)|deepseek|flash|pro\b|"
+    r"which\s+(?:ai|model(?!\s+portfolios?)|llm)|"
+    r"what\s+(?:\w+\s+){0,4}(?:using|model(?!\s+portfolios?)|llm)|"
     r"how\s+(?:do\s+)?you\s+work|"
-    r"read[_\s-]?only|authority|"
     r"bot\s+status|what\s+version|which\s+version"
     r")\b"
+    # "read only" / "authority" are meta only when ASKED about the bot. As a bare
+    # word they were a disclaimer: "What should I watch on SCHD this week?
+    # READ_ONLY advisory only." routed to runtime facts and never touched SCHD.
+    r"|\b(?:are|is)\s+(?:you|alex|it|this|the\s+bot)\s+(?:\w+\s+)?read[_\s-]?only\b"
+    r"|\bread[_\s-]?only\s*\?"
+    r"|\b(?:what|which)\s+(?:is\s+)?(?:your\s+)?authority\b"
+    r"|\b(?:your|alex'?s)\s+authority\b"
+    r"|\bauthority\s+(?:do|does)\s+(?:you|alex)\b"
 )
 _FREEFORM_HEURISTIC = re.compile(
     r"(?is)\b("
@@ -174,6 +181,150 @@ def format_unclear_reply(text: str) -> str:
     )
 
 
+# ── symbol extraction ────────────────────────────────────────────────────────
+# 2026-09-13 18:50: "Is now a good time to get back into schg" resolved NO symbol
+# because only UPPER-CASE tokens were tickers, so the desk answered with the
+# book-wide re-entry dump instead of SCHG's own row. A token is a symbol when it
+# is one we KNOW -- held, on the re-entry desk, or in the identity registry --
+# whatever its case. Unknown tokens keep the upper-case rule.
+_SYMBOL_STOP = frozenset({
+    "I", "A", "THE", "AND", "OR", "TO", "FOR", "ON", "IN", "OF", "IS", "IT", "AN", "AT", "BY", "BE",
+    "WHAT", "CAN", "NOW", "ETC", "DAY", "SMA", "RSI", "CIO", "READ", "ONLY", "USD", "READY", "NEAR",
+    "ZONE", "STOP", "ALEX", "LLM", "YOU", "HOW", "WHICH", "USING", "MODEL", "FLASH", "PRO", "AI", "WHY",
+    "GOOD", "TIME", "GET", "BACK", "INTO", "BUY", "SELL", "HOLD", "MY", "ME", "WE", "US", "DO", "DOES",
+    "ARE", "WAS", "ALL", "ANY", "NOT", "NO", "YES", "OK", "SO", "IF", "AS", "UP", "OUT", "NEW", "OLD",
+})
+_KNOWN_SYMBOLS_CACHE: dict[str, Any] = {"at": 0.0, "syms": frozenset()}
+
+
+def _known_symbols(ttl_s: float = 120.0) -> frozenset[str]:
+    """The operator's BOOK: holdings + re-entry desk. These match in any case.
+
+    The identity registry is deliberately NOT part of this set. Its branch below
+    read `symbol`/`ticker` keys that registry entities do not carry (they carry
+    `ticker_alias` and `aliases`), so in production it contributed nothing -- 106
+    known symbols on 2026-09-13, all from the book. Reading `by_symbol` instead
+    would add 5,391 symbols of which 514 are English words (BACK, INTO, CASH,
+    TECH), so "get back into" would bind issuers. Registry symbols are resolved in
+    `operator_subject_resolver`, upper-case or $cashtag only, with their GUID.
+    """
+    import time as _time
+    if _time.monotonic() - float(_KNOWN_SYMBOLS_CACHE["at"]) < ttl_s and _KNOWN_SYMBOLS_CACHE["syms"]:
+        return _KNOWN_SYMBOLS_CACHE["syms"]
+    syms: set[str] = set()
+    try:
+        for p in _held_positions_map().keys():
+            syms.add(p)
+    except Exception:
+        pass
+    try:
+        from scripts.lib.cio_telegram_converse import load_reentry_desk_rows
+        rows, _a, _p = load_reentry_desk_rows()
+        for r in rows or []:
+            if isinstance(r, dict) and r.get("symbol"):
+                syms.add(str(r["symbol"]).upper())
+    except Exception:
+        pass
+    out = frozenset(s for s in syms if s and s.isalpha() and 1 <= len(s) <= 5)
+    if out:
+        _KNOWN_SYMBOLS_CACHE.update({"at": _time.monotonic(), "syms": out})
+    return out
+
+
+def _extract_symbols(text: str) -> list[str]:
+    """Symbols the question names: book tickers any case, registry/unknown tickers
+    upper-case, and company names the broker instrument feed resolves.
+
+    Kept as a thin wrapper because `cio_converse_core` imports it to decide whether
+    the book-wide re-entry interceptor must step aside.
+    """
+    try:
+        from scripts.lib.operator_subject_resolver import resolve_subjects, symbols_of
+        return symbols_of(resolve_subjects(text or "", book=_known_symbols()))
+    except Exception:
+        t = text or ""
+        return [tok for tok in dict.fromkeys(re.findall(r"\b([A-Z]{1,5})\b", t))
+                if tok not in _SYMBOL_STOP][:12]
+
+
+def _held_positions_map() -> dict[str, dict[str, Any]]:
+    """symbol -> {shares, market_value, account} from holdings.json (store of record)."""
+    path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    out: dict[str, dict[str, Any]] = {}
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return out
+    rows = doc.get("holdings") or doc.get("positions") or []
+    for r in rows if isinstance(rows, list) else []:
+        if not isinstance(r, dict) or not r.get("symbol"):
+            continue
+        sym = str(r["symbol"]).upper()
+        out[sym] = {
+            "shares": r.get("shares", r.get("quantity")),
+            "market_value": r.get("market_value"),
+            "account": r.get("account") or r.get("account_id"),
+            "as_of": r.get("as_of") or r.get("updated_at"),
+        }
+    return out
+
+
+def _merge_flash_symbols(out: dict[str, Any], flash_symbols: list[Any]) -> None:
+    """Flash may ADD a symbol, never remove a resolved one, and never invent one.
+
+    Before 2026-09-13 Flash's list REPLACED the heuristic's and was then unioned
+    with a re-extraction; any alphabetic string was accepted, so "SPACEX" would
+    have become a symbol and the unanswerable SpaceX question a pending that could
+    never close. Additions now bind only when the registry or the book holds them;
+    the rest are kept, visibly, in `flash_unverified_symbols`.
+    """
+    from scripts.lib.operator_subject_resolver import verify_added_symbol
+
+    symbols = list(out.get("symbols") or [])
+    subjects = list(out.get("subjects") or [])
+    unverified: list[str] = []
+    book = _known_symbols()
+    for raw in flash_symbols[:24]:
+        sym = str(raw or "").strip().lstrip("$").upper()
+        if not sym or sym in symbols:
+            continue
+        subj = verify_added_symbol(sym, book=book)
+        if subj is None:
+            if sym not in unverified:
+                unverified.append(sym)
+            continue
+        symbols.append(sym)
+        subjects.append(subj)
+    out["symbols"] = symbols[:12]
+    out["subjects"] = subjects
+    if unverified:
+        out["flash_unverified_symbols"] = unverified[:12]
+
+
+def _stamp_answerable(out: dict[str, Any]) -> dict[str, Any]:
+    """Record, on the intent itself, whether the ask can ever be answered.
+
+    `is_answerable` was consulted only when evidence produced a BLOCKING gap. The
+    SpaceX ask produced none (Agent D replay, 2026-09-13): intent analyst_view, no
+    symbol, no gap, reply "Queued a pull -- I'll reply when it lands", nothing
+    queued. The verdict is knowable at intent time, so it travels with the intent
+    and a handler can refuse before gathering anything.
+    """
+    if not out.get("symbols") and out.get("text_for_candidates"):
+        try:
+            from scripts.lib.operator_subject_resolver import ticker_candidates
+            cands = ticker_candidates(out["text_for_candidates"], book=_known_symbols())
+            if cands:
+                out["ticker_candidates"] = cands
+        except Exception:
+            pass
+    out.pop("text_for_candidates", None)
+    ok, why = is_answerable(out)
+    out["answerable"] = ok
+    out["unanswerable_reason"] = why or None
+    return out
+
+
 def analyze_operator_intent(text: str) -> dict[str, Any]:
     """DeepSeek Flash → structured intent. Numbers never come from this step."""
     out: dict[str, Any] = {
@@ -182,6 +333,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         "model": None,
         "intent": "freeform",
         "symbols": [],
+        "subjects": [],
         "needs": [],
         "error": None,
     }
@@ -192,6 +344,27 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         return out
 
     needs: list[str] = []
+
+    # Subjects FIRST, registry-first (operator_subject_resolver), on every path.
+    # `symbols` stays the flat list every caller reads; `subjects` adds kind,
+    # GUID and confidence. The book is passed from THIS module so a caller that
+    # patches `_known_symbols` is honoured.
+    scan = t
+    try:
+        from scripts.lib.operator_subject_resolver import name_spans, resolve_subjects, symbols_of
+
+        subjects = resolve_subjects(t, book=_known_symbols())
+        out["subjects"] = subjects
+        out["text_for_candidates"] = t   # consumed and removed by _stamp_answerable
+        out["symbols"] = symbols_of(subjects)
+        # A company name is not a request: "Nonesuch Holdings" asked about a
+        # company, not for the operator's holdings. Intent regexes read `scan`.
+        for span in name_spans(subjects):
+            scan = scan.replace(span, " ")
+    except Exception as exc:
+        out["symbols"] = [tok for tok in dict.fromkeys(re.findall(r"\b([A-Z]{1,5})\b", t))
+                          if tok not in _SYMBOL_STOP][:12]
+        out["error"] = f"subjects:{type(exc).__name__}:{exc}"
 
     # P0: attention / why-nothing is deterministic office state, not Flash.
     if re.search(
@@ -205,15 +378,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         out["needs"] = ["portfolio", "cash"]
         out["ok"] = True
         out["source"] = "heuristic"
-        syms = sorted(set(re.findall(r"\b([A-Z]{1,5})\b", t)))
-        stop = {
-            "I", "A", "THE", "AND", "OR", "TO", "FOR", "ON", "IN", "OF", "IS", "IT",
-            "WHAT", "CAN", "NOW", "ETC", "DAY", "SMA", "RSI", "CIO", "READ", "ONLY",
-            "USD", "READY", "NEAR", "ZONE", "STOP", "ALEX", "LLM", "YOU", "HOW",
-            "WHICH", "USING", "MODEL", "FLASH", "PRO", "AI", "WHY",
-        }
-        out["symbols"] = [s for s in syms if s not in stop][:12]
-        return out
+        return _stamp_answerable(out)
 
     # P0: meta_system BEFORE desk defaults — never fall through to re-entry dump
     if _looks_like_meta_system(t):
@@ -224,33 +389,63 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         out["needs"] = list(dict.fromkeys(needs))
     else:
         if re.search(
-            r"(?is)\bre[\s\-]?(?:entr|enter)|rentr|ready\s+to\s+(?:buy|purchase|review)|buy\s+back",
-            t,
+            r"(?is)\bre[\s\-]?(?:entr|enter)|rentr|ready\s+to\s+(?:buy|purchase|review)|buy\s+back|"
+            r"get\s+back\s+in(?:to)?\b|\bback\s+in(?:to)?\s+[A-Za-z]{1,5}\b|re-?buy|add\s+back|good\s+time\s+to\s+(?:get\s+)?(?:back\s+)?in(?:to)?\b|"
+            # Adding to a position is the re-entry decision: zone, gates, levels.
+            r"\badd(?:ing)?\s+(?:more\s+)?to\b(?!\s+(?:my\s+|the\s+|a\s+)?watch\s*list)|\badd\s+more\b|"
+            r"\bbuy\s+more\b|\baverag(?:e|ing)\s+down\b",
+            scan,
         ):
             needs.append("reentry_ready")
             out["intent"] = "reentry"
         if re.search(
-            r"(?is)\b(support|resistance|s/?r|50[\s\-]?day|sma\s*50|sma50|sma\s*20|levels?|stop)\b",
-            t,
+            r"(?is)\b(support|suport|resistance|resistence|s/?r|50[\s\-]?day|sma\s*50|sma50|sma\s*20|levels?|stop)\b",
+            scan,
         ):
             needs.append("reentry_levels")
             if out["intent"] in ("unclear", "general"):
                 out["intent"] = "reentry"
-        if re.search(r"(?is)\b(cash|buying\s+power)\b", t):
+        # "what's jepi doing" / "NOC price today" -- the desk row carries price,
+        # RSI, SMAs and levels. Only with a resolved symbol: without one there is
+        # no row, and the question belongs to the freeform agent.
+        if out["symbols"] and "reentry_levels" not in needs and re.search(
+            r"(?is)\b(?:what'?s|what\s+is|how'?s|how\s+is)\s+(?:my\s+)?\$?[A-Za-z]{1,5}\s+(?:doing|looking|trading)\b|"
+            r"\bwhere\s+is\s+\$?[A-Za-z]{1,5}\s+trading\b|\bprice\s+(?:today|now|right\s+now)\b",
+            scan,
+        ):
+            needs.append("reentry_levels")
+        if re.search(r"(?is)\b(cash|buying\s+power)\b", scan):
             needs.append("cash")
             if out["intent"] in ("unclear", "freeform"):
                 out["intent"] = "cash"
-        if re.search(r"(?is)\b(portfolio|holdings|book)\b", t):
+        if re.search(r"(?is)\b(portfolio|profolio|portfolo|portfollio|protfolio|porfolio|holdings|book)\b", scan):
             needs.append("portfolio")
             if out["intent"] in ("unclear", "freeform"):
                 out["intent"] = "portfolio"
-        if re.search(r"(?is)\b(risk|heat|drawdown)\b", t):
+        if re.search(r"(?is)\b(risk|heat|drawdown|concentration)\b", scan):
             needs.append("risk")
             if out["intent"] in ("unclear", "freeform"):
                 out["intent"] = "risk"
+        # Trimming is a sizing question about a held position: the book and its risk.
+        if re.search(
+            r"(?is)\btrim(?:ming)?\b|\btake\s+(?:some\s+)?profits?\b|\bsell\s+some\b|"
+            r"\breduce\s+(?:my\s+)?(?:position|exposure|stake)\b",
+            scan,
+        ):
+            needs.extend(n for n in ("portfolio", "risk") if n not in needs)
+            if out["intent"] in ("unclear", "freeform", "risk"):
+                out["intent"] = "portfolio"
+        # Rotation / over-/under-weight is allocation posture. A soft book hint;
+        # the intent stays freeform so the freeform builder reads sector weights
+        # and the investment policy.
+        if re.search(
+            r"(?is)\brotat(?:e|ing|ion)\s+(?:in)?to\b|\brotate\s+out\b|\b(?:over|under)[\s-]?weight(?:ed)?\b",
+            scan,
+        ) and "portfolio" not in needs:
+            needs.append("portfolio")
         if re.search(
             r"(?is)\b(research|hermes|thesis|why\s+(?:own|hold|watch)|deep\s+dive)\b",
-            t,
+            scan,
         ):
             needs.append("research")
             if out["intent"] in ("unclear", "freeform"):
@@ -258,37 +453,30 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         # Analyst opinion and price targets. Deliberately BEFORE the freeform
         # check so "is it a buy and what's the target" reaches the analyst
         # domain rather than falling through to whatever research happens to
-        # exist for the symbol.
+        # exist for the symbol. Valuation words ("is X cheap here") are the same
+        # question, and the operator's typos ("anaylst") are real inputs.
         if re.search(
-            r"(?is)\b(analysts?|price\s+target|target\s+price|\bpt\b|"
+            r"(?is)\b(analysts?|anaylsts?|analists?|anlysts?|analsyts?|annalysts?|price\s+target|target\s+price|\bpt\b|"
             r"\ba\s+buy\b|\bbuy\s+or\s+sell\b|upgrade|downgrade|consensus|"
-            r"rating|\btargets?\b)\b",
-            t,
+            r"rating|\btargets?\b|"
+            r"cheap|expensive|over[\s-]?valued|under[\s-]?valued|valuation|fair\s+value)\b",
+            scan,
         ):
             needs.append("analyst_view")
             if out["intent"] in ("unclear", "freeform"):
                 out["intent"] = "analyst_view"
 
         # Explainer/comparison language → freeform (soft desk hints OK, no reentry)
-        if _looks_like_freeform(t) and out["intent"] not in ("reentry", "meta_system"):
+        if _looks_like_freeform(scan) and out["intent"] not in ("reentry", "meta_system"):
             soft = [n for n in needs if n in ("portfolio", "cash", "risk", "research")]
             out["intent"] = "freeform"
-            out["needs"] = soft
+            out["needs"] = list(dict.fromkeys(soft))
         # P0: NO default reentry_ready/portfolio — unmatched → freeform agent
         elif not needs:
             out["intent"] = "freeform"
             out["needs"] = []
         else:
             out["needs"] = list(dict.fromkeys(needs))
-
-    syms = sorted(set(re.findall(r"\b([A-Z]{1,5})\b", t)))
-    stop = {
-        "I", "A", "THE", "AND", "OR", "TO", "FOR", "ON", "IN", "OF", "IS", "IT",
-        "WHAT", "CAN", "NOW", "ETC", "DAY", "SMA", "RSI", "CIO", "READ", "ONLY",
-        "USD", "READY", "NEAR", "ZONE", "STOP", "ALEX", "LLM", "YOU", "HOW",
-        "WHICH", "USING", "MODEL", "FLASH", "PRO", "AI",
-    }
-    out["symbols"] = [s for s in syms if s not in stop][:12]
 
     # Flash refine (intent only) — may not override clear heuristic meta_system
     heuristic_intent = out["intent"]
@@ -301,11 +489,12 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
             system = (
                 "You classify CIO Telegram operator questions. "
                 "Return ONE JSON object only with keys: "
-                "intent (meta_system|reentry|portfolio|cash|risk|research|desk_question|"
+                "intent (meta_system|reentry|portfolio|cash|risk|research|analyst_view|desk_question|"
                 "freeform|unclear|other), "
                 "symbols (list of tickers), "
                 "needs (subset of: runtime_llm, runtime_status, reentry_ready, reentry_levels, "
-                "cash, portfolio, risk, research). "
+                "cash, portfolio, risk, research, analyst_view). "
+                "Use analyst_view for analyst ratings, price targets, valuation or 'is it a buy'. "
                 "Use intent=meta_system and needs runtime_llm/runtime_status for questions about "
                 "which LLM/model/DeepSeek/Flash/Pro, how Alex works, authority, or bot status. "
                 "For meta_system do NOT include reentry_ready or portfolio. "
@@ -349,7 +538,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         out["intent"] = "meta_system"
                         out["needs"] = flash_needs or ["runtime_llm", "runtime_status"]
                     elif flash_intent in (
-                        "reentry", "portfolio", "cash", "risk", "research",
+                        "reentry", "portfolio", "cash", "risk", "research", "analyst_view",
                         "desk_question", "freeform", "unclear", "other",
                     ):
                         if flash_intent in ("other", "unclear", "desk_question"):
@@ -370,7 +559,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         out["needs"] = flash_needs or heuristic_needs
                     # Heuristic freeform stays freeform unless Flash picked a desk intent
                     if heuristic_intent == "freeform" and out["intent"] not in (
-                        "meta_system", "reentry", "portfolio", "cash", "risk", "research",
+                        "meta_system", "reentry", "portfolio", "cash", "risk", "research", "analyst_view",
                     ):
                         out["intent"] = "freeform"
                         out["needs"] = [
@@ -379,9 +568,8 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         ]
 
                     if isinstance(parsed.get("symbols"), list):
-                        out["symbols"] = [
-                            str(s).upper() for s in parsed["symbols"] if str(s).isalpha()
-                        ][:12]
+                        # Resolved subjects stay; Flash may only add verified ones.
+                        _merge_flash_symbols(out, parsed["symbols"])
                     out["ok"] = True
                     out["source"] = "deepseek_flash"
                     out["model"] = llm.get("model") or "deepseek-flash"
@@ -391,13 +579,13 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         out["needs"] = [
                             n for n in (out["needs"] or []) if n in _RUNTIME_NEEDS
                         ] or ["runtime_llm", "runtime_status"]
-                    return out
+                    return _stamp_answerable(out)
             out["error"] = str(llm.get("error") or "intent_flash_failed")
         except Exception as exc:
             out["error"] = f"intent:{type(exc).__name__}:{exc}"
 
     out["ok"] = True  # heuristic is acceptable
-    return out
+    return _stamp_answerable(out)
 
 
 def _domain_payload(snap: dict[str, Any], name: str) -> dict[str, Any]:
@@ -406,6 +594,337 @@ def _domain_payload(snap: dict[str, Any], name: str) -> dict[str, Any]:
     if isinstance(d, dict) and "data" in d and d.get("data") is not None:
         return d.get("data") if isinstance(d.get("data"), dict) else {"value": d.get("data")}
     return d if isinstance(d, dict) else {}
+
+
+def _research_db_query(sql: str, params: Any = None, fetch: str = "all") -> list[dict[str, Any]]:
+    """Read-only query for the broker's research projections. Lazy driver import.
+
+    A read-only session, a 5 s statement timeout, dict rows. Raises on failure --
+    search_research() turns that into an envelope with ``ok: False`` and no rows.
+    """
+    import psycopg2  # noqa: PLC0415
+    import psycopg2.extras  # noqa: PLC0415
+
+    conn = psycopg2.connect(
+        host=os.environ.get("DB_HOST", "localhost"),
+        dbname=os.environ.get("DB_NAME", "trade_ai"),
+        user=os.environ.get("DB_USER", "trade_ai"),
+        password=os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD"),
+        connect_timeout=3,
+        options="-c statement_timeout=5000",
+    )
+    try:
+        conn.set_session(readonly=True, autocommit=True)
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall() if fetch == "all" else [cur.fetchone()]
+        return [dict(r) for r in rows if r is not None]
+    finally:
+        conn.close()
+
+
+def _broker_subject_research():
+    """The subject_research projection module under whichever spelling imports."""
+    try:
+        from scripts.lib.data_broker import subject_research as mod  # noqa: PLC0415
+    except ImportError:
+        from lib.data_broker import subject_research as mod  # type: ignore[no-redef]  # noqa: PLC0415
+    return mod
+
+
+#: Summaries that report a research run found nothing usable.
+_RESEARCH_NON_FINDING = re.compile(
+    r"(?i)(none\s+of\s+which\s+address|weak\s+or\s+no\s+applicability|returned\s+no\s+(?:usable\s+)?(?:sources|results)|"
+    r"no\s+relevant\s+sources|could\s+not\s+find\s+(?:any\s+)?(?:relevant|usable))"
+)
+
+
+def search_topic_research(question: str, *, limit: int = 5) -> dict[str, Any]:
+    """House research on a THEME (no symbol), read through the broker, before any model.
+
+    Returns {keywords, items, as_of, ok, error?}. Items carry topic / summary /
+    symbol / research_type / as_of only -- what the research SAYS, never a count.
+    Fail-soft: an unreachable DB is ``ok: False`` with no items, and the caller
+    says there is no house research rather than pretending the model's
+    general knowledge is Trade-AI's.
+    """
+    try:
+        mod = _broker_subject_research()
+        kws = mod.salient_keywords(question)
+        res = mod.search_research(_research_db_query, kws, limit=limit)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "keywords": [], "items": [], "as_of": None, "error": f"{type(exc).__name__}"}
+    items = []
+    for r in res.get("items") or []:
+        body = str(r.get("summary") or r.get("thesis") or "")
+        # Measured 2026-09-13 on the live table: promoted rows whose summary is the
+        # crawler reporting it found nothing ("none of which address…", "weak or no
+        # applicability"). A note that research failed is not research on the topic.
+        if _RESEARCH_NON_FINDING.search(body):
+            continue
+        created = str(r.get("created_at") or "")[:10] or None
+        items.append({
+            "topic": (r.get("topic") or "")[:160] or None,
+            "summary": (r.get("summary") or r.get("thesis") or "")[:300] or None,
+            "symbol": r.get("symbol"),
+            "research_type": r.get("research_type"),
+            "sector": r.get("gics_sector") or r.get("category_sector"),
+            "keyword_hits": r.get("keyword_hits"),
+            "as_of": created,
+        })
+    out = {"ok": bool(res.get("ok")), "keywords": (res.get("key") or {}).get("keywords") or [],
+           "items": items, "as_of": res.get("as_of"), "stale": res.get("stale")}
+    if res.get("error"):
+        out["error"] = str(res["error"])[:120]
+    return out
+
+
+def _cash_facts(snap: dict[str, Any], total_value: Any) -> Optional[dict[str, Any]]:
+    """cash_buying_power -> facts. The payload keys are total_cash /
+    total_buying_power_estimate / cash_positions; cash_pct is derived. None when absent."""
+    cash = _domain_payload(snap, "cash_buying_power")
+    nested = cash.get("data") if isinstance(cash.get("data"), dict) else {}
+    total_cash = cash.get("total_cash", nested.get("total_cash", cash.get("cash")))
+    buying_power = cash.get("total_buying_power_estimate",
+                            nested.get("total_buying_power_estimate", nested.get("buying_power", cash.get("buying_power"))))
+    if not cash or (total_cash is None and buying_power is None):
+        return None
+    cash_positions = cash.get("cash_positions") or nested.get("cash_positions") or []
+    try:
+        cash_pct = (round(float(total_cash) / float(total_value) * 100.0, 1)
+                    if total_cash is not None and total_value else cash.get("cash_pct", nested.get("cash_pct")))
+    except (TypeError, ValueError, ZeroDivisionError):
+        cash_pct = None
+    env = ((snap.get("domains") or {}).get("cash_buying_power") or {})
+    return {
+        "total_cash": total_cash,
+        "cash_pct": cash_pct,
+        "buying_power": buying_power,
+        "by_account": [
+            {"account": cp.get("account"), "cash": cp.get("market_value")}
+            for cp in sorted((c for c in cash_positions if isinstance(c, dict)),
+                             key=lambda c: -(c.get("market_value") or 0))
+        ][:8],
+        "quality_state": cash.get("quality_state") or cash.get("state") or env.get("quality_state"),
+        "source": cash.get("source") or nested.get("source"),
+        "as_of": cash.get("as_of") or nested.get("as_of"),
+    }
+
+
+def _portfolio_facts(snap: dict[str, Any]) -> Optional[dict[str, Any]]:
+    port = _domain_payload(snap, "portfolio")
+    if not port or port.get("total_value") is None:
+        return None
+    return {
+        "total_value": port.get("total_value"),
+        "holdings_count": port.get("holdings_count"),
+        "day_change_pct": port.get("day_change_pct"),
+        "as_of": port.get("as_of"),
+    }
+
+
+def _model_portfolio_facts(snap: dict[str, Any]) -> Optional[dict[str, Any]]:
+    mp = _domain_payload(snap, "model_portfolio")
+    if not mp or mp.get("cash_target_pct") is None and mp.get("equity_target_pct") is None:
+        return None
+    return {
+        "equity_target_pct": mp.get("equity_target_pct"),
+        "fixed_income_target_pct": mp.get("fixed_income_target_pct"),
+        "cash_target_pct": mp.get("cash_target_pct"),
+        "actual_equity_pct": mp.get("actual_equity_pct"),
+        "rebalancing_threshold_pct": mp.get("rebalancing_threshold_pct"),
+        "drift": [
+            {k: d.get(k) for k in ("bucket", "target_pct", "actual_pct", "drift_pct", "status")}
+            for d in (mp.get("drift_summary") or []) if isinstance(d, dict)
+        ][:6],
+    }
+
+
+def _rotation_facts(snap: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Rotation ladders -- 'what to concentrate on' in the house's own terms.
+
+    Ranked ONLY over rows the ladder actually measured (data_quality > 0 and an
+    rs_raw or return present). Measured 2026-09-13 23:14Z: all 13 sector rows were
+    rs_score 50 / data_quality 0 / returns null -- a flat default, not a ranking.
+    Presenting its first three as "top sectors" would be an invented answer, so
+    ladder_state says UNMEASURED and top3 is empty.
+    """
+    rot = _domain_payload(snap, "rotation")
+    rows = rot.get("sectors") if isinstance(rot, dict) else None
+    if not isinstance(rows, list) or not rows:
+        return None
+
+    def measured(r: dict[str, Any]) -> bool:
+        return bool((r.get("data_quality") or 0) > 0 and any(
+            r.get(k) is not None for k in ("rs_raw", "return_1m", "return_3m", "return_6m")))
+
+    ladder = [
+        {k: r.get(k) for k in ("name", "etf", "rs_score", "return_1m", "return_3m", "return_6m", "data_quality")}
+        for r in rows if isinstance(r, dict)
+    ]
+    ranked = sorted((x for x in ladder if measured(x)), key=lambda x: -(x.get("rs_score") or 0))
+    transitions = [
+        {"symbol": t.get("symbol"), "thesis_status": t.get("thesis_status")}
+        for t in (rot.get("transitions") or []) if isinstance(t, dict) and t.get("needs_review")
+    ]
+    return {
+        "computed_at": rot.get("computed_at"),
+        "source": rot.get("source"),
+        "ladder_state": "MEASURED" if ranked else "UNMEASURED",
+        "sectors_total": len(ladder),
+        "sectors_measured": len(ranked),
+        "top3": ranked[:3],
+        "ladder": ladder[:16],
+        "transitions_needing_review": transitions[:8],
+        "transitions_needing_review_count": len(transitions),
+    }
+
+
+def _fmt_usd(v: Any) -> str:
+    """$710,933 / $1.27M style; 'n/a' for None. Rounds, never invents."""
+    try:
+        x = float(v)
+    except (TypeError, ValueError):
+        return "n/a"
+    if abs(x) >= 1_000_000:
+        return f"${x / 1_000_000:,.2f}M"
+    return f"${x:,.0f}"
+
+
+def _office_state_facts(snap: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """'What should I be paying attention to' in the office's own state: open
+    reconciliation actions and inconsistencies, theses needing review, re-entry and
+    watch counts, recent closed trades. Counts and codes only -- no narrative."""
+    out: dict[str, Any] = {}
+    rec = _domain_payload(snap, "reconciliation")
+    if rec:
+        out["reconciliation"] = {
+            "actions_open": rec.get("actions_open"),
+            "actions_operator": rec.get("actions_operator"),
+            "inconsistencies": [i.get("code") for i in (rec.get("inconsistencies") or []) if isinstance(i, dict)][:8],
+            "holdings_source_freshness": rec.get("holdings_source_freshness"),
+            "reconciled_at": rec.get("reconciled_at"),
+        }
+    rot = _rotation_facts(snap)
+    if rot and rot.get("transitions_needing_review"):
+        out["transitions_needing_review"] = rot["transitions_needing_review"]
+    ren = _domain_payload(snap, "reentry")
+    if ren.get("counts"):
+        out["reentry_counts"] = ren.get("counts")
+    wi = _domain_payload(snap, "watch_intelligence")
+    if wi.get("counts"):
+        out["watch_counts"] = wi.get("counts")
+    tx = _domain_payload(snap, "transactions")
+    if tx.get("closed_trades_total") is not None:
+        out["recent_closed_trades"] = {
+            "closed_trades_total": tx.get("closed_trades_total"),
+            "last": [
+                {k: t.get(k) for k in ("symbol", "exit_date", "realized_pnl", "account")}
+                for t in (tx.get("recent_closed") or [])[:3] if isinstance(t, dict)
+            ],
+            "last_updated": tx.get("last_updated"),
+        }
+    return out or None
+
+
+def _attach_contract_findings(intent: dict[str, Any], evidence: dict[str, Any], snap: dict[str, Any]) -> None:
+    """Run the evidence contract; attach findings + 'contract' soft gaps. Never raises."""
+    try:
+        try:
+            from scripts.lib import operator_evidence_contract as contract  # noqa: PLC0415
+        except ImportError:
+            from lib import operator_evidence_contract as contract  # type: ignore[no-redef]  # noqa: PLC0415
+        findings = contract.check(intent, evidence, snap)
+        evidence["contract_findings"] = findings
+        if findings:
+            gaps = evidence.setdefault("gaps", [])
+            for g in contract.findings_to_gaps(findings):
+                gaps.append(g)
+    except Exception as exc:  # noqa: BLE001
+        evidence["contract_findings"] = []
+        evidence["contract_error"] = f"{type(exc).__name__}"
+
+
+def _thematic_research_status(question: str) -> str:
+    """One operator-facing line when the house holds no research on a theme.
+
+    It never promises a follow-up. The base version called gap_resolver.resolve()
+    from inside the evidence gather and, on outcome ``queued``, said "research
+    queued via … ≈ N min, I will follow up". Nothing stood behind that promise:
+    no pending row was opened for the chat, ``_v_operator_ask`` returns
+    ``queued`` + ETA even in dry run, ``_v_hermes_research`` without a context
+    enqueues for real from a READ step, and ``try_fulfill_pending_replies`` re-runs
+    a freeform gather that always reports complete -- so no fulfiller could ever
+    deliver it (Agent D replay, 2026-09-13). The follow-up promise now lives only
+    where a pending row is written and read back (handle_operator_desk_question,
+    _drop_unbacked_follow_up). ``question`` is kept for the caller's signature.
+    """
+    return ("Trade-AI holds no house research on this topic, and nothing was queued. "
+            "Say 'research this' to queue it.")
+
+
+#: Promises that something will come later. Timed ones need an ETA on the pending row.
+_TIMED_PROMISE = re.compile(
+    r"(?i)(\bfollow\s+up\b|\bget\s+back\s+to\s+you\b|\breply\s+(?:here\s+)?when\b|"
+    r"\bwill\s+(?:reply|report\s+back|let\s+you\s+know)\b|≈\s*\d+\s*min)"
+)
+#: Claims that work was queued. Need a pending row, ETA or not.
+_QUEUED_CLAIM = re.compile(r"(?i)\b(research\s+queued|queued\s+via|queued\s+(?:a|the)\s+pull)\b")
+FOLLOW_UP_WITHDRAWN = "Nothing was queued; no automatic follow-up will come."
+
+
+def _open_pending_row(pending_id: str, chat_id: str) -> Optional[dict[str, Any]]:
+    """The latest ledger row for this pending_id if it is open and belongs to this chat."""
+    latest = None
+    try:
+        for r in _read_jsonl(PENDING_PATH)[-200:]:
+            if str(r.get("pending_id") or "") == str(pending_id):
+                latest = r
+    except Exception:
+        return None
+    if not latest or latest.get("status") != "open":
+        return None
+    if chat_id and str(latest.get("chat_id") or "") not in ("", str(chat_id)):
+        return None
+    return latest
+
+
+def _drop_unbacked_follow_up(text: str, pending_row: Optional[dict[str, Any]]) -> str:
+    """Withdraw any line promising later delivery that no pending row backs.
+
+    * open pending row WITH eta_seconds -> text unchanged
+    * open pending row without an ETA   -> timed promises removed; "queued … Pending" lines stay
+    * no open pending row               -> timed promises AND queued claims removed, and one
+                                           line says nothing was queued
+    The model's own wording ("I'll get back to you") is held to the same rule.
+    """
+    if not text:
+        return text
+    has_row = bool(pending_row)
+    has_eta = has_row and pending_row.get("eta_seconds") not in (None, "", 0)
+    if has_eta:
+        return text
+    kept: list[str] = []
+    dropped = False
+    for line in text.splitlines():
+        timed = bool(_TIMED_PROMISE.search(line))
+        queued = bool(_QUEUED_CLAIM.search(line))
+        if timed or (queued and not has_row):
+            dropped = True
+            continue
+        kept.append(line)
+    if not dropped:
+        return text
+    if not has_row:
+        tail = kept[-1] if kept and kept[-1].strip() == AUTHORITY else None
+        body = kept[:-1] if tail else kept
+        # keep the Sources footer as the line just above the authority line
+        insert_at = len(body)
+        if body and body[-1].startswith("Sources: "):
+            insert_at -= 1
+        body.insert(insert_at, f"• {FOLLOW_UP_WITHDRAWN}")
+        kept = body + ([tail] if tail else [])
+    return "\n".join(kept)
 
 
 def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
@@ -441,29 +960,18 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
             "gap_type": "soft",
         })
 
-    port = _domain_payload(snap, "portfolio")
-    if port and port.get("total_value") is not None:
-        facts["portfolio"] = {
-            "total_value": port.get("total_value"),
-            "holdings_count": port.get("holdings_count"),
-            "day_change_pct": port.get("day_change_pct"),
-            "as_of": port.get("as_of"),
-        }
-    else:
+    facts["portfolio"] = _portfolio_facts(snap)
+    if facts["portfolio"] is None:
         soft_gaps.append({
             "domain": "portfolio", "symbol": None, "field": "totals",
             "reason": "portfolio totals DATA_UNAVAILABLE", "gap_type": "soft",
         })
 
-    cash = _domain_payload(snap, "cash_buying_power")
-    if cash:
-        nested = cash.get("data") if isinstance(cash.get("data"), dict) else {}
-        facts["cash"] = {
-            "cash_pct": cash.get("cash_pct", nested.get("cash_pct")),
-            "buying_power": cash.get("buying_power") or cash.get("cash") or nested.get("buying_power"),
-            "quality_state": cash.get("quality_state") or cash.get("state"),
-        }
-    else:
+    # 2026-09-13 18:56: the model told the operator "cash_pct, buying_power ... are all
+    # empty" while the snapshot carried total_cash $710,933. The payload keys are
+    # data.total_cash / data.total_buying_power_estimate; cash_pct is derived.
+    facts["cash"] = _cash_facts(snap, (facts.get("portfolio") or {}).get("total_value"))
+    if facts["cash"] is None:
         soft_gaps.append({
             "domain": "cash_buying_power", "symbol": None, "field": "cash",
             "reason": "cash DATA_UNAVAILABLE", "gap_type": "soft",
@@ -478,6 +986,46 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
             "stops_active": risk.get("stops_active"),
         }
 
+    # Sector exposure and the investment policy are house facts a "what should I
+    # concentrate on" question cannot be answered without. They were never passed.
+    sec = _domain_payload(snap, "sectors")
+    sec_rows = sec.get("sectors") if isinstance(sec, dict) else None
+    if isinstance(sec_rows, list) and sec_rows:
+        facts["sector_exposure"] = [
+            {
+                "sector": r.get("sector"), "weight_pct": r.get("weight_pct"),
+                "value": r.get("value"), "symbols": list(dict.fromkeys(r.get("symbols") or []))[:6],
+            }
+            for r in sorted((x for x in sec_rows if isinstance(x, dict)), key=lambda x: -(x.get("weight_pct") or 0))[:8]
+        ]
+        facts["sector_exposure_total_value"] = sec.get("total_value")
+    else:
+        soft_gaps.append({
+            "domain": "sectors", "symbol": None, "field": "exposure",
+            "reason": "sector exposure DATA_UNAVAILABLE", "gap_type": "soft",
+        })
+    pol = _domain_payload(snap, "investment_policy")
+    if pol and (pol.get("primary_objective") or pol.get("risk_level")):
+        facts["investment_policy"] = {
+            k: pol.get(k) for k in (
+                "primary_objective", "risk_level", "max_single_position_pct", "max_drawdown_pct",
+                "target_return_pct", "status", "next_review",
+            ) if pol.get(k) is not None
+        }
+    # The model portfolio is the house's own answer to "how much should be in
+    # equities vs cash" (75/15/5 targets, 56% cash actual on 2026-09-13), and the
+    # rotation ladder is its answer to "which sectors" -- both unread before.
+    mp = _model_portfolio_facts(snap)
+    if mp:
+        facts["model_portfolio"] = mp
+    rot = _rotation_facts(snap)
+    if rot:
+        facts["rotation"] = rot
+    else:
+        soft_gaps.append({
+            "domain": "rotation", "symbol": None, "field": "ladder",
+            "reason": "rotation ladder DATA_UNAVAILABLE", "gap_type": "soft",
+        })
     hold = _domain_payload(snap, "holdings_detail")
     positions = hold.get("positions") if isinstance(hold, dict) else None
     if isinstance(positions, list) and symbols:
@@ -531,8 +1079,39 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
     # "2502 rows exist somewhere" as a fact about whatever was asked. Fixing
     # only the composer would have left this one feeding the other answer path.
     research_items = subject_research(symbols) if symbols else []
+    question = str(intent.get("text") or intent.get("operator_text") or "")
     if research_items:
         facts["research_on_subject"] = research_items
+    elif not symbols:
+        # Thematic / macro question with no subject. HOUSE FIRST (operator rule
+        # 2026-09-13: "routing should be internal Command Center first"): search
+        # promoted research for the question's own words BEFORE the model sees
+        # anything. Only when the store has nothing on the theme does
+        # research_status say so and consult the Phase 7 resolver.
+        topic = search_topic_research(question) if question.strip() else {"items": [], "keywords": []}
+        if topic.get("items"):
+            facts["research_on_topic"] = {
+                "keywords": topic.get("keywords"),
+                "as_of": topic.get("as_of"),
+                "stale": topic.get("stale"),
+                "items": topic["items"],
+            }
+            sources.append("hermes_research_intelligence (topic search)")
+            newest_day = str(topic.get("as_of") or "")[:10]
+            facts["research_status"] = (
+                f"Trade-AI research on file for this topic: {len(topic['items'])} promoted "
+                f"row(s) matching {', '.join(topic.get('keywords') or [])}"
+                + (f" (newest {newest_day})" if newest_day else "") + "."
+            )
+        else:
+            facts["research_status"] = _thematic_research_status(question)
+            if topic.get("error"):
+                facts["research_search_error"] = topic["error"]
+            soft_gaps.append({
+                "domain": "hermes_research", "symbol": None, "field": "topic",
+                "reason": "no Trade-AI research on this topic; general market history is model knowledge",
+                "gap_type": "research",
+            })
     elif symbols:
         soft_gaps.append({
             "domain": "hermes_research",
@@ -544,7 +1123,7 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
 
     available["freeform_context"] = facts
     available["soft_gaps"] = soft_gaps
-    return {
+    evidence = {
         "ok": True,
         "authority": AUTHORITY,
         "available": available,
@@ -553,6 +1132,17 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
         "sources": sources,
         "complete": True,
     }
+    # Coverage contract: the store had it -> the facts must carry it. Findings go
+    # into the facts too, so the model and the fail-soft reply can say "available
+    # but not assembled" instead of "empty". soft_gaps is the same list object as
+    # evidence["gaps"], so the contract gaps reach both.
+    _attach_contract_findings({**intent, "intent": "freeform"}, evidence, snap)
+    if evidence.get("contract_findings"):
+        facts["contract_findings"] = [
+            {"code": f["code"], "fact": f["fact"], "domain": f["domain"], "store_has": f["store_has"]}
+            for f in evidence["contract_findings"]
+        ]
+    return evidence
 
 
 def _format_freeform_failsoft(context: dict[str, Any], soft_gaps: list[dict[str, Any]]) -> str:
@@ -561,15 +1151,47 @@ def _format_freeform_failsoft(context: dict[str, Any], soft_gaps: list[dict[str,
     port = context.get("portfolio") or {}
     if port:
         lines.append(
-            f"• Book: value={port.get('total_value')} holdings={port.get('holdings_count')} "
-            f"day%={port.get('day_change_pct')}"
+            f"• Book: {_fmt_usd(port.get('total_value'))} · {port.get('holdings_count')} holdings"
+            + (f" · as of {str(port.get('as_of'))[:10]}" if port.get("as_of") else "")
         )
     cash = context.get("cash") or {}
-    if cash and (cash.get("cash_pct") is not None or cash.get("buying_power") is not None):
+    if cash and (cash.get("total_cash") is not None or cash.get("buying_power") is not None):
+        top = (cash.get("by_account") or [{}])[0]
         lines.append(
-            f"• Cash: pct={cash.get('cash_pct')} bp={cash.get('buying_power')} "
-            f"q={cash.get('quality_state')}"
+            f"• Cash: {_fmt_usd(cash.get('total_cash'))}"
+            + (f" ({cash.get('cash_pct')}% of book)" if cash.get("cash_pct") is not None else "")
+            + (f" · largest {top.get('account')} {_fmt_usd(top.get('cash'))}" if top.get("account") else "")
+            + f" · buying power est {_fmt_usd(cash.get('buying_power'))}"
+            + (f" ({cash.get('quality_state')})" if cash.get("quality_state") else "")
         )
+    mp = context.get("model_portfolio") or {}
+    if mp:
+        drift = " · ".join(
+            f"{d.get('bucket')} target {d.get('target_pct')}% vs actual {d.get('actual_pct')}%"
+            for d in (mp.get("drift") or []) if d.get("status") == "DRIFT"
+        )
+        lines.append(
+            "• Model portfolio: "
+            + (drift + " (DRIFT)" if drift else
+               f"equity target {mp.get('equity_target_pct')}% · cash target {mp.get('cash_target_pct')}%")
+        )
+    rot = context.get("rotation") or {}
+    if rot:
+        when = str(rot.get("computed_at") or "")[:16].replace("T", " ")
+        if rot.get("ladder_state") == "MEASURED" and rot.get("top3"):
+            top3 = " · ".join(f"{r.get('name')} ({r.get('etf')}) RS {r.get('rs_score')}" for r in rot["top3"])
+            lines.append(f"• Rotation ladder (computed {when}): top 3 by relative strength — {top3}")
+        else:
+            lines.append(
+                f"• Rotation ladder (computed {when}): {rot.get('sectors_total')} sectors, none measured "
+                f"(returns null, data_quality 0) — no ranking to cite."
+            )
+        tr = rot.get("transitions_needing_review") or []
+        if tr:
+            lines.append(
+                f"• Theses needing review: {rot.get('transitions_needing_review_count')} — "
+                + ", ".join(str(t.get("symbol")) for t in tr[:6])
+            )
     risk = context.get("risk") or {}
     if risk:
         lines.append(
@@ -581,9 +1203,34 @@ def _format_freeform_failsoft(context: dict[str, Any], soft_gaps: list[dict[str,
             f"• Held `{h.get('symbol')}`: qty={h.get('quantity')} mv={h.get('market_value')} "
             f"wt%={h.get('weight_pct')}"
         )
+    sec = context.get("sector_exposure") or []
+    if sec:
+        lines.append("• Sectors: " + " · ".join(f"{x.get('sector')} {x.get('weight_pct')}%" for x in sec[:6]))
+    pol = context.get("investment_policy") or {}
+    if pol:
+        lines.append(f"• Policy: {pol.get('risk_level')} · max single {pol.get('max_single_position_pct')}% · {str(pol.get('primary_objective') or '')[:90]}")
+    topic = context.get("research_on_topic") or {}
+    if topic.get("items"):
+        lines.append(f"• House research on this topic (matched: {', '.join(topic.get('keywords') or [])}):")
+        for it in topic["items"][:3]:
+            body = str(it.get("summary") or "").strip().replace("\n", " ")
+            lines.append(f"  – {it.get('as_of') or ''} {it.get('topic') or it.get('research_type') or 'research'}"
+                         + (f" — {body[:140]}" if body else ""))
+    if context.get("research_status"):
+        lines.append(f"• {context['research_status']}")
     for sym, th in (context.get("theses") or {}).items():
         summary = th.get("thesis_summary") or th.get("why_owned_or_watched") or th.get("thesis_state")
         lines.append(f"• Thesis `{sym}`: {summary}")
+    contract_gaps = [g for g in (soft_gaps or []) if g.get("gap_type") == "contract"]
+    if context.get("contract_findings") or contract_gaps:
+        found = context.get("contract_findings") or [
+            {"domain": g.get("domain"), "fact": g.get("field"), "code": g.get("code")} for g in contract_gaps
+        ]
+        lines.append(
+            "• Facts available but not assembled (the store had them; this reply could not use them): "
+            + "; ".join(f"{f.get('domain')} → {str(f.get('fact')).rsplit('.', 1)[-1]} ({f.get('code')})" for f in found[:6])
+        )
+    soft_gaps = [g for g in (soft_gaps or []) if g.get("gap_type") != "contract"]
     if soft_gaps:
         gap_bits = []
         for g in soft_gaps[:8]:
@@ -601,8 +1248,111 @@ def _freeform_flash_enabled() -> bool:
     return raw not in ("0", "false", "off", "no")
 
 
+#: The label rule 2b of the freeform prompt requires before general market history.
+MODEL_KNOWLEDGE_LABEL = "General market history (model knowledge"
+
+#: Seasonality / cycle lore. A line stating any of these must sit in a paragraph
+#: that carries MODEL_KNOWLEDGE_LABEL -- the house holds no such data.
+_SEASONAL_CLAIM = re.compile(
+    r"(?i)\b(seasonal(?:ity|ly)?|september\s+(?:effect|is|has|tends|historically|averages?)|"
+    r"(?:worst|best|weakest|strongest)\s+month|mid-?term\s+(?:election\s+)?(?:year|cycle)|"
+    r"(?:presidential|election|four-year|4-year)\s+cycle|sell\s+in\s+may|santa\s+(?:claus\s+)?rally|"
+    r"year-end\s+rally|historically|on\s+average\s+since|since\s+(?:19|20)\d\d)\b"
+)
+
+#: Phrases a reply uses to call something empty. Checked per sentence against the
+#: subject words in _EMPTY_CLAIM_SUBJECTS.
+_EMPTY_WORDS = re.compile(
+    r"(?i)\b(not\s+available|unavailable|data_unavailable|are\s+(?:all\s+)?empty|is\s+empty|all\s+empty|"
+    r"(?:no|don'?t\s+have|do\s+not\s+have|lack|missing)\s+(?:\w+\s+){0,3}(?:data|facts|information|visibility)|"
+    r"not\s+in\s+my\s+(?:current\s+)?facts|can'?t\s+see|cannot\s+see)\b"
+)
+_EMPTY_CLAIM_SUBJECTS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    # (reason key, subject regex, facts paths any of which being populated makes the claim false)
+    ("cash", r"\b(cash(?:_pct)?|buying[\s_]power|dry\s+powder|liquidity)\b", ("cash.total_cash", "cash.buying_power")),
+    ("holdings", r"\b(holdings(?:_for_symbols)?|positions|weights?|allocations?|exposure|portfolio)\b",
+     ("sector_exposure", "portfolio.total_value")),
+    ("sectors", r"\bsectors?(?:_exposure)?\b", ("sector_exposure",)),
+    ("policy", r"\b(investment[\s_]policy|risk\s+(?:level|tolerance|profile)|mandate)\b", ("investment_policy",)),
+    ("research", r"\b(research|house\s+view|trade-ai\s+view)\b", ("research_on_topic", "research_on_subject")),
+    ("rotation", r"\b(rotation|ladder|relative\s+strength)\b", ("rotation",)),
+)
+
+_NUMBER_TOKEN = re.compile(
+    r"(?P<usd>\$)\s?(?P<n1>\d[\d,]*(?:\.\d+)?)\s*(?P<suf1>[KkMmBb](?![a-z]))?"
+    r"|(?P<n2>\d[\d,]*(?:\.\d+)?)\s*(?P<pct>%)"
+)
+
+
+def _facts_path_populated(context: dict[str, Any], path: str) -> bool:
+    cur: Any = context
+    for hop in path.split("."):
+        if not isinstance(cur, dict) or hop not in cur:
+            return False
+        cur = cur[hop]
+    return cur not in (None, "", [], {})
+
+
+def _numbers_in(obj: Any, out: list[float]) -> None:
+    if isinstance(obj, bool):
+        return
+    if isinstance(obj, (int, float)):
+        out.append(float(obj))
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            _numbers_in(v, out)
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            _numbers_in(v, out)
+    elif isinstance(obj, str):
+        for m in re.finditer(r"-?\d[\d,]*(?:\.\d+)?", obj):
+            try:
+                out.append(float(m.group(0).replace(",", "")))
+            except ValueError:
+                pass
+
+
+def _number_is_sourced(value: float, pool: list[float]) -> bool:
+    for f in pool:
+        for cand in (f, abs(f)):
+            tol = max(0.051, abs(cand) * 0.005)
+            if abs(abs(value) - cand) <= tol:
+                return True
+    return False
+
+
+def _labelled_blocks(text: str) -> list[tuple[str, bool]]:
+    """(line, inside a model-knowledge block). A block starts at a line carrying the
+    label and runs to the next blank line."""
+    out: list[tuple[str, bool]] = []
+    inside = False
+    for line in (text or "").splitlines():
+        if not line.strip():
+            inside = False
+            out.append((line, False))
+            continue
+        if MODEL_KNOWLEDGE_LABEL.lower() in line.lower():
+            inside = True
+        out.append((line, inside))
+    return out
+
+
 def _validate_freeform_reply(text: str, context: dict[str, Any]) -> Optional[str]:
-    """Reject Flash replies that invent READY/NEAR dumps not present in facts."""
+    """Reject a Flash reply that misstates the house's facts. None == accept.
+
+    Original checks: S0 wallpaper, invented READY/NEAR dumps. Added 2026-09-13
+    after the 18:56 reply ("cash_pct, buying_power, holdings_for_symbols all empty"
+    while the snapshot carried $710,933 cash, sector weights and the policy):
+
+    (a) ``false_empty_claim:<subject>`` -- a sentence says cash / holdings / sectors /
+        policy / research / rotation is empty or unavailable while facts carry it.
+    (b) ``unlabelled_model_knowledge`` -- seasonality / cycle lore outside a
+        paragraph labelled 'General market history (model knowledge…'.
+    (c) ``unsourced_number:<token>`` -- a $ amount or % outside a labelled paragraph
+        that matches no number anywhere in the facts (±0.5%, ±0.05 abs; K/M/B
+        suffixes expanded). General history may cite its own numbers; house
+        figures may not be invented.
+    """
     if not text:
         return "empty"
     low = text.lower()
@@ -611,7 +1361,75 @@ def _validate_freeform_reply(text: str, context: dict[str, Any]) -> Optional[str
     # READY TO REVIEW dump only OK if context somehow included it (freeform never does)
     if "ready to review" in low or re.search(r"\bNEAR ENTRY\b", text):
         return "invented_reentry_dump"
+    ctx = context if isinstance(context, dict) else {}
+    lines = _labelled_blocks(text)
+
+    # (a) false empty claims, sentence by sentence, labelled paragraphs included --
+    # "model knowledge" is no licence to call house data empty.
+    for sentence in re.split(r"(?<=[.!?;])\s+|\n", text):
+        if not _EMPTY_WORDS.search(sentence):
+            continue
+        for key, subject_rx, paths in _EMPTY_CLAIM_SUBJECTS:
+            if re.search(subject_rx, sentence, re.I) and any(_facts_path_populated(ctx, p) for p in paths):
+                return f"false_empty_claim:{key}"
+
+    # (b) seasonality / cycle lore must be labelled.
+    for line, inside in lines:
+        if not inside and _SEASONAL_CLAIM.search(line):
+            return "unlabelled_model_knowledge"
+
+    # (c) house numbers must come from the facts.
+    pool: list[float] = []
+    _numbers_in(ctx, pool)
+    for line, inside in lines:
+        if inside:
+            continue
+        for m in _NUMBER_TOKEN.finditer(line):
+            raw = (m.group("n1") or m.group("n2") or "").replace(",", "")
+            try:
+                val = float(raw)
+            except ValueError:
+                continue
+            suf = (m.group("suf1") or "").upper()
+            val *= {"K": 1e3, "M": 1e6, "B": 1e9}.get(suf, 1.0)
+            if m.group("pct") and val in (0.0, 100.0):
+                continue
+            if not _number_is_sourced(val, pool):
+                return f"unsourced_number:{m.group(0).strip()}"
     return None
+
+
+def _facts_for_model(context: dict[str, Any], *, budget: int = 9000) -> str:
+    """TRADE_AI_FACTS as JSON that is never cut mid-structure.
+
+    The old ``json.dumps(context)[:6000]`` sliced the object: once sectors, policy,
+    rotation and research were added, the tail -- where the model looks for cash --
+    could be cut off, and a cut fact reads as a missing one. Trim in a fixed order
+    instead: full ladder rows, research summaries, holdings rows, then drop keys.
+    """
+    ctx = json.loads(json.dumps(context or {}, default=str))
+    text = json.dumps(ctx, default=str)
+    if len(text) <= budget:
+        return text
+    rot = ctx.get("rotation")
+    if isinstance(rot, dict):
+        rot.pop("ladder", None)
+    for key in ("research_on_topic",):
+        block = ctx.get(key)
+        if isinstance(block, dict):
+            for it in block.get("items") or []:
+                if isinstance(it, dict) and it.get("summary"):
+                    it["summary"] = str(it["summary"])[:140]
+    for it in ctx.get("research_on_subject") or []:
+        if isinstance(it, dict) and it.get("summary"):
+            it["summary"] = str(it["summary"])[:140]
+    text = json.dumps(ctx, default=str)
+    for drop in ("theses", "holdings_for_symbols", "symbols_mentioned", "hermes"):
+        if len(text) <= budget:
+            break
+        ctx.pop(drop, None)
+        text = json.dumps(ctx, default=str)
+    return text
 
 
 def answer_freeform_with_flash(
@@ -627,15 +1445,29 @@ def answer_freeform_with_flash(
     try:
         from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy
 
-        facts_json = json.dumps(context, default=str)[:6000]
+        # The model sees ONLY the assembled facts, never cut mid-structure.
+        facts_json = _facts_for_model(context)
         gaps_json = json.dumps(soft_gaps[:12], default=str)[:2000]
         system = (
             "You are Alex, Trade-AI CIO assistant on Telegram. READ_ONLY_ADVISORY — "
             "no orders/stops. Answer the operator in a helpful free-form style.\n"
             "Rules:\n"
             "1) You MAY reason generally (strategy, comparisons, explainers).\n"
-            "2) Prices, weights, READY/NEAR lists, R:R, cash, heat, quantities — "
-            "ONLY from TRADE_AI_FACTS. If missing, say DATA_UNAVAILABLE.\n"
+            "2) Prices, weights, READY/NEAR lists, R:R, cash, sector exposure, heat, quantities — "
+            "ONLY from TRADE_AI_FACTS. If missing, say DATA_UNAVAILABLE. Never say a field is "
+            "empty when TRADE_AI_FACTS carries it.\n"
+            "2b) Anything from general market history or theory (seasonality, election cycles, "
+            "sector rotation lore) must be prefixed 'General market history (model knowledge, not "
+            "Trade-AI data):' and kept to one short paragraph.\n"
+            "2c) If TRADE_AI_FACTS.research_status is present, repeat it verbatim as its own line.\n"
+            "2d) House first: when TRADE_AI_FACTS.research_on_topic is present, cite what those rows "
+            "say (topic and as_of) BEFORE any general market history.\n"
+            "2e) Sector questions: use sector_exposure, model_portfolio drift and rotation. If "
+            "rotation.ladder_state is UNMEASURED, say the rotation ladder has no measured ranking — "
+            "never rank sectors from it.\n"
+            "2f) If TRADE_AI_FACTS.contract_findings is present, say those facts were available but not "
+            "assembled for this reply — never that they are empty.\n"
+            "2g) Never promise to follow up or say anything was queued.\n"
             "3) Never invent holdings or re-entry candidate dumps.\n"
             "4) Mention SOFT_GAPS briefly when relevant.\n"
             "5) Keep reply under ~900 chars; Telegram markdown ok (*bold*, `code`).\n"
@@ -756,14 +1588,17 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
         or "reentry_levels" in needs
         or intent_name == "reentry"
     )
+    _reentry_rows_loaded: list[Any] = []
     if want_reentry:
         from scripts.lib.cio_telegram_converse import (
             format_reentry_purchase_reply,
+            format_reentry_symbol_reply,
             load_reentry_desk_rows,
             _row_levels,
         )
 
         rows, as_of, path = load_reentry_desk_rows()
+        _reentry_rows_loaded = list(rows or [])
         if path:
             sources.append(str(path))
         if not rows:
@@ -787,6 +1622,17 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
                 for r in rows
                 if isinstance(r, dict) and r.get("symbol")
             }
+            # A question that NAMES a symbol is answered about that symbol -- its
+            # own row, gates, levels and held status -- never with the book dump.
+            if symbols:
+                held_map = _held_positions_map()
+                cards: dict[str, str] = {}
+                for sym in symbols[:6]:
+                    row = by_sym.get(sym)
+                    if row:
+                        cards[sym] = format_reentry_symbol_reply(row, holding=held_map.get(sym), computed_at=as_of)
+                if cards:
+                    available["reentry_symbol_cards"] = cards
             check_syms = symbols or [
                 str(r.get("symbol") or "").upper()
                 for r in rows
@@ -839,34 +1685,45 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
             })
 
     if "cash" in needs or "portfolio" in needs:
-        # Prefer snapshot; fall back to holdings helper
+        # Prefer snapshot; fall back to holdings helper.
+        # 2026-09-13: this path read cash_pct / buying_power / cash -- keys the
+        # cash_buying_power payload never had -- so a "how much cash" ask on the
+        # desk path built "cash_pct=None buying_power=None" while total_cash was
+        # $710,933. It now reads the same helpers as the freeform builder and
+        # carries structured book_facts the evidence contract can check.
         book_bits: list[str] = []
-        cash_dom = _domain_payload(snap, "cash_buying_power")
-        port_dom = _domain_payload(snap, "portfolio")
         hold_dom = _domain_payload(snap, "holdings_detail")
-        if cash_dom:
-            q = cash_dom.get("quality_state") or cash_dom.get("state")
-            nested = cash_dom.get("data") if isinstance(cash_dom.get("data"), dict) else {}
-            pct = cash_dom.get("cash_pct")
-            if pct is None:
-                pct = nested.get("cash_pct")
-            bp = cash_dom.get("buying_power") or cash_dom.get("cash") or nested.get("buying_power")
-            # PARTIAL cash is OK (soft) — still surface facts when present
-            if pct is not None or bp is not None:
-                book_bits.append(f"cash_pct={pct} buying_power={bp} quality={q}")
-            elif q == "DATA_UNAVAILABLE":
-                gaps.append({
-                    "domain": "cash_buying_power",
-                    "symbol": None,
-                    "field": "cash",
-                    "reason": "cash domain unavailable",
-                    "gap_type": "missing_market_data",
-                })
-        if port_dom:
+        port_f = _portfolio_facts(snap)
+        cash_f = _cash_facts(snap, (port_f or {}).get("total_value"))
+        book_facts: dict[str, Any] = {}
+        if cash_f:
+            book_facts["cash"] = cash_f
+            accts = ", ".join(f"{a.get('account')} {_fmt_usd(a.get('cash'))}" for a in cash_f["by_account"][:4])
             book_bits.append(
-                f"portfolio_value={port_dom.get('total_value')} "
-                f"holdings={port_dom.get('holdings_count')}"
+                f"cash={_fmt_usd(cash_f.get('total_cash'))} ({cash_f.get('cash_pct')}% of book)"
+                f" buying_power_est={_fmt_usd(cash_f.get('buying_power'))} quality={cash_f.get('quality_state')}"
+                + (f" by account: {accts}" if accts else "")
             )
+        elif (_domain_payload(snap, "cash_buying_power") or {}).get("quality_state") == "DATA_UNAVAILABLE":
+            gaps.append({
+                "domain": "cash_buying_power",
+                "symbol": None,
+                "field": "cash",
+                "reason": "cash domain unavailable",
+                "gap_type": "missing_market_data",
+            })
+        if port_f:
+            book_facts["portfolio"] = port_f
+            book_bits.append(
+                f"portfolio_value={_fmt_usd(port_f.get('total_value'))} "
+                f"holdings={port_f.get('holdings_count')}"
+            )
+        if book_facts:
+            available["book_facts"] = book_facts
+        if intent_name == "attention":
+            office = _office_state_facts(snap)
+            if office:
+                available["office_state"] = office
         if hold_dom and hold_dom.get("position_count") is not None:
             book_bits.append(f"positions={hold_dom.get('position_count')}")
         if not book_bits:
@@ -963,7 +1820,7 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
     if "research" in needs and not available.get("hermes_research") and not available.get("reentry_card"):
         blocking.extend(g for g in gaps if g.get("domain") == "hermes_research")
 
-    return {
+    evidence = {
         "ok": True,
         "authority": AUTHORITY,
         "available": available,
@@ -972,28 +1829,189 @@ def gather_tradeai_evidence(intent: dict[str, Any]) -> dict[str, Any]:
         "sources": sources,
         "complete": not blocking and bool(available),
     }
+    # Coverage contract (config/operator_evidence_contract.json). The re-entry desk
+    # file is its own store of record, so when this turn did not need the CIO
+    # snapshot the desk rows it loaded stand in as the "reentry" domain.
+    contract_snap: dict[str, Any] = dict(snap or {})
+    if want_reentry and "reentry" not in (contract_snap.get("domains") or {}):
+        contract_snap["domains"] = {
+            **(contract_snap.get("domains") or {}),
+            "reentry": {"state": "AVAILABLE" if _reentry_rows_loaded else "DATA_UNAVAILABLE",
+                        "rows": _reentry_rows_loaded},
+        }
+    _attach_contract_findings(intent, evidence, contract_snap)
+    return evidence
+
+
+#: The desk's gap vocabulary mapped onto the resolver's. Only a gap the resolver
+#: has an action for is queued. Anything else is counted as not registered, so a
+#: reply never claims a refresh that nothing will perform.
+def _registry_gap_type(gap: dict[str, Any]) -> Optional[str]:
+    if not str((gap or {}).get("symbol") or "").strip():
+        return None
+    gap_type = str(gap.get("gap_type") or "")
+    domain = str(gap.get("domain") or "")
+    if gap_type == "missing_market_data":
+        return "missing_market_data"
+    if domain == "symbol_thesis":
+        return "missing_thesis"
+    if gap_type == "research":
+        return "stale_news"
+    return None
+
+
+def _gap_registry_enabled() -> bool:
+    return _env("CIO_OPERATOR_GAP_REGISTRY", "1").lower() not in ("0", "false", "off", "no")
+
+
+def _gap_registry_write_conn():
+    """A write connection for the data gap queue, or None when there is no database."""
+    if os.environ.get("TRADE_AI_CI") == "1":
+        return None
+    password = os.environ.get("DB_PASSWORD") or os.environ.get("POSTGRES_PASSWORD")
+    if not password:
+        return None
+    import psycopg2  # noqa: PLC0415
+
+    return psycopg2.connect(
+        host=os.environ.get("DB_HOST", "localhost"),
+        dbname=os.environ.get("DB_NAME", "trade_ai"),
+        user=os.environ.get("DB_USER", "trade_ai"),
+        password=password,
+        connect_timeout=3,
+        options="-c statement_timeout=5000",
+    )
+
+
+def _resolver_cron_exprs(crontab_text: str) -> list[str]:
+    """Schedules of the live data_gap_resolver lines; the weekly audit only abandons."""
+    exprs: list[str] = []
+    for line in (crontab_text or "").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or "data_gap_resolver.py" not in s or "--weekly-audit" in s:
+            continue
+        parts = s.split()
+        if len(parts) > 5 and not parts[0].startswith("@"):
+            exprs.append(" ".join(parts[:5]))
+    return exprs
+
+
+_RESOLVER_CRON_CACHE: dict[str, Any] = {"at": 0.0, "exprs": []}
+
+
+def _gap_resolver_schedule() -> list[str]:
+    """When the gap resolver runs, read from the crontab that runs it.
+
+    The crontab is the schedule's only source. Copying it into config would make
+    a second one that drifts. An unreadable crontab yields [] and the reply says
+    no run time is known.
+    """
+    import subprocess  # noqa: PLC0415
+    import time  # noqa: PLC0415
+
+    now = time.monotonic()
+    if _RESOLVER_CRON_CACHE["exprs"] and now - float(_RESOLVER_CRON_CACHE["at"]) < 600:
+        return list(_RESOLVER_CRON_CACHE["exprs"])
+    try:
+        out = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=3).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    exprs = _resolver_cron_exprs(out)
+    _RESOLVER_CRON_CACHE.update(at=now, exprs=exprs)
+    return exprs
+
+
+def _next_gap_resolver_run(now: Optional[datetime] = None) -> Optional[datetime]:
+    try:
+        from lib.cron_schedule import next_run_any  # noqa: PLC0415
+    except ImportError:
+        from scripts.lib.cron_schedule import next_run_any  # noqa: PLC0415
+    # cron fires in the host's local time
+    return next_run_any(_gap_resolver_schedule(), now or datetime.now().astimezone())
+
+
+def _gap_queue_note(reg: dict[str, Any]) -> str:
+    """The soft-gap note when the queue accepted gaps: which rows, and when they are worked."""
+    ids = [f"#{i}" for i in (reg.get("gap_ids") or [])][:6]
+    head = "logged in the data gap queue" + (f" ({', '.join(ids)})" if ids else "")
+    when = None
+    try:
+        if reg.get("resolver_next_run"):
+            when = datetime.fromisoformat(str(reg["resolver_next_run"])).astimezone().strftime("%a %H:%M %Z")
+    except ValueError:
+        when = None
+    if when:
+        return f"{head}; the gap resolver picks it up {when}. Ask again after that._"
+    return f"{head}; no resolver run time is known, so no follow-up is promised._"
 
 
 def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str) -> dict[str, Any]:
-    """Best-effort enqueue into data_gap_registry / advisory ledger."""
-    registered = 0
-    try:
-        from scripts.lib.advisory_gap_requeue import register_advisory_gaps
+    """Queue the gaps the resolver can act on into data_gap_registry.
 
-        rows = []
-        for g in gaps:
-            sym = g.get("symbol") or "BOOK"
-            rows.append({
-                "symbol": sym,
-                "quality": "DATA_UNAVAILABLE",
-                "gaps": [g.get("field") or g.get("reason") or "missing"],
-                "setup": "WAIT_DATA",
-                "reentry_state": None,
-            })
-        res = register_advisory_gaps(rows, max_register=20)
-        registered = int(res.get("registered") or 0)
-    except Exception as exc:
-        return {"registered": 0, "error": f"{type(exc).__name__}:{exc}"}
+    Writes only through the store's write module
+    (scripts/lib/writers/data_gap_registry_writer.py). The operator approved the
+    desk as a caller on 2026-09-13; the grant is on the `data_gaps` domain in
+    config/data_source_authority.json.
+
+    Returns ``registered`` (gaps now in the queue, new or already open),
+    ``gap_ids``, ``not_registered`` (gaps with no resolver action),
+    ``resolver_next_run`` and, on failure, ``error``. Before this the function
+    imported a bridge module that never reached main and registered 0 every call.
+    """
+    rows: list[dict[str, Any]] = []
+    skipped = 0
+    for g in gaps or []:
+        gap_type = _registry_gap_type(g)
+        if gap_type is None:
+            skipped += 1
+            continue
+        what = g.get("field") or g.get("reason") or "missing"
+        rows.append({
+            "symbol": g.get("symbol"),
+            "gap_type": gap_type,
+            "gap_detail": f"operator desk {pending_id}: {g.get('domain') or 'desk'} {what}",
+        })
+    out: dict[str, Any] = {"registered": 0, "gap_ids": [], "not_registered": skipped, "resolver_next_run": None}
+    if rows and not _gap_registry_enabled():
+        out["error"] = "gap registry disabled (CIO_OPERATOR_GAP_REGISTRY=0)"
+    elif rows:
+        conn = None
+        try:
+            conn = _gap_registry_write_conn()
+            if conn is None:
+                out["error"] = "no database credentials for the gap registry"
+            else:
+                try:
+                    from lib.writers.data_gap_registry_writer import register_gaps  # noqa: PLC0415
+                except ImportError:
+                    from scripts.lib.writers.data_gap_registry_writer import register_gaps  # noqa: PLC0415
+                rec = register_gaps(
+                    conn.cursor(), rows,
+                    detected_by="cio_operator_desk", source="cio_operator_desk_loop", run_id=pending_id,
+                )
+                conn.commit()
+                out["gap_ids"] = rec.queued_ids
+                out["registered"] = len(rec.queued_ids)
+                out["receipt"] = rec.as_dict()
+        except Exception as exc:  # noqa: BLE001
+            if conn is not None:
+                try:
+                    conn.rollback()
+                except Exception:  # noqa: BLE001
+                    pass
+            out["error"] = f"{type(exc).__name__}:{exc}"
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:  # noqa: BLE001
+                    pass
+    if out["registered"]:
+        try:
+            nxt = _next_gap_resolver_run()
+        except Exception:  # noqa: BLE001
+            nxt = None
+        out["resolver_next_run"] = nxt.isoformat() if nxt else None
     _append_jsonl(
         PROJECT_ROOT / "data" / "cio" / "cio_operator_gap_requests.jsonl",
         {
@@ -1001,11 +2019,15 @@ def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str)
             "pending_id": pending_id,
             "chat_id": chat_id,
             "gaps": gaps,
-            "registered": registered,
+            "registered": out["registered"],
+            "gap_ids": out["gap_ids"],
+            "not_registered": skipped,
+            "resolver_next_run": out["resolver_next_run"],
+            "error": out.get("error"),
             "authority": AUTHORITY,
         },
     )
-    return {"registered": registered}
+    return out
 
 
 def subject_research(symbols: list[str], *, limit: int = 6) -> list[dict[str, Any]]:
@@ -1237,6 +2259,31 @@ def _enqueue_hermes_research(
     return out
 
 
+
+# The Sources footer lives in ONE module now (scripts/lib/reply_provenance.py) so
+# every reply path -- not only this desk loop -- builds its line the same way and
+# the converse chokepoint can recognise it. Re-exported under the old name so
+# callers and tests that import it from here keep working.
+try:
+    from scripts.lib.reply_provenance import (  # noqa: E402
+        ROLE_GENERAL_KNOWLEDGE as _ROLE_GENERAL_KNOWLEDGE,
+        ROLE_WORDING_ONLY as _ROLE_WORDING_ONLY,
+        ReplyProvenance as _ReplyProvenance,
+        finalize_operator_reply as _finalize_operator_reply,
+        labels_from_evidence as _labels_from_evidence,
+        with_sources_footer as _with_sources_footer,
+    )
+except ImportError:  # pragma: no cover -- hub import path (lib.* spelling)
+    from lib.reply_provenance import (  # type: ignore  # noqa: E402
+        ROLE_GENERAL_KNOWLEDGE as _ROLE_GENERAL_KNOWLEDGE,
+        ROLE_WORDING_ONLY as _ROLE_WORDING_ONLY,
+        ReplyProvenance as _ReplyProvenance,
+        finalize_operator_reply as _finalize_operator_reply,
+        labels_from_evidence as _labels_from_evidence,
+        with_sources_footer as _with_sources_footer,
+    )
+
+
 def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[str, Any]:
     """Flash rewrites vetted facts only — fail-soft to raw card."""
     avail = evidence.get("available") or {}
@@ -1269,6 +2316,10 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     )
 
     card = avail.get("reentry_card") or ""
+    sym_cards = avail.get("reentry_symbol_cards") or {}
+    if sym_cards:
+        # The operator named the symbol(s): answer about them, not the whole desk.
+        card = "\n\n".join(sym_cards[k] for k in sym_cards)
     book = avail.get("book") or ""
     risk = avail.get("risk")
     hermes = avail.get("hermes_research")
@@ -1300,15 +2351,38 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
             + ", ".join(kinds or ["research"])
             + "):\n" + "\n".join(lines)
         )
+    office = avail.get("office_state") or {}
+    if office:
+        bits = []
+        rec = office.get("reconciliation") or {}
+        if rec:
+            bits.append(f"reconciliation actions open={rec.get('actions_open')} issues={','.join(rec.get('inconsistencies') or []) or 'none'}")
+        if office.get("reentry_counts"):
+            c = office["reentry_counts"]
+            bits.append(f"re-entry ready={c.get('ready')} near={c.get('near')} of {c.get('total')}")
+        if office.get("transitions_needing_review"):
+            bits.append("theses needing review: " + ", ".join(str(t.get("symbol")) for t in office["transitions_needing_review"][:6]))
+        if bits:
+            extras.append("Office: " + " · ".join(bits))
+    findings = evidence.get("contract_findings") or []
+    if findings:
+        # The store had these; the desk failed to assemble them. Say that -- never "empty".
+        extras.append(
+            "Facts available but not assembled (the store had them; this reply could not use them): "
+            + "; ".join(f"{f.get('domain')} → {str(f.get('fact')).rsplit('.', 1)[-1]} ({f.get('code')})" for f in findings[:6])
+        )
     if extras:
         facts = "\n".join(extras) + ("\n\n" + card if card else "")
 
     if not str(facts).strip():
         return {
             "ok": False,
+            # No promise: nothing on this branch queues a pull or opens a pending.
+            # "Queued a pull -- I'll reply when it lands" went to the operator on
+            # 2026-09-13 with nothing queued (the gap bridge module does not exist).
             "text": (
-                "Trade-AI has no vetted facts for that yet. "
-                "Queued a pull — I'll reply when it lands.\n"
+                "Trade-AI has no vetted facts for that yet, and nothing was queued. "
+                "Say 'research <ticker>' and I will queue it with an ETA.\n"
                 "READ_ONLY_ADVISORY"
             ),
             "source": "empty_evidence",
@@ -1317,7 +2391,7 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     ready = re.findall(r"\*([A-Z]{1,5})\*", card) if card else []
     near = re.findall(r"`([A-Z]{1,5})`", card) if card else []
 
-    if card and _reentry_flash_enabled():
+    if card and not sym_cards and _reentry_flash_enabled():
         flash = curate_reentry_reply_with_flash(
             operator_text=operator_text,
             deterministic_reply=facts,
@@ -1533,6 +2607,33 @@ def handle_operator_desk_question(
             "model": None,
             "same_brain": True,
         }
+    intent.setdefault("text", text)
+    # The analyzer already knows when a market ask names nothing that resolves
+    # (Agent B, 2026-09-13). Refuse before gathering: otherwise an ask with no
+    # blocking gap replied "Queued a pull -- I'll reply when it lands" with
+    # nothing queued.
+    if intent.get("answerable") is False:
+        why = intent.get("unanswerable_reason") or "no tradable instrument resolved from that question"
+        return {
+            "authority": AUTHORITY,
+            "intent": intent,
+            "evidence_complete": False,
+            "gaps": [],
+            "blocking_gaps": [],
+            "sources": [],
+            "contract_findings": None,
+            "pending_id": None,
+            "kind": "unanswerable",
+            "text": "",
+            "reply_preview": (
+                f"I can't answer that from Trade-AI: {why}.\n\n"
+                "If you meant a company I hold or watch, send its ticker and I will "
+                "answer from the house data.\n"
+                f"{AUTHORITY}"
+            ),
+            "reply_source": "unanswerable_up_front",
+            "model": None,
+        }
     evidence = gather_tradeai_evidence(intent)
     pending_id = f"opr_{uuid.uuid4().hex[:12]}"
 
@@ -1543,6 +2644,9 @@ def handle_operator_desk_question(
         "gaps": evidence.get("gaps") or [],
         "blocking_gaps": evidence.get("blocking_gaps") or [],
         "sources": evidence.get("sources") or [],
+        # Agent C contract: surfaced on the result so the receipt and the answer-quality
+        # monitor see "facts were available but not assembled" findings.
+        "contract_findings": evidence.get("contract_findings"),
         "pending_id": None,
         "kind": "answered",
         "text": "",
@@ -1552,12 +2656,12 @@ def handle_operator_desk_question(
 
     blocking = evidence.get("blocking_gaps") or []
     if blocking:
-        _register_gaps(blocking, chat_id=str(chat_id), pending_id=pending_id)
+        result["gap_registry"] = _register_gaps(blocking, chat_id=str(chat_id), pending_id=pending_id)
         # Hermes when research is the blocker
         # Do not promise a reply about something that can never be answered.
         # "What's the outlook for SpaceX, what are options closing, what are
         # analysts expecting" got a queue ticket and 72 minutes of silence
-        # because SpaceX is private: no symbol resolved, so the research gap
+        # because no symbol resolved (the name index lacked SpaceX -- it is SPCX, which the book holds), so the research gap
         # could not close and the pending could not complete. Say so now.
         _answerable, _why = is_answerable(intent)
         if not _answerable:
@@ -1566,8 +2670,8 @@ def handle_operator_desk_question(
                 "pending_id": None,
                 "reply_preview": (
                     f"I can't answer that from Trade-AI: {_why}.\n\n"
-                    "If it is a private company, there is no market data, options "
-                    "chain or analyst coverage for it here.\n"
+                    "If you meant a company I hold or watch, send its ticker and I "
+                    "will answer from the house data.\n"
                     f"{AUTHORITY}"
                 ),
             })
@@ -1643,6 +2747,9 @@ def handle_operator_desk_question(
                     pending_id=pending_id,
                     operator_text=text or "",
                 )
+                result.setdefault("went_outside", []).append(
+                    "hermes_research queue — no house research on the subject; research requested"
+                )
             gap_bits = []
             for g in blocking[:6]:
                 sym = g.get("symbol") or "book"
@@ -1687,7 +2794,7 @@ def handle_operator_desk_question(
 
     curated = _curate_from_evidence(text, evidence)
     soft = [g for g in (evidence.get("gaps") or []) if g not in blocking]
-    text_out = curated.get("text") or ""
+    text_out = _with_sources_footer(curated.get("text") or "", evidence, curated)
     intent_name = str(intent.get("intent") or "")
 
     # Freeform: answer now; optionally soft-queue research gaps for named symbols
@@ -1707,6 +2814,9 @@ def handle_operator_desk_question(
                 chat_id=str(chat_id),
                 pending_id=pending_id,
                 operator_text=text or "",
+            )
+            result.setdefault("went_outside", []).append(
+                f"hermes_research queue — no house research on {', '.join(syms[:6])}; research requested"
             )
             _append_jsonl(PENDING_PATH, {
                 "pending_id": pending_id,
@@ -1728,6 +2838,9 @@ def handle_operator_desk_question(
                     f"Pending `{pending_id}`_"
                 )
             result["pending_id"] = pending_id
+        # A follow-up promise stands only on a pending row that EXISTS for this
+        # chat -- read back from the ledger, not assumed from the branch taken.
+        text_out = _drop_unbacked_follow_up(text_out, _open_pending_row(pending_id, str(chat_id)))
         result.update({
             "kind": "answered",
             "text": text_out,
@@ -1740,12 +2853,17 @@ def handle_operator_desk_question(
     if soft and "DATA_UNAVAILABLE" not in text_out and intent_name != "meta_system":
         soft_syms = sorted({g.get("symbol") for g in soft if g.get("symbol")})
         if soft_syms:
+            # Claim "queued" only when the registry accepted the gaps. _register_gaps
+            # returned registered=0 on every call (its bridge module is absent), and
+            # the note said "queued for Trade-AI refresh" regardless.
+            reg = _register_gaps(soft[:10], chat_id=str(chat_id), pending_id=pending_id) or {}
+            result["gap_registry"] = reg
+            queued = int(reg.get("registered") or 0) > 0
             text_out = (
                 text_out.rstrip()
                 + f"\n_Note: partial level gaps on {', '.join(soft_syms[:6])} — "
-                "queued for Trade-AI refresh._"
+                + (_gap_queue_note(reg) if queued else "not refreshed automatically; say 'research <ticker>' to queue it._")
             )
-            _register_gaps(soft[:10], chat_id=str(chat_id), pending_id=pending_id)
 
     result.update({
         "kind": "answered",
@@ -1761,9 +2879,30 @@ def handle_operator_desk_question(
 #: `try_fulfill_pending_replies` skips an incomplete pending with a bare
 #: `continue`, so a question whose evidence can NEVER arrive was re-checked
 #: silently forever. opr_5bc20393b457 ("outlook for SpaceX") sat open 72 minutes
-#: with the operator waiting, and would have sat open indefinitely: SpaceX is
-#: private, so no symbol resolved, so the research gap could not close.
+#: with the operator waiting, and would have sat open indefinitely: no symbol
+#: resolved (the name index lacked SpaceX; it is SPCX, which the book holds), so the research gap could not close.
 PENDING_EXPIRY_HOURS = 2.0
+
+
+def _pending_expiry_hours(row: dict[str, Any]) -> float:
+    """How long this pending may stay open before it is retracted.
+
+    A pending opened with an ETA (the gap resolver queued a slow vector) was
+    retracted at 2 h even when the ETA itself was longer, so the operator was
+    told "could not answer" before the promised time. It now stays open until
+    the ETA plus a grace period (CIO_OPERATOR_PENDING_ETA_GRACE_HOURS, default 1).
+    """
+    try:
+        eta_s = float(row.get("eta_seconds"))
+    except (TypeError, ValueError):
+        return PENDING_EXPIRY_HOURS
+    if eta_s <= 0:
+        return PENDING_EXPIRY_HOURS
+    try:
+        grace_h = float(_env("CIO_OPERATOR_PENDING_ETA_GRACE_HOURS", "1"))
+    except ValueError:
+        grace_h = 1.0
+    return max(PENDING_EXPIRY_HOURS, eta_s / 3600.0 + max(0.0, grace_h))
 
 
 def _pending_age_hours(row: dict[str, Any]) -> Optional[float]:
@@ -1784,7 +2923,8 @@ def is_answerable(intent: dict[str, Any]) -> tuple[bool, str]:
     answered by waiting: no quote, no chain, no analyst coverage and no research
     row will ever arrive for it. Promising "I'll reply when it lands" is then a
     promise about data that cannot land -- which is what happened to the SpaceX
-    ask. SpaceX is private; that was knowable at the moment of asking.
+    ask. The name did not resolve -- knowable at the moment of asking. (It was
+    SPCX, held; the name index lacked it. Resolution now reads house-held names.)
 
     Returns (answerable, reason). The reason is operator-facing.
     """
@@ -1792,11 +2932,39 @@ def is_answerable(intent: dict[str, Any]) -> tuple[bool, str]:
     symbols = [s for s in (intent.get("symbols") or []) if str(s).strip()]
     market_needs = needs & {"analyst_view", "reentry_ready", "reentry_levels", "risk"}
     if market_needs and not symbols:
+        # Name what failed to resolve. Never assert WHY (e.g. "private"): the name
+        # index only knows the broker instrument feed, and a listed name the feed
+        # has not swept is indistinguishable here from a private company.
+        names = [str(s.get("matched")) for s in (intent.get("subjects") or [])
+                 if isinstance(s, dict) and s.get("kind") == "company" and not s.get("symbol") and s.get("matched")]
+        named = (f" ({', '.join(dict.fromkeys(names))} did not resolve to an instrument in the broker feed)"
+                 if names else "")
+        cands = [str(c) for c in (intent.get("ticker_candidates") or [])][:3]
+        hint = (f". If you meant a ticker, write it in capitals ({', '.join(cands)})" if cands else "")
         return False, (
             "no tradable instrument resolved from that question, so there is no "
-            "quote, options chain, analyst coverage or research to wait for"
+            "quote, options chain, analyst coverage or research to wait for" + named + hint
         )
     return True, ""
+
+
+def _pending_reply_provenance(kind: str, row: dict[str, Any], evidence: dict[str, Any],
+                              curated: Optional[dict[str, Any]] = None) -> "_ReplyProvenance":
+    """Receipt for a follow-up / retraction send. These do not pass through the
+    converse core, so they declare what they read here: the pending ledger row
+    (and when it was opened) plus whatever evidence the re-check gathered."""
+    opened = str(row.get("ts") or "")[:16].replace("T", " ")
+    stores = [PENDING_PATH.name + (f" · opened {opened}" if opened else "")]
+    stores += [lab for lab in _labels_from_evidence(evidence or {}, curated or {}) if " — " not in lab]
+    outside: list[str] = []
+    model = role = None
+    src = str((curated or {}).get("source") or "")
+    if src in ("deepseek_flash", "freeform_flash"):
+        model = (curated or {}).get("model") or "deepseek-flash"
+        freeform = ((evidence or {}).get("available") or {}).get("freeform_context") is not None
+        role = _ROLE_GENERAL_KNOWLEDGE if (freeform or src == "freeform_flash") else _ROLE_WORDING_ONLY
+        outside.append(f"{model} — {role}")
+    return _ReplyProvenance(kind=kind, stores_read=stores, went_outside=outside, model=model, model_role=role)
 
 
 def try_fulfill_pending_replies(
@@ -1825,21 +2993,22 @@ def try_fulfill_pending_replies(
                 # re-checked silently forever while the operator waited.
                 age_h = _pending_age_hours(row)
                 answerable, why = is_answerable(intent)
-                if answerable and (age_h is None or age_h < PENDING_EXPIRY_HOURS):
+                limit_h = _pending_expiry_hours(row)
+                if answerable and (age_h is None or age_h < limit_h):
                     continue
                 reason = why or (
                     f"the required Trade-AI data did not arrive within "
-                    f"{PENDING_EXPIRY_HOURS:g}h"
+                    f"{round(limit_h, 1):g}h"
                 )
                 chat_id = str(row.get("chat_id") or "")
                 if chat_id:
-                    send_fn(
-                        chat_id,
+                    body, _prov = _finalize_operator_reply(
                         f"📭 *Closing* `{row.get('pending_id')}` — I could not answer this.\n\n"
                         f"{reason}.\n\nAsk again if you want me to retry.\n"
                         f"{AUTHORITY}",
-                        row.get("message_id"),
+                        _pending_reply_provenance("pending_expired", row, evidence),
                     )
+                    send_fn(chat_id, body, row.get("message_id"))
                 _append_jsonl(PENDING_PATH, {
                     **{k: row.get(k) for k in (
                         "pending_id", "chat_id", "message_id", "channel", "operator_text",
@@ -1853,9 +3022,10 @@ def try_fulfill_pending_replies(
                 expired += 1
                 continue
             curated = _curate_from_evidence(str(row.get("operator_text") or ""), evidence)
-            body = (
+            body, _prov = _finalize_operator_reply(
                 f"📬 *Follow-up* `{row.get('pending_id')}` — Trade-AI data landed\n\n"
-                + (curated.get("text") or "")
+                + _with_sources_footer(curated.get("text") or "", evidence, curated),
+                _pending_reply_provenance("pending_fulfilled", row, evidence, curated),
             )
             chat_id = str(row.get("chat_id") or "")
             if not chat_id:

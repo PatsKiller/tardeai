@@ -57,6 +57,15 @@ Or one-shot poll:
 
 Footer on every converse reply includes `plan_id` and how to ack.
 
+**Every free-text reply says where it came from (2026-09-13).** Before the authority tail each reply
+carries `Sources:` — the Command Center stores it read, with their computed / as-of time, and the
+model plus its role when a model wrote prose — and, only when the answer needed anything outside the
+Command Center (gap-resolver vector, Hermes queue, a model call), `Went outside: <what> — <why>`.
+Enforced at one chokepoint, `scripts/lib/reply_provenance.py::finalize_operator_reply`; the receipt is
+`reply_provenance` on the `operator.message` payload. Slash commands are out of scope. Full path map:
+[`docs/OPERATOR_REPLY_ROUTING.md`](../OPERATOR_REPLY_ROUTING.md). Tests:
+`tests/test_operator_reply_routing_sources_20260913.py`.
+
 ---
 
 ## Disable

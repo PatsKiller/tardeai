@@ -1,0 +1,579 @@
+{
+  "_about": "The operator's REAL questions, each with the intent, needs, symbols and key subjects the heuristic analyzer SHOULD produce. Expectations were set conservatively by hand on 2026-09-13; rows with expected_review=true are judgement calls a reviewer should confirm. Offline: the test pins the identity registry, instrument feed and book to the values in `environment`.",
+  "collected": "2026-09-13",
+  "sources": {
+    "operator_conversation_turns": "role='operator' rows, SELECT only, 36 distinct texts 2026-09-06..2026-09-13",
+    "cio_events.jsonl operator.message": "20 events, 18 distinct texts",
+    "cio_operator_pending_replies.jsonl": "1 row (opr_5bc20393b457, the SpaceX question) - already in the turns",
+    "cio_telegram_receipts.jsonl": "161 delivery receipts; carries NO operator text (decision_id/dedupe_key/message_ids only)",
+    "litmus_brief_20260913": "the short SpaceX litmus text from the brief, verbatim"
+  },
+  "excluded": {
+    "approval_tokens": 14,
+    "why": "'gapprove:<hex>' and 'APPROVE GRANT-<hex>' turns are approval credentials, not questions; bodies not copied"
+  },
+  "environment": {
+    "book": [
+      "SCHG",
+      "SCHD",
+      "JEPI",
+      "NOC",
+      "V",
+      "WMT",
+      "SPCX",
+      "ADBE",
+      "RTX",
+      "XLI",
+      "DIV",
+      "CASH"
+    ],
+    "registry_symbols": [
+      "SCHG",
+      "SCHD",
+      "JEPI",
+      "NOC",
+      "V",
+      "WMT",
+      "SPCX",
+      "ADBE",
+      "RTX",
+      "XLI",
+      "DIV",
+      "NSC",
+      "NVDA",
+      "CRWD",
+      "REFR",
+      "BACK",
+      "INTO",
+      "TECH",
+      "CHEAP",
+      "TERM",
+      "LOOK",
+      "VIA",
+      "PRICE",
+      "GOING",
+      "NOW",
+      "RIGHT",
+      "DATA"
+    ],
+    "instruments": {
+      "WMT": "WALMART INC",
+      "V": "VISA INC A",
+      "NSC": "NORFOLK SOUTHN CORP",
+      "NOC": "NORTHROP GRUMMAN COR",
+      "REFR": "RESEARCH FRONTIERS INC",
+      "CRWD": "CROWDSTRIKE HLDGS INC A",
+      "NVDA": "NVIDIA CORP",
+      "ADBE": "ADOBE INC",
+      "SCHG": "SCHWAB US LARGE CAP GROWTH ETF",
+      "JEPI": "JPMORGAN EQUITY PREMIUM INCOME ETF"
+    }
+  },
+  "questions": [
+    {
+      "id": "q01",
+      "source": "cio_events",
+      "text": "/start",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": []
+    },
+    {
+      "id": "q02",
+      "source": "cio_events",
+      "text": "What should I watch on SCHD this week? READ_ONLY advisory only.",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": [
+        "SCHD"
+      ],
+      "expected_review": true,
+      "note": "was meta_system: the bare word READ_ONLY is a disclaimer, not a question about the bot"
+    },
+    {
+      "id": "q03",
+      "source": "cio_events",
+      "text": "Continue this plan — any update on concentration risk?",
+      "intent": "risk",
+      "needs": [
+        "risk"
+      ],
+      "symbols": []
+    },
+    {
+      "id": "q04",
+      "source": "cio_events",
+      "text": "i rejected as its making money and a staple anchor to account right now",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": [],
+      "expected_review": true,
+      "note": "reply to an earlier plan card; no desk pull"
+    },
+    {
+      "id": "q05",
+      "source": "cio_events",
+      "text": "alex any holdings on rentry ready for purchase",
+      "intent": "reentry",
+      "needs": [
+        "reentry_ready",
+        "portfolio"
+      ],
+      "symbols": []
+    },
+    {
+      "id": "q06",
+      "source": "cio_events",
+      "text": "alex what can i reenter now and whats the support and resistance 50day etc",
+      "intent": "reentry",
+      "needs": [
+        "reentry_ready",
+        "reentry_levels"
+      ],
+      "symbols": []
+    },
+    {
+      "id": "q07",
+      "source": "cio_events",
+      "text": "alex what llm you using",
+      "intent": "meta_system",
+      "needs": [
+        "runtime_llm",
+        "runtime_status"
+      ],
+      "symbols": []
+    },
+    {
+      "id": "q08",
+      "source": "cio_events",
+      "text": "alex what llm ypu using",
+      "intent": "meta_system",
+      "needs": [
+        "runtime_llm",
+        "runtime_status"
+      ],
+      "symbols": []
+    },
+    {
+      "id": "q09",
+      "source": "cio_events",
+      "text": "alex does JEPI fit my profolio",
+      "intent": "freeform",
+      "needs": [
+        "portfolio"
+      ],
+      "symbols": [
+        "JEPI"
+      ],
+      "note": "'profolio' is the operator's spelling of portfolio"
+    },
+    {
+      "id": "q10",
+      "source": "cio_events",
+      "text": "alex should i do covered calls on jepi",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": [
+        "JEPI"
+      ],
+      "subjects": [
+        {
+          "kind": "topic",
+          "topic": "options"
+        }
+      ]
+    },
+    {
+      "id": "q11",
+      "source": "cio_events",
+      "text": "Alex what should I be doing with the cash in this market",
+      "intent": "cash",
+      "needs": [
+        "cash"
+      ],
+      "symbols": []
+    },
+    {
+      "id": "q12",
+      "source": "cio_events",
+      "text": "Alex whats crowdstrite price today",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": [],
+      "expected_review": true,
+      "note": "typo 'crowdstrite' does not resolve and must not be fuzzed onto an issuer (AGENTS.md: ambiguity returns nothing)"
+    },
+    {
+      "id": "q13",
+      "source": "cio_events",
+      "text": "You can look it up via command center request",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": []
+    },
+    {
+      "id": "q14",
+      "source": "cio_events+turns",
+      "text": "What are the latest analyst predictions on Walmart\"",
+      "intent": "analyst_view",
+      "needs": [
+        "analyst_view"
+      ],
+      "symbols": [
+        "WMT"
+      ],
+      "subjects": [
+        {
+          "kind": "company",
+          "symbol": "WMT",
+          "matched": "Walmart"
+        }
+      ]
+    },
+    {
+      "id": "q15",
+      "source": "cio_events+turns",
+      "text": "What a analyst saying about Walmart right now is it a buy and what's the target",
+      "intent": "analyst_view",
+      "needs": [
+        "analyst_view"
+      ],
+      "symbols": [
+        "WMT"
+      ],
+      "subjects": [
+        {
+          "kind": "company",
+          "symbol": "WMT",
+          "matched": "Walmart"
+        }
+      ]
+    },
+    {
+      "id": "q16",
+      "source": "cio_events+turns+pending",
+      "text": "What's the outlook for SpaceX in the next 3 months and what has its performance been over the last month what are options closing on SpaceX was the end of the year and analysts expectation of targets",
+      "intent": "analyst_view",
+      "needs": [
+        "analyst_view"
+      ],
+      "symbols": [
+        "SPCX"
+      ],
+      "subjects": [
+        {
+          "kind": "company",
+          "symbol": "SPCX",
+          "matched": "SpaceX"
+        }
+      ],
+      "answerable": true,
+      "note": "corrected 2026-09-13: SpaceX resolves to SPCX from house-held names (config/ipo_lockups.json, held symbols' profiles); it is not private in Trade-AI's data"
+    },
+    {
+      "id": "q17",
+      "source": "cio_events+turns",
+      "text": "Is now a good time to get back into schg",
+      "intent": "reentry",
+      "needs": [
+        "reentry_ready"
+      ],
+      "symbols": [
+        "SCHG"
+      ],
+      "subjects": [
+        {
+          "kind": "ticker",
+          "symbol": "SCHG",
+          "matched": "schg"
+        }
+      ]
+    },
+    {
+      "id": "q18",
+      "source": "cio_events+turns",
+      "text": "How does the market normally perform in September and normally during a mid-cycle election term what sectors should I be concentrated on going into the third and fourth quarter",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": [],
+      "subjects": [
+        {
+          "kind": "topic",
+          "topic": "seasonality"
+        },
+        {
+          "kind": "topic",
+          "topic": "election_cycle"
+        },
+        {
+          "kind": "topic",
+          "topic": "sector_allocation"
+        },
+        {
+          "kind": "topic",
+          "topic": "quarter_outlook"
+        }
+      ]
+    },
+    {
+      "id": "q19",
+      "source": "litmus_brief_20260913",
+      "text": "what's the outlook for SpaceX, what are options closing, what are analysts expecting",
+      "intent": "analyst_view",
+      "needs": [
+        "analyst_view"
+      ],
+      "symbols": [
+        "SPCX"
+      ],
+      "subjects": [
+        {
+          "kind": "company",
+          "symbol": "SPCX",
+          "matched": "SpaceX"
+        }
+      ],
+      "answerable": true,
+      "note": "corrected 2026-09-13: SpaceX resolves to SPCX from house-held names (config/ipo_lockups.json, held symbols' profiles); it is not private in Trade-AI's data"
+    },
+    {
+      "id": "q20",
+      "source": "turns",
+      "asked_at": "2026-09-06",
+      "text": "Alex what is the analyst target for Visa, the latest support and resistance, and how far are we from it?",
+      "intent": "analyst_view",
+      "needs": [
+        "reentry_levels",
+        "analyst_view"
+      ],
+      "symbols": [
+        "V"
+      ],
+      "subjects": [
+        {
+          "kind": "company",
+          "symbol": "V",
+          "matched": "Visa"
+        }
+      ]
+    },
+    {
+      "id": "q21",
+      "source": "turns",
+      "asked_at": "2026-09-06",
+      "text": "Alex how is my Norfolk Southern position and the downside risk?",
+      "intent": "risk",
+      "needs": [
+        "risk"
+      ],
+      "symbols": [
+        "NSC"
+      ],
+      "subjects": [
+        {
+          "kind": "company",
+          "symbol": "NSC",
+          "matched": "Norfolk Southern"
+        }
+      ]
+    },
+    {
+      "id": "q22",
+      "source": "turns",
+      "asked_at": "2026-09-06",
+      "text": "Alex what about Nonesuch Holdings?",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": [],
+      "subjects": [
+        {
+          "kind": "company",
+          "symbol": null,
+          "matched": "Nonesuch Holdings"
+        }
+      ],
+      "note": "was portfolio: the word Holdings inside a company name asked for the operator's holdings"
+    },
+    {
+      "id": "q23",
+      "source": "turns",
+      "asked_at": "2026-09-06",
+      "text": "Alex let me know what is the Walmart support and resistance",
+      "intent": "freeform",
+      "needs": [
+        "reentry_levels"
+      ],
+      "symbols": [
+        "WMT"
+      ],
+      "expected_review": true,
+      "note": "label stays freeform (levels never relabel freeform; relabelling would emit reentry DecisionPayloads); reentry_levels still routes the desk row"
+    },
+    {
+      "id": "q24",
+      "source": "turns",
+      "asked_at": "2026-09-06",
+      "text": "Alex let me know the Walmart support and resistance please",
+      "intent": "freeform",
+      "needs": [
+        "reentry_levels"
+      ],
+      "symbols": [
+        "WMT"
+      ],
+      "expected_review": true
+    },
+    {
+      "id": "q25",
+      "source": "turns",
+      "asked_at": "2026-09-06",
+      "text": "Alex what is the Walmart support and resistance?",
+      "intent": "freeform",
+      "needs": [
+        "reentry_levels"
+      ],
+      "symbols": [
+        "WMT"
+      ],
+      "expected_review": true
+    },
+    {
+      "id": "q26",
+      "source": "turns",
+      "asked_at": "2026-09-06",
+      "text": "no I meant the weekly",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": [],
+      "expected_review": true,
+      "note": "a follow-up; meaning lives in the prior turn, which the analyzer does not see"
+    },
+    {
+      "id": "q27",
+      "source": "turns",
+      "asked_at": "2026-09-11",
+      "text": "ok",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": []
+    },
+    {
+      "id": "q28",
+      "source": "turns",
+      "asked_at": "2026-09-11",
+      "text": "ADBE — what did Q3 actually show on user growth?",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": [
+        "ADBE"
+      ],
+      "subjects": [
+        {
+          "kind": "topic",
+          "topic": "earnings"
+        }
+      ]
+    },
+    {
+      "id": "q29",
+      "source": "turns",
+      "asked_at": "2026-09-11",
+      "text": "What are the latest analyst predictions on Walmart",
+      "intent": "analyst_view",
+      "needs": [
+        "analyst_view"
+      ],
+      "symbols": [
+        "WMT"
+      ]
+    },
+    {
+      "id": "q30",
+      "source": "turns",
+      "asked_at": "2026-09-13",
+      "text": "What are analysts saying about Walmart",
+      "intent": "analyst_view",
+      "needs": [
+        "analyst_view"
+      ],
+      "symbols": [
+        "WMT"
+      ]
+    },
+    {
+      "id": "q31",
+      "source": "turns",
+      "asked_at": "2026-09-13",
+      "text": "What analyst singing about SpaceX",
+      "intent": "analyst_view",
+      "needs": [
+        "analyst_view"
+      ],
+      "symbols": [
+        "SPCX"
+      ],
+      "subjects": [
+        {
+          "kind": "company",
+          "symbol": "SPCX",
+          "matched": "SpaceX"
+        }
+      ],
+      "answerable": true,
+      "note": "corrected 2026-09-13: SpaceX resolves to SPCX from house-held names (config/ipo_lockups.json, held symbols' profiles); it is not private in Trade-AI's data"
+    },
+    {
+      "id": "q32",
+      "source": "turns",
+      "asked_at": "2026-09-13",
+      "text": "Approved",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": []
+    },
+    {
+      "id": "q33",
+      "source": "turns",
+      "asked_at": "2026-09-13",
+      "text": "Yes fixed data defect first",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": []
+    },
+    {
+      "id": "q34",
+      "source": "turns",
+      "asked_at": "2026-09-13",
+      "text": "What about SCHD?",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": [
+        "SCHD"
+      ]
+    },
+    {
+      "id": "q35",
+      "source": "turns",
+      "asked_at": "2026-09-13",
+      "text": "Thoughts on concentration in SCHD?",
+      "intent": "freeform",
+      "needs": [
+        "risk"
+      ],
+      "symbols": [
+        "SCHD"
+      ],
+      "expected_review": true,
+      "note": "concentration is a risk hint; freeform keeps it soft"
+    },
+    {
+      "id": "q36",
+      "source": "turns",
+      "asked_at": "2026-09-13",
+      "text": "Please continue",
+      "intent": "freeform",
+      "needs": [],
+      "symbols": []
+    }
+  ]
+}

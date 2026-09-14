@@ -828,7 +828,7 @@
       "deepseek_allowed_policies": [
         "FAST"
       ],
-      "max_input_tokens": 4000,
+      "max_input_tokens": 8000,
       "max_output_tokens": 800,
       "daily_soft_cap": 240,
       "daily_cost_cap_usd": 2.0,
@@ -836,7 +836,7 @@
       "fallback_allowed": false,
       "advisory_only": true,
       "output_schema": "watch_narrative.v1",
-      "notes": " | 2026-08-20: daily_soft_cap 120\u2192240 after overnight request-cap exhaustion; containment re-armed + offpeak wrapper now overrides containment (issue #283). cost cap unchanged 2.0."
+      "notes": " | 2026-08-20: daily_soft_cap 120\u2192240 after overnight request-cap exhaustion; containment re-armed + offpeak wrapper now overrides containment (issue #283). cost cap unchanged 2.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session."
     },
     {
       "id": "watchlist_maria_priority",
@@ -870,7 +870,8 @@
       "deepseek_allowed_policies": [
         "FAST"
       ],
-      "max_input_tokens": 4000,
+      "max_input_tokens": 8000,
+      "notes": "2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session.",
       "max_output_tokens": 800,
       "daily_soft_cap": 60,
       "daily_cost_cap_usd": 1.0,
@@ -894,7 +895,7 @@
       "deepseek_allowed_policies": [
         "FAST"
       ],
-      "max_input_tokens": 4000,
+      "max_input_tokens": 8000,
       "max_output_tokens": 1600,
       "daily_soft_cap": 40,
       "daily_cost_cap_usd": 1.0,
@@ -902,7 +903,7 @@
       "fallback_allowed": false,
       "advisory_only": true,
       "output_schema": "cio_synthesis.v1",
-      "notes": "2026-08-20: max_output_tokens 800\u21921600 \u2014 living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0."
+      "notes": "2026-08-20: max_output_tokens 800\u21921600 \u2014 living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session."
     }
   ],
   "default_deepseek_policy": "FAST",

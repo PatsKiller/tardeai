@@ -1,0 +1,579 @@
+{
+  "_fixture": "LIVE shape of data/runtime/reentry_decision_desk_latest.json captured 2026-09-13; SCHG + one READY row; values rounded",
+  "ok": true,
+  "version": "reentry-decision-desk-v2-data-broker",
+  "computed_at": "2026-09-13T23:12:54.524386+00:00",
+  "deterministic": true,
+  "llm_in_path": false,
+  "criteria": {
+    "rsi_ready": "40 <= RSI < 70",
+    "near_pct": 3.0,
+    "stale_hours": 96,
+    "wash_days": 30
+  },
+  "freshness": {
+    "resistance_generated_at": "2026-09-11T20:40:48.221595+00:00",
+    "price_age_h_median": 43.64,
+    "price_age_h_max_actionable": 54.81,
+    "price_age_h_max": 54.81,
+    "stale_symbol_count": 0,
+    "heat_pct": 0.08,
+    "symbol_count": 106,
+    "actionable_count": 28
+  },
+  "rows": [
+    {
+      "symbol": "SCHG",
+      "price": 35.16,
+      "price_as_of": "2026-09-11T23:34:15.930825-04:00",
+      "price_source": "data_broker.market_quotes:alpaca",
+      "price_age_h": 43.64,
+      "rsi": 49.38,
+      "rsi_status": "BULLISH",
+      "sma20_pct": null,
+      "sma50_pct": null,
+      "sma200_pct": null,
+      "sma_20": 35.39,
+      "sma_50": 34.89,
+      "sma_200": null,
+      "macd_signal": "NEUTRAL",
+      "macd_histogram_direction": "up",
+      "atr": "0.3785",
+      "alignment": "neutral",
+      "obv_signal": "BEARISH",
+      "obv_trend": "down",
+      "cmf_signal": "BEARISH",
+      "volume_ratio": null,
+      "indicator_source": "indicator_confluence_cache",
+      "entry_low": 34.55,
+      "entry_high": 34.85,
+      "stop": 34.35,
+      "target": 36.4,
+      "rr": 1.55,
+      "plan_as_of": null,
+      "resistance": {
+        "state": "BELOW",
+        "level": 35.85,
+        "distance_pct": -77.49,
+        "hold_days": 0.0,
+        "as_of": "2026-09-11",
+        "live_price": null,
+        "live_as_of": null,
+        "source": "CLOSED-SESSION CACHE"
+      },
+      "catalyst": {
+        "symbol": "SCHG",
+        "headline": "Should Schwab U.S. Large-Cap Growth ETF (SCHG) Be on Your Investing Radar? - Yahoo! Finance Canada",
+        "catalyst_type": "news_momentum",
+        "verified": true,
+        "confidence": 0.66,
+        "severity": "low",
+        "impact_score": "3.9",
+        "source_url": "https://news.google.com/rss/articles/CBMif0FVX3lxTE1IUmRkX2hvUWJ0dDM3UE5DTTdsbTJiWlF0b0pUaWFXd2pvdkk5SDNNQUJ4YlJ6elZ4ajVxZzk1SVdNOFZCMUMyN2lwNGtCek55cEJOYUlfclp5VTBZOTlOOXZVMlFyZ1lzbzFZcW9rZU93MjlXZWVpSDJhRmtFRTQ?oc=5",
+        "at": null
+      },
+      "wash_blocked": false,
+      "wash_until": null,
+      "held": true,
+      "heat_pct": 0.08,
+      "earnings_date": null,
+      "company": "Growth Equity \u00b7 Exchange Traded Fund",
+      "gates": [
+        {
+          "id": "fresh",
+          "pass": true,
+          "label": "Fresh quote",
+          "value": "44h"
+        },
+        {
+          "id": "zone",
+          "pass": false,
+          "label": "Inside entry zone",
+          "value": "+0.9% vs zone"
+        },
+        {
+          "id": "rsi",
+          "pass": true,
+          "label": "RSI 40\u201370",
+          "value": "49.4"
+        },
+        {
+          "id": "not_held",
+          "pass": false,
+          "label": "Not currently held",
+          "value": "held"
+        },
+        {
+          "id": "wash",
+          "pass": true,
+          "label": "Wash window clear",
+          "value": "clear"
+        }
+      ],
+      "why": [
+        "Price is +0.9% from the entry zone (near threshold 3%).",
+        "RSI 49.4 is in the constructive band (40 \u2264 RSI < 70).",
+        "Plan risk: stop $34.35 \u2192 target $36.40 (R:R 1.55).",
+        "Closed-session resistance still ABOVE price at 35.855 (not reclaimed)."
+      ],
+      "advisory": {
+        "date": "2026-09-13",
+        "action": "Monitor / No Action",
+        "ticker": "SCHG",
+        "company": "Growth Equity \u00b7 Exchange Traded Fund",
+        "reentry_range_low": 34.55,
+        "reentry_range_high": 34.85,
+        "stop_loss": 34.35,
+        "risk_per_share_low": 0.5,
+        "risk_per_share_high": 0.2,
+        "target": 36.4,
+        "reward_low": 1.55,
+        "reward_high": 1.85,
+        "rr": 1.55,
+        "live_price": 35.16,
+        "earnings_date": null,
+        "earnings_days": null,
+        "sizing": {
+          "book_equity": 1268140.59,
+          "risk_pct": 0.01,
+          "max_alloc_pct": 0.1,
+          "max_dollar_risk": 12681.41,
+          "risk_per_share": 0.35,
+          "shares": 3654,
+          "allocation": 126793.8,
+          "note": "Capped at 10% allocation",
+          "formula": "shares = (book \u00d7 1%) / (entry \u2212 stop); cap alloc \u2264 10% book"
+        },
+        "criteria": [
+          {
+            "id": "ma_bounce",
+            "met": true,
+            "label": "Moving average bounce / hold",
+            "detail": "Price holding 50-SMA @ $34.89"
+          },
+          {
+            "id": "support",
+            "met": false,
+            "label": "Support / zone validation",
+            "detail": "Resistance BELOW @ $35.85"
+          },
+          {
+            "id": "rsi_reset",
+            "met": true,
+            "label": "Momentum oscillator reset (RSI)",
+            "detail": "RSI 49.4 (band 40\u201370)"
+          },
+          {
+            "id": "macd",
+            "met": true,
+            "label": "MACD confirmation",
+            "detail": "MACD NEUTRAL"
+          },
+          {
+            "id": "volume",
+            "met": true,
+            "label": "Volume / money-flow confirmation",
+            "detail": "N/A \u2014 fund/ETF (no meaningful share volume); skipped"
+          },
+          {
+            "id": "rr",
+            "met": false,
+            "label": "Reward-to-risk (\u22652:1 preferred; 3:1 ideal)",
+            "detail": "R:R 1.55:1"
+          },
+          {
+            "id": "invalidation",
+            "met": true,
+            "label": "Invalidation stop below structure",
+            "detail": "Stop $34.35"
+          },
+          {
+            "id": "catalyst",
+            "met": true,
+            "label": "Catalyst / earnings window clear",
+            "detail": "Catalyst verified"
+          }
+        ],
+        "rationale": [
+          "Price is +0.9% from the entry zone (near threshold 3%).",
+          "RSI 49.4 is in the constructive band (40 \u2264 RSI < 70).",
+          "Plan risk: stop $34.35 \u2192 target $36.40 (R:R 1.55).",
+          "Closed-session resistance still ABOVE price at 35.855 (not reclaimed)."
+        ],
+        "confirmations_complete": false,
+        "confirmation_gaps": [
+          "rr"
+        ],
+        "is_fund": true,
+        "lookthrough": {
+          "available": true,
+          "fund_name": "Schwab US Large-Cap Growth ETF",
+          "fund_type": "etf",
+          "as_of": "2026-09-06",
+          "source": "yfinance_SCHG",
+          "sectors": [
+            {
+              "name": "Technology",
+              "pct": 38.0
+            },
+            {
+              "name": "Communication Services",
+              "pct": 16.0
+            },
+            {
+              "name": "Consumer Cyclical",
+              "pct": 14.0
+            },
+            {
+              "name": "Healthcare",
+              "pct": 11.0
+            },
+            {
+              "name": "Industrials",
+              "pct": 7.0
+            },
+            {
+              "name": "Financial Services",
+              "pct": 6.0
+            },
+            {
+              "name": "Consumer Defensive",
+              "pct": 4.0
+            },
+            {
+              "name": "Real Estate",
+              "pct": 2.0
+            }
+          ],
+          "top_holdings": [
+            {
+              "ticker": "AAPL",
+              "name": "Apple",
+              "pct": 12.0
+            },
+            {
+              "ticker": "MSFT",
+              "name": "Microsoft",
+              "pct": 10.0
+            },
+            {
+              "ticker": "NVDA",
+              "name": "NVIDIA",
+              "pct": 9.0
+            },
+            {
+              "ticker": "AMZN",
+              "name": "Amazon.com",
+              "pct": 6.0
+            },
+            {
+              "ticker": "META",
+              "name": "Meta Platforms",
+              "pct": 5.0
+            },
+            {
+              "ticker": "GOOGL",
+              "name": "Alphabet Class A",
+              "pct": 4.0
+            },
+            {
+              "ticker": "TSLA",
+              "name": "Tesla",
+              "pct": 3.5
+            }
+          ],
+          "note": null
+        },
+        "advisory_only": true
+      },
+      "intel": {
+        "state": "CURRENTLY HELD",
+        "action": "Manage as an existing holding",
+        "reason": "This symbol is currently held and is not a clean re-entry-only candidate.",
+        "distance_pct": 0.88,
+        "chips": [
+          {
+            "tone": "amber",
+            "label": "resistance not reclaimed",
+            "detail": "BELOW"
+          },
+          {
+            "tone": "green",
+            "label": "catalyst verified",
+            "detail": "Should Schwab U.S. Large-Cap Growth ETF (SCHG) Be on Your Investing Radar? - Yah"
+          },
+          {
+            "tone": "info",
+            "label": "macd NEUTRAL",
+            "detail": "indicator_snapshot"
+          }
+        ],
+        "criteria": {
+          "rsi_band": "40 <= RSI < 70",
+          "near_pct": 3.0,
+          "stale_hours": 96,
+          "deterministic": true,
+          "llm_in_path": false
+        }
+      },
+      "research_summary": null
+    },
+    {
+      "symbol": "ARKQ",
+      "price": 121.58,
+      "price_as_of": "2026-09-11T23:34:15.930825-04:00",
+      "price_source": "data_broker.market_quotes:alpaca",
+      "price_age_h": 43.64,
+      "rsi": 46.63,
+      "rsi_status": "NEUTRAL",
+      "sma20_pct": null,
+      "sma50_pct": null,
+      "sma200_pct": null,
+      "sma_20": 123.61,
+      "sma_50": 122.24,
+      "sma_200": null,
+      "macd_signal": "NEUTRAL",
+      "macd_histogram_direction": "up",
+      "atr": "2.4904",
+      "alignment": "neutral",
+      "obv_signal": "BEARISH",
+      "obv_trend": "down",
+      "cmf_signal": "NEUTRAL",
+      "volume_ratio": null,
+      "indicator_source": "indicator_confluence_cache",
+      "entry_low": 121.5,
+      "entry_high": 124.5,
+      "stop": 119.5,
+      "target": 130.0,
+      "rr": 4.05,
+      "plan_as_of": null,
+      "resistance": {
+        "state": "BELOW",
+        "level": 126.69,
+        "distance_pct": -4.67,
+        "hold_days": 0.0,
+        "as_of": "2026-09-11",
+        "live_price": null,
+        "live_as_of": null,
+        "source": "CLOSED-SESSION CACHE"
+      },
+      "catalyst": null,
+      "wash_blocked": false,
+      "wash_until": null,
+      "held": false,
+      "heat_pct": 0.08,
+      "earnings_date": null,
+      "company": "Innovation \u00b7 Exchange Traded Fund",
+      "gates": [
+        {
+          "id": "fresh",
+          "pass": true,
+          "label": "Fresh quote",
+          "value": "44h"
+        },
+        {
+          "id": "zone",
+          "pass": true,
+          "label": "Inside entry zone",
+          "value": "$121.58 in $121.50\u2013$124.50"
+        },
+        {
+          "id": "rsi",
+          "pass": true,
+          "label": "RSI 40\u201370",
+          "value": "46.6"
+        },
+        {
+          "id": "not_held",
+          "pass": true,
+          "label": "Not currently held",
+          "value": "flat"
+        },
+        {
+          "id": "wash",
+          "pass": true,
+          "label": "Wash window clear",
+          "value": "clear"
+        }
+      ],
+      "why": [
+        "Price $121.58 is inside the validated entry zone $121.50\u2013$124.50.",
+        "RSI 46.6 is in the constructive band (40 \u2264 RSI < 70).",
+        "Plan risk: stop $119.50 \u2192 target $130.00 (R:R 4.05).",
+        "Closed-session resistance still ABOVE price at 126.69 (not reclaimed)."
+      ],
+      "advisory": {
+        "date": "2026-09-13",
+        "action": "Tactical Re-Entry / Buy Limit",
+        "ticker": "ARKQ",
+        "company": "Innovation \u00b7 Exchange Traded Fund",
+        "reentry_range_low": 121.5,
+        "reentry_range_high": 124.5,
+        "stop_loss": 119.5,
+        "risk_per_share_low": 5.0,
+        "risk_per_share_high": 2.0,
+        "target": 130.0,
+        "reward_low": 5.5,
+        "reward_high": 8.5,
+        "rr": 4.05,
+        "live_price": 121.58,
+        "earnings_date": null,
+        "earnings_days": null,
+        "sizing": {
+          "book_equity": 1268140.59,
+          "risk_pct": 0.01,
+          "max_alloc_pct": 0.1,
+          "max_dollar_risk": 12681.41,
+          "risk_per_share": 3.5,
+          "shares": 1031,
+          "allocation": 126813.0,
+          "note": "Capped at 10% allocation",
+          "formula": "shares = (book \u00d7 1%) / (entry \u2212 stop); cap alloc \u2264 10% book"
+        },
+        "criteria": [
+          {
+            "id": "ma_bounce",
+            "met": true,
+            "label": "Moving average bounce / hold",
+            "detail": "Price holding 50-SMA @ $122.24"
+          },
+          {
+            "id": "support",
+            "met": true,
+            "label": "Support / zone validation",
+            "detail": "Resistance BELOW @ $126.69"
+          },
+          {
+            "id": "rsi_reset",
+            "met": true,
+            "label": "Momentum oscillator reset (RSI)",
+            "detail": "RSI 46.6 (band 40\u201370)"
+          },
+          {
+            "id": "macd",
+            "met": true,
+            "label": "MACD confirmation",
+            "detail": "MACD NEUTRAL"
+          },
+          {
+            "id": "volume",
+            "met": true,
+            "label": "Volume / money-flow confirmation",
+            "detail": "N/A \u2014 fund/ETF (no meaningful share volume); skipped"
+          },
+          {
+            "id": "rr",
+            "met": true,
+            "label": "Reward-to-risk (\u22652:1 preferred; 3:1 ideal)",
+            "detail": "R:R 4.05:1"
+          },
+          {
+            "id": "invalidation",
+            "met": true,
+            "label": "Invalidation stop below structure",
+            "detail": "Stop $119.50"
+          },
+          {
+            "id": "catalyst",
+            "met": true,
+            "label": "Catalyst / earnings window clear",
+            "detail": "No near-term earnings on file"
+          }
+        ],
+        "rationale": [
+          "Price $121.58 is inside the validated entry zone $121.50\u2013$124.50.",
+          "RSI 46.6 is in the constructive band (40 \u2264 RSI < 70).",
+          "Plan risk: stop $119.50 \u2192 target $130.00 (R:R 4.05).",
+          "Closed-session resistance still ABOVE price at 126.69 (not reclaimed)."
+        ],
+        "confirmations_complete": true,
+        "confirmation_gaps": [],
+        "is_fund": true,
+        "lookthrough": {
+          "available": true,
+          "fund_name": "ARK Autonomous Technology & Robotics ETF",
+          "fund_type": "etf",
+          "as_of": "2026-04-15",
+          "source": "ark_daily_holdings_csv",
+          "sectors": [
+            {
+              "name": "Technology",
+              "pct": 45.0
+            },
+            {
+              "name": "Industrials",
+              "pct": 35.0
+            },
+            {
+              "name": "Consumer Cyclical",
+              "pct": 10.0
+            },
+            {
+              "name": "Communication Services",
+              "pct": 5.0
+            },
+            {
+              "name": "Healthcare",
+              "pct": 5.0
+            }
+          ],
+          "top_holdings": [
+            {
+              "ticker": "PLTR",
+              "name": "Palantir",
+              "pct": 12.0
+            },
+            {
+              "ticker": "TSLA",
+              "name": "Tesla",
+              "pct": 10.0
+            },
+            {
+              "ticker": "RKLB",
+              "name": "Rocket Lab",
+              "pct": 8.0
+            },
+            {
+              "ticker": "AMZN",
+              "name": "Amazon.com",
+              "pct": 7.0
+            },
+            {
+              "ticker": "AVAV",
+              "name": "AeroVironment",
+              "pct": 5.0
+            }
+          ],
+          "note": null
+        },
+        "advisory_only": true
+      },
+      "intel": {
+        "state": "READY TO REVIEW",
+        "action": "Review re-entry now",
+        "reason": "Price is inside the entry zone and RSI 46.6 is in the constructive band (40\u201370).",
+        "distance_pct": 0.0,
+        "chips": [
+          {
+            "tone": "amber",
+            "label": "resistance not reclaimed",
+            "detail": "BELOW"
+          },
+          {
+            "tone": "info",
+            "label": "macd NEUTRAL",
+            "detail": "indicator_snapshot"
+          }
+        ],
+        "criteria": {
+          "rsi_band": "40 <= RSI < 70",
+          "near_pct": 3.0,
+          "stale_hours": 96,
+          "deterministic": true,
+          "llm_in_path": false
+        }
+      },
+      "research_summary": null
+    }
+  ]
+}

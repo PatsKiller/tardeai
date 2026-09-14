@@ -1638,6 +1638,98 @@ def _fmt_money(v: Any) -> str:
     return f"${x:.4f}".rstrip("0").rstrip(".")
 
 
+
+def format_reentry_symbol_reply(
+    row: dict[str, Any],
+    *,
+    holding: Optional[dict[str, Any]] = None,
+    computed_at: Optional[str] = None,
+) -> str:
+    """One symbol's re-entry answer from its own desk row. READ_ONLY.
+
+    2026-09-13 18:50: "get back into SCHG" was answered with the whole book. The row
+    had everything: zone, gates, levels, held flag, advisory. This renders exactly
+    that -- numbers only from the row; nothing inferred.
+    """
+    sym = str(row.get("symbol") or "?").upper()
+    price = row.get("price")
+    lo, hi = row.get("entry_low"), row.get("entry_high")
+    # where price sits vs the zone
+    zone_txt = "zone —"
+    if lo is not None and hi is not None:
+        zone_txt = f"zone {_fmt_money(lo)}–{_fmt_money(hi)}"
+        try:
+            p = float(price)
+            if p > float(hi):
+                zone_txt += f" → price {((p / float(hi)) - 1) * 100:+.1f}% above zone"
+            elif p < float(lo):
+                zone_txt += f" → price {((p / float(lo)) - 1) * 100:+.1f}% below zone"
+            else:
+                zone_txt += " → price INSIDE zone"
+        except (TypeError, ValueError):
+            pass
+    age_h = row.get("price_age_h")
+    src = str(row.get("price_source") or "").split(":")[-1] or "desk"
+    as_of = str(row.get("price_as_of") or "")[:16].replace("T", " ")
+    age_txt = f" ({float(age_h):.0f}h old)" if isinstance(age_h, (int, float)) else ""
+    lv = _row_levels(row)
+    res = row.get("resistance") if isinstance(row.get("resistance"), dict) else {}
+    lines = [f"🎯 *{sym} — re-entry check* _(READ_ONLY)_"]
+    lines.append(f"Price {_fmt_money(price)} · as of {as_of}{age_txt} · {src}")
+    lines.append(zone_txt)
+    plan = []
+    if lv.get("stop") is not None:
+        plan.append(f"stop {_fmt_money(lv['stop'])}")
+    if lv.get("target") is not None:
+        plan.append(f"target {_fmt_money(lv['target'])}")
+    if row.get("rr") is not None:
+        plan.append(f"R:R {row['rr']}")
+    if plan:
+        lines.append("Plan: buy-limit in zone · " + " · ".join(plan))
+    tech = []
+    if lv.get("rsi") is not None:
+        tech.append(f"RSI {lv['rsi']}" + (f" ({row.get('rsi_status')})" if row.get("rsi_status") else ""))
+    if lv.get("sma_20") is not None:
+        tech.append(f"SMA20 {_fmt_money(lv['sma_20'])}")
+    if lv.get("sma_50") is not None:
+        tech.append(f"SMA50 {_fmt_money(lv['sma_50'])}")
+    if lv.get("resistance_level") is not None:
+        tech.append(f"resistance {_fmt_money(lv['resistance_level'])} ({lv.get('resistance_state') or '—'})")
+    if tech:
+        lines.append(" · ".join(tech))
+    gates = row.get("gates") if isinstance(row.get("gates"), list) else []
+    if gates:
+        bits = []
+        for g in gates:
+            if not isinstance(g, dict):
+                continue
+            mark = "✓" if g.get("pass") else "✗"
+            val = f" ({g.get('value')})" if (not g.get("pass") and g.get("value") is not None) else ""
+            bits.append(f"{g.get('id') or g.get('label')} {mark}{val}")
+        lines.append("Gates: " + " · ".join(bits))
+    if holding and (holding.get("shares") or holding.get("market_value")):
+        sh = holding.get("shares")
+        mv = holding.get("market_value")
+        lines.append(
+            f"Note: you still hold {sh} sh (~{_fmt_money(mv)}) in {holding.get('account') or 'an account'} — "
+            "the desk treats it as held."
+        )
+    elif row.get("held"):
+        lines.append("Note: the desk marks this symbol as currently held.")
+    adv = row.get("advisory") if isinstance(row.get("advisory"), dict) else {}
+    if adv.get("action"):
+        lines.append(f"Verdict: *{adv['action']}*" + (f" (desk advisory {adv.get('date')})" if adv.get("date") else ""))
+    why = row.get("why") if isinstance(row.get("why"), list) else []
+    for w in why[:3]:
+        lines.append(f"  – {w}")
+    tail = "CC: `/v3/portfolio/re-entry`"
+    if computed_at:
+        tail += f" · desk computed {str(computed_at)[:16].replace('T', ' ')}"
+    lines.append(tail)
+    lines.append("No orders/stops from chat · READ_ONLY_ADVISORY")
+    return "\n".join(lines)
+
+
 def format_reentry_purchase_reply(
     *,
     desk_rows: Optional[list[dict[str, Any]]] = None,

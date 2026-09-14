@@ -32,7 +32,8 @@
     "fundamental_data": 1,
     "watchlist_agent_results": 1,
     "agent_debate_log": 2,
-    "ai_reports": 4
+    "ai_reports": 4,
+    "data_gap_registry": 1
   },
   "direct_reads": {
     "market_quotes": 13,

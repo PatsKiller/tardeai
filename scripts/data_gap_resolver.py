@@ -23,6 +23,26 @@ from pathlib import Path
 PROJ = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJ / "scripts"))
 
+# One write module owns data_gap_registry (One Source of Truth, phase 9 pattern).
+from lib.writers.data_gap_registry_writer import (  # noqa: E402
+    abandon,
+    abandon_stale,
+    mark_dispatched,
+    mark_enriching,
+    mark_resolved,
+    reopen,
+)
+
+#: A resolver action returns True when the data is present (proven now), False
+#: when it cannot help, or ("dispatched", job_id) when it queued an agent job.
+#: A dispatched gap stays 'enriching' until verify_dispatched() sees the job
+#: complete with a result row. Before 2026-09-13 dispatch marked it 'resolved'.
+DISPATCHED = "dispatched"
+#: Failed dispatches before a gap is abandoned instead of re-queued.
+MAX_DISPATCH_ATTEMPTS = int(os.environ.get("DATA_GAP_MAX_DISPATCH_ATTEMPTS", "3"))
+#: Job states that mean the work will not arrive.
+_JOB_DEAD = ("failed", "expired", "superseded", "cancelled", "canceled")
+
 
 def get_db_connection():
     import psycopg2
@@ -64,10 +84,11 @@ def _resolve_missing_div_yield(symbol, conn):
         cur.execute("""
             SELECT id FROM watchlist_agent_jobs
             WHERE symbol = %s AND requested_agent = 'maria_research'
-              AND submitted_from = 'gap_resolver' AND status = 'queued'
+              AND submitted_from = 'gap_resolver' AND status IN ('queued', 'pending', 'processing')
         """, [symbol])
-        if cur.fetchone():
-            return True  # Already dispatched
+        existing = cur.fetchone()
+        if existing:
+            return (DISPATCHED, existing[0])  # already dispatched: track that job
         import hashlib
         job_id = f"gap_{symbol.lower()}_maria_{hashlib.md5(f'{symbol}:enrich:{datetime.now().date()}'.encode()).hexdigest()[:6]}"
         cur.execute("""
@@ -76,8 +97,8 @@ def _resolve_missing_div_yield(symbol, conn):
             VALUES (%s, %s, 'maria_research', 'enrichment', 'data_gap: missing div_yield', 'queued', 1, 'gap_resolver', NOW())
         """, [job_id, symbol])
         conn.commit()
-        return True
-    except Exception as e:
+        return (DISPATCHED, job_id)
+    except Exception:
         conn.rollback()
         return False
 
@@ -101,10 +122,11 @@ def _resolve_missing_catalyst(symbol, conn):
         cur.execute("""
             SELECT id FROM watchlist_agent_jobs
             WHERE symbol = %s AND requested_agent = 'maria_research'
-              AND submitted_from = 'gap_resolver' AND status = 'queued'
+              AND submitted_from = 'gap_resolver' AND status IN ('queued', 'pending', 'processing')
         """, [symbol])
-        if cur.fetchone():
-            return True  # Already queued
+        existing = cur.fetchone()
+        if existing:
+            return (DISPATCHED, existing[0])  # already queued: track that job
         import hashlib
         job_id = f"gap_{symbol.lower()}_catalyst_{hashlib.md5(f'{symbol}:catalyst:{datetime.now().date()}'.encode()).hexdigest()[:6]}"
         cur.execute("""
@@ -113,8 +135,8 @@ def _resolve_missing_catalyst(symbol, conn):
             VALUES (%s, %s, 'maria_research', 'catalyst_research', 'data_gap: missing catalyst for recovery watch', 'queued', 1, 'gap_resolver', NOW())
         """, [job_id, symbol])
         conn.commit()
-        return True
-    except Exception as e:
+        return (DISPATCHED, job_id)
+    except Exception:
         conn.rollback()
         return False
 
@@ -205,10 +227,60 @@ def _requeue_source_job(gap_id, conn):
     return cur.rowcount > 0
 
 
+def verify_dispatched(conn, cur, dry_run=False, limit=200):
+    """Settle gaps whose agent job has finished. Returns (resolved, reopened, abandoned, waiting).
+
+    Resolved only when the job completed AND wrote a result row (result_id) --
+    a durable artifact that would not exist had the work not run. A dead job
+    reopens the gap with the failure recorded; after MAX_DISPATCH_ATTEMPTS
+    failures the gap is abandoned with its reason instead of re-queued hourly.
+    """
+    cur.execute("""
+        SELECT g.id, g.symbol, g.gap_type, g.resolution_data->>'job_id',
+               j.status, j.result_id, COALESCE((g.resolution_data->>'attempts')::int, 0)
+        FROM data_gap_registry g
+        LEFT JOIN watchlist_agent_jobs j ON j.id = g.resolution_data->>'job_id'
+        WHERE g.status = 'enriching' AND g.resolution_data ? 'job_id'
+        ORDER BY g.id
+        LIMIT %s
+    """, [limit])
+    rows = cur.fetchall()
+    resolved = reopened = abandoned = waiting = 0
+    for gap_id, symbol, gap_type, job_id, job_status, result_id, attempts in rows:
+        if job_status == 'completed' and result_id:
+            if not dry_run:
+                mark_resolved(cur, gap_id, resolved_by='gap_resolver_v2', evidence={
+                    'job_id': job_id, 'result_id': result_id,
+                    'proof': 'agent job completed with a result row',
+                })
+            resolved += 1
+            log(f"  VERIFIED {symbol}: {gap_type} (job {job_id} -> {result_id})")
+        elif job_status is None or job_status in _JOB_DEAD or job_status == 'completed':
+            why = f"job {job_id} {job_status or 'missing'}" + (" without a result row" if job_status == 'completed' else "")
+            if attempts + 1 >= MAX_DISPATCH_ATTEMPTS:
+                if not dry_run:
+                    abandon(cur, gap_id, reason=f"{why}; {attempts + 1} failed attempts")
+                abandoned += 1
+                log(f"  ABANDON {symbol}: {gap_type} ({why}; {attempts + 1} attempts)")
+            else:
+                if not dry_run:
+                    reopen(cur, gap_id, reason=why)
+                reopened += 1
+                log(f"  REOPEN {symbol}: {gap_type} ({why})")
+        else:
+            waiting += 1
+    if not dry_run:
+        conn.commit()
+    if rows:
+        log(f"Dispatched work: {resolved} verified, {reopened} reopened, {abandoned} abandoned, {waiting} still running")
+    return resolved, reopened, abandoned, waiting
+
+
 def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
     """Main gap resolution loop."""
     conn = get_db_connection()
     cur = conn.cursor()
+    verify_dispatched(conn, cur, dry_run=dry_run)
 
     # Get open gaps, high severity first
     limit = 100 if pre_overnight else 50
@@ -224,11 +296,11 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
     gaps = cur.fetchall()
     log(f"Found {len(gaps)} open gaps" + (" (pre-overnight sweep)" if pre_overnight else ""))
 
-    if not gaps:
+    if not gaps and not weekly_audit:
         conn.close()
         return
 
-    resolved, failed, skipped = 0, 0, 0
+    resolved, failed, skipped, dispatched = 0, 0, 0, 0
     for gap_id, symbol, gap_type, detail, source_job_id in gaps:
         if not symbol:
             skipped += 1
@@ -250,17 +322,18 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
             continue
 
         # Mark enriching
-        cur.execute("UPDATE data_gap_registry SET status = 'enriching' WHERE id = %s", [gap_id])
+        mark_enriching(cur, gap_id)
         conn.commit()
 
         try:
             success = resolver(symbol, conn)
-            if success:
-                cur.execute("""
-                    UPDATE data_gap_registry
-                    SET status = 'resolved', resolved_at = NOW(), resolved_by = 'gap_resolver_v1'
-                    WHERE id = %s
-                """, [gap_id])
+            if isinstance(success, tuple) and success and success[0] == DISPATCHED:
+                mark_dispatched(cur, gap_id, job_id=str(success[1]), action=gap_type)
+                conn.commit()
+                dispatched += 1
+                log(f"  DISPATCHED {symbol}: {gap_type} -> job {success[1]} (enriching until it completes)")
+            elif success:
+                mark_resolved(cur, gap_id, resolved_by='gap_resolver_v1')
                 conn.commit()
                 # Re-queue source job with enriched data
                 if source_job_id:
@@ -269,13 +342,13 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
                 log(f"  OK {symbol}: {gap_type}")
             else:
                 conn.rollback()
-                cur.execute("UPDATE data_gap_registry SET status = 'open' WHERE id = %s", [gap_id])
+                reopen(cur, gap_id)
                 conn.commit()
                 failed += 1
                 log(f"  FAIL {symbol}: {gap_type}")
         except Exception as e:
             conn.rollback()
-            cur.execute("UPDATE data_gap_registry SET status = 'open' WHERE id = %s", [gap_id])
+            reopen(cur, gap_id)
             conn.commit()
             failed += 1
             import traceback
@@ -296,16 +369,12 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
             for sym, gt, det in persistent[:10]:
                 log(f"  {sym}: {gt} (since {det})")
             # Mark as abandoned if > 30 days
-            cur.execute("""
-                UPDATE data_gap_registry SET status = 'abandoned'
-                WHERE status = 'open' AND detected_at < NOW() - INTERVAL '30 days'
-            """)
-            abandoned = cur.rowcount
+            abandoned = abandon_stale(cur, older_than_days=30)
             if abandoned:
                 log(f"Abandoned {abandoned} gaps older than 30 days")
             conn.commit()
 
-    log(f"Done: {resolved} resolved, {failed} failed, {skipped} skipped")
+    log(f"Done: {resolved} resolved, {dispatched} dispatched, {failed} failed, {skipped} skipped")
     conn.close()
 
 
