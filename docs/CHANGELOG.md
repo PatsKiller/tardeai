@@ -4,6 +4,13 @@ Status:      ACTIVE
 as_of:       2026-09-13T23:59:00-04:00
 Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
 
+## 2026-09-14 — AGENTS.md Policy-Version 1.2.0 is ACTIVE
+
+MATURITY_IMPACT: every PROPOSED 1.2.0 control is now binding policy for agents.
+
+- **Approval.** The operator sent `APPROVE_AGENTS_POLICY_1_2_0` on 2026-09-14 after being told it activates every PROPOSED 1.2.0 row (09-03 multi-agent SOP controls and guarded push/deploy workflow; 09-09 delivery_owner rule; 09-13 reply/data-gap rules and the MAJOR §7A/§17 data-source ownership change; 09-14 $2.00 cap and SOP sync). The message carried no PR or sha; it is bound to PR #1022 at head `ad5c533b2abc0150feba19c071aa0ea56364b251`, the reviewed head that merged those rows.
+- **Edits.** Control block `Status: ACTIVE`, `Effective-Date: 2026-09-14`; the governing-text paragraph; 6 version-history rows marked ACTIVE with the approval quoted. Dated evidence documents that recorded 1.2.0 as PROPOSED at their date are left unchanged.
+
 ## 2026-09-14 — The shared "Advisory Desk opinion" cost label split into eight named callers
 
 MATURITY_IMPACT: spend reports name the caller that spent the money. Answers to the operator are logged as ad hoc, so they stay exempt from the scheduled-work window while scheduled callers can be moved. Execution posture UNCHANGED: READ_ONLY_ADVISORY. The global $2.00/day cap still binds.
