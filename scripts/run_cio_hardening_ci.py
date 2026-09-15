@@ -1412,6 +1412,7 @@ GATES = [
         "remediation_followups_20260915",
         [
             "tests/test_health_llm_spend_receipt_20260915.py",
+            "tests/test_telegram_enable_flag_values_20260915.py",
         ],
     ),
     (
