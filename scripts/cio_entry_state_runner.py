@@ -162,7 +162,12 @@ def send_alerts(result: dict, evidence: dict) -> dict:
         from scripts.lib.cio_telegram_transport import send_cio_message
         r = send_cio_message(ces.render_cio(result, evidence), subject=f"Entry state {result['symbol']}",
                              kind="cio_advisory", dedupe_key=ces.transition_key(result))
-        out["cio_desk"] = bool((r or {}).get("sent") or (r or {}).get("ok"))
+        # send_cio_message returns {"delivered": bool, "reason": str, "deduped": bool, ...}. Reading
+        # "sent"/"ok" recorded every desk message as failed on the first live run (2026-09-15 12:30).
+        r = r or {}
+        out["cio_desk"] = bool(r.get("delivered"))
+        if not out["cio_desk"]:
+            out["cio_desk_reason"] = "deduped" if r.get("deduped") else (r.get("reason") or "not delivered")
     except Exception as exc:
         out["cio_desk_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
     try:
