@@ -129,6 +129,13 @@ SHA**, `WorkingDirectory` must equal the CURRENT dir, and health must be `True`.
 
 ### 7. Reach what `promote` does not
 
+**Since 2026-09-14 `promote` also fast-forwards the dev tree** (`CANONICAL_SOURCE`, where cron and the
+user units run) to the promoted commit, through `scripts/lib/ff_dev_tree.sh`. It handles one case itself:
+files the new commit stops tracking that sit behind the `data/runtime` / `data/audit` symlinks into
+persistent state (live copies hashed, paths removed from the index only, re-hashed). Anything else exits
+non-zero *after* `PROMOTE OK` and names the blocking paths. The release is live either way; a non-zero
+exit means the dev tree still needs attention. `CIO_DEPLOY_FF_DEV_TREE=0` skips the step.
+
 `promote` restarts `portfolio-server` and the units in `TRADEAI_CURRENT_BOUND_UNITS` (default
 `tradeai-health-agent.service`). Three things it does not do (`AGENTS.md` §9.3, §10):
 
