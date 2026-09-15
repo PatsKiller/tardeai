@@ -1427,6 +1427,13 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-15 cron hygiene: dead-script check resolves like cron (cd dir, absolute paths).
+        "cron_hygiene_20260915",
+        [
+            "tests/test_check_cron_sanity_resolves_like_cron_20260915.py",
+        ],
+    ),
+    (
         # 2026-09-15 remediation follow-ups: CIO desk delivery receipt, daily LLM spend cap proven (E-10).
         "remediation_followups_20260915",
         [
