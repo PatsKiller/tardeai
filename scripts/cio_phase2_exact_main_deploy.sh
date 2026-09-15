@@ -551,6 +551,32 @@ cmd_promote() {
   write_expected_release_pin "$dir"
   write_deploy_receipt true promote ok false "promote_ok"
   log "PROMOTE OK live=$sha"
+  ff_dev_tree_after_promote "$sha"
+}
+
+# The release and the dev tree are two execution trees: cron and the user units run from the dev tree
+# (CANONICAL_SOURCE), so a promote that leaves it behind runs old code on the next tick. 2026-09-14: a
+# wrapper's `git merge --ff-only && git log` swallowed a refused fast-forward and reported success.
+# The release is already live here; a refused fast-forward exits non-zero after PROMOTE OK and names
+# the blocking paths. CIO_DEPLOY_FF_DEV_TREE=0 skips the step.
+ff_dev_tree_after_promote() {
+  local sha="$1"
+  if [[ "${CIO_DEPLOY_FF_DEV_TREE:-1}" == "0" ]]; then
+    log "dev tree fast-forward skipped (CIO_DEPLOY_FF_DEV_TREE=0)"
+    return 0
+  fi
+  if ! git -C "${CANONICAL_SOURCE}" rev-parse --git-dir >/dev/null 2>&1; then
+    log "dev tree fast-forward skipped: ${CANONICAL_SOURCE} is not a git checkout"
+    return 0
+  fi
+  # shellcheck source=scripts/lib/ff_dev_tree.sh
+  source "${ROOT}/scripts/lib/ff_dev_tree.sh"
+  git -C "${CANONICAL_SOURCE}" fetch -q origin main \
+    || die "release ${sha:0:9} is live, but fetching in ${CANONICAL_SOURCE} failed; dev tree not fast-forwarded"
+  if ! ff_dev_tree "${CANONICAL_SOURCE}" "$sha"; then
+    die "release ${sha:0:9} is live, but the dev tree ${CANONICAL_SOURCE} was NOT fast-forwarded (cron and units run from it)"
+  fi
+  log "dev tree at $(git -C "${CANONICAL_SOURCE}" rev-parse --short HEAD)"
 }
 
 # The health inspector compares the live release against an EXPECTED pin. Nothing

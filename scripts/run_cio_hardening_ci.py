@@ -1332,6 +1332,14 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-14: promote left the dev tree, where cron and the units run, on the old commit, and a
+        # refused fast-forward was reported as success.
+        "deploy_ff_dev_tree",
+        [
+            "tests/test_ff_dev_tree_20260914.py",
+        ],
+    ),
+    (
         # An uninitialised inbound checkpoint returned 0, so replay-denial could
         # never say no — on a path carrying approve/reject callbacks.
         "inbound_checkpoint_seed",

@@ -4,6 +4,14 @@ Status:      ACTIVE
 as_of:       2026-09-13T23:59:00-04:00
 Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
 
+## 2026-09-14 — Promote fast-forwards the dev tree, or fails loudly
+
+MATURITY_IMPACT: a deploy can no longer report success while cron and the user units keep running the old commit.
+
+- **Why.** The release and the dev tree are two execution trees. After #1023 untracked three files that sit behind the `data/runtime` / `data/audit` symlinks, `git merge --ff-only` refused (their live content had changed), and a deploy wrapper's `git merge --ff-only && git log` swallowed the refusal: `set -e` does not stop on a failed `&&` list. The deploy said success; the dev tree stayed on the old commit until it was fixed by hand.
+- **What.** `scripts/lib/ff_dev_tree.sh` fast-forwards a checkout and returns 0 only when HEAD is at or past the target. It auto-handles one proven-safe case — files the target no longer tracks, behind a symlinked parent, whose live copy exists: hash, `git rm --cached`, retry, re-hash — and stops with the index untouched on anything else. `cio_phase2_exact_main_deploy.sh promote` calls it after `PROMOTE OK` against `CANONICAL_SOURCE` and exits non-zero if the dev tree is not fast-forwarded. `CIO_DEPLOY_FF_DEV_TREE=0` skips it. Runbook step 7 records it.
+- **Evidence.** `tests/test_ff_dev_tree_20260914.py` (registered in hardening CI): the symlinked refusal is reproduced and fast-forwards with live copies byte-identical (also under `set -euo pipefail`); a local edit to a still-tracked file stops with HEAD, index and edit unchanged; a plain fast-forward and a dev tree already past the target both pass; promote calls it after `PROMOTE OK` and the swallowed-failure shape is gone.
+
 ## 2026-09-14 — AGENTS.md Policy-Version 1.2.0 is ACTIVE
 
 MATURITY_IMPACT: every PROPOSED 1.2.0 control is now binding policy for agents.
