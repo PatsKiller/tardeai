@@ -1443,6 +1443,13 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-15: agent maturity status legal for the DB constraint; drain loads the host LLM cap file.
+        "agent_maturity_status_and_drain_cap_20260915",
+        [
+            "tests/test_agent_maturity_status_and_drain_cap_20260915.py",
+        ],
+    ),
+    (
         # 2026-09-14: promote left the dev tree, where cron and the units run, on the old commit, and a
         # refused fast-forward was reported as success.
         "deploy_ff_dev_tree",
