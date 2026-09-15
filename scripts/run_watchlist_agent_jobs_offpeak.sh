@@ -59,6 +59,18 @@ if [[ -f "$RUN_ENV" ]]; then
   log "env_loaded=${RUN_ENV}"
 fi
 
+# --- The ruling LLM cap is the one host file, loaded LAST (AGENTS: ~/.config/tradeai/llm_global_daily_usd_cap.env).
+# 2026-09-15: the Bitwarden-rendered runtime env still carried LLM_GLOBAL_DAILY_USD_CAP=0.50, and this
+# wrapper logged "LLM_GLOBAL_DAILY_USD_CAP_ok=yes (kept)" — the drain ran on a quarter of the $2.00 cap.
+CAP_FILE="${TRADEAI_LLM_CAP_FILE:-${HOME}/.config/tradeai/llm_global_daily_usd_cap.env}"
+if [[ -f "$CAP_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$CAP_FILE"
+  set +a
+  log "cap_file_loaded=${CAP_FILE}"
+fi
+
 # --- Process-scoped containment override (host flag stays armed; issue #283) ---
 # The canonical host flag ~/.local/state/tradeai/AGENT_JOBS_P0_CONTAINED is armed,
 # so this governed wrapper must explicitly override containment for its own process.
