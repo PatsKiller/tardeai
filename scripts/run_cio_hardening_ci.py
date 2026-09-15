@@ -1332,6 +1332,15 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-15: watch-tier pullback proposals expired in the pass that created them, and the watchlist
+        # bridge created proposals the enrichment loop expired minutes later (>15% from live).
+        "watchlist_proposal_churn",
+        [
+            "tests/test_pullback_reconcile_tiers_20260915.py",
+            "tests/test_watchlist_bridge_entry_drift_20260915.py",
+        ],
+    ),
+    (
         # 2026-09-14: promote left the dev tree, where cron and the units run, on the old commit, and a
         # refused fast-forward was reported as success.
         "deploy_ff_dev_tree",
