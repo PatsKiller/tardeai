@@ -1802,6 +1802,23 @@
         "path": "data/runtime/deepseek_balance_history.jsonl"
       },
       "note": "Hourly DeepSeek account balance (free API, no tokens). Drops = what DeepSeek deducted; the spend report compares them with logged DeepSeek cost. Operator 2026-09-14: 'research exactly what the complete costs are with DeepSeek's website'."
+    },
+    {
+      "lane_id": "catalyst-symbol-impact",
+      "owner": "watch",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 7,12,17 * * 1-5 catalyst_symbol_impact_writer.py --apply",
+        "match": "catalyst_symbol_impact_writer.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/catalyst_symbol_impact_last_run.json",
+        "key": "as_of"
+      },
+      "note": "2026-09-15: catalyst_symbol_impact had 0 rows ever. Deterministic writer for active watchlist names, pending proposals and holdings (direction from catalyst type, price at event, holding weight). No model calls."
     }
   ],
   "undeclared_baseline": [

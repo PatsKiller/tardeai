@@ -1332,6 +1332,14 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-15: every active strategy card had catalyst_summary NULL; catalyst_symbol_impact had 0 rows ever.
+        "watch_card_catalysts",
+        [
+            "tests/test_strategy_card_catalysts_20260915.py",
+            "tests/test_catalyst_symbol_impact_writer_20260915.py",
+        ],
+    ),
+    (
         # 2026-09-14: promote left the dev tree, where cron and the units run, on the old commit, and a
         # refused fast-forward was reported as success.
         "deploy_ff_dev_tree",
