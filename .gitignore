@@ -68,7 +68,7 @@ data/*
 # the runtime dir, re-ignore its contents, then exempt the one tracked file.
 !data/runtime/
 data/runtime/*
-!data/runtime/file_integrity_manifest.json
+# file_integrity_manifest.json: regenerated into persistent state by every deploy (2026-09-14: no longer tracked)
 
 # ── Generated reports (regenerable from code + state) ──────────────────────
 /reports/
