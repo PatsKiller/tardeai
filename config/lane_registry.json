@@ -1175,8 +1175,8 @@
       "owner": "signals",
       "scheduler": {
         "kind": "cron",
-        "expression": "45 5 * * 1-5 data_broker_indicator_refresh.py --all-universe",
-        "match": "data_broker_indicator_refresh.py --all-universe"
+        "expression": "45 5 * * 1-5 indicator_cache_refresh.py",
+        "match": "scripts/indicator_cache_refresh.py"
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
@@ -1185,7 +1185,7 @@
         "table": "indicator_confluence_cache",
         "column": "computed_at"
       },
-      "note": "Symbol confluence oscillator + confluence_flip alert source (Oscillator Affiliations). Declared so its freshness is monitored. 2026-09-15: match corrected to data_broker_indicator_refresh.py (was ORPHANED on a name mismatch)."
+      "note": "Symbol confluence oscillator + confluence_flip alert source (Oscillator Affiliations). Declared so its freshness is monitored. 2026-09-15: crontab called scripts/data_broker_indicator_refresh.py, which never reached main (81 can't-open-file errors); the 05:45 line now runs scripts/indicator_cache_refresh.py (no flags), and the 12:15/weekend desk-mode lines are commented DEAD_SCRIPT."
     },
     {
       "lane_id": "persistent-wake-hourly",

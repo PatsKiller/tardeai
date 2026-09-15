@@ -32,6 +32,45 @@ def parse_crontab_script_refs(crontab_text: str) -> list[tuple[str, str]]:
     return refs
 
 
+def resolve_script_refs(crontab_text: str, project_root: Path) -> list[tuple[str, Path, str]]:
+    """[(script_ref, resolved_path, cron_line_short)], resolved the way cron will run the line.
+
+    parse_crontab_script_refs() yields bare `scripts/x.py` matches, and check() joined every one onto
+    this repo. Lines that `cd` into another project (nyc-dof-auction, a review worktree) or call a
+    script by absolute path (~/.openclaw/skills/...) were reported as dead although they run
+    (6 of 12 cron_dead_script_ref findings on 2026-09-15). Resolution order: an absolute or
+    $VAR-prefixed path as written, else relative to the line's first `cd <dir>`, else the repo.
+    """
+    import os
+    import re
+    env = {"HOME": os.path.expanduser("~")}
+    refs: list[tuple[str, Path, str]] = []
+    for line in crontab_text.splitlines():
+        stripped = line.strip()
+        m_var = re.match(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$", stripped)
+        if m_var and " " not in m_var.group(2).strip():
+            env[m_var.group(1)] = m_var.group(2).strip().strip('"')
+            continue
+        if stripped.startswith("#") or not stripped:
+            continue
+
+        def expand(text: str) -> str:
+            return re.sub(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?", lambda m: env.get(m.group(1), m.group(0)), text)
+
+        m_cd = re.search(r"(?:^|[;&|]\s*|\s)cd\s+(\S+)", stripped)
+        base = Path(expand(m_cd.group(1))) if m_cd else project_root
+        for m in re.finditer(r"(\S*?)(scripts/[\w/-]+\.(?:py|sh))", stripped):
+            prefix, ref = m.group(1), m.group(2)
+            prefix = prefix.split("=")[-1]
+            written = expand(prefix + ref)
+            if written.startswith("/"):
+                path = Path(written)
+            else:
+                path = base / ref
+            refs.append((ref, path, stripped[:120]))
+    return refs
+
+
 def check() -> list[dict]:
     """Return findings list (health_agent collector format).  Empty = clean."""
     findings = []
@@ -61,9 +100,7 @@ def check() -> list[dict]:
                  "severity": "warning",
                  "message": f"Could not read crontab: {e}"}]
 
-    refs = parse_crontab_script_refs(proc.stdout)
-    for script_path, cron_line in refs:
-        full_path = PROJECT_ROOT / script_path
+    for script_path, full_path, cron_line in resolve_script_refs(proc.stdout, PROJECT_ROOT):
         if not full_path.is_file():
             findings.append({
                 "category": "execution_health",
