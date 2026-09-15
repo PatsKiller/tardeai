@@ -13109,6 +13109,20 @@ def _data_product_health():
     }
 
 
+def health_headline(snap: dict) -> dict:
+    """The health verdict in words, next to the transport-level ok flag."""
+    status = str(snap.get("status") or "unknown").lower()
+    counts = snap.get("counts") or {}
+    score = snap.get("overall_score")
+    return {
+        "healthy": status == "healthy",
+        "headline": (
+            f"{status.upper()} {score if score is not None else '?'}/100 — "
+            f"{int(counts.get('critical') or 0)} critical, {int(counts.get('warning') or 0)} warning"
+        ),
+    }
+
+
 def _health_agent_dashboard():
     """GET /api/v2/health — centralized Health Agent snapshot (0-100 score + category breakdown +
     findings + trends). Prefers the newer of: on-disk status JSON vs DB snapshot table
@@ -13303,6 +13317,9 @@ def _health_agent_dashboard():
         "total": len(findings),
         "actionable": sum(1 for f in findings if f.get("actionable")),
     }
+    # E-03 (2026-09-15): the envelope's "ok" is transport-level (deploy scripts poll it), so a
+    # platform scoring 64/100 "unhealthy" was reported as "health 200". The verdict rides alongside.
+    snap.update(health_headline(snap))
     return snap
 
 

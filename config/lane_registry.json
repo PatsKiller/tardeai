@@ -1159,8 +1159,8 @@
       "owner": "defense",
       "scheduler": {
         "kind": "cron",
-        "expression": "*/15 4-16 * * 1-5 rotation_autopilot.py",
-        "match": "rotation_autopilot.py"
+        "expression": "*/15 4-16 * * 1-5 run_rotation_autopilot.sh cron",
+        "match": "run_rotation_autopilot.sh"
       },
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
@@ -1168,15 +1168,15 @@
         "kind": "file_mtime",
         "path": "data/runtime/rotation_autopilot_latest.json"
       },
-      "note": "Small-cap rotation oscillator (Oscillator Affiliations). Declared so its freshness is monitored."
+      "note": "Small-cap rotation oscillator (Oscillator Affiliations). Declared so its freshness is monitored. 2026-09-15: match corrected to the launcher crontab actually runs (was ORPHANED on a name mismatch)."
     },
     {
       "lane_id": "indicator-cache-refresh",
       "owner": "signals",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 8 * * 1-5 indicator_cache_refresh.py",
-        "match": "indicator_cache_refresh.py"
+        "expression": "45 5 * * 1-5 indicator_cache_refresh.py",
+        "match": "scripts/indicator_cache_refresh.py"
       },
       "expected_cadence_hours": 24,
       "state": "ACTIVE",
@@ -1185,7 +1185,7 @@
         "table": "indicator_confluence_cache",
         "column": "computed_at"
       },
-      "note": "Symbol confluence oscillator + confluence_flip alert source (Oscillator Affiliations). Declared so its freshness is monitored."
+      "note": "Symbol confluence oscillator + confluence_flip alert source (Oscillator Affiliations). Declared so its freshness is monitored. 2026-09-15: crontab called scripts/data_broker_indicator_refresh.py, which never reached main (81 can't-open-file errors); the 05:45 line now runs scripts/indicator_cache_refresh.py (no flags), and the 12:15/weekend desk-mode lines are commented DEAD_SCRIPT."
     },
     {
       "lane_id": "persistent-wake-hourly",
@@ -1853,6 +1853,22 @@
         "key": "as_of"
       },
       "note": "2026-09-15 operator: the CIO owns entry state and BUY; the operator and the CIO are alerted; small caps labeled. Deterministic, advisory only, no model calls."
+    },
+    {
+      "lane_id": "catalyst-graph",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 6 * * 1-5 build_catalyst_graph.py --apply",
+        "match": "build_catalyst_graph.py --apply"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/catalyst_graph_latest.json"
+      },
+      "note": "Catalyst -> entity projection (identity spine REQUIRED_PRODUCERS). Unscheduled since it was built; last written 2026-08-27. Scheduled 2026-09-15 after mint_identity_registry (05:50). R-04."
     }
   ],
   "undeclared_baseline": [

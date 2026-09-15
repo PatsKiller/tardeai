@@ -12,11 +12,31 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
-LEDGER_DIR = ROOT / "data" / "runtime" / "audit_ledger"
+# TRADEAI_AUDIT_LEDGER_DIR / TRADEAI_AUDIT_LEDGER_DB=0 exist for tests. Until 2026-09-15 the test
+# suite redirected the JSONL but still mirrored every event into the production
+# audit_ledger_events table: 14,291 rows of event types e/a/b/x/y/test_event plus one full set of
+# submit_requested/broker_ack_received/partial_fill per test run (461 in 30 days), none of them real.
+LEDGER_DIR = Path(os.environ.get("TRADEAI_AUDIT_LEDGER_DIR") or ROOT / "data" / "runtime" / "audit_ledger")
 LEDGER_PATH = LEDGER_DIR / "events.jsonl"
+ACKNOWLEDGED_FORKS_PATH = ROOT / "config" / "audit_ledger_acknowledged_forks.json"
+
+
+def _db_mirror_enabled() -> bool:
+    return str(os.environ.get("TRADEAI_AUDIT_LEDGER_DB", "1")).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def acknowledged_forks() -> dict[str, dict]:
+    """Investigated forks, keyed by event_id. Unreadable file = no acknowledgements (fail closed)."""
+    try:
+        doc = json.loads(ACKNOWLEDGED_FORKS_PATH.read_text(encoding="utf-8"))
+        return {str(f["event_id"]): f for f in doc.get("forks") or [] if f.get("event_id")}
+    except Exception:
+        return {}
 
 
 def _conn():
+    if not _db_mirror_enabled():
+        return None
     try:
         from db_adapter import _get_conn
         return _get_conn()
@@ -166,10 +186,18 @@ def verify_chain(limit: int = 500) -> dict:
     # Seed from the first row's recorded predecessor so a partial tail still verifies.
     prev = rows[0].get("prev_event_hash") or "GENESIS"
     verified = 0
+    forks = acknowledged_forks()
+    accepted: list[str] = []
     for row in rows:
         eh = row.get("event_hash")
         if row.get("prev_event_hash") != prev:
-            return {"ok": False, "verified": verified, "error": "chain_break", "event_id": row.get("event_id")}
+            ack = forks.get(str(row.get("event_id")))
+            # An acknowledged fork passes only on an exact match of all three hashes.
+            if not (ack and ack.get("prev_event_hash") == row.get("prev_event_hash")
+                    and ack.get("follows_event_hash") == prev):
+                return {"ok": False, "verified": verified, "error": "chain_break", "event_id": row.get("event_id"),
+                        "acknowledged_forks": accepted}
+            accepted.append(str(row.get("event_id")))
         # Recompute over the canonical body WITHOUT mutating the row (copy, drop the hash).
         body = {k: v for k, v in row.items() if k != "event_hash"}
         calc = _hash_payload(body)
@@ -177,7 +205,7 @@ def verify_chain(limit: int = 500) -> dict:
             return {"ok": False, "verified": verified, "error": "hash_mismatch", "event_id": row.get("event_id")}
         prev = eh
         verified += 1
-    return {"ok": True, "verified": verified}
+    return {"ok": True, "verified": verified, "acknowledged_forks": accepted}
 
 
 def repair_chain() -> dict:

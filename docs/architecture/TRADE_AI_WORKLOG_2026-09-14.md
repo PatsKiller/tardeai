@@ -1,5 +1,7 @@
 # Trade AI — Work Log: everything changed from 2026-09-13 20:00 to 2026-09-14 23:44
 
+> **Identity note, 2026-09-15 (rev 3).** This document is the measured record of 2026-09-14. Everything that shipped after it — PRs #1026–#1036 and the chief-architect remediation — is recorded in `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md`, which also states the live commit at the end of 2026-09-15. Read any "live at" line below as historical.
+
 ```
 Status:        ACTIVE
 Updated:       2026-09-14 23:44 EDT

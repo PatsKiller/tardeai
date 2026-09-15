@@ -2863,7 +2863,7 @@ def process_jobs(limit: int = 10):
                         "note=COALESCE(note,'') || %s WHERE id=%s",
                         (f" [retry:{retry['tag']}#{retry['attempt']}]", job_id))
             cur.execute("UPDATE watchlist_items SET status='active', updated_at=now() WHERE symbol=%s AND status='queued'", (symbol,))
-            _update_maturity(conn, symbol, agent, "pending")
+            _update_maturity(conn, symbol, agent, "queued")  # 2026-09-15: "pending" violates watchlist_analysis_maturity_*_status_check; every drain since #1031 crashed on it
             cur.execute("INSERT INTO watchlist_events (event_type, symbol, agent, status, message) VALUES ('deferred', %s, %s, 'deferred', %s)",
                         (symbol, agent, f"Deferred ({retry['tag']}, retry in {retry['delay_minutes']}m): {(raw or '')[:120]}"))
             conn.commit()
@@ -3143,6 +3143,33 @@ def _check_pending_synthesis(conn):
             print(f"  ✗ {sym}: Synthesis failed: {e}")
 
 
+def auto_queue_valid_symbols(rows, *, limit: int = 5, validate=None) -> list:
+    """Only real securities are auto-queued for full analysis.
+
+    The auto-queue took the first 5 active watchlist symbols with no jobs, then the worker failed
+    every job whose symbol was not in symbol_profiles or was a topic slug: 97 failed jobs in 3 days
+    (2026-09-15, R-09). Those symbols never gained a job, so the same ones were picked first every run.
+    """
+    if validate is None:
+        try:
+            from lib.hermes_discovery.symbol_validation import validate_ticker as validate
+        except Exception:
+            return list(rows)[:limit]
+    out = []
+    for row in rows:
+        try:
+            ok = bool(validate(row["symbol"]).get("valid"))
+        except Exception:
+            ok = False
+        if ok:
+            out.append(row)
+            if len(out) >= limit:
+                break
+        else:
+            print(f"[watchlist-agent] auto-queue skip {row['symbol']}: not a validated security")
+    return out
+
+
 def _auto_queue_new_symbols():
     """Auto-queue agent jobs for watchlist symbols that have no analysis yet.
 
@@ -3168,9 +3195,9 @@ def _auto_queue_new_symbols():
         LEFT JOIN ticker_strategy_classifications tsc ON wi.symbol = tsc.symbol AND tsc.active = TRUE
         WHERE wi.status = 'active'
           AND wi.symbol NOT IN (SELECT DISTINCT symbol FROM watchlist_agent_jobs)
-        LIMIT 5
+        LIMIT 25
     """)
-    new_symbols = cur.fetchall()
+    new_symbols = auto_queue_valid_symbols(cur.fetchall(), limit=5)
 
     if not new_symbols:
         return 0

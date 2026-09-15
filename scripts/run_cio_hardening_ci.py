@@ -1348,6 +1348,25 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-15 architect remediation: ledger test isolation + pinned fork (R-01), retired-provider
+        # health (R-02), research discovery refresh (R-02), health headline (E-03).
+        "architect_remediation_20260915",
+        [
+            "tests/test_audit_ledger_isolation_forks_20260915.py",
+            "tests/test_retired_provider_health_20260915.py",
+            "tests/test_research_discovery_refresh_20260915.py",
+            "tests/test_health_headline_20260915.py",
+            "tests/test_rag_borrowed_conn_txn_20260915.py",
+            "tests/test_offpeak_drain_lock_wait_20260915.py",
+            "tests/test_opportunity_queue_drained_state_20260915.py",
+            "tests/test_research_lane_state_recovery_20260915.py",
+            "tests/test_health_decision_store_integrity_20260915.py",
+            "tests/test_watchlist_bridge_recreate_cooldown_20260915.py",
+            "tests/test_system_health_retired_component_20260915.py",
+            "tests/test_agent_auto_queue_valid_symbols_20260915.py",
+        ],
+    ),
+    (
         # 2026-09-15: hermes_subject_enhance and the directive service sat idle in transaction holding row
         # locks; the directive service and Finviz screener writes failed on lock timeouts.
         "watch_lock_holders",
@@ -1405,6 +1424,29 @@ GATES = [
         "material_change_notice_context",
         [
             "tests/test_material_change_notice_context_20260915.py",
+            "tests/test_material_change_sql_placeholders_20260915.py",
+        ],
+    ),
+    (
+        # 2026-09-15 cron hygiene: dead-script check resolves like cron (cd dir, absolute paths).
+        "cron_hygiene_20260915",
+        [
+            "tests/test_check_cron_sanity_resolves_like_cron_20260915.py",
+        ],
+    ),
+    (
+        # 2026-09-15 remediation follow-ups: CIO desk delivery receipt, daily LLM spend cap proven (E-10).
+        "remediation_followups_20260915",
+        [
+            "tests/test_health_llm_spend_receipt_20260915.py",
+            "tests/test_telegram_enable_flag_values_20260915.py",
+        ],
+    ),
+    (
+        # 2026-09-15: agent maturity status legal for the DB constraint; drain loads the host LLM cap file.
+        "agent_maturity_status_and_drain_cap_20260915",
+        [
+            "tests/test_agent_maturity_status_and_drain_cap_20260915.py",
         ],
     ),
     (

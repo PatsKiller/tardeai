@@ -59,6 +59,18 @@ if [[ -f "$RUN_ENV" ]]; then
   log "env_loaded=${RUN_ENV}"
 fi
 
+# --- The ruling LLM cap is the one host file, loaded LAST (AGENTS: ~/.config/tradeai/llm_global_daily_usd_cap.env).
+# 2026-09-15: the Bitwarden-rendered runtime env still carried LLM_GLOBAL_DAILY_USD_CAP=0.50, and this
+# wrapper logged "LLM_GLOBAL_DAILY_USD_CAP_ok=yes (kept)" — the drain ran on a quarter of the $2.00 cap.
+CAP_FILE="${TRADEAI_LLM_CAP_FILE:-${HOME}/.config/tradeai/llm_global_daily_usd_cap.env}"
+if [[ -f "$CAP_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  . "$CAP_FILE"
+  set +a
+  log "cap_file_loaded=${CAP_FILE}"
+fi
+
 # --- Process-scoped containment override (host flag stays armed; issue #283) ---
 # The canonical host flag ~/.local/state/tradeai/AGENT_JOBS_P0_CONTAINED is armed,
 # so this governed wrapper must explicitly override containment for its own process.
@@ -166,10 +178,20 @@ if [[ "$DRY_RUN" == "1" ]] || [[ "$DRY_RUN" == "true" ]] || [[ "$DRY_RUN" == "ye
 fi
 
 # --- Paid path: flock then bounded drain (NOT scheduled-canary) ---
-log "mode=offpeak_drain lock=${LOCK} timeout=${TIMEOUT_SPEC} limit=8"
+# Bounded lock WAIT, not -n. run_governed_agent_flash_market.sh (*/15 9-19, same lock, hard timeout
+# <=180s) starts at the same :00/:15/:30/:45 second as this drain (*/15 10-20). With -n the drain
+# lost that race on every tick from 10:00 to 19:45 ET and drained nothing all day: 2026-09-15
+# 14:00Z-16:00Z nine consecutive exit=99, 105 decision-feeding jobs queued >2h (R-03).
+LOCK_WAIT_SEC="${TRADEAI_OFFPEAK_LOCK_WAIT_SEC:-240}"
+if ! [[ "$LOCK_WAIT_SEC" =~ ^[0-9]+$ ]] || (( LOCK_WAIT_SEC > 600 )); then
+  log "failure: TRADEAI_OFFPEAK_LOCK_WAIT_SEC invalid or >600 (${LOCK_WAIT_SEC})"
+  log "exit=2"
+  exit 2
+fi
+log "mode=offpeak_drain lock=${LOCK} lock_wait=${LOCK_WAIT_SEC}s timeout=${TIMEOUT_SPEC} limit=8"
 
 set +e
-flock -n -E 99 "$LOCK" timeout "$TIMEOUT_SPEC" "$PY" scripts/process_watchlist_agent_jobs.py --limit 8 \
+flock -w "$LOCK_WAIT_SEC" -E 99 "$LOCK" timeout "$TIMEOUT_SPEC" "$PY" scripts/process_watchlist_agent_jobs.py --limit 8 \
   >>"$LOG" 2>&1
 rc=$?
 set -e
@@ -179,7 +201,7 @@ case "$rc" in
     log "success: offpeak drain completed"
     ;;
   99)
-    log "lock-skip: another worker holds ${LOCK} (no provider call from this invocation)"
+    log "lock-skip: ${LOCK} still held after ${LOCK_WAIT_SEC}s (no provider call from this invocation)"
     ;;
   124)
     log "failure: timeout after ${TIMEOUT_SPEC}"

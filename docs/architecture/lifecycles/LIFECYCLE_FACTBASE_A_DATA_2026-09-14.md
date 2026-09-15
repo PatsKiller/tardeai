@@ -1,5 +1,7 @@
 <!-- Lifecycle fact base A — Data and source lifecycles. Status: ACTIVE (measured, read-only, 2026-09-14 00:00–00:45 EDT). Synthesized in docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md; targets in TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md. -->
 
+> **Identity note, 2026-09-15 (rev 3).** This document is the measured record of 2026-09-14. Everything that shipped after it — PRs #1026–#1036 and the chief-architect remediation — is recorded in `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md`, which also states the live commit at the end of 2026-09-15. Read any "live at" line below as historical.
+
 # Trade AI — Data and Source Lifecycles (measured)
 
 **Status:** ACTIVE — fact base, Data and source lifecycles (family A of 6); measured read-only 2026-09-14 00:00–00:45 EDT

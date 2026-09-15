@@ -1,5 +1,7 @@
 # Trade AI Platform — AS-IS Lifecycles: the complete end-to-end picture
 
+> **Identity note, 2026-09-15 (rev 3).** This document is the measured record of 2026-09-14. Everything that shipped after it — PRs #1026–#1036 and the chief-architect remediation — is recorded in `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md`, which also states the live commit at the end of 2026-09-15. Read any "live at" line below as historical.
+
 ```
 Status:        ACTIVE
 Version:       2 (replaces the v1 snapshot TRADE_AI_AS_IS_2026-09-14.md as the primary As-Is; v1 stays as the inventory)

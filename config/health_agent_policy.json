@@ -263,7 +263,8 @@
       "grok-oauth",
       "chatgpt-oauth",
       "hermes-",
-      "mcporter-"
+      "mcporter-",
+      "fancontrol"
     ]
   },
   "db_connections": {

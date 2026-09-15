@@ -557,7 +557,7 @@ def price_excursions(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
         ), m AS (
             SELECT symbol, price_date, close_price,
                    abs(close_price - prev) / nullif(prev, 0) * 100.0 AS move_pct,
-                   -- 2026-09-15: keep the sign. The notice said "UZX moved 21%" for a fall, because only
+                   -- 2026-09-15: keep the sign. The notice said "UZX moved 21 percent" for a fall, because only
                    -- the absolute move reached it.
                    (close_price - prev) / nullif(prev, 0) * 100.0 AS signed_move_pct
               FROM d WHERE prev IS NOT NULL AND prev <> 0
