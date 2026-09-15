@@ -5,7 +5,7 @@ Date:          2026-09-15 (Tuesday)
 Operator ask:  "Fix everything, even what's not yours. You're the chief architect." (independent architect
                review R-01..R-10 / E-01..E-10, cutoff 15:20:37Z), plus the watchlist lifecycle decisions of the
                morning (CIO owns entry state and BUY; operator and CIO alerted; small caps in scope, labeled).
-Live at end:   see "Identity" at the bottom (filled in after the last deploy of the day).
+Live at:       b9276acb8 (PR #1036), stamped 2026-09-15 18:20 ET — origin/main = release CURRENT = dev tree
 Rails:         MBI_BEHAVIOR=0. No broker writes, no orders, no stops, no 2FA/AT Stage 14/BF-1 changes.
 ```
 
@@ -97,5 +97,9 @@ authority stay DENIED in every state.
 ## Identity
 
 ```
-(filled after the final deploy of 2026-09-15)
+Stamped:        2026-09-15 18:20 ET
+origin/main:    b9276acb8
+release CURRENT:b9276acb8   (served-copy split=0, /api/v2/health 200, headline DEGRADED 70/100 — 7 critical)
+dev tree:       b9276acb8
+In flight:      agent-job maturity-status + drain LLM-cap hotfix (regression from #1031; local acceptance at stamp time)
 ```
