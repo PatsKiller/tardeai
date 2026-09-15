@@ -183,6 +183,11 @@ def route_event(event: AlertEvent) -> RoutingDecision:
         # read. But DIGEST made it arrive hours later, which for a 45% move is the same
         # as not arriving at all.
         return RoutingDecision(ROUTE_IMMEDIATE, CRITICAL_OPERATIONS, None, 24 * 3600, 3600, None)
+    if atype == "cio_entry_state":
+        # The operator asked to be told when a tracked name is ready to buy or getting close
+        # (2026-09-15). Advisory, never capital at risk, so NOT in CRITICAL_IMMEDIATE_TYPES; immediate to
+        # the general channel and deduped on the hour like material_change.
+        return RoutingDecision(ROUTE_IMMEDIATE, CRITICAL_OPERATIONS, None, 24 * 3600, 3600, None)
     if atype == "thesis_update":
         # A material thesis change is the one piece the operator wants as text (not
         # noise). Immediate to the general channel; deduped on the 60-min window.
@@ -279,6 +284,11 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
         re.I,
     ):
         return ev("proposal_blocked_or_rebuild", "info")
+    # CIO entry state (operator decision 2026-09-15): the CIO's BUY READY / getting-close call on a
+    # tracked name. Matched before the proposal branches so the word "watch" in a catalyst headline
+    # cannot demote it to the dashboard.
+    if "cio entry \u2014" in low:
+        return ev("cio_entry_state", "info")
     # MaterialChangeNotice@v1 renders this exact header. Matched BEFORE the
     # research_update branches, which route to DIGEST and swallowed the first live
     # alert into the 8pm digest queue instead of sending it.
