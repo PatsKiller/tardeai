@@ -1,5 +1,7 @@
 <!-- Lifecycle fact base D — CIO cognition iteration lifecycles. Status: ACTIVE (measured, read-only, 2026-09-14 00:00–00:45 EDT). Synthesized in docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md; targets in TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md. -->
 
+> **Identity note, 2026-09-15 (rev 3).** This document is the measured record of 2026-09-14. Everything that shipped after it — PRs #1026–#1036 and the chief-architect remediation — is recorded in `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md`, which also states the live commit at the end of 2026-09-15. Read any "live at" line below as historical.
+
 # CIO Cognition — Iteration Lifecycles (how one cycle feeds the next)
 
 **Status:** ACTIVE — fact base, CIO cognition iteration lifecycles (family D of 6); measured read-only 2026-09-14 00:00–00:45 EDT

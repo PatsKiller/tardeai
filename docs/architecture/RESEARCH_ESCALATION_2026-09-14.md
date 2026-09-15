@@ -1,5 +1,7 @@
 # Research escalation — who researches what, and when one step hands off to the next
 
+> **Identity note, 2026-09-15 (rev 3).** This document is the measured record of 2026-09-14. Everything that shipped after it — PRs #1026–#1036 and the chief-architect remediation — is recorded in `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md`, which also states the live commit at the end of 2026-09-15. Read any "live at" line below as historical.
+
 **Status:** measured on 2026-09-14, on main `32897e80a`, by reading the code, the flags each process actually has, the live receipts and the Brave budget ledger, and by a dry run of the resolver. It describes what IS wired, not what was designed.
 
 **Updated:** 2026-09-14 23:44 EDT — section 6 records what shipped after the measurement (PRs #1012, #1014, #1019, #1020, #1021; live `341bce2c1`). Sections 1–5 remain the midday measurement.
