@@ -2,6 +2,9 @@
 
 # Trade AI — QUESTION & RESEARCH LIFECYCLES (measured, end to end)
 
+**Status:** ACTIVE — fact base, Question and research lifecycles (family B of 6); measured read-only 2026-09-14 00:00–00:45 EDT
+**Updated:** 2026-09-14 23:44 EDT — update block below records what shipped after the measurement (live `341bce2c1`)
+
 
 > **Update 2026-09-14 23:44 EDT — what changed after this measurement (live `341bce2c1`).** Numbers below are the 00:00–00:45
 > measurement. Changes shipped on 2026-09-14:

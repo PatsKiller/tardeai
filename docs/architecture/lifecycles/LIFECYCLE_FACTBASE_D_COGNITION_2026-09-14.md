@@ -2,6 +2,9 @@
 
 # CIO Cognition — Iteration Lifecycles (how one cycle feeds the next)
 
+**Status:** ACTIVE — fact base, CIO cognition iteration lifecycles (family D of 6); measured read-only 2026-09-14 00:00–00:45 EDT
+**Updated:** 2026-09-14 23:44 EDT — update block below records what shipped after the measurement (live `341bce2c1`)
+
 
 > **Update 2026-09-14 23:44 EDT — what changed after this measurement (live `341bce2c1`).** This family was **not
 > re-measured** and none of its lifecycle defects (operator-turn replay, single-subject memory, boilerplate
