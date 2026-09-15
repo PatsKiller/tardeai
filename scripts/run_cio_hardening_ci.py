@@ -1303,6 +1303,14 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-15: every active strategy card had catalyst_summary NULL; catalyst_symbol_impact had 0 rows ever.
+        "watch_card_catalysts",
+        [
+            "tests/test_strategy_card_catalysts_20260915.py",
+            "tests/test_catalyst_symbol_impact_writer_20260915.py",
+        ],
+    ),
+    (
         # Two always-on health findings that were never about the system: an
         # expected-release pin nothing ever wrote, and a validator whose only
         # caller passed an argument it did not accept.
@@ -1332,11 +1340,12 @@ GATES = [
         ],
     ),
     (
-        # 2026-09-15: every active strategy card had catalyst_summary NULL; catalyst_symbol_impact had 0 rows ever.
-        "watch_card_catalysts",
+        # 2026-09-15: watch-tier pullback proposals expired in the pass that created them, and the watchlist
+        # bridge created proposals the enrichment loop expired minutes later (>15% from live).
+        "watchlist_proposal_churn",
         [
-            "tests/test_strategy_card_catalysts_20260915.py",
-            "tests/test_catalyst_symbol_impact_writer_20260915.py",
+            "tests/test_pullback_reconcile_tiers_20260915.py",
+            "tests/test_watchlist_bridge_entry_drift_20260915.py",
         ],
     ),
     (

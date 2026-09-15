@@ -255,6 +255,42 @@ def _derive_levels(c: dict, quote_cache: dict | None = None) -> tuple[float, flo
     )
 
 
+# proposal_enrichment_loop expires a PENDING watchlist proposal whose live price has drifted more
+# than this from the proposed entry ("Entry missed — price drifted >15%"). Both zone tables it uses
+# (tight 7 % / wide 12 % marginal) already classify such a drift as ENTRY_MISSED, so 15 % is the
+# effective expiry line for every timeframe.
+ENRICHMENT_EXPIRY_DRIFT_PCT = 15.0
+
+
+def entry_would_expire(entry: float | None, live: float | None,
+                       limit_pct: float = ENRICHMENT_EXPIRY_DRIFT_PCT) -> bool:
+    """True when a proposal at `entry` would be expired by the enrichment loop on its next pass.
+
+    2026-09-15: the bridge accepted entries up to 50 % from live (WATCHLIST_ENTRY_MAX_LIVE_DRIFT_PCT)
+    while the enrichment loop expires anything past 15 %, so 1,170 watchlist proposals in 30 days
+    were expired a median of 6 minutes after the bridge created them (median drift 25 %). No live
+    price means no evidence of drift, so the proposal is allowed.
+    """
+    try:
+        e, lv = float(entry or 0), float(live or 0)
+    except (TypeError, ValueError):
+        return False
+    if e <= 0 or lv <= 0:
+        return False
+    return abs(lv - e) / e * 100.0 > float(limit_pct)
+
+
+def _live_price_for(sym: str, quote_cache: dict | None) -> float | None:
+    v = _f((quote_cache or {}).get(sym))
+    if v and v > 0:
+        return v
+    try:
+        import broker_trade_plan_gate as btpg  # read-only quote lookup, same source _derive_levels uses
+        return btpg._live_reference_price(sym, quote_cache)
+    except Exception:
+        return None
+
+
 def _size_shares(entry: float, stop: float) -> int:
     """Risk-based share count — avoids broker API calls that can close the DB connection."""
     risk_ps = max(0.01, entry - stop)
@@ -499,6 +535,11 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
             continue
 
         levels = _derive_levels(c, quote_cache)
+        live_px = _live_price_for(sym, quote_cache) if levels else None  # one lookup per symbol
+        if levels and entry_would_expire(levels[0], live_px):
+            log.info(f"skip {sym}: plan entry {levels[0]} is >{ENRICHMENT_EXPIRY_DRIFT_PCT:.0f}% from live "
+                     f"{live_px} — the enrichment loop would expire it on arrival")
+            levels = None
         if not levels:
             for _lane_id, target_acct, _intended, _routing_lane in lanes:
                 existing = _active_proposal(cur, sym, target_acct)
