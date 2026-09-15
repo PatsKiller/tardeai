@@ -25,8 +25,11 @@ def _parameterized_sql():
 def test_every_parameterized_query_has_only_placeholders_or_escaped_percents():
     offenders = []
     for lineno, sql in _parameterized_sql():
-        for m in re.finditer(r"%(?![s%])", sql):
-            offenders.append(f"line {lineno}: ...{sql[max(0, m.start() - 25):m.start() + 5]!r}")
+        # %% (escaped, e.g. LIKE 'av:%%') and %s (placeholder) are what psycopg2 accepts; anything left is bare.
+        stripped = re.sub(r"%%|%s", "", sql)
+        if "%" in stripped:
+            i = stripped.index("%")
+            offenders.append(f"line {lineno}: ...{stripped[max(0, i - 25):i + 5]!r}")
     assert not offenders, "bare % in parameterized SQL:\n" + "\n".join(offenders)
 
 
@@ -35,3 +38,10 @@ def test_placeholder_count_matches_what_psycopg2_will_format():
         # Python %-formatting is what psycopg2 applies; a bare % would raise here too.
         n = len(re.findall(r"%s", sql))
         sql % tuple(["x"] * n)
+
+
+def test_escaped_percent_is_accepted_and_a_bare_one_is_not():
+    """The check itself: LIKE 'av:%%' is valid SQL for psycopg2; 'moved 21%' is not."""
+    assert "%" not in re.sub(r"%%|%s", "", "WHERE symbol=%s AND source LIKE 'av:%%'")
+    assert "%" in re.sub(r"%%|%s", "", "-- UZX moved 21% for a fall\nWHERE symbol = ANY(%s)")
+
