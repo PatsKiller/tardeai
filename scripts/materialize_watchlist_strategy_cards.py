@@ -93,6 +93,65 @@ def ground_truth_blocks(sym: str, recommendation, holdings: dict) -> tuple:
     return (not admissible), reason
 
 
+# Catalyst types written by news_to_catalyst / catalyst engines, as operator-readable labels.
+CATALYST_LABELS = {
+    "analyst_upgrade": "Analyst upgrade", "analyst_downgrade": "Analyst downgrade",
+    "earnings_beat": "Earnings beat", "earnings_miss": "Earnings miss",
+    "contract_win": "Contract win", "merger_acquisition": "M&A", "insider_buy": "Insider buy",
+    "insider_sell": "Insider sell", "news_momentum": "News momentum", "geopolitical": "Geopolitical",
+    "guidance_raise": "Guidance raised", "guidance_cut": "Guidance cut", "guidance_lower": "Guidance lowered",
+    "fda": "FDA", "fda_approval": "FDA approval", "buyback": "Buyback", "dividend_increase": "Dividend increase",
+    "dividend_cut": "Dividend cut", "offering_dilution": "Offering / dilution", "ceo_change": "CEO change",
+    "short_squeeze": "Short squeeze", "regulatory": "Regulatory", "stock_split": "Stock split", "other": "News",
+}
+
+
+def summarize_catalysts(rows: list[dict], limit: int = 3) -> tuple[str | None, list[dict]]:
+    """Newest-first catalyst rows → (one-line summary, compact list for the card JSON).
+
+    Typed catalysts lead; a generic 'other' headline is used only when nothing typed exists.
+    2026-09-15: every active card had catalyst_summary NULL (the writer passed a literal None)
+    while 96 of 266 active symbols had catalyst events in the last 30 days.
+    """
+    def _item(r):
+        ts = r.get("ts")
+        day = ts.date().isoformat() if hasattr(ts, "date") else (str(ts)[:10] if ts else None)
+        ctype = str(r.get("catalyst_type") or "other")
+        return {"type": ctype, "label": CATALYST_LABELS.get(ctype, ctype.replace("_", " ").title()),
+                "headline": str(r.get("headline") or "").strip()[:160], "date": day,
+                "impact_score": r.get("impact_score"), "source_url": r.get("source_url")}
+    items = [_item(r) for r in rows if str(r.get("headline") or "").strip()]
+    typed = [i for i in items if i["type"] != "other"]
+    chosen = (typed or items)[:limit]
+    if not chosen:
+        return None, []
+    lead = chosen[0]
+    summary = f"{lead['label']}: {lead['headline']}" + (f" ({lead['date']})" if lead["date"] else "")
+    if len(chosen) > 1:
+        summary += f" · +{len(chosen) - 1} more"
+    return summary[:400], chosen
+
+
+def load_catalysts(cur, symbols: list[str], days: int = 60) -> dict[str, list[dict]]:
+    """Recent catalyst_events per symbol (upper-case keys), newest first."""
+    if not symbols:
+        return {}
+    cur.execute(
+        """SELECT upper(symbol) AS symbol, catalyst_type, headline, impact_score, source_url,
+                  COALESCE(published_at, created_at) AS ts
+             FROM catalyst_events
+            WHERE upper(symbol) = ANY(%s)
+              AND COALESCE(published_at, created_at) > now() - make_interval(days => %s)
+              AND COALESCE(identity_status, 'CONFIRMED') <> 'UNRESOLVABLE'
+            ORDER BY COALESCE(published_at, created_at) DESC""",
+        ([str(s).upper() for s in symbols], int(days)),
+    )
+    out: dict[str, list[dict]] = {}
+    for r in cur.fetchall():
+        out.setdefault(r["symbol"], []).append(dict(r))
+    return out
+
+
 def materialize(symbols: list[str] | None = None):
     conn = _get_conn()
     cur = conn.cursor()
@@ -106,6 +165,7 @@ def materialize(symbols: list[str] | None = None):
         cur.execute("SELECT DISTINCT symbol FROM watchlist_items WHERE status <> 'removed'")
         target = [r["symbol"] for r in cur.fetchall()]
 
+    catalysts_by_sym = load_catalysts(cur, target)
     enrichment = _load("ticker_enrichment_cache.json")
     rm = _load("risk_management.json")
     stops_by_sym = {p["symbol"]: p for p in rm.get("positions", []) if p.get("stop_price")}
@@ -339,6 +399,8 @@ def materialize(symbols: list[str] | None = None):
         if atr: tech_summary += f" · ATR {atr:.2f}"
         if not tech_summary: tech_summary = "No technical data"
 
+        catalyst_summary, catalyst_items = summarize_catalysts(catalysts_by_sym.get(str(sym).upper(), []))
+
         # Upsert
         cur.execute("""
             INSERT INTO watchlist_strategy_cards (symbol, strategy_type, latest_price, support, resistance,
@@ -353,16 +415,18 @@ def materialize(symbols: list[str] | None = None):
                 target_price=EXCLUDED.target_price, risk_reward=EXCLUDED.risk_reward,
                 time_horizon=EXCLUDED.time_horizon, account_fit=EXCLUDED.account_fit,
                 thesis=EXCLUDED.thesis, technical_summary=EXCLUDED.technical_summary,
+                catalyst_summary=EXCLUDED.catalyst_summary,
                 confidence=EXCLUDED.confidence, needs_iteration=EXCLUDED.needs_iteration,
                 card=EXCLUDED.card, updated_at=now()
         """, (sym, strategy_type, latest_price, support, resistance,
               ideal_entry, support if support else None, resistance if resistance else None,
               stop_loss, target_price, risk_reward,
               "medium_term", "Standard position sizing", account_fit,
-              thesis[:500] if thesis else None, None,
+              thesis[:500] if thesis else None, catalyst_summary,
               tech_summary, None, confidence, needs_iter,
               json.dumps({"enrichment": {k: e.get(k) for k in ["rsi", "sma20_pct", "sma50_pct", "sma200_pct", "atr", "beta", "sector", "industry"]},
                           "backtest": bt, "trade_plan": tp, "agent_rec": ar.get("recommendation"),
+                          "catalysts": catalyst_items,
                           # Provenance: which agent this came from, and what the
                           # synthesis suppressed. Without the first, "whichever job
                           # finished last" is invisible; without the second, a
