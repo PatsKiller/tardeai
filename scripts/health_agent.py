@@ -2822,11 +2822,26 @@ def collect_data_source_health() -> list[dict]:
     rows = _db("""SELECT source_key, status, last_success_at, last_failure_at,
                          max_stale_minutes, last_error, failure_count
                   FROM data_source_health""", fetch="all") or []
+    try:
+        from lib.retired_providers import is_retired, called_since_retirement
+    except Exception:
+        is_retired = lambda _s: False  # noqa: E731
+        called_since_retirement = lambda *_a: True  # noqa: E731
+    raw_by_src = {x.get("source_key"): x for x in rows}
     for r in view_rows(rows, now_utc, registry):
         eff = r.get("status")
         if eff == HEALTHY:
             continue
         src = r.get("source_key")
+        if is_retired(src):
+            raw = raw_by_src.get(src) or {}
+            if called_since_retirement(src, raw.get("last_success_at"), raw.get("last_failure_at")):
+                out.append(_f("data_quality", "retired_provider_still_called", "warning",
+                              f"data source '{src}' is RETIRED in config/data_source_authority.json but "
+                              f"reported activity after its retirement day — a caller still reaches it",
+                              source=src, last_error=(raw.get("last_error") or "")[:120]))
+            # A retired provider's last failure is history, not an outage or a key to rotate.
+            continue
         age_m = r.get("age_minutes")
         win_m = float(r.get("window_minutes") or 1440)
         last_err = (r.get("last_error") or "")[:200]
@@ -3314,7 +3329,85 @@ def collect_store_consistency() -> list[dict]:
         return []
 
 
+VERDICTS_LOG = PROJECT_ROOT / "data" / "cio" / "cio_governed_verdicts.jsonl"
+REENTRY_DESK = PROJECT_ROOT / "data" / "runtime" / "reentry_decision_desk_latest.json"
+
+
+def verdict_store_finding(entries: list[dict], desk_rows: list[dict], *, min_run: int = 100) -> dict | None:
+    """E-04 (2026-09-15): a verdict store that stays empty while the desk shows names in zone.
+
+    cio_governed_verdicts.jsonl was 8,028 of 8,029 empty snapshots for weeks (R-07) and nobody
+    was told. Empty is legitimate when no desk name is in its entry zone; a long empty run while
+    names ARE in zone means the verdict writer lost its input again.
+    """
+    run = 0
+    for e in reversed(entries):
+        if e.get("verdicts"):
+            break
+        run += 1
+    in_zone = []
+    for r in desk_rows or []:
+        try:
+            lo, hi, px = float(r["entry_low"]), float(r["entry_high"]), float(r["price"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if lo <= px <= hi:
+            in_zone.append(str(r.get("symbol")))
+    if run >= min_run and in_zone:
+        return {"empty_run": run, "in_zone": in_zone}
+    return None
+
+
+def expire_on_arrival_finding(created: int, expired_within_1h: int, *, min_created: int = 10,
+                              max_share: float = 0.5) -> dict | None:
+    """E-05 (2026-09-15): proposals created and expired within the hour (the #1027 defect class)."""
+    if created >= min_created and expired_within_1h / max(created, 1) >= max_share:
+        return {"created": created, "expired_within_1h": expired_within_1h,
+                "share": round(expired_within_1h / created, 2)}
+    return None
+
+
+def collect_decision_store_integrity() -> list[dict]:
+    out: list[dict] = []
+    try:
+        entries = []
+        if VERDICTS_LOG.exists():
+            with VERDICTS_LOG.open("rb") as fh:
+                fh.seek(0, 2)
+                fh.seek(max(0, fh.tell() - 400_000))
+                for raw in fh.read().splitlines()[1:]:
+                    try:
+                        entries.append(json.loads(raw))
+                    except Exception:
+                        continue
+        desk = json.loads(REENTRY_DESK.read_text()) if REENTRY_DESK.exists() else {}
+        f = verdict_store_finding(entries, desk.get("rows") or [])
+        if f:
+            out.append(_f("intelligence_quality", "governed_verdicts_empty_while_desk_in_zone", "warning",
+                          f"CIO governed verdict store empty for the last {f['empty_run']} snapshots while "
+                          f"{len(f['in_zone'])} re-entry desk names are inside their entry zone "
+                          f"({', '.join(f['in_zone'][:6])}) — the verdict writer is not seeing the desk",
+                          **f))
+    except Exception as e:
+        out.append(_f("intelligence_quality", "collector_error", "info", f"verdict store check error: {e}"))
+    try:
+        r = _db("""SELECT COUNT(*) AS created,
+                          COUNT(*) FILTER (WHERE UPPER(status) = 'EXPIRED'
+                                             AND COALESCE(expired_at, updated_at) < created_at + interval '1 hour') AS expired_1h
+                   FROM paper_trade_proposals
+                   WHERE created_at > now() - interval '24 hours'""", fetch="one") or {}
+        f = expire_on_arrival_finding(int(r.get("created") or 0), int(r.get("expired_1h") or 0))
+        if f:
+            out.append(_f("execution_health", "proposals_expire_on_arrival", "warning",
+                          f"{f['expired_within_1h']} of {f['created']} proposals created in 24h expired within "
+                          f"an hour ({int(f['share'] * 100)}%) — entries are stale on arrival", **f))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info", f"proposal expiry check error: {e}"))
+    return out
+
+
 COLLECTORS = [
+    collect_decision_store_integrity,
     collect_store_consistency,
     collect_data_quality,
     collect_trade_ai_session,

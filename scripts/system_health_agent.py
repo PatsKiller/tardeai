@@ -61,8 +61,8 @@ MONITORED_COMPONENTS = [
      "retry_cmd": ".venv/bin/python scripts/finviz_screener_runner.py --apply",
      "downstream": "scanner input data"},
     {"component": "news_ingestion", "display": "News Ingestion",
-     "schedule": ["30 6,12 * * 1-5", "30 18 * * *"], "log_file": "news_ingestion.log",
-     "max_age_min": 480, "max_runtime_sec": 600, "critical": True,
+     "schedule": ["30 12 * * 1-5", "30 0 * * *"], "log_file": "news_ingestion.log",
+     "max_age_min": 780, "max_runtime_sec": 600, "critical": True,
      "retry_cmd": ".venv/bin/python scripts/news_ingestion.py --priority",
      "downstream": "catalyst detection, news alerts"},
 
@@ -190,10 +190,14 @@ MONITORED_COMPONENTS = [
      "max_age_min": 1500, "max_runtime_sec": 600, "critical": False,
      "retry_cmd": ".venv/bin/python scripts/run_alex_daily.py --daily",
      "downstream": "CIO intelligence, daily alerts"},
+    # RETIRED: its cron line has been commented out since 2026-08-08, but this entry kept a retry_cmd, so
+    # the self-heal re-ran it every afternoon. Each run wrote 335-381 priority-high HUMAN_REVIEW
+    # cio_decisions (3,594 proposed rows on 2026-09-15). A disabled lane is not stale and must not be
+    # retried. Re-enabling it is a crontab + lane registry decision, not a self-heal.
     {"component": "cio_decision_engine", "display": "CIO Decision Engine",
      "schedule": "0 7 * * 1-5", "log_file": "cio_decisions.log",
      "max_age_min": 1500, "max_runtime_sec": 300, "critical": False,
-     "retry_cmd": ".venv/bin/python scripts/cio_decision_engine.py --run",
+     "retired": "cron disabled 2026-08-08",
      "downstream": "CIO decisions, portfolio allocation"},
     {"component": "data_gap_resolver", "display": "Data Gap Resolver",
      "schedule": "0 10-16 * * 1-5", "log_file": "data_gap_resolver.log",
@@ -1136,6 +1140,8 @@ def run_health_check(dry_run=True, verbose=False):
     _is_weekday = _now_et.weekday() < 5
 
     for comp in MONITORED_COMPONENTS:
+        if comp.get("retired"):
+            continue  # a disabled lane is neither checked nor retried
         component = comp["component"]
         log_file = comp.get("log_file", "")
 

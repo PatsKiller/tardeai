@@ -211,6 +211,7 @@ def fetch_desk_suggestions(executor: Executor, *, limit: int = 200) -> list[dict
     returns what was collected so far — the reader never raises.
     """
     rows: list[dict[str, Any]] = []
+    hit_rows: list[dict[str, Any]] = []
     try:
         hits = executor(
             """SELECT h.symbol, h.surfaced_by AS source, d.label AS directive_label,
@@ -225,10 +226,17 @@ def fetch_desk_suggestions(executor: Executor, *, limit: int = 200) -> list[dict
             (list(OPPORTUNITY_SOURCES), limit),
             fetch="all",
         )
-        rows.extend(dict(r) for r in (hits or []))
+        hit_rows = [dict(r) for r in (hits or [])]
     except Exception:
         pass
 
+    # A desk suggestion is drained into watch_directive_hits within the minute it is staged, and
+    # watch_directive_hits has no verdict/state columns. Reading only undrained staging rows meant
+    # the CIO saw the re-entry desk's READY/NEAR states for one minute a day (10:20 ET): 8,028 of
+    # 8,029 cio_governed_verdicts.jsonl snapshots were empty (R-07, 2026-09-15). A drained staging
+    # row is kept while its hit is still STAGED_FOR_REVIEW, so the verdict and state survive review.
+    under_review = {(str(h.get("source") or "").lower(), str(h.get("symbol") or "").upper()) for h in hit_rows}
+    carried: set[tuple[str, str]] = set()
     for source in OPPORTUNITY_SOURCES:
         tbl = {
             "cio": "cio_directive_hits_staging",
@@ -239,23 +247,34 @@ def fetch_desk_suggestions(executor: Executor, *, limit: int = 200) -> list[dict
         }[source]
         try:
             staged = executor(
-                f"""SELECT symbol, '{source}' AS source,
-                           (source_detail->>'directive_label') AS directive_label,
-                           (source_detail->>'verdict') AS verdict,
-                           (source_detail->>'state') AS state,
-                           (source_detail->>'rs_score') AS rs_score,
-                           proposed_at AS surfaced_at
-                    FROM {tbl}
-                    WHERE NOT drained
-                    ORDER BY proposed_at DESC
+                f"""SELECT symbol, source, directive_label, verdict, state, rs_score, surfaced_at, drained
+                    FROM (SELECT DISTINCT ON (symbol) symbol, '{source}' AS source,
+                                 (source_detail->>'directive_label') AS directive_label,
+                                 (source_detail->>'verdict') AS verdict,
+                                 (source_detail->>'state') AS state,
+                                 (source_detail->>'rs_score') AS rs_score,
+                                 proposed_at AS surfaced_at, drained
+                          FROM {tbl}
+                          WHERE NOT drained OR proposed_at > now() - interval '7 days'
+                          ORDER BY symbol, proposed_at DESC) latest
+                    ORDER BY surfaced_at DESC
                     LIMIT %s""",
                 (limit,),
                 fetch="all",
             )
-            rows.extend(dict(r) for r in (staged or []))
+            for r in staged or []:
+                r = dict(r)
+                key = (source, str(r.get("symbol") or "").upper())
+                if r.pop("drained", False) and key not in under_review:
+                    continue  # reviewed and closed: the hit is no longer STAGED_FOR_REVIEW
+                carried.add(key)
+                rows.append(r)
         except Exception:
             continue
 
+    # The staging row carries verdict/state; its hit would only add a duplicate without them.
+    rows.extend(h for h in hit_rows
+                if (str(h.get("source") or "").lower(), str(h.get("symbol") or "").upper()) not in carried)
     return rows
 
 

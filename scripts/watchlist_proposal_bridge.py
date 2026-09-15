@@ -236,6 +236,54 @@ def _active_proposal(cur, symbol: str, target_account: str) -> dict | None:
     return dict(zip(cols, row))
 
 
+# A watchlist proposal the approval path expired, rejected or risk-blocked must not be re-created
+# on the next 30-minute sync with the same plan. On 2026-09-15 after #1027, 19 of 36 bridge proposals
+# expired within the hour ("ATM expired: persistent_approval_failure") and the bridge re-created the
+# same names at 11:01, 11:31 and 12:02 (ANRO, ETON, PMTS, COPP ...). A materially new plan (entry moved
+# more than RECREATE_ENTRY_CHANGE_PCT) may be proposed again at once.
+RECREATE_COOLDOWN_HOURS = 6.0
+RECREATE_ENTRY_CHANGE_PCT = 2.0
+CLOSED_STATUSES = ("EXPIRED", "REJECTED", "RISK_BLOCKED")
+
+
+def closed_recently_same_plan(prev: dict | None, entry: float, now: datetime,
+                              hours: float = RECREATE_COOLDOWN_HOURS,
+                              change_pct: float = RECREATE_ENTRY_CHANGE_PCT) -> bool:
+    if not prev:
+        return False
+    at = prev.get("updated_at") or prev.get("created_at")
+    if at is None:
+        return False
+    if at.tzinfo is None:
+        at = at.replace(tzinfo=timezone.utc)
+    if (now - at).total_seconds() > hours * 3600:
+        return False
+    try:
+        prev_entry = float(prev.get("proposed_entry"))
+    except (TypeError, ValueError):
+        return True
+    if prev_entry <= 0:
+        return True
+    return abs(float(entry) - prev_entry) / prev_entry * 100.0 <= change_pct
+
+
+def _latest_closed_proposal(cur, symbol: str, target_accounts: list[str]) -> dict | None:
+    cur.execute(
+        """SELECT id, status, proposed_entry, created_at, updated_at
+           FROM paper_trade_proposals
+           WHERE symbol = %s AND origin = 'watchlist' AND status = ANY(%s)
+             AND COALESCE(target_account, proposed_account) = ANY(%s)
+           ORDER BY COALESCE(updated_at, created_at) DESC
+           LIMIT 1""",
+        (symbol.upper(), list(CLOSED_STATUSES), list(target_accounts)),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    cols = [d[0] for d in cur.description]
+    return dict(zip(cols, row))
+
+
 def _derive_levels(c: dict, quote_cache: dict | None = None) -> tuple[float, float, float, dict, str] | None:
     """Entry / stop / target from authoritative plan only — no generic 2R gambling geometry."""
     import broker_trade_plan_gate as btpg
@@ -419,6 +467,8 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         conn.commit()
 
     created = refreshed = skipped = lock_skipped = 0
+
+    cooled_down = 0
     cap = max_new if max_new is not None else MAX_NEW_PER_RUN
     lanes = _routing_lanes()
 
@@ -608,6 +658,14 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
                 )
             continue
 
+        prev_closed = _latest_closed_proposal(cur, sym, [acct for _, acct, _, _ in lanes])
+        if closed_recently_same_plan(prev_closed, entry, datetime.now(timezone.utc)):
+            log.info(f"skip {sym}: #{prev_closed['id']} {prev_closed['status']} within "
+                     f"{RECREATE_COOLDOWN_HOURS:.0f}h on the same plan (entry {entry})")
+            cooled_down += 1
+            skipped += len(lanes)
+            continue
+
         new_eligible.append({
             "sym": sym, "strat": strat, "entry": entry, "stop": stop, "target": target,
             "shares": shares, "dollar_size": dollar_size, "dollar_risk": dollar_risk,
@@ -634,6 +692,7 @@ def sync_watchlist_proposals(*, dry_run: bool = False, max_new: int | None = Non
         "refreshed": refreshed,
         "skipped": skipped,
         "lock_skipped": lock_skipped,
+        "cooled_down": cooled_down,
         "reconciled": reconciled,
         "deduped": deduped,
         "expired_not_buy": expired,

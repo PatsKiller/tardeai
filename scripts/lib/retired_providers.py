@@ -50,3 +50,32 @@ def live_chain(chain: list[tuple[str, object]]) -> tuple[list[tuple[str, object]
     for name, fn in chain:
         (refused if is_retired(name) else keep).append((name, fn) if not is_retired(name) else name)
     return keep, refused
+
+
+def retired_on(provider: str) -> str | None:
+    """ISO date the provider was retired, from its approval block, or None."""
+    p = _authority().get("providers", {}).get(str(provider or "").strip().lower(), {})
+    return (p.get("approval") or {}).get("retired_on")
+
+
+def called_since_retirement(provider: str, *activity) -> bool:
+    """True when any success/failure timestamp falls AFTER the retirement day.
+
+    A retired provider's health row keeps its last failure forever (finnhub: HTTP 401,
+    last written 2026-09-13 16:03, the minute of retirement), and the health agent read
+    that as "operator must rotate FINNHUB_API_KEY". Activity after the retirement day
+    is different: some caller is still reaching a provider nothing may call.
+    """
+    day = retired_on(provider)
+    if not day:
+        return True
+    from datetime import date, datetime
+    cutoff = date.fromisoformat(str(day)[:10])
+    for ts in activity:
+        if ts is None:
+            continue
+        d = ts.date() if isinstance(ts, datetime) else date.fromisoformat(str(ts)[:10])
+        if d > cutoff:
+            return True
+    return False
+
