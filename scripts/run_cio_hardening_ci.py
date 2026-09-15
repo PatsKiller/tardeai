@@ -1425,6 +1425,7 @@ GATES = [
         [
             "tests/test_material_change_notice_context_20260915.py",
             "tests/test_material_change_sql_placeholders_20260915.py",
+            "tests/test_agent_runtime_trigger_intake_lease_20260915.py",
         ],
     ),
     (

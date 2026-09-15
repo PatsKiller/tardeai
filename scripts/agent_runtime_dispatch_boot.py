@@ -140,7 +140,21 @@ def run_bounded_batch(agent_id: str, max_batch: int = 8) -> dict[str, Any]:
     persistence = build_persistence(dsn)
     providers = provider_mod.build_providers(agent_id)
     processor = providers.make_processor(persistence)
-    jobs: Sequence[JobRequest] = list(provider_mod.job_source(agent_id, max_batch))
+    # A provider that owns a leased queue exposes job_source_with_acks and gets the
+    # batch outcome back, so leased rows are settled instead of aging out under a lease.
+    ack = None
+    with_acks = getattr(provider_mod, "job_source_with_acks", None)
+    if callable(with_acks):
+        jobs, ack = with_acks(agent_id, max_batch)
+        jobs = list(jobs)
+    else:
+        jobs = list(provider_mod.job_source(agent_id, max_batch))
     dispatcher = build_dispatcher(agent_id, processor=processor, max_batch=max_batch)
     results = dispatcher.process_batch(jobs)
-    return batch_summary(results)
+    summary = batch_summary(results)
+    if ack is not None:
+        try:
+            summary["intake"] = ack(results)
+        except Exception as exc:  # noqa: BLE001 — an ack failure is reported, never fatal
+            summary["intake"] = {"ack_error": f"{type(exc).__name__}: {exc}"}
+    return summary

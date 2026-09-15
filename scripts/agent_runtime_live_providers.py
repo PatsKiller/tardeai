@@ -35,6 +35,15 @@ def _resolve_project_root() -> Path:
 
 PROJECT_ROOT = _resolve_project_root()
 
+# Writer DSN for the governed trigger queue (same queue the producer enqueues into).
+DISPATCH_DSN_ENV = "AGENT_RUNTIME_DISPATCH_DSN"
+
+# input_hash -> run_id actually minted by the processor for that job. The dispatcher
+# discards the processor's return value, so a completed intake row can only be acked
+# with the real run id if the processor publishes it here. A missing entry means the
+# job never ran: the row is left leased to expire rather than acked with an invented id.
+_RUN_IDS: dict[str, str] = {}
+
 
 # ---------------------------------------------------------------------------
 # Model providers (per agent)
@@ -214,6 +223,7 @@ def _make_agent_processor(
 
     def _process(job: JobRequest) -> dict[str, Any]:
         run_id = f"{agent_id}-{uuid.uuid4().hex[:12]}"
+        _RUN_IDS[job.input_hash] = run_id
         objective = f"{agent_id}:{job.job_type} — {job.trigger_kind or 'scheduled'}"
         # retrieval-before-reasoning
         try:
@@ -420,6 +430,102 @@ def job_source(agent_id: str, limit: int = 8) -> Sequence[Any]:
             pass
 
     return jobs[:limit]
+
+
+def _intake_store():
+    """The governed trigger queue, or None when no writer DSN is configured."""
+    dsn = os.environ.get(DISPATCH_DSN_ENV, "").strip()
+    if not dsn:
+        return None
+    import importlib
+
+    psycopg2 = importlib.import_module("psycopg2")
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from agent_runtime.trigger_intake import PostgresTriggerIntakeStore
+
+    def factory():
+        conn = psycopg2.connect(dsn)
+        conn.autocommit = False
+        return conn
+
+    return PostgresTriggerIntakeStore(factory)
+
+
+def job_source_with_acks(agent_id: str, limit: int = 8, *, store: Any = None):
+    """Lease governed trigger_intake rows and return ``(jobs, ack)``.
+
+    The producer has written this queue since July; nothing has ever leased it, so every
+    row aged past stale_input_seconds into REFUSED_STALE and each agent sat at
+    max_queue_depth, which stopped the producer from enqueueing anything new.
+
+    JobRequest.enqueued_at carries the row's REAL source timestamp. A runner must never
+    restamp old evidence as ``now`` to walk it past the dispatcher's staleness gate: an
+    input that is genuinely stale has to be refused as stale.
+    """
+    sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from agent_runtime.agents.dispatcher import JobRequest
+
+    _RUN_IDS.clear()
+    if store is None:
+        store = _intake_store()
+    jobs: list[JobRequest] = []
+    by_hash: dict[str, str] = {}
+
+    if store is not None:
+        try:
+            store.return_expired_leases()
+        except Exception:
+            pass
+        try:
+            rows = store.lease(
+                agent_id, limit=limit, lease_owner=f"runner:{agent_id}:{os.getpid()}")
+        except Exception:
+            rows = []
+        for row in rows:
+            jobs.append(JobRequest(
+                agent_id=agent_id,
+                job_type=row.job_type,
+                input_hash=row.payload_hash,
+                enqueued_at=row.source_timestamp or row.enqueued_at,
+                dedup_value=row.dedup_key,
+                trigger_kind=row.trigger_kind,
+            ))
+            by_hash[row.payload_hash] = row.intake_id
+
+    if len(jobs) < limit:
+        for job in job_source(agent_id, limit - len(jobs)):
+            if job.input_hash in by_hash:
+                continue
+            jobs.append(job)
+
+    def ack(results: Sequence[Any]) -> dict[str, Any]:
+        if store is None or not by_hash:
+            return {"leased": len(by_hash), "acked": 0}
+        counts: dict[str, int] = {}
+        for res in results:
+            intake_id = by_hash.get(getattr(res, "input_hash", ""))
+            if not intake_id:
+                continue
+            outcome = getattr(getattr(res, "outcome", ""), "value", str(getattr(res, "outcome", "")))
+            detail = str(getattr(res, "detail", ""))
+            try:
+                if outcome == "COMPLETED":
+                    run_id = _RUN_IDS.get(res.input_hash)
+                    if not run_id:
+                        continue  # no real run id: let the lease expire and be retried
+                    store.ack_completed(intake_id, run_id=run_id)
+                elif outcome == "REFUSED_STALE":
+                    store.ack_refused_stale(intake_id, detail=detail or "REFUSED_STALE")
+                elif outcome in ("FAILED", "CIRCUIT_OPEN"):
+                    store.ack_failed(intake_id, detail=f"{outcome}: {detail}"[:300])
+                else:
+                    continue  # capacity / cancelled / wrong-agent: lease expires, row requeues
+            except Exception:
+                continue
+            counts[outcome] = counts.get(outcome, 0) + 1
+        return {"leased": len(by_hash), "acked": sum(counts.values()), "by_outcome": counts}
+
+    return jobs, ack
 
 
 # ---------------------------------------------------------------------------
