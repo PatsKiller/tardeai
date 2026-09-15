@@ -87,7 +87,7 @@ Suppression only — `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md`.
 - No duplicated WHAT CHANGED / WHY prose.
 - No mid-word or mid-sentence truncation.
 - No raw internal path, raw token, raw auth URL, or debug payload.
-- `parse_mode=None` (plain text) or one rigorously escaped format.
+- `parse_mode=None` (plain text) or one rigorously escaped format. Rich alerts use HTML built by `lib/telegram_rich` and desk answers HTML from `lib/telegram_desk_render`; nothing else hand-writes markup.
 
 ## Sentence-safe length budgeting
 
@@ -95,6 +95,35 @@ Build the concise content first. If a field must be shortened, use
 sentence-safe truncation at a word boundary (never `(Re-`), bullet-safe
 truncation, or `max N symbols + "+X more"`. The renderer uses
 `_sentence_truncate()` which cuts at word boundaries and appends `…`.
+
+## Length: parts, never truncation (2026-09-14)
+
+- **The limit is 4,096 UTF-16 units**, not characters; an emoji counts as 2. `telegram_transport.split_for_telegram` measures that way.
+- **A long body is sent as ordered parts.** The first part replies to the question, the keyboard rides on the last, and the send is `ok` only if every part is accepted.
+- **Desk answers split at paragraph breaks** and say "Part i of N" (`render_desk_reply`, 3,800-unit budget per part).
+- **A body is never cut to fit.** The old `text[:4000]` in the CIO transport is gone.
+- *Cause: the 13:47 AXTI answer (4,571 characters) was refused twice with HTTP 400 and logged as replied.* Operator: "If it needs to be broken up across three or four messages, then do so."
+- **An undelivered reply is a finding:** `REPLY_NOT_DELIVERED`, i.e. an agent turn with a NULL `message_id`.
+
+## Rich layout (Telegram Bot API, 2026-09-14)
+
+One layout for GO alerts, entry alerts, material-change notices and desk answers: `lib/telegram_rich.RichMessage.render()` returns `text`, `parse_mode="HTML"`, `reply_markup` and `link_preview_options`.
+
+| Part | Rule |
+|---|---|
+| Title | Bold, one leading marker emoji (colour comes from the emoji; Telegram has no text colour) |
+| Ticker | Bold and linked to `/v3/watch/intelligence/<SYMBOL>`, with Finviz and Yahoo links. **Symbols come from the producer, never guessed from text** |
+| Numbers | One line of key figures |
+| Why | `<blockquote>` |
+| Evidence | `<blockquote expandable>`, trimmed first when the body nears the limit |
+| Sources | Real links; only absolute `https` URLs survive |
+| Buttons | Up to 3 URL buttons: Command Center, Finviz, Yahoo |
+| Chart | Finviz daily candles as the link preview, `prefer_large_media`, shown above the text |
+| Footer | Pills plus `READ_ONLY_ADVISORY`, italic |
+
+- **Provenance on desk answers** is one plain footer line plus an expandable source list. *Cause: a raw provenance tail read as "Gibberish".*
+- **A refused HTML send is retried once as plain text with the tags stripped** (`html_to_plain`), keeping link addresses.
+- **`TELEGRAM_RICH_ALERTS=0`** reverts GO, entry and material-change alerts to their plain text without a deploy.
 
 ## Action-button discipline
 

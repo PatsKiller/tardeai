@@ -116,6 +116,37 @@ MATURITY_IMPACT: the CIO Hermes research queue has a monitor, heals itself, and 
   - Advice still refuses.
 - **Dead auto-fix.** The escalation handler's retries exited 127 36,365 times; the doubled interpreter path is fixed.
 
+## 2026-09-14 — Lane registry declares the research scheduler (PR #1017)
+
+MATURITY_IMPACT: the research scheduler's crontab lines are declared lanes with an output signal, not inherited baseline strings. The policy document states the $2.00/day cap. Execution posture UNCHANGED.
+
+- **Why.** The cap consolidation changed the inline `LLM_GLOBAL_DAILY_USD_CAP` on four `research_scheduler.py` lines from 0.50 to 2.00. Those lines were matched only by exact baseline strings, so `check_lane_registry --fail-on-new` reported 4 NEW.
+- **Lanes.** Holdings, hourly priority, watchlist and incubator, all with `output_signal` `data/cio/research_trigger_ledger.jsonl`. The 5 stale 0.50 baseline strings were removed.
+- **Policy.** AGENTS.md §12 now states `LLM_GLOBAL_DAILY_USD_CAP = 2.00`, with the operator quote. `test_agents_policy_v1` pins the cap in the registry text.
+
+## 2026-09-14 — Long desk answers arrive as readable parts; an undelivered reply is reported (PR #1016)
+
+MATURITY_IMPACT: a desk answer longer than Telegram's limit reaches the operator in ordered parts instead of silently failing. A reply Telegram refused is logged and reported. Execution posture UNCHANGED.
+
+- **Why.** The 13:47 AXTI answer (4,571 characters, 4,702 UTF-16 units) was refused twice (HTTP 400), and the poller logged "replied". Operator: "If it needs to be broken up across three or four messages, then do so."
+- **Transport.** `split_for_telegram` splits by UTF-16 units, and `send_message` sends ordered parts: reply-to on the first, keyboard on the last, `ok` only if every part is accepted. The CIO transport no longer cuts at 4,000.
+- **Desk render.** `telegram_desk_render.render_desk_reply` sends HTML parts cut at paragraph breaks ("Part i of N"), with one plain footer and the source list in an expandable quote. This answers the operator's "Gibberish" verdict on a raw provenance tail.
+- **Delivery.** `maybe_answer` records `delivered` and `delivery_status`, and the poller logs `reply NOT delivered`.
+
+## 2026-09-14 — Research Escalation Circle, phase 1 (PR #1012)
+
+MATURITY_IMPACT: an operator research question can be run through scored, bounded research laps with a grounded verdict and an automatic check-in. The circle is a dry-run tool, not yet wired to the desk. Execution posture UNCHANGED.
+
+- **Why.** The operator asked for every channel to be used, with "some intelligence" that decides whether an answer suffices, climbs to the next channel, and checks back. None of that existed.
+- **Built.**
+  - `lib/research_circle.py`: question GUID; free channels (house dossier, Yahoo with computed daily-bar levels and volume streak, SEC Form 4, SearXNG).
+  - A deterministic score and a DeepSeek Flash verdict that is rejected when it cites unknown evidence or calls a lap sufficient below 40.
+  - Up to 2 laps; a lap with nothing new stops. Check-in planning.
+  - Runner `scripts/run_research_circle.py` (dry run by default). 17 tests. `docs/RESEARCH_CIRCLE.md`.
+- **Measured.**
+  - **HPE:** 2 laps, 31 items, partial, check-in in 3 days. The analyzer noted volume at 0.83× its 3-month average, which contradicted the question's premise.
+  - **ELMT:** 1 lap, sufficient.
+
 ## 2026-09-14 — A repeated alert is recorded as a new communication
 
 MATURITY_IMPACT: the Communications page records every send, not only the first alert that opened a given way. Execution posture UNCHANGED.

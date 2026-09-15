@@ -146,11 +146,11 @@ classified `thesis_update`). No-change refreshes store silently (audit), no aler
 
 | When (M–F) | Run | Scope |
 |------------|-----|-------|
-| 08:00, 12:30, 16:30 | `research_scheduler --mode holdings --apply` | T0-HOLD, full fleet, diff→card+desk |
-| hourly 10–16 | `research_scheduler --mode priority --apply` | T0/T1 due + catalyst, external-budgeted |
-| 20:30 | `research_scheduler --mode watchlist --apply` | T1 refresh sweep |
-| 10:00 | `research_scheduler --mode cold-floor --apply` | rotating T3 floor (retargeted off 02:00 Peak B; PEAK_SKIP wrapped) |
-| Sun | `research_scheduler --mode incubator --apply` | T2 sweep |
+| 09:05 (was 08:00 until 2026-09-14) | `research_scheduler --mode holdings --apply --budget 70` | T0-HOLD, full fleet, diff→card+desk |
+| hourly 10–16 | `research_scheduler --mode priority --apply --budget 40` | T0/T1 due + catalyst, external-budgeted |
+| 20:30 | `research_scheduler --mode watchlist --apply --budget 50` | T1 refresh sweep |
+| — | `--mode cold-floor` | **retired 2026-08-22**; T3 gets DeepSeek only on a catalyst |
+| Sun 19:00 | `research_scheduler --mode incubator --apply --budget 30` | T2 sweep |
 | US overnight 22:00–06:00 ET | **policy:** deterministic + ChatGPT OAuth (`:8646`) | **live timer still China-night gemma3:27b** (empty `RESULT: {}`). Alarm lane `overnight-deep` covers both. |
 | every 15 min | `research_lane_health.py --alert` | RAW `hermes_external_research` + overnight-deep; `[ERROR]` rows count |
 | (existing) ATP2 cycles, topic synth, news/finviz, catalyst | subject-level lanes | topics/sources/events feeding the catalyst signal |
@@ -159,9 +159,30 @@ classified `thesis_update`). No-change refreshes store silently (audit), no aler
 from an outage (e.g. the 12-day ChatGPT lapse). All tier sizes, SLAs, budgets are env-tunable
 (`RESEARCH_*`) so "X times in Y days" can be dialed per tier without code changes.
 
+Schedules above were measured from the live crontab on 2026-09-14. Scheduled paid work follows the operator's window (AGENTS.md §12): weekdays 09:00–21:00 ET or weekends, never inside DeepSeek's billing peak.
+
 ## 8. Guardrails
 
 - Advisory only — research feeds the watchlist/card/desk evidence, never live execution (separately gated).
 - External lanes are redaction-safe (`safe_context`: no $/account/positions/secrets).
 - Local lanes idempotent (no double-queue); externals budgeted (no exhaustion); claude never auto (no
   metered spend in sweeps).
+
+## 9. What starts research, what escalates it, and what watches it (2026-09-14)
+
+**Six mechanisms run side by side:**
+1. **The scheduled sweep** (§1–§7).
+2. **Event triggers inside it** (`research_event_trigger.py`): 18 event types, with a 6-hour dwell that suppresses repeats.
+3. **Material change → due-diligence questions** (`material_change_detector.py` → `notify_material_change.py` → `due_diligence_questions.py`). Detection is free; one model call per change writes the questions, which are routed to research.
+4. **Operator desk questions** (`gap_resolver`): a fixed per-domain chain, where Hermes is the step that does real work. The result is joined back to the pending question.
+5. **The Hermes scope governor** (S0–S3 watch depth).
+6. **The background Hermes fleet.**
+
+**Quality-based escalation** (score what came back, climb, check back later) is the **Research Escalation Circle**: `docs/RESEARCH_CIRCLE.md`. Phase 1 is built and not wired. The measured escalation paths are in `docs/architecture/RESEARCH_ESCALATION_2026-09-14.md`.
+
+**The heartbeat.** The CIO Hermes research queue is monitored by lane `cio-hermes-queue` (failure rate, no completions, stalled queue, lost requests). It heals itself (restore lost requests, replay retryable failures) and feeds the Health Agent (`docs/HEALTH_AGENT.md`, Research heartbeat). All research paid calls go through the governed bridge, so a bridge stall shows up here first (`docs/architecture/GOVERNED_MODEL_BRIDGE.md` §8).
+
+**Known gaps (2026-09-14):**
+- Due-diligence questions never reach an answered state.
+- The desk gap resolver runs with `GAP_RESOLVER_LIVE` unset.
+- The circle is not wired to the desk.

@@ -158,8 +158,11 @@ def test_a_lap_that_finds_nothing_new_ends_without_a_model_call(tmp_path):
 
 def test_a_lap_writes_the_lifecycle_only_when_applied(tmp_path):
     ledger = rc.Ledger(tmp_path / "ledger.jsonl", tmp_path / "checkins.jsonl", apply=False)
-    ev = [_ev("quote", "trade_ai:ticker_prices", "HPE close $55.96", value=55.96, channel="house"),
-          _ev("quote", "yahoo", "HPE last $56.05", value=56.05)]
+    # run_lap reads the real clock, so this evidence is dated from it: a fixed 2026-09-14 date went stale at UTC
+    # midnight, the lap no longer stood, and SCHEDULED was never written (CI 2026-09-15 00:23Z).
+    fresh = datetime.now(timezone.utc).isoformat()
+    ev = [_ev("quote", "trade_ai:ticker_prices", "HPE close $55.96", as_of=fresh, value=55.96, channel="house"),
+          _ev("quote", "yahoo", "HPE last $56.05", as_of=fresh, value=56.05)]
     res = rc.run_lap("what is HPE price right now", chat_id="42", message_id="7", symbols=["HPE"], subject_guids={},
                      channels={"all": lambda: ev, "broken": lambda: (_ for _ in ()).throw(RuntimeError("down"))},
                      ledger=ledger)
