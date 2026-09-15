@@ -111,7 +111,7 @@ def fix_hint(row: dict) -> str:
         )
     if lane == "overnight-deep":
         return (
-            "Overnight: OnCalendar 22–05:35 ET, ExecStart --model chatgpt --apply "
+            "Overnight: OnCalendar 22–05:35 ET, ExecStart --model chatgpt (ChatGPT OAuth) --apply "
             "since 2026-08-22 13:20. First US window 22:35 ET 2026-08-22. "
             "Last deep_research_local row 2026-08-20 Flash (two days, not three months). "
             "If 22:35 writes zero non-error rows or still gemma, retarget failed."
