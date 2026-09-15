@@ -555,19 +555,27 @@ def price_excursions(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
                -- close_price = close_price.
                AND close_price IS NOT NULL AND close_price <> 'NaN'::numeric
         ), m AS (
-            SELECT symbol, price_date,
-                   abs(close_price - prev) / nullif(prev, 0) * 100.0 AS move_pct
+            SELECT symbol, price_date, close_price,
+                   abs(close_price - prev) / nullif(prev, 0) * 100.0 AS move_pct,
+                   -- 2026-09-15: keep the sign. The notice said "UZX moved 21%" for a fall, because only
+                   -- the absolute move reached it.
+                   (close_price - prev) / nullif(prev, 0) * 100.0 AS signed_move_pct
               FROM d WHERE prev IS NOT NULL AND prev <> 0
         )
         SELECT symbol,
                count(*)                                   AS n,
                avg(move_pct)                              AS baseline,
                (array_agg(move_pct ORDER BY price_date DESC))[1] AS latest_move,
-               (array_agg(price_date ORDER BY price_date DESC))[1] AS latest_date
+               (array_agg(price_date ORDER BY price_date DESC))[1] AS latest_date,
+               (array_agg(signed_move_pct ORDER BY price_date DESC))[1] AS latest_signed,
+               (array_agg(close_price ORDER BY price_date DESC))[1] AS latest_close
           FROM m GROUP BY symbol
         """, (list(syms), BASELINE_DAYS))
 
-    for sym, n, baseline, latest, latest_date in cur.fetchall():
+    signed_by_sym: dict[str, tuple] = {}
+    for row in cur.fetchall():
+        sym, n, baseline, latest, latest_date = row[:5]
+        signed_by_sym[sym] = tuple(row[5:7]) if len(row) >= 7 else (None, None)
         if n is None or n < MIN_OBS or not baseline or float(baseline) <= 0:
             stats["not_evaluable"] += 1
             continue
@@ -616,6 +624,10 @@ def price_excursions(cur, syms: dict[str, str]) -> tuple[list[dict], dict]:
             "universe_reason": "+".join(syms[sym]["reasons"]),
             "precedence": syms[sym]["precedence"],
             "evidence": {"source": "ticker_prices", "observations": int(n),
+                         "move_pct_signed": (round(float(signed_by_sym[sym][0]), 4)
+                                             if signed_by_sym.get(sym, (None,))[0] is not None else None),
+                         "close": (float(signed_by_sym[sym][1])
+                                   if signed_by_sym.get(sym, (None, None))[1] is not None else None),
                          "baseline_days": BASELINE_DAYS,
                          "independent_pct": independent.get(sym),
                          "note": "close-to-close average daily move; ticker_prices "

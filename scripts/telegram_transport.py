@@ -196,7 +196,10 @@ def unescape_markdown(text: str) -> str:
 
 
 _HTML_TAG = _re_html.compile(r"</?(?:b|i|u|s|code|pre|a)\b[^>]*>")
-_MD_EMPHASIS = _re_html.compile(r"(?:\*\w|_\w|`)")
+# An underscore only opens Markdown emphasis at a word boundary. 2026-09-15: every rich GO / entry alert
+# ended with READ_ONLY_ADVISORY, whose inner underscores matched `_\w`, so the HTML body was sent as
+# Markdown -- the operator saw <b> <a href> <blockquote> tags and READ*ONLY*ADVISORY.
+_MD_EMPHASIS = _re_html.compile(r"(?:\*\w|(?<!\w)_\w|`)")
 
 
 def parse_mode_for(text: str, default: str | None = "Markdown") -> str | None:

@@ -2634,6 +2634,41 @@ def _effective_job_limit(explicit_limit: int) -> int:
     return explicit_limit
 
 
+# 2026-09-15: a capped or circuit-open LLM call is a timing problem, not a verdict on the symbol.
+# Marking those jobs failed (205 global-cap, 89 input-limit, 37 circuit-open failures in the runner
+# log since 09-08) left 89 of 151 active symbols at maturity 'failed' ("Missing: steph, risk") with
+# nothing to ever retry them. Retryable classes are deferred with a tagged note and re-queued
+# after their delay, up to a per-class attempt ceiling.
+LLM_RETRY_POLICY = {
+    "COST_CAP_EXCEEDED": ("cost_cap", 120, 3),
+    "CIRCUIT_OPEN": ("circuit_open", 20, 3),
+    "INPUT_LIMIT_EXCEEDED": ("input_limit", 360, 1),
+}
+
+
+def classify_llm_failure(raw: str | None, note: str | None) -> dict:
+    """{'retry': bool, 'tag', 'delay_minutes', 'attempt'} for a failed agent LLM response."""
+    text = str(raw or "")
+    prior = str(note or "").count("[retry:")
+    for marker, (tag, delay, ceiling) in LLM_RETRY_POLICY.items():
+        if marker in text:
+            tagged = str(note or "").count(f"[retry:{tag}#")
+            return {"retry": tagged < ceiling, "tag": tag, "delay_minutes": delay, "attempt": prior + 1}
+    return {"retry": False, "tag": None, "delay_minutes": None, "attempt": prior + 1}
+
+
+def requeue_deferred_llm_retries(cur) -> list:
+    """Re-queue deferred retryable jobs whose delay has passed. Returns the re-queued ids."""
+    cur.execute("""UPDATE watchlist_agent_jobs
+                      SET status='queued', started_at=NULL, completed_at=NULL
+                    WHERE status='deferred'
+                      AND ((note LIKE '%%[retry:cost_cap#%%' AND completed_at < now() - interval '120 minutes')
+                        OR (note LIKE '%%[retry:circuit_open#%%' AND completed_at < now() - interval '20 minutes')
+                        OR (note LIKE '%%[retry:input_limit#%%' AND completed_at < now() - interval '360 minutes'))
+                    RETURNING id""")
+    return cur.fetchall()
+
+
 def process_jobs(limit: int = 10):
     conn = _get_conn()
     cur = conn.cursor()
@@ -2653,6 +2688,9 @@ def process_jobs(limit: int = 10):
     # They have no started_at (not in-flight), so adopting them is always safe.
     cur.execute("UPDATE watchlist_agent_jobs SET status='queued' WHERE status='pending' RETURNING id")
     adopted = cur.fetchall()
+    retried = requeue_deferred_llm_retries(cur)
+    if retried:
+        print(f"[watchlist-agent] Re-queued {len(retried)} deferred LLM-retry jobs (cap/circuit/input window passed)")
     conn.commit()
     if reaped:
         print(f"[watchlist-agent] Reaped {len(reaped)} orphaned 'processing' jobs → requeued")
@@ -2819,6 +2857,18 @@ def process_jobs(limit: int = 10):
         conn = _refresh_conn(conn)
         cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
+        retry = classify_llm_failure(raw, job.get("note")) if (not raw or raw.startswith("LLM error")) else None
+        if retry and retry["retry"]:
+            cur.execute("UPDATE watchlist_agent_jobs SET status='deferred', completed_at=now(), "
+                        "note=COALESCE(note,'') || %s WHERE id=%s",
+                        (f" [retry:{retry['tag']}#{retry['attempt']}]", job_id))
+            cur.execute("UPDATE watchlist_items SET status='active', updated_at=now() WHERE symbol=%s AND status='queued'", (symbol,))
+            _update_maturity(conn, symbol, agent, "pending")
+            cur.execute("INSERT INTO watchlist_events (event_type, symbol, agent, status, message) VALUES ('deferred', %s, %s, 'deferred', %s)",
+                        (symbol, agent, f"Deferred ({retry['tag']}, retry in {retry['delay_minutes']}m): {(raw or '')[:120]}"))
+            conn.commit()
+            print(f"  ↻ {symbol} ({agent}): DEFERRED {retry['tag']} — retry in {retry['delay_minutes']}m")
+            continue
         if not raw or raw.startswith("LLM error"):
             cur.execute("UPDATE watchlist_agent_jobs SET status='failed', completed_at=now() WHERE id=%s", (job_id,))
             cur.execute("UPDATE watchlist_items SET status='active', updated_at=now() WHERE symbol=%s AND status='queued'", (symbol,))

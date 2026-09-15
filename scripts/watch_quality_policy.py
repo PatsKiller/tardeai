@@ -17,6 +17,11 @@ import math
 from pathlib import Path
 from typing import Any
 
+try:
+    from lib.market_cap_label import cap_label
+except ImportError:  # imported as scripts.watch_quality_policy
+    from scripts.lib.market_cap_label import cap_label
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 POLICY_PATH = PROJECT_ROOT / "config" / "watch_quality_policy.json"
 
@@ -78,6 +83,7 @@ MIN_PRICE = float(THRESHOLDS["min_price_usd"])
 MIN_FLOAT_M = float(THRESHOLDS["min_float_millions"])
 MIN_MARKET_CAP_M = float(THRESHOLDS["min_market_cap_usd_millions"])
 PREFERRED_MARKET_CAP_M = float(THRESHOLDS["preferred_market_cap_usd_millions"])
+SMALL_CAPS_ADMITTED_WITH_LABEL = bool(POLICY.get("small_caps_admitted_with_label", False))
 EXTREME_ATR_PCT = float(THRESHOLDS["extreme_atr_pct"])
 HIGH_ATR_PCT = float(THRESHOLDS["preferred_max_atr_pct"])
 EXTREME_PS = float(THRESHOLDS["extreme_preprofit_ps"])
@@ -137,10 +143,12 @@ def evaluate_admission(
     reasons: list[str] = []
     warnings: list[str] = []
     hard: list[str] = []
+    labels: list[str] = []
 
     price = _num(facts.get("live_price")) or _num(facts.get("enriched_price"))
     float_m = _num(facts.get("float_m")) or _num(fundamentals.get("shares_outstanding_m"))
     market_cap_m = _num(fundamentals.get("market_cap_usd_millions"))
+    cap = cap_label(market_cap_m)
     atr = _num(facts.get("atr"))
     atr_pct = (100.0 * atr / price) if atr is not None and price not in (None, 0) else None
     rvol = _num(facts.get("rvol"))
@@ -167,10 +175,18 @@ def evaluate_admission(
         ):
             warnings.append("float is unavailable for a lower-priced or smaller company")
 
-        if market_cap_m is not None and market_cap_m < MIN_MARKET_CAP_M:
-            hard.append(f"market cap ${market_cap_m:.0f}M is below the ${MIN_MARKET_CAP_M:.0f}M quality floor")
-        elif market_cap_m is None:
+        # Operator decision 2026-09-15: small caps are in scope and are LABELED, not refused. A cap
+        # below the old $500M floor (or the $1B preferred tier) no longer quarantines or demotes the
+        # name; it carries a market-cap label (SMALL_CAP / MICRO_CAP / NANO_CAP) everywhere it is
+        # shown. Price, float, volatility, thesis and freshness gates are unchanged. A missing cap is
+        # still a data gap.
+        if market_cap_m is None:
             warnings.append("market capitalization unavailable")
+        elif SMALL_CAPS_ADMITTED_WITH_LABEL:
+            if cap["is_small"]:
+                labels.append(f"{cap['text']} (${market_cap_m:.0f}M)")
+        elif market_cap_m < MIN_MARKET_CAP_M:
+            hard.append(f"market cap ${market_cap_m:.0f}M is below the ${MIN_MARKET_CAP_M:.0f}M quality floor")
         elif market_cap_m < PREFERRED_MARKET_CAP_M:
             warnings.append(f"market cap ${market_cap_m:.0f}M is below the preferred ${PREFERRED_MARKET_CAP_M:.0f}M tier")
 
@@ -233,6 +249,9 @@ def evaluate_admission(
         "reasons": reasons,
         "hard_failures": hard,
         "warnings": warnings,
+        "labels": labels,
+        "market_cap_label": cap["code"],
+        "market_cap_label_text": cap["text"],
         "facts_used": {
             "price": price,
             "float_m": float_m,

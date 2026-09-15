@@ -29,5 +29,7 @@
     "analyst_ratings_gate_admission": false,
     "hermes_rank_gates_admission": false,
     "paid_review_may_override": false
-  }
+  },
+  "small_caps_admitted_with_label": true,
+  "small_cap_policy": "operator decision 2026-09-15: small caps are in scope; a market cap below the $500M floor or the $1B preferred tier is labeled SMALL_CAP / MICRO_CAP / NANO_CAP instead of quarantined or demoted. Price, float, volatility, thesis and freshness gates are unchanged."
 }

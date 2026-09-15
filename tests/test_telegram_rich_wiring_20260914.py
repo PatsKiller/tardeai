@@ -171,7 +171,7 @@ def test_go_alert_sends_the_rich_layout_with_buttons_and_chart(monkeypatch):
     assert "<b>" in text and "/v3/watch/intelligence/ARMP" in text and "&amp; label" in text
     assert CHART in kw["link_preview_options"]["url"]
     assert kw["reply_markup"]["inline_keyboard"][0][0]["url"].endswith("/v3/watch/intelligence/ARMP")
-    assert "READ_ONLY_ADVISORY" in text
+    assert "READ_ONLY_ADVISORY" not in text and _fresh_transport().parse_mode_for(text) == "HTML"
 
 
 def test_go_alert_falls_back_to_plain_text_when_rich_is_off(monkeypatch):
