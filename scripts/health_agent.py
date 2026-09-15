@@ -3329,7 +3329,85 @@ def collect_store_consistency() -> list[dict]:
         return []
 
 
+VERDICTS_LOG = PROJECT_ROOT / "data" / "cio" / "cio_governed_verdicts.jsonl"
+REENTRY_DESK = PROJECT_ROOT / "data" / "runtime" / "reentry_decision_desk_latest.json"
+
+
+def verdict_store_finding(entries: list[dict], desk_rows: list[dict], *, min_run: int = 100) -> dict | None:
+    """E-04 (2026-09-15): a verdict store that stays empty while the desk shows names in zone.
+
+    cio_governed_verdicts.jsonl was 8,028 of 8,029 empty snapshots for weeks (R-07) and nobody
+    was told. Empty is legitimate when no desk name is in its entry zone; a long empty run while
+    names ARE in zone means the verdict writer lost its input again.
+    """
+    run = 0
+    for e in reversed(entries):
+        if e.get("verdicts"):
+            break
+        run += 1
+    in_zone = []
+    for r in desk_rows or []:
+        try:
+            lo, hi, px = float(r["entry_low"]), float(r["entry_high"]), float(r["price"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if lo <= px <= hi:
+            in_zone.append(str(r.get("symbol")))
+    if run >= min_run and in_zone:
+        return {"empty_run": run, "in_zone": in_zone}
+    return None
+
+
+def expire_on_arrival_finding(created: int, expired_within_1h: int, *, min_created: int = 10,
+                              max_share: float = 0.5) -> dict | None:
+    """E-05 (2026-09-15): proposals created and expired within the hour (the #1027 defect class)."""
+    if created >= min_created and expired_within_1h / max(created, 1) >= max_share:
+        return {"created": created, "expired_within_1h": expired_within_1h,
+                "share": round(expired_within_1h / created, 2)}
+    return None
+
+
+def collect_decision_store_integrity() -> list[dict]:
+    out: list[dict] = []
+    try:
+        entries = []
+        if VERDICTS_LOG.exists():
+            with VERDICTS_LOG.open("rb") as fh:
+                fh.seek(0, 2)
+                fh.seek(max(0, fh.tell() - 400_000))
+                for raw in fh.read().splitlines()[1:]:
+                    try:
+                        entries.append(json.loads(raw))
+                    except Exception:
+                        continue
+        desk = json.loads(REENTRY_DESK.read_text()) if REENTRY_DESK.exists() else {}
+        f = verdict_store_finding(entries, desk.get("rows") or [])
+        if f:
+            out.append(_f("intelligence_quality", "governed_verdicts_empty_while_desk_in_zone", "warning",
+                          f"CIO governed verdict store empty for the last {f['empty_run']} snapshots while "
+                          f"{len(f['in_zone'])} re-entry desk names are inside their entry zone "
+                          f"({', '.join(f['in_zone'][:6])}) — the verdict writer is not seeing the desk",
+                          **f))
+    except Exception as e:
+        out.append(_f("intelligence_quality", "collector_error", "info", f"verdict store check error: {e}"))
+    try:
+        r = _db("""SELECT COUNT(*) AS created,
+                          COUNT(*) FILTER (WHERE UPPER(status) = 'EXPIRED'
+                                             AND COALESCE(expired_at, updated_at) < created_at + interval '1 hour') AS expired_1h
+                   FROM paper_trade_proposals
+                   WHERE created_at > now() - interval '24 hours'""", fetch="one") or {}
+        f = expire_on_arrival_finding(int(r.get("created") or 0), int(r.get("expired_1h") or 0))
+        if f:
+            out.append(_f("execution_health", "proposals_expire_on_arrival", "warning",
+                          f"{f['expired_within_1h']} of {f['created']} proposals created in 24h expired within "
+                          f"an hour ({int(f['share'] * 100)}%) — entries are stale on arrival", **f))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info", f"proposal expiry check error: {e}"))
+    return out
+
+
 COLLECTORS = [
+    collect_decision_store_integrity,
     collect_store_consistency,
     collect_data_quality,
     collect_trade_ai_session,

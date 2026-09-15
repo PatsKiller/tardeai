@@ -1360,6 +1360,7 @@ GATES = [
             "tests/test_offpeak_drain_lock_wait_20260915.py",
             "tests/test_opportunity_queue_drained_state_20260915.py",
             "tests/test_research_lane_state_recovery_20260915.py",
+            "tests/test_health_decision_store_integrity_20260915.py",
         ],
     ),
     (
