@@ -155,6 +155,24 @@ def operator_send(text: str) -> dict:
         return {"operator": False, "operator_error": f"{type(exc).__name__}: {str(exc)[:120]}"}
 
 
+def alert_worthy(actionable: list[dict], prior: dict, done: set) -> list[dict]:
+    """Page only on a move TOWARD a buy, once per symbol, state and day.
+
+    On 2026-09-15 at 12:40, RTX and BZFD fell from BUY_READY back to ENTRY_NEAR, a price step out of
+    the zone, and the operator got a second "getting close" for names already paged BUY READY at
+    12:30. A downgrade is not news, and ENTRY_NEAR after a same-day BUY_READY alert is not either.
+    """
+    out = []
+    for r in actionable:
+        if ces.transition_key(r) in done:
+            continue
+        if r["state"] == "ENTRY_NEAR" and (prior.get(r["symbol"]) == "BUY_READY"
+                                           or ces.transition_key({**r, "state": "BUY_READY"}) in done):
+            continue
+        out.append(r)
+    return out
+
+
 def send_alerts(result: dict, evidence: dict) -> dict:
     out = {"cio_desk": False, "cio_bus": False}
     out.update(operator_send(ces.render_operator(result, evidence)))
@@ -162,7 +180,12 @@ def send_alerts(result: dict, evidence: dict) -> dict:
         from scripts.lib.cio_telegram_transport import send_cio_message
         r = send_cio_message(ces.render_cio(result, evidence), subject=f"Entry state {result['symbol']}",
                              kind="cio_advisory", dedupe_key=ces.transition_key(result))
-        out["cio_desk"] = bool((r or {}).get("sent") or (r or {}).get("ok"))
+        # send_cio_message returns {"delivered": bool, "reason": str, "deduped": bool, ...}. Reading
+        # "sent"/"ok" recorded every desk message as failed on the first live run (2026-09-15 12:30).
+        r = r or {}
+        out["cio_desk"] = bool(r.get("delivered"))
+        if not out["cio_desk"]:
+            out["cio_desk_reason"] = "deduped" if r.get("deduped") else (r.get("reason") or "not delivered")
     except Exception as exc:
         out["cio_desk_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
     try:
@@ -201,8 +224,9 @@ def main() -> int:
     actionable = sorted((r for r in results.values() if r["state"] in ces.ACTIONABLE),
                         key=lambda r: (0 if r["state"] == "BUY_READY" else 1, abs(r["distance_pct"] or 0)))
     keys = [ces.transition_key(r) for r in actionable]
-    done = alerted_today(cur, keys) if (a.apply and keys) else set()
-    pending = [r for r in actionable if ces.transition_key(r) not in done]
+    buy_keys = [ces.transition_key({**r, "state": "BUY_READY"}) for r in actionable if r["state"] == "ENTRY_NEAR"]
+    done = alerted_today(cur, keys + buy_keys) if (a.apply and keys) else set()
+    pending = alert_worthy(actionable, prior, done)
     to_alert = pending[: max(0, a.max_alerts)]
     digest = pending[max(0, a.max_alerts):]
     sent = []

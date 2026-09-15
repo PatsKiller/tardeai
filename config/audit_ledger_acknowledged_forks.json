@@ -10,7 +10,7 @@
       "follows_event_hash": "690ef0e228feebfbbe56d759b0e2a87383e62d5427bd419521eb80a759f5df4c",
       "follows_event_line": 1557,
       "cause": "served-copy split: the release copy and the dev-tree copy of data/runtime/audit_ledger/events.jsonl were written independently from line 1522 (2026-08-26) until scripts/reconcile_served_copy_split.py merged them into persistent-state on 2026-09-13 16:03 ET. Lines 1523-1557 are the served branch, lines 1558-1593 the dev branch. Each branch verifies on its own.",
-      "evidence": "/home/johnclaw/trade-ai-releases/archive/served_copy_split_20260913/{served,dev}/runtime/audit_ledger/events.jsonl (dev copy: 1558 rows, 0 breaks)",
+      "evidence": "The Phase 1 reconcile archive written by scripts/reconcile_served_copy_split.py on 2026-09-13 holds both pre-merge copies of events.jsonl (dev copy: 1558 rows, 0 breaks). The path is deliberately not written here: a repo file naming the archive trips check_served_copy_split.py's archive tripwire.",
       "acknowledged_at": "2026-09-15",
       "acknowledged_by": "chief-architect remediation R-01 (operator instruction 2026-09-15: fix everything)"
     }

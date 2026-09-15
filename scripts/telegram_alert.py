@@ -34,7 +34,10 @@ def _env(k: str, default: str = "") -> str:
     return os.getenv(k, default).strip()
 
 def _enabled() -> bool:
-    return _env("ENABLE_TELEGRAM", "true").lower() == "true"
+    # "1"/"yes"/"on" are on too. ~/.config/tradeai/cio-operator-live.env sets ENABLE_TELEGRAM=1, and a
+    # cron line that loaded it silently turned off every operator alert (2026-09-15 12:40, CIO entry
+    # state: 9 sends returned False with no error).
+    return _env("ENABLE_TELEGRAM", "true").strip().lower() in {"true", "1", "yes", "on"}
 
 def _token() -> str:
     return _env("TELEGRAM_BOT_TOKEN")

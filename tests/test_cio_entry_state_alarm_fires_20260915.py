@@ -33,7 +33,7 @@ def _evidence(**kw):
 def _runner(monkeypatch):
     sent_cio, emitted = [], []
     monkeypatch.setitem(sys.modules, "scripts.lib.cio_telegram_transport", types.SimpleNamespace(
-        send_cio_message=lambda text, **kw: sent_cio.append((text, kw)) or {"sent": True}))
+        send_cio_message=lambda text, **kw: sent_cio.append((text, kw)) or {"delivered": True, "reason": ""}))
 
     class _Bus:
         def emit(self, event_type, payload, **kw):
@@ -74,3 +74,28 @@ def test_a_transport_failure_is_reported_not_raised(monkeypatch):
     monkeypatch.setattr(TA, "send_telegram", _boom)
     out = runner.operator_send("🟢 CIO entry — BUY READY: ACHV")
     assert out["operator"] is False and "RuntimeError" in out["operator_error"]
+
+
+def test_an_undelivered_desk_message_records_the_transport_reason(alarm_capture, monkeypatch):
+    runner, _, _ = _runner(monkeypatch)
+    monkeypatch.setitem(sys.modules, "scripts.lib.cio_telegram_transport", types.SimpleNamespace(
+        send_cio_message=lambda text, **kw: {"delivered": False, "reason": "live_not_authorized", "deduped": False}))
+    e = _evidence()
+    out = runner.send_alerts(ces.evaluate(e, today=date(2026, 9, 15)), e)
+    assert out["cio_desk"] is False and out["cio_desk_reason"] == "live_not_authorized"
+
+
+def test_a_downgrade_from_buy_ready_does_not_page_again(monkeypatch):
+    runner, _, _ = _runner(monkeypatch)
+    near = ces.evaluate(_evidence(symbol="RTX", price=7.25), today=date(2026, 9, 15))
+    assert near["state"] == "ENTRY_NEAR"
+    assert runner.alert_worthy([near], {"RTX": "BUY_READY"}, set()) == []
+    buy_key = ces.transition_key({**near, "state": "BUY_READY"})
+    assert runner.alert_worthy([near], {"RTX": "NOT_YET"}, {buy_key}) == []
+
+
+def test_moving_up_toward_a_buy_still_pages_once(monkeypatch):
+    runner, _, _ = _runner(monkeypatch)
+    near = ces.evaluate(_evidence(symbol="HAS", price=7.25), today=date(2026, 9, 15))
+    assert runner.alert_worthy([near], {"HAS": "NOT_YET"}, set()) == [near]
+    assert runner.alert_worthy([near], {"HAS": "NOT_YET"}, {ces.transition_key(near)}) == []
