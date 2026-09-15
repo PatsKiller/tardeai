@@ -1332,6 +1332,14 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-15: hermes_subject_enhance and the directive service sat idle in transaction holding row
+        # locks; the directive service and Finviz screener writes failed on lock timeouts.
+        "watch_lock_holders",
+        [
+            "tests/test_watch_lock_holders_20260915.py",
+        ],
+    ),
+    (
         # 2026-09-14: promote left the dev tree, where cron and the units run, on the old commit, and a
         # refused fast-forward was reported as success.
         "deploy_ff_dev_tree",
