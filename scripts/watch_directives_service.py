@@ -236,6 +236,8 @@ def main():
               "promoted": 0, "staged": 0, "skipped_stale": 0, "stale_staging_discarded": 0,
               "critique_snapshot_at": critique_snap.get("updated_at"), "detail": []}
     _drain_orphan_staging(cur, dry, report)
+    if not dry:
+        c.commit()
     cur.execute("SELECT * FROM watch_directives WHERE status='active'")
     directives = cur.fetchall()
     report["directives"] = len(directives)
@@ -312,6 +314,12 @@ def main():
                 report["hermes_drained"] += 1
         if not dry:
             _wd.touch_watch_directive_serviced(cur, did, source="watch_directives_service")
+            # 2026-09-15: commit per directive. One transaction for the whole run held row locks on
+            # watch_directives and hermes_directive_hits_staging for minutes (idle in transaction
+            # while promote_directive_lead worked on its own connection), which is what made this
+            # service and the Finviz screener writes fail with "canceling statement due to lock
+            # timeout".
+            c.commit()
     # ── Two-way curation drain (CIO/advisory/defense → watchlist, forward edge) ──
     _drain_curation_sources(c, cur, dry, report, evaluate, _resolve)
     # Trend cold-detector (advisory): reconfirm / start-clock / auto-pause-on-cold
