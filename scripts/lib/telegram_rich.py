@@ -106,28 +106,36 @@ class RichMessage:
     chart_symbol: Optional[str] = None  # chart preview at the top
     pills: list[str] = field(default_factory=list)
     footer: Optional[str] = None
-    authority: str = AUTHORITY
+    authority: str = AUTHORITY  # kept on the payload for receipts; not printed to the operator
 
     def render(self) -> dict[str, Any]:
-        head = f"{self.marker + ' ' if self.marker else ''}<b>{esc(self.title)}</b>"
+        # 2026-09-15 operator review of GO alerts ("needs polishing"): one symbol -> the title itself links to
+        # Command Center and the buttons carry Command Center / Finviz / Yahoo, so no second line repeats the
+        # same three links; several symbols keep the per-symbol link line.
+        single = len(self.symbols) == 1
+        title_html = esc(self.title)
+        if single and safe_url(cc_symbol_url(self.symbols[0])):
+            title_html = link(self.title, cc_symbol_url(self.symbols[0]))
+        head = f"{self.marker + ' ' if self.marker else ''}<b>{title_html}</b>"
         parts = [head]
-        if self.symbols:
+        if self.symbols and not single:
             parts.append(" · ".join(symbol_links(s) for s in self.symbols[:3]))
         parts.extend(esc(f) for f in self.facts if f)
         if self.why:
             parts.append(f"<blockquote>{esc(self.why)}</blockquote>")
         tail: list[str] = []
+        button_urls = {url for _, url in self._buttons()}
         if self.sources:
-            srcs = [link(label, url) for label, url in self.sources if safe_url(url)]
+            srcs = [link(label, url) for label, url in self.sources if safe_url(url) and url not in button_urls]
             if srcs:
-                tail.append("Sources: " + " · ".join(srcs[:6]))
+                tail.append("Source: " + " · ".join(srcs[:6]))
         meta = [p for p in self.pills if p]
         if self.footer:
             meta.append(self.footer)
-        meta.append(self.authority)
-        tail.append(f"<i>{esc(' · '.join(meta))}</i>")
+        if meta:
+            tail.append(f"<i>{esc(' · '.join(meta))}</i>")
         body = "\n".join(parts)
-        closing = "\n" + "\n".join(tail)
+        closing = ("\n" + "\n".join(tail)) if tail else ""
         evidence = [e for e in self.evidence if e]
         text = body + closing
         if evidence:
@@ -145,14 +153,7 @@ class RichMessage:
                 text = body + "\n<blockquote expandable>" + "\n".join(kept) + "</blockquote>" + closing
         if len(text) > MAX_TEXT:
             text = text[: MAX_TEXT - 1] + "…"
-        buttons = [(label, url) for label, url in self.buttons if safe_url(url)]
-        if not buttons and self.symbols:
-            s = self.symbols[0].upper()
-            buttons = [
-                ("📊 Command Center", cc_symbol_url(s)),
-                ("📈 Finviz", finviz_url(s)),
-                ("💹 Yahoo", yahoo_url(s)),
-            ]
+        buttons = self._buttons()
         reply_markup = (
             {"inline_keyboard": [[{"text": label, "url": url} for label, url in buttons[:3]]]} if buttons else None
         )
@@ -161,7 +162,19 @@ class RichMessage:
             if self.chart_symbol
             else {"is_disabled": True}
         )
-        return {"text": text, "parse_mode": "HTML", "reply_markup": reply_markup, "link_preview_options": preview}
+        return {"text": text, "parse_mode": "HTML", "reply_markup": reply_markup, "link_preview_options": preview,
+                "authority": self.authority}
+
+    def _buttons(self) -> list[tuple[str, str]]:
+        buttons = [(label, url) for label, url in self.buttons if safe_url(url)]
+        if not buttons and self.symbols:
+            s = self.symbols[0].upper()
+            buttons = [
+                ("📊 Command Center", cc_symbol_url(s)),
+                ("📈 Finviz", finviz_url(s)),
+                ("💹 Yahoo", yahoo_url(s)),
+            ]
+        return buttons
 
 
 # ── layouts per message type ────────────────────────────────────────────────
@@ -172,6 +185,17 @@ def _num(v: Any, fmt: str) -> str:
         return fmt.format(float(v))
     except (TypeError, ValueError):
         return "?"
+
+
+def _scan_note(row: dict[str, Any]) -> str:
+    """' · scanned 11:22 ET (10:00 run)' from scanned_at '2026-09-15 11:22' and run_label '1000'."""
+    at = str(row.get("scanned_at") or "")
+    hhmm = at[11:16] if len(at) >= 16 else ""
+    run = str(row.get("run_label") or "")
+    run_txt = f"{run[:2]}:{run[2:]} run" if len(run) == 4 and run.isdigit() else (f"{run} run" if run else "")
+    if not hhmm and not run_txt:
+        return ""
+    return " · scanned " + " ".join(x for x in (f"{hhmm} ET" if hhmm else "", f"({run_txt})" if run_txt else "") if x)
 
 
 def go_alert(row: dict[str, Any], *, tier: str, passed: Iterable[str]) -> RichMessage:
@@ -185,7 +209,7 @@ def go_alert(row: dict[str, Any], *, tier: str, passed: Iterable[str]) -> RichMe
         facts=[
             f"Price {_num(row.get('price'), '${:.2f}')} · gap {_num(gap, '{:+.1f}%')} · RVOL {_num(row.get('rvol'), '{:.1f}x')}"
             f" · float {_num(row.get('float_m'), '{:.1f}M')} · volume {_num(row.get('volume'), '{:,.0f}')}",
-            f"Score {_num(row.get('score'), '{:.0f}')} · scan {row.get('run_label') or ''} {str(row.get('scanned_at') or '')[:16]}",
+            f"Score {_num(row.get('score'), '{:.0f}')}" + _scan_note(row),
         ],
         why=f"Catalyst: {catalyst}" if catalyst else None,
         evidence=[

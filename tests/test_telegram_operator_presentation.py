@@ -219,3 +219,11 @@ def test_ledger_records_the_wire_body_not_the_producer_body(monkeypatch):
     assert captured["body"] == ta.operator_wire_text(body)
     assert captured["body"] != body
     assert FQDN_PREFIX in captured["body"]
+
+
+
+def test_identifier_underscores_do_not_turn_an_html_body_into_markdown():
+    """2026-09-15: GO alerts ending in READ_ONLY_ADVISORY were sent as Markdown with the tags visible."""
+    body = '✅ <b>GO MYSZ — momentum scalp setup</b>\n<blockquote>Catalyst: x</blockquote>\n<i>🟢 Trade-AI data · READ_ONLY_ADVISORY</i>'
+    assert parse_mode_for(body) == "HTML"
+    assert parse_mode_for("⚡ _Watchpool_ NVDA") == "Markdown"

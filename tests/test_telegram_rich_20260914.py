@@ -47,12 +47,13 @@ def test_only_telegram_supported_tags_are_emitted_and_values_are_escaped():
 
 
 def test_the_ticker_links_to_command_center_finviz_and_yahoo(monkeypatch):
+    # 2026-09-15: the title links to Command Center; Finviz and Yahoo live on the buttons, not a repeated line.
     monkeypatch.setattr(tr, "cc_base", lambda: "https://cc.example")
     out = tr.go_alert(ARMP, tier="A+", passed=["price"]).render()
-    assert '<a href="https://cc.example/v3/watch/intelligence/ARMP">ARMP in Command Center</a>' in out["text"]
-    assert (
-        "https://finviz.com/quote.ashx?t=ARMP" in out["text"] and "https://finance.yahoo.com/quote/ARMP" in out["text"]
-    )
+    assert '<b><a href="https://cc.example/v3/watch/intelligence/ARMP">A+ ARMP — momentum scalp setup</a></b>' in out["text"]
+    urls = [b["url"] for b in out["reply_markup"]["inline_keyboard"][0]]
+    assert "https://finviz.com/quote.ashx?t=ARMP" in urls and "https://finance.yahoo.com/quote/ARMP" in urls
+    assert "ARMP in Command Center" not in out["text"] and "finviz.com/quote.ashx" not in out["text"]
 
 
 def test_why_is_a_quote_and_evidence_is_collapsible():
@@ -106,3 +107,24 @@ def test_symbols_come_from_the_producer_never_from_the_text(monkeypatch):
 def test_a_message_without_a_chart_disables_the_preview():
     out = tr.RichMessage(title="Spend").render()
     assert out["link_preview_options"] == {"is_disabled": True} and out["reply_markup"] is None
+
+
+def test_operator_footer_has_no_internal_authority_token_and_the_transport_picks_html():
+    import telegram_transport as tt
+    out = tr.go_alert(ARMP, tier="GO", passed=["price", "float"]).render()
+    assert "READ_ONLY_ADVISORY" not in out["text"] and out["authority"] == "READ_ONLY_ADVISORY"
+    assert "Advisory only" in out["text"]
+    assert tt.parse_mode_for(out["text"]) == "HTML"
+
+
+def test_scan_time_is_readable():
+    out = tr.go_alert(ARMP, tier="GO", passed=["price"]).render()
+    assert "Score 53 · scanned 11:32 ET (10:00 run)" in out["text"]
+    assert "scan 1000" not in out["text"]
+
+
+def test_source_line_keeps_only_links_not_already_on_a_button():
+    out = tr.go_alert(ARMP, tier="GO", passed=["price"]).render()
+    assert 'Source: <a href="https://example.com/armp-fda">ARMP news</a>' in out["text"]
+    no_news = dict(ARMP, catalyst_url="")
+    assert "Source:" not in tr.go_alert(no_news, tier="GO", passed=["price"]).render()["text"]
