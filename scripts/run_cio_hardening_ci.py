@@ -1357,6 +1357,7 @@ GATES = [
             "tests/test_research_discovery_refresh_20260915.py",
             "tests/test_health_headline_20260915.py",
             "tests/test_rag_borrowed_conn_txn_20260915.py",
+            "tests/test_offpeak_drain_lock_wait_20260915.py",
         ],
     ),
     (
