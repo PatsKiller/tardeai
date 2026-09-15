@@ -2,6 +2,52 @@
 
 # Trade AI — Data and Source Lifecycles (measured)
 
+
+> **Update 2026-09-14 23:44 EDT — what changed after this measurement (live `341bce2c1`).** The numbers below are the
+> 2026-09-14 00:00–00:45 measurement and are not re-measured. These findings were acted on the same day:
+>
+> - **Repricer (lifecycle 1, break "corrupt closes"):** PR #1008 — `close_price_for_holding` uses the canonical
+>   mark, else value ÷ shares, and refuses a close more than 50 % from the live quote. Root cause found: for a
+>   sub-one-share Schwab position the stored `price` was the position **value** (XLI 7.49 vs 169, NOC 123 vs 531,
+>   SCHG 8.05 vs 35). The historical 09-04/09-11 rows are **not yet quarantined** (operator-approved).
+> - **Alpaca `prev_close`:** taken from `dailyBar` when `prevDailyBar` is two sessions back (HPE showed a false +12.4 %).
+> - **Finviz:** exports parsed by header (`lib/finviz_csv`, required-header contracts per view, drift raises) with
+>   explicit units — Market Cap and Float in millions, Average Volume in thousands (they were stored 1,000× off).
+> - **Drift controls (timers):** source litmus vs Yahoo Tue–Sat 07:45 (BLOCK when > 2 % of closes are off by > 10 %);
+>   Finviz view contracts Mon–Fri 06:05; EOD consolidated close Mon–Fri 17:15 (replaces IEX-derived closes > 1 % off).
+> - **Alpha Vantage (lifecycle 2):** health "unknown since 05-09" was cron without `.env`; `data_source_report`
+>   now falls back to `.env`; symbol selection holdings first (was one symbol per week).
+> - **Identity (lifecycle 3):** unchanged; the desk resolver now binds dictated tickers (#1005).
+> - **Material change (lifecycle 4):** notices send a rich layout with Command Center / Finviz / Yahoo links (#1018).
+
+```dot
+digraph fb_a {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Family A after 2026-09-14 — price integrity controls", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  src [label="Schwab · Alpaca · Finviz", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  fix [label="Write-path fixes #1008\nrepricer · prev_close · contracts", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  store [label="ticker_prices · market_quotes", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"];
+  yahoo [label="Yahoo (independent)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  litmus [label="Litmus Tue–Sat 07:45", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  eod [label="EOD close Mon–Fri 17:15", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  quar [label="Quarantine historical rows\n(approved, open)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  src -> fix [color="#1F3864", penwidth=1.4];
+  fix -> store [color="#1F3864", penwidth=1.4];
+  yahoo -> litmus [color="#1F3864", penwidth=1.4];
+  store -> litmus [color="#548235", penwidth=1.3];
+  yahoo -> eod [color="#1F3864", penwidth=1.4];
+  eod -> store [label="replace > 1 % off", color="#548235", penwidth=1.3];
+  litmus -> quar [label="✗✗ not built", color="#C00000", style=dashed, penwidth=1.2];
+  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
+    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
+    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
+    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
+  }
+}
+```
+
+
 ```
 Family:      DATA AND SOURCE LIFECYCLES (agent 1 of 6)
 Measured:    2026-09-14 00:00–00:45 EDT, host ms01, read-only

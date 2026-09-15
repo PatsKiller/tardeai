@@ -8,6 +8,46 @@ Labels: OBSERVED = measured now. INFERRED = reasoned from code and data, not pro
 
 # WATCHLIST · ADVISORY · LEARNING — every lifecycle, measured
 
+
+> **Update 2026-09-14 23:44 EDT — what changed after this measurement (live `341bce2c1`).** Numbers below are the 00:00–00:45
+> measurement; this family was **not re-measured**. Changes that affect it:
+>
+> - **Budget (§4):** the global cap counted reservations, not spend — real spend for the week to 09-14 was $4.73 vs a
+>   $214.61 worst-case projection. Caps now count **actual** spend at $2.00/day with calibrated reservations (#1015);
+>   the shared `advisory_desk_opinion` id is split into eight named callers (#1021); scheduled paid work runs only in
+>   the operator window (#1020). This removes the phantom-money `COST_CAP_EXCEEDED: global cap` refusal class.
+> - **Unit-aware consumers:** the strategy classifier, dividend policy, social awareness, social scalp scanner and
+>   watch quality projection v1 now read Finviz market cap and volume in the right units (#1008).
+> - **Scalp GO alerts:** Trade-AI scalp criteria (price 1–25, float ≤ 20M, RVOL ≥ 5, |gap| ≥ 5 %, volume ≥ 1M, score ≥ 40,
+>   verified catalyst) now gate social and screener GO alerts, which reach the operator (#1009, #1011).
+> - **Advisory timers:** lessons-reflect 21:40 → 19:40, shadow-seed 21:45 → 19:45 (#1020).
+> - Gate exclusion, retry, WMT-style integrity re-stamps and proposal review closure are unchanged.
+
+```dot
+digraph fb_c {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Family C after 2026-09-14 — budget admission on actual spend", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  job [label="Agent job", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  proc [label="Own process cap\n#1021", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  global [label="Global $2.00\nactual spend #1015", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  call [label="Model call", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  gate [label="Identity gate\n(unchanged)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  retry [label="Retry / dormant\n(unchanged)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  job -> gate [color="#1F3864", penwidth=1.4];
+  gate -> proc [label="eligible", color="#1F3864", penwidth=1.4];
+  proc -> global [color="#1F3864", penwidth=1.4];
+  global -> call [color="#1F3864", penwidth=1.4];
+  call -> retry [label="failure ✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
+    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
+    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
+    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
+  }
+}
+```
+
+
 ## LEGEND
 
 ```

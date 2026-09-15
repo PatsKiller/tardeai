@@ -4,6 +4,18 @@ Status:      ACTIVE
 as_of:       2026-09-13T23:59:00-04:00
 Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
 
+## 2026-09-14 — Platform documentation set updated for the day's work, with Word copies and flow diagrams
+
+MATURITY_IMPACT: the As-Is / Future-State set now states the platform after the 29 PRs of 2026-09-13/14, so it is no longer quoted as if the morning's measurement were current.
+
+- **Why.** The operator asked for everything done on 2026-09-14 to be documented, the architecture documents updated with time and date stamps, converted to Word with extensive Visio-style flow diagrams, published to Google Drive and emailed.
+- **New.** `docs/architecture/TRADE_AI_WORKLOG_2026-09-14.md`: every change with merge time and live commit, incidents and root causes, operator decisions, host changes outside git, governance, open items and traps.
+- **Updated in place** (sections marked "Update 2026-09-14"; unmarked numbers keep their original measurement stamp): `TRADE_AI_AS_IS_2026-09-14.md`, `TRADE_AI_FUTURE_STATE_2026-09-14.md`, `TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md` (feedback edges 11/10/36 of 57 → 14/9/34 of 59; B1 is the first lifecycle with close and feedback both at ≥ L3), `TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md`, `RESEARCH_ESCALATION_2026-09-14.md`, and the six lifecycle fact bases.
+- **Diagrams.** 56 Graphviz sources embedded in the markdown (`dot` / `dot-wide` fences), rendered into the Word copies; every source render-tested.
+- **Index.** `docs/project/PROJECT_DOC_INDEX.md` lists the architecture set.
+
+Documentation only. No code, config, schedule, broker, order, key or cap changes.
+
 ## 2026-09-14 — Promote fast-forwards the dev tree, or fails loudly
 
 MATURITY_IMPACT: a deploy can no longer report success while cron and the user units keep running the old commit.

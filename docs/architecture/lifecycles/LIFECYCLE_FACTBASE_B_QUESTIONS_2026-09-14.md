@@ -2,6 +2,54 @@
 
 # Trade AI — QUESTION & RESEARCH LIFECYCLES (measured, end to end)
 
+
+> **Update 2026-09-14 23:44 EDT — what changed after this measurement (live `341bce2c1`).** Numbers below are the 00:00–00:45
+> measurement. Changes shipped on 2026-09-14:
+>
+> - **Operator question (§1):** dictated tickers resolve and Flash may not demote a re-entry ask (#1005); subject
+>   dossier with spelled-out pills `🟢 Trade-AI data · 🔵 Looked up outside Trade-AI · 🟣 AI model (DeepSeek)` (#1005, #1007);
+>   **the pending ↔ Hermes join now exists** — `research_id` stamped on the gap request, fulfil reads the Hermes result
+>   by id, follow-up quotes the question (#1006; HPE research 09:16 → delivered 10:36); research-only asks answered
+>   immediately with house facts; answers over 4,096 UTF-16 units sent as parts (#1016); `REPLY_NOT_DELIVERED` and
+>   `RESEARCH_LANDED_UNSENT` findings (#1006, #1018).
+> - **Hermes research (§3):** research heartbeat (#1014) — 136/219 failing and 32 lost requests measured on 09-14;
+>   projection lock, restore from ledger (12 restored live), replay of retryable failures, guard false positives
+>   masked, health score reads the lane, escalation retries no longer exit 127; model bridge deadline, threads,
+>   `/health`, watchdog after a 906-second provider hold wedged it (#1019).
+> - **System questions (§2):** Research Escalation Circle phase 1 (#1012, dry run): question GUID, laps, grounded
+>   analyzer, check-ins. DDQ and research-object lifecycles unchanged.
+> - **Topic research (§4):** unchanged.
+
+```dot
+digraph fb_b {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Family B after 2026-09-14 — the operator question now closes on the research", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  q [label="Operator question", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  desk [label="Desk: resolve · dossier · pills", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  pend [label="Pending\n+ plan_id + research_id", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  queue [label="Hermes queue\nlock · restore · replay", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  bridge [label="Bridge\ndeadline · watchdog", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  result [label="Hermes result", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  follow [label="Follow-up in parts", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  ddq [label="DDQ answer → close", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  q -> desk [color="#1F3864", penwidth=1.4];
+  desk -> pend [color="#1F3864", penwidth=1.4];
+  pend -> queue [color="#1F3864", penwidth=1.4];
+  queue -> bridge [color="#1F3864", penwidth=1.4];
+  bridge -> result [color="#1F3864", penwidth=1.4];
+  result -> pend [label="join by id", color="#548235", penwidth=1.3];
+  pend -> follow [color="#548235", penwidth=1.3];
+  result -> ddq [label="✗✗ unchanged", color="#C00000", style=dashed, penwidth=1.2];
+  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
+    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
+    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
+    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
+  }
+}
+```
+
+
 ```
 Family:        Question and research lifecycles (agent 1 of 6, lifecycle series)
 as_of:         2026-09-14 00:20 → 00:40 America/New_York (04:20Z–04:40Z)

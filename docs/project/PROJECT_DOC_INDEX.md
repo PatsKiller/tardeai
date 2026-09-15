@@ -1,6 +1,20 @@
 Status:      ACTIVE
-as_of:       2026-08-26T18:24:21-04:00
+as_of:       2026-09-14T23:43:50-04:00
 Measured at: efcc51365 / not measured
+
+## Platform architecture set (2026-09-14)
+Updated after the 29 PRs of 2026-09-13/14 (live `341bce2c1`). Each document has a Word copy with rendered
+Graphviz flow diagrams in the CIO architecture folder on Google Drive; the markdown here is the source of truth.
+
+| Document | Purpose |
+|----------|---------|
+| `docs/architecture/TRADE_AI_WORKLOG_2026-09-14.md` | **Every change on 2026-09-14**: 29 PRs with merge times and live commits, incidents and root causes, operator decisions, host changes, open items, traps |
+| `docs/architecture/TRADE_AI_AS_IS_2026-09-14.md` | Platform inventory As-Is (v1): topology, deploy, providers, 26 data domains, lanes, services, monitors, LLM governance, agents, desk, security, risks — with 2026-09-14 updates |
+| `docs/architecture/TRADE_AI_FUTURE_STATE_2026-09-14.md` | Target architecture (v1): seven planes, integration matrix, target maturity, roadmap P0–P4, operator decisions — with 2026-09-14 progress |
+| `docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md` | **Primary As-Is (v2)**: 26 lifecycles end to end, state machines, feedback-edge ledger, join map, question ledger, pathologies, heat map, risks — 27 flow diagrams |
+| `docs/architecture/TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md` | **Primary Future State (v2)**: Lifecycle Contract LC1–LC12, key spine, closure fabric, per-lifecycle targets and exit counters, roadmap |
+| `docs/architecture/RESEARCH_ESCALATION_2026-09-14.md` | How research escalates today, the Research Escalation Circle design and its phase-1 build |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_{A_DATA,B_QUESTIONS,C_WATCHLIST,D_COGNITION,E_COMMS,F_ENGINEERING}_2026-09-14.md` | The six measured fact bases behind the lifecycle documents (queries and file:line citations), each with a dated update block |
 
 ## Research lifecycle standard (2026-08-21)
 | Document | Purpose |
