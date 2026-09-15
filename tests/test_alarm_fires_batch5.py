@@ -23,7 +23,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-COVERS = ["scripts/system_health_agent.py:478"]
+COVERS = ["scripts/system_health_agent.py:482"]
 
 # The exact body shapes the nine sites emit.
 BODIES = {

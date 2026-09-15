@@ -7,6 +7,16 @@ import sys
 from pathlib import Path
 
 import pytest
+import tempfile as _tempfile
+
+# The audit ledger is production evidence. No test may write to the live JSONL or mirror into the
+# audit_ledger_events table (R-01, 2026-09-15). Set before any test module imports audit_ledger.
+os.environ["TRADEAI_AUDIT_LEDGER_DB"] = "0"
+os.environ["TRADEAI_AUDIT_LEDGER_DIR"] = _tempfile.mkdtemp(prefix="tradeai_audit_ledger_tests_")
+# The host's Comms Editor mode file (live since the operator promoted it) must not decide what a test
+# sends: in live mode deliver_text holds the message, and test_plaintext_fallback_actually_unescapes_on_the_wire
+# failed on every host where the file says live. A test that exercises the editor sets its own mode.
+os.environ.setdefault("COMMS_EDITOR_MODE_FILE", os.path.join(_tempfile.mkdtemp(prefix="tradeai_comms_mode_tests_"), "absent"))
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))

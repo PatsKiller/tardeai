@@ -71,6 +71,10 @@ def get_rag_context(symbol, agent_name=None, strategy_focus=None,
     if close_conn:
         conn = _get_conn()
     import psycopg2.extras
+    # A borrowed connection that was idle must be idle again when we return. The SELECTs below open
+    # a transaction, and social_scalp_scanner goes on to Hermes/LLM work on the same connection:
+    # Postgres killed it at idle_in_transaction_session_timeout (120 s), 14 kills in 3 h (R-09).
+    end_read_txn = (not close_conn) and _txn_idle(conn)
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
 
     try:
@@ -140,6 +144,19 @@ def get_rag_context(symbol, agent_name=None, strategy_focus=None,
         cur.close()
         if close_conn:
             conn.close()
+        elif end_read_txn:
+            try:
+                conn.rollback()  # only our read-only transaction: the connection was idle when handed in
+            except Exception:
+                pass
+
+
+def _txn_idle(conn) -> bool:
+    """True when the connection has no open transaction (psycopg2 TRANSACTION_STATUS_IDLE)."""
+    try:
+        return int(conn.get_transaction_status()) == 0
+    except Exception:
+        return False
 
 
 def _keyword_fallback(symbol, limit, cur):

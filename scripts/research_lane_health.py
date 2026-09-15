@@ -111,7 +111,7 @@ def fix_hint(row: dict) -> str:
         )
     if lane == "overnight-deep":
         return (
-            "Overnight: OnCalendar 22–05:35 ET, ExecStart --model chatgpt --apply "
+            "Overnight: OnCalendar 22–05:35 ET, ExecStart --model chatgpt (ChatGPT OAuth) --apply "
             "since 2026-08-22 13:20. First US window 22:35 ET 2026-08-22. "
             "Last deep_research_local row 2026-08-20 Flash (two days, not three months). "
             "If 22:35 writes zero non-error rows or still gemma, retarget failed."
@@ -207,13 +207,32 @@ def fix_hint(row: dict) -> str:
     return "see research_lane_health.py JSON"
 
 
+def reconcile_recovered(state: dict, report: dict) -> dict:
+    """Lanes this report evaluated as ok are ok in the state file.
+
+    The state file is also what health_agent reads as current lane status. Only
+    firing lanes were ever written, so a lane that recovered kept ok:false forever:
+    on 2026-09-15 the health agent still reported current-pin (as_of 09-08, a release
+    long gone), search-providers and grok (08-31) and drive-sync exit 1 (12:07Z,
+    though 15:06Z exited 0). last_alert/since are kept so a relapse is not "new".
+    """
+    out = dict(state)
+    for row in report.get("lanes") or []:
+        lane = row.get("lane")
+        if lane and row.get("ok"):
+            prev = out.get(lane) or {}
+            out[lane] = {"lane": lane, "ok": True, "firing": [], "as_of": report.get("as_of"),
+                         "last_alert": prev.get("last_alert"), "recovered_from": prev.get("signature")}
+    return out
+
+
 def _alert(report: dict) -> int:
     firing = [r for r in report.get("lanes") or [] if not r.get("ok")]
     if not firing:
-        _save_state(report.get("as_of"), _load_lane_map())
+        _save_state(report.get("as_of"), reconcile_recovered(_load_lane_map(), report))
         return 0
     now = int(time.time())
-    state = _load_lane_map()
+    state = reconcile_recovered(_load_lane_map(), report)
     lines = []
     hints = []
     sent = 0
@@ -239,8 +258,8 @@ def _alert(report: dict) -> int:
         sig = f"{lane}|{reasons}"
         unchanged = prev.get("signature") == sig
         if unchanged:
-            state[lane] = {**prev, **{k: row.get(k) for k in ("ok", "firing", "error_streak")},
-                           "last_alert": last, "suppressed": True,
+            # the row is current evidence; keep only the alert bookkeeping from prev
+            state[lane] = {**row, "last_alert": last, "suppressed": True,
                            "signature": sig,
                            "since": prev.get("since") or last or now}
             continue
