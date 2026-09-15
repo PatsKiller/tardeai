@@ -257,7 +257,10 @@ def _catalyst_near_move(cur, change: dict, out: dict) -> None:
 def _watch_context(cur, change: dict, out: dict) -> None:
     sym = str(change["symbol"]).upper()
     cur.execute("""SELECT source, provenance_reason, first_seen_at::date FROM watchlist_items
-                    WHERE upper(symbol) = %s AND status <> 'removed' ORDER BY first_seen_at ASC LIMIT 1""", (sym,))
+                    WHERE upper(symbol) = %s AND status <> 'removed'
+                    ORDER BY CASE WHEN source = 'portfolio' THEN 0
+                                  WHEN source IN ('operator', 'manual', 'telegram', 'directive') THEN 1 ELSE 2 END,
+                             first_seen_at ASC LIMIT 1""", (sym,))
     r = cur.fetchone()
     if r:
         out["watch"] = {"source": r[0], "reason": r[1], "since": str(r[2]) if r[2] else None}
@@ -267,9 +270,39 @@ def _watch_context(cur, change: dict, out: dict) -> None:
     if r:
         out["price"] = float(r[0]) if r[0] is not None else None
         out["change_pct"] = float(r[1]) if r[1] is not None else None
-    cur.execute("SELECT strategy_type FROM ticker_strategy_classifications WHERE upper(symbol) = %s AND active = TRUE LIMIT 1", (sym,))
+    cur.execute("""SELECT strategy_type, active FROM ticker_strategy_classifications WHERE upper(symbol) = %s
+                    ORDER BY active DESC NULLS LAST LIMIT 1""", (sym,))
     r = cur.fetchone()
     out["strategy"] = r[0] if r else None
+    out["strategy_inactive"] = bool(r and r[1] is False)
+    cur.execute("SELECT sector, industry FROM symbol_profiles WHERE upper(symbol) = %s LIMIT 1", (sym,))
+    r = cur.fetchone()
+    if r and (r[0] or r[1]):
+        out["sector"] = {"sector": r[0], "industry": r[1]}
+    try:
+        cur.execute("""SELECT state, details FROM cio_entry_states WHERE symbol = %s
+                        ORDER BY evaluated_at DESC LIMIT 1""", (sym,))
+        r = cur.fetchone()
+        if r:
+            d = r[1] if isinstance(r[1], dict) else json.loads(r[1] or "{}")
+            out["entry_state"] = {"state": r[0], **{k: d.get(k) for k in (
+                "entry_low", "entry_high", "stop", "target", "rr", "distance_pct", "reasons", "price")}}
+    except Exception:  # noqa: BLE001 — table absent before the entry-state lane first runs
+        cur.connection.rollback()
+    held = holding_for(sym)
+    if held:
+        out["holding"] = held
+    try:
+        try:
+            from lib.symbol_thesis_attach import thesis_fields_for_symbol
+        except ImportError:
+            from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
+        t = thesis_fields_for_symbol(sym) or {}
+        if t.get("has_current_symbol_thesis") or t.get("thesis_summary"):
+            out["thesis"] = {"state": t.get("thesis_state"), "summary": clean_thesis(sym, t.get("thesis_summary")),
+                             "last_reviewed": t.get("last_reviewed")}
+    except Exception:  # noqa: BLE001 — thesis is context, never a reason to drop the notice
+        pass
     cur.execute("""SELECT ideal_entry, stop_loss, target_price FROM watchlist_strategy_cards
                     WHERE upper(symbol) = %s ORDER BY updated_at DESC NULLS LAST LIMIT 1""", (sym,))
     r = cur.fetchone()
@@ -297,6 +330,59 @@ def _watch_context(cur, change: dict, out: dict) -> None:
     b = enrichment_market_cap_billions(_ENRICHMENT.get(sym) or {})
     if b is not None:
         out["size"] = pill(cap_label(b * 1000.0))
+
+
+_HOLDINGS: dict | None = None
+HOLDINGS_PATH = Path(__file__).resolve().parent.parent / "data" / "portfolios" / "state" / "holdings.json"
+
+
+def _account_label(account: str) -> str:
+    a = str(account or "").lower().replace("schwab_", "").replace("fidelity_", "").replace("_", " ").strip()
+    return {"rollover ira": "Rollover IRA", "roth ira": "Roth IRA", "taxable": "Taxable"}.get(a, a.title() or "account")
+
+
+def holding_for(symbol: str, holdings: dict | None = None) -> dict | None:
+    """The position in `symbol` across accounts: shares, cost, value and P/L computed as value - cost.
+
+    2026-09-15: the WMT notice never said the operator owns 100 shares. The stored gain_loss field
+    read +$13 while market_value - cost_basis was +$228, so P/L is computed, not copied.
+    """
+    global _HOLDINGS
+    if holdings is None:
+        if _HOLDINGS is None:
+            try:
+                _HOLDINGS = json.loads(HOLDINGS_PATH.read_text())
+            except Exception:  # noqa: BLE001
+                _HOLDINGS = {}
+        holdings = _HOLDINGS
+    rows = [h for h in (holdings.get("holdings") or [])
+            if str(h.get("symbol") or "").upper() == symbol.upper() and not h.get("is_cash")]
+    if not rows:
+        return None
+    shares = sum(float(h.get("shares") or 0) for h in rows)
+    cost = sum(float(h.get("cost_basis") or 0) for h in rows)
+    value = sum(float(h.get("market_value") or 0) for h in rows)
+    if shares <= 0:
+        return None
+    out = {"shares": shares, "accounts": sorted({_account_label(h.get("account")) for h in rows}),
+           "cost_basis": cost or None, "market_value": value or None}
+    if cost > 0 and value > 0:
+        out["avg_cost"] = cost / shares
+        out["price"] = value / shares
+        out["pl_usd"] = value - cost
+        out["pl_pct"] = (value - cost) / cost * 100.0
+    return out
+
+
+def clean_thesis(symbol: str, summary: str | None, limit: int = 140) -> str | None:
+    """One readable sentence: drop the leading "SYM 1." numbering and trailing guid= tokens."""
+    import re as _re
+    text = str(summary or "").strip()
+    if not text:
+        return None
+    text = _re.sub(rf"^{_re.escape(symbol)}\s+\d+\.\s*", "", text, flags=_re.I)
+    text = _re.sub(r"\s*guid=\S+", "", text).strip()
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
 def dedupe_by_symbol(changes: list[dict]) -> list[dict]:
@@ -395,6 +481,10 @@ def _provenance_line(c: dict, info: dict) -> str:
     since = f" since {w['since']}" if w.get("since") else ""
     reason = str(w.get("reason") or "").split(":", 2)[-1].strip() if w.get("reason") else ""
     reason = f" ({reason[:80]})" if reason else ""
+    if info.get("holding") or str(w.get("source") or "") == "portfolio":
+        return f"you hold this — on your watchlist{since} ({who})"
+    if base == "you asked about this" and str(w.get("source") or "") not in ("operator", "manual", "telegram", "directive"):
+        base = "on your watchlist"
     return f"{base}{since} — found by {who}{reason}"
 
 
@@ -402,7 +492,10 @@ def _strategy_line(info: dict) -> str | None:
     if "strategy" not in info and "plan" not in info:
         return None
     strat = str(info.get("strategy") or "").replace("_", " ")
-    head = f"Strategy: {strat}" if strat else "Strategy: none assigned"
+    if strat and info.get("strategy_inactive"):
+        head = f"Strategy: {strat} (classification inactive)"
+    else:
+        head = f"Strategy: {strat}" if strat else "Strategy: none assigned"
     plan, price = info.get("plan"), info.get("price")
     if not plan:
         return head + " · no entry plan"
@@ -425,9 +518,62 @@ def _cio_line(info: dict) -> str | None:
     return f"CIO: {str(cio['action']).replace('_', ' ').title()} ({cio['date']})"
 
 
+def _position_line(info: dict) -> str | None:
+    h = info.get("holding")
+    if not h:
+        return None
+    shares = f"{h['shares']:,.0f}" if float(h["shares"]).is_integer() else f"{h['shares']:,.3f}"
+    where = " / ".join(h.get("accounts") or [])
+    head = f"You own {shares} sh" + (f" ({where})" if where else "")
+    if h.get("pl_usd") is None:
+        return head
+    sign = "+" if h["pl_usd"] >= 0 else "-"
+    return (f"{head} · cost ${h['avg_cost']:,.2f} · now ${h['price']:,.2f} · "
+            f"{sign}${abs(h['pl_usd']):,.0f} ({h['pl_pct']:+.1f}%)")
+
+
+def _stance_line(info: dict) -> str | None:
+    """What to do with it, as the CIO's advisory stance — never a size or an order."""
+    es, cio, held = info.get("entry_state"), info.get("cio"), bool(info.get("holding"))
+    cio_part = f" · CIO decision: {str(cio['action']).replace('_', ' ').title()} ({cio['date']})" if cio else ""
+    if not es:
+        if not info.get("watch") and not cio and not held:
+            return None
+        return ("CIO stance: no entry plan yet — hold, nothing to add until one exists" if held
+                else "CIO stance: no entry plan yet") + cio_part
+    state = str(es.get("state") or "")
+    lo, hi = es.get("entry_low"), es.get("entry_high")
+    zone = (f"${lo:,.2f}" if lo == hi else f"${lo:,.2f}–${hi:,.2f}") if lo is not None and hi is not None else "the plan zone"
+    rr = f" · R:R {es['rr']:.1f}" if es.get("rr") is not None else ""
+    dist = es.get("distance_pct")
+    if state == "BUY_READY":
+        text = ("add more: price is inside the entry zone " if held else "buy-ready: price is inside the entry zone ") + zone + rr
+    elif state == "ENTRY_NEAR":
+        text = f"getting close: price is {dist:.1f}% from the entry {zone} — wait for the zone{rr}" if dist is not None \
+            else f"getting close to the entry {zone}{rr}"
+    elif state == "BLOCKED":
+        reasons = "; ".join(str(x) for x in (es.get("reasons") or [])[:2]) or "a plan check failed"
+        text = f"don't {'add' if held else 'buy'} — blocked: {reasons}"
+    else:
+        where = f"price is {dist:.1f}% above the entry {zone}" if dist is not None else f"price is away from the entry {zone}"
+        text = (f"hold, don't add yet — {where}{rr}" if held else f"wait — {where}{rr}")
+    return f"CIO stance: {text}{cio_part}"
+
+
+def _sector_thesis_line(info: dict) -> str | None:
+    parts = []
+    sec = info.get("sector") or {}
+    if sec.get("sector") or sec.get("industry"):
+        parts.append("Sector: " + " · ".join(x for x in (sec.get("sector"), sec.get("industry")) if x))
+    t = info.get("thesis") or {}
+    if t.get("summary"):
+        parts.append(f"Thesis ({str(t.get('state') or 'on file').lower()}): {t['summary']}")
+    return " · ".join(parts) or None
+
+
 def _detail_lines(c: dict, info: dict) -> list[str]:
     lines = [_provenance_line(c, info)]
-    for extra in (_strategy_line(info), _cio_line(info)):
+    for extra in (_position_line(info), _stance_line(info), _strategy_line(info), _sector_thesis_line(info)):
         if extra:
             lines.append(extra)
     lines.append(_next_line(info))
