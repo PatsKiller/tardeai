@@ -207,9 +207,11 @@ class TestAdvisoryBridgeRouting(unittest.TestCase):
         pro = resolve_model_policy("advisory_desk_synthesis")
         self.assertIsNotNone(flash)
         self.assertIsNotNone(pro)
-        self.assertEqual(flash["model_id"], "deepseek-v4-flash")
+        # 2026-09-09 rename: V4.1 Flash is deepseek-flash; the Pro tier binds to it too (Pro retired 2026-09-14).
+        from scripts.lib.llm_model_registry import deepseek_model_id
+        self.assertEqual(flash["model_id"], deepseek_model_id("FAST"))
         self.assertEqual(flash["requested_policy"], "FAST")
-        self.assertEqual(pro["model_id"], "deepseek-v4-pro")
+        self.assertEqual(pro["model_id"], deepseek_model_id("PRO"))
         self.assertEqual(pro["requested_policy"], "PRO")
 
     def test_cap_refusal_in_execute_governed_call(self) -> None:

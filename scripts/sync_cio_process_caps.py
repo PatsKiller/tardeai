@@ -33,6 +33,16 @@ CAPS: dict[str, tuple[float, int]] = {
     # 2026-09-09: shared Flash process — 100000 soft cap was effectively-unlimited
     # and let 4929 settled calls/day exhaust the $0.50 global budget. Bound to 600.
     "advisory_desk_opinion": (1.25, 600),
+    # 2026-09-14: the callers that shared advisory_desk_opinion, each on its own id (operator: split the label so
+    # scheduled work can be moved off-peak and operator answers stay exempt). Global cap $2.00/day still binds.
+    "cio_operator_reply": (0.60, 400),
+    "cio_plan_enrichment": (0.50, 400),
+    "cio_prompt_judge": (0.10, 150),
+    "research_circle_analyzer": (0.10, 40),
+    "hermes_cloud_json": (0.30, 300),
+    "hermes_usefulness_score": (0.30, 600),
+    "cio_hermes_research": (0.40, 200),
+    "hermes_golden_judge": (0.10, 150),
 }
 
 

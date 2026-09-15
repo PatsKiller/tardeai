@@ -36,7 +36,7 @@
       "circuit_breaker": true,
       "registered_by": "advisory-desk-p0",
       "registered_at": "2026-08-11T12:00:00Z",
-      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.05\u21920.20\u21920.30 and daily_soft_cap 80\u2192200 to cover 12 watchlist + 20 holding Flash opinions under global 0.50. Local/Ollama fallback lane removed \u2014 DeepSeek is the sole default lane. | 2026-09-09: daily_soft_cap 100000\u2192600. This process_id is SHARED by many CIO Flash callers (advisory opinion engine, plan enrichment, prompt judge, telegram converse, operator desk loop, situation detector); 4929 settled calls on 2026-09-09 exhausted the $0.50 global daily cap ($1.07 actual). The volume bound is the fix \u2014 max_input_tokens stays 32000 because held-name evidence packs are ~10k tokens and the 8000 trial rejected every challenger with INPUT_LIMIT_EXCEEDED."
+      "notes": " | 2026-08-12: raised daily_cost_cap_usd 0.05\u21920.20\u21920.30 and daily_soft_cap 80\u2192200 to cover 12 watchlist + 20 holding Flash opinions under global 0.50. Local/Ollama fallback lane removed \u2014 DeepSeek is the sole default lane. | 2026-09-09: daily_soft_cap 100000\u2192600. This process_id is SHARED by many CIO Flash callers (advisory opinion engine, plan enrichment, prompt judge, telegram converse, operator desk loop, situation detector); 4929 settled calls on 2026-09-09 exhausted the $0.50 global daily cap ($1.07 actual). The volume bound is the fix \u2014 max_input_tokens stays 32000 because held-name evidence packs are ~10k tokens and the 8000 trial rejected every challenger with INPUT_LIMIT_EXCEEDED. | 2026-09-14: shared callers split onto their own ids (cio_operator_reply, cio_plan_enrichment, cio_prompt_judge, research_circle_analyzer, hermes_cloud_json, hermes_usefulness_score, cio_hermes_research, hermes_golden_judge); this id now carries the advisory opinion engine only."
     },
     {
       "id": "advisory_desk_synthesis",
@@ -904,6 +904,230 @@
       "advisory_only": true,
       "output_schema": "cio_synthesis.v1",
       "notes": "2026-08-20: max_output_tokens 800\u21921600 \u2014 living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session."
+    },
+    {
+      "id": "cio_operator_reply",
+      "name": "CIO Operator Reply (Flash)",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "manual",
+      "description": "Answers to the operator: Telegram converse polish, operator desk intent + answer, subject Flash. Urgent, operator-requested: exempt from the scheduled-work window. READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "daily_soft_cap": 400,
+      "daily_cost_cap_usd": 0.6,
+      "registered_by": "llm-label-split-20260914",
+      "registered_at": "2026-09-14T23:00:00Z",
+      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds."
+    },
+    {
+      "id": "cio_plan_enrichment",
+      "name": "CIO Plan Enrichment (Flash)",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "CIO decision-plan JSON enrichment and callers that do not name themselves (situation detector, desk synthesis, stale-plan regeneration). READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "daily_soft_cap": 400,
+      "daily_cost_cap_usd": 0.5,
+      "registered_by": "llm-label-split-20260914",
+      "registered_at": "2026-09-14T23:00:00Z",
+      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds."
+    },
+    {
+      "id": "cio_prompt_judge",
+      "name": "CIO Prompt Judge (Flash)",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Scores CIO plans for thesis use, synthesis, evidence and tone. READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "daily_soft_cap": 150,
+      "daily_cost_cap_usd": 0.1,
+      "registered_by": "llm-label-split-20260914",
+      "registered_at": "2026-09-14T23:00:00Z",
+      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds."
+    },
+    {
+      "id": "research_circle_analyzer",
+      "name": "Research Escalation Circle Analyzer (Flash)",
+      "category": "Research",
+      "lane_policy": "deepseek_only",
+      "default_mode": "manual",
+      "description": "Context Analyzer verdict per research-circle lap on an operator question (docs/RESEARCH_CIRCLE.md). READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "daily_soft_cap": 40,
+      "daily_cost_cap_usd": 0.1,
+      "registered_by": "llm-label-split-20260914",
+      "registered_at": "2026-09-14T23:00:00Z",
+      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds."
+    },
+    {
+      "id": "hermes_cloud_json",
+      "name": "Hermes Cloud JSON (Flash)",
+      "category": "Hermes",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "hermes_llm_failover.chat_json callers that do not name themselves: autonomous loop, overnight deep research. READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "daily_soft_cap": 300,
+      "daily_cost_cap_usd": 0.3,
+      "registered_by": "llm-label-split-20260914",
+      "registered_at": "2026-09-14T23:00:00Z",
+      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds."
+    },
+    {
+      "id": "hermes_usefulness_score",
+      "name": "Hermes Usefulness Scorer (Flash)",
+      "category": "Hermes",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "hermes_external_feedback_loop.py: rates each external research recommendation 0-1. The 2026-09-06..09 backfill (~31k rows) ran under advisory_desk_opinion; 600/day now bounds a repeat. READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "daily_soft_cap": 600,
+      "daily_cost_cap_usd": 0.3,
+      "registered_by": "llm-label-split-20260914",
+      "registered_at": "2026-09-14T23:00:00Z",
+      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds."
+    },
+    {
+      "id": "cio_hermes_research",
+      "name": "CIO Hermes Research Job (Flash)",
+      "category": "Hermes",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "CIO Hermes research queue worker (BridgeHermesResearchBackend): desk and operator research requests, replays and restores. READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "daily_soft_cap": 200,
+      "daily_cost_cap_usd": 0.4,
+      "registered_by": "llm-label-split-20260914",
+      "registered_at": "2026-09-14T23:00:00Z",
+      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds."
+    },
+    {
+      "id": "hermes_golden_judge",
+      "name": "Hermes Golden Judge (Flash)",
+      "category": "Hermes",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Scores Hermes research candidates against golden references. READ_ONLY_ADVISORY. Routed through cio_governed_model_bridge (8766), caller advisory_desk.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 8192,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "daily_soft_cap": 150,
+      "daily_cost_cap_usd": 0.1,
+      "registered_by": "llm-label-split-20260914",
+      "registered_at": "2026-09-14T23:00:00Z",
+      "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds."
     }
   ],
   "default_deepseek_policy": "FAST",

@@ -73,7 +73,7 @@ def _extract_json_text(content: str) -> str:
     return text
 
 
-def _bridge_flash_chat(prompt: str, *, timeout_s: float | None = None) -> str:
+def _bridge_flash_chat(prompt: str, *, timeout_s: float | None = None, task_type: str | None = None) -> str:
     payload = json.dumps({
         "model": DEFAULT_FLASH,
         "messages": [
@@ -96,7 +96,8 @@ def _bridge_flash_chat(prompt: str, *, timeout_s: float | None = None) -> str:
         headers={
             "Content-Type": "application/json",
             "X-TradeAI-Agent": os.getenv("HERMES_BRIDGE_AGENT", "advisory_desk"),
-            "X-TradeAI-Task-Type": os.getenv("HERMES_BRIDGE_TASK", "advisory_opinion"),
+            # 2026-09-14: callers name themselves so cost lands on their own process id.
+            "X-TradeAI-Task-Type": task_type or os.getenv("HERMES_BRIDGE_TASK", "hermes_cloud_json"),
             "X-TradeAI-Process-Id": os.getenv(
                 "HERMES_BRIDGE_PROCESS", "hermes_cloud_json",
             ),
@@ -112,6 +113,7 @@ def chat_json(
     prompt: str,
     *,
     cloud_timeout_s: float | None = None,
+    task_type: str | None = None,
     **legacy_local_options: Any,
 ) -> dict[str, Any]:
     """Call the governed cloud bridge; never invoke a local generative runtime.
@@ -123,7 +125,7 @@ def chat_json(
         names = ",".join(sorted(legacy_local_options))
         raise HermesLlmError(f"local_generative_options_forbidden:{names}")
     try:
-        content = _bridge_flash_chat(prompt, timeout_s=cloud_timeout_s)
+        content = _bridge_flash_chat(prompt, timeout_s=cloud_timeout_s, task_type=task_type)
     except Exception as exc:
         raise HermesLlmError(
             f"bridge_flash_error:{type(exc).__name__}:{exc}"[:300]

@@ -1413,8 +1413,13 @@ def call_governed_llm(
     policy: dict[str, Any],
     *,
     use_pro: bool = False,
+    task_type: str | None = None,
 ) -> dict[str, Any]:
     """HTTP call to governed bridge. Never hits api.deepseek.com directly.
+
+    `task_type` names the caller for cost attribution (2026-09-14): the bridge maps each advisory_desk task type
+    to its own process id, so an operator reply, a plan enrichment and a prompt judge no longer all bill
+    to advisory_desk_opinion.
 
     Flash path uses advisory_desk / advisory_opinion (FAST). Use compact prompts —
     large JSON evidence packs cause Flash to spend max_tokens on reasoning with
@@ -1431,8 +1436,8 @@ def call_governed_llm(
     else:
         # Prefer advisory_desk Flash — not alex PRO — for plan JSON enrichment
         caller = llm.get("caller_flash") or "advisory_desk"
-        task = llm.get("task_type_flash") or "advisory_opinion"
-        process_id = "advisory_desk_opinion"
+        task = task_type or llm.get("task_type_flash") or "plan_enrichment"
+        process_id = "advisory_desk_opinion"  # informational only; the bridge resolves the process from caller + task
         model = "deepseek-flash"
         # Headroom so reasoning_tokens cannot consume entire completion budget
         max_tokens = int(llm.get("max_tokens_flash") or llm.get("max_tokens") or 1200)

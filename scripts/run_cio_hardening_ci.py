@@ -611,6 +611,8 @@ GATES = [
             # 2026-09-14 15:15-16:30 bridge wedge: DeepSeek held calls ~906 s and the single-threaded bridge
             # queued every caller behind them. Deadline, threaded server, /health, and the watchdog.
             "tests/test_bridge_hang_20260914.py",
+            # 2026-09-14: callers that shared advisory_desk_opinion bill to their own process ids.
+            "tests/test_llm_label_split_20260914.py",
             # 2026-09-14 operator rule: scheduled paid work weekdays 09-21 ET or weekends, never DeepSeek peak;
             # spend report checks itself against the DeepSeek balance.
             "tests/test_operator_offpeak_window_20260914.py",

@@ -513,6 +513,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                 ],
                 load_llm_policy(),
                 use_pro=False,
+                task_type="operator_reply",
             )
             if llm.get("ok"):
                 raw = str(llm.get("content") or "").strip()
@@ -1519,6 +1520,7 @@ def answer_freeform_with_flash(
             ],
             load_llm_policy(),
             use_pro=False,
+            task_type="operator_reply",
         )
         if not llm.get("ok"):
             return {
@@ -2364,7 +2366,7 @@ def _subject_flash_enabled() -> bool:
 def _subject_flash_call(messages: list[dict[str, str]]) -> dict[str, Any]:
     from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy  # noqa: PLC0415
 
-    return call_governed_llm(messages, load_llm_policy(), use_pro=False)
+    return call_governed_llm(messages, load_llm_policy(), use_pro=False, task_type="operator_reply")
 
 
 _SUBJECT_FLASH_BANNED = ("ORDER PLACED", "BUYING NOW", "SUBMITTED", "FILLED", "I WILL BUY", "EXECUTING",
