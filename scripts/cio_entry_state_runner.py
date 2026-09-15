@@ -146,13 +146,18 @@ def alerted_today(cur, keys: list[str]) -> set[str]:
     return {row[0] for row in cur.fetchall()}
 
 
-def send_alerts(result: dict, evidence: dict) -> dict:
-    out = {"operator": False, "cio_desk": False, "cio_bus": False}
+def operator_send(text: str) -> dict:
+    """The one operator send path (alert and digest). Routes IMMEDIATE as cio_entry_state."""
     try:
         from telegram_alert import send_telegram
-        out["operator"] = bool(send_telegram(ces.render_operator(result, evidence), message_class="operator_alert"))
+        return {"operator": bool(send_telegram(text, message_class="operator_alert"))}
     except Exception as exc:
-        out["operator_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+        return {"operator": False, "operator_error": f"{type(exc).__name__}: {str(exc)[:120]}"}
+
+
+def send_alerts(result: dict, evidence: dict) -> dict:
+    out = {"cio_desk": False, "cio_bus": False}
+    out.update(operator_send(ces.render_operator(result, evidence)))
     try:
         from scripts.lib.cio_telegram_transport import send_cio_message
         r = send_cio_message(ces.render_cio(result, evidence), subject=f"Entry state {result['symbol']}",
@@ -233,12 +238,7 @@ def main() -> int:
         for r in to_alert:
             sent.append({"symbol": r["symbol"], "state": r["state"], **send_alerts(r, evidence[r["symbol"]])})
         if digest:
-            try:
-                from telegram_alert import send_telegram
-                sent.append({"digest": [r["symbol"] for r in digest],
-                             "operator": bool(send_telegram(ces.render_digest(digest), message_class="operator_alert"))})
-            except Exception as exc:
-                sent.append({"digest_error": f"{type(exc).__name__}: {str(exc)[:120]}"})
+            sent.append({"digest": [r["symbol"] for r in digest], **operator_send(ces.render_digest(digest))})
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps({"as_of": datetime.now(timezone.utc).isoformat(), "counts": counts,
                                        "alerts": sent}, indent=2, default=str))

@@ -110,11 +110,11 @@ def test_a_message_without_a_chart_disables_the_preview():
 
 
 def test_operator_footer_has_no_internal_authority_token_and_the_transport_picks_html():
-    import telegram_transport as tt
+    from telegram_transport import parse_mode_for
     out = tr.go_alert(ARMP, tier="GO", passed=["price", "float"]).render()
     assert "READ_ONLY_ADVISORY" not in out["text"] and out["authority"] == "READ_ONLY_ADVISORY"
     assert "Advisory only" in out["text"]
-    assert tt.parse_mode_for(out["text"]) == "HTML"
+    assert parse_mode_for(out["text"]) == "HTML"
 
 
 def test_scan_time_is_readable():

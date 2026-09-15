@@ -1396,6 +1396,7 @@ GATES = [
         "cio_entry_state",
         [
             "tests/test_cio_entry_state_20260915.py",
+            "tests/test_cio_entry_state_alarm_fires_20260915.py",
         ],
     ),
     (
