@@ -511,8 +511,40 @@ def sweep_stale(grace_seconds: int = 300) -> dict:
     cur.execute("""SELECT count(*) FROM watch_decision_refresh_jobs
                    WHERE state='QUEUED' AND created_at < now() - interval '30 minutes'""")
     orphaned_queued = cur.fetchone()[0]
+    # 2026-09-15: counting them was all this did. Workers are spawned only by enqueue_run when it
+    # queues NEW jobs, and the scheduler treats QUEUED symbols as in flight and enqueues nothing
+    # for them, so 573 jobs queued at 2026-09-13 09:00 were never claimed and every scheduler
+    # pass since returned "runs": []. Start a drain worker when orphans exist and none is alive.
+    spawned = 0
+    if orphaned_queued and not _refresh_worker_running():
+        spawned = _spawn_workers(min(WORKERS_PER_RUN, int(orphaned_queued)))
     return {"swept": [{"job_id": j, "run_id": r, "symbol": s} for j, r, s in swept],
-            "stale_queued": orphaned_queued}
+            "stale_queued": orphaned_queued, "workers_spawned": spawned}
+
+
+def _refresh_worker_running() -> bool:
+    """True when a `watch_decision_refresh.py --worker` process is alive on this host."""
+    me = os.getpid()
+    for proc in Path("/proc").iterdir():
+        if not proc.name.isdigit() or int(proc.name) == me:
+            continue
+        try:
+            argv = (proc / "cmdline").read_bytes().split(b"\0")
+        except OSError:
+            continue
+        if any(a.endswith(b"watch_decision_refresh.py") for a in argv) and b"--worker" in argv:
+            return True
+    return False
+
+
+def _spawn_workers(n: int) -> int:
+    started = 0
+    for _ in range(max(0, int(n))):
+        subprocess.Popen([PY, str(PROJECT_ROOT / "scripts" / "watch_decision_refresh.py"), "--worker"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True, cwd=PROJECT_ROOT)
+        started += 1
+    return started
 
 
 # ── status / freshness contract (Section 8) ──────────────────────────────────

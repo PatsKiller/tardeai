@@ -283,6 +283,27 @@ def assess_data_quality(facts: dict, event: ev.EventState) -> dict:
 
 # ── families ──────────────────────────────────────────────────────────────────
 
+def _json_finite(obj):
+    """Replace NaN / ±Infinity floats with None, recursively.
+
+    json.dumps writes them as NaN / Infinity, which PostgreSQL rejects as json. 2026-09-15: 513
+    refresh jobs in 14 days failed at rebuild:ticket_review with "invalid input syntax for type
+    json" on the decision_packets insert.
+    """
+    import math
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_finite(v) for v in obj]
+    return obj
+
+
+def _pg_json(obj) -> str:
+    return json.dumps(_json_finite(obj), default=str, allow_nan=False)
+
+
 def build_long_term(facts, event, ownership, thesis_state, timing) -> dict:
     if not facts.get("atr") or not facts.get("support"):
         return {"family": "LONG_TERM", "state": DATA_UNAVAILABLE,
@@ -1202,7 +1223,7 @@ def persist(packet: dict, conn=None, *, origin="on_demand", requested_by="operat
                  packet["no_trade_is_valid"], packet["model_review"]["mode"],
                  len(packet["model_review"]["lanes_requested"]),
                  len(packet["model_review"]["lanes_completed"]),
-                 json.dumps(packet, default=str), packet.get("source_commit_sha")))
+                 _pg_json(packet), packet.get("source_commit_sha")))
     packet_id = cur.fetchone()[0]
 
     # Supersede any prior live packet — append-only, never updated in place.
