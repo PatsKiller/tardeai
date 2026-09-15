@@ -15,7 +15,7 @@
 
 ```dot
 digraph fb_d {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Family D — unchanged loop, with the two approved-but-unbuilt closers marked", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Family D — unchanged loop, with the two approved-but-unbuilt closers marked", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   wake [label="Hourly wake", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -28,11 +28,6 @@ digraph fb_d {
   commit -> sweep [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   sweep -> lesson [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   wake -> wake [label="turn 115 ⟳", color="#ED7D31", style=bold];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 

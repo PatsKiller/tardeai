@@ -95,9 +95,9 @@ source authority) and enforced by a CI gate and a runtime closure monitor.
 is green, and for 7 consecutive days the closure monitor reports terminal share > 0, stuck
 = 0 beyond TTL, and every declared feedback counter > 0.
 
-```dot-wide
+```dot
 digraph contract {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Lifecycle Contract v1 — declared, gated, monitored", labelloc=t, nodesep=0.3, ranksep=0.6, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Lifecycle Contract v1 — declared, gated, monitored", labelloc=t, nodesep=0.3, ranksep=0.6, pad=0.3];
   node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9.5, color="#2B5797", fillcolor="#EAF1FB"];
   edge [color="#44546A", fontname="Helvetica", fontsize=8.5];
   reg [label="config/lifecycle_registry.json ◆\nLC1 states · LC2 terminal · LC3 TTL · LC4 owner ·\nLC5 events · LC6 keys · LC7 feedback · LC8 replay key ·\nLC9 cadence · LC10 questions · LC11 decisions · LC12 evidence", fillcolor="#F1ECF8", color="#7030A0"];
@@ -192,9 +192,9 @@ digraph keyspine {
 
 ---
 
-```dot-wide
+```dot
 digraph target_loop {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Target platform lifecycle — every finish feeds the next question", labelloc=t, nodesep=0.3, ranksep=0.5, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Target platform lifecycle — every finish feeds the next question", labelloc=t, nodesep=0.3, ranksep=0.5, pad=0.3];
   node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9, color="#2B5797", fillcolor="#EAF1FB"];
   edge [color="#1F3864", fontname="Helvetica", fontsize=8];
   prov [label="Provider\n(grant / retire checklist)"]; coll [label="Collector\nhealth per run"]; wr [label="Writer\nplausibility at write"]; q [label="Quarantine", fillcolor="#FBE5E5", color="#C00000"];
@@ -535,9 +535,9 @@ Exit counters: services on pre-promote code **8 → 0 within one promote** · re
 deploy since 23:06**, and a refused fast-forward now fails the deploy loudly. UNITS INSTALLED ◆, CHANGED
 SERVICES RESTARTED ◆, append-only receipts with `change_id` ◆ remain. Dev tree `git status` clean █ (#1023).
 
-```dot-wide
+```dot
 digraph lc_future_f1 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="F1 target — Deploy v2 (green = live since 2026-09-14)", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="F1 target — Deploy v2 (green = live since 2026-09-14)", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   req [label="REQUESTED\nchange_id ◆", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
@@ -562,11 +562,6 @@ digraph lc_future_f1 {
   ff -> restart [color="#BF9000", style=dashed];
   restart -> verified [color="#BF9000", style=dashed];
   verified -> recorded [color="#1F3864", penwidth=1.4];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -718,9 +713,9 @@ all of it on one epoch.
                                     registry v1           inbound keys
 ```
 
-```dot-wide
+```dot
 digraph roadmap_lc {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Lifecycle roadmap — progress at 2026-09-14 (green done · amber partial · grey open)", labelloc=t, nodesep=0.2, ranksep=0.5, pad=0.3, newrank=true, compound=true];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Lifecycle roadmap — progress at 2026-09-14 (green done · amber partial · grey open)", labelloc=t, nodesep=0.2, ranksep=0.5, pad=0.3, newrank=true, compound=true];
   node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=8.5, color="#8497B0", fillcolor="#F4F6F9"];
   edge [color="#44546A"];
   subgraph cluster_p0 { label="P0 Truth & runtime reach"; style=rounded; color="#C9D3DF";
@@ -735,6 +730,33 @@ digraph roadmap_lc {
   subgraph cluster_p3 { label="P3 Cognition learns"; style=rounded; color="#C9D3DF"; y [label="wake iteration"]; z [label="critique teeth"]; aa [label="falsifiers + sweep"]; ab [label="lessons scored"]; }
   subgraph cluster_p4 { label="P4 Unattended"; style=rounded; color="#C9D3DF"; ac [label="release windows + acceptance"]; ad [label="bounded self-repair", fillcolor="#FFF2CC", color="#BF9000"]; ae [label="resilience"]; }
   g -> m [ltail=cluster_p0, lhead=cluster_p1]; o -> s [ltail=cluster_p1, lhead=cluster_p2]; u -> y [ltail=cluster_p2, lhead=cluster_p3]; ab -> ac [ltail=cluster_p3, lhead=cluster_p4];
+  // grid layout: rows of 4 per phase, phases stacked top to bottom
+  {rank=same; a; b; c; d;}
+  a -> b -> c -> d [style=invis];
+  {rank=same; e; f; g; h;}
+  e -> f -> g -> h [style=invis];
+  {rank=same; i; j;}
+  i -> j [style=invis];
+  a -> e [style=invis, weight=10];
+  e -> i [style=invis, weight=10];
+  {rank=same; k; l; m; n;}
+  k -> l -> m -> n [style=invis];
+  {rank=same; o; p; q; r;}
+  o -> p -> q -> r [style=invis];
+  k -> o [style=invis, weight=10];
+  {rank=same; s; t; u; v;}
+  s -> t -> u -> v [style=invis];
+  {rank=same; w; x;}
+  w -> x [style=invis];
+  s -> w [style=invis, weight=10];
+  {rank=same; y; z; aa; ab;}
+  y -> z -> aa -> ab [style=invis];
+  {rank=same; ac; ad; ae;}
+  ac -> ad -> ae [style=invis];
+  i -> k [style=invis, weight=10];
+  o -> s [style=invis, weight=10];
+  w -> y [style=invis, weight=10];
+  y -> ac [style=invis, weight=10];
 }
 ```
 

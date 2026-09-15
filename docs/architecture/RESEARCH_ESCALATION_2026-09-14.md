@@ -7,9 +7,9 @@
 **Operator question that prompted this (2026-09-14):**
 > "When does the agent say Brave's answers weren't enough, so we put it out to the LLM, or vice versa? Web searches are not enough, so we go to Brave? Hermes did not get enough, so we go to Brave?"
 
-```dot-wide
+```dot
 digraph three_mechanisms {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Three separate research mechanisms (measured 2026-09-14)", labelloc=t, nodesep=0.3, ranksep=0.55, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Three separate research mechanisms (measured 2026-09-14)", labelloc=t, nodesep=0.3, ranksep=0.55, pad=0.3];
   node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9, color="#2B5797", fillcolor="#EAF1FB"];
   edge [color="#44546A", fontname="Helvetica", fontsize=8];
   subgraph cluster_desk { label="1 · Operator desk gap resolver"; style=rounded; color="#9DC3E6";

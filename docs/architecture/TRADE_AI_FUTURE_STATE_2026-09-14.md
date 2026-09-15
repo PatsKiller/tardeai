@@ -390,9 +390,9 @@ questions █ (#1006) · release windows ◆ · lanes baseline ▓ · dead feeds
         spend · monitors       lanes · posture       gap resolver live      consistency (M4)
 ```
 
-```dot-wide
+```dot
 digraph roadmap_v1 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Roadmap with 2026-09-14 progress (green = done, amber = partial, grey = open)", labelloc=t, nodesep=0.25, ranksep=0.5, pad=0.3, newrank=true];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Roadmap with 2026-09-14 progress (green = done, amber = partial, grey = open)", labelloc=t, nodesep=0.25, ranksep=0.5, pad=0.3, newrank=true];
   node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9, color="#8497B0", fillcolor="#F4F6F9"];
   edge [color="#44546A"];
   subgraph cluster_p0 { label="P0 Stabilise (0–7 d)"; style=rounded; color="#C9D3DF";
@@ -406,6 +406,30 @@ digraph roadmap_v1 {
   subgraph cluster_p3 { label="P3 Closed loop (8–12 wk)"; style=rounded; color="#C9D3DF"; p3a [label="falsifiers"]; p3b [label="outcomes"]; p3c [label="lessons · MVL"]; }
   subgraph cluster_p4 { label="P4 Unattended (12+ wk)"; style=rounded; color="#C9D3DF"; p4a [label="self-repair"]; p4b [label="M1–M5 on one epoch"]; }
   p0b -> p1a [lhead=cluster_p1, ltail=cluster_p0]; p1a -> p2a; p2b -> p3a; p3c -> p4a;
+  // grid layout: rows of 4 per phase, phases stacked top to bottom
+  {rank=same; p0a; p0b; p0c; p0d;}
+  p0a -> p0b -> p0c -> p0d [style=invis];
+  {rank=same; p0e; p0f; p0g; p0h;}
+  p0e -> p0f -> p0g -> p0h [style=invis];
+  {rank=same; p0i; p0j;}
+  p0i -> p0j [style=invis];
+  p0a -> p0e [style=invis, weight=10];
+  p0e -> p0i [style=invis, weight=10];
+  {rank=same; p1a; p1b; p1c; p1d;}
+  p1a -> p1b -> p1c -> p1d [style=invis];
+  {rank=same; p1e; p1f;}
+  p1e -> p1f [style=invis];
+  p1a -> p1e [style=invis, weight=10];
+  {rank=same; p2a; p2b; p2c; p2d;}
+  p2a -> p2b -> p2c -> p2d [style=invis];
+  {rank=same; p3a; p3b; p3c;}
+  p3a -> p3b -> p3c [style=invis];
+  {rank=same; p4a; p4b;}
+  p4a -> p4b [style=invis];
+  p0i -> p1a [style=invis, weight=10];
+  p1e -> p2a [style=invis, weight=10];
+  p2a -> p3a [style=invis, weight=10];
+  p3a -> p4a [style=invis, weight=10];
 }
 ```
 

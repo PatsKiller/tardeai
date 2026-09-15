@@ -301,9 +301,9 @@ document's assessment.
 | Telegram | long bodies split at 4,096 UTF-16 units; rich layouts with link previews and buttons; Communications Editor at the chokepoint (shadow) (#1009, #1016, #1018) | desk answers no longer refused silently |
 | Gmail / Drive (gog) | Google credential re-authenticated by the operator 23:4x; mcporter token refresh succeeds (failing since at least 09-01) | R18 closed |
 
-```dot-wide
+```dot
 digraph connectivity {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Connectivity model with the 2026-09-14 integrity controls", labelloc=t, nodesep=0.3, ranksep=0.6, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Connectivity model with the 2026-09-14 integrity controls", labelloc=t, nodesep=0.3, ranksep=0.6, pad=0.3];
   node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9.5, color="#2B5797", fillcolor="#EAF1FB"];
   edge [color="#44546A", fontname="Helvetica", fontsize=8.5];
   prov [label="Provider"]; coll [label="Collector script\n(cron, dev tree = release)"]; health [label="report_source()\nhealth row\n(AV fixed 09-14)", fillcolor="#FFF7E6", color="#BF9000"];

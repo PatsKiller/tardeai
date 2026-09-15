@@ -22,7 +22,7 @@
 
 ```dot
 digraph fb_a {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Family A after 2026-09-14 — price integrity controls", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Family A after 2026-09-14 — price integrity controls", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   src [label="Schwab · Alpaca · Finviz", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -39,11 +39,6 @@ digraph fb_a {
   yahoo -> eod [color="#1F3864", penwidth=1.4];
   eod -> store [label="replace > 1 % off", color="#548235", penwidth=1.3];
   litmus -> quar [label="✗✗ not built", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 

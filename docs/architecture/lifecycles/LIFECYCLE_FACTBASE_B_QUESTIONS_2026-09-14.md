@@ -22,7 +22,7 @@
 
 ```dot
 digraph fb_b {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Family B after 2026-09-14 — the operator question now closes on the research", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Family B after 2026-09-14 — the operator question now closes on the research", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   q [label="Operator question", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -41,11 +41,6 @@ digraph fb_b {
   result -> pend [label="join by id", color="#548235", penwidth=1.3];
   pend -> follow [color="#548235", penwidth=1.3];
   result -> ddq [label="✗✗ unchanged", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 

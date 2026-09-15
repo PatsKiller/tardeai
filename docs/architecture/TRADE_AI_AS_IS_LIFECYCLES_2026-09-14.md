@@ -60,6 +60,29 @@ Flow edges       ══▶ spine   ──▶ lateral read   ◀── lateral wr
 Evidence         OBSERVED (default) · INFERRED · BLOCKED
 ```
 
+The lifecycle flow diagrams in this document use the same symbols as drawn shapes and lines:
+
+```dot
+digraph legend_flows {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="How to read the lifecycle flow diagrams", labelloc=t, nodesep=0.2, ranksep=0.9, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=9];
+  s1 [label="start / input", shape=oval, fillcolor="#FFF2CC", color="#BF9000"]; s2 [label="state / stage", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  s3 [label="terminal state", shape=oval, fillcolor="#E2F0D9", color="#548235"]; s4 [label="fixed or built on 2026-09-14", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  s5 [label="broken / missing stage", shape=box, fillcolor="#FBE5E5", color="#C00000"]; s6 [label="store", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"];
+  s7 [label="decision / gate", shape=diamond, fillcolor="#F4F6F9", color="#44546A"]; s8 [label="new (target, not built)", shape=box, fillcolor="#F1ECF8", color="#7030A0"];
+  e1a [label="", shape=point]; e1b [label="spine ══▶", shape=plaintext];
+  e2a [label="", shape=point]; e2b [label="feedback that fires ╌╌▶", shape=plaintext];
+  e3a [label="", shape=point]; e3b [label="partial", shape=plaintext];
+  e4a [label="", shape=point]; e4b [label="severed ✗✗▶", shape=plaintext];
+  e5a [label="", shape=point]; e5b [label="replay ⟳", shape=plaintext];
+  e6a [label="", shape=point]; e6b [label="lateral read / write", shape=plaintext];
+  e1a -> e1b [color="#1F3864", penwidth=1.4]; e2a -> e2b [color="#548235", penwidth=1.3]; e3a -> e3b [color="#BF9000", style=dashed];
+  e4a -> e4b [color="#C00000", style=dashed, penwidth=1.2]; e5a -> e5b [color="#ED7D31", style=bold]; e6a -> e6b [color="#8497B0", style=dotted];
+  s1 -> s2 -> s3 [style=invis]; s4 -> s5 -> s6 [style=invis]; s7 -> s8 [style=invis];
+}
+```
+
 ### Maturity scale (per stage)
 
 ```
@@ -424,9 +447,9 @@ separately rather than counted as a break.
 **Target:** write-time plausibility → refusal/quarantine → gap → free-first resolver with receipts → producer refresh → verified envelope.
 **Exit (observed):** `ticker_prices_quarantine` row within 24 h of a detector refusal and the refusal list empty next run · `gap_resolution_receipts.jsonl` exists with ≥1 `answered` · `research_gaps` RESOLVED_FREE > 0 · `data_source_health` row count ≥ active providers with alpaca/schwab/yfinance `healthy` on a weekday · plausibility `LastTriggerUSec` non-empty · hub `DIRECT_READ` baseline 177 → 0.
 
-```dot-wide
+```dot
 digraph lc_a1 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="A1 · Market / reference data point (after 2026-09-14)", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="A1 · Market / reference data point (after 2026-09-14)", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   prov [label="Provider", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -455,11 +478,6 @@ digraph lc_a1 {
   proj -> gap [label="stale ✗✗", color="#C00000", style=dashed, penwidth=1.2];
   gap -> refresh [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   refresh -> coll [color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -537,9 +555,9 @@ to `.env` for DB settings instead of silently swallowing the connection error (#
 credential behind Drive tooling was re-authenticated by the operator (token refresh green). Retired
 keys, config scan scope and moomoo drift are unchanged.
 
-```dot-wide
+```dot
 digraph lc_a2 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="A2 · Data source (provider) lifecycle", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="A2 · Data source (provider) lifecycle", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   pr [label="Agent PR\n(proposed)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -559,11 +577,6 @@ digraph lc_a2 {
   degraded -> regstat [label="✗✗ moomoo drift", color="#C00000", style=dashed, penwidth=1.2];
   active -> retired [label="operator", color="#1F3864", penwidth=1.4];
   retired -> keys [label="✗✗ 4 keys rendered", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -640,9 +653,9 @@ Tagging **L3** · registry resolution L2 · supersede chain L2 · mention roles 
 `A.X.T.I`) now resolve when the book or registry holds them (#1005) — a resolver change, not a tagger
 change; tagger precision on agent-authored text is still open.
 
-```dot-wide
+```dot
 digraph lc_a3 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="A3 · Identity: mention → subject_guid", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="A3 · Identity: mention → subject_guid", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   msg [label="Mention\n(turn · corpus row)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -661,11 +674,6 @@ digraph lc_a3 {
   unres -> unres [label="⟳", color="#ED7D31", style=bold];
   unres -> cusip [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   tag -> quar [label="persist failure", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -743,9 +751,9 @@ Detect **L3** · corroboration feedback **L0** · notify **L4** for fresh change
 Finviz and Yahoo, buttons, chart preview) through the gateway canary with `render_rich`, keeping the
 plain text for the router check (#1018). Corroboration feedback and aged-out labelling are unchanged.
 
-```dot-wide
+```dot
 digraph lc_a4 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="A4 · Material change", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="A4 · Material change", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   src [label="Prices · news · catalysts", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -769,11 +777,6 @@ digraph lc_a4 {
   feed -> wake [color="#1F3864", penwidth=1.4];
   corr -> drop [label="✗✗ → quarantine", color="#C00000", style=dashed, penwidth=1.2];
   notify -> aged [label="late detection", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -918,9 +921,9 @@ Fact base: `lifecycles/LIFECYCLE_FACTBASE_B_QUESTIONS_2026-09-14.md`.
 **Target:** `plan_id + research_id + subject_guid` stamped on the pending row → on `HERMES_LOOP_COMPLETED(plan_id)` curate from the result and follow up → otherwise honest close at ETA + grace; every send is an OUTBOUND event, then an agent turn, then subject memory, then the next wake.
 **Exit:** every non-slash message has one sourced reply turn (today 20.5 % / 12.5 %) · research-blocked pendings fulfilled from the Hermes result (0/1) · resolver receipts for every blocking gap (0) · desk replies ledgered (0) · a new turn changes the next wake (not met).
 
-```dot-wide
+```dot
 digraph lc_b1 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="B1 · Operator question (Telegram desk) — after 2026-09-14", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="B1 · Operator question (Telegram desk) — after 2026-09-14", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   q [label="Operator message", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -947,11 +950,6 @@ digraph lc_b1 {
   fulfil -> render [label="follow-up", color="#548235", penwidth=1.3];
   send -> ledger [label="✗✗ not ledgered", color="#C00000", style=dashed, penwidth=1.2];
   send -> aq [color="#8497B0", style=dotted];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -1049,9 +1047,9 @@ Dry runs: HPE 2 laps → ANSWERED_PARTIAL, check-in in 3 days (the analyzer caug
 0.83×, an earnings-date disagreement and missing volume history); ELMT 1 lap → sufficient M2, check-in 7
 days. The existing DDQ and research-object lifecycles below are unchanged.
 
-```dot-wide
+```dot
 digraph lc_b2 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="B2 · System-raised questions (2A research objects · 2B DDQ · 2C situations)", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="B2 · System-raised questions (2A research objects · 2B DDQ · 2C situations)", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   mc [label="material_changes", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -1079,11 +1077,6 @@ digraph lc_b2 {
   ext -> ddq [label="usefulness → lane rank", color="#548235", penwidth=1.3];
   sit -> hermes [color="#BF9000", style=dashed];
   circle -> hermes [label="phase 2+ (not built)", color="#8497B0", style=dotted];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -1197,9 +1190,9 @@ Plan L1 · enqueue L1 · claim L1 (orphan defect) · search/synthesis L2 · crit
 **Target:** plan(question, subject_guid) → ledger is the source of truth and the projection is rebuilt under a lock → claim → search with SearXNG spill on caller cap → synthesis that redacts rather than rejects → critique able to say INVALID → memory CANDIDATE → ACCEPTED on corroboration → HRI promoted with `expires_at` → consumers join by plan_id → expiry → re-research.
 **Exit:** 0 queued jobs older than 2× cadence (26) · 7-day completion ≥ 70 % (15 %) · every operator-forced completion joined to its pending in one pass (0/1) · `research_expires_at` on 100 % of promoted (0 %) · ≥ 1 completion changes a thesis or next question (0/27).
 
-```dot-wide
+```dot
 digraph lc_b3 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="B3 · Hermes CIO research queue — after the 2026-09-14 heartbeat and bridge fixes", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="B3 · Hermes CIO research queue — after the 2026-09-14 heartbeat and bridge fixes", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   plan [label="Plan / desk request", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -1229,11 +1222,6 @@ digraph lc_b3 {
   lane -> claim [color="#8497B0", style=dotted];
   watchdog -> bridge [label="restart if wedged", color="#548235", penwidth=1.3];
   done -> notify [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -1281,9 +1269,9 @@ Maturity: ingest L1 · curate L2 · route L1 (wrong target) · topic analysis **
 
 **Update 2026-09-14:** unchanged (not re-measured).
 
-```dot-wide
+```dot
 digraph lc_b4 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="B4 · Topic / thematic research", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="B4 · Topic / thematic research", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   tm [label="topic_monitor", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -1304,11 +1292,6 @@ digraph lc_b4 {
   hbridge -> hri [color="#BF9000", style=dashed];
   cur -> fb [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   fb -> ing [color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -1454,9 +1437,9 @@ actual spend under a $2.00/day global cap with calibrated reservations (#1015), 
 phantom-money `COST_CAP_EXCEEDED: global cap` refusals; the synthesis prompt budget and 32,000 cap are
 live (#1002). Gate exclusion, retry, integrity re-stamping and topic routing are unchanged.
 
-```dot-wide
+```dot
 digraph lc_c1 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="C1 · Symbol / watchlist item", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="C1 · Symbol / watchlist item", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   intake [label="Intake writers", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -1485,11 +1468,6 @@ digraph lc_c1 {
   syn -> restamp [label="no fresh results", color="#ED7D31", style=bold];
   restamp -> safety [label="⟳", color="#ED7D31", style=bold];
   dir -> rm [color="#8497B0", style=dotted];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -1561,9 +1539,9 @@ Maturity: promoter **L0** (output) · create L1 · enrich/readiness L1 · agent 
 
 **Update 2026-09-14:** unchanged (not re-measured). The execution side stays out of scope (⊘).
 
-```dot-wide
+```dot
 digraph lc_c2 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="C2 · Proposal (to the approval boundary)", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="C2 · Proposal (to the approval boundary)", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   prom [label="Incubator promoter\n0 promotions", shape=box, fillcolor="#FBE5E5", color="#C00000"];
@@ -1585,11 +1563,6 @@ digraph lc_c2 {
   gate -> afpt [color="#1F3864", penwidth=1.4];
   afpt -> gate [label="revalidation thrash ⟳", color="#ED7D31", style=bold];
   afpt -> bound [color="#8497B0", style=dotted];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -1664,9 +1637,9 @@ Maturity: journal L1 · multi-tier **L0** · outcome scoring L1 (L2 deterministi
 **Update 2026-09-14:** unchanged (not re-measured). The advisory lessons-reflect timer moved 21:40 → 19:40
 to stay inside the operator window (#1020).
 
-```dot-wide
+```dot
 digraph lc_c3 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="C3 · Review and learning (advisory side)", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="C3 · Review and learning (advisory side)", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   trades [label="Closed trades (⊘ side)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -1685,11 +1658,6 @@ digraph lc_c3 {
   rev -> lessons [color="#BF9000", style=dashed];
   lessons -> hit [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   hit -> lessons [label="auto-retire on null ⟳", color="#ED7D31", style=bold];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -1748,9 +1716,9 @@ Maturity: per-process caps L2 · global admission L1 (refuses the wrong work) ·
 **Target:** budget by priority class with floors (operator questions > held positions > agent jobs > synthesis > background opinion); refusal class and retry-after stored on the job; a refused job defers to the next window instead of failing.
 **Exit:** 0 `COST_CAP_EXCEEDED: global cap` on agent jobs for 3 weekdays while total spend ≤ the global cap.
 
-```dot-wide
+```dot
 digraph lc_c4 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="C4 · Agent-job budget admission — after 2026-09-14", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="C4 · Agent-job budget admission — after 2026-09-14", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   req [label="Agent job LLM request", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -1769,11 +1737,6 @@ digraph lc_c4 {
   resv -> call [color="#1F3864", penwidth=1.4];
   global -> refuse [label="over cap", color="#C00000", style=dashed, penwidth=1.2];
   refuse -> req [label="retried into same pool ⟳", color="#ED7D31", style=bold];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -1911,9 +1874,9 @@ a8a62217e (04:00Z); the first c594d8600 slot is 05:00Z.
 that cannot be wedged by a held provider call (#1019). The replay, single-subject memory and settlement
 defects are unchanged.
 
-```dot-wide
+```dot
 digraph lc_d1 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="D1 · Hourly persistent wake", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="D1 · Hourly persistent wake", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   prod [label=":45 research producer", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -1941,11 +1904,6 @@ digraph lc_d1 {
   decide -> sel [label="operator-turn branch: turn 115 ⟳", color="#ED7D31", style=bold];
   settled -> memory [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   commit -> sweep [label="✗✗ unscheduled", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -2015,9 +1973,9 @@ Maturity: checkpoint register L1 · resolve L1 (5/week) · observation L1 (non-i
 but is not yet installed. The price fixes (#1008) matter here: the only three OUTCOME_DERIVED lessons were
 computed on the suspect SCHD series.
 
-```dot-wide
+```dot
 digraph lc_d2 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="D2 · Commitment → checkpoint → outcome → lesson", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="D2 · Commitment → checkpoint → outcome → lesson", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   wake [label="Wake commitment\nFROZEN, due +7 d", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -2035,11 +1993,6 @@ digraph lc_d2 {
   lesson -> ratify [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   ratify -> question [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   resolve -> resolve [label="due 0 ⟳", color="#ED7D31", style=bold];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -2094,9 +2047,9 @@ Maturity: nightly reflection L1 L5 (runs) / **L0** (effect) · Sentinel L1 · Da
 
 **Update 2026-09-14:** unchanged. The advisory shadow-seed timer moved 21:45 → 19:45 (#1020).
 
-```dot-wide
+```dot
 digraph lc_d3 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="D3 · Reflection and MVL agents", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="D3 · Reflection and MVL agents", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   cases [label="cio_production_cases", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -2117,11 +2070,6 @@ digraph lc_d3 {
   shadow -> darwin [color="#1F3864", penwidth=1.4];
   darwin -> consumer [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   iris -> human [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -2199,9 +2147,9 @@ Maturity: reactive intake L1 L5 · wake-job dispatch L1 (21 %) · health boundar
 **Update 2026-09-14:** unchanged (not re-measured). "CIO Run Complete" check-ins with no advisory action are
 no longer sent (#1009).
 
-```dot-wide
+```dot
 digraph lc_d4 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="D4 · CIO run · wake jobs · defer · situations", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="D4 · CIO run · wake jobs · defer · situations", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   events [label="cio_events\n(thesis · enrichment · situations · operator)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -2223,11 +2171,6 @@ digraph lc_d4 {
   wj -> stuck [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   sit -> sit [label="⟳", color="#ED7D31", style=bold];
   sit -> events [color="#8497B0", style=dotted];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -2270,9 +2213,9 @@ Maturity: promote/stamp L1 L5 · contiguity L1 · acceptance evaluation **L0** (
 **Update 2026-09-14:** 22 releases were promoted on 09-14, so epoch contiguity could not accumulate during
 the day; the overnight windows remain the only long same-SHA runs. Acceptance collector still unscheduled.
 
-```dot-wide
+```dot
 digraph lc_d5 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="D5 · Epoch acceptance", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="D5 · Epoch acceptance", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   prep [label="prepare", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -2289,11 +2232,6 @@ digraph lc_d5 {
   slots -> superseded [label="next promote (~1.4 h)", color="#1F3864", penwidth=1.4];
   superseded -> promote [label="reset ⟳", color="#ED7D31", style=bold];
   cut -> slots [color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -2436,9 +2374,9 @@ Producing L2 · classification L1 · dedupe/rate limit L1 · reservation L1 · l
 **Target:** one path — `publish_communication` → persisted policy decision → RESERVED → gateway send → SENT with pmid → SETTLED; no delivery stub for inbound; SUPPRESSED/DIGESTED terminal with reason and `digest_event_id`; an expirer for RESERVED; every CIO product, desk reply and pending close an OUTBOUND event; CC URL always stamped.
 **Exit:** gateway ≥ 95 % of outbound for 7 days · RESERVED ≤ 1 h old · owner-null rows 0 · CIO deliveries present in `communication_events` · `cio-delivery` lane keyed on DELIVERY_CONFIRMED.
 
-```dot-wide
+```dot
 digraph lc_e1 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="E1 · Outbound message — after 2026-09-14", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="E1 · Outbound message — after 2026-09-14", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   prod [label="Producers\nbrief 07:30 · GO */15 · entry · MC · health · desk", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -2461,11 +2399,6 @@ digraph lc_e1 {
   parts -> tg [color="#1F3864", penwidth=1.4];
   chk -> ledger [color="#8497B0", style=dotted];
   ledger -> settle [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -2535,9 +2468,9 @@ Poll/receive main bot **L2** · CIO bot L1 · atomic intake / checkpoint **L2** 
 **Update 2026-09-14:** the desk side of inbound changed (B1); the intake lifecycle below it is unchanged.
 The CIO bot was restarted on the release after each desk deploy by hand (runbook step 7).
 
-```dot-wide
+```dot
 digraph lc_e2 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="E2 · Inbound operator reply", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="E2 · Inbound operator reply", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   upd [label="Telegram update", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -2556,11 +2489,6 @@ digraph lc_e2 {
   receipt -> wake [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   wake -> wake [label="turn 115 ⟳", color="#ED7D31", style=bold];
   tag -> quar [label="persist failure", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -2610,9 +2538,9 @@ what is wrong, next run, action, escalation, engineer detail last (#997); the an
 `RESEARCH_LANDED_UNSENT` and `REPLY_NOT_DELIVERED`; the research lane and bridge watchdog alert on state
 change. Acknowledgement, reminders and incident rows are unchanged.
 
-```dot-wide
+```dot
 digraph lc_e3 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="E3 · Platform-monitor alert", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="E3 · Platform-monitor alert", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   det [label="Detector timer\n(health · gaps · answer quality · lanes)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -2630,11 +2558,6 @@ digraph lc_e3 {
   send -> op [color="#1F3864", penwidth=1.4];
   op -> ack [label="✗✗ no primitive", color="#C00000", style=dashed, penwidth=1.2];
   det -> clear [label="findings clear", color="#548235", penwidth=1.3];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -2652,9 +2575,9 @@ digraph lc_e3 {
 
 **Target:** Drive update-in-place so file ids and links persist; email sends as OUTBOUND events with a receipt; credential health monitored. **Exit:** same Drive file id across two syncs of a changed doc · a digest per weekday present in the communication ledger · token refresh unit green.
 
-```dot-wide
+```dot
 digraph lc_e4 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="E4 · Email and Drive publication", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="E4 · Email and Drive publication", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   docs [label="repo docs/", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -2670,11 +2593,6 @@ digraph lc_e4 {
   digest -> gmail [color="#1F3864", penwidth=1.4];
   gmail -> op [color="#1F3864", penwidth=1.4];
   token -> drive [color="#8497B0", style=dotted];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -2803,9 +2721,9 @@ Terminal in practice: MERGED + PROMOTED 39 of 42 · OPEN-stale 1 (#963 since 09-
 **Target:** one `change_id` from request → PR → CI → release → append-only promote receipt (with `source_pr` and approver) → dev tree = release SHA (or the dev tree removed as an execution root) → units diffed and installed → every unit whose code root changed restarted → post-promote verification receipt → docs merged.
 **Exit:** main = release = dev tree (**met** at 00:30) · all running units on the current release (not met: 8) · repo units = installed units (not met: 20 differ, 7 missing) · deploy history durable (1 receipt) · decisions auditable (not met).
 
-```dot-wide
+```dot
 digraph lc_f1 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="F1 · Change: request → runtime (after #1025)", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="F1 · Change: request → runtime (after #1025)", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   req [label="Operator request", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -2833,11 +2751,6 @@ digraph lc_f1 {
   ff -> verify [color="#1F3864", penwidth=1.4];
   prom -> units [label="✗✗ manual", color="#C00000", style=dashed, penwidth=1.2];
   prom -> restart [label="✗✗ manual", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -2926,9 +2839,9 @@ Maturity: registry → DB L2 · admission L3 (refusals unrecorded) · reservatio
 **Target:** every admission decision (admit or refuse, with class) is one row; reservation actual equals ledger; the global cap is enforced in the shared transport; cap changes append to an audit ledger and land as a commit; reconcile residual < 10 %.
 **Exit:** refusal rows = log refusals (0 today) · spend ≤ cap every day (3/7) · reservation = ledger (met since 09-12) · registry ids = DB ids (2 extra) · residual small ($49.77).
 
-```dot-wide
+```dot
 digraph lc_f2 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="F2 · LLM call — after 2026-09-14", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="F2 · LLM call — after 2026-09-14", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   caller [label="Caller\n(names task_type #1021)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -2950,11 +2863,6 @@ digraph lc_f2 {
   log -> spend [color="#548235", penwidth=1.3];
   bal -> spend [color="#548235", penwidth=1.3];
   admit -> refuse [label="✗✗ not recorded", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -3019,9 +2927,9 @@ Maturity: propose L0 · declare L2 · **install L0** · evaluate L4 · drift L2 
 **Target:** registry row → installed from git by the deploy → first natural-schedule output observed → LIVE recorded as the install receipt; evaluator uses the declared timezone; every unit file expected or retired.
 **Exit:** real SILENT + ORPHANED = 0 (≥ 4) · UNVERIFIABLE = 0 (6) · baseline shrinking (531) · expected ⊇ running critical units (not met) · inotify failures = 0 (not met).
 
-```dot-wide
+```dot
 digraph lc_f3 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="F3 · Scheduled lane and service", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="F3 · Scheduled lane and service", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   prop [label="Operator approval\n(chat)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -3038,11 +2946,6 @@ digraph lc_f3 {
   drift -> retire [label="manual triage", color="#BF9000", style=dashed];
   svc -> eval [color="#8497B0", style=dotted];
   drift -> drift [label="re-reported ⟳", color="#ED7D31", style=bold];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -3138,9 +3041,9 @@ Maturity: detect L4 · alert/suppress L3 · auto-remediate L2 (0.6 % effective, 
 **Target:** one finding ledger (id, detector, subject, severity, first_seen, last_seen, owner, state `open → acknowledged → fixing → verifying → closed | accepted`) fed by every detector; a circuit-open remediation becomes an owned finding; closure requires a clean natural-schedule observation.
 **Exit:** every detector writes the ledger · every open critical has an owner · remediation success > 50 % or the type disabled · escalations reviewed before expiry · `alert_incidents` populated.
 
-```dot-wide
+```dot
 digraph lc_f4 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="F4 · Finding / incident — after 2026-09-14", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="F4 · Finding / incident — after 2026-09-14", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   det [label="11+ detectors", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -3161,11 +3064,6 @@ digraph lc_f4 {
   det -> wd [label="/health", color="#548235", penwidth=1.3];
   triage -> fix [color="#BF9000", style=dashed];
   fix -> close [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 
@@ -3222,9 +3120,9 @@ Maturity: render L4 · consume L3 · **rotate L0** · **retire L0** · daily bac
 repo unit #1022) after 40,579 memory-limit hits in its first threaded hour. DC supply, UPS, rotation,
 retired keys and restore drills remain open.
 
-```dot-wide
+```dot
 digraph lc_f5 {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="F5 · Secrets, backup and host", labelloc=t, nodesep=0.3, ranksep=0.45, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="F5 · Secrets, backup and host", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
   node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
   edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
   sm [label="Bitwarden SM", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
@@ -3247,11 +3145,6 @@ digraph lc_f5 {
   offsite -> verify [color="#BF9000", style=dashed];
   verify -> drill [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
   power -> pg [label="hard cuts", color="#C00000", style=dashed, penwidth=1.2];
-  subgraph cluster_legend { label="Legend"; fontsize=9; style=rounded; color="#C9D3DF";
-    lg1 [label="fires", shape=plaintext, fontsize=8]; lg2 [label="partial", shape=plaintext, fontsize=8];
-    lg3 [label="severed ✗✗", shape=plaintext, fontsize=8]; lg4 [label="replay ⟳", shape=plaintext, fontsize=8];
-    lg1 -> lg2 [color="#548235", penwidth=1.3, style=invis]; 
-  }
 }
 ```
 

@@ -223,9 +223,9 @@ digraph comms {
 | Auto-fix dead | 36,365 retries exited 127 since 08-07 | `resolve_relative_venv` |
 | Bridge wedged from 15:15 | DeepSeek held calls ~906 s; single-threaded server; `/health` absent | deadline 150 s, 4 threads, 503 BRIDGE_BUSY, `/health`, watchdog, MemoryMax 768M |
 
-```dot-wide
+```dot
 digraph bridge {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Governed model bridge :8766 — before and after the 2026-09-14 wedge", labelloc=t, nodesep=0.3, ranksep=0.55, pad=0.3, compound=true];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Governed model bridge :8766 — before and after the 2026-09-14 wedge", labelloc=t, nodesep=0.3, ranksep=0.55, pad=0.3, compound=true];
   node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9.5, color="#2B5797", fillcolor="#EAF1FB"];
   edge [color="#44546A", fontname="Helvetica", fontsize=8.5];
   subgraph cluster_before { label="Before (15:15–17:17)"; style="rounded,filled"; fillcolor="#FBEFEF"; color="#E3BDBD";
@@ -294,9 +294,9 @@ digraph labels {
 Measured first (#1010): no quality-based escalation existed; for operator questions Brave was
 off and Hermes was the only step that ran; Brave spilled to SearXNG only on quota or 429.
 
-```dot-wide
+```dot
 digraph circle {
-  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Research Escalation Circle — phase 1 lifecycle (dry run by default)", labelloc=t, nodesep=0.35, ranksep=0.55, pad=0.3];
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Research Escalation Circle — phase 1 lifecycle (dry run by default)", labelloc=t, nodesep=0.35, ranksep=0.55, pad=0.3];
   node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9.5, color="#2B5797", fillcolor="#EAF1FB"];
   edge [color="#44546A", fontname="Helvetica", fontsize=8.5];
   asked [label="ASKED\nquestion_guid (uuid5)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
