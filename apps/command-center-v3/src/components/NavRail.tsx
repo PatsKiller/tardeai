@@ -3,46 +3,33 @@ import { NavLink, useLocation } from 'react-router-dom'
 
 type Hub = { to: string; label: string; exact?: boolean; hardNav?: boolean }
 
+/** Lean operator spine — secondary hubs stay routed in App.tsx, just off the rail. */
 const SECTIONS: { label: string; hubs: Hub[] }[] = [
   {
     label: 'Trade',
     hubs: [
       { to: '/', label: 'Home', exact: true },
       { to: '/portfolio', label: 'Portfolio', exact: true },
-      { to: '/portfolio/re-entry', label: '↳ Re-Entry' },
-      { to: '/risk', label: 'Risk' },
       { to: '/trading', label: 'Trading' },
-      { to: '/active-trader', label: 'Active Trader' },
-      { to: '/strategy', label: 'Strategy' },
-      { to: '/journal', label: 'TradeInView' },
       { to: '/watch', label: 'Watch' },
-      { to: '/defense', label: 'Defense' },
+      { to: '/risk', label: 'Risk' },
+      { to: '/active-trader', label: 'Active Trader' },
+      { to: '/journal', label: 'TradeInView' },
     ],
   },
   {
     label: 'Intel',
     hubs: [
-      { to: '/agents', label: 'Agents' },
-      { to: '/research-intelligence', label: 'Research Intel' },
-      { to: '/intelligence', label: 'Intelligence' },
-      { to: '/closed-loop', label: 'Closed Loop' },
-      { to: '/hermes', label: 'Hermes' },
-      { to: '/advisory', label: 'Advisory Desk' },
       { to: '/cio', label: 'CIO Desk' },
-      { to: '/reports', label: 'Reports', hardNav: true },
       { to: '/communications', label: 'Communications' },
-      { to: '/rotation', label: 'Rotation' },
-      { to: '/rec-intel', label: 'Rec Intelligence' },
+      { to: '/research-intelligence', label: 'Research Intel' },
     ],
   },
   {
     label: 'Ops',
     hubs: [
-      { to: '/retirement', label: 'Retirement' },
       { to: '/health', label: 'Health' },
-      { to: '/consumption', label: 'Consumption' },
       { to: '/system', label: 'System', exact: true },
-      { to: '/system/schwab-reauth', label: 'Schwab Reauth' },
     ],
   },
 ]
@@ -64,7 +51,7 @@ const CONTROL_PLANE_PREVIEW: { label: string; hubs: Hub[] } = {
   ],
 }
 
-/** Longest-prefix match so /portfolio/re-entry resolves to Re-Entry, not Portfolio. */
+/** Longest-prefix match so /portfolio/re-entry resolves under Portfolio when Re-Entry is off-nav. */
 function locate(pathname: string): { section: string; page: string } {
   let best: { section: string; page: string; len: number } | null = null
   for (const sec of [...SECTIONS, CONTROL_PLANE_PREVIEW]) {

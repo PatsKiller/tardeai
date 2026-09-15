@@ -1785,42 +1785,12 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        # Command Center v2 — serve built app at /v2/
+        # Command Center v2 — frozen; dist is gone. Permanent redirect to canonical v3.
         if path == "/v2" or path.startswith("/v2/"):
-            _v2_dist = PROJECT_ROOT / "apps" / "command-center-v2" / "dist"
-            _v2_sub = path[3:] or "/index.html"  # strip /v2 prefix
-            if _v2_sub == "":
-                _v2_sub = "/index.html"
-            _v2_file = _v2_dist / _v2_sub.lstrip("/")
-            # SPA fallback: serve index.html for non-asset paths
-            if not _v2_file.exists() and not any(_v2_sub.endswith(ext) for ext in (".js", ".css", ".svg", ".png", ".ico", ".woff", ".woff2")):
-                _v2_file = _v2_dist / "index.html"
-            if _v2_file.exists():
-                _ct = "text/html"
-                if _v2_sub.endswith(".js"): _ct = "application/javascript"
-                elif _v2_sub.endswith(".css"): _ct = "text/css"
-                elif _v2_sub.endswith(".svg"): _ct = "image/svg+xml"
-                elif _v2_sub.endswith(".png"): _ct = "image/png"
-                elif _v2_sub.endswith(".ico"): _ct = "image/x-icon"
-                self.send_response(200)
-                self.send_header("Content-Type", _ct)
-                # Force no-cache on all assets to prevent stale chunk issues after builds
-                self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
-                self.send_header("Pragma", "no-cache")
-                self.send_header("Expires", "0")
-                _body = _v2_file.read_bytes()
-                # Inject frozen banner into v2 HTML pages
-                if _ct == "text/html":
-                    _banner = b'<div style="position:fixed;top:0;left:0;right:0;z-index:9999;background:#1e293b;border-bottom:2px solid #f59e0b;padding:6px 16px;font-family:sans-serif;font-size:12px;color:#f59e0b;text-align:center">v2 is frozen &mdash; <a href="/v3/" style="color:#60a5fa;text-decoration:underline">v3 is now canonical</a></div>'
-                    _body = _body.replace(b'<body>', b'<body>' + _banner, 1)
-                self.send_header("Content-Length", str(len(_body)))
-                self.end_headers()
-                self.wfile.write(_body)
-            else:
-                self.send_response(404)
-                self.send_header("Content-Type", "text/plain")
-                self.end_headers()
-                self.wfile.write(b"Not found")
+            self.send_response(302)
+            self.send_header("Location", "/v3/")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.end_headers()
             return
 
         # Command Center v3 — live boot script (always fresh; busts stale SPA bundles)

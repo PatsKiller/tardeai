@@ -70,7 +70,13 @@ def cc_base() -> str:
 
 
 def cc_symbol_url(symbol: str) -> str:
+    """Canonical symbol dossier (Watch Intelligence). Use for research / material-change."""
     return f"{cc_base()}/v3/watch/intelligence/{quote(symbol.upper())}"
+
+
+def cc_trading_url(symbol: str, *, tab: str = "Scalp") -> str:
+    """Actionable Trading Hub deep-link — GO/scalp facts live here, not on Intelligence."""
+    return f"{cc_base()}/v3/trading?tab={quote(tab)}&symbol={quote(symbol.upper())}"
 
 
 def finviz_url(symbol: str) -> str:
@@ -86,9 +92,10 @@ def chart_image_url(symbol: str) -> str:
     return f"https://charts2-node.finviz.com/chart.ashx?cs=l&t={quote(symbol.upper())}&tf=d&s=linear&ct=candle_stick"
 
 
-def symbol_links(symbol: str) -> str:
+def symbol_links(symbol: str, *, surface: str = "intelligence") -> str:
     s = symbol.upper()
-    return f"{link(s + ' in Command Center', cc_symbol_url(s))} · {link('Finviz', finviz_url(s))} · {link('Yahoo', yahoo_url(s))}"
+    href = cc_trading_url(s) if surface == "trading" else cc_symbol_url(s)
+    return f"{link(s + ' in Command Center', href)} · {link('Finviz', finviz_url(s))} · {link('Yahoo', yahoo_url(s))}"
 
 
 @dataclass
@@ -106,7 +113,12 @@ class RichMessage:
     chart_symbol: Optional[str] = None  # chart preview at the top
     pills: list[str] = field(default_factory=list)
     footer: Optional[str] = None
+    # intelligence = Watch dossier (default); trading = Scalp/scanner facts on Trading Hub
+    primary_surface: str = "intelligence"
     authority: str = AUTHORITY  # kept on the payload for receipts; not printed to the operator
+
+    def _primary_url(self, symbol: str) -> str:
+        return cc_trading_url(symbol) if self.primary_surface == "trading" else cc_symbol_url(symbol)
 
     def render(self) -> dict[str, Any]:
         # 2026-09-15 operator review of GO alerts ("needs polishing"): one symbol -> the title itself links to
@@ -114,12 +126,12 @@ class RichMessage:
         # same three links; several symbols keep the per-symbol link line.
         single = len(self.symbols) == 1
         title_html = esc(self.title)
-        if single and safe_url(cc_symbol_url(self.symbols[0])):
-            title_html = link(self.title, cc_symbol_url(self.symbols[0]))
+        if single and safe_url(self._primary_url(self.symbols[0])):
+            title_html = link(self.title, self._primary_url(self.symbols[0]))
         head = f"{self.marker + ' ' if self.marker else ''}<b>{title_html}</b>"
         parts = [head]
         if self.symbols and not single:
-            parts.append(" · ".join(symbol_links(s) for s in self.symbols[:3]))
+            parts.append(" · ".join(symbol_links(s, surface=self.primary_surface) for s in self.symbols[:3]))
         parts.extend(esc(f) for f in self.facts if f)
         if self.why:
             parts.append(f"<blockquote>{esc(self.why)}</blockquote>")
@@ -169,8 +181,9 @@ class RichMessage:
         buttons = [(label, url) for label, url in self.buttons if safe_url(url)]
         if not buttons and self.symbols:
             s = self.symbols[0].upper()
+            label = "📊 Trading" if self.primary_surface == "trading" else "📊 Command Center"
             buttons = [
-                ("📊 Command Center", cc_symbol_url(s)),
+                (label, self._primary_url(s)),
                 ("📈 Finviz", finviz_url(s)),
                 ("💹 Yahoo", yahoo_url(s)),
             ]
@@ -219,6 +232,8 @@ def go_alert(row: dict[str, Any], *, tier: str, passed: Iterable[str]) -> RichMe
         sources=[(f"{sym} news", row.get("catalyst_url") or ""), ("Finviz", finviz_url(sym))],
         chart_symbol=sym,
         pills=["🟢 Trade-AI data"],
+        # Scalp score/gap/RVOL/float live on Trading Hub Scalp tab — not Watch Intelligence.
+        primary_surface="trading",
     )
 
 
@@ -247,6 +262,8 @@ def entry_alert(item: dict[str, Any]) -> RichMessage:
         chart_symbol=sym,
         pills=["🟢 Trade-AI data"],
         sources=[(label, url) for label, url in (item.get("sources") or [])],
+        # Entry zone/stop/R:R actionable path is Trading (deep-link symbol); dossier stays secondary.
+        primary_surface="trading",
     )
 
 
@@ -295,6 +312,7 @@ def desk_answer(
 __all__ = [
     "RichMessage",
     "cc_symbol_url",
+    "cc_trading_url",
     "chart_image_url",
     "desk_answer",
     "entry_alert",
