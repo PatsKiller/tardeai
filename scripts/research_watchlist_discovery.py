@@ -90,7 +90,16 @@ def _social_candidates(conn, limit: int) -> list[dict]:
     return out
 
 
-def _insert(conn, cand: dict) -> bool:
+def _upsert(conn, cand: dict) -> str | None:
+    """Insert a new research idea, or mark an existing one as seen again.
+
+    Until 2026-09-15 this was ON CONFLICT DO NOTHING, and the run reported
+    "0 research candidates" whenever every surfaced name was already on the list:
+    60 candidates a day, 0 written, data_source_health 'error' for 7 days, and the
+    771 existing ideas never had last_seen_at refreshed (6 seen in 7 days). A
+    re-surfaced idea now refreshes last_seen_at and seen_count. Status is never
+    touched, so an idea the operator removed stays removed.
+    """
     cur = conn.cursor()
     cur.execute(
         """INSERT INTO watchlist_items
@@ -99,10 +108,24 @@ def _insert(conn, cand: dict) -> bool:
                 first_seen_at, last_seen_at)
            VALUES (%s, %s, 'researched', 'research_discovery', %s, %s::jsonb,
                    'candidate', false, %s, 1, NOW(), NOW())
-           ON CONFLICT (symbol, source, COALESCE(bucket, '__none__')) DO NOTHING""",
+           ON CONFLICT (symbol, source, COALESCE(bucket, '__none__')) DO UPDATE
+               SET last_seen_at = NOW(),
+                   seen_count = COALESCE(watchlist_items.seen_count, 0) + 1
+           RETURNING (xmax = 0) AS inserted""",
         (cand["symbol"], SOURCE_KEY, cand["origin_system"],
          json.dumps(cand["detail"], default=str), cand["provenance_reason"]))
-    return cur.rowcount > 0
+    row = cur.fetchone()
+    if row is None:
+        return None
+    inserted = row[0] if not isinstance(row, dict) else row.get("inserted")
+    return "inserted" if inserted else "refreshed"
+
+
+def run_report(candidates: int, written: int, refreshed: int) -> tuple[bool, int, str | None]:
+    """(ok, rows, error) for data_source_health. Healthy means research surfaced names."""
+    if candidates <= 0:
+        return False, 0, "0 research candidates"
+    return True, written + refreshed, None
 
 
 def main() -> dict:
@@ -133,29 +156,35 @@ def main() -> dict:
         else:
             by_symbol[sym] = c
 
-    written = 0
+    written = refreshed = 0
     for sym, cand in by_symbol.items():
         if args.apply:
             try:
-                if _insert(conn, cand):
+                outcome = _upsert(conn, cand)
+                if outcome == "inserted":
                     written += 1
+                elif outcome == "refreshed":
+                    refreshed += 1
             except Exception as e:
-                print(f"  [research-discovery] {sym} insert error: {e}")
+                conn.rollback()
+                print(f"  [research-discovery] {sym} upsert error: {e}")
+            else:
+                conn.commit()
         else:
             written += 1
 
     if args.apply:
-        conn.commit()
+        ok, rows, error = run_report(len(by_symbol), written, refreshed)
         try:
             from lib.data_source_report import report_source
-            report_source(SOURCE_KEY, written > 0, rows=written,
-                          error=None if written else "0 research candidates")
+            report_source(SOURCE_KEY, ok, rows=rows, error=error)
         except Exception:
             pass
 
-    print(f"[research-discovery] {'would write' if not args.apply else 'wrote'} {written} research ideas")
+    print(f"[research-discovery] {'would write' if not args.apply else 'wrote'} {written} new research ideas, "
+          f"refreshed {refreshed} already listed")
     conn.close()
-    return {"candidates": len(by_symbol), "written": written, "dry_run": not args.apply}
+    return {"candidates": len(by_symbol), "written": written, "refreshed": refreshed, "dry_run": not args.apply}
 
 
 if __name__ == "__main__":

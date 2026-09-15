@@ -1,0 +1,18 @@
+{
+  "schema": "AuditLedgerAcknowledgedForks@v1",
+  "rule": "A row listed here may follow a row other than its recorded predecessor ONLY when event_id, prev_event_hash and follows_event_hash all match exactly. Every other break still fails verify_chain. Rows are never rewritten.",
+  "forks": [
+    {
+      "event_id": "c2ccdd1b-1f1b-424d-a91e-2fc2a65d536d",
+      "line": 1558,
+      "prev_event_hash": "0a18868adafb73c21e92d33332256698529f571211c3eecafe2cd416c5d6df80",
+      "prev_event_line": 1522,
+      "follows_event_hash": "690ef0e228feebfbbe56d759b0e2a87383e62d5427bd419521eb80a759f5df4c",
+      "follows_event_line": 1557,
+      "cause": "served-copy split: the release copy and the dev-tree copy of data/runtime/audit_ledger/events.jsonl were written independently from line 1522 (2026-08-26) until scripts/reconcile_served_copy_split.py merged them into persistent-state on 2026-09-13 16:03 ET. Lines 1523-1557 are the served branch, lines 1558-1593 the dev branch. Each branch verifies on its own.",
+      "evidence": "/home/johnclaw/trade-ai-releases/archive/served_copy_split_20260913/{served,dev}/runtime/audit_ledger/events.jsonl (dev copy: 1558 rows, 0 breaks)",
+      "acknowledged_at": "2026-09-15",
+      "acknowledged_by": "chief-architect remediation R-01 (operator instruction 2026-09-15: fix everything)"
+    }
+  ]
+}

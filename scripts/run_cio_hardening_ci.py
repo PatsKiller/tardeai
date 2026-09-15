@@ -1348,6 +1348,17 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-15 architect remediation: ledger test isolation + pinned fork (R-01), retired-provider
+        # health (R-02), research discovery refresh (R-02), health headline (E-03).
+        "architect_remediation_20260915",
+        [
+            "tests/test_audit_ledger_isolation_forks_20260915.py",
+            "tests/test_retired_provider_health_20260915.py",
+            "tests/test_research_discovery_refresh_20260915.py",
+            "tests/test_health_headline_20260915.py",
+        ],
+    ),
+    (
         # 2026-09-14: promote left the dev tree, where cron and the units run, on the old commit, and a
         # refused fast-forward was reported as success.
         "deploy_ff_dev_tree",

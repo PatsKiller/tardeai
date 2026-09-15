@@ -7,6 +7,12 @@ import sys
 from pathlib import Path
 
 import pytest
+import tempfile as _tempfile
+
+# The audit ledger is production evidence. No test may write to the live JSONL or mirror into the
+# audit_ledger_events table (R-01, 2026-09-15). Set before any test module imports audit_ledger.
+os.environ["TRADEAI_AUDIT_LEDGER_DB"] = "0"
+os.environ["TRADEAI_AUDIT_LEDGER_DIR"] = _tempfile.mkdtemp(prefix="tradeai_audit_ledger_tests_")
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))

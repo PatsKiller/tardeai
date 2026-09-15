@@ -2822,11 +2822,26 @@ def collect_data_source_health() -> list[dict]:
     rows = _db("""SELECT source_key, status, last_success_at, last_failure_at,
                          max_stale_minutes, last_error, failure_count
                   FROM data_source_health""", fetch="all") or []
+    try:
+        from lib.retired_providers import is_retired, called_since_retirement
+    except Exception:
+        is_retired = lambda _s: False  # noqa: E731
+        called_since_retirement = lambda *_a: True  # noqa: E731
+    raw_by_src = {x.get("source_key"): x for x in rows}
     for r in view_rows(rows, now_utc, registry):
         eff = r.get("status")
         if eff == HEALTHY:
             continue
         src = r.get("source_key")
+        if is_retired(src):
+            raw = raw_by_src.get(src) or {}
+            if called_since_retirement(src, raw.get("last_success_at"), raw.get("last_failure_at")):
+                out.append(_f("data_quality", "retired_provider_still_called", "warning",
+                              f"data source '{src}' is RETIRED in config/data_source_authority.json but "
+                              f"reported activity after its retirement day — a caller still reaches it",
+                              source=src, last_error=(raw.get("last_error") or "")[:120]))
+            # A retired provider's last failure is history, not an outage or a key to rotate.
+            continue
         age_m = r.get("age_minutes")
         win_m = float(r.get("window_minutes") or 1440)
         last_err = (r.get("last_error") or "")[:200]
