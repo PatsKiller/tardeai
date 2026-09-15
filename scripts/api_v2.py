@@ -13116,8 +13116,10 @@ def health_headline(snap: dict) -> dict:
     score = snap.get("overall_score")
     return {
         "healthy": status == "healthy",
-        "headline": (f"{status.upper()} {score if score is not None else '?'}/100 — "
-                     f"{int(counts.get('critical') or 0)} critical, {int(counts.get('warning') or 0)} warning"),
+        "headline": (
+            f"{status.upper()} {score if score is not None else '?'}/100 — "
+            f"{int(counts.get('critical') or 0)} critical, {int(counts.get('warning') or 0)} warning"
+        ),
     }
 
 
