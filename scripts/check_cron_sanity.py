@@ -53,21 +53,22 @@ def resolve_script_refs(crontab_text: str, project_root: Path) -> list[tuple[str
             continue
         if stripped.startswith("#") or not stripped:
             continue
+        # A trailing comment is not part of the command ("# lane x (was scripts/old.py)").
+        stripped = re.split(r"\s#", stripped, maxsplit=1)[0].rstrip()
 
         def expand(text: str) -> str:
             return re.sub(r"\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?", lambda m: env.get(m.group(1), m.group(0)), text)
 
         m_cd = re.search(r"(?:^|[;&|]\s*|\s)cd\s+(\S+)", stripped)
-        base = Path(expand(m_cd.group(1))) if m_cd else project_root
+        base_text = expand(m_cd.group(1).strip("\"'")) if m_cd else str(project_root)
         for m in re.finditer(r"(\S*?)(scripts/[\w/-]+\.(?:py|sh))", stripped):
             prefix, ref = m.group(1), m.group(2)
             prefix = prefix.split("=")[-1]
-            written = expand(prefix + ref)
-            if written.startswith("/"):
-                path = Path(written)
-            else:
-                path = base / ref
-            refs.append((ref, path, stripped[:120]))
+            written = expand(prefix.strip("\"'") + ref)
+            target = written if written.startswith("/") else f"{base_text}/{ref}"
+            if "$" in target:
+                continue  # resolved only at run time (e.g. cd "$CUR" from readlink): not provable dead here
+            refs.append((ref, Path(target), stripped[:120]))
     return refs
 
 

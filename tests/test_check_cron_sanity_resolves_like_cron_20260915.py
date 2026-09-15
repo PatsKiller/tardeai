@@ -43,3 +43,14 @@ def test_a_line_without_cd_resolves_against_the_repo(tmp_path):
     proj, _, _ = _tree(tmp_path)
     refs = ccs.resolve_script_refs("*/5 * * * * python3 scripts/live.py", proj)
     assert refs[0][1] == proj / "scripts" / "live.py"
+
+
+def test_trailing_comments_and_runtime_directories_are_not_reported(tmp_path):
+    proj, _, _ = _tree(tmp_path)
+    crontab = "\n".join([
+        f"PROJ={proj}",
+        "45 5 * * 1-5 cd $PROJ && $PY scripts/live.py >> logs/i.log 2>&1  # lane x (was scripts/never_merged.py)",
+        'CUR=$(readlink -f /somewhere/CURRENT) && cd "$CUR" && $PY scripts/run_persistent_wake.py',
+    ])
+    refs = [r for r, _, _ in ccs.resolve_script_refs(crontab, proj)]
+    assert refs == ["scripts/live.py"]
