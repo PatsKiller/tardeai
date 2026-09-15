@@ -12,7 +12,9 @@ for _name in ("psycopg2", "psycopg2.extras", "dotenv", "requests"):
         try:
             __import__(_name)
         except Exception:
-            sys.modules[_name] = types.SimpleNamespace(load_dotenv=lambda *a, **k: None, extras=None)
+            sys.modules[_name] = types.SimpleNamespace(load_dotenv=lambda *a, **k: None,
+                                                      extras=types.SimpleNamespace(RealDictCursor=object),
+                                                      RealDictCursor=object)
 
 import process_watchlist_agent_jobs as w  # noqa: E402
 

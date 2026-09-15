@@ -5,6 +5,8 @@ import sys
 import types
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
@@ -18,16 +20,16 @@ def _stub(name, **attrs):
 
 
 _stub("numpy")
-_extras = types.SimpleNamespace(RealDictCursor=object)
-if "psycopg2" not in sys.modules:
-    try:
-        import psycopg2  # noqa: F401
-        import psycopg2.extras  # noqa: F401
-    except Exception:
-        sys.modules["psycopg2"] = types.SimpleNamespace(extras=_extras)
-        sys.modules["psycopg2.extras"] = _extras
 
 import rag_retrieval as rag  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _psycopg2_extras(monkeypatch):
+    """get_rag_context imports psycopg2.extras at call time; give it one regardless of other stubs."""
+    extras = types.SimpleNamespace(RealDictCursor=object)
+    monkeypatch.setitem(sys.modules, "psycopg2", types.SimpleNamespace(extras=extras))
+    monkeypatch.setitem(sys.modules, "psycopg2.extras", extras)
 
 
 class _Cur:

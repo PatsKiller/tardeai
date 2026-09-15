@@ -13,7 +13,9 @@ for _name in ("psycopg2", "psycopg2.extras", "dotenv"):
         try:
             __import__(_name)
         except Exception:
-            sys.modules[_name] = types.SimpleNamespace(load_dotenv=lambda *a, **k: None, extras=None)
+            sys.modules[_name] = types.SimpleNamespace(load_dotenv=lambda *a, **k: None,
+                                                      extras=types.SimpleNamespace(RealDictCursor=object),
+                                                      RealDictCursor=object)
 
 import watchlist_proposal_bridge as b  # noqa: E402
 
