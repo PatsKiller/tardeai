@@ -2,6 +2,39 @@
 
 # CIO Cognition — Iteration Lifecycles (how one cycle feeds the next)
 
+**Status:** ACTIVE — fact base, CIO cognition iteration lifecycles (family D of 6); measured read-only 2026-09-14 00:00–00:45 EDT
+**Updated:** 2026-09-14 23:44 EDT — update block below records what shipped after the measurement (live `341bce2c1`)
+
+
+> **Update 2026-09-14 23:44 EDT — what changed after this measurement (live `341bce2c1`).** This family was **not
+> re-measured** and none of its lifecycle defects (operator-turn replay, single-subject memory, boilerplate
+> falsifiers, unscheduled sweep, epoch resets) was changed on 2026-09-14. Related changes:
+>
+> - Every model call behind judgment and critique now passes through a bridge that cannot be wedged by a held
+>   provider call (deadline, threads, `/health`, watchdog, #1019).
+> - The commitment sweep cron was **approved by the operator** (2026-09-14 ~09:05) but is not yet installed.
+> - 22 releases were promoted on 09-14, so epoch contiguity (D5) could not accumulate during the day.
+> - "CIO Run Complete" check-ins without an advisory action are no longer sent (#1009).
+
+```dot
+digraph fb_d {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Family D — unchanged loop, with the two approved-but-unbuilt closers marked", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  wake [label="Hourly wake", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  judge [label="Judge + critique\n(bridge now wedge-proof)", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  commit [label="Commitment", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  sweep [label="Sweep (approved, not installed)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  lesson [label="Lesson → question", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  wake -> judge [color="#1F3864", penwidth=1.4];
+  judge -> commit [color="#1F3864", penwidth=1.4];
+  commit -> sweep [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  sweep -> lesson [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  wake -> wake [label="turn 115 ⟳", color="#ED7D31", style=bold];
+}
+```
+
+
 ```
 Status:        FACT BASE — lifecycle family 1 of 6 (CIO cognition iteration)
 as_of:         2026-09-14 00:20 → 00:40 EDT (04:20Z–04:40Z)

@@ -2,8 +2,28 @@
 
 **Status:** measured on 2026-09-14, on main `32897e80a`, by reading the code, the flags each process actually has, the live receipts and the Brave budget ledger, and by a dry run of the resolver. It describes what IS wired, not what was designed.
 
+**Updated:** 2026-09-14 23:44 EDT — section 6 records what shipped after the measurement (PRs #1012, #1014, #1019, #1020, #1021; live `341bce2c1`). Sections 1–5 remain the midday measurement.
+
 **Operator question that prompted this (2026-09-14):**
 > "When does the agent say Brave's answers weren't enough, so we put it out to the LLM, or vice versa? Web searches are not enough, so we go to Brave? Hermes did not get enough, so we go to Brave?"
+
+```dot
+digraph three_mechanisms {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Three separate research mechanisms (measured 2026-09-14)", labelloc=t, nodesep=0.3, ranksep=0.55, pad=0.3];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9, color="#2B5797", fillcolor="#EAF1FB"];
+  edge [color="#44546A", fontname="Helvetica", fontsize=8];
+  subgraph cluster_desk { label="1 · Operator desk gap resolver"; style=rounded; color="#9DC3E6";
+    r1 [label="refresh_producer\n(dry run: GAP_RESOLVER_LIVE unset)", fillcolor="#FBE5E5", color="#C00000"]; r2 [label="backup_provider\n(no adapter)", fillcolor="#FBE5E5", color="#C00000"];
+    r3 [label="governed_search Brave\n(router disabled in bot)", fillcolor="#FBE5E5", color="#C00000"]; r4 [label="hermes_research\nONE DeepSeek Flash call\n(the only real step)", fillcolor="#E2F0D9", color="#548235"];
+    r5 [label="llm_curation\n(nothing to curate)", fillcolor="#FBE5E5", color="#C00000"]; r6 [label="operator_ask\n(embedded in reply)"];
+    r1 -> r2 -> r3 -> r4 -> r5 -> r6; }
+  subgraph cluster_brave { label="2 · Brave router spill"; style=rounded; color="#E8D3A5";
+    b1 [label="Brave (scheduled research only)"]; b2 [label="SearXNG"]; b1 -> b2 [label="only DAILY/MONTHLY_EXHAUSTED or 429"]; }
+  subgraph cluster_gate { label="3 · CIO research need gate"; style=rounded; color="#B9D7B9";
+    g1 [label="skip"]; g2 [label="reuse"]; g3 [label="corpus_hit"]; g4 [label="flash"]; g5 [label="pro"]; g6 [label="residual (ChatGPT + SearXNG)"]; g7 [label="grok_critique"];
+    g1 -> g2 -> g3 -> g4 -> g5 -> g6 -> g7; }
+}
+```
 
 ## The short answer
 
@@ -222,6 +242,47 @@ the other channels."* This is the build target. Nothing below is live until its 
 4. Life cycle: `question_guid` everywhere, lifecycle states, automatic check-ins on `outcome_checkpoints` settled by
    the hourly sweep, outcomes fed back as subject memory; "push for more" ("dig deeper", "research X", "what else")
    starts a lap on the existing question GUID; monitors for questions stopped on a bound and check-ins past due.
+
+## 6. Update 2026-09-14 evening — what shipped after this measurement
+
+| PR | Merged (ET) | What it changed in research | State |
+|---|---|---|---|
+| #1012 | 13:31 | **Research Escalation Circle phase 1**: `scripts/lib/research_circle.py`, runner `scripts/run_research_circle.py`, `docs/RESEARCH_CIRCLE.md`. One `question_guid` (uuid5) per ask; append-only lifecycle ledger `ASKED → GATHERING → ANALYZED → ANSWERED / ANSWERED_PARTIAL → SCHEDULED`; free channels (house; Yahoo quote, analysts, volume, earnings, news, levels computed from daily bars, completed-session volume streak; SEC Form 4; SearXNG news with general fallback); deterministic sufficiency score; Context Analyzer on DeepSeek Flash through the bridge (verdict rejected when it cites unknown evidence ids; may not call an empty lap sufficient); targeted second lap from the analyzer's missing facts, stopping without a model call when nothing new is found; check-ins on the day after a dated catalyst, else the analyzer's horizon, else 7 or 14 days | **dry run by default; not wired into the desk** |
+| #1014 | 14:35 | **Research heartbeat**: the CIO Hermes queue is monitored (`cio-hermes-queue` lane), its projection is locked, lost requests are restored from the ledger, retryable failures are replayed once, third-party labels no longer trip the execution-language guard, and the health score reads research | live; 12 lost requests restored, 1 replayed at 14:52 |
+| #1019 | 17:16 | **Bridge liveness**: every research, desk and advisory model call goes through a bridge with a 150 s wall-clock deadline, 4 in-flight slots, `GET /health` and a watchdog — after DeepSeek held calls ~906 s and the single-threaded bridge blocked all research from 15:15 | live |
+| #1020 | 19:14 | scheduled paid research (usefulness scorer, due-diligence questions, holdings research moved 08:00 → 09:05) runs only in the operator window and never at DeepSeek peak; operator asks are never gated | live |
+| #1021 | 20:08 | research model calls bill to their own processes: `research_circle_analyzer` (manual, $0.10/40 calls), `cio_hermes_research` ($0.40/200), `hermes_cloud_json`, `hermes_usefulness_score` (600/day), `hermes_golden_judge` | live; first traffic check 09-15 10:03 ET |
+
+**Dry-run results of phase 1 (nothing written):**
+
+- **HPE** "entry, support/resistance, analysts, how long volume above normal": lap 1 gathered 24 items, score
+  62, verdict `targeted_lap` M1, next channel Brave. The analyzer caught three things: the volume premise was
+  false (0.83× normal), two sources disagreed on the earnings date, and multi-day volume history was
+  missing. Lap 2 gathered 31 items → `ANSWERED_PARTIAL`, check-in in 3 days.
+- **ELMT** "why up / news": one lap → `sufficient` M2, check-in in 7 days.
+
+**What the phase-1 build taught (traps):** undated items were being stamped "today", which inflates
+freshness — `stated_date()` now reads the line or returns None; the contradiction cap must apply after the
+bonuses; levels must be computed from bars, never searched for; a lap with no new evidence must stop
+without a model call; SearXNG `news` often returns 0 for specific queries, so fall back to `general`.
+
+```dot-wide
+digraph circle_state {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Research Escalation Circle — built (phase 1, green) and planned (phases 2–4, purple)", labelloc=t, nodesep=0.3, ranksep=0.5, pad=0.3];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9, color="#548235", fillcolor="#E2F0D9"];
+  edge [color="#44546A", fontname="Helvetica", fontsize=8];
+  ask [label="ASKED\nquestion_guid", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  house [label="House data"]; yahoo [label="Yahoo: quote · analysts · volume ·\nearnings · news · bar levels"]; sec [label="SEC Form 4"]; searx [label="SearXNG\n(general fallback)"];
+  brave [label="Brave when analyzer names it\n(phase 2)", fillcolor="#F1ECF8", color="#7030A0"]; hermes [label="Hermes over house + web\n(phase 2)", fillcolor="#F1ECF8", color="#7030A0"];
+  score [label="Deterministic score"]; analyzer [label="Context Analyzer\nDeepSeek Flash via bridge"]; critic [label="Critic (Grok / ChatGPT) +\nDeepSeek Pro (phase 3)", fillcolor="#F1ECF8", color="#7030A0"];
+  lap [label="Targeted lap\n(stop if nothing new)"]; answered [label="ANSWERED /\nANSWERED_PARTIAL", shape=oval];
+  sched [label="SCHEDULED check-in"]; sweep [label="Check-in sweep REVISITED → SETTLED\n+ desk wiring behind a flag (phase 4)", fillcolor="#F1ECF8", color="#7030A0"];
+  ask -> house; ask -> yahoo; ask -> sec; ask -> searx; house -> score; yahoo -> score; sec -> score; searx -> score;
+  score -> analyzer; analyzer -> lap [label="targeted_lap"]; lap -> yahoo [style=dashed]; lap -> searx [style=dashed];
+  analyzer -> brave [style=dotted, label="climb"]; brave -> hermes [style=dotted]; hermes -> critic [style=dotted]; critic -> analyzer [style=dotted];
+  analyzer -> answered [label="sufficient / bound"]; answered -> sched -> sweep [style=dotted];
+}
+```
 
 ## Where to look
 

@@ -3,7 +3,10 @@
 ```
 Status:        ACTIVE
 Version:       2 (replaces the v1 snapshot TRADE_AI_AS_IS_2026-09-14.md as the primary As-Is; v1 stays as the inventory)
-as_of:         2026-09-14 00:00–00:45 America/New_York (04:00Z–04:45Z)
+Updated:       2026-09-14 23:44 EDT — chapters marked "Update 2026-09-14" restate the lifecycle after the day's
+               merged and deployed work (PRs #1005–#1025; live 341bce2c1). Every other number is the
+               00:00–00:45 measurement below and is not re-measured.
+as_of:         2026-09-14 00:00–00:45 America/New_York (04:00Z–04:45Z) — original measurement
 Served:        c594d8600-main-exact-phase2-20260914-000703 (PR #1002), promoted 00:07 EDT; docs PR #1003 promoted 00:34 EDT.
                origin/main = release = dev tree at measurement.
 Host:          ms01-openclaw (Minisforum MS-01, i9-12900H, 64 GB, Arc Pro B50)
@@ -18,6 +21,7 @@ Companions:    docs/architecture/lifecycles/LIFECYCLE_FACTBASE_{A..F}_2026-09-14
                (every number below is traceable to one of them, with the query or file:line).
                TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md — the target lifecycles, contract and roadmap.
                TRADE_AI_AS_IS_2026-09-14.md (v1) — platform inventory: topology, providers, domains, services.
+               TRADE_AI_WORKLOG_2026-09-14.md — every change made on 2026-09-14, with times and evidence.
 ```
 
 The first As-Is was a **snapshot**: what exists and how mature each domain is at one moment.
@@ -54,6 +58,29 @@ Runtime status   █ LIVE   ▓ PARTIAL   ░ UNWIRED   ✗ DARK   ◇ BLOCKED /
 Flow edges       ══▶ spine   ──▶ lateral read   ◀── lateral write   ╌╌▶ feedback that fires
                  ✗✗▶ severed (exists in spec or code, carries nothing)   ⟳ replay (loops without new information)
 Evidence         OBSERVED (default) · INFERRED · BLOCKED
+```
+
+The lifecycle flow diagrams in this document use the same symbols as drawn shapes and lines:
+
+```dot
+digraph legend_flows {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="How to read the lifecycle flow diagrams", labelloc=t, nodesep=0.2, ranksep=0.9, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=9];
+  s1 [label="start / input", shape=oval, fillcolor="#FFF2CC", color="#BF9000"]; s2 [label="state / stage", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  s3 [label="terminal state", shape=oval, fillcolor="#E2F0D9", color="#548235"]; s4 [label="fixed or built on 2026-09-14", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  s5 [label="broken / missing stage", shape=box, fillcolor="#FBE5E5", color="#C00000"]; s6 [label="store", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"];
+  s7 [label="decision / gate", shape=diamond, fillcolor="#F4F6F9", color="#44546A"]; s8 [label="new (target, not built)", shape=box, fillcolor="#F1ECF8", color="#7030A0"];
+  e1a [label="", shape=point]; e1b [label="spine ══▶", shape=plaintext];
+  e2a [label="", shape=point]; e2b [label="feedback that fires ╌╌▶", shape=plaintext];
+  e3a [label="", shape=point]; e3b [label="partial", shape=plaintext];
+  e4a [label="", shape=point]; e4b [label="severed ✗✗▶", shape=plaintext];
+  e5a [label="", shape=point]; e5b [label="replay ⟳", shape=plaintext];
+  e6a [label="", shape=point]; e6b [label="lateral read / write", shape=plaintext];
+  e1a -> e1b [color="#1F3864", penwidth=1.4]; e2a -> e2b [color="#548235", penwidth=1.3]; e3a -> e3b [color="#BF9000", style=dashed];
+  e4a -> e4b [color="#C00000", style=dashed, penwidth=1.2]; e5a -> e5b [color="#ED7D31", style=bold]; e6a -> e6b [color="#8497B0", style=dotted];
+  s1 -> s2 -> s3 [style=invis]; s4 -> s5 -> s6 [style=invis]; s7 -> s8 [style=invis];
+}
 ```
 
 ### Maturity scale (per stage)
@@ -138,6 +165,31 @@ resolved, 0 gap-resolver receipts ever, 0 incidents, 0 of 7,847 alert events res
 | Nightly reflection (D3) | nightly | Same single proposal for ≥6 nights; cases scored are horizon expiries | ⟳ plateau |
 | Epoch acceptance (D5) | per promote | Contiguity counter reset every ~1.4 h on 09-13 | ✗ never evaluated |
 
+### 1.5 Update 2026-09-14 — which lifecycles the day's work moved
+
+| Lifecycle | Stage that changed | Before (00:45) | After (live 341bce2c1) | PR |
+|---|---|---|---|---|
+| A1 Data point | write-time validity; drift control | repricer wrote position values as closes; Finviz read by position; no independent check | canonical mark with a 50 % refusal; header contracts and units; litmus vs Yahoo, view contracts, EOD consolidated closes on timers | #1008 |
+| A2 Provider | liveness for Alpha Vantage; credential | AV health `unknown` since 05-09; Google token failing | AV reports through `.env` fallback; token refresh green | #1008, host |
+| B1 Operator question | resolve · evidence · fulfil · send | dictated tickers unresolved; pending never joined to Hermes; long answers refused silently | spelled tickers bind; dossier with spelled-out pills; join-back by plan/research id; answers in parts; undelivered replies flagged | #1005–#1007, #1016, #1018 |
+| B2/B3 Research | Hermes queue closure; bridge | 62 % failing; 32 lost; auto-fix exited 127; bridge wedged by held calls | lock + restore + replay + reap; health score reads the lane; bridge deadline, threads, `/health`, watchdog | #1014, #1019 |
+| B2 System question | escalation design | no quality-based escalation | Research Escalation Circle phase 1 (dry run): question GUID, laps, analyzer, check-ins | #1012 |
+| C4 / F2 Budget, LLM call | admission basis; attribution; timing | $0.50 nominal cap exceeded 4/7 days; projections 10–90× actual; 88 % under one shared id | caps count actual spend ($2.00/day); calibrated reservations; eight named callers; scheduled work only in the operator window; balance reconciliation | #1015, #1020, #1021 |
+| E1 Outbound | formatting · routing · identity · GO alerts | duplicate briefs; raw Markdown; wrong chats; GO alerts suppressed; repeat alerts collided | Communications Editor (shadow); one 07:30 brief; routing map; GO alerts delivered; body-hash identity; rich layouts | #1009, #1011, #1013, #1018 |
+| E4 Email / Drive | Google auth | token refresh failed | green | host |
+| F1 Change | dev-tree fast-forward | manual; a deploy could report success with the dev tree behind | promote fast-forwards or exits non-zero (first live run 23:06) | #1025 |
+| F3 Lane / service | declaration | 90 lanes; 531 baseline | 107 declared, 73 active, 0 undeclared; new timers declared | #1008–#1020 |
+| F4 Finding | bounded repair | 0.6 % remediation success | Hermes queue heals itself; bridge watchdog restarts a wedged bridge (never a provider stall); escalation retries execute | #1014, #1019 |
+| Governance | policy | AGENTS 1.2.0 PROPOSED | **1.2.0 ACTIVE** (Effective-Date 2026-09-14) | #1024 |
+
+**Feedback edges (X1) after the day:** edge #18 Hermes completion → pending reply moves from None to
+**Fires** (first delivery HPE 10:36); edge #45 promote → dev-tree FF moves from Partial (manual) to
+**Fires** for the fast-forward (install/restart still manual); edge #46 finding → remediation → verify
+gains two bounded, verified repair classes (Hermes queue, bridge); edge #53 reconcile residual becomes
+Partial for DeepSeek; two new edges fire — **litmus BLOCK → price-source integrity** (daily) and **GO
+criteria → operator alert**. Totals become **14 fire · 9 partial · 34 none of 59 edges** (see X1).
+Nothing in families C and D (other than budget) was changed or re-measured.
+
 ---
 
 ## 2. The platform lifecycle, end to end
@@ -196,6 +248,27 @@ The cognition arc (D) runs every hour and replays. The outcome arc (D2/C3) has n
 settler. The communication arc (E) delivers but cannot prove it, and the operator's replies do
 not re-enter cognition. The engineering arc (F) ships fast but does not reach runtime on its
 own, and its detectors never close what they find.
+
+```dot-wide
+digraph platform_loop {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="The platform loop — six families (status after 2026-09-14)", labelloc=t, nodesep=0.3, ranksep=0.55, pad=0.3, newrank=true];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9, shape=box, color="#2B5797", fillcolor="#EAF1FB"];
+  edge [fontname="Helvetica", fontsize=8];
+  op [label="OPERATOR", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  subgraph cluster_A { label="A Data & sources"; style=rounded; color="#E8D3A5"; a1 [label="A1 data point\n(litmus + contracts ✓)"]; a2 [label="A2 provider"]; a3 [label="A3 identity"]; a4 [label="A4 material change"]; }
+  subgraph cluster_B { label="B Questions & research"; style=rounded; color="#9DC3E6"; b1 [label="B1 operator question\n(join-back ✓ parts ✓)"]; b2 [label="B2 system question\n(circle ph.1 dry run)"]; b3 [label="B3 Hermes\n(heartbeat ✓)"]; b4 [label="B4 topic"]; }
+  subgraph cluster_C { label="C Watch · proposal · learning"; style=rounded; color="#B9D7B9"; c1 [label="C1 symbol"]; c2 [label="C2 proposal"]; c3 [label="C3 learning"]; c4 [label="C4 budget\n(actual-spend cap ✓)"]; }
+  subgraph cluster_D { label="D Cognition"; style=rounded; color="#CDBFE3"; d1 [label="D1 wake"]; d2 [label="D2 outcome → lesson"]; d3 [label="D3 reflection / MVL"]; d4 [label="D4 CIO run"]; d5 [label="D5 epoch"]; }
+  subgraph cluster_E { label="E Communications"; style=rounded; color="#E3BDBD"; e1 [label="E1 outbound\n(editor shadow ✓)"]; e2 [label="E2 inbound"]; e3 [label="E3 alert"]; e4 [label="E4 email / Drive\n(token ✓)"]; }
+  subgraph cluster_F { label="F Engineering & ops"; style=rounded; color="#C9D3DF"; f1 [label="F1 change\n(FF dev tree ✓)"]; f2 [label="F2 LLM call\n(label split ✓)"]; f3 [label="F3 lane / service"]; f4 [label="F4 finding"]; f5 [label="F5 secrets · backup · host"]; }
+  a2 -> a1 [color="#1F3864"]; a1 -> a3 [color="#1F3864"]; a3 -> a4 [color="#1F3864"]; a4 -> b2 [color="#1F3864"]; b2 -> b3 [color="#1F3864"];
+  op -> b1 [color="#1F3864"]; b1 -> b3 [color="#1F3864"]; b3 -> b1 [label="join-back fires", color="#548235", penwidth=1.4];
+  a4 -> c1 [color="#1F3864"]; c1 -> c2 [color="#1F3864"]; c2 -> c3 [color="#8497B0", style=dashed]; b3 -> d1 [color="#1F3864"]; c1 -> d1 [color="#8497B0", style=dotted];
+  d1 -> d2 [color="#C00000", style=dashed, label="sweep unscheduled ✗✗"]; d2 -> c3 [color="#C00000", style=dashed]; c3 -> d1 [color="#C00000", style=dashed, label="lesson → question ✗✗"];
+  d1 -> e1 [color="#8497B0", style=dotted]; e1 -> op [color="#1F3864"]; op -> e2 [color="#1F3864"]; e2 -> d1 [color="#ED7D31", style=bold, label="turn 115 replay ⟳"];
+  f4 -> e3 [color="#1F3864"]; e3 -> op [color="#1F3864"]; f1 -> f3 [color="#548235", label="FF fires"]; f2 -> c4 [color="#1F3864"]; f5 -> f1 [color="#8497B0", style=dotted];
+}
+```
 
 ---
 
@@ -345,6 +418,24 @@ separately rather than counted as a break.
 6. **Liveness hooks for fred / yahoo_finance / alpha_vantage merged 09-13 16:34**, after that day's runs: `unknown` there means "not yet run"; first proof 09-14 06:10–08:00.
 7. **Dead monitor still scheduled:** `cron_freshness_watcher.py` (file deleted) every 5 min.
 
+### Update 2026-09-14 — A1 after PR #1008
+
+- **Write path:** `close_price_for_holding` uses the canonical mark, else value ÷ shares, and refuses a
+  close more than 50 % from the latest live quote (dry run corrected NOC 123.2 → 531.26, XLI 7.49 → 169.36,
+  SCHG 8.05 → 35.10; SRNE refused). Alpaca `prev_close` uses `dailyBar.c` when the bar predates today ET.
+- **Contracts:** Finviz exports read with `csv.DictReader` against a required-header contract per saved
+  view (drift raises), with explicit units (market cap in millions, average volume in thousands);
+  five consumers made unit-aware.
+- **Drift controls (timers):** `source_litmus_vs_yahoo.py` Tue–Sat 07:45 BLOCKs a source when more than 2 %
+  of its closes are off by more than 10 % (session 09-11: finviz 37/40 within 1 %; market_quotes 88/118 with
+  6 > 10 % → BLOCK; repricer 20/20; 558 weekend-dated closes warned); `check_finviz_view_contracts.py`
+  Mon–Fri 06:05; `eod_consolidated_close_sync.py` Mon–Fri 17:15 replaces IEX-derived closes more than 1 %
+  off Yahoo's consolidated close (09-11 dry run: 743 of 4,601 to replace, 14 held back > 50 %).
+- **Still open:** the corrupt 09-04/09-11 rows are not quarantined (operator-approved); gap resolver not
+  armed; `enqueue_gap` still has no caller.
+- **Maturity change:** plausibility L1 → **L3** for prices and Finviz units (checked against an
+  independent source and refused at write); quarantine, gap resolve and refresh stay **L0**.
+
 ### (h) Maturity per stage
 
 | Collect | Liveness | Decay view | Single writer | Plausibility | Quarantine | Projection | Gap detect | Gap resolve | Refresh |
@@ -355,6 +446,40 @@ separately rather than counted as a break.
 
 **Target:** write-time plausibility → refusal/quarantine → gap → free-first resolver with receipts → producer refresh → verified envelope.
 **Exit (observed):** `ticker_prices_quarantine` row within 24 h of a detector refusal and the refusal list empty next run · `gap_resolution_receipts.jsonl` exists with ≥1 `answered` · `research_gaps` RESOLVED_FREE > 0 · `data_source_health` row count ≥ active providers with alpaca/schwab/yfinance `healthy` on a weekday · plausibility `LastTriggerUSec` non-empty · hub `DIRECT_READ` baseline 177 → 0.
+
+```dot
+digraph lc_a1 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="A1 · Market / reference data point (after 2026-09-14)", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  prov [label="Provider", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  coll [label="Collector\n(cron)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  health [label="report_source\nhealth row", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"];
+  contract [label="Header / unit contracts\n#1008", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  writer [label="Write module\n+ repricer guard #1008", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  store [label="Store of record\nticker_prices · market_quotes", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"];
+  litmus [label="Litmus vs Yahoo\nTue–Sat 07:45", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  eod [label="EOD consolidated close\n17:15", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  proj [label="Projection\nas_of · stale · gap", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  cons [label="Hubs · desk · agents", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  quar [label="Quarantine\n(last 08-27)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  gap [label="Gap hook → resolver\n0 callers · 0 receipts", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  refresh [label="Producer refresh", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  prov -> coll [color="#1F3864", penwidth=1.4];
+  coll -> contract [color="#1F3864", penwidth=1.4];
+  contract -> writer [color="#1F3864", penwidth=1.4];
+  writer -> store [color="#1F3864", penwidth=1.4];
+  store -> proj [color="#1F3864", penwidth=1.4];
+  proj -> cons [color="#1F3864", penwidth=1.4];
+  coll -> health [color="#8497B0", style=dotted];
+  store -> litmus [label="BLOCK on drift", color="#548235", penwidth=1.3];
+  eod -> store [label="replace > 1 % off", color="#548235", penwidth=1.3];
+  litmus -> quar [label="refusal → quarantine ✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  proj -> gap [label="stale ✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  gap -> refresh [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  refresh -> coll [color="#C00000", style=dashed, penwidth=1.2];
+}
+```
 
 ---
 
@@ -425,6 +550,36 @@ Proposal + grant **L3** · registry/rendering **L3** · gate **L3** (build time)
 **Target:** retirement is one gated checklist — registry, code, config, health row, SM secret, manifest `keys_removed[]`; registry status reconciled from live health.
 **Exit:** env manifest has no `FINNHUB_API_KEY / FMP_API_KEY / NEWSAPI_KEY / POLYGON_API_KEY`; no retired provider in `error/unknown`; gate fires `RETIRED_CALL_SITE` on config until fixed; moomoo registry status equals the live probe.
 
+**Update 2026-09-14:** Alpha Vantage liveness fixed — cron lanes that call `report_source` now fall back
+to `.env` for DB settings instead of silently swallowing the connection error (#1008); the Google
+credential behind Drive tooling was re-authenticated by the operator (token refresh green). Retired
+keys, config scan scope and moomoo drift are unchanged.
+
+```dot
+digraph lc_a2 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="A2 · Data source (provider) lifecycle", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  pr [label="Agent PR\n(proposed)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  grant [label="Operator grant\n(approval record)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  render [label="render_source_of_truth\nAGENTS §7A", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  gate [label="CI authority gate\nscripts/ only", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  active [label="ACTIVE\ncall sites + health", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  degraded [label="DEGRADED\n(ledger)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  regstat [label="Registry status\n(typed by hand)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  retired [label="RETIRED\nchains refuse", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  keys [label="SM keys removed", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  pr -> grant [color="#1F3864", penwidth=1.4];
+  grant -> render [color="#1F3864", penwidth=1.4];
+  render -> gate [color="#1F3864", penwidth=1.4];
+  gate -> active [color="#1F3864", penwidth=1.4];
+  active -> degraded [label="decay", color="#548235", penwidth=1.3];
+  degraded -> regstat [label="✗✗ moomoo drift", color="#C00000", style=dashed, penwidth=1.2];
+  active -> retired [label="operator", color="#1F3864", penwidth=1.4];
+  retired -> keys [label="✗✗ 4 keys rendered", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
+
 ---
 
 ## A3 · Identity (mention → subject_guid)
@@ -493,6 +648,34 @@ Tagging **L3** · registry resolution L2 · supersede chain L2 · mention roles 
 
 **Target:** recurring CUSIP sweep; sweep back-off with `last_attempted_at` and top-N escalation; deterministic name index; labelled model role decider; quarantine replay.
 **Exit:** CONFIRMED count and `superseded_at` max advance past 08-27 · unresolved per run falls · a "Visa" turn stamps a CANDIDATE issuer · `role_source=model` > 0 · 27 quarantine rows `resolved=true`.
+
+**Update 2026-09-14:** unchanged in the identity spine. On the desk side, dictated tickers (`a x t i`,
+`A.X.T.I`) now resolve when the book or registry holds them (#1005) — a resolver change, not a tagger
+change; tagger precision on agent-authored text is still open.
+
+```dot
+digraph lc_a3 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="A3 · Identity: mention → subject_guid", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  msg [label="Mention\n(turn · corpus row)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  tag [label="Tagger\nregex + registry", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  reg [label="identity_registry\nCONFIRMED 48 %", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"];
+  stamp [label="subject_guid stamped", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  unres [label="UNRESOLVED\nre-read every 30 min", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  cusip [label="CUSIP upgrade\n(no recurring sweep)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  quar [label="Inbound quarantine\n27 rows", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  down [label="material changes ·\nresearch · wakes · memory", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  msg -> tag [color="#1F3864", penwidth=1.4];
+  tag -> reg [color="#1F3864", penwidth=1.4];
+  reg -> stamp [label="resolved", color="#1F3864", penwidth=1.4];
+  stamp -> down [color="#1F3864", penwidth=1.4];
+  reg -> unres [label="unresolved", color="#BF9000", style=dashed];
+  unres -> unres [label="⟳", color="#ED7D31", style=bold];
+  unres -> cusip [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  tag -> quar [label="persist failure", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
 
 ---
 
@@ -563,6 +746,39 @@ Detect **L3** · corroboration feedback **L0** · notify **L4** for fresh change
 
 **Target:** refusal → data-quality event → quarantine; `AGED_OUT` label + alert; "no dossier" → research gap / Hermes job; feed under persistent-state; research dedupe by (target, evidence watermark).
 **Exit:** quarantine row within 24 h of first refusal · 0 unlabelled rows older than 72 h · a research row for CTXR/TLS/HTOO/MREO/IPDN within 1 h of "no dossier" · `readlink -f CURRENT/data/persistent_wake` → persistent-state · `produced 0` when targets are unchanged.
+
+**Update 2026-09-14:** the material-change notice now sends a rich layout (links to the Command Center,
+Finviz and Yahoo, buttons, chart preview) through the gateway canary with `render_rich`, keeping the
+plain text for the router check (#1018). Corroboration feedback and aged-out labelling are unchanged.
+
+```dot
+digraph lc_a4 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="A4 · Material change", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  src [label="Prices · news · catalysts", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  det [label="Detector */30\nADM K=3", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  corr [label="Corroborate", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  mc [label="material_changes", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"];
+  notify [label="Notify 7-59/15\nrich layout #1018", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  op [label="Operator", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  ddq [label="Due-diligence questions */20", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  feed [label="Selection feed\n(release dir)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  wake [label="Wake / research", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  drop [label="Uncorroborated\ndropped", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  aged [label="Aged > 72 h\nunlabelled", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  src -> det [color="#1F3864", penwidth=1.4];
+  det -> corr [color="#1F3864", penwidth=1.4];
+  corr -> mc [label="corroborated", color="#1F3864", penwidth=1.4];
+  mc -> notify [color="#1F3864", penwidth=1.4];
+  notify -> op [label="p50 15 min", color="#548235", penwidth=1.3];
+  mc -> ddq [color="#BF9000", style=dashed];
+  mc -> feed [color="#1F3864", penwidth=1.4];
+  feed -> wake [color="#1F3864", penwidth=1.4];
+  corr -> drop [label="✗✗ → quarantine", color="#C00000", style=dashed, penwidth=1.2];
+  notify -> aged [label="late detection", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
 
 ---
 
@@ -680,6 +896,20 @@ Fact base: `lifecycles/LIFECYCLE_FACTBASE_B_QUESTIONS_2026-09-14.md`.
 
 1. Subject lost at Hermes enqueue (`symbols[:4] or ["BOOK"]`, `:2724`). 2. Pending ↔ research join missing (no plan_id on the pending; nothing reads the gap-request ledger). 3. Close reason was templated (fixed wording shipped 09-13 in #1000; not yet exercised). 4. Reply capture is best-effort and silent (only 8 agent turns for 39 messages). 5. Replies bypass the communication ledger. 6. Tagger runs on agent text → false CONFIRMED subjects feed memory recall. 7. The long-running bot keeps stale code across promotes. 8. The AQ audit reports but never repairs. 9. Two Telegram consumers on two tokens split the command surface.
 
+### Update 2026-09-14 — B1 after PRs #1005, #1006, #1007, #1016, #1018
+
+| Stage | Change | Proof |
+|---|---|---|
+| Intent / subject | spelled tickers bind (book or registry only); Flash may not demote `reentry_ready` / `reentry_levels`; freeform context carries `price_for_symbols` / `levels_for_symbols` | real 08:23 AXTI question dry run → full re-entry card |
+| Evidence / curate | `subject_dossier.py` covers every stored section for a named stock; each line starts with a spelled-out pill (`🟢 Trade-AI data` · `🔵 Looked up outside Trade-AI` · `🟣 AI model (DeepSeek)`); Key line; Origin line on every reply | 345 desk tests; operator: "This is much better" |
+| Hermes enqueue / defer | the operator's own question sent to Hermes (≤ 220-character pieces); `research_id` stamped on the gap request; research-only asks answered immediately with house facts plus a queued line (`CIO_OPERATOR_RESEARCH_ANSWER_NOW`) | — |
+| Fulfil | join `pending_id → plan_id + research_id → projection → result`; follow-up quotes the question with Hermes' answer, findings, open questions and limits; failed runs close at once | HPE: research 09:16, delivered 10:36 automatically after deploy; fulfilled=1 at 3,635 chars |
+| Send | bodies over 4,096 UTF-16 units sent as ordered parts; phone rendering (Part i of N, plain footer, provenance in an expandable quote); HTML with plain fallback | AXTI 4,571-char answer → 2 parts |
+| AQ audit | `RESEARCH_LANDED_UNSENT`, `REPLY_NOT_DELIVERED` rules | 23:22Z alert: 3 findings, all pre-fix turns |
+| Still open | reply ledgering as OUTBOUND events; tagger on agent text; subject memory recall unexercised in traffic | — |
+
+**Maturity change:** Intent/subject L2 → **L3** · Curate L2–L3 → **L3** · Send L1 → **L2** · **Fulfil L0 → L3** (joined by key, delivered, monitored) · AQ audit report L5 / repair still L0.
+
 ### (h) Maturity per stage
 
 | Poll | Tag/persist | Route | Intent/subject | Evidence | Gap resolve | Hermes enqueue | Defer | Curate | Send | Agent turn | Fulfil | Recall | AQ audit |
@@ -690,6 +920,38 @@ Fact base: `lifecycles/LIFECYCLE_FACTBASE_B_QUESTIONS_2026-09-14.md`.
 
 **Target:** `plan_id + research_id + subject_guid` stamped on the pending row → on `HERMES_LOOP_COMPLETED(plan_id)` curate from the result and follow up → otherwise honest close at ETA + grace; every send is an OUTBOUND event, then an agent turn, then subject memory, then the next wake.
 **Exit:** every non-slash message has one sourced reply turn (today 20.5 % / 12.5 %) · research-blocked pendings fulfilled from the Hermes result (0/1) · resolver receipts for every blocking gap (0) · desk replies ledgered (0) · a new turn changes the next wake (not met).
+
+```dot
+digraph lc_b1 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="B1 · Operator question (Telegram desk) — after 2026-09-14", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  q [label="Operator message", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  poll [label="Poll + tag + persist", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  intent [label="Intent + subject\nspelled tickers #1005", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  ev [label="House evidence\n+ dossier + pills", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  gap [label="Gap register / resolve\n0 receipts", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  hq [label="Hermes enqueue\nids on pending #1006", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  now [label="Answer now\n(house facts + queued line)", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  render [label="Render parts\n≤ 4,096 UTF-16 #1016", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  send [label="Telegram", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  fulfil [label="Fulfil: join result\nby plan/research id", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  ledger [label="communication_events\nOUTBOUND", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  aq [label="Answer-quality audit\nnew rules", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  q -> poll [color="#1F3864", penwidth=1.4];
+  poll -> intent [color="#1F3864", penwidth=1.4];
+  intent -> ev [color="#1F3864", penwidth=1.4];
+  ev -> now [label="complete", color="#1F3864", penwidth=1.4];
+  now -> render [color="#1F3864", penwidth=1.4];
+  render -> send [color="#1F3864", penwidth=1.4];
+  ev -> gap [label="blocking gap", color="#BF9000", style=dashed];
+  gap -> hq [label="queued", color="#1F3864", penwidth=1.4];
+  hq -> fulfil [label="result lands", color="#548235", penwidth=1.3];
+  fulfil -> render [label="follow-up", color="#548235", penwidth=1.3];
+  send -> ledger [label="✗✗ not ledgered", color="#C00000", style=dashed, penwidth=1.2];
+  send -> aq [color="#8497B0", style=dotted];
+}
+```
 
 ---
 
@@ -771,6 +1033,53 @@ Research objects by day 09-10..09-13: 105 · 264 · 150 · 156; producer 03:45Z 
 **Target:** confirmed subject → persisted question (text, why_now, settle condition, subject_guid) → routed by priority and age → answer joined to `question_guid` → settle test → ANSWERED / SUPERSEDED / EXPIRED → changed `next_research_question` persisted → next target.
 **Exit:** ≥ 90 % of research spend on CONFIRMED securities (≈ 61 %) · no target starved > 24 h (not met) · every question terminal within TTL (0/872) · a `next_research_question` diff between consecutive wakes (M1, not observed).
 
+**Update 2026-09-14 — the Research Escalation Circle, phase 1 (#1010 measured, #1012 built, dry run by
+default, not wired into the desk).** Measured first: no quality-based escalation existed anywhere;
+for operator questions Brave was off and Hermes was the only step that ran; Brave spilled to SearXNG
+only on quota or 429. Phase 1 adds one `question_guid` per ask and an append-only lifecycle ledger
+`ASKED → GATHERING → ANALYZED → ANSWERED / ANSWERED_PARTIAL → SCHEDULED`; free channels (house, Yahoo:
+quote, analysts, volume, earnings, news, levels computed from bars; SEC Form 4; SearXNG with general
+fallback); a deterministic sufficiency score (stale and contradiction capped, undated never stamped
+today); a Context Analyzer on DeepSeek Flash through the bridge whose verdict is rejected when it cites
+unknown evidence ids; a targeted second lap that stops without a model call when nothing new is found;
+automatic check-ins (day after a dated catalyst, else the analyzer's horizon, else 7 or 14 days).
+Dry runs: HPE 2 laps → ANSWERED_PARTIAL, check-in in 3 days (the analyzer caught a false volume premise
+0.83×, an earnings-date disagreement and missing volume history); ELMT 1 lap → sufficient M2, check-in 7
+days. The existing DDQ and research-object lifecycles below are unchanged.
+
+```dot
+digraph lc_b2 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="B2 · System-raised questions (2A research objects · 2B DDQ · 2C situations)", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  mc [label="material_changes", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  feed [label="Selection feed", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  targets [label="Targets\nsort -u · --limit 5", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  prod [label="Research producer\nBrave", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  ro [label="Research objects\nIDENTIFIED forever", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  consume [label="Wake consume\nchanged_question", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  ddq [label="DDQ ASKED → ROUTED", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  ext [label="hermes_external_research", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"];
+  close [label="Question close\nanswer_ids 0/872", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  sit [label="Situation → plan", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  hermes [label="Hermes (B3)", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  circle [label="Research Circle ph.1\nquestion_guid · laps · analyzer", shape=box, fillcolor="#F1ECF8", color="#7030A0"];
+  mc -> feed [color="#1F3864", penwidth=1.4];
+  feed -> targets [color="#1F3864", penwidth=1.4];
+  targets -> targets [label="alphabetical ⟳", color="#ED7D31", style=bold];
+  targets -> prod [color="#1F3864", penwidth=1.4];
+  prod -> ro [color="#1F3864", penwidth=1.4];
+  ro -> consume [color="#BF9000", style=dashed];
+  consume -> targets [label="question → target ✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  mc -> ddq [color="#1F3864", penwidth=1.4];
+  ddq -> ext [label="routed", color="#1F3864", penwidth=1.4];
+  ext -> close [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  ext -> ddq [label="usefulness → lane rank", color="#548235", penwidth=1.3];
+  sit -> hermes [color="#BF9000", style=dashed];
+  circle -> hermes [label="phase 2+ (not built)", color="#8497B0", style=dotted];
+}
+```
+
 ---
 
 ## B3 · Hermes research
@@ -848,6 +1157,30 @@ Latest status per research id: failed 653 · completed 556 · **queued 26**. Loo
 
 1. **Projection lost update:** 26 orphans, no ledger → projection reconcile. 2. Execution-language refusal is the #1 failure and permanently blocks the question. 3. COST_CAP 48 and CIRCUIT_OPEN 11: budget binds before value. 4. Subject substitution to BOOK (11 of 27 results). 5. Completion never notifies or joins pendings. 6. HRI provenance fields empty. 7. No expiry on live rows. 8. Promotion throughput collapsed 09-12..14.
 
+### Update 2026-09-14 — B3 after PRs #1006, #1014, #1019
+
+- **Measured on 09-14 before the fix:** 136 of 219 requests failed in 7 days (62 %), 13 of 18 in 24 h; 63
+  execution-language refusals (some quoting third-party labels such as "Strong Sell"); 40 cost-cap; 22
+  circuit-open / disconnect filed as non-retryable; 8 provider errors; 32 enqueued requests missing from
+  the 30 MB unlocked projection (7 on 09-14); every escalation `retry_cmd` exited 127 (36,365 times since
+  08-07); the health score read neither the queue nor the lane.
+- **Now:** lane `cio-hermes-queue` (15 min) fires on failure rate, no completions, stalled queue, lost
+  requests, unclassified failures; `claim_next` runs reap → replay retryable failures (once, after the
+  15-min breaker; never cost cap or execution language) → restore lost requests (< 48 h, from the
+  ledger) before every claim; a reentrant cross-process `flock` guards every projection writer;
+  circuit/disconnect/502/503 are retryable provider errors; third-party labels are masked before the
+  execution-language guard and a refused draft is rewritten once, still guarded; the health agent
+  folds firing research lanes into intelligence quality; the escalation handler resolves the venv path.
+  Live at 14:52: 12 lost requests restored, 1 replayed (SCHD), lost 0 / stalled 0, no rc=127.
+- **Bridge (15:15–17:17):** DeepSeek held the bridge's non-streaming calls ~906 s each; the
+  single-threaded bridge blocked every Hermes job. #1019 adds a 150 s wall-clock deadline, a threaded
+  server with 4 in-flight slots (503 `BRIDGE_BUSY` is retryable), `GET /health` and a 5-minute watchdog.
+  DeepSeek recovered at 17:21; CIO Hermes completed 5 jobs 17:29–17:47.
+- **Join / notify:** completions now reach the operator's pending question (#1006, edge #18 fires).
+- **Maturity change:** claim L1 → **L3** (self-reconciling under a lock) · notify/join L0 → **L3** for
+  operator-forced research · failure handling gains bounded repair (**L3**). Orphans present at 00:45
+  (26) were restorable only within 48 h; older ones remain for reconciliation.
+
 ### (h) Maturity
 
 Plan L1 · enqueue L1 · claim L1 (orphan defect) · search/synthesis L2 · critique L3 partial · memory accept L1 · notify/join **L0** · staged → promoted L1–L2 · expiry/re-research **L0** · archive L1.
@@ -856,6 +1189,41 @@ Plan L1 · enqueue L1 · claim L1 (orphan defect) · search/synthesis L2 · crit
 
 **Target:** plan(question, subject_guid) → ledger is the source of truth and the projection is rebuilt under a lock → claim → search with SearXNG spill on caller cap → synthesis that redacts rather than rejects → critique able to say INVALID → memory CANDIDATE → ACCEPTED on corroboration → HRI promoted with `expires_at` → consumers join by plan_id → expiry → re-research.
 **Exit:** 0 queued jobs older than 2× cadence (26) · 7-day completion ≥ 70 % (15 %) · every operator-forced completion joined to its pending in one pass (0/1) · `research_expires_at` on 100 % of promoted (0 %) · ≥ 1 completion changes a thesis or next question (0/27).
+
+```dot
+digraph lc_b3 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="B3 · Hermes CIO research queue — after the 2026-09-14 heartbeat and bridge fixes", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  plan [label="Plan / desk request", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  enq [label="Enqueue\nfingerprint · fail policy", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  ledger [label="Request ledger\n(source of truth)", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"];
+  proj [label="Projection 30 MB\nflock #1014", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  claim [label="claim_next\nreap → replay → restore #1014", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  bridge [label="Governed bridge\ndeadline · 4 slots #1019", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  ds [label="DeepSeek Flash", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  done [label="COMPLETED\ncritique · memory", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  failed [label="FAILED\n(retryable → replay)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  pending [label="Operator pending\njoin-back #1006", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  lane [label="cio-hermes-queue lane\n→ health score", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  watchdog [label="Bridge watchdog */5", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  notify [label="Notify on material change\n0/553", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  plan -> enq [color="#1F3864", penwidth=1.4];
+  enq -> ledger [color="#1F3864", penwidth=1.4];
+  ledger -> proj [color="#1F3864", penwidth=1.4];
+  proj -> claim [color="#1F3864", penwidth=1.4];
+  claim -> bridge [color="#1F3864", penwidth=1.4];
+  bridge -> ds [color="#1F3864", penwidth=1.4];
+  ds -> done [color="#1F3864", penwidth=1.4];
+  ds -> failed [label="timeout / 5xx", color="#BF9000", style=dashed];
+  failed -> claim [label="replay once", color="#548235", penwidth=1.3];
+  ledger -> claim [label="restore lost < 48 h", color="#548235", penwidth=1.3];
+  done -> pending [label="fires", color="#548235", penwidth=1.3];
+  lane -> claim [color="#8497B0", style=dotted];
+  watchdog -> bridge [label="restart if wedged", color="#548235", penwidth=1.3];
+  done -> notify [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
 
 ---
 
@@ -898,6 +1266,34 @@ Failure paths: TOPIC slug to the security worker; curator dies on DB SSL drops; 
 Maturity: ingest L1 · curate L2 · route L1 (wrong target) · topic analysis **L0** · Hermes topic L1 · feedback **L0** · user topics / RI queue **L0**.
 **Target:** topic event with `subject_kind=TOPIC` → router table event_type → worker → Hermes topic lane → HRI with topic_id and linked subject GUIDs → desk thematic answers and wake selection for linked holdings → curation feedback → query refinement.
 **Exit:** 0 `TOPIC:` rows per day in `watchlist_agent_jobs` (8 on 09-13) · feedback written daily (12 d stale) · ≥ 50 % of topic HRI rows with linked GUIDs (0 %) · curator run without traceback (not met).
+
+**Update 2026-09-14:** unchanged (not re-measured).
+
+```dot
+digraph lc_b4 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="B4 · Topic / thematic research", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  tm [label="topic_monitor", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  ing [label="Ingest", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  cur [label="Curate (ensemble)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  q [label="agent_event_queue\nsymbol=TOPIC:…", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  router [label="Router", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  worker [label="Security worker\nrejects topic slug", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  hbridge [label="Hermes topic bridge", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  hri [label="HRI topic rows\nsymbol NULL", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"];
+  fb [label="Curation feedback\n12 d stale", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  tm -> ing [color="#1F3864", penwidth=1.4];
+  ing -> cur [color="#1F3864", penwidth=1.4];
+  cur -> q [color="#1F3864", penwidth=1.4];
+  q -> router [color="#1F3864", penwidth=1.4];
+  router -> worker [label="✗✗ not a security", color="#C00000", style=dashed, penwidth=1.2];
+  tm -> hbridge [color="#1F3864", penwidth=1.4];
+  hbridge -> hri [color="#BF9000", style=dashed];
+  cur -> fb [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  fb -> ing [color="#C00000", style=dashed, penwidth=1.2];
+}
+```
 
 ---
 
@@ -1036,6 +1432,45 @@ outside this document (⊘ AGENTS.md §0/§1).
 **Target:** intake → gate → (unprofiled → profile job → re-gate, bounded) → enrich → enqueue required agents under a per-lane budget reservation → class-aware retry (COST/CIRCUIT defer to the next window; INPUT trims; GATE builds a profile) → maturity re-queues missing agents to a ceiling, then `tail_dormant` → synthesis only when results are newer than the prior synthesis, else `stale_analysis` → safety only on a synthesis written in this run → outcome scored at 30/60/90 d → calibration and lessons in the next prompt → removal keyed on last real verdict age for `researched` as well as `active`.
 **Exit:** every job ends completed, dormant-after-N or operator-closed · no symbol permanently excluded by a transient gate failure · WMT-style re-stamps = 0.
 
+**Update 2026-09-14:** not re-measured. Budget-side changes that affect this lifecycle: caps now count
+actual spend under a $2.00/day global cap with calibrated reservations (#1015), removing the
+phantom-money `COST_CAP_EXCEEDED: global cap` refusals; the synthesis prompt budget and 32,000 cap are
+live (#1002). Gate exclusion, retry, integrity re-stamping and topic routing are unchanged.
+
+```dot
+digraph lc_c1 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="C1 · Symbol / watchlist item", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  intake [label="Intake writers", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  enrich [label="Enrich + strategy card", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  enq [label="Enqueue\n(governed)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  gate [label="Identity gate", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  excl [label="Rejected forever\n(no profile build)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  agent [label="Specialist call\nMaria · Steph · Risk · Tax", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  fail [label="failed / deferred\nno retry", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  mat [label="Maturity ladder", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  syn [label="CIO synthesis", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  safety [label="Safety gate", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  restamp [label="Stale verdict re-stamped\nactionable (WMT ×92)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  dir [label="Directives · re-entry desk ·\nproposal bridge", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  rm [label="Weekly removal\n(active only)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  intake -> enrich [color="#1F3864", penwidth=1.4];
+  enrich -> enq [color="#1F3864", penwidth=1.4];
+  enq -> gate [color="#1F3864", penwidth=1.4];
+  gate -> agent [label="eligible", color="#1F3864", penwidth=1.4];
+  gate -> excl [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  agent -> mat [label="completed 2.9 %", color="#BF9000", style=dashed];
+  agent -> fail [color="#C00000", style=dashed, penwidth=1.2];
+  mat -> syn [color="#1F3864", penwidth=1.4];
+  syn -> safety [color="#1F3864", penwidth=1.4];
+  safety -> dir [color="#1F3864", penwidth=1.4];
+  syn -> restamp [label="no fresh results", color="#ED7D31", style=bold];
+  restamp -> safety [label="⟳", color="#ED7D31", style=bold];
+  dir -> rm [color="#8497B0", style=dotted];
+}
+```
+
 ---
 
 ## C2 · Proposal (up to the approval boundary)
@@ -1101,6 +1536,35 @@ Failure paths: promoter blocked 100 %; reviews never close; approval before revi
 Maturity: promoter **L0** (output) · create L1 · enrich/readiness L1 · agent review L1 on paper / **L0** in effect · approval gate L1.
 **Target:** P4 is unreachable until P3 holds a closed review per required agent (reviewed, or `review_unavailable` with a reason); revalidation has a hard cap that escalates to the operator; promoter strategy ids validated at intake; one liveness column.
 **Exit:** 0 proposals approved with an open required review · 0 AFPT ↔ PENDING flips above the cap · `proposal_promotions` > 0 · health count of AFPT equals the table.
+
+**Update 2026-09-14:** unchanged (not re-measured). The execution side stays out of scope (⊘).
+
+```dot
+digraph lc_c2 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="C2 · Proposal (to the approval boundary)", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  prom [label="Incubator promoter\n0 promotions", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  create [label="Create\n(bridge · pullback MACD)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  enrich [label="Enrich + readiness", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  review [label="Agent review\n6,336 pending", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  gate [label="Approval gate\n(median 5 min)", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  exp [label="EXPIRED 84 %", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  rej [label="REJECTED / RISK_BLOCKED", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  afpt [label="APPROVED_FOR_PAPER_TEST", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  bound [label="⊘ approval boundary\n(operator, 2FA)", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  prom -> create [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  create -> enrich [color="#1F3864", penwidth=1.4];
+  enrich -> gate [color="#1F3864", penwidth=1.4];
+  enrich -> review [color="#BF9000", style=dashed];
+  review -> gate [label="✗✗ approve before review", color="#C00000", style=dashed, penwidth=1.2];
+  gate -> exp [color="#1F3864", penwidth=1.4];
+  gate -> rej [color="#1F3864", penwidth=1.4];
+  gate -> afpt [color="#1F3864", penwidth=1.4];
+  afpt -> gate [label="revalidation thrash ⟳", color="#ED7D31", style=bold];
+  afpt -> bound [color="#8497B0", style=dotted];
+}
+```
 
 ---
 
@@ -1170,6 +1634,33 @@ Maturity: journal L1 · multi-tier **L0** · outcome scoring L1 (L2 deterministi
 **Target:** outcome at 30/60/90 d → lesson candidate carrying its outcome ids → ratification needs a measured hit rate over ≥ N applications or a human → retrieval into the specific agent prompt that made the call → next outcome compared with and without the lesson; auto-retire only on non-null evidence; every advisory producer writes a durable row a scorer reads.
 **Exit:** application `hit` non-null > 0 · ≥ 1 human or evidence-based ratification · multi-tier reviewer writing again · `exit_advisory_outcomes` > 0 · calibration validated against an external sample.
 
+**Update 2026-09-14:** unchanged (not re-measured). The advisory lessons-reflect timer moved 21:40 → 19:40
+to stay inside the operator window (#1020).
+
+```dot
+digraph lc_c3 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="C3 · Review and learning (advisory side)", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  trades [label="Closed trades (⊘ side)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  rev [label="Trade review\njournal · LLM review", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  multi [label="Multi-tier reviewer\ndark since 08-30", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  score [label="Outcome scoring\n30/60/90 d", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  calib [label="Calibration", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  prompt [label="Agent prompt\n(calibration block)", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  lessons [label="KB lessons\nauto-ratified", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  hit [label="Application hit\nnull 1,520/1,520", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  trades -> rev [color="#1F3864", penwidth=1.4];
+  trades -> multi [color="#C00000", style=dashed, penwidth=1.2];
+  rev -> score [color="#1F3864", penwidth=1.4];
+  score -> calib [color="#1F3864", penwidth=1.4];
+  calib -> prompt [label="fires", color="#548235", penwidth=1.3];
+  rev -> lessons [color="#BF9000", style=dashed];
+  lessons -> hit [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  hit -> lessons [label="auto-retire on null ⟳", color="#ED7D31", style=bold];
+}
+```
+
 ---
 
 ## C4 · Agent-job budget admission
@@ -1200,12 +1691,54 @@ Order of checks in `governed_flash_call`:
 
 Watch-lane spend for the week ≈ **$0.035** against category caps summing to **$11.75/day**. The question "why did this job fail?" is answered "COST_CAP" — but the cap that bound was the **global** pool consumed elsewhere (F2: `advisory_desk_opinion` 87.6 % of 7-day spend). The loop "refused → retry next slot" retries into the same exhausted pool every 15 minutes.
 
+### Update 2026-09-14 — C4 after PRs #1015, #1020, #1021
+
+- **The cap measures actual spend.** The measurement that drove the change: real spend for the week to
+  09-14 was **$4.73** (provider tokens × price schedule), the cap-reservation ledger counted $5.50, and
+  the worst-case projection for advisory opinions alone was **$214.61** — so a $0.50 global cap refused
+  work on money that was never spent. The live cap was a forgotten $7.00 backfill override from 09-06;
+  the portfolio server carried $1.50.
+- **Now:** one durable host file sets `LLM_GLOBAL_DAILY_USD_CAP=2.00` for every unit; the overrides are
+  archived with a tripwire; reservations use the p90 of the process's settled cost × 1.5 (never above
+  worst case); spend is reported by provider, model and process, scheduled vs ad hoc, peak vs off-peak.
+- **Attribution:** the eight callers that shared `advisory_desk_opinion` bill to their own processes with
+  their own caps (#1021); agent jobs therefore no longer lose a shared pool to unattributed traffic.
+- **Timing:** scheduled paid work runs only in the operator window and never at DeepSeek peak (#1020);
+  operator-requested work is never gated.
+- **Still open:** priority classes with floors; refusal class and retry-after stored on the job.
+- **Maturity change:** global admission L1 → **L3** (bounded by actual spend, attributed); refusal record
+  and per-lane floor stay **L0**.
+
 ### (g)–(i) Failure paths, maturity, target
 
 Failure paths: no per-lane reservation or floor; refusal class not stored on the job; raising per-process input caps cannot fix a global-pool refusal; registry vs DB table (`llm_process_config`) — which one runtime reads is BLOCKED.
 Maturity: per-process caps L2 · global admission L1 (refuses the wrong work) · refusal record **L0** · per-lane floor **L0**.
 **Target:** budget by priority class with floors (operator questions > held positions > agent jobs > synthesis > background opinion); refusal class and retry-after stored on the job; a refused job defers to the next window instead of failing.
 **Exit:** 0 `COST_CAP_EXCEEDED: global cap` on agent jobs for 3 weekdays while total spend ≤ the global cap.
+
+```dot
+digraph lc_c4 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="C4 · Agent-job budget admission — after 2026-09-14", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  req [label="Agent job LLM request", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  contain [label="Containment · circuit ·\ninput limit", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  proc [label="Process cap\n(own id since #1021)", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  global [label="Global cap $2.00\nactual spend #1015", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  resv [label="Reservation\np90 × 1.5 #1015", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  window [label="Operator window gate\n(scheduled only) #1020", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  call [label="Bridge call", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  refuse [label="Refused → job failed\nclass in log text only", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  req -> window [color="#1F3864", penwidth=1.4];
+  window -> contain [color="#1F3864", penwidth=1.4];
+  contain -> proc [color="#1F3864", penwidth=1.4];
+  proc -> global [color="#1F3864", penwidth=1.4];
+  global -> resv [color="#1F3864", penwidth=1.4];
+  resv -> call [color="#1F3864", penwidth=1.4];
+  global -> refuse [label="over cap", color="#C00000", style=dashed, penwidth=1.2];
+  refuse -> req [label="retried into same pool ⟳", color="#ED7D31", style=bold];
+}
+```
 
 ---
 
@@ -1337,6 +1870,43 @@ a8a62217e (04:00Z); the first c594d8600 slot is 05:00Z.
 **Target:** receipt the selecting RO on every branch → a fresh subject each slot unless a new change or turn arrives → memory admitted from settled judgments → L3 on grounded subjects at any hour (budget, not clock) → a critic that can revise `next_research_question` → governed commitment with the author's falsifier → sweep settles at due → lesson → memory → next question.
 **Exit counters:** M1 a `next_research_question` or claim diff for one subject across 2 slots caused by a new RO · M2 ≥ 1 critic `revise` with `field_changes[next_research_question]` · M3 a turn id ≠ 115 in `prior_operator_turn_ids` with a decision diff · M5 a commitment settled ≥ 7 d later by a scheduled sweep.
 
+**Update 2026-09-14:** not re-measured. Model calls behind judgment and critique now pass through a bridge
+that cannot be wedged by a held provider call (#1019). The replay, single-subject memory and settlement
+defects are unchanged.
+
+```dot
+digraph lc_d1 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="D1 · Hourly persistent wake", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  prod [label=":45 research producer", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  feed [label=":55 selection feed", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  sel [label=":00 select subjects (≤3)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  claim [label="CLAIMED → LOADED\nmemory (1 subject)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  decide [label="Decide", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  judge [label="L3 judge\n(01–13Z refused)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  crit [label="Critique\n0 disagree", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  view [label="View", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  commit [label="Commitment\nboilerplate falsifier", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  settled [label="SETTLED", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  memory [label="Memory write", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  sweep [label="Outcome sweep", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  prod -> feed [color="#1F3864", penwidth=1.4];
+  feed -> sel [color="#1F3864", penwidth=1.4];
+  sel -> claim [color="#1F3864", penwidth=1.4];
+  claim -> decide [color="#1F3864", penwidth=1.4];
+  decide -> judge [label="grounded", color="#BF9000", style=dashed];
+  judge -> crit [color="#1F3864", penwidth=1.4];
+  crit -> view [color="#1F3864", penwidth=1.4];
+  view -> commit [color="#1F3864", penwidth=1.4];
+  commit -> settled [color="#1F3864", penwidth=1.4];
+  settled -> sel [label="receipts suppress reselection", color="#548235", penwidth=1.3];
+  decide -> sel [label="operator-turn branch: turn 115 ⟳", color="#ED7D31", style=bold];
+  settled -> memory [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  commit -> sweep [label="✗✗ unscheduled", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
+
 ---
 
 ## D2 · Commitment → checkpoint → outcome → lesson
@@ -1399,6 +1969,33 @@ Maturity: checkpoint register L1 · resolve L1 (5/week) · observation L1 (non-i
 **Target:** concrete `due_at` or an event trigger that closes; sweep scheduled hourly after :00; the first CONFIRMED/REFUTED on a judged-wake falsifier; one OUTCOME_DERIVED lesson SUPPORTED with ≥ 5 independent samples on clean prices; lesson text in a later wake's question.
 **Exit:** `commitment_outcomes.jsonl` rows > 0 · `lesson_provenance=OUTCOME_DERIVED` with `supporting_outcome_ids ≥ 5` · null-due SCHEDULED → 0.
 
+**Update 2026-09-14:** unchanged; the commitment sweep cron was **approved by the operator** (09-14 ~09:05)
+but is not yet installed. The price fixes (#1008) matter here: the only three OUTCOME_DERIVED lessons were
+computed on the suspect SCHD series.
+
+```dot
+digraph lc_d2 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="D2 · Commitment → checkpoint → outcome → lesson", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  wake [label="Wake commitment\nFROZEN, due +7 d", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  sweep [label="sweep_commitment_outcomes\n(approved, not installed)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  run [label="CIO run checkpoint\nSCHEDULED (due_at null 3,102)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  resolve [label=":20 resolve_due\n\"due 0\"", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  obs [label="Observation\n{linked: true}", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  lesson [label="Lesson candidate\nPROVISIONAL 414", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  ratify [label="Ratify\n(no ratifier)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  question [label="Later question", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  wake -> sweep [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  run -> resolve [color="#1F3864", penwidth=1.4];
+  resolve -> obs [label="5 / 886 in 7 d", color="#BF9000", style=dashed];
+  obs -> lesson [color="#BF9000", style=dashed];
+  lesson -> ratify [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  ratify -> question [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  resolve -> resolve [label="due 0 ⟳", color="#ED7D31", style=bold];
+}
+```
+
 ---
 
 ## D3 · Reflection and MVL agents (Sentinel, Darwin, Iris, runtime)
@@ -1447,6 +2044,34 @@ Growth collapsed after 09-12 (+7, +3). The proposal set has been identical for �
 Failure paths: reflection scores horizon expiries because outcomes never resolve (D2 breaks upstream); no ratifier by design and no human queue drained; the runtime has zero dispatch, so "circulation" is a fixed shadow script; status and data disagree on 09-10; Iris taxonomy failed on boot 09-12.
 Maturity: nightly reflection L1 L5 (runs) / **L0** (effect) · Sentinel L1 · Darwin L1 · runtime dispatch **L0** · Iris curator L1 (applies expiries only) · ratify **L0** (⊘ by design for agents).
 **Target (MVL counters):** Sentinel reviews beyond the three fixed agents including Watch artifacts, with a measured false-positive rate; Darwin scorecards read by a routing or threshold consumer (shadow); runtime dispatch > 0 COMPLETED; ≥ 1 new reflection proposal per week, each with an operator ratify/reject receipt.
+
+**Update 2026-09-14:** unchanged. The advisory shadow-seed timer moved 21:45 → 19:45 (#1020).
+
+```dot
+digraph lc_d3 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="D3 · Reflection and MVL agents", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  cases [label="cio_production_cases", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  refl [label="21:50 nightly reflection", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  prop [label="Proposal CANDIDATE\n(same ≥ 6 nights)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  promo [label="Promotion\n0", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  shadow [label="Mon–Fri 09:15 shadow session", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  sent [label="Sentinel reviews\n3 fixed agents", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  darwin [label="Darwin scorecards", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  consumer [label="Routing consumer", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  iris [label="Iris curator\npending 5,047", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  human [label="Human review queue", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  cases -> refl [color="#1F3864", penwidth=1.4];
+  refl -> prop [color="#1F3864", penwidth=1.4];
+  prop -> promo [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  prop -> refl [label="plateau ⟳", color="#ED7D31", style=bold];
+  shadow -> sent [color="#1F3864", penwidth=1.4];
+  shadow -> darwin [color="#1F3864", penwidth=1.4];
+  darwin -> consumer [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  iris -> human [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
 
 ---
 
@@ -1519,6 +2144,36 @@ Failure paths: EVENT_BUS backlog expires 80 % of wake jobs; dispatcher never rea
 Maturity: reactive intake L1 L5 · wake-job dispatch L1 (21 %) · health boundary L1 · evidence gate L1–L2 · synthesis L1 · decisions L1 (constant) · defer revisit L1 (idle) · situation detector L1 · record-consult carry-forward **L2**.
 **Exit:** expiry < 20 % · 0 streams non-terminal > 2 h · advisory state written on `CIO_RUN_HEALTH_CHECKED` · `semantic_event_key` populated with ≤ 1 re-raise/day per key · `wake_research_persist.persisted > 0` weekly · `turn_changed_decision=true` on a real turn newer than 09-08 (M3).
 
+**Update 2026-09-14:** unchanged (not re-measured). "CIO Run Complete" check-ins with no advisory action are
+no longer sent (#1009).
+
+```dot
+digraph lc_d4 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="D4 · CIO run · wake jobs · defer · situations", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  events [label="cio_events\n(thesis · enrichment · situations · operator)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  wj [label="Wake job ENQUEUED", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  expired [label="EXPIRED 80 %", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  consult [label="Record consult\n(defer honoured)", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  run [label="Run: HEALTH → EVIDENCE → SYNTHESIS", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  blocked [label="BLOCKED\n(stale portfolio)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  done [label="COMPLETED\ncheckpoint + decisions", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  stuck [label="DISPATCHED / IN_FLIGHT\nnever reaped", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  sit [label="Situations\nre-raised 8.8×", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  events -> wj [color="#1F3864", penwidth=1.4];
+  wj -> expired [label="backlog", color="#C00000", style=dashed, penwidth=1.2];
+  wj -> consult [color="#1F3864", penwidth=1.4];
+  consult -> run [color="#1F3864", penwidth=1.4];
+  consult -> wj [label="skip fires", color="#548235", penwidth=1.3];
+  run -> done [color="#1F3864", penwidth=1.4];
+  run -> blocked [color="#BF9000", style=dashed];
+  wj -> stuck [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  sit -> sit [label="⟳", color="#ED7D31", style=bold];
+  sit -> events [color="#8497B0", style=dotted];
+}
+```
+
 ---
 
 ## D5 · Epoch acceptance (SHA promote → wakes → contiguous cycles → acceptance → next promote)
@@ -1554,6 +2209,31 @@ Failure paths: promote cadence faster than 3 slots; power cuts without backfill;
 Maturity: promote/stamp L1 L5 · contiguity L1 · acceptance evaluation **L0** (not scheduled) · epoch freeze discipline **L0**.
 **Target:** a declared promote freeze of ≥ 3 slots inside 14–00Z on a weekday, with ≥ 1 new operator turn on a wake subject and ≥ 1 gateway SETTLED.
 **Exit:** the collector writes a receipt `clauses 6/6` for that SHA (campaign M2 ACCEPTED).
+
+**Update 2026-09-14:** 22 releases were promoted on 09-14, so epoch contiguity could not accumulate during
+the day; the overnight windows remain the only long same-SHA runs. Acceptance collector still unscheduled.
+
+```dot
+digraph lc_d5 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="D5 · Epoch acceptance", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  prep [label="prepare", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  promote [label="promote → epoch e", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  slots [label="Hourly slots accumulate", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  clauses [label="Clauses\n≥3 contiguous · inbound effect ·\ngateway SETTLED · L3 view", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  accepted [label="ACCEPTED\n(never)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  superseded [label="SUPERSEDED\n32 / 33", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  cut [label="Power cut\nmissed slots", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  prep -> promote [color="#1F3864", penwidth=1.4];
+  promote -> slots [color="#1F3864", penwidth=1.4];
+  slots -> clauses [color="#1F3864", penwidth=1.4];
+  clauses -> accepted [label="✗✗ collector unscheduled", color="#C00000", style=dashed, penwidth=1.2];
+  slots -> superseded [label="next promote (~1.4 h)", color="#1F3864", penwidth=1.4];
+  superseded -> promote [label="reset ⟳", color="#ED7D31", style=bold];
+  cut -> slots [color="#C00000", style=dashed, penwidth=1.2];
+}
+```
 
 ---
 
@@ -1662,6 +2342,29 @@ Outbound 855 all-time / 758 7 d / 26 24 h; per day 09-05 60 · 09-06 38 · **09-
 
 1. **Owner-stamp regression** (since 09-10; commits 6b612ffea / 28902a51f "durable event settlement"): the legacy settle passes the owner only inside `provider_coordinates`, and `_persist_event_settlement_pg` skips the update (cause INFERRED from code). 2. **Inbound stubs counted as backlog**; 20 direct producers reserve and never settle. 3. **CIO deliveries invisible to the ledger** — lane `cio-delivery` is false-SILENT because it watches a file the worker stopped writing (correction to v1: it did deliver). 4. Desk replies unledgered. 5. No provider message id on the legacy path — `send_telegram` returns *accepted*, not delivered. 6. Watchpool alerts reserved and never settled. 7. Normalization runtime OFF; incident and digest tables empty. 8. 15 direct-API producers bypass everything. 9. 8 agent:cio FAILED never retried. 10. Two consumers on the main bot token.
 
+### Update 2026-09-14 — E1 after PRs #1009, #1011, #1013, #1016, #1018
+
+| Finding (5 Telegram exports reviewed 09-14) | Evidence | Now |
+|---|---|---|
+| Duplicate morning briefs | 50 identical in 16 days, most at ~20:00 ET (cron and timer both ran `aegis_overnight`; 08:00 and 08:05 senders repeated) | one brief 07:30 ET weekdays; dedupe key = ET session date; 20:00 and 08:05 senders retired (crontab installed 11:03, backup kept) |
+| Literal Markdown | 299 messages with raw asterisks (Markdown refused, resent as plain text) | Communications Editor converts to escaped HTML (live mode); rich layouts for GO / entry / material change |
+| CIO Desk noise | 86 of 95 were content-free "CIO Run Complete" | no check-in when a run produced no advisory action |
+| Wrong chat | health/holdings/stop alerts reached Proposal Decisions | `chat_ids()` = DM only; `proposal_chat_ids()` = group; `allowed_chat_ids()` = both for inbound |
+| No GO alerts since 07-13 | GO rows every week; social scanner required a tag no row carried; screener GO list archived in a digest | `scalp_go_criteria` (price 1–25, float ≤ 20M, RVOL ≥ 5, |gap| ≥ 5 %, volume ≥ 1M, score ≥ 40, verified catalyst); `screener_go_alerts.py` */15 9–16; router bypass (#1011); ARMP and ELMT delivered 13:15 |
+| Repeated alerts collided | ledger identity lacked a body hash: 638 events for 638 openings; 14,163 illegal settles in `claude_escalation.log` | `observation_version` = body hash + UTC minute (#1013) |
+| Long desk answers refused | 4,571-char AXTI answer, Telegram 400 | ordered parts ≤ 4,096 UTF-16 units; delivered only if every part is (#1016) |
+
+**Communications Editor** (`scripts/lib/comms_editor.py` at `telegram_transport.deliver_text`): mode off / shadow
+/ live from `COMMS_EDITOR_MODE` or `~/.config/tradeai/comms_editor_mode`; **shadow since 09-14 12:02** (original
+sent unchanged, receipt written); live adds HTML, a message GUID and subject GUIDs, a 20-hour duplicate
+fingerprint per chat, CIO agreement against the latest `cio_decisions`, holds `OPERATOR_PRODUCT_INVALID`,
+Tailscale Command Center links plus Finviz and Yahoo, and source pills; an editor failure always sends
+the original. Live is approved after one trading day of shadow receipts.
+
+**Maturity change:** classification L1 → **L2** (routing map, noise removed) · producing L2 → **L3** for GO,
+entry and material-change alerts (criteria, rich layout, delivered) · settlement unchanged L1 (owner
+stamp regression and inbound stubs not fixed) · formatting chokepoint ░ → **L2** (shadow).
+
 ### (h) Maturity per stage
 
 Producing L2 · classification L1 · dedupe/rate limit L1 · reservation L1 · legacy send L2 · gateway send L1 → L2 · provider acceptance L1 · **settlement L1 (regressed)** · CC link L1 · digest roll-up L2 · lifecycle monitoring L1 (wrong file).
@@ -1670,6 +2373,34 @@ Producing L2 · classification L1 · dedupe/rate limit L1 · reservation L1 · l
 
 **Target:** one path — `publish_communication` → persisted policy decision → RESERVED → gateway send → SENT with pmid → SETTLED; no delivery stub for inbound; SUPPRESSED/DIGESTED terminal with reason and `digest_event_id`; an expirer for RESERVED; every CIO product, desk reply and pending close an OUTBOUND event; CC URL always stamped.
 **Exit:** gateway ≥ 95 % of outbound for 7 days · RESERVED ≤ 1 h old · owner-null rows 0 · CIO deliveries present in `communication_events` · `cio-delivery` lane keyed on DELIVERY_CONFIRMED.
+
+```dot
+digraph lc_e1 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="E1 · Outbound message — after 2026-09-14", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  prod [label="Producers\nbrief 07:30 · GO */15 · entry · MC · health · desk", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  rich [label="telegram_rich layout\n#1018", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  router [label="Legacy router\n(classify · dedupe)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  chk [label="deliver_text chokepoint", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  editor [label="Communications Editor\nSHADOW #1009", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  parts [label="split ≤ 4,096 UTF-16\n#1016", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  tg [label="Telegram\nrouting map", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  ledger [label="communication_events\nbody-hash identity #1013", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"];
+  settle [label="Settlement\nowner stamp regressed", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  digest [label="P1 digest (4 h)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  prod -> rich [label="GO / entry / MC", color="#1F3864", penwidth=1.4];
+  rich -> chk [label="GO bypasses router #1011", color="#548235", penwidth=1.3];
+  prod -> router [color="#1F3864", penwidth=1.4];
+  router -> chk [color="#1F3864", penwidth=1.4];
+  router -> digest [label="suppressed", color="#548235", penwidth=1.3];
+  chk -> editor [color="#1F3864", penwidth=1.4];
+  editor -> parts [color="#1F3864", penwidth=1.4];
+  parts -> tg [color="#1F3864", penwidth=1.4];
+  chk -> ledger [color="#8497B0", style=dotted];
+  ledger -> settle [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
 
 ---
 
@@ -1734,6 +2465,33 @@ Poll/receive main bot **L2** · CIO bot L1 · atomic intake / checkpoint **L2** 
 **Target:** update → event (bot_id, pmid, reply_to_event_id) → turn → receipt carrying the `wake_id` of the next wake → that wake's `prior_operator_turn_ids` contains the turn → a with/without decision diff for that turn → reply ledgered OUTBOUND with `causation_id` → pending closure joined to plan completion.
 **Exit:** receipts with `wake_id` > 0 · a turn ≠ 115 in a wake · fixture rows 0 · bot_id non-empty on inbound · CIO bot restarted within one promote.
 
+**Update 2026-09-14:** the desk side of inbound changed (B1); the intake lifecycle below it is unchanged.
+The CIO bot was restarted on the release after each desk deploy by hand (runbook step 7).
+
+```dot
+digraph lc_e2 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="E2 · Inbound operator reply", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  upd [label="Telegram update", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  claim [label="Claim + checkpoint", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  event [label="INBOUND event\nbot_id ''", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  tag [label="Tag + persist turn", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  receipt [label="Consumption receipt\nwake_id NULL 0/94", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  wake [label="Next wake intake", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  desk [label="Desk answer (B1)", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  quar [label="Quarantine 27", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  upd -> claim [color="#1F3864", penwidth=1.4];
+  claim -> event [color="#1F3864", penwidth=1.4];
+  event -> tag [color="#1F3864", penwidth=1.4];
+  tag -> desk [color="#1F3864", penwidth=1.4];
+  tag -> receipt [color="#BF9000", style=dashed];
+  receipt -> wake [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  wake -> wake [label="turn 115 ⟳", color="#ED7D31", style=bold];
+  tag -> quar [label="persist failure", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
+
 ---
 
 ## E3 · Platform-monitor alert
@@ -1775,6 +2533,34 @@ Maturity: detect L2 · fingerprint L2 · body L2 · dedupe L2 · **escalation L0
 **Target:** finding → incident row (first_seen, last_seen, ack, resolve) → reminder at age thresholds → acknowledge via reply or button joined by `reply_to_event_id` → ✅ closes the incident and records time to resolve.
 **Exit:** `alert_incidents` > 0 with ack and resolve timestamps · a reminder observed on a finding older than its threshold · fingerprint written only on *delivered*.
 
+**Update 2026-09-14:** the data-source-health alert was rewritten for the operator — what each source feeds,
+what is wrong, next run, action, escalation, engineer detail last (#997); the answer-quality monitor gained
+`RESEARCH_LANDED_UNSENT` and `REPLY_NOT_DELIVERED`; the research lane and bridge watchdog alert on state
+change. Acknowledgement, reminders and incident rows are unchanged.
+
+```dot
+digraph lc_e3 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="E3 · Platform-monitor alert", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  det [label="Detector timer\n(health · gaps · answer quality · lanes)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  fp [label="Fingerprint ==\nprevious?", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  silent [label="Suppressed unchanged\n(no reminder)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  body [label="Operator-readable body\n#997", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  send [label="send_telegram\naccepted ≠ delivered", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  op [label="Operator", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  ack [label="Acknowledge", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  clear [label="✅ Recovered", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  det -> fp [color="#1F3864", penwidth=1.4];
+  fp -> silent [label="same", color="#C00000", style=dashed, penwidth=1.2];
+  fp -> body [label="changed", color="#1F3864", penwidth=1.4];
+  body -> send [color="#1F3864", penwidth=1.4];
+  send -> op [color="#1F3864", penwidth=1.4];
+  op -> ack [label="✗✗ no primitive", color="#C00000", style=dashed, penwidth=1.2];
+  det -> clear [label="findings clear", color="#548235", penwidth=1.3];
+}
+```
+
 ---
 
 ## E4 · Email and Drive publication
@@ -1785,9 +2571,30 @@ Maturity: detect L2 · fingerprint L2 · body L2 · dedupe L2 · **escalation L0
 | Claude memory → Drive | 03:10 `sync-memory-to-drive.sh` | log present | — | L2 |
 | Encrypted .env / data → Drive | 02:30 cadence `secrets_backup_env` | ok per cadence | — | L2 |
 | Gmail daily digest | 07:15 orchestrator → `email_notifier.py` (gog) | one per weekday 09-02..09-11; **none on 09-12** (host down until 17:02); `notification_log` silent since 09-11 07:46 | not in `communication_events`; no delivery receipt beyond `sent` | L1 |
-| Google token | `mcporter-token-refresh.timer` (gcloud) | **failed** 09-13 23:56 (gcloud auth empty) | operator re-auth needed; gog itself still works for Drive and Gmail | L1 |
+| Google token | `mcporter-token-refresh.timer` (gcloud) | **failed** 09-13 23:56 (gcloud auth empty); failing on every run since at least 09-01. **Update 2026-09-14: operator re-authenticated at 23:4x; refresh Result=success** | — | L1 → **L2** |
 
 **Target:** Drive update-in-place so file ids and links persist; email sends as OUTBOUND events with a receipt; credential health monitored. **Exit:** same Drive file id across two syncs of a changed doc · a digest per weekday present in the communication ledger · token refresh unit green.
+
+```dot
+digraph lc_e4 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="E4 · Email and Drive publication", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  docs [label="repo docs/", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  sync [label="sync-docs-to-drive :05\n(delete + create)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  drive [label="Drive Trade_AI_Docs_v2\nnew file id per change", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  digest [label="07:15 Gmail digest", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  gmail [label="Gmail send\n(not ledgered)", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  token [label="mcporter token refresh\ngreen since 09-14", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  op [label="Operator", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  docs -> sync [color="#1F3864", penwidth=1.4];
+  sync -> drive [color="#1F3864", penwidth=1.4];
+  drive -> op [label="links break on change", color="#BF9000", style=dashed];
+  digest -> gmail [color="#1F3864", penwidth=1.4];
+  gmail -> op [color="#1F3864", penwidth=1.4];
+  token -> drive [color="#8497B0", style=dotted];
+}
+```
 
 ---
 
@@ -1882,6 +2689,27 @@ Terminal in practice: MERGED + PROMOTED 39 of 42 · OPEN-stale 1 (#963 since 09-
 
 1. **Deploy ≠ runtime** — three manual steps (S11–S13) carry the change into what runs, and each failed in this window. 2. **No change identity** end to end. 3. **Decisions not durable** (push, deploy, unit install). 4. Gate cost is bookkeeping, plus CI environment gaps. 5. Secrets-scan bypass flag; public repo; 0 required reviews. 6. Worktree sprawl (454). 7. Release retention blind to legacy directories.
 
+### Update 2026-09-14 — F1 after the day (29 PRs) and PR #1025
+
+- **Throughput on 09-14:** 22 releases promoted between 00:07 and 23:06; every merge used
+  `--match-head-commit` at the tested head; local acceptance before every push.
+- **Dev-tree fast-forward is now part of `promote`** (#1025): after `PROMOTE OK` it fetches in
+  `CANONICAL_SOURCE` and runs `ff_dev_tree`, which returns 0 only when HEAD is at or past the promoted
+  commit. It auto-handles one proven-safe case (files the target no longer tracks, behind a symlinked
+  parent, live copy present: hash, `git rm --cached`, retry, re-hash) and otherwise exits non-zero while
+  the release stays live. First live run 23:06: "dev tree fast-forwarded to 341bce2c1".
+- **What forced it:** at 21:51 a deploy wrapper's `git merge --ff-only && git log` swallowed a refused
+  fast-forward (`set -e` ignores `&&` lists) after #1023 untracked three symlinked data files; the deploy
+  said success with the dev tree behind. Fixed by hand (hashes unchanged), then in the repo.
+- **Git hygiene:** three files served from persistent state untracked and `archive/weekly/` ignored
+  (#1023): dev tree `git status` empty.
+- **Gate failures seen today (bookkeeping and environment):** docs index drift after merges; SOP digest
+  rebinds; a worktree without `.venv` running ruff with system Python; a date-dependent test that broke
+  `cio-hardening` on main at UTC midnight.
+- **Still manual:** new user units, CIO bot restart, crontab edits (runbook step 7).
+- **Maturity change:** Dev-tree FF L1 → **L4** (automated, verified, fails loudly); unit install and other
+  restarts stay **L0**.
+
 ### (h) Maturity per stage
 
 | Request | Worktree | Code/tests | Local acceptance | Pre-push | PR/CI | Merge | Prepare/promote | Dev-tree FF | Unit install | Other restarts | Verify | Record |
@@ -1892,6 +2720,39 @@ Terminal in practice: MERGED + PROMOTED 39 of 42 · OPEN-stale 1 (#963 since 09-
 
 **Target:** one `change_id` from request → PR → CI → release → append-only promote receipt (with `source_pr` and approver) → dev tree = release SHA (or the dev tree removed as an execution root) → units diffed and installed → every unit whose code root changed restarted → post-promote verification receipt → docs merged.
 **Exit:** main = release = dev tree (**met** at 00:30) · all running units on the current release (not met: 8) · repo units = installed units (not met: 20 differ, 7 missing) · deploy history durable (1 receipt) · decisions auditable (not met).
+
+```dot
+digraph lc_f1 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="F1 · Change: request → runtime (after #1025)", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  req [label="Operator request", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  wt [label="Worktree", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  code [label="Code + tests + register", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  acc [label="Local acceptance", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  push [label="Pre-push hook\nauth · budget · secrets", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  ci [label="PR + CI", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  merge [label="Merge at tested head", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  prom [label="prepare → promote\nhealth-gated", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  ff [label="Dev tree FF\n#1025", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  units [label="Install new units", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  restart [label="Restart changed services", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  verify [label="Verify (natural schedule)", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  req -> wt [color="#1F3864", penwidth=1.4];
+  wt -> code [color="#1F3864", penwidth=1.4];
+  code -> acc [color="#1F3864", penwidth=1.4];
+  acc -> code [label="fail → fix", color="#548235", penwidth=1.3];
+  acc -> push [color="#1F3864", penwidth=1.4];
+  push -> ci [color="#1F3864", penwidth=1.4];
+  ci -> code [label="red → push again", color="#548235", penwidth=1.3];
+  ci -> merge [color="#1F3864", penwidth=1.4];
+  merge -> prom [color="#1F3864", penwidth=1.4];
+  prom -> ff [color="#548235", penwidth=1.3];
+  ff -> verify [color="#1F3864", penwidth=1.4];
+  prom -> units [label="✗✗ manual", color="#C00000", style=dashed, penwidth=1.2];
+  prom -> restart [label="✗✗ manual", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
 
 ---
 
@@ -1953,12 +2814,57 @@ Terminal in practice: MERGED + PROMOTED 39 of 42 · OPEN-stale 1 (#963 since 09-
 
 7-day spend **$5.45**; the $0.50 cap exceeded on **4 of 7** days; reservation actuals disagreed with the ledger by up to 13× on 09-07..09-11 and converged from 09-12. **Top processes 7 d:** `advisory_desk_opinion` 20,749 calls, **$4.77 (87.6 %)** · `hermes_external_research` 444, $0.558 · `aegis_steph_review` (Grok) 862 · `topic_ingestion` 381 · `topic_curator` 280 · `holding_protection_advisor` 37 (16 fail, 43 %). Automated 23,434 vs manual 23. Refusals appear only in logs (cumulative since 09-06: aegis overnight 6,120 · aegis synthesis 5,405 · entry planner 1,804 · OAuth keepalive 446 · governed flash 414 · topic curator 240). DB caps sum to $15.48 against a $0.50 global cap.
 
+### Update 2026-09-14 — F2 after PRs #1015, #1019, #1020, #1021
+
+| Change | Detail |
+|---|---|
+| Real spend | `scripts/lib/llm_spend.py` + `GET /api/v2/consumption/spend?period=…`: provider tokens × price schedule by provider, model and process; scheduled vs ad hoc; peak vs off-peak; scheduled work on peak; counted-by-caps; Brave requests. Command Center Spend panel. Telegram texts daily 07:05, weekly Mon 07:10, monthly 1st 07:15 |
+| Cap | **$2.00/day of actual spend**, one host file for every unit; $7.00 and $1.50 overrides archived with a tripwire |
+| Reservations | calibrated to p90 of settled cost × 1.5 (never above worst case); test cap-race ids renamed so they no longer count as production spend ($1.20 on 09-09) |
+| DeepSeek prices | verified 09-14 from api-docs.deepseek.com: peak 01–04 and 06–10 UTC Mon–Fri at twice off-peak; deepseek-flash off-peak $0.003 cache hit / $0.15 cache miss / $0.60 output per 1M tokens; the Pro policy binds to deepseek-flash. Week of 09-07 recomputed $5.42 vs $5.45 logged |
+| Balance | `deepseek_balance_snapshot.py` hourly (free `GET /user/balance`), reconciled against logged DeepSeek cost in the daily text |
+| Operator window | scheduled paid work only weekdays 09:00–21:00 ET or weekends and never at DeepSeek peak (`should_scheduled_skip`, `run_with_deepseek_offpeak.sh --scheduled`); manual runs never gated |
+| Attribution | eight callers named: `cio_operator_reply` (manual), `cio_plan_enrichment`, `cio_prompt_judge`, `research_circle_analyzer` (manual), `hermes_cloud_json`, `hermes_usefulness_score` (600/day), `cio_hermes_research`, `hermes_golden_judge`; `advisory_desk_opinion` keeps only advisory opinions and unknown task types |
+| Bridge liveness | 150 s wall-clock upstream deadline (streamed read), `ThreadingHTTPServer` with 4 in-flight slots (503 `BRIDGE_BUSY`), `GET /health`, watchdog */5; MemoryMax 768M |
+| Not yet observed | calls under the eight new ids (no daytime traffic since the 20:10 bridge restart; check 09-15 10:03 ET) |
+
+**Maturity change:** admission L3 (unchanged; refusals still unrecorded) · reconcile L3 → **L4** for DeepSeek
+(balance vs ledger daily) · lane select L2 → **L3** (bridge cannot wedge) · attribution L1 → **L3** · cap
+change L2 (host file, ratified in AGENTS §12).
+
 ### (g)–(i) Failure paths, maturity, target
 
 Failure paths: refusal invisible to the ledger; the global cap is policy, not control (per-process caps sum to 31× it); projection distortion; cap decisions can be lost; registry bypass; monitor contradicts ledger; $49.77 reconciliation gap; model-identity drift still paid (INFERRED).
 Maturity: registry → DB L2 · admission L3 (refusals unrecorded) · reservation L2 · lane select L2 · call L1 · validation L3 (unproven live) · log L1 · reconcile L3 (loop open) · lane-health monitor L2 (contradicts) · cap change L2 (no audit).
 **Target:** every admission decision (admit or refuse, with class) is one row; reservation actual equals ledger; the global cap is enforced in the shared transport; cap changes append to an audit ledger and land as a commit; reconcile residual < 10 %.
 **Exit:** refusal rows = log refusals (0 today) · spend ≤ cap every day (3/7) · reservation = ledger (met since 09-12) · registry ids = DB ids (2 extra) · residual small ($49.77).
+
+```dot
+digraph lc_f2 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="F2 · LLM call — after 2026-09-14", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  caller [label="Caller\n(names task_type #1021)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  window [label="Operator window gate\n(scheduled) #1020", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  admit [label="Admission\nprocess · global $2 actual", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  resv [label="Reservation\ncalibrated", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  bridge [label="Bridge\ndeadline · slots · /health", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  lane [label="Lane\nGrok · ChatGPT · DeepSeek", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  log [label="llm_consumption_log", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"];
+  spend [label="llm_spend report\npanel · Telegram texts", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  bal [label="DeepSeek balance\nhourly reconcile", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  refuse [label="Refusal\n(log text only)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  caller -> window [color="#1F3864", penwidth=1.4];
+  window -> admit [color="#1F3864", penwidth=1.4];
+  admit -> resv [color="#1F3864", penwidth=1.4];
+  resv -> bridge [color="#1F3864", penwidth=1.4];
+  bridge -> lane [color="#1F3864", penwidth=1.4];
+  lane -> log [color="#1F3864", penwidth=1.4];
+  log -> spend [color="#548235", penwidth=1.3];
+  bal -> spend [color="#548235", penwidth=1.3];
+  admit -> refuse [label="✗✗ not recorded", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
 
 ---
 
@@ -2001,12 +2907,47 @@ Maturity: registry → DB L2 · admission L3 (refusals unrecorded) · reservatio
 
 SILENT lanes: cio-delivery · cio-defer-revisit · portfolio-weekly-cadence · holdings-agent-enqueue · portfolio-repricer · material-change notifier · due-diligence-questions · moomoo-live-read-sync (3–4 of 8 are weekend/UTC artifacts). SLOW: portfolio-daily-cadence · portfolio-monthly-cadence (1,048 h) · p1-digest-delivery. UNVERIFIABLE: document-mentions-prune · db-retention · hermes-top20-external-intel · hermes-usefulness-backfill · hermes-librarian-retention · disk-hygiene-enforcer. inotify failures per day 09-07..09-13: 3,629 · 759 · **9,050** · 154 · 1,736 · 3,052 · 2,343 (top sources agent-runtime producer, cio-reactive, cio-delivery, autonomy watchdog; `max_user_watches=65536` unchanged). Timer never triggered: `tradeai-data-plausibility.timer`.
 
+### Update 2026-09-14 — F3
+
+- **Registry:** 107 declared lanes, 73 ACTIVE, 0 undeclared (`check_lane_registry.py`, 23:52); crontab 511
+  non-comment lines. Added or changed today: morning brief 07:30 (two senders RETIRED), screener GO alerts,
+  source litmus, Finviz view contracts, EOD consolidated close, `cio-hermes-queue`, spend texts ×3, four
+  research_scheduler lanes, `cio-bridge-watchdog`, `deepseek-balance-snapshot`, holdings 08:00 → 09:05,
+  scorer and due-diligence questions gated to the operator window, flash market 09–19, lessons-reflect
+  19:40, shadow-seed 19:45, advisory cache worker 09–19 ET (host drop-in).
+- **Install:** every one of these was installed by hand from a dry-run-first script with a crontab backup;
+  install is still not a deploy stage.
+- **Rule reinforced:** a crontab edit needs its lane registry row in the same change (the cap change made
+  four research_scheduler lines undeclared → #1017).
+
 ### (g)–(i) Failure paths, maturity, target
 
 Failure paths: install is not a stage anyone runs; verdict truth issues (UTC weekday, match drift, no output signal, 531 never-evaluated baseline lines); "runs but produces nothing" invisible to the scheduler; inotify exhaustion with no detector or owner (it killed the Hermes worker path unit on 09-12); expected services covers 31 % of unit files (bridge and proxies undeclared).
 Maturity: propose L0 · declare L2 · **install L0** · evaluate L4 · drift L2 · pause/retire L2 · baseline shrink L1 · service detect L4 · service run L2 · restart L1.
 **Target:** registry row → installed from git by the deploy → first natural-schedule output observed → LIVE recorded as the install receipt; evaluator uses the declared timezone; every unit file expected or retired.
 **Exit:** real SILENT + ORPHANED = 0 (≥ 4) · UNVERIFIABLE = 0 (6) · baseline shrinking (531) · expected ⊇ running critical units (not met) · inotify failures = 0 (not met).
+
+```dot
+digraph lc_f3 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="F3 · Scheduled lane and service", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  prop [label="Operator approval\n(chat)", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  declare [label="Declare row + output signal\n107 declared", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  install [label="Install\n(manual, dry-run first)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  eval [label="Evaluate every 30 min", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  drift [label="Drift / SILENT", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  retire [label="Pause / retire", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  svc [label="expected_services hourly", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  prop -> declare [color="#1F3864", penwidth=1.4];
+  declare -> install [color="#1F3864", penwidth=1.4];
+  install -> eval [color="#1F3864", penwidth=1.4];
+  eval -> drift [color="#1F3864", penwidth=1.4];
+  drift -> retire [label="manual triage", color="#BF9000", style=dashed];
+  svc -> eval [color="#8497B0", style=dotted];
+  drift -> drift [label="re-reported ⟳", color="#ED7D31", style=bold];
+}
+```
 
 ---
 
@@ -2084,12 +3025,47 @@ Maturity: propose L0 · declare L2 · **install L0** · evaluate L4 · drift L2 
 
 Auto-remediation by day (attempts / ok): 09-07 1,205 / 11 · 09-08 1,249 / 11 · 09-09 1,082 / 6 · 09-10 1,052 / 12 · 09-11 1,190 / 8 · 09-12 773 / 7 · **09-13 2,428 / 1** → 7 d **8,979 / 56 (0.62 %)**. Top failing types: approved_paper_test_stuck 3,334 · hermes_scope_governor_stale 2,322 · pipeline_failures 2,063 · data_source_stale 1,227. `last_success` older than 14 days for 10 types; `stops_stale` never succeeded. Postgres idle-in-transaction kills (2-min timeout): 09-07 **167** · 09-08 **178** · 09-09 75 · 09-10 78 · 09-11 68 · 09-13 **148**; offender not named in the log.
 
+### Update 2026-09-14 — F4
+
+Two bounded repair classes now close their own findings and verify: the **Hermes queue** (reap, replay
+retryable failures once, restore lost requests from the ledger — 12 restored and 1 replayed at 14:52, lost
+and stalled back to 0) and the **governed bridge** (watchdog classifies OK / BUSY_UPSTREAM / CIRCUIT_OPEN /
+WEDGED, restarts only a wedged bridge after 2 unanswered probes with a 30-minute cooldown, alerts on every
+state change, never restarts for a provider-side problem). The escalation handler's retries execute again
+after 36,365 exits with rc=127. The finding ledger, owners and closure state are unchanged.
+
 ### (g)–(i) Failure paths, maturity, target
 
 Failure paths: no finding identity or closure state across detectors; auto-remediation loops without effect or owner; escalations expire instead of being reviewed; detectors that exist but do not run; retired-provider noise; idle-transaction kills only a warning.
 Maturity: detect L4 · alert/suppress L3 · auto-remediate L2 (0.6 % effective, does not learn) · triage L1 · fix PR L3 · verify L3 · **close L0**.
 **Target:** one finding ledger (id, detector, subject, severity, first_seen, last_seen, owner, state `open → acknowledged → fixing → verifying → closed | accepted`) fed by every detector; a circuit-open remediation becomes an owned finding; closure requires a clean natural-schedule observation.
 **Exit:** every detector writes the ledger · every open critical has an owner · remediation success > 50 % or the type disabled · escalations reviewed before expiry · `alert_incidents` populated.
+
+```dot
+digraph lc_f4 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="F4 · Finding / incident — after 2026-09-14", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  det [label="11+ detectors", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  alert [label="Alert / suppress", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  auto [label="Health-agent remediation\n0.6 % success", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  heal [label="Hermes queue self-heal\n#1014", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  wd [label="Bridge watchdog\n#1019", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  circuit [label="Circuit open\nhands off to nobody", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  triage [label="Triage / escalation\nexpire unreviewed", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  fix [label="Fix PR", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  close [label="Close\n(no ledger)", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  det -> alert [color="#1F3864", penwidth=1.4];
+  alert -> auto [color="#1F3864", penwidth=1.4];
+  auto -> auto [label="⟳", color="#ED7D31", style=bold];
+  auto -> circuit [color="#BF9000", style=dashed];
+  circuit -> triage [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  det -> heal [label="queue lane", color="#548235", penwidth=1.3];
+  det -> wd [label="/health", color="#548235", penwidth=1.3];
+  triage -> fix [color="#BF9000", style=dashed];
+  fix -> close [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
 
 ---
 
@@ -2139,6 +3115,38 @@ SM 126 / rendered 117 / skipped 9; last error 09-12 21:02Z. Rotation daemon: not
 Failure paths: no runtime secret rotation and retired keys still rendered (public repo; keys noted in git history); backup proven written, never proven restorable, and the daily dump sits on the disk it protects; host power is the top single point of failure with no automated hard-cut alert; resource exhaustion hits the secret render itself.
 Maturity: render L4 · consume L3 · **rotate L0** · **retire L0** · daily backup L4 · off-site L3 · retention L3 · verify L2 · **restore drill L0** · power detect L1 · boot recovery L2 · resource limits L1.
 **Exit:** rotation daemon scheduled with state and receipts · retired keys removed from render · quarterly restore-drill receipt · persistent state off-box · verify FAIL routed IMMEDIATE · hard cut auto-detected and alerted · inotify failures 0 · next boot shows secret consumers starting after render.
+
+**Update 2026-09-14:** unchanged, except the bridge unit's MemoryMax raised to 768M (host drop-in 18:18,
+repo unit #1022) after 40,579 memory-limit hits in its first threaded hour. DC supply, UPS, rotation,
+retired keys and restore drills remain open.
+
+```dot
+digraph lc_f5 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="F5 · Secrets, backup and host", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  sm [label="Bitwarden SM", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  render [label="Render → tmpfs (4 h)", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  consume [label="Consumers", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  rotate [label="Rotate", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  retire [label="Retire keys", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  pg [label="Postgres 24 GB", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  daily [label="Daily backup 02:30\nsame disk", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  offsite [label="Weekly off-site", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  verify [label="Monthly verify\nFAIL suppressed", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  drill [label="Restore drill\n0 ever", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  power [label="DC supply · no UPS", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  sm -> render [color="#1F3864", penwidth=1.4];
+  render -> consume [color="#1F3864", penwidth=1.4];
+  render -> rotate [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  render -> retire [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  pg -> daily [color="#1F3864", penwidth=1.4];
+  daily -> offsite [color="#1F3864", penwidth=1.4];
+  offsite -> verify [color="#BF9000", style=dashed];
+  verify -> drill [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+  power -> pg [label="hard cuts", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
 
 ---
 
@@ -2211,9 +3219,24 @@ nothing.
 | 56 | local acceptance fail → fix → re-run | F1 | **Fires** (human) | 51 runs |
 | 57 | verify finding → new PR | F1 | **Fires** (human) | #1000 → #1001 → #1002 |
 
-**Totals: 11 fire · 10 partial · 36 none (57).** Only four are machine loops that change a
+**Totals at measurement: 11 fire · 10 partial · 36 none (57).** Only four are machine loops that change a
 later cycle's input (#14 lane rank, #15 reselection suppression, #29 record defer, #31
 calibration). The rest are alerts, a digest, monitors, or a human in a session.
+
+**Update 2026-09-14 — edges changed by the day's work:**
+
+| # | Edge | Was | Now | Evidence |
+|---|---|---|---|---|
+| 18 | Hermes completion → pending reply | None | **Fires** (machine) | #1006; HPE delivered 10:36 |
+| 45 | promote → dev-tree FF / unit install / restart | Partial (manual) | **Fires** for the fast-forward; install/restart still manual | #1025; first live run 23:06 |
+| 46 | finding → auto-remediation → verify | Partial (56 / 8,979) | Partial, plus two bounded repair classes that verify (Hermes queue, bridge) | #1014, #1019 |
+| 52 | LLM refusal → recorded decision | None | None (unchanged) | — |
+| 53 | reconcile residual → explained | None | **Partial** for DeepSeek (hourly balance vs logged cost) | #1020 |
+| 58 (new) | source litmus BLOCK → price-source integrity | — | **Fires** daily (Tue–Sat 07:45) | #1008 |
+| 59 (new) | GO criteria met → operator alert | — | **Fires** (*/15 market hours; delivered, not suppressed) | #1009, #1011 |
+
+**Totals after 2026-09-14: 14 fire · 9 partial · 34 none, of 59 edges.** Machine loops that change a later
+cycle's input: six (adds #18 join-back and #45 fast-forward).
 
 ## X2 · Join map — where lifecycles should meet, and do not
 
@@ -2321,6 +3344,9 @@ engineered to begin things and to detect things; it is not yet engineered to fin
 | "5 unclean shutdowns" | 4 hard cuts plus one operator shutdown whose clean-exit log conflicts with a boot-time EXT4 orphan cleanup. | F5 |
 | Health agent score 76 | 70 at 04:28Z with 11 criticals (pipeline_freshness 100 → 60 in 35 min). | F4 |
 | — (not in v1) | 26 orphaned Hermes jobs; alphabetical target starvation; 39 % of research on non-securities; WMT integrity replay; permanent gate exclusion; no restore drill; secrets never rotate; decisions not durable; owner-stamp regression 09-10. | B3, B2, C1, F5, F1, E1 |
+| **Update 2026-09-14:** "the $0.50 global cap was exceeded on 4 of 7 days" | The cap counted reservations, not spend; real spend was $4.73 for the week and the live cap was a forgotten $7.00 override. The problem was a phantom measure, not overspend. | C4, F2 |
+| **Update:** "`advisory_desk_opinion` took 87.6 % of spend" | That id was shared by at least eight callers (operator replies, plan enrichment, prompt judge, research circle, cloud JSON, usefulness scorer, Hermes research, golden judge); now split. | F2 |
+| **Update:** "research queue: 26 orphans" | 32 lost requests measured by the heartbeat work (7 on 09-14); 12 restorable within 48 h were restored. | B3 |
 
 ## X7 · Risk register (lifecycle view)
 
@@ -2352,6 +3378,21 @@ Likelihood / impact H·M·L. Owner: **O** operator decision, **E** engineering.
 | R22 | **Two consumers on one Telegram token; stale CIO bot** | E2 | M | M | E |
 | R23 | **Dead lifecycles still scheduled** — topic → agent route, RI queue, user topics, defer revisit, deleted freshness watcher | B4, D4, A1 | H | L | O (retire) |
 | R24 | **Health-agent criticals touching execution** (position without a stop, audit chain) | ⊘ | M | H | O |
+
+**Update 2026-09-14 — risk status:**
+
+| ID | Status | Reason |
+|---|---|---|
+| R1 corrupt closes | ▓ narrowed | write path fixed and litmus-controlled (#1008); historical rows not quarantined |
+| R4 deploy does not reach runtime | ▓ narrowed | dev tree fast-forwarded by promote (#1025); units and restarts manual |
+| R5 answers never reach questions | ▓ narrowed | operator research joined back (#1006); DDQ and changed-question joins unchanged |
+| R10 delivery unprovable | ▓ narrowed | editor shadow, repeat identity, parts, `REPLY_NOT_DELIVERED`; settlement unchanged |
+| R11 spend control | █ largely closed | actual-spend cap, attribution, operator window, balance reconciliation; refusal rows still missing |
+| R16 Hermes projection lost update | █ closed | flock on every projection writer; restore from ledger (#1014) |
+| R19 decisions in chat | ▓ unchanged in mechanism; today's decisions recorded in the work log and AGENTS 1.2.0 activation record |
+| R21 misleading monitors | ▓ narrowed | answer-quality rules; heartbeat lane feeds the health score |
+| New R25 | **model bridge wedge by a held provider call** — █ closed (#1019) |
+| New R26 | **long replies refused silently by Telegram** — █ closed (#1016) |
 
 ## X8 · Recommendations, ordered by what unblocks what
 
@@ -2388,6 +3429,12 @@ turns them into phases with exit counters.
 **Tier 4 — make it hold unattended (10+ weeks)**
 20. Release windows with a scheduled acceptance collector per epoch (**O** for freeze policy); restore drills; secret rotation; bounded remediation catalogue that measures its own success. — D5, F5, F4
 
+**Update 2026-09-14 — progress:** Tier 0 #2 deploy reaches runtime → dev-tree fast-forward done (#1025),
+unit install and restarts open · Tier 1 #7 record admission decisions → open · #8 budget by priority →
+actual-spend cap, attribution and operator window done, priority classes open · #9 Hermes ledger truth →
+done (#1014) · Tier 2 #12 stamp plan/research ids on pendings and fulfil from the result → done (#1006),
+OUTBOUND ledgering open · everything else open.
+
 ## X9 · Operator decisions this As-Is surfaces
 
 | # | Decision | Recommendation | Lifecycle |
@@ -2408,6 +3455,13 @@ turns them into phases with exit counters.
 | 14 | Retire dead lifecycles (topic → security-agent route, RI queue, user topics, deleted freshness watcher) | Retire with tripwires | B4, A1 |
 | 15 | Proposal policy: no approval with an open required review; revalidation cap escalates to you | Yes | C2 |
 | 16 | Health-agent criticals that touch execution | Review promptly (⊘ out of agent scope) | — |
+
+**Update 2026-09-14 — decisions taken:** #1 quarantine corrupt rows → approved (implementation open); #4 LLM
+budget → decided differently (actual-spend $2.00 cap, attribution, operator window); #5 commitment sweep →
+approved (not yet installed); #6 gap resolver live for free vectors → approved (not yet implemented);
+Communications routing, one 07:30 brief, GO alerts on scalp criteria, editor shadow then live → approved
+and shipped; data integrity package → approved and shipped; AGENTS.md 1.2.0 → approved and ACTIVE; Google
+re-authentication → done; OpenClaw Gemma job → disabled. Remaining decisions open.
 
 ---
 

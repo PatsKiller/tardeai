@@ -4,13 +4,16 @@
 Status:        ACTIVE
 Version:       2 (extends TRADE_AI_FUTURE_STATE_2026-09-14.md v1 — target architecture and integrations —
                with the complete target lifecycle for everything the platform does)
-as_of:         2026-09-14 America/New_York
+Updated:       2026-09-14 23:44 EDT — "Today" values, build markers, phase progress and operator decisions updated for
+               the 29 PRs merged and deployed on 2026-09-13/14 (live 341bce2c1). Targets and exit counters unchanged.
+as_of:         2026-09-14 America/New_York (original specification)
 Measured at:   target specification. The only numbers here that are measurements are the "Today" values,
                quoted from TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md and its six fact bases.
 Authority:     full-maturity target, bounded by the AGENTS.md §0/§2 rails. Maturity never widens authority.
                MBI_BEHAVIOR = 0 at every level. Broker execution stays operator-controlled and out of scope.
 See also:      TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md · TRADE_AI_FUTURE_STATE_2026-09-14.md (v1 planes,
-               integration matrix) · docs/architecture/lifecycles/LIFECYCLE_FACTBASE_{A..F}_2026-09-14.md
+               integration matrix) · docs/architecture/lifecycles/LIFECYCLE_FACTBASE_{A..F}_2026-09-14.md ·
+               TRADE_AI_WORKLOG_2026-09-14.md (every change on 2026-09-14)
 ```
 
 The As-Is found a platform that starts things well and finishes almost nothing: 26
@@ -92,6 +95,20 @@ source authority) and enforced by a CI gate and a runtime closure monitor.
 is green, and for 7 consecutive days the closure monitor reports terminal share > 0, stuck
 = 0 beyond TTL, and every declared feedback counter > 0.
 
+```dot
+digraph contract {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Lifecycle Contract v1 — declared, gated, monitored", labelloc=t, nodesep=0.3, ranksep=0.6, pad=0.3];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9.5, color="#2B5797", fillcolor="#EAF1FB"];
+  edge [color="#44546A", fontname="Helvetica", fontsize=8.5];
+  reg [label="config/lifecycle_registry.json ◆\nLC1 states · LC2 terminal · LC3 TTL · LC4 owner ·\nLC5 events · LC6 keys · LC7 feedback · LC8 replay key ·\nLC9 cadence · LC10 questions · LC11 decisions · LC12 evidence", fillcolor="#F1ECF8", color="#7030A0"];
+  ci [label="CI gate\nschema = registry · closer scheduled ·\njoin test per edge · writer uses event API", shape=hexagon, fillcolor="#FFF2CC", color="#BF9000"];
+  mon [label="Closure monitor ◆\nterminal share · stuck > TTL ·\nreplay count · edge firing"];
+  exp [label="Expirer / reaper ◆\nTTL actions"]; led [label="Finding ledger ◆\nage escalation"]; score [label="Scorecard\nL-levels computed, not asserted"];
+  pass [label="★ contract-complete\n7 clean days", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  reg -> ci; reg -> mon; mon -> exp; mon -> led; mon -> score; ci -> pass [style=dashed]; score -> pass;
+}
+```
+
 ---
 
 ## 3. Correlation key spine ◆
@@ -126,6 +143,26 @@ one key per concept, minted once, carried everywhere downstream.
 | `reservation_id` + refusal class | LLM admission (F2) | agent job, Hermes job | ✗ class in logs only |
 | `epoch_id` | deploy (F1) | wakes, clause receipts, acceptance | ▓ stamped on wakes; no collector |
 
+**Update 2026-09-14:** the `pending_id → plan_id → research_id → result_id` join is now carried on the desk
+pending row and used by the fulfil loop (#1006) — the first key in this spine to be live end to end. The
+Research Escalation Circle phase 1 mints a `question_guid` per operator ask in its own ledger (#1012, dry
+run); the model bridge attributes calls to eight named process ids (#1021).
+
+```dot-wide
+digraph keyspine {
+  graph [rankdir=LR, fontname="Helvetica", fontsize=12, label="Correlation key spine (green = carried end to end on 2026-09-14)", labelloc=t, nodesep=0.25, ranksep=0.45, pad=0.3];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9, color="#8497B0", fillcolor="#F4F6F9"];
+  edge [color="#8497B0", fontname="Helvetica", fontsize=8];
+  ev [label="event_id\n(inbound)"]; turn [label="turn_id"]; rec [label="receipt(wake_id)"]; wake [label="wake_id"]; com [label="commitment_id"]; out [label="outcome_id"]; les [label="lesson_id"]; prm [label="prompt(lesson_ids)"];
+  pend [label="pending_id", fillcolor="#E2F0D9", color="#548235"]; plan [label="plan_id", fillcolor="#E2F0D9", color="#548235"]; res [label="research_id", fillcolor="#E2F0D9", color="#548235"]; result [label="result_id", fillcolor="#E2F0D9", color="#548235"]; fup [label="follow-up event_id", fillcolor="#E2F0D9", color="#548235"];
+  qg [label="question_guid\n(circle ph.1, dry run)", fillcolor="#FFF2CC", color="#BF9000"]; ans [label="answer_id"]; nq [label="next question_guid'"];
+  fid [label="finding_id"]; chg [label="change_id"]; ver [label="verification"]; sg [label="subject_guid\n(identity spine)", fillcolor="#FFF7E6", color="#BF9000"];
+  ev -> turn -> rec -> wake -> com -> out -> les -> prm;
+  turn -> pend [color="#548235"]; pend -> plan [color="#548235", penwidth=1.5]; plan -> res [color="#548235", penwidth=1.5]; res -> result [color="#548235", penwidth=1.5]; result -> fup [color="#548235", penwidth=1.5];
+  qg -> ans -> nq; fid -> chg -> ver; sg -> turn [style=dotted]; sg -> qg [style=dotted]; sg -> wake [style=dotted];
+}
+```
+
 ---
 
 ## 4. The target platform lifecycle, end to end
@@ -154,6 +191,22 @@ one key per concept, minted once, carried everywhere downstream.
 ```
 
 ---
+
+```dot
+digraph target_loop {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Target platform lifecycle — every finish feeds the next question", labelloc=t, nodesep=0.3, ranksep=0.5, pad=0.3];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9, color="#2B5797", fillcolor="#EAF1FB"];
+  edge [color="#1F3864", fontname="Helvetica", fontsize=8];
+  prov [label="Provider\n(grant / retire checklist)"]; coll [label="Collector\nhealth per run"]; wr [label="Writer\nplausibility at write"]; q [label="Quarantine", fillcolor="#FBE5E5", color="#C00000"];
+  store [label="Store", shape=cylinder, fillcolor="#FFF7E6", color="#BF9000"]; gap [label="Gap → resolver\n(receipts)"]; ident [label="Identity\nCONFIRMED targets"]; mc [label="Material change"];
+  qg [label="Question ledger\nquestion_guid"]; hermes [label="Hermes\n(ledger = truth)"]; watch [label="Watch → proposal\n⊘ boundary"]; wake [label="Wake\nreceipt every branch"];
+  judge [label="Judgment + critique\n(can revise)"]; commit [label="Commitment\nfalsifier + due_at"]; sweep [label="Sweep → outcome"]; lesson [label="Lesson\n(evidence-ratified)"]; mem [label="Memory"];
+  op [label="Operator\nanswered · settled · decided", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  prov -> coll -> wr -> store; wr -> q [color="#C00000"]; q -> gap; store -> gap -> coll [style=dashed]; store -> ident -> mc -> qg -> hermes -> qg [style=dashed];
+  mc -> watch; qg -> wake -> judge -> commit -> sweep -> lesson -> mem -> qg [color="#548235", penwidth=1.6, label="learning arc ★"];
+  op -> qg; hermes -> op [label="joined answer"];
+}
+```
 
 ## 5. Platform services that make lifecycles close ◆
 
@@ -203,6 +256,7 @@ closure**, **exit counters** (today → target), **target maturity** per stage.
 | Iteration rule | a gap re-raised with the same `(store, row_key, as_of)` watermark is not a new gap; a refresh that returns the same as_of is `no_answer`, not `answered` |
 | Question closure | "Is this value plausible?" answered at write; "Can a cheaper vector answer?" answered by a receipt per attempt; "Do you have a source?" asked once with an ETA |
 | Exit counters | resolver receipts **0 → daily** · research gaps resolved **0/97 → ≥ 80 % within TTL** · quarantine latency after refusal **never → < 24 h** · plausibility coverage **1/26 → 26/26 numeric stores** · health rows for primary providers **7/26 → 26/26** · hub direct reads **177 → 0** |
+| Update 2026-09-14 | plausibility at write ▓ for prices and Finviz units (repricer refusal, header/unit contracts); independent litmus █ (Tue–Sat 07:45); EOD consolidated closes █; quarantine of historical corrupt rows approved, not built; resolver ◆ |
 | Target maturity | collect L3 · liveness L3 · plausibility **L4** · quarantine **L4** · gap resolve **L4** · refresh **L4** · the loop **L5** once unattended for 30 days |
 
 #### A2 · Provider — target
@@ -257,6 +311,7 @@ Exit counters: refusals persisted **0 → 100 %** · unlabelled aged rows **2 �
 | Question closure | every operator question ends ANSWERED, FULFILLED, CLOSED_HONESTLY or LATE_FOLLOW_UP — each ledgered |
 | Exit counters | reply turn per non-slash message **20.5 % → 100 %** · Sources line **1/8 → 100 %** · research-blocked pendings fulfilled from the result **0/1 → ≥ 90 %** · desk replies in the ledger **0 → 100 %** · subject bound **25 % → ≥ 80 %** of named-company questions · a new turn changes the next wake **never → observed (M3)** |
 | Target maturity | intent L3 · evidence L3 · gap resolve **L4** · fulfil **L4** · recall **L3** · AQ audit with a repair edge **L4** |
+| Update 2026-09-14 | PENDING stamped with `plan_id + research_id` █ and FOLLOW_UP_SENT from the Hermes result █ (#1006, first delivery HPE 10:36); answers in parts with delivered-only success █ (#1016); spelled-out pills and Origin line █ (#1005, #1007); `REPLY_NOT_DELIVERED` and `RESEARCH_LANDED_UNSENT` findings ▓ (report, no repair edge); OUTBOUND ledgering of replies ◆; `question_guid` ◆ on the desk (exists only in the circle ledger) |
 
 #### B2 · System-raised question — target
 
@@ -283,6 +338,12 @@ Iteration rule: targets ranked by priority and age with fairness (no fixed alpha
 ```
 
 Exit counters: orphaned queued jobs **26 → 0** · 7-day completion **15 % → ≥ 70 %** · execution-language job failures **58/7 d → 0 (redacted)** · completion joined to its pending **0/1 → 100 %** · `research_expires_at` on promoted **0 % → 100 %** · completions that change a thesis or question **0/27 → measured weekly, > 0** · HRI provenance fields **NULL 100 % → populated**. Target maturity: enqueue L3 · claim **L4** (self-reconciling) · synthesis L3 · critique **L3** (can say INVALID) · join/notify **L4** · expiry **L4**.
+
+**Update 2026-09-14 (B3):** projection rebuilt under a lock and lost requests restored from the ledger █ (#1014,
+12 restored live); retryable provider failures replayed once █; third-party labels masked before the
+execution-language guard with one guarded rewrite ▓ (redaction proper still ◆); completion joined to its
+pending █ (#1006); bridge cannot be wedged by a held call █ (#1019); DEFERRED with `retry_after` from a budget
+scheduler ◆.
 
 #### B4 · Topic research — target
 
@@ -344,6 +405,11 @@ Exit counters: application `hit` non-null **0/1,520 → 100 % of applications af
 ```
 
 Exit counters: `COST_CAP_EXCEEDED: global cap` on agent jobs **503 all-time → 0 for 3 weekdays** · admission decisions recorded **0 → 100 %** · agent-job class floor honoured **none → every day** · daily spend ≤ global cap **3/7 → 7/7**. Target maturity: admission **L4**.
+
+**Update 2026-09-14 (C4):** the "Today" basis changed — the cap was counting reservations; real spend for the
+week was $4.73 against a $214.61 worst-case projection. Now: global cap enforced on **actual** spend at
+$2.00/day █ (#1015); calibrated reservations █; attribution to named processes █ (#1021); scheduled work
+confined to the operator window █ (#1020). Priority classes with floors ◆; refusal rows ◆.
 
 ### FAMILY D — Cognition
 
@@ -419,6 +485,13 @@ Exit counters: epochs with a scheduled clause receipt **0 → every epoch** · a
 
 Exit counters: gateway-owned outbound **2.5 % → ≥ 95 %** · owner-null rows **245/7 d → 0** · RESERVED older than 1 h **232 → 0** · CC link on advisory messages **2.1 % → 100 %** · CIO deliveries, desk replies, closes in the ledger **0 → 100 %** · FAILED retried or dead-lettered **8 → 100 %** · first-send parse failures **every CIO send → 0**. Target maturity: settlement **L4** · policy L3 · monitoring **L4**.
 
+**Update 2026-09-14 (E1):** formatting and policy chokepoint at `deliver_text` ░ (Communications Editor in shadow
+since 12:02; HTML, GUIDs, 20-hour dedupe, CIO agreement, Tailscale CC links, pills in live mode) (#1009); one
+07:30 brief █; chat routing map █; GO alerts on scalp criteria delivered █ (#1009, #1011); repeated-alert
+ledger identity █ (#1013); rich layouts with CC links and buttons for GO / entry / material change █ (#1018);
+parse failures on desk answers removed by parts + HTML with plain fallback ▓ (#1016). Gateway ownership,
+owner stamp, RESERVED expirer ◆.
+
 #### E2 · Inbound — target
 
 ```
@@ -458,6 +531,40 @@ Drive updates files in place (stable file ids and links); Gmail digests are OUTB
 
 Exit counters: services on pre-promote code **8 → 0 within one promote** · repo units differing / missing **20 / 7 → 0 / 0** · dev-tree lag p90 **867 min → 0 (enforced)** · deploy receipts retained **1 → all** · push overrides and deploy approvals with a ledger row **0 → 100 %** · worktrees older than 14 days pruned **0 → all merged** · bookkeeping gate failures **23.5 % → < 5 %** (generated registrations and digests). Target maturity: deploy **L4** · runtime reach **L4** · decisions **L3**.
 
+**Update 2026-09-14 (F1):** DEV TREE = RELEASE █ — enforced by `promote` (#1025): dev-tree lag p90 **0 on every
+deploy since 23:06**, and a refused fast-forward now fails the deploy loudly. UNITS INSTALLED ◆, CHANGED
+SERVICES RESTARTED ◆, append-only receipts with `change_id` ◆ remain. Dev tree `git status` clean █ (#1023).
+
+```dot
+digraph lc_future_f1 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="F1 target — Deploy v2 (green = live since 2026-09-14)", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  req [label="REQUESTED\nchange_id ◆", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  acc [label="LOCAL ACCEPTANCE\nresult persisted ◆", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  ci [label="CI + 1 review ◆", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  merged [label="MERGED", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  prep [label="PREPARED", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  units [label="UNITS INSTALLED ◆", shape=box, fillcolor="#F1ECF8", color="#7030A0"];
+  prom [label="PROMOTED", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  ff [label="DEV TREE = RELEASE\n#1025", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  restart [label="CHANGED SERVICES\nRESTARTED ◆", shape=box, fillcolor="#F1ECF8", color="#7030A0"];
+  verified [label="VERIFIED", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  recorded [label="RECORDED\nappend-only receipt ◆", shape=box, fillcolor="#F1ECF8", color="#7030A0"];
+  req -> acc [color="#1F3864", penwidth=1.4];
+  acc -> ci [color="#1F3864", penwidth=1.4];
+  ci -> merged [color="#1F3864", penwidth=1.4];
+  merged -> prep [color="#1F3864", penwidth=1.4];
+  prep -> units [color="#BF9000", style=dashed];
+  units -> prom [color="#BF9000", style=dashed];
+  prep -> prom [label="today", color="#548235", penwidth=1.3];
+  prom -> ff [color="#548235", penwidth=1.3];
+  ff -> restart [color="#BF9000", style=dashed];
+  restart -> verified [color="#BF9000", style=dashed];
+  verified -> recorded [color="#1F3864", penwidth=1.4];
+}
+```
+
 #### F2 · LLM call — target
 
 ```
@@ -467,6 +574,11 @@ Exit counters: services on pre-promote code **8 → 0 within one promote** · re
 ```
 
 Exit counters: refusal rows = log refusals **0 → equal** · spend ≤ global cap **3/7 → 7/7** · registry ids = DB ids **2 extra → 0** · reconcile residual **$49.77 → < 10 %** · lane-health monitor agrees with the ledger **contradicts → agrees**. Target maturity: admission **L4** · reconcile **L4** · cap change **L3**.
+
+**Update 2026-09-14 (F2):** SETTLED = ledger ▓ with real spend by provider/model/process █ (#1015); DAILY RECONCILE
+for DeepSeek against the account balance █ (#1020); cap change recorded in AGENTS §12 and one host file █;
+admission decision rows ◆. The "$49.77 residual" was measured against a provider console that includes
+spend outside this platform; the DeepSeek balance reconciliation is the platform-scoped check.
 
 #### F3 · Lane and service — target
 
@@ -478,6 +590,9 @@ Exit counters: refusal rows = log refusals **0 → equal** · spend ≤ global c
 
 Exit counters: real SILENT + ORPHANED **≥ 4 → 0** · UNVERIFIABLE **6 → 0** · baseline **531 → 0** · expected services coverage **63 of 201 → all critical units** · inotify failures **20,723/7 d → 0**. Target maturity: install **L4** · evaluate L4 · retire **L4**.
 
+**Update 2026-09-14 (F3):** DECLARED █ — 107 lanes, 73 ACTIVE, 0 undeclared, every change today declared with its
+output signal; INSTALLED still by hand ◆; evaluator timezone ◆.
+
 #### F4 · Finding / incident — target
 
 ```
@@ -488,6 +603,10 @@ Exit counters: real SILENT + ORPHANED **≥ 4 → 0** · UNVERIFIABLE **6 → 0*
 ```
 
 Exit counters: detectors writing the ledger **0/11 → 11/11** · open criticals with an owner **0 → 100 %** · remediation success **0.62 % → > 50 %** or the type disabled · escalations expired unreviewed **21 → 0** · closed findings with verification observation **0 → 100 %** · mean time to close measured **no → yes**. Target maturity: triage L3 · auto-repair **L4** (bounded catalogue) · close **L4** · the loop **L5**.
+
+**Update 2026-09-14 (F4):** two bounded, verified repair classes live █ — Hermes queue self-heal (#1014) and the
+bridge watchdog (#1019), each restricted to what it can safely do (no replay of cost-cap or execution-language
+failures; no restart for provider-side stalls). Finding ledger ◆.
 
 #### F5 · Secrets, backup, host — target
 
@@ -594,6 +713,53 @@ all of it on one epoch.
                                     registry v1           inbound keys
 ```
 
+```dot
+digraph roadmap_lc {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Lifecycle roadmap — progress at 2026-09-14 (green done · amber partial · grey open)", labelloc=t, nodesep=0.2, ranksep=0.5, pad=0.3, newrank=true, compound=true];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=8.5, color="#8497B0", fillcolor="#F4F6F9"];
+  edge [color="#44546A"];
+  subgraph cluster_p0 { label="P0 Truth & runtime reach"; style=rounded; color="#C9D3DF";
+    a [label="clean prices", fillcolor="#FFF2CC", color="#BF9000"]; b [label="runtime reach", fillcolor="#FFF2CC", color="#BF9000"]; c [label="host / UPS"]; d [label="integrity replay"];
+    e [label="delivery truth", fillcolor="#FFF2CC", color="#BF9000"]; f [label="hygiene"]; g [label="budget", fillcolor="#E2F0D9", color="#548235"];
+    h [label="desk truth (added)", fillcolor="#E2F0D9", color="#548235"]; i [label="research heartbeat (added)", fillcolor="#E2F0D9", color="#548235"]; j [label="bridge liveness (added)", fillcolor="#E2F0D9", color="#548235"]; }
+  subgraph cluster_p1 { label="P1 Plumbing closes"; style=rounded; color="#C9D3DF";
+    k [label="lifecycle registry"]; l [label="finding ledger"]; m [label="admission ledger"]; n [label="expirer / reaper", fillcolor="#FFF2CC", color="#BF9000"];
+    o [label="Hermes ledger truth", fillcolor="#E2F0D9", color="#548235"]; p [label="watch job lifecycle"]; q [label="decision ledger"]; r [label="retirement checklist"]; }
+  subgraph cluster_p2 { label="P2 Questions close"; style=rounded; color="#C9D3DF";
+    s [label="question ledger", fillcolor="#FFF2CC", color="#BF9000"]; t [label="research targeting"]; u [label="pending ↔ research join", fillcolor="#E2F0D9", color="#548235"]; v [label="gap resolver live"]; w [label="topic worker"]; x [label="inbound keys"]; }
+  subgraph cluster_p3 { label="P3 Cognition learns"; style=rounded; color="#C9D3DF"; y [label="wake iteration"]; z [label="critique teeth"]; aa [label="falsifiers + sweep"]; ab [label="lessons scored"]; }
+  subgraph cluster_p4 { label="P4 Unattended"; style=rounded; color="#C9D3DF"; ac [label="release windows + acceptance"]; ad [label="bounded self-repair", fillcolor="#FFF2CC", color="#BF9000"]; ae [label="resilience"]; }
+  g -> m [ltail=cluster_p0, lhead=cluster_p1]; o -> s [ltail=cluster_p1, lhead=cluster_p2]; u -> y [ltail=cluster_p2, lhead=cluster_p3]; ab -> ac [ltail=cluster_p3, lhead=cluster_p4];
+  // grid layout: rows of 4 per phase, phases stacked top to bottom
+  {rank=same; a; b; c; d;}
+  a -> b -> c -> d [style=invis];
+  {rank=same; e; f; g; h;}
+  e -> f -> g -> h [style=invis];
+  {rank=same; i; j;}
+  i -> j [style=invis];
+  a -> e [style=invis, weight=10];
+  e -> i [style=invis, weight=10];
+  {rank=same; k; l; m; n;}
+  k -> l -> m -> n [style=invis];
+  {rank=same; o; p; q; r;}
+  o -> p -> q -> r [style=invis];
+  k -> o [style=invis, weight=10];
+  {rank=same; s; t; u; v;}
+  s -> t -> u -> v [style=invis];
+  {rank=same; w; x;}
+  w -> x [style=invis];
+  s -> w [style=invis, weight=10];
+  {rank=same; y; z; aa; ab;}
+  y -> z -> aa -> ab [style=invis];
+  {rank=same; ac; ad; ae;}
+  ac -> ad -> ae [style=invis];
+  i -> k [style=invis, weight=10];
+  o -> s [style=invis, weight=10];
+  w -> y [style=invis, weight=10];
+  y -> ac [style=invis, weight=10];
+}
+```
+
 ### Phase 0 — Truth and runtime reach (0–7 days)
 
 | Workstream | Lifecycles | Deliverable | Exit counter (observed) | Owner |
@@ -605,6 +771,26 @@ all of it on one epoch.
 | Delivery truth | E1 | owner kwarg fix + backfill; SUPPRESSED terminal; no inbound delivery stubs; RESERVED expirer | owner-null 0; RESERVED > 1 h 0 | E |
 | Hygiene | E2, A3 | archive fixture rows; exclude agent text from tagging; mark ABOVE/AGAIN NOT_A_SECURITY | 0 fixture rows; 0 false subjects in a 50-turn sample | E + O |
 | Budget | F2, C4 | cap `advisory_desk_opinion`; floors for agent jobs and synthesis | 0 global-cap refusals on agent jobs for 3 weekdays | O → E |
+
+**Update 2026-09-14 — Phase 0 progress:**
+
+| Workstream | State | What happened / what remains |
+|---|---|---|
+| Clean prices | ▓ | write path fixed (repricer, Alpaca prev_close, Finviz contracts/units) and litmus scheduled (#1008); **historical quarantine approved, not built** |
+| Runtime reach | ▓ | dev-tree fast-forward automated (#1025); unit install and changed-service restart ◆ |
+| Host | ◆ | unchanged |
+| Integrity replay | ◆ | unchanged |
+| Delivery truth | ▓ | repeated-alert identity (#1013), editor shadow (#1009); owner stamp, SUPPRESSED terminal, RESERVED expirer ◆ |
+| Hygiene | ◆ | fixtures and tagger unchanged |
+| Budget | █ (different design) | actual-spend $2.00 cap, calibrated reservations, 8 named callers, operator window (#1015, #1020, #1021); floors ◆ |
+| **Added: operator desk truth** | █ | dictated tickers, dossier pills, join-back, parts, rich alerts (#1005–#1007, #1016, #1018) |
+| **Added: research heartbeat** | █ | queue lane, lock, restore, replay, guard masking, health score, escalation retries (#1014) |
+| **Added: bridge liveness** | █ | deadline, threads, `/health`, watchdog (#1019) |
+
+**Phase 1 progress:** Hermes ledger truth █ (#1014) · expirer/reaper ▓ (Hermes queue reaper only) · finding
+ledger ◆ · admission ledger ◆ · watch job lifecycle ◆ · decision ledger ◆ (today's decisions recorded in the
+work log) · retirement checklist ◆. **Phase 2:** pending ↔ research join █ (#1006); question ledger ▓ (circle
+ledger only, dry run); others ◆.
 
 ### Phase 1 — Plumbing closes (1–3 weeks)
 
@@ -713,6 +899,12 @@ measurement.
 | **Acceptance** | epochs with clauses 6/6 | 0 / 33 | ≥ 1 per release window |
 | **Closure maturity** | lifecycles whose close + feedback stages are ≥ L3 | 0 of 26 (no lifecycle has both its close and feedback stages at L3) | 26 of 26 at ≥ L3; 10 at L4+ |
 
+**Update 2026-09-14 — KPIs the day moved:** feedback edges firing **11/57 → 14/59** (join-back, dev-tree FF,
+litmus, GO alerts) · runtime reach for the dev tree **manual → enforced by promote** (services still manual)
+· join rate: `pending → plan/research → result` **0 % → 100 %** for operator-forced research · replay: Hermes
+lost-request loop closed by restore under a lock · closure maturity: **B1 operator question** now has its
+close (fulfil) at L3 and its feedback (join-back) firing — the first lifecycle to meet both at ≥ L3.
+
 ---
 
 ## 13. Strategic recommendations
@@ -765,6 +957,13 @@ measurement.
 | 14 | Retire dead lifecycles (topic → security-agent route, RI queue, user topics, deleted freshness watcher, unused cadence timers) | Retire with tripwires | P1 | retirement is operator-only |
 | 15 | Required checks + one review + admins enforced | Yes | P1 | branch protection (§17) |
 | 16 | Health-agent criticals that touch execution | Review promptly | now | execution is operator-controlled ⊘ |
+
+**Update 2026-09-14 — decisions taken:** #1 quarantine (approved; build open) · #3 LLM budget (decided: actual
+spend $2.00/day, attribution split, operator window) · #5 Deploy v2 automatic actions (fast-forward shipped
+after "add the fix to the repo"; unit install/restart not yet approved as automatic) · #9 gap resolver live for
+free vectors (approved; build open) · #10 commitment sweep hourly (approved; install open) · AGENTS.md 1.2.0
+(approved and ACTIVE) · Communications decisions (routing, 07:30 brief, GO criteria, editor shadow → live)
+approved and shipped · data-integrity package approved and shipped. Others open.
 
 ---
 

@@ -2,13 +2,16 @@
 
 ```
 Status:        ACTIVE
-as_of:         2026-09-14 00:10 America/New_York
+Updated:       2026-09-14 23:44 EDT — build markers, "Today" values, roadmap progress and operator decisions
+               updated for the 29 PRs merged and deployed on 2026-09-13/14 (#997–#1025). Targets unchanged.
+as_of:         2026-09-14 00:10 America/New_York (original specification)
 Measured at:   target specification — NO number in this document is a measurement.
                Every observed number lives in TRADE_AI_AS_IS_2026-09-14.md.
 Authority:     full-maturity target, bounded by the AGENTS.md §0/§2 authority rails.
                Maturity never widens authority.
 Supersedes:    CIO_FUTURE_2026-09-11-2013, CIO_FUTURE_2026-09-10-2215 (CIO pipeline only)
-See also:      TRADE_AI_AS_IS_2026-09-14.md · AGENTS.md §2, §7A, §10, §13.4, §15, §17, §18
+See also:      TRADE_AI_AS_IS_2026-09-14.md · TRADE_AI_WORKLOG_2026-09-14.md · AGENTS.md §2, §7A, §9, §10, §12,
+               §13.4, §15, §17, §18 (Policy-Version 1.2.0 ACTIVE since 2026-09-14)
 ```
 
 The failure this programme keeps repeating is a future state quoted back as though it were
@@ -102,6 +105,37 @@ its own plumbing within bounds — without ever touching a position.**
        ⊘ BROKER EXECUTION — separate, operator-controlled, per-order 2FA. Out of scope at every level.
 ```
 
+```dot-wide
+digraph target_planes {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Target architecture — seven planes (markers updated 2026-09-14)", labelloc=t, nodesep=0.25, ranksep=0.4, pad=0.3, newrank=true];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9, color="#2B5797", fillcolor="#EAF1FB"];
+  edge [color="#44546A", fontname="Helvetica", fontsize=8];
+  subgraph cluster_op { label="Operator plane (L4)"; style="rounded,filled"; fillcolor="#F4F6F9"; color="#C9D3DF";
+    o1 [label="Telegram desk\nparts · pills · join-back ▓"]; o2 [label="Command Center v3\nSpend panel █"]; o3 [label="gateway-only delivery\nComms Editor shadow ░"]; }
+  subgraph cluster_gov { label="Governance plane (L5)"; style="rounded,filled"; fillcolor="#F1ECF8"; color="#CDBFE3";
+    g1 [label="data_source_authority █"]; g2 [label="lane_registry ▓\n107 declared, 0 undeclared"]; g3 [label="llm_process_registry ▓\n+8 callers"]; g4 [label="service registry ◆"]; g5 [label="AGENTS 1.2.0 ACTIVE █"]; }
+  subgraph cluster_cog { label="Cognition plane (L5)"; style="rounded,filled"; fillcolor="#EEF6EE"; color="#B9D7B9";
+    c1 [label="wake → memory → research"]; c2 [label="materiality gate ◆"]; c3 [label="judgment → critique ▓"]; c4 [label="commitment → outcome → lesson ◆"]; }
+  subgraph cluster_data { label="Data plane (L5)"; style="rounded,filled"; fillcolor="#FFF7E6"; color="#E8D3A5";
+    d1 [label="collector health per run ▓"]; d2 [label="write-time plausibility ▓\n(Finviz contracts, repricer guard)"]; d3 [label="litmus vs Yahoo █ (new)"]; d4 [label="projection as_of/stale/gap █"]; }
+  subgraph cluster_obs { label="Observability & self-repair (L5)"; style="rounded,filled"; fillcolor="#FBEFEF"; color="#E3BDBD";
+    b1 [label="findings ledger ◆"]; b2 [label="bounded repair ▓\n(Hermes queue heal, bridge watchdog)"]; b3 [label="age escalation ◆"]; }
+  subgraph cluster_model { label="Model & search lanes (L4)"; style="rounded,filled"; fillcolor="#EAF1FB"; color="#9DC3E6";
+    m1 [label="governed bridge ▓\ndeadline · slots · /health"]; m2 [label="actual-spend cap $2 █\noperator window █"]; m3 [label="search router ▓"]; }
+  subgraph cluster_run { label="Runtime & host (L4)"; style="rounded,filled"; fillcolor="#F4F6F9"; color="#8497B0";
+    r1 [label="Deploy v2 ▓\nFF dev tree █ · install ◆ · restart ◆"]; r2 [label="UPS + power telemetry ◆"]; r3 [label="off-box backup + restore drill ◆"]; }
+  o1 -> c1; c1 -> c2 -> c3 -> c4; c3 -> m1; d4 -> c1; d1 -> d2 -> d4; d3 -> d2 [style=dashed];
+  b1 -> b2 -> b3; g2 -> r1 [style=dotted]; g3 -> m1 [style=dotted]; m2 -> m1 [style=dotted]; r1 -> c1 [style=dotted]; o3 -> o1 [style=dotted];
+}
+```
+
+**Update 2026-09-14 — marker changes in this architecture:** Deploy v2 ▓ (dev-tree fast-forward █ via
+#1025; unit install and changed-service restart still ◆); governed bridge ▓ (deadline, threads,
+`/health`, watchdog via #1019); spend policy ▓ → actual-spend global cap █ and operator scheduled-work
+window █ (#1015, #1020) with priority classes still ◆; write-time plausibility ▓ for Finviz exports and
+the repricer (#1008); gateway-only delivery ░ (Communications Editor at the chokepoint in shadow,
+#1009); lane_registry ▓ (107 declared, 0 undeclared); AGENTS rails and SOPs █ (1.2.0 ACTIVE).
+
 ### 2.1 Plane responsibilities and target maturity
 
 | Plane | Owns | Target |
@@ -176,6 +210,16 @@ its own plumbing within bounds — without ever touching a position.**
 | Operator experience | L2 partial | L4 | every reply sourced and ledgered; late research delivered to its question; memory recall correct on a sampled audit |
 | Notification & delivery | L1 | L4 | gateway owns ≥95% of outbound; RESERVED backlog ≤ 1 hour old; CC link on every advisory |
 | Security & authority | L2 rails / L1 hygiene | L4 | required checks + one review; no secrets in tree; unused keys revoked; rails unchanged |
+
+**Update 2026-09-14 — "Today" values after the day's work** (targets unchanged): Deployment L2 → **L3**
+(dev tree fast-forwarded by promote; exit still needs unit install and restarts) · Data plane **L2** with
+litmus and contracts (exit needs health per run everywhere and quarantine) · Integrations L1–L2 → **L2**
+(AV health, Google credential, DeepSeek reconciliation) · Scheduled lanes L1 → **L2** (0 undeclared;
+operator window; evaluator still UTC) · Monitoring L1 → **L2** (two bounded repairs: Hermes queue, bridge)
+· LLM governance L2 → **L3** (actual-spend cap, attribution; priority classes still missing) · Operator
+experience L2 partial → **L3** (sourced, delivered in parts, research joined back; ledgering missing) ·
+Notification L1 → **L2** (editor in shadow, routing, repeat identity; gateway share not yet ≥ 95 %) ·
+Security: rails L2, SOP controls binding under 1.2.0.
 
 ---
 
@@ -278,6 +322,25 @@ merge.
 | Tagger precision | agent text excluded; confidence floor | sampled audit: 0 false subjects in 50 turns | E |
 | Credentials | Google re-auth | token refresh unit green | O |
 
+**Update 2026-09-14 — Phase 0 progress:**
+
+| Workstream | State | Evidence / what remains |
+|---|---|---|
+| Host | ◆ open | DC supply, UPS, fancontrol unchanged |
+| False success | ▓ partial | Hermes queue self-heals and alerts (#1014); bridge wedge detected and bounded (#1019); the 22 pipelines, social ingest, cio-delivery unchanged |
+| Agent reachability | ▓ partial | phantom cost-cap refusals removed by actual-spend caps (#1015); `symbol_profiles` and topic routing unchanged |
+| Spend | █ done differently | $2.00/day actual-spend cap; attribution split into 8 callers (#1021); operator window (#1020); floors by priority class still ◆ |
+| Monitors | ▓ partial | `REPLY_NOT_DELIVERED`, `RESEARCH_LANDED_UNSENT`, heartbeat lane; lane-health keys and gap-alert escalation unchanged |
+| Registry drift | ▓ partial | Alpha Vantage health; four research_scheduler lanes declared; moomoo status and weekly/monthly timers unchanged |
+| Tagger precision | ◆ open | — |
+| Credentials | █ **done** | operator re-authenticated 2026-09-14 23:4x; token refresh green |
+| **Data integrity (added)** | █ done | repricer, Alpaca prev_close, Finviz contracts and units, litmus, view contracts, EOD closes (#1008) |
+| **Operator desk (added)** | █ done | dictated tickers, pills, join-back, parts, rich alerts (#1005–#1007, #1016, #1018) |
+
+**Phase 1 progress:** one execution tree ▓ (#1025 fast-forward; install/restart ◆) · gateway-owned
+delivery ░ (editor shadow; review then live, already approved) · late research joined to pending
+questions █ (#1006) · release windows ◆ · lanes baseline ▓ · dead feeds ◆ · posture ◆.
+
 ### Phase 1 — Reliability and truth (2–4 weeks)
 
 | Workstream | Deliverable | Exit condition |
@@ -325,6 +388,49 @@ merge.
         host · false success   one tree · gateway    memory · critique      falsifiers · outcomes     self-repair
         agent reachability     release windows       inbound effect         lessons · MVL             M1–M5 on one epoch
         spend · monitors       lanes · posture       gap resolver live      consistency (M4)
+```
+
+```dot
+digraph roadmap_v1 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Roadmap with 2026-09-14 progress (green = done, amber = partial, grey = open)", labelloc=t, nodesep=0.25, ranksep=0.5, pad=0.3, newrank=true];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9, color="#8497B0", fillcolor="#F4F6F9"];
+  edge [color="#44546A"];
+  subgraph cluster_p0 { label="P0 Stabilise (0–7 d)"; style=rounded; color="#C9D3DF";
+    p0a [label="host / UPS"]; p0b [label="false success", fillcolor="#FFF2CC", color="#BF9000"]; p0c [label="agent reachability", fillcolor="#FFF2CC", color="#BF9000"];
+    p0d [label="spend", fillcolor="#E2F0D9", color="#548235"]; p0e [label="monitors", fillcolor="#FFF2CC", color="#BF9000"]; p0f [label="registry drift", fillcolor="#FFF2CC", color="#BF9000"];
+    p0g [label="tagger precision"]; p0h [label="credentials", fillcolor="#E2F0D9", color="#548235"]; p0i [label="data integrity (added)", fillcolor="#E2F0D9", color="#548235"]; p0j [label="operator desk (added)", fillcolor="#E2F0D9", color="#548235"]; }
+  subgraph cluster_p1 { label="P1 Reliability (2–4 wk)"; style=rounded; color="#C9D3DF";
+    p1a [label="one tree / Deploy v2", fillcolor="#FFF2CC", color="#BF9000"]; p1b [label="release windows"]; p1c [label="gateway delivery", fillcolor="#FFF2CC", color="#BF9000"];
+    p1d [label="late research join", fillcolor="#E2F0D9", color="#548235"]; p1e [label="lanes baseline", fillcolor="#FFF2CC", color="#BF9000"]; p1f [label="dead feeds · posture"]; }
+  subgraph cluster_p2 { label="P2 Grounded (4–8 wk)"; style=rounded; color="#C9D3DF"; p2a [label="memory breadth"]; p2b [label="critique teeth"]; p2c [label="inbound effect"]; p2d [label="gap resolver live"]; }
+  subgraph cluster_p3 { label="P3 Closed loop (8–12 wk)"; style=rounded; color="#C9D3DF"; p3a [label="falsifiers"]; p3b [label="outcomes"]; p3c [label="lessons · MVL"]; }
+  subgraph cluster_p4 { label="P4 Unattended (12+ wk)"; style=rounded; color="#C9D3DF"; p4a [label="self-repair"]; p4b [label="M1–M5 on one epoch"]; }
+  p0b -> p1a [lhead=cluster_p1, ltail=cluster_p0]; p1a -> p2a; p2b -> p3a; p3c -> p4a;
+  // grid layout: rows of 4 per phase, phases stacked top to bottom
+  {rank=same; p0a; p0b; p0c; p0d;}
+  p0a -> p0b -> p0c -> p0d [style=invis];
+  {rank=same; p0e; p0f; p0g; p0h;}
+  p0e -> p0f -> p0g -> p0h [style=invis];
+  {rank=same; p0i; p0j;}
+  p0i -> p0j [style=invis];
+  p0a -> p0e [style=invis, weight=10];
+  p0e -> p0i [style=invis, weight=10];
+  {rank=same; p1a; p1b; p1c; p1d;}
+  p1a -> p1b -> p1c -> p1d [style=invis];
+  {rank=same; p1e; p1f;}
+  p1e -> p1f [style=invis];
+  p1a -> p1e [style=invis, weight=10];
+  {rank=same; p2a; p2b; p2c; p2d;}
+  p2a -> p2b -> p2c -> p2d [style=invis];
+  {rank=same; p3a; p3b; p3c;}
+  p3a -> p3b -> p3c [style=invis];
+  {rank=same; p4a; p4b;}
+  p4a -> p4b [style=invis];
+  p0i -> p1a [style=invis, weight=10];
+  p1e -> p2a [style=invis, weight=10];
+  p2a -> p3a [style=invis, weight=10];
+  p3a -> p4a [style=invis, weight=10];
+}
 ```
 
 **Ordering rule.** Judgment without grounding produces fluent text about nothing; scoring
@@ -384,6 +490,21 @@ wrong things. Do not skip ahead.
 | 12 | Consolidate Telegram onto one account | Yes | operator devices |
 | 13 | Health-agent criticals touching execution (position without a stop, audit ledger chain) | Review promptly | execution subsystem is operator-controlled |
 
+**Update 2026-09-14 — decisions taken since this list was written:**
+
+| # | Decision | Taken | Where it went |
+|---|---|---|---|
+| 3 | LLM budget | ✓ caps count **actual** spend; one $2.00/day global cap; $7 override retired; label split approved; scheduled paid work confined to the operator window | #1015, #1020, #1021 |
+| 5 | Arm the gap resolver (free vectors) | ✓ approved 09-14 ~09:05 | not yet implemented |
+| 1 (part) | Quarantine corrupt prices (archive + tripwire) | ✓ approved 09-14 ~09:05 | write path fixed (#1008); historical rows not yet quarantined |
+| — | Data integrity: fractional Schwab price (consumer side), retention FK guard, schedule litmus and view contracts, consolidated EOD closes | ✓ "1. approve 2. yes 3. yes 4. yes or finviz or schwab" | #1008 |
+| — | Communications: routing map, one 07:30 brief, GO alerts on scalp criteria incl. social, noise to digest, editor shadow then live | ✓ | #1009, #1011 |
+| — | Commitment sweep hourly cron | ✓ approved 09-14 ~09:05 | not yet implemented |
+| — | AGENTS.md 1.2.0 activation | ✓ `APPROVE_AGENTS_POLICY_1_2_0` | #1024 |
+| 11 (part) | Google credential | ✓ re-authenticated by the operator | token refresh green |
+| — | Disable the OpenClaw Gemma B50 job | ✓ | disabled, row kept |
+| 1, 2, 4, 6–10, 12, 13 | remaining decisions | open | — |
+
 ---
 
 ## 11. Exit charter — what "done" means
@@ -408,6 +529,8 @@ one epoch. A truthful three of five beats a claimed five.
 ---
 
 ## 12. The one-sentence version
+
+*(Unchanged by the 2026-09-14 update.)*
 
 Keep the rails, make success mean output, run one tree, deliver through one gateway, budget
 by priority, give critique teeth and commitments falsifiers, close the outcome loop, then

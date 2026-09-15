@@ -2,7 +2,10 @@
 
 ```
 Status:        ACTIVE
-as_of:         2026-09-14 00:10 America/New_York (04:10Z)
+Updated:       2026-09-14 23:44 EDT — every section marked "Update 2026-09-14" restates the state after the day's
+               29 merged and deployed PRs (#997–#1025). Unmarked numbers remain the 00:10 measurement below.
+Live now:      341bce2c1 (PR #1025): origin/main = release CURRENT = dev tree; dev tree git status empty.
+as_of:         2026-09-14 00:10 America/New_York (04:10Z) — original measurement
 Measured at:   served release a8a62217e (PR #1001) from 2026-09-13 23:50 to 2026-09-14 00:06 EDT;
                PR #1002 (CIO synthesis prompt budget) merged and promoted afterwards at 00:07 EDT as c594d8600.
                Where #1002 changes a number, both values are shown.
@@ -12,7 +15,8 @@ Method:        three independent read-only measurement passes (platform census, 
                or model calls; get_cio_snapshot not called; broker execution subsystem not examined.
 Authority:     READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0 was not touched.
 Supersedes:    CIO_AS_IS_2026-09-11-2013 (CIO pipeline only), CIO_AS_IS_2026-09-10-2215
-See also:      TRADE_AI_FUTURE_STATE_2026-09-14.md · AGENTS.md §0, §2, §7A, §10, §13.4, §15, §17
+See also:      TRADE_AI_FUTURE_STATE_2026-09-14.md · TRADE_AI_WORKLOG_2026-09-14.md (every change today) ·
+               AGENTS.md §0, §2, §7A, §9, §10, §12, §13.4, §15, §17 (Policy-Version 1.2.0 ACTIVE)
                docs/SOURCE_OF_TRUTH.md (rendered registry)
 ```
 
@@ -99,6 +103,24 @@ M5 Persistence), 3 not observed or not met (M2 Advice, M3 Feedback, M4 Consisten
 3. **The physical host.** A failing DC supply with shrinking intervals between hard cuts,
    no UPS, no funded off-box backup of persistent state, and a failed fan controller.
 
+### 1.1 Update 2026-09-14 — what the day's work changed in this summary
+
+| Domain | Change since 00:10 | Status now | Evidence |
+|---|---|---|---|
+| Deployment & release | `promote` fast-forwards the dev tree or fails loudly (#1025); dev tree lag closed; unit install and bot restart still manual | **L2 → L3** (runtime reach partly automated) | first live run 23:06: "dev tree fast-forwarded to 341bce2c1" |
+| Data plane | repricer canonical mark; Alpaca prev_close fix; Finviz header contracts and explicit units; litmus vs Yahoo, view-contract and EOD consolidated-close timers (#1008) | **L2**, plausibility now proven against an independent source | repricer dry run corrected 9 of 25 holdings; litmus BLOCKs market_quotes-derived closes |
+| Integrations | Alpha Vantage health recorder fixed; Google credential re-authenticated; DeepSeek prices verified and balance reconciled hourly (#1020); bridge `GET /health` exists (#1019) | **L2** for Google, AV, DeepSeek | mcporter token refresh Result=success 23:4x |
+| Scheduled lanes | 107 declared (73 ACTIVE), 0 undeclared; paid scheduled work gated to the operator window (#1020) | L1 → **L2** (declaration + time policy) | `check_lane_registry.py` clean |
+| Monitoring | research heartbeat lane `cio-hermes-queue` feeds the health score (#1014); bridge watchdog */5 (#1019); `REPLY_NOT_DELIVERED` and `RESEARCH_LANDED_UNSENT` answer-quality rules | detect **L4**; bounded repair for the bridge and the Hermes queue (**L3**) | 12 lost research requests restored, 1 replayed live |
+| LLM governance & spend | caps count actual spend; one $2.00/day cap; real spend by provider/model/process; spend texts; shared label split into 8 callers (#1015, #1021) | **L3** | real $4.73/week vs projection $214.61 |
+| Operator experience | dictated tickers; dossier with spelled-out pills; Hermes join-back; long answers in parts; rich alerts (#1005–#1007, #1016, #1018) | **L2 → L3** | HPE follow-up delivered 10:36; AXTI answer 2 parts |
+| Notification & delivery | Communications Editor in shadow; one 07:30 brief; chat routing map; GO alerts delivered; repeat-alert ledger identity (#1009, #1011, #1013) | L1 → **L2** | ARMP/ELMT GO delivered 13:15 |
+| Security & authority | AGENTS.md 1.2.0 ACTIVE (#1024) | rails L2 unchanged; SOP controls now binding | Effective-Date 2026-09-14 |
+| Host & resilience | bridge MemoryMax 768M; no hardware change (DC supply, UPS still open) | **L1, fragile** (unchanged) | — |
+
+Of the three things that matter most: (1) success-without-output is unchanged except for the Hermes
+queue and the bridge; (2) cognition is unchanged (not re-measured); (3) the host is unchanged.
+
 ---
 
 ## 2. Platform topology
@@ -151,6 +173,36 @@ M5 Persistence), 3 not observed or not met (M2 Advice, M3 Feedback, M4 Consisten
                · Google News · YouTube   Retired: Finnhub · Polygon · FMP · NewsAPI
 ```
 
+The same topology as a flow (Update 2026-09-14: bridge health and watchdog, Communications Editor,
+spend reporting and the deploy fast-forward are shown):
+
+```dot-wide
+digraph topology {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Trade AI platform topology (live 341bce2c1, 2026-09-14)", labelloc=t, compound=true, nodesep=0.3, ranksep=0.45, pad=0.3, newrank=true];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9, color="#2B5797", fillcolor="#EAF1FB"];
+  edge [color="#44546A", fontname="Helvetica", fontsize=8];
+  op [label="OPERATOR (John)\nTelegram · Command Center · Gmail · Drive", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  subgraph cluster_operator { label="Operator plane"; style="rounded,filled"; fillcolor="#F4F6F9"; color="#C9D3DF";
+    ps [label="portfolio-server :7777\nCommand Center v3 · Spend panel"]; bot [label="tradeai-cio-telegram\ndesk converse"]; poller [label="callback poller\nmain bot"]; editor [label="Communications Editor\n(shadow)"]; oc [label="OpenClaw gateway :18789"]; }
+  subgraph cluster_gov { label="Governance plane"; style="rounded,filled"; fillcolor="#F1ECF8"; color="#CDBFE3";
+    agents [label="AGENTS.md 1.2.0 ACTIVE"]; dsa [label="data_source_authority\n26 domains / 22 providers"]; lanes [label="lane_registry\n107 declared / 73 active"]; llmreg [label="llm_process_registry\n+8 named callers"]; hooks [label="push hook · budget · CI"]; }
+  subgraph cluster_cog { label="Cognition plane"; style="rounded,filled"; fillcolor="#EEF6EE"; color="#B9D7B9";
+    wake [label="hourly persistent wake"]; agentsj [label="watchlist agent jobs"]; hermes [label="Hermes CIO queue\n(heartbeat lane)"]; circle [label="Research Circle ph.1\n(dry run)"]; }
+  subgraph cluster_data { label="Data plane"; style="rounded,filled"; fillcolor="#FFF7E6"; color="#E8D3A5";
+    prov [label="providers → collectors"]; writers [label="one write module per store"]; pg [label="PostgreSQL 17 trade_ai", shape=cylinder]; pstate [label="persistent-state/data\n(symlinked into both trees)", shape=cylinder]; litmus [label="litmus · view contracts ·\nEOD consolidated close"]; }
+  subgraph cluster_model { label="Model & search lanes"; style="rounded,filled"; fillcolor="#FBEFEF"; color="#E3BDBD";
+    bridge [label="governed bridge :8766\ndeadline · 4 slots · /health"]; watchdog [label="bridge watchdog */5"]; free [label="Grok :8645 · ChatGPT :8646"]; brave [label="Brave (paid) → SearXNG :18888"]; ds [label="DeepSeek Flash / Pro\nbalance snapshot hourly"]; }
+  subgraph cluster_run { label="Runtime & host"; style="rounded,filled"; fillcolor="#F4F6F9"; color="#8497B0";
+    cron [label="cron 511 lines + user units\n(dev tree = release)"]; deploy [label="exact-main deploy\nprepare → promote → FF dev tree"]; host [label="ms01 · no UPS · disk 84 %"]; }
+  op -> bot; op -> ps; poller -> op; editor -> op [label="Telegram"];
+  bot -> hermes; bot -> bridge; ps -> pg; agentsj -> bridge; hermes -> bridge; circle -> bridge; wake -> pstate;
+  bridge -> ds; watchdog -> bridge [style=dashed]; agentsj -> free; brave -> prov [style=invis];
+  prov -> writers -> pg; writers -> pstate; litmus -> pg [style=dashed];
+  deploy -> cron; cron -> prov; cron -> agentsj; cron -> wake; host -> cron [style=dotted];
+  agents -> hooks [style=dotted]; dsa -> writers [style=dotted]; lanes -> cron [style=dotted]; llmreg -> bridge [style=dotted];
+}
+```
+
 ---
 
 ## 3. Deployment and runtime
@@ -159,9 +211,9 @@ M5 Persistence), 3 not observed or not met (M2 Advice, M3 Feedback, M4 Consisten
 
 | Item | Value | Status | Evidence |
 |---|---|---|---|
-| origin/main | `c594d8600` (PR #1002), was `a8a62217e` at measurement | █ | git rev-parse, OBSERVED |
-| Served release | `c594d8600-main-exact-phase2-20260914-000703` | █ | deploy receipt `PROMOTE OK`, OBSERVED |
-| Dev tree (runs cron) | `c594d8600`, fast-forwarded after promote | █ | OBSERVED |
+| origin/main | **Update 2026-09-14: `341bce2c1` (PR #1025).** At measurement `c594d8600` (PR #1002), was `a8a62217e` | █ | git rev-parse, OBSERVED 23:52 |
+| Served release | **Update: `341bce2c1-main-exact-phase2-20260914-230556`** (22 releases promoted on 09-14). At measurement `c594d8600-main-exact-phase2-20260914-000703` | █ | deploy receipt `PROMOTE OK`, OBSERVED |
+| Dev tree (runs cron) | **Update: `341bce2c1`, fast-forwarded by `promote` itself (#1025); `git status` empty (#1023).** At measurement `c594d8600`, fast-forwarded by hand | █ | OBSERVED 23:52 |
 | portfolio-server health | `/api/health` → 200 `{"ok": true}` | █ | OBSERVED |
 | Served-copy split | 7 directories LINKED, split 0 | █ | hourly monitor + dry run, OBSERVED |
 | Protected live files | SearXNG settings (md5 `4e76203b`), `hermes_score_weights.yaml` skip-worktree | █ | OBSERVED |
@@ -174,12 +226,29 @@ M5 Persistence), 3 not observed or not met (M2 Advice, M3 Feedback, M4 Consisten
 
 | # | Gap | Impact | Evidence |
 |---|---|---|---|
-| D1 | **Two execution trees.** Deploy promotes the release but does not advance the dev tree that runs 411 cron lines; the dev tree fell 16–18 commits behind twice (09-06, 09-13). It is current only because it was fast-forwarded by hand. | Merged fixes silently do not run | memory + OBSERVED counts |
-| D2 | **Deploy does not install new systemd user units** (the answer-quality timer declared in #998 never started) and does not restart long-running services it changed (the Telegram bot needed a manual restart after three promotes). | Features ship "live" without running | session record |
-| D3 | **Long-running processes predate the served code:** governed bridge, OAuth proxies, ops agent and active-trader motion have run since 09-12 17:02. The lane monitor fires `process_predates_pin`. | Stale code serving | OBSERVED systemctl + monitor |
+| D1 | **Two execution trees.** Deploy promotes the release but did not advance the dev tree that runs 411 cron lines; the dev tree fell 16–18 commits behind twice (09-06, 09-13). **Update 2026-09-14: closed for the fast-forward.** `promote` now fast-forwards `CANONICAL_SOURCE` after `PROMOTE OK` and exits non-zero if it cannot (#1025); the one proven-safe blocker (files untracked by the target behind the persistent-state symlinks) is handled with hashed live copies. First live run 23:06. Still two trees. | Merged fixes silently did not run | #1025 tests; deploy log |
+| D2 | **Deploy does not install new systemd user units** (the answer-quality timer declared in #998 never started) and does not restart long-running services it changed (the Telegram bot needed a manual restart after three promotes). **Update 2026-09-14: still open.** Today's timers (litmus, view contracts, EOD close, lessons-reflect 19:40, shadow-seed 19:45) and the bridge restarts were done by hand from dry-run-first scripts; runbook step 7 lists them. | Features ship "live" without running | session record; runbook |
+| D3 | **Long-running processes predate the served code:** governed bridge, OAuth proxies, ops agent and active-trader motion have run since 09-12 17:02. The lane monitor fires `process_predates_pin`. **Update 2026-09-14:** the bridge was restarted onto #1019 (17:17), with MemoryMax 768M (18:18) and onto the label-split map (20:10); the CIO bot was restarted on the release after desk deploys. OAuth proxies, ops agent and motion still predate. | Stale code serving | bridge `/health` uptime |
 | D4 | **Promote cadence prevents same-epoch acceptance:** 17 distinct SHAs in 28 hourly wake slots on 09-13. The acceptance standard requires ≥3 contiguous cycles on one SHA with all proofs together. | Maturity cannot be proven | OBSERVED wake store |
 | D5 | **`promote` without `prepare` silently re-promotes a stale release and still prints PROMOTE OK.** | Wrong code with a green light | memory, known gotcha |
 | D6 | 108 G of release directories on a disk at 84%. | Disk-full outage | OBSERVED |
+
+**Deploy flow after 2026-09-14 (#1025):**
+
+```dot
+digraph deploy_v1 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Exact-main deploy after #1025", labelloc=t, nodesep=0.3, ranksep=0.35, pad=0.3];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9.5, color="#2B5797", fillcolor="#EAF1FB"];
+  edge [color="#44546A", fontname="Helvetica", fontsize=8.5];
+  m [label="PR merged at tested head", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  p [label="prepare (refuses dirty / non-main HEAD)"]; pr [label="promote: CURRENT → release,\nrestart portfolio-server + bound units"];
+  h [label="health ok?", shape=diamond]; rb [label="rollback to PREV", fillcolor="#FBEFEF", color="#C00000"];
+  ok [label="PROMOTE OK + receipt + expected pin"]; ff [label="fast-forward dev tree (#1025)", shape=diamond];
+  good [label="main = release = dev tree", shape=oval, fillcolor="#EEF6EE", color="#548235"]; bad [label="exit non-zero: release live,\ndev tree not advanced", shape=oval, fillcolor="#FBEFEF", color="#C00000"];
+  man [label="manual: install new units · restart CIO bot ·\ndeclare crontab edits (runbook step 7)", fillcolor="#F4F6F9", color="#8497B0"];
+  m -> p -> pr -> h; h -> rb [label="no"]; h -> ok [label="yes"]; ok -> ff; ff -> good [label="ok"]; ff -> bad [label="refused (unsafe)"]; good -> man [style=dashed];
+}
+```
 
 ---
 
@@ -217,6 +286,32 @@ document's assessment.
 | Gmail / Drive (gog) | Google | — | drive doc sync 0 failed; **`mcporter-token-refresh` failing** (gcloud auth empty) | **L1** | operator re-auth needed |
 | Bitwarden SM | secrets | — | render every 4 h, 111 keys | **L2** | retired-provider keys still rendered |
 | Finnhub · Polygon · FMP · NewsAPI | retired | retired 09-13 | Finnhub still attempted up to 09-13 16:03 (9,554 failures) | ⊘ | health agent still scores Finnhub critical |
+
+**Update 2026-09-14 — provider changes after the measurement:**
+
+| Provider | Change | Effect |
+|---|---|---|
+| Alpha Vantage | cron now falls back to `.env` for DB settings; holdings-first symbol selection; quota notices recorded (#1008) | health row no longer silently `unknown`; one symbol per week bug fixed |
+| Yahoo / yfinance | independent litmus reference for stored closes (Tue–Sat 07:45); EOD consolidated closes Mon–Fri 17:15 replace IEX closes more than 1 % off (#1008) | price integrity checked daily against an independent source |
+| Finviz | exports parsed by header with required-header contracts and explicit units; view-contract gate Mon–Fri 06:05 (#1008) | column shift and 1,000× unit errors refused |
+| Alpaca | `prev_close` from `dailyBar` when `prevDailyBar` is two sessions back (#1008) | false day changes removed |
+| Schwab | fractional-position price derived as market value ÷ quantity in the read-only sync (broker transport untouched, AGENTS rail 2) | XLI/NOC/SCHG closes correct |
+| DeepSeek | prices verified from api-docs.deepseek.com (peak 01–04 and 06–10 UTC Mon–Fri at double; flash off-peak $0.003 / $0.15 / $0.60 per 1M); hourly free balance snapshot; bridge deadline and `/health` (#1019, #1020) | logged spend reconciled against the balance |
+| Brave / SearXNG | unchanged (caller-cap denial still does not spill) | — |
+| Telegram | long bodies split at 4,096 UTF-16 units; rich layouts with link previews and buttons; Communications Editor at the chokepoint (shadow) (#1009, #1016, #1018) | desk answers no longer refused silently |
+| Gmail / Drive (gog) | Google credential re-authenticated by the operator 23:4x; mcporter token refresh succeeds (failing since at least 09-01) | R18 closed |
+
+```dot
+digraph connectivity {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Connectivity model with the 2026-09-14 integrity controls", labelloc=t, nodesep=0.3, ranksep=0.6, pad=0.3];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9.5, color="#2B5797", fillcolor="#EAF1FB"];
+  edge [color="#44546A", fontname="Helvetica", fontsize=8.5];
+  prov [label="Provider"]; coll [label="Collector script\n(cron, dev tree = release)"]; health [label="report_source()\nhealth row\n(AV fixed 09-14)", fillcolor="#FFF7E6", color="#BF9000"];
+  contract [label="Header / unit contracts\n(Finviz #1008)", fillcolor="#FBEFEF", color="#C00000"]; writer [label="Write module\n(one per store)"]; store [label="Store of record", shape=cylinder, fillcolor="#FFF2CC", color="#BF9000"];
+  litmus [label="Litmus vs Yahoo\nBLOCK on drift", fillcolor="#FBEFEF", color="#C00000"]; proj [label="Broker projection\nas_of · stale · gap"]; hubs [label="Command Center hubs"]; desk [label="Telegram desk\n(dossier + pills)"]; cog [label="Cognition plane"];
+  prov -> coll -> contract -> writer -> store -> proj; coll -> health [style=dashed]; store -> litmus [style=dashed]; proj -> hubs; proj -> desk; proj -> cog;
+}
+```
 
 ### 4.2 Connectivity model as built
 
@@ -280,6 +375,15 @@ every source. What remains is **freshness and plausibility**: the plausibility m
 fails 7 of 11 columns and its timer has never fired; `symbol_profiles` stopped writing;
 four dead feeds still appear in the product.
 
+**Update 2026-09-14:** the price domains gained write-path fixes and three drift controls (#1008): the
+repricer never writes a position value as a close and refuses a close more than 50 % from the live
+quote; Alpaca `prev_close` is correct before the first bar; Finviz exports are parsed by header with
+unit contracts; a daily litmus against Yahoo BLOCKs a source when more than 2 % of its closes are
+off by more than 10 %; EOD consolidated closes replace IEX-derived closes more than 1 % off Yahoo
+(disagreements over 50 % held for quarantine review). The corrupt 09-04/09-11 rows are **not yet
+quarantined** (operator-approved, still open). `symbol_profiles` staleness and the dead feeds were not
+re-measured.
+
 ---
 
 ## 6. Scheduled lanes
@@ -288,11 +392,11 @@ four dead feeds still appear in the product.
 
 | Metric | Value |
 |---|---|
-| Declared lanes | 90 — ACTIVE 58 · PAUSED 13 · NEVER_SCHEDULED 12 · RETIRED 7 |
+| Declared lanes | **Update 2026-09-14: 107 declared, 73 ACTIVE, 0 undeclared** (`check_lane_registry.py`, 23:52). At measurement 90 — ACTIVE 58 · PAUSED 13 · NEVER_SCHEDULED 12 · RETIRED 7 |
 | Scheduler kinds | systemd 55 · cron 23 · none 11 · event 1 |
 | Undeclared jobs beyond baseline | **0** |
 | Inherited-debt baseline | 531 cron lines not yet declared as lanes |
-| Live crontab | 451 active lines (411 dev tree, 34 release, 6 other) calling 360 distinct scripts |
+| Live crontab | **Update: 511 non-comment lines** after the day's installs (morning brief 07:30, GO alerts, spend texts, bridge watchdog, balance snapshot, operator-window wrappers). At measurement 451 active lines (411 dev tree, 34 release, 6 other) calling 360 distinct scripts |
 | systemd user timers | 81, including 17 agent-runtime instances |
 | Verdicts | LIVE 39 · EXPECTED_SILENT 32 · SILENT 8 · SLOW 3 · ORPHANED 2 · UNVERIFIABLE 6 |
 
@@ -327,6 +431,32 @@ Declaration is complete (0 undeclared), which is real progress. But the evaluato
 cannot be verified because they declare no output; and 531 inherited cron lines are still
 outside the registry.
 
+**Update 2026-09-14 — lanes added or changed today:**
+
+| Lane | Schedule | PR |
+|---|---|---|
+| `morning-brief-0730` (08:05 sender and 20:00 duplicate retired) | 07:30 weekdays | #1009 |
+| `screener-go-alerts` | */15 09:00–16:59 weekdays | #1009 |
+| source litmus · Finviz view contracts · EOD consolidated close | Tue–Sat 07:45 · Mon–Fri 06:05 · Mon–Fri 17:15 | #1008 |
+| `cio-hermes-queue` (research heartbeat) | 15 min | #1014 |
+| spend texts daily / weekly / monthly | 07:05 · Mon 07:10 · 1st 07:15 | #1015 |
+| four `research_scheduler` cron lanes declared | holdings, priority hourly, watchlist 20:30, incubator Sun | #1017 |
+| `cio-bridge-watchdog` | */5 | #1019 |
+| `research-scheduler-holdings` moved 08:00 → 09:05; usefulness scorer and due-diligence questions gated to the operator window; `governed-agent-flash-market` 09–19 weekdays; `deepseek-balance-snapshot` hourly :50 | — | #1020 |
+| advisory lessons reflect 21:40 → 19:40; shadow seed 21:45 → 19:45; advisory cache worker 09–19 ET | — | #1020 |
+
+```dot
+digraph opwindow {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Scheduled paid-work gate (#1020)", labelloc=t, nodesep=0.3, ranksep=0.35, pad=0.3];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9.5, color="#2B5797", fillcolor="#EAF1FB"];
+  edge [color="#44546A", fontname="Helvetica", fontsize=8.5];
+  s [label="cron line with --scheduled", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  w [label="weekday 09:00–21:00 ET\nor weekend?", shape=diamond]; pk [label="DeepSeek peak?\n01–04 / 06–10 UTC Mon–Fri", shape=diamond];
+  run [label="run", shape=oval, fillcolor="#EEF6EE", color="#548235"]; skip [label="skip (logged)", shape=oval, fillcolor="#FBEFEF", color="#C00000"];
+  s -> w; w -> skip [label="no"]; w -> pk [label="yes"]; pk -> skip [label="yes"]; pk -> run [label="no"];
+}
+```
+
 ---
 
 ## 7. Services, monitoring and integrity
@@ -355,6 +485,10 @@ outside the registry.
 | Integrity sweep | report-only CLI | **30 findings: 1 P0, 25 P1, 4 P2** |
 | Health agent | ~5 min daemon | **score 76, degraded, 8 critical, 5 warnings** |
 | Backups | hourly enforcer + 02:30 cadence | ok |
+| **Research heartbeat** `cio-hermes-queue` (Update 2026-09-14, #1014) | 15 min | fires on failure rate, no completions, stalled queue, lost requests; heals by restoring lost and replaying retryable requests inside `claim_next`; folds into the health score |
+| **Bridge watchdog** (Update, #1019) | 5 min | probes `/health`: OK / BUSY_UPSTREAM / CIRCUIT_OPEN / WEDGED; restarts after 2 unanswered probes (30 min cooldown); never restarts for provider problems |
+| **Source litmus** and **Finviz view contracts** (Update, #1008) | Tue–Sat 07:45 · Mon–Fri 06:05 | BLOCK on drift against Yahoo; header / unit / price contracts per saved view |
+| **Answer quality — new rules** (Update, #1006, #1018) | 30 min | `RESEARCH_LANDED_UNSENT` (research completed, pending still open > 10 min); `REPLY_NOT_DELIVERED` (agent turn without a Telegram message id) |
 
 **Integrity sweep detail.** P0: `social_ingest` succeeded 24 times in 7 days while
 `social_mentions` never grew. P1 ×22: pipelines report success into tables that do not
@@ -378,6 +512,12 @@ disagrees with the consumption ledger, the gap-resolution alert suppresses a gro
 backlog as "unchanged", and the answer-quality unit reports a systemd failure every time it
 correctly finds something — which trains people to ignore it.
 
+**Update 2026-09-14:** two detectors now repair within bounds and verify — the Hermes queue heals
+itself (restore, replay, reap under a projection lock) and the bridge watchdog restarts a wedged
+bridge but never a provider-side stall. The escalation handler's retries run again (they had exited
+127 on 36,365 attempts since 08-07). The other monitors still only report; the finding ledger does
+not exist yet.
+
 ---
 
 ## 8. LLM governance and spend
@@ -386,9 +526,9 @@ correctly finds something — which trains people to ignore it.
 
 | Item | Value |
 |---|---|
-| Registered processes | 59 in the file, 61 in the DB table |
+| Registered processes | 59 in the file, 61 in the DB table at measurement. **Update: +8** named callers split from `advisory_desk_opinion` (#1021): `cio_operator_reply` (manual), `cio_plan_enrichment`, `cio_prompt_judge`, `research_circle_analyzer` (manual), `hermes_cloud_json`, `hermes_usefulness_score` (600 calls/day), `cio_hermes_research`, `hermes_golden_judge` |
 | Lane policies | either 26 · deepseek_only 16 · grok_only 7 · ensemble 6 · both_preferred 4 |
-| Global daily cap | `LLM_GLOBAL_DAILY_USD_CAP=0.50` (env, server drop-in, bridge) |
+| Global daily cap | **Update 2026-09-14: $2.00/day of actual spend**, one host file `~/.config/tradeai/llm_global_daily_usd_cap.env` loaded last by every unit (`99-llm-global-cap.conf`); the forgotten $7.00 backfill override and the server's $1.50 archived with a tripwire README; ratified in AGENTS §12 (#1015, #1017). At measurement `LLM_GLOBAL_DAILY_USD_CAP=0.50` (env, server drop-in, bridge) |
 | Sum of per-process daily caps | $15.40 — far above the global cap, so the global cap is the real control |
 | Failure policy | `VISIBLE_FAILURE_NO_SILENT_FALLBACK` |
 | Key caps changed 09-13/14 | Maria/Risk/Steph narrative input 4,000 → 8,000; CIO synthesis cron 16,000 → 32,000 with a per-agent prompt budget (#1002) |
@@ -413,6 +553,20 @@ correctly finds something — which trains people to ignore it.
 - Reservation projections run 12× actual, so admission control is far more conservative
   than real cost.
 - The lane-health monitor reports zero DeepSeek and Grok calls while the ledger shows 1,282.
+
+### 8.4 Update 2026-09-14 — spend truth, the operator window and attribution
+
+| Item | Measured / changed | PR |
+|---|---|---|
+| Real spend, week to 09-14 | **$4.73** ($0.72/day) from provider tokens × price schedule; the cap ledger counted $5.50; the worst-case projection for advisory opinions alone was **$214.61** — a $0.50 cap refused research on phantom money | #1015 |
+| Week of 09-07 | $5.45 real, 38 % on DeepSeek peak, 60 % outside the operator window — mostly a one-time usefulness backfill (≈ 31,000 old rows, 09-06 → 09-09); normal running ≈ $0.49/day | #1020 |
+| Price check | recomputing the week from token counts at DeepSeek's published prices gives $5.42 against $5.45 logged | #1020 |
+| Reservations | calibrated to the p90 of settled cost × 1.5 (never above worst case) | #1015 |
+| Reporting | `GET /api/v2/consumption/spend`; Command Center Spend panel; Telegram texts daily 07:05, weekly Mon 07:10, monthly 1st 07:15 (outside-window and balance lines) | #1015, #1020 |
+| Attribution | the shared id carried 88 % of spend; now eight callers bill to their own ids and caps; operator replies logged as ad hoc | #1021 |
+| Scheduled work | only in the operator window and never at DeepSeek peak; manual runs never gated; `TRADEAI_ALLOW_SCHEDULED_PEAK=1` overrides one run | #1020 |
+| Bridge | 150 s wall-clock deadline; 4 in-flight slots; 503 `BRIDGE_BUSY`; `/health`; watchdog (DeepSeek held calls ~906 s on 09-14 15:15–17:17) | #1019 |
+| Label split on real traffic | not yet observed (no daytime traffic since the 20:10 bridge restart) — check scheduled 09-15 10:03 ET | — |
 
 ---
 
@@ -546,6 +700,11 @@ synthesis resumes. Silent failure remains: no per-attempt error is logged.
 
 ### 10.4 Maturity: **L1** — the worker runs; the work does not happen.
 
+**Update 2026-09-14:** not re-measured. The synthesis prompt budget and 32,000 cap (#1002) and the
+8,000 input caps are live; the global cap is now $2.00 of actual spend with calibrated reservations
+(#1015), which removes the phantom-money refusals that produced most `COST_CAP_EXCEEDED` failures.
+The `symbol_profiles` gate and topic-slug routing are unchanged.
+
 ---
 
 ## 11. Operator experience — Telegram desk
@@ -565,7 +724,33 @@ synthesis resumes. Silent failure remains: no per-attempt error is logged.
 | Chat memory recall by GUID | ░ | shipped (#1001); 0 turns since; **tagger false subjects would poison it** |
 | Answer-quality monitor | █ | 30-minute audit; 7 findings, all from pre-fix replies |
 
-### 11.2 Maturity: **L2 partial** (up from "replies off / hermetic only" on 09-11)
+### 11.2 Update 2026-09-14 — the desk after today's fixes
+
+| Stage | Change | PR | Proof |
+|---|---|---|---|
+| Subject resolution | dictated tickers (`a x t i`, `A.X.T.I`) bind when the book or registry holds them; Flash may not demote a re-entry/levels ask | #1005 | real AXTI question dry run: full re-entry card |
+| House facts | freeform context carries price and levels for named stocks; subject dossier covers every stored section | #1005 | — |
+| Provenance | every line carries a spelled-out pill: `🟢 Trade-AI data` · `🔵 Looked up outside Trade-AI` · `🟣 AI model (DeepSeek)`; a Key line on every reply; Origin line | #1005, #1007 | operator: "This is much better" |
+| Pending questions | Hermes research joined back to the pending by `plan_id`/`research_id`; research-only asks answered immediately with house facts; failed runs close at once | #1006 | HPE follow-up delivered 10:36 |
+| Delivery | bodies over 4,096 UTF-16 units sent as ordered parts; phone rendering; `reply NOT delivered` logged | #1016 | AXTI answer re-sent in 2 parts |
+| Alerts | rich GO, ENTRY ALERT and material-change layouts with links, buttons and chart preview | #1018 | ARMP renders 797 units |
+| Monitoring | `RESEARCH_LANDED_UNSENT`, `REPLY_NOT_DELIVERED` | #1006, #1018 | — |
+| Still open | reply ledgering in `communication_events`; tagger reading agent text; one release-behind bot after a promote without restart | — | — |
+
+```dot
+digraph desk_v1 {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Desk answer path (2026-09-14)", labelloc=t, nodesep=0.3, ranksep=0.35, pad=0.3];
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=9.5, color="#2B5797", fillcolor="#EAF1FB"];
+  edge [color="#44546A", fontname="Helvetica", fontsize=8.5];
+  q [label="Operator question", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  r [label="resolve subject\n(spelled tickers)"]; i [label="intent\n(no Flash demotion)"]; e [label="house evidence + dossier\n+ subject memory"];
+  a [label="answer now\n(pills, Key, Origin)"]; hq [label="Hermes queued\n(ids on pending)", fillcolor="#F1ECF8", color="#7030A0"];
+  j [label="join-back follow-up", fillcolor="#F1ECF8", color="#7030A0"]; parts [label="split into parts\n≤ 4,096 UTF-16"]; out [label="Telegram", shape=oval, fillcolor="#EEF6EE", color="#548235"];
+  q -> r -> i -> e -> a -> parts -> out; e -> hq [label="gap"]; hq -> j -> parts;
+}
+```
+
+### 11.3 Maturity: **L2 partial** at measurement (up from "replies off / hermetic only" on 09-11); **Update 2026-09-14: L3** for answer content and delivery, reply ledgering still L0
 
 The operator now gets a real answer with its sources. The remaining defects are in the
 seams: research that lands after a question is not delivered, replies are not ledgered, and
@@ -581,6 +766,7 @@ identity tagging on the bot's own text will feed wrong memories.
 | `MEMORY_BEHAVIOR_INFLUENCE=0` | set on the CIO bot | █ |
 | Broker execution | separate, operator-controlled, per-order 2FA; not examined | ⊘ out of scope |
 | Operator-only decisions (§17) | new cron/systemd, new data source or writer, spend caps, deletion, branch protection, broker/credentials | █ documented; grants recorded in registries |
+| **AGENTS.md policy** (Update 2026-09-14) | **Policy-Version 1.2.0 ACTIVE**, Effective-Date 2026-09-14: multi-agent SOP controls, guarded push/deploy approval workflow, `delivery_owner` rule, reply and data-gap rules, MAJOR §7A/§17 data-source ownership change, $2.00 cap, today's SOPs; approval bound to PR #1022 head `ad5c533b2` (#1024) | █ |
 | Push gate | pre-push hook: authorization + two-push budget + secrets tree scan | █ |
 | Required CI | **only `cio-hardening`**, strict; **0 required reviews**; admins not enforced; repository PUBLIC | ▓ |
 | Secrets | Bitwarden → tmpfs (600); **309 files read secrets from the repo tree**; retired-provider keys still rendered; memory notes keys in git history | ▓ |
@@ -641,6 +827,20 @@ Likelihood and impact are rated H/M/L. Owner: **O** operator decision, **E** eng
 | R19 | **Research gaps unattended** (84 up to 504 h); gap resolver dry-run only | H | M | O | §5, §7 |
 | R20 | **Sentinel/Darwin stalled** since 09-11; MVL cannot progress | H | M | E | §9 |
 
+**Update 2026-09-14 — risk status after the day's work:**
+
+| ID | Status | Why |
+|---|---|---|
+| R3 success without output | ▓ narrowed | Hermes queue and bridge now detect, heal and alert; the 22 pipelines, social ingest and cio-delivery unchanged |
+| R5 one process 94 % of budget | ▓ mitigated | spend attributed to 8 named callers with caps; cap is actual spend $2.00; real week $4.73 |
+| R8 two execution trees | ▓ narrowed | promote fast-forwards the dev tree (#1025); units and bot restarts still manual |
+| R10 misleading monitors | ▓ narrowed | answer-quality rules for undelivered replies and landed-unsent research; lane-health vs ledger unchanged |
+| R11 registry drift | ▓ narrowed | Alpha Vantage health recorder fixed; lanes 107 declared, 0 undeclared |
+| R13 delivery not gateway-owned | ▓ narrowed | Communications Editor at the chokepoint (shadow); repeat-alert identity fixed; GO alerts delivered |
+| R18 Google credential expired | █ **closed** | operator re-authenticated 23:4x; token refresh succeeds |
+| New R21 | **bridge wedge by a held provider call** — closed by #1019 (deadline, threads, /health, watchdog) | — |
+| New R22 | **corrupt/mis-unit prices in the store of record** — write-path fixed and litmus-controlled (#1008); historical rows not yet quarantined | O decision taken, E open |
+
 ---
 
 ## 15. Recommendations for advancement
@@ -694,9 +894,27 @@ Ordered by dependency. Taking them out of order makes the system worse, not fast
 Each horizon's exit is an **observed** result, not a merge. See the Future State document
 for exit criteria, target architecture and the full roadmap.
 
+**Update 2026-09-14 — progress against these recommendations:** #4 budget rebalance → done differently
+(actual-spend cap $2.00, attribution split, operator window); #5 misleading monitors → partly (answer
+quality, heartbeat, watchdog); #6 registry drift → partly (Alpha Vantage, lanes); #8 Google re-auth →
+done; #9 single execution tree → dev-tree fast-forward automated (#1025), unit install and restarts
+still manual; #11 gateway delivery → Communications Editor in shadow; #12 late research joined to
+pending questions → done (#1006). All others unchanged.
+
 ---
 
-## 16. What changed in the last 48 hours
+## 16. What changed in the last 48 hours (to 00:10) — and on 2026-09-14
+
+**Update 2026-09-14:** 23 more PRs (#1003–#1025) merged and deployed during the day; the full list
+with merge times, live commits, triggers and evidence is `TRADE_AI_WORKLOG_2026-09-14.md`.
+Headlines: dictated tickers, dossier pills and research join-back on the desk; price, unit and source
+integrity with drift controls; Communications Editor, one morning brief, routing and delivered GO
+alerts; Research Escalation Circle phase 1; research heartbeat; long replies in parts and rich
+alerts; model-bridge wedge fix and watchdog; real spend, $2.00 actual-spend cap, operator window,
+balance reconciliation and label split; AGENTS.md 1.2.0 ACTIVE; clean git; deploy that fast-forwards
+the dev tree.
+
+Before 00:10:
 
 - **25 PRs merged and deployed (#977–#1001), plus #1002 at 00:07 EDT 09-14.**
 - CIO wake dispatcher unblocked (14.1 min → 0.23 s); health boundary implemented and

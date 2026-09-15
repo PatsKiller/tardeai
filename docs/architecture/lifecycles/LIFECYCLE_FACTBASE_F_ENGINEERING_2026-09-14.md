@@ -11,6 +11,48 @@ Files re-readable in scratchpad: `eng_prs.json`, `eng_runs_all.json`, `eng_lane_
 
 # ENGINEERING, RUNTIME AND OPERATIONS LIFECYCLES: every stage, measured
 
+
+> **Update 2026-09-14 23:44 EDT — what changed after this measurement (live `341bce2c1`).** Numbers below are the 00:00–00:45
+> measurement. Changes shipped on 2026-09-14:
+>
+> - **Change lifecycle (§1):** 22 releases promoted on 09-14; `promote` now fast-forwards the dev tree or exits
+>   non-zero (#1025) after a deploy wrapper swallowed a refused fast-forward at 21:51; three files served from
+>   persistent state untracked and `archive/weekly/` ignored — dev tree `git status` empty (#1023); AGENTS.md
+>   Policy-Version 1.2.0 ACTIVE (#1024). Unit install and service restarts still manual.
+> - **LLM call (§2):** real spend by provider/model/process with daily/weekly/monthly texts; caps count actual spend;
+>   $2.00/day global cap in one host file (#1015); DeepSeek prices verified and balance reconciled hourly; scheduled
+>   paid work confined to the operator window (#1020); eight named callers (#1021); bridge deadline, 4 in-flight
+>   slots, `/health`, watchdog and MemoryMax 768M (#1019, host).
+> - **Lanes and services (§3):** 107 declared lanes, 73 ACTIVE, 0 undeclared; crontab 511 non-comment lines; new
+>   timers for litmus, view contracts, EOD closes; watchdog, balance snapshot, spend texts, GO alerts, brief 07:30.
+> - **Findings (§4):** bounded repair for the Hermes queue (#1014) and the bridge (#1019); escalation retries no
+>   longer exit 127 (36,365 since 08-07).
+> - **Secrets, backup, host (§5):** Google credential re-authenticated; DC supply, UPS, rotation, retired keys and
+>   restore drills unchanged.
+
+```dot
+digraph fb_f {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Family F after 2026-09-14 — deploy and model-call controls", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  merge [label="Merge at tested head", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  promote [label="promote", shape=box, fillcolor="#EAF1FB", color="#2B5797"];
+  ff [label="Dev tree FF #1025", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  units [label="Unit install / restarts", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  call [label="LLM call", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  cap [label="Actual-spend cap $2\n#1015", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  bridge [label="Bridge liveness #1019", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  spend [label="Spend truth + balance\n#1015 #1020", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  merge -> promote [color="#1F3864", penwidth=1.4];
+  promote -> ff [color="#548235", penwidth=1.3];
+  promote -> units [label="✗✗ manual", color="#C00000", style=dashed, penwidth=1.2];
+  call -> cap [color="#1F3864", penwidth=1.4];
+  cap -> bridge [color="#1F3864", penwidth=1.4];
+  bridge -> spend [color="#548235", penwidth=1.3];
+}
+```
+
+
 ## LEGEND
 
 ```

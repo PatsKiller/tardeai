@@ -2,6 +2,48 @@
 
 # Trade AI — COMMUNICATION LIFECYCLES (measured, end-to-end)
 
+**Status:** ACTIVE — fact base, Communication lifecycles (family E of 6); measured read-only 2026-09-14 00:00–00:45 EDT
+**Updated:** 2026-09-14 23:44 EDT — update block below records what shipped after the measurement (live `341bce2c1`)
+
+
+> **Update 2026-09-14 23:44 EDT — what changed after this measurement (live `341bce2c1`).** Numbers below are the 00:00–00:45
+> measurement. Changes shipped on 2026-09-14 after the operator reviewed five Telegram exports:
+>
+> - **Outbound (§1):** Communications Editor at `telegram_transport.deliver_text` (shadow since 12:02; live after one
+>   trading day, approved) — HTML, message and subject GUIDs, 20-hour duplicate fingerprint, CIO agreement, Tailscale
+>   Command Center links, pills (#1009); one 07:30 ET weekday brief (50 duplicate briefs in 16 days measured); chat
+>   routing map (DM · CIO Desk · Proposal Decisions · OpenClaw); "CIO Run Complete" noise removed; scalp GO alerts on
+>   Trade-AI criteria (0 since 07-13 measured) delivered with a router bypass (#1011); repeated alerts get a body-hash
+>   ledger identity (638 events for 638 openings and 14,163 illegal settles measured) (#1013); rich layouts with links,
+>   buttons and chart previews (#1018); long desk answers in parts (#1016).
+> - **Inbound (§2):** unchanged in the ledger; desk answers changed (see family B).
+> - **Platform alerts (§3):** data-source-health alert rewritten for the operator (#997); new answer-quality rules.
+> - **Email / Drive (§4):** Google credential re-authenticated by the operator 23:4x; token refresh green.
+> - Settlement owner stamp, RESERVED expirer and gateway share are unchanged.
+
+```dot
+digraph fb_e {
+  graph [rankdir=TB, fontname="Helvetica", fontsize=12, label="Family E after 2026-09-14 — outbound chokepoint", labelloc=t, nodesep=0.25, ranksep=0.32, pad=0.3];
+  node [style="rounded,filled", fontname="Helvetica", fontsize=9.5];
+  edge [fontname="Helvetica", fontsize=8.5, arrowsize=0.7];
+  prod [label="Producers", shape=oval, fillcolor="#FFF2CC", color="#BF9000"];
+  chk [label="deliver_text", shape=diamond, fillcolor="#F4F6F9", color="#44546A"];
+  editor [label="Comms Editor\nshadow #1009", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  rich [label="Rich layout #1018", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  route [label="Routing map", shape=box, fillcolor="#E2F0D9", color="#548235"];
+  tg [label="Telegram", shape=oval, fillcolor="#E2F0D9", color="#548235"];
+  settle [label="Settlement owner stamp", shape=box, fillcolor="#FBE5E5", color="#C00000"];
+  prod -> rich [label="GO · entry · MC", color="#1F3864", penwidth=1.4];
+  rich -> chk [color="#1F3864", penwidth=1.4];
+  prod -> chk [color="#1F3864", penwidth=1.4];
+  chk -> editor [color="#1F3864", penwidth=1.4];
+  editor -> route [color="#1F3864", penwidth=1.4];
+  route -> tg [color="#1F3864", penwidth=1.4];
+  chk -> settle [label="✗✗", color="#C00000", style=dashed, penwidth=1.2];
+}
+```
+
+
 Host ms01 · measured 2026-09-14 00:05–00:35 EDT · dev tree origin/main c594d8600 · CURRENT → `c594d8600-main-exact-phase2-20260914-000703`
 Method: read-only SQL on prod DB, JSONL readers over persistent-state and the wake store, `journalctl --user`, crontab, `/proc/<pid>/environ` (flag names and list counts only).
 No Telegram API calls, no sends, no LLM calls. Labels: **OBSERVED** (measured now), **INFERRED** (reasoned from code or data), **BLOCKED** (could not measure).
