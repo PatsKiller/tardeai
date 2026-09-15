@@ -1,5 +1,7 @@
 # Trade AI Platform — FUTURE STATE Lifecycles: target lifecycles, lifecycle contract and build roadmap
 
+> **Identity note, 2026-09-15 (rev 3).** This document is the measured record of 2026-09-14. Everything that shipped after it — PRs #1026–#1036 and the chief-architect remediation — is recorded in `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md`, which also states the live commit at the end of 2026-09-15. Read any "live at" line below as historical.
+
 ```
 Status:        ACTIVE
 Version:       2 (extends TRADE_AI_FUTURE_STATE_2026-09-14.md v1 — target architecture and integrations —

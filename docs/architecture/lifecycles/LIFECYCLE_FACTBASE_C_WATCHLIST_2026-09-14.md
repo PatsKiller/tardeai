@@ -1,5 +1,7 @@
 <!-- Lifecycle fact base C — Watchlist, proposal and learning lifecycles. Status: ACTIVE (measured, read-only, 2026-09-14 00:00–00:45 EDT). Synthesized in docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md; targets in TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md. -->
 
+> **Identity note, 2026-09-15 (rev 3).** This document is the measured record of 2026-09-14. Everything that shipped after it — PRs #1026–#1036 and the chief-architect remediation — is recorded in `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md`, which also states the live commit at the end of 2026-09-15. Read any "live at" line below as historical.
+
 Measurement: complete (watchlist, advisory and learning lifecycles, up to the approval boundary)
 as_of: 2026-09-14 00:20–00:40 EDT (Monday; the prior 56 h were a weekend, so weekday-only producers last ran Fri 09-11)
 Measured on: host ms01, dev tree /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild @ c594d8600 (merge PR #1002 feat/synthesis-prompt-budget, 00:07 EDT today). Cron runs from this tree.
