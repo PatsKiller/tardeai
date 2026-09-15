@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import os
 import sys
 from datetime import datetime, time, timezone
@@ -183,21 +184,20 @@ def context(cur, change: dict) -> dict:
             ev = {}
     rng = ev.get("id_range")
     if not out.get("narrative") and rng:
-        cur.execute("""SELECT headline FROM catalyst_events
+        cur.execute("""SELECT headline, catalyst_type FROM catalyst_events
                         WHERE id BETWEEN %s AND %s AND symbol = %s
                           AND headline IS NOT NULL
-                        ORDER BY published_at DESC LIMIT 1""",
+                        ORDER BY published_at DESC LIMIT 10""",
                     (rng[0], rng[1], change["symbol"]))
-        r = cur.fetchone()
-        if r:
-            out["headline"] = r[0]
-    if not out.get("narrative") and not out.get("headline") and sg:
-        cur.execute("""SELECT title FROM news_articles
-                        WHERE subject_guid = %s AND title IS NOT NULL
-                        ORDER BY published_at DESC LIMIT 1""", (sg,))
-        r = cur.fetchone()
-        if r:
-            out["headline"] = r[0]
+        picked = pick_headline([(r[0], r[1]) for r in cur.fetchall()])
+        if picked:
+            out["headline"], out["headline_kind"] = picked
+    if not out.get("narrative") and not out.get("headline"):
+        # 2026-09-15: the newest news title for the ticker was quoted as if it explained the move —
+        # "Top Forgent Power Solutions (FPS) Competitors 2026 - MarketBeat", "UZX Stock Price Today".
+        # Only catalysts filed around the move are considered, and web-page titles are not news.
+        _safe(cur, lambda: _catalyst_near_move(cur, change, out))
+    _safe(cur, lambda: _watch_context(cur, change, out))
 
     if sg:
         cur.execute("""SELECT max(created_at)::date FROM hermes_external_research
@@ -205,6 +205,98 @@ def context(cur, change: dict) -> dict:
         r = cur.fetchone()
         out["last_research"] = str(r[0]) if r and r[0] else None
     return out
+
+
+# Page titles that are not news: quote pages, competitor lists, "should I buy", movers roundups.
+NOT_NEWS = re.compile(
+    r"(?i)(stock price|price today|price and chart|stock quote|quote & history|competitors|should i buy|"
+    r"stocks? to watch|trending stocks|stocks moving|top gainers|top losers|premarket movers|"
+    r"stock forecast|tradingview|stock analysis|lead sub-\$1)")
+UNTYPED = {"other", "news_momentum", "neutral", "technical", "stock_price_movement", "stock_price_increase", "bullish", "bearish"}
+SOURCE_LABELS = {
+    "ai_discovered": "AI discovery", "finviz_screener": "the Finviz screener", "paper_proposal": "a proposal",
+    "operator": "you", "hermes": "Hermes research", "portfolio": "your portfolio", "pullback_macd": "the pullback screener",
+    "small_cap_rotation": "small-cap rotation", "trade_ai": "Trade-AI",
+}
+_ENRICHMENT: dict | None = None
+
+
+def pick_headline(rows: list[tuple]) -> tuple[str, str] | None:
+    """(headline, kind) from newest-first (headline, catalyst_type) rows: a typed catalyst first, else real news."""
+    news = [(h, t) for h, t in rows if h and not NOT_NEWS.search(h)]
+    typed = [(h, t) for h, t in news if str(t or "other").lower() not in UNTYPED]
+    if typed:
+        return typed[0][0], "catalyst"
+    if news:
+        return news[0][0], "news"
+    return None
+
+
+def _safe(cur, fn) -> None:
+    try:
+        fn()
+    except Exception:  # noqa: BLE001 -- extra context must never cost the alert
+        try:
+            cur.connection.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _catalyst_near_move(cur, change: dict, out: dict) -> None:
+    cur.execute("""SELECT headline, catalyst_type FROM catalyst_events
+                    WHERE upper(symbol) = upper(%s) AND headline IS NOT NULL
+                      AND COALESCE(published_at, created_at)
+                          BETWEEN %s::timestamptz - interval '3 days' AND %s::timestamptz + interval '1 day'
+                    ORDER BY COALESCE(published_at, created_at) DESC LIMIT 25""",
+                (change["symbol"], change.get("observed_at"), change.get("observed_at")))
+    picked = pick_headline([(r[0], r[1]) for r in cur.fetchall()])
+    if picked:
+        out["headline"], out["headline_kind"] = picked
+
+
+def _watch_context(cur, change: dict, out: dict) -> None:
+    sym = str(change["symbol"]).upper()
+    cur.execute("""SELECT source, provenance_reason, first_seen_at::date FROM watchlist_items
+                    WHERE upper(symbol) = %s AND status <> 'removed' ORDER BY first_seen_at ASC LIMIT 1""", (sym,))
+    r = cur.fetchone()
+    if r:
+        out["watch"] = {"source": r[0], "reason": r[1], "since": str(r[2]) if r[2] else None}
+    cur.execute("""SELECT price, change_pct FROM watchlist_items WHERE upper(symbol) = %s AND price IS NOT NULL
+                    ORDER BY last_enriched_at DESC NULLS LAST LIMIT 1""", (sym,))
+    r = cur.fetchone()
+    if r:
+        out["price"] = float(r[0]) if r[0] is not None else None
+        out["change_pct"] = float(r[1]) if r[1] is not None else None
+    cur.execute("SELECT strategy_type FROM ticker_strategy_classifications WHERE upper(symbol) = %s AND active = TRUE LIMIT 1", (sym,))
+    r = cur.fetchone()
+    out["strategy"] = r[0] if r else None
+    cur.execute("""SELECT ideal_entry, stop_loss, target_price FROM watchlist_strategy_cards
+                    WHERE upper(symbol) = %s ORDER BY updated_at DESC NULLS LAST LIMIT 1""", (sym,))
+    r = cur.fetchone()
+    if r and r[0] is not None:
+        out["plan"] = {"entry": float(r[0]), "stop": float(r[1]) if r[1] is not None else None,
+                       "target": float(r[2]) if r[2] is not None else None}
+    cur.execute("""SELECT action, created_at::date FROM cio_decisions WHERE upper(symbol) = %s
+                    ORDER BY created_at DESC LIMIT 1""", (sym,))
+    r = cur.fetchone()
+    if r:
+        out["cio"] = {"action": r[0], "date": str(r[1])}
+    global _ENRICHMENT
+    if _ENRICHMENT is None:
+        try:
+            _ENRICHMENT = json.loads((Path(__file__).resolve().parent.parent / "data" / "portfolios" / "state"
+                                      / "ticker_enrichment_cache.json").read_text())
+        except Exception:  # noqa: BLE001
+            _ENRICHMENT = {}
+    try:
+        from lib.finviz_csv import enrichment_market_cap_billions
+        from lib.market_cap_label import cap_label, pill
+    except ImportError:  # imported as scripts.notify_material_change
+        from scripts.lib.finviz_csv import enrichment_market_cap_billions
+        from scripts.lib.market_cap_label import cap_label, pill
+    b = enrichment_market_cap_billions(_ENRICHMENT.get(sym) or {})
+    if b is not None:
+        out["size"] = pill(cap_label(b * 1000.0))
 
 
 def dedupe_by_symbol(changes: list[dict]) -> list[dict]:
@@ -229,12 +321,32 @@ def dedupe_by_symbol(changes: list[dict]) -> list[dict]:
 
 
 #: What the magnitude means, in words. "x1.2 vs usual" is noise dressed as signal.
-def _headline_line(c: dict) -> str:
+def _signed_move(c: dict, info: dict | None = None) -> float | None:
+    ev = c.get("evidence_json") or c.get("evidence") or {}
+    if isinstance(ev, str):
+        try:
+            ev = json.loads(ev)
+        except Exception:  # noqa: BLE001
+            ev = {}
+    if ev.get("move_pct_signed") is not None:
+        return float(ev["move_pct_signed"])
+    cp = (info or {}).get("change_pct")
+    if cp is not None and c.get("observed_value") is not None:
+        return abs(float(c["observed_value"])) * (1 if float(cp) >= 0 else -1)
+    return None
+
+
+def _headline_line(c: dict, info: dict | None = None) -> str:
     sym, kind = c["symbol"], c["kind"]
     mag = float(c["magnitude"] or 0)
+    info = info or {}
     if kind == "price_excursion":
-        return (f"{sym} — moved {float(c['observed_value']):.0f}%, "
-                f"{mag:.0f}x its normal daily range")
+        signed = _signed_move(c, info)
+        size = abs(float(c["observed_value"]))
+        verb = "moved" if signed is None else ("up" if signed >= 0 else "down")
+        tail = "".join(f" · {x}" for x in (
+            f"${info['price']:,.2f}" if info.get("price") is not None else "", info.get("size") or "") if x)
+        return f"{sym} — {verb} {size:.0f}%, {mag:.0f}x its normal daily range{tail}"
     if kind == "news_burst":
         return f"{sym} — unusual news volume, {mag:.0f}x normal"
     if kind == "sector_move":
@@ -249,22 +361,77 @@ def render(changes: list[dict], ctx: dict[str, dict]) -> str:
     lines = [f"Material change — {len(changes)} name(s) worth a look"]
     for c in changes:
         info = ctx.get(str(c["change_guid"]), {})
-        lines.append("\n" + _headline_line(c))
+        lines.append("\n" + _headline_line(c, info))
 
-        # WHAT HAPPENED. The narrative if we have one, else the actual headline.
+        # WHAT HAPPENED. The narrative if we have one, else a real catalyst, else say there is none.
         if info.get("narrative"):
             for sentence in info["narrative"][:2]:
                 lines.append(f"  {sentence}")
-        elif info.get("headline"):
-            lines.append(f"  {info['headline'][:150]}")
+        elif info:
+            lines.append(f"  {_what_line(info)}")
 
-        # WHY IT IS IN FRONT OF YOU.
-        lines.append(f"  · {_why_line(c)}")
-
-        # WHAT TO DO. Never advice — the open question, or the absence of research.
-        lines.append(f"  · {_next_line(info)}")
+        # WHY IT IS IN FRONT OF YOU, WHAT IT BELONGS TO, WHAT THE CIO SAYS, WHAT IS OPEN. Never advice.
+        for d in _detail_lines(c, info):
+            lines.append(f"  · {d}")
     lines.append("\nAdvisory only. No position action taken or implied.")
     return "\n".join(lines)
+
+
+def _what_line(info: dict) -> str | None:
+    if info.get("narrative"):
+        return None
+    if info.get("headline"):
+        prefix = "Catalyst: " if info.get("headline_kind") == "catalyst" else "News around the move (not confirmed as the cause): "
+        return prefix + info["headline"][:150]
+    return "No news found that explains this move."
+
+
+def _provenance_line(c: dict, info: dict) -> str:
+    base = _why_line(c)
+    w = info.get("watch")
+    if not w:
+        return base
+    who = SOURCE_LABELS.get(str(w.get("source") or ""), str(w.get("source") or "unknown source").replace("_", " "))
+    since = f" since {w['since']}" if w.get("since") else ""
+    reason = str(w.get("reason") or "").split(":", 2)[-1].strip() if w.get("reason") else ""
+    reason = f" ({reason[:80]})" if reason else ""
+    return f"{base}{since} — found by {who}{reason}"
+
+
+def _strategy_line(info: dict) -> str | None:
+    if "strategy" not in info and "plan" not in info:
+        return None
+    strat = str(info.get("strategy") or "").replace("_", " ")
+    head = f"Strategy: {strat}" if strat else "Strategy: none assigned"
+    plan, price = info.get("plan"), info.get("price")
+    if not plan:
+        return head + " · no entry plan"
+    levels = f"plan entry ${plan['entry']:,.2f}" + (f" / stop ${plan['stop']:,.2f}" if plan.get("stop") else "") + (
+        f" / target ${plan['target']:,.2f}" if plan.get("target") else "")
+    if price and plan["entry"]:
+        dist = (price - plan["entry"]) / plan["entry"] * 100.0
+        where = (f"plan is stale — price is {dist:+.0f}% from its entry" if abs(dist) > 25
+                 else f"price is {dist:+.1f}% from the entry")
+        return f"{head} · {levels} · {where}"
+    return f"{head} · {levels}"
+
+
+def _cio_line(info: dict) -> str | None:
+    if "watch" not in info and "cio" not in info:
+        return None
+    cio = info.get("cio")
+    if not cio:
+        return "CIO: no view yet"
+    return f"CIO: {str(cio['action']).replace('_', ' ').title()} ({cio['date']})"
+
+
+def _detail_lines(c: dict, info: dict) -> list[str]:
+    lines = [_provenance_line(c, info)]
+    for extra in (_strategy_line(info), _cio_line(info)):
+        if extra:
+            lines.append(extra)
+    lines.append(_next_line(info))
+    return lines
 
 
 def _why_line(c: dict) -> str:
@@ -307,16 +474,15 @@ def render_rich(changes: list[dict], ctx: dict[str, dict]) -> dict:
         sym = str(c["symbol"]).upper()
         symbols.append(sym)
         info = ctx.get(str(c["change_guid"]), {})
-        head = _headline_line(c)
+        head = _headline_line(c, info)
         rest = head[len(str(c["symbol"])):] if head.startswith(str(c["symbol"])) else f" — {head}"
         out.append("")
         out.append(f"<b>{tr.link(sym, tr.cc_symbol_url(sym))}</b>{tr.esc(rest)}")
-        said = info.get("narrative")[:2] if info.get("narrative") else (
-            [info["headline"][:150]] if info.get("headline") else [])
+        said = info.get("narrative")[:2] if info.get("narrative") else ([_what_line(info)] if info else [])
         if said:
             out.append("<blockquote>" + "\n".join(tr.esc(x) for x in said) + "</blockquote>")
-        out.append(f"· {tr.esc(_why_line(c))}")
-        out.append(f"· {tr.esc(_next_line(info))}")
+        for d in _detail_lines(c, info):
+            out.append(f"· {tr.esc(d)}")
         out.append(f"{tr.link('Finviz', tr.finviz_url(sym))} · {tr.link('Yahoo', tr.yahoo_url(sym))}")
     out.append("")
     out.append("<i>Advisory only. No position action taken or implied.</i>")

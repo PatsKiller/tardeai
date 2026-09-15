@@ -115,6 +115,9 @@ BOT_METHODS = ("sendMessage", "sendDocument", "sendPhoto", "getUpdates", "getMe"
 # the endpoint constants stay flagged.
 TRANSPORT_NON_SENDING = {
     "escape_markdown", "smart_split", "MAX_MSG_LEN",
+    # parse_mode_for only inspects a string and returns "HTML" or "Markdown"; tests
+    # that pin the chosen parse mode import it and nothing that can send.
+    "parse_mode_for",
 }
 
 

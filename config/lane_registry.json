@@ -1804,6 +1804,57 @@
       "note": "Hourly DeepSeek account balance (free API, no tokens). Drops = what DeepSeek deducted; the spend report compares them with logged DeepSeek cost. Operator 2026-09-14: 'research exactly what the complete costs are with DeepSeek's website'."
     },
     {
+      "lane_id": "catalyst-symbol-impact",
+      "owner": "watch",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 7,12,17 * * 1-5 catalyst_symbol_impact_writer.py --apply",
+        "match": "catalyst_symbol_impact_writer.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/catalyst_symbol_impact_last_run.json",
+        "key": "as_of"
+      },
+      "note": "2026-09-15: catalyst_symbol_impact had 0 rows ever. Deterministic writer for active watchlist names, pending proposals and holdings (direction from catalyst type, price at event, holding weight). No model calls."
+    },
+    {
+      "lane_id": "watch-goods-consistency",
+      "owner": "watch",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 8,12,16 * * 1-5 watch_goods_consistency_check.py --apply-proposal-backfill",
+        "match": "watch_goods_consistency_check.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/watch_goods_consistency_last_run.json",
+        "key": "as_of"
+      },
+      "note": "2026-09-15 operator: all goods tracked consistently across watchlist and proposals. Coverage of 12 goods per active watchlist symbol, proposal-vs-watchlist mismatches, fills EMPTY proposal sector/industry/float/rvol only. No model calls."
+    },
+    {
+      "lane_id": "cio-entry-state",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/10 9-16 * * 1-5 cio_entry_state_runner.py --apply",
+        "match": "cio_entry_state_runner.py"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "json_key",
+        "path": "data/runtime/cio_entry_state_last_run.json",
+        "key": "as_of"
+      },
+      "note": "2026-09-15 operator: the CIO owns entry state and BUY; the operator and the CIO are alerted; small caps labeled. Deterministic, advisory only, no model calls."
+    },
+    {
       "lane_id": "catalyst-graph",
       "owner": "platform",
       "scheduler": {

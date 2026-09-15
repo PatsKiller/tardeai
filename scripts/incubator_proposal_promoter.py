@@ -463,6 +463,55 @@ def compute_levels(price):
     return entry, stop, target, shares
 
 
+def authoritative_levels_for(conn, symbol, scan_price):
+    """Entry/stop/target from the symbol's real plan, or None.
+
+    2026-09-15: compute_levels() is flat 5 % stop / 2R target geometry, which the pre-promotion gate
+    rightly refuses ("target is 2.0:1 R:R math only (gambling blocked)"), so the promoter logged
+    "Promoted: 0" on every run and nothing had reached a proposal since 07-01 — while 989 of 1,198
+    ACTIVE incubator names already had a strategy card with entry, stop and target. This resolves the
+    same authoritative levels the watchlist bridge uses (trade_plans → strategy card / entry plan →
+    confluence) and returns the plan source so the gate can verify it.
+    """
+    sym = str(symbol or "").upper()
+    cand = {"symbol": sym}
+    try:
+        cur = conn.cursor()
+        cur.execute("""SELECT ideal_entry, stop_loss, target_price, support, resistance, strategy_type
+                         FROM watchlist_strategy_cards WHERE upper(symbol) = %s
+                        ORDER BY updated_at DESC NULLS LAST LIMIT 1""", (sym,))
+        row = cur.fetchone()
+        if row:
+            vals = list(row.values()) if isinstance(row, dict) else list(row)
+            cand.update(card_entry=vals[0], card_stop=vals[1], card_target=vals[2],
+                        card_support=vals[3], card_resistance=vals[4], wl_strategy=vals[5])
+        cur.execute("""SELECT limit_price, entry_zone_low, entry_zone_high FROM watchlist_entry_plans
+                        WHERE upper(symbol) = %s AND created_at > now() - interval '7 days'
+                        ORDER BY created_at DESC LIMIT 1""", (sym,))
+        row = cur.fetchone()
+        if row:
+            vals = list(row.values()) if isinstance(row, dict) else list(row)
+            cand.update(limit_price=vals[0], entry_zone_low=vals[1], entry_zone_high=vals[2])
+        import broker_trade_plan_gate as btpg
+        resolved = btpg.resolve_authoritative_levels(
+            conn, sym, candidate=cand, quote_cache={sym: scan_price} if scan_price else None)
+    except Exception as exc:
+        log.warning(f"[promoter] authoritative level lookup failed for {sym}: {exc}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return None
+    if not resolved:
+        return None
+    entry, stop, target = float(resolved["entry"]), float(resolved["stop"]), float(resolved["target"])
+    if not (target > entry > stop > 0):
+        return None
+    return {"entry": round(entry, 2), "stop": round(stop, 2), "target": round(target, 2),
+            "plan_source": resolved.get("plan_source"),
+            "exit_rationale": resolved.get("exit_rationale") or {}}
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -655,7 +704,15 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             skipped += 1
             continue
 
-        entry, stop, target, shares = compute_levels(scan_price)
+        _auth = authoritative_levels_for(conn, symbol, scan_price)
+        if _auth:
+            entry, stop, target = _auth["entry"], _auth["stop"], _auth["target"]
+            shares = max(1, int(RISK_BUDGET / max(0.01, entry - stop)))
+            _sizing_basis = {"engine": "incubator_proposal_promoter", "plan_source": _auth["plan_source"],
+                             "exit_rationale": _auth["exit_rationale"]}
+        else:
+            entry, stop, target, shares = compute_levels(scan_price)
+            _sizing_basis = None
 
         # Compute R:R. Never persist 0.0 — that printed "R:R 0.0:1" on live cards.
         try:
@@ -746,6 +803,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                 "proposed_entry": entry, "proposed_stop": stop, "proposed_target1": target,
                 "proposed_rr": rr, "catalyst": c.get("catalyst"), "catalyst_verified": catalyst_verified,
                 "discovery_source": "incubator",
+                "sizing_basis": _sizing_basis,
                 "scan_age_hours": _scan_age_hours,
                 "quote_age_hours": _quote_age_hours,
                 "quote_checked_at": _quote_checked_at,
@@ -788,7 +846,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                  setup_type, proposed_by, overnight_monitoring_enabled,
                  rsi, risk_gate_result, risk_gate_codes,
                  packet_state, packet_completion_pct,
-                 llm_review_status, agent_review_status)
+                 llm_review_status, agent_review_status, sizing_basis)
             VALUES (%s, %s, %s,
                     %s, %s, %s,
                     %s, %s, %s,
@@ -800,7 +858,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
                     %s, 'incubator_promoter', %s,
                     %s, %s, %s,
                     'NEW', 0,
-                    'NOT_REQUESTED', 'NOT_REQUESTED')
+                    'NOT_REQUESTED', 'NOT_REQUESTED', %s::jsonb)
             RETURNING id
         """, [
             symbol, strategy_id, strategy_id,
@@ -812,6 +870,7 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             score, signal_grade, c.get('catalyst'), catalyst_verified,
             setup_display, overnight,
             rsi_value, _rg_result, json.dumps(_rg_codes or []),
+            json.dumps(_sizing_basis) if _sizing_basis else None,
         ])
         new_id = cur.fetchone()['id']
 

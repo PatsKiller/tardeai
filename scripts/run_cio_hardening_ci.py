@@ -1367,6 +1367,66 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-15: hermes_subject_enhance and the directive service sat idle in transaction holding row
+        # locks; the directive service and Finviz screener writes failed on lock timeouts.
+        "watch_lock_holders",
+        [
+            "tests/test_watch_lock_holders_20260915.py",
+        ],
+    ),
+    (
+        # 2026-09-15: every active strategy card had catalyst_summary NULL; catalyst_symbol_impact had 0 rows ever.
+        "watch_card_catalysts",
+        [
+            "tests/test_strategy_card_catalysts_20260915.py",
+            "tests/test_catalyst_symbol_impact_writer_20260915.py",
+        ],
+    ),
+    (
+        # 2026-09-15 operator decision: small caps are in scope and labeled, not quarantined by the $500M floor.
+        "watch_small_cap_labels",
+        [
+            "tests/test_watch_small_cap_labels_20260915.py",
+        ],
+    ),
+    (
+        # 2026-09-15: capped / circuit-open / input-limit agent jobs were marked failed and never retried.
+        "watchlist_agent_job_llm_retries",
+        [
+            "tests/test_watchlist_agent_job_llm_retries_20260915.py",
+        ],
+    ),
+    (
+        # 2026-09-15 operator: goods tracked consistently across the watchlist and proposals.
+        "watch_goods_consistency",
+        [
+            "tests/test_watch_goods_consistency_20260915.py",
+        ],
+    ),
+    (
+        # 2026-09-15: the incubator promoter proposed flat 2R geometry that the gate refused; nothing promoted since 07-01.
+        "incubator_promoter_authoritative_levels",
+        [
+            "tests/test_incubator_promoter_authoritative_levels_20260915.py",
+        ],
+    ),
+    (
+        # 2026-09-15 operator decisions: CIO owns entry state / BUY, operator and CIO alerted, small caps labeled.
+        "cio_entry_state",
+        [
+            "tests/test_cio_entry_state_20260915.py",
+            "tests/test_cio_entry_state_alarm_fires_20260915.py",
+        ],
+    ),
+    (
+        # 2026-09-15 operator: material-change notices said a name moved but not which way, quoted web-page
+        # titles as catalysts and gave no watchlist origin, strategy, plan or CIO view.
+        "material_change_notice_context",
+        [
+            "tests/test_material_change_notice_context_20260915.py",
+        ],
+    ),
+    (
         # 2026-09-14: promote left the dev tree, where cron and the units run, on the old commit, and a
         # refused fast-forward was reported as success.
         "deploy_ff_dev_tree",

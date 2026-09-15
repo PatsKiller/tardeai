@@ -26,7 +26,15 @@ SECTOR_ETF = {"Technology": "XLK", "Financials": "XLF", "Energy": "XLE", "Health
 
 def _conn():
     from db_adapter import _get_conn
-    return _get_conn()
+    conn = _get_conn()
+    # 2026-09-15: this script only reads here, then runs a researcher subprocess for up to 240 s
+    # per subject. Without autocommit each read left the session idle in transaction for minutes,
+    # holding locks other watch jobs then timed out on.
+    try:
+        conn.autocommit = True
+    except Exception:
+        pass
+    return conn
 
 
 def _rows(cur):
