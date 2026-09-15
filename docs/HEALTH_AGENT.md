@@ -381,3 +381,18 @@ Like the Schwab case, systemd-unit findings are **detection-only** today — but
 **Status — DIAGNOSED, not yet implemented.** The two *failing services themselves* were fixed 2026-07-07
 (hermes `{schema}` `str.format` bug, commit b1717d65; operator gcloud re-auth for mcporter); the three
 **agent-coverage** fixes above are proposed follow-ups.
+
+## Model bridge watchdog (2026-09-14)
+
+**Why.** Every paid research, desk and advisory call goes through the governed model bridge (:8766). From 15:15 to 17:17 ET on 2026-09-14 it was wedged: a provider held calls ~906 s each, and a single-threaded server queued everything behind them. `/health` answered 501, and no alarm pointed at it.
+
+**Lane `cio-bridge-watchdog`** runs `scripts/cio_bridge_watchdog.py --apply` every 5 minutes. It probes `GET /health` (5 s) and classifies the result:
+
+| Status | Meaning | Action |
+|---|---|---|
+| OK | answers | none |
+| BUSY_UPSTREAM | answers; oldest in-flight call past the upstream deadline | alert on change |
+| CIRCUIT_OPEN | answers; provider failing | alert on change; **no restart** |
+| WEDGED | no answer | restart `cio-governed-bridge.service` after 2 consecutive probes (30 min cooldown), re-probe, alert |
+
+The receipt is `data/runtime/cio_bridge_watchdog.json`. The bridge fix and diagnosis order are in `docs/architecture/GOVERNED_MODEL_BRIDGE.md` §8.

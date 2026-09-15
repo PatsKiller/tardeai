@@ -6,7 +6,7 @@ Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-09-13T00:00:00-04:00
+Last-Reviewed:       2026-09-14T00:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          1.1.0
@@ -411,6 +411,28 @@ served release. Both are required.
 - **Line endings:** route every edit through `safe_text_edit`. Conditional conversion has produced
   `\r\r\n` across a whole file, which Python still parses and tests still pass. If a diff is
   implausibly large, check encoding first.
+- **`Path.read_text()` / `write_text()` silently convert a CRLF or mixed file to LF.** Universal-newline
+  reading hides `\r\n`, so a check like `"\r\n" in text` is always false. Edit such files as bytes, line by
+  line, keeping each line's own ending.
+  - Known mixed files: `scripts/lib/cio_governed_model_bridge.py`, `scripts/sync_cio_process_caps.py`.
+  - `check_line_endings.py` fails the PR otherwise. *2026-09-14: 2,298 lines of churn in the bridge from one edit.*
+- **Re-dump a JSON registry exactly as it was dumped.** `config/llm_process_registry.json` stores `\u`
+  escapes (`ensure_ascii=True`, `indent=2`). Round-trip the original first; a literal `→` rewrites every line
+  that carries one.
+- **A test can be broken by an earlier test's stub.** `tests/test_oco_dd_gaps.py` leaves an empty
+  `telegram_alert` in `sys.modules` (`setdefault`), and other tests cache their own copies of producers.
+  - A test of new producer or transport code loads the module **by file path**.
+  - Register a path-loaded module in `sys.modules[spec.name]` before `exec_module`, or `dataclasses` fails with
+    `'NoneType' object has no attribute '__dict__'`.
+- **A worktree has no live data.** `test_advisory_desk_phase2::test_build_evidence_stats` builds the desk from
+  runtime data; it fails in every worktree and passes in the dev tree. Compare against main in the same
+  location before calling a failure yours.
+- **After merging main into a branch, regenerate the docs index in its own commit.** `cio-hardening` fails
+  `docs_index_drift` / `overnight_g3_docs_index` otherwise; `report_docs_inventory.py --check` must exit 0
+  before pushing.
+- **Rebind the SOP control-surface digest in the four bound files only:** `CONTROL7_LOCAL_EQUIVALENT.txt`,
+  `CONTROL7_WORKFLOW_PROOF.txt`, `FULL_TEST_MATRIX.txt`, `RUFF_SHELLCHECK.txt`. The other evidence files hold
+  historical digests; a blanket `sed` rewrites history.
 - **`sys.path` and root resolution.** `scripts` is an implicit namespace package, resolvable only
   with the repo root on `sys.path`. Cron runs a script *by path*, so `sys.path[0]` is
   `<root>/scripts`. `python -c` puts cwd on the path and masks the failure entirely. **Reproduce
@@ -1548,7 +1570,7 @@ Each line is something an agent got wrong today or was about to. The code carrie
   - Each unit loads it last (`99-llm-global-cap.conf`).
   - `EnvironmentFile` beats `Environment=`, and `%t/tradeai/env` (Bitwarden-rendered) carries 0.50.
 - **Synthetic ledger rows must start with `test_`, `test-`, `pytest_` or `fixture_`.** `caprace_` rows counted as production spend.
-- **Peak is DeepSeek's official peak hours** (`deepseek_offpeak.DEEPSEEK_PEAK_UTC`, Mon–Fri). Scheduled work runs off-peak. The daily spend text names scheduled work that ran on peak.
+- **Peak is DeepSeek's official peak hours** (`deepseek_offpeak.DEEPSEEK_PEAK_UTC`, Mon–Fri). Scheduled work runs inside the operator's window (§12), which is always off DeepSeek peak. The daily spend text names scheduled work that ran on peak and scheduled work outside the window.
 
 ### Scheduling, env and liveness
 - **Cron lines do not load `.env`.**
@@ -1911,6 +1933,28 @@ accumulates the divergence this document exists to remove.
   30-minute window against a 3-minute cadence — 40 interrupts over four trading
   days, 83% of every row in its own alert table.*
 
+### Replies and alerts on the phone — added 2026-09-14
+
+- **A long answer is sent as ordered parts, never refused and never truncated.** Telegram counts **4,096
+  UTF-16 units** (an emoji is 2), not characters. `telegram_transport.send_message` splits with
+  `split_for_telegram`; desk answers go through `telegram_desk_render.render_desk_reply`, which cuts at
+  paragraph breaks and labels "Part i of N". *Cause: the 13:47 AXTI answer (4,571 characters) was refused
+  twice with HTTP 400 and the poller logged "replied"; the operator got silence.* Operator: "If it needs to be
+  broken up across three or four messages, then do so."
+- **A reply the transport did not accept is a finding, not a log line.** An agent turn with a NULL
+  `message_id` is undelivered; `check_operator_answer_quality.py` rule `REPLY_NOT_DELIVERED` reports it and
+  the poller logs `reply NOT delivered`.
+- **Operator-facing alerts use one rich layout** (`lib/telegram_rich.RichMessage`): ticker bold and linked
+  to its Command Center page, one line of numbers, the reason in a quote, evidence in an expandable quote,
+  sources as real links, Command Center / Finviz / Yahoo URL buttons, the daily chart as the link preview.
+  - **Symbols come from the producer, never guessed from text** (the editor once tagged AP, TROW and F in an ARMP alert).
+  - Every value is HTML-escaped; only absolute `https` URLs survive.
+  - When Telegram refuses an HTML send, the one plain retry strips the tags (`html_to_plain`) instead of
+    showing them.
+  - `TELEGRAM_RICH_ALERTS=0` reverts GO, entry and material-change alerts to plain text without a deploy.
+- **Provenance is collapsed, not dumped.** One plain footer line, the source list in an expandable quote.
+  *Cause: part 2 of a resent answer was the raw provenance tail; the operator's verdict was "Gibberish".*
+
 ## 9.2 Model calls
 
 - **Free-first.** Persistent cognition, RAG, and the record's own lessons first. A model call is
@@ -1925,6 +1969,30 @@ accumulates the divergence this document exists to remove.
   renders complete with a section silently absent hid a 97-day outage.
 - **Every generated field is labelled generated**, and `writer` names the **author**, not the last
   hand that touched the record.
+- **Every bridge caller names itself.** A caller sends `X-TradeAI-Agent` plus a task type, and the bridge
+  maps it to that caller's own process id (`CALLER_TASK_PROCESS_MAP`). A new caller needs, in the same change:
+  - the map entry and `resolve_model_policy` entry;
+  - a `config/llm_process_registry.json` row with caps and `default_mode` (`manual` for answers to the operator,
+    so they log as ad hoc);
+  - `sync_cio_process_caps.py`;
+  - a bridge restart.
+
+  *Cause 2026-09-14: 88% of the week's spend sat under one shared id, `advisory_desk_opinion`, carrying six
+  callers; nobody could say who spent it or move a scheduled caller off-peak without moving operator replies.*
+- **The bridge must answer while provider calls are in flight.** It is threaded, with at most
+  `CIO_BRIDGE_MAX_INFLIGHT` provider calls (a full bridge answers 503 `BRIDGE_BUSY`). Every upstream call has a
+  wall-clock deadline (`CIO_BRIDGE_UPSTREAM_DEADLINE_S`, checked per streamed chunk). `GET /health` reports
+  in-flight count and age. `cio_bridge_watchdog.py` restarts it after two unanswered probes and alerts on
+  state change.
+  *Cause 2026-09-14 15:15–17:17 ET: DeepSeek held calls ~906 s each while trickling keep-alive bytes, so a 90 s
+  per-read timeout never fired, and the single-threaded server queued every caller behind each held call.*
+- **When research, desk answers and advisory stall together, look at the bridge before anything else:**
+  `curl /health`, the accept queue (`ss -ltn` on :8766), in-flight age, `lastsnd`/`lastrcv` on the :443 socket.
+  **A restart does not shorten a provider's queue.** Capture evidence first, restart once, then fix the cause.
+- **Logged cost is checked against the provider, not assumed.** Prices come from the vendor page (§12), and
+  `deepseek_balance_snapshot.py` records the account balance hourly; `llm_spend.reconcile_balance` compares
+  balance drops with logged DeepSeek cost. *2026-09-14: last week's logged $5.45 recomputed from tokens at the
+  published prices to $5.42.*
 
 ## 9.3 Scheduled jobs
 
@@ -1948,6 +2016,17 @@ accumulates the divergence this document exists to remove.
   or `check_lane_registry.py --fail-on-new` fails `ai_local_acceptance`. *Cause 2026-09-13:
   re-enabling the read-only Moomoo sync under `timeout --kill-after=30s 10m` left an undeclared job;
   lane `moomoo-live-read-sync` was declared in PR #1001.*
+- **Scheduled paid work runs in the operator's window** (§12, binding): weekdays 09:00–21:00 ET or any hour on
+  a weekend, and never inside DeepSeek's billing peak.
+  - **Crontab lines** go through `scripts/run_with_deepseek_offpeak.sh --scheduled -- <command>`. Manual runs
+    never pass through the wrapper; `TRADEAI_ALLOW_SCHEDULED_PEAK=1` overrides one scheduled run.
+  - **Timers** fire at 19:xx ET or earlier, so the evening run is off peak all year.
+  - **The lane for a gated job declares a cadence** that covers the overnight gap (12.5 h, or `active_days` for
+    weekday-only jobs), or the registry reports it SILENT every night.
+  - **Answers to the operator are never gated** (`cio_operator_reply` is `manual`).
+- **A backfill is scheduled work.** It runs inside the window, with a temporary cap that names its end, and
+  its process has a request cap. *Cause 2026-09-06–09: a usefulness backfill (~31,000 rows, temporary $7 cap)
+  ran around the clock under a shared id; 60% of the week's spend fell outside the window.*
 
 ## 9.4 Store writes
 
@@ -2110,14 +2189,14 @@ drop-in on every unit that reads it, and the 6 crontab lines now all say 2.00. S
 **Selection.** Free-first always. Local Ollama for structural work — classification, extraction,
 formatting. **The OAuth lanes for peak-hour work and for critique** — a critic on a different
 provider does not share the author's blind spots, which is the point of a critique.
-`deepseek-v4-flash` off-peak is the default paid lane for volume; `pro` for reasoning-heavy
-synthesis, off-peak only.
+`deepseek-flash` off-peak is the default paid lane for volume. The Pro policy binds to `deepseek-flash`
+since 2026-09-14 (V4.1 Flash replaced V4 Pro); `deepseek-v4-pro` is rejected as a legacy id.
 
 **Never route on a readiness flag alone. Probe live.**
 
 ## DeepSeek pricing and scheduling — binding
 
-Source: https://api-docs.deepseek.com/quick_start/pricing (verified 2026-08-30). **Prices change.
+Source: https://api-docs.deepseek.com/quick_start/pricing (verified 2026-09-14). **Prices change.
 Re-verify; never quote from memory.**
 
 **Peak: 01:00–04:00 and 06:00–10:00 UTC, Monday–Friday. Everything else off-peak, at half rate.**
@@ -2140,20 +2219,36 @@ with nothing reporting it. **Schedule in UTC**, or compute the window at runtime
 
 ### Rates per 1M tokens (off-peak / peak)
 
-| | flash | pro |
+| | deepseek-flash (repriced 2026-09-10) | deepseek-v4-pro (listed; not called) |
 |---|---|---|
-| Input, cache hit | $0.007 / $0.014 | $0.022 / $0.044 |
-| Input, cache miss | $0.22 / $0.44 | $0.66 / $1.32 |
-| Output | $0.66 / $1.32 | $1.98 / $3.96 |
+| Input, cache hit | $0.003 / $0.006 | $0.022 / $0.044 |
+| Input, cache miss | $0.15 / $0.30 | $0.66 / $1.32 |
+| Output | $0.60 / $1.20 | $1.98 / $3.96 |
 
 Context 1M, max output 384K. Concurrency: flash 2500, pro 500.
 
-**Caching is the larger lever.** Cache hit against miss on input is **31×**; peak against off-peak
+**Caching is the larger lever.** Cache hit against miss on input is **50×**; peak against off-peak
 is **2×**. A system re-sending the same record, thesis and lesson context every wake is exactly the
 shape that benefits. **Get caching right before scheduling.**
 
 **If the configured cap makes a lane unable to run meaningfully, that is a finding to report** — not
 a reason to exceed it, and not a reason to starve silently.
+
+### The operator's window for scheduled work — binding (2026-09-14)
+
+> "off peak hours ... are 9 a.m. to 9 p.m. Eastern Standard Time in the U.S. and on the weekends, and only a
+> la carte stuff that is urgent, that's requested by the operator, is ran during peak hours."
+
+- **Scheduled paid work** runs weekdays **09:00–21:00 ET** or at any hour on a **weekend** (ET calendar).
+- **It is also refused inside DeepSeek's billing peak.** The window alone can touch it twice:
+  - **Sunday 21:00–24:00 ET** is Monday 01:00–04:00 UTC;
+  - in winter, **weekday 20:00–21:00 EST** is 01:00–02:00 UTC.
+- **Code:** `deepseek_offpeak.should_scheduled_skip`, `--gate-scheduled`, `run_with_deepseek_offpeak.sh --scheduled` (§9.3).
+- **Urgent, operator-requested work is exempt.** Desk and Telegram answers bill to `cio_operator_reply`
+  (`manual`), and a hand-run is never gated.
+- **Measured before the rule** (09-10 → 09-14, $2.46): $0.58 ran outside the window — holdings research at
+  08:00 ($0.19), the usefulness scorer every hour ($0.08), due-diligence questions ($0.03), and $0.22 under
+  the shared id (§9.2). Last week's $5.45 was 60% outside the window, almost all a one-time backfill.
 
 ## Search providers
 
@@ -3115,6 +3210,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.2.0 | 2026-09-14 | PROPOSED | MINOR | §9.1 gains "Replies and alerts on the phone" (4,096 UTF-16 parts, `REPLY_NOT_DELIVERED`, one rich layout, collapsed provenance). §9.2 gains: every bridge caller names itself; the bridge answers while calls are in flight (deadline, slots, `/health`, watchdog); stalls are diagnosed at the bridge first; logged cost is checked against the provider balance. §9.3 gains the operator's scheduled-work window and "a backfill is scheduled work". §7 gains six tooling traps (CRLF via `read_text`, JSON re-dump escaping, `sys.modules` stubs, worktree data, docs index after merge, SOP bound files). §12 re-verifies DeepSeek prices (flash repriced 2026-09-10), records that the Pro policy binds to deepseek-flash, and adds the binding operator window. Records merged work from PRs #1011–#1019 and the scheduling/attribution PRs; does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-14 ("make sure ... everything ... has been documented ... and also updated in the standard operating procedures of the agents.md"; window quoted verbatim in §12). Ratification rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING |
 | 1.2.0 | 2026-09-14 | PROPOSED | MINOR | §12 records the operator's new daily provider spend cap, **$2.00/day of actual spend** (was $0.50), with the measured enforcement footprint (6 crontab lines, host cap file, unit drop-ins). Still policy rather than a universally enforced control. Does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-14 (instruction quoted verbatim in §12; PR #1015 and the cap consolidation). Ratification rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING |
 | 1.2.0 | 2026-09-13 | PROPOSED | MINOR | §7 gains "Operator replies, data gaps and agent numbers" (one reply chokepoint, house facts first, subject resolution, checked summaries, promise only what is queued, resolved means proven, rule G0, GUID-keyed memory) and two traps (duplicate `def` names; stored results lack the prompt). §9.3 gains "a crontab line edit is a lane registry edit". §10 gains the Telegram bot restart and "a deploy does not install new user units". Records merged work from PRs #992, #998–#1001; does not touch §0, §2, §17 or role authority. | Documentation of merged, operator-directed work (PRs #998–#1001); ratification rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING |
 | 1.2.0 | 2026-09-13 | PROPOSED | MAJOR | §7A gains "Ownership and the grant" and rule 7; §17 gains **adding, replacing or retiring a data source or a writer of an authoritative store**. Registry schema `DataSourceAuthority@v2` requires an `approval` record on every provider and domain; `check_data_source_authority.py` fails an ungranted source (`UNAPPROVED_SOURCE`). Classified MAJOR because it widens §17 (version policy) — it adds a restriction and weakens nothing. Version number left at the unreleased 1.2.0 PROPOSED; whether the widening makes the release 2.0.0 is the operator's call at ratification. | **Operator-directed** 2026-09-13 (instruction quoted verbatim in §7A; One Source of Truth PRs #992 #993 #994). Ratification of the §17 text rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING |
