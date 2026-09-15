@@ -324,7 +324,7 @@ def deepseek_flash_caller() -> Callable[[list[dict[str, str]]], dict[str, Any]]:
     def _call(messages: list[dict[str, str]]) -> dict[str, Any]:
         from scripts.lib.cio_plan_enrichment import call_governed_llm, load_llm_policy  # noqa: PLC0415
 
-        out = call_governed_llm(messages, load_llm_policy(), use_pro=False)
+        out = call_governed_llm(messages, load_llm_policy(), use_pro=False, task_type="research_circle")
         if out.get("ok") and not out.get("content"):
             out["content"] = out.get("text") or ((out.get("choices") or [{}])[0].get("message") or {}).get("content")
         return out

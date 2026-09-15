@@ -88,7 +88,7 @@ def test_two_spelled_letters_do_not_bind_and_words_are_untouched():
 def _flash(monkeypatch, payload):
     import scripts.lib.cio_plan_enrichment as pe
     monkeypatch.setattr(pe, "call_governed_llm",
-                        lambda messages, policy, use_pro=False: {"ok": True, "content": json.dumps(payload),
+                        lambda messages, policy, use_pro=False, task_type=None: {"ok": True, "content": json.dumps(payload),
                                                                  "model": "test-flash"})
     monkeypatch.setattr(pe, "load_llm_policy", lambda: {})
     monkeypatch.setenv("CIO_OPERATOR_INTENT_FLASH", "1")

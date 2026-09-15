@@ -4,6 +4,32 @@ Status:      ACTIVE
 as_of:       2026-09-13T23:59:00-04:00
 Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
 
+## 2026-09-14 — The shared "Advisory Desk opinion" cost label split into eight named callers
+
+MATURITY_IMPACT: spend reports name the caller that spent the money. Answers to the operator are logged as ad hoc, so they stay exempt from the scheduled-work window while scheduled callers can be moved. Execution posture UNCHANGED: READ_ONLY_ADVISORY. The global $2.00/day cap still binds.
+
+- **Why.** 88% of the week's $5.45 was logged as `advisory_desk_opinion`, but at least six callers used that id and the log recorded none of them. The operator approved the split.
+- **Bridge.** `CALLER_TASK_PROCESS_MAP["advisory_desk"]` maps new task types to their own process ids:
+  - `operator_reply` → `cio_operator_reply` (manual)
+  - `plan_enrichment` → `cio_plan_enrichment`
+  - `prompt_judge` → `cio_prompt_judge`
+  - `research_circle` → `research_circle_analyzer` (manual)
+  - `hermes_cloud_json` → `hermes_cloud_json`
+  - `usefulness_score` → `hermes_usefulness_score`
+  - `hermes_research_job` → `cio_hermes_research`
+  - `golden_judge` → `hermes_golden_judge`
+
+  All are FAST. The success log's `trigger_mode` now follows the process mode.
+- **Callers name themselves.**
+  - Telegram converse and the operator desk loop (3 calls): `operator_reply`.
+  - Prompt judge: `prompt_judge`.
+  - Research circle: `research_circle`.
+  - Usefulness scorer: `usefulness_score`.
+  - Hermes backend and golden judge: new defaults.
+  - Failover `chat_json` gains a `task_type` parameter.
+  - The plan-enrichment default is now `plan_enrichment`.
+- **Registry and caps.** 8 processes registered, and `sync_cio_process_caps.py` covers them. The usefulness scorer is bounded at 600 calls/day, so a repeat of the 09-06 backfill cannot run unbounded.
+- **Stale test.** `test_bridge_task_type_process_map` expected the pre-09-09 model names; it now reads the registry binding.
 ## 2026-09-14 — Scheduled paid work runs in the operator's window; spend checked against DeepSeek
 
 MATURITY_IMPACT: scheduled DeepSeek work runs only weekdays 09:00–21:00 ET or weekends, and never in DeepSeek's billing peak. The spend report names any scheduled work outside that window, and an hourly balance snapshot compares logged cost with what DeepSeek deducted. Execution posture UNCHANGED: READ_ONLY_ADVISORY.

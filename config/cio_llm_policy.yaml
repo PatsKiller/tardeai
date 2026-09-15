@@ -56,7 +56,7 @@ llm:
   bridge_endpoint: "http://127.0.0.1:8766/v1/chat/completions"
   # Flash via advisory_desk (FAST) — avoids alex PRO-think empty content
   caller_flash: "advisory_desk"
-  task_type_flash: "advisory_opinion"
+  task_type_flash: "plan_enrichment"   # 2026-09-14: own process id (cio_plan_enrichment); callers pass task_type to override
   caller_pro: "alex"
   task_type_pro: "cio_synthesis"
   max_tokens: 1600

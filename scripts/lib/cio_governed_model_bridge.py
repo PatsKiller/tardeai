@@ -65,6 +65,16 @@ CALLER_TASK_PROCESS_MAP: dict[str, dict[str, str]] = {
     "advisory_desk": {
         "advisory_opinion": "advisory_desk_opinion",
         "advisory_synthesis": "advisory_desk_synthesis",
+        # 2026-09-14: callers that all billed to advisory_desk_opinion, each on its own process id, so
+        # the spend report can name them and scheduled work can be moved off-peak (operator decision).
+        "operator_reply": "cio_operator_reply",
+        "plan_enrichment": "cio_plan_enrichment",
+        "prompt_judge": "cio_prompt_judge",
+        "research_circle": "research_circle_analyzer",
+        "hermes_cloud_json": "hermes_cloud_json",
+        "usefulness_score": "hermes_usefulness_score",
+        "hermes_research_job": "cio_hermes_research",
+        "golden_judge": "hermes_golden_judge",
     },
 }
 
@@ -300,6 +310,14 @@ def resolve_model_policy(process_id: str, task_type: str = "") -> dict[str, Any]
         "morgan_wealth_synthesis": "FAST",
         "advisory_desk_opinion": "FAST",
         "advisory_desk_synthesis": "PRO",
+        "cio_operator_reply": "FAST",
+        "cio_plan_enrichment": "FAST",
+        "cio_prompt_judge": "FAST",
+        "research_circle_analyzer": "FAST",
+        "hermes_cloud_json": "FAST",
+        "hermes_usefulness_score": "FAST",
+        "cio_hermes_research": "FAST",
+        "hermes_golden_judge": "FAST",
     }
     policy_name = process_policy_map.get(process_id)
     if policy_name is None:
@@ -1163,7 +1181,8 @@ def execute_governed_call(
             lane=requested_policy.lower(),
             process_id=process_id,
             task_summary=sanitize_log_summary(messages),
-            trigger_mode="automated",
+            # A process registered as manual (an answer to the operator) is logged as ad hoc, not scheduled.
+            trigger_mode="manual" if str(cfg.get("mode") or "") == "manual" else "automated",
             success=True,
             model_name=model_id,
             prompt="[content hashed: " + hash_content(json.dumps(messages)) + "]",

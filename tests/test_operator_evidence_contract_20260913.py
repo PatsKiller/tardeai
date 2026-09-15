@@ -323,7 +323,7 @@ def test_rejected_model_reply_falls_back_to_the_deterministic_reply(monkeypatch)
     fake = types.ModuleType("scripts.lib.cio_plan_enrichment")
     fake.load_llm_policy = lambda: {}
 
-    def call_governed_llm(messages, policy, use_pro=False):
+    def call_governed_llm(messages, policy, use_pro=False, task_type=None):
         calls.append(messages)
         return {"ok": True, "model": "fake-flash",
                 "content": "Your cash and holdings are not available (all empty). September is historically weak."}

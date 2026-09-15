@@ -284,7 +284,7 @@ def _flash(monkeypatch, payload: dict):
     import scripts.lib.cio_plan_enrichment as pe
     calls = []
 
-    def fake(messages, policy, use_pro=False):
+    def fake(messages, policy, use_pro=False, task_type=None):  # 2026-09-14: callers name their task type
         calls.append(messages)
         return {"ok": True, "content": json.dumps(payload), "model": "test-flash"}
 

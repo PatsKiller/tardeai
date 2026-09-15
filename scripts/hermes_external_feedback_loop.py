@@ -51,7 +51,7 @@ def _rate(question, recommendation, dissent, outcome):
               f"Realized outcome since (if any): {json.dumps(outcome)}\n"
               f'Return ONLY JSON: {{"usefulness": 0.0-1.0, "rationale": "one sentence"}}')
     from hermes_llm_failover import chat_json
-    pack = chat_json(prompt, cloud_timeout_s=120)
+    pack = chat_json(prompt, cloud_timeout_s=120, task_type="usefulness_score")
     data = json.loads(pack["content"])
     usefulness = max(0.0, min(1.0, float(data["usefulness"])))
     return usefulness, str(data.get("rationale", ""))[:240], pack

@@ -80,7 +80,8 @@ class BridgeHermesResearchBackend:
         # Use registered advisory_desk caller; process_id hermes_research_job
         # produced non-empty Flash content in host smokes (vs empty with long prompts).
         self.agent = agent or os.getenv("HERMES_BRIDGE_AGENT", "advisory_desk")
-        self.task_type = task_type or os.getenv("HERMES_BRIDGE_TASK", "advisory_opinion")
+        # 2026-09-14: own task type -> own process id (cio_hermes_research) for cost attribution.
+        self.task_type = task_type or os.getenv("HERMES_BRIDGE_TASK", "hermes_research_job")
         self.process_id = process_id or os.getenv(
             "HERMES_BRIDGE_PROCESS", "advisory_desk_opinion",
         )

@@ -194,7 +194,7 @@ class BridgeGoldenJudge:
         self.timeout_s = timeout_s
         self.max_tokens = max_tokens
         self.agent = os.getenv("HERMES_JUDGE_AGENT", "advisory_desk")
-        self.task_type = os.getenv("HERMES_JUDGE_TASK", "advisory_opinion")
+        self.task_type = os.getenv("HERMES_JUDGE_TASK", "golden_judge")  # 2026-09-14: own process id
         self.process_id = os.getenv("HERMES_JUDGE_PROCESS", "advisory_desk_opinion")
 
     def score(
