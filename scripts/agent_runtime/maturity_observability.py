@@ -500,8 +500,16 @@ def _definition_records() -> dict[str, Any]:
 # READ ONLY: it only calls the reader's list_* methods (no driver import, no
 # writes) and fails closed to REPOSITORY_EVIDENCE on ANY error or empty result.
 
-_RUNTIME_MAX_RUNS = 2000          # bound the snapshot cost; sample_size is a
-_RUNTIME_PAGE = 200               # lower bound if an agent exceeds this.
+# Discovery pages run METADATA only (cheap: one query per page), so it must be wide
+# enough to reach every agent. A single global "newest N runs" window is not: runs are
+# ordered started_at DESC, and one chatty agent buries the rest (2026-09-15 measurement —
+# concierge's newest run was row 1 of 3,789 and sentinel's was row 3,776, so 15 of 17
+# agents never entered a 2,000-row window and the board called them REPOSITORY_EVIDENCE).
+_RUNTIME_MAX_RUNS = 20000         # metadata rows scanned to discover agents
+_RUNTIME_PAGE = 200               # page size for that scan
+# The expensive work (3 detail queries per run) is bounded PER AGENT instead, so no agent
+# can crowd out another and sample_size is a lower bound when an agent exceeds this.
+_RUNTIME_PER_AGENT_RUNS = 200
 
 # Runtime rows use deployment-suffixed agent ids (e.g. "sentinel_shadow",
 # "darwin_shadow"); the maturity board keys agents by their canonical id
@@ -593,6 +601,7 @@ def collect_runtime_evidence(
     reader: Any,
     *,
     max_runs: int = _RUNTIME_MAX_RUNS,
+    per_agent_runs: int = _RUNTIME_PER_AGENT_RUNS,
 ) -> tuple[dict[str, dict[str, Any]], dict[str, dict[str, Any]]]:
     """Aggregate the read-only reader's rows into (runtime_evidence, review_records)
     keyed by agent_id, for agents that actually have runtime rows.
@@ -613,16 +622,30 @@ def collect_runtime_evidence(
     if reader is None:
         return {}, {}
     try:
-        runs: list[Mapping[str, Any]] = []
+        # Pass 1 — discovery: page run metadata and keep each agent's newest run ids.
+        # Bucketing per agent is what makes every agent visible; a single global window
+        # silently drops whichever agents sort last.
+        by_agent: dict[str, list[str]] = {}
         offset = 0
-        while len(runs) < max_runs:
+        scanned = 0
+        while scanned < max_runs:
             page = list(reader.list_runs(limit=_RUNTIME_PAGE, offset=offset))
             if not page:
                 break
-            runs.extend(page)
+            for row in page:
+                rid = str(row.get("run_id") or "")
+                if not rid:
+                    continue
+                bucket = by_agent.setdefault(str(row.get("agent_id") or ""), [])
+                if len(bucket) < per_agent_runs:   # list_runs is newest-first
+                    bucket.append(rid)
+            scanned += len(page)
             offset += len(page)
             if len(page) < _RUNTIME_PAGE:
                 break
+
+        # Pass 2 — detail, bounded per agent rather than globally.
+        run_ids = [rid for bucket in by_agent.values() for rid in bucket]
 
         engaged: dict[str, set[str]] = {}                 # canonical agent → artifact_ids it touched
         artifact_producer: dict[str, str] = {}            # artifact_id → canonical producer
@@ -632,10 +655,7 @@ def collect_runtime_evidence(
             if agent and artifact_id:
                 engaged.setdefault(agent, set()).add(artifact_id)
 
-        for run in runs:
-            run_id = run.get("run_id")
-            if not run_id:
-                continue
+        for run_id in run_ids:
             for art in reader.list_artifacts(run_id):
                 aid = str(art.get("artifact_id") or "")
                 prod = _normalize_agent_id(art.get("producer_agent_id"))
