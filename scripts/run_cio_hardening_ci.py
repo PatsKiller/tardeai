@@ -1408,6 +1408,13 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-15 remediation follow-ups: CIO desk delivery receipt, daily LLM spend cap proven (E-10).
+        "remediation_followups_20260915",
+        [
+            "tests/test_health_llm_spend_receipt_20260915.py",
+        ],
+    ),
+    (
         # 2026-09-14: promote left the dev tree, where cron and the units run, on the old commit, and a
         # refused fast-forward was reported as success.
         "deploy_ff_dev_tree",

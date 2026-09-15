@@ -3314,7 +3314,64 @@ def collect_store_consistency() -> list[dict]:
         return []
 
 
+SPEND_RECEIPT = PROJECT_ROOT / "data" / "runtime" / "llm_spend_report_last_daily.json"
+
+
+def spend_receipt_finding(receipt: dict | None, now_utc: datetime, cap_usd: float, *, max_age_h: float = 26.0) -> dict | None:
+    """E-10 (2026-09-15): the $2/day actual-spend policy is proven every day, not spot-checked.
+
+    Returns None when the daily spend report ran within max_age_h, was sent, and reported actual USD
+    at or under the cap; otherwise the reason.
+    """
+    if not receipt:
+        return {"reason": "no daily spend report receipt"}
+    try:
+        ran = datetime.fromisoformat(str(receipt.get("ran_at")).replace("Z", "+00:00"))
+    except Exception:
+        return {"reason": "receipt has no readable ran_at"}
+    age_h = (now_utc - ran).total_seconds() / 3600.0
+    if age_h > max_age_h:
+        return {"reason": f"daily spend report last ran {age_h:.0f}h ago", "age_hours": round(age_h, 1)}
+    if not receipt.get("sent"):
+        return {"reason": "daily spend report ran but was not sent", "key": receipt.get("key")}
+    try:
+        usd = float(receipt.get("usd"))
+    except (TypeError, ValueError):
+        return {"reason": "receipt has no actual USD"}
+    if usd > cap_usd + 1e-9:
+        return {"reason": f"actual LLM spend ${usd:.2f} exceeded the ${cap_usd:.2f}/day cap", "usd": usd, "key": receipt.get("key")}
+    return None
+
+
+def collect_llm_spend_receipt() -> list[dict]:
+    out: list[dict] = []
+    try:
+        # The ruling cap is the one host file (AGENTS: ~/.config/tradeai/llm_global_daily_usd_cap.env, $2.00).
+        # The process environment is not authoritative: on 2026-09-15 .env and the runtime env still
+        # carried 0.50 and agent-operator.env 0.25.
+        try:
+            from lib.llm_spend import configured_global_cap
+            cap = configured_global_cap()
+        except Exception:
+            cap = None
+        if cap is None:
+            out.append(_f("execution_health", "llm_spend_cap_file_missing", "warning",
+                          "~/.config/tradeai/llm_global_daily_usd_cap.env is missing or unreadable — the "
+                          "daily LLM spend cap cannot be proven"))
+            return out
+        receipt = json.loads(SPEND_RECEIPT.read_text()) if SPEND_RECEIPT.exists() else None
+        f = spend_receipt_finding(receipt, datetime.now(timezone.utc), cap)
+        if f:
+            sev = "critical" if "exceeded" in f["reason"] else "warning"
+            out.append(_f("execution_health", "llm_spend_policy_unproven", sev,
+                          f"LLM spend policy not proven today: {f['reason']}", **f))
+    except Exception as e:
+        out.append(_f("execution_health", "collector_error", "info", f"spend receipt check error: {e}"))
+    return out
+
+
 COLLECTORS = [
+    collect_llm_spend_receipt,
     collect_store_consistency,
     collect_data_quality,
     collect_trade_ai_session,
