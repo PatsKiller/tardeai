@@ -1337,6 +1337,12 @@ GATES = [
         "watch_lock_holders",
         [
             "tests/test_watch_lock_holders_20260915.py",
+        # 2026-09-15: watch-tier pullback proposals expired in the pass that created them, and the watchlist
+        # bridge created proposals the enrichment loop expired minutes later (>15% from live).
+        "watchlist_proposal_churn",
+        [
+            "tests/test_pullback_reconcile_tiers_20260915.py",
+            "tests/test_watchlist_bridge_entry_drift_20260915.py",
         ],
     ),
     (
