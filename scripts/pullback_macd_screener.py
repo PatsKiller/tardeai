@@ -491,13 +491,19 @@ def _expire_duplicate_lane_proposals() -> int:
     return retired
 
 
-def _reconcile_proposals(cands: list[dict]) -> int:
+def _reconcile_proposals(cands: list[dict], proposal_tiers=None) -> int:
     """Retire PENDING pullback proposals that no longer FIT THE PLAN — run each intraday monitor pass.
-    A proposal is expired when the name is no longer a confirmed trigger (MACD/VWAP/pullback no longer
-    line up) or live price broke the thesis (<= stop or >= target). Still-fitting ones are refreshed by
-    _emit_proposals; this just prunes the ones that fell out so the queue reflects only valid setups."""
+    A proposal is expired when the name is no longer in a tier that may carry a proposal (MACD/VWAP/
+    pullback no longer line up) or live price broke the thesis (<= stop or >= target). Still-fitting
+    ones are refreshed by _emit_proposals; this just prunes the ones that fell out.
+
+    2026-09-15: the tiers that keep a proposal alive are the SAME tiers _emit_proposals creates from
+    (config `proposal_tiers`). Checking only `trigger` while emitting `trigger` + `watch` expired every
+    watch-tier proposal in the same pass that created it (1,075 of 1,156 auto proposals in 30 days,
+    AES re-proposed 152 times), so no pullback setup ever stayed in front of the operator."""
+    tiers = set(proposal_tiers or ["trigger"])
     by_sym = {c["sym"]: c for c in cands}
-    trig = {c["sym"] for c in cands if c["tier"] == "trigger"}
+    trig = {c["sym"] for c in cands if c["tier"] in tiers}
     rows = _db("""SELECT id, symbol, proposed_stop, proposed_target1 FROM paper_trade_proposals
                   WHERE status='PENDING' AND COALESCE(discovery_source,'')='pullback_macd'""",
                fetch="all") or []
@@ -507,7 +513,8 @@ def _reconcile_proposals(cands: list[dict]) -> int:
         c = by_sym.get(sym)
         reason = None
         if sym not in trig:
-            reason = "no longer a confirmed trigger (MACD inflection / VWAP / pullback no longer fit)"
+            reason = ("no longer a confirmed trigger or watch setup "
+                      "(MACD inflection / VWAP / pullback no longer fit)")
         elif c:
             px = _f(c.get("price"))
             stop, tgt = _f(r.get("proposed_stop")), _f(r.get("proposed_target1"))
@@ -687,7 +694,7 @@ def run(dry: bool = False, limit: int = 0, as_json: bool = False, monitor: bool 
         # Keep standing pullback proposals in sync with the live setup: refresh those that still fit
         # (done inside _emit_proposals), expire those that no longer fit the plan.
         if cfg.get("reconcile_proposals", True):
-            retired = _reconcile_proposals(cands)
+            retired = _reconcile_proposals(cands, cfg.get("proposal_tiers") or ["trigger"])
         dup_retired = _expire_duplicate_lane_proposals()
         if dup_retired:
             print(f"  [proposals] expired {dup_retired} duplicate lane row(s)")

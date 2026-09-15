@@ -1286,6 +1286,13 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-15: 573 refresh jobs sat QUEUED since 09-13 with no worker; 513 packet inserts failed on NaN json.
+        "watch_refresh_queue_drain",
+        [
+            "tests/test_watch_refresh_queue_drain_20260915.py",
+        ],
+    ),
+    (
         # The overnight lane's schedule (22:00-05:35 ET) and its DeepSeek peak
         # guard (10:00-21:00 ET) never overlapped, so it had never once run.
         "overnight_deep_peak_guard",
@@ -1332,10 +1339,12 @@ GATES = [
         ],
     ),
     (
-        # 2026-09-15: 573 refresh jobs sat QUEUED since 09-13 with no worker; 513 packet inserts failed on NaN json.
-        "watch_refresh_queue_drain",
+        # 2026-09-15: watch-tier pullback proposals expired in the pass that created them, and the watchlist
+        # bridge created proposals the enrichment loop expired minutes later (>15% from live).
+        "watchlist_proposal_churn",
         [
-            "tests/test_watch_refresh_queue_drain_20260915.py",
+            "tests/test_pullback_reconcile_tiers_20260915.py",
+            "tests/test_watchlist_bridge_entry_drift_20260915.py",
         ],
     ),
     (
