@@ -1400,6 +1400,14 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-15 operator: material-change notices said a name moved but not which way, quoted web-page
+        # titles as catalysts and gave no watchlist origin, strategy, plan or CIO view.
+        "material_change_notice_context",
+        [
+            "tests/test_material_change_notice_context_20260915.py",
+        ],
+    ),
+    (
         # 2026-09-14: promote left the dev tree, where cron and the units run, on the old commit, and a
         # refused fast-forward was reported as success.
         "deploy_ff_dev_tree",
