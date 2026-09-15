@@ -61,8 +61,8 @@ MONITORED_COMPONENTS = [
      "retry_cmd": ".venv/bin/python scripts/finviz_screener_runner.py --apply",
      "downstream": "scanner input data"},
     {"component": "news_ingestion", "display": "News Ingestion",
-     "schedule": ["30 6,12 * * 1-5", "30 18 * * *"], "log_file": "news_ingestion.log",
-     "max_age_min": 480, "max_runtime_sec": 600, "critical": True,
+     "schedule": ["30 12 * * 1-5", "30 0 * * *"], "log_file": "news_ingestion.log",
+     "max_age_min": 780, "max_runtime_sec": 600, "critical": True,
      "retry_cmd": ".venv/bin/python scripts/news_ingestion.py --priority",
      "downstream": "catalyst detection, news alerts"},
 
