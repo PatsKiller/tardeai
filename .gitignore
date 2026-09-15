@@ -209,3 +209,6 @@ evidence/whole_site/
 # Its dist twin is already ignored by the bare `dist/` rule above; this restores
 # the symmetry. Release copies are authored by the deploy and are unaffected.
 apps/command-center-v3/build-meta.json
+
+# 2026-09-14: weekly report archive written by scripts/reports_portal.py (generated output, not source).
+/archive/weekly/
