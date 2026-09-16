@@ -689,6 +689,14 @@ GATES = [
             # called achieved, and operator_ask counted per goal so the day's
             # second question is no longer refused human escalation.
             "tests/test_goal_termination_20260916.py",
+            # 2026-09-16 P3: a CUMULATIVE per-goal budget, keyed (goal_id,
+            # predicate_version). Every budget before this one was PER INVOCATION
+            # and reset every lap, so a goal could lap forever and accumulate
+            # nothing. Fails closed on the search_budget rule -- an unreadable
+            # ledger DENIES and is never rebuilt as a fresh zero counter -- and
+            # is enforced at enqueue in the producer, never inside MvlRuntime,
+            # so an agent can never extend its own budget.
+            "tests/test_goal_budget_20260916.py",
             # 2026-09-13 litmus tests: answers are symbol-scoped, drawn from house facts
             # (cash/sectors/policy read from the snapshot), and carry a Sources line.
             "tests/test_operator_answers_use_house_facts_20260913.py",

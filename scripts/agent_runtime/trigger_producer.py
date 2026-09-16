@@ -52,9 +52,39 @@ def _configured_sources(raw: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
-def produce_once(store: TriggerIntakeStore, *, sources: list[str] | None = None) -> dict[str, Any]:
+def _goal_budget():
+    """The cumulative per-goal budget module, imported either way round.
+
+    This file puts ROOT/scripts on sys.path; callers that put ROOT on it instead
+    import the same module as ``scripts.lib.goal_budget``. Same fallback shape as
+    ``search_budget._state_root``.
+    """
+    try:
+        from lib import goal_budget  # type: ignore
+    except ImportError:
+        from scripts.lib import goal_budget  # type: ignore
+    return goal_budget
+
+
+def produce_once(
+    store: TriggerIntakeStore,
+    *,
+    sources: list[str] | None = None,
+    budget_root: Path | None = None,
+) -> dict[str, Any]:
+    """Poll the read-only sources and enqueue the laps the budget still allows.
+
+    THIS is where the cumulative per-goal budget binds (P3), because this is
+    where a lap is AUTHORISED. It is deliberately not inside ``MvlRuntime``:
+    that code runs as the agent, and an agent that can reach its own ledger can
+    extend its own budget. By the time the runtime sees a job, the lap has
+    already been paid for here.
+    """
     selected = sources or _configured_sources(os.environ.get(PRODUCER_SOURCES_ENV, DEFAULT_SOURCES))
+    gb = _goal_budget()
     enqueued = duplicates = 0
+    budget_denied = 0
+    budget_unavailable = 0
     blocked: list[str] = []
     cursors_held: list[str] = []
     per_agent_depth: dict[str, int] = {}
@@ -68,6 +98,7 @@ def produce_once(store: TriggerIntakeStore, *, sources: list[str] | None = None)
             blocked.append(source_id)
         accepted = 0
         dropped_for_capacity = 0
+        held_for_budget = 0
         for candidate in result.candidates:
             agent = FLEET.get(candidate.agent_id)
             if agent is None:
@@ -76,6 +107,26 @@ def produce_once(store: TriggerIntakeStore, *, sources: list[str] | None = None)
             queued = int(stats.get("queued") or 0)
             if queued >= agent.max_queue_depth:
                 dropped_for_capacity += 1
+                continue
+            # Cumulative per-goal budget, charged BEFORE the row exists. A
+            # candidate carrying no goal_id is not a lap of a goal and passes
+            # through unbudgeted; one that names a goal is charged here or not
+            # enqueued at all.
+            verdict = gb.gate_candidate(candidate.payload, root=budget_root)
+            if not verdict["allowed"]:
+                if "BUDGET_UNAVAILABLE" in str(verdict.get("reason") or ""):
+                    # Transient: the ledger is illegible, so whether this goal has
+                    # budget is UNKNOWN and unknown means no. Hold the cursor —
+                    # restoring the ledger must let these same laps resume, and an
+                    # adapter that has advanced past them never offers them again.
+                    budget_unavailable += 1
+                    held_for_budget += 1
+                else:
+                    # Terminal for this (goal, predicate_version): the allowance is
+                    # spent and only an operator or a predicate bump changes that.
+                    # Holding the cursor forever would wedge the source for every
+                    # other candidate behind it. The refusal is on disk as a receipt.
+                    budget_denied += 1
                 continue
             outcome = store.enqueue(candidate)
             if outcome == EnqueueOutcome.ENQUEUED:
@@ -91,7 +142,7 @@ def produce_once(store: TriggerIntakeStore, *, sources: list[str] | None = None)
         # discarded 1,088 of 1,344 candidates (watch:artifacts 640, outcomes:recommendations
         # all 192, watch:refresh_jobs 128, research:hermes 128) while the cursors marched on.
         # Holding the cursor costs one re-fetch per run; the rows are re-read when capacity frees.
-        if dropped_for_capacity:
+        if dropped_for_capacity or held_for_budget:
             cursors_held.append(source_id)
         else:
             for sid, cursor_key, cursor_value_new in result.cursor_updates:
@@ -103,7 +154,8 @@ def produce_once(store: TriggerIntakeStore, *, sources: list[str] | None = None)
                 "candidates": len(result.candidates),
                 "accepted": accepted,
                 "dropped_for_capacity": dropped_for_capacity,
-                "cursor_held": bool(dropped_for_capacity),
+                "held_for_budget": held_for_budget,
+                "cursor_held": bool(dropped_for_capacity or held_for_budget),
             }
         )
 
@@ -112,6 +164,8 @@ def produce_once(store: TriggerIntakeStore, *, sources: list[str] | None = None)
         "contract": "agent-runtime-trigger-producer-v1",
         "enqueued": enqueued,
         "duplicates": duplicates,
+        "budget_denied": budget_denied,
+        "budget_unavailable": budget_unavailable,
         "blocked_sources": blocked,
         "cursors_held": cursors_held,
         "dropped_for_capacity": sum(int(d.get("dropped_for_capacity") or 0) for d in details),
@@ -139,6 +193,8 @@ def main(argv: list[str] | None = None) -> int:
                 "enqueued": 0,
                 "duplicates": 0,
                 "blocked_sources": ["NOT_CONFIGURED"],
+                "budget_denied": 0,
+                "budget_unavailable": 0,
                 "expired_leases_returned": 0,
                 "per_agent_depth": {},
                 "sources": [],
@@ -160,6 +216,8 @@ def main(argv: list[str] | None = None) -> int:
             "enqueued": 0,
             "duplicates": 0,
             "blocked_sources": ["UNAVAILABLE"],
+            "budget_denied": 0,
+            "budget_unavailable": 0,
             "expired_leases_returned": 0,
             "per_agent_depth": {},
             "sources": [],
