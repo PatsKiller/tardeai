@@ -673,6 +673,12 @@ GATES = [
             # An alert must survive past its first send: one shared transition
             # engine instead of seven private fingerprint blocks.
             "tests/test_alert_transition_20260916.py",
+            # 2026-09-16 P5: the need ledger, and the independence defect under it.
+            # score_lap keyed independence on the RETRIEVAL CHANNEL, so six
+            # publishers behind one search engine scored as one source while one
+            # wire story reached through two engines scored as two. Every
+            # min_sources >= 2 predicate read that number.
+            "tests/test_goal_need_ledger_20260916.py",
             # 2026-09-13 litmus tests: answers are symbol-scoped, drawn from house facts
             # (cash/sectors/policy read from the snapshot), and carry a Sources line.
             "tests/test_operator_answers_use_house_facts_20260913.py",
