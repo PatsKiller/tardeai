@@ -180,7 +180,28 @@ CALLER_DAILY_CAPS: dict[str, int] = {
 }
 
 
-def caller_daily_cap(caller: str) -> int:
+#: Providers that cost nothing per call (self-hosted). A per-caller daily cap
+#: exists to ration MONEY between callers; with no money at stake there is
+#: nothing to ration between them, and the provider's own daily ceiling is the
+#: only real bound.
+#:
+#: Measured 2026-09-16: without this, the default cap of 25 would apply to a
+#: self-hosted provider with a 10,000/day allowance, refusing it after the 25th
+#: question of the day — reproducing the very CALLER_DAILY_CAP refusal that the
+#: free path exists to answer, on the provider that exists to answer it.
+FREE_PROVIDERS: frozenset[str] = frozenset({"searxng"})
+
+
+def caller_daily_cap(caller: str, provider: Optional[str] = None) -> int:
+    """Per-caller daily ceiling.
+
+    ``provider`` is optional and defaults to the paid-sized cap, which is the
+    safe default for a metered provider and keeps every existing call site
+    (which passes a caller only) behaving exactly as before.
+    """
+    if provider and provider in FREE_PROVIDERS:
+        return int(DEFAULT_LIMITS.get(provider, {}).get("daily",
+                                                        CALLER_DAILY_CAPS["default"]))
     return CALLER_DAILY_CAPS.get(caller, CALLER_DAILY_CAPS["default"])
 
 
@@ -341,6 +362,60 @@ def write_denial_receipt(provider: str, reason: str, *, spilled_to: Optional[str
         return None
 
 
+def _same_receipt(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    """Identity of a receipt row: who was refused, why, and exactly when."""
+    return all(str(a.get(k) or "") == str(b.get(k) or "")
+               for k in ("schema", "provider", "reason", "ts", "caller", "kind"))
+
+
+def mark_spilled(receipt: dict[str, Any], spilled_to: str, *,
+                 root: Optional[Path] = None) -> bool:
+    """Record where a refused question actually went, after the fact.
+
+    ``write_denial_receipt`` runs at the moment of refusal, when the answer is
+    not yet known: a caller refused by CALLER_DAILY_CAP writes ``spilled_to:
+    null`` and only afterwards asks the free provider. But that field's whole
+    purpose is to say WHICH lane answered instead — a counter can only say how
+    many questions were lost. Leaving it null once a lane HAS answered makes a
+    never-asked-anywhere monitor count answered questions as lost.
+
+    Matches the exact row the writer returned (provider, reason, ts, caller,
+    kind — last match wins) so an amend can never touch another caller's row.
+    Never raises. Returns False and changes nothing on a corrupt ledger, on no
+    match, or when the row already names a lane (an answer is never overwritten).
+    """
+    if not receipt or not spilled_to:
+        return False
+    path = budget_path(root)
+    try:
+        with _exclusive(path):
+            try:
+                doc = _load(path)
+            except BudgetUnavailable:
+                return False                 # never rebuild a corrupt ledger
+            rows = doc.get("denial_receipts")
+            if not isinstance(rows, list):
+                return False
+            for row in reversed(rows):
+                if not isinstance(row, dict) or not _same_receipt(row, receipt):
+                    continue
+                if row.get("spilled_to"):
+                    return False
+                row["spilled_to"] = str(spilled_to)
+                detail = row.get("detail")
+                if not isinstance(detail, dict):
+                    detail = row["detail"] = {}
+                detail["spilled_after_refusal"] = True
+                try:
+                    _save(path, doc)
+                except Exception:
+                    return False
+                return True
+            return False
+    except Exception:
+        return False
+
+
 def denial_receipts(*, root: Optional[Path] = None) -> list[dict[str, Any]]:
     """Inline receipt rows, oldest first. Empty on a missing or unreadable ledger."""
     try:
@@ -439,7 +514,7 @@ def check(provider: str, *, caller: str = "default",
                                   now or datetime.now(timezone.utc))
     except Exception:
         return {"allowed": False, "reason": "BUDGET_UNAVAILABLE", "status": st}
-    if used >= caller_daily_cap(caller):
+    if used >= caller_daily_cap(caller, provider):
         return {"allowed": False, "reason": "CALLER_DAILY_CAP", "status": st}
     return {"allowed": True, "reason": "OK", "status": st}
 
@@ -476,7 +551,7 @@ def try_consume(provider: str, *, caller: str = "default",
                           else "MONTHLY_RESERVE_ONLY")
                 return {"allowed": False, "reason": reason, "status":
                         _status_from_doc(provider, doc, now, path)}
-            if _caller_daily_used(doc, provider, caller, now) >= caller_daily_cap(caller):
+            if _caller_daily_used(doc, provider, caller, now) >= caller_daily_cap(caller, provider):
                 _apply_record(doc, provider, allowed=False, caller=caller, now=now)
                 try:
                     _save(path, doc)

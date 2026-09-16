@@ -98,7 +98,11 @@ def test_collect_reads_injected_ledgers_and_counts(tmp_path):
                              "outcome": "no_answer", "started": _ago(1)}) + "\n")
     q.write_text(json.dumps({"gap_id": "g2", "domain": "d", "subject": "S", "ts": _ago(4), "status": "open"}) + "\n")
     g.write_text("")
-    rep = cgr.collect(now=NOW, receipts_path=r, queue_path=q, research_path=g, retired=RETIRED)
+    # denials=[] for the same reason the other three ledgers are injected: an
+    # un-injected ledger falls back to the PRODUCTION one, and this test's exact
+    # counts would then depend on the real machine's refusals on the real date.
+    rep = cgr.collect(now=NOW, receipts_path=r, queue_path=q, research_path=g,
+                      retired=RETIRED, denials=[])
     assert rep["schema"] == cgr.SCHEMA
     assert rep["receipts"] == 1 and rep["queued_gaps"] == 1
     assert rep["finding_count"] == 2
@@ -108,7 +112,7 @@ def test_collect_reads_injected_ledgers_and_counts(tmp_path):
 
 def test_missing_ledgers_are_an_empty_report_not_a_crash(tmp_path):
     rep = cgr.collect(now=NOW, receipts_path=tmp_path / "a", queue_path=tmp_path / "b",
-                      research_path=tmp_path / "c", retired=RETIRED)
+                      research_path=tmp_path / "c", retired=RETIRED, denials=[])
     assert rep["finding_count"] == 0
 
 
