@@ -1,5 +1,5 @@
 Status:      ACTIVE
-as_of:       2026-08-30
+as_of:       2026-08-30 (Telegram four-channel curation target added 2026-09-16 — Revision 7)
 Measured at: not measured — target spec, not runtime
 Canonical repo path: docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md
 Authority:   full-maturity target (judgment, commitment, scoring, self-repair)
@@ -267,3 +267,32 @@ None of those five can be faked by a template, and none requires you to read a s
 Steps 1 and 2 are plumbing you have most of. Step 3 is a decision about cost and a lane that was
 switched off, not new architecture. Steps 4 and 5 are genuinely new and are where the agent stops
 being a very good reporter and starts being an analyst who can be wrong.
+
+---
+
+## Telegram four-channel curation — target added 2026-09-16 (Revision 7)
+
+Dated package: `docs/architecture/maturity_gap_closure_20260916/` (`CIO_FUTURE_2026-09-16-1759`).
+The operator's 10/10 target for the four outbound Telegram surfaces is a **curation** target, not a
+new cortex layer — it is the delivery half of maturity, added beside ①–④ above without lowering that
+bar.
+
+**Target architecture:** CIO Desk = CIO-origin only · Trade AI DM = actionable market + capital-risk
+(IMMEDIATE / DIGEST) · Proposal Decisions = proposals + approvals · John OpenClaw = personal
+assistant. One contract (`02_ROUTING_GOVERNANCE_PROPOSAL.md`, operator-APPROVED), mechanically
+enforced by a code-gate that fails on a non-conforming producer.
+
+**Seven dimensions at 10:** D1 zero misroutes · D2 zero duplicates (idempotency key `(producer,
+type, subject, observation_version)`) · D3 every IMMEDIATE actionable · D4 action+falsifier+evidence
+on every phone message · D5 standing book (holdings/exposures/cash/initiatives/earnings/dividends)
+on the phone daily, matching CC · D6 governance test-enforced · D7 per-device delivery visible with
+an undelivered-monitor.
+
+**Single owner:** `guardian` goal `goal_798ce2450f61` (DOCKED today) — the deterministic router and
+editor stay as the mechanical floor; the goal holds one agent responsible for *continuous curation
+to perfection*.
+
+**Build order:** A verify (re-export Proposal Decisions post-09-14; device inventory) → B quick
+fixes (B1 dedupe done · B2 STOP HEALTH batch · B3 held label — B2/B3 merged, not yet served) →
+C surface (C1 portfolio brief · C2 earnings/dividend "this week" · C3 entry IMMEDIATE) →
+D harden (D1 code-gate · D2 volume budget 30/day · D3 per-device delivery).
