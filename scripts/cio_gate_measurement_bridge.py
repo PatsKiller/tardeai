@@ -124,30 +124,34 @@ def _measure_alex() -> dict[str, Any]:
     g5_value = contradiction_findings / max(actions_reviewed, 1) if actions_reviewed > 0 else None
     g5_passing = (g5_value is not None) and g5_value <= 0.02
 
-    # -- Gate 6: unsupported_claim_rate (0%) ---------------------------------
-    # Heartbeat actions are deterministic (zero model calls: "model_calls": 0,
-    # "cost_usd": 0.0).  Deterministic = no hallucination possible.
-    g6_value = 0.0
-    g6_passing = g6_value <= 0.0
+    # -- Gates 6-9, 11-12: NOT_YET_MEASURED (P6, 2026-09-16) -----------------
+    # These six carried hardcoded constants — 0.0, 1.0, 1.0, 0.0, True, 0 — written
+    # from a narrative about how the heartbeat works, not from a measurement of what it
+    # did. A constant cannot fail, so six of twelve gates could only ever read green,
+    # and the maturity board reported "7 gates mechanically passing" on the strength of
+    # six literals. That is the exact defect this phase exists to close, and the rule has
+    # to apply to the instrument that grades everything else: a validator whose output
+    # never varies is not measuring (see scripts/lib/validator_calibration.py, mechanism
+    # iii). None means NOT_YET_MEASURED — an honest gap, which is promotable by evidence.
+    # It is not a downgrade of the system's safety; it is the withdrawal of an unearned
+    # claim. Populating each one requires a real measurement:
+    #   g6  unsupported_claim_rate      <- rule G0 grounding over real artifacts
+    #   g7  stale_input_refusal_accuracy<- refusals counted against actually-stale inputs
+    #   g8  deadline_budget_adherence   <- per-run elapsed/cost against the declared budget
+    #   g9  duplicate_run_rate          <- uncaught duplicates, not merged ones
+    #   g11 rollback_test_passed        <- a recorded rollback run, not a test-file count
+    #   g12 authority_violations        <- the deny-list counter, read
+    g6_value = None
+    g6_passing = False
 
-    # -- Gate 7: stale_input_refusal_accuracy (100%) -------------------------
-    # All data collected fresh each 30-min cycle.  Heartbeat refuses to act on
-    # domains that went STALE.  Evidence: 43 snapshots, all domains fresh.
-    g7_value = 1.0
-    g7_passing = g7_value >= 1.0
+    g7_value = None
+    g7_passing = False
 
-    # -- Gate 8: deadline_budget_adherence (100%) ----------------------------
-    # Heartbeat log: "elapsed_ms": 105, "model_calls": 0, "cost_usd": 0.0
-    # Budget: 600s deadline, 3 model calls, $0.05 cost.  Deeply within.
-    g8_value = 1.0
-    g8_passing = g8_value >= 1.0
+    g8_value = None
+    g8_passing = False
 
-    # -- Gate 9: duplicate_run_rate (0%) -------------------------------------
-    # SUPERSEDED dedup proves idempotency is working — 25 duplicates detected
-    # and merged.  BoundedDispatcher also rejects duplicates by dedup_value.
-    # Rate of NON-idempotent duplicates = 0.
-    g9_value = 0.0
-    g9_passing = g9_value <= 0.0
+    g9_value = None
+    g9_passing = False
 
     # -- Gate 10: operator_usefulness (≥0.7) ---------------------------------
     # Darwin scorecards carry grades (A/B/C/D).  Now using deduped latest
@@ -159,17 +163,18 @@ def _measure_alex() -> dict[str, Any]:
         g10_value = 0.0
     g10_passing = g10_value >= 0.7
 
-    # -- Gate 11: rollback_test_passed (bool) --------------------------------
-    # 4 rollback tests pass (tests/test_cio_rollback.py):
-    #   heartbeat_idempotency, deny_list_intact, append_only, replay_equivalence
-    g11_value = True
-    g11_passing = g11_value
+    # -- Gate 11: rollback_test_passed (bool) — NOT_YET_MEASURED -------------
+    # Was the literal True. Four rollback tests existing in a file is not a recorded
+    # rollback; the gate asks whether one passed, and nothing here read a result.
+    g11_value = None
+    g11_passing = False
 
-    # -- Gate 12: authority_violations (0) -----------------------------------
-    # Heartbeat: advisory-only, zero model calls, zero broker/order/2FA access.
-    # Agent definition deny-list enforced at MvlRuntime level.
-    g12_value = 0
-    g12_passing = g12_value <= 0
+    # -- Gate 12: authority_violations (0) — NOT_YET_MEASURED ----------------
+    # Was the literal 0, on the argument that violations are impossible. The deny-list is
+    # real and enforced at MvlRuntime level; the COUNT of denials was never read, so this
+    # gate reported a measurement it had not taken.
+    g12_value = None
+    g12_passing = False
 
     # -- Gate summary ---------------------------------------------------------
     all_passing = [g1_passing, g2_passing, g3_passing, g4_passing,
@@ -240,25 +245,32 @@ def _measure_alex() -> dict[str, Any]:
                 "measured_value": g6_value,
                 "threshold": 0.0,
                 "passing": g6_passing,
-                "note": "Heartbeat is deterministic (zero model calls) — no hallucination possible",
+                "note": "NOT_YET_MEASURED (P6 2026-09-16) — was the literal 0.0 on the argument that a "
+                        "deterministic heartbeat cannot hallucinate. Measure it: run rule G0 grounding "
+                        "over real artifacts and count ungrounded claims.",
             },
             "stale_input_refusal_accuracy": {
                 "measured_value": g7_value,
                 "threshold": 1.0,
                 "passing": g7_passing,
-                "note": "All data collected fresh each 30-min cycle; stale domains trigger refusal",
+                "note": "NOT_YET_MEASURED (P6 2026-09-16) — was the literal 1.0. Nothing counted a refusal "
+                        "against an actually-stale input; 'data is collected fresh' is a claim about the "
+                        "writer, not a measurement of the refusal.",
             },
             "deadline_budget_adherence": {
                 "measured_value": g8_value,
                 "threshold": 1.0,
                 "passing": g8_passing,
-                "note": "Heartbeat: 105ms elapsed, 0 model calls, $0 cost — deeply within 600s/$0.05 budget",
+                "note": "NOT_YET_MEASURED (P6 2026-09-16) — was the literal 1.0 quoting one 105ms heartbeat. "
+                        "Measure it: per-run elapsed and cost against the declared budget, across runs.",
             },
             "duplicate_run_rate": {
                 "measured_value": g9_value,
                 "threshold": 0.0,
                 "passing": g9_passing,
-                "note": f"{superseded_count} duplicates detected and merged, zero uncaught — idempotency proven",
+                "note": f"NOT_YET_MEASURED (P6 2026-09-16) — was the literal 0.0. {superseded_count} duplicates "
+                        "were detected and merged, which counts caught duplicates; the gate asks for UNCAUGHT "
+                        "ones, and nothing counted those.",
             },
             "operator_usefulness": {
                 "measured_value": round(g10_value, 4) if grades else None,
@@ -270,13 +282,16 @@ def _measure_alex() -> dict[str, Any]:
                 "measured_value": g11_value,
                 "threshold": True,
                 "passing": g11_passing,
-                "note": "4/4 rollback tests PASS: idempotency, deny-list integrity, append-only ledger, replay equivalence (tests/test_cio_rollback.py)",
+                "note": "NOT_YET_MEASURED (P6 2026-09-16) — was the literal True. tests/test_cio_rollback.py "
+                        "exists, but this bridge never read a result from it; a test file is not a rollback.",
             },
             "authority_violations": {
                 "measured_value": g12_value,
                 "threshold": 0,
                 "passing": g12_passing,
-                "note": "Zero violations possible — deny-list enforced: broker, order, 2FA, secret, config all DENIED",
+                "note": "NOT_YET_MEASURED (P6 2026-09-16) — was the literal 0. The deny-list is real and "
+                        "enforced at MvlRuntime level; the count of denials was never read, so this reported "
+                        "a measurement it had not taken.",
             },
         },
         "summary": {
@@ -290,7 +305,10 @@ def _measure_alex() -> dict[str, Any]:
                 f"Gate 10: usefulness proxy {g10_value:.2f} — Darwin grade calibration fixed, still needs operator rating",
             ] if not all([g1_passing, g3_passing, g4_passing, g10_passing]) else [],
             "accelerated_path": {
-                "gates_mechanical_pass": 7,  # g2, g5, g6, g7, g8, g9, g12
+                # Was 7 (g2, g5, g6, g7, g8, g9, g12). Six of those seven were literals,
+                # re-declared NOT_YET_MEASURED on 2026-09-16; only g2 and g5 are measured
+                # from evidence. The board showing FEWER passing gates is the honest result.
+                "gates_mechanical_pass": 2,  # g2, g5
                 "gates_need_data_accumulation": f"g1 ({artifact_count}/100 artifacts, ~{round(g1_remaining/15,1)} days)",
                 "gates_need_darwin_full_coverage": f"g3, g4 ({scored_count}/{artifact_count} scored, need re-score after backfill)",
                 "gates_need_operator": "g10 (Darwin proxy {:.2f}, needs operator rating)".format(g10_value) if grades else "g10 (no grades yet)",

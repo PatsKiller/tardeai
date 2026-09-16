@@ -1802,6 +1802,28 @@ GATES = [
             "tests/test_hermes_librarian_retention_runner.py",
         ],
     ),
+    (
+        # 2026-09-16 P6 — tiered validation, blocking, non-self-certifying.
+        # Measured before this gate existed: independent_critic 31/31 accept with zero
+        # disagreements, agent_view_v1.critic_pass 346/346 True with critique_id None,
+        # research_quality 608 completions with zero FAILED, StructuralGoldenJudge
+        # returning literals on most of its rubric, cloud_consensus_verdict matching 0
+        # candidates in 16 runs a day. Four validators, none of which had ever contested
+        # anything, all reported as working — and CriticPanel, which is written correctly,
+        # had no production caller at all.
+        #
+        # These pin the four anti-blindness mechanisms and the third independence edge:
+        # a validator that passes a seeded known-bad is BLIND and its window is voided;
+        # zero disagreements at n>=30 is UNCALIBRATED; a constant score axis is not a
+        # measurement; PASS/REJECT survives as a DISAGREEMENT rather than being voted
+        # away; tier 2 spends nothing without the operator (§17); and reviewer != scorer
+        # is enforced in the contract AND against the durable rows.
+        "tiered_validation_20260916",
+        [
+            "tests/test_validator_calibration_20260916.py",
+            "tests/test_tiered_validation_20260916.py",
+        ],
+    ),
 ]
 
 
