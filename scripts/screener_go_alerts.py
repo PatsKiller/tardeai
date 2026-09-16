@@ -84,10 +84,12 @@ def format_alert(item: dict) -> str:
         f" · volume {num(r.get('volume'), '{:,.0f}')}",
         f"Score {num(r.get('score'), '{:.0f}')} · catalyst: {str(r.get('catalyst') or 'verified')[:120]}",
         "Meets Trade-AI scalp criteria: " + ", ".join(item["passed"]),
+        ("HELD — in book" if item.get("held") is True else "NOT HELD" if item.get("held") is False else ""),
         f"Scan {str(r.get('run_label') or '')} · {str(r.get('scanned_at') or '')[:16]}",
         "Advisory only — no order, size or stop is placed from this alert.",
         AUTHORITY,
     ]
+    lines = [l for l in lines if l]  # drop the empty held line when not determined
     return "\n".join(lines)
 
 
@@ -102,7 +104,8 @@ def rich_alert(item: dict) -> Optional[dict]:
     try:
         from lib.telegram_rich import go_alert  # noqa: PLC0415
 
-        return go_alert(item["row"], tier=item["tier"], passed=item["passed"]).render()
+        return go_alert(item["row"], tier=item["tier"], passed=item["passed"],
+                        held=item.get("held")).render()
     except Exception as exc:  # noqa: BLE001 -- formatting must never cost the alert
         print(f"rich GO layout unavailable ({type(exc).__name__}: {exc}); sending plain text", file=sys.stderr)
         return None
@@ -166,6 +169,14 @@ def main() -> int:
         return 2
     ledger = _load_ledger(LEDGER)
     plan = pick_alerts(rows, sent=set(ledger), session=session.isoformat(), criteria=load_criteria())
+    # B3: held/not-held triage label from the authoritative holdings universe.
+    try:
+        from lib.holdings_universe import held_equity_tickers  # noqa: PLC0415
+        held_set = set(held_equity_tickers())
+    except Exception:  # noqa: BLE001 -- a failed holdings read must not cost the alert
+        held_set = set()
+    for item in plan["alert"]:
+        item["held"] = str(item["row"]["symbol"]).upper() in held_set
     sent_now: list[str] = []
     if args.send:
         from telegram_alert import send_telegram  # noqa: PLC0415

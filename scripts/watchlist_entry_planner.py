@@ -23,6 +23,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
@@ -602,7 +603,7 @@ def _alert(sym, p, urg, price) -> bool:
         # sources as real links. The plain text above stays the fallback.
         try:
             from lib.telegram_rich import entry_alert
-            rich = entry_alert(_entry_item(sym, p, urg, price)).render()
+            rich = entry_alert(_entry_item(sym, p, urg, price, held=_held(sym))).render()
         except Exception as exc:  # noqa: BLE001 -- formatting must never cost the alert
             print(f"  rich entry layout unavailable ({type(exc).__name__}); sending plain text")
     extra = ({"reply_markup": rich["reply_markup"], "link_preview_options": rich["link_preview_options"]}
@@ -613,7 +614,16 @@ def _alert(sym, p, urg, price) -> bool:
         return False
 
 
-def _entry_item(sym, p, urg, price) -> dict:
+def _held(sym: str) -> Optional[bool]:
+    """B3 (2026-09-16): held/not-held from the authoritative holdings universe. None on failure."""
+    try:
+        from lib.holdings_universe import held_equity_tickers  # noqa: PLC0415
+        return str(sym).upper() in set(held_equity_tickers())
+    except Exception:  # noqa: BLE001 -- a failed holdings read must not cost the alert
+        return None
+
+
+def _entry_item(sym, p, urg, price, held: Optional[bool] = None) -> dict:
     prop = p.get("proposal") or {}
     lad = p.get("exit_ladder") or {}
     return {
@@ -624,6 +634,7 @@ def _entry_item(sym, p, urg, price) -> dict:
         "invalidation": str(p.get("invalidation") or "")[:200] or None,
         "advice": f"{prop.get('tag', 'WAIT')} — {str(prop.get('sizing_rationale', ''))[:100]}".rstrip(" —"),
         "exit_ladder": [f"{s['label']} ${s['px']} — {s['action']}" for s in (lad.get("steps") or [])],
+        "held": held,
     }
 
 

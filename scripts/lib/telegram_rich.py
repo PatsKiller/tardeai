@@ -211,7 +211,15 @@ def _scan_note(row: dict[str, Any]) -> str:
     return " · scanned " + " ".join(x for x in (f"{hhmm} ET" if hhmm else "", f"({run_txt})" if run_txt else "") if x)
 
 
-def go_alert(row: dict[str, Any], *, tier: str, passed: Iterable[str]) -> RichMessage:
+def held_pill(held: Optional[bool]) -> list[str]:
+    """B3 (2026-09-16): triage label — HELD vs NOT HELD. None = not determined (never guessed)."""
+    if held is None:
+        return []
+    return ["🟢 HELD — in book" if held else "⚪ NOT HELD"]
+
+
+def go_alert(row: dict[str, Any], *, tier: str, passed: Iterable[str],
+             held: Optional[bool] = None) -> RichMessage:
     sym = str(row.get("symbol") or "").upper()
     gap = row.get("gap_pct") if row.get("gap_pct") is not None else row.get("change_pct")
     catalyst = str(row.get("catalyst") or "").strip()
@@ -231,7 +239,7 @@ def go_alert(row: dict[str, Any], *, tier: str, passed: Iterable[str]) -> RichMe
         ],
         sources=[(f"{sym} news", row.get("catalyst_url") or ""), ("Finviz", finviz_url(sym))],
         chart_symbol=sym,
-        pills=["🟢 Trade-AI data"],
+        pills=["🟢 Trade-AI data"] + held_pill(held),
         # Scalp score/gap/RVOL/float live on Trading Hub Scalp tab — not Watch Intelligence.
         primary_surface="trading",
     )
@@ -260,7 +268,7 @@ def entry_alert(item: dict[str, Any]) -> RichMessage:
         why=item.get("why"),
         evidence=ladder,
         chart_symbol=sym,
-        pills=["🟢 Trade-AI data"],
+        pills=["🟢 Trade-AI data"] + held_pill(item.get("held")),
         sources=[(label, url) for label, url in (item.get("sources") or [])],
         # Entry zone/stop/R:R actionable path is Trading (deep-link symbol); dossier stays secondary.
         primary_surface="trading",
@@ -318,6 +326,7 @@ __all__ = [
     "entry_alert",
     "finviz_url",
     "go_alert",
+    "held_pill",
     "link",
     "material_change",
     "safe_url",
