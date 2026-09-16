@@ -1,11 +1,41 @@
 # Phase 4 — Content Quality, Relevance & Curation Audit
 
-Status: ACTIVE (partial — corpus classification pending ChatExport)
-as_of: 2026-09-16T16:30:00-04:00
-Measured at: origin/main `940425b73` · router/policy `[CODE]`; historical corpus `[DOC-CLAIM]`
+Status: ACTIVE (partial — one channel measured; three exports still needed)
+as_of: 2026-09-16T16:45:00-04:00
+Measured at: origin/main `940425b73` · router/policy `[CODE]` · **live corpus `[VERIFIED]`** (see §0)
 See also: `02_ROUTING_GOVERNANCE_PROPOSAL.md` · `05_COMMAND_CENTER_COVERAGE_GAPS.md`
 
-## 1. What we know without the export (mechanism-level)
+## 0. Measured corpus — `tradeai_bigjohn718_bot` DM (before the 09-14 fix)
+
+Source: `ChatExport_2026-09-16 (3).rar` → `messages.html`, **198 bot messages**,
+window **2026-08-25 → 2026-09-11** (19 days). This is a **single-channel** export and a
+**"before" snapshot** — it predates the 09-14 routing map, dedupe, and Comms Editor `live`.
+It is evidence of the *old* noise, not a claim about the *current* channel.
+
+| Measure | Value |
+|---|---:|
+| Bot messages | 198 |
+| Distinct text bodies | 50 |
+| **Duplicate copies (extra)** | **131 (66%)** |
+| Duplicate families | 8 |
+| Unique held symbols in stop warnings | **2 (AES, HRL)** |
+
+**Top noise sources (the two that drowned everything):**
+
+| Family | Copies | Detail |
+|---|---:|---|
+| `🛑 holdings write BLOCKED (holdings_reconcile)` | **85** | `total_value 594,765 below sanity floor 1,000,000` — fired 19–23×/day 01–04 Sep; a broken reconcile loop, not 85 distinct events |
+| `⚠️ STOP WARNING *AES*` | **43** | near-identical (`$14.77 → $14.72 → $14.68`), 13× on 27 Aug alone |
+
+**Actionable signal present but buried:** 6 protective-stop approvals, ~17 proposal/alert
+aggregates, 5 enrichment-gap notices. 51 messages carried inline trail/stop-hold buttons.
+
+**Verdict:** pre-fix, this channel was ~66% duplicate copies of 8 texts, dominated by a
+sticky AES stop warning and a broken holdings-reconcile error — exactly the "duplicate event
+stream, not an actionable notification channel" shape the 2026-07-28 audit described, still
+true through early September.
+
+## 1. Mechanism-level (what the code enforces now)
 
 The routing policy already encodes a quality bar; the audit is whether producers *comply*.
 

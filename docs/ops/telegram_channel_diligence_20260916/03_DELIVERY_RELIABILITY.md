@@ -1,9 +1,18 @@
 # Phase 3 — Telegram Delivery Reliability Assessment
 
-Status: ACTIVE (partial — device-sync pending ChatExport + device inventory)
-as_of: 2026-09-16T16:25:00-04:00
-Measured at: origin/main `940425b73` · transport `[CODE]`; receipts `[VERIFIED]`; historical `[DOC-CLAIM]`
+Status: ACTIVE (partial — one channel measured; device inventory + 3 exports still needed)
+as_of: 2026-09-16T16:45:00-04:00
+Measured at: origin/main `940425b73` · transport `[CODE]`; receipts `[VERIFIED]`; corpus `[VERIFIED]`; historical `[DOC-CLAIM]`
 See also: `00_EXECUTIVE_SUMMARY.md` · `04_CONTENT_QUALITY_CURATION.md`
+
+## 0. A third explanation the corpus adds: duplication masquerading as desync
+
+The `tradeai_bigjohn718_bot` export shows **131 of 198 messages (66%) are duplicate copies**
+of 8 texts — e.g. 85× the same `holdings write BLOCKED` and 43× the same AES stop warning.
+On any device, a wall of near-identical messages is easily read as "some arrived and some
+didn't" (or "they keep disappearing"), when in fact the server sent every one. **Duplication
+is a reliability problem in its own right**, and it must be separated from genuine
+cross-device sync.
 
 ## 1. The reported symptom
 

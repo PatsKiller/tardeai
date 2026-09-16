@@ -54,10 +54,16 @@ must be governed separately, and this package treats them as separate channels.
 
 ## What is NOT settled
 
-- **No empirical message counts for the current window.** The last full export audit is
-  2026-08-22 (18,130 messages, 4 feeds) and 2026-07-28 (13,004 messages, 21.9% within-chat
-  duplicates) — both `[DOC-CLAIM]`, both pre-date the 09-14 routing map.
+- **Only one channel has been measured.** The ChatExport delivered on 09-16 covers a single
+  chat — `tradeai_bigjohn718_bot` DM — over **2026-08-25 → 09-11** (a *before* snapshot that
+  predates the 09-14 routing map). The other three channels (CIO Desk, Proposal Decisions,
+  John Openclaw) need their own exports before the empirical audit is complete.
+- **The measured channel was ~66% duplicates `[VERIFIED]`**: 131 of 198 messages were copies
+  of 8 texts — 85× `holdings write BLOCKED`, 43× the same AES stop warning, across just 2
+  held symbols. This is the pre-fix state; the 09-14/15 routing + dedupe + editor-live work
+  targets exactly this. A fresh post-fix export is required to prove the current channel no
+  longer looks like this.
 - **Device-sync has no server-side smoking gun yet.** Server receipts show sends succeeded
   (Comms Editor ledger, 0 holds in the last 80 shadow receipts). Inconsistent device visibility
-  is therefore more likely **client/chat-membership** than server failure — to be confirmed
-  against the export and a device inventory.
+  is therefore more likely **client/chat-membership** than server failure — and the 66%
+  duplication above adds a third candidate: near-identical floods read as missing messages.
