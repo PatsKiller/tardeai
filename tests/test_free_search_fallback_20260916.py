@@ -282,3 +282,77 @@ def test_the_monitor_reports_refusals_that_went_nowhere():
                       "refused_today": REFUSED_THRESHOLD}]
     # An answered refusal is governance working, not a finding.
     assert refused_nowhere(rows[REFUSED_THRESHOLD:], now=now) == []
+
+
+# ------------------------------------------- the crash window around the amendment
+#
+# The rescue has two durable effects: the answer in the feed, and the receipt saying
+# which lane produced it. They cannot be made atomic, so the ORDER decides which
+# inconsistency a crash can leave behind:
+#
+#   amend first (the original)  → receipt says "searxng answered"; feed has nothing.
+#                                 REFUSED_NOWHERE reads spilled_to, calls it handled,
+#                                 and the answer is dropped with no trace. Silent.
+#   append first (the fix)      → receipt says "went nowhere", which is true; the
+#                                 monitor counts it; the next pass re-asks. Loud.
+#
+# There was no test for that interval. These are it.
+
+
+def _feed_rows(env: dict) -> list[dict]:
+    p = Path(env["TRADEAI_WAKE_RESEARCH_OBJECTS_PATH"])
+    if not p.exists():
+        return []
+    return [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+
+
+def _cap_receipts(root: Path) -> list[dict]:
+    return [r for r in sb.denial_receipts(root=root) if r["reason"] == "CALLER_DAILY_CAP"]
+
+
+def test_a_crash_before_the_feed_lands_leaves_the_question_honestly_unanswered(
+        tmp_root: Path, monkeypatch):
+    from scripts.lib import governed_research_producer as grp
+
+    _exhaust_the_producers_paid_slice(tmp_root)
+    env = _env(tmp_root)
+
+    def _power_cut(path, rows):
+        raise RuntimeError("crash between the rescued answer and the feed append")
+
+    monkeypatch.setattr(grp, "_append_feed", _power_cut)
+    with pytest.raises(RuntimeError):
+        produce_research(targets=_targets(), env=env, root=tmp_root,
+                         free_transport=_transport())
+
+    assert _feed_rows(env) == []
+    assert _cap_receipts(tmp_root)[-1]["spilled_to"] is None, \
+        "a receipt named a lane for an answer that never reached disk"
+
+    # And the next pass heals it: same query, answered again, and only now recorded.
+    monkeypatch.undo()
+    again = produce_research(targets=_targets(), env=env, root=tmp_root,
+                             free_transport=_transport())
+    assert again.free_answered == 1 and again.produced == 2 and again.spills_recorded == 1
+    assert len(_feed_rows(env)) == 2
+    # The lost lap stays on the record as lost; the recovered one names the lane.
+    assert [r["spilled_to"] for r in _cap_receipts(tmp_root)] == [None, "searxng"]
+
+
+def test_the_receipt_is_amended_only_after_the_answer_is_on_disk(tmp_root: Path, monkeypatch):
+    _exhaust_the_producers_paid_slice(tmp_root)
+    env = _env(tmp_root)
+    rows_visible_at_amend: list[int] = []
+    real = sb.mark_spilled
+
+    def _spy(receipt, spilled_to, *, root=None):
+        rows_visible_at_amend.append(len(_feed_rows(env)))
+        return real(receipt, spilled_to, root=root)
+
+    monkeypatch.setattr(sb, "mark_spilled", _spy)
+    res = produce_research(targets=_targets(), env=env, root=tmp_root,
+                           free_transport=_transport())
+
+    assert res.free_answered == 1 and res.spills_recorded == 1
+    assert rows_visible_at_amend == [2], \
+        "the amendment ran while the feed was still empty — the crash window is back"
