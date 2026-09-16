@@ -177,6 +177,17 @@ run; alert state `~/.local/state/tradeai/gap_resolution_last_alert.json`; fires 
 * `OPEN_NO_ATTEMPT` — a gap in `gap_queue.jsonl` or `research_gaps.jsonl` (OPEN) older than 2 h with no receipt
 * `VECTOR_FAILING` — a vector with ≥ 3 `error` receipts today
 * `RETIRED_RAN` — a receipt whose provider is retired and whose outcome is not `retired_skipped`. **Must be 0.**
+* `REFUSED_NOWHERE` — **added 2026-09-16 (PR #1045).** A search the budget refused that no lane answered:
+  a denial receipt whose `spilled_to` is null. Grouped by caller + reason, reported once a group clears 5 in a
+  UTC day. *Why it exists:* the live ledger held **129** such receipts — one caller, every one `CALLER_DAILY_CAP`,
+  every one `spilled_to: null` — refused and then asked of nobody, for three days, and nothing said so. A refusal
+  is a governance success only if the question went somewhere.
+
+**Provider attribution was wrong until 2026-09-16.** `governed_search` read the answering provider as
+`getattr(resp, "spilled_to", None)`, but `RouterResponse` has no such field — only the *receipt* does. The
+attribute was therefore `None` on **every** response, so an answer that SearXNG produced was filed as `brave`
+and the gap receipts disagreed with the budget ledger about who answered. Fixed to `resp.provider`, which is
+the field the router documents as "which provider actually answered" and which its tests already pin.
 
 Schedule **declared** (and, as a dated observation, installed: `systemctl --user list-timers` showed it scheduled at 2026-09-13 23:54 ET with a run at 23:37): `config/systemd/user/tradeai-gap-resolution.{service,timer}` (every
 30 min at :07/:37, `Persistent=true`, `SuccessExitStatus=0 1`), lane `gap-resolution-audit` in

@@ -1,6 +1,6 @@
 # Trade AI Platform — AS-IS Lifecycles: the complete end-to-end picture
 
-> **Identity note, 2026-09-15 (rev 3).** This document is the measured record of 2026-09-14. Everything that shipped after it — PRs #1026–#1036 and the chief-architect remediation — is recorded in `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md`, which also states the live commit at the end of 2026-09-15. Read any "live at" line below as historical.
+> **Identity note, 2026-09-16 (rev 4).** This document is the measured record of 2026-09-14. Everything that shipped after it is recorded in the daily work logs: `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md` (PRs #1026–#1036 and the chief-architect remediation) and `docs/architecture/TRADE_AI_WORKLOG_2026-09-16.md` (PRs #1039–#1045; free search now answers a `CALLER_DAILY_CAP` refusal; live `a91d7b3ba`, validated 12:45:01Z). Each states the live commit at the end of its day. Read any "live at" line below as historical.
 
 ```
 Status:        ACTIVE
@@ -582,6 +582,31 @@ digraph lc_a2 {
 }
 ```
 
+### Update 2026-09-16 — a free provider becomes a metered provider
+
+`searxng` was a declared backup that recorded **nothing**. Its daily counters read `{}` for the
+ledger's entire history, so free usage was real but invisible, and "it costs nothing to exceed" was
+doing the work of a control.
+
+PR #1045 (live `a91d7b3ba`) puts free web search through the same ledger as paid:
+
+| | before | after |
+|---|---|---|
+| free requests recorded | none, ever | one ledger unit **per HTTP request**, taken before the request |
+| a request that failed | not counted (not counted at all) | **refunded** — the counter describes reality |
+| `news` + `general` | n/a | **two** units, because it is two requests |
+| per-caller cap | would have been the paid-sized 25 | the provider's own ceiling (10,000/day) |
+
+The per-caller cap is the subtle one. A daily cap exists to ration **money** between callers; applying
+a money-sized cap to a self-hosted provider would have refused it after the 25th question of the day —
+reproducing the very refusal the free lane exists to answer. `FREE_PROVIDERS` now makes the cap
+provider-aware.
+
+First measured free traffic, 2026-09-16 12:45:01Z: `searxng daily {'2026-09-16': 2}`, caller
+`governed_research_producer`. **Provider attribution was also wrong until this date** — `gap_resolver`
+read the answering provider as `getattr(resp, "spilled_to", None)`, a field `RouterResponse` does not
+have, so it was `None` on every response and a SearXNG answer was filed as `brave`.
+
 ---
 
 ## A3 · Identity (mention → subject_guid)
@@ -1081,6 +1106,30 @@ digraph lc_b2 {
   circle -> hermes [label="phase 2+ (not built)", color="#8497B0", style=dotted];
 }
 ```
+
+### Update 2026-09-16 — the refused question now goes somewhere
+
+A system-raised question could be **refused and then asked of nobody**. Measured on the live ledger:
+**129 denial receipts — one caller (`governed_research_producer`), one reason (`CALLER_DAILY_CAP`),
+every one `spilled_to: null`** (15 on 09-13, 70 on 09-14, 44 on 09-15). At the same time Brave's month
+was 85% unspent (228/1,500) and a self-hosted provider with a 10,000/day allowance sat idle.
+
+The cron shape produced the volume: hourly at `:45` with `--limit 5` is ~120 asks/day against a 25/day
+caller cap, so **~95 questions a day died at the gate**. This lifecycle's failure mode was therefore
+*refusal*, not overspend — the loop never closed because the question stopped existing.
+
+`CALLER_DAILY_CAP` deliberately remains **out** of `web_search.spill_on` (operator decision
+2026-09-13): a per-caller cap is fairness *between callers*, not a provider quota, and the refusal
+still stands. What changed is that the refused question is now put to the free provider through a
+separate governed call (`scripts/lib/free_search.py`), and the refusal receipt is amended to name the
+lane that answered — so a question that *was* answered can no longer be counted as lost.
+
+Validated live 2026-09-16 12:45:01Z on `a91d7b3ba`: Brave 25/25, two refusals, `free_answered: 2`,
+both receipts amended to `spilled_to: searxng`, `failed: 0`. New monitor finding `REFUSED_NOWHERE`
+reports refusals that no lane answered — 129 existed and nothing had ever said so.
+
+**Still open:** nothing judges a free answer *thin*. Only a **refused** question is rescued; quality-based
+escalation is P3–P4 of the free-first plan and is not built.
 
 ---
 
