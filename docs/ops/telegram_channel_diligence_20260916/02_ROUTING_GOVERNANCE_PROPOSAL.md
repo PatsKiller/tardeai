@@ -1,14 +1,16 @@
 # Phase 2 — Message Routing & Governance Proposal
 
-Status: PROPOSED (approval required before any producer retarget)
+Status: APPROVED (operator, 2026-09-16)
 as_of: 2026-09-16T16:20:00-04:00
+Approved: operator 2026-09-16 ("approve 2") — routing contract authoritative; producers may be
+retargeted to match §2–§5
 Measured at: origin/main `940425b73` · routing evidence `[CODE]`; historical intent `[DOC-CLAIM]`
-See also: `01_CHANNEL_INVENTORY_SOURCE_MAP.md` · `06_IMPLEMENTATION_ROADMAP.md`
+See also: `01_CHANNEL_INVENTORY_SOURCE_MAP.md` · `06_IMPLEMENTATION_ROADMAP.md` · `07_EXECUTION_PLAN.md`
 
-> **This is a proposal.** Nothing here changes routing until the operator approves it. The
-> code split that already exists (DM vs Proposals) is unchanged by this document; the proposal
-> governs *which message families belong where* and *what the CIO channel must never carry*.
-
+> **Approved.** §2–§5 are now the authoritative routing contract. The code split that already
+> exists (DM vs Proposals) is unchanged; retargeting producers to match this contract is the
+> B-phase work in `07_EXECUTION_PLAN.md`.
+    10|
 ## 1. Target architecture
 
 ```mermaid

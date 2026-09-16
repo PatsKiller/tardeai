@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `287ec8edcc31a731cad6c0c61404d0e062b2d672f0a090136abde28b6d8d0fc8`
+**Tree fingerprint:** `cc858aab3519a7fd00db551e9ab70bf71f43c1e04e08e323778db208a0b96031`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -1711,7 +1711,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary | review_required | OK | `19050e08a848` |
 | `docs/ops/telegram_channel_diligence_20260916/01_CHANNEL_INVENTORY_SOURCE_MAP.md` | Phase 1 — Channel Inventory & Source Mapping | review_required | OK | `6be06281ea6d` |
-| `docs/ops/telegram_channel_diligence_20260916/02_ROUTING_GOVERNANCE_PROPOSAL.md` | Phase 2 — Message Routing & Governance Proposal | review_required | OK | `1b0d5783ecd3` |
+| `docs/ops/telegram_channel_diligence_20260916/02_ROUTING_GOVERNANCE_PROPOSAL.md` | Phase 2 — Message Routing & Governance Proposal | review_required | OK | `4bf845d22d7f` |
 | `docs/ops/telegram_channel_diligence_20260916/03_DELIVERY_RELIABILITY.md` | Phase 3 — Telegram Delivery Reliability Assessment | review_required | OK | `794e639b9ddc` |
 | `docs/ops/telegram_channel_diligence_20260916/04_CONTENT_QUALITY_CURATION.md` | Phase 4 — Content Quality, Relevance & Curation Audit | review_required | OK | `c9e402d810fc` |
 | `docs/ops/telegram_channel_diligence_20260916/05_COMMAND_CENTER_COVERAGE_GAPS.md` | Phase 5 — Command Center Coverage Gap Analysis | review_required | OK | `9eee88c6773b` |
