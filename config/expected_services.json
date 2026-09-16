@@ -44,22 +44,7 @@
       "unit": "tradeai-agent-runtime@argus.timer"
     },
     {
-      "unit": "tradeai-agent-runtime@atlas.timer",
-      "status": "retired_archived_20260916",
-      "retired_note": "E5 batch1 host-disabled; see archive/ARCHIVE_MANIFEST.json"
-    },
-    {
-      "unit": "tradeai-agent-runtime@concierge.timer",
-      "status": "retired_archived_20260916",
-      "retired_note": "E5 batch1 host-disabled; see archive/ARCHIVE_MANIFEST.json"
-    },
-    {
       "unit": "tradeai-agent-runtime@darwin.timer"
-    },
-    {
-      "unit": "tradeai-agent-runtime@hermes.timer",
-      "status": "retired_archived_20260916",
-      "retired_note": "E5 batch1 host-disabled; see archive/ARCHIVE_MANIFEST.json"
     },
     {
       "unit": "tradeai-agent-runtime@iris.timer"
@@ -69,11 +54,6 @@
     },
     {
       "unit": "tradeai-agent-runtime@morgan.timer"
-    },
-    {
-      "unit": "tradeai-agent-runtime@pulse.timer",
-      "status": "retired_archived_20260916",
-      "retired_note": "E5 batch1 host-disabled; see archive/ARCHIVE_MANIFEST.json"
     },
     {
       "unit": "tradeai-agent-runtime@reflection.timer"
@@ -139,10 +119,6 @@
     {
       "unit": "tradeai-health-agent.service",
       "_why": "The health agent itself. If it stops, every other health signal stops with it and the silence looks like good news."
-    },
-    {
-      "unit": "tradeai-hermes-cio-worker.path",
-      "_why": "Wake path for the CIO worker. Died on inotify exhaustion 2026-09-12 and stayed failed for 14 hours."
     },
     {
       "unit": "tradeai-hermes-cio-worker.timer"
