@@ -121,7 +121,11 @@ class ShadowAgentSpec:
     circuit_breaker_trips_open_after: int = 3
     max_queue_depth: int = 64
     dedup_key: str = "input_hash"
-    stale_input_seconds: int = 900
+    # Must exceed the lease interval of whatever timer runs the agent, or the gate refuses by
+    # construction: a runner leasing every 30 minutes against a 900s window refuses every row it
+    # ever receives, and each refusal permanently consumes that row's UNIQUE dedup slot. The
+    # shipped timer template is *:0/15 (+120s jitter), so the default covers one missed tick of it.
+    stale_input_seconds: int = 3600
     authority_note: str = "ADVISORY_ONLY; deterministic core remains sovereign"
 
     @property

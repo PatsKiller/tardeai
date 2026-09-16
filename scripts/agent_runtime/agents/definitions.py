@@ -77,6 +77,8 @@ _SENTINEL = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="MVL operational shadow",
     wave="INITIAL",
+    # leases every 300s (+120s jitter); window survives one missed tick
+    stale_input_seconds=1800,
 )
 
 _DARWIN = ShadowAgentSpec(
@@ -106,6 +108,8 @@ _DARWIN = ShadowAgentSpec(
     scorer_agent_id="sentinel",
     maturity_target="MVL operational shadow",
     wave="INITIAL",
+    # leases every 3600s (+120s jitter); window survives one missed tick
+    stale_input_seconds=14400,
 )
 
 _IRIS = ShadowAgentSpec(
@@ -137,6 +141,8 @@ _IRIS = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="MVL operational shadow",
     wave="INITIAL",
+    # leases every 300s (+120s jitter); window survives one missed tick
+    stale_input_seconds=1800,
 )
 
 _REFLECTION = ShadowAgentSpec(
@@ -166,6 +172,8 @@ _REFLECTION = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="MVL operational shadow",
     wave="INITIAL",
+    # leases every 259200s (+120s jitter); window survives one missed tick
+    stale_input_seconds=604800,
 )
 
 
@@ -200,6 +208,8 @@ _MARIA = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="Wave-2 shadow research critic",
     wave="SECOND",
+    # leases every 300s (+120s jitter); window survives one missed tick
+    stale_input_seconds=1800,
 )
 
 _VEGA = ShadowAgentSpec(
@@ -228,6 +238,8 @@ _VEGA = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="Wave-2 shadow technical critic",
     wave="SECOND",
+    # leases every 300s (+120s jitter); window survives one missed tick
+    stale_input_seconds=1800,
 )
 
 _RISK_AGENT = ShadowAgentSpec(
@@ -257,6 +269,8 @@ _RISK_AGENT = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="Wave-2 shadow risk critic",
     wave="SECOND",
+    # leases every 1800s (+120s jitter); window survives one missed tick
+    stale_input_seconds=7200,
 )
 
 _AEGIS = ShadowAgentSpec(
@@ -287,6 +301,8 @@ _AEGIS = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="Wave-2 shadow incident critic",
     wave="SECOND",
+    # leases every 300s (+120s jitter); window survives one missed tick
+    stale_input_seconds=1800,
 )
 
 _VIGIL = ShadowAgentSpec(
@@ -382,6 +398,8 @@ _ALEX = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="Wave-3 shadow CIO synthesis",
     wave="THIRD",
+    # leases every 300s (+120s jitter); window survives one missed tick
+    stale_input_seconds=1800,
 )
 
 _STEPH = ShadowAgentSpec(
@@ -427,6 +445,8 @@ _STEPH = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="Wave-3 shadow senior portfolio advisor",
     wave="THIRD",
+    # leases every 300s (+120s jitter); window survives one missed tick
+    stale_input_seconds=1800,
 )
 
 _LEDGER = ShadowAgentSpec(
@@ -513,6 +533,8 @@ _MORGAN = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="Wave-3 shadow senior wealth advisor",
     wave="THIRD",
+    # leases every 300s (+120s jitter); window survives one missed tick
+    stale_input_seconds=1800,
 )
 
 
@@ -549,7 +571,36 @@ _ARGUS = ShadowAgentSpec(
     scorer_agent_id="darwin",
     maturity_target="Phase 2 shadow",
     wave="INITIAL",
+    # leases every 1800s (+120s jitter); window survives one missed tick
+    stale_input_seconds=7200,
 )
+
+
+# Host lease cadence per agent in seconds, measured from the installed systemd timers
+# (systemctl cat tradeai-agent-runtime@<agent>.timer) on 2026-09-15, plus RandomizedDelaySec.
+# reflection runs Mon-Fri only, so its worst real gap is Friday -> Monday, not one day.
+#
+# stale_input_seconds must exceed the worst-case lease interval. Measured 2026-09-15, the first
+# time anything ever leased this queue: one uniform 900s window was applied to agents leasing
+# anywhere from every 5 minutes to once a weekday, so six of them refused every row by
+# construction. Sentinel's first real lease refused 8 of 8 rows that had waited 997s.
+LEASE_CADENCE_SECONDS: dict[str, int] = {
+    "aegis": 300,
+    "alex": 300,
+    "argus": 1800,
+    "darwin": 3600,
+    "iris": 300,
+    "maria": 300,
+    "morgan": 300,
+    "reflection": 259200,
+    "risk_agent": 1800,
+    "sentinel": 300,
+    "steph": 300,
+    "vega": 300,
+}
+LEASE_JITTER_SECONDS = 120
+# How many whole lease intervals a queued job must survive before it counts as rotted.
+LEASE_WINDOW_TICK_MARGIN = 2
 
 
 FLEET: dict[str, ShadowAgentSpec] = {
