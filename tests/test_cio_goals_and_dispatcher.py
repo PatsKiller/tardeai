@@ -19,7 +19,7 @@ def goal_store(tmp_path):
     )
 
 
-def test_goal_create_list_update_close(goal_store):
+def test_goal_create_list_update_close(goal_store, tmp_path):
     g = goal_store.create_goal(
         owner_agent="alex",
         title="Cash concentration review",
@@ -47,7 +47,17 @@ def test_goal_create_list_update_close(goal_store):
     assert got["wake_count"] == 1
     assert got["last_wake_ts"]
 
-    closed = goal_store.close_goal(g["goal_id"], status="achieved", reason="operator decided")
+    # P2/P7 (2026-09-16): an achieved close now requires evidence, a
+    # non-vacuous falsifier and a bound re-check. See
+    # tests/test_goal_predicate_20260916.py and test_goal_termination_20260916.py.
+    closed = goal_store.close_goal(
+        g["goal_id"],
+        status="achieved",
+        reason="operator decided",
+        evidence=["operator:2026-09-16:deliberate-reserve-call"],
+        falsifier="cash weight leaves the declared reserve band within 30 days",
+        checkpoint_root=tmp_path,
+    )
     assert closed["status"] == "achieved"
     assert goal_store.list_open_goals(owner_agent="alex") == []
 
@@ -63,8 +73,11 @@ def test_get_context_for_agent(goal_store):
 
 
 def test_list_due_or_idle(goal_store):
-    past = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
-    goal_store.create_goal(owner_agent="steph", title="Due now", due_ts=past)
+    # A goal may be due the moment it is created, but NOT before it existed
+    # (P2, 2026-09-16) -- so due_ts is the goal's own created_ts rather than an
+    # hour before it, which is the live "born overdue" defect.
+    g = goal_store.create_goal(owner_agent="steph", title="Due now")
+    goal_store.update_goal(g["goal_id"], due_ts=g["created_ts"])
     due = goal_store.list_due_or_idle_goals(owner_agent="steph")
     assert any(d["_wake_reason"] in ("due", "never_woken") for d in due)
 
@@ -84,11 +97,8 @@ def test_dispatcher_goal_wake_dedup(tmp_path, goal_store):
     )
     disp.goal_wake_dedup_path = tmp_path / "goal_dedup.jsonl"
 
-    goal_store.create_goal(
-        owner_agent="alex",
-        title="Desk thesis daily",
-        due_ts=(datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(),
-    )
+    g = goal_store.create_goal(owner_agent="alex", title="Desk thesis daily")
+    goal_store.update_goal(g["goal_id"], due_ts=g["created_ts"])
 
     r1 = disp.enqueue_goal_wakes(max_new=3)
     assert r1["enqueued"], r1

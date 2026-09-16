@@ -48,6 +48,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Optional
+from urllib.parse import urlsplit
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -90,6 +91,37 @@ KIND_SATISFIES = {
 #: Freshness windows (hours) per evidence kind.
 FRESH_HOURS = {"quote": 24, "levels": 48, "analyst": 24 * 14, "news": 24 * 7, "web": 24 * 7, "sec": 24 * 90,
                "volume": 24, "research": 24 * 14, "thesis": 24 * 30, "profile": 24 * 120, "catalyst": 24 * 30}
+
+# ── independence: who PUBLISHED it, not how we fetched it ────────────────────
+# Until 2026-09-16 independence was keyed `e.source.split(":")[0]` -- the RETRIEVAL
+# CHANNEL. Measured consequences of that one expression:
+#   * `searxng:reuters.com` and `searxng:nyt.com` collapsed to the single source
+#     "searxng", so six real publishers scored as one and never earned the +25.
+#   * A Yahoo quote and an SEC Form 4 scored as "two independent sources" although
+#     neither one can confirm or refute the other.
+#   * A Brave hit and a SearXNG hit on the SAME wire story counted twice.
+# The key is now the pair (publisher_host, retrieval_channel), and the +25
+# corroboration bonus counts distinct PUBLISHERS -- never distinct channels.
+
+#: Retrieval channels whose source suffix already names the publisher's domain.
+_DOMAIN_SUFFIX_CHANNELS = frozenset({"searxng", "brave", "google", "bing", "ddg", "web"})
+
+#: Canonical publisher host per retrieval channel, for items carrying no URL.
+_CHANNEL_PUBLISHER = {
+    "yahoo": "finance.yahoo.com",
+    "sec": "sec.gov",
+    "trade_ai": "house.trade_ai",
+    "hermes": "house.trade_ai",
+}
+
+#: The class of claim an evidence kind makes. Two items corroborate only when they
+#: assert the SAME class: a price quote and an insider filing are two publishers
+#: but not two witnesses to one fact, so they are never mutual corroboration.
+CLAIM_CLASS = {
+    "quote": "price", "levels": "levels", "analyst": "analyst", "volume": "volume",
+    "news": "narrative", "web": "narrative", "catalyst": "narrative",
+    "sec": "filing", "research": "research", "thesis": "research", "profile": "research",
+}
 
 
 # ── identity ─────────────────────────────────────────────────────────────────
@@ -187,29 +219,103 @@ def _age_hours(as_of: Optional[str], now: datetime) -> Optional[float]:
         return None
 
 
+def _strip_www(host: str) -> str:
+    return host[4:] if host.startswith("www.") else host
+
+
+def retrieval_channel(ev: "Evidence") -> str:
+    """HOW the item was fetched -- searxng, brave, yahoo, sec, trade_ai. Pure.
+
+    This is the old independence key, kept but demoted: it is one half of the
+    pair, and on its own it says nothing about who published the claim.
+    """
+    return (str(ev.source or "").split(":")[0] or "unknown").strip().lower()
+
+
+def publisher_host(ev: "Evidence") -> str:
+    """WHO published the claim, as a bare host. Pure.
+
+    The URL wins when there is one: a Reuters story reached through SearXNG, Brave
+    or Yahoo is published by reuters.com in all three cases, which is exactly the
+    collapse this function exists to force. With no URL, the source suffix is used
+    when the channel puts a domain there, then the channel's own canonical host.
+
+    Deliberately conservative: an unattributable item degrades to its channel host,
+    which UNDER-counts independence. Over-counting is what corrupted the score.
+    """
+    url = str(getattr(ev, "url", "") or "")
+    if url:
+        try:
+            netloc = urlsplit(url).netloc.split("@")[-1].split(":")[0].strip().lower()
+            if netloc:
+                return _strip_www(netloc)
+        except ValueError:
+            pass
+    source = str(ev.source or "")
+    channel = retrieval_channel(ev)
+    suffix = source.split(":", 1)[1].strip().lower() if ":" in source else ""
+    if suffix and channel in _DOMAIN_SUFFIX_CHANNELS and "." in suffix:
+        return _strip_www(suffix)
+    if channel in _CHANNEL_PUBLISHER:
+        return _CHANNEL_PUBLISHER[channel]
+    return _strip_www(suffix) if "." in suffix else (channel or "unknown")
+
+
+def independence_key(ev: "Evidence") -> tuple[str, str]:
+    """(publisher_host, retrieval_channel) -- the unit of independence. Pure."""
+    return (publisher_host(ev), retrieval_channel(ev))
+
+
+def corroborating_publishers(items: Iterable["Evidence"]) -> int:
+    """Most distinct publishers asserting ONE class of claim. Pure.
+
+    Not simply "how many publishers are in this list": publishers are grouped by
+    claim class first, so a Yahoo quote plus an SEC filing returns 1, while two
+    newspapers on the same story returns 2. This is the number the +25 bonus and
+    every `min_sources >= 2` predicate must read.
+    """
+    by_class: dict[str, set[str]] = {}
+    for e in items:
+        by_class.setdefault(CLAIM_CLASS.get(e.kind, e.kind), set()).add(publisher_host(e))
+    return max((len(pubs) for pubs in by_class.values()), default=0)
+
+
+def _is_fresh(ev: "Evidence", now: datetime) -> bool:
+    age = _age_hours(ev.as_of, now)
+    return age is not None and age <= FRESH_HOURS.get(ev.kind, 24 * 7)
+
+
 # ── the deterministic score ──────────────────────────────────────────────────
 
 def score_lap(needs: list[str], evidence: list[Evidence], *, now: Optional[datetime] = None) -> dict[str, Any]:
     """Sufficiency 0-100 per need and overall, plus a maturity level. Pure.
 
-    Per need: 40 if any fresh evidence answers it, +25 for a second independent source, +15 when two numeric
-    values of the same kind agree within 2%, +20 when a house (Trade-AI) item and an outside item both answer it.
-    Stale-only evidence caps a need at 20. Contradicting numbers (>10% apart) are listed and cap it at 50.
+    Per need: 40 if any fresh evidence answers it, +25 when a second independent PUBLISHER makes the same class
+    of claim, +15 when two numeric values of the same kind agree within 2%, +20 when a house (Trade-AI) item and
+    an outside item both answer it. Stale-only evidence caps a need at 20. Contradicting numbers (>10% apart)
+    are listed and cap it at 50.
+
+    `sources` is the set of publisher hosts -- NOT retrieval channels. One publisher reached through two channels
+    is one source; two publishers found through one channel are two. See `publisher_host`.
     """
     now = now or datetime.now(timezone.utc)
     per_need: dict[str, dict[str, Any]] = {}
     contradictions: list[dict[str, Any]] = []
     for need in needs:
         items = [e for e in evidence if need in KIND_SATISFIES.get(e.kind, set())]
-        fresh = [e for e in items if (_age_hours(e.as_of, now) is not None
-                                      and _age_hours(e.as_of, now) <= FRESH_HOURS.get(e.kind, 24 * 7))]
-        sources = {e.source.split(":")[0] for e in fresh}
+        fresh = [e for e in items if _is_fresh(e, now)]
+        publishers = {publisher_host(e) for e in fresh}
+        keys = {independence_key(e) for e in fresh}
         channels = {e.channel for e in fresh}
         score = 0
         contradicted = False
+        # Two distinct PUBLISHERS on one class of claim. Counting retrieval channels here
+        # is the defect fixed 2026-09-16: it both under-counted six publishers behind one
+        # search engine and over-counted one wire story reached through two engines.
+        corroborated = corroborating_publishers(fresh) >= 2
         if fresh:
             score = 40
-            if len(sources) >= 2:
+            if corroborated:
                 score += 25
             nums = [e.value for e in fresh if e.value is not None]
             if len(nums) >= 2:
@@ -218,7 +324,9 @@ def score_lap(needs: list[str], evidence: list[Evidence], *, now: Optional[datet
                     score += 15
                 elif lo > 0 and (hi - lo) / lo > 0.10:
                     contradictions.append({"need": need, "low": lo, "high": hi,
-                                           "sources": sorted({e.source for e in fresh if e.value is not None})})
+                                           "sources": sorted({e.source for e in fresh if e.value is not None}),
+                                           "publishers": sorted({publisher_host(e) for e in fresh
+                                                                 if e.value is not None})})
                     contradicted = True
             if "house" in channels and channels - {"house"}:
                 score += 20
@@ -226,8 +334,20 @@ def score_lap(needs: list[str], evidence: list[Evidence], *, now: Optional[datet
                 score = min(score, 50)
         elif items:
             score = 20
-        per_need[need] = {"score": min(100, score), "fresh_items": len(fresh), "sources": sorted(sources),
-                          "stale_only": bool(items and not fresh)}
+        per_need[need] = {"score": min(100, score), "fresh_items": len(fresh), "sources": sorted(publishers),
+                          "stale_only": bool(items and not fresh),
+                          "independence_keys": sorted(f"{p}|{c}" for p, c in keys),
+                          "corroborated": bool(fresh) and corroborated}
+    fresh_all = [e for e in evidence if _is_fresh(e, now)]
+    by_claim: dict[str, set[str]] = {}
+    for e in fresh_all:
+        by_claim.setdefault(CLAIM_CLASS.get(e.kind, e.kind), set()).add(publisher_host(e))
+    corroboration = {
+        "corroborated": corroborating_publishers(fresh_all) >= 2,
+        "max_publishers_on_one_claim": corroborating_publishers(fresh_all),
+        "publishers_by_claim": {k: sorted(v) for k, v in sorted(by_claim.items())},
+        "independence_keys": sorted(f"{p}|{c}" for p, c in {independence_key(e) for e in fresh_all}),
+    }
     overall = round(sum(v["score"] for v in per_need.values()) / max(1, len(per_need)))
     weakest = min(per_need.items(), key=lambda kv: kv[1]["score"])[0] if per_need else None
     if overall >= 85 and not contradictions:
@@ -237,7 +357,7 @@ def score_lap(needs: list[str], evidence: list[Evidence], *, now: Optional[datet
     else:
         maturity = "M0"
     return {"overall": overall, "per_need": per_need, "contradictions": contradictions,
-            "weakest_need": weakest, "maturity": maturity}
+            "weakest_need": weakest, "maturity": maturity, "corroboration": corroboration}
 
 
 def deterministic_decision(score: dict[str, Any], *, lap: int, max_laps: int = 2) -> dict[str, Any]:
@@ -652,7 +772,8 @@ def run_circle(question: str, *, chat_id: str, message_id: str, symbols: list[st
     return laps
 
 
-__all__ = ["CLIMB_ORDER", "DECISIONS", "Evidence", "LapResult", "Ledger", "MATURITY", "MATURITY_MEANING",
-           "analyze", "deepseek_flash_caller", "detect_needs", "deterministic_decision", "parse_verdict",
-           "plan_checkin", "question_guid", "run_lap", "score_lap", "searxng_channel", "sec_channel",
+__all__ = ["CLAIM_CLASS", "CLIMB_ORDER", "DECISIONS", "Evidence", "LapResult", "Ledger", "MATURITY",
+           "MATURITY_MEANING", "analyze", "corroborating_publishers", "deepseek_flash_caller", "detect_needs",
+           "deterministic_decision", "independence_key", "parse_verdict", "plan_checkin", "publisher_host",
+           "question_guid", "retrieval_channel", "run_lap", "score_lap", "searxng_channel", "sec_channel",
            "yahoo_channel"]

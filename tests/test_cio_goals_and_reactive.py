@@ -44,7 +44,17 @@ def test_goal_crud_and_context(tmp_path, monkeypatch):
     assert any(x["goal_id"] == gid for x in ctx["open_goals"])
     assert ctx["thesis_snippets"]
 
-    store.close_goal(gid, status="achieved", reason="test done", actor_id="test")
+    # P2/P7 (2026-09-16): evidence, a non-vacuous falsifier and a bound
+    # re-check are required before a goal may be called achieved.
+    store.close_goal(
+        gid,
+        status="achieved",
+        reason="test done",
+        actor_id="test",
+        evidence=["test:desk-thesis-observed"],
+        falsifier="the desk thesis is not restated for five consecutive sessions",
+        checkpoint_root=tmp_path,
+    )
     assert store.get_goal(gid)["status"] == "achieved"
     assert not any(x["goal_id"] == gid for x in store.list_open_goals(owner_agent="alex"))
 

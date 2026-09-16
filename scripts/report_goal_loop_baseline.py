@@ -57,8 +57,11 @@ SCHEMA = "GoalLoopBaseline@v1"
 WAKE_STATE = Path("/home/johnclaw/trade-ai-state/persistent_wake/state")
 
 SCHEDULED_ENTRYPOINT = (
-    "PROPOSAL ONLY — not installed. A new cron/systemd entry is operator-only "
-    "(AGENTS.md §17). Run by hand until the operator approves a schedule."
+    "INSTALLED, active — crontab `20 * * * *`, hourly, from the dev tree. "
+    "Operator approved the schedule 2026-09-16 (AGENTS.md §17); declared in "
+    "config/lane_registry.json as lane `goal-loop-baseline`. NOTE: the "
+    "`intake` section records `unavailable` on every scheduled run until "
+    "AGENT_RUNTIME_DISPATCH_DSN is provisioned — that is honest, not a zero."
 )
 
 

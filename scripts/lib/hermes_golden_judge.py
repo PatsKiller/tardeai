@@ -33,6 +33,20 @@ WEIGHTS = {
     "calibration": 0.10,
 }
 
+#: Declared 2026-09-16 (P6). StructuralGoldenJudge returns literals on most of its rubric,
+#: so those axes contribute a constant to every total and separate nothing from anything.
+#: Unconditionally constant — the same number for every input this judge will ever see.
+#: Together they carry 0.30 of the weighted total as a fixed offset.
+STRUCTURAL_CONSTANT_AXES = ("grounding", "calibration")
+#: Constant unless the caller supplies the named input; in CI most goldens supply neither,
+#: so in practice four of the six axes never move. This is what the variance requirement in
+#: scripts/lib/validator_calibration.py detects empirically rather than by assertion.
+STRUCTURAL_INPUT_GATED_AXES = {
+    "agreement": "constant 5 unless a reference with a suggestion_bias is supplied",
+    "usefulness": "constant 3 unless code_side_defects fires — and a defect already fails the hard gate",
+    "read_only": "constant 5 unless execution_language is detected — likewise already a hard-gate failure",
+}
+
 _EXEC_RE = re.compile(
     r"\b(buy now|sell now|place stop|enter order|market order|submit order|force fill)\b",
     re.I,

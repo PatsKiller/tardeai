@@ -98,6 +98,104 @@ def dry_run_record_consult(*, max_wakes: int = 5) -> list[dict]:
     return rows
 
 
+def _research_budget_state() -> dict:
+    """Load the subject-collapse law for today. P10, 2026-09-16.
+
+    `scripts/lib/cio_research_budget.py` encodes the operator's law -- ONE
+    research decision per subject_key per calendar day, cap 5 -- and was written
+    explicitly to stop "one cash question became 36 paid jobs". Measured
+    2026-09-16: its only two importers are `cio_research_budget_report.py` and
+    `cio_research_governance_census.py`, and BOTH declare NO_CONSUMER_REASON
+    ("operator-run CLI entry point", "operator-invoked diligence CLI"). It is a
+    transitive dark chain, so the law was enforced NOWHERE in the live path --
+    including here, the `*/5 * * * *` dispatcher that is the one scheduled
+    caller of the research gate.
+
+    This is that enforcement point. It sits in the PRODUCER, before
+    `decide_after_load`, so an agent can never extend its own budget.
+
+    Fail direction: an unreadable or absent ledger yields an EMPTY spent-set,
+    which allows the day's first decisions. That is correct here and is not the
+    `search_budget` "BudgetUnavailable => DENY" case: this ledger records what
+    was already spent, and the file legitimately does not exist before the first
+    decision of the day. Denying on absence would mean the law could never
+    permit a first decision at all.
+    """
+    state = {
+        "enforced": False,
+        "ledger": None,
+        "day": None,
+        "spent": set(),
+        "cap": 0,
+        "reason": None,
+    }
+    import os as _os
+
+    if str(_os.environ.get("CIO_RESEARCH_BUDGET_ENFORCE", "1")).strip().lower() \
+            in ("0", "false", "no", "off"):
+        state["reason"] = "disabled_by_CIO_RESEARCH_BUDGET_ENFORCE"
+        return state
+    try:
+        from scripts.lib.cio_research_budget import (
+            DAILY_CAP, BudgetLedger, day_of, ledger_path,
+        )
+
+        ledger = BudgetLedger(ledger_path(_PROJECT))
+        day = day_of()
+        state.update({
+            "enforced": True,
+            "ledger": ledger,
+            "day": day,
+            "spent": set(ledger.decided_on(day)),
+            "cap": DAILY_CAP,
+        })
+    except Exception as exc:                                     # noqa: BLE001
+        # Fail-soft: a budget that cannot load must not abort the dispatch loop.
+        # It is reported as unenforced rather than silently treated as enforced.
+        log.exception("research budget unavailable (fail-soft): %s", exc)
+        state["reason"] = f"unavailable:{type(exc).__name__}"
+    return state
+
+
+def _budget_allows(subject_key: str, state: dict) -> dict:
+    """The collapse law, applied to one subject. Returns {allow, reason}."""
+    if not state.get("enforced"):
+        return {"allow": True, "reason": state.get("reason") or "not_enforced"}
+    spent = state["spent"]
+    if subject_key in spent:
+        return {"allow": False, "reason": "already_decided_today"}
+    if len(spent) >= int(state["cap"]):
+        return {"allow": False, "reason": "daily_cap_reached"}
+    return {"allow": True, "reason": "within_budget"}
+
+
+def _budget_record(subject_key: str, research: dict | None, state: dict) -> bool:
+    """Append this subject's one decision for the day. Returns True if recorded."""
+    if not state.get("enforced") or not subject_key:
+        return False
+    try:
+        from datetime import datetime as _dt, timezone as _tz
+
+        rows = state["ledger"].record({
+            "day": state["day"],
+            "run_id": "cio_wake_dispatch_entrypoint",
+            "as_of": _dt.now(_tz.utc).isoformat(),
+            "selected": [{
+                "subject_key": subject_key,
+                "slot": "wake_dispatch",
+                "rank": 0,
+                "reason": (research or {}).get("decision") or "decided",
+                "plan_ids": [],
+            }],
+        })
+        if rows:
+            state["spent"].add(subject_key)
+        return bool(rows)
+    except Exception:                                            # noqa: BLE001
+        log.exception("research budget ledger write failed (fail-soft)")
+        return False
+
+
 def apply_cycle_and_persist(subject_key: str, research: dict | None,
                             exec_result: dict | None = None) -> dict:
     """Apply one dispatched wake as cognition, then persist the record.
@@ -298,6 +396,18 @@ def main(argv: list[str] | None = None):
     research_rows: list[dict] = []
     persist_rows: list[dict] = []
 
+    # ── P10: the subject-collapse law, enforced in the live path.
+    # One research decision per subject_key per calendar day, cap 5. Loaded once
+    # per cycle so the cap is counted across the whole dispatch batch and not
+    # re-read per subject.
+    budget_state = _research_budget_state()
+    log.info(
+        "research_budget enforced=%s day=%s spent_today=%s cap=%s reason=%s",
+        budget_state.get("enforced"), budget_state.get("day"),
+        len(budget_state.get("spent") or ()), budget_state.get("cap"),
+        budget_state.get("reason"),
+    )
+
     for d in result.get("dispatched", []):
         run_id = d["run_id"]
         wake_id = d["wake_job_id"]
@@ -307,7 +417,28 @@ def main(argv: list[str] | None = None):
         # Before the run, so a record the operator already spoke to changes what
         # the gate decides rather than being consulted after the fact.
         research = None
-        if subject_key:
+        budget_verdict = _budget_allows(subject_key, budget_state) if subject_key else None
+        if subject_key and not budget_verdict["allow"]:
+            # The law refused this subject a decision today. The wake still runs
+            # and the run still executes; what is skipped is the RESEARCH
+            # question, which is the part that costs money. A skip is recorded
+            # with its reason -- a budget that refuses silently is how a cap
+            # becomes indistinguishable from a broken gate.
+            log.info("research_budget_skip subject=%s reason=%s",
+                     subject_key, budget_verdict["reason"])
+            research_rows.append({
+                "subject_key": subject_key,
+                "wake_job_id": wake_id,
+                "decision": "BUDGET_SKIPPED",
+                "reason": budget_verdict["reason"],
+                "decide_called": False,
+                "record_loaded": None,
+                "last_hit_at": None,
+                "last_hit_decision": None,
+                "last_hit_readable": None,
+                "duplicate_research_suspected": None,
+            })
+        elif subject_key:
             try:
                 research = decide_after_load(
                     subject_key,
@@ -346,6 +477,9 @@ def main(argv: list[str] | None = None):
                     research.get("last_hit_readable"),
                     research.get("duplicate_research_suspected"),
                 )
+                # The subject has now had its one decision for the day. Recorded
+                # AFTER the gate ran, so a gate that raised does not burn a slot.
+                _budget_record(subject_key, research, budget_state)
             except Exception:
                 log.exception("research gate failed for %s", subject_key)
                 research_rows.append({"subject_key": subject_key,

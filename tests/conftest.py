@@ -186,6 +186,36 @@ def _block_gap_resolver_production_writes(monkeypatch, tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
+def _block_goal_lap_and_journal_production_writes(monkeypatch, tmp_path_factory):
+    """Keep goal laps and SHADOW run journals out of the live tree.
+
+    Same discovery as _block_cio_wake_trace_production_writes, one layer deeper.
+    agent_runtime_live_providers resolves PROJECT_ROOT to the RUNNING system's
+    checkout by absolute path — not to the repo under test — so any test that
+    exercised the agent processor appended journal lines into the live
+    data/runtime tree, from a worktree, with no trace in git status. The goal lap
+    ledger P4 adds would have inherited exactly that. Both are module-level
+    constants precisely so this fixture can redirect them.
+    """
+    isolated = tmp_path_factory.mktemp("goal_laps")
+    laps = isolated / "cio_goal_laps.jsonl"
+    try:
+        from scripts.lib import goal_generation
+        monkeypatch.setattr(goal_generation, "DEFAULT_LAP_LEDGER_PATH", laps)
+        monkeypatch.setattr(
+            goal_generation, "DEFAULT_NEED_LEDGER_PATH", isolated / "cio_goal_need_ledger.jsonl"
+        )
+    except Exception:
+        pass
+    # Only if the module is ALREADY imported: importing it here would pull the
+    # live-provider module into every test in the suite.
+    lp = sys.modules.get("agent_runtime_live_providers")
+    if lp is not None:
+        monkeypatch.setattr(lp, "GOAL_LAP_LEDGER_PATH", laps, raising=False)
+        monkeypatch.setattr(lp, "JOURNAL_ROOT", isolated / "journals", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _block_data_broker_snapshot_production_writes(monkeypatch, tmp_path_factory):
     """Keep data_broker snapshot caches out of the repository tree.
 

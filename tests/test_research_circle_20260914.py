@@ -57,7 +57,10 @@ def test_contradicting_numbers_are_named_and_cap_the_score():
 def test_stale_only_evidence_is_not_sufficient():
     ev = [_ev("analyst", "trade_ai:analysts", "Buy, target $96.50", as_of="2026-06-24", channel="house")]
     s = rc.score_lap(["analysts"], ev, now=NOW)
-    assert s["per_need"]["analysts"] == {"score": 20, "fresh_items": 0, "sources": [], "stale_only": True}
+    # Subset, not equality: per_need gained independence_keys/corroborated on 2026-09-16
+    # when independence moved from the retrieval channel to the publisher.
+    assert {"score": 20, "fresh_items": 0, "sources": [], "stale_only": True}.items() <= s["per_need"]["analysts"].items()
+    assert s["per_need"]["analysts"]["corroborated"] is False
     assert rc.deterministic_decision(s, lap=1)["decision"] == "climb"
 
 

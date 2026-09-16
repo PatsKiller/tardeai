@@ -12,6 +12,15 @@ DISPATCHER_CONTRACT = "agent-runtime-bounded-dispatcher-v1"
 
 class JobOutcome(str, Enum):
     COMPLETED = "COMPLETED"
+    # "this lap finished; the GOAL is not answered yet". Added 2026-09-16: the
+    # other nine members are all terminal-or-refused, so a processor that had
+    # made real progress but not reached its predicate had no way to say so —
+    # the only honest options were COMPLETED (a lie about the goal) or FAILED
+    # (a lie about the lap, which also advances the circuit breaker). INCOMPLETE
+    # is NOT a failure: the breaker records it as a success, the intake row is
+    # acked COMPLETED because that lap genuinely did finish, and continuation
+    # happens as a NEW generation key on the next tick — never a held lease.
+    INCOMPLETE = "INCOMPLETE"
     FAILED = "FAILED"
     REFUSED_STALE = "REFUSED_STALE"
     REFUSED_DUPLICATE = "REFUSED_DUPLICATE"
@@ -56,6 +65,13 @@ class JobResult:
     input_hash: str
     outcome: JobOutcome
     detail: str = ""
+    # What the processor returned about the work itself. Until 2026-09-16
+    # `_process_one` called the processor and DISCARDED its return value, so the
+    # outcome, the goal touch and the retrieval count the processor had computed
+    # were thrown away one frame above where they were produced — which is why a
+    # runner could only ever ack a row with a run id smuggled through a module
+    # global, and why no lap could ever report "keep going".
+    continuation: Mapping[str, Any] | None = None
 
 
 @dataclass
@@ -163,12 +179,44 @@ class BoundedDispatcher:
 
     def _process_one(self, job: JobRequest) -> JobResult:
         try:
-            self.processor(job)
+            returned = self.processor(job)
         except Exception as exc:  # noqa: BLE001 — outcome is recorded, breaker advances
             self.breaker.record_failure()
             return JobResult(job.input_hash, JobOutcome.FAILED, f"{type(exc).__name__}: {exc}")
+        # An incomplete lap is a SUCCESS on the breaker. The breaker exists to
+        # stop a processor that is throwing, not to punish a goal that needs
+        # another lap; counting continuation as failure would trip the circuit
+        # open on exactly the goals that are making progress.
         self.breaker.record_success()
-        return JobResult(job.input_hash, JobOutcome.COMPLETED, "processed")
+        return self._result_from(job, returned)
+
+    @staticmethod
+    def _result_from(job: JobRequest, returned: Any) -> JobResult:
+        """Read the processor's own verdict instead of assuming COMPLETED.
+
+        A processor that returns nothing (or anything that is not a mapping)
+        keeps the historical behaviour exactly: the lap completed.
+        """
+        if not isinstance(returned, Mapping):
+            return JobResult(job.input_hash, JobOutcome.COMPLETED, "processed")
+        declared = str(returned.get("outcome") or "").strip().lower()
+        detail = str(returned.get("detail") or "")
+        continuation = returned.get("continuation")
+        if not isinstance(continuation, Mapping):
+            continuation = None
+        if declared in {"incomplete", "continue", "continued"}:
+            return JobResult(
+                job.input_hash,
+                JobOutcome.INCOMPLETE,
+                detail or "lap finished; goal still open",
+                continuation,
+            )
+        return JobResult(
+            job.input_hash,
+            JobOutcome.COMPLETED,
+            detail or "processed",
+            continuation,
+        )
 
     def _is_stale(self, job: JobRequest, now: datetime) -> bool:
         elapsed = (now - job.enqueued_dt()).total_seconds()
