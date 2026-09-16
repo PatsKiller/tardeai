@@ -121,10 +121,6 @@
       "_why": "The health agent itself. If it stops, every other health signal stops with it and the silence looks like good news."
     },
     {
-      "unit": "tradeai-hermes-cio-worker.path",
-      "_why": "Wake path for the CIO worker. Died on inotify exhaustion 2026-09-12 and stayed failed for 14 hours."
-    },
-    {
       "unit": "tradeai-hermes-cio-worker.timer"
     },
     {
