@@ -703,6 +703,12 @@ GATES = [
             # wire story reached through two engines scored as two. Every
             # min_sources >= 2 predicate read that number.
             "tests/test_goal_need_ledger_20260916.py",
+            # 2026-09-16 P8: the pilot proves the thesis on one goal type.
+            # Its headline control is that a MISSING independent source is
+            # unknowable, not false - omitted from the facts so the predicate
+            # reads UNEVALUABLE and the goal terminates `bounded_ignorance`
+            # rather than closing on an assumption. Also pins paid_calls == 0.
+            "tests/test_goal_pilot_material_change_20260916.py",
             # 2026-09-13 litmus tests: answers are symbol-scoped, drawn from house facts
             # (cash/sectors/policy read from the snapshot), and carry a Sources line.
             "tests/test_operator_answers_use_house_facts_20260913.py",
