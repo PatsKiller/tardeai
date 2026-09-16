@@ -91,6 +91,14 @@ def test_only_gaps_with_a_resolver_action_are_mapped():
     assert [desk._registry_gap_type(g) for g in GAPS] == ["missing_market_data", "missing_thesis", None, None]
     assert desk._registry_gap_type({"domain": "hermes_research", "symbol": "NOC", "gap_type": "research"}) == "stale_news"
     assert desk._registry_gap_type({"domain": "hermes_research", "symbol": None, "gap_type": "research"}) is None
+    # `missing_research` is the type this module actually emits (subject_evidence,
+    # hermes_research branch). It returned None, so the desk could not feed the one
+    # working RAISED->WORKED->ANSWERED machine -- measured 2026-09-14 on HPE:
+    # `"registered": 0, "not_registered": 1` in cio_operator_gap_requests.jsonl.
+    assert desk._registry_gap_type(
+        {"domain": "hermes_research", "symbol": "HPE", "gap_type": "missing_research"}) == "stale_news"
+    assert desk._registry_gap_type(
+        {"domain": "hermes_research", "symbol": None, "gap_type": "missing_research"}) is None
 
 
 def test_register_gaps_writes_through_the_module_and_reports_ids(monkeypatch, _offline):

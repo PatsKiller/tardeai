@@ -90,4 +90,30 @@ def upsert_gap(root: Path | str, gap: dict[str, Any]) -> dict[str, Any]:
     tmp = path.with_suffix(".tmp")
     tmp.write_text("".join(json.dumps(r, sort_keys=True, default=str) + "\n" for r in kept), encoding="utf-8")
     tmp.replace(path)
+    _register_on_spine(gap)
     return {"wrote": True, "gap": gap}
+
+
+def _register_on_spine(gap: dict[str, Any]) -> str | None:
+    """Make this gap_id joinable to the goal and the question it belongs to.
+
+    `gap_id` does not change: it is registered as-is under source_table
+    `research_gaps`. The gap already carries the resolved `security_guid`, so
+    no lookup and no mint happens here.
+
+    Fail-safe: the JSONL row is already on disk when this runs. An unlinked gap
+    is degraded; a gap lost to a database that was briefly unreachable is not
+    recoverable, and that trade is the contract (rule 5).
+    """
+    sguid = gap.get("security_guid")
+    if not sguid:
+        return None
+    try:
+        from scripts.lib.cio_identity_spine import register_on_spine
+
+        return register_on_spine(
+            "research_gaps", gap.get("gap_id"), str(sguid),
+            semantic_subject=gap.get("symbol"),
+        )
+    except Exception:  # noqa: BLE001 -- never break the gap write
+        return None
