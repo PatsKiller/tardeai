@@ -38,11 +38,25 @@ PROJECT_ROOT = _resolve_project_root()
 # Writer DSN for the governed trigger queue (the queue the producer enqueues into).
 DISPATCH_DSN_ENV = "AGENT_RUNTIME_DISPATCH_DSN"
 
-# input_hash -> the run_id the processor actually minted for that job. The dispatcher
-# discards the processor's return value, so a completed intake row can only be acked
-# with the real run id if the processor publishes it here. A missing entry means the
-# job never ran: the row is left leased to expire rather than acked with an invented id.
+# input_hash -> the run_id the processor actually minted for that job. Kept as the
+# settle channel: a missing entry means the job never ran, so the row is left leased
+# to expire rather than acked with an invented id. (Since 2026-09-16 the dispatcher
+# also returns the processor's own result — JobResult.continuation — so "keep going"
+# no longer has to be smuggled through a module global.)
 _RUN_IDS: dict[str, str] = {}
+
+# Module-level so a test can redirect them. Both defaulted to PROJECT_ROOT, which is
+# resolved to the LIVE tree even under pytest, so every processor test wrote journals
+# into the real data/ directory of the running system.
+JOURNAL_ROOT = PROJECT_ROOT / "data" / "runtime" / "agent_runtime_journals"
+GOAL_LAP_LEDGER_PATH = PROJECT_ROOT / "data" / "cio" / "cio_goal_laps.jsonl"
+
+
+def _goal_store():
+    """The CIO goal store. One seam, so the goal path is testable in isolation."""
+    from scripts.lib.cio_goals import CIOGoalStore  # type: ignore
+
+    return CIOGoalStore()
 
 
 # ---------------------------------------------------------------------------
@@ -206,25 +220,64 @@ def _make_agent_processor(
     retrieval: Callable[[str, str], Sequence[Mapping[str, Any]]],
     model: Callable[[str, Mapping[str, Any]], Mapping[str, Any]],
 ) -> Callable[[Any], dict[str, Any]]:
-    """Build a SHADOW processor: retrieval + optional model + goal thesis touch.
+    """Build a SHADOW processor: goal context -> retrieval -> model -> lap artifact.
 
     Financial agents use the governed-gateway *sentinel* as model (returns
     PROVIDER_BLOCKED if invoked). We still complete the job with a
     retrieval-grounded advisory artifact and never invent numbers.
+
+    The goal is loaded BEFORE the model call. It used to be loaded after it
+    (model at :252, goal at :262), so the prompt was built from retrieval rows
+    alone and the agent never saw its goal, its predicate, its need ledger or
+    its own previous output. Every one of 11,457 laps on one goal was a cold
+    start, and the 29,774 thesis events those laps wrote are 100%
+    `PROVIDER_BLOCKED` with `retrieval_n=0` — runtime telemetry, not findings.
     """
     sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from agent_runtime.agents.dispatcher import JobRequest
     from agent_runtime.agents.definitions import FLEET
-    from agent_runtime.contracts import Environment
+    from agent_runtime.contracts import Environment, canonical_hash
     import uuid
 
     spec = FLEET[agent_id]
-    journal_root = PROJECT_ROOT / "data" / "runtime" / "agent_runtime_journals" / agent_id
 
     def _process(job: JobRequest) -> dict[str, Any]:
         run_id = f"{agent_id}-{uuid.uuid4().hex[:12]}"
         _RUN_IDS[job.input_hash] = run_id
         objective = f"{agent_id}:{job.job_type} — {job.trigger_kind or 'scheduled'}"
+
+        # ── goal context, BEFORE the model call ──────────────────────────────
+        goal_touch: dict[str, Any] = {}
+        store = None
+        goal: dict[str, Any] | None = None
+        generation: dict[str, Any] = {}
+        goal_block = ""
+        goal_id = ""
+        try:
+            from scripts.lib import goal_generation as gg  # type: ignore
+
+            payload = job.payload if isinstance(job.payload, Mapping) else {}
+            goal_id = str(payload.get("goal_id") or "") or gg.goal_id_from_dedup_key(job.dedup_value)
+            store = _goal_store()
+            ctx = store.get_context_for_agent(agent_id)
+            open_goals = ctx.get("open_goals") or []
+            goal_touch = {
+                "open_goal_count": len(open_goals),
+                "goal_ids": [g.get("goal_id") for g in open_goals[:8]],
+            }
+            if goal_id:
+                goal = store.get_goal(goal_id)
+            if goal:
+                generation = gg.generation_for_goal(goal, laps_path=GOAL_LAP_LEDGER_PATH)
+                goal_block = gg.goal_context_block(goal, generation)
+                goal_touch["goal_id"] = goal_id
+                goal_touch["predicate_version"] = generation["predicate_version"]
+                goal_touch["ledger_digest"] = generation["ledger_digest"]
+                goal_touch["lap"] = generation["lap"]
+                goal_touch["open_needs"] = list(generation["open_needs"])
+        except Exception as exc:
+            goal_touch["error"] = f"{type(exc).__name__}: {exc}"
+
         # retrieval-before-reasoning
         try:
             retrieval_rows = list(retrieval(run_id, f"{agent_id} {job.job_type} context") or [])
@@ -242,12 +295,21 @@ def _make_agent_processor(
                 context = json.dumps([dict(r) for r in retrieval_rows[:12]], default=str)[:8000]
             else:
                 context = "no retrieval results available"
+            system = (
+                f"You are {agent_id}, a SHADOW READ_ONLY_ADVISORY agent. "
+                f"Job: {job.job_type}. Evidence-grounded notes only. Never invent numbers."
+            )
+            if goal_block:
+                system += (
+                    " You are working ONE goal across many laps. Continue the prior lap's work; "
+                    "to close a need, write a line beginning 'CLOSED: <need>' and cite the evidence."
+                )
+                user = f"{goal_block}\n\nContext:\n{context}\n\nObjective: {objective}"
+            else:
+                user = f"Context:\n{context}\n\nObjective: {objective}"
             messages = [
-                {"role": "system", "content": (
-                    f"You are {agent_id}, a SHADOW READ_ONLY_ADVISORY agent. "
-                    f"Job: {job.job_type}. Evidence-grounded notes only. Never invent numbers."
-                )},
-                {"role": "user", "content": f"Context:\n{context}\n\nObjective: {objective}"},
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
             ]
             model_output = model(run_id, {"messages": messages, "max_tokens": 512, "temperature": 0.2})
             model_response = str(model_output.get("response") or "")
@@ -256,35 +318,117 @@ def _make_agent_processor(
         except Exception as exc:
             model_error = f"{type(exc).__name__}: {exc}"
 
-        # Goal / thesis touch (fail-open on missing store)
-        goal_touch: dict[str, Any] = {}
-        try:
-            from scripts.lib.cio_goals import CIOGoalStore  # type: ignore
-            store = CIOGoalStore()
-            ctx = store.get_context_for_agent(agent_id)
-            open_goals = ctx.get("open_goals") or []
-            goal_touch = {
-                "open_goal_count": len(open_goals),
-                "goal_ids": [g.get("goal_id") for g in open_goals[:8]],
-            }
-            # If job carries a goal_id (dedup_value=goal:<id>), update wake + thesis
-            goal_id = None
-            if job.dedup_value and str(job.dedup_value).startswith("goal:"):
-                goal_id = str(job.dedup_value).split(":", 1)[1]
-            if goal_id:
-                snippet = (
-                    f"shadow_run={run_id}; retrieval_n={len(retrieval_rows)}; "
-                    f"model_error={model_error or 'none'}; "
-                    f"trigger={job.trigger_kind}"
+        # ── the lap's artifact, and what it moved ────────────────────────────
+        finding = " ".join(model_response.split()) if model_response else ""
+        artifact_id = f"art-{run_id}"
+        artifact_payload: dict[str, Any] = {}
+        payload_hash = ""
+        continuation: dict[str, Any] | None = None
+        if goal and generation:
+            try:
+                from scripts.lib import goal_generation as gg  # type: ignore
+
+                open_needs = list(generation.get("open_needs") or [])
+                # Parsed from the RAW response: `finding` is whitespace-collapsed
+                # for the thesis, and a collapsed string has no lines to scan.
+                closed_now = (
+                    _declared_closures(model_response, open_needs)
+                    if finding and not model_error
+                    else []
                 )
-                store.record_wake(goal_id, agent_id=agent_id, outcome="shadow_completed")
-                store.update_thesis(goal_id, snippet[:500], agent_id=agent_id)
+                lap_refs = [str(r.get("ref")) for r in retrieval_rows if r.get("ref")]
+                if finding and not model_error:
+                    ref = gg.finding_ref(finding)
+                    if ref:
+                        lap_refs.append(ref)
+                open_after = [n for n in open_needs if n not in closed_now]
+                # Content only: no run id, no timestamp, no lap number. Two laps
+                # that reach the same conclusion therefore hash the SAME — which
+                # is how "this agent is repeating itself" stays visible instead of
+                # looking like progress.
+                artifact_payload = {
+                    "goal_id": goal_id,
+                    "predicate_version": generation["predicate_version"],
+                    "finding": finding,
+                    "closed_needs": closed_now,
+                    "open_needs_after": open_after,
+                    "evidence_refs": sorted(set(lap_refs)),
+                    "retrieval_count": len(retrieval_rows),
+                    "model_error": model_error,
+                }
+                payload_hash = canonical_hash(artifact_payload)
+                gg.append_lap(
+                    {
+                        "goal_id": goal_id,
+                        "predicate_version": generation["predicate_version"],
+                        "lap": generation["lap"],
+                        "run_id": run_id,
+                        "agent_id": agent_id,
+                        "artifact_id": artifact_id,
+                        "payload_hash": payload_hash,
+                        "answered_dedup_key": generation["dedup_key"],
+                        "finding": finding,
+                        "evidence_refs": sorted(set(lap_refs)),
+                        "closed_needs": closed_now,
+                        "open_needs_after": open_after,
+                        "model_error": model_error,
+                        "retrieval_count": len(retrieval_rows),
+                    },
+                    path=GOAL_LAP_LEDGER_PATH,
+                )
+                # Recomputed AFTER the lap is durable: this is the key the next
+                # tick will present. Unchanged when the lap learned nothing, so
+                # the enqueue is correctly refused instead of storming.
+                next_generation = gg.generation_for_goal(goal, laps_path=GOAL_LAP_LEDGER_PATH)
+                continuation = {
+                    "goal_id": goal_id,
+                    "predicate_version": next_generation["predicate_version"],
+                    "lap_completed": generation["lap"],
+                    "answered_dedup_key": generation["dedup_key"],
+                    "next_dedup_key": next_generation["dedup_key"],
+                    "open_needs": list(next_generation["open_needs"]),
+                    "closed_needs": list(next_generation["closed_needs"]),
+                    "made_progress": next_generation["dedup_key"] != generation["dedup_key"],
+                    "artifact_id": artifact_id,
+                    "payload_hash": payload_hash,
+                }
+                goal_touch["artifact_id"] = artifact_id
+                goal_touch["payload_hash"] = payload_hash
+                goal_touch["made_progress"] = continuation["made_progress"]
+            except Exception as exc:
+                goal_touch["lap_error"] = f"{type(exc).__name__}: {exc}"
+
+        # ── the goal's own record ────────────────────────────────────────────
+        # record_wake carries the run telemetry — that is what the wake event is
+        # FOR. update_thesis is only ever given a real finding. Writing
+        # "shadow_run=...; retrieval_n=0; model_error=PROVIDER_BLOCKED" into the
+        # thesis produced 29,774 events in which the thesis of the goal was a run
+        # id, and buried whatever the goal actually believed.
+        if store is not None and goal_id and goal:
+            try:
+                store.record_wake(
+                    goal_id,
+                    agent_id=agent_id,
+                    outcome=(
+                        f"shadow_lap:{generation.get('lap')}"
+                        f"{'' if not model_error else ':provider_error'}"
+                    ),
+                )
                 goal_touch["updated_goal_id"] = goal_id
-        except Exception as exc:
-            goal_touch["error"] = f"{type(exc).__name__}: {exc}"
+                if finding and not model_error:
+                    store.update_thesis(goal_id, finding[:500], agent_id=agent_id)
+                    goal_touch["thesis_updated"] = True
+                else:
+                    goal_touch["thesis_updated"] = False
+                    goal_touch["thesis_skipped_reason"] = (
+                        model_error[:120] if model_error else "no finding produced"
+                    )
+            except Exception as exc:
+                goal_touch["error"] = f"{type(exc).__name__}: {exc}"
 
         # Persist a minimal journal line for audit (not production path)
         try:
+            journal_root = Path(JOURNAL_ROOT) / agent_id
             journal_root.mkdir(parents=True, exist_ok=True)
             line = json.dumps({
                 "run_id": run_id,
@@ -314,12 +458,26 @@ def _make_agent_processor(
         outcome = "completed"
         if retrieval_err and not retrieval_rows:
             outcome = "completed_degraded"  # fail-open shadow
+        detail = ""
+        if continuation and continuation.get("open_needs"):
+            # The LAP finished; the GOAL has not. Nine outcomes existed and none
+            # could say that, so a lap that had made real progress had to report
+            # COMPLETED and the goal looked answered 11,457 times over.
+            outcome = "incomplete"
+            detail = (
+                f"goal {goal_id} lap {continuation['lap_completed']} done; "
+                f"{len(continuation['open_needs'])} need(s) open; "
+                f"progress={continuation['made_progress']}"
+            )
 
         return {
             "input_hash": job.input_hash,
             "run_id": run_id,
-            "artifact_id": f"art-{run_id}",
+            "artifact_id": artifact_id,
+            "payload_hash": payload_hash,
             "outcome": outcome,
+            "detail": detail,
+            "continuation": continuation,
             "retrieval_count": len(retrieval_rows),
             "model_error": model_error,
             "goal_touch": goal_touch,
@@ -327,6 +485,26 @@ def _make_agent_processor(
             "definition_id": getattr(spec.definition, "agent_id", agent_id),
         }
     return _process
+
+
+def _declared_closures(finding: str, open_needs: Sequence[str]) -> list[str]:
+    """Needs the lap EXPLICITLY declared closed, matched against the open ledger.
+
+    Deterministic and conservative: a need closes only when the output says so
+    on a ``CLOSED:`` line AND that need is currently open. Nothing is inferred
+    from tone, length or confidence — an agent cannot close a need by sounding
+    finished, and it can never close one that was not declared.
+    """
+    closed: list[str] = []
+    for line in str(finding or "").splitlines() or []:
+        stripped = line.strip()
+        if not stripped.upper().startswith("CLOSED:"):
+            continue
+        claim = stripped.split(":", 1)[1].strip().lower()
+        for need in open_needs:
+            if need.lower() in claim and need not in closed:
+                closed.append(need)
+    return closed
 
 
 # ---------------------------------------------------------------------------
@@ -375,18 +553,33 @@ def job_source(agent_id: str, limit: int = 8) -> Sequence[Any]:
     # Open goals owned by this agent (bounded)
     if len(jobs) < limit:
         try:
-            from scripts.lib.cio_goals import CIOGoalStore  # type: ignore
-            store = CIOGoalStore()
+            from scripts.lib import goal_generation as gg  # type: ignore
+
+            store = _goal_store()
             due = store.list_due_or_idle_goals(owner_agent=agent_id, limit=limit - len(jobs))
             for g in due:
                 gid = g.get("goal_id", "")
+                # The generation token, not a constant `goal:<id>`. The old key was
+                # the same string for every lap of a goal for all time, and the
+                # intake UNIQUE constraint carries no state column, so the FIRST
+                # lap permanently consumed the only slot that goal would ever get:
+                # 29,653 duplicate enqueues against 1,759 accepted, one goal worked
+                # 11,457 times without a single GOAL_STATUS_CHANGED.
+                generation = gg.generation_for_goal(g, laps_path=GOAL_LAP_LEDGER_PATH)
                 jobs.append(JobRequest(
                     agent_id=agent_id,
                     job_type="goal_shadow_review",
-                    input_hash=_hash(f"goal:{gid}:{g.get('updated_ts','')}"),
+                    input_hash=_hash(generation["dedup_key"]),
                     enqueued_at=now_iso,
-                    dedup_value=f"goal:{gid}",
+                    dedup_value=generation["dedup_key"],
                     trigger_kind="GOAL_DUE",
+                    payload={
+                        "goal_id": gid,
+                        "predicate_version": generation["predicate_version"],
+                        "ledger_digest": generation["ledger_digest"],
+                        "lap": generation["lap"],
+                        "open_needs": list(generation["open_needs"]),
+                    },
                 ))
         except Exception:
             pass
@@ -507,7 +700,12 @@ def job_source_with_acks(agent_id: str, limit: int = 8, *, store: Any = None):
             outcome = getattr(getattr(res, "outcome", ""), "value", str(getattr(res, "outcome", "")))
             detail = str(getattr(res, "detail", ""))
             try:
-                if outcome == "COMPLETED":
+                # INCOMPLETE settles the ROW as COMPLETED: that lap really did
+                # finish, and holding the lease open (or failing the row) would
+                # either wedge the queue for 900s or advance the breaker against
+                # a goal that is making progress. Continuation is a NEW dedup key
+                # next tick — never a held lease.
+                if outcome in ("COMPLETED", "INCOMPLETE"):
                     run_id = _RUN_IDS.get(res.input_hash)
                     if not run_id:
                         continue  # no real run id: let the lease expire and retry
