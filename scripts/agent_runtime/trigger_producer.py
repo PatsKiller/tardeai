@@ -56,6 +56,7 @@ def produce_once(store: TriggerIntakeStore, *, sources: list[str] | None = None)
     selected = sources or _configured_sources(os.environ.get(PRODUCER_SOURCES_ENV, DEFAULT_SOURCES))
     enqueued = duplicates = 0
     blocked: list[str] = []
+    cursors_held: list[str] = []
     per_agent_depth: dict[str, int] = {}
     details: list[dict[str, Any]] = []
 
@@ -66,6 +67,7 @@ def produce_once(store: TriggerIntakeStore, *, sources: list[str] | None = None)
         if result.probe.state.value != "READY" and source_id in ADAPTERS:
             blocked.append(source_id)
         accepted = 0
+        dropped_for_capacity = 0
         for candidate in result.candidates:
             agent = FLEET.get(candidate.agent_id)
             if agent is None:
@@ -73,6 +75,7 @@ def produce_once(store: TriggerIntakeStore, *, sources: list[str] | None = None)
             stats = store.queue_stats(candidate.agent_id)
             queued = int(stats.get("queued") or 0)
             if queued >= agent.max_queue_depth:
+                dropped_for_capacity += 1
                 continue
             outcome = store.enqueue(candidate)
             if outcome == EnqueueOutcome.ENQUEUED:
@@ -81,14 +84,26 @@ def produce_once(store: TriggerIntakeStore, *, sources: list[str] | None = None)
                 per_agent_depth[candidate.agent_id] = queued + 1
             else:
                 duplicates += 1
-        for sid, cursor_key, cursor_value_new in result.cursor_updates:
-            store.set_cursor(sid, cursor_key, cursor_value_new)
+        # Every adapter reads strictly forward (WHERE <cursor_key> > cursor), so a candidate
+        # dropped at max_queue_depth is lost for good once the cursor moves past its source
+        # row: nothing ever looks back. Advancing regardless is silent evidence loss — measured
+        # 2026-09-15, when the queues were full of an August backlog and 10 producer runs
+        # discarded 1,088 of 1,344 candidates (watch:artifacts 640, outcomes:recommendations
+        # all 192, watch:refresh_jobs 128, research:hermes 128) while the cursors marched on.
+        # Holding the cursor costs one re-fetch per run; the rows are re-read when capacity frees.
+        if dropped_for_capacity:
+            cursors_held.append(source_id)
+        else:
+            for sid, cursor_key, cursor_value_new in result.cursor_updates:
+                store.set_cursor(sid, cursor_key, cursor_value_new)
         details.append(
             {
                 "source_id": source_id,
                 "probe": result.probe.state.value,
                 "candidates": len(result.candidates),
                 "accepted": accepted,
+                "dropped_for_capacity": dropped_for_capacity,
+                "cursor_held": bool(dropped_for_capacity),
             }
         )
 
@@ -98,6 +113,8 @@ def produce_once(store: TriggerIntakeStore, *, sources: list[str] | None = None)
         "enqueued": enqueued,
         "duplicates": duplicates,
         "blocked_sources": blocked,
+        "cursors_held": cursors_held,
+        "dropped_for_capacity": sum(int(d.get("dropped_for_capacity") or 0) for d in details),
         "expired_leases_returned": expired,
         "per_agent_depth": per_agent_depth,
         "sources": details,
