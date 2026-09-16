@@ -107,6 +107,18 @@ DEFAULT_ON_GAP: list[dict[str, Any]] = [
     {"vector": "operator_ask", "cost_class": "free", "max_per_day": 1, "expected_seconds": 7200},
 ]
 
+#: Vectors whose daily budget is counted PER GOAL rather than globally.
+#:
+#: `operator_ask` was capped at one question per day across the whole system, so
+#: a measured receipt shows the day's SECOND question refused human escalation
+#: because an unrelated first question had used the only slot. The cap exists to
+#: stop the desk pestering the operator about ONE thing repeatedly -- not to
+#: ration the number of distinct things that may be asked about. Counting per
+#: goal keeps the former and removes the latter. Gaps that name no goal share
+#: ONE bucket among themselves -- the historic single slot -- rather than
+#: competing with goal-scoped work for it, which would simply move the defect.
+PER_GOAL_BUDGET_VECTORS = frozenset({"operator_ask"})
+
 #: Desk evidence-domain names → registry domains. The desk speaks in needs
 #: ("analyst_view"); the registry speaks in domains ("analyst_opinion").
 DESK_DOMAIN_MAP = {
@@ -162,6 +174,10 @@ class DataGap:
     stale_age_hours: Optional[float] = None
     evidence: dict[str, Any] = field(default_factory=dict)   # already-gathered facts
     gap_id: str = ""
+    #: The cio_goals goal this gap is being worked for, when there is one.
+    #: Deliberately NOT part of the gap_id payload below: the same question is
+    #: the same gap whoever asks it, and folding this in would fork every id.
+    goal_id: str = ""
 
     def __post_init__(self) -> None:
         self.domain = str(self.domain or "").strip()
@@ -355,8 +371,16 @@ def read_receipts(path: Optional[Path] = None) -> list[dict[str, Any]]:
 
 
 def attempts_today(vector: str, *, path: Optional[Path] = None, now: Optional[datetime] = None,
-                   rows: Optional[list[dict[str, Any]]] = None) -> int:
-    """Attempts that consumed budget today: everything except refusals."""
+                   rows: Optional[list[dict[str, Any]]] = None,
+                   goal_id: Optional[str] = None) -> int:
+    """Attempts that consumed budget today: everything except refusals.
+
+    `goal_id` scopes the count to one goal's own attempts. Passing None counts
+    globally, which is the historic behaviour and stays the default. Passing
+    `""` counts the attempts that name NO goal -- including every receipt
+    written before this field existed, which is what keeps the ungoaled bucket
+    honest rather than starting it back at zero.
+    """
     day = (now or _now()).date().isoformat()
     n = 0
     for r in (rows if rows is not None else read_receipts(path)):
@@ -365,6 +389,8 @@ def attempts_today(vector: str, *, path: Optional[Path] = None, now: Optional[da
         if str(r.get("started") or "")[:10] != day:
             continue
         if r.get("outcome") in ("budget_denied", "retired_skipped"):
+            continue
+        if goal_id is not None and str(r.get("goal_id") or "") != str(goal_id):
             continue
         n += 1
     return n
@@ -735,8 +761,14 @@ def resolve(
             _finish(attempt, ctx, res, receipts_rows, gap)
             continue
 
-        # Budget: per vector per day, counted from receipts.
-        used = attempts_today(vector, now=started, rows=receipts_rows)
+        # Budget: per vector per day, counted from receipts. A vector in
+        # PER_GOAL_BUDGET_VECTORS is counted against THIS goal's own attempts,
+        # so one goal's question cannot consume another goal's escalation slot.
+        # An empty goal_id is a bucket in its own right, NOT a fall-back to the
+        # global count: counting globally here would let goal-scoped work starve
+        # the ungoaled slot, which is the same defect wearing a different hat.
+        scope = gap.goal_id if vector in PER_GOAL_BUDGET_VECTORS else None
+        used = attempts_today(vector, now=started, rows=receipts_rows, goal_id=scope)
         if used >= int(entry.get("max_per_day") or 0):
             attempt.outcome = "budget_denied"
             attempt.detail = f"{used}/{entry.get('max_per_day')} attempts today"
@@ -844,6 +876,10 @@ def _finish(attempt: Attempt, ctx: Context, res: Resolution, rows: list[dict[str
         "schema": RECEIPT_SCHEMA,
         "authority": AUTHORITY,
         "gap_id": gap.gap_id,
+        # The join that makes a per-goal budget countable at all: without this
+        # on the receipt there is no way to ask "how many times have we asked
+        # the operator about THIS goal today".
+        "goal_id": gap.goal_id,
         "domain": canonical_domain(gap.domain),
         "subject": gap.subject,
         "question": gap.question[:300],
@@ -859,6 +895,7 @@ def _finish(attempt: Attempt, ctx: Context, res: Resolution, rows: list[dict[str
 __all__ = [
     "AUTHORITY", "SCHEMA", "RECEIPT_SCHEMA", "RECEIPTS_PATH", "FLAG_LIVE", "FLAG_PAID", "paid_authorized",
     "VECTORS", "COST_CLASSES", "OUTCOMES", "WHYS", "DEFAULT_ON_GAP", "DESK_DOMAIN_MAP",
+    "PER_GOAL_BUDGET_VECTORS",
     "DataGap", "Resolution", "VectorResult", "Context", "Attempt",
     "resolve", "load_on_gap", "normalise_chain", "registry_domain", "canonical_domain",
     "read_receipts", "attempts_today", "live_armed", "BACKUP_FETCHERS", "DEFAULT_VECTORS",

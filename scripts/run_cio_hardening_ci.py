@@ -673,6 +673,22 @@ GATES = [
             # An alert must survive past its first send: one shared transition
             # engine instead of seven private fingerprint blocks.
             "tests/test_alert_transition_20260916.py",
+            # 2026-09-16 P2/P7: a goal stops because a PREDICATE over evidence
+            # is satisfied, not because a step ran. Measured before this: three
+            # goals, 34,347 wakes, 36 days, GOAL_STATUS_CHANGED = 0, and a
+            # close_goal() that defaulted to "achieved" and required no evidence
+            # at all. These pin the new event type being safe in BOTH directions
+            # (rejected on write, silently ignored on read by an older reader),
+            # predicate identity reusing goal_id rather than minting a sixth id
+            # scheme, UNEVALUABLE for an unknown evaluator instead of a silent
+            # pass, the refusal of a goal born overdue, and the append-only
+            # repair of the three live goals that were.
+            "tests/test_goal_predicate_20260916.py",
+            # Termination: five named outcomes, evidence on every one, a
+            # non-vacuous falsifier and a bound re-check before anything may be
+            # called achieved, and operator_ask counted per goal so the day's
+            # second question is no longer refused human escalation.
+            "tests/test_goal_termination_20260916.py",
             # 2026-09-13 litmus tests: answers are symbol-scoped, drawn from house facts
             # (cash/sectors/policy read from the snapshot), and carry a Sources line.
             "tests/test_operator_answers_use_house_facts_20260913.py",
