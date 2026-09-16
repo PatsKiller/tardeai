@@ -256,15 +256,48 @@ class Score:
     dimensions: Mapping[str, float]
     outcome_ref: str | None = None
     created_at: str = field(default_factory=utc_now)
+    #: The agent that reviewed this artifact, when one is known. Appended last so every
+    #: existing positional caller is unaffected. Supplying it turns the third independence
+    #: rule on: one agent may not both review AND score the same artifact.
+    reviewer_agent_id: str | None = None
 
     def validate(self) -> None:
         if self.producer_agent_id == self.scorer_agent_id:
             raise ValueError("an agent may not score its own artifact")
+        if self.reviewer_agent_id is not None:
+            assert_independent_roles(
+                self.producer_agent_id, self.reviewer_agent_id, self.scorer_agent_id
+            )
         if not self.dimensions:
             raise ValueError("at least one score dimension is required")
         for key, value in self.dimensions.items():
             if not key or not -1.0 <= float(value) <= 1.0:
                 raise ValueError("score dimensions must be named and within [-1, 1]")
+
+
+def assert_independent_roles(producer_agent_id: str, reviewer_agent_id: str, scorer_agent_id: str) -> None:
+    """producer != reviewer != scorer — all three edges, not two.
+
+    ``Review.validate`` has always enforced producer != reviewer and ``Score.validate``
+    producer != scorer. **Nothing enforced reviewer != scorer**, so one agent could both
+    review and score the same artifact and the pair still validated: two independence
+    checks passing while the artifact had, in substance, one independent examiner. Two
+    verdicts from one agent are one verdict counted twice.
+    """
+    producer = str(producer_agent_id or "").strip()
+    reviewer = str(reviewer_agent_id or "").strip()
+    scorer = str(scorer_agent_id or "").strip()
+    if not producer or not reviewer or not scorer:
+        raise ValueError("independence requires a producer, a reviewer and a scorer")
+    if producer == reviewer:
+        raise ValueError("an agent may not review its own artifact")
+    if producer == scorer:
+        raise ValueError("an agent may not score its own artifact")
+    if reviewer == scorer:
+        raise ValueError(
+            f"reviewer and scorer must be different agents (both are {reviewer!r}); "
+            "one agent may not both review and score the same artifact"
+        )
 
 
 def dataclass_payload(value: Any) -> dict[str, Any]:

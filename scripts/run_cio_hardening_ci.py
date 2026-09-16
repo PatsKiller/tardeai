@@ -673,6 +673,51 @@ GATES = [
             # An alert must survive past its first send: one shared transition
             # engine instead of seven private fingerprint blocks.
             "tests/test_alert_transition_20260916.py",
+            # 2026-09-16 P2/P7: a goal stops because a PREDICATE over evidence
+            # is satisfied, not because a step ran. Measured before this: three
+            # goals, 34,347 wakes, 36 days, GOAL_STATUS_CHANGED = 0, and a
+            # close_goal() that defaulted to "achieved" and required no evidence
+            # at all. These pin the new event type being safe in BOTH directions
+            # (rejected on write, silently ignored on read by an older reader),
+            # predicate identity reusing goal_id rather than minting a sixth id
+            # scheme, UNEVALUABLE for an unknown evaluator instead of a silent
+            # pass, the refusal of a goal born overdue, and the append-only
+            # repair of the three live goals that were.
+            "tests/test_goal_predicate_20260916.py",
+            # Termination: five named outcomes, evidence on every one, a
+            # non-vacuous falsifier and a bound re-check before anything may be
+            # called achieved, and operator_ask counted per goal so the day's
+            # second question is no longer refused human escalation.
+            "tests/test_goal_termination_20260916.py",
+            # 2026-09-16 P3: a CUMULATIVE per-goal budget, keyed (goal_id,
+            # predicate_version). Every budget before this one was PER INVOCATION
+            # and reset every lap, so a goal could lap forever and accumulate
+            # nothing. Fails closed on the search_budget rule -- an unreadable
+            # ledger DENIES and is never rebuilt as a fresh zero counter -- and
+            # is enforced at enqueue in the producer, never inside MvlRuntime,
+            # so an agent can never extend its own budget.
+            "tests/test_goal_budget_20260916.py",
+            # 2026-09-16 P5: the need ledger, and the independence defect under it.
+            # score_lap keyed independence on the RETRIEVAL CHANNEL, so six
+            # publishers behind one search engine scored as one source while one
+            # wire story reached through two engines scored as two. Every
+            # min_sources >= 2 predicate read that number.
+            "tests/test_goal_need_ledger_20260916.py",
+            # 2026-09-16 P4: a goal can have a SECOND lap, and the second lap can
+            # see the first. Measured before the fix: one goal worked 11,457
+            # times, 29,653 duplicate enqueues against 1,759 accepted, 29,774
+            # thesis events that are 100% PROVIDER_BLOCKED with retrieval_n=0,
+            # and GOAL_STATUS_CHANGED = 0 across 37 days. The dedup key is now a
+            # generation token (goal:{id}:{predicate_version}:{ledger_digest}) —
+            # producer-side, because trigger_intake has no DDL in this repo and
+            # amending its UNIQUE constraint would be §7A/§17 operator-gated.
+            "tests/test_goal_loop_second_lap_20260916.py",
+            # 2026-09-16 P8: the pilot proves the thesis on one goal type.
+            # Its headline control is that a MISSING independent source is
+            # unknowable, not false - omitted from the facts so the predicate
+            # reads UNEVALUABLE and the goal terminates `bounded_ignorance`
+            # rather than closing on an assumption. Also pins paid_calls == 0.
+            "tests/test_goal_pilot_material_change_20260916.py",
             # 2026-09-13 litmus tests: answers are symbol-scoped, drawn from house facts
             # (cash/sectors/policy read from the snapshot), and carry a Sources line.
             "tests/test_operator_answers_use_house_facts_20260913.py",
@@ -1800,6 +1845,51 @@ GATES = [
             "tests/test_disk_hygiene_enforcer.py",
             "tests/test_docs_tip_hygiene_enforcer.py",
             "tests/test_hermes_librarian_retention_runner.py",
+        ],
+    ),
+    (
+        # 2026-09-16 P6 — tiered validation, blocking, non-self-certifying.
+        # Measured before this gate existed: independent_critic 31/31 accept with zero
+        # disagreements, agent_view_v1.critic_pass 346/346 True with critique_id None,
+        # research_quality 608 completions with zero FAILED, StructuralGoldenJudge
+        # returning literals on most of its rubric, cloud_consensus_verdict matching 0
+        # candidates in 16 runs a day. Four validators, none of which had ever contested
+        # anything, all reported as working — and CriticPanel, which is written correctly,
+        # had no production caller at all.
+        #
+        # These pin the four anti-blindness mechanisms and the third independence edge:
+        # a validator that passes a seeded known-bad is BLIND and its window is voided;
+        # zero disagreements at n>=30 is UNCALIBRATED; a constant score axis is not a
+        # measurement; PASS/REJECT survives as a DISAGREEMENT rather than being voted
+        # away; tier 2 spends nothing without the operator (§17); and reviewer != scorer
+        # is enforced in the contract AND against the durable rows.
+        "tiered_validation_20260916",
+        [
+            "tests/test_validator_calibration_20260916.py",
+            "tests/test_tiered_validation_20260916.py",
+        ],
+    ),
+    (
+        # P9/P10 (2026-09-16) — gate honesty and archive-or-wire.
+        #
+        # P9: six maturity gates were hardcoded literals justified by prose
+        # comments rather than rows in a store, and independent_review_coverage
+        # reused the SCORE count, so the board read 8/12 passing with
+        # gates_not_measured: 0 for an agent that had measured almost nothing.
+        # These gates fail closed now: a gate with no store reads
+        # NOT_YET_MEASURED and can never pass.
+        #
+        # P10: the subject-collapse law (one research decision per subject per
+        # day, cap 5) was a transitive dark chain — both its importers declare
+        # NO_CONSUMER_REASON — so it was enforced nowhere in the live path. It
+        # is now applied in the */5 dispatcher, and the archive batch is a
+        # proposal that must stay unapplied.
+        "gate_honesty_and_archive_or_wire",
+        [
+            "tests/test_gate_honesty_p9.py",
+            "tests/test_research_budget_live_wire_p10.py",
+            "tests/test_dormant_lane_wiring_p10.py",
+            "tests/test_archive_manifest_proposal_p10.py",
         ],
     ),
 ]

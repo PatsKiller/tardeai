@@ -22,6 +22,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
+from scripts.lib import cio_goal_need_ledger as ngl  # noqa: E402
 from scripts.lib import research_circle as rc  # noqa: E402
 
 NO_CONSUMER_REASON = "operator/engineer entry point for the research circle; the desk wires it in Phase 2"
@@ -97,6 +98,8 @@ def main() -> int:
     ap.add_argument("--no-web", action="store_true", help="skip SearXNG (and so the targeted second lap)")
     ap.add_argument("--max-laps", type=int, default=2)
     ap.add_argument("--apply", action="store_true", help="append lifecycle and check-in rows")
+    ap.add_argument("--goal-id", default="", help="project each lap onto this goal's need ledger (P5)")
+    ap.add_argument("--predicate-version", default=ngl.DEFAULT_PREDICATE_VERSION)
     ap.add_argument("--json", action="store_true")
     args = ap.parse_args()
     sym = args.symbol.upper()
@@ -114,8 +117,19 @@ def main() -> int:
                          call_model=rc.deepseek_flash_caller() if args.analyzer == "deepseek" else None,
                          max_laps=args.max_laps)
     res = laps[-1]
+    # P5: project what each lap still does not know onto the goal's need ledger.
+    # Nothing is re-scored here -- score_lap already decided, and these rows carry
+    # its numbers. Same --apply gate as the lifecycle ledger: a dry run writes nothing.
+    need_rows: list[dict] = []
+    if args.goal_id:
+        need_ledger = ngl.NeedLedger(apply=args.apply)
+        for lap in laps:
+            need_rows.append(need_ledger.record(
+                args.goal_id, lap.score, lap=lap.lap, predicate_version=args.predicate_version,
+                decision=lap.verdict, question_guid=lap.question_guid, subject_guids={}))
     if args.json:
-        print(json.dumps([lap.to_dict() for lap in laps], indent=2, default=str))
+        print(json.dumps({"laps": [lap.to_dict() for lap in laps], "need_ledger": need_rows},
+                         indent=2, default=str))
         return 0
     print(f"question_guid {res.question_guid} · needs {res.needs}")
     for lap in laps:
@@ -138,6 +152,10 @@ def main() -> int:
         print("missing:", v["missing_facts"])
     if res.checkin:
         print(f"check-in {res.checkin['due_at']} ({res.checkin['days']} d) — {res.checkin['reason']}")
+    for row in need_rows:
+        print(f"need ledger {row['key']} · open {row['open_needs'] or 'none'} · digest {row['need_digest']} "
+              f"· corroborated {row['corroboration'].get('corroborated')} "
+              f"· {'written' if args.apply else 'DRY RUN, not written'}")
     print("lifecycle:", " → ".join(r["state"] for r in ledger.rows), "·", "written" if args.apply else "dry run, nothing written")
     return 0
 
