@@ -31,6 +31,24 @@ Clock = Callable[[], datetime]
 _TERMINAL = {RunStatus.COMPLETED.value, RunStatus.CANCELLED.value, RunStatus.FAILED.value}
 
 
+def _recorded_reviewer(state: Mapping[str, Any], artifact_id: str) -> str | None:
+    """The agent that reviewed this artifact, if the run state carries one.
+
+    Journal-mode state replays the recorded review payload, so the reviewer is readable
+    here. Persistence-mode state normalizes ``review`` to a bool — there the same rule is
+    enforced against the durable ``agent_reviews`` rows in ``_PersistenceBase.record_score``,
+    which is the authority in that mode. Returning None means "not known here", never
+    "nobody reviewed it".
+    """
+    review = state.get("review")
+    if not isinstance(review, Mapping):
+        return None
+    if str(review.get("artifact_id") or "") not in ("", artifact_id):
+        return None
+    reviewer = str(review.get("reviewer_agent_id") or "").strip()
+    return reviewer or None
+
+
 class MvlRuntime:
     """Durable shadow implementation of the first agentic loop.
 
@@ -358,6 +376,10 @@ class MvlRuntime:
             scorer_agent_id=scorer_agent_id,
             dimensions=dict(dimensions),
             outcome_ref=outcome_ref,
+            # Third independence edge: whoever reviewed this artifact may not also score
+            # it. In persistence mode the recorded reviewer is not in the normalized
+            # state, so the durable store enforces the same rule against agent_reviews.
+            reviewer_agent_id=_recorded_reviewer(state, artifact.artifact_id),
         )
         score.validate()
         if self._persist:
