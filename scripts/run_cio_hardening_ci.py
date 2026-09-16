@@ -1867,6 +1867,9 @@ GATES = [
         [
             "tests/test_validator_calibration_20260916.py",
             "tests/test_tiered_validation_20260916.py",
+        ],
+    ),
+    (
         # P9/P10 (2026-09-16) — gate honesty and archive-or-wire.
         #
         # P9: six maturity gates were hardcoded literals justified by prose

@@ -228,3 +228,41 @@ def test_a_damaged_line_does_not_hide_the_rows_around_it(tmp_path):
         fh.write('{"goal_id": "goal-abc", trunc\n')
     led.record("goal-abc", s, lap=2, predicate_version="v3")
     assert [r["lap"] for r in led.read("goal-abc", "v3")] == [1, 2]
+
+
+# ── cross-module identity: one spelling for "this goal has no predicate yet" ──
+# P4 and P5 were briefed separately and independently chose "v0" and "v0-unset"
+# for the SAME condition. Nothing failed, because P4 filters its own lap ledger
+# (where it writes and reads its own spelling) and reads P5's rows on goal_id
+# alone -- so the divergence was latent. But the same field keys the generation
+# token, this ledger row and the budget bucket, so two spellings means one
+# goal-lap carrying two identities: precisely the five-identities-no-join-key
+# defect the goal-loop plan exists to remove, reintroduced by parallel work.
+# Canonical is "v0", matching cio_goals' `v{int}` identity rendering, so the
+# unset line reads as the natural predecessor of v1.
+
+def test_predicate_version_is_canonical_across_modules():
+    """A second spelling of the unset version must fail here, not in production."""
+    from scripts.lib import goal_generation as gg
+    assert ngl.DEFAULT_PREDICATE_VERSION == gg.PREDICATE_VERSION_FALLBACK == "v0"
+
+
+def test_the_unset_version_joins_across_the_ledger_and_the_generation_token():
+    """The ledger row and the dedup key must agree on the version segment."""
+    from scripts.lib import goal_generation as gg
+    unset_goal = {"goal_id": "goal-abc"}
+    pv = gg.predicate_version(unset_goal)
+    assert pv == ngl.DEFAULT_PREDICATE_VERSION
+    key = ngl.ledger_key("goal-abc", pv, 1)
+    assert key.split("|")[1] == pv
+    assert f":{pv}:" in gg.generation_key("goal-abc", pv, "deadbeef")
+
+
+def test_the_cli_default_derives_from_the_constant_not_a_literal():
+    """run_research_circle --predicate-version must follow the canonical constant."""
+    import re
+    from pathlib import Path
+    src = Path("scripts/run_research_circle.py").read_text(encoding="utf-8")
+    m = re.search(r'--predicate-version["\'],\s*default=([A-Za-z_.]+)', src)
+    assert m, "the --predicate-version default should be a named constant"
+    assert m.group(1).endswith("DEFAULT_PREDICATE_VERSION")

@@ -49,7 +49,13 @@ NEED_LEDGER_PATH = PROJECT_ROOT / "data" / "cio" / "cio_goal_need_ledger.jsonl"
 
 #: Until GOAL_PREDICATE_SET exists, every row carries this. Callers that have a
 #: real predicate version pass it; nothing here invents one.
-DEFAULT_PREDICATE_VERSION = "v0-unset"
+DEFAULT_PREDICATE_VERSION = "v0"  # canonical: matches goal_generation.
+#: PREDICATE_VERSION_FALLBACK and P2's `v{int}` identity rendering. P4 and P5 were
+#: briefed separately and independently chose "v0" and "v0-unset" for the SAME
+#: condition (a goal with no GOAL_PREDICATE_SET yet), which would key the generation
+#: token, this ledger row and the budget bucket under different strings for one
+#: goal-lap -- the five-identities-no-join-key defect this plan exists to remove,
+#: reintroduced. Pinned by test_predicate_version_is_canonical_across_modules.
 
 #: A need at or above this scores as answered. Same threshold `deterministic_decision`
 #: uses for `missing_facts`, referenced rather than re-chosen.
