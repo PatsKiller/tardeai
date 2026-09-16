@@ -12906,6 +12906,7 @@ def _llm_spend():
 def _system_health_dashboard():
     """GET /api/v2/system-health — comprehensive system status."""
     import subprocess
+    from pathlib import Path as _Path
 
     # LLM health
     llm = _llm_health()
@@ -12960,6 +12961,23 @@ def _system_health_dashboard():
     _fresh_count = sum(1 for f in _freshness_items if f["status"] == "fresh")
     _stale_count = sum(1 for f in _freshness_items if f["status"] == "stale")
 
+    # Release pin — never fabricate. Prefer env, then BUILD_SHA next to cwd.
+    _served = (os.environ.get("TRADEAI_CC_DEPLOYED_SHA") or os.environ.get("BUILD_SHA") or "").strip()
+    _served_why = "env:TRADEAI_CC_DEPLOYED_SHA|BUILD_SHA"
+    if not _served:
+        try:
+            _build = _Path(os.getcwd()) / "BUILD_SHA"
+            if _build.is_file():
+                _served = _build.read_text(encoding="utf-8").strip().splitlines()[0].strip()
+                _served_why = f"file:{_build}"
+        except Exception as _exc:  # noqa: BLE001
+            _served_why = f"unavailable:{type(_exc).__name__}"
+    _served_block = (
+        {"sha": _served, "source": _served_why}
+        if _served
+        else {"status": "unavailable", "why": _served_why or "no BUILD_SHA or TRADEAI_CC_DEPLOYED_SHA"}
+    )
+
     return {
         "llm": llm,
         "db_tables": key_tables,
@@ -12971,6 +12989,7 @@ def _system_health_dashboard():
             "summary": f"{_fresh_count}/{len(_freshness_items)} fresh, {_stale_count} stale",
             "products": _freshness_items,
         },
+        "served_sha": _served_block,
         "note": "System health dashboard with data product freshness.",
     }
 

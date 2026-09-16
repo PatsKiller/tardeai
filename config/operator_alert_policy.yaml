@@ -118,7 +118,7 @@ telegram_normalization:
   # ACTIVE additionally requires the outbox migration to be applied.
   # Quoted deliberately: YAML 1.1 parses bare OFF/ON/YES/NO as booleans, so an
   # unquoted OFF arrives as False and never matches a mode name.
-  runtime_mode: "OFF"
+  runtime_mode: "SHADOW"
   # Deprecated boolean, still honoured: true escalates only as far as SHADOW.
   runtime_enabled: false
   canonical_reports_url: "https://ms01-openclaw.tail163d14.ts.net/v3/reports"

@@ -57,8 +57,9 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 MBI_BEHAVIOR = 0
 
 SCHEDULED_ENTRYPOINT = (
-    "PROPOSAL ONLY — not installed. A new cron/systemd entry is operator-only "
-    "(AGENTS.md §17); the operator arms this separately. Run by hand until then."
+    "INSTALLED, active — crontab `35 * * * *`, hourly at :35, from the rebuild "
+    "tree with /run/user/$UID/tradeai/env loaded. Armed 2026-09-16 under operator "
+    "APPROVE E3 (full package). Lane: goal-gate-bridge."
 )
 
 PROJECT_ROOT = Path(os.environ.get(
