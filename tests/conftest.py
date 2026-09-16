@@ -334,6 +334,30 @@ def _production_receipt_write_barrier(monkeypatch):
         import psycopg
         return psycopg.connect(isolated)
 
+    # 2026-09-16: the identity spine is a SEVENTH boundary this barrier did not
+    # reach, and it wrote to production exactly as the cases below did.
+    # cio_identity_spine._connect() opens its own connection, so nothing named
+    # _db_conn covers it. The credential arrives indirectly: the alarm_capture
+    # fixture imports telegram_alert, which at module scope calls
+    # env_bootstrap.ensure_loaded() -- legitimate production behaviour -- and that
+    # loads /run/user/1000/tradeai/env, putting DB_PASSWORD into the process.
+    # DB_PASSWORD is therefore UNSET at collection and SET from the first
+    # alarm-fires test onward, so register_on_spine() stopped returning None and
+    # committed a real edge row into narrative_subjects
+    # (link_guid 92e92711-60e7-5b05-a073-6a8432ead100, 2026-09-16 12:33:00-05:00).
+    # test_no_database_means_no_claim passes alone and fails after any suite that
+    # imports the alarm path -- a control that was green only by test ordering.
+    # Returning None routes register_on_spine() to its documented "no edge exists"
+    # path, which is what the offline tests assert against; a test that genuinely
+    # needs a database sets TRADEAI_TEST_ISOLATED_DSN like every case above.
+    for _spine_mod in ("scripts.lib.cio_identity_spine", "cio_identity_spine"):
+        try:
+            _m = importlib.import_module(_spine_mod)
+        except Exception:
+            continue
+        if hasattr(_m, "_connect"):
+            monkeypatch.setattr(_m, "_connect", _barrier, raising=False)
+
     # DISCOVER every connection boundary; never enumerate by name.
     #
     # 2026-09-09: the first version of this barrier patched ONLY
