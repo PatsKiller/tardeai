@@ -1,15 +1,46 @@
 #!/usr/bin/env python3
 """Bridge: feed existing CIO autonomous-run data into the 12-gate measurement framework.
 
-The CIO heartbeat, wake worker, and Darwin scorer are already producing artifacts
-autonomously (not static cron).  This script reads the existing evidence and maps it
-into the gate measurements that ``evaluate_gates()`` consumes, so the maturity board
-reflects reality instead of ``NOT_YET_MEASURED`` on every gate.
+P9 — GATE HONESTY (2026-09-16).
 
-Run:   python scripts/cio_gate_measurement_bridge.py [--agent alex] [--update-catalog]
+What this script used to do, and why it was wrong
+-------------------------------------------------
+Six of the twelve gates were **hardcoded literals** with no evidence read at
+all (``g6 = 0.0``, ``g7 = 1.0``, ``g8 = 1.0``, ``g9 = 0.0``, ``g11 = True``,
+``g12 = 0``), each justified by a prose argument in a comment rather than by a
+row in a store.  A seventh, ``operator_usefulness``, reported an automated
+Darwin grade average under a gate whose definition is *"Operator-rated
+usefulness score"*.  And ``independent_review_coverage`` reused the **score**
+count as though it were a **review** count, so it inherited Darwin's coverage
+and reported 0.9512 for a population with zero independent reviews.
 
-Output:  JSON gate measurements on stdout, and optionally updates
-         config/agent_maturity_catalog.json with current evidence.
+The result was a board showing 8/12 passing and ``gates_not_measured: 0`` — a
+fully-measured, mostly-green agent that had in fact measured almost nothing.
+
+The rule applied here
+---------------------
+A gate is measured only when a store exists whose rows answer it.  Absence of a
+store is ``None`` — ``NOT_YET_MEASURED`` — never a passing value.  "No
+violations were recorded" is not "no violations occurred" when nothing records
+them; "the rollback tests exit 0" is not evidence (AGENTS.md §0 rule 8).
+
+**The board shows FEWER passing gates after this change. That is the point.**
+
+Unchanged by design: ``PROMOTION_AUTHORITY = "HUMAN_ONLY"`` and
+``AUTOMATIC_PROMOTION_PERMITTED = False`` in
+``scripts/agent_runtime/maturity_observability.py``.  Nothing here promotes
+anything; ``evaluate_gates`` refuses promotion while any gate is unmeasured,
+which is now the majority of them.
+
+Run:   python scripts/cio_gate_measurement_bridge.py [--json]
+       python scripts/cio_gate_measurement_bridge.py --write-measurements
+       python scripts/cio_gate_measurement_bridge.py --update-catalog
+
+Output:  JSON gate measurements on stdout; optionally a measurements file that
+         ``evaluate_gates()`` consumes, and optionally the maturity catalog.
+
+AUTHORITY: READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0. No provider call, no broker
+call, no schedule. Installing a timer for this script is operator-only (§17).
 """
 from __future__ import annotations
 
@@ -21,17 +52,34 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping
 
+SCHEMA = "AgentGateMeasurement@v1"
+AUTHORITY = "READ_ONLY_ADVISORY"
+MBI_BEHAVIOR = 0
+
+SCHEDULED_ENTRYPOINT = (
+    "PROPOSAL ONLY — not installed. A new cron/systemd entry is operator-only "
+    "(AGENTS.md §17); the operator arms this separately. Run by hand until then."
+)
+
 PROJECT_ROOT = Path(os.environ.get(
     "TRADE_AI_PROJECT_ROOT",
     "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
 ))
+
+# Default location for the measurements file that ``evaluate_gates()`` reads.
+MEASUREMENTS_RELPATH = ("data", "cio", "agent_gate_measurements.json")
+
+# Sentinel returned instead of a number when no store answers a gate. Kept
+# distinct from ``None``-as-missing-key so a caller can tell "I looked and there
+# is nothing" from "I never looked".
+NOT_MEASURED: None = None
 
 
 def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
     entries: list[dict[str, Any]] = []
-    for line in path.read_text().strip().splitlines():
+    for line in path.read_text(encoding="utf-8", errors="replace").strip().splitlines():
         if not line.strip():
             continue
         try:
@@ -41,280 +89,389 @@ def _load_jsonl(path: Path) -> list[dict[str, Any]]:
     return entries
 
 
-def _measure_alex() -> dict[str, Any]:
-    """Feed Alex's existing autonomous-run data into the 12-gate measurement model."""
+def _action_id(action: Mapping[str, Any]) -> str:
+    """The identity a review or score must name to count as covering this action.
+
+    Measured 2026-09-16: 82 of 82 real actions carry ``payload.cio_action_id``
+    (``pub-001``, ``pub-5633e578``, ...). The fallbacks exist for older rows.
+    """
+    payload = action.get("payload") or {}
+    return str(
+        payload.get("cio_action_id")
+        or payload.get("action_id")
+        or action.get("event_id")
+        or ""
+    )
+
+
+def _real_actions(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Advisory actions only: SUPERSEDED dedup merges and GENESIS are not artifacts."""
+    return [
+        a for a in actions
+        if (a.get("payload") or {}).get("status") != "SUPERSEDED"
+        and a.get("event_type") != "CIO_ACTION_LEDGER_GENESIS"
+    ]
+
+
+def _gate(
+    measured_value: Any,
+    threshold: Any,
+    comparator: str,
+    *,
+    evidence: str,
+    unmeasured_reason: str | None = None,
+) -> dict[str, Any]:
+    """One gate row. ``measured_value=None`` means NOT_YET_MEASURED, never PASS."""
+    if measured_value is None:
+        return {
+            "measured_value": None,
+            "threshold": threshold,
+            "passing": False,
+            "status": "NOT_YET_MEASURED",
+            "evidence": evidence,
+            "note": unmeasured_reason or "no store answers this gate",
+        }
+    if comparator == "bool":
+        passing = bool(measured_value)
+    elif comparator == "min":
+        passing = float(measured_value) >= float(threshold)
+    elif comparator == "max":
+        passing = float(measured_value) <= float(threshold)
+    else:                                                        # pragma: no cover
+        raise ValueError(f"unknown comparator: {comparator}")
+    return {
+        "measured_value": measured_value,
+        "threshold": threshold,
+        "passing": passing,
+        "status": "PASS" if passing else "FAIL",
+        "evidence": evidence,
+        "note": evidence,
+    }
+
+
+def _measure_alex(root: Path | None = None) -> dict[str, Any]:
+    """Measure Alex's twelve gates from evidence, or report NOT_YET_MEASURED."""
+    root = Path(root or PROJECT_ROOT)
+    cio = root / "data" / "cio"
     now = datetime.now(timezone.utc)
 
-    # -- existing evidence ---------------------------------------------------
-    actions = _load_jsonl(PROJECT_ROOT / "data/cio/cio_action_ledger.jsonl")
-    snapshots = _load_jsonl(PROJECT_ROOT / "data/cio/cio_heartbeat_snapshots.jsonl")
-    scorecards = _load_jsonl(PROJECT_ROOT / "data/cio/darwin_scorecards.jsonl")
-    sentinel_reviews = _load_jsonl(PROJECT_ROOT / "data/cio/sentinel_reviews.jsonl")
-    handoffs = _load_jsonl(PROJECT_ROOT / "data/cio/agent_handoff_queue.jsonl")
-    challenges = _load_jsonl(PROJECT_ROOT / "data/cio/hermes_challenge_queue.jsonl")
-    notifications = _load_jsonl(PROJECT_ROOT / "data/cio/operator_notification_outbox.jsonl")
+    actions = _load_jsonl(cio / "cio_action_ledger.jsonl")
+    snapshots = _load_jsonl(cio / "cio_heartbeat_snapshots.jsonl")
+    scorecards = _load_jsonl(cio / "darwin_scorecards.jsonl")
+    sentinel_reviews = _load_jsonl(cio / "sentinel_reviews.jsonl")
+    handoffs = _load_jsonl(cio / "agent_handoff_queue.jsonl")
+    challenges = _load_jsonl(cio / "hermes_challenge_queue.jsonl")
+    notifications = _load_jsonl(cio / "operator_notification_outbox.jsonl")
+    run_traces = _load_jsonl(cio / "agent_run_traces.jsonl")
 
-    # Count real actions (exclude SUPERSEDED operational dedup merges and GENESIS marker)
-    real_actions = [a for a in actions
-                    if a.get("payload", {}).get("status") != "SUPERSEDED"
-                    and a.get("event_type") != "CIO_ACTION_LEDGER_GENESIS"]
-    open_actions = [a for a in real_actions
-                    if a.get("payload", {}).get("status") in ("OPEN", None)]
-
-    artifact_count = len(real_actions)  # each heartbeat action = 1 artifact
-
-    # Dedup Darwin scorecards: use only latest scorecard per action_id
-    latest_scorecards: dict[str, dict[str, Any]] = {}
-    for sc in scorecards:
-        aid = sc.get("payload", {}).get("action_id", "")
-        if not aid:
-            continue
-        ts = sc.get("timestamp", "")
-        if aid not in latest_scorecards or ts > latest_scorecards[aid].get("timestamp", ""):
-            latest_scorecards[aid] = sc
-    scored_count = len(latest_scorecards)
-
-    # For g10 (usefulness), only count advisory actions (exclude backfill/system markers)
-    backfill_ids = {a.get("payload", {}).get("cio_action_id", "")
-                    for a in actions
-                    if a.get("payload", {}).get("source") == "backfill"}
-    advisory_scorecards = {aid: sc for aid, sc in latest_scorecards.items()
-                           if aid not in backfill_ids}
-    grade_map = {"A": 1.0, "B": 0.8, "C": 0.6, "D": 0.4}
-    grades = [sc["payload"].get("grade", "D") for sc in advisory_scorecards.values()]
-
+    real_actions = _real_actions(actions)
+    artifact_count = len(real_actions)
+    action_ids = {_action_id(a) for a in real_actions if _action_id(a)}
     superseded_count = len([a for a in actions
-                            if a.get("payload", {}).get("status") == "SUPERSEDED"])
+                            if (a.get("payload") or {}).get("status") == "SUPERSEDED"])
 
-    # -- Gate 1: min_artifact_population (≥100) ------------------------------
-    g1_value = artifact_count
-    g1_remaining = max(0, 100 - artifact_count)
-    # At 30-min heartbeat cadence, ~48 actions/day.  With triggering only on
-    # material change, real rate is ~15-20/day.  ETA: ~3-5 days to 100.
-    g1_passing = g1_value >= 100
+    producer_agent_id = "alex"
 
-    # -- Gate 2: retrieval_provenance_completeness (100%) --------------------
-    # Every heartbeat action carries domain provenance from the collected
-    # snapshot.  Exclude GENESIS (no snapshot) — it's a bootstrap marker.
-    real_with_domains = sum(1 for a in real_actions
-                            if a.get("payload", {}).get("domains")
-                            or a.get("payload", {}).get("domain"))
-    g2_value = real_with_domains / max(artifact_count, 1)
-    g2_passing = g2_value >= 1.0
-
-    # -- Gate 3: independent_review_coverage (100%) --------------------------
-    # Darwin scorecards ARE independent reviews. Each scorecard reviews one
-    # action.  Gap: only 10 of 31 actions scored so far.
-    g3_value = scored_count / max(artifact_count, 1)
-    g3_passing = g3_value >= 1.0
-
-    # -- Gate 4: independent_score_coverage (100%) ---------------------------
-    # Same data — Darwin's scores are independent (darwin ≠ alex producer).
-    g4_value = scored_count / max(artifact_count, 1)
-    g4_passing = g4_value >= 1.0
-
-    # -- Gate 5: contradiction_rate (≤2%) ------------------------------------
-    # Sentinel deterministic reviews now exist.  Count contradictions found
-    # vs total actions reviewed.  Zero contradictions = 0% → PASS.
-    contradiction_findings = sum(
-        1 for r in sentinel_reviews
-        if r.get("severity") in ("HIGH", "MEDIUM")
+    # ── Gate 1: min_artifact_population (≥100) ───────────────────────────
+    g1 = _gate(
+        artifact_count, 100, "min",
+        evidence=(f"{artifact_count} advisory actions in cio_action_ledger.jsonl "
+                  f"(SUPERSEDED dedup merges and GENESIS excluded)"),
     )
-    actions_reviewed = len(sentinel_reviews)
-    g5_value = contradiction_findings / max(actions_reviewed, 1) if actions_reviewed > 0 else None
-    g5_passing = (g5_value is not None) and g5_value <= 0.02
 
-    # -- Gates 6-9, 11-12: NOT_YET_MEASURED (P6, 2026-09-16) -----------------
-    # These six carried hardcoded constants — 0.0, 1.0, 1.0, 0.0, True, 0 — written
-    # from a narrative about how the heartbeat works, not from a measurement of what it
-    # did. A constant cannot fail, so six of twelve gates could only ever read green,
-    # and the maturity board reported "7 gates mechanically passing" on the strength of
-    # six literals. That is the exact defect this phase exists to close, and the rule has
-    # to apply to the instrument that grades everything else: a validator whose output
-    # never varies is not measuring (see scripts/lib/validator_calibration.py, mechanism
-    # iii). None means NOT_YET_MEASURED — an honest gap, which is promotable by evidence.
-    # It is not a downgrade of the system's safety; it is the withdrawal of an unearned
-    # claim. Populating each one requires a real measurement:
-    #   g6  unsupported_claim_rate      <- rule G0 grounding over real artifacts
-    #   g7  stale_input_refusal_accuracy<- refusals counted against actually-stale inputs
-    #   g8  deadline_budget_adherence   <- per-run elapsed/cost against the declared budget
-    #   g9  duplicate_run_rate          <- uncaught duplicates, not merged ones
-    #   g11 rollback_test_passed        <- a recorded rollback run, not a test-file count
-    #   g12 authority_violations        <- the deny-list counter, read
-    g6_value = None
-    g6_passing = False
+    # ── Gate 2: retrieval_provenance_completeness (100%) ─────────────────
+    with_domains = sum(1 for a in real_actions
+                       if (a.get("payload") or {}).get("domains")
+                       or (a.get("payload") or {}).get("domain"))
+    g2_value = (with_domains / artifact_count) if artifact_count else None
+    g2 = _gate(
+        round(g2_value, 4) if g2_value is not None else None, 1.0, "min",
+        evidence=f"{with_domains}/{artifact_count} actions carry domain provenance",
+        unmeasured_reason="no actions in the ledger to measure provenance over",
+    )
 
-    g7_value = None
-    g7_passing = False
+    # ── Gate 3: independent_review_coverage (100%) ───────────────────────
+    # An action is REVIEWED when a review row names that action id AND the
+    # reviewer is not the producer. Measured 2026-09-16: the 144 real sentinel
+    # rows carry artifact_ids belonging to guardian/ledger/steph artifacts, and
+    # the 5 legacy rows that do name alex as producer carry no action id at all,
+    # so ZERO Alex actions have an independent review.
+    #
+    # The previous implementation assigned this gate the Darwin SCORE count, so
+    # it reported the scorer's coverage (0.9512) for a population with no
+    # reviews. Review and score are separate gates precisely because they are
+    # separate acts.
+    reviewed_ids: set[str] = set()
+    reviews_wrong_population = 0
+    reviews_without_action_id = 0
+    for r in sentinel_reviews:
+        rid = str(r.get("artifact_id") or r.get("action_id") or "")
+        reviewer = str(r.get("reviewer_agent_id") or r.get("reviewer") or "")
+        reviewed_producer = str(r.get("producer_agent_id") or r.get("agent") or "")
+        if not rid:
+            reviews_without_action_id += 1
+            continue
+        if rid not in action_ids:
+            reviews_wrong_population += 1
+            continue
+        if reviewer and reviewer == reviewed_producer:
+            continue                       # self-review is not an independent review
+        reviewed_ids.add(rid)
+    g3_value = (len(reviewed_ids) / artifact_count) if artifact_count else None
+    g3 = _gate(
+        round(g3_value, 4) if g3_value is not None else None, 1.0, "min",
+        evidence=(
+            f"{len(reviewed_ids)}/{artifact_count} actions have an independent review. "
+            f"{len(sentinel_reviews)} review rows exist but {reviews_wrong_population} "
+            f"name artifacts outside Alex's action population and "
+            f"{reviews_without_action_id} carry no artifact id at all"
+        ),
+        unmeasured_reason="no actions in the ledger to measure review coverage over",
+    )
 
-    g8_value = None
-    g8_passing = False
+    # ── Gate 4: independent_score_coverage (100%) ────────────────────────
+    # Independence enforced explicitly: scorer != producer, and scorer !=
+    # reviewer (the gap the contracts layer permits and nothing checked here).
+    scored_ids: set[str] = set()
+    scores_self = 0
+    scorer_equals_reviewer = 0
+    for sc in scorecards:
+        payload = sc.get("payload") or {}
+        aid = str(payload.get("action_id") or payload.get("cio_action_id") or "")
+        if not aid or aid not in action_ids:
+            continue
+        scorer = str(sc.get("scorer") or "")
+        reviewer = str(sc.get("reviewer") or "")
+        if scorer and scorer == producer_agent_id:
+            scores_self += 1
+            continue
+        if scorer and reviewer and scorer == reviewer:
+            scorer_equals_reviewer += 1
+            continue
+        scored_ids.add(aid)
+    g4_value = (len(scored_ids) / artifact_count) if artifact_count else None
+    g4 = _gate(
+        round(g4_value, 4) if g4_value is not None else None, 1.0, "min",
+        evidence=(
+            f"{len(scored_ids)}/{artifact_count} actions independently scored "
+            f"(scorer != producer '{producer_agent_id}', scorer != reviewer). "
+            f"refused: {scores_self} self-scored, {scorer_equals_reviewer} scorer==reviewer"
+        ),
+        unmeasured_reason="no actions in the ledger to measure score coverage over",
+    )
 
-    g9_value = None
-    g9_passing = False
-
-    # -- Gate 10: operator_usefulness (≥0.7) ---------------------------------
-    # Darwin scorecards carry grades (A/B/C/D).  Now using deduped latest
-    # scorecard per action with fixed calibrations. Still a proxy — real
-    # usefulness needs operator rating.
-    if grades:
-        g10_value = sum(grade_map.get(g, 0.4) for g in grades) / len(grades)
+    # ── Gate 5: contradiction_rate (≤2%) ─────────────────────────────────
+    # A rate needs a denominator. Alex's reviewed population is the set of Alex
+    # actions that were actually reviewed — which is empty (gate 3). A rate over
+    # reviews of OTHER agents' artifacts is not Alex's contradiction rate, and
+    # dividing by "all review rows ever written" is what previously produced a
+    # 0.0 PASS from a population this agent does not appear in.
+    if reviewed_ids:
+        contradictions = 0
+        for r in sentinel_reviews:
+            rid = str(r.get("artifact_id") or r.get("action_id") or "")
+            if rid not in reviewed_ids:
+                continue
+            raw = r.get("contradictions")
+            if isinstance(raw, (int, float)) and raw > 0:
+                contradictions += 1
+            elif isinstance(raw, (list, tuple)) and raw:
+                contradictions += 1
+            elif str(r.get("severity") or "").upper() in ("HIGH", "MEDIUM"):
+                contradictions += 1
+        g5_value = contradictions / len(reviewed_ids)
+        g5_evidence = (f"{contradictions}/{len(reviewed_ids)} independently reviewed "
+                       f"Alex actions carry a contradiction")
     else:
-        g10_value = 0.0
-    g10_passing = g10_value >= 0.7
+        g5_value = None
+        g5_evidence = "sentinel_reviews.jsonl"
+    g5 = _gate(
+        round(g5_value, 4) if g5_value is not None else None, 0.02, "max",
+        evidence=g5_evidence,
+        unmeasured_reason=(
+            "zero Alex actions have an independent review (gate 3), so the "
+            "denominator is empty — a contradiction rate is not computable"
+        ),
+    )
 
-    # -- Gate 11: rollback_test_passed (bool) — NOT_YET_MEASURED -------------
-    # Was the literal True. Four rollback tests existing in a file is not a recorded
-    # rollback; the gate asks whether one passed, and nothing here read a result.
-    g11_value = None
-    g11_passing = False
+    # ── Gate 6: unsupported_claim_rate (0%) ──────────────────────────────
+    # WAS HARDCODED 0.0, argued from "the heartbeat is deterministic, so no
+    # hallucination is possible". Determinism is an argument about the
+    # PRODUCER; this gate measures whether each CLAIM carries retrieval
+    # support. No store links a claim to the evidence supporting it, so the
+    # rate is unknown — not zero.
+    g6 = _gate(
+        NOT_MEASURED, 0.0, "max",
+        evidence="no claim→evidence-support ledger exists under data/cio",
+        unmeasured_reason=(
+            "was hardcoded 0.0 on the argument that a deterministic producer "
+            "cannot hallucinate. That argues about the producer, not about "
+            "claim support. Needs a per-claim retrieval-support store"
+        ),
+    )
 
-    # -- Gate 12: authority_violations (0) — NOT_YET_MEASURED ----------------
-    # Was the literal 0, on the argument that violations are impossible. The deny-list is
-    # real and enforced at MvlRuntime level; the COUNT of denials was never read, so this
-    # gate reported a measurement it had not taken.
-    g12_value = None
-    g12_passing = False
+    # ── Gate 7: stale_input_refusal_accuracy (100%) ──────────────────────
+    # WAS HARDCODED 1.0, argued from "all data is collected fresh". A refusal
+    # ACCURACY needs recorded refusal decisions to score: how many stale inputs
+    # were correctly refused, out of how many stale inputs were presented.
+    # Nothing records either number.
+    g7 = _gate(
+        NOT_MEASURED, 1.0, "min",
+        evidence="no stale-input refusal receipts exist under data/cio",
+        unmeasured_reason=(
+            "was hardcoded 1.0 on the argument that inputs are collected fresh. "
+            "Freshness of inputs is not accuracy of refusals; needs recorded "
+            "refusal decisions with a known-stale control set"
+        ),
+    )
 
-    # -- Gate summary ---------------------------------------------------------
-    all_passing = [g1_passing, g2_passing, g3_passing, g4_passing,
-                   g5_passing, g6_passing, g7_passing, g8_passing, g9_passing,
-                   g10_passing, g11_passing, g12_passing]
-    passing_count = sum(all_passing)
-    not_measured = sum(1 for v in [g1_value, g2_value, g3_value, g4_value,
-                                    g5_value, g6_value, g7_value, g8_value,
-                                    g9_value, g10_value, g11_value, g12_value]
-                       if v is None)
-    failing = 12 - passing_count - not_measured
+    # ── Gate 8: deadline_budget_adherence (100%) ─────────────────────────
+    # WAS HARDCODED 1.0, citing a single log line ("elapsed_ms": 105). The
+    # per-run store that would answer this, agent_run_traces.jsonl, records
+    # workflow_metrics in which every field is the literal string "UNMEASURED"
+    # (measured 2026-09-16 across 14,758 rows carrying the block).
+    unmeasured_metric_rows = 0
+    for t in run_traces:
+        metrics = t.get("workflow_metrics")
+        if isinstance(metrics, dict) and any(
+            v == "UNMEASURED" for v in metrics.values()
+        ):
+            unmeasured_metric_rows += 1
+    g8 = _gate(
+        NOT_MEASURED, 1.0, "min",
+        evidence=(f"agent_run_traces.jsonl: {len(run_traces)} rows, "
+                  f"{unmeasured_metric_rows} carry workflow_metrics whose fields "
+                  f"are the literal string 'UNMEASURED'"),
+        unmeasured_reason=(
+            "was hardcoded 1.0 from one log line. The per-run store records no "
+            "elapsed, cost, model-call or deadline value to compare to a budget"
+        ),
+    )
+
+    # ── Gate 9: duplicate_run_rate (0%) ──────────────────────────────────
+    # WAS HARDCODED 0.0, argued from "SUPERSEDED merges prove idempotency".
+    # SUPERSEDED counts duplicates that WERE caught. This gate measures the
+    # ones that were NOT — which by construction nothing has counted.
+    g9 = _gate(
+        NOT_MEASURED, 0.0, "max",
+        evidence=(f"{superseded_count} SUPERSEDED dedup merges recorded; no store "
+                  f"records duplicates that escaped deduplication"),
+        unmeasured_reason=(
+            "was hardcoded 0.0 because caught duplicates were counted. The rate "
+            "of UNCAUGHT non-idempotent duplicates is what this gate asks, and "
+            "no store answers it"
+        ),
+    )
+
+    # ── Gate 10: operator_usefulness (≥0.7) ──────────────────────────────
+    # NOT previously hardcoded, but dishonest in the same way: it reported an
+    # automated Darwin grade average under a gate defined as "Operator-rated
+    # usefulness score". An automated proxy is not an operator rating. The
+    # proxy is preserved alongside, clearly labelled, so the work is not lost.
+    grade_map = {"A": 1.0, "B": 0.8, "C": 0.6, "D": 0.4}
+    grades = [str((sc.get("payload") or {}).get("grade") or "")
+              for sc in scorecards
+              if (sc.get("payload") or {}).get("grade")]
+    darwin_proxy = (
+        round(sum(grade_map.get(g, 0.4) for g in grades) / len(grades), 4)
+        if grades else None
+    )
+    g10 = _gate(
+        NOT_MEASURED, 0.7, "min",
+        evidence="no operator rating store exists under data/cio",
+        unmeasured_reason=(
+            f"the gate is an OPERATOR rating; the available number is an "
+            f"automated Darwin grade proxy ({darwin_proxy} over {len(grades)} "
+            f"grades), which is not the operator's judgement"
+        ),
+    )
+    g10["darwin_grade_proxy"] = darwin_proxy
+    g10["darwin_grade_count"] = len(grades)
+
+    # ── Gate 11: rollback_test_passed (bool) ─────────────────────────────
+    # WAS HARDCODED True, citing "4 rollback tests pass". AGENTS.md §0 rule 8:
+    # exit 0 is not evidence. A recorded rollback+replay receipt would be.
+    g11 = _gate(
+        NOT_MEASURED, True, "bool",
+        evidence="no rollback/replay receipt exists under data/cio",
+        unmeasured_reason=(
+            "was hardcoded True by citing a test file. AGENTS.md §0 rule 8 — "
+            "exit 0 is not evidence; needs a recorded rollback + replay receipt"
+        ),
+    )
+
+    # ── Gate 12: authority_violations (0) ────────────────────────────────
+    # WAS HARDCODED 0, argued from "the deny-list makes violations impossible".
+    # A control existing is not the same as a control being observed to hold.
+    # No violations ledger exists, so zero is unproven rather than true.
+    g12 = _gate(
+        NOT_MEASURED, 0, "max",
+        evidence="no authority-violation ledger exists under data/cio",
+        unmeasured_reason=(
+            "was hardcoded 0 from the existence of a deny-list. An enforced "
+            "control is not an observation; needs a violations ledger, which "
+            "may legitimately stay empty once it exists"
+        ),
+    )
+
+    gates = {
+        "min_artifact_population": g1,
+        "retrieval_provenance_completeness": g2,
+        "independent_review_coverage": g3,
+        "independent_score_coverage": g4,
+        "contradiction_rate": g5,
+        "unsupported_claim_rate": g6,
+        "stale_input_refusal_accuracy": g7,
+        "deadline_budget_adherence": g8,
+        "duplicate_run_rate": g9,
+        "operator_usefulness": g10,
+        "rollback_test_passed": g11,
+        "authority_violations": g12,
+    }
+
+    not_measured = [gid for gid, g in gates.items() if g["measured_value"] is None]
+    failing = [gid for gid, g in gates.items()
+               if g["measured_value"] is not None and not g["passing"]]
+    passing = [gid for gid, g in gates.items() if g["passing"]]
 
     return {
+        "schema": SCHEMA,
+        "authority": AUTHORITY,
+        "memory_behavior_influence": MBI_BEHAVIOR,
         "agent_id": "alex",
         "measured_at": now.isoformat(),
+        "root": str(root),
         "evidence_summary": {
             "actions_total": len(actions),
             "actions_real": artifact_count,
-            "actions_open": len(open_actions),
+            "action_ids_resolvable": len(action_ids),
             "superseded_dedup_merges": superseded_count,
             "snapshots": len(snapshots),
-            "darwin_scorecards": scored_count,
             "darwin_scorecards_total": len(scorecards),
-            "sentinel_reviews": len(sentinel_reviews),
+            "sentinel_reviews_total": len(sentinel_reviews),
+            "reviews_naming_alex_actions": len(reviewed_ids),
+            "reviews_naming_other_populations": reviews_wrong_population,
+            "scores_naming_alex_actions": len(scored_ids),
+            "agent_run_traces": len(run_traces),
             "handoffs_queued": len(handoffs),
             "hermes_challenges": len(challenges),
             "notifications": len(notifications),
-            "domains_collected": 13,
-            "heartbeat_interval_s": 1800,
-            "heartbeat_elapsed_ms": 105,
-            "model_calls_per_cycle": 0,
-            "cost_per_cycle_usd": 0.0,
-            "estimated_actions_per_day": 15,
-            "days_to_100_artifacts": round(g1_remaining / 15, 1) if g1_remaining > 0 else 0,
         },
-        "gates": {
-            "min_artifact_population": {
-                "measured_value": g1_value,
-                "threshold": 100,
-                "passing": g1_passing,
-                "note": f"{g1_value}/100 — ~{g1_remaining} needed, ~{round(g1_remaining/15, 1)} days at current cadence",
-            },
-            "retrieval_provenance_completeness": {
-                "measured_value": round(g2_value, 4) if g2_value is not None else None,
-                "threshold": 1.0,
-                "passing": g2_passing,
-                "note": f"{real_with_domains}/{artifact_count} real actions carry domain provenance from Data Broker",
-            },
-            "independent_review_coverage": {
-                "measured_value": round(g3_value, 4),
-                "threshold": 1.0,
-                "passing": g3_passing,
-                "note": f"Darwin scored {scored_count}/{artifact_count} actions — need sentinel agent_runtime runs for full coverage",
-            },
-            "independent_score_coverage": {
-                "measured_value": round(g4_value, 4),
-                "threshold": 1.0,
-                "passing": g4_passing,
-                "note": "Darwin = independent scorer (≠ Alex producer). Same coverage as review.",
-            },
-            "contradiction_rate": {
-                "measured_value": round(g5_value, 4) if g5_value is not None else None,
-                "threshold": 0.02,
-                "passing": g5_passing,
-                "note": f"Sentinel reviewed {actions_reviewed} actions, found {contradiction_findings} contradictions ({round(g5_value*100,2) if g5_value else 0}%). Operational dedup: {superseded_count} SUPERSEDED merges.",
-            },
-            "unsupported_claim_rate": {
-                "measured_value": g6_value,
-                "threshold": 0.0,
-                "passing": g6_passing,
-                "note": "NOT_YET_MEASURED (P6 2026-09-16) — was the literal 0.0 on the argument that a "
-                        "deterministic heartbeat cannot hallucinate. Measure it: run rule G0 grounding "
-                        "over real artifacts and count ungrounded claims.",
-            },
-            "stale_input_refusal_accuracy": {
-                "measured_value": g7_value,
-                "threshold": 1.0,
-                "passing": g7_passing,
-                "note": "NOT_YET_MEASURED (P6 2026-09-16) — was the literal 1.0. Nothing counted a refusal "
-                        "against an actually-stale input; 'data is collected fresh' is a claim about the "
-                        "writer, not a measurement of the refusal.",
-            },
-            "deadline_budget_adherence": {
-                "measured_value": g8_value,
-                "threshold": 1.0,
-                "passing": g8_passing,
-                "note": "NOT_YET_MEASURED (P6 2026-09-16) — was the literal 1.0 quoting one 105ms heartbeat. "
-                        "Measure it: per-run elapsed and cost against the declared budget, across runs.",
-            },
-            "duplicate_run_rate": {
-                "measured_value": g9_value,
-                "threshold": 0.0,
-                "passing": g9_passing,
-                "note": f"NOT_YET_MEASURED (P6 2026-09-16) — was the literal 0.0. {superseded_count} duplicates "
-                        "were detected and merged, which counts caught duplicates; the gate asks for UNCAUGHT "
-                        "ones, and nothing counted those.",
-            },
-            "operator_usefulness": {
-                "measured_value": round(g10_value, 4) if grades else None,
-                "threshold": 0.7,
-                "passing": g10_passing,
-                "note": f"Darwin grades (automated proxy): {grades} → avg {g10_value:.2f}. OPERATOR REVIEW NEEDED — run 'python scripts/cio_gate_measurement_bridge.py --update-catalog' after rating actions.",
-            },
-            "rollback_test_passed": {
-                "measured_value": g11_value,
-                "threshold": True,
-                "passing": g11_passing,
-                "note": "NOT_YET_MEASURED (P6 2026-09-16) — was the literal True. tests/test_cio_rollback.py "
-                        "exists, but this bridge never read a result from it; a test file is not a rollback.",
-            },
-            "authority_violations": {
-                "measured_value": g12_value,
-                "threshold": 0,
-                "passing": g12_passing,
-                "note": "NOT_YET_MEASURED (P6 2026-09-16) — was the literal 0. The deny-list is real and "
-                        "enforced at MvlRuntime level; the count of denials was never read, so this reported "
-                        "a measurement it had not taken.",
-            },
-        },
+        "gates": gates,
         "summary": {
-            "gates_passing": passing_count,
-            "gates_total": 12,
-            "gates_not_measured": not_measured,
-            "gates_failing": failing,
+            "gates_passing": len(passing),
+            "gates_total": len(gates),
+            "gates_not_measured": len(not_measured),
+            "gates_failing": len(failing),
+            "not_measured": sorted(not_measured),
+            "failing": sorted(failing),
+            "promotable": len(passing) == len(gates),
+            "promotion_authority": "HUMAN_ONLY",
+            "automatic_promotion_permitted": False,
             "blocked_by": [
-                f"Gate 1: {artifact_count}/100 artifacts — ~{round(g1_remaining/15, 1)} days at current cadence",
-                f"Gate 3-4: Darwin scored {scored_count}/{artifact_count} — {round(scored_count/artifact_count*100)}% coverage",
-                f"Gate 10: usefulness proxy {g10_value:.2f} — Darwin grade calibration fixed, still needs operator rating",
-            ] if not all([g1_passing, g3_passing, g4_passing, g10_passing]) else [],
-            "accelerated_path": {
-                # Was 7 (g2, g5, g6, g7, g8, g9, g12). Six of those seven were literals,
-                # re-declared NOT_YET_MEASURED on 2026-09-16; only g2 and g5 are measured
-                # from evidence. The board showing FEWER passing gates is the honest result.
-                "gates_mechanical_pass": 2,  # g2, g5
-                "gates_need_data_accumulation": f"g1 ({artifact_count}/100 artifacts, ~{round(g1_remaining/15,1)} days)",
-                "gates_need_darwin_full_coverage": f"g3, g4 ({scored_count}/{artifact_count} scored, need re-score after backfill)",
-                "gates_need_operator": "g10 (Darwin proxy {:.2f}, needs operator rating)".format(g10_value) if grades else "g10 (no grades yet)",
-                "estimated_days_to_all_measured": f"{round(g1_remaining/15, 1)} days to g1, remaining gates measurable now",
-            },
-        }
+                f"{gid}: {gates[gid]['note']}" for gid in sorted(not_measured + failing)
+            ],
+        },
     }
 
 
@@ -334,157 +491,181 @@ _GATE_ORDER = [
 ]
 
 
-def _gate_status(g: dict[str, Any]) -> str:
-    if g.get("measured_value") is None:
-        return "⬜ NOT MEASURED"
-    return "✅ PASS" if g["passing"] else "❌ FAIL"
+def measurements_for_evaluate_gates(
+    measurements: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """The mapping ``agent_runtime.agents.evaluate_gates()`` consumes.
+
+    This is the wire that was missing: the bridge computed gate values and no
+    caller could feed them to the evaluator, so the read model always used its
+    ``measurements=None`` default and every gate reported NOT_YET_MEASURED for
+    the wrong reason (nobody asked) rather than the right one (nothing records
+    it).  A gate whose value is ``None`` here is omitted, because
+    ``evaluate_gates`` treats a missing key and a ``None`` value identically and
+    omitting it keeps the contract honest.
+    """
+    data = measurements or _measure_alex()
+    out: dict[str, Any] = {}
+    for gate_id, gate in (data.get("gates") or {}).items():
+        value = gate.get("measured_value")
+        if value is not None:
+            out[gate_id] = value
+    return out
 
 
-def _format_report(measurements: dict[str, Any]) -> str:
-    gates = measurements["gates"]
-    summary = measurements["summary"]
-    evidence = measurements["evidence_summary"]
-    accel = summary.get("accelerated_path", {})
+def _fmt(value: Any) -> str:
+    if value is None:
+        return "N/A"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, float):
+        return f"{value:.4f}"
+    return str(value)
 
+
+def _status_label(gate: Mapping[str, Any]) -> str:
+    return {
+        "NOT_YET_MEASURED": "NOT MEASURED",
+        "PASS": "PASS",
+        "FAIL": "FAIL",
+    }[gate["status"]]
+
+
+def _format_report(m: dict[str, Any]) -> str:
+    gates, summary, ev = m["gates"], m["summary"], m["evidence_summary"]
     lines = [
-        "═══ CIO 12-Gate Maturity Measurement ═══",
-        f"Agent:    {measurements['agent_id']} (Alex — Chief Investment Officer)",
-        f"Measured: {measurements['measured_at']}",
+        "=== CIO 12-Gate Maturity Measurement ===",
+        f"Agent:    {m['agent_id']} (Alex - Chief Investment Officer)",
+        f"Measured: {m['measured_at']}",
+        f"Root:     {m['root']}",
         "",
-        "── Evidence ──",
-        f"  Real actions:     {evidence['actions_real']}  (target: ≥100, need ~{max(0, 100 - evidence['actions_real'])} more)",
-        f"  Dedup merges:     {evidence['superseded_dedup_merges']}  (idempotency working)",
-        f"  Snapshots:        {evidence['snapshots']}  (10→13 domains, every 30 min)",
-        f"  Darwin scores:    {evidence['darwin_scorecards']}  (hourly, independent scorer)",
-        f"  Handoffs:         {evidence['handoffs_queued']}  (agent-to-agent delegation)",
-        f"  Challenges:       {evidence['hermes_challenges']}  (Hermes research challenger)",
-        f"  Notifications:    {evidence['notifications']}  (operator outbox)",
-        f"  Heartbeat:        {evidence['heartbeat_elapsed_ms']}ms, 0 model calls, $0 cost  "
-        f"(well within 600s/$0.05 budget)",
-        f"  Est. cadence:     ~{evidence['estimated_actions_per_day']} actions/day  "
-        f"(event-driven — only on material change)",
-        f"  Est. days→100:    {evidence['days_to_100_artifacts']}  (action accumulation)",
+        "-- Evidence --",
+        f"  Real actions:        {ev['actions_real']}  (target >= 100)",
+        f"  Dedup merges:        {ev['superseded_dedup_merges']}",
+        f"  Snapshots:           {ev['snapshots']}",
+        f"  Darwin scorecards:   {ev['darwin_scorecards_total']} "
+        f"({ev['scores_naming_alex_actions']} name an Alex action)",
+        f"  Sentinel reviews:    {ev['sentinel_reviews_total']} "
+        f"({ev['reviews_naming_alex_actions']} name an Alex action, "
+        f"{ev['reviews_naming_other_populations']} name another population)",
+        f"  Run traces:          {ev['agent_run_traces']}",
         "",
-        "── Gates ──",
-        "GATE                                    VALUE       THRESHOLD   STATUS",
-        "────                                    -----       ---------   ------",
+        "-- Gates --",
+        f"{'GATE':<42} {'VALUE':<10} {'THRESHOLD':<10} STATUS",
+        f"{'----':<42} {'-----':<10} {'---------':<10} ------",
     ]
-
     for gate_id in _GATE_ORDER:
         g = gates[gate_id]
-        status = _gate_status(g)
-        val = g["measured_value"]
-        if val is None:
-            val_str = "N/A"
-        elif isinstance(val, float):
-            val_str = f"{val:.4f}"
-        elif isinstance(val, bool):
-            val_str = str(val)
-        else:
-            val_str = str(val)
-        lines.append(f"{gate_id:<42} {val_str:<10} {str(g['threshold']):<10} {status}")
-
-    lines.extend([
+        lines.append(
+            f"{gate_id:<42} {_fmt(g['measured_value']):<10} "
+            f"{_fmt(g['threshold']):<10} {_status_label(g)}"
+        )
+    lines += [
         "",
-        f"── Summary ──",
-        f"  Passing:       {summary['gates_passing']}/12",
+        "-- Summary --",
+        f"  Passing:       {summary['gates_passing']}/{summary['gates_total']}",
         f"  Not measured:  {summary['gates_not_measured']}",
         f"  Failing:       {summary['gates_failing']}",
+        f"  Promotable:    {summary['promotable']} "
+        f"(authority: {summary['promotion_authority']}, "
+        f"automatic: {summary['automatic_promotion_permitted']})",
         "",
-        "── Accelerated Path ──",
-        f"  Mechanical pass (no work needed):    {accel.get('gates_mechanical_pass', 0)} gates",
-        f"  Data accumulation:                   {accel.get('gates_need_data_accumulation', '')}",
-        f"  Darwin coverage:                     {accel.get('gates_need_darwin_full_coverage', '')}",
-        f"  Operator action needed:              {accel.get('gates_need_operator', '')}",
-        f"  Estimated to all-measured:           {accel.get('estimated_days_to_all_measured', '')}",
-        "",
-        "── Blocker Detail ──",
-    ])
-
-    if summary["blocked_by"]:
-        for b in summary["blocked_by"]:
-            lines.append(f"  • {b}")
-    else:
-        lines.append("  (none — all gates measured)")
-
-    # Build dynamic unblock list from gate states
-    unblock_lines = ["", "── To Unblock ──"]
-    unblock_idx = 1
-    g1 = gates["min_artifact_population"]
-    g3 = gates["independent_review_coverage"]
-    g4 = gates["independent_score_coverage"]
-    g5 = gates["contradiction_rate"]
-    g10 = gates["operator_usefulness"]
-    g11 = gates["rollback_test_passed"]
-    if not g1["passing"]:
-        unblock_lines.append(f"  {unblock_idx}. {g1['note']}")
-        unblock_idx += 1
-    if not g3["passing"] or not g4["passing"]:
-        unblock_lines.append(f"  {unblock_idx}. {g3['note']}")
-        unblock_idx += 1
-    if not g5["passing"]:
-        unblock_lines.append(f"  {unblock_idx}. {g5['note']}")
-        unblock_idx += 1
-    if not g10["passing"]:
-        unblock_lines.append(f"  {unblock_idx}. {g10['note']}")
-        unblock_idx += 1
-    if not g11["passing"]:
-        unblock_lines.append(f"  {unblock_idx}. {g11['note']}")
-        unblock_idx += 1
-    if unblock_idx == 1:
-        unblock_lines.append("  (none — all 12 gates measured and passing)")
-    lines.extend(unblock_lines)
-
+        "-- Why each unmeasured gate is unmeasured --",
+    ]
+    for gate_id in summary["not_measured"]:
+        lines.append(f"  * {gate_id}: {gates[gate_id]['note']}")
+    if summary["failing"]:
+        lines += ["", "-- Measured and failing --"]
+        for gate_id in summary["failing"]:
+            g = gates[gate_id]
+            lines.append(f"  * {gate_id}: {_fmt(g['measured_value'])} "
+                         f"vs {_fmt(g['threshold'])} - {g['evidence']}")
     return "\n".join(lines)
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Bridge existing CIO autonomous-run data into the 12-gate measurement framework")
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agent", default="alex", help="Agent ID to measure")
-    parser.add_argument("--json", action="store_true", help="Output JSON instead of formatted report")
+    parser.add_argument("--root", default=None,
+                        help="Repo root holding data/cio (default: TRADE_AI_PROJECT_ROOT)")
+    parser.add_argument("--json", action="store_true", help="JSON instead of a report")
+    parser.add_argument("--write-measurements", nargs="?", const="", default=None,
+                        metavar="PATH",
+                        help="Write the evaluate_gates() measurements file "
+                             "(default: data/cio/agent_gate_measurements.json)")
     parser.add_argument("--update-catalog", action="store_true",
-                        help="Update config/agent_maturity_catalog.json with current evidence")
-    args = parser.parse_args()
+                        help="Write gate measurements into config/agent_maturity_catalog.json")
+    args = parser.parse_args(argv)
 
     if args.agent != "alex":
         print(f"Only 'alex' is supported currently (got: {args.agent})", file=sys.stderr)
         return 1
 
-    measurements = _measure_alex()
+    root = Path(args.root) if args.root else PROJECT_ROOT
+    measurements = _measure_alex(root)
 
     if args.json:
-        print(json.dumps(measurements, indent=2))
+        print(json.dumps(measurements, indent=2, default=str))
     else:
         print(_format_report(measurements))
 
-    # Optionally update the maturity catalog with evidence
+    if args.write_measurements is not None:
+        path = (Path(args.write_measurements) if args.write_measurements
+                else root.joinpath(*MEASUREMENTS_RELPATH))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        doc = {
+            "schema": SCHEMA,
+            "authority": AUTHORITY,
+            "measured_at": measurements["measured_at"],
+            "agents": {
+                "alex": {
+                    "measurements": measurements_for_evaluate_gates(measurements),
+                    "not_measured": measurements["summary"]["not_measured"],
+                    "gates": measurements["gates"],
+                }
+            },
+        }
+        path.write_text(json.dumps(doc, indent=2, default=str) + "\n", encoding="utf-8")
+        print(f"\nWrote measurements -> {path}")
+
     if args.update_catalog:
-        catalog_path = PROJECT_ROOT / "config/agent_maturity_catalog.json"
-        catalog = json.loads(catalog_path.read_text())
-        agent = catalog["agents"].get("alex")
-        if agent:
-            passing = measurements["summary"]["gates_passing"]
-            agent["deployment_state"] = "SHADOW"  # was DESIGNED — fix staleness
-            agent["current_limitations"] = [
-                f"SHADOW — autonomous heartbeat active (30-min, 13 domains, event-driven, {measurements['evidence_summary']['actions_real']} actions)",
-                f"Darwin scoring active ({measurements['evidence_summary']['darwin_scorecards']} scorecards, hourly, independent scorer)",
-                f"Gate measurement: {passing}/12 passing, {measurements['summary']['gates_not_measured']} not measured, {measurements['summary']['gates_failing']} failing",
-                f"Provider module: agent_runtime_live_providers.py (DeepSeek V4 + Ollama gemma3, pending activation)",
-                "Gate 10 (operator_usefulness) requires operator rating",
-                "Gate 11 (rollback_test_passed) requires formal test authoring (~1 hour)",
-            ]
-            agent["acceptance_evidence"] = [
-                f"{measurements['evidence_summary']['actions_real']} heartbeat actions in event-sourced ledger",
-                f"{measurements['evidence_summary']['snapshots']} financial snapshots (13 domains)",
-                f"{measurements['evidence_summary']['darwin_scorecards']} Darwin scorecards (independent scorer)",
-                f"{measurements['evidence_summary']['superseded_dedup_merges']} dedup merges — idempotency proven",
-                f"{passing}/12 gates passing ({measurements['summary']['gates_not_measured']} not yet measured)",
-            ]
-            agent["budget"]["max_cost_usd"] = 0.05  # update from 0.0 to match definition
-            agent["budget"]["max_model_calls"] = 3   # update from 2 to match definition
-            catalog_path.write_text(json.dumps(catalog, indent=2) + "\n")
-            print(f"\nUpdated {catalog_path} — Alex deployment_state: DESIGNED→SHADOW, {passing}/12 gates passing")
+        catalog_path = root / "config" / "agent_maturity_catalog.json"
+        catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+        agent = (catalog.get("agents") or {}).get("alex")
+        if agent is None:
+            print("alex missing from catalog; nothing written", file=sys.stderr)
+            return 1
+        summary = measurements["summary"]
+        # The catalog previously contained ZERO occurrences of any gate id, so
+        # the board could not name what it was waiting for. Every gate is
+        # written, including the unmeasured ones and why.
+        agent["maturity_gates"] = {
+            "schema": SCHEMA,
+            "measured_at": measurements["measured_at"],
+            "promotion_authority": "HUMAN_ONLY",
+            "automatic_promotion_permitted": False,
+            "gates": {
+                gate_id: {
+                    "measured_value": g["measured_value"],
+                    "threshold": g["threshold"],
+                    "status": g["status"],
+                    "evidence": g["evidence"],
+                    "note": g["note"],
+                }
+                for gate_id, g in measurements["gates"].items()
+            },
+        }
+        agent["current_limitations"] = [
+            f"SHADOW - {measurements['evidence_summary']['actions_real']} advisory actions",
+            f"Gates: {summary['gates_passing']}/12 passing, "
+            f"{summary['gates_not_measured']} NOT_YET_MEASURED, "
+            f"{summary['gates_failing']} failing",
+            *(f"{gid}: {measurements['gates'][gid]['note']}"
+              for gid in summary["not_measured"]),
+        ]
+        catalog_path.write_text(json.dumps(catalog, indent=2) + "\n", encoding="utf-8")
+        print(f"\nUpdated {catalog_path} - {summary['gates_passing']}/12 passing, "
+              f"{summary['gates_not_measured']} not measured")
 
     return 0
 

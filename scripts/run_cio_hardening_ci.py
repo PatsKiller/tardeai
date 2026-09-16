@@ -1852,6 +1852,26 @@ GATES = [
         [
             "tests/test_validator_calibration_20260916.py",
             "tests/test_tiered_validation_20260916.py",
+        # P9/P10 (2026-09-16) — gate honesty and archive-or-wire.
+        #
+        # P9: six maturity gates were hardcoded literals justified by prose
+        # comments rather than rows in a store, and independent_review_coverage
+        # reused the SCORE count, so the board read 8/12 passing with
+        # gates_not_measured: 0 for an agent that had measured almost nothing.
+        # These gates fail closed now: a gate with no store reads
+        # NOT_YET_MEASURED and can never pass.
+        #
+        # P10: the subject-collapse law (one research decision per subject per
+        # day, cap 5) was a transitive dark chain — both its importers declare
+        # NO_CONSUMER_REASON — so it was enforced nowhere in the live path. It
+        # is now applied in the */5 dispatcher, and the archive batch is a
+        # proposal that must stay unapplied.
+        "gate_honesty_and_archive_or_wire",
+        [
+            "tests/test_gate_honesty_p9.py",
+            "tests/test_research_budget_live_wire_p10.py",
+            "tests/test_dormant_lane_wiring_p10.py",
+            "tests/test_archive_manifest_proposal_p10.py",
         ],
     ),
 ]

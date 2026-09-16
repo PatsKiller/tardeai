@@ -31,6 +31,16 @@ from scripts.lib.commitment_outcome_sweep import (  # noqa: E402
     sweep_due_commitments,
 )
 
+# P10 (2026-09-16): this entrypoint exists, is tested, and is invoked by no cron
+# line and no systemd unit, so `sweep_due_commitments` has never run unattended
+# -- 224 durable commitments carry zero outcomes. Declared rather than installed:
+# a new cron or systemd entry is operator-only (AGENTS.md §17).
+SCHEDULED_ENTRYPOINT = (
+    "PROPOSAL ONLY -- not installed. Proposed: daily 18:20 after the outcome "
+    "checkpoints resolve. A new cron/systemd entry is operator-only (§17); "
+    "run by hand until the operator approves a schedule."
+)
+
 DEFAULT_STATE_ROOT = Path("/home/johnclaw/trade-ai-state/persistent_wake/state")
 COMMITMENTS = "commitments.jsonl"
 OUTCOME_LEDGER = "commitment_outcomes.jsonl"
