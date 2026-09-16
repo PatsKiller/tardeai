@@ -34,8 +34,8 @@ def test_markdown_becomes_escaped_html_and_identifiers_survive():
 
 
 def test_markdown_links_become_anchors_and_html_input_is_untouched():
-    assert ce.markdown_to_html("[Open](https://x.ts.net/v3/portfolio?symbol=AXTI)") == \
-        '<a href="https://x.ts.net/v3/portfolio?symbol=AXTI">Open</a>'
+    assert ce.markdown_to_html("[Open](https://x.ts.net/v3/watch/intelligence/AXTI)") == \
+        '<a href="https://x.ts.net/v3/watch/intelligence/AXTI">Open</a>'
     already = "<b>Health Agent</b> 64/100"
     assert ce.markdown_to_html(already) == already
 
@@ -86,7 +86,7 @@ def test_links_are_fully_qualified_tailscale_plus_finviz_and_yahoo(tmp_path, mon
     monkeypatch.setenv("NOTIFICATION_PUBLIC_BASE_URL", "http://192.168.50.16:7777")  # LAN is refused
     d = ce.edit("AXTI update", chat_id="1", now=NOW, ledger=ce.DuplicateLedger(tmp_path / "l.json"),
                 resolve=_resolve, editor_mode="live")
-    assert 'href="https://ms01-openclaw.tail163d14.ts.net/v3/portfolio?symbol=AXTI"' in d.text
+    assert 'href="https://ms01-openclaw.tail163d14.ts.net/v3/watch/intelligence/AXTI"' in d.text
     assert 'href="https://finviz.com/quote.ashx?t=AXTI"' in d.text
     assert 'href="https://finance.yahoo.com/quote/AXTI"' in d.text
 
