@@ -1,8 +1,19 @@
 # Changelog
 
 Status:      ACTIVE
-as_of:       2026-09-13T23:59:00-04:00
-Measured at: a8a62217e (origin/main, PR #1001 merge) / live pin not measured
+as_of:       2026-09-16T08:46:00-04:00
+Measured at: a91d7b3ba (origin/main = release CURRENT = dev tree, PR #1045 merge)
+
+## 2026-09-16 — The refusal that went nowhere: free search now answers a caller-cap denial
+
+MATURITY_IMPACT: web search stops losing questions to a budget nobody was exhausting. Free usage becomes metered in the same ledger as paid, so "free" no longer means "invisible".
+
+- **Measured first.** The live ledger held **129 denial receipts — one caller (`governed_research_producer`), one reason (`CALLER_DAILY_CAP`), every one `spilled_to: null`.** Refused, then asked of nobody, 15 on 09-13, 70 on 09-14, 44 on 09-15. Meanwhile Brave's month was **85% unspent** (228/1500) and a self-hosted SearXNG with a **10,000/day** allowance sat idle — `searxng` daily counters read `{}` for the ledger's entire history. The cron shape explains the volume: hourly `:45` with `--limit 5` is ~120 asks/day against a 25/day caller cap, so ~95 questions a day died at the gate. **The failure was refusal, not overspend.**
+- **What shipped** (PR #1045, merge `a91d7b3ba`, live `a91d7b3ba-main-exact-phase2-20260916-080726`): `scripts/lib/free_search.py` — a governed SearXNG call taking one ledger unit *before* each HTTP request, refunding a request that never happened, and counting `news`→`general` as the two requests it is. It is **not** a spill adapter: the spill seam is injected and asserted by `test_brave_router_spill.py` (one call *plus a denial receipt*), and a free hit produces no denial — an earlier prototype that borrowed that seam broke 9 of those tests, correctly. Also: `search_budget.mark_spilled` amends a refusal receipt once a lane answers; `caller_daily_cap` becomes provider-aware (a cap sized to ration *money* must not throttle a free provider); `check_gap_resolution` gains `REFUSED_NOWHERE`; and `gap_resolver` now reads `resp.provider` — the old `getattr(resp, "spilled_to", None)` was `None` on every response, so spilled answers were filed as `brave`.
+- **Validated live**, 2026-09-16 12:45:01Z on `source_sha a91d7b3ba`: Brave at 25/25, two `CALLER_DAILY_CAP` refusals, `free_answered: 2`, `searxng daily {'2026-09-16': 2}` with caller `governed_research_producer` — the first non-zero free-search counter ever recorded — and **both** receipts amended to `spilled_to: searxng`. `failed: 0`, `errors: []`.
+- **Off by default.** Behaviour is inert without `RESEARCH_FREE_FALLBACK=1`, which is set on exactly one crontab line.
+- **Not done.** This is P1 of an 8-phase plan. Nothing yet judges a free answer *thin* and escalates on quality; only a *refused* question is rescued.
+- Docs: `AGENTS.md` → 1.2.1 (§7 correction, §12 `[VERIFIED]` note), `RESEARCH_PROVIDER_ROUTING.md`, `GAP_RESOLUTION.md`, `RESEARCH_ESCALATION_2026-09-14.md`, `TRADE_AI_WORKLOG_2026-09-16.md`.
 
 ## 2026-09-14 — Platform documentation set updated for the day's work, with Word copies and flow diagrams
 

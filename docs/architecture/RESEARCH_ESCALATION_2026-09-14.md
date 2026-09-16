@@ -1,6 +1,6 @@
 # Research escalation — who researches what, and when one step hands off to the next
 
-> **Identity note, 2026-09-15 (rev 3).** This document is the measured record of 2026-09-14. Everything that shipped after it — PRs #1026–#1036 and the chief-architect remediation — is recorded in `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md`, which also states the live commit at the end of 2026-09-15. Read any "live at" line below as historical.
+> **Identity note, 2026-09-16 (rev 4).** This document is the measured record of 2026-09-14. Everything that shipped after it is recorded in the daily work logs: `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md` (PRs #1026–#1036 and the chief-architect remediation) and `docs/architecture/TRADE_AI_WORKLOG_2026-09-16.md` (PRs #1039–#1045). **Section 3's "no quality-based escalation" finding is still true as of 2026-09-16**, with one refusal-path exception recorded inline below: a `CALLER_DAILY_CAP` refusal is now answered free (PR #1045, live `a91d7b3ba`). Read any "live at" line below as historical.
 
 **Status:** measured on 2026-09-14, on main `32897e80a`, by reading the code, the flags each process actually has, the live receipts and the Brave budget ledger, and by a dry run of the resolver. It describes what IS wired, not what was designed.
 
@@ -29,9 +29,14 @@ digraph three_mechanisms {
 
 ## The short answer
 
-- **There is no quality-based escalation anywhere.**
+- **There is no quality-based escalation anywhere.** `[STILL TRUE 2026-09-16]`
   - No step judges another step's answer as "not enough" and hands off.
   - Hermes never escalates to Brave, and Brave never escalates to an AI model.
+  - **Update 2026-09-16 (PR #1045, live `a91d7b3ba`):** one gap closed, and it is a *refusal* gap, not a
+    *quality* gap. A caller refused by `CALLER_DAILY_CAP` is now answered by the free provider through
+    `scripts/lib/free_search.py` instead of being dropped. Measured first proof 12:45:01Z: two refusals,
+    `free_answered: 2`, both receipts amended to `spilled_to: searxng`. Before it, 129 refusals over three
+    days went nowhere. **Nothing in this still judges an answer thin** — that remains unbuilt (P3–P4).
 - **What exists is three separate mechanisms.** Each has its own trigger and its own stop rule:
   1. **The operator desk gap resolver.** It walks a fixed per-domain list and stops at the first step that returns the outcome code `answered`.
   2. **The Brave router spill.** It moves a web search from Brave to SearXNG only when Brave's quota is exhausted or rate-limited, never because Brave's results were thin.
@@ -148,7 +153,7 @@ The model lanes follow the separate LLM escalation policy (`AGENTS.md`, "LLM lan
 |---|---|
 | "If Hermes did not get enough, go to Brave" | Not wired. Hermes' result is delivered as-is; its "Still unknown" and "Limits" lines say what it could not find. |
 | "If Brave's answers weren't enough, go to the LLM" | Not wired as a quality test. For the desk, Brave is off; `llm_curation` would only summarise Brave hits (partial) if both were on. |
-| "If web searches are not enough, go to Brave" | Reversed. Brave is the first web step; SearXNG is only the quota/rate-limit spill. |
+| "If web searches are not enough, go to Brave" | Reversed. Brave is the first web step; SearXNG is the quota/rate-limit spill **and, since 2026-09-16, the answer to a `CALLER_DAILY_CAP` refusal** (a separate governed call, not a spill). Still not a quality test either way. |
 | Research on "push for more" | "Do more research on X" is classified `research` and triggers the chain above. There is no separate "dig deeper" intent. |
 
 ## 5. Operator directive and the target design — the Research Escalation Circle (approved, not yet built)

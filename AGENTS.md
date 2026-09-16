@@ -1,20 +1,25 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.2.0
+Policy-Version:      1.2.1
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-09-14
-Last-Reviewed:       2026-09-14T00:00:00-04:00
+Effective-Date:      2026-09-16
+Last-Reviewed:       2026-09-16T08:45:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          1.1.0
+Supersedes:          1.2.0
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**1.2.0 is ACTIVE from 2026-09-14.** The operator approved it with `APPROVE_AGENTS_POLICY_1_2_0`, bound to PR #1022 at
-head `ad5c533b2abc0150feba19c071aa0ea56364b251`; it supersedes 1.1.0 (see the version history).
+**1.2.1 is ACTIVE from 2026-09-16.** A PATCH release: it corrects two statements in §7 that PR #1045 made
+factually wrong and records the free-web result in §12. It touches no rule, adds no restriction, and does not
+touch §0, §2, §17 or role authority — so it carries the operator's 2026-09-16 direction to update this file,
+and does not require a new `APPROVE_AGENTS_POLICY` token.
+
+**1.2.0 was ACTIVE from 2026-09-14.** The operator approved it with `APPROVE_AGENTS_POLICY_1_2_0`, bound to PR #1022 at
+head `ad5c533b2abc0150feba19c071aa0ea56364b251`; it superseded 1.1.0 (see the version history).
 
 **1.0.0 is the first formal baseline, not a rewrite.** The document was previously unversioned;
 `Supersedes: UNVERSIONED` records that literally. It is **not** called 2.0.0 because no prior
@@ -1489,9 +1494,17 @@ Descending strength. **Only the first two settle a claim about runtime.**
 Each line is something an agent got wrong today or was about to. The code carries the detail; this is what to remember before you start.
 
 ### Research and operator replies
-- **Research escalation is not quality-based.**
+- **Research escalation is still not quality-based.** `[VERIFIED]` 2026-09-16 — nothing yet judges an answer
+  "not enough" and hands off. What changed on 2026-09-16 is *refusal* handling, not *quality* handling.
   - The desk's `gap_resolver` stops at the first `answered` outcome.
-  - Brave spills to SearXNG only on quota or rate limit.
+  - Brave spills to SearXNG on quota or rate limit — and **only** on those. `CALLER_DAILY_CAP` is deliberately
+    NOT in `web_search.spill_on` (operator decision 2026-09-13): a per-caller cap is fairness *between callers*,
+    not a provider quota, so the refusal stands.
+  - **A caller refused by `CALLER_DAILY_CAP` is now answered by the free provider instead of being lost**
+    (PR #1045, live `a91d7b3ba`). This is a *separate governed call* through `scripts/lib/free_search.py`, not a
+    spill: it takes its own ledger unit before the request, refunds a request that never happened, and amends the
+    refusal receipt's `spilled_to` once a lane answers. It runs only behind `RESEARCH_FREE_FALLBACK=1`.
+    Measured before: 129 denial receipts, one caller, every one `spilled_to: null` — refused, then asked of nobody.
   - Hermes never escalates to Brave.
   - Read `docs/architecture/RESEARCH_ESCALATION_2026-09-14.md` before claiming anything "escalates when not enough".
 - **A pending answer must be joined back by id, not by store.**
@@ -2137,6 +2150,15 @@ LLM_GLOBAL_DAILY_USD_CAP = 2.00     ratified by the operator 2026-09-14 (actual 
 **Free-first is not advice, it is the order of operations.** Persistent cognition, the record's
 own lessons, RAG, structured sources and local lanes are consulted *before* any paid call. A paid
 call that could have been answered from memory is a defect, not a cost.
+
+**For web search this became enforceable on 2026-09-16, and is measured.** `[VERIFIED]` 2026-09-16 —
+a caller refused by its own daily cap now reaches the self-hosted free provider rather than losing the
+question. First live proof, 12:45:01Z on `a91d7b3ba`: Brave at 25/25, two `CALLER_DAILY_CAP` refusals,
+`free_answered: 2`, and `searxng` daily counters non-zero for the first time in the ledger's history
+(`{'governed_research_producer': 2}`). Free usage is now **metered in the same ledger as paid usage** —
+one unit per HTTP request, taken before the request, refunded when the request never happened — so
+"free" no longer means "invisible". The remaining debt is that a *thin* free answer still does not
+escalate on quality; only a *refused* one is rescued.
 
 ### What the number is, and what it is not  `[VERIFIED]` 2026-09-01
 
@@ -3210,6 +3232,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.2.1 | 2026-09-16 | ACTIVE | PATCH | Corrections only, no rule change. §7 "Research and operator replies" corrected: "Brave spills to SearXNG only on quota or rate limit" was factually incomplete after PR #1045 — `CALLER_DAILY_CAP` remains out of `spill_on` (operator decision 2026-09-13), but a caller refused by it is now answered by a separate governed free call (`scripts/lib/free_search.py`, behind `RESEARCH_FREE_FALLBACK=1`), not a spill. §12 gains a `[VERIFIED]` 2026-09-16 note recording the first measured free-web result and that free usage is now metered in the same ledger as paid. Adds no restriction and weakens nothing; does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-16 ("make sure that if the agents.md needs to be updated it's updated ... add was validated"). PATCH corrections outside the operator-gated sections; rides the existing `APPROVE_AGENTS_POLICY_1_2_0` ratification. |
 | 1.2.0 | 2026-09-14 | ACTIVE | MINOR | §9.1 gains "Replies and alerts on the phone" (4,096 UTF-16 parts, `REPLY_NOT_DELIVERED`, one rich layout, collapsed provenance). §9.2 gains: every bridge caller names itself; the bridge answers while calls are in flight (deadline, slots, `/health`, watchdog); stalls are diagnosed at the bridge first; logged cost is checked against the provider balance. §9.3 gains the operator's scheduled-work window and "a backfill is scheduled work". §7 gains six tooling traps (CRLF via `read_text`, JSON re-dump escaping, `sys.modules` stubs, worktree data, docs index after merge, SOP bound files). §12 re-verifies DeepSeek prices (flash repriced 2026-09-10), records that the Pro policy binds to deepseek-flash, and adds the binding operator window. Records merged work from PRs #1011–#1019 and the scheduling/attribution PRs; does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-14 ("make sure ... everything ... has been documented ... and also updated in the standard operating procedures of the agents.md"; window quoted verbatim in §12). Ratification rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING · **RATIFIED** by the operator 2026-09-14: "APPROVE_AGENTS_POLICY_1_2_0" (sent without PR/sha; bound to `APPROVE_AGENTS_POLICY_1_2_0 1022 ad5c533b2abc0150feba19c071aa0ea56364b251`) |
 | 1.2.0 | 2026-09-14 | ACTIVE | MINOR | §12 records the operator's new daily provider spend cap, **$2.00/day of actual spend** (was $0.50), with the measured enforcement footprint (6 crontab lines, host cap file, unit drop-ins). Still policy rather than a universally enforced control. Does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-14 (instruction quoted verbatim in §12; PR #1015 and the cap consolidation). Ratification rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING · **RATIFIED** by the operator 2026-09-14: "APPROVE_AGENTS_POLICY_1_2_0" (sent without PR/sha; bound to `APPROVE_AGENTS_POLICY_1_2_0 1022 ad5c533b2abc0150feba19c071aa0ea56364b251`) |
 | 1.2.0 | 2026-09-13 | ACTIVE | MINOR | §7 gains "Operator replies, data gaps and agent numbers" (one reply chokepoint, house facts first, subject resolution, checked summaries, promise only what is queued, resolved means proven, rule G0, GUID-keyed memory) and two traps (duplicate `def` names; stored results lack the prompt). §9.3 gains "a crontab line edit is a lane registry edit". §10 gains the Telegram bot restart and "a deploy does not install new user units". Records merged work from PRs #992, #998–#1001; does not touch §0, §2, §17 or role authority. | Documentation of merged, operator-directed work (PRs #998–#1001); ratification rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING · **RATIFIED** by the operator 2026-09-14: "APPROVE_AGENTS_POLICY_1_2_0" (sent without PR/sha; bound to `APPROVE_AGENTS_POLICY_1_2_0 1022 ad5c533b2abc0150feba19c071aa0ea56364b251`) |

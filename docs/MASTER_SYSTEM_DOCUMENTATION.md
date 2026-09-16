@@ -766,7 +766,10 @@ were archived, not deleted (`archive/retired_providers_20260913/`, manifest row 
 `archive/ARCHIVE_MANIFEST.json`), and `RETIRED_CALL_SITE` proves zero call sites outside the
 secret-hygiene allowlist. **Brave** is live and paid (caps 120/day, 1,500/month read from the registry);
 denials (`DAILY_EXHAUSTED`, `MONTHLY_EXHAUSTED`, `HTTP_429`) spill to the registry's `web_search.backup`
-chain (SearXNG, then Tavily) through `scripts/lib/brave_router.py` — Phase 5.
+chain (SearXNG, then Tavily) through `scripts/lib/brave_router.py` — Phase 5. **`CALLER_DAILY_CAP` is
+deliberately NOT in that list** (operator decision 2026-09-13: a per-caller cap is fairness between
+callers, not a provider quota) — but since 2026-09-16 a caller refused by it is answered by a separate
+governed free call (`scripts/lib/free_search.py`, behind `RESEARCH_FREE_FALLBACK=1`), not a spill. Measured before: 129 such refusals, every one `spilled_to: null`.
 
 ### One write module per store (Phase 9, PR #996)
 
