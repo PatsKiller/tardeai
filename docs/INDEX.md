@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `a3b8a119b5ea3ba4fccaee6bc408eab52e1026868625e5595122808903c24e2d`
+**Tree fingerprint:** `de55c5e8ff17c48205405133d6dd208d877afdc1cc638e85b32b5c1811653107`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,7 +12,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2517 |
+| Files under `docs/` (excl. this INDEX) | 2518 |
 | Markdown (excl. this INDEX) | 2093 |
 | **MISSING HEADER** | **67** |
 | Header OK | 2026 |
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2146 |
+| review_required | 2147 |
 
 ## Markdown tree
 
