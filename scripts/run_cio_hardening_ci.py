@@ -712,6 +712,12 @@ GATES = [
             # producer-side, because trigger_intake has no DDL in this repo and
             # amending its UNIQUE constraint would be §7A/§17 operator-gated.
             "tests/test_goal_loop_second_lap_20260916.py",
+            # 2026-09-16 P8: the pilot proves the thesis on one goal type.
+            # Its headline control is that a MISSING independent source is
+            # unknowable, not false - omitted from the facts so the predicate
+            # reads UNEVALUABLE and the goal terminates `bounded_ignorance`
+            # rather than closing on an assumption. Also pins paid_calls == 0.
+            "tests/test_goal_pilot_material_change_20260916.py",
             # 2026-09-13 litmus tests: answers are symbol-scoped, drawn from house facts
             # (cash/sectors/policy read from the snapshot), and carry a Sources line.
             "tests/test_operator_answers_use_house_facts_20260913.py",
