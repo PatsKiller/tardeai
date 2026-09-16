@@ -44,22 +44,7 @@
       "unit": "tradeai-agent-runtime@argus.timer"
     },
     {
-      "unit": "tradeai-agent-runtime@atlas.timer",
-      "status": "retired_archived_20260916",
-      "retired_note": "E5 batch1 host-disabled; see archive/ARCHIVE_MANIFEST.json"
-    },
-    {
-      "unit": "tradeai-agent-runtime@concierge.timer",
-      "status": "retired_archived_20260916",
-      "retired_note": "E5 batch1 host-disabled; see archive/ARCHIVE_MANIFEST.json"
-    },
-    {
       "unit": "tradeai-agent-runtime@darwin.timer"
-    },
-    {
-      "unit": "tradeai-agent-runtime@hermes.timer",
-      "status": "retired_archived_20260916",
-      "retired_note": "E5 batch1 host-disabled; see archive/ARCHIVE_MANIFEST.json"
     },
     {
       "unit": "tradeai-agent-runtime@iris.timer"
@@ -69,11 +54,6 @@
     },
     {
       "unit": "tradeai-agent-runtime@morgan.timer"
-    },
-    {
-      "unit": "tradeai-agent-runtime@pulse.timer",
-      "status": "retired_archived_20260916",
-      "retired_note": "E5 batch1 host-disabled; see archive/ARCHIVE_MANIFEST.json"
     },
     {
       "unit": "tradeai-agent-runtime@reflection.timer"
