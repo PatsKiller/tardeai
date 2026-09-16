@@ -88,6 +88,13 @@ SELF_GOVERNANCE_TOKENS = (
     "enqueue_self",
     "budget.set",
     "budget.write",
+    # The CUMULATIVE per-goal budget (scripts/lib/goal_budget.py), denied whole
+    # rather than by verb. `budget.set` / `budget.write` above forbid an agent
+    # WRITING a budget; for the goal ledger even a read is authority, because an
+    # agent that can see how much of its allowance remains can shape its own
+    # laps around the ceiling. Enforcement is at enqueue, in the producer, and
+    # no agent needs a tool for it at all — so the whole surface is denied.
+    "goal_budget",
     "permission",
     "permissions",
     "promote",
