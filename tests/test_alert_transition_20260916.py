@@ -24,7 +24,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
-sys.path.insert(0, str(ROOT / "scripts" / "lib"))
+# appended, not prepended: scripts/lib shadows same-named top-level scripts
+sys.path.append(str(ROOT / "scripts" / "lib"))
 
 import alert_transition as AT  # noqa: E402
 import check_expected_services as ces  # noqa: E402

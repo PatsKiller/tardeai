@@ -95,7 +95,10 @@ RECEIPT_NAME = "operator_answer_quality_last_run.json"
 STATE_PATH = Path.home() / ".local/state/tradeai/operator_answer_quality_last_alert.json"
 SENTINEL = "[DATA_INTEGRITY]"
 
-sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+# APPENDED, never prepended: scripts/lib holds modules whose names collide with
+# top-level scripts (research_lane_health is both), and putting it first made
+# `import research_lane_health` resolve to the library instead of the monitor.
+sys.path.append(str(PROJECT_ROOT / "scripts" / "lib"))
 from alert_transition import (  # noqa: E402
     TYPE_DATA_INTEGRITY,
     evaluate,

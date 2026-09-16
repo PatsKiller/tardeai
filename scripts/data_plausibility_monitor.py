@@ -50,7 +50,10 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CONTRACTS_PATH = PROJECT_ROOT / "config" / "data_plausibility_contracts.json"
 
-sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+# APPENDED, never prepended: scripts/lib holds modules whose names collide with
+# top-level scripts (research_lane_health is both), and putting it first made
+# `import research_lane_health` resolve to the library instead of the monitor.
+sys.path.append(str(PROJECT_ROOT / "scripts" / "lib"))
 from alert_transition import (  # noqa: E402
     TYPE_DATA_INTEGRITY,
     evaluate,

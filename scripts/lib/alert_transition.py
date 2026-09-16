@@ -61,7 +61,11 @@ from typing import Any, Optional
 _LIB = Path(__file__).resolve().parent
 _SCRIPTS = _LIB.parent
 if str(_LIB) not in sys.path:
-    sys.path.insert(0, str(_LIB))
+    # APPEND. Prepending would put scripts/lib ahead of scripts/ for every
+    # process that imports this module, and several names exist in both
+    # (research_lane_health is a monitor AND a library) — so `import
+    # research_lane_health` would silently get the wrong one.
+    sys.path.append(str(_LIB))
 
 from alert_condition_state import observe, store_path  # noqa: E402
 
