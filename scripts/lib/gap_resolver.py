@@ -512,7 +512,12 @@ def _v_governed_search(gap: DataGap, entry: dict[str, Any], ctx: Context) -> Vec
     hits = list(resp.results or [])
     if not hits:
         return VectorResult("no_answer", provider=brave_router.PROVIDER, detail="router ok, zero results")
-    provider = "brave" if not getattr(resp, "spilled_to", None) else str(resp.spilled_to)
+    # RouterResponse carries no ``spilled_to`` — the spill target is ``provider``
+    # ("Which provider actually answered — brave or the backup that took the
+    # spill"). The old getattr therefore defaulted to None on EVERY response, so
+    # a spilled answer was recorded as brave and the gap receipts disagreed with
+    # the budget ledger about who answered. Only the RECEIPT has spilled_to.
+    provider = str(getattr(resp, "provider", None) or brave_router.PROVIDER)
     return VectorResult("partial", provider=provider, as_of=_iso(ctx.now()),
                         detail=f"{len(hits)} results{' (cache)' if resp.cache_hit else ''}",
                         evidence={"search_results": hits[:5], "search_provider": provider})

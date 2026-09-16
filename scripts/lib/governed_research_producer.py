@@ -23,7 +23,11 @@ missing producer, and it is governed end to end.
 Rules (fail-closed):
   * Feature flag OFF → no side effects, no provider call, no feed write.
   * No hardcoded provider-plan claims; capacity is the local cost policy only.
-  * No direct provider bypass — the ONLY network path is ``brave_router.search``.
+  * No direct provider bypass. Exactly two governed provider paths exist and no
+    others: ``brave_router.search`` (paid; reserved, settled, refunded) and —
+    ONLY after the router has refused a question with ``CALLER_DAILY_CAP``, and
+    only when ``RESEARCH_FREE_FALLBACK`` is on — ``free_search.search`` (free,
+    metered in the same ledger). Neither opens a socket in this module.
   * A research object is created only after a real provider result is returned.
   * Dedupe by stable identity (research_id == idempotency key); a duplicate
     result never writes a second feed row.
@@ -97,6 +101,9 @@ class ProducerResult:
     deduped: int = 0
     failed: int = 0
     budget_denied: int = 0
+    #: Questions the paid router refused with CALLER_DAILY_CAP that the free
+    #: provider answered instead. Neither a failure nor a paid call.
+    free_answered: int = 0
     eligible: int = 0
     outcome: str = "nothing_eligible"  # nothing_eligible | produced | broken | disabled
     errors: list[str] = field(default_factory=list)
@@ -246,6 +253,7 @@ def produce_research(
     env: Mapping[str, str] | None = None,
     clock: Clock | None = None,
     transport: Any = None,
+    free_transport: Any = None,
     api_key: str | None = None,
     root: Path | None = None,
     feed: Path | str | None = None,
@@ -255,8 +263,10 @@ def produce_research(
 
     ``transport`` / ``api_key`` / ``root`` are threaded to ``brave_router.search``;
     tests inject a fake transport, production injects nothing (live is explicitly
-    armed by ``BRAVE_ROUTER_LIVE``). This module NEVER opens a network socket
-    itself — the router is the only provider boundary.
+    armed by ``BRAVE_ROUTER_LIVE``). ``free_transport`` is threaded the same way
+    to ``free_search.search``, which is consulted only on a CALLER_DAILY_CAP
+    refusal. This module NEVER opens a network socket itself — the router and
+    the free client are the only provider boundaries.
     """
     clock = clock or _now
     now = clock()
@@ -294,6 +304,7 @@ def produce_research(
         return result
 
     from scripts.lib import brave_router as router
+    from scripts.lib import free_search, search_budget
     from scripts.lib.research_object import build_research_object
 
     feed_id_set = _feed_ids(fp) if fp else set()
@@ -302,6 +313,7 @@ def produce_research(
     deduped = 0
     failed = 0
     budget_denied = 0
+    free_answered = 0
     errors: list[str] = []
     last_success: str | None = None
 
@@ -322,12 +334,36 @@ def produce_research(
             enabled=True,
         )
         if not resp.ok:
-            failed += 1
             reason = resp.reason or "PROVIDER_ERROR"
-            if "BUDGET_REFUSED" in str(reason):
-                budget_denied += 1
-            errors.append(f"{sym}:{reason}")
-            continue
+            rescued = None
+            # A caller over its OWN daily slice has a budget objection, not a
+            # "there is no answer" objection. Measured 2026-09-16 on the live
+            # ledger: 129 such refusals, every one spilled_to: null — asked
+            # nowhere — while a free provider with a 10,000/day allowance idled
+            # and Brave's own month sat 85% unspent.
+            if free_search.applies_to(reason) and free_search.fallback_enabled(env_map):
+                free = free_search.search(
+                    query,
+                    caller="governed_research_producer",
+                    kind="web",
+                    count=3,
+                    root=root,
+                    transport=free_transport,
+                )
+                if free.ok and free.results:
+                    rescued = free
+                    if resp.receipt:
+                        search_budget.mark_spilled(resp.receipt, free.provider, root=root)
+                    free_answered += 1
+                else:
+                    errors.append(f"{sym}:FREE_FALLBACK:{free.reason}")
+            if rescued is None:
+                failed += 1
+                if "BUDGET_REFUSED" in str(reason):
+                    budget_denied += 1
+                errors.append(f"{sym}:{reason}")
+                continue
+            resp = rescued
 
         results = list(resp.results or [])
         if not results:
@@ -349,7 +385,11 @@ def produce_research(
                 primary_subject_guid=sg,
                 published_at="",
                 producer="governed_research_producer",
-                policy_decisions=["governed_brave_router", "budget_governed"],
+                policy_decisions=(
+                    ["governed_free_search", "budget_governed"]
+                    if getattr(resp, "provider", "") == free_search.PROVIDER
+                    else ["governed_brave_router", "budget_governed"]
+                ),
                 source_sha=sha,
                 clock=clock,
                 provenance_extra={"trigger": trigger, "reservation_id": resp.reservation_id},
@@ -382,6 +422,7 @@ def produce_research(
                 "deduped": deduped,
                 "failed": failed,
                 "budget_denied": budget_denied,
+                "free_answered": free_answered,
                 "errors": errors,
                 "feed_rows": total_rows,
                 "last_success_at": last_success,
@@ -392,6 +433,7 @@ def produce_research(
 
     return ProducerResult(
         ok=produced > 0,
+        free_answered=free_answered,
         produced=produced,
         deduped=deduped,
         failed=failed,

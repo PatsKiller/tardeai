@@ -656,6 +656,14 @@ GATES = [
             # paid, receipted, with an ETA or an honest "no coverage".
             "tests/test_gap_resolver_20260913.py",
             "tests/test_gap_resolution_monitor_20260913.py",
+            # 2026-09-16: the refusal that went nowhere. Measured on the live
+            # ledger: 129 denial receipts, one caller, every one CALLER_DAILY_CAP
+            # and every one spilled_to null -- refused, then asked of nobody,
+            # while a free provider with a 10,000/day allowance sat idle. A caller
+            # over its OWN slice is now answered free instead of lost; every free
+            # request is metered and refunded; the receipt records which lane
+            # answered; and a monitor reports refusals nobody answered at all.
+            "tests/test_free_search_fallback_20260916.py",
             # 2026-09-13 litmus tests: answers are symbol-scoped, drawn from house facts
             # (cash/sectors/policy read from the snapshot), and carry a Sources line.
             "tests/test_operator_answers_use_house_facts_20260913.py",
