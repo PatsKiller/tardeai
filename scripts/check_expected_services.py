@@ -56,6 +56,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = PROJECT_ROOT / "config" / "expected_services.json"
 STATE_PATH = Path.home() / ".local/state/tradeai/expected_services_last_alert.json"
 
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+from alert_transition import (  # noqa: E402
+    TYPE_SYSTEM_HEALTH,
+    evaluate,
+    fingerprint_state,
+    previous_fingerprint,
+)
+
+#: Durable identity for this condition in the shared alert state machine.
+CONDITION_KEY = "platform_availability:expected_services"
+
 SCHEMA = "ExpectedServicesReport@v1"
 RECEIPT_NAME = "expected_services_last_run.json"
 
@@ -242,17 +253,23 @@ def main() -> int:
 
 
 def _alert(off: list[dict]) -> None:
-    """Notify only when the off-set changes. Never raises."""
-    fingerprint = {r["name"]: r["status"] for r in off}
-    previous = {}
-    try:
-        previous = json.loads(STATE_PATH.read_text()).get("fingerprint", {})
-    except (OSError, ValueError):
-        pass
+    """Notify when the off-set changes, and on a heartbeat. Never raises.
 
-    if fingerprint == previous:
-        print("\n  alert: suppressed — unchanged since the last run.")
+    This is the function the audit quoted: a FAILED path unit had been
+    suppressed since 00:13 because the off-set had not changed since. The
+    shared state machine keeps the quiet and bounds it at six hours.
+    """
+    fingerprint = {r["name"]: r["status"] for r in off}
+    t = evaluate(
+        CONDITION_KEY,
+        fingerprint_state(fingerprint),
+        alertable=bool(fingerprint),
+        path=STATE_PATH,
+    )
+    if not t.notify:
+        print(f"\n  alert: {t.quiet_reason()}")
         return
+    previous = previous_fingerprint(t.previous)
 
     newly = [k for k in fingerprint if k not in previous]
     if not fingerprint:
@@ -285,19 +302,25 @@ def _alert(off: list[dict]) -> None:
 
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-        from telegram_alert import send_telegram
+        import telegram_alert as _ta
 
-        ok = send_telegram(body, message_class="operator_alert")
+        ok = _ta.send_telegram(body, message_class="operator_alert")
+        message_id = getattr(_ta, "last_message_id", lambda: None)()
         print(f"\n  alert: {'accepted' if ok else 'NOT accepted'} by the platform")
     except Exception as exc:
+        t.rollback()
         print(f"\n  alert: FAILED to send ({exc}). The findings above still stand.", file=sys.stderr)
         return
 
-    try:
-        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text(json.dumps({"fingerprint": fingerprint}, indent=2))
-    except OSError as exc:
-        print(f"  alert: could not record state ({exc}).", file=sys.stderr)
+    rec = t.commit(
+        body=body,
+        alert_type=TYPE_SYSTEM_HEALTH,
+        source_script="check_expected_services.py",
+        telegram_message_id=message_id,
+        payload={"units_off": sorted(fingerprint)},
+    )
+    print(f"  alert: {t.action} recorded (message_id={message_id}, "
+          f"alert_event={rec['alert_event_id']}, resolved={rec['resolved_rows']})")
 
 
 if __name__ == "__main__":

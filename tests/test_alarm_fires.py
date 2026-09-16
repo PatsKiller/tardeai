@@ -119,3 +119,47 @@ def test_router_suppression_is_recorded_as_not_fired(alarm_capture, monkeypatch)
     monkeypatch.setattr(TR, "should_send_telegram", lambda *a, **k: False, raising=True)
     TA.send_telegram("C1 probe: should be suppressed", bypass_router=False)
     assert not alarm_capture.fired, "a suppressed message reached the transport"
+
+
+def test_send_telegram_with_id_returns_the_provider_message_id(alarm_capture):
+    """The id the alert plane needs, from the call that already had it.
+
+    `_raw_send_telegram_result` has always built a `message_ids` list and
+    `_legacy_send` threw it away one stack frame later. That is why all 7,830
+    `alert_events` rows carry `telegram_message_id` NULL and why no alert could
+    be tied to a delivery. This is the observation that the id now survives.
+    """
+    import telegram_alert as TA
+
+    result = TA.send_telegram_with_id("C1 probe: id capture", bypass_router=True)
+    alarm_capture.assert_fired(contains="id capture")
+    assert result["accepted"] is True
+    assert result["message_id"] is not None, "the transport minted an id and it was dropped again"
+    assert TA.last_message_id() == result["message_id"]
+
+
+def test_a_suppressed_send_reports_no_message_id(alarm_capture, monkeypatch):
+    """No id is the honest answer for a message nobody received.
+
+    Carrying the previous send's id forward would tie an alert_events row to an
+    unrelated Telegram message — worse than the NULL it replaces.
+    """
+    import telegram_alert as TA
+
+    try:
+        import telegram_alert_router as TR
+    except Exception:
+        pytest.skip("router unavailable")
+
+    TA.send_telegram_with_id("C1 probe: first send", bypass_router=True)
+    monkeypatch.setattr(TR, "should_send_telegram", lambda *a, **k: False, raising=True)
+    result = TA.send_telegram_with_id("C1 probe: suppressed", bypass_router=False)
+    assert result["message_id"] is None, "a suppressed alert must not inherit the previous id"
+
+
+def test_the_bool_contract_of_send_telegram_is_unchanged(alarm_capture):
+    """182 call sites depend on it. The new function is additive, not a rewrite."""
+    import telegram_alert as TA
+
+    out = TA.send_telegram("C1 probe: bool contract", bypass_router=True)
+    assert out is True or out is False

@@ -12,6 +12,10 @@ import tempfile as _tempfile
 # The audit ledger is production evidence. No test may write to the live JSONL or mirror into the
 # audit_ledger_events table (R-01, 2026-09-15). Set before any test module imports audit_ledger.
 os.environ["TRADEAI_AUDIT_LEDGER_DB"] = "0"
+# alert_events rows are production evidence too: the condition monitors now record
+# a row per transition, and a unit test driving _alert() must not mint one in the
+# live database. A test that wants to prove recording works injects a fake writer.
+os.environ["TRADEAI_ALERT_EVENT_DB"] = "0"
 os.environ["TRADEAI_AUDIT_LEDGER_DIR"] = _tempfile.mkdtemp(prefix="tradeai_audit_ledger_tests_")
 # The host's Comms Editor mode file (live since the operator promoted it) must not decide what a test
 # sends: in live mode deliver_text holds the message, and test_plaintext_fallback_actually_unescapes_on_the_wire
@@ -251,9 +255,15 @@ def alarm_capture(monkeypatch):
 
     cap = Captured()
 
+    # The real transport returns a provider message_id, and the alert plane now
+    # stores it on the alert_events row so an alert can be acknowledged. A fake
+    # that omits it cannot observe that the id survives the trip.
+    _next_id = [9000]
+
     def _fake_send_message(token=None, chat_id=None, text="", **kw):
         cap.transport.append({"chat_id": chat_id, "text": text})
-        return {"ok": True, "status_code": 200}
+        _next_id[0] += 1
+        return {"ok": True, "status_code": 200, "message_id": _next_id[0]}
 
     # Bound into telegram_alert's namespace by `from telegram_transport import ...`,
     # so patching the source module alone would not intercept it.
