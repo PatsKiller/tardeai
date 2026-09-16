@@ -1,18 +1,18 @@
 # Phase 3 — Telegram Delivery Reliability Assessment
 
-Status: ACTIVE (partial — one channel measured; device inventory + 3 exports still needed)
-as_of: 2026-09-16T16:45:00-04:00
+Status: ACTIVE (four channels measured; device inventory still needed)
+as_of: 2026-09-16T17:00:00-04:00
 Measured at: origin/main `940425b73` · transport `[CODE]`; receipts `[VERIFIED]`; corpus `[VERIFIED]`; historical `[DOC-CLAIM]`
 See also: `00_EXECUTIVE_SUMMARY.md` · `04_CONTENT_QUALITY_CURATION.md`
 
 ## 0. A third explanation the corpus adds: duplication masquerading as desync
 
-The `tradeai_bigjohn718_bot` export shows **131 of 198 messages (66%) are duplicate copies**
-of 8 texts — e.g. 85× the same `holdings write BLOCKED` and 43× the same AES stop warning.
-On any device, a wall of near-identical messages is easily read as "some arrived and some
-didn't" (or "they keep disappearing"), when in fact the server sent every one. **Duplication
-is a reliability problem in its own right**, and it must be separated from genuine
-cross-device sync.
+The **TradeAI Proposal Decisions** group export shows **131 of 181 messages (72%) are
+duplicate copies** of 8 texts — 87× `holdings write BLOCKED`, 43× the same AES stop warning.
+The Trade AI DM was 22.7% duplicates pre-fix, dropping to **2.4% post-fix**. On any device, a
+wall of near-identical messages is easily read as "some arrived and some didn't" (or "they keep
+disappearing"), when in fact the server sent every one. **Duplication is a reliability problem
+in its own right**, and it must be separated from genuine cross-device sync.
 
 ## 1. The reported symptom
 
@@ -76,5 +76,5 @@ server.
 
 ## 6. Open items
 
-- ChatExport pending → will confirm per-chat send/duplicate behavior empirically.
 - Device inventory not yet collected → the table in §4 is unfilled by design.
+- Post-09-14 re-export of **TradeAI Proposal Decisions** (current export ends 11 Sep, pre-fix).

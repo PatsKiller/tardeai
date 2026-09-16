@@ -32,12 +32,12 @@ must be governed separately, and this package treats them as separate channels.
 
 | # | Priority | Recommendation | Doc |
 |---|---|---|---|
-| 1 | **Blocker** | Put the ChatExport on ms01 so Phases 3–4 can be measured from the actual corpus, not inferred from code | 03, 04 |
+| 1 | **High** | Re-export **TradeAI Proposal Decisions** post-09-14 to prove the routing split silenced the 87× holdings-BLOCKED / 43× AES flood (current export ends 11 Sep) | 03, 04 |
 | 2 | **High** | Approve a written per-channel governance contract (audience, required/optional, routing) before any producer retarget | 02 |
 | 3 | **High** | Reconcile the four-channel names: confirm "Trade AI Channels" = DM + Proposals, and pin the bot-per-channel matrix | 01, 02 |
 | 4 | **High** | Resolve device-sync: verify every device is joined to the **same** chats/bots (CIO bot ≠ bigjohn bot ≠ OpenClaw bot is the most likely cause of "visible on some devices") | 03 |
 | 5 | **Medium** | Enforce CIO Desk = CIO-origin only; route health/ops away from the CIO channel | 02 |
-| 6 | **Medium** | Mute / digest low-value telemetry (historical "CIO Run Complete", reaper, revalidation noise) | 04 |
+| 6 | **Medium** | Dedupe the morning-command brief and collapse orphaned STOP HEALTH repeats into one digest | 04 |
 | 7 | **Low** | Add coverage for holdings/position/initiative facts that CC shows but Telegram never surfaces | 05 |
 
 ## What is already true (verified, not assumed)
@@ -54,16 +54,18 @@ must be governed separately, and this package treats them as separate channels.
 
 ## What is NOT settled
 
-- **Only one channel has been measured.** The ChatExport delivered on 09-16 covers a single
-  chat — `tradeai_bigjohn718_bot` DM — over **2026-08-25 → 09-11** (a *before* snapshot that
-  predates the 09-14 routing map). The other three channels (CIO Desk, Proposal Decisions,
-  John Openclaw) need their own exports before the empirical audit is complete.
-- **The measured channel was ~66% duplicates `[VERIFIED]`**: 131 of 198 messages were copies
-  of 8 texts — 85× `holdings write BLOCKED`, 43× the same AES stop warning, across just 2
-  held symbols. This is the pre-fix state; the 09-14/15 routing + dedupe + editor-live work
-  targets exactly this. A fresh post-fix export is required to prove the current channel no
-  longer looks like this.
 - **Device-sync has no server-side smoking gun yet.** Server receipts show sends succeeded
   (Comms Editor ledger, 0 holds in the last 80 shadow receipts). Inconsistent device visibility
-  is therefore more likely **client/chat-membership** than server failure — and the 66%
-  duplication above adds a third candidate: near-identical floods read as missing messages.
+  is therefore more likely **client/chat-membership** than server failure — with a third
+  candidate: duplication (72% on Proposal Decisions pre-fix) reads as missing messages.
+
+## Measured corpus (all four channels, `[VERIFIED]`)
+
+Source `~/Downloads/Telegram Desktop/ChatExport_2026-09-16*`:
+
+| Channel | Texts | Duplicate rate | Verdict |
+|---|---|---:|---|
+| Trade AI DM | 1456 | 22.7% (2.4% post-fix) | noisy pre-fix, clean after 09-14 |
+| CIO Desk | 194 | 0% | clean; 46% "Run Complete" stopped 14 Sep |
+| TradeAI Proposal Decisions | 181 | **72%** | the duplication offender (pre-fix) |
+| John OpenClaw | 24 | 0% | clean, conversational |

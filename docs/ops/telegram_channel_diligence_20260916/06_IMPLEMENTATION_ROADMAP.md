@@ -9,9 +9,9 @@ See also: `00_EXECUTIVE_SUMMARY.md` · `02_ROUTING_GOVERNANCE_PROPOSAL.md`
 
 | # | Action | Owner | Effort |
 |---|---|---|---|
-| Q1 | Get the ChatExport onto ms01 and fill the 5-tier rubric counts in `04` | operator + agent | hours |
+| Q1 | ~~Get the ChatExport~~ **done** — four channels measured, `04`/`03`/`00` updated | agent | done |
 | Q2 | Fill the device/channel membership table in `03` §4 | operator | minutes |
-| Q3 | Publish this package (PR + `docs/INDEX.md` pointer) | agent | small |
+| Q3 | Re-export **TradeAI Proposal Decisions** post-09-14 (current export ends 11 Sep) | operator | minutes |
 | Q4 | Confirm four-channel naming (CIO / DM / Proposals / OpenClaw) | operator | minutes |
 | Q5 | Document the bot-per-channel matrix so devices are joined to the right chats | operator + agent | small |
 
@@ -45,6 +45,7 @@ flowchart LR
 
 ## Dependency
 
-Everything empirical in Phases 3–4 waits on the ChatExport (`c:\Users\john\Downloads\Telegram
-Desktop\ChatExport_2026-09-16 (3)\...rar`) being copied to ms01. The routing/governance/CC-gap
-sections above are already grounded in code and runtime and do not block on it.
+Empirical Phases 3–4 are now measured from the four ChatExport folders. The one remaining
+empirical gap is a **post-09-14 re-export of TradeAI Proposal Decisions** to confirm the
+routing split silenced its 72% duplication (the current export ends 11 Sep, before the fix).
+Routing/governance/CC-gap sections are grounded in code + runtime.

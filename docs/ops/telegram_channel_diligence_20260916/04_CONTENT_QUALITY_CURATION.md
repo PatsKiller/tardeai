@@ -1,39 +1,58 @@
 # Phase 4 — Content Quality, Relevance & Curation Audit
 
-Status: ACTIVE (partial — one channel measured; three exports still needed)
-as_of: 2026-09-16T16:45:00-04:00
-Measured at: origin/main `940425b73` · router/policy `[CODE]` · **live corpus `[VERIFIED]`** (see §0)
+Status: ACTIVE (four channels measured)
+as_of: 2026-09-16T17:00:00-04:00
+Measured at: origin/main `940425b73` · router/policy `[CODE]` · **live corpus `[VERIFIED]`** (4 chats)
 See also: `02_ROUTING_GOVERNANCE_PROPOSAL.md` · `05_COMMAND_CENTER_COVERAGE_GAPS.md`
 
-## 0. Measured corpus — `tradeai_bigjohn718_bot` DM (before the 09-14 fix)
+> **Correction.** An earlier draft attributed the "66% duplicates" figure to the Trade AI DM.
+> Re-parsing the folder titles showed that corpus is actually the **TradeAI Proposal Decisions**
+> group. This version corrects that and covers all four channels.
 
-Source: `ChatExport_2026-09-16 (3).rar` → `messages.html`, **198 bot messages**,
-window **2026-08-25 → 2026-09-11** (19 days). This is a **single-channel** export and a
-**"before" snapshot** — it predates the 09-14 routing map, dedupe, and Comms Editor `live`.
-It is evidence of the *old* noise, not a claim about the *current* channel.
+## 0. Measured corpus — all four channels (`[VERIFIED]`)
 
-| Measure | Value |
-|---|---:|
-| Bot messages | 198 |
-| Distinct text bodies | 50 |
-| **Duplicate copies (extra)** | **131 (66%)** |
-| Duplicate families | 8 |
-| Unique held symbols in stop warnings | **2 (AES, HRL)** |
+Source: `~/Downloads/Telegram Desktop/ChatExport_2026-09-16*` → `messages*.html`.
 
-**Top noise sources (the two that drowned everything):**
+| Channel | Folder | Window | Texts | Distinct | Duplicate copies | Rate |
+|---|---|---|---|---|---|---:|
+| Trade AI DM (`tradeai_bigjohn718_bot`) | `…2026-09-16` | 25 Aug → 16 Sep | 1456 | 1125 | 331 | **22.7%** |
+| CIO Desk | `…2026-09-16 (1)` | 27 Aug → 16 Sep | 194 | 194 | 0 | 0% |
+| TradeAI Proposal Decisions | `…2026-09-16 (3)` | 25 Aug → 11 Sep | 181 | 50 | **131** | **72%** |
+| John OpenClaw | `…2026-09-16 (2)` | 25 Aug → 15 Sep | 24 | 24 | 0 | 0% |
+
+### The DM improves 31.8% → 2.4% after the 09-14 fix (`[VERIFIED]`)
+
+| DM window | Texts | Duplicate copies | Rate |
+|---|---:|---:|---:|
+| Pre-fix (25 Aug – 13 Sep) | 1000 | 318 | **31.8%** |
+| Post-fix (13 – 16 Sep) | 456 | **11** | **2.4%** |
+
+The 09-14/15 dedupe + routing + editor-live work is empirically effective on this channel.
+
+### TradeAI Proposal Decisions — the real duplication offender (`[VERIFIED]`)
+
+72% duplicate copies of 8 texts (pre-fix window, export ends 11 Sep):
 
 | Family | Copies | Detail |
 |---|---:|---|
-| `🛑 holdings write BLOCKED (holdings_reconcile)` | **85** | `total_value 594,765 below sanity floor 1,000,000` — fired 19–23×/day 01–04 Sep; a broken reconcile loop, not 85 distinct events |
-| `⚠️ STOP WARNING *AES*` | **43** | near-identical (`$14.77 → $14.72 → $14.68`), 13× on 27 Aug alone |
+| `🛑 holdings write BLOCKED (holdings_reconcile)` | **87** | `total_value 594,765 below sanity floor 1,000,000` — 19–23×/day 01–04 Sep |
+| `⚠️ STOP WARNING *AES*` | **43** | same `$14.77→$14.72→$14.68`, 13× on 27 Aug |
+| pipeline alerts, basis audit, tech gaps, protective stops | rest | only ~17 actual proposals |
 
-**Actionable signal present but buried:** 6 protective-stop approvals, ~17 proposal/alert
-aggregates, 5 enrichment-gap notices. 51 messages carried inline trail/stop-hold buttons.
+This is the exact "health/stop noise in the Proposal group" defect the 09-14 routing split
+fixed (`tg_chat_ids`). The export predates that fix, so a **post-09-14 re-export** of this
+group is still required to prove it is now proposals-only.
 
-**Verdict:** pre-fix, this channel was ~66% duplicate copies of 8 texts, dominated by a
-sticky AES stop warning and a broken holdings-reconcile error — exactly the "duplicate event
-stream, not an actionable notification channel" shape the 2026-07-28 audit described, still
-true through early September.
+### CIO Desk — clean, but 46% "Run Complete" (now fixed) (`[VERIFIED]`)
+
+0 duplicates. But **89 of 194 (46%)** were `CIO Run Complete — <uuid> … Nothing requires
+action today` (57 said "nothing requires action"). Last one: **14 Sep** — the run-complete
+suppression (`lib/cio_run_worker.py`, tested 09-14) landed and the noise stops. CIO Desk is
+otherwise CIO-origin only, no health/holdings bleed.
+
+### John OpenClaw — clean and light (`[VERIFIED]`)
+
+24 texts, 0 duplicates, conversational assistant traffic only.
 
 ## 1. Mechanism-level (what the code enforces now)
 
@@ -61,9 +80,9 @@ The routing policy already encodes a quality bar; the audit is whether producers
 - **CIO Desk noise (fixed):** 86 of 95 messages were "CIO Run Complete — <uuid>";
   removed by `lib/cio_run_worker.py` `[CODE]`.
 
-## 3. Classification rubric (apply against export)
+## 3. Classification rubric
 
-| Tier | Definition | Examples (expected) |
+| Tier | Definition | Examples |
 |---|---|---|
 | **Critical / Immediate Action** | capital at risk, operator must act now | orphaned stop, protection failure, broker auth block, GO with actionable criteria |
 | **High Priority** | material move / entry / decision worth acting on today | material change, ENTRY READY, CIO ADD/TRIM/EXIT |
@@ -71,31 +90,29 @@ The routing policy already encodes a quality bar; the audit is whether producers
 | **Background Context** | reference material | scanner WAIT/AVOID universe, analyst notes |
 | **Unnecessary / Low Value** | noise | reaper notices, "Run Complete", revalidation churn |
 
-## 4. Signal-to-noise assessment (current, by mechanism)
+## 4. Signal-to-noise assessment (measured `[VERIFIED]` + mechanism `[CODE]`)
 
-| Channel | S/N (mechanism-based) | Note |
+| Channel | Measured S/N | Note |
 |---|---|---|
-| CIO Desk | **High** (after Run-Complete removal) | strong product standard; still verify no health bleed |
-| Trade AI DM | **Medium** | IMMEDIATE now scarce + digests batched, but ops families still land here |
-| Proposal Decisions | **High** (77% actionable historical) | narrowest, best-scoped |
-| John Openclaw | **N/A** (conversational) | S/N is per-query, not per-alert |
+| CIO Desk | **High** — 0 dup, CIO-origin only; 46% "Run Complete" noise stopped 14 Sep | product standard holds |
+| Trade AI DM | **Medium→High** — 22.7% dup overall but **2.4% post-fix** | noise = orphaned-stop health + watch alerts + duplicated morning briefs |
+| TradeAI Proposal Decisions | **Low pre-fix** (72% dup, 87× holdings-BLOCKED) — needs post-fix re-export to confirm | the channel the 09-14 split targeted |
+| John OpenClaw | **High** — 0 dup, 24 texts, conversational | per-query, not per-alert |
 
 ## 5. Actionability
 
 - **Actionable:** GO (criteria list), ENTRY (zone/stop/R:R/invalidation), CIO act-now
   (disposition buttons), paper proposals (approve/reject).
-- **Not actionable but sent:** routine health/SIEM/reaper — should be digest or Ops.
+- **Not actionable but sent:** orphaned-stop health (repeats per symbol), watch-alert price
+  crosses, duplicated morning-command briefs — digest or dedupe, not immediate.
 - **Actionable but suppressed (historical bug, fixed):** ENTRY was P2 before 09-15; now
   `cio_entry_state` → IMMEDIATE `[CODE]`.
 
 ## 6. Recommendations
 
-1. **Apply the 5-tier rubric to the ChatExport** and produce per-channel counts — this is the
-   empirical core of the audit and is blocked only on the export.
-2. **Cap immediate sends** with a volume budget (T7: 30/day, Ops exempt) once the export
-   confirms volume.
-3. **Summarize, don't stream:** digests already exist; extend to health/SIEM so the DM is not a
-   raw log.
-4. **Keep the CIO product standard** as the template for every actionable card.
-5. **Mark provenance** on every card (already in Comms Editor live) so "noise vs signal" is
-   auditable, not impressionistic.
+1. **Re-export TradeAI Proposal Decisions post-09-14** to prove the routing split silenced the
+   87× holdings-BLOCKED / 43× AES flood (the current export ends 11 Sep, before the fix).
+2. **Dedupe the morning-command brief** — it appears duplicated in the DM "OTHER" bucket.
+3. **Collapse orphaned STOP HEALTH** per-symbol repeats into one daily digest.
+4. **Cap immediate sends** with a volume budget (T7: 30/day, Ops exempt).
+5. **Keep the CIO product standard** and the Run-Complete suppression as the template.
