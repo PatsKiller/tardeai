@@ -168,9 +168,9 @@ def test_go_alert_sends_the_rich_layout_with_buttons_and_chart(monkeypatch):
     assert g._send_go(lambda text, **kw: calls.append((text, kw)) or True, item)
     text, kw = calls[0]
     assert kw["bypass_router"] is True
-    assert "<b>" in text and "/v3/watch/intelligence/ARMP" in text and "&amp; label" in text
+    assert "<b>" in text and "/v3/trading?tab=Scalp&amp;symbol=ARMP" in text and "&amp; label" in text
     assert CHART in kw["link_preview_options"]["url"]
-    assert kw["reply_markup"]["inline_keyboard"][0][0]["url"].endswith("/v3/watch/intelligence/ARMP")
+    assert kw["reply_markup"]["inline_keyboard"][0][0]["url"].endswith("/v3/trading?tab=Scalp&symbol=ARMP")
     assert "READ_ONLY_ADVISORY" not in text and _fresh_transport().parse_mode_for(text) == "HTML"
 
 
@@ -208,7 +208,7 @@ def test_entry_alert_is_rich_and_keeps_the_entry_alert_words(monkeypatch, rich):
     }
     assert wep._alert("AXTI", plan, "ready", 12.1)
     text, kw = calls[0]
-    assert "ENTRY ALERT" in text and "/v3/watch/intelligence/AXTI" in text
+    assert "ENTRY ALERT" in text and "/v3/trading?tab=Scalp&amp;symbol=AXTI" in text
     assert "Close under 10.90" in text and "T1 $13.5" in text and "nothing executed" in text
     assert CHART in kw["link_preview_options"]["url"] and kw["reply_markup"]
 

@@ -289,6 +289,11 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
     # cannot demote it to the dashboard.
     if "cio entry \u2014" in low:
         return ev("cio_entry_state", "info")
+    # Legacy watchlist_entry_planner still emits "ENTRY ALERT — SYM". Same operator intent as
+    # cio_entry_state (page the phone for READY/NEAR). Must match BEFORE scanner_candidate, which
+    # otherwise swallows "entry alert" into COMMAND_CENTER / P2_DASHBOARD_ONLY.
+    if re.search(r"\bentry alert\b", text, re.I):
+        return ev("cio_entry_state", "info")
     # MaterialChangeNotice@v1 renders this exact header. Matched BEFORE the
     # research_update branches, which route to DIGEST and swallowed the first live
     # alert into the 8pm digest queue instead of sending it.
@@ -303,7 +308,7 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
     if re.search(r"\bthesis\b.*\b(?:updated|version|published|changed)\b|\bdesk@v\d+\b", text, re.I):
         return ev("thesis_update", "info")
     if re.search(
-        r"\b(?:new go|wait|avoid|entry alert|entry candidate|scanner|social scalp setup|trade ai live)\b", text, re.I
+        r"\b(?:new go|wait|avoid|entry candidate|scanner|social scalp setup|trade ai live)\b", text, re.I
     ):
         return ev("scanner_candidate", "info")
     if re.search(r"orphan(?:ed|s)|naked .*position|position.*unprotected|unprotected live position", text, re.I):

@@ -590,8 +590,8 @@ def _alert(sym, p, urg, price) -> bool:
             f"proposal advice: *{prop.get('tag','WAIT')}* — {str(prop.get('sizing_rationale',''))[:100]}\n"
             f"_advisory only — nothing queued, nothing executed_")
     # Route through the central chokepoint (classification + dedup) instead of a raw
-    # requests.post. Advisory-only near-entry/ready alerts classify as scanner_candidate
-    # and land on the Command Center dashboard rather than interrupting the phone.
+    # requests.post. 2026-09-15: ENTRY ALERT classifies as cio_entry_state → IMMEDIATE
+    # (same operator intent as "CIO entry —"); previously scanner_candidate → P2 suppress.
     try:
         from telegram_alert import send_telegram
     except Exception:
