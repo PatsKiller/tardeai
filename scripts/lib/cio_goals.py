@@ -54,6 +54,34 @@ def _lock_path(path: Path) -> Path:
     return path.with_suffix(path.suffix + ".lock")
 
 
+def _register_goal_on_spine(goal_id: str, linked_symbols: list[str]) -> list[str]:
+    """Register `goal_id` on the subject spine, under source_table `cio_goals`.
+
+    `goal_id` does not change: "goal_<12 hex>" is not a UUID, so the spine gives
+    it the same `row_guid_for(table, pk)` uuid5 the other non-guid narrative
+    surfaces get, and the goal_id itself travels in `source_id`. This is the
+    join that lets a gap or a question say which goal it belongs to -- the one
+    thing `cio_goals`, the only genuinely goal-keyed store here, could not do.
+
+    A goal with no `linked_symbols` registers nothing and that is honest: the
+    three live goals carry none, so there is no subject to be about yet.
+
+    Fail-safe: the event is already on disk when this runs; an unwritten link
+    never costs a goal.
+    """
+    if not linked_symbols:
+        return []
+    try:
+        from scripts.lib.cio_identity_spine import register_symbol_on_spine
+
+        return [lg for lg in (
+            register_symbol_on_spine("cio_goals", goal_id, sym)
+            for sym in linked_symbols
+        ) if lg]
+    except Exception:  # noqa: BLE001 -- a goal is never lost to a link
+        return []
+
+
 class CIOGoalStore:
     """Durable goal + thesis store with rebuildable projection."""
 
@@ -234,6 +262,7 @@ class CIOGoalStore:
             "thesis_history": [],
         }
         self._append_event("GOAL_CREATED", gid, payload, actor_id=actor_id)
+        _register_goal_on_spine(gid, payload["linked_symbols"])
         return dict(self._goals[gid])
 
     def update_goal(

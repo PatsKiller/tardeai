@@ -1911,7 +1911,19 @@ def _registry_gap_type(gap: dict[str, Any]) -> Optional[str]:
         return "missing_market_data"
     if domain == "symbol_thesis":
         return "missing_thesis"
-    if gap_type == "research":
+    if gap_type in ("research", "missing_research"):
+        # `missing_research` is what THIS module emits (see the hermes_research
+        # branch of subject_evidence) when no promoted research exists for the
+        # named symbol. It returned None here, so the desk could not feed
+        # data_gap_registry -- the only working RAISED->WORKED->ANSWERED machine
+        # in the system, which has had no new row since 2026-05-24. Measured
+        # 2026-09-14 in data/cio/cio_operator_gap_requests.jsonl: HPE,
+        # "no promoted research for HPE", `"registered": 0, "not_registered": 1`.
+        # It maps to `stale_news` because that is the resolver action that
+        # FETCHES research (_resolve_stale_news -> _resolve_missing_catalyst
+        # dispatches a maria_research job for the symbol); `missing_thesis`
+        # merely recovers a prior buy thesis from proposals and would answer a
+        # different question.
         return "stale_news"
     return None
 
@@ -2001,6 +2013,47 @@ def _gap_queue_note(reg: dict[str, Any]) -> str:
     return f"{head}; no resolver run time is known, so no follow-up is promised._"
 
 
+def _register_gap_ids_on_spine(conn: Any, gap_ids: list[int]) -> dict[str, Any]:
+    """Put the queue's integer ids on the subject spine. Returns a receipt.
+
+    `data_gap_registry.id` is a bigserial, so it can never be joined to a goal,
+    a question or a material change on its own. The row already knows its
+    symbol; this reads it back on the same connection and registers the edge,
+    leaving the id itself untouched.
+
+    The receipt (``written``, and ``error`` when something went wrong) is
+    returned rather than logged because this module has no logger and writes no
+    stdout -- it reports through the JSONL receipt its caller already appends,
+    so a failure here is visible instead of silent.
+
+    Fail-safe by construction: the gaps are committed before this runs, so a
+    spine failure costs a join, never a queued gap.
+    """
+    if not gap_ids:
+        return {"written": 0}
+    try:
+        from scripts.lib.cio_identity_spine import register_symbol_on_spine  # noqa: PLC0415
+
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, symbol FROM data_gap_registry WHERE id = ANY(%s)",
+            [[int(i) for i in gap_ids]],
+        )
+        rows = cur.fetchall() or []
+        written = 0
+        for gap_id, symbol in rows:
+            if register_symbol_on_spine("data_gap_registry", gap_id, symbol, cur=cur):
+                written += 1
+        conn.commit()
+        return {"written": written, "rows_seen": len(rows)}
+    except Exception as exc:  # noqa: BLE001 -- a link is never worth a queued gap
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return {"written": 0, "error": f"{type(exc).__name__}:{exc}"[:160]}
+
+
 def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str) -> dict[str, Any]:
     """Queue the gaps the resolver can act on into data_gap_registry.
 
@@ -2049,6 +2102,7 @@ def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str)
                 out["gap_ids"] = rec.queued_ids
                 out["registered"] = len(rec.queued_ids)
                 out["receipt"] = rec.as_dict()
+                out["spine_links"] = _register_gap_ids_on_spine(conn, rec.queued_ids)
         except Exception as exc:  # noqa: BLE001
             if conn is not None:
                 try:

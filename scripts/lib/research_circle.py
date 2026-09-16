@@ -100,6 +100,31 @@ def question_guid(chat_id: str, message_id: str, text: str) -> str:
     return str(uuid.uuid5(QUESTION_NAMESPACE, f"{chat_id}|{message_id}|{norm}"))
 
 
+def register_question_on_spine(qguid: str, subject_guids: dict[str, str]) -> list[str]:
+    """Put THIS `question_guid` on the subject spine, unchanged.
+
+    One operator ask is about one or more subjects, and `subject_guids` already
+    holds the resolved guid per symbol -- so no lookup and no mint happens here.
+    Registered under source_table `operator_questions`, which is what
+    distinguishes it from the unrelated `question_guid` in
+    `due_diligence_questions.py` (different namespace, different argument
+    tuple -- see scripts/check_identity_spine.py).
+
+    Fail-safe: returns [] rather than raising. A lap must never end because a
+    link could not be written.
+    """
+    try:
+        from scripts.lib.cio_identity_spine import register_many
+
+        return register_many(
+            {"source_table": "operator_questions", "source_id": qguid,
+             "subject_guid": sguid, "semantic_subject": sym}
+            for sym, sguid in (subject_guids or {}).items() if sguid
+        )
+    except Exception:  # noqa: BLE001 -- the circle keeps turning
+        return []
+
+
 def detect_needs(text: str) -> list[str]:
     needs = [k for k, pat in NEED_PATTERNS.items() if pat.search(text or "")]
     return needs or ["research"]
@@ -550,6 +575,11 @@ def run_lap(question: str, *, chat_id: str, message_id: str, symbols: list[str],
     needs = detect_needs(question)
     if lap == 1:
         ledger.record(qguid, "ASKED", question=question[:500], symbols=symbols, subject_guids=subject_guids, needs=needs)
+        if ledger.apply:
+            # The operator's question becomes joinable to the gaps and goals
+            # about the same subject. Only on a real run: a dry lap must leave
+            # no trace, here as everywhere else in this module.
+            register_question_on_spine(qguid, subject_guids)
     ledger.record(qguid, "GATHERING", lap=lap, channels=sorted(channels))
     evidence: list[Evidence] = list(prior_evidence)
     errors: dict[str, str] = {}
