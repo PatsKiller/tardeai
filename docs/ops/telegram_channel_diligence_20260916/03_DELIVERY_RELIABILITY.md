@@ -1,8 +1,8 @@
 # Phase 3 — Telegram Delivery Reliability Assessment
 
 Status: ACTIVE (four channels measured; device inventory still needed)
-as_of: 2026-09-16T17:00:00-04:00
-Measured at: origin/main `940425b73` · transport `[CODE]`; receipts `[VERIFIED]`; corpus `[VERIFIED]`; historical `[DOC-CLAIM]`
+as_of: 2026-09-16T19:15:00-04:00
+Measured at: branch `agent/telegram-channel-diligence-20260916` · transport `[CODE]`; receipts `[VERIFIED]`; corpus `[VERIFIED]`; historical `[DOC-CLAIM]`
 See also: `00_EXECUTIVE_SUMMARY.md` · `04_CONTENT_QUALITY_CURATION.md`
 
 ## 0. A third explanation the corpus adds: duplication masquerading as desync
@@ -78,3 +78,48 @@ server.
 
 - Device inventory not yet collected → the table in §4 is unfilled by design.
 - Post-09-14 re-export of **TradeAI Proposal Decisions** (current export ends 11 Sep, pre-fix).
+
+## 7. Falsifier re-run 13.09–16.09 — final fixes and empty-channel verdicts
+
+Post-fix re-export of the **Trade AI DM** (`ChatExport_2026-09-16 (4)/messages2.html`,
+493 msgs, 13.09 → 16.09 18:52 ET) was falsified on one channel. Findings and fixes below.
+
+### 7.1 DM duplicate rate — 2.2% post-fix (was 31.8% pre-fix)
+
+Pre-fix 31.8% → post-fix **2.2%** duplicate copies. The 09-14/15 dedupe + routing +
+editor-live work holds on the re-export.
+
+### 7.2 `⚠️ Research lane RAW-store health` — routed to DIGEST (was ~40×/day to the DM)
+
+The remaining DM noise was the research-lane health heartbeat: ~40 messages/day
+(80 over 3 days, 39 on 16.09) — non-actionable telemetry (`budget_throttled`,
+`chatgpt error_rate_24h`, `lane-registry SILENT`).
+
+- **Cause:** `scripts/research_lane_health.py::_deliver_telegram` called
+  `send_telegram(msg, bypass_router=True)`, which skipped `classify_alert()` and sent
+  straight to the phone. The header "⚠️ *Research lane RAW-store health*" classifies as
+  `job_telemetry`, which `operator_alert_policy_v2.route_event()` already routes
+  **DIGEST** — the bypass defeated that policy. `[CODE]`
+- **Fix:** `bypass_router=True → False` at `scripts/research_lane_health.py:401`. The
+  message now lands in the reports archive (v3 Reports portal / P1 digest), never the
+  phone.
+- **Test:** three tests added to `tests/test_research_lane_health_alert.py` —
+  `test_raw_store_health_classifies_digest_not_interrupt`,
+  `test_deliver_telegram_does_not_bypass_router`,
+  `test_alert_suppressed_to_digest_not_transported`. Mutation-tested: restoring
+  `bypass_router=True` turns both routing tests red. `[VERIFIED]` (22 passed).
+
+### 7.3 Empty-channel verdicts (13.09 → 16.09)
+
+The operator reported **zero new text** on CIO Desk, Proposal Decisions and OpenClaw
+since the job started. "Empty" is only a clean pass if no producer should have fired
+(AGENTS.md §8: two states cannot express "no input"). Per channel:
+
+| Channel | Verdict | Evidence |
+|---|---|---|
+| **CIO Desk** | `CLEAN_EMPTY` *(one open item)* | `cio_material_scan_last.json` fresh (19:08 16.09, `published:false` HOLD_CASH candidates) and `cio_desk_note_latest.md` fresh (18:47) — the scan/desk lanes run. "Run Complete" noise suppressed 14 Sep. ⚠️ `cio_delivery_receipts.jsonl` stale since **29 Aug** (last receipt `SUPPRESSED`, `s1_observational_default_suppressed`) — either "no pending CIO cards to deliver" or the delivery worker stopped; not disambiguable from the repo alone. |
+| **Proposal Decisions** | `CLEAN_EMPTY` | `logs/proposal_alerts.log` fresh (16:58 16.09). Recent entries are `BLOCKED_EXECUTION_FAILED` / `NEEDS_OPERATOR_DECISION` with `sent:false status:suppressed` — non-actionable alert types, not pending-approval proposals. No pending proposal to send. |
+| **OpenClaw** | `CLEAN_EMPTY` | Conversational (Maria), event-driven on operator input; 24 texts total, 0 dup. Empty = the operator did not ask it anything. |
+
+`cio_delivery_receipts.jsonl` (29 Aug) is the one non-clean signal: flag it for the
+operator, do not call the CIO Desk "clean" without noting it.

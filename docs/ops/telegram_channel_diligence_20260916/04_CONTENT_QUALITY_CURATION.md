@@ -1,8 +1,8 @@
 # Phase 4 — Content Quality, Relevance & Curation Audit
 
 Status: ACTIVE (four channels measured)
-as_of: 2026-09-16T17:00:00-04:00
-Measured at: origin/main `940425b73` · router/policy `[CODE]` · **live corpus `[VERIFIED]`** (4 chats)
+as_of: 2026-09-16T19:15:00-04:00
+Measured at: branch `agent/telegram-channel-diligence-20260916` · router/policy `[CODE]` · **live corpus `[VERIFIED]`** (4 chats)
 See also: `02_ROUTING_GOVERNANCE_PROPOSAL.md` · `05_COMMAND_CENTER_COVERAGE_GAPS.md`
 
 > **Correction.** An earlier draft attributed the "66% duplicates" figure to the Trade AI DM.
@@ -116,3 +116,41 @@ The routing policy already encodes a quality bar; the audit is whether producers
 3. **Collapse orphaned STOP HEALTH** per-symbol repeats into one daily digest.
 4. **Cap immediate sends** with a volume budget (T7: 30/day, Ops exempt).
 5. **Keep the CIO product standard** and the Run-Complete suppression as the template.
+
+## 7. Falsifier re-run 13.09–16.09 — final curation fixes
+
+### 7.1 Duplicate rate — 31.8% → 2.2% post-fix (`[VERIFIED]`)
+
+Trade AI DM re-export (`messages2.html`, 493 msgs): post-fix duplicate copies dropped to
+**2.2%** (was 31.8% pre-fix). The dedupe work is empirically effective on the DM.
+
+### 7.2 `⚠️ Research lane RAW-store health` — the last non-actionable DM flood, fixed
+
+The one remaining "not actionable but sent" flood was the research-lane health heartbeat:
+~40×/day (80 in 3 days, 39 on 16.09). It is pure machine telemetry — `budget_throttled`,
+`chatgpt error_rate_24h`, `lane-registry SILENT` — and never capital-at-risk.
+
+- **Root cause:** `scripts/research_lane_health.py::_deliver_telegram` bypassed the router
+  (`send_telegram(..., bypass_router=True)`), so the "RAW-store health" header — which
+  `operator_alert_policy_v2.route_event()` already classifies `job_telemetry → DIGEST` —
+  was sent straight to the phone. `[CODE]`
+- **Fix:** `bypass_router=False` at `scripts/research_lane_health.py:401`; the heartbeat now
+  lands in the reports archive (P1 digest), not the phone.
+- **Honesty note:** routing the whole message to DIGEST also moves any *genuinely* actionable
+  lane in the bundle (e.g. identity-spine `registry_unreadable`) to digest. That lane is not
+  firing today, and the existing policy already treats system-health as DIGEST; a separate
+  IMMEDIATE-routed identity alarm is an operator decision if wanted. See §7.3 of
+  `03_DELIVERY_RELIABILITY.md`.
+
+### 7.3 Empty-channel verdicts (honesty-critical)
+
+The operator reported zero new text on CIO Desk, Proposal Decisions and OpenClaw. Empty is
+only a clean pass if no producer should have fired:
+
+| Channel | Verdict | Why it is clean (or not) |
+|---|---|---|
+| **CIO Desk** | `CLEAN_EMPTY` *(one open item)* | material-scan + desk-note lanes run fresh; "Run Complete" suppressed 14 Sep. ⚠️ `cio_delivery_receipts.jsonl` stale since 29 Aug — flagged, not silently counted as clean. |
+| **Proposal Decisions** | `CLEAN_EMPTY` | proposal sender runs fresh; only non-actionable `BLOCKED_EXECUTION_FAILED` / `NEEDS_OPERATOR_DECISION` rows were suppressed — no pending-approval proposal to send. |
+| **OpenClaw** | `CLEAN_EMPTY` | conversational, event-driven on operator input; nothing asked = nothing emitted. |
+
+Full evidence in `03_DELIVERY_RELIABILITY.md` §7.3.
