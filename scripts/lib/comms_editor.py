@@ -276,8 +276,9 @@ def cc_base() -> str:
 
 
 def symbol_links(symbol: str) -> str:
+    # Canonical dossier deep-link (same as telegram_rich.cc_symbol_url) — not portfolio.
     s = quote(symbol.upper())
-    return (f'<a href="{cc_base()}/v3/portfolio?symbol={s}">{html.escape(symbol.upper())} in Command Center</a>'
+    return (f'<a href="{cc_base()}/v3/watch/intelligence/{s}">{html.escape(symbol.upper())} in Command Center</a>'
             f' · <a href="https://finviz.com/quote.ashx?t={s}">Finviz</a>'
             f' · <a href="https://finance.yahoo.com/quote/{s}">Yahoo</a>')
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate, useParams, useSearchParams } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useParams, useSearchParams, useLocation } from 'react-router-dom'
 import { useConnectionHealth, signalApiRecover, retryApiConnection } from './hooks/useApi'
 import MetricStrip from './components/MetricStrip'
 import NavRail from './components/NavRail'
@@ -125,6 +125,21 @@ function ReconnectingBar() {
   )
 }
 
+function WatchLegacyGate({ onDrill }: { onDrill: (ctx: DrillContext | null) => void }) {
+  // Rollback surface — require ?legacy=1 (or localStorage CC_WATCH_LEGACY=1) so it is not a casual path.
+  const { search } = useLocation()
+  const allowed = (() => {
+    try {
+      if (new URLSearchParams(search).get('legacy') === '1') return true
+      return localStorage.getItem('CC_WATCH_LEGACY') === '1'
+    } catch {
+      return false
+    }
+  })()
+  if (!allowed) return <Navigate to="/watch" replace />
+  return <WatchLegacy onDrill={onDrill} />
+}
+
 function GoOrderDeepLink() {
   const { intentId } = useParams()
   const id = (intentId || '').trim()
@@ -195,7 +210,7 @@ function Shell() {
             <Route path="watch" element={<RouteErrorBoundary route="/v3/watch"><WatchHub onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="watch/intelligence/:symbol" element={<RouteErrorBoundary route="/v3/watch/intelligence/:symbol"><SymbolIntelligencePage /></RouteErrorBoundary>} />
             <Route path="watch/discovery" element={<RouteErrorBoundary route="/v3/watch/discovery"><WatchDiscovery onDrill={setDrill} /></RouteErrorBoundary>} />
-            <Route path="watch-legacy" element={<RouteErrorBoundary route="/v3/watch-legacy"><WatchLegacy onDrill={setDrill} /></RouteErrorBoundary>} />
+            <Route path="watch-legacy" element={<RouteErrorBoundary route="/v3/watch-legacy"><WatchLegacyGate onDrill={setDrill} /></RouteErrorBoundary>} />
             <Route path="defense" element={<RouteErrorBoundary route="/v3/defense"><DefenseHub /></RouteErrorBoundary>} />
             {/* Legacy watchlist/screener nav → primary Intelligence (not the old card wall) */}
             <Route path="watchlist" element={<RouteErrorBoundary route="/v3/watchlist"><Navigate to="/watch?tab=intelligence&view=top_ideas" replace /></RouteErrorBoundary>} />
