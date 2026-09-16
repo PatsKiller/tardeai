@@ -238,20 +238,31 @@ def refusals(now: datetime) -> dict[str, Any]:
 def intake() -> dict[str, Any]:
     """Queue depth per agent — the backpressure that starves a first lap."""
     try:
-        from scripts.agent_runtime.trigger_intake import PostgresTriggerIntakeStore  # noqa: F401
+        from scripts.agent_runtime.trigger_intake import PostgresTriggerIntakeStore
     except Exception as exc:  # noqa: BLE001
         return _unavailable(f"import: {type(exc).__name__}: {exc}")
     # Connecting requires AGENT_RUNTIME_DISPATCH_DSN and the runtime writer role.
     # Absent that, report unavailable rather than inventing a depth of zero.
     import os
-    if not os.environ.get("AGENT_RUNTIME_DISPATCH_DSN"):
+    dsn = (os.environ.get("AGENT_RUNTIME_DISPATCH_DSN") or "").strip()
+    if not dsn:
         return _unavailable("AGENT_RUNTIME_DISPATCH_DSN not set in this environment")
     try:
-        store = PostgresTriggerIntakeStore()  # type: ignore[call-arg]
+        import importlib
+
+        psycopg2 = importlib.import_module("psycopg2")
+
+        def _factory():  # noqa: ANN202
+            conn = psycopg2.connect(dsn)
+            conn.autocommit = False
+            return conn
+
+        # Same construction as scripts/agent_runtime/trigger_producer.py —
+        # PostgresTriggerIntakeStore requires a zero-arg connection_factory.
+        store = PostgresTriggerIntakeStore(_factory)
         return {"queue_stats": store.queue_stats()}
     except Exception as exc:  # noqa: BLE001
         return _unavailable(f"connect: {type(exc).__name__}: {str(exc)[:160]}")
-
 
 # ------------------------------------------------------------------- report
 
