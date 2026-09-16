@@ -606,9 +606,12 @@ def intake_row_to_job_request(row: TriggerIntakeRow):
         agent_id=row.agent_id,
         job_type=row.job_type,
         input_hash=row.payload_hash,
-        enqueued_at=row.source_timestamp,
+        # Queue wait, not evidence age: the dispatcher's staleness gate asks "has this job
+        # rotted in the queue". Evidence freshness is the producer's cursor's job.
+        enqueued_at=row.enqueued_at,
         dedup_value=row.dedup_key,
         trigger_kind=row.trigger_kind,
         intake_id=row.intake_id,
         payload=dict(row.payload),
+        source_timestamp=row.source_timestamp,
     )
