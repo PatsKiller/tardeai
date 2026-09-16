@@ -1,6 +1,6 @@
 # Trade AI Platform — FUTURE STATE Lifecycles: target lifecycles, lifecycle contract and build roadmap
 
-> **Identity note, 2026-09-15 (rev 3).** This document is the measured record of 2026-09-14. Everything that shipped after it — PRs #1026–#1036 and the chief-architect remediation — is recorded in `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md`, which also states the live commit at the end of 2026-09-15. Read any "live at" line below as historical.
+> **Identity note, 2026-09-16 (rev 4).** This document is the measured record of 2026-09-14. Everything that shipped after it is recorded in the daily work logs: `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md` (PRs #1026–#1036 and the chief-architect remediation) and `docs/architecture/TRADE_AI_WORKLOG_2026-09-16.md` (PRs #1039–#1045; free search now answers a `CALLER_DAILY_CAP` refusal; live `a91d7b3ba`, validated 12:45:01Z). Each states the live commit at the end of its day. Read any "live at" line below as historical.
 
 ```
 Status:        ACTIVE
@@ -698,6 +698,36 @@ key fails CI; **(2)** a store with a status column declares its lifecycle or is 
 ---
 
 ## 9. Roadmap — build in the order loops can close
+
+> **Update 2026-09-16 — the free-first research plan, and where it sits against this roadmap.**
+> An eight-phase plan for free-first research was approved on 2026-09-16. **P1 is shipped and
+> validated** (PR #1045, live `a91d7b3ba`): a question refused by `CALLER_DAILY_CAP` is answered by the
+> free provider instead of being lost, and free usage is metered in the same ledger as paid. This is a
+> *refusal* fix, and it belongs to **P1 PLUMBING CLOSES** below — the loop now closes for ~95
+> questions/day that previously stopped existing.
+>
+> The remaining seven phases are **quality** work and map to **P2 QUESTIONS CLOSE** / **P3 COGNITION
+> LEARNS**, because they are what finally make "escalate when the answer is not enough" real:
+>
+> | Phase | What | Roadmap phase |
+> |---|---|---|
+> | P2 | `free_search` as a first-class `cost_class: free` vector in `gap_resolver` | P1 |
+> | P3 | Rating model: channel aggregation, **publisher-domain independence**, authority tiers, `free_web.thin` | P2 |
+> | P4 | `research_escalation_policy.json` — per-question-type bars, max laps, paid budget | P2 |
+> | P5 | Receipted paid-escalation grant with expiry, enforced in CI | P2 |
+> | P6 | M3/M4 maturity — critic agreement, falsifier, scheduled check-in | P3 |
+> | P7 | Transport-level cap enforcement (~78 of 84 LLM lanes run with the global cap unset) | P3 |
+> | P8 | Converge the five bespoke SearXNG clients onto the shared client and ledger | P1 |
+>
+> One defect P3 must fix is already measured: independence is keyed on the *source prefix*, so a Brave
+> hit and a SearXNG hit **on the same article** count as two independent sources and earn the cross-check
+> bonus. Independence must key on the publisher domain, matching the rule `material_change_detector`
+> already applies.
+>
+> The grader stays free by design: deterministic scoring every lap, a free OAuth critic when ambiguous,
+> and DeepSeek Flash only rarely — a Flash analyzer call (~$0.0025) is **half the price of a Brave
+> search** (~$0.005), so paying to decide whether to pay is justified only when the downstream spend is
+> materially larger.
 
 Each phase ends on **observed** exit counters, not merges. The order is forced by
 dependencies: a closure monitor needs a lifecycle registry; a question ledger needs identity

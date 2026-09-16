@@ -18,9 +18,24 @@ that should be spent only where the free lane demonstrably cannot do the job.
 | **Brave** | **paid, per query** | **IN USE** — 60 calls in Sept, ~12/day | `data/runtime/search_budget.json` |
 | **Tavily** | paid | **DEAD CONFIG** — a budget entry with zero callers | only reference is `lib/search_budget.py:59` |
 
-SearXNG records **no traffic in the shared ledger** — only Brave does. It is free,
-so it is not budgeted, but that also means its usage is currently invisible. That
-is a gap, not a defect: it costs nothing to exceed.
+**Update 2026-09-16 — SearXNG is now metered, and free usage is no longer invisible.**
+The claim below was true until PR #1045 (live `a91d7b3ba`). `scripts/lib/free_search.py`
+now records every free request in the *same* ledger as paid usage: one unit per HTTP
+request, taken **before** the request, refunded when the request never happened, and
+`news`→`general` counted as two requests because it is two. First measured traffic,
+2026-09-16 12:45:01Z: `searxng daily {'2026-09-16': 2}`, caller
+`governed_research_producer` — the first non-zero free-search counter in the ledger's
+history. A free provider's per-caller cap is its own provider ceiling (10,000/day), not
+the paid-sized cap of 25: a cap sized to ration *money* has nothing to ration here.
+
+> *Superseded text, kept as the measured record of 2026-09-05:* SearXNG records **no
+> traffic in the shared ledger** — only Brave does. It is free, so it is not budgeted,
+> but that also means its usage is currently invisible. That is a gap, not a defect: it
+> costs nothing to exceed.
+
+**What still is not wired:** nothing judges a free answer *thin* and escalates on quality.
+Only a question **refused** by `CALLER_DAILY_CAP` is rescued to the free lane. Quality-based
+escalation is P3–P4 of the free-first plan, not shipped.
 
 ## When to use Brave
 

@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `9744d815350b067a694481effb2438526f5095486ed11d9ecbe670e394d0293d`
+**Tree fingerprint:** `284c5af519f0f6444c492eb8e25788ab474436270ebe0273e6d34944a60280a8`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,9 +12,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2516 |
-| Markdown (excl. this INDEX) | 2092 |
-| **MISSING HEADER** | **66** |
+| Files under `docs/` (excl. this INDEX) | 2517 |
+| Markdown (excl. this INDEX) | 2093 |
+| **MISSING HEADER** | **67** |
 | Header OK | 2026 |
 | Duplicate groups | 2 |
 
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2145 |
+| review_required | 2146 |
 
 ## Markdown tree
 
@@ -45,7 +45,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/BROKER_TRADE_PLAN_GATE.md` | Broker Trade Plan Gate — No Gambling on Generic 2×R | review_required | OK | `e73e70a22a5c` |
 | `docs/CC_V3_ACTIONABILITY_SPRINT_20260702.md` | CC v3 Actionability Sprint — Layered Document | review_required | OK | `26d05fe916e7` |
 | `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | OK | `401363e962e2` |
-| `docs/CHANGELOG.md` | Changelog | review_required | OK | `73833734e6a3` |
+| `docs/CHANGELOG.md` | Changelog | review_required | OK | `1c3ab9ad3ee8` |
 | `docs/CHEAT_SHEET.md` | Trade AI v12 -- Operator Cheat Sheet | active_keep | OK | `5fbf6fb2ebe7` |
 | `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO Prompt & Input Audit — 2026-07-01 | review_required | OK | `927dbe10051c` |
 | `docs/CLAUDE_CHALLENGER_AND_ANALYST_LANES.md` | Claude Challenger Cohort (A/B) + Analyst Lanes | review_required | OK | `3159e054b153` |
@@ -66,7 +66,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/FINANCIAL_RECONCILIATION.md` | Financial reconciliation and record-level migration | review_required | MISSING HEADER | `67a3455d1e52` |
 | `docs/FINVIZ_INTEGRATION_AND_DATA_SOURCE_MONITORING.md` | Finviz Integration + Data-Source Health Monitoring | review_required | OK | `d2c64a1e13d9` |
 | `docs/FINVIZ_SOURCE_AUTHORITY.md` | Finviz Source Authority & Phase 0 Reconciliation | review_required | OK | `93533d98e174` |
-| `docs/GAP_RESOLUTION.md` | Gap Resolution — when the answer is stale or missing, go find out | review_required | OK | `f713acab76e6` |
+| `docs/GAP_RESOLUTION.md` | Gap Resolution — when the answer is stale or missing, go find out | review_required | OK | `8b86f70d497e` |
 | `docs/GIT_HYGIENE.md` | Git Hygiene — protect the live primary tree (2026-07-01) | review_required | OK | `bb52d4d23b64` |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50: Trade AI Runtime Status | review_required | OK | `8c1dff864802` |
 | `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `e6f4cbc44b06` |
@@ -107,7 +107,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/RESEARCH_CIRCLE.md` | Research Escalation Circle | review_required | OK | `e5d2e488a9a5` |
 | `docs/RESEARCH_INGEST_TICKER_AUDIT_2026_06_20.md` | Research Ingestion + Ticker Extraction + Connector Audit — 2026-06-20 | review_required | OK | `d78b663bf596` |
 | `docs/RESEARCH_PRIORITIZATION.md` | Research Prioritization & Refresh Methodology (all Hermes lanes, 24/7) | review_required | OK | `0ab567d5d5c4` |
-| `docs/RESEARCH_PROVIDER_ROUTING.md` | Research provider routing — when Brave should be used | review_required | OK | `9c61b2f7c573` |
+| `docs/RESEARCH_PROVIDER_ROUTING.md` | Research provider routing — when Brave should be used | review_required | OK | `84b24e817e4b` |
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
@@ -385,7 +385,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/QUOTE_PIPELINE_UNIFICATION_SCOPING_2026-08-27.md` | Quote Pipeline Unification — Scoping (Audit Finding H4) | review_required | OK | `d3580a82544b` |
 | `docs/architecture/REPORTS_DESK_V1.md` | Reports Desk v1 — Total Rebuild (2026-07-16, night) | review_required | OK | `3d92abab9c57` |
 | `docs/architecture/REPORTS_DESK_V3.md` | Reports Desk v3 — One Corpus · The System Rollup · Zero Garbage (2026-07-17) | review_required | OK | `d3698668ed8e` |
-| `docs/architecture/RESEARCH_ESCALATION_2026-09-14.md` | Research escalation — who researches what, and when one step hands off to the next | review_required | OK | `67f99d455d38` |
+| `docs/architecture/RESEARCH_ESCALATION_2026-09-14.md` | Research escalation — who researches what, and when one step hands off to the next | review_required | OK | `d9eb4b354def` |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V1.md` | Research Intelligence v1 — Architecture (Command Center v3) | review_required | OK | `451e1ddbd60c` |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2.md` | Research Intelligence v2 — Freshness, Archive, Retirement Pillar | review_required | OK | `4849198f52a3` |
 | `docs/architecture/RESEARCH_INTELLIGENCE_V2_1_NARRATIVE_UI.md` | Research Intelligence v2.1 — Narrative Quality + Editorial UI | review_required | OK | `742e4d1846ac` |
@@ -402,19 +402,20 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md` | Schwab API — Phase 1 Read-Only Foundation (canonical) | review_required | OK | `a11674ef7b56` |
 | `docs/architecture/TICKER_KNOWLEDGE_GRAPH_GUID_LINEAGE.md` | Ticker Knowledge Graph GUID Lineage | review_required | OK | `a7c43967abca` |
 | `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | TradeAI System State & Autonomy Record — 2026-08-20 (updated 2026-08-21 evening) | review_required | OK | `d9303c3e9930` |
-| `docs/architecture/TRADE_AI_AS_IS_2026-09-14.md` | Trade AI Platform — AS-IS: Deployed & Tested Environment | review_required | OK | `04ebd64be00a` |
-| `docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md` | Trade AI Platform — AS-IS Lifecycles: the complete end-to-end picture | review_required | OK | `e7de1bb1d621` |
+| `docs/architecture/TRADE_AI_AS_IS_2026-09-14.md` | Trade AI Platform — AS-IS: Deployed & Tested Environment | review_required | OK | `4272eddf89f6` |
+| `docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md` | Trade AI Platform — AS-IS Lifecycles: the complete end-to-end picture | review_required | OK | `cf4cbeb78077` |
 | `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md` | Bitemporal memory data model | review_required | OK | `8491cfb5a15b` |
-| `docs/architecture/TRADE_AI_FUTURE_STATE_2026-09-14.md` | Trade AI Platform — FUTURE STATE: Target Architecture & Build Recommendation | review_required | OK | `014e3b6895fc` |
-| `docs/architecture/TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md` | Trade AI Platform — FUTURE STATE Lifecycles: target lifecycles, lifecycle contract and build roadmap | review_required | OK | `19aa68b243e0` |
+| `docs/architecture/TRADE_AI_FUTURE_STATE_2026-09-14.md` | Trade AI Platform — FUTURE STATE: Target Architecture & Build Recommendation | review_required | OK | `b6ec05e6f6db` |
+| `docs/architecture/TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md` | Trade AI Platform — FUTURE STATE Lifecycles: target lifecycles, lifecycle contract and build roadmap | review_required | OK | `0705cb774b73` |
 | `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | Trade AI Institutional Memory + Autonomous Agent Architecture | review_required | OK | `27f6d0b5fa01` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_0.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.0 | review_required | OK | `f4df2050d710` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_1.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.1 | review_required | OK | `d51c0412e728` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_2.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.2 | review_required | OK | `a857086bab55` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_3.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.3 | review_required | OK | `e2649ec30f53` |
 | `docs/architecture/TRADE_AI_MEMORY_RETRIEVAL_AND_INDEX_STRATEGY_2026-08-24.md` | Memory retrieval and index strategy | review_required | OK | `c37d853660e6` |
-| `docs/architecture/TRADE_AI_WORKLOG_2026-09-14.md` | Trade AI — Work Log: everything changed from 2026-09-13 20:00 to 2026-09-14 23:44 | review_required | OK | `2fd9cba59c0d` |
+| `docs/architecture/TRADE_AI_WORKLOG_2026-09-14.md` | Trade AI — Work Log: everything changed from 2026-09-13 20:00 to 2026-09-14 23:44 | review_required | OK | `f6af86715bf5` |
 | `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md` | Trade-AI work log — 2026-09-15 | review_required | MISSING HEADER | `c64058d9dff7` |
+| `docs/architecture/TRADE_AI_WORKLOG_2026-09-16.md` | Trade-AI work log — 2026-09-16 | review_required | MISSING HEADER | `75af831ec916` |
 | `docs/architecture/TRADE_INTELLIGENCE_JOURNAL_DESIGN.md` | Trade Intelligence Journal -- Design Document | review_required | OK | `471edac9ceb2` |
 | `docs/architecture/V3_OPENCLAW_TRADEAI_SYSTEM_TABS.md` | Command Center v3 — OpenClaw + TradeAI System Tabs — 2026-06-07 | review_required | OK | `10a7313b3681` |
 | `docs/architecture/V3_OPEN_TRADES_INTELLIGENCE_2026_06_05.md` | v3 Open Trades — Actionable Position Intelligence (2026-06-05) | review_required | OK | `f0c1ace4b5a9` |
@@ -476,12 +477,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/holding_llm_curation_20260909/CIO_FUTURE_2026-09-09-1634.md` | CIO / Command Center — FUTURE (holding LLM curation) — 2026-09-09-1634 | review_required | OK | `731960050b0c` |
 | `docs/architecture/holding_llm_curation_20260909/CIO_GAP_2026-09-09-1634.md` | CIO / Command Center — GAP (holding LLM curation) — 2026-09-09-1634 | review_required | OK | `abb87a5a6101` |
 | `docs/architecture/holding_llm_curation_20260909/HONEST_MATURITY_ASSESSMENT_2026-09-09-1634.md` | Honest maturity assessment — holding LLM curation — 2026-09-09-1634 | review_required | OK | `a9c41360e2d7` |
-| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_A_DATA_2026-09-14.md` | Trade AI — Data and Source Lifecycles (measured) | review_required | OK | `c210a5f1780d` |
-| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_B_QUESTIONS_2026-09-14.md` | Trade AI — QUESTION & RESEARCH LIFECYCLES (measured, end to end) | review_required | OK | `a1c171c8891a` |
-| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_C_WATCHLIST_2026-09-14.md` | WATCHLIST · ADVISORY · LEARNING — every lifecycle, measured | review_required | OK | `d83e82053cd8` |
-| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_D_COGNITION_2026-09-14.md` | CIO Cognition — Iteration Lifecycles (how one cycle feeds the next) | review_required | OK | `b3563e204329` |
-| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_E_COMMS_2026-09-14.md` | Trade AI — COMMUNICATION LIFECYCLES (measured, end-to-end) | review_required | OK | `c0d9fd247585` |
-| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_F_ENGINEERING_2026-09-14.md` | ENGINEERING, RUNTIME AND OPERATIONS LIFECYCLES: every stage, measured | review_required | OK | `b27260f51f12` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_A_DATA_2026-09-14.md` | Trade AI — Data and Source Lifecycles (measured) | review_required | OK | `9c4b33e7a27a` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_B_QUESTIONS_2026-09-14.md` | Trade AI — QUESTION & RESEARCH LIFECYCLES (measured, end to end) | review_required | OK | `f3398e634c86` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_C_WATCHLIST_2026-09-14.md` | WATCHLIST · ADVISORY · LEARNING — every lifecycle, measured | review_required | OK | `b4118b909b6c` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_D_COGNITION_2026-09-14.md` | CIO Cognition — Iteration Lifecycles (how one cycle feeds the next) | review_required | OK | `d2b8dc9dc2e2` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_E_COMMS_2026-09-14.md` | Trade AI — COMMUNICATION LIFECYCLES (measured, end-to-end) | review_required | OK | `1e1343155bb0` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_F_ENGINEERING_2026-09-14.md` | ENGINEERING, RUNTIME AND OPERATIONS LIFECYCLES: every stage, measured | review_required | OK | `e2580673f4b0` |
 | `docs/architecture/maturity_gap_closure_20260909/CIO_ASIS_VS_FUTURE_GAP_2026-09-09.md` | CIO AS-IS vs FUTURE GAP — 2026-09-09 | review_required | MISSING HEADER | `c7504900b1d6` |
 | `docs/architecture/maturity_gap_closure_20260909/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO AS-IS vs SPEC — 2026-09-09 (Maturity Gap Closure) | review_required | MISSING HEADER | `dd9a228364d0` |
 | `docs/architecture/maturity_gap_closure_20260909/CIO_AS_IS_2026-09-09-1401.md` | CIO Agent — AS-IS (as-built) — 2026-09-09-1401 | review_required | OK | `5f04d5100a7e` |
