@@ -210,6 +210,7 @@ def run(quiet: bool = False) -> dict:
     res = slm.scan(persist=True)
     summary, alerts = res["summary"], res["alerts"]
     fired = []
+    batch: list[tuple[str, str, str, str, str]] = []  # (sev, cond, sym, acct, line)
     for r in alerts:
         sym, acct = r["symbol"], r["account"]
         # the single most severe condition for the message
@@ -235,9 +236,23 @@ def run(quiet: bool = False) -> dict:
         # runs every 10 min, so without this a single stop-out would write a row every run for hours.
         if not _recently_alerted(sym, cond):
             _siem(sym, sev, f"[stop-health] {cond} · {sym}@{acct} · {line}", payload)
-            _send_telegram(f"{'🚨' if sev == 'urgent' else '⚠️'} STOP HEALTH — {cond}: *{sym}* ({acct})\n{line}")
             _hermes_finding(sym, cond, line, payload)   # enter Hermes' research stream (deduped via the same 2h window)
+            batch.append((sev, cond, sym, acct, line))
             fired.append(f"{sym}:{cond}")
+    # B2 (2026-09-16): collapse per-symbol repeats into ONE message. SIEM + Hermes stay per-symbol
+    # (durable evidence, one row each); the phone gets a single batched card instead of one per symbol.
+    if batch:
+        if len(batch) == 1:
+            sev, cond, sym, acct, line = batch[0]
+            _send_telegram(f"{'🚨' if sev == 'urgent' else '⚠️'} STOP HEALTH — {cond}: *{sym}* ({acct})\n{line}")
+        else:
+            n_urgent = sum(1 for b in batch if b[0] == "urgent")
+            head = f"{'🚨' if n_urgent else '⚠️'} STOP HEALTH — {len(batch)} alert(s)"
+            if n_urgent and n_urgent < len(batch):
+                head += f" ({n_urgent} urgent)"
+            lines = [f"{'🚨' if sev == 'urgent' else '⚠️'} {cond}: *{sym}* ({acct})\n{line}"
+                     for sev, cond, sym, acct, line in batch]
+            _send_telegram(head + "\n\n" + "\n\n".join(lines))
     dd = _portfolio_drawdown_guard()
     if dd and dd.get("level") in ("warning", "critical"):
         fired.append(f"PORTFOLIO:{dd['condition']}")
