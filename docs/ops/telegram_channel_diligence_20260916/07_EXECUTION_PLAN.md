@@ -37,8 +37,10 @@ system scored 4/10 on routing and 1/10 on governance: nobody is measured on the 
 **Fix: one named owner holds one persistent goal, tracked in the goal loop** (the same store as
 `scripts/lib/cio_goals.py`, which already carries owner, thesis, status, and falsifier):
 
-- **Owner:** `cio` — the single accountable agent for "every outbound Telegram message is
-  curated correctly".
+- **Owner:** `guardian` — the single accountable agent for "every outbound Telegram message is
+  curated correctly". *(Registered 2026-09-16 as goal `goal_798ce2450f61`. Note: `cio` was the
+  intended owner but is **not** a valid `VALID_OWNERS` entry in `scripts/lib/cio_goals.py` —
+  a real roster gap. `guardian`, the oversight role, is used until/unless `cio` is added.)*
 - **Goal (thesis):** *every message reaches the right channel, deduped, actionable, and
   complete against the standing book — measured 10/10 by the four-channel re-export audit.*
 - **Falsifier (what would disprove the goal):** a periodic 4-channel export showing any
@@ -55,9 +57,10 @@ periodic re-measure can.
 The goal is registered in two places so it survives both the session and the machine:
 
 1. **Cursor long-running goal** (session-level) — created via the native goal tool.
-2. **`data/cio/cio_goals.jsonl`** (machine-level) — a `GOAL_CREATED` event owned by `cio`,
-   so the goal loop and its `GOAL_STATUS_CHANGED` counter (currently **0** over 37 days /
-   34,718 wakes — `report_goal_loop_baseline.py`) start measuring actual progress against it.
+2. **`data/cio/cio_goals.jsonl`** (machine-level) — a `GOAL_CREATED` event, goal
+   `goal_798ce2450f61` owned by `guardian`, so the goal loop and its `GOAL_STATUS_CHANGED`
+   counter (currently **0** over 37 days / 34,718 wakes — `report_goal_loop_baseline.py`) start
+   measuring actual progress against it. Verified live: projection now holds **4 goals**.
 
 ## 3. Are messages going to the right channels? — the measured verdict
 
