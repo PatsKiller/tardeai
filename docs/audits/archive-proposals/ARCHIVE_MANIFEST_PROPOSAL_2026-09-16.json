@@ -1,0 +1,94 @@
+{
+  "schema": "ArchiveManifest@v1",
+  "status": "PROPOSAL_ONLY_NOT_APPLIED",
+  "as_of": "2026-09-16",
+  "author": "P10 archive-or-wire",
+  "note": "PROPOSAL ONLY. Nothing in this file has been archived, moved or deleted. Deleting anything is operator-only (AGENTS.md §17) and §0 rule 6 is 'never delete'. This document is NOT archive/ARCHIVE_MANIFEST.json: rows are copied there by the operator, one batch at a time, only after the blocking dependency named on each row is cleared. Every row carries the verdict, the evidence it rests on, a review_by date and the exact restore_command that would undo it.",
+  "mechanism": "scripts/cio_archive_mechanism.py (schema | validate | tripwire | report). The tripwire fires if anything reads an archived path, which is what makes archiving safe to reverse.",
+  "excluded_from_this_proposal": [
+    {
+      "candidate": "539 git worktrees (~77 GB)",
+      "reason": "UNMERGED WORK EXISTS INSIDE THEM. Verified 2026-09-16 in this checkout: commit a6106b1df exists in the object store and is NOT an ancestor of HEAD. The plan names a6106b1df, 333c0f462, dcafb411e and PR #417 as living only inside worktrees. Sequence must be: enumerate unmerged commits per worktree, rescue or explicitly abandon each, and only then reclaim. Archiving first would destroy work that exists nowhere else."
+    },
+    {
+      "candidate": "masked/commented crontab lines",
+      "reason": "Bucket C, not a candidate. The comment IS the tripwire and each names its own re-enable condition. 571 of 1,031 crontab lines are comments by design; removing them destroys the evidence of why a lane is off."
+    },
+    {
+      "candidate": "any module declaring NO_CONSUMER_REASON or SCHEDULED_ENTRYPOINT",
+      "reason": "Deliberately dormant and self-declared. check_dark_contracts.py measured 2026-09-16: 55 zero-consumer modules, of which 29 declare NO_CONSUMER_REASON and 26 are the seeded 2026-08-27 baseline, with 0 NEW unexplained. The declaration is the contract; archiving it silently would convert a named debt back into an invisible one."
+    }
+  ],
+  "items": [
+    {
+      "path": "archive/orphan_agent_timers_20260916/tradeai-agent-runtime@concierge.timer",
+      "verdict": "ORPHANED",
+      "evidence": "Host unit ~/.config/systemd/user/tradeai-agent-runtime@concierge.timer, OnCalendar=*:0/5, enabled via timers.target.wants since 2026-07-31. Every invocation logs 'no-work: unknown agent (not in fleet). Timer inventory exceeds FLEET; exit 0' from scripts/agent_runtime/agents/run_once.py:55-60 and exits 0, so systemd never shows failed. Measured 2026-09-16 via journalctl --user: 1798 no-op invocations in 7 days, 7482 in the retained journal. 'concierge' is absent from FLEET (scripts/agent_runtime/agents/definitions.py:606, 14 members) and absent from AGENT_ALIASES (run_once.py:33, which maps only tax_agent->ledger and guardian->risk_agent), so it can never resolve to an executable agent.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "systemctl --user enable --now tradeai-agent-runtime@concierge.timer",
+      "blocking_dependency": "config/expected_services.json:47 declares this timer expected-present and check_expected_services.py --alert fires MISSING/DISABLED against it. config/lane_registry.json:2377 lists it in the known-timer allowlist. scripts/agent_runtime/monitoring.py:29-46 CANONICAL_AGENT_IDS includes concierge, and scripts/agent_runtime/trigger_sources.py:520 SWEEP_AGENTS maps concierge->operator_status, so the producer still enqueues work for it. All five declarations must be removed in the SAME change or the archive turns a silent no-op into a live alarm."
+    },
+    {
+      "path": "archive/orphan_agent_timers_20260916/tradeai-agent-runtime@hermes.timer",
+      "verdict": "ORPHANED",
+      "evidence": "Host unit ~/.config/systemd/user/tradeai-agent-runtime@hermes.timer, OnCalendar=*:0/5, enabled since 2026-07-31. Measured 2026-09-16: 1798 'no-work: unknown agent' invocations in 7 days, 7482 in the retained journal, each exiting 0. 'hermes' is absent from FLEET (definitions.py:606) and from AGENT_ALIASES (run_once.py:33). Note this timer is unrelated to the live Hermes research lanes, which do not run through the agent-runtime template.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "systemctl --user enable --now tradeai-agent-runtime@hermes.timer",
+      "blocking_dependency": "config/expected_services.json:50, config/lane_registry.json:2378, monitoring.py CANONICAL_AGENT_IDS, and config/agent_maturity_catalog.json:394 (deployment_state DESIGNED) must be reconciled in the same change."
+    },
+    {
+      "path": "archive/orphan_agent_timers_20260916/tradeai-agent-runtime@pulse.timer",
+      "verdict": "ORPHANED",
+      "evidence": "Host unit ~/.config/systemd/user/tradeai-agent-runtime@pulse.timer, OnCalendar=*:0/5, enabled since 2026-07-31. Measured 2026-09-16: 1796 'no-work: unknown agent' invocations in 7 days, 7482 in the retained journal, each exiting 0. 'pulse' is absent from FLEET (definitions.py:606) and from AGENT_ALIASES (run_once.py:33).",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "systemctl --user enable --now tradeai-agent-runtime@pulse.timer",
+      "blocking_dependency": "config/expected_services.json:56, config/lane_registry.json:2380, monitoring.py CANONICAL_AGENT_IDS, and trigger_sources.py:180 which fans packets out to pulse->microstructure_review. config/agent_maturity_catalog.json:637 carries its DESIGNED spec."
+    },
+    {
+      "path": "archive/orphan_agent_timers_20260916/tradeai-agent-runtime@atlas.timer",
+      "verdict": "ORPHANED",
+      "evidence": "Host unit ~/.config/systemd/user/tradeai-agent-runtime@atlas.timer, OnCalendar=*:0/15, enabled since 2026-07-31. Measured 2026-09-16: 599 'no-work: unknown agent' invocations in 7 days, 2495 in the retained journal (retention begins 2026-08-20), each exiting 0. 'atlas' is absent from FLEET (definitions.py:606) and from AGENT_ALIASES (run_once.py:33).",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "systemctl --user enable --now tradeai-agent-runtime@atlas.timer",
+      "blocking_dependency": "config/expected_services.json:68, config/lane_registry.json:2384, monitoring.py CANONICAL_AGENT_IDS, and trigger_sources.py:520 SWEEP_AGENTS which maps atlas->durable_workflow_orchestration. config/agent_maturity_catalog.json:199 carries its DESIGNED spec."
+    },
+    {
+      "path": "archive/one_shot_docx_patchers_20260916/",
+      "verdict": "ONE_SHOT",
+      "evidence": "11 one-shot document patchers in scripts/, 125,012 bytes total, newest commit 2026-06-19 (~3 months stale as of 2026-09-16): update_docx_session30.py, update_docx_session30b_gap_fixes.py, update_docx_session30c_automated_journal.py, update_docx_session37.py, update_docx_session37b.py, update_docx_session_20260619.py, update_docx_session_2026_06_03.py, update_docx_session_2026_06_03b.py, update_docx_session_2026_06_04.py, update_docx_session_atm_supply.py, update_docx_session_v3_backtest.py. Every one has ZERO inbound references across *.py, *.sh, *.json and *.txt; no .sh file and no crontab line mentions update_docx at all. The only two mentions anywhere are descriptive prose in docs/MASTER_SYSTEM_DOCUMENTATION.md:2793 and docs/atm_audit_2026_05_26/designer_review/POST_FIX_SOURCE_MANIFEST.md:189, neither of which invokes them. Each patched a specific dated .docx that has already been produced, so re-running one would be wrong, not merely redundant.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/one_shot_docx_patchers_20260916/<file>.py scripts/<file>.py",
+      "blocking_dependency": "None known. The two doc references should be updated to point at the archived path in the same change so the docs do not dangle."
+    },
+    {
+      "path": "archive/zero_reference_scripts_20260916/",
+      "verdict": "DARK",
+      "evidence": "158 of 1,620 top-level scripts/*.py files (9.8%) have zero inbound references anywhere outside themselves. Measured 2026-09-16 by scanning 7,838 repo files (extensions .py .sh .json .txt .md .yaml .yml .toml .cfg .ini .service .timer .html .js .ts .sql .conf, under 3 MB, excluding .git/node_modules/.venv/__pycache__/.mypy_cache/.pytest_cache) with one longest-first alternation regex over all 1,620 basenames, attributing each match to the containing file and excluding self-matches. Samples: agent_router_final.py, agent_router_reliable.py, apply_homehub_no_stop_label.py, apply_homehub_trust_wireup.py, audit_config_files.py, audit_health_schedule_drift.py, audit_phase2g_canary_status.py, audit_phase2h_bounded_approval.py, audit_phase3_media_prose_routing.py, audit_table_readers_without_writers.py. CORRECTION TO THE PLAN: the plan cites 288 (17.8%); the direct re-measurement finds 158. The method is deliberately conservative in two ways that UNDERSTATE the count -- substring matching means a script whose basename is a prefix of another counts as referenced, and .md documentation counts as a reference -- so 158 is a floor, not a ceiling.",
+      "date": "2026-09-16",
+      "review_by": "2026-11-16",
+      "restore_command": "git mv archive/zero_reference_scripts_20260916/<file>.py scripts/<file>.py",
+      "blocking_dependency": "DO NOT ARCHIVE AS ONE BATCH. This row is a census, not an approved list. Each file must be checked individually against check_dark_contracts.py (a module may declare NO_CONSUMER_REASON and be bucket C), against the live crontab and systemd units, and against the 76 test-only scripts below. Propose in small reviewable batches with the tripwire armed between each."
+    },
+    {
+      "path": "archive/test_only_scripts_20260916/",
+      "verdict": "DARK",
+      "evidence": "76 top-level scripts/*.py files are referenced ONLY from tests/ -- a test suite holding production code alive with no production caller. Measured 2026-09-16 by the same scan as the row above; a file qualifies when its hit set is non-empty and every referencing path starts with tests/. Samples with their sole referencing test: backfill_phase8_paper_trade_lifecycle_outcomes.py <- tests/test_phase8b_lifecycle_outcomes.py; backfill_screener_catalog_from_recent_runs.py <- tests/test_screener_arch3b_importer_membership_backfill.py; backfill_screener_membership_transitions.py <- tests/test_screener_arch3c_membership_lifecycle_api.py; build_afterhours_readiness_digest.py <- tests/test_afterhours_ready1_candidate_preparation.py; close_exited_tax_lots.py <- tests/test_exited_tax_lot_closure.py; fix_llm_consumption_cost_units.py <- tests/test_corpus_grades_and_cost_units.py; handle_telegram_proposal_callback.py <- tests/test_alert2_telegram_callbacks.py; hermes_discovery_coverage_adapters.py <- tests/test_hermes_discovery_coverage.py. CORRECTION TO THE PLAN: the plan cites 139; the direct re-measurement finds 76.",
+      "date": "2026-09-16",
+      "review_by": "2026-11-16",
+      "restore_command": "git mv archive/test_only_scripts_20260916/<file>.py scripts/<file>.py",
+      "blocking_dependency": "DO NOT ARCHIVE AS ONE BATCH, and archive the TEST with the script or the suite breaks. Several of these are backfills and migrations that are correctly single-use but whose test documents the data contract; that test is the only remaining specification and must be preserved or migrated, not dropped."
+    }
+  ],
+  "measurement_reproduction": {
+    "timer_invocations": "journalctl --user -u 'tradeai-agent-runtime@<agent>.service' --since '7 days ago' | grep -c 'no-work'",
+    "fleet_membership": "grep -n '^FLEET' -A3 scripts/agent_runtime/agents/definitions.py ; grep -n 'AGENT_ALIASES' scripts/agent_runtime/agents/run_once.py",
+    "docx_family": "for f in scripts/update_docx_session*.py; do stat -c '%s %n' \"$f\"; git log -1 --format=%ad --date=short -- \"$f\"; done",
+    "zero_reference_and_test_only": "walk the repo over the listed extensions, build one longest-first alternation regex of all scripts/*.py basenames, attribute each match to its containing path excluding self-matches; zero-ref = empty hit set, test-only = every hit path starts with tests/",
+    "dark_contracts": "python3 scripts/check_dark_contracts.py --json"
+  }
+}
