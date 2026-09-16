@@ -1595,7 +1595,7 @@
         "kind": "file_mtime",
         "path": "data/runtime/gap_resolution_last_run.json"
       },
-      "note": "Reports gaps open >2h with no resolver attempt, vectors with >=3 errors today, and any receipt where a RETIRED provider ran (must be 0). Phase 7 of One Source of Truth made stale/missing a declared, budgeted, receipted sequence of vectors (scripts/lib/gap_resolver.py); a declared sequence that never runs is the recurring defect here, so the receipts are measured against the gaps. Receipt written every run, findings or not. Unit files proposed in config/systemd/user; NOT installed -- operator-only (AGENTS 9.3)."
+      "note": "Reports gaps open >2h with no resolver attempt, vectors with >=3 errors today, and any receipt where a RETIRED provider ran (must be 0). INSTALLED: systemd user timer tradeai-gap-resolution.timer (enabled/active since 2026-09-13; OnCalendar *:07,37). Remediation R2 2026-09-16 corrected stale 'proposed/not installed' wording."
     },
     {
       "lane_id": "operator-answer-quality-audit",
@@ -1610,7 +1610,7 @@
         "kind": "file_mtime",
         "path": "data/runtime/operator_answer_quality_last_run.json"
       },
-      "note": "Measures the last 24h of operator replies: NO_SOURCES_LINE, WENT_OUTSIDE_UNSTATED, FALSE_EMPTY_CLAIM (names the evidence rule: provenance / snapshot_health / store_health), BOOK_DUMP_FOR_NAMED_SYMBOL, PENDING_NEVER_CLOSED, MODEL_UNLABELLED. 2026-09-13: 'get back into schg' got the whole re-entry book; a sector question claimed cash/holdings empty while the CIO snapshot carried them; no reply named its sources. Receipt written every run, findings or not. Unit files proposed in config/systemd/user; NOT installed -- operator-only (AGENTS 9.3)."
+      "note": "Measures the last 24h of operator replies for provenance/honesty defects. INSTALLED: systemd user timer tradeai-operator-answer-quality.timer (enabled/active since 2026-09-13). Remediation R2 2026-09-16 corrected stale proposal wording."
     },
     {
       "lane_id": "moomoo-live-read-sync",
@@ -1884,7 +1884,55 @@
         "kind": "file_mtime",
         "path": "data/cio/goal_loop_baseline.jsonl"
       },
-      "note": "P0 control row for the goal-loop plan: the baseline every later phase is diffed against. Two sections record `unavailable` by design rather than a false zero - intake needs AGENT_RUNTIME_DISPATCH_DSN (not provisioned on this host) and research_quality_critique needs the verdict stored on the artifact."
+      "note": "P0 control row for the goal-loop plan. INSTALLED crontab 20 * * * * with /run/user/$UID/tradeai/env loaded (E7 2026-09-16). Intake uses AGENT_RUNTIME_DISPATCH_DSN."
+    },
+    {
+      "lane_id": "goal-gate-bridge",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "35 * * * * cio_gate_measurement_bridge.py",
+        "match": "cio_gate_measurement_bridge.py"
+      },
+      "expected_cadence_hours": 1,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/agent_gate_measurements.json"
+      },
+      "note": "P9 honesty bridge. Armed 2026-09-16 operator APPROVE E3."
+    },
+    {
+      "lane_id": "goal-pilot-material-change",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 * * * * run_goal_pilot_material_change.py",
+        "match": "run_goal_pilot_material_change.py"
+      },
+      "expected_cadence_hours": 1,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/goal_pilot_material_change.jsonl"
+      },
+      "note": "P8 SHADOW pilot. Armed 2026-09-16 operator APPROVE E4. paid_calls read from validator."
+    },
+    {
+      "lane_id": "dormant-lane-consumers",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "50 * * * * run_dormant_lane_consumers.py",
+        "match": "run_dormant_lane_consumers.py"
+      },
+      "expected_cadence_hours": 1,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/dormant_lane_consumers.jsonl"
+      },
+      "note": "P10 wire. Armed 2026-09-16 with full package approval."
     }
   ],
   "undeclared_baseline": [

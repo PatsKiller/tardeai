@@ -1,0 +1,25 @@
+# tradeai-agent-runtime@.timer  — DEFAULT-DISABLED / PREPARE-ONLY
+#
+# Deterministic scheduler for the paired oneshot service. One timer per agent
+# queue. NOT installed, NOT enabled, NOT started by this change. The timer is the
+# only actor permitted to start an agent run; agents cannot schedule themselves.
+#
+# Cadence below is conservative and per-agent bounded; tune per queue at install.
+# Enabling requires an explicit operator decision and accepted maturity gates.
+
+[Unit]
+Description=Trade AI reflective agent bounded schedule (SHADOW, prepare-only) for %i
+Documentation=file:%h/config/systemd/agent_runtime/README.md
+ConditionPathExists=/etc/tradeai/agent_runtime_enabled
+
+[Timer]
+# Bounded, jittered cadence. A missed trigger is NOT persistently caught up
+# (Persistent=false) so a paused-then-resumed host cannot stampede the queue.
+OnCalendar=*:0/15
+RandomizedDelaySec=120
+Persistent=false
+AccuracySec=30s
+Unit=tradeai-agent-runtime@%i.service
+
+[Install]
+WantedBy=timers.target
