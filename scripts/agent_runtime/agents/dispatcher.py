@@ -27,6 +27,12 @@ class JobRequest:
     agent_id: str
     job_type: str
     input_hash: str
+    # When this job entered the queue. The staleness gate measures THIS — "has this job
+    # rotted in the queue" — not how old its evidence is. Evidence freshness is enforced
+    # upstream by the producer's source cursor. Measured 2026-09-15: gating on evidence
+    # age instead would have refused 221 of 229 real rows (every decision packet, refresh
+    # job and hermes candidate is older than 900s by the time a runner leases it) and
+    # permanently consumed their UNIQUE dedup keys, leaving only synthetic sweeps to run.
     enqueued_at: str  # ISO-8601
     dedup_value: str
     trigger_kind: str = ""
@@ -36,6 +42,9 @@ class JobRequest:
     # never run, because these fields did not exist (TypeError, zero callers).
     intake_id: str = ""
     payload: Any = None
+    # Age of the underlying evidence, kept for provenance and ordering. It is NOT what
+    # the staleness gate measures — see enqueued_at below.
+    source_timestamp: str = ""
 
     def enqueued_dt(self) -> datetime:
         value = datetime.fromisoformat(self.enqueued_at)
