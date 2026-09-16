@@ -55,9 +55,9 @@ def test_g4_committed_manifest_is_valid_and_every_archived_file_has_a_row():
     assert set(mech.effective_archived_paths(data, root=ROOT)) == declared
 
 
-def test_g4_tripwire_quiet_when_nothing_archived():
+def test_g4_tripwire_quiet_on_live_tree():
     hits = mech.scan_archived_path_references(root=ROOT)
-    assert hits == []
+    assert hits == [], hits
     mech.assert_no_archived_reads(root=ROOT)  # must not raise
 
 
@@ -166,7 +166,7 @@ def test_g4_tripwire_raises_on_read_of_archived_path(tmp_path: Path):
 
 def test_g4_report_is_quiet_with_the_first_operator_approved_batch():
     report = mech.build_report(root=ROOT)
-    assert report["item_count"] == 1
+    assert report["item_count"] >= 16
     assert report["trip_count"] == 0
     assert report["archived_nothing"] is False
     assert report["validation_errors"] == []

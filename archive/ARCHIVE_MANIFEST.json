@@ -1,15 +1,153 @@
 {
   "schema": "ArchiveManifest@v1",
-  "as_of": "2026-09-13",
-  "note": "Mechanism only (WAVE G4). Items empty by design \u2014 first archive batch is operator-only. Do not move files here without an approved manifest row.",
+  "status": "BATCH1_APPLIED",
+  "as_of": "2026-09-16",
+  "author": "operator-approved-full-package",
+  "note": "Batch1 applied under operator APPROVE E5 2026-09-16.",
   "items": [
     {
       "path": "archive/retired_providers_20260913/discovery_sources/polygon_source.py",
+      "original_path": "scripts/discovery_sources/polygon_source.py",
       "verdict": "SUPERSEDED",
-      "evidence": "Polygon retired 2026-09-13 in config/data_source_authority.json (paid-only; 0 candidates ever recorded in data_source_health). Its only importer, candidate_discovery_orchestrator.py, no longer loads it. Operator approved Phase 2 of the One Source of Truth plan 2026-09-13.",
+      "evidence": "One Source of Truth Phase 2; operator-approved 2026-09-13.",
       "date": "2026-09-13",
       "review_by": "2026-10-13",
       "restore_command": "git mv archive/retired_providers_20260913/discovery_sources/polygon_source.py scripts/discovery_sources/polygon_source.py"
+    },
+    {
+      "path": "archive/one_shot_docx_patchers_20260916/update_docx_session30.py",
+      "original_path": "scripts/update_docx_session30.py",
+      "verdict": "ONE_SHOT",
+      "evidence": "E5 batch1 2026-09-16 operator APPROVE. Zero inbound refs; newest ~2026-06-19.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/one_shot_docx_patchers_20260916/update_docx_session30.py scripts/update_docx_session30.py"
+    },
+    {
+      "path": "archive/one_shot_docx_patchers_20260916/update_docx_session30b_gap_fixes.py",
+      "original_path": "scripts/update_docx_session30b_gap_fixes.py",
+      "verdict": "ONE_SHOT",
+      "evidence": "E5 batch1 2026-09-16 operator APPROVE. Zero inbound refs; newest ~2026-06-19.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/one_shot_docx_patchers_20260916/update_docx_session30b_gap_fixes.py scripts/update_docx_session30b_gap_fixes.py"
+    },
+    {
+      "path": "archive/one_shot_docx_patchers_20260916/update_docx_session30c_automated_journal.py",
+      "original_path": "scripts/update_docx_session30c_automated_journal.py",
+      "verdict": "ONE_SHOT",
+      "evidence": "E5 batch1 2026-09-16 operator APPROVE. Zero inbound refs; newest ~2026-06-19.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/one_shot_docx_patchers_20260916/update_docx_session30c_automated_journal.py scripts/update_docx_session30c_automated_journal.py"
+    },
+    {
+      "path": "archive/one_shot_docx_patchers_20260916/update_docx_session37.py",
+      "original_path": "scripts/update_docx_session37.py",
+      "verdict": "ONE_SHOT",
+      "evidence": "E5 batch1 2026-09-16 operator APPROVE. Zero inbound refs; newest ~2026-06-19.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/one_shot_docx_patchers_20260916/update_docx_session37.py scripts/update_docx_session37.py"
+    },
+    {
+      "path": "archive/one_shot_docx_patchers_20260916/update_docx_session37b.py",
+      "original_path": "scripts/update_docx_session37b.py",
+      "verdict": "ONE_SHOT",
+      "evidence": "E5 batch1 2026-09-16 operator APPROVE. Zero inbound refs; newest ~2026-06-19.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/one_shot_docx_patchers_20260916/update_docx_session37b.py scripts/update_docx_session37b.py"
+    },
+    {
+      "path": "archive/one_shot_docx_patchers_20260916/update_docx_session_20260619.py",
+      "original_path": "scripts/update_docx_session_20260619.py",
+      "verdict": "ONE_SHOT",
+      "evidence": "E5 batch1 2026-09-16 operator APPROVE. Zero inbound refs; newest ~2026-06-19.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/one_shot_docx_patchers_20260916/update_docx_session_20260619.py scripts/update_docx_session_20260619.py"
+    },
+    {
+      "path": "archive/one_shot_docx_patchers_20260916/update_docx_session_2026_06_03.py",
+      "original_path": "scripts/update_docx_session_2026_06_03.py",
+      "verdict": "ONE_SHOT",
+      "evidence": "E5 batch1 2026-09-16 operator APPROVE. Zero inbound refs; newest ~2026-06-19.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/one_shot_docx_patchers_20260916/update_docx_session_2026_06_03.py scripts/update_docx_session_2026_06_03.py"
+    },
+    {
+      "path": "archive/one_shot_docx_patchers_20260916/update_docx_session_2026_06_03b.py",
+      "original_path": "scripts/update_docx_session_2026_06_03b.py",
+      "verdict": "ONE_SHOT",
+      "evidence": "E5 batch1 2026-09-16 operator APPROVE. Zero inbound refs; newest ~2026-06-19.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/one_shot_docx_patchers_20260916/update_docx_session_2026_06_03b.py scripts/update_docx_session_2026_06_03b.py"
+    },
+    {
+      "path": "archive/one_shot_docx_patchers_20260916/update_docx_session_2026_06_04.py",
+      "original_path": "scripts/update_docx_session_2026_06_04.py",
+      "verdict": "ONE_SHOT",
+      "evidence": "E5 batch1 2026-09-16 operator APPROVE. Zero inbound refs; newest ~2026-06-19.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/one_shot_docx_patchers_20260916/update_docx_session_2026_06_04.py scripts/update_docx_session_2026_06_04.py"
+    },
+    {
+      "path": "archive/one_shot_docx_patchers_20260916/update_docx_session_atm_supply.py",
+      "original_path": "scripts/update_docx_session_atm_supply.py",
+      "verdict": "ONE_SHOT",
+      "evidence": "E5 batch1 2026-09-16 operator APPROVE. Zero inbound refs; newest ~2026-06-19.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/one_shot_docx_patchers_20260916/update_docx_session_atm_supply.py scripts/update_docx_session_atm_supply.py"
+    },
+    {
+      "path": "archive/one_shot_docx_patchers_20260916/update_docx_session_v3_backtest.py",
+      "original_path": "scripts/update_docx_session_v3_backtest.py",
+      "verdict": "ONE_SHOT",
+      "evidence": "E5 batch1 2026-09-16 operator APPROVE. Zero inbound refs; newest ~2026-06-19.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/one_shot_docx_patchers_20260916/update_docx_session_v3_backtest.py scripts/update_docx_session_v3_backtest.py"
+    },
+    {
+      "path": "archive/orphan_agent_timers_20260916/tradeai-agent-runtime@atlas.timer",
+      "original_path": "config/systemd/user/tradeai-agent-runtime@atlas.timer",
+      "verdict": "ORPHANED",
+      "evidence": "E5 batch1 2026-09-16. Host timer disabled (systemctl --user disable --now). Unit file archived in-repo.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/orphan_agent_timers_20260916/tradeai-agent-runtime@atlas.timer config/systemd/user/tradeai-agent-runtime@atlas.timer"
+    },
+    {
+      "path": "archive/orphan_agent_timers_20260916/tradeai-agent-runtime@concierge.timer",
+      "original_path": "config/systemd/user/tradeai-agent-runtime@concierge.timer",
+      "verdict": "ORPHANED",
+      "evidence": "E5 batch1 2026-09-16. Host timer disabled (systemctl --user disable --now). Unit file archived in-repo.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/orphan_agent_timers_20260916/tradeai-agent-runtime@concierge.timer config/systemd/user/tradeai-agent-runtime@concierge.timer"
+    },
+    {
+      "path": "archive/orphan_agent_timers_20260916/tradeai-agent-runtime@hermes.timer",
+      "original_path": "config/systemd/user/tradeai-agent-runtime@hermes.timer",
+      "verdict": "ORPHANED",
+      "evidence": "E5 batch1 2026-09-16. Host timer disabled (systemctl --user disable --now). Unit file archived in-repo.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/orphan_agent_timers_20260916/tradeai-agent-runtime@hermes.timer config/systemd/user/tradeai-agent-runtime@hermes.timer"
+    },
+    {
+      "path": "archive/orphan_agent_timers_20260916/tradeai-agent-runtime@pulse.timer",
+      "original_path": "config/systemd/user/tradeai-agent-runtime@pulse.timer",
+      "verdict": "ORPHANED",
+      "evidence": "E5 batch1 2026-09-16. Host timer disabled (systemctl --user disable --now). Unit file archived in-repo.",
+      "date": "2026-09-16",
+      "review_by": "2026-10-16",
+      "restore_command": "git mv archive/orphan_agent_timers_20260916/tradeai-agent-runtime@pulse.timer config/systemd/user/tradeai-agent-runtime@pulse.timer"
     }
   ]
 }

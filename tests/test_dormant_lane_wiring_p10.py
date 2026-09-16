@@ -141,12 +141,13 @@ def test_an_independent_assessor_is_accepted() -> None:
     assert assessment["evidence_refs"] == ["e1", "e2"], "refs must be de-duplicated"
 
 
-def test_the_runner_is_advisory_and_unscheduled() -> None:
+def test_the_runner_is_advisory_and_scheduled_after_operator_approve() -> None:
     assert runner.AUTHORITY == "READ_ONLY_ADVISORY"
     assert runner.MBI_BEHAVIOR == 0
     assert runner.FINANCIAL_ACTION is False
-    # Installing a schedule is operator-only; the declaration must say so.
-    assert "PROPOSAL ONLY" in runner.SCHEDULED_ENTRYPOINT
+    # Operator APPROVE full package 2026-09-16 armed the cron; declaration must match.
+    assert "INSTALLED" in runner.SCHEDULED_ENTRYPOINT
+    assert "PROPOSAL ONLY" not in runner.SCHEDULED_ENTRYPOINT
 
 
 def test_commitment_sweep_entrypoint_declares_it_is_unscheduled() -> None:

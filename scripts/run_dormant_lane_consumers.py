@@ -58,8 +58,9 @@ MBI_BEHAVIOR = 0
 FINANCIAL_ACTION = False
 
 SCHEDULED_ENTRYPOINT = (
-    "PROPOSAL ONLY -- not installed. A new cron/systemd entry is operator-only "
-    "(AGENTS.md §17). Run by hand until the operator approves a schedule."
+    "INSTALLED, active — crontab `50 * * * *`, hourly at :50, from the rebuild "
+    "tree with /run/user/$UID/tradeai/env loaded. Armed 2026-09-16 under operator "
+    "APPROVE (full package, dormant-lane wire). Lane: dormant-lane-consumers."
 )
 
 # Lanes whose write adjudicates between two candidate truths. --apply is refused

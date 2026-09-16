@@ -2790,7 +2790,7 @@ to `notification_url_builder` so ALL Telegram/email links carry the FQDN **with 
 |------|---------|---------------|
 | **Entry/exit ratings** | Surfaced existing grade data where the operator looks: inline entry/exit **Grade column** in v3 Journal trade log; **"entry setup ~N"** badge per open position in v3 Trading. Diagnosed coverage (~74/76 Schwab closed trades graded). | `api_v2.py:_attach_backtest_grades()`, `JournalHub.tsx`, `TradingHub.tsx` |
 | **Agent & Hermes workflows** | New canonical workflow reference; corrected stale MASTER §18b (Hermes now live coordinator-driven `*/15`, bounded reversible auto-promote — research only, no trade-gate relaxation). | `docs/AGENT_AND_HERMES_WORKFLOWS.md`, MASTER §11/§18b, `COMMAND_CENTER_PAGE_MATRIX.md` |
-| **DOCX** | Append-only session addendum to canonical Reference Architecture. | `scripts/update_docx_session_2026_06_03.py` |
+| **DOCX** | Append-only session addendum to canonical Reference Architecture. | `archive/one_shot_docx_patchers_20260916/update_docx_session_2026_06_03.py` |
 
 ### Session — 2026-06-03b (Server hang fix + dashboard accuracy + v3 additions)
 

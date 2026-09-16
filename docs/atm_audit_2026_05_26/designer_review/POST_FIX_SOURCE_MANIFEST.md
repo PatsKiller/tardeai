@@ -186,7 +186,7 @@ These files bypass the Telegram alert router and send directly:
 | `scripts/alpaca_paper_adapter.py` | Reads max_concurrent for position cap enforcement |
 | `scripts/atm_auto_approver.py` | Enforces max_concurrent before auto-approving |
 | `scripts/risk_gate.py` | Checks max_concurrent as risk gate condition |
-| `scripts/update_docx_session_atm_supply.py` | Docs only |
+| `archive/one_shot_docx_patchers_20260916/update_docx_session_atm_supply.py` | Docs only |
 
 ### classifier_health Inventory
 
