@@ -54,7 +54,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CURRENT = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT")
 STATE_PATH = Path.home() / ".local/state/tradeai/served_copy_split_last_alert.json"
 
-sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+# APPENDED, never prepended: scripts/lib holds modules whose names collide with
+# top-level scripts (research_lane_health is both), and putting it first made
+# `import research_lane_health` resolve to the library instead of the monitor.
+sys.path.append(str(PROJECT_ROOT / "scripts" / "lib"))
 from alert_transition import (  # noqa: E402
     TYPE_SYSTEM_HEALTH,
     evaluate,

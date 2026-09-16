@@ -56,7 +56,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST_PATH = PROJECT_ROOT / "config" / "expected_services.json"
 STATE_PATH = Path.home() / ".local/state/tradeai/expected_services_last_alert.json"
 
-sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+# APPENDED, never prepended: scripts/lib holds modules whose names collide with
+# top-level scripts (research_lane_health is both), and putting it first made
+# `import research_lane_health` resolve to the library instead of the monitor.
+sys.path.append(str(PROJECT_ROOT / "scripts" / "lib"))
 from alert_transition import (  # noqa: E402
     TYPE_SYSTEM_HEALTH,
     evaluate,
