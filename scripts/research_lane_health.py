@@ -29,9 +29,23 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.lib.research_lane_health import collect_report  # noqa: E402
+# scripts.lib spelling deliberately: G2 forbids scripts/ on the path here.
+from scripts.lib.alert_transition import TYPE_SYSTEM_HEALTH, evaluate  # noqa: E402
 
 STATUS_PATH = ROOT / "data" / "runtime" / "research_lane_health.json"
 ALERT_DEDUP_SEC = int(os.getenv("RESEARCH_LANE_ALERT_DEDUP_SEC", str(6 * 3600)))
+
+
+def _condition_path() -> Path:
+    """Alert state beside the lane map, never inside it.
+
+    STATUS_PATH has ten readers (health_agent among them) and a shape they
+    depend on — it is the one receipt in this family that something subscribes
+    to. The condition state machine gets its own file so neither format
+    constrains the other, derived from STATUS_PATH so redirecting the lane map
+    redirects this with it.
+    """
+    return STATUS_PATH.with_name(STATUS_PATH.stem + "_conditions.json")
 
 
 def unwrap_lane_map(raw: dict) -> dict:
@@ -226,15 +240,40 @@ def reconcile_recovered(state: dict, report: dict) -> dict:
     return out
 
 
+def _record_recoveries(report: dict) -> None:
+    """A lane that came back is a transition, not just a quieter JSON field.
+
+    reconcile_recovered already heals the lane map. This advances the ALERT
+    lifecycle, so the rows a lane opened stop reading 'active' forever — the
+    thing none of the seven monitors did.
+    """
+    for row in report.get("lanes") or []:
+        lane = row.get("lane")
+        if not lane or not row.get("ok"):
+            continue
+        t = evaluate(f"research_lane:{lane}", "OK", alertable=False,
+                     path=_condition_path())
+        if not t.notify:
+            continue
+        rec = t.commit(body=f"Research lane {lane} recovered.",
+                       alert_type=TYPE_SYSTEM_HEALTH,
+                       source_script="research_lane_health.py",
+                       payload={"lane": lane})
+        print(f"  lane {lane}: recovered "
+              f"(alert_event={rec['alert_event_id']}, resolved={rec['resolved_rows']})")
+
+
 def _alert(report: dict) -> int:
     firing = [r for r in report.get("lanes") or [] if not r.get("ok")]
+    state = reconcile_recovered(_load_lane_map(), report)
+    _record_recoveries(report)
     if not firing:
-        _save_state(report.get("as_of"), reconcile_recovered(_load_lane_map(), report))
+        _save_state(report.get("as_of"), state)
         return 0
     now = int(time.time())
-    state = reconcile_recovered(_load_lane_map(), report)
     lines = []
     hints = []
+    pending = []
     sent = 0
     for row in firing:
         lane = row["lane"]
@@ -256,8 +295,17 @@ def _alert(report: dict) -> int:
         # A lane whose reasons CHANGE re-sends immediately, window or not, because
         # that is new information. The window only bounds a genuinely new state.
         sig = f"{lane}|{reasons}"
+        # ...and the window it declared is now ENFORCED rather than merely
+        # stored. ALERT_DEDUP_SEC was read into `last` and then compared with
+        # nothing, so "unchanged" meant silent forever, not silent for six
+        # hours. The shared state machine owns that decision now, and the
+        # declared window (6h = OPERATIONS.md's min_realert_minutes 360) is
+        # what it enforces.
+        t = evaluate(f"research_lane:{lane}", sig, alertable=True,
+                     path=_condition_path(),
+                     min_realert_minutes=max(1, ALERT_DEDUP_SEC // 60))
         unchanged = prev.get("signature") == sig
-        if unchanged:
+        if not t.notify:
             # the row is current evidence; keep only the alert bookkeeping from prev
             state[lane] = {**row, "last_alert": last, "suppressed": True,
                            "signature": sig,
@@ -293,6 +341,7 @@ def _alert(report: dict) -> int:
         hints.append(f"  {lane}: {fix_hint(row)}")
         state[lane] = {**row, "last_alert": now, "suppressed": False,
                        "signature": sig, "since": since}
+        pending.append((t, lane, sig))
         sent += 1
     _save_state(report.get("as_of"), state)
     if not lines:
@@ -317,17 +366,29 @@ def _alert(report: dict) -> int:
         + "\n".join(hints)
     )
     try:
-        _deliver_telegram(msg)
+        message_id = _deliver_telegram(msg)
     except Exception as exc:
+        # Nothing was reported, so no transition was consumed. Give them all
+        # back, or the next run reads them as "already told" and the lanes go
+        # quiet on a message the operator never received.
+        for t, _lane, _sig in pending:
+            t.rollback()
         print("telegram send failed:", exc, file=sys.stderr)
         print(msg)
         return 2
+    for t, lane, sig in pending:
+        t.commit(body=msg, alert_type=TYPE_SYSTEM_HEALTH,
+                 source_script="research_lane_health.py",
+                 telegram_message_id=message_id,
+                 payload={"lane": lane, "firing": sig})
     return sent
 
 
-def _deliver_telegram(msg: str) -> None:
-    from telegram_alert import send_telegram
-    send_telegram(msg, bypass_router=True)
+def _deliver_telegram(msg: str):
+    """Send, and hand back the provider message id so the row can carry it."""
+    import telegram_alert as _ta
+    _ta.send_telegram(msg, bypass_router=True)
+    return getattr(_ta, "last_message_id", lambda: None)()
 
 
 def main() -> int:

@@ -53,6 +53,7 @@ def _empty() -> dict[str, Any]:
             "recovered": 0,
             "reversed": 0,
             "suppressed": 0,
+            "heartbeat": 0,
         },
         "today_et": "",
         "today_metrics": {
@@ -61,6 +62,7 @@ def _empty() -> dict[str, Any]:
             "recovered": 0,
             "reversed": 0,
             "suppressed": 0,
+            "heartbeat": 0,
         },
     }
 
@@ -108,6 +110,7 @@ def _roll_today(data: dict[str, Any]) -> None:
             "recovered": 0,
             "reversed": 0,
             "suppressed": 0,
+            "heartbeat": 0,
         }
 
 
@@ -120,6 +123,19 @@ def _bump(data: dict[str, Any], action: str) -> None:
         data["today_metrics"]["suppressed"] = int(data["today_metrics"].get("suppressed", 0)) + 1
 
 
+def _minutes_since(stamp: Any) -> float | None:
+    """Minutes since an ISO timestamp, or None when it cannot be read."""
+    if not stamp:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(stamp))
+    except (TypeError, ValueError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - dt).total_seconds() / 60.0
+
+
 def observe(
     key: str,
     state: str,
@@ -127,14 +143,22 @@ def observe(
     alertable: bool = True,
     path: Path | None = None,
     extra: dict[str, Any] | None = None,
+    min_realert_minutes: int | None = None,
 ) -> dict[str, Any]:
     """Record the current material state of a condition.
 
     alertable=True  → this observation is a problem / notify-worthy state
     alertable=False → this observation is healthy / recovered / not paging
 
+    min_realert_minutes → while a condition stays bad and unchanged, say so
+    again once this many minutes have passed since the last time the operator
+    was told. OPERATIONS.md:71-75 specifies 360 for the health agent's throttle;
+    the condition monitors use the same number. Default None keeps the original
+    behaviour exactly — silence until the state string changes — so the seven
+    existing consumers are unaffected.
+
     Returns:
-      action:   new | ongoing | recovered | reversed | cleared
+      action:   new | ongoing | heartbeat | recovered | reversed | cleared
       notify:   whether an operator event should be created
       previous: last state or None
       uid:      durable semantic identity for this transition
@@ -156,6 +180,17 @@ def observe(
     elif prev_state == state and bool(prev_alertable) == bool(alertable):
         action = "ongoing"
         notify = False
+        if alertable and min_realert_minutes is not None:
+            # Still broken, nothing changed — but silence must have an end, or a
+            # permanently broken condition alerts once and is never heard from
+            # again. That is the measured defect: finnhub 401 for 51 days, one
+            # alert. first_seen_at is the fallback so a condition carried over
+            # from the pre-heartbeat store is not silent forever either.
+            since = _minutes_since((prev or {}).get("last_notify_at")
+                                   or (prev or {}).get("first_seen_at"))
+            if since is None or since >= float(min_realert_minutes):
+                action = "heartbeat"
+                notify = True
     elif prev_alertable and not alertable:
         action = "recovered"
         notify = True
@@ -177,6 +212,10 @@ def observe(
         "notify_count": int((prev or {}).get("notify_count", 0)) + (1 if notify else 0),
         "suppress_count": int((prev or {}).get("suppress_count", 0)) + (0 if notify else 1),
         "first_seen_at": (prev or {}).get("first_seen_at") or _now(),
+        # When the operator was last actually told. The heartbeat clock reads
+        # this, never updated_at — updated_at moves on every run, so a clock
+        # based on it would never elapse.
+        "last_notify_at": _now() if notify else (prev or {}).get("last_notify_at"),
     }
     if extra:
         rec["extra"] = extra
@@ -192,13 +231,17 @@ def observe(
         if action != "ongoing" and notify is False and action == "cleared" and not prev_alertable:
             pass
     else:
-        _bump(data, action if action in ("new", "recovered", "reversed") else "new")
+        _bump(data, action if action in ("new", "recovered", "reversed", "heartbeat") else "new")
 
     save_store(data, path)
 
     uid = f"{key}:{state}"
     if action == "recovered":
         uid = f"{key}:RECOVERED:{prev_state or 'unknown'}"
+    elif action == "heartbeat":
+        # A distinct identity per heartbeat, or an ON CONFLICT DO NOTHING insert
+        # keyed on the uid would drop every repeat and restore the silence.
+        uid = f"{key}:{state}:HEARTBEAT:{rec['notify_count']}"
     return {
         "action": action,
         "notify": notify,
@@ -217,7 +260,7 @@ def today_metrics(path: Path | None = None) -> dict[str, Any]:
     return {
         "date_et": data.get("today_et"),
         **{k: int(data.get("today_metrics", {}).get(k, 0)) for k in
-           ("new", "ongoing", "recovered", "reversed", "suppressed")},
+           ("new", "ongoing", "recovered", "reversed", "suppressed", "heartbeat")},
         "unresolved": sum(
             1 for c in data.get("conditions", {}).values() if c.get("alertable")
         ),

@@ -141,6 +141,58 @@ def save_alert_event(
         return None
 
 
+# ── Lifecycle ───────────────────────────────────────────────────────
+
+def resolve_alert_events(
+    condition_key: str,
+    source_script: str = None,
+    resolved_by: str = "auto",
+) -> int:
+    """Close the alert_events rows a named condition opened. Returns the count.
+
+    Measured 2026-09-16: 7,830 rows, every one `lifecycle_state='active'`, and
+    four manual acknowledgements in June — the column existed, the API existed,
+    the UI buttons existed, and nothing ever advanced it automatically. A
+    monitor that computes a recovery branch now says so in the database instead
+    of only printing a ✅ into a log.
+
+    Advisory and additive: it never deletes a row and never touches one that is
+    already acknowledged or resolved.
+    """
+    key = (condition_key or "").strip()
+    if not key:
+        return 0
+    sql = """
+        UPDATE alert_events
+           SET lifecycle_state = 'resolved',
+               resolved_at = now(),
+               resolved_by = %s
+         WHERE lifecycle_state = 'active'
+           AND parsed_payload->>'condition_key' = %s
+    """
+    params = [resolved_by, key]
+    if source_script:
+        sql += " AND source_script = %s"
+        params.append(source_script)
+    sql += " RETURNING id"
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        cur.execute(sql, tuple(params))
+        rows = cur.fetchall() or []
+        conn.commit()
+        conn.close()
+        return len(rows)
+    except Exception as e:
+        print(f"[alert-writer] resolve error: {e}")
+        try:
+            conn.rollback()
+            conn.close()
+        except Exception:
+            pass
+        return 0
+
+
 # ── Parsers ─────────────────────────────────────────────────────────
 
 def parse_stop_triggered_text(text: str) -> dict:

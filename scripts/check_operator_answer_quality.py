@@ -95,6 +95,17 @@ RECEIPT_NAME = "operator_answer_quality_last_run.json"
 STATE_PATH = Path.home() / ".local/state/tradeai/operator_answer_quality_last_alert.json"
 SENTINEL = "[DATA_INTEGRITY]"
 
+sys.path.insert(0, str(PROJECT_ROOT / "scripts" / "lib"))
+from alert_transition import (  # noqa: E402
+    TYPE_DATA_INTEGRITY,
+    evaluate,
+    fingerprint_state,
+    previous_fingerprint,
+)
+
+#: Durable identity for this condition in the shared alert state machine.
+CONDITION_KEY = "data_integrity:operator_answer_quality"
+
 WINDOW_HOURS = 24.0
 PENDING_OPEN_HOURS = 2.0
 SNAPSHOT_AT_THE_TIME_HOURS = 24.0
@@ -773,32 +784,40 @@ def format_alert(report: dict, previous: dict[str, str]) -> str:
 
 
 def _alert(report: dict) -> None:
-    """Notify only when the finding-set changes. Never raises."""
+    """Notify when the finding-set changes, and on a heartbeat. Never raises."""
     fp = fingerprint(report)
-    previous: dict = {}
-    try:
-        previous = json.loads(STATE_PATH.read_text()).get("fingerprint", {})
-    except (OSError, ValueError):
-        pass
-    if fp == previous:
-        print("\n  alert: suppressed — unchanged since the last run.")
+    t = evaluate(
+        CONDITION_KEY,
+        fingerprint_state(fp),
+        alertable=bool(fp),
+        path=STATE_PATH,
+    )
+    if not t.notify:
+        print(f"\n  alert: {t.quiet_reason()}")
         return
+    previous = previous_fingerprint(t.previous)
 
     body = format_alert(report, previous)
     try:
-        from telegram_alert import send_telegram
+        import telegram_alert as _ta
 
-        ok = send_telegram(body, message_class="operator_alert")
+        ok = _ta.send_telegram(body, message_class="operator_alert")
+        message_id = getattr(_ta, "last_message_id", lambda: None)()
         print(f"\n  alert: {'accepted' if ok else 'NOT accepted'} by the platform")
     except Exception as exc:
+        t.rollback()
         print(f"\n  alert: FAILED to send ({exc}). The findings above still stand.", file=sys.stderr)
         return
 
-    try:
-        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text(json.dumps({"fingerprint": fp}, indent=2))
-    except OSError as exc:
-        print(f"  alert: could not record state ({exc}).", file=sys.stderr)
+    rec = t.commit(
+        body=body,
+        alert_type=TYPE_DATA_INTEGRITY,
+        source_script="check_operator_answer_quality.py",
+        telegram_message_id=message_id,
+        payload={"finding_count": report.get("finding_count", 0)},
+    )
+    print(f"  alert: {t.action} recorded (message_id={message_id}, "
+          f"alert_event={rec['alert_event_id']}, resolved={rec['resolved_rows']})")
 
 
 def print_report(report: dict) -> None:

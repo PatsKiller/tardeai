@@ -77,6 +77,41 @@ def operator_wire_text(message: str) -> str:
         return message
 
 
+#: Provider message ids from the most recent raw send in THIS process.
+#
+# WHY A MODULE RECORD AND NOT ONLY A RETURN VALUE
+# -----------------------------------------------
+# `send_telegram()` returns a bare bool and 182 call sites depend on that
+# contract, so the id cannot be threaded back through it. It is captured here
+# instead, so a caller that already has the bool can still learn which message
+# carried its alert and store it on the alert_events row (measured 2026-09-16:
+# 7,830 rows, every one with telegram_message_id NULL, so no alert in the
+# database was linked to a delivery and none could be acknowledged).
+#
+# Cleared at the START of every send, so a failed or suppressed send can never
+# be attributed the id of the previous one.
+_LAST_MESSAGE_IDS: list[str] = []
+
+
+def reset_last_message_ids() -> None:
+    """Forget the previous send. Called at the start of each publish path."""
+    _LAST_MESSAGE_IDS.clear()
+
+
+def last_message_ids() -> list[str]:
+    """Provider message ids from the most recent send in this process.
+
+    Empty when the last send was suppressed, digested, failed, or never reached
+    the transport. An empty list is the honest answer, not an error.
+    """
+    return list(_LAST_MESSAGE_IDS)
+
+
+def last_message_id() -> str | None:
+    """First provider message id of the most recent send, or None."""
+    return _LAST_MESSAGE_IDS[0] if _LAST_MESSAGE_IDS else None
+
+
 def _raw_send_telegram_result(
     message: str,
     chat_ids: list = None,
@@ -91,6 +126,7 @@ def _raw_send_telegram_result(
     message = operator_wire_text(message)
     token = _token()
     targets = chat_ids or _chat_ids()
+    reset_last_message_ids()
     if not token or not targets:
         return {"ok": False, "message_ids": [], "chat_ids": []}
     ok = True
@@ -125,6 +161,9 @@ def _raw_send_telegram_result(
         capture(message, ok=ok, channel="telegram")
     except Exception:
         pass
+    # Record before returning: callers holding only the legacy bool read this.
+    _LAST_MESSAGE_IDS.clear()
+    _LAST_MESSAGE_IDS.extend(message_ids)
     return {
         "ok": ok,
         "message_ids": message_ids,
@@ -553,6 +592,48 @@ def send_telegram(
     if not result.get("delivered") and result.get("route_mode") not in (None, "LEGACY"):
         print(f"[telegram] {result.get('route_mode')} ({result.get('reason')}): {message[:60]}...")
     return bool(result.get("accepted"))
+
+
+def send_telegram_with_id(
+    message: str,
+    bypass_router: bool = False,
+    *,
+    reply_markup: dict | None = None,
+    chat_ids: list | None = None,
+    thread_id: str | None = None,
+    message_class: str = "operator_alert",
+    link_preview_options: dict | None = None,
+) -> dict:
+    """send_telegram(), plus the provider message id it already had.
+
+    Returns ``{"accepted": bool, "message_id": str|None, "message_ids": [str]}``.
+
+    ``accepted`` is exactly what ``send_telegram`` returns and means the same
+    thing — the platform took responsibility for the event. ``message_id`` is
+    the Telegram id when the message actually reached the transport in this
+    process, and None when it was suppressed, digested, or routed through a
+    path that mints no id. A None id is information, not a failure: it says the
+    operator has no message to acknowledge.
+
+    ``send_telegram``'s signature and bool contract are deliberately untouched —
+    182 call sites across 150 files depend on them.
+    """
+    reset_last_message_ids()
+    accepted = send_telegram(
+        message,
+        bypass_router,
+        reply_markup=reply_markup,
+        chat_ids=chat_ids,
+        thread_id=thread_id,
+        message_class=message_class,
+        link_preview_options=link_preview_options,
+    )
+    ids = last_message_ids()
+    return {
+        "accepted": bool(accepted),
+        "message_id": ids[0] if ids else None,
+        "message_ids": ids,
+    }
 
 
 def send_telegram_document(
