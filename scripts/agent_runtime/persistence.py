@@ -494,6 +494,20 @@ class _PersistenceBase:
             producer = artifact["producer_agent_id"]
             if producer == score.scorer_agent_id:
                 raise PersistenceError("self-score is prohibited (persisted producer == scorer)")
+            # producer != reviewer and producer != scorer were both enforced; reviewer !=
+            # scorer was not, so one agent could review AND score the same artifact and
+            # every existing check still passed. Asked of the durable rows, not of the
+            # caller's claim.
+            reviewers = {
+                str(row.get("reviewer_agent_id") or "")
+                for row in uow.rows_for_run("agent_reviews", run_id)
+                if row.get("artifact_id") == score.artifact_id
+            }
+            if score.scorer_agent_id in reviewers:
+                raise PersistenceError(
+                    "reviewer and scorer must be different agents "
+                    f"(persisted reviewer == scorer: {score.scorer_agent_id})"
+                )
             control = self._require_run(uow, run_id, lock=True)  # post-run scoring allowed on terminal runs
             existing = uow.get_row("agent_scores", {"score_id": score.score_id})
             if existing is not None:
