@@ -1428,6 +1428,7 @@ GATES = [
             "tests/test_maturity_runtime_evidence_per_agent_20260915.py",
             "tests/test_material_change_notice_position_20260915.py",
             "tests/test_producer_cursor_holds_on_capacity_drop_20260915.py",
+            "tests/test_agent_runtime_lease_rebuild_20260915.py",
         ],
     ),
     (

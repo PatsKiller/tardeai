@@ -30,6 +30,12 @@ class JobRequest:
     enqueued_at: str  # ISO-8601
     dedup_value: str
     trigger_kind: str = ""
+    # Set when the job came from the governed trigger queue. intake_id is how the
+    # runner settles the row afterwards; payload carries the source evidence.
+    # trigger_intake.intake_row_to_job_request has always passed both — it could
+    # never run, because these fields did not exist (TypeError, zero callers).
+    intake_id: str = ""
+    payload: Any = None
 
     def enqueued_dt(self) -> datetime:
         value = datetime.fromisoformat(self.enqueued_at)
