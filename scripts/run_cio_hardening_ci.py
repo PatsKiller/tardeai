@@ -703,6 +703,15 @@ GATES = [
             # wire story reached through two engines scored as two. Every
             # min_sources >= 2 predicate read that number.
             "tests/test_goal_need_ledger_20260916.py",
+            # 2026-09-16 P4: a goal can have a SECOND lap, and the second lap can
+            # see the first. Measured before the fix: one goal worked 11,457
+            # times, 29,653 duplicate enqueues against 1,759 accepted, 29,774
+            # thesis events that are 100% PROVIDER_BLOCKED with retrieval_n=0,
+            # and GOAL_STATUS_CHANGED = 0 across 37 days. The dedup key is now a
+            # generation token (goal:{id}:{predicate_version}:{ledger_digest}) —
+            # producer-side, because trigger_intake has no DDL in this repo and
+            # amending its UNIQUE constraint would be §7A/§17 operator-gated.
+            "tests/test_goal_loop_second_lap_20260916.py",
             # 2026-09-13 litmus tests: answers are symbol-scoped, drawn from house facts
             # (cash/sectors/policy read from the snapshot), and carry a Sources line.
             "tests/test_operator_answers_use_house_facts_20260913.py",
