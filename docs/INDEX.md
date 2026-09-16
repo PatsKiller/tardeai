@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `328397fc04b9d305dff2216dca2dcf831a502b2484ef02a3c14ee937fbe98fbc`
+**Tree fingerprint:** `3f30b1fb53011a2bd813f37bed8e7c350ce9785b6316ce1366e45a15fa161f99`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -86,7 +86,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/LLM_DATA_DICTIONARY.md` | LLM Data Dictionary — How Data Flows to Every Model Call | review_required | OK | `1960a201f17b` |
 | `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` | LLM Fleet Strategy v4.1 — Final Execution Revision | active_keep | OK | `c0f8815dff83` |
 | `docs/LLM_SPEND.md` | LLM and paid-API spend | review_required | OK | `e521d5cc3153` |
-| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Trade AI v12 -- Master System Documentation | active_keep | OK | `a5b7c62c8d9d` |
+| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Trade AI v12 -- Master System Documentation | active_keep | OK | `2225bc09d713` |
 | `docs/MISSION_LOG_2026_07_04_05.md` | Mission Log — 2026-07-04/05 (Due Diligence · Discovery Inbox · Incident Sweep) | review_required | OK | `424f1859cb37` |
 | `docs/MOMENTUM_SCALP_REGIME_DETECTION_ALGORITHM.md` | Momentum Scalp Regime Detection Algorithm | review_required | OK | `32c77f1fbc37` |
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | Momentum Scalp — Stop & Trailing-Stop Policy | review_required | OK | `354954d22052` |
@@ -586,7 +586,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/atm_audit_2026_05_26/atm_reenable_risk_register.md` | ATM Re-enable Risk Register | review_required | OK | `f14075bc802b` |
 | `docs/atm_audit_2026_05_26/cron_snapshot/ATM_CRON_MAP.md` | ATM Cron Map — Audit 2026-05-26 | review_required | OK | `2cdadd59ec6a` |
 | `docs/atm_audit_2026_05_26/designer_review/P05B_CONTROL_HARDENING_REPORT.md` | P0.5B Control Hardening Report | review_required | OK | `9062d3ac767a` |
-| `docs/atm_audit_2026_05_26/designer_review/POST_FIX_SOURCE_MANIFEST.md` | POST-FIX SOURCE MANIFEST | review_required | OK | `3d546e145417` |
+| `docs/atm_audit_2026_05_26/designer_review/POST_FIX_SOURCE_MANIFEST.md` | POST-FIX SOURCE MANIFEST | review_required | OK | `ceec00f21f07` |
 | `docs/atm_audit_2026_05_26/designer_review/alert_routing_direct_sender_audit.md` | Direct Telegram Sender Audit | review_required | OK | `2bfe91c0828e` |
 | `docs/atm_audit_2026_05_26/log_evidence/INCIDENT_TIMELINE_EVIDENCE.md` | Incident Timeline Evidence -- ATM Audit 2026-05-26 | review_required | OK | `c751a09a0faa` |
 | `docs/atm_audit_2026_05_26/remediation_plan/P0_REMEDIATION_PLAN.md` | P0 Remediation Plan — ATM Incident 2026-05-26 | review_required | OK | `cc2fd53bac6b` |
