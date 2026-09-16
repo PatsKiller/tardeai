@@ -267,18 +267,38 @@ def test_the_gap_receipt_names_the_provider_that_actually_answered(tmp_path: Pat
 
 
 def test_the_monitor_reports_refusals_that_went_nowhere():
-    from scripts.check_gap_resolution import REFUSED_THRESHOLD, refused_nowhere
+    """The window is days, not 'today' — the bug this test now pins.
+
+    Shipped 2026-09-16, the finding filtered `ts[:10] != now.date()`. It therefore
+    reported **0** while 129 standing `spilled_to: null` receipts sat in the live
+    ledger: it was blind to exactly the condition it exists to catch. A refusal
+    that went nowhere does not stop mattering at midnight.
+    """
+    from scripts.check_gap_resolution import (
+        REFUSED_THRESHOLD, REFUSED_WINDOW_DAYS, refused_nowhere,
+    )
 
     now = datetime(2026, 9, 16, 12, 0, tzinfo=timezone.utc)
-    day = "2026-09-16T09:00:00+00:00"
-    rows = [{"ts": day, "caller": "producer", "reason": "CALLER_DAILY_CAP", "spilled_to": None}
-            for _ in range(REFUSED_THRESHOLD)]
-    rows.append({"ts": day, "caller": "producer", "reason": "DAILY_EXHAUSTED", "spilled_to": "searxng"})
-    rows.append({"ts": "2026-09-15T09:00:00+00:00", "caller": "producer",
-                 "reason": "CALLER_DAILY_CAP", "spilled_to": None})
+    yesterday = "2026-09-15T09:00:00+00:00"          # inside a 7-day window
+    long_ago = "2026-08-01T09:00:00+00:00"           # outside it
 
-    found = refused_nowhere(rows, now=now)
-    assert found == [{"caller": "producer", "reason": "CALLER_DAILY_CAP",
-                      "refused_today": REFUSED_THRESHOLD}]
+    # Refusals from a PREVIOUS day must still be reported.
+    rows = [{"ts": yesterday, "caller": "producer", "reason": "CALLER_DAILY_CAP",
+             "spilled_to": None} for _ in range(REFUSED_THRESHOLD)]
     # An answered refusal is governance working, not a finding.
-    assert refused_nowhere(rows[REFUSED_THRESHOLD:], now=now) == []
+    rows.append({"ts": yesterday, "caller": "producer", "reason": "DAILY_EXHAUSTED",
+                 "spilled_to": "searxng"})
+    # Older than the window: excluded, so the finding cannot grow without bound.
+    rows += [{"ts": long_ago, "caller": "producer", "reason": "CALLER_DAILY_CAP",
+              "spilled_to": None} for _ in range(50)]
+
+    assert refused_nowhere(rows, now=now) == [{
+        "caller": "producer", "reason": "CALLER_DAILY_CAP",
+        "refused_in_window": REFUSED_THRESHOLD, "window_days": REFUSED_WINDOW_DAYS,
+    }]
+
+    # The regression itself: a one-day window must NOT see yesterday's refusals.
+    assert refused_nowhere(rows, now=now, window_days=1) == []
+
+    # Answered refusals alone are never a finding.
+    assert refused_nowhere(rows[REFUSED_THRESHOLD:REFUSED_THRESHOLD + 1], now=now) == []
