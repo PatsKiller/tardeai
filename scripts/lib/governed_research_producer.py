@@ -104,6 +104,10 @@ class ProducerResult:
     #: Questions the paid router refused with CALLER_DAILY_CAP that the free
     #: provider answered instead. Neither a failure nor a paid call.
     free_answered: int = 0
+    #: Refusal receipts amended to name the lane that answered. Amended only AFTER the
+    #: answer is durable, so ``free_answered - spills_recorded`` is the number of
+    #: rescues this pass could not prove and will re-ask next pass.
+    spills_recorded: int = 0
     eligible: int = 0
     outcome: str = "nothing_eligible"  # nothing_eligible | produced | broken | disabled
     errors: list[str] = field(default_factory=list)
@@ -119,6 +123,8 @@ class ProducerResult:
             "deduped": self.deduped,
             "failed": self.failed,
             "budget_denied": self.budget_denied,
+            "free_answered": self.free_answered,
+            "spills_recorded": self.spills_recorded,
             "eligible": self.eligible,
             "outcome": self.outcome,
             "errors": list(self.errors),
@@ -309,6 +315,10 @@ def produce_research(
 
     feed_id_set = _feed_ids(fp) if fp else set()
     new_rows: list[dict] = []
+    #: Receipt amendments owed, deferred until the answer they describe is durable.
+    #: See the write-ordering note at the rescue site below.
+    pending_spills: list[tuple[dict, str]] = []
+    spills_recorded = 0
     produced = 0
     deduped = 0
     failed = 0
@@ -319,6 +329,7 @@ def produce_research(
 
     for t in resolved:
         sym, sg, query = t["symbol"], t["subject_guid"], t["query"]
+        pending_spill: tuple[dict, str] | None = None
         idem = f"grp|{sym}|{query}|{sha}"
         resp = router.search(
             query,
@@ -352,8 +363,21 @@ def produce_research(
                 )
                 if free.ok and free.results:
                     rescued = free
+                    # Write ordering, deliberately: the durable effect FIRST, the claim
+                    # about it second. Amending the receipt here opened a crash window —
+                    # the feed append is many lines below, so a crash in between left a
+                    # receipt saying "searxng answered this" with the answer nowhere on
+                    # disk. That is the worst of the two possible inconsistencies: the
+                    # REFUSED_NOWHERE monitor reads spilled_to and reports the question
+                    # as handled, so a silently dropped answer is never re-asked.
+                    #
+                    # Deferring the amendment inverts it. A crash before the append now
+                    # leaves spilled_to null — which is TRUE, nothing was durably
+                    # answered — the monitor counts it, and the next scheduled pass
+                    # re-asks the same query and dedupes by research_id if it lands
+                    # twice. The failure mode becomes loud, honest, and self-healing.
                     if resp.receipt:
-                        search_budget.mark_spilled(resp.receipt, free.provider, root=root)
+                        pending_spill = (resp.receipt, free.provider)
                     free_answered += 1
                 else:
                     errors.append(f"{sym}:FREE_FALLBACK:{free.reason}")
@@ -371,6 +395,9 @@ def produce_research(
             # object, and not a producer break. Counted as eligible-but-empty.
             continue
 
+        # Results for THIS target that are (or are about to be) on disk. A rescued
+        # question may only claim a lane if at least one of them is.
+        durable_here = 0
         for r in results:
             url = str(r.get("url") or "").strip()
             if not url:
@@ -397,15 +424,32 @@ def produce_research(
             rid = ro.research_id
             if rid in feed_id_set:
                 deduped += 1
+                durable_here += 1   # already on disk from an earlier pass
                 continue
             row = _build_feed_row(ro, symbol=sym, subject_guid=sg, sha=sha, trigger=trigger)
             new_rows.append(row)
             feed_id_set.add(rid)
             produced += 1
+            durable_here += 1       # pending the append below
             last_success = _iso(now)
+
+        if pending_spill:
+            if durable_here:
+                pending_spills.append(pending_spill)
+            else:
+                # The free lane answered but nothing survived (no usable URL). Leaving
+                # spilled_to null is correct: the question really did end up nowhere.
+                errors.append(f"{sym}:FREE_ANSWER_UNUSABLE")
 
     if fp and new_rows:
         _append_feed(fp, new_rows)
+
+    # Only now — the answers these receipts name are on disk (or were already). An
+    # exception above means this never runs, and the receipts still read "refused,
+    # went nowhere", which is exactly what happened.
+    for _receipt, _provider in pending_spills:
+        if search_budget.mark_spilled(_receipt, _provider, root=root):
+            spills_recorded += 1
 
     total_rows = len(_load_feed(fp)) if fp else 0
     outcome = "produced" if produced else ("broken" if failed else "nothing_eligible")
@@ -423,6 +467,9 @@ def produce_research(
                 "failed": failed,
                 "budget_denied": budget_denied,
                 "free_answered": free_answered,
+                # free_answered > spills_recorded means a rescue could not be proven
+                # durable this pass; it will be re-asked, not quietly written off.
+                "spills_recorded": spills_recorded,
                 "errors": errors,
                 "feed_rows": total_rows,
                 "last_success_at": last_success,
@@ -434,6 +481,7 @@ def produce_research(
     return ProducerResult(
         ok=produced > 0,
         free_answered=free_answered,
+        spills_recorded=spills_recorded,
         produced=produced,
         deduped=deduped,
         failed=failed,
