@@ -385,9 +385,20 @@ def _alert(report: dict) -> int:
 
 
 def _deliver_telegram(msg: str):
-    """Send, and hand back the provider message id so the row can carry it."""
+    """Route through the classifier; hand back the provider message id.
+
+    RAW-store lane health is machine telemetry, not an investment page. The
+    former `bypass_router=True` sent this heartbeat straight to the operator DM
+    (~40x/day: budget_throttled, chatgpt error_rate_24h, lane-registry SILENT —
+    measured 80 messages over 3 days). Routed through the classifier the header
+    "⚠️ *Research lane RAW-store health*" is `job_telemetry`, which
+    operator_alert_policy_v2.route_event() already routes DIGEST — so it lands in
+    the reports archive (v3 Reports portal / P1 digest), never the phone. This
+    only stops bypassing the policy that already classifies system health as
+    non-interrupt; it changes no classification.
+    """
     import telegram_alert as _ta
-    _ta.send_telegram(msg, bypass_router=True)
+    _ta.send_telegram(msg, bypass_router=False)
     return getattr(_ta, "last_message_id", lambda: None)()
 
 
