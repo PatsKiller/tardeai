@@ -173,6 +173,11 @@ def test_main_exits_1_on_split_and_writes_receipt(split, monkeypatch, capsys):
 
 
 def test_main_exits_0_when_every_dir_is_linked(linked, monkeypatch, tmp_path):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     dev, served = linked
     # the other six dirs absent on both sides would be MISSING; declare only runtime here.
     monkeypatch.setattr(scs, "SPLIT_DIRS", ("runtime",))
@@ -185,6 +190,11 @@ def test_main_exits_0_when_every_dir_is_linked(linked, monkeypatch, tmp_path):
 
 
 def test_main_refuses_to_run_without_a_served_root(tmp_path, monkeypatch):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     monkeypatch.setattr(sys, "argv", ["x", "--dev-root", str(tmp_path), "--served-root", str(tmp_path / "nope")])
     assert scs.main() == 2
 
@@ -203,6 +213,11 @@ class _Capture:
 
 @pytest.fixture
 def wired(monkeypatch, tmp_path):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     cap = _Capture()
     mod = types.ModuleType("telegram_alert")
     mod.send_telegram = cap.send_telegram
@@ -248,6 +263,11 @@ def test_recovery_is_announced_once(wired):
 
 
 def test_a_send_failure_does_not_advance_state(monkeypatch, tmp_path, capsys):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     def _boom(message, **kwargs):
         raise RuntimeError("transport down")
     mod = types.ModuleType("telegram_alert")

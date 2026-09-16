@@ -304,6 +304,11 @@ class _Captured:
 
 @pytest.fixture
 def wired(monkeypatch, tmp_path):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     cap = _Captured()
     mod = type(sys)("telegram_alert")
     mod.send_telegram = cap.send_telegram
@@ -341,15 +346,22 @@ def test_a_newly_unhealthy_source_escalates_to_an_interrupt(wired):
 
 
 def test_an_unchanged_off_set_stays_silent(wired):
-    cdh.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    cdh.STATE_PATH.write_text(json.dumps({"fingerprint": {"yahoo_finance": "unknown"}}))
+    """Quiet inside the window — but no longer quiet forever.
+
+    finnhub returned 401 for fifty-one days on the strength of this rule. The
+    silence is now bounded by the shared state machine's 6-hour heartbeat; see
+    tests/test_alert_transition_20260916.py.
+    """
+    cdh._alert([_off_yahoo()])
+    assert len(wired.sent) == 1
+    wired.sent.clear()
     cdh._alert([_off_yahoo()])
     assert wired.sent == []
 
 
 def test_recovery_is_reported_once(wired):
-    cdh.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    cdh.STATE_PATH.write_text(json.dumps({"fingerprint": {"yahoo_finance": "unknown"}}))
+    cdh._alert([_off_yahoo()])
+    wired.sent.clear()
     cdh._alert([])
     assert len(wired.sent) == 1 and "✅" in wired.sent[0]
     cdh._alert([])
@@ -357,6 +369,11 @@ def test_recovery_is_reported_once(wired):
 
 
 def test_a_send_failure_does_not_advance_state(monkeypatch, tmp_path, capsys):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     mod = type(sys)("telegram_alert")
 
     def _boom(message, **kwargs):

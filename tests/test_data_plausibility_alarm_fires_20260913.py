@@ -99,24 +99,39 @@ def test_a_new_violation_escalates_to_an_interrupt(wired):
 
 
 def test_a_known_open_violation_does_not_escalate(wired, tmp_path):
-    """Already-reported debt must not interrupt, or the alarm becomes wallpaper."""
-    bad = _violation("trade_ai_scans", "catalyst_confidence", 915, 5311)
-    # It was already reported, at a different count.
-    dpm.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    dpm.STATE_PATH.write_text(json.dumps({"fingerprint": {"trade_ai_scans.catalyst_confidence": 900}}))
+    """Already-reported debt must not interrupt, or the alarm becomes wallpaper.
 
+    Primed by a real first run at a different count, so the "already reported"
+    state is the one the shared state machine actually keeps.
+    """
+    first = _violation("trade_ai_scans", "catalyst_confidence", 900, 5311)
+    dpm._alert([first], [first])
+    wired.sent.clear()
+
+    bad = _violation("trade_ai_scans", "catalyst_confidence", 915, 5311)
     dpm._alert([bad], [bad])
 
     body = wired.sent[0]["message"]
     assert "CRITICAL" not in body, "a known-open violation must not interrupt"
     assert "trade_ai_scans.catalyst_confidence" in body
+    assert "NEW since the last run" not in body, "the column was already reported"
+
+
+def test_a_changed_count_is_news_and_re_alerts(wired):
+    """A violation going from 8 rows to 900 is not 'unchanged'."""
+    dpm._alert([_violation("symbol_profiles", "ytd_return_pct", 8, 2945)],
+               [_violation("symbol_profiles", "ytd_return_pct", 8, 2945)])
+    wired.sent.clear()
+    worse = _violation("symbol_profiles", "ytd_return_pct", 900, 2945)
+    dpm._alert([worse], [worse])
+    assert len(wired.sent) == 1, "a materially changed count must speak"
 
 
 def test_an_unchanged_picture_stays_silent(wired):
     """Same columns, same counts: say nothing rather than train the reader to ignore."""
     bad = _violation("symbol_profiles", "ytd_return_pct", 266, 2945)
-    dpm.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    dpm.STATE_PATH.write_text(json.dumps({"fingerprint": {"symbol_profiles.ytd_return_pct": 266}}))
+    dpm._alert([bad], [bad])
+    wired.sent.clear()
 
     dpm._alert([bad], [bad])
 
@@ -125,8 +140,9 @@ def test_an_unchanged_picture_stays_silent(wired):
 
 def test_recovery_is_reported_once(wired):
     """Going clean is news exactly once."""
-    dpm.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    dpm.STATE_PATH.write_text(json.dumps({"fingerprint": {"symbol_profiles.ytd_return_pct": 266}}))
+    bad = _violation("symbol_profiles", "ytd_return_pct", 266, 2945)
+    dpm._alert([bad], [bad])
+    wired.sent.clear()
 
     dpm._alert([], [])
 
@@ -139,11 +155,14 @@ def test_recovery_is_reported_once(wired):
 
 
 def test_state_is_recorded_so_the_next_run_can_compare(wired):
+    """The finding set is kept — now as the shared machine's condition state."""
     bad = _violation("proposal_agent_reviews", "confidence", 12, 4479)
     dpm._alert([bad], [bad])
 
-    recorded = json.loads(dpm.STATE_PATH.read_text())["fingerprint"]
-    assert recorded == {"proposal_agent_reviews.confidence": 12}
+    doc = json.loads(dpm.STATE_PATH.read_text())
+    condition = doc["conditions"][dpm.CONDITION_KEY]
+    assert json.loads(condition["state"]) == {"proposal_agent_reviews.confidence": 12}
+    assert condition["alertable"] is True
 
 
 def test_a_send_failure_never_masks_the_finding(monkeypatch, tmp_path, capsys):

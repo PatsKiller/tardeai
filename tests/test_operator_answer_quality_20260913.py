@@ -215,6 +215,11 @@ def _event(mid, text, ts, source, kind, pending=None, prov=None):
 
 
 def test_collect_reproduces_the_2026_09_13_incident_from_injected_ledgers(tmp_path, monkeypatch):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     import scripts.lib.cio_operator_desk_loop as desk
     monkeypatch.setattr(desk, "_known_symbols", lambda ttl_s=0: frozenset({"SCHG", "WMT"}))
     ev = tmp_path / "cio_events.jsonl"
@@ -290,6 +295,11 @@ class _Captured:
 
 @pytest.fixture
 def wired(monkeypatch, tmp_path):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     cap = _Captured()
     mod = type(sys)("telegram_alert")
     mod.send_telegram = cap.send_telegram
@@ -327,15 +337,16 @@ def test_alarm_fires_in_operator_words_and_routes_as_an_interrupt(wired):
 
 def test_an_unchanged_finding_set_stays_silent(wired):
     rep = _report(FALSE_EMPTY_CLAIM=[_FEC])
-    oaq.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    oaq.STATE_PATH.write_text(json.dumps({"fingerprint": oaq.fingerprint(rep)}))
+    oaq._alert(rep)
+    assert len(wired.sent) == 1
+    wired.sent.clear()
     oaq._alert(rep)
     assert wired.sent == []
 
 
 def test_recovery_is_reported_once(wired):
-    oaq.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    oaq.STATE_PATH.write_text(json.dumps({"fingerprint": {"NO_SOURCES_LINE:1": "NO_SOURCES_LINE"}}))
+    oaq._alert(_report(FALSE_EMPTY_CLAIM=[_FEC]))
+    wired.sent.clear()
     oaq._alert(_report())
     assert len(wired.sent) == 1 and "✅" in wired.sent[0] and wired.sent[0].startswith(oaq.SENTINEL)
     oaq._alert(_report())
@@ -343,6 +354,11 @@ def test_recovery_is_reported_once(wired):
 
 
 def test_a_send_failure_does_not_advance_state(monkeypatch, tmp_path, capsys):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     mod = type(sys)("telegram_alert")
 
     def _boom(message, **kwargs):
@@ -357,6 +373,11 @@ def test_a_send_failure_does_not_advance_state(monkeypatch, tmp_path, capsys):
 
 
 def test_dry_run_prints_the_alert_but_sends_nothing_and_writes_no_default_receipt(wired, monkeypatch, tmp_path, capsys):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     monkeypatch.setattr(oaq, "collect", lambda: _report(FALSE_EMPTY_CLAIM=[_FEC]) | {
         "data_root": str(tmp_path), "turns": 1, "turns_with_reply": 1, "turns_with_provenance": 0,
         "pending_rows": 0, "reply_source_error": None, "turn_index": []})
@@ -370,6 +391,11 @@ def test_dry_run_prints_the_alert_but_sends_nothing_and_writes_no_default_receip
 
 
 def test_a_scheduled_run_writes_the_receipt(wired, monkeypatch, tmp_path):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     monkeypatch.setattr(oaq, "collect", lambda: _report() | {
         "data_root": str(tmp_path), "turns": 0, "turns_with_reply": 0, "turns_with_provenance": 0,
         "pending_rows": 0, "reply_source_error": None, "turn_index": []})

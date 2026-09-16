@@ -67,6 +67,20 @@ from lib.data_source_health_view import (  # noqa: E402
 
 STATE_PATH = Path.home() / ".local/state/tradeai/data_source_health_last_alert.json"
 
+# APPENDED, never prepended: scripts/lib holds modules whose names collide with
+# top-level scripts (research_lane_health is both), and putting it first made
+# `import research_lane_health` resolve to the library instead of the monitor.
+sys.path.append(str(PROJECT_ROOT / "scripts" / "lib"))
+from alert_transition import (  # noqa: E402
+    TYPE_SYSTEM_HEALTH,
+    evaluate,
+    fingerprint_state,
+    previous_fingerprint,
+)
+
+#: Durable identity for this condition in the shared alert state machine.
+CONDITION_KEY = "platform_availability:data_source_health"
+
 SCHEMA = "DataSourceHealthReport@v1"
 RECEIPT_NAME = "data_source_health_last_run.json"
 
@@ -408,35 +422,47 @@ def build_alert_body(off: list[dict], previous: dict, now: Optional[datetime] = 
 
 
 def _alert(off: list[dict]) -> None:
-    """Notify only when the not-healthy set changes. Never raises."""
-    fingerprint = {r["source_key"]: r["status"] for r in off}
-    previous = {}
-    try:
-        previous = json.loads(STATE_PATH.read_text()).get("fingerprint", {})
-    except (OSError, ValueError):
-        pass
+    """Notify when the not-healthy set changes, and on a heartbeat. Never raises.
 
-    if fingerprint == previous:
-        print("\n  alert: suppressed -- unchanged since the last run.")
+    finnhub returned 401 for fifty-one days and was mentioned once, because
+    "unchanged" was read as "not worth saying". The shared state machine bounds
+    that silence at six hours (OPERATIONS.md:71-75).
+    """
+    fingerprint = {r["source_key"]: r["status"] for r in off}
+    t = evaluate(
+        CONDITION_KEY,
+        fingerprint_state(fingerprint),
+        alertable=bool(fingerprint),
+        path=STATE_PATH,
+    )
+    if not t.notify:
+        print(f"\n  alert: {t.quiet_reason()}")
         return
+    previous = previous_fingerprint(t.previous)
 
     body = build_alert_body(off, previous)
 
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-        from telegram_alert import send_telegram
+        import telegram_alert as _ta
 
-        ok = send_telegram(body, message_class="operator_alert")
+        ok = _ta.send_telegram(body, message_class="operator_alert")
+        message_id = getattr(_ta, "last_message_id", lambda: None)()
         print(f"\n  alert: {'accepted' if ok else 'NOT accepted'} by the platform")
     except Exception as exc:
+        t.rollback()
         print(f"\n  alert: FAILED to send ({exc}). The findings above still stand.", file=sys.stderr)
         return
 
-    try:
-        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text(json.dumps({"fingerprint": fingerprint}, indent=2))
-    except OSError as exc:
-        print(f"  alert: could not record state ({exc}).", file=sys.stderr)
+    rec = t.commit(
+        body=body,
+        alert_type=TYPE_SYSTEM_HEALTH,
+        source_script="check_data_source_health.py",
+        telegram_message_id=message_id,
+        payload={"sources_off": sorted(fingerprint)},
+    )
+    print(f"  alert: {t.action} recorded (message_id={message_id}, "
+          f"alert_event={rec['alert_event_id']}, resolved={rec['resolved_rows']})")
 
 
 if __name__ == "__main__":

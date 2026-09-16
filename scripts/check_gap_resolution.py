@@ -63,8 +63,19 @@ FAIL_THRESHOLD = 3
 #: attention. One or two is a cap doing its job at the margin; a handful every
 #: day is a lane whose questions are never being asked anywhere.
 REFUSED_THRESHOLD = 5
+#: How far back REFUSED_NOWHERE looks. NOT "today": the first version of that
+#: finding filtered to the current date and therefore reported 0 while 129
+#: standing `spilled_to: null` receipts sat in the ledger -- the exact condition
+#: it exists to catch. A refusal that went nowhere does not stop mattering at
+#: midnight; it matters until something answers it.
+REFUSED_WINDOW_DAYS = 7
 
-SCHEDULED_ENTRYPOINT = "systemd: tradeai-gap-resolution.timer -- every 30 min at :07/:37 (proposed, not installed)"
+#: Measured 2026-09-16, not asserted: `systemctl --user list-timers` shows this
+#: timer ACTIVE, last run 11:38 EDT, next 12:07. The previous value of this
+#: string said "(proposed, not installed)" and had drifted -- a declaration the
+#: dark-contract gate accepts as fact and never probes, which is the same class
+#: of defect this script exists to report. Re-verify before editing.
+SCHEDULED_ENTRYPOINT = "systemd: tradeai-gap-resolution.timer -- every 30 min at :07/:37 (INSTALLED, active; verified 2026-09-16)"
 
 
 def _parse_ts(v) -> datetime | None:
@@ -145,21 +156,34 @@ def retired_ran(receipts: list[dict], retired: frozenset[str]) -> list[dict]:
 
 
 def refused_nowhere(rows: list[dict], *, now: datetime,
-                    threshold: int = REFUSED_THRESHOLD) -> list[dict]:
-    """Search denials today that went nowhere. Pure.
+                    threshold: int = REFUSED_THRESHOLD,
+                    window_days: int = REFUSED_WINDOW_DAYS) -> list[dict]:
+    """Search denials in the last ``window_days`` that went nowhere. Pure.
 
     ``spilled_to: null`` is the ledger saying this question was refused and then
     asked of no one. Grouped by caller+reason so one cron shape does not print
     seventy identical lines; a group is reported once it clears ``threshold``.
+
+    **Why the window is not "today" (fixed 2026-09-16).** The first version of
+    this finding filtered ``ts[:10] != now.date()``, so it reported **0** while
+    129 standing ``spilled_to: null`` receipts sat in the ledger — the exact
+    condition it was written to catch. A refusal that went nowhere does not stop
+    mattering at midnight; it matters until something answers it. The window is
+    a parameter so the caller may narrow it, and it defaults to a week.
     """
-    day = now.date().isoformat()
+    # N days means today plus the N-1 days before it, so window_days=1 is "today
+    # only" and window_days=7 is a calendar week including today. Computing
+    # `now - N days` instead would make "1 day" silently span two dates.
+    cutoff = (now - timedelta(days=max(1, int(window_days)) - 1)).date().isoformat()
     counts: dict[tuple[str, str], int] = {}
     for r in rows:
-        if str(r.get("ts") or "")[:10] != day or r.get("spilled_to"):
+        ts = str(r.get("ts") or "")[:10]
+        if not ts or ts < cutoff or r.get("spilled_to"):
             continue
         key = (str(r.get("caller") or "?"), str(r.get("reason") or "?"))
         counts[key] = counts.get(key, 0) + 1
-    return [{"caller": c, "reason": rs, "refused_today": n}
+    return [{"caller": c, "reason": rs, "refused_in_window": n,
+             "window_days": int(window_days)}
             for (c, rs), n in sorted(counts.items()) if n >= threshold]
 
 
@@ -264,7 +288,7 @@ def _alert(report: dict) -> None:
         for r in f["RETIRED_RAN"]:
             lines.append(f"• [RETIRED_RAN] {r['vector']} ran {r['provider']} → {r['outcome']} ({r['started']})")
         for r in f.get("REFUSED_NOWHERE", []):
-            lines.append(f"• [REFUSED_NOWHERE] {r['caller']}: {r['refused_today']} searches refused today "
+            lines.append(f"• [REFUSED_NOWHERE] {r['caller']}: {r['refused_in_window']} searches refused in {r['window_days']}d "
                          f"({r['reason']}) and asked of no other lane")
         for v in f["VECTOR_FAILING"]:
             lines.append(f"• [VECTOR_FAILING] {v['vector']}: {v['errors_today']} errors today")
@@ -320,7 +344,7 @@ def main() -> int:
         for r in f["RETIRED_RAN"]:
             print(f"  [RETIRED_RAN     ] {r['vector']} ran {r['provider']} → {r['outcome']}")
         for r in f.get("REFUSED_NOWHERE", []):
-            print(f"  [REFUSED_NOWHERE ] {r['caller']}: {r['refused_today']} refused today ({r['reason']})")
+            print(f"  [REFUSED_NOWHERE ] {r['caller']}: {r['refused_in_window']} refused in {r['window_days']}d ({r['reason']})")
         for v in f["VECTOR_FAILING"]:
             print(f"  [VECTOR_FAILING  ] {v['vector']}: {v['errors_today']} errors today")
         for g in f["OPEN_NO_ATTEMPT"]:

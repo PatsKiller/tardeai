@@ -12,6 +12,10 @@ import tempfile as _tempfile
 # The audit ledger is production evidence. No test may write to the live JSONL or mirror into the
 # audit_ledger_events table (R-01, 2026-09-15). Set before any test module imports audit_ledger.
 os.environ["TRADEAI_AUDIT_LEDGER_DB"] = "0"
+# alert_events rows are production evidence too: the condition monitors now record
+# a row per transition, and a unit test driving _alert() must not mint one in the
+# live database. A test that wants to prove recording works injects a fake writer.
+os.environ["TRADEAI_ALERT_EVENT_DB"] = "0"
 os.environ["TRADEAI_AUDIT_LEDGER_DIR"] = _tempfile.mkdtemp(prefix="tradeai_audit_ledger_tests_")
 # The host's Comms Editor mode file (live since the operator promoted it) must not decide what a test
 # sends: in live mode deliver_text holds the message, and test_plaintext_fallback_actually_unescapes_on_the_wire
@@ -251,9 +255,15 @@ def alarm_capture(monkeypatch):
 
     cap = Captured()
 
+    # The real transport returns a provider message_id, and the alert plane now
+    # stores it on the alert_events row so an alert can be acknowledged. A fake
+    # that omits it cannot observe that the id survives the trip.
+    _next_id = [9000]
+
     def _fake_send_message(token=None, chat_id=None, text="", **kw):
         cap.transport.append({"chat_id": chat_id, "text": text})
-        return {"ok": True, "status_code": 200}
+        _next_id[0] += 1
+        return {"ok": True, "status_code": 200, "message_id": _next_id[0]}
 
     # Bound into telegram_alert's namespace by `from telegram_transport import ...`,
     # so patching the source module alone would not intercept it.
@@ -323,6 +333,30 @@ def _production_receipt_write_barrier(monkeypatch):
             return None
         import psycopg
         return psycopg.connect(isolated)
+
+    # 2026-09-16: the identity spine is a SEVENTH boundary this barrier did not
+    # reach, and it wrote to production exactly as the cases below did.
+    # cio_identity_spine._connect() opens its own connection, so nothing named
+    # _db_conn covers it. The credential arrives indirectly: the alarm_capture
+    # fixture imports telegram_alert, which at module scope calls
+    # env_bootstrap.ensure_loaded() -- legitimate production behaviour -- and that
+    # loads /run/user/1000/tradeai/env, putting DB_PASSWORD into the process.
+    # DB_PASSWORD is therefore UNSET at collection and SET from the first
+    # alarm-fires test onward, so register_on_spine() stopped returning None and
+    # committed a real edge row into narrative_subjects
+    # (link_guid 92e92711-60e7-5b05-a073-6a8432ead100, 2026-09-16 12:33:00-05:00).
+    # test_no_database_means_no_claim passes alone and fails after any suite that
+    # imports the alarm path -- a control that was green only by test ordering.
+    # Returning None routes register_on_spine() to its documented "no edge exists"
+    # path, which is what the offline tests assert against; a test that genuinely
+    # needs a database sets TRADEAI_TEST_ISOLATED_DSN like every case above.
+    for _spine_mod in ("scripts.lib.cio_identity_spine", "cio_identity_spine"):
+        try:
+            _m = importlib.import_module(_spine_mod)
+        except Exception:
+            continue
+        if hasattr(_m, "_connect"):
+            monkeypatch.setattr(_m, "_connect", _barrier, raising=False)
 
     # DISCOVER every connection boundary; never enumerate by name.
     #

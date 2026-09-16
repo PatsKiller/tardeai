@@ -563,7 +563,31 @@ def persist(cur, change: dict, narrative: list, questions: list, meta: dict,
              q.get("what_would_settle_it"), json.dumps(q["cites"]),
              meta.get("lane"), meta.get("model"), SCHEMA_QUESTION, AUTHORITY))
         written += cur.rowcount
+        _register_question_on_spine(cur, qguid, change)
     return nguid, written
+
+
+def _register_question_on_spine(cur, qguid: str, change: dict) -> None:
+    """Register this question_guid on the subject spine, on the same cursor.
+
+    Same transaction as the question itself, so the question and its edge commit
+    together or not at all. The guid is unchanged -- it stays the uuid5 over
+    `subject_guid|change_guid|text` this module has always minted; what it gains
+    is a row that joins it to the gap and the goal about the same subject.
+
+    The change already carries a resolved `subject_guid`, so nothing is looked
+    up and nothing is minted. Fail-safe: a link is never worth losing a question.
+    """
+    sguid = change.get("subject_guid")
+    if not sguid:
+        return
+    try:
+        from scripts.lib.cio_identity_spine import register_on_spine
+
+        register_on_spine("due_diligence_questions", qguid, str(sguid),
+                          cur=cur, semantic_subject=change.get("symbol"))
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def route(cur, limit: int) -> dict:

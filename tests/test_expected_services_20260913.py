@@ -180,6 +180,11 @@ class _Captured:
 
 @pytest.fixture
 def wired(monkeypatch, tmp_path):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     cap = _Captured()
     mod = type(sys)("telegram_alert")
     mod.send_telegram = cap.send_telegram
@@ -215,15 +220,24 @@ def test_a_newly_off_service_escalates_to_an_interrupt(wired):
 
 
 def test_an_unchanged_off_set_stays_silent(wired):
-    ces.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ces.STATE_PATH.write_text(json.dumps({"fingerprint": {"a.service": "FAILED"}}))
-    ces._alert([{"name": "a.service", "status": "FAILED"}])
+    """Still quiet inside the window \u2014 the state is primed by a real first run.
+
+    It used to be primed by writing a `{"fingerprint": ...}` file this module
+    owned. Suppression is now the shared state machine's
+    (scripts/lib/alert_transition.py), so the honest way to establish "already
+    reported" is to report it.
+    """
+    off = [{"name": "a.service", "status": "FAILED"}]
+    ces._alert(off)
+    assert len(wired.sent) == 1
+    wired.sent.clear()
+    ces._alert(off)
     assert wired.sent == []
 
 
 def test_recovery_is_reported_once(wired):
-    ces.STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    ces.STATE_PATH.write_text(json.dumps({"fingerprint": {"a.service": "FAILED"}}))
+    ces._alert([{"name": "a.service", "status": "FAILED"}])
+    wired.sent.clear()
     ces._alert([])
     assert len(wired.sent) == 1 and "\u2705" in wired.sent[0]
     ces._alert([])
@@ -231,6 +245,11 @@ def test_recovery_is_reported_once(wired):
 
 
 def test_a_send_failure_does_not_advance_state(monkeypatch, tmp_path, capsys):
+    # The migrated monitors resolve ONE shared alert_condition_state.json.
+    # Without this redirect these suites share it with each other inside a
+    # single pytest session, which is a cross-suite leakage path (observed
+    # once as a spurious failure of the silence/recovery assertions).
+    monkeypatch.setenv("TRADEAI_ALERT_STATE_PATH", str(tmp_path / "alert_state.json"))
     mod = type(sys)("telegram_alert")
 
     def _boom(message, **kwargs):

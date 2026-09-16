@@ -54,6 +54,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CURRENT = Path("/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT")
 STATE_PATH = Path.home() / ".local/state/tradeai/served_copy_split_last_alert.json"
 
+# APPENDED, never prepended: scripts/lib holds modules whose names collide with
+# top-level scripts (research_lane_health is both), and putting it first made
+# `import research_lane_health` resolve to the library instead of the monitor.
+sys.path.append(str(PROJECT_ROOT / "scripts" / "lib"))
+from alert_transition import (  # noqa: E402
+    TYPE_SYSTEM_HEALTH,
+    evaluate,
+    fingerprint_state,
+    previous_fingerprint,
+)
+
+#: Durable identity for this condition in the shared alert state machine.
+CONDITION_KEY = "platform_availability:served_copy_split"
+
 SCHEMA = "ServedCopySplitReport@v1"
 RECEIPT_NAME = "served_copy_split_last_run.json"
 
@@ -213,15 +227,28 @@ def _write_run_receipt(findings: list[dict]) -> None:
 
 
 def _alert(findings: list[dict]) -> None:
-    """Notify on CHANGE of the split-set, with a recovery message when it clears."""
+    """Notify on CHANGE of the split-set, with a recovery message when it clears.
+
+    Suppression, escalation and the 6-hour heartbeat are the shared state
+    machine's decision (scripts/lib/alert_transition.py), not this file's. This
+    used to be eleven lines of fingerprint comparison written here and in six
+    other monitors, and a split that never healed was announced exactly once.
+    """
     bad = [f for f in findings if f["status"] != "LINKED"]
     fingerprint = {f["dir"]: f["status"] for f in bad}
-    try:
-        previous = json.loads(STATE_PATH.read_text()).get("fingerprint", {})
-    except (OSError, ValueError):
-        previous = {}
-    if fingerprint == previous:
+    # Named `transition`, not `t`: the body builder below binds `t` as its
+    # per-trip loop variable, and reusing the name silently replaced the
+    # transition with a trip dict on the archive-tripwire path.
+    transition = evaluate(
+        CONDITION_KEY,
+        fingerprint_state(fingerprint),
+        alertable=bool(fingerprint),
+        path=STATE_PATH,
+    )
+    if not transition.notify:
+        print(f"  alert: {transition.quiet_reason()}")
         return
+    previous = previous_fingerprint(transition.previous)
     if not fingerprint:
         body = (
             "[PLATFORM_AVAILABILITY] ✅ Served-copy split cleared: every state directory "
@@ -248,19 +275,26 @@ def _alert(findings: list[dict]) -> None:
         body = "\n".join(lines)
     try:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-        from telegram_alert import send_telegram
-        ok = send_telegram(body, message_class="operator_alert")
+        import telegram_alert as _ta
+        ok = _ta.send_telegram(body, message_class="operator_alert")
+        message_id = getattr(_ta, "last_message_id", lambda: None)()
     except Exception as exc:  # noqa: BLE001
+        transition.rollback()
         print(f"  alert: send failed ({exc}); state not advanced", file=sys.stderr)
         return
     if not ok:
+        transition.rollback()
         print("  alert: transport returned falsy; state not advanced", file=sys.stderr)
         return
-    try:
-        STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text(json.dumps({"fingerprint": fingerprint}, indent=2))
-    except OSError as exc:
-        print(f"  alert: could not persist state ({exc})", file=sys.stderr)
+    rec = transition.commit(
+        body=body,
+        alert_type=TYPE_SYSTEM_HEALTH,
+        source_script="check_served_copy_split.py",
+        telegram_message_id=message_id,
+        payload={"split_dirs": sorted(fingerprint)},
+    )
+    print(f"  alert: {transition.action} sent (message_id={message_id}, "
+          f"alert_event={rec['alert_event_id']}, resolved={rec['resolved_rows']})")
 
 
 def main() -> int:

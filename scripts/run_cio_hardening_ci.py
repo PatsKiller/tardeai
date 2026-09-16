@@ -664,6 +664,15 @@ GATES = [
             # request is metered and refunded; the receipt records which lane
             # answered; and a monitor reports refusals nobody answered at all.
             "tests/test_free_search_fallback_20260916.py",
+            # 2026-09-16 P0/P1: the goal-loop control measurement and the identity
+            # spine that makes goal/gap/question joinable without renumbering.
+            "tests/test_identity_spine_20260916.py",
+            # A NaN must not silently destroy a write, and a rescue must not be
+            # claimed before the answer is durable.
+            "tests/test_watchlist_snapshot_nonfinite_20260916.py",
+            # An alert must survive past its first send: one shared transition
+            # engine instead of seven private fingerprint blocks.
+            "tests/test_alert_transition_20260916.py",
             # 2026-09-13 litmus tests: answers are symbol-scoped, drawn from house facts
             # (cash/sectors/policy read from the snapshot), and carry a Sources line.
             "tests/test_operator_answers_use_house_facts_20260913.py",

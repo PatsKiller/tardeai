@@ -27,13 +27,26 @@ def test_a_lane_evaluated_ok_is_recorded_ok():
 
 
 def test_unchanged_firing_lane_carries_the_current_row_not_the_old_one(monkeypatch, tmp_path):
+    """The suppressed row must still carry today's evidence.
+
+    The lane is primed by a real first alert, because the suppression decision
+    now lives in the shared state machine rather than in this file's lane map —
+    and _deliver_telegram is stubbed so the check never reaches the network.
+    """
     monkeypatch.setattr(rlh, "STATUS_PATH", tmp_path / "research_lane_health.json")
-    rlh._save_state("2026-09-15T12:08:12+00:00", {"drive-sync": {
-        "lane": "drive-sync", "ok": False, "firing": ["exit_code:1"], "exit_code": 1, "finished_utc": "2026-09-15T12:07:00+00:00",
-        "last_alert": 1789474096, "signature": "drive-sync|exit_code:1", "since": 1789474096}})
-    row = {"lane": "drive-sync", "ok": False, "firing": ["exit_code:1"], "exit_code": 1, "finished_utc": "2026-09-15T15:06:35+00:00"}
-    monkeypatch.setattr(rlh, "send_telegram", lambda *a, **k: True, raising=False)
+    sent = []
+    monkeypatch.setattr(rlh, "_deliver_telegram", lambda msg: sent.append(msg))
+
+    old = {"lane": "drive-sync", "ok": False, "firing": ["exit_code:1"], "exit_code": 1,
+           "finished_utc": "2026-09-15T12:07:00+00:00"}
+    rlh._alert({"as_of": "2026-09-15T12:08:12+00:00", "lanes": [old]})
+    assert len(sent) == 1, "the first observation of a firing lane speaks"
+
+    row = {"lane": "drive-sync", "ok": False, "firing": ["exit_code:1"], "exit_code": 1,
+           "finished_utc": "2026-09-15T15:06:35+00:00"}
     rlh._alert({"as_of": "2026-09-15T16:10:00+00:00", "lanes": [row]})
+    assert len(sent) == 1, "an unchanged lane stays quiet inside its window"
+
     saved = rlh._load_lane_map()["drive-sync"]
     assert saved["finished_utc"] == "2026-09-15T15:06:35+00:00" and saved["suppressed"] is True
 

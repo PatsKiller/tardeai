@@ -691,6 +691,7 @@ def resolve(
     * ``ctx`` carries the clock, receipts path, arm flag and caller hooks.
     """
     ctx = ctx or Context()
+    _register_gap_on_spine(gap)
     impls = dict(DEFAULT_VECTORS)
     impls.update(vectors or {})
     from scripts.lib.free_first_refresh import reject_paid_transition
@@ -804,6 +805,27 @@ def resolve(
             res.outcome = "no_coverage"
     res.evidence = gathered
     return res
+
+
+def _register_gap_on_spine(gap: DataGap) -> Optional[str]:
+    """Register `DataGap.gap_id` under source_table `gap_resolver_gaps`.
+
+    The id is untouched -- it stays the uuid5 over `domain|subject|question`
+    this dataclass has always minted. What changes is that the receipts keyed on
+    it can now be joined to the goal that raised the gap and to the pending
+    reply that answers it, which no id in this file could do.
+
+    `BOOK` and other non-entity subjects resolve to nothing and are skipped:
+    `cio_subject_guid` calls that NOT_APPLICABLE, not unknown.
+
+    Fail-safe: a resolution must never fail because a link could not be written.
+    """
+    try:
+        from scripts.lib.cio_identity_spine import register_symbol_on_spine
+
+        return register_symbol_on_spine("gap_resolver_gaps", gap.gap_id, gap.subject)
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _pinned_provider(vector: str, row: dict[str, Any]) -> Optional[str]:

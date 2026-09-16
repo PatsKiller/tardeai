@@ -739,6 +739,79 @@ def _synthesis_dual(prompt: str, max_tokens: int = 2000):
     return _synthesis_lanes(prompt, lanes=None, max_tokens=max_tokens, manual_trigger=False)
 
 
+def _json_finite(obj):
+    """Replace NaN / ±Infinity floats with None, recursively.
+
+    json.dumps writes them as bare ``NaN`` / ``Infinity``, which is NOT valid JSON and which
+    PostgreSQL rejects outright — taking the whole INSERT with it.
+    """
+    import math as _math
+    if isinstance(obj, float):
+        return obj if _math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: _json_finite(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_finite(v) for v in obj]
+    return obj
+
+
+def _pg_json(obj, field: str = "json") -> str:
+    """Serialise for a Postgres json/jsonb column — strictly, and loudly on non-finite input.
+
+    Measured 2026-09-16 in logs/watchlist_agent_jobs_offpeak.log:
+
+        DETAIL:  Token "NaN" is invalid.
+        CONTEXT:  JSON data, line 1: ..."recent_prices": [{"price": NaN...
+
+    A single non-finite float anywhere in the payload made the entire
+    watchlist_agent_results INSERT fail, so the agent's answer was thrown away while
+    watchlist_items still looked clean — the loss was invisible because exactly one
+    monitor in the repo mentions NaN at all.
+
+    ``allow_nan=False`` moves that failure from the database (opaque, row-destroying)
+    to this writer (named, recoverable): the fast path raises here, and the payload is
+    then written with the offending values nulled, under a grep-able tag, so the row
+    still lands and the defect is on the record. Same shape as
+    ``shadow_decision_service._pg_json``.
+    """
+    try:
+        return json.dumps(obj, default=str, allow_nan=False)
+    except ValueError as e:
+        print(f"  [json-nonfinite] {field}: {e} — non-finite value(s) replaced with null; "
+              f"Postgres would have rejected this row and the write would have been lost",
+              flush=True)
+        return json.dumps(_json_finite(obj), default=str, allow_nan=False)
+
+
+def _finite_price_points(rows) -> tuple[list, int]:
+    """``ticker_prices`` rows → ``[{price, date}]``, non-finite closes removed.
+
+    A Postgres NUMERIC legitimately holds ``NaN``, and ``float(Decimal("NaN"))`` is
+    ``nan`` — so the naive ``float(p["close_price"])`` produced a value json.dumps could
+    not encode. A non-finite close is not a price, it is a *missing* price, so the point
+    is DROPPED rather than nulled: ``recent_prices`` is consumed as a series (the prompt
+    prints it, downstream readers average over it), and a ``null`` entry silently biases
+    any consumer that does not special-case it, whereas a shorter list cannot.
+
+    The drop count is returned so the loss is recorded in the snapshot instead of
+    vanishing — the original defect was silence, not the NaN.
+    """
+    import math as _math
+    out: list = []
+    dropped = 0
+    for p in rows or []:
+        try:
+            v = float(p["close_price"])
+        except (TypeError, ValueError, KeyError, ArithmeticError):
+            dropped += 1
+            continue
+        if not _math.isfinite(v):
+            dropped += 1
+            continue
+        out.append({"price": v, "date": str(p["price_date"])})
+    return out, dropped
+
+
 def _get_context(conn, symbol: str) -> dict:
     """Build rich portfolio context for the agent. Returns dict + formatted string."""
     import psycopg2.extras
@@ -756,6 +829,9 @@ def _get_context(conn, symbol: str) -> dict:
     # Recent prices from DB
     cur.execute("SELECT close_price, price_date FROM ticker_prices WHERE symbol=%s ORDER BY price_date DESC LIMIT 5", (symbol,))
     prices = cur.fetchall()
+    # Sanitise ONCE, here, so the snapshot the agent is judged on and the prompt text it
+    # actually reads can never disagree — and neither can carry a non-finite close.
+    clean_prices, dropped_prices = _finite_price_points(prices)
 
     # Risk data
     rm = json.loads((STATE_DIR / "risk_management.json").read_text()) if (STATE_DIR / "risk_management.json").exists() else {}
@@ -766,7 +842,10 @@ def _get_context(conn, symbol: str) -> dict:
         "position": pos[0] if pos else None,
         "enrichment": {k: e.get(k) for k in ["rsi", "beta", "sector", "industry", "sma20_pct", "sma50_pct", "sma200_pct", "atr", "pe", "forward_pe", "company"]} if e else {},
         "strategy_card": dict(sc) if sc else None,
-        "recent_prices": [{"price": float(p["close_price"]), "date": str(p["price_date"])} for p in prices] if prices else [],
+        "recent_prices": clean_prices,
+        # Not decoration: without it a dropped price is indistinguishable from a symbol
+        # that simply has fewer quotes, which is how the original failure stayed silent.
+        "recent_prices_dropped_nonfinite": dropped_prices,
         "stop": stop_data if stop_data else None,
     }
 
@@ -788,9 +867,13 @@ def _get_context(conn, symbol: str) -> dict:
         ctx += f"Account fit: {sc.get('account_fit', '?')}\n"
     if stop_data:
         ctx += f"Active stop: ${stop_data.get('stop_price', '?')} (status: {stop_data.get('status', '?')})\n"
-    if prices:
-        price_strs = [f"${float(p['close_price']):.2f}" for p in prices[:5]]
+    if clean_prices:
+        price_strs = [f"${p['price']:.2f}" for p in clean_prices[:5]]
         ctx += f"Recent prices: {', '.join(price_strs)}\n"
+    if dropped_prices:
+        # The agent is told what it is NOT being shown, rather than being shown "$nan".
+        ctx += (f"Recent prices: {dropped_prices} stored close(s) were unusable "
+                f"(non-finite) and are excluded from the series above.\n")
 
     # AV news sentiment (pre-scored — no LLM needed)
     try:
@@ -2485,7 +2568,7 @@ CRITICAL INSTRUCTIONS:
           parsed.get("reason_codes", []), conflicts, unresolved,
           next_review, synthesis_narrative,
           [r["agent"] for r in results], actual_model, raw, SYNTHESIS_VERSION_NUM,
-          _grok_rec, _cgpt_rec, dual_meta.get("agree"), json.dumps(dual_meta)))
+          _grok_rec, _cgpt_rec, dual_meta.get("agree"), _pg_json(dual_meta, "dual_consensus_json")))
 
     # Identity for the synthesis narrative. watchlist_final_synthesis is declared
     # "system of record" by the Command Center detail drawer and held 1,184
@@ -2911,7 +2994,7 @@ def process_jobs(limit: int = 10):
               parsed["summary"][:500], parsed["full_narrative"][:3000],
               parsed["recommendation"], parsed["reason_codes"],
               parsed.get("next_action", ""),
-              json.dumps({
+              _pg_json({
                   "raw": raw,
                   "model": getattr(_llm, "_last_model", NO_MODEL),
                   "provider": getattr(_llm, "_last_provider", "unknown"),
@@ -2929,9 +3012,9 @@ def process_jobs(limit: int = 10):
                   "evidence": parsed.get("evidence", []),
                   "data_i_doubt": parsed.get("data_i_doubt", "none"),
                   "number_grounding": number_grounding,
-              }),
+              }, "full_result"),
               getattr(_llm, "_last_model", NO_MODEL), prompt_hash,
-              json.dumps(context["snapshot"], default=str),
+              _pg_json(context["snapshot"], "input_data_snapshot"),
               raw,
               job.get("started_at")))
 
