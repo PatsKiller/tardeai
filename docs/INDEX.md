@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `53031bd3199e876c94e903cac79c699f27740daf3e5ec21f6d56320ddfc4a8a2`
+**Tree fingerprint:** `4948703f0a0d6f06334e27813f03b0b277b3dd2e2a3b09c37a2311c2a2253ef8`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2517 |
-| Markdown (excl. this INDEX) | 2093 |
+| Files under `docs/` (excl. this INDEX) | 2524 |
+| Markdown (excl. this INDEX) | 2100 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2026 |
+| Header OK | 2033 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2146 |
+| review_required | 2153 |
 
 ## Markdown tree
 
@@ -1709,6 +1709,13 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/litmus/LITMUS_MONEY_2026-09-01.md` | Litmus · B money | review_required | OK | `97edd2be6a93` |
 | `docs/ops/litmus/LITMUS_WAKE_2026-09-01.md` | Litmus · E wake | review_required | OK | `abf36821e5af` |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
+| `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary | review_required | OK | `9d8c59f120d4` |
+| `docs/ops/telegram_channel_diligence_20260916/01_CHANNEL_INVENTORY_SOURCE_MAP.md` | Phase 1 — Channel Inventory & Source Mapping | review_required | OK | `6be06281ea6d` |
+| `docs/ops/telegram_channel_diligence_20260916/02_ROUTING_GOVERNANCE_PROPOSAL.md` | Phase 2 — Message Routing & Governance Proposal | review_required | OK | `1b0d5783ecd3` |
+| `docs/ops/telegram_channel_diligence_20260916/03_DELIVERY_RELIABILITY.md` | Phase 3 — Telegram Delivery Reliability Assessment | review_required | OK | `4d56acabe2bd` |
+| `docs/ops/telegram_channel_diligence_20260916/04_CONTENT_QUALITY_CURATION.md` | Phase 4 — Content Quality, Relevance & Curation Audit | review_required | OK | `bb4e2c7b3cb4` |
+| `docs/ops/telegram_channel_diligence_20260916/05_COMMAND_CENTER_COVERAGE_GAPS.md` | Phase 5 — Command Center Coverage Gap Analysis | review_required | OK | `9eee88c6773b` |
+| `docs/ops/telegram_channel_diligence_20260916/06_IMPLEMENTATION_ROADMAP.md` | Phase 6 — Implementation Roadmap | review_required | OK | `da61f8382676` |
 | `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `c5c94a4d61dc` |
 | `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | Phase 179A: Paper Trade Source Inventory | review_required | OK | `72664d5cf493` |
 | `docs/paper_trading/PHASE179C_CURRENT_PAPER_TRADE_STATISTICS_REPORT.md` | Phase 179C: Current Paper Trade Statistics Report | review_required | OK | `95ccbd19ce31` |
