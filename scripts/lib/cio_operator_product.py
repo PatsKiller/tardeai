@@ -361,6 +361,33 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
                     "reason": "earnings_collector_unavailable",
                     "class": "D",
                 }
+    # C2 (2026-09-16): surface ex-dividend dates for held payers on the daily brief.
+    dividends = brief.get("dividends")
+    if isinstance(dividends, dict):
+        dividend_items = list(dividends.get("items") or [])
+    else:
+        dividend_items = list(dividends or [])
+    dividends_quality = brief.get("dividends_quality") if isinstance(brief.get("dividends_quality"), dict) else {}
+    if not dividend_items:
+        try:
+            from scripts.lib.cio_investment_product import collect_dividend_events
+            div = collect_dividend_events(root=root)
+            dividend_items = list(div.get("items") or [])
+            if not dividends_quality:
+                dividends_quality = {
+                    "quality": div.get("quality"),
+                    "reason": div.get("reason"),
+                    "as_of": div.get("as_of"),
+                    "source": div.get("source"),
+                    "class": "D",
+                }
+        except Exception:
+            if not dividends_quality:
+                dividends_quality = {
+                    "quality": "DATA_UNAVAILABLE",
+                    "reason": "dividend_collector_unavailable",
+                    "class": "D",
+                }
     case_summaries = brief.get("case_summaries") or brief.get("research_cases")
     if not isinstance(case_summaries, dict) or not (case_summaries.get("items") or case_summaries.get("count")):
         try:
@@ -509,6 +536,8 @@ def build_operator_product(*, root: Path | str | None = None, persist: bool = Fa
         "catalysts": ctx.get("catalysts") or list(brief.get("catalysts") or []),
         "earnings": earnings_items,
         "earnings_quality": earnings_quality or {"quality": "OK" if earnings_items else "DATA_UNAVAILABLE", "class": "D"},
+        "dividends": dividend_items,
+        "dividends_quality": dividends_quality or {"quality": "OK" if dividend_items else "DATA_UNAVAILABLE", "class": "D"},
         "case_summaries": case_summaries,
         "research_cases": case_summaries,
         "macro": brief.get("macro") or brief.get("temperament"),

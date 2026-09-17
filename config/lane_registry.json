@@ -665,9 +665,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "data/cio/cio_delivery_receipts.jsonl"
+        "path": "data/cio/operator_notification_outbox.jsonl"
       },
-      "note": "cio_delivery_worker --once --mode live."
+      "note": "cio_delivery_worker --once --mode live. It writes the notification outbox (operator_notification_outbox.jsonl), not cio_delivery_receipts.jsonl — Wave 3C DeliveryReceipt@v1 has no production writer (dark contract)."
     },
     {
       "lane_id": "cio-defer-revisit",

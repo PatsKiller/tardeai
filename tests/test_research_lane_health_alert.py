@@ -66,6 +66,76 @@ def test_alert_dedup_does_not_send_twice(tmp_path, monkeypatch):
     assert "deepseek (watched)" in sent[0]
 
 
+def test_raw_store_health_classifies_digest_not_interrupt():
+    """D3 2026-09-16: this heartbeat is machine telemetry, never a phone page.
+
+    It fired ~40x/day to the DM because the producer bypassed the router. When
+    it DOES go through the router, the header must classify DIGEST (P1), not
+    INTERRUPT (P0). Mutate this by making the header read like capital-at-risk
+    and confirm the assert goes red.
+    """
+    from telegram_alert_router import classify_alert, should_send_telegram
+    msg = (
+        "⚠️ *Research lane RAW-store health*\n"
+        "Reads RAW stores (research rows **including** `[ERROR]…`, Drive "
+        "last-result JSON, CURRENT vs SOURCE_COMMIT). Silence is not health.\n\n"
+        "Firing:\n"
+        "  • deepseek: budget_throttled:5/70  streak=0  ok_24h=0 attempts_24h=70\n"
+        "  • chatgpt: error_rate_24h:77.8>=15  streak=0  ok_24h=0 attempts_24h=9\n"
+    )
+    assert classify_alert(msg) == "P1_DIGEST"
+    assert should_send_telegram(msg) is False
+
+
+def test_deliver_telegram_does_not_bypass_router(monkeypatch):
+    """The producer must hand off to the classifier, not page the phone.
+
+    bypass_router=True was the whole bug: it skipped classify_alert() and sent
+    this non-actionable heartbeat straight to the DM ~40x/day. Mutate this by
+    flipping the producer back to bypass_router=True and the captured kwarg
+    goes red.
+    """
+    import telegram_alert as _ta
+    captured = {}
+
+    def _fake_send(msg, bypass_router=True, **kw):
+        captured["bypass_router"] = bypass_router
+        return True
+
+    monkeypatch.setattr(_ta, "send_telegram", _fake_send, raising=True)
+    hl._deliver_telegram("⚠️ *Research lane RAW-store health*")
+    assert captured.get("bypass_router") is False
+
+
+def test_alert_suppressed_to_digest_not_transported(alarm_capture, tmp_path, monkeypatch):
+    """End-to-end: a firing lane lands in the router's digest, not the transport.
+
+    Proves the full path — _alert -> _deliver_telegram -> send_telegram(bypass_router=False)
+    -> router classify P1_DIGEST -> archived — with nothing reaching the phone.
+    Mutate by restoring bypass_router=True and alarm_capture.transport fills (red).
+    """
+    monkeypatch.setattr(hl, "STATUS_PATH", tmp_path / "health.json")
+    monkeypatch.setattr(hl, "ALERT_DEDUP_SEC", 6 * 3600)
+    report = {
+        "as_of": "now",
+        "ok": False,
+        "lanes": [
+            {"lane": "deepseek", "ok": False, "firing": ["budget_throttled:5/70"],
+             "error_streak": 0, "non_error_24h": 0, "attempts_24h": 70},
+        ],
+    }
+    n = hl._alert(report)
+    assert n == 1
+    assert not alarm_capture.transport, (
+        "RAW-store health must not page the phone; it should route to digest. "
+        f"{len(alarm_capture.transport)} message(s) reached the transport."
+    )
+    assert any("RAW-store health" in s for s in alarm_capture.suppressed), (
+        "expected the heartbeat in the router's suppressed/digest set, got "
+        f"{alarm_capture.suppressed[:2]}"
+    )
+
+
 def test_alert_exit_zero_when_alarms_found(monkeypatch, tmp_path):
     """systemd failed must mean CHECK crashed, not 'found problems'."""
     monkeypatch.setattr(hl, "STATUS_PATH", tmp_path / "h.json")

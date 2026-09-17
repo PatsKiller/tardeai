@@ -594,6 +594,12 @@ GATES = [
             # batched card; GO + entry alerts carry a HELD / NOT HELD triage pill.
             "tests/test_stop_health_batch_20260916.py",
             "tests/test_held_label_20260916.py",
+            # 2026-09-16 C-phase: ex-dividend dates surface on the daily morning brief.
+            "tests/test_dividend_events_20260916.py",
+            # 2026-09-16 D-phase: CIO-origin-only, proposals-only, durable daily budget.
+            "tests/test_cio_origin_gate_20260916.py",
+            "tests/test_proposal_channel_gate_20260916.py",
+            "tests/test_daily_budget_20260916.py",
             # 2026-09-14 HPE: Hermes completed in 4 minutes and the answer never
             # reached the operator (pending waited on a store Hermes does not write).
             "tests/test_research_joinback_20260914.py",

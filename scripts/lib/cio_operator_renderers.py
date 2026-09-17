@@ -168,6 +168,44 @@ def earnings_lines(product: dict[str, Any], *, cap: int = 8) -> list[str]:
     return lines
 
 
+def dividend_lines(product: dict[str, Any], *, cap: int = 8) -> list[str]:
+    """Render upcoming ex-dividend dates for held payers from the product.
+
+    Same honesty pattern as earnings_lines: list what the collector produced
+    (symbol · ex-date · days · income). Never invent a date or amount. When items
+    are empty, name DATA_UNAVAILABLE from dividends_quality rather than omitting.
+    """
+    div = product.get("dividends") or []
+    if not isinstance(div, list):
+        div = []
+    quality = product.get("dividends_quality") if isinstance(product.get("dividends_quality"), dict) else {}
+    lines: list[str] = []
+    if div:
+        lines.append(f"Dividends (D): {len(div)} ex-div upcoming")
+        for row in div[:cap]:
+            if not isinstance(row, dict):
+                continue
+            sym = str(row.get("symbol") or "").upper()
+            if not sym:
+                continue
+            ex_date = str(row.get("ex_date") or "—")
+            days = row.get("days_to_event")
+            income = row.get("total_income")
+            bits = [sym, ex_date]
+            if isinstance(days, int):
+                bits.append(f"{days}d")
+            if income:
+                bits.append(str(income))
+            lines.append("- " + " · ".join(bits))
+        return lines
+    q = str(quality.get("quality") or "")
+    reason = quality.get("reason")
+    if q == "DATA_UNAVAILABLE" or reason:
+        reason_bit = f" — {reason}" if reason else ""
+        lines.append(f"Dividends (D): DATA_UNAVAILABLE{reason_bit}")
+    return lines
+
+
 def watch_lines(product: dict[str, Any], *, cap: int = 8) -> list[str]:
     """Name the watch names. BLOCK is named; READY is never invented.
 
@@ -288,6 +326,7 @@ def morning_text(product: dict[str, Any]) -> str:
     elif product.get("catalysts_reason"):
         lines.append(f"Catalysts: {product.get('catalysts_reason')}")
     lines.extend(earnings_lines(product))
+    lines.extend(dividend_lines(product))
     new_if = product.get("new_position_if") or []
     if new_if:
         nsyms = [str(x.get("symbol") or "") for x in new_if if isinstance(x, dict) and x.get("symbol")]

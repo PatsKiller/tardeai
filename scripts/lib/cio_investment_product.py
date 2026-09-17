@@ -81,6 +81,7 @@ PORTFOLIO_IMPLICATION_CONSTANT = (
 )
 CASE_SUMMARY_BANNER = "A-context · NON_AUTHORITATIVE · does not change action"
 EARNINGS_REL = Path("data") / "portfolios" / "state" / "earnings_dates.json"
+DIVIDEND_REL = Path("data") / "portfolios" / "state" / "dividend_calendar.json"
 
 
 def _earnings_dates_path(root: Path | str | None = None) -> Path:
@@ -106,6 +107,36 @@ def _earnings_dates_path(root: Path | str | None = None) -> Path:
         pass
     try:
         legacy = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild") / EARNINGS_REL
+        if legacy not in candidates:
+            candidates.append(legacy)
+    except Exception:
+        pass
+    for path in candidates:
+        if path.is_file():
+            return path
+    return primary
+
+
+def _dividend_dates_path(root: Path | str | None = None) -> Path:
+    """Resolve dividend_calendar.json for the collector (same candidates as earnings).
+
+    Explicit ``root`` is a pin (tests / dry-run). When omitted, try the process
+    checkout, then the served persistent-state copy, then the hub legacy tree.
+    """
+    if root is not None:
+        return resolve_root(root) / DIVIDEND_REL
+    primary = resolve_root(None) / DIVIDEND_REL
+    candidates: list[Path] = [primary]
+    try:
+        from scripts.lib.persistent_state_root import good_persistent_root
+
+        persistent = good_persistent_root() / DIVIDEND_REL
+        if persistent not in candidates:
+            candidates.append(persistent)
+    except Exception:
+        pass
+    try:
+        legacy = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild") / DIVIDEND_REL
         if legacy not in candidates:
             candidates.append(legacy)
     except Exception:
@@ -900,6 +931,66 @@ def collect_earnings_events(
         "source": source,
         "class": "D",
     }
+
+
+def collect_dividend_events(
+    *,
+    root: Path | str | None = None,
+    now: Optional[datetime] = None,
+    cap: int = 8,
+) -> dict[str, Any]:
+    """Upcoming ex-dividend dates for held payers, within the calendar's alert window.
+
+    Class D. Reads the dividend calendar the pipeline already writes
+    (portfolio_dividend_calendar.py → dividend_calendar.json), whose ``ex_div_alerts``
+    entries already carry symbol · ex_date · days_until · total_income · urgent.
+    Surfaces only what exists — never invents a date or an amount.
+    """
+    as_of = _iso(now)
+    path = _dividend_dates_path(root)
+    source = str(path)
+    if not path.is_file():
+        return {"items": [], "count": 0, "quality": "DATA_UNAVAILABLE",
+                "reason": "dividend_calendar.json missing", "as_of": as_of, "source": source, "class": "D"}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"items": [], "count": 0, "quality": "DATA_UNAVAILABLE",
+                "reason": f"dividend_calendar.json unreadable:{type(exc).__name__}",
+                "as_of": as_of, "source": source, "class": "D"}
+    if not isinstance(raw, dict) or not raw:
+        return {"items": [], "count": 0, "quality": "DATA_UNAVAILABLE",
+                "reason": "dividend_calendar.json empty or not an object",
+                "as_of": as_of, "source": source, "class": "D"}
+    alerts = raw.get("ex_div_alerts") or []
+    if not isinstance(alerts, list):
+        alerts = []
+    items: list[dict[str, Any]] = []
+    for a in alerts[:cap]:
+        if not isinstance(a, dict):
+            continue
+        sym = str(a.get("symbol") or "").upper()
+        if not _looks_like_ticker(sym):
+            continue
+        ex_date = str(a.get("ex_date") or "—")
+        days = a.get("days_until")
+        income = a.get("total_income")
+        income_s = f"${income:,.2f}" if isinstance(income, (int, float)) else ""
+        urgent = bool(a.get("urgent"))
+        items.append({
+            "symbol": sym,
+            "ex_date": ex_date,
+            "days_to_event": int(days) if isinstance(days, int) else None,
+            "total_income": income_s or None,
+            "urgent": urgent,
+            "scope": "held",
+            "class": "D",
+            "as_of": as_of,
+        })
+    quality = "OK" if items else "DATA_UNAVAILABLE"
+    reason = None if items else "no ex-dividend alerts in dividend_calendar.json"
+    return {"items": items, "count": len(items), "quality": quality,
+            "reason": reason, "as_of": as_of, "source": source, "class": "D"}
 
 
 def collect_case_summaries(

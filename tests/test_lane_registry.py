@@ -217,6 +217,20 @@ def test_the_seeded_registry_is_structurally_valid():
     assert validate_registry(load_registry()) == []
 
 
+def test_cio_delivery_lane_output_signal_is_the_worker_outbox_not_the_dark_receipts():
+    """The delivery worker writes the notification outbox, not the Wave 3C receipts.
+
+    `cio_delivery_receipts.jsonl` (DeliveryReceipt@v1) has no production writer:
+    `scripts/lib/cio_delivery_receipt.persist()` is called by no production code.
+    Declaring it as this lane's proof-of-life made the lane read SILENT while the
+    worker ran fine (outbox fresh). The signal must be the store the worker writes.
+    """
+    reg = load_registry()
+    lane = next(r for r in reg["lanes"] if r["lane_id"] == "cio-delivery")
+    assert Path(lane["output_signal"]["path"]).name == "operator_notification_outbox.jsonl"
+    assert "cio_delivery_receipts" not in lane["output_signal"]["path"]
+
+
 # ── acceptance 4 — a quiet weekend reports QUIET, not a page ───────────────
 
 def test_a_weekday_only_lane_does_not_alarm_on_sunday(tmp_path):

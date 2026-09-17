@@ -7,6 +7,7 @@ Pure functions + in-memory dedupe. No trades. No orders. No DB writes.
 Loaded by telegram_alert.py to gate outbound Telegram sends.
 """
 import hashlib
+import json
 import logging
 import os
 import re
@@ -44,6 +45,59 @@ _hourly_counts: dict = {}
 # Health Agent repeat suppression
 _last_health: dict = {"score": None, "status": None, "ts": 0.0}
 _health_daily_count: dict = {}
+
+
+# D3, 2026-09-16: durable daily send budget for the general DM.
+#
+# A per-day cap that spans invocations MUST be durable (AGENTS.md §7): a
+# module-level counter is empty at every cron/systemd start, so a "30/day" cap
+# read from one would pass unconditionally on every cold start. The budget is
+# persisted to data/runtime/telegram_daily_send_budget.json, keyed by UTC day.
+#
+# Ops-exempt: capital-at-risk and operator-requested-action classes are never
+# budgeted — a stop/protection/broker-auth alert must always page. Over budget,
+# non-exempt P0 sends fall to digest (recorded + not sent), never dropped silent.
+DAILY_SEND_BUDGET = 30
+_BUDGET_PATH = PROJ / "data" / "runtime" / "telegram_daily_send_budget.json"
+
+# Capital-risk / operator-requested-action signatures that are never budgeted.
+_OPS_EXEMPT_PATTERN = re.compile(
+    r"STOP HEALTH|ORPHANED|OVERSIZED|PROTECTION|BROKER AUTH|2FA|FLATTEN|DRAWDOWN"
+    r"|GO \S|ENTRY ALERT|Material change|CIO entry|TRIGGERED",
+    re.IGNORECASE,
+)
+
+
+def _budget_day() -> str:
+    return time.strftime("%Y-%m-%d", time.gmtime())
+
+
+def _read_budget() -> dict:
+    try:
+        return json.loads(_BUDGET_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _budget_count_today() -> int:
+    return int(_read_budget().get(_budget_day(), 0) or 0)
+
+
+def _record_budget_send() -> None:
+    # Fail-open: a budget-write failure must never block a send.
+    try:
+        _BUDGET_PATH.parent.mkdir(parents=True, exist_ok=True)
+        doc = _read_budget()
+        doc[_budget_day()] = int(doc.get(_budget_day(), 0) or 0) + 1
+        tmp = _BUDGET_PATH.with_suffix(".tmp")
+        tmp.write_text(json.dumps(doc, indent=1), encoding="utf-8")
+        tmp.replace(_BUDGET_PATH)
+    except Exception:
+        pass
+
+
+def _ops_exempt(message: str) -> bool:
+    return bool(_OPS_EXEMPT_PATTERN.search(message or ""))
 
 
 def _load_policy() -> dict:
@@ -462,11 +516,14 @@ def _mark_health_sent(message: str):
 
 
 def mark_sent(message: str):
-    """Record that this message was sent (for dedupe tracking)."""
+    """Record that this message was sent (for dedupe tracking + the daily budget)."""
     key = build_dedupe_key(message)
     _dedupe_cache[key] = time.time()
     if _HEALTH_PATTERN.search(message):
         _mark_health_sent(message)
+    # D3: count non-ops P0 sends against today's budget (durable). Ops-exempt never counts.
+    if classify_alert(message) == "P0_INTERRUPT" and not _ops_exempt(message):
+        _record_budget_send()
 
 
 def apply_rate_limit(message: str) -> dict:
@@ -505,6 +562,12 @@ def should_send_telegram(message: str) -> bool:
     if not rl["allowed"]:
         record_suppressed(message, rl["reason"])
         return False
+
+    # D3: durable daily budget for non-ops P0 sends. Ops-exempt classes always page.
+    if level == "P0_INTERRUPT" and not _ops_exempt(message):
+        if _budget_count_today() >= DAILY_SEND_BUDGET:
+            record_suppressed(message, "daily_budget_exceeded")
+            return False
 
     return True
 
