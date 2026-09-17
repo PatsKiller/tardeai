@@ -24,6 +24,43 @@ from .contracts import (
 from .journal import ShadowRunJournal
 from .persistence import PersistenceError, RunPersistence, TerminalRunError
 
+
+def _emit_tool_trace(*, tool_name, agent, run_id, arguments, result, decision, success):
+    '''Mirror one tool call into the shared AgentToolTrace store. Fail-soft.
+
+    data/cio/agent_tool_traces.jsonl has eight readers — advisory_desk_operator,
+    maturity_control.evidence, autonomy_health (which alarms when the file goes
+    stale for 12h), research_prompt_context, cio_investment_product,
+    autonomy_watchdog.collectors, agent_trace_retention and advisory_shadow_seed.
+    Until 2026-09-17 its only writers were mcp_read_only_gateway, which no
+    production path calls, and a seed script. Those readers were therefore
+    describing seeded data as if it were agent behaviour.
+
+    This is NOT a second copy of the run journal. The journal is this runtime's
+    internal event log keyed by run_id; the tool-trace store is the cross-system
+    AIF record keyed by trace/wake/agent that other subsystems read. Emitting
+    here gives them real tool calls instead of a heartbeat.
+    '''
+    try:
+        from scripts.lib.agent_tool_trace import append_tool_call, build_tool_call
+    except ImportError:  # pragma: no cover - lib path not importable
+        return False
+    try:
+        record = build_tool_call(
+            tool_name=str(tool_name),
+            trace_id=str(run_id),
+            wake_id=f"agent-runtime-{run_id}",
+            agent=str(agent),
+            request=dict(arguments) if arguments else None,
+            response=dict(result) if result else None,
+            provider="agent_runtime",
+            success=bool(success),
+        )
+        record["decision"] = str(decision)
+        return append_tool_call(record)
+    except Exception:  # noqa: BLE001 - tracing must never fail a tool call
+        return False
+
 RetrievalProvider = Callable[[str, str], Sequence[Mapping[str, Any]]]
 ModelProvider = Callable[[str, Mapping[str, Any]], Mapping[str, Any]]
 Clock = Callable[[], datetime]
@@ -229,6 +266,8 @@ class MvlRuntime:
                 run_id, tool_call_id=prep.tool_call_id, agent_id=self.definition.agent_id, tool_name=tool_name,
                 decision_reason=prep.reason, arguments_hash=request.arguments_hash,
                 result_hash=canonical_hash(result), started_at=started, completed_at=self._now().isoformat(), terminal_state="completed")
+            _emit_tool_trace(tool_name=tool_name, agent=self.definition.agent_id, run_id=run_id,
+                             arguments=arguments, result=result, decision=prep.decision, success=True)
             return result
         if evaluation.decision is ToolDecision.ALLOW and next_count > self.definition.budget.max_tool_calls:
             evaluation = type(evaluation)(ToolDecision.DENY, "tool-call budget exhausted")
@@ -240,6 +279,8 @@ class MvlRuntime:
             "tool_calls": next_count if evaluation.decision is ToolDecision.ALLOW else int(state.get("tool_calls") or 0),
         })
         if evaluation.decision is ToolDecision.DENY:
+            _emit_tool_trace(tool_name=tool_name, agent=self.definition.agent_id, run_id=run_id,
+                             arguments=arguments, result=None, decision="DENY", success=False)
             raise PermissionError(evaluation.reason)
         assert_no_secret_material(arguments)
         result = dict(executor(arguments))
@@ -250,6 +291,8 @@ class MvlRuntime:
             "result_hash": canonical_hash(result),
             "checkpoint": f"tool:{tool_name}",
         })
+        _emit_tool_trace(tool_name=tool_name, agent=self.definition.agent_id, run_id=run_id,
+                         arguments=arguments, result=result, decision="ALLOW", success=True)
         return result
 
     def reason(

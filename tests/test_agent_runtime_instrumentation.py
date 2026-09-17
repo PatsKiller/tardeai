@@ -141,20 +141,45 @@ def test_no_decision_mutation():
     assert decision == original
 
 
-def test_canonical_flags_off_by_default():
-    # No environment overrides => both observability flags off, influence off.
+def test_canonical_flag_defaults():
+    """Observability is on by default as of 2026-09-17; influence never is.
+
+    This test previously asserted the observability flags defaulted to 0. That
+    was the state the row-09 audit found: AgentRunTrace had a reader and a
+    consumer and no writer, because nothing set the flag. Recording a run is
+    not a behaviour change, so the default moved. The assertion that carries
+    the safety weight is the last one, and it has not moved.
+    """
     flags = load_feature_flags({})
-    assert flags["AGENT_CONTEXT_ENVELOPE"] == 0
-    assert flags["AGENT_RUN_TRACE"] == 0
+    assert flags["AGENT_CONTEXT_ENVELOPE"] == 1
+    assert flags["AGENT_RUN_TRACE"] == 1
     assert flags["MEMORY_BEHAVIOR_INFLUENCE"] == 0
 
 
 def test_scan_hook_returns_none_when_flags_off(monkeypatch):
+    """The gate still works; it is now exercised by setting 0, not by unsetting.
+
+    Deleting these vars used to mean "off" because the defaults were 0. They
+    are 1 now, so an unset environment tests the enabled path instead — which
+    would have left this gate untested. Setting them explicitly keeps the
+    original intent: with the flags off, the hook must do nothing.
+    """
+    from scripts.lib import cio_material_scan as ms  # noqa: E402
+
+    for k in ("AGENT_CONTEXT_ENVELOPE", "AGENT_RUN_TRACE"):
+        monkeypatch.setenv(k, "0")
+    assert ms._instrument_scan([], at="2026-08-17T00:00:00+00:00") is None
+
+
+def test_scan_hook_instruments_when_flags_default_on(monkeypatch):
+    """The other half of the gate, which had no coverage while defaults were 0."""
     from scripts.lib import cio_material_scan as ms  # noqa: E402
 
     for k in ("AGENT_CONTEXT_ENVELOPE", "AGENT_RUN_TRACE"):
         monkeypatch.delenv(k, raising=False)
-    assert ms._instrument_scan([], at="2026-08-17T00:00:00+00:00") is None
+    result = ms._instrument_scan([], at="2026-08-17T00:00:00+00:00")
+    assert result is not None
+    assert result["wake_id"] and result["trace_id"]
 
 
 def test_run_trace_defaults_to_canonical_path(tmp_path, monkeypatch):
