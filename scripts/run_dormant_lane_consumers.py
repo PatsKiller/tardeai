@@ -21,8 +21,10 @@ entrypoint so the code is no longer dark, and it does so **advisory-only**:
     research_contradiction            the reader 31,762 candidates never had
     data_gap_registry                 already live (cron + api_v2 + health_agent)
     evidence_refresh_job              already live (free-first circulation timer)
+    run_tiered_validation_gate        the P6 sibling that was never armed; tier 0,
+                                      no provider, $0 (added 2026-09-17)
 
-Two of the nine turn out to be ALREADY WIRED. They are reported as such rather
+Two of the ten turn out to be ALREADY WIRED. They are reported as such rather
 than wired twice -- a second caller for a live lane is not progress, and
 claiming credit for wiring something that already ran would be exactly the kind
 of unverified assertion this programme exists to remove.
@@ -370,6 +372,71 @@ def lane_contradictions(args: argparse.Namespace) -> dict[str, Any]:
     )
 
 
+# ── lane: run_tiered_validation_gate ─────────────────────────────────────
+
+def lane_tiered_validation(_: argparse.Namespace) -> dict[str, Any]:
+    """`run_tiered_validation_gate.run_once` — the P6 sibling that never got armed.
+
+    Four entrypoints shipped in the 2026-09-16 tranche. Three were installed on the host
+    that day -- `:35` cio_gate_measurement_bridge, `:40` run_goal_pilot_material_change,
+    `:50` this runner -- and the fourth was not. Measured 2026-09-17 it had zero callers
+    in scripts/, zero references in tests/, zero crontab lines and no lane registry row.
+
+    It was not lying about that. It declared `SCHEDULED_ENTRYPOINT = "PROPOSAL ONLY --
+    not installed"`, which is true, and which is also why nothing reported it:
+    `check_dark_contracts.py` skips any module holding that constant whatever it says, so
+    the module with no caller at all passed the gate written to catch modules with no
+    caller. The constant is gone; this function is the caller.
+
+    It cannot spend, for two independent structural reasons:
+
+      1. `providers=None` -- a lane with no provider is *preserved as a failed lane*, never
+         silently substituted, which is the property `CriticPanel` exists to guarantee. No
+         provider means nothing reaches the network;
+      2. the fixture ticket carries no identity, so tier 0 refuses release and `validate()`
+         returns BLOCK_DETERMINISTIC **before the panel is constructed**. That short-circuit
+         exists precisely so that a deterministic refusal cannot cost anything.
+
+    `TRADEAI_TIER2_PAID_JUDGE` is read by `TierPolicy.from_env()` and is set in the host
+    environment. It changes nothing here: tier 2 is unreachable from a tier-0 block, and
+    `run_once` injects no paid judge, so even an enabled flag could only ever reach
+    DENIED_NO_PAID_JUDGE_CONFIGURED. The check below is the belt to that pair of braces --
+    a lane that reports a cent fails loudly rather than billing quietly.
+    """
+    from scripts import run_tiered_validation_gate as gate
+
+    ticket, validation = gate.self_check_ticket()
+    payload = gate.run_once(ticket, validation, providers=None, sequence_number=1)
+    result = payload["result"]
+
+    # Fail closed. `run()` turns this into ok:False and a non-zero exit for the whole
+    # report, which is the correct loudness for "the free tier billed us".
+    if result["cost_usd"] != 0.0 or result["paid_calls"] != 0:
+        raise AssertionError(
+            f"tiered_validation reported {result['cost_usd']} USD across "
+            f"{result['paid_calls']} paid call(s); this lane is free by construction"
+        )
+
+    return _ok(
+        "tiered_validation",
+        "scripts.run_tiered_validation_gate.run_once -> scripts.lib.tiered_validation.validate",
+        gate_schema=payload["schema"],
+        state=result["state"],
+        tier_reached=result["tier_reached"],
+        deterministic_verdict=result["deterministic_verdict"],
+        release_allowed=result["release_allowed"],
+        tier2_state=result["tier2_state"],
+        critic_calls=result["critic_calls"],
+        paid_calls=result["paid_calls"],
+        cost_usd=result["cost_usd"],
+        provider_calls=0,
+        note=("tier 0 only: the fixture ticket has no identity, so the kernel refuses "
+              "release and validate() returns before any critic is constructed. "
+              "tier2_state NOT_REACHED_TIER0_BLOCK is the evidence that the operator's "
+              "paid-judge flag was never consulted"),
+    )
+
+
 # ── lanes that are ALREADY WIRED ─────────────────────────────────────────
 
 def lane_data_gap_registry(_: argparse.Namespace) -> dict[str, Any]:
@@ -414,6 +481,7 @@ LANES: dict[str, Callable[[argparse.Namespace], dict[str, Any]]] = {
     "commitments": lane_commitments,
     "challenges": lane_challenges,
     "contradictions": lane_contradictions,
+    "tiered_validation": lane_tiered_validation,
     "data_gap_registry": lane_data_gap_registry,
     "evidence_refresh_job": lane_evidence_refresh,
 }

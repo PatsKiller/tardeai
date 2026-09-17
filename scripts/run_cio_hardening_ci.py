@@ -1878,6 +1878,27 @@ GATES = [
         [
             "tests/test_validator_calibration_20260916.py",
             "tests/test_tiered_validation_20260916.py",
+            # 2026-09-17 — the tranche's fourth entrypoint was never armed. The
+            # :35 gate-measurement bridge, the :40 goal-pilot material-change
+            # runner and the :50 dormant-lane consumer all got crontab lines on
+            # 2026-09-16; the tiered-validation gate got a SCHEDULED_ENTRYPOINT
+            # reading "PROPOSAL ONLY -- not installed". That was true, and it was
+            # also why nothing counted it: check_dark_contracts.py skips any module
+            # holding that constant whatever it says, so the one module in the
+            # tranche with no caller at all passed the gate written to find modules
+            # with no caller. The constant is gone and the gate now runs hourly
+            # inside the already-armed dormant-lane consumer -- no new cron entry,
+            # which is operator-only (AGENTS.md §17). This pins the wire, the
+            # anti-rot check on the declaration, and that the lane stays $0 even
+            # with TRADEAI_TIER2_PAID_JUDGE set in the host environment.
+            #
+            # That module is deliberately NOT spelled out here. check_dark_contracts
+            # counts a bare token as a consumer, comments included, so naming it in
+            # this file would hold the gate green from a comment and the wiring
+            # would stop being the thing that holds it up. Verified 2026-09-17:
+            # with the lane's import broken the gate reports it NEW, and it only
+            # started doing so once this comment stopped naming it.
+            "tests/test_tiered_validation_wiring.py",
         ],
     ),
     (
