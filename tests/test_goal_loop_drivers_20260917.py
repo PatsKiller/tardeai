@@ -38,6 +38,17 @@ from scripts.lib.goal_pilot_material_change import (  # noqa: E402
 )
 
 
+#: A change whose symbol has no independently-written second source — the
+#: canonical bounded-ignorance case, and the one that exercises every
+#: `unobtainable` branch in assemble_facts.
+CHANGE_NO_SOURCE = {
+    "change_guid": "c-guid-2",
+    "subject_guid": "s-guid-2",
+    "symbol": "ZZZZ",
+    "change_pct": -5.0,
+}
+
+
 def _baseline():
     """Load the baseline module by path — it is a script, not a package member."""
     spec = importlib.util.spec_from_file_location(
@@ -218,6 +229,36 @@ def test_an_absent_ledger_permits_laps_but_never_paid_calls(tmp_path):
 
 
 # ── D2: a wrong API must raise, not degrade into a false measurement ─────────
+
+def test_the_unobtainable_set_is_enforced_not_merely_declared():
+    """Removing the guard must break something, or the guard is decoration.
+
+    Added 2026-09-17 after a mutation run: deleting the enforcement left all 13
+    controls green, so `UNOBTAINABLE_CAPABLE` was enforced-but-unverified — one
+    step better than the zero-reader constant it replaced, and still not a
+    control. `subject_linked` is read straight off the change row and can never
+    be unknowable; claiming it is means the driver lost its own input and must
+    fail loudly rather than report ignorance.
+    """
+    from scripts.lib import goal_pilot_material_change as p
+
+    real = p._agrees
+
+    def _rogue(observed, independent):
+        raise AssertionError("must not be reached")
+
+    # Drive a rogue entry in through the one seam that writes `unobtainable`:
+    # monkeypatch the capable set to exclude a term the code does mark.
+    original = p.UNOBTAINABLE_CAPABLE
+    p.UNOBTAINABLE_CAPABLE = frozenset()  # nothing may be unobtainable now
+    try:
+        with pytest.raises(ValueError, match="UNOBTAINABLE_CAPABLE"):
+            p.assemble_facts(CHANGE_NO_SOURCE, independent=None,
+                             agrees_fn=lambda o, i: (False, "no_independent_source"))
+    finally:
+        p.UNOBTAINABLE_CAPABLE = original
+        p._agrees = real
+
 
 def test_set_goal_predicate_refuses_to_guess_an_accessor():
     src = (ROOT / "scripts" / "set_goal_predicate.py").read_text(encoding="utf-8")
