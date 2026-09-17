@@ -103,9 +103,31 @@ def _sha(value: Any, chars: int = 64) -> str:
 
 
 def predicate_version(goal: Mapping[str, Any]) -> str:
-    """The goal's predicate version, or the v0 line for a goal that has none yet."""
-    raw = str(goal.get("predicate_version") or "").strip()
-    return raw or PREDICATE_VERSION_FALLBACK
+    """The goal's predicate version, or the v0 line for a goal that has none yet.
+
+    The projection NESTS the predicate: ``CIOGoalStore._apply_event`` writes
+    ``goal["predicate"]["predicate_version"]`` and never a top-level key. Reading
+    only the top level therefore returned ``v0`` for goal_695a5dbe2401, whose own
+    stored identity is ``goal_695a5dbe2401:v1:cd0065040125a4cc``.
+
+    That is load-bearing, not cosmetic. The generation key is
+    ``goal:{goal_id}:{predicate_version}:{ledger_digest}``, so setting a new
+    predicate left the key byte-identical, the next generation was refused as
+    DUPLICATE, and the restart-on-new-predicate guarantee was inert.
+
+    Nested wins; a flattened top-level value is still honoured so a caller that
+    passes a summary dict keeps working. Integers render ``v<N>`` to match
+    ``cio_goals.predicate_identity`` and the ``read_laps`` filter.
+    """
+    nested = goal.get("predicate")
+    raw = ""
+    if isinstance(nested, Mapping):
+        raw = str(nested.get("predicate_version") or "").strip()
+    if not raw:
+        raw = str(goal.get("predicate_version") or "").strip()
+    if not raw:
+        return PREDICATE_VERSION_FALLBACK
+    return raw if raw.startswith("v") else f"v{raw}"
 
 
 def declared_needs(goal: Mapping[str, Any]) -> tuple[str, ...]:

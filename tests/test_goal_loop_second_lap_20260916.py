@@ -550,3 +550,48 @@ def test_a_real_finding_still_reaches_the_thesis(wired, goals, goal, laps):
     assert "shadow_run=" not in summary
     assert "retrieval_n=" not in summary
     assert "PROVIDER_BLOCKED" not in summary
+
+
+# ── the predicate axis of the generation key ────────────────────────────────
+
+
+def test_a_predicate_bump_mints_a_new_generation(goals, goal, laps):
+    """Measured live 2026-09-17, against the deployed tree.
+
+    ``predicate_version()`` read ``goal["predicate_version"]`` — a TOP-LEVEL key
+    the projection never writes. ``CIOGoalStore._apply_event`` nests the whole
+    predicate under ``goal["predicate"]``, so goal_695a5dbe2401 keyed as ``v0``
+    while its own stored identity was ``goal_695a5dbe2401:v1:cd0065040125a4cc``.
+
+    The generation key is ``goal:{goal_id}:{predicate_version}:{ledger_digest}``.
+    So setting a predicate left the key byte-identical, the next generation was
+    refused as DUPLICATE, and "a new predicate restarts the goal" was inert —
+    the machinery reported healthy while the guarantee did nothing.
+    """
+    gid = goal["goal_id"]
+    before = gg.generation_for_goal(goals.get_goal(gid), laps_path=laps)
+    assert gg.predicate_version(goals.get_goal(gid)) == "v0", "no predicate yet"
+
+    goals.set_predicate(gid, evaluator="all_terms_true@v1", terms=["a", "b"], actor_id="t")
+    bumped = goals.get_goal(gid)
+    assert gg.predicate_version(bumped) == "v1", "the nested predicate_version must win"
+
+    after = gg.generation_for_goal(bumped, laps_path=laps)
+    assert after["dedup_key"] != before["dedup_key"], (
+        "a predicate bump left the dedup key unchanged — the new generation "
+        "would be refused DUPLICATE and the goal could never restart"
+    )
+    assert ":v1:" in after["dedup_key"]
+
+    goals.set_predicate(gid, evaluator="all_terms_true@v1", terms=["a", "c"], actor_id="t")
+    again = gg.generation_for_goal(goals.get_goal(gid), laps_path=laps)
+    assert gg.predicate_version(goals.get_goal(gid)) == "v2"
+    assert again["dedup_key"] != after["dedup_key"], "the second bump must also mint"
+
+
+def test_a_flattened_top_level_version_is_still_honoured():
+    """Back-compat: a caller passing a summary dict must not regress to v0."""
+    assert gg.predicate_version({"predicate_version": "v3"}) == "v3"
+    assert gg.predicate_version({"predicate_version": 3}) == "v3"
+    assert gg.predicate_version({"predicate": {"predicate_version": 7}}) == "v7"
+    assert gg.predicate_version({}) == "v0"

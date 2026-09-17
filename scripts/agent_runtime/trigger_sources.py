@@ -10,6 +10,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from pathlib import Path
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Callable, Mapping, Sequence
@@ -631,6 +632,118 @@ def _reflection_nightly_adapter() -> AdapterResult:
     return AdapterResult(source_id, probe, (candidate,))
 
 
+# ── goal laps: the producer-side generation token (P4) ──────────────────────
+
+GOAL_LAP_SOURCE_ID = "goals:laps"
+GOAL_LAP_ENV = "AGENT_RUNTIME_GOAL_LAPS"
+
+
+def _goal_lap_modules():
+    """Goal store + generation helpers, imported either way round.
+
+    Same dual-import shape as ``trigger_producer._goal_budget``: callers put
+    either ROOT or ROOT/scripts on sys.path and both must reach one module.
+    """
+    try:
+        from lib import goal_generation as gg  # type: ignore
+        from lib.canonical_store_registry import production_state_root  # type: ignore
+        from lib.cio_goals import CIOGoalStore  # type: ignore
+    except ImportError:
+        from scripts.lib import goal_generation as gg  # type: ignore
+        from scripts.lib.canonical_store_registry import production_state_root  # type: ignore
+        from scripts.lib.cio_goals import CIOGoalStore  # type: ignore
+    return gg, CIOGoalStore, production_state_root
+
+
+def _goal_lap_adapter(cursor_value: str | None) -> AdapterResult:
+    """One lap per open goal, keyed by that goal's CURRENT generation.
+
+    ``enqueue_goal_lap`` and the entire generation-token design shipped with NO
+    production caller. Measured 2026-09-17: the lap ledger did not exist on disk,
+    so no generation had ever been minted, ``append_lap`` was never once reached
+    (``lap_error`` and ``goal_touch`` both appear 0 times in the goal log), and
+    every one of 34,912 wakes was a cold start. This adapter is that missing
+    caller — nothing else about the loop was broken.
+
+    Deliberately NOT cursor-based. A goal earns a new generation when its LEDGER
+    changes, not when a row with a later timestamp appears upstream, so returning
+    no ``cursor_updates`` is the correct contract here rather than an omission.
+
+    Operator-armed. Registering an adapter adds it to ``DEFAULT_SOURCES`` and the
+    producer timer is already live (firing ~every 2 minutes), so an ungated
+    adapter would silently change an armed lane's behaviour the moment it
+    deployed. It stays inert until ``AGENT_RUNTIME_GOAL_LAPS=1``.
+    """
+    now = _utc_now().isoformat()
+    if str(os.environ.get(GOAL_LAP_ENV, "")).strip().lower() not in {"1", "true", "yes", "on"}:
+        return AdapterResult(
+            GOAL_LAP_SOURCE_ID,
+            SourceProbe(
+                source_id=GOAL_LAP_SOURCE_ID,
+                state=SourceState.NOT_CONFIGURED,
+                detail=f"{GOAL_LAP_ENV} is not set; goal laps are operator-armed.",
+                last_observed_at=now,
+            ),
+            (),
+        )
+    try:
+        gg, CIOGoalStore, production_state_root = _goal_lap_modules()
+        from .agents.definitions import FLEET
+        from .agents.run_once import AGENT_ALIASES
+
+        root = Path(production_state_root()) / "data" / "cio"
+        store = CIOGoalStore(
+            event_path=root / "cio_goals.jsonl",
+            projection_path=root / "cio_goals_projection.json",
+            cursor_path=root / "cio_goals_cursor.json",
+        )
+        open_goals = list(store.list_open_goals())
+    except Exception as exc:  # noqa: BLE001 — unavailable is a state, never a silent zero
+        return AdapterResult(
+            GOAL_LAP_SOURCE_ID,
+            SourceProbe(
+                source_id=GOAL_LAP_SOURCE_ID,
+                state=SourceState.BLOCKED_SOURCE,
+                detail=f"goal store unavailable: {type(exc).__name__}: {exc}",
+                last_observed_at=now,
+            ),
+            (),
+        )
+
+    laps_path = root / "cio_goal_laps.jsonl"
+    need_path = root / "cio_goal_need_ledger.jsonl"
+    candidates: list[TriggerCandidate] = []
+    not_in_fleet: list[str] = []
+    for goal in open_goals:
+        owner = str(goal.get("owner_agent") or "").strip().lower()
+        owner = AGENT_ALIASES.get(owner, owner)
+        if owner not in FLEET:
+            # produce_once drops a non-FLEET candidate with a bare `continue` and
+            # no counter, so an unknown owner would vanish leaving no receipt --
+            # the same silence that let orphan timers fire 896 times a day doing
+            # nothing. Name it in the probe instead of queueing unleasable work.
+            not_in_fleet.append(f"{goal.get('goal_id')}:{goal.get('owner_agent')}")
+            continue
+        generation = gg.generation_for_goal(
+            goal, laps_path=laps_path, need_ledger_path=need_path
+        )
+        candidates.append(gg.goal_trigger_candidate(goal, generation, agent_id=owner))
+
+    detail = f"{len(candidates)} open goal(s) eligible"
+    if not_in_fleet:
+        detail += f"; skipped (owner not in FLEET): {', '.join(sorted(not_in_fleet))}"
+    return AdapterResult(
+        GOAL_LAP_SOURCE_ID,
+        SourceProbe(
+            source_id=GOAL_LAP_SOURCE_ID,
+            state=SourceState.READY,
+            detail=detail,
+            last_observed_at=now,
+        ),
+        tuple(candidates),
+    )
+
+
 ADAPTERS: dict[str, Callable[[str | None], AdapterResult]] = {
     "watch:artifacts": lambda cursor: _watch_artifact_adapters(cursor),
     "watch:refresh_jobs": lambda cursor: _packet_rebuild_adapter(cursor),
@@ -640,6 +753,7 @@ ADAPTERS: dict[str, Callable[[str | None], AdapterResult]] = {
     "research:hermes": lambda cursor: _research_adapter(cursor),
     "alerts:risk": lambda cursor: _alerts_risk_adapter(cursor),
     "alerts:proposals": lambda cursor: _alerts_proposals_adapter(cursor),
+    GOAL_LAP_SOURCE_ID: lambda cursor: _goal_lap_adapter(cursor),
 }
 
 ADAPTER_CURSOR_KEYS: dict[str, str] = {
