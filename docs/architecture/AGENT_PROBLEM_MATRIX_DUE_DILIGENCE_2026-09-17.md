@@ -9,6 +9,16 @@ Source:      operator-supplied chart, "10 AI Agent Problems and How to Fix Them"
 Method:      measured against this tree at ede0698. Every verdict cites file:line.
 ```
 
+> **REMEDIATED 2026-09-17.** Five rows were closed the same day; see
+> `AGENT_PROBLEM_MATRIX_REMEDIATION_PLAN_2026-09-17.md` for the record and evidence.
+> Three verdicts below are **corrected there** and should not be read as current:
+> row 02 was over-called DARK (tool authority was already enforced by
+> `agent_runtime.contracts.ToolPolicy`; the receipt trail was the real gap), the
+> "conservative = 0" reading of the feature flags was wrong for
+> `MEMORY_ADVERSARIAL_SCAN`, and `MCP_READ_ONLY_GATEWAY` stays 0 because it opens a
+> capability path rather than guarding one. The rest of this document stands as
+> measured.
+
 ## Question asked
 
 For each of the ten failure modes: are we using one of the named tools, which one, and
@@ -401,6 +411,8 @@ portfolio, the rail is the correct control and the approval layer is the fallbac
 
 Ranked by risk reduced per unit of work. Nothing here requires a new dependency; items 1-4 are
 wiring under §13.5.
+
+**Status 2026-09-17: items 1-5 are done, item 6 remains a proposal.**
 
 | # | action | row | why now |
 |---|---|---|---|

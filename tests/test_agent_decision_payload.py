@@ -31,10 +31,18 @@ def _flags(**kw):
     return base
 
 
-def test_flag_defaults_off():
-    assert DEFAULT_FLAGS.get("AGENT_DECISION_PAYLOAD") == 0
-    assert load_feature_flags({})["AGENT_DECISION_PAYLOAD"] == 0
-    assert decision_payload_enabled(_flags()) is False
+def test_flag_default_on_and_gate_still_honours_explicit_off():
+    """Default moved to 1 on 2026-09-17; the gate itself is unchanged.
+
+    A DecisionPayload records what was decided — it does not decide. The row-09
+    audit found the writer dark because nothing set this flag, so the default
+    moved. What still matters is that an explicit 0 suppresses the emit, which
+    the rest of this file exercises.
+    """
+    assert DEFAULT_FLAGS.get("AGENT_DECISION_PAYLOAD") == 1
+    assert load_feature_flags({})["AGENT_DECISION_PAYLOAD"] == 1
+    assert decision_payload_enabled(_flags(AGENT_DECISION_PAYLOAD=0)) is False
+    assert decision_payload_enabled(_flags(AGENT_DECISION_PAYLOAD=1)) is True
 
 
 def test_flag_off_emit_is_noop(tmp_path):

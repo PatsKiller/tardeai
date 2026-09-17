@@ -101,9 +101,11 @@ def test_build_payload_never_emits_cash_ticker():
     assert pl["surface"] in VALID_SURFACES
 
 
-def test_flag_default_still_off():
-    assert DEFAULT_FLAGS.get("AGENT_DECISION_PAYLOAD") == 0
-    assert load_feature_flags({})["AGENT_DECISION_PAYLOAD"] == 0
+def test_flag_default_now_on():
+    """See test_agent_decision_payload for the rationale. The OFF-path tests
+    below still pin the gate; they pass the flag explicitly."""
+    assert DEFAULT_FLAGS.get("AGENT_DECISION_PAYLOAD") == 1
+    assert load_feature_flags({})["AGENT_DECISION_PAYLOAD"] == 1
 
 
 # ── flag OFF → no file write ────────────────────────────────────────────────

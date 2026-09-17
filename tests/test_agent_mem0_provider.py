@@ -150,17 +150,27 @@ def test_local_add_candidate_rejects_forbidden_subject():
 # ── Canonical feature flags are the single runtime source ────────────────
 
 
-def test_canonical_flags_default_all_off():
+def test_canonical_memory_flags_default_off():
+    """agent_feature_flags is the single runtime source; mem0 adds no defaults.
+
+    What this file cares about is that nothing here quietly selects a memory
+    backend. Those assertions are unchanged. The observability flags moved to 1
+    on 2026-09-17 (recording a run is not a behaviour change) and are asserted
+    here only to keep this test honest about the real defaults.
+    """
     from scripts.lib.agent_feature_flags import load_feature_flags  # noqa: E402
 
     flags = load_feature_flags({})
-    assert flags["AGENT_CONTEXT_ENVELOPE"] == 0
-    assert flags["AGENT_RUN_TRACE"] == 0
-    assert flags["MCP_READ_ONLY_GATEWAY"] == 0
+    # The point of this test: no memory backend, no influence, by default.
     assert flags["MEMORY_PROVIDER"] == "null"
     assert flags["MEMORY_SHADOW"] == 0
     assert flags["MEMORY_BEHAVIOR_INFLUENCE"] == 0
+    # Capability paths stay closed.
+    assert flags["MCP_READ_ONLY_GATEWAY"] == 0
     assert flags["LANGGRAPH_WORKER_PILOT"] == 0
+    # Observability records; it does not decide.
+    assert flags["AGENT_CONTEXT_ENVELOPE"] == 1
+    assert flags["AGENT_RUN_TRACE"] == 1
 
 
 # ── Forced admission privilege fields (P1 regression) ─────────────────────

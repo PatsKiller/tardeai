@@ -1,0 +1,54 @@
+==========================================================================
+ CONSOLIDATED DRY RUN — agent problem matrix remediation
+ date   : 2026-09-17
+ head   : f6f8ec4
+ posture: READ_ONLY_ADVISORY — no broker, order, stop, 2FA or schedule touched
+==========================================================================
+
+[1] FLAG POSTURE (committed defaults)
+    AGENT_RUN_TRACE            = 1   ON  (records or enforces; decides nothing)
+    AGENT_DECISION_PAYLOAD     = 1   ON  (records or enforces; decides nothing)
+    AGENT_CONTEXT_ENVELOPE     = 1   ON  (records or enforces; decides nothing)
+    MEMORY_ADVERSARIAL_SCAN    = 1   ON  (records or enforces; decides nothing)
+    MCP_READ_ONLY_GATEWAY      = 0   OFF (capability path / influence — operator's call)
+    LANGGRAPH_WORKER_PILOT     = 0   OFF (capability path / influence — operator's call)
+    MEMORY_SHADOW              = 0   OFF (capability path / influence — operator's call)
+    MEMORY_BEHAVIOR_INFLUENCE  = 0   OFF (capability path / influence — operator's call)
+    MEMORY_PROVIDER            = 'null'
+    RAIL HELD: behavior_influence_active() = False  (AI_WORK_POLICY s27)
+
+[2] ROW 04 — injection boundary at ingest
+    fence survived defang      : False  (must be False)
+    closing fences in envelope : 1  (must be 1)
+    adversarial pattern flagged: True
+
+[3] ROW 09 — AgentRunTrace writer
+    runner imports agent_run_trace : True
+    open call sites                : 1
+    emit call sites                : 3
+
+[4] ROW 02 — tool authority + receipts
+    darwin artifact.read    -> ALLOW
+    darwin artifact.write   -> DENY
+    darwin place_order      -> DENY
+    invoke_tool emits receipts     : 3 call sites
+
+[5] ROW 03 — Tavily slot
+    declared backup chain : ['searxng', 'tavily']
+    wired adapters        : ['searxng', 'tavily']
+    unwired declared slots: []  (must be [])
+    registry status       : configured_unused  (operator flips after key provisioning)
+
+[6] ROW 06 — memory shadow staged, not defaulted
+    .env.example documents MEMORY_PROVIDER : True
+    .env.example pins influence to 0       : True
+    shadow on -> influence active          : False  (must be False)
+
+[7] PUSH GATE
+    core.hooksPath = .githooks
+    unauthorized push blocked (verified live earlier this session)
+
+==========================================================================
+ RESULT: 5 rows remediated. Every rail held. Nothing activated that
+         needs an operator decision.
+==========================================================================
