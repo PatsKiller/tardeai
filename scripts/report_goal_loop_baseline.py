@@ -138,6 +138,10 @@ def goals() -> dict[str, Any]:
         "events_total": len(rows),
         "by_event_type": dict(events),
         "goal_status_changed": events.get("GOAL_STATUS_CHANGED", 0),  # THE control number
+        # A goal cannot close without a predicate, so this gates the number above.
+        # Measured 2026-09-17: 0 against 34,912 wakes — the machine was deployed
+        # and never engaged, and nothing in the baseline said so.
+        "goal_predicate_set": events.get("GOAL_PREDICATE_SET", 0),
         "distinct_goals": len(per_goal),
         "wakes_per_goal": dict(per_goal),
         "thesis_updates": thesis_total,
@@ -146,6 +150,76 @@ def goals() -> dict[str, Any]:
         "first_event": min(ts) if ts else None,
         "last_event": max(ts) if ts else None,
     }
+
+
+def drivers() -> dict[str, Any]:
+    """Do the armed schedules DO anything, or only prove they ran?
+
+    Added 2026-09-17 after three crons were armed and two of them evaluated
+    nothing. The pilot wrote 14 receipts carrying ``ok: true`` and no verdict at
+    all; the lap ledger did not exist; the gate bridge measured hourly and
+    discarded the result because its cron omits ``--update-catalog``. None of
+    that was visible here, so the baseline reported a healthy-looking system.
+
+    Each counter distinguishes *ran* from *did work*. An absent store is
+    ``unavailable`` with a reason, never 0 — a zero would assert the driver ran
+    and found nothing, which is a different and much stronger claim.
+    """
+    out: dict[str, Any] = {}
+
+    # `_cio()` falls back to PROJECT_ROOT when the file is absent from the
+    # production root — which, for a store that does not exist ANYWHERE yet,
+    # means the fallback path is what gets reported. Naming the worktree copy in
+    # an "unavailable" reason sends the reader somewhere they should not look.
+    prod_cio = _state_root() / "data" / "cio"
+
+    laps = _cio("cio_goal_laps.jsonl")
+    out["laps_minted"] = (
+        {"rows": len(_jsonl(laps)), "path": str(laps)} if laps.is_file()
+        else _unavailable(
+            f"no lap ledger at {prod_cio / 'cio_goal_laps.jsonl'} — "
+            "no generation has ever been minted")
+    )
+
+    needs = _cio("cio_goal_need_ledger.jsonl")
+    out["need_ledger"] = (
+        {"rows": len(_jsonl(needs)), "path": str(needs)} if needs.is_file()
+        else _unavailable(f"no need ledger at {prod_cio / 'cio_goal_need_ledger.jsonl'}")
+    )
+
+    pilot_path = _cio("goal_pilot_material_change.jsonl")
+    if not pilot_path.is_file():
+        out["pilot"] = _unavailable(f"no pilot receipts at {prod_cio / 'goal_pilot_material_change.jsonl'}")
+    else:
+        prows = _jsonl(pilot_path)
+
+        def _has_verdict(r: dict) -> bool:
+            res = r.get("result") if isinstance(r.get("result"), dict) else r
+            return bool((res or {}).get("verdict") or (res or {}).get("outcome")
+                        or (res or {}).get("laps"))
+
+        with_verdict = sum(1 for r in prows if _has_verdict(r))
+        out["pilot"] = {
+            "rows": len(prows),
+            "rows_with_verdict": with_verdict,
+            "invocation_only": len(prows) - with_verdict,
+        }
+
+    cat = PROJECT_ROOT / "config" / "agent_maturity_catalog.json"
+    if not cat.is_file():
+        out["catalog_gate_ids"] = _unavailable(f"no catalog at {cat}")
+    else:
+        try:
+            blob = cat.read_text(encoding="utf-8")
+            out["catalog_gate_ids"] = {
+                "independent_review_coverage": blob.count("independent_review_coverage"),
+                "independent_score_coverage": blob.count("independent_score_coverage"),
+                "unsupported_claim_rate": blob.count("unsupported_claim_rate"),
+            }
+        except OSError as exc:
+            out["catalog_gate_ids"] = _unavailable(f"{type(exc).__name__}: {exc}")
+
+    return out
 
 
 def validators() -> dict[str, Any]:
@@ -273,6 +347,7 @@ def collect(*, now: datetime | None = None) -> dict[str, Any]:
         "authority": "READ_ONLY_ADVISORY",
         "ran_at": now.isoformat(),
         "goals": goals(),
+        "drivers": drivers(),
         "validators": validators(),
         "adversarial": adversarial(),
         "refusals": refusals(now),

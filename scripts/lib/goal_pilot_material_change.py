@@ -79,9 +79,18 @@ PILOT_TERMS: tuple[str, ...] = (
 #: material_change_detector.agrees() returns "no_independent_source" for it, and
 #: the correct response is to state that we cannot know — not to alarm, and not
 #: to claim disagreement.
+#:
+#: ENFORCED by assemble_facts, not merely declared. Until 2026-09-17 this set had
+#: zero readers — a constant naming a policy nothing checked, which is the
+#: "named like a control, isn't one" pattern this programme exists to remove.
 UNOBTAINABLE_CAPABLE: frozenset[str] = frozenset({
     TERM_INDEPENDENT_PRESENT,
     TERM_AGREES,
+    TERM_NOT_UNCORROBORATED,
+    TERM_TIER0,
+    TERM_TIER1,
+    TERM_CALIBRATED,
+    TERM_FALSIFIER,
     TERM_CHECKPOINT,
     TERM_SECOND_LAP,
 })
@@ -182,11 +191,26 @@ def assemble_facts(
         blind = tuple(getattr(tiered, "blind_lanes", ()) or ())
         if calibrated is None:
             facts[TERM_CALIBRATED] = not blind
+    else:
+        # No validator ran. Silently omitting these left them missing-but-not-
+        # unobtainable, so classify_outcome could not tell "we could not check"
+        # from "we forgot to record a check" and fell through to ask_operator.
+        # Every absent term must carry a REASON, exactly as checkpoint and
+        # second_lap already do below. Measured 2026-09-17: the driver returned
+        # ask_operator for a change with no independent source, which is the one
+        # case bounded_ignorance exists to describe.
+        unobtainable[TERM_TIER0] = "no_validator_run"
+        unobtainable[TERM_TIER1] = "no_validator_run"
+
     if calibrated is not None:
         facts[TERM_CALIBRATED] = bool(calibrated)
+    elif TERM_CALIBRATED not in facts:
+        unobtainable[TERM_CALIBRATED] = "no_calibration_window"
 
     if falsifier_ok is not None:
         facts[TERM_FALSIFIER] = bool(falsifier_ok)
+    else:
+        unobtainable[TERM_FALSIFIER] = "no_falsifier_supplied"
 
     if checkpoint is None:
         unobtainable[TERM_CHECKPOINT] = "no_checkpoint_bound"
@@ -197,6 +221,15 @@ def assemble_facts(
         unobtainable[TERM_SECOND_LAP] = "loop_not_available"
     else:
         facts[TERM_SECOND_LAP] = bool(second_lap)
+
+    # The set is the authority, so a term reported unknowable must be one the
+    # design admits can be unknowable. `subject_linked` never can: it is read
+    # straight off the change row, so an "unobtainable" there would mean the
+    # driver lost its own input and should fail loudly, not report ignorance.
+    rogue = sorted(set(unobtainable) - UNOBTAINABLE_CAPABLE)
+    if rogue:
+        raise ValueError(
+            f"terms marked unobtainable but not in UNOBTAINABLE_CAPABLE: {rogue}")
 
     return facts, unobtainable
 
@@ -285,6 +318,115 @@ def run_pilot(
             "critic_calls": int(getattr(tiered, "critic_calls", 0) or 0),
             "cost_usd": float(getattr(tiered, "cost_usd", 0.0) or 0.0),
         },
+    }
+
+
+def run_shadow(
+    *,
+    limit: int = 25,
+    hours: int = 24,
+    conn: Any = None,
+) -> dict[str, Any]:
+    """Drive the pilot over recent material changes. SHADOW; writes nothing here.
+
+    This is the API `scripts/run_goal_pilot_material_change.py` probes for with
+    ``hasattr(pilot, "run_shadow")``. Until it existed the armed hourly cron wrote
+    ``status: "library_loaded"`` and evaluated NOTHING — a scheduled job proving
+    invocation rather than work, which is the exact defect this programme exists
+    to remove. 14 receipts looked healthy (``ok: true``) while carrying no verdict.
+
+    Two honesty rules, both load-bearing:
+
+    * **No database is `unavailable`, never an empty pass.** A driver that cannot
+      read `material_changes` has measured nothing; reporting ``laps: 0`` would be
+      indistinguishable from "there were no changes".
+    * **Tier-1 validation and the multi-lap loop are not wired to this driver**,
+      so `assemble_facts` records those terms as UNOBTAINABLE with a named reason
+      and the goal terminates ``bounded_ignorance`` — stating what is not yet
+      knowable rather than asserting a check that never ran.
+
+    Independence is real: the observed move comes from `material_changes`, the
+    corroborating value from `corroborate()` reading `watchlist_items` — a
+    DIFFERENT pipeline, which is what makes the second source independent rather
+    than the same number fetched twice.
+    """
+    owns_conn = conn is None
+    if conn is None:
+        try:
+            from scripts.material_change_detector import _db  # noqa: PLC0415
+            conn = _db()
+        except Exception as exc:  # noqa: BLE001
+            return {
+                "schema": SCHEMA,
+                "authority": AUTHORITY,
+                "mode": "SHADOW",
+                "status": "unavailable",
+                "why": f"no database: {type(exc).__name__}: {exc}"[:200],
+                "laps": 0,
+                "cost": {"paid_calls": 0, "critic_calls": 0, "cost_usd": 0.0},
+            }
+    try:
+        from scripts.material_change_detector import corroborate  # noqa: PLC0415
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT change_guid, subject_guid, symbol, magnitude,
+                          baseline, observed_value, observed_at
+                     FROM material_changes
+                    WHERE subject_guid IS NOT NULL
+                      AND observed_at > NOW() - INTERVAL '%s hours'
+                    ORDER BY observed_at DESC
+                    LIMIT %s""",
+                (int(hours), int(limit)),
+            )
+            cols = ("change_guid", "subject_guid", "symbol", "magnitude",
+                    "baseline", "observed_value", "observed_at")
+            changes = [dict(zip(cols, r)) for r in cur.fetchall()]
+            symbols = sorted({str(c["symbol"]).upper() for c in changes if c.get("symbol")})
+            independent = corroborate(cur, symbols) if symbols else {}
+    finally:
+        if owns_conn:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+    rows: list[dict[str, Any]] = []
+    for c in changes:
+        sym = str(c.get("symbol") or "").upper()
+        observed = c.get("magnitude")
+        if observed is None:
+            observed = c.get("observed_value")
+        change = {
+            "change_guid": str(c.get("change_guid") or ""),
+            "subject_guid": str(c.get("subject_guid") or ""),
+            "symbol": sym,
+            "change_pct": float(observed) if observed is not None else 0.0,
+        }
+        rows.append(run_pilot(
+            change,
+            goal_id=f"pilot:{change['subject_guid'] or sym}",
+            independent=independent.get(sym),
+            tiered=None, calibrated=None, falsifier_ok=None,
+            checkpoint=None, second_lap=None,
+        ))
+
+    outcomes: dict[str, int] = {}
+    for r in rows:
+        outcomes[r["outcome"]] = outcomes.get(r["outcome"], 0) + 1
+    return {
+        "schema": SCHEMA,
+        "authority": AUTHORITY,
+        "mode": "SHADOW",
+        "status": "ok",
+        "laps": len(rows),
+        "changes_read": len(changes),
+        "independent_found": sum(
+            1 for c in changes
+            if independent.get(str(c.get("symbol") or "").upper()) is not None),
+        "outcomes": outcomes,
+        "achieved": sum(1 for r in rows if r.get("achieved")),
+        "cost": pilot_cost(rows),
+        "rows": rows,
     }
 
 
