@@ -45,6 +45,16 @@ from lib.hermes_discovery.symbol_validation import gate_watchlist_symbol
 from lib.agent_number_grounding import apply_number_grounding
 from lib.agent_untrusted_data import defang, untrusted_delimiter
 from lib.agent_memory_governance import is_adversarial_instruction
+from lib.agent_feature_flags import load_feature_flags
+from lib.agent_run_trace import (
+    STATUS_COMPLETED,
+    STATUS_ERROR,
+    append_trace,
+    build_trace,
+    close_trace,
+    new_trace_id,
+    validate_trace,
+)
 _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 _batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
@@ -2767,6 +2777,50 @@ def requeue_deferred_llm_retries(cur) -> list:
     return cur.fetchall()
 
 
+def _open_job_trace(job_id, symbol: str, agent: str, request_type: str):
+    """Start an AgentRunTrace@v1 for one watchlist job.
+
+    Until 2026-09-17 this runner emitted no trace at all: control_plane_api
+    served AgentRunTrace rows and cio_gate_measurement_bridge consumed them,
+    but nothing wrote them, so the LangGraph complexity gate was scoring an
+    almost-empty corpus. Fail-soft by construction — a trace must never be able
+    to fail a job, so every path returns None rather than raising.
+    """
+    try:
+        if int(load_feature_flags().get("AGENT_RUN_TRACE") or 0) != 1:
+            return None
+        wake_id = f"watchlist-job-{job_id}"
+        return build_trace(
+            trace_id=new_trace_id(wake_id),
+            wake_id=wake_id,
+            agent=str(agent or "unknown"),
+            role="watchlist_agent",
+            trigger=str(request_type or "watchlist_job"),
+            symbol=str(symbol or "").upper(),
+        )
+    except Exception:
+        return None
+
+
+def _emit_job_trace(trace, *, status: str, decision=None, workflow_metrics=None) -> bool:
+    """Close and persist a job trace. Never raises; returns whether it landed."""
+    if not trace:
+        return False
+    try:
+        if workflow_metrics:
+            trace = dict(trace)
+            trace["workflow_metrics"] = {**trace.get("workflow_metrics", {}), **workflow_metrics}
+        closed = close_trace(trace, status=status, decision=decision)
+        ok, errors = validate_trace(closed)
+        if not ok:
+            print(f"  [trace] refused invalid AgentRunTrace: {errors[:3]}")
+            return False
+        return append_trace(closed)
+    except Exception as exc:  # noqa: BLE001 - tracing must never break a job
+        print(f"  [trace] emit failed (non-fatal): {exc}")
+        return False
+
+
 def process_jobs(limit: int = 10):
     conn = _get_conn()
     cur = conn.cursor()
@@ -2880,10 +2934,14 @@ def process_jobs(limit: int = 10):
         except (TypeError, ValueError):
             _CURRENT_JOB_PRIORITY = None
 
+        _job_trace = _open_job_trace(job_id, symbol, agent, request_type)
+
         # Symbol gate — reject garbage tokens before any LLM spend (e.g. 543354104)
         sym_ok, sym_reason = gate_watchlist_symbol(symbol, portfolio_symbols=portfolio_syms)
         if not sym_ok:
             print(f"  [symbol-gate] {symbol}: REJECTED — {sym_reason}")
+            _emit_job_trace(_job_trace, status=STATUS_ERROR,
+                            decision={"outcome": "rejected", "reason": f"invalid_symbol: {sym_reason}"})
             cur.execute(
                 "UPDATE watchlist_agent_jobs SET status='failed', completed_at=now(), "
                 "note=COALESCE(note,'') || %s WHERE id=%s",
@@ -2975,6 +3033,8 @@ def process_jobs(limit: int = 10):
                         (symbol, agent, raw or "Empty LLM response"))
             conn.commit()
             print(f"  ✗ {symbol} ({agent}): FAILED — {(raw or 'empty')[:50]}")
+            _emit_job_trace(_job_trace, status=STATUS_ERROR,
+                            decision={"outcome": "failed", "reason": "empty_or_refused_llm_response"})
             continue
 
         # Parse result
@@ -2987,6 +3047,19 @@ def process_jobs(limit: int = 10):
         if number_grounding.get("demoted"):
             print(f"  [grounding] {symbol} ({agent}): demoted to RESEARCH_MORE; "
                   f"unverified numbers {number_grounding.get('unsupported', [])[:5]}")
+
+        _emit_job_trace(
+            _job_trace,
+            status=STATUS_COMPLETED,
+            decision={
+                "outcome": "completed",
+                "recommendation": parsed.get("recommendation"),
+                "confidence": parsed.get("confidence"),
+                "grounding_verdict": number_grounding.get("verdict"),
+                "grounding_demoted": bool(number_grounding.get("demoted")),
+            },
+            workflow_metrics={"step_count": 1},
+        )
 
         # Store result with full narrative
         result_id = f"res-{job_id}"
