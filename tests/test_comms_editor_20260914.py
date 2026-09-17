@@ -113,6 +113,25 @@ def test_invalid_operator_product_is_held(tmp_path):
     assert not d.send and d.held_reason == "operator_product_invalid"
 
 
+def test_a_digest_with_invalid_decision_markers_is_not_held(tmp_path):
+    """The morning brief renders the whole-product grade on every decision.
+
+    2026-09-16 07:30 ET: the bare ``"OPERATOR_PRODUCT_INVALID" in body`` check
+    held two of the three morning-brief chunks, so the daily brief never reached
+    the phone while the semantic-state file still recorded it as published. A
+    digest is not a standalone invalid product and must ship.
+    """
+    body = (
+        "[CIO DECISION] AXTI\nDecision: AVOID\n"
+        "Completeness: 3 of 5 fields unpopulated · OPERATOR_PRODUCT_INVALID\n\n"
+        "[CIO DECISION] IRDM\nDecision: TRIM\n"
+        "Completeness: 3 of 5 fields unpopulated · OPERATOR_PRODUCT_INVALID\n"
+    )
+    d = ce.edit(body, chat_id="1", now=NOW, ledger=ce.DuplicateLedger(tmp_path / "l.json"),
+                resolve=_resolve, editor_mode="live")
+    assert d.send and d.held_reason is None
+
+
 def test_pills_name_the_origin(tmp_path):
     assert ce.pills_for("Sources: re-entry desk") == [ce.PILL_HOUSE]
     assert ce.pills_for("General market history (model knowledge, not Trade-AI data)") == [ce.PILL_HOUSE, ce.PILL_MODEL]

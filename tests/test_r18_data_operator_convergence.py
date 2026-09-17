@@ -163,6 +163,28 @@ def test_morning_and_eod_consume_product(tmp_path: Path):
     assert e1["key"].startswith("EOD:")
 
 
+def test_fresh_day_morning_brief_is_delivered_not_suppressed(tmp_path, monkeypatch):
+    """A fresh-day brief must be sent, not suppressed as a duplicate or held.
+
+    Ties the semantic dedupe to the send path: a fresh session claims once and
+    the send fires. The 2026-09-16 failure was the inverse — the state file
+    recorded the day as published while the editor held the brief off the phone.
+    """
+    _seed_brief(tmp_path)
+    import telegram_alert
+
+    sent: list[str] = []
+    monkeypatch.setattr(
+        telegram_alert, "send_telegram",
+        lambda text, bypass_router=True: sent.append(text) or True,
+    )
+    result = deliver_morning(root=tmp_path, send=True)
+    assert result["published"] is True
+    assert result["sent"] is True
+    assert result["reason"] is None
+    assert sent, "a fresh-day morning brief must be delivered"
+
+
 def test_aegis_and_command_center_do_not_invent_cio(tmp_path: Path):
     _seed_brief(tmp_path)
     product = build_operator_product(root=tmp_path)
