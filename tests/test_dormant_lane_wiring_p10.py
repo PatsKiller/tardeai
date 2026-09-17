@@ -25,11 +25,15 @@ def _args(**kw) -> argparse.Namespace:
 
 
 def test_every_named_lane_is_registered() -> None:
-    """The nine lanes P10 names, and no silent omission."""
+    """The nine lanes P10 names, plus the P6 gate wired 2026-09-17. No silent omission."""
     assert set(runner.LANES) == {
         "critics", "sentinel", "mvl_resume", "close_goal", "commitments",
         "challenges", "contradictions", "data_gap_registry",
         "evidence_refresh_job",
+        # 2026-09-17: run_tiered_validation_gate.py, the fourth P6 entrypoint, was
+        # the only one of its tranche never armed. Pinned in full by
+        # tests/test_tiered_validation_wiring.py.
+        "tiered_validation",
     }
 
 

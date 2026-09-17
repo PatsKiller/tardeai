@@ -21,11 +21,12 @@ wired — absent either, the receipt records ``WITHHELD_OPERATOR_GATED`` and
 preserved as a failed lane and the verdict fails closed to INSUFFICIENT_EVIDENCE, which is
 the honest answer when nobody was asked.
 
-NOT SCHEDULED, DELIBERATELY
----------------------------
-A new cron or systemd entry is operator-only (AGENTS.md §17). This runs by hand until the
-operator approves a schedule; exit code 0 proves nothing (§0 rule 8) — the receipt is the
-evidence.
+HOW IT REACHES PRODUCTION
+-------------------------
+A new cron or systemd entry is operator-only (AGENTS.md §17), so this module installs none.
+It runs hourly regardless, because an entrypoint that *is* installed calls it — see
+``PRODUCTION_CALLER``. Exit code 0 proves nothing (§0 rule 8); the receipt, and the lane's
+row in the dormant-lane report, are the evidence.
 
 Authority: READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0. Never sizes, orders, stops or promotes.
 """
@@ -62,9 +63,23 @@ SCHEMA = "TieredValidationRun@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI_BEHAVIOR = 0
 
-SCHEDULED_ENTRYPOINT = (
-    "PROPOSAL ONLY — not installed. A new cron/systemd entry is operator-only "
-    "(AGENTS.md §17). Run by hand until the operator approves a schedule."
+#: Where this module actually runs, and under whose schedule.
+#:
+#: Deliberately NOT named ``SCHEDULED_ENTRYPOINT``. ``check_dark_contracts.py`` skips any
+#: module carrying that constant *whatever it says*, and what this one said was
+#: "PROPOSAL ONLY — not installed". That was a true sentence, and it was also the reason
+#: nothing ever reported the problem: a module with no caller at all passed the gate
+#: written to find modules with no caller. The declaration was honest; the gate it
+#: satisfied was empty.
+#:
+#: With the bypass gone, the dark-contract gate guards this module for real — remove the
+#: lane named below and ``--fail-on-new`` goes red. Installing a cron entry of its own
+#: would still be operator-only (AGENTS.md §17); none was added.
+PRODUCTION_CALLER = (
+    "scripts/run_dormant_lane_consumers.py, lane 'tiered_validation' — that entrypoint is "
+    "installed at crontab `50 * * * *`, hourly, armed 2026-09-16 under operator APPROVE "
+    "(full package). Tier 0 only: no provider is configured, so no reflective lane can be "
+    "called and no cost can be incurred."
 )
 
 #: The producer family this gate judges. Declared so provider separation is checkable
@@ -129,7 +144,7 @@ def free_grok_provider(*, timeout: int = 60):
     return provider
 
 
-def _self_check_ticket() -> tuple[dict[str, Any], dict[str, Any]]:
+def self_check_ticket() -> tuple[dict[str, Any], dict[str, Any]]:
     """A deterministic, obviously-broken ticket: tier 0 must block it for free."""
     ticket = {
         "symbol": "",  # missing identity — a tier-0 block
@@ -215,7 +230,7 @@ def main() -> int:
         payload: dict[str, Any] = {"schema": SCHEMA, "kind": "calibration_baselines", **report}
     else:
         if args.self_check:
-            ticket, validation = _self_check_ticket()
+            ticket, validation = self_check_ticket()
         elif args.ticket:
             try:
                 raw = json.loads(Path(args.ticket).read_text(encoding="utf-8"))
