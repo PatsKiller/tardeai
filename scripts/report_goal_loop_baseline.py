@@ -424,7 +424,10 @@ def main() -> int:
             receipt.parent.mkdir(parents=True, exist_ok=True)
             with receipt.open("a", encoding="utf-8") as fh:
                 fh.write(json.dumps(rep, sort_keys=True, default=str) + "\n")
-            print(f"\n  receipt appended: {receipt}")
+            # stdout must stay parseable in --json mode: this trailer made the
+            # document invalid JSON ("Extra data"), and the :20 cron pipes it to a log.
+            # stderr still reaches that log, which redirects 2>&1.
+            print(f"\n  receipt appended: {receipt}", file=sys.stderr)
         except OSError as exc:
             print(f"  receipt: could not write ({exc})", file=sys.stderr)
             return 2

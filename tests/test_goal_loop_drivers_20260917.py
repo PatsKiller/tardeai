@@ -520,3 +520,41 @@ def test_the_apply_path_actually_appends(tmp_path, monkeypatch, capsys):
     assert after != before
     assert after.startswith(before), "must be append-only"
     assert b"GOAL_PREDICATE_SET" in after
+
+
+# ── D23: --json must emit JSON, not JSON plus prose ──────────────────────────
+def test_json_mode_stdout_is_exactly_one_json_document(tmp_path, monkeypatch, capsys):
+    """Measured live 2026-09-17, from the deployed tree: piping `--json` into a
+    parser raised ``Extra data: line 155 column 3``.
+
+    The report printed a valid document and then appended
+    ``  receipt appended: <path>`` to the SAME stream, so every consumer that
+    parses stdout fails on a run that did its work perfectly. The `:20` cron
+    pipes exactly this into ``goal_loop_baseline.log``. A machine-readable mode
+    that is not machine-readable is the reporting failure this programme exists
+    to remove, so it gets a control rather than a fix alone.
+
+    The trailer is printed only on the WRITE path, so this control lets the
+    write happen (into tmp_path) and asserts the receipt exists — without that,
+    a no-write run would satisfy the JSON assertion while never reaching the
+    line under test, and the control would be decoration.
+    """
+    b = _baseline()
+    receipt = tmp_path / "goal_loop_baseline.jsonl"
+    monkeypatch.setattr(b, "collect", lambda: {"schema": "GoalLoopBaseline@v1",
+                                               "goal_status_changed": 0})
+    monkeypatch.setattr(b, "_receipt_path", lambda: receipt)
+    monkeypatch.setattr(sys, "argv", ["report_goal_loop_baseline.py", "--json"])
+
+    rc = b.main()
+    captured = capsys.readouterr()
+    assert rc == 0
+
+    assert receipt.exists(), (
+        "the write path did not run, so this control never reached the trailer")
+
+    out = captured.out.lstrip()
+    obj, end = json.JSONDecoder().raw_decode(out)
+    assert isinstance(obj, dict)
+    assert out[end:].strip() == "", (
+        f"stdout carried a non-JSON trailer: {out[end:].strip()[:120]!r}")
