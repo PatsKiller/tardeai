@@ -1,6 +1,6 @@
 Status:      ACTIVE
-as_of:       2026-09-09
-Measured at: evidence-dated re-reading (2026-09-01/02 audit + ops corpus, 2026-09-08/09 canary closeouts) — NOT a fresh full live census; re-measure volatile nodes before quoting
+as_of:       2026-09-09 (Telegram four-channel curation nodes re-measured 2026-09-16 — Revision 7)
+Measured at: evidence-dated re-reading (2026-09-01/02 audit + ops corpus, 2026-09-08/09 canary closeouts) — NOT a fresh full live census; re-measure volatile nodes before quoting. Telegram nodes re-measured 2026-09-16 against served `61d67f635` + origin/main `03b8ce9e7` + the four-channel ChatExport corpus.
 Canonical repo path: docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md
 Authority:   dated reading of LIVE / PARTIAL / UNWIRED / DARK — not a behaviour spec
 Supersedes:  docs/architecture/CIO_ASIS_VS_SPEC_2026-08-30.md (readings of nodes that moved)
@@ -328,3 +328,28 @@ module, campaign, or seal named "SILK" was found. If SILK is an operator name fo
 post-08-30 work above (comms gateway, guard, Drive honesty, holdings lock), that mapping is external
 to the machine and is **not invented here**. A dedicated SILK section will be added when the operator
 defines it.
+
+---
+
+## Telegram four-channel curation — re-measured 2026-09-16 (Revision 7)
+
+Dated package: `docs/architecture/maturity_gap_closure_20260916/` (`CIO_AS_IS` / `CIO_FUTURE` /
+`CIO_GAP` / `HONEST_MATURITY_ASSESSMENT` at `2026-09-16-1759`). Source of truth:
+`docs/ops/telegram_channel_diligence_20260916/00–07`.
+
+**Four channels (measured corpus `[VERIFIED]`):** Trade AI DM 1456 texts / 22.7% dup (**2.4%
+post-fix**); CIO Desk 194 / 0%; TradeAI Proposal Decisions 181 / **72%** dup (131 copies of 8 texts,
+pre-fix export ends 11 Sep); John OpenClaw 24 / 0%.
+
+**Routing status on the served pin `61d67f635`:** the 09-14 split is live (`chat_ids()` = DM,
+`proposal_chat_ids()` = proposals, `tests/test_tg_chat_routing_20260914.py`); ENTRY → IMMEDIATE;
+CIO "Run Complete" suppressed (last 14 Sep). **Not yet served:** the B-phase code (STOP HEALTH
+single-card batch `stop_health_check.py`; HELD/NOT-HELD pill `telegram_rich.py held_pill()` +
+`screener_go_alerts.py` + `watchlist_entry_planner.py`) is merged on `origin/main` `03b8ce9e7`
+(PR #1049) but **absent from the served tree** `[VERIFIED]`.
+
+**Seven dimensions (now → 10):** D1 routing 4 · D2 dedupe 7 · D3 S/N 6 · D4 actionability 5 ·
+D5 content completeness 3 · D6 governance 1 · D7 delivery observability 6 — **overall ~4–5/10**.
+
+**Single owner:** guardian goal `goal_798ce2450f61` (`data/cio/cio_goals.jsonl`, GOAL_CREATED,
+status open, `wake_count = 0`) — DOCKED, not OBSERVED.
