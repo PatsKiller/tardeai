@@ -97,11 +97,19 @@ def test_spill_chain_and_reasons_are_read_from_the_registry():
     assert dsa.primary_provider("web_search") == "brave"
 
 
-def test_tavily_is_declared_but_has_no_adapter():
-    """The registry lists tavily; this tree has no client. It must be visible, not silent."""
-    assert "tavily" in br._resolve_spill_chain()
-    assert "tavily" not in br.SPILL_ADAPTERS
-    assert set(br.SPILL_ADAPTERS) == {"searxng"}
+def test_every_declared_backup_slot_is_wired():
+    """Wired 2026-09-17. This test used to assert the opposite.
+
+    tavily was declared in domains.web_search.backup with an operator approval
+    and a 20/day budget while no client existed, so every Brave denial reached
+    slot 2 and recorded NO_ADAPTER. The invariant worth pinning is not "tavily
+    has no adapter" but "no declared slot lacks one".
+    """
+    chain = br._resolve_spill_chain()
+    assert "tavily" in chain
+    for provider in chain:
+        assert provider in br.SPILL_ADAPTERS, f"{provider!r} declared but unwired"
+    assert set(br.SPILL_ADAPTERS) == {"searxng", "tavily"}
 
 
 # ── negative control: the pre-fix behaviour ──────────────────────────────────
@@ -230,7 +238,13 @@ def test_backup_is_budget_checked_under_its_own_cap_and_falls_through(tmp_root, 
     row = _receipts(tmp_root)[0]
     assert row["spilled_to"] is None
     assert row["detail"]["tried"]["searxng"] == "BUDGET_REFUSED:DAILY_EXHAUSTED"
-    assert row["detail"]["tried"]["tavily"].startswith("NO_ADAPTER")
+    # tavily is wired now, so slot 2 is genuinely attempted. Unarmed, its
+    # transport refuses to open a socket and the chain records why instead of
+    # NO_ADAPTER. The unit it reserved must come back — a slot that cannot
+    # answer must not cost anything.
+    assert row["detail"]["tried"]["tavily"].startswith("PROVIDER_ERROR:")
+    assert "BRAVE_ROUTER_LIVE" in row["detail"]["tried"]["tavily"]
+    assert sb.status("tavily", now=T0, root=tmp_root)["daily_used"] == 0
 
 
 def test_backup_failure_refunds_its_unit(tmp_root, monkeypatch):

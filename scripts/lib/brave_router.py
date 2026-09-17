@@ -290,11 +290,34 @@ def _searxng_transport(query: str, kind: str, count: int) -> list[dict[str, Any]
     return [h for h in hits if isinstance(h, dict) and h.get("url")]
 
 
-#: Backup slots this router can actually call. Tavily is declared in the registry
-#: (providers.tavily, status configured_unused, 20/day) but no client exists in
-#: this tree; it stays a declared-but-unwired slot and the receipt says so.
+def _tavily_transport(query: str, kind: str, count: int) -> list[dict[str, Any]]:
+    """Live Tavily hop through the ONE shared client (scripts/lib/tavily_client).
+
+    Same contract as the SearXNG slot: refuses to leave the host unless
+    ``BRAVE_ROUTER_LIVE`` is armed, and raises on an all-error response so the
+    caller refunds this slot's budget unit and moves on. An unconfigured key is
+    an all-error response, so a host with no TAVILY_API_KEY simply falls
+    through rather than spending anything.
+    """
+    if not live_armed():
+        raise RuntimeError("BRAVE_ROUTER_LIVE is not set — refusing network Tavily call; inject spill_transport")
+    try:
+        from scripts.lib.tavily_client import tavily_search
+    except ImportError:
+        from lib.tavily_client import tavily_search  # type: ignore
+    hits = tavily_search(query, categories="news" if kind == "news" else "general", limit=int(count))
+    errors = [h for h in hits if isinstance(h, dict) and h.get("error") and not h.get("url")]
+    if errors and len(errors) == len(hits):
+        raise RuntimeError(f"tavily: {errors[0].get('error')}")
+    return [h for h in hits if isinstance(h, dict) and h.get("url")]
+
+
+#: Backup slots this router can actually call. Both slots the registry declares
+#: in domains.web_search.backup are now wired; before 2026-09-17 tavily had no
+#: client, so every Brave denial reached slot 2 and recorded NO_ADAPTER.
 SPILL_ADAPTERS: dict[str, SpillTransport] = {
     "searxng": _searxng_transport,
+    "tavily": _tavily_transport,
 }
 
 

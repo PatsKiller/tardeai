@@ -261,7 +261,7 @@
       "supplies": [
         "web_search"
       ],
-      "_note": "Declared, budget 20/day, status configured_unused: NO client exists in this tree and scripts/lib/brave_router.SPILL_ADAPTERS has no tavily entry. Spill receipts record it as NO_ADAPTER. Wire a client (one shared module, like searxng_client.py) and add the adapter before changing status to active."
+      "_note": "Wired 2026-09-17: scripts/lib/tavily_client.py is the one shared client and scripts/lib/brave_router.SPILL_ADAPTERS carries a tavily entry, so slot 2 of domains.web_search.backup can answer instead of recording NO_ADAPTER. Status stays configured_unused until a TAVILY_API_KEY is provisioned on the host — provisioning a data plan is operator-only (AGENTS.md section 17). With no key the client returns NOT_CONFIGURED error rows, the transport raises, and the chain refunds this slot's budget unit and moves on, so nothing is spent. Flip status to active in the same change that provisions the key."
     },
     "finnhub": {
       "class": "live_external",
