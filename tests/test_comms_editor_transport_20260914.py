@@ -71,6 +71,28 @@ def test_live_holds_an_invalid_operator_product(env, monkeypatch):
     assert out["suppressed"] == "operator_product_invalid" and sent == []
 
 
+def test_live_delivers_a_multi_decision_digest_with_invalid_markers(env, monkeypatch):
+    """A fresh-day morning brief is a digest, not a standalone invalid product.
+
+    2026-09-16 07:30 ET: the bare substring hold suppressed two of the three
+    morning-brief chunks, so the operator got only the tail. A digest with many
+    ``[CIO DECISION]`` blocks must ship even when it reports ``OPERATOR_PRODUCT_INVALID``.
+    """
+    tmp, sent, post = env
+    monkeypatch.setenv("COMMS_EDITOR_MODE", "live")
+    body = (
+        "☀️ MORNING CIO BRIEF\n\n"
+        "[CIO DECISION] AXTI\nDecision: AVOID\n"
+        "Completeness: 3 of 5 fields unpopulated · OPERATOR_PRODUCT_INVALID\n\n"
+        "[CIO DECISION] IRDM\nDecision: TRIM\n"
+        "Completeness: 3 of 5 fields unpopulated · OPERATOR_PRODUCT_INVALID\n\n"
+        "Re-entry book A: 2 names"
+    )
+    out = _send(post, body)
+    assert out["ok"] and not out.get("suppressed")
+    assert sent, "the daily digest must be delivered, not held"
+
+
 def test_editor_failure_never_blocks_the_send(env, monkeypatch):
     tmp, sent, post = env
     monkeypatch.setenv("COMMS_EDITOR_MODE", "live")

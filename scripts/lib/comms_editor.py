@@ -81,6 +81,23 @@ _STANCE_BULL = re.compile(r"\b(GO|A\+|BUY|ADD(?:_ON_PULLBACK)?|ACCUMULATE|STRONG
 _STANCE_BEAR = re.compile(r"\b(AVOID|SELL|EXIT|TRIM|REDUCE|DO NOT BUY)\b")
 _CIO_BULL = {"BUY", "ADD", "ADD_ON_PULLBACK", "ACCUMULATE", "INITIATE", "REENTER", "RE_ENTER"}
 _CIO_BEAR = {"AVOID", "SELL", "EXIT", "TRIM", "REDUCE", "HOLD_REDUCE"}
+_CIO_DECISION_HEADER = re.compile(r"^\[CIO DECISION\]", re.M)
+
+
+def _holds_invalid_product(body: str) -> bool:
+    """True only for a standalone invalid operator product — never a digest.
+
+    The morning/EOD brief renders the whole-product completeness grade
+    (``OPERATOR_PRODUCT_INVALID``) on EVERY decision's "Completeness" line, so a
+    bare substring match held the digest — the one message the operator reads
+    every day — and two of its three chunks never reached the phone
+    (2026-09-16 07:30 ET) while the semantic-state file still recorded the brief
+    as published. A digest carries many ``[CIO DECISION]`` blocks; a standalone
+    invalid product is exactly one. Hold the latter, ship the former.
+    """
+    if "OPERATOR_PRODUCT_INVALID" not in body:
+        return False
+    return len(_CIO_DECISION_HEADER.findall(body)) == 1
 
 
 #: Host-level switch, one line: off | shadow | live. Most Telegram senders are cron
@@ -366,7 +383,7 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
     subs = subjects(body, resolve=resolve)
     views = cio_views([s["symbol"] for s in subs], db_query)
     disagree = cio_disagreements(body, views)
-    held = "operator_product_invalid" if "OPERATOR_PRODUCT_INVALID" in body else None
+    held = "operator_product_invalid" if _holds_invalid_product(body) else None
     prior = ledger.check(chat_id, fp, now)
 
     footer: list[str] = []
