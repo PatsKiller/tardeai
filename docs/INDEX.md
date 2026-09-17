@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `aeca6c03fdaac3056df00a134e054f93ea9f77118f311e727801e0d704f83101`
+**Tree fingerprint:** `f2934d25bc2bc0e5e3d02f31dbe777676d7effe735a8cc2a5baeb5d2fa5072b6`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2526 |
-| Markdown (excl. this INDEX) | 2101 |
+| Files under `docs/` (excl. this INDEX) | 2533 |
+| Markdown (excl. this INDEX) | 2108 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2034 |
+| Header OK | 2041 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2155 |
+| review_required | 2162 |
 
 ## Markdown tree
 
@@ -276,8 +276,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-08-30.md` | CIO Agent — AS-IS vs SPEC | review_required | OK | `38acfb25d447` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-ceiling.md` | CIO Agent — AS-IS vs SPEC (2026-09-09 live ceiling) | review_required | OK | `11646742f3fe` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-final.md` | CIO Agent — AS-IS vs SPEC (2026-09-09 final) | review_required | OK | `dd2922037c1f` |
-| `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO Agent — AS-IS vs SPEC (2026-09-09) | review_required | OK | `57bdddcf06e3` |
-| `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `23fcdb6a73f2` |
+| `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO Agent — AS-IS vs SPEC (2026-09-09) | review_required | OK | `3b89fb965505` |
+| `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `4edef7d3ee4d` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-final.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 final) | review_required | OK | `5b412d2266d6` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09) | review_required | OK | `999bb7b18aab` |
@@ -499,6 +499,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_gap_closure_20260910/HONEST_MATURITY_ASSESSMENT_2026-09-10-0215.md` | Honest maturity assessment — 2026-09-10-0215 | review_required | OK | `fcfbcc650251` |
 | `docs/architecture/maturity_gap_closure_20260910/HONEST_MATURITY_ASSESSMENT_2026-09-10-1338.md` | Honest maturity assessment — 2026-09-10-1338 | review_required | OK | `2ed4d7e059de` |
 | `docs/architecture/maturity_gap_closure_20260910/SESSION_DOCS_SUMMARY_2026-09-10-0215.md` | Session docs summary — 2026-09-10-0215 | review_required | OK | `4250b1f5f511` |
+| `docs/architecture/maturity_gap_closure_20260916/CIO_AS_IS_2026-09-16-1759.md` | CIO Agent — Telegram four-channel curation: AS-IS (Revision 7, 2026-09-16) | review_required | OK | `8704fcec7f7f` |
+| `docs/architecture/maturity_gap_closure_20260916/CIO_FUTURE_2026-09-16-1759.md` | CIO Agent — Telegram four-channel curation: FULL-MATURITY TARGET (Revision 7, 2026-09-16) | review_required | OK | `51c1d234dc67` |
+| `docs/architecture/maturity_gap_closure_20260916/CIO_GAP_2026-09-16-1759.md` | CIO Agent — Telegram four-channel curation: GAP analysis (Revision 7, 2026-09-16) | review_required | OK | `3cd70d55c5c1` |
+| `docs/architecture/maturity_gap_closure_20260916/HONEST_MATURITY_ASSESSMENT_2026-09-16-1759.md` | Honest maturity assessment — Telegram four-channel curation (Revision 7, 2026-09-16-1759) | review_required | OK | `538ea18df514` |
 | `docs/architecture/maturity_overnight_20260912/CIO_AS_IS_2026-09-12.md` | AS-IS — what this system actually does, 2026-09-12 | review_required | MISSING HEADER | `0ee3c1ba0cc8` |
 | `docs/architecture/maturity_overnight_20260912/CIO_FUTURE_2026-09-12.md` | FUTURE — the next moves, in the order they unblock each other | review_required | MISSING HEADER | `c3ed88bc4954` |
 | `docs/architecture/maturity_overnight_20260912/CIO_GAP_2026-09-12.md` | GAP — what stands between this system and the next level, 2026-09-12 | review_required | MISSING HEADER | `69f35eff39a3` |
@@ -509,6 +513,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_overnight_20260912/MATURITY_SCORECARD_2026-09-12.md` | Maturity scorecard — 2026-09-12, overnight campaign | review_required | MISSING HEADER | `db89ab5cb6a1` |
 | `docs/architecture/maturity_overnight_20260912/README.md` | Overnight maturity campaign — package, 2026-09-12 | review_required | MISSING HEADER | `a41175e94659` |
 | `docs/architecture/maturity_overnight_20260912/STATE_ROOT_RECONCILIATION_RUNBOOK.md` | State-root reconciliation — operator adjudication required | review_required | OK | `e7194d7cddec` |
+| `docs/architecture/maturity_reconciliation_20260917/CIO_AS_IS_2026-09-17-rev8.md` | CIO / goal-loop AS-IS — Revision 8 (2026-09-17) | review_required | OK | `dcfca094e363` |
+| `docs/architecture/maturity_reconciliation_20260917/HONEST_MATURITY_ASSESSMENT_2026-09-17-rev8.md` | Honest maturity assessment — Revision 8 (2026-09-17) | review_required | OK | `ede40d194307` |
+| `docs/architecture/maturity_reconciliation_20260917/REVISION_LEDGER_2026-09-17-rev8.md` | Revision ledger — which revision is canonical, and what is still published | review_required | OK | `2abe45079289` |
 | `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `e6f73da9013d` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `1cbdf5ccdf27` |
