@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `8e1f16b2336271bf5545b75cd3759c95e7198389de1d8b37b098d23f59c0ac18`
+**Tree fingerprint:** `0236a21f5b3322f1aed7edd9fd9897a1447e834b84999d444085dd0254e1a169`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -1716,8 +1716,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary | review_required | OK | `19050e08a848` |
 | `docs/ops/telegram_channel_diligence_20260916/01_CHANNEL_INVENTORY_SOURCE_MAP.md` | Phase 1 — Channel Inventory & Source Mapping | review_required | OK | `6be06281ea6d` |
 | `docs/ops/telegram_channel_diligence_20260916/02_ROUTING_GOVERNANCE_PROPOSAL.md` | Phase 2 — Message Routing & Governance Proposal | review_required | OK | `4bf845d22d7f` |
-| `docs/ops/telegram_channel_diligence_20260916/03_DELIVERY_RELIABILITY.md` | Phase 3 — Telegram Delivery Reliability Assessment | review_required | OK | `794e639b9ddc` |
-| `docs/ops/telegram_channel_diligence_20260916/04_CONTENT_QUALITY_CURATION.md` | Phase 4 — Content Quality, Relevance & Curation Audit | review_required | OK | `c9e402d810fc` |
+| `docs/ops/telegram_channel_diligence_20260916/03_DELIVERY_RELIABILITY.md` | Phase 3 — Telegram Delivery Reliability Assessment | review_required | OK | `7687365764a9` |
+| `docs/ops/telegram_channel_diligence_20260916/04_CONTENT_QUALITY_CURATION.md` | Phase 4 — Content Quality, Relevance & Curation Audit | review_required | OK | `c372bd01d690` |
 | `docs/ops/telegram_channel_diligence_20260916/05_COMMAND_CENTER_COVERAGE_GAPS.md` | Phase 5 — Command Center Coverage Gap Analysis | review_required | OK | `9eee88c6773b` |
 | `docs/ops/telegram_channel_diligence_20260916/06_IMPLEMENTATION_ROADMAP.md` | Phase 6 — Implementation Roadmap | review_required | OK | `8d2eb858f8d7` |
 | `docs/ops/telegram_channel_diligence_20260916/07_EXECUTION_PLAN.md` | Phase 7 — Execution Plan & Maturity Scorecard | review_required | OK | `c3ec2b72146f` |
