@@ -8,8 +8,16 @@ predicate — and a goal without one can never close, which is why
 drove it.
 
 Setting a predicate changes what the live dispatcher serves, so `--apply` is
-operator-gated (AGENTS.md §17) and the default is a dry run that writes nothing.
-The dry run prints the exact event that WOULD be appended.
+operator-gated (AGENTS.md §17) and the default is a dry run that appends NO
+EVENT. The dry run prints the exact event that WOULD be appended.
+
+"Writes nothing" would be inaccurate and is not claimed: constructing
+`CIOGoalStore` calls `_load_or_rebuild`, which rebuilds and writes
+`cio_goals_projection.json` when that file is absent or unparseable. The
+projection is a derived cache rebuildable from the append-only log, so this is
+not a durable state change — but it IS a write, and a docstring that denied it
+would be the kind of small inaccuracy this codebase has been bitten by.
+The guarantee the dry run actually makes: `cio_goals.jsonl` is byte-identical.
 
 No new identity: the predicate reuses `goal_pilot_material_change.build_predicate`
 terms, so identity stays `(goal_id, predicate_version, predicate_hash)` rooted in

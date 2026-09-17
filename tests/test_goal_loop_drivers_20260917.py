@@ -223,9 +223,19 @@ def test_an_absent_ledger_permits_laps_but_never_paid_calls(tmp_path):
     wrong mechanism would leave the real one untested.
     """
     assert gb.check("g", "v0", root=tmp_path)["allowed"] is True
-    lim = gb.limits()
-    assert lim["max_paid_calls"] == 0
-    assert lim["max_cost_usd"] == 0.0
+    # Assert the DEFAULT, not the EFFECTIVE limit. `limits()` with no root reads
+    # the operator's live goal_budget_policy.json, so this coupled a unit test to
+    # host state: it broke the moment the operator funded Tier 2 on 2026-09-17
+    # (max_paid_calls 0 -> 2). A test that fails when the host is correctly
+    # configured invites someone to "fix" it by loosening the assertion, which
+    # would silently delete the real guarantee.
+    assert gb.DEFAULT_LIMITS["max_paid_calls"] == 0
+    assert gb.DEFAULT_LIMITS["max_cost_usd"] == 0.0
+    # And with an isolated root (no policy file), the effective limits ARE the
+    # defaults — which is the claim that actually matters here.
+    iso = gb.limits(root=tmp_path)
+    assert iso["max_paid_calls"] == 0
+    assert iso["max_cost_usd"] == 0.0
 
 
 # ── D2: a wrong API must raise, not degrade into a false measurement ─────────
@@ -285,7 +295,228 @@ def test_set_goal_predicate_reads_the_predicate_off_the_goal_projection():
     assert "is unverified" in src
 
 
-def test_set_goal_predicate_defaults_to_dry_run():
-    src = (ROOT / "scripts" / "set_goal_predicate.py").read_text(encoding="utf-8")
-    assert '"--apply", action="store_true"' in src
-    assert "DRY RUN" in src
+# ── S1-S4: the four defects adversarial review found in the first draft ──────
+# All four had live production evidence and no control. Each of these goes RED
+# when its fix is removed.
+
+class _KindCur:
+    """Two changes: one price_excursion (comparable), one news_burst (not)."""
+
+    def __init__(self):
+        self._stage = 0
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        self._stage = 1 if "material_changes" in sql else 2
+
+    def fetchall(self):
+        if self._stage == 1:
+            return [
+                ("g1", "s1", "NOC", "price_excursion", -2.44, 100.0, 97.56, "2026-09-17T00:00:00Z"),
+                ("g2", "s2", "LULU", "news_burst", 90.00, 0.0, 19.0, "2026-09-17T00:00:00Z"),
+            ]
+        return [("NOC", 2.40), ("LULU", 0.78)]
+
+
+class _KindConn:
+    def cursor(self):
+        return _KindCur()
+
+    def close(self):
+        pass
+
+
+def test_a_wrong_unit_kind_is_unobtainable_not_disagreeing():
+    """S1. A news_burst `magnitude` is a burst score, not a percent move.
+
+    Measured against production 2026-09-17: comparing burst 90.00 against price
+    0.78 produced `disagree_90.00_vs_0.78` -> supplied-and-false -> UNSATISFIED
+    -> ask_operator. Six of eight live rows became false operator escalations
+    from two quantities never in the same units. 81% of 30 days of rows.
+    """
+    from scripts.lib.goal_pilot_material_change import run_shadow as rs
+    out = rs(conn=_KindConn())
+    by = {r["change_guid"]: r for r in out["rows"]}
+    burst = by["g2"]
+    assert burst["outcome"] == OUTCOME_BOUNDED_IGNORANCE
+    assert burst["unobtainable"]["agrees_corroborated"].startswith("kind_not_price_comparable")
+    assert "agrees_corroborated" not in burst["facts"], "must not record a comparison"
+    assert out["not_price_comparable"] == 1
+    # The comparable one still gets a real corroboration attempt.
+    assert "agrees_corroborated" in by["g1"]["facts"]
+
+
+def test_only_price_comparable_kinds_are_corroborated():
+    """S1, the other half: the non-price symbol must not even be looked up."""
+    from scripts.lib import goal_pilot_material_change as p
+    assert p.PRICE_COMPARABLE_KINDS == frozenset({"price_excursion"})
+    out = p.run_shadow(conn=_KindConn())
+    assert out["independent_found"] == 1, "only the price_excursion row counts"
+
+
+class _BadCur:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        raise RuntimeError('column "magnitude" does not exist')
+
+    def fetchall(self):  # pragma: no cover
+        return []
+
+
+class _BadConn:
+    def cursor(self):
+        return _BadCur()
+
+    def close(self):
+        pass
+
+
+def test_a_query_failure_is_unavailable_and_never_raises():
+    """S2. Raising let the runner write an envelope with a hardcoded ok: true.
+
+    That is the "14 receipts, no verdict" defect this driver exists to end,
+    recurring on the first schema drift or statement timeout.
+    """
+    from scripts.lib.goal_pilot_material_change import run_shadow as rs
+    out = rs(conn=_BadConn())          # must not raise
+    assert out["status"] == "unavailable"
+    assert "query failed" in out["why"]
+    assert out["laps"] == 0
+    # Schema parity with the ok payload, so a consumer cannot KeyError.
+    for k in ("changes_read", "not_price_comparable", "outcomes", "achieved", "rows"):
+        assert k in out
+
+
+def test_a_checkout_lap_ledger_is_never_reported_as_production(tmp_path, monkeypatch):
+    """S3. `_cio()` falls back to PROJECT_ROOT; drivers() must not follow it.
+
+    Adversarial review proved the baseline reporting `rows: 2` from a temp
+    checkout while production had no ledger at all — the control measurement
+    sourced from a throwaway tree.
+    """
+    b = _baseline()
+    prod = tmp_path / "prod"
+    checkout = tmp_path / "checkout"
+    (checkout / "data" / "cio").mkdir(parents=True)
+    (checkout / "data" / "cio" / "cio_goal_laps.jsonl").write_text(
+        json.dumps({"lap": 1}) + "\n", encoding="utf-8")
+    (prod / "data" / "cio").mkdir(parents=True)
+    monkeypatch.setattr(b, "_state_root", lambda: prod)
+    monkeypatch.setattr(b, "PROJECT_ROOT", checkout)
+    d = b.drivers()
+    assert d["laps_minted"]["status"] == "unavailable", \
+        "reported a checkout file as a production measurement"
+    assert str(prod) in d["laps_minted"]["why"]
+
+
+def test_zero_laps_is_work_not_invocation_only(tmp_path, monkeypatch):
+    """S4. `laps: 0` is a real measurement on a quiet day — 0 is falsy."""
+    b = _baseline()
+    cio = tmp_path / "data" / "cio"
+    cio.mkdir(parents=True)
+    rows = [
+        {"ok": True, "result": {"status": "ok", "laps": 0, "outcomes": {}}},   # quiet day: WORK
+        {"ok": True, "result": {"status": "unavailable", "why": "no db"}},     # measured nothing
+        {"ok": True, "result": {"status": "library_loaded"}},                  # invocation only
+    ]
+    (cio / "goal_pilot_material_change.jsonl").write_text(
+        "\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    monkeypatch.setattr(b, "_state_root", lambda: tmp_path)
+    monkeypatch.setattr(b, "PROJECT_ROOT", tmp_path)
+    d = b.drivers()
+    assert d["pilot"]["rows_with_verdict"] == 1, "a quiet-day run is work"
+    assert d["pilot"]["invocation_only"] == 2
+
+
+def test_the_gate_bridge_must_not_write_a_git_tracked_file_on_a_schedule():
+    """Regression guard for a landmine I armed and then defused, 2026-09-17.
+
+    `--update-catalog` writes `config/agent_maturity_catalog.json`, which is
+    git-TRACKED and not ignored. Adding that flag to the hourly :35 cron made the
+    dev tree permanently dirty, and cio_phase2_exact_main_deploy.sh dies on
+    `ROOT working tree dirty` — so every future deploy would have refused,
+    silently, from the next fire onward. Closing one gap by creating a worse one.
+
+    The flag is fine by hand; it must not be on a schedule until the bridge
+    writes to the production state root like every other hourly receipt.
+    """
+    import subprocess
+    out = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
+    offenders = [ln for ln in out.splitlines()
+                 if ln.strip() and not ln.lstrip().startswith("#")
+                 and "cio_gate_measurement_bridge" in ln and "--update-catalog" in ln]
+    assert not offenders, (
+        "a scheduled --update-catalog writes a git-tracked file hourly and will "
+        f"block every deploy: {offenders}")
+
+
+def _load_sgp(name: str):
+    import importlib.util as iu
+    spec = iu.spec_from_file_location(name, ROOT / "scripts" / "set_goal_predicate.py")
+    mod = iu.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _isolated_store(tmp_path):
+    """An open goal in a throwaway store, so no test touches production."""
+    from scripts.lib.cio_goals import CIOGoalStore
+    cio = tmp_path / "data" / "cio"
+    cio.mkdir(parents=True, exist_ok=True)
+    log = cio / "cio_goals.jsonl"
+    store = CIOGoalStore(event_path=log,
+                         projection_path=cio / "cio_goals_projection.json",
+                         cursor_path=cio / "cio_goals_cursor.json")
+    # `owner_agent`, keyword-only, and it must be a member of VALID_OWNERS
+    # (cio_goals.py:40) — an arbitrary string raises. Guessed the keyword once
+    # and the value once; the signature is at :438 and the set at :40.
+    store.create_goal(owner_agent="sentinel", title="dry-run probe")
+    return store, log
+
+
+def test_the_dry_run_appends_no_event_behaviourally(tmp_path, monkeypatch, capsys):
+    """RUN it and assert the event log is byte-identical — not a source grep.
+
+    Adversarial review 2026-09-17 mutated this script so the write fired
+    unconditionally WITHOUT --apply, left the asserted strings ("DRY RUN",
+    "--apply") intact, and the old grep-based control stayed GREEN. A control
+    that asserts comments exist is decoration, which is the exact defect this
+    programme removes.
+    """
+    sgp = _load_sgp("_sgp_dry")
+    store, log = _isolated_store(tmp_path)
+    monkeypatch.setattr(sgp, "_store", lambda: store)
+    monkeypatch.setattr(sys, "argv", ["set_goal_predicate.py", "--json"])
+
+    before = log.read_bytes()
+    rc = sgp.main()
+    capsys.readouterr()
+    assert rc == 0
+    assert log.read_bytes() == before, "dry run appended to the event log"
+
+
+def test_the_apply_path_actually_appends(tmp_path, monkeypatch, capsys):
+    """The other half: --apply must write, or the dry-run control proves nothing."""
+    sgp = _load_sgp("_sgp_apply")
+    store, log = _isolated_store(tmp_path)
+    monkeypatch.setattr(sgp, "_store", lambda: store)
+    monkeypatch.setattr(sys, "argv", ["set_goal_predicate.py", "--apply", "--json"])
+
+    before = log.read_bytes()
+    rc = sgp.main()
+    capsys.readouterr()
+    assert rc == 0
+    after = log.read_bytes()
+    assert after != before
+    assert after.startswith(before), "must be append-only"
+    assert b"GOAL_PREDICATE_SET" in after

@@ -173,18 +173,22 @@ def drivers() -> dict[str, Any]:
     # an "unavailable" reason sends the reader somewhere they should not look.
     prod_cio = _state_root() / "data" / "cio"
 
-    laps = _cio("cio_goal_laps.jsonl")
+    # Read ONLY the production path. `_cio()` falls back to PROJECT_ROOT, so a
+    # dev checkout that happens to contain a lap ledger would be reported as the
+    # production measurement — the control number sourced from a throwaway tree.
+    # Adversarial review 2026-09-17 proved it: production had no ledger and the
+    # baseline reported `rows: 2` from a temp checkout.
+    laps = prod_cio / "cio_goal_laps.jsonl"
     out["laps_minted"] = (
         {"rows": len(_jsonl(laps)), "path": str(laps)} if laps.is_file()
         else _unavailable(
-            f"no lap ledger at {prod_cio / 'cio_goal_laps.jsonl'} — "
-            "no generation has ever been minted")
+            f"no lap ledger at {laps} — no generation has ever been minted")
     )
 
-    needs = _cio("cio_goal_need_ledger.jsonl")
+    needs = prod_cio / "cio_goal_need_ledger.jsonl"
     out["need_ledger"] = (
         {"rows": len(_jsonl(needs)), "path": str(needs)} if needs.is_file()
-        else _unavailable(f"no need ledger at {prod_cio / 'cio_goal_need_ledger.jsonl'}")
+        else _unavailable(f"no need ledger at {needs}")
     )
 
     pilot_path = _cio("goal_pilot_material_change.jsonl")
@@ -194,9 +198,23 @@ def drivers() -> dict[str, Any]:
         prows = _jsonl(pilot_path)
 
         def _has_verdict(r: dict) -> bool:
+            """Did this receipt record WORK, or only that the job fired?
+
+            `laps: 0` is a real measurement on a quiet day — a driver that read
+            the store and found no changes. Testing it for truthiness counted
+            that healthy run as invocation-only, which is the opposite of what
+            this metric exists to show. And `run_shadow` returns `outcomes`
+            (plural); checking only the singular meant `laps` was carrying the
+            whole test. Both found by adversarial review 2026-09-17.
+            """
             res = r.get("result") if isinstance(r.get("result"), dict) else r
-            return bool((res or {}).get("verdict") or (res or {}).get("outcome")
-                        or (res or {}).get("laps"))
+            res = res or {}
+            if res.get("status") == "unavailable":
+                return False  # measured nothing, and says so
+            return (res.get("laps") is not None
+                    or bool(res.get("outcomes"))
+                    or bool(res.get("verdict"))
+                    or bool(res.get("outcome")))
 
         with_verdict = sum(1 for r in prows if _has_verdict(r))
         out["pilot"] = {
