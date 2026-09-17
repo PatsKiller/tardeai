@@ -266,6 +266,25 @@ def test_set_goal_predicate_refuses_to_guess_an_accessor():
     assert "list_goals()" not in src
 
 
+def test_set_goal_predicate_reads_the_predicate_off_the_goal_projection():
+    """`set_predicate` returns the GOAL, not the predicate payload.
+
+    Found 2026-09-17 by reading real output, not by a control: --apply printed
+    predicate_version/hash/identity as null while the event landed correctly,
+    because the script read those keys off the top level of
+    `dict(self._goals[goal_id])` where they live under ["predicate"]. A receipt
+    reporting that nothing happened when something did is this programme's own
+    defect class, inverted — and it would have made the one write that moves
+    GOAL_PREDICATE_SET off zero look like a no-op.
+    """
+    src = (ROOT / "scripts" / "set_goal_predicate.py").read_text(encoding="utf-8")
+    assert 'payload or {}).get("predicate")' in src, \
+        "must read the predicate off the goal projection, not the top level"
+    assert 'report["predicate_identity"] = applied.get("predicate_identity")' in src
+    # And it must refuse to claim success it cannot name.
+    assert "is unverified" in src
+
+
 def test_set_goal_predicate_defaults_to_dry_run():
     src = (ROOT / "scripts" / "set_goal_predicate.py").read_text(encoding="utf-8")
     assert '"--apply", action="store_true"' in src

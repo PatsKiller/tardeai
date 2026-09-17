@@ -116,10 +116,25 @@ def main() -> int:
                 terms=list(PILOT_TERMS),
                 actor_id="set_goal_predicate",
             )
+            # `set_predicate` returns `dict(self._goals[goal_id])` — the whole GOAL
+            # projection, not the predicate payload. Reading the predicate keys off
+            # the top level yielded null for all three while the event landed
+            # correctly: a receipt reporting that nothing happened when something
+            # did, which is the defect class this programme exists to remove,
+            # inverted. The predicate lives one level down.
+            applied = (payload or {}).get("predicate") or {}
             report["applied"] = True
-            report["predicate_version"] = payload.get("predicate_version")
-            report["predicate_hash"] = payload.get("predicate_hash")
-            report["predicate_identity"] = payload.get("predicate_identity")
+            report["predicate_version"] = applied.get("predicate_version")
+            report["predicate_hash"] = applied.get("predicate_hash")
+            report["predicate_identity"] = applied.get("predicate_identity")
+            # Prove the write rather than assert it: a receipt that cannot name
+            # the stored identity has not verified anything.
+            if not report["predicate_identity"]:
+                report["error"] = (
+                    "set_predicate returned no predicate on the goal projection; "
+                    "the event may have been appended but is unverified")
+                print(json.dumps(report, indent=2, default=str), file=sys.stderr)
+                return 1
         except Exception as exc:  # noqa: BLE001
             report["error"] = f"{type(exc).__name__}: {exc}"
             print(json.dumps(report, indent=2, default=str), file=sys.stderr)
