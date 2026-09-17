@@ -88,3 +88,94 @@ def test_the_held_cursor_lets_the_next_run_re_offer_the_same_row(monkeypatch):
     payload = _run(monkeypatch, store, [_candidate("sentinel", "new-1", "2026-07-21T00:00:00+00:00")])
     assert payload["enqueued"] == 1
     assert payload["cursors_held"] == []
+
+
+# ── goals:laps — the producer-side caller that never existed ────────────────
+#
+# Measured 2026-09-17: `enqueue_goal_lap` had ZERO production callers, the lap
+# ledger did not exist on disk, and `lap_error`/`goal_touch` appear 0 times in
+# the goal log — so `append_lap` was never once reached and every one of 34,912
+# wakes was a cold start. These controls cover the adapter that closes that gap.
+
+from agent_runtime import trigger_sources as ts  # noqa: E402
+from agent_runtime.agents.definitions import FLEET  # noqa: E402
+from lib import goal_generation as gg  # noqa: E402
+from lib.cio_goals import CIOGoalStore  # noqa: E402
+
+
+def _goal_store(tmp_path):
+    return CIOGoalStore(
+        event_path=tmp_path / "cio_goals.jsonl",
+        projection_path=tmp_path / "cio_goals_projection.json",
+        cursor_path=tmp_path / "cio_goal_event_cursors.json",
+    )
+
+
+def _arm(monkeypatch, tmp_path, store):
+    """Point the adapter at a throwaway store. Nothing touches production."""
+    monkeypatch.setenv("AGENT_RUNTIME_GOAL_LAPS", "1")
+    monkeypatch.setattr(
+        ts, "_goal_lap_modules", lambda: (gg, lambda **kw: store, lambda: str(tmp_path))
+    )
+
+
+def test_goal_laps_are_inert_until_the_operator_arms_them(monkeypatch):
+    """Registering an adapter adds it to DEFAULT_SOURCES and the producer timer
+    is already live, so an ungated adapter would change an armed lane the moment
+    it deployed. Unarmed it must produce nothing and say so."""
+    monkeypatch.delenv("AGENT_RUNTIME_GOAL_LAPS", raising=False)
+    result = ts._goal_lap_adapter(None)
+    assert result.probe.state == ts.SourceState.NOT_CONFIGURED
+    assert result.candidates == ()
+    assert "operator-armed" in result.probe.detail
+
+
+def test_armed_goal_laps_yield_one_candidate_per_open_goal(monkeypatch, tmp_path):
+    """THE property: a goal with no lap yet must produce exactly one lap."""
+    store = _goal_store(tmp_path)
+    store.create_goal(owner_agent="alex", title="A", success_criteria="need one")
+    store.create_goal(owner_agent="steph", title="B", success_criteria="need two")
+    _arm(monkeypatch, tmp_path, store)
+
+    result = ts._goal_lap_adapter(None)
+    assert result.probe.state == ts.SourceState.READY
+    assert len(result.candidates) == 2
+    keys = {c.dedup_key for c in result.candidates}
+    assert len(keys) == 2, "two goals must not share one generation key"
+    assert all(k.startswith("goal:") for k in keys)
+    assert result.cursor_updates == (), "a goal generation is not a forward cursor"
+
+
+def test_a_goal_owned_outside_the_fleet_is_named_not_silently_dropped(
+    monkeypatch, tmp_path
+):
+    """`hermes` is a legal goal owner (VALID_OWNERS) but is NOT in FLEET and has
+    no alias, so a hermes-owned goal can never be leased by anyone.
+
+    `produce_once` drops a non-FLEET candidate with a bare `continue` and no
+    counter — the same silence that let orphan timers fire 896 times a day doing
+    nothing. The adapter must refuse it AND say whose goal it refused.
+    """
+    assert "hermes" not in FLEET, "control assumes hermes is outside the fleet"
+    store = _goal_store(tmp_path)
+    store.create_goal(owner_agent="hermes", title="unleasable", success_criteria="x")
+    _arm(monkeypatch, tmp_path, store)
+
+    result = ts._goal_lap_adapter(None)
+    assert result.candidates == (), "queued work nobody can lease is worse than none"
+    assert "not in FLEET" in result.probe.detail
+    assert "hermes" in result.probe.detail, "a silent skip leaves no receipt"
+
+
+def test_the_guardian_alias_resolves_onto_a_fleet_agent(monkeypatch, tmp_path):
+    """guardian -> risk_agent. AGENT_ALIASES is applied only in run_once, not in
+    intake or dispatch, so without resolving it here the live guardian-owned goal
+    would enqueue for an agent that does not exist."""
+    store = _goal_store(tmp_path)
+    store.create_goal(owner_agent="guardian", title="G", success_criteria="y")
+    _arm(monkeypatch, tmp_path, store)
+
+    result = ts._goal_lap_adapter(None)
+    assert len(result.candidates) == 1
+    assert result.candidates[0].agent_id == "risk_agent"
+    assert result.candidates[0].agent_id in FLEET
