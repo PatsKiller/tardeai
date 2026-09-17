@@ -728,6 +728,14 @@ GATES = [
             # reads UNEVALUABLE and the goal terminates `bounded_ignorance`
             # rather than closing on an assumption. Also pins paid_calls == 0.
             "tests/test_goal_pilot_material_change_20260916.py",
+            # 2026-09-17 drivers: the gap between ARMED and WORKING. One day
+            # after the goal machinery shipped, three crons were armed and the
+            # pilot had written 14 receipts carrying `ok: true` and no verdict
+            # at all - its runner probed for an API that did not exist. The lap
+            # ledger did not exist either, and GOAL_PREDICATE_SET was 0 against
+            # 34,912 wakes. All of it looked healthy from outside. These pin
+            # that a schedule firing can never again be read as work happening.
+            "tests/test_goal_loop_drivers_20260917.py",
             "tests/test_hardening_ci_exit_code_20260916.py",
             # 2026-09-13 litmus tests: answers are symbol-scoped, drawn from house facts
             # (cash/sectors/policy read from the snapshot), and carry a Sources line.
