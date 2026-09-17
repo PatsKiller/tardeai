@@ -28,16 +28,40 @@ from scripts.lib.agent_feature_flags import (  # noqa: E402
 
 
 def test_defaults_are_conservative():
+    """The invariant is 'conservative', which is not the same as 'zero'.
+
+    Until 2026-09-17 this test asserted every flag defaulted to 0 and called
+    that conservative. For two of them the reverse was true:
+
+      * MEMORY_ADVERSARIAL_SCAN=0 means the jailbreak / instruction-override
+        scan records `shadow_reject` and admits the record anyway
+        (agent_memory_admission.py:112-120). Off is the PERMISSIVE setting.
+    MCP_READ_ONLY_GATEWAY is NOT such a case and stays 0: that flag opens the
+    read-only MCP context path rather than guarding an existing one, so ON
+    grants agents a capability they otherwise do not have. Conservative there
+    really is 0, and activation is the operator's call (AGENTS.md section 17).
+
+    So a blanket zero-check was guarding the wrong thing for one flag, and the
+    right thing for the rest. What must stay off is anything that lets
+    remembered text SHAPE ADVICE, opens a new capability path, or introduces a
+    second workflow system of record. Those are asserted below and are the
+    assertions that matter.
+    """
     flags = load_feature_flags({})
-    assert flags["AGENT_CONTEXT_ENVELOPE"] == 0
-    assert flags["AGENT_RUN_TRACE"] == 0
-    assert flags["AGENT_DECISION_PAYLOAD"] == 0
-    assert flags["MCP_READ_ONLY_GATEWAY"] == 0
-    assert flags["MEMORY_SHADOW"] == 0
-    assert flags["MEMORY_BEHAVIOR_INFLUENCE"] == 0
-    assert flags["MEMORY_ADVERSARIAL_SCAN"] == 0
-    assert flags["LANGGRAPH_WORKER_PILOT"] == 0
-    assert flags["MEMORY_PROVIDER"] == "null"
+
+    # Safety and observability controls: ON is the conservative direction.
+    assert flags["MEMORY_ADVERSARIAL_SCAN"] == 1, "adversarial scan must enforce, not shadow"
+    assert flags["AGENT_RUN_TRACE"] == 1
+    assert flags["AGENT_DECISION_PAYLOAD"] == 1
+    assert flags["AGENT_CONTEXT_ENVELOPE"] == 1
+
+    # The rails. These are the reason this test exists.
+    # AI_WORK_POLICY.md section 27 forbids MEMORY_BEHAVIOR_INFLUENCE other than 0.
+    assert flags["MEMORY_BEHAVIOR_INFLUENCE"] == 0, "memory must never shape advice by default"
+    assert flags["MEMORY_SHADOW"] == 0, "shadow is staged via env, not defaulted on"
+    assert flags["MEMORY_PROVIDER"] == "null", "no memory backend by default"
+    assert flags["MCP_READ_ONLY_GATEWAY"] == 0, "opens a capability path; operator activates"
+    assert flags["LANGGRAPH_WORKER_PILOT"] == 0, "no second workflow system of record"
 
 
 def test_defaults_match_default_flags_constant():

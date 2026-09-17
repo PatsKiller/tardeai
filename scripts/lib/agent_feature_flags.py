@@ -2,8 +2,17 @@
 
 READ_ONLY_ADVISORY. This is the single source of truth for how the Agent
 Intelligence Foundation turns its capabilities *on*. Every flag defaults to its
-most conservative value (0 / "null") and is read from the environment so a
-release can be staged without a code change:
+most conservative value and is read from the environment so a release can be
+staged without a code change.
+
+**Conservative is not the same as 0.** Revised 2026-09-17: for the safety and
+observability controls, OFF was the permissive setting — an unenforced
+adversarial scan, an unrecorded run — so those now default to 1. What stays
+off is anything that lets remembered text SHAPE ADVICE
+(MEMORY_BEHAVIOR_INFLUENCE, section 27), OPENS A CAPABILITY PATH the agent
+does not otherwise have (MCP_READ_ONLY_GATEWAY), or adds a second workflow
+system of record (LANGGRAPH_WORKER_PILOT). Memory staging stays env-driven:
+turning a provider on is a host decision, not a code default.
 
   AGENT_CONTEXT_ENVELOPE      — ContextEnvelope@v1 enrichment      (default 0)
   AGENT_RUN_TRACE             — AgentRunTrace@v1 JSONL lineage     (default 0)
@@ -31,14 +40,14 @@ from typing import Any, Optional
 
 # ── Conservative defaults ──────────────────────────────────────────────────
 
-DEFAULT_AGENT_CONTEXT_ENVELOPE = 0
-DEFAULT_AGENT_RUN_TRACE = 0
-DEFAULT_AGENT_DECISION_PAYLOAD = 0
+DEFAULT_AGENT_CONTEXT_ENVELOPE = 1
+DEFAULT_AGENT_RUN_TRACE = 1
+DEFAULT_AGENT_DECISION_PAYLOAD = 1
 DEFAULT_MCP_READ_ONLY_GATEWAY = 0
 DEFAULT_MEMORY_PROVIDER = "null"
 DEFAULT_MEMORY_SHADOW = 0
 DEFAULT_MEMORY_BEHAVIOR_INFLUENCE = 0
-DEFAULT_MEMORY_ADVERSARIAL_SCAN = 0
+DEFAULT_MEMORY_ADVERSARIAL_SCAN = 1
 DEFAULT_LANGGRAPH_WORKER_PILOT = 0
 DEFAULT_AIF_FINANCIAL_SENSES_SHADOW = 0
 

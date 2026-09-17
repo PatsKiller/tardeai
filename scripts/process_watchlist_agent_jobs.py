@@ -43,6 +43,8 @@ from lib.cio_agent_contract import (
 )
 from lib.hermes_discovery.symbol_validation import gate_watchlist_symbol
 from lib.agent_number_grounding import apply_number_grounding
+from lib.agent_untrusted_data import defang, untrusted_delimiter
+from lib.agent_memory_governance import is_adversarial_instruction
 _last_rag_sources = []  # Set by _build_prompt(), read by result saver
 _last_peer_agents = []  # Set by _get_peer_agent_notes(), read by result saver
 _batch_results_cache = {}  # {symbol: [{agent, recommendation, confidence, summary}]}
@@ -890,7 +892,8 @@ def _get_context(conn, symbol: str) -> dict:
             label = "positive" if avg_sent > 0.15 else "negative" if avg_sent < -0.15 else "neutral"
             ctx += f"News sentiment (AV, {len(av_news)} articles): {label} (score: {avg_sent:.3f})\n"
             for n in av_news[:3]:
-                ctx += f"  [{n.get('source','?')}] {n.get('title','')[:60]} (rel:{n.get('relevance_score',0)}%)\n"
+                _t = defang(n.get("title"), max_len=60)
+                ctx += f"  [{defang(n.get('source','?'), max_len=24)}] {_t} (rel:{n.get('relevance_score',0)}%)\n"
     except Exception:
         pass
 
@@ -1089,14 +1092,20 @@ def _get_sentiment_social_context(symbol: str) -> str:
         if news:
             scored = [n for n in news if n.get("sentiment_score") is not None]
             avg_score = sum(float(n["sentiment_score"]) for n in scored) / len(scored) if scored else None
-            lines = ["=== News Sentiment (7d) ==="]
-            lines.append(f"  Articles: {len(news)}" + (f" | Avg score: {avg_score:.2f}" if avg_score else " | Sentiment: not scored"))
+            lines = [f"  Articles: {len(news)}" + (f" | Avg score: {avg_score:.2f}" if avg_score else " | Sentiment: not scored")]
             for n in news[:3]:
                 sent = n.get("sentiment") or "unscored"
                 score = f" ({float(n['sentiment_score']):.2f})" if n.get("sentiment_score") else ""
-                lines.append(f"  - [{sent}{score}] {(n['title'] or '')[:80]}")
-            lines.append("=== End News Sentiment ===")
-            parts.append("\n".join(lines))
+                # Headline is publisher-controlled text: defang the fence, then
+                # the whole block is delimited as UNTRUSTED_DATA below.
+                title = defang(n.get("title"), max_len=80)
+                flag = " [ADVERSARIAL-PATTERN]" if is_adversarial_instruction(title) else ""
+                lines.append(f"  - [{sent}{score}]{flag} {title}")
+            parts.append(untrusted_delimiter(
+                content_type="news_sentiment_7d",
+                source="news_articles",
+                content="\n".join(lines),
+            ))
 
         # Social sentiment: recent posts mentioning this symbol
         cur.execute("""
@@ -1113,15 +1122,21 @@ def _get_sentiment_social_context(symbol: str) -> str:
             neutral = len(social) - bullish - bearish
             scored_social = [s for s in social if s.get("sentiment_score") is not None]
             avg_social = sum(float(s["sentiment_score"]) for s in scored_social) / len(scored_social) if scored_social else None
-            lines = ["=== Social Sentiment (7d) ==="]
-            lines.append(f"  Posts: {len(social)} | Bullish: {bullish} | Bearish: {bearish} | Neutral: {neutral}" +
-                        (f" | Avg score: {avg_social:.2f}" if avg_social else ""))
+            lines = [f"  Posts: {len(social)} | Bullish: {bullish} | Bearish: {bearish} | Neutral: {neutral}" +
+                        (f" | Avg score: {avg_social:.2f}" if avg_social else "")]
             for s in social[:3]:
                 plat = s.get("platform", "?")
                 sent = s.get("sentiment") or "?"
-                lines.append(f"  - [{plat}/{sent}] {(s['text'] or '')[:100]}")
-            lines.append("=== End Social Sentiment ===")
-            parts.append("\n".join(lines))
+                # Post body is anonymous-author text — the most directly
+                # adversary-controllable string that reaches model context here.
+                body = defang(s.get("text"), max_len=100)
+                flag = " [ADVERSARIAL-PATTERN]" if is_adversarial_instruction(body) else ""
+                lines.append(f"  - [{plat}/{sent}]{flag} {body}")
+            parts.append(untrusted_delimiter(
+                content_type="social_sentiment_7d",
+                source="social_posts",
+                content="\n".join(lines),
+            ))
 
         # Fused signals (if available)
         cur.execute("""
