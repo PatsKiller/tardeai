@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `bbd59977a625ef8c642f31301a02868670aa8af2e686c00bf8034d6fad39f9a1`
+**Tree fingerprint:** `65c06791936a871bc7cdd6eaef28db33af6b51aac1ba8da54317f0759bd2fe6b`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2530 |
-| Markdown (excl. this INDEX) | 2105 |
+| Files under `docs/` (excl. this INDEX) | 2533 |
+| Markdown (excl. this INDEX) | 2108 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2038 |
+| Header OK | 2041 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2159 |
+| review_required | 2162 |
 
 ## Markdown tree
 
@@ -513,6 +513,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_overnight_20260912/MATURITY_SCORECARD_2026-09-12.md` | Maturity scorecard — 2026-09-12, overnight campaign | review_required | MISSING HEADER | `db89ab5cb6a1` |
 | `docs/architecture/maturity_overnight_20260912/README.md` | Overnight maturity campaign — package, 2026-09-12 | review_required | MISSING HEADER | `a41175e94659` |
 | `docs/architecture/maturity_overnight_20260912/STATE_ROOT_RECONCILIATION_RUNBOOK.md` | State-root reconciliation — operator adjudication required | review_required | OK | `e7194d7cddec` |
+| `docs/architecture/maturity_reconciliation_20260917/CIO_AS_IS_2026-09-17-rev8.md` | CIO / goal-loop AS-IS — Revision 8 (2026-09-17) | review_required | OK | `dcfca094e363` |
+| `docs/architecture/maturity_reconciliation_20260917/HONEST_MATURITY_ASSESSMENT_2026-09-17-rev8.md` | Honest maturity assessment — Revision 8 (2026-09-17) | review_required | OK | `ede40d194307` |
+| `docs/architecture/maturity_reconciliation_20260917/REVISION_LEDGER_2026-09-17-rev8.md` | Revision ledger — which revision is canonical, and what is still published | review_required | OK | `2abe45079289` |
 | `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `e6f73da9013d` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `1cbdf5ccdf27` |
