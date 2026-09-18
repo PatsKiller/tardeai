@@ -87,3 +87,69 @@ def test_the_gate_still_fails_on_a_new_dark_contract(tmp_path, monkeypatch):
     finally:
         probe.unlink()
     assert g.audit()["new"] == []
+
+
+# ── a declaration is a claim about reality, so READ it ──────────────────────
+
+
+def test_a_declaration_that_says_not_installed_is_not_a_caller():
+    """The gate discharged a module on the mere PRESENCE of the declaration.
+
+    `declared_module_string` returns the STRING, but line 235 only tested it for
+    truthiness — so a module stating the opposite of a schedule was counted as
+    wired. Three in this repo do exactly that:
+
+        check_operator_answer_quality.py  "(proposed, not installed)"
+        set_goal_predicate.py             "PROPOSAL ONLY -- not installed"
+        sweep_commitment_outcomes.py      "PROPOSAL ONLY -- not installed"
+
+    "Built but not wired" is the defect this gate exists to surface, and it was
+    hiding inside the gate itself.
+    """
+    g = _guard()
+    assert g.declares_not_installed(
+        "PROPOSAL ONLY — not installed, and deliberately not schedulable.")
+    assert g.declares_not_installed(
+        "systemd: tradeai-operator-answer-quality.timer (proposed, not installed)")
+
+    # Scope: this gate audits only modules that DEFINE a versioned schema (419
+    # of them). sweep_commitment_outcomes.py declares "PROPOSAL ONLY -- not
+    # installed" and is classified correctly above, but defines no `@v` literal,
+    # so it never enters the audit at all. Two of the three are in scope; the
+    # number is 2 because of that scope, not because the rule misses one.
+    dni = set(_guard().audit()["declared_not_installed"])
+    for module in ("scripts/set_goal_predicate.py",
+                   "scripts/check_operator_answer_quality.py"):
+        assert module in dni, f"{module} declares it is not installed, yet is excused"
+    assert g.declares_not_installed(
+        "PROPOSAL ONLY -- not installed. Proposed: daily 18:20 after the "
+        "outcome checkpoints resolve."), "the out-of-scope module's string must still classify"
+
+
+def test_an_installed_declaration_is_still_excused():
+    """Negative control. Without it, "discharge nothing" would satisfy the test
+    above while making the gate useless — and it would flag the four honest
+    declarations phrased ``cron: ... (wired ...)``, which name a real schedule
+    without ever using the word "installed"."""
+    g = _guard()
+    for decl in (
+        "INSTALLED, active — crontab `40 * * * *`, hourly at :40, from the rebuild tree",
+        "cron: 40 6 * * * -- daily 06:40, --apply (wired 2026-08-27, Phase 2)",
+        "systemd: tradeai-research-lane-health.timer -- every 15 min",
+        "systemd: tradeai-gap-resolution.timer -- every 30 min (INSTALLED, active)",
+    ):
+        assert not g.declares_not_installed(decl), decl
+
+
+def test_reclassification_lands_in_declared_not_in_new():
+    """A module that says "not installed" HAS explained itself, so it must not
+    trip --fail-on-new. Otherwise this fix would red the CI gate it repairs."""
+    res = _guard().audit()
+    assert res["new"] == [], [r["module"] for r in res["new"]]
+    # Exactly the in-scope modules that declare themselves unwired. Pinned as a
+    # set rather than a count: a count could be satisfied by the wrong modules,
+    # and would not go RED if the rule started matching something else.
+    assert set(res["declared_not_installed"]) == {
+        "scripts/check_operator_answer_quality.py",
+        "scripts/set_goal_predicate.py",
+    }

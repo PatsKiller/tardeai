@@ -123,6 +123,39 @@ def declared_reason(rel: str) -> str | None:
     return declared_module_string(rel, "NO_CONSUMER_REASON")
 
 
+#: Phrases by which an author states their scheduled entrypoint is NOT wired.
+#: Kept tight and justified by the actual corpus: a broad word like "disabled"
+#: would match a declaration that merely mentions the job it replaced.
+_NOT_INSTALLED = re.compile(
+    r"\bnot installed\b|\bproposal only\b|\bnot schedulable\b"
+    r"|\bnever installed\b|\bnot armed\b|\bdo not schedule\b|\bunscheduled\b",
+    re.I,
+)
+
+
+def declares_not_installed(declaration: str | None) -> bool:
+    """Does this SCHEDULED_ENTRYPOINT say the job is NOT actually scheduled?
+
+    The gate used to treat the mere PRESENCE of SCHEDULED_ENTRYPOINT as proof of
+    a caller, never reading the value. Three modules in this repo declare the
+    opposite of a schedule and were discharged anyway:
+
+        check_operator_answer_quality.py  "(proposed, not installed)"
+        set_goal_predicate.py             "PROPOSAL ONLY -- not installed,
+                                           and deliberately not schedulable."
+        sweep_commitment_outcomes.py      "PROPOSAL ONLY -- not installed."
+
+    An author who honestly writes "not installed" should not thereby have their
+    module counted as wired. That is the "built but not wired" defect this gate
+    exists to surface, hiding inside the gate itself.
+
+    Negative-marker-first on purpose. Requiring an AFFIRMATIVE marker instead
+    would flag the four honest declarations phrased ``cron: ... (wired ...)``,
+    which name a real schedule without using the word "installed".
+    """
+    return bool(declaration and _NOT_INSTALLED.search(declaration))
+
+
 def build_reference_index(corpus, names, literals):
     """One tokenizing pass over the corpus, not one regex scan per definer.
 
@@ -220,6 +253,7 @@ def audit() -> dict[str, Any]:
     index = build_reference_index(corpus, names, all_lits)
 
     dark, declared, inherited, new = [], [], [], []
+    not_installed: list[str] = []
     for rel, literals in sorted(defs.items()):
         refs = set(index.get(Path(rel).stem, set()))
         for lit in literals:
@@ -232,9 +266,17 @@ def audit() -> dict[str, Any]:
         # machine ran the gate: locally the Phase 2 jobs were skipped, in CI
         # (no crontab) the same commits failed. It also matched COMMENTED-OUT
         # lines, so a switched-off job counted as scheduled. Declare it instead.
-        if declared_module_string(rel, "SCHEDULED_ENTRYPOINT"):
+        sched = declared_module_string(rel, "SCHEDULED_ENTRYPOINT")
+        if sched and not declares_not_installed(sched):
             continue
         reason = declared_reason(rel)
+        if not reason and sched:
+            # The author DID explain why there is no caller -- by saying the job
+            # is not installed. That is a declaration, not an omission, so it
+            # belongs with `declared` rather than failing --fail-on-new. It is
+            # counted separately so the number stays visible.
+            reason = f"SCHEDULED_ENTRYPOINT declares it is not installed: {sched.strip()[:160]}"
+            not_installed.append(rel)
         row = {"module": rel, "schemas": literals, "consumers": 0, "reason": reason}
         dark.append(row)
         if reason:
@@ -252,6 +294,7 @@ def audit() -> dict[str, Any]:
         "definers": len(defs),
         "zero_consumer": len(dark),
         "declared": len(declared),
+        "declared_not_installed": sorted(not_installed),
         "inherited": len(inherited),
         "new": new,
         "inherited_list": [r["module"] for r in inherited],
@@ -282,6 +325,11 @@ def main() -> int:
         print(f"zero-consumer             : {result['zero_consumer']}")
         print(f"  inherited (seeded)      : {result['inherited']}")
         print(f"  declared NO_CONSUMER_REASON: {result['declared']}")
+        if result["declared_not_installed"]:
+            print(f"    of which declare NOT installed: "
+                  f"{len(result['declared_not_installed'])}")
+            for m in result["declared_not_installed"]:
+                print(f"      · {m}")
         print(f"  NEW (unexplained)       : {len(result['new'])}")
         for row in result["new"]:
             print(f"    ✗ {row['module']}  defines {', '.join(row['schemas'])}")
