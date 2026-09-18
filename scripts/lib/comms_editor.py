@@ -30,15 +30,18 @@ THE EDITOR, applied to every message at ``telegram_transport.deliver_text``:
      removed is kept per chat; the same content inside the window is not sent
      again (the transport reports it as a suppressed duplicate).
   4. CIO agrees. Each named symbol's stance in the message is compared with the
-     CIO's latest decision; a disagreement is stated on the message, and a
-     product the CIO marked OPERATOR_PRODUCT_INVALID is held.
+     CIO's latest decision. In ``live`` mode a disagreement **holds** the send
+     (2026-09-18 Telegram↔CIO audit: 225 disagreed messages were still
+     delivered when this only annotated). OPERATOR_PRODUCT_INVALID products are
+     also held. Index/macro tickers (SPY/QQQ/…) are excluded from stance
+     matching so a market-header "Bullish" line cannot suppress the desk.
   5. Links. Each named symbol gets its Command Center page on the fully
      qualified Tailscale host, and Finviz plus Yahoo as alternate sources.
   6. Pills. 🟢 Trade-AI · 🔵 Outside · 🟣 DeepSeek, from what the message says.
 
 MODES (``COMMS_EDITOR_MODE``): ``off`` (default) · ``shadow`` -- decide and
 write a receipt, send the original unchanged · ``live`` -- send the edited
-message and hold duplicates and invalid products.
+message and hold duplicates, invalid products, and CIO stance disagreements.
 
 AUTHORITY: READ_ONLY_ADVISORY. Formatting, reads and one local ledger file.
 Never places, sizes or cancels anything. MBI_BEHAVIOR = 0.
@@ -79,8 +82,17 @@ MAX_BODY_FOR_FOOTER = 3500
 _HTML_TAG = re.compile(r"</?(?:b|strong|i|em|u|s|code|pre|a|blockquote|tg-spoiler)(?:\s[^>]*)?>", re.I)
 _STANCE_BULL = re.compile(r"\b(GO|A\+|BUY|ADD(?:_ON_PULLBACK)?|ACCUMULATE|STRONG BUY)\b")
 _STANCE_BEAR = re.compile(r"\b(AVOID|SELL|EXIT|TRIM|REDUCE|DO NOT BUY)\b")
-_CIO_BULL = {"BUY", "ADD", "ADD_ON_PULLBACK", "ACCUMULATE", "INITIATE", "REENTER", "RE_ENTER"}
+# BUY_READY / ENTRY_NEAR are bullish-lean CIO actions (2026-09-18 audit: omitting
+# them labeled 202 GO alerts as "neutral" and flooded false disagreements).
+_CIO_BULL = {
+    "BUY", "ADD", "ADD_ON_PULLBACK", "ACCUMULATE", "INITIATE", "REENTER", "RE_ENTER",
+    "BUY_READY", "ENTRY_NEAR",
+}
 _CIO_BEAR = {"AVOID", "SELL", "EXIT", "TRIM", "REDUCE", "HOLD_REDUCE"}
+# Broad market / macro symbols: regime words near these are not investment recs.
+_STANCE_EXCLUDE_SYMBOLS = frozenset({
+    "SPY", "QQQ", "IWM", "DIA", "VIX", "TLT", "IEF", "HYG", "LQD", "USO", "GLD", "SLV",
+})
 _CIO_DECISION_HEADER = re.compile(r"^\[CIO DECISION\]", re.M)
 
 
@@ -261,8 +273,11 @@ def cio_views(symbols: list[str], db_query: Optional[Callable[..., list[dict]]])
 
 
 def _stance_near(text: str, symbol: str) -> Optional[str]:
+    sym = (symbol or "").upper()
+    if sym in _STANCE_EXCLUDE_SYMBOLS:
+        return None
     plain = re.sub(r"<[^>]+>", " ", text or "")
-    for m in re.finditer(rf"(?<![A-Z]){re.escape(symbol)}(?![A-Z])", plain):
+    for m in re.finditer(rf"(?<![A-Z]){re.escape(sym)}(?![A-Z])", plain):
         window = plain[max(0, m.start() - 60): m.end() + 60].upper()
         bull, bear = _STANCE_BULL.search(window), _STANCE_BEAR.search(window)
         if bull and not bear:
@@ -282,6 +297,15 @@ def cio_disagreements(text: str, views: dict[str, dict[str, Any]]) -> list[dict[
             out.append({"symbol": sym, "message": said, "cio_action": action,
                         "cio_as_of": str(v.get("created_at") or "")[:16]})
     return out
+
+
+def _hold_reason(body: str, disagree: list[dict[str, Any]]) -> Optional[str]:
+    """Single hold policy for live mode: invalid product, then CIO disagreement."""
+    if _holds_invalid_product(body):
+        return "operator_product_invalid"
+    if disagree:
+        return "cio_disagreement"
+    return None
 
 
 def cc_base() -> str:
@@ -383,7 +407,7 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
     subs = subjects(body, resolve=resolve)
     views = cio_views([s["symbol"] for s in subs], db_query)
     disagree = cio_disagreements(body, views)
-    held = "operator_product_invalid" if _holds_invalid_product(body) else None
+    held = _hold_reason(body, disagree)
     prior = ledger.check(chat_id, fp, now)
 
     footer: list[str] = []
@@ -392,8 +416,11 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
         changes.append("links")
     for d in disagree:
         footer.append(f"⚠️ <b>CIO disagrees on {html.escape(d['symbol'])}</b>: message reads {d['message']}, "
-                      f"CIO decision is {html.escape(d['cio_action'])} ({html.escape(d['cio_as_of'])})")
+                      f"CIO decision is {html.escape(d['cio_action'])} ({html.escape(d['cio_as_of'])})"
+                      f" — <b>held</b>")
         changes.append(f"cio_disagreement:{d['symbol']}")
+    if held == "cio_disagreement":
+        changes.append("held:cio_disagreement")
     if len(html_body) < MAX_BODY_FOR_FOOTER:
         ids = " ".join(f"{s['symbol']}:{s['guid'][:8]}" for s in subs[:4])
         footer.append(f"<i>{' · '.join(pills_for(body))} · 🆔 {guid[:8]}{(' · ' + ids) if ids else ''}</i>")

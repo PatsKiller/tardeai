@@ -416,28 +416,12 @@ def _handle_proposal_command(msg, text, chat_id):
                 response = f"\u274c *FAILED*: {result.get('error', 'unknown')}"
 
     if response:
-        payload = json.dumps({
-            "chat_id": chat_id,
-            "reply_to_message_id": message_id,
-            "text": response,
-            "parse_mode": "Markdown",
-        }).encode()
-        req = urllib.request.Request(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            urllib.request.urlopen(req, timeout=10)
-        except Exception as e:
-            log.error(f"reply send failed: {e}")
+        if not _post_message(chat_id, response, reply_to_message_id=message_id):
+            log.error("reply send failed")
 
 
 def _handle_stop_command(msg, text, chat_id):
     """Route /stop* text commands."""
-    import urllib.request
-    token = _token()
     lower = text.lower()
     message_id = msg.get("message_id")
     user_id = str(msg.get("from", {}).get("id", ""))
@@ -513,21 +497,8 @@ def _handle_stop_command(msg, text, chat_id):
                 response = f"FAILED: {e}"
 
     if response:
-        payload = json.dumps({
-            "chat_id": chat_id,
-            "reply_to_message_id": message_id,
-            "text": response,
-        }).encode()
-        req = urllib.request.Request(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        try:
-            urllib.request.urlopen(req, timeout=10)
-        except Exception as e:
-            log.error(f"stop reply send failed: {e}")
+        if not _post_message(chat_id, response, reply_to_message_id=message_id):
+            log.error("stop reply send failed")
 
 
 _atm_pending_confirm = {}  # chat_id -> (timestamp, action)
@@ -743,15 +714,8 @@ def _handle_atm_command(msg, text, chat_id):
             response = "Confirmation expired. Run /atm on again."
 
     if response:
-        payload = json.dumps({"chat_id": chat_id, "text": response,
-                              "reply_to_message_id": message_id}).encode()
-        req = urllib.request.Request(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            data=payload, headers={"Content-Type": "application/json"}, method="POST")
-        try:
-            urllib.request.urlopen(req, timeout=10)
-        except Exception as e:
-            log.error(f"ATM reply send failed: {e}")
+        if not _post_message(chat_id, response, reply_to_message_id=message_id):
+            log.error("ATM reply send failed")
 
 
 # ── Schwab OAuth callback auto-exchange ──────────────────────────────────────────────
@@ -935,27 +899,41 @@ def _handle_guard_approval(msg, text, chat_id):
 
 
 def _post_message(chat_id, text, reply_to_message_id=None):
-    """Single Telegram sendMessage transport for this daemon.
+    """Single Telegram transport for this daemon via ``telegram_transport.deliver_text``.
 
-    One implementation so `_send` and `_send_reply` cannot drift apart, and so
-    the failure log names the actual caller instead of always saying "schwab".
+    One implementation so `_send` and `_send_reply` cannot drift apart. Direct
+    Bot API posts bypassed the Communications Editor (CIO hold / HTML / GUID);
+    2026-09-18 audit: every operator-bound body must share that chokepoint.
     """
     token = _token()
     if not token:
         log.error("No TELEGRAM_BOT_TOKEN for outgoing message")
         return False
-    fields = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
-    if reply_to_message_id is not None:
-        fields["reply_to_message_id"] = reply_to_message_id
-    payload = urllib.parse.urlencode(fields).encode()
     try:
-        req = urllib.request.Request(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            data=payload, headers={"Content-Type": "application/x-www-form-urlencoded"})
-        urllib.request.urlopen(req, timeout=10)
+        from telegram_transport import deliver_text
+    except ImportError:
+        try:
+            from scripts.telegram_transport import deliver_text  # type: ignore
+        except ImportError as e:
+            log.error(f"telegram_transport unavailable: {e}")
+            return False
+    try:
+        result = deliver_text(
+            token=token,
+            chat_id=str(chat_id),
+            text=text,
+            parse_mode="Markdown",
+            reply_to_message_id=reply_to_message_id,
+        )
+        if result.get("suppressed"):
+            log.info(f"telegram suppressed ({result.get('suppressed')}) chat={chat_id}")
+            return True  # accepted by platform policy; not a transport failure
+        if not result.get("ok"):
+            log.error(f"telegram deliver_text failed (chat={chat_id}): {result.get('status_code')}")
+            return False
         return True
     except Exception as e:
-        log.error(f"telegram sendMessage failed (chat={chat_id}): {e}")
+        log.error(f"telegram deliver_text failed (chat={chat_id}): {e}")
         return False
 
 
