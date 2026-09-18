@@ -1355,6 +1355,29 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
     except Exception:
         pass
 
+    # ContextEnvelope + token budget (Production Ready C8).
+    envelope_note = ""
+    if str(os.environ.get("AGENT_CONTEXT_ENVELOPE") or "0").strip() in {"1", "true", "TRUE"}:
+        try:
+            from lib.agent_context_envelope import context_envelope_digest, get_context_for_agent
+            from lib.agent_context_integration import apply_context_budget
+            _env = get_context_for_agent(
+                agent=agent,
+                wake={"wake_id": f"wl_{symbol}_{agent}", "symbol": symbol},
+                symbols=[symbol],
+            )
+            _budget = int(os.environ.get("AGENT_CONTEXT_TOKEN_BUDGET") or 4000)
+            _env, _meta = apply_context_budget(_env, _budget)
+            envelope_note = (
+                f"\n[ContextEnvelope digest={context_envelope_digest(_env)} "
+                f"within_budget={_meta.get('within_budget')} "
+                f"tokens={_meta.get('final_tokens')}/{_meta.get('budget_tokens')}]\n"
+            )
+            if _meta.get("dropped_sections"):
+                envelope_note += f"[Context budget dropped: {_meta.get('dropped_sections')}]\n"
+        except Exception as _env_exc:
+            envelope_note = f"\n[ContextEnvelope unavailable: {type(_env_exc).__name__}]\n"
+
     context_block = f"""{scan_block}
 {context_text}
 {hermes_block}
@@ -1368,7 +1391,17 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
 {calibration_block}
 {strategy_playbook_block}
 {scalp_instructions}
-{sentiment_block}{other_views}{intel}"""
+{sentiment_block}{other_views}{intel}{envelope_note}"""
+    # Prompt-level char budget (~4 chars/token) — keep head (rules) + tail (task).
+    _prompt_budget = int(os.environ.get("AGENT_PROMPT_TOKEN_BUDGET") or 8000) * 4
+    if len(context_block) > _prompt_budget:
+        _keep_head = int(_prompt_budget * 0.70)
+        _keep_tail = int(_prompt_budget * 0.20)
+        context_block = (
+            context_block[:_keep_head]
+            + "\n[... context truncated for token budget ...]\n"
+            + context_block[-_keep_tail:]
+        )
     base_instruction = build_base_json_instruction(
         context=context_block,
         include_global_rules=True,
@@ -2999,6 +3032,25 @@ def process_jobs(limit: int = 10):
             conn.commit()
             print(f"  ✗ {symbol} ({agent}): FAILED — {(raw or 'empty')[:50]}")
             continue
+
+        # Model-level PI guard (Production Ready — was desk-only).
+        try:
+            from lib.agent_model_pi_guard import scan_model_output
+            _pi = scan_model_output(raw)
+            if _pi.get("refuse"):
+                cur.execute("UPDATE watchlist_agent_jobs SET status='failed', completed_at=now() WHERE id=%s", (job_id,))
+                cur.execute("UPDATE watchlist_items SET status='active', updated_at=now() WHERE symbol=%s AND status='queued'", (symbol,))
+                _update_maturity(conn, symbol, agent, "failed")
+                cur.execute(
+                    "INSERT INTO watchlist_events (event_type, symbol, agent, status, message) "
+                    "VALUES ('pi_refuse', %s, %s, 'failed', %s)",
+                    (symbol, agent, "model_pi_guard:" + ",".join(_pi.get("matches") or [])[:160]),
+                )
+                conn.commit()
+                print(f"  ✗ {symbol} ({agent}): PI_REFUSE — {_pi.get('matches')}")
+                continue
+        except Exception as _pi_exc:
+            print(f"  [pi_guard] {symbol} ({agent}): fail-soft {_pi_exc}")
 
         # Parse result
         parsed = _parse_result(raw)

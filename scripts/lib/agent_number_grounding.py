@@ -133,20 +133,38 @@ def _is_trivial(n: dict[str, Any]) -> bool:
     return v <= 31 or 1900 <= v <= 2100
 
 
+# Explicit ATR only — bare "Stop:" must not unlock ATR×multiple derivations
+# (that falsely supported invented percentages in grounding tests).
+_ATR_EXPLICIT_RE = re.compile(r"(?i)\b(atr|average\s+true\s+range)\b")
+_R_MULT_RE = re.compile(r"(?i)\b(r\s*[:=]|r\s*/\s*r|risk\s+multiple|×\s*atr|x\s*atr)\b")
+#: Common ATR / R multiples risk_agent is instructed to use (entry − 2×ATR, etc.).
+_ATR_MULTIPLES = (0.5, 0.75, 0.85, 0.9, 0.95, 1.0, 1.5, 2.0, 2.5, 3.0)
+
+
 def supplied_values(text: str) -> tuple[list[float], list[float]]:
     """(direct, derived), each sorted.
 
     direct:  supplied numbers and their percent/fraction forms
-    derived: percent changes and differences between supplied dollar figures
+    derived: percent changes and differences between supplied dollar figures,
+             plus ATR×multiples when ATR is explicitly present (risk_agent).
     """
     direct: set[float] = set()
     dollars: list[float] = []
     anchors: list[float] = []
-    for line in str(text or "").splitlines():
+    atr_candidates: list[float] = []
+    text_s = str(text or "")
+    atr_explicit = bool(_ATR_EXPLICIT_RE.search(text_s))
+    r_mult_context = atr_explicit or bool(_R_MULT_RE.search(text_s))
+    for line in text_s.splitlines():
         price_line = bool(_PRICE_LINE_RE.search(line))
+        atr_line = bool(_ATR_EXPLICIT_RE.search(line))
         for n in extract_numbers(line):
             v = n["value"]
             direct.update((v, v * 100.0, v / 100.0))
+            # Only harvest ATR candidates from lines that name ATR.
+            if atr_line and not n["is_pct"] and 0 < v < 200:
+                if v not in atr_candidates and len(atr_candidates) < 6:
+                    atr_candidates.append(v)
             if not n["is_dollar"] or v <= 0:
                 continue
             if v not in dollars and len(dollars) < _DERIVE_LIMIT:
@@ -158,6 +176,17 @@ def supplied_values(text: str) -> tuple[list[float], list[float]]:
         for b in dollars:
             if a != b:
                 derived.update((abs(a - b), abs(a - b) / b * 100.0, abs(a - b) / a * 100.0))
+    # Unitless R / ATR multiples (0.85, 2.0, …) when risk context is present.
+    if r_mult_context:
+        for m in _ATR_MULTIPLES:
+            derived.add(m)
+    # Dollar ATR×m and price±ATR×m only when ATR is named and valued.
+    if atr_explicit:
+        for atr in atr_candidates:
+            for m in _ATR_MULTIPLES:
+                derived.add(atr * m)
+                for px in (anchors[:4] or dollars[:4]):
+                    derived.update((abs(px - atr * m), abs(px + atr * m)))
     return sorted(direct), sorted(derived)
 
 

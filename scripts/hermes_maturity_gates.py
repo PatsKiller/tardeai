@@ -251,7 +251,20 @@ def build_gates(cur) -> dict:
 
 
 def run(snapshot=False):
-    conn = _conn(); cur = conn.cursor()
+    conn = _conn()
+    if conn is None:
+        # Soft-degrade when Postgres is down (ENOSPC/outage) — do not flap the timer.
+        board = {
+            "dimensions": {},
+            "scores": {},
+            "overall": None,
+            "computed_at": datetime.now(timezone.utc).isoformat(),
+            "error": "DB_UNAVAILABLE",
+            "note": "soft-skip: no DB connection",
+        }
+        print(json.dumps(board, indent=2, default=str))
+        return board
+    cur = conn.cursor()
     board = build_gates(cur)
     if snapshot:
         cur.execute("""INSERT INTO hermes_maturity_history (snapshot_date, gates, scores)
@@ -265,11 +278,15 @@ def run(snapshot=False):
     return board
 
 
-def main():
+def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--snapshot", action="store_true")
-    run(snapshot=ap.parse_args().snapshot)
+    board = run(snapshot=ap.parse_args().snapshot)
+    # Exit 0 on soft DB skip so oneshot+timer does not stick failed.
+    if isinstance(board, dict) and board.get("error") == "DB_UNAVAILABLE":
+        return 0
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
