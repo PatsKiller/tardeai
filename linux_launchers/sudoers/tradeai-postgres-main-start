@@ -9,6 +9,9 @@
 #
 # Scope is intentionally narrow: start + is-active + status only. No stop/restart/reset-failed.
 
-johnclaw ALL=(root) NOPASSWD: /bin/systemctl start postgresql@17-main
-johnclaw ALL=(root) NOPASSWD: /bin/systemctl is-active postgresql@17-main
-johnclaw ALL=(root) NOPASSWD: /bin/systemctl status postgresql@17-main
+# Cover both /bin and /usr/bin (Ubuntu resolves systemctl via /usr/bin; sudo
+# matches the resolved argv path). Without /usr/bin, `sudo -n systemctl …`
+# still demands a password even though the drop-in is installed.
+johnclaw ALL=(root) NOPASSWD: /bin/systemctl start postgresql@17-main, /usr/bin/systemctl start postgresql@17-main
+johnclaw ALL=(root) NOPASSWD: /bin/systemctl is-active postgresql@17-main, /usr/bin/systemctl is-active postgresql@17-main
+johnclaw ALL=(root) NOPASSWD: /bin/systemctl status postgresql@17-main, /usr/bin/systemctl status postgresql@17-main
