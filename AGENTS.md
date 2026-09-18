@@ -4,21 +4,20 @@
 Policy-Version:      1.2.3
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              PROPOSED
-Effective-Date:      PENDING
-Last-Reviewed:       2026-09-18T13:37:00-04:00
+Status:              ACTIVE
+Effective-Date:      2026-09-18
+Last-Reviewed:       2026-09-18T13:43:59-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          1.2.2
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**1.2.3 is PROPOSED (2026-09-18).** A MINOR release: it adds "What 2026-09-18 taught — Agent controls
+**1.2.3 is ACTIVE from 2026-09-18.** A MINOR release: it adds "What 2026-09-18 taught — Agent controls
 audit" (router write-gate gaps, prompt-injection PARTIAL ingress, failed-unit timer churn, alert
 `runtime_mode` SHADOW, grounding/RAG verify commands). It does not touch §0, §2, §17 or role authority.
-**Live CURRENT remains governed by 1.2.1 until an explicit promote.** This version becomes ACTIVE in
-the repo on merge of its carrying PR; promote CURRENT only on an explicit operator request (merge ≠
-deploy).
+Operator-directed merge/promote of PR #1069; rides the existing `APPROVE_AGENTS_POLICY_1_2_0`
+ratification for sections outside §0/§2/§17. Merge ≠ deploy — CURRENT promote is a separate step.
 
 **1.2.2 (ENOSPC false-green lesson) is merged to `main` via PR #1068** and is the latest merged
 policy on `origin/main` beneath this PROPOSED 1.2.3. A MINOR release: it records the Postgres ENOSPC
@@ -3397,7 +3396,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 1.2.3 | 2026-09-18 | PROPOSED | MINOR | Adds "What 2026-09-18 taught — Agent controls audit" (router `WRITE_WORDS` miss buy/sell/order; BehaviorWriteRefused ≠ router HITL; prompt-injection PARTIAL on Telegram/watchlist/router ingress despite admission/partition/MCP probes; failed oneshot+timer churn especially `tradeai-cio-reactive` */2m; alert `runtime_mode` measured SHADOW not OFF; grounding 0%-flag caution; RAG empty-vs-cited verify). Does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-18 ("read update agents.md" after agent-controls audit). Becomes ACTIVE on merge of the carrying PR; live CURRENT stays on 1.2.1 until then; promote CURRENT only on explicit request. |
+| 1.2.3 | 2026-09-18 | ACTIVE | MINOR | Adds "What 2026-09-18 taught — Agent controls audit" (router `WRITE_WORDS` miss buy/sell/order; BehaviorWriteRefused ≠ router HITL; prompt-injection PARTIAL on Telegram/watchlist/router ingress despite admission/partition/MCP probes; failed oneshot+timer churn especially `tradeai-cio-reactive` */2m; alert `runtime_mode` measured SHADOW not OFF; grounding 0%-flag caution; RAG empty-vs-cited verify). Does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-18 ("read update agents.md" after agent-controls audit). **ACTIVE** on operator-directed merge/promote of PR #1069 (2026-09-18). |
 | 1.2.2 | 2026-09-18 | ACTIVE on main (not yet on CURRENT) | MINOR | Adds "What 2026-09-18 taught — Postgres ENOSPC → Command Center false-green" (symptoms, ordered root cause, immediate + lasting fix, verify commands). Records that `/api/health` ok is not Postgres liveness; hygiene reclaim does not restart `postgresql@17-main`; PARTIAL `primary(0) vs alternate(N)` after an outage is honesty until scans refill; watchdog + sudoers must cover `/usr/bin/systemctl`; health-agent cannot auto-start Postgres under `NoNewPrivileges`. Does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-18 ("also update the agents.md with root cause fix and symptoms"). **Merged** PR #1068 2026-09-18; **live CURRENT still serves 1.2.1** until explicit promote. |
 | 1.2.1 | 2026-09-16 | ACTIVE | PATCH | Corrections only, no rule change. §7 "Research and operator replies" corrected: "Brave spills to SearXNG only on quota or rate limit" was factually incomplete after PR #1045 — `CALLER_DAILY_CAP` remains out of `spill_on` (operator decision 2026-09-13), but a caller refused by it is now answered by a separate governed free call (`scripts/lib/free_search.py`, behind `RESEARCH_FREE_FALLBACK=1`), not a spill. §12 gains a `[VERIFIED]` 2026-09-16 note recording the first measured free-web result and that free usage is now metered in the same ledger as paid. Adds no restriction and weakens nothing; does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-16 ("make sure that if the agents.md needs to be updated it's updated ... add was validated"). PATCH corrections outside the operator-gated sections; rides the existing `APPROVE_AGENTS_POLICY_1_2_0` ratification. |
 | 1.2.0 | 2026-09-14 | ACTIVE | MINOR | §9.1 gains "Replies and alerts on the phone" (4,096 UTF-16 parts, `REPLY_NOT_DELIVERED`, one rich layout, collapsed provenance). §9.2 gains: every bridge caller names itself; the bridge answers while calls are in flight (deadline, slots, `/health`, watchdog); stalls are diagnosed at the bridge first; logged cost is checked against the provider balance. §9.3 gains the operator's scheduled-work window and "a backfill is scheduled work". §7 gains six tooling traps (CRLF via `read_text`, JSON re-dump escaping, `sys.modules` stubs, worktree data, docs index after merge, SOP bound files). §12 re-verifies DeepSeek prices (flash repriced 2026-09-10), records that the Pro policy binds to deepseek-flash, and adds the binding operator window. Records merged work from PRs #1011–#1019 and the scheduling/attribution PRs; does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-14 ("make sure ... everything ... has been documented ... and also updated in the standard operating procedures of the agents.md"; window quoted verbatim in §12). Ratification rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING · **RATIFIED** by the operator 2026-09-14: "APPROVE_AGENTS_POLICY_1_2_0" (sent without PR/sha; bound to `APPROVE_AGENTS_POLICY_1_2_0 1022 ad5c533b2abc0150feba19c071aa0ea56364b251`) |
