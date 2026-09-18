@@ -37,6 +37,14 @@ def test_main_sends_with_the_router_bypassed_and_records_only_real_sends(monkeyp
     monkeypatch.setattr(g, "load_criteria", lambda: FALLBACK)
     monkeypatch.setattr(g, "LEDGER", tmp_path / "sent.json")
     monkeypatch.setattr(g, "RECEIPT", tmp_path / "receipt.json")
+    # CIO aligned so the new stance gate does not hold the send under test.
+    monkeypatch.setattr(
+        g,
+        "_cio_go_gate",
+        lambda symbol, text, db_query=None: {
+            "allow": True, "held_reason": None, "symbol": symbol, "cio_action": "BUY_READY",
+        },
+    )
     monkeypatch.setattr(sys, "argv", ["screener_go_alerts.py", "--send", "--session", "2026-09-14"])
     assert g.main() == 0
     assert calls and calls[0]["bypass_router"] is True
@@ -51,6 +59,13 @@ def test_a_failed_send_is_not_recorded(monkeypatch, tmp_path):
     monkeypatch.setattr(g, "load_criteria", lambda: FALLBACK)
     monkeypatch.setattr(g, "LEDGER", tmp_path / "sent.json")
     monkeypatch.setattr(g, "RECEIPT", tmp_path / "receipt.json")
+    monkeypatch.setattr(
+        g,
+        "_cio_go_gate",
+        lambda symbol, text, db_query=None: {
+            "allow": True, "held_reason": None, "symbol": symbol, "cio_action": "BUY_READY",
+        },
+    )
     monkeypatch.setattr(sys, "argv", ["screener_go_alerts.py", "--send", "--session", "2026-09-14"])
     g.main()
     assert "ARMP" not in (tmp_path / "sent.json").read_text()
