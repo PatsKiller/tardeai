@@ -1,0 +1,14 @@
+# Trade AI — passwordless start/status for main Postgres only.
+# Incident 2026-09-18: disk hygiene freed space but postgresql@17-main stayed down.
+#
+# Install (operator gate — requires root):
+#   sudo install -m 440 -o root -g root \
+#     linux_launchers/sudoers/tradeai-postgres-main-start \
+#     /etc/sudoers.d/tradeai-postgres-main-start
+#   sudo visudo -cf /etc/sudoers.d/tradeai-postgres-main-start
+#
+# Scope is intentionally narrow: start + is-active + status only. No stop/restart/reset-failed.
+
+johnclaw ALL=(root) NOPASSWD: /bin/systemctl start postgresql@17-main
+johnclaw ALL=(root) NOPASSWD: /bin/systemctl is-active postgresql@17-main
+johnclaw ALL=(root) NOPASSWD: /bin/systemctl status postgresql@17-main

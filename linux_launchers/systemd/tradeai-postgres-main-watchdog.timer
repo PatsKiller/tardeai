@@ -1,0 +1,13 @@
+[Unit]
+Description=TradeAI Postgres main watchdog every 5m — recover after disk hygiene / ENOSPC crash
+Requires=tradeai-postgres-main-watchdog.service
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=tradeai-postgres-main-watchdog.service
+Persistent=true
+
+[Install]
+WantedBy=timers.target

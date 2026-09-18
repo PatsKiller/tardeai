@@ -1545,6 +1545,11 @@ WHY = {
     "journal_annotation_low": "Most closed trades lack journal annotations — behavioral analytics, pivot grid, and lessons are unreliable.",
     "journal_mfe_coverage_low": "MFE/profit-capture rows are sparse — Exit Intel and capture-ratio analytics are incomplete.",
     "trade_closed_stale": "trade_closed has no recent closes — TradeInView may show an outdated trade history.",
+    "disk_critical": "Root disk is at/below the critical free floor — Postgres can WAL-PANIC and shut down (2026-09-18).",
+    "disk_low": "Root disk is entering the danger band — free space before backups/WAL writes fail.",
+    "postgres_main_down": "Main Postgres (:5432) is unreachable — Command Center silently degrades (empty scans, kill-switch fail-closed).",
+    "postgres_main_auth_failed": "Main Postgres rejects credentials — DB-fed writers and CC APIs cannot authenticate.",
+    "backup_cadence_enospc": "Backup cadence already hit ENOSPC — early canary for the disk-full → Postgres PANIC failure mode.",
 }
 
 
@@ -1557,6 +1562,12 @@ _CTA_BY_TYPE = {
     "enrichment_pipeline_failure": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
     "enrichment_failures_high": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
     "approved_paper_test_stuck": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
+    "disk_critical": {"label": "System → Pipeline", "route": "/v3/system?tab=pipeline"},
+    "disk_low": {"label": "System → Pipeline", "route": "/v3/system?tab=pipeline"},
+    "postgres_main_down": {"label": "System → Pipeline", "route": "/v3/system?tab=pipeline"},
+    "postgres_main_auth_failed": {"label": "System → Admin", "route": "/v3/system?tab=admin"},
+    "backup_cadence_enospc": {"label": "System → Pipeline", "route": "/v3/system?tab=pipeline"},
+    "db_slots_exhausted": {"label": "System → Pipeline", "route": "/v3/system?tab=pipeline"},
     "enrichment_status_in_progress_stale": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
     "news_symbol_mismatch": {"label": "Watch → Watchlist", "route": "/v3/watch?tab=watchlist"},
     "watchlist_stale": {"label": "Watch → Watchlist", "route": "/v3/watch?tab=watchlist"},
@@ -1989,25 +2000,89 @@ def collect_infra_optimization_health() -> list[dict]:
                           f"re-run apply_llm_priority_guard_to_crontab.py --apply", count=len(unguarded)))
     except Exception:
         pass
-    # 4. Disk-space monitoring — prevent the Aug 2026 backup-storm outage recurrence.
-    #    Alerts at <20% (warning) and <10% (critical) so a filling disk is never invisible.
+    # 4. Disk-space monitoring — prevent the Aug 2026 backup-storm / 2026-09-18 ENOSPC
+    #    Postgres PANIC recurrence. Inclusive free% + free_GB floors (config: disk_space).
     try:
         import shutil
-        for mp, warn_pct, crit_pct in [("/", 20, 10)]:
-            usage = shutil.disk_usage(mp)
-            pct_used = (usage.used / usage.total) * 100
-            free_gb = usage.free / (1024 ** 3)
-            if pct_used > (100 - crit_pct):
-                out.append(_f("infra", "disk_critical", "critical",
-                              f"Disk {mp}: {free_gb:.1f}GB free ({100-pct_used:.1f}%) — below {crit_pct}% threshold",
-                              mountpoint=mp, free_gb=round(free_gb, 1), pct_free=round(100-pct_used, 1)))
-            elif pct_used > (100 - warn_pct):
-                out.append(_f("infra", "disk_low", "warning",
-                              f"Disk {mp}: {free_gb:.1f}GB free ({100-pct_used:.1f}%) — below {warn_pct}% threshold",
-                              mountpoint=mp, free_gb=round(free_gb, 1), pct_free=round(100-pct_used, 1)))
+        from lib.postgres_main_health import evaluate_disk_usage
+
+        disk_cfg = dict(_POLICY.get("disk_space") or {})
+        mp = str(disk_cfg.get("mountpoint") or "/")
+        usage = shutil.disk_usage(mp)
+        verdict = evaluate_disk_usage(
+            total_bytes=usage.total,
+            used_bytes=usage.used,
+            free_bytes=usage.free,
+            cfg=disk_cfg,
+        )
+        if verdict.severity and verdict.finding_type:
+            out.append(
+                _f(
+                    "infra",
+                    verdict.finding_type,
+                    verdict.severity,
+                    verdict.message,
+                    mountpoint=verdict.mountpoint,
+                    free_gb=verdict.free_gb,
+                    pct_free=verdict.free_pct,
+                )
+            )
+    except Exception:
+        pass
+
+    # 5. Backup cadence ENOSPC canary (2026-09-18 02:30: unit failed with
+    #    "No space left on device" ~1.5h before Postgres PANIC).
+    try:
+        out.extend(_collect_backup_cadence_enospc())
     except Exception:
         pass
     return out
+
+
+def _collect_backup_cadence_enospc() -> list[dict]:
+    """Critical when portfolio backup cadence journal shows ENOSPC in the lookback window."""
+    cfg = (_POLICY.get("backup_cadence_enospc") or {})
+    if cfg.get("enabled", True) is False:
+        return []
+    unit = str(cfg.get("unit") or "tradeai-portfolio-backup-cadence.service")
+    lookback_h = float(cfg.get("lookback_hours", 24))
+    env = os.environ.copy()
+    uid = os.getuid()
+    env.setdefault("DBUS_SESSION_BUS_ADDRESS", f"unix:path=/run/user/{uid}/bus")
+    env.setdefault("XDG_RUNTIME_DIR", f"/run/user/{uid}")
+    try:
+        journal = subprocess.run(
+            [
+                "journalctl",
+                "--user",
+                "-u",
+                unit,
+                "--since",
+                f"{int(lookback_h)} hours ago",
+                "-n",
+                "120",
+                "--no-pager",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            env=env,
+        )
+        text = (journal.stdout or "") + (journal.stderr or "")
+    except Exception:
+        return []
+    if "No space left on device" not in text:
+        return []
+    return [
+        _f(
+            "infra",
+            "backup_cadence_enospc",
+            "critical",
+            f"{unit} logged ENOSPC within {lookback_h:.0f}h — disk was full before "
+            f"Postgres WAL PANIC risk; free space and start postgresql@17-main if down",
+            unit=unit,
+        )
+    ]
 
 
 def collect_pipeline_containment() -> list[dict]:
@@ -3027,12 +3102,36 @@ def collect_db_connection_health() -> list[dict]:
                 application_name="health_agent_slotcheck",
             )
         except Exception as e:
-            if "connection slot" in str(e).lower():
+            from lib.postgres_main_health import classify_pg_connect_error
+
+            kind = classify_pg_connect_error(e)
+            if kind == "slots_exhausted":
                 out.append(_f("execution_health", "db_slots_exhausted", "critical",
                               "Postgres connection slots EXHAUSTED — new connections are failing "
                               "FATAL; DB-fed writers (warm_caches etc.) silently degrade. Find the "
                               "holder: ss -tn 'dport = :5432' grouped by pid; restarting the "
                               "offending service frees its slots (2026-07-17 incident)."))
+            elif kind == "auth_failed":
+                out.append(_f("execution_health", "postgres_main_auth_failed", "critical",
+                              f"Postgres main auth failed on :{os.getenv('DB_PORT', '5432')} — "
+                              f"check DB_USER/DB_PASSWORD in the health-agent env "
+                              f"({type(e).__name__}: {str(e)[:160]})",
+                              error=str(e)[:240]))
+            else:
+                # 2026-09-18: connection refused after ENOSPC WAL PANIC left the cluster down
+                # for hours while CC kept serving AWARE/PARTIAL. Always page this.
+                port = os.getenv("DB_PORT", "5432")
+                out.append(_f(
+                    "infra",
+                    "postgres_main_down",
+                    "critical",
+                    f"Postgres main :{port} unreachable ({kind}: {type(e).__name__}: {str(e)[:140]}). "
+                    f"If disk is healthy, allowlisted remediate_postgres_main.py --apply will "
+                    f"sudo -n systemctl start postgresql@17-main; else free space first. "
+                    f"Manual: sudo systemctl start postgresql@17-main && pg_lsclusters",
+                    error=str(e)[:240],
+                    classify=kind,
+                ))
             return out
         try:
             with _conn.cursor() as c:

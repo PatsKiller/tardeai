@@ -23,6 +23,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -336,7 +337,47 @@ def run(
         if key in out and out[key].get("errors"):
             errs.extend(out[key]["errors"])
     out["ok"] = out.get("ok", True) and not errs
+
+    # 2026-09-18: hygiene freed ~41GB after ENOSPC but left postgresql@17-main down.
+    # After a successful apply that reclaimed space, attempt allowlisted start when
+    # the unit is inactive and disk is above the restart floor.
+    if not dry_run and not status_only:
+        try:
+            reclaimed = 0
+            for key in ("releases_result", "backups_result"):
+                reclaimed += int((out.get(key) or {}).get("bytes_reclaimed_est") or 0)
+            out["postgres_remediate"] = _maybe_restart_postgres_main(reclaimed_bytes=reclaimed)
+        except Exception as e:
+            out["postgres_remediate"] = {"ok": False, "error": str(e)[:240]}
     return out
+
+
+def _maybe_restart_postgres_main(*, reclaimed_bytes: int) -> dict:
+    """Best-effort allowlisted start after hygiene reclaim (no-op if already up)."""
+    # Always check when apply ran; even 0 reclaim can mean space was already freed.
+    script = Path(__file__).resolve().parent / "remediate_postgres_main.py"
+    if not script.is_file():
+        return {"ok": False, "skipped": True, "reason": "remediate_postgres_main.py missing"}
+    py = sys.executable or "python3"
+    proc = subprocess.run(
+        [py, str(script), "--apply"],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        cwd=str(Path(__file__).resolve().parents[1]),
+    )
+    payload: dict
+    try:
+        payload = json.loads(proc.stdout or "{}")
+    except Exception:
+        payload = {
+            "ok": proc.returncode == 0,
+            "raw_stdout": (proc.stdout or "")[:500],
+            "raw_stderr": (proc.stderr or "")[:500],
+        }
+    payload["reclaimed_bytes_context"] = reclaimed_bytes
+    payload["rc"] = proc.returncode
+    return payload
 
 
 def main() -> int:
