@@ -169,11 +169,13 @@ def apply_retention(conn, *, dry_run: bool = False) -> dict:
                     "count": hermes_orphans, "threshold_days": orphan_cfg})
 
     # 6. Age purge for content_embeddings (largest disk consumer when orphans=0)
+    # Use now()-interval, not CURRENT_DATE-int: the date form silently under-counts
+    # near the boundary (2026-09-18: CURRENT_DATE-90 → 0 rows, now()-90d → ~4k).
     age_cfg = int(policy.get("content_embeddings", {}).get("max_age_days", 90) or 90)
     cur.execute(
         """
         SELECT COUNT(*) FROM content_embeddings
-        WHERE created_at < CURRENT_DATE - %s::int
+        WHERE created_at < (now() - make_interval(days => %s))
         """,
         (age_cfg,),
     )
@@ -182,7 +184,7 @@ def apply_retention(conn, *, dry_run: bool = False) -> dict:
         cur.execute(
             """
             DELETE FROM content_embeddings
-            WHERE created_at < CURRENT_DATE - %s::int
+            WHERE created_at < (now() - make_interval(days => %s))
             """,
             (age_cfg,),
         )
