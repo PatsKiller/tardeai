@@ -19,11 +19,11 @@ audit" (router write-gate gaps, prompt-injection PARTIAL ingress, failed-unit ti
 Operator-directed merge/promote of PR #1069; rides the existing `APPROVE_AGENTS_POLICY_1_2_0`
 ratification for sections outside §0/§2/§17. Merge ≠ deploy — CURRENT promote is a separate step.
 
-**1.2.2 (ENOSPC false-green lesson) is merged to `main` via PR #1068** and is the latest merged
-policy on `origin/main` beneath this PROPOSED 1.2.3. A MINOR release: it records the Postgres ENOSPC
-→ Command Center false-green outage under "What 2026-09-18 taught — Postgres ENOSPC → Command Center
-false-green". It does not touch §0, §2, §17 or role authority. **The served CURRENT pin still
-carries 1.2.1 until CURRENT is promoted** — do not treat merge as live policy on the dashboard host.
+**1.2.2 (ENOSPC false-green lesson) was ACTIVE on `main` via PR #1068** until superseded by 1.2.3.
+A MINOR release: it records the Postgres ENOSPC → Command Center false-green outage under
+"What 2026-09-18 taught — Postgres ENOSPC → Command Center false-green". It does not touch §0, §2,
+§17 or role authority. **A served CURRENT pin may still carry an older Policy-Version until
+explicitly promoted** — do not treat merge as live policy on the dashboard host.
 
 **1.2.1 is ACTIVE from 2026-09-16 (live CURRENT).** A PATCH release: it corrects two statements in §7 that PR #1045 made
 factually wrong and records the free-web result in §12. It touches no rule, adds no restriction, and does not
