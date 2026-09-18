@@ -215,3 +215,33 @@ def format_rag_context_for_prompt(rag_results, symbol=""):
         lines.append(f"{i}. {r['source_label']} | {r['title']} | score:{r['rag_score']:.2f} | {date_str}")
     lines.append("=== End Prior Intelligence ===")
     return "\n".join(lines)
+
+
+def empty_rag_mode(env=None):
+    """AGENT_EMPTY_RAG_MODE: refuse | record (default) | off."""
+    import os
+    e = env if env is not None else os.environ
+    mode = str(e.get("AGENT_EMPTY_RAG_MODE") or "record").strip().lower()
+    return mode if mode in {"refuse", "record", "off"} else "record"
+
+
+def rag_or_refuse(rag_results, *, symbol="", mode=None):
+    """Return {ok, block, refuse, reason} for empty-RAG policy (audit Phase 1)."""
+    mode = empty_rag_mode() if mode is None else mode
+    if rag_results:
+        return {
+            "ok": True,
+            "block": format_rag_context_for_prompt(rag_results, symbol=symbol),
+            "refuse": False,
+            "reason": None,
+        }
+    if mode == "refuse":
+        return {"ok": False, "block": "", "refuse": True, "reason": "EMPTY_RAG"}
+    if mode == "record":
+        note = (
+            "=== Prior Intelligence ===\n"
+            "NONE RETRIEVED — do not invent citations or unsupported numbers from memory.\n"
+            "=== End Prior Intelligence ==="
+        )
+        return {"ok": True, "block": note, "refuse": False, "reason": "EMPTY_RAG_RECORDED"}
+    return {"ok": True, "block": "", "refuse": False, "reason": None}

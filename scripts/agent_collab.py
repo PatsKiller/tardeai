@@ -91,7 +91,21 @@ def get_agent_context(symbol: str, requesting_agent: str = "Alex",
         return ""
 
     header = f"CROSS-AGENT CONTEXT FOR {symbol.upper()} (latest from other agents):"
-    return header + "\n" + "\n".join(lines)
+    body = header + "\n" + "\n".join(lines)
+    # Peer summaries are untrusted relative to the requesting agent's system
+    # instructions (audit Phase 1 / Control 4 — lateral injection surface).
+    try:
+        from scripts.lib.agent_untrusted_data import untrusted_delimiter
+    except Exception:
+        try:
+            from lib.agent_untrusted_data import untrusted_delimiter  # type: ignore
+        except Exception:
+            return body
+    return untrusted_delimiter(
+        content_type="peer_summary",
+        source="agent_collab.get_agent_context",
+        content=body,
+    )
 
 
 def log_handoff(from_agent: str, to_agent: str, symbol: str = "",

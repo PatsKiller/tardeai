@@ -301,8 +301,74 @@ def _detect_high_impact(text: str, config: Dict[str, Any], tickers: List[str], a
     return bool(reviewers), reviewers
 
 
+# Jailbreak / exfil only. Broker imperatives (place order / execute trade) are
+# HITL pending_write via WRITE_WORDS / _TRADE_WRITE_RE — not PI refuse.
+_PI_REFUSE_RE = re.compile(
+    r"(?is)("
+    r"ignore\s+(?:all\s+)?(?:previous\s+|prior\s+|your\s+)?(?:instructions|rules|policies|guidelines)"
+    r"|disregard\s+(?:all\s+)?(?:previous\s+|prior\s+|your\s+)?(?:instructions|rules|policies)"
+    r"|you\s+are\s+(?:now\s+)?jailbroken"
+    r"|jailbreak"
+    r"|override\s+(?:the\s+)?(?:safety|risk|policy|guardrails|instructions)"
+    r"|disable\s+(?:the\s+)?(?:safety|guardrails|filters|rules)"
+    r"|reveal\s+(?:your\s+)?(?:system\s+)?prompt"
+    r"|dump\s+(?:env|secrets?|api[_\s-]?keys?)"
+    r"|print\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions|api[_\s-]?keys?)"
+    r"|exfiltrat"
+    r"|show\s+(?:me\s+)?(?:your\s+)?(?:hidden\s+)?(?:system\s+)?prompt"
+    r"|any\s+api\s+keys"
+    r")"
+)
+
+
+def _is_pi_refuse(message: str) -> bool:
+    """Jailbreak / instruction-override / prompt-exfil — refuse, do not low-conf route."""
+    return bool(_PI_REFUSE_RE.search(message or ""))
+
+
 def build_route(message: str, from_agent: str = "user", config_path: Path = DEFAULT_CONFIG) -> RouteResult:
     config = _load_config(config_path)
+
+    # Phase 1 Control 4: adversarial/exfil is a refuse, not needs_clarification.
+    if _is_pi_refuse(message):
+        return RouteResult(
+            created_at=datetime.now(timezone.utc).isoformat(),
+            user_message=message,
+            from_agent=from_agent,
+            to_agent=config.get("default_agent", "orchestrator"),
+            intent="jailbreak_or_exfil",
+            confidence=1.0,
+            reason="Adversarial/jailbreak or prompt-exfil pattern; refuse model ingress",
+            action_type="read_only",
+            status="refused",
+            source_required=False,
+            freshness_ok=None,
+            freshness_issues=[],
+            high_impact=False,
+            reviewers=[],
+            context_packet={
+                "tickers": _extract_tickers(message),
+                "amounts": [],
+                "keyword_hits": [],
+                "freshness_ok": None,
+                "freshness_issues": [],
+                "source_required": False,
+                "requires_approval_before_write": False,
+                "high_impact": False,
+                "reviewers": [],
+                "pi_refuse": True,
+            },
+            pending_actions=[{
+                "type": "pi_refuse",
+                "message": "Blocked: adversarial instruction or prompt/secret exfiltration attempt.",
+            }],
+            short_telegram="Refused: adversarial/exfil content.",
+            full_dashboard=(
+                "Agent Router **refused** this message as jailbreak/instruction-override "
+                "or prompt/secret exfiltration. No specialist agent should treat it as a task."
+            ),
+        )
+
     intent, to_agent, confidence, reason, hits = _route_intent(message, config)
 
     auto_threshold = float(config.get("confidence_thresholds", {}).get("auto_route", 0.70))

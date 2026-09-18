@@ -165,8 +165,34 @@ def proactive_query(ctx, subject: str, question: str, trigger: str,
     # count against the per-cycle proactive budget shared by all layers
     ctx.scratch["proactive_used"] = ctx.scratch.get("proactive_used", 0) + 1
     rag = rag_block(subject)
+    # Phase 1 Control 1: empty RAG → refuse unsupported generation (default record
+    # still allows call with a NONE RETRIEVED note via rag_or_refuse; refuse mode
+    # skips the LLM entirely).
+    try:
+        from rag_retrieval import empty_rag_mode
+        _empty_mode = empty_rag_mode()
+    except Exception:
+        _empty_mode = "record"
+    if not rag and _empty_mode == "refuse":
+        return {
+            "answer": "EMPTY_RAG: no retrieved context; refusing unsupported generation.",
+            "confidence": 0.0,
+            "reasoning": "EMPTY_RAG",
+            "error": "EMPTY_RAG",
+            "_lane": "none",
+            "_refused": True,
+        }
     prompt = question
     if rag:
+        try:
+            from scripts.lib.agent_untrusted_data import untrusted_delimiter
+            rag = untrusted_delimiter(content_type="rag", source="rag_retrieval", content=rag)
+        except Exception:
+            try:
+                from lib.agent_untrusted_data import untrusted_delimiter  # type: ignore
+                rag = untrusted_delimiter(content_type="rag", source="rag_retrieval", content=rag)
+            except Exception:
+                pass
         prompt = f"{rag}\n\n{question}"
 
     answer = llm_json(prompt, caller="inference_proactive", salience=salience,

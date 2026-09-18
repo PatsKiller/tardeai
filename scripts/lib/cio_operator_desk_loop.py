@@ -506,10 +506,17 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                 "No prose. No invented tickers not implied by the question."
             )
 
+            try:
+                from scripts.lib.agent_untrusted_data import untrusted_delimiter
+                _user_content = untrusted_delimiter(
+                    content_type="operator_message", source="telegram", content=(t or "")[:800],
+                )
+            except Exception:
+                _user_content = (t or "")[:800]
             llm = call_governed_llm(
                 [
                     {"role": "system", "content": system},
-                    {"role": "user", "content": t[:800]},
+                    {"role": "user", "content": _user_content},
                 ],
                 load_llm_policy(),
                 use_pro=False,
@@ -1508,8 +1515,17 @@ def answer_freeform_with_flash(
             "5) Keep reply under ~900 chars; Telegram markdown ok (*bold*, `code`).\n"
             "6) End with READ_ONLY_ADVISORY."
         )
+        try:
+            from scripts.lib.agent_untrusted_data import untrusted_delimiter
+            _ask = untrusted_delimiter(
+                content_type="operator_message",
+                source="telegram",
+                content=(operator_text or "")[:800],
+            )
+        except Exception:
+            _ask = f"OPERATOR_ASK:\n{(operator_text or '')[:800]}"
         user = (
-            f"OPERATOR_ASK:\n{(operator_text or '')[:800]}\n\n"
+            f"{_ask}\n\n"
             f"TRADE_AI_FACTS:\n{facts_json}\n\n"
             f"SOFT_GAPS:\n{gaps_json}"
         )
@@ -2471,7 +2487,14 @@ def curate_subject_reply_with_flash(*, operator_text: str, facts: str, symbols: 
         "Do not add facts, forecasts, or buy or sell instructions. Do not place orders. "
         "Short lines with *bold* labels, about 12 lines at most."
     )
-    user = f"Operator asked: {(operator_text or '')[:300]}\n\nFACTS (the only source you may use):\n{facts}"
+    try:
+        from scripts.lib.agent_untrusted_data import untrusted_delimiter
+        _ask = untrusted_delimiter(
+            content_type="operator_message", source="telegram", content=(operator_text or "")[:300],
+        )
+    except Exception:
+        _ask = f"Operator asked: {(operator_text or '')[:300]}"
+    user = f"{_ask}\n\nFACTS (the only source you may use):\n{facts}"
     try:
         llm = _subject_flash_call([{"role": "system", "content": system}, {"role": "user", "content": user}])
     except Exception as exc:  # noqa: BLE001
