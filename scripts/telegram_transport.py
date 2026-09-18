@@ -266,9 +266,10 @@ def deliver_text(
     times, raw Markdown asterisks, messages with no links, and decisions sent
     while marked invalid. ``COMMS_EDITOR_MODE`` decides what happens here:
     ``off`` sends unchanged; ``shadow`` sends unchanged and writes the editor's
-    receipt; ``live`` sends the edited HTML, and holds duplicates and invalid
-    products (reported as ``suppressed``, never as a failure). The editor can
-    never block a send by raising: any editor error sends the original.
+    receipt; ``live`` sends the edited HTML, and holds duplicates, invalid
+    products, and CIO stance disagreements (reported as ``suppressed``, never as
+    a failure). The editor can never block a send by raising: any editor error
+    sends the original.
     """
     if _interdicted():
         return _interdicted_result()

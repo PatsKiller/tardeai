@@ -91,13 +91,48 @@ def test_links_are_fully_qualified_tailscale_plus_finviz_and_yahoo(tmp_path, mon
     assert 'href="https://finance.yahoo.com/quote/AXTI"' in d.text
 
 
-def test_cio_disagreement_is_stated_on_the_message(tmp_path):
+def test_cio_disagreement_is_stated_on_the_message_and_held_in_live(tmp_path):
     q = _cio([{"symbol": "AXTI", "action": "RESEARCH_MORE", "created_at": "2026-09-13T17:08:53-04:00"},
               {"symbol": "IRDM", "action": "ADD_ON_PULLBACK", "created_at": "2026-09-13T17:00:00-04:00"}])
     d = ce.edit("[CIO DECISION] IRDM\nDecision: AVOID\nUrgency: NOW", chat_id="1", now=NOW,
                 ledger=ce.DuplicateLedger(tmp_path / "l.json"), db_query=q, resolve=_resolve, editor_mode="live")
     assert d.cio_disagreements and d.cio_disagreements[0]["symbol"] == "IRDM"
     assert "CIO disagrees on IRDM" in d.text and "ADD_ON_PULLBACK" in d.text
+    assert not d.send and d.held_reason == "cio_disagreement"
+
+
+def test_go_alert_held_when_cio_says_research_more(tmp_path):
+    """2026-09-18 audit: NEW GO shipped while CIO RESEARCH_MORE / Synthesis=AVOID."""
+    q = _cio([{"symbol": "ELMT", "action": "RESEARCH_MORE", "created_at": "2026-09-13T17:08:53-04:00"}])
+
+    def _resolve_elmt(text):
+        return [{"symbol": "ELMT", "guid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}] if "ELMT" in text else []
+
+    d = ce.edit("🎯 *NEW GO* — *ELMT* score=44 RVOL 165.3x\nElmet Group Secures $450 Million",
+                chat_id="1", now=NOW, ledger=ce.DuplicateLedger(tmp_path / "l.json"),
+                db_query=q, resolve=_resolve_elmt, editor_mode="live")
+    assert d.cio_disagreements and d.cio_disagreements[0]["symbol"] == "ELMT"
+    assert not d.send and d.held_reason == "cio_disagreement"
+
+
+def test_go_with_buy_ready_cio_is_aligned_and_sends(tmp_path):
+    q = _cio([{"symbol": "AXTI", "action": "BUY_READY", "created_at": "2026-09-13T17:08:53-04:00"}])
+    d = ce.edit("✅ GO *AXTI* — Scalp setup", chat_id="1", now=NOW, ledger=ce.DuplicateLedger(tmp_path / "l.json"),
+                db_query=q, resolve=_resolve, editor_mode="live")
+    assert d.cio_disagreements == []
+    assert d.send and d.held_reason is None
+
+
+def test_spy_market_header_bullish_does_not_create_cio_disagreement(tmp_path):
+    q = _cio([{"symbol": "SPY", "action": "RESEARCH_MORE", "created_at": "2026-09-13T17:08:53-04:00"}])
+
+    def _resolve_spy(text):
+        return [{"symbol": "SPY", "guid": "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee"}] if "SPY" in text else []
+
+    d = ce.edit("SPY -74.20%  VIX 17.6  Bullish\nNo GO tickers.", chat_id="1", now=NOW,
+                ledger=ce.DuplicateLedger(tmp_path / "l.json"), db_query=q, resolve=_resolve_spy, editor_mode="live")
+    assert d.cio_disagreements == []
+    assert d.send
 
 
 def test_neutral_cio_research_more_does_not_contradict_a_neutral_message(tmp_path):

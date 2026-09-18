@@ -783,15 +783,14 @@ def _handle_add_article(args: str) -> str:
 
 
 def _notify_both(msg: str):
-    """Broadcast a one-line directive event to BOTH operator chat IDs (best-effort)."""
+    """Broadcast a one-line directive event to BOTH operator chat IDs (best-effort).
+
+    Uses ``telegram_alert.send_telegram`` so the Communications Editor chokepoint
+    (CIO hold / HTML / GUID) applies — never a raw Bot API POST.
+    """
     try:
-        import requests
-        tok = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-        if not tok:
-            return
-        for cid in __import__("tg_chat_ids").chat_ids():
-            requests.post(f"https://api.telegram.org/bot{tok}/sendMessage",
-                          json={"chat_id": cid, "text": msg}, timeout=8)
+        from telegram_alert import send_telegram
+        send_telegram(msg, bypass_router=True)
     except Exception:
         pass
 

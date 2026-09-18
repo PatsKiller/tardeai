@@ -71,6 +71,22 @@ def test_live_holds_an_invalid_operator_product(env, monkeypatch):
     assert out["suppressed"] == "operator_product_invalid" and sent == []
 
 
+def test_live_holds_cio_disagreement_go_vs_research_more(env, monkeypatch):
+    """2026-09-18: NEW GO must not reach Telegram when CIO says RESEARCH_MORE."""
+    tmp, sent, post = env
+    monkeypatch.setenv("COMMS_EDITOR_MODE", "live")
+    monkeypatch.setattr(ce, "subjects", lambda text, resolve=None: (
+        [{"symbol": "ELMT", "guid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}] if "ELMT" in (text or "") else []))
+    monkeypatch.setattr(
+        ce, "default_db_query",
+        lambda sql, params=None, fetch="all": [
+            {"symbol": "ELMT", "action": "RESEARCH_MORE", "created_at": "2026-09-13T17:08:00-04:00"}
+        ],
+    )
+    out = _send(post, "🎯 *NEW GO* — *ELMT* score=44 RVOL 165.3x")
+    assert out["ok"] and out.get("suppressed") == "cio_disagreement" and sent == []
+
+
 def test_live_delivers_a_multi_decision_digest_with_invalid_markers(env, monkeypatch):
     """A fresh-day morning brief is a digest, not a standalone invalid product.
 
