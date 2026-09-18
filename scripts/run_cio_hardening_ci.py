@@ -884,6 +884,12 @@ GATES = [
         ],
     ),
     (
+        "goal_work_minter_ratchet",
+        [
+            "tests/test_goal_work_minter_ratchet.py",
+        ],
+    ),
+    (
         "notification_integrity_cdeg",
         [
             "tests/test_notification_integrity_waves_cdeg.py",

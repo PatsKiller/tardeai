@@ -1,0 +1,16 @@
+{
+  "_note": "Modules that may MINT goal work. Ratchet only - may shrink, never grow silently. A new entry means a new path can create a goal lap; confirm it is budgeted before declaring it.",
+  "files": {
+    "scripts/agent_runtime/trigger_sources.py": [
+      "calls goal_trigger_candidate()"
+    ],
+    "scripts/agent_runtime_live_providers.py": [
+      "builds JobRequest(job_type=\"goal_shadow_review\")",
+      "calls append_lap()"
+    ],
+    "scripts/lib/goal_generation.py": [
+      "calls goal_trigger_candidate()"
+    ]
+  },
+  "schema": "GoalWorkMinterAudit@v1"
+}
