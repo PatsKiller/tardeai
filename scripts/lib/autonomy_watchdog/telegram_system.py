@@ -118,17 +118,36 @@ def send_system(
         return rec
     token = str(src.get("TELEGRAM_BOT_TOKEN") or "").strip()
     chat = str(src.get("TELEGRAM_CHAT_ID") or "").split(",")[0].strip()
-    # Direct Bot API via stdlib — no CIO transport, no `requests` CI dependency.
+    # Shared Communications Editor chokepoint (deliver_text). Direct Bot API
+    # bypassed CIO disagreement holds — 2026-09-18 audit.
     try:
-        body, status = _http_post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            {"chat_id": chat, "text": text},
-        )
-        rec["ok"] = bool(body.get("ok"))
-        rec["message_id"] = ((body.get("result") or {}) if isinstance(body.get("result"), dict) else {}).get("message_id")
-        rec["status_code"] = status
-        if not rec["ok"]:
-            rec["reason"] = str(body.get("description") or status)[:160]
+        try:
+            from telegram_transport import deliver_text
+        except ImportError:
+            from scripts.telegram_transport import deliver_text  # type: ignore
+
+        def _post(url: str, payload: dict[str, Any]):
+            body, status = _http_post(url, payload)
+            return {"ok": bool(body.get("ok")), "status_code": status, "response": body}
+
+        result = deliver_text(token=token, chat_id=chat, text=text, parse_mode=None, post=_post)
+        if result.get("suppressed"):
+            rec.update({
+                "ok": True,
+                "suppressed": result.get("suppressed"),
+                "reason": f"suppressed:{result.get('suppressed')}",
+                "message_id": None,
+                "status_code": 200,
+            })
+        else:
+            body = result.get("response") if isinstance(result.get("response"), dict) else {}
+            rec["ok"] = bool(result.get("ok"))
+            rec["message_id"] = result.get("message_id") or (
+                (body.get("result") or {}) if isinstance(body.get("result"), dict) else {}
+            ).get("message_id")
+            rec["status_code"] = result.get("status_code")
+            if not rec["ok"]:
+                rec["reason"] = str(body.get("description") or result.get("status_code") or "")[:160]
     except Exception as e:
         rec["ok"] = False
         rec["reason"] = type(e).__name__
