@@ -595,3 +595,43 @@ def test_a_flattened_top_level_version_is_still_honoured():
     assert gg.predicate_version({"predicate_version": 3}) == "v3"
     assert gg.predicate_version({"predicate": {"predicate_version": 7}}) == "v7"
     assert gg.predicate_version({}) == "v0"
+
+
+# ── the unbudgeted in-process minter, retired ──────────────────────────────
+
+
+def _goal_jobs(jobs):
+    return [j for j in jobs if getattr(j, "job_type", "") == "goal_shadow_review"]
+
+
+def test_the_in_process_goal_source_is_retired_by_default(wired, goal, monkeypatch):
+    """Measured live 2026-09-17: this source minted 184 laps in 5h at 36/hour,
+    `lap` reaching 61 against a `max_laps` of 12.
+
+    It built JobRequests in-process and never enqueued them, so it reached
+    neither the intake ON CONFLICT dedup nor `produce_once`'s `gate_candidate`
+    — `trigger_intake` held ZERO `goal:`-prefixed rows the whole time, and
+    `goal_budget.json` was never created because the gate was never called.
+
+    Laps must now come from the budgeted producer adapter. A lap this module
+    mints itself is a lap nobody authorised.
+    """
+    monkeypatch.delenv("AGENT_RUNTIME_INPROCESS_GOAL_JOBS", raising=False)
+    assert _goal_jobs(list(lp.job_source(AGENT, limit=8))) == [], (
+        "the runtime minted a goal lap without the budget ever being consulted"
+    )
+
+
+def test_the_retired_source_can_still_be_restored_by_the_operator(
+    wired, goal, monkeypatch
+):
+    """Never delete — archive with a tripwire (AGENTS.md §0 rule 6).
+
+    This is also the negative control for the test above: if the block were
+    removed outright rather than gated, this goes RED and the 'retired by
+    default' control would be passing for the wrong reason.
+    """
+    monkeypatch.setenv("AGENT_RUNTIME_INPROCESS_GOAL_JOBS", "1")
+    restored = _goal_jobs(list(lp.job_source(AGENT, limit=8)))
+    assert restored, "the flag must restore the old behaviour, not nothing"
+    assert restored[0].dedup_value.startswith("goal:")

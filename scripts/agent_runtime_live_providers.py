@@ -550,8 +550,35 @@ def job_source(agent_id: str, limit: int = 8) -> Sequence[Any]:
         except Exception:
             pass
 
-    # Open goals owned by this agent (bounded)
-    if len(jobs) < limit:
+    # Open goals owned by this agent — RETIRED 2026-09-17, default OFF.
+    #
+    # This minted goal laps IN-PROCESS. It never enqueued into `trigger_intake`,
+    # so it skipped BOTH the ON CONFLICT dedup AND `produce_once`'s
+    # `gate_candidate` — this module calls `gate_candidate`, `try_consume_lap`,
+    # `goal_budget` and `record_spend` exactly zero times, so a lap minted here
+    # was unbudgeted by construction.
+    #
+    # Measured live 2026-09-17: 184 laps in 5h at a flat 36/hour (12 per agent x
+    # three runtime timers), `lap` at 61 against a `max_laps` of 12, THREE
+    # distinct dedup keys across all 184 rows, 184/184 carrying `model_error`
+    # and an empty `finding`, and 0/184 closing a need. It could not stop: no
+    # lap learns anything, so the ledger digest never moves, so the key is
+    # identical every tick. Through the producer that is DUPLICATE and refused;
+    # here nothing asked.
+    #
+    # Goal laps now come from the BUDGETED producer adapter `goals:laps`
+    # (`trigger_sources`), where the cumulative per-goal budget binds BEFORE the
+    # row exists — which is the design: a lap is paid for where it is
+    # AUTHORISED, not inside the runtime, which runs as the agent.
+    #
+    # Kept behind a flag rather than deleted (AGENTS.md §0 rule 6 — never
+    # delete, archive with a tripwire): set AGENT_RUNTIME_INPROCESS_GOAL_JOBS=1
+    # to restore the old behaviour. Operator grant 1679ff2d5cfd34d9, scope
+    # `goal-lap-rewire`, settled via Telegram button.
+    _inprocess_goals = str(
+        os.environ.get("AGENT_RUNTIME_INPROCESS_GOAL_JOBS", "")
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    if len(jobs) < limit and _inprocess_goals:
         try:
             from scripts.lib import goal_generation as gg  # type: ignore
 
