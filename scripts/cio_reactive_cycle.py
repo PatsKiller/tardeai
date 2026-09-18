@@ -155,6 +155,14 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
 
     bus = CIOEventBus()
     wake_store = CIOWakeJobStore()
+    # ENOSPC / crash can leave a truncated trailing JSONL record that wedges
+    # every subsequent enqueue (audit R2 / 2026-09-18). Trim before polling.
+    try:
+        repair = wake_store.quarantine_corrupt_trailing_events()
+        if repair.get("removed"):
+            out.setdefault("repairs", []).append({"cio_wake_jobs": repair})
+    except Exception as exc:
+        out["errors"].append(f"wake_store_repair:{exc}")
     _now_dt = datetime.now(timezone.utc)
     hour = _now_dt.strftime("%Y%m%d%H")
     enqueued_n = 0
@@ -455,7 +463,16 @@ def main() -> int:
         print(f"  dispatched={d.get('dispatched_count', 0)} errors={len(res.get('errors') or [])}")
         for e in (res.get("errors") or [])[:5]:
             print(f"  ERR: {e}")
-    return 0 if not res.get("errors") else 1
+    # Soft errors (per-event enqueue / cursor) must not flap the 2-minute
+    # oneshot timer into permanent `failed` after a recoverable store wedge.
+    # Hard import/identity failures still exit non-zero.
+    errs = list(res.get("errors") or [])
+    hard = [e for e in errs if not (
+        str(e).startswith("enqueue:")
+        or str(e).startswith("cursor:")
+        or str(e).startswith("wake_store_repair:")
+    )]
+    return 0 if not hard else 1
 
 
 if __name__ == "__main__":
