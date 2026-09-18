@@ -46,7 +46,26 @@ WRITE_WORDS = {
     "change", "modify", "delete", "remove", "email me", "send", "gmail", "apply",
     "commit", "edit", "append", "create", "write back", "record", "persist",
     "add to rebalancing", "add it to rebalancing", "update rebalancing", "yaml", "database",
+    # Trade / broker execution verbs (audit 2026-09-18 R1). Substring match —
+    # prefer phrases that will not fire on "in order to".
+    "place an order", "place order", "market order", "limit order",
+    "submit order", "submit a trade", "submit trade", "execute trade",
+    "execute order", "broker order", "order for", "buy shares", "sell shares",
+    "buy ", "sell ", " at market",
 }
+
+# Word-boundary patterns for short trade verbs that are unsafe as bare substrings
+# ("order" alone matches "in order to"; "trade" alone matches "trade ai").
+_TRADE_WRITE_RE = re.compile(
+    r"(?:"
+    r"\bbuy\b|\bsell\b|\btrim\b|\breduce\b|\bexit\b|"
+    r"\bplace\s+(?:an\s+)?order\b|\bsubmit\s+(?:an?\s+)?(?:order|trade)\b|"
+    r"\bexecute\s+(?:an?\s+)?(?:order|trade)\b|\bbroker\s+order\b|"
+    r"\b(?:market|limit)\s+order\b|\borders?\s+for\b|"
+    r"\bbuy\s+\d|\bsell\s+\d|\bbuy\s+shares\b|\bsell\s+shares\b"
+    r")",
+    re.IGNORECASE,
+)
 
 ACTION_WORDS = {
     "add", "buy", "trim", "sell", "reduce", "exit", "rebalance", "target", "stop",
@@ -146,7 +165,9 @@ def _keyword_score(text_norm: str, keywords: List[str]) -> Tuple[int, List[str]]
 
 
 def _detect_write_action(text_norm: str) -> bool:
-    return any(word in text_norm for word in WRITE_WORDS)
+    if any(word in text_norm for word in WRITE_WORDS):
+        return True
+    return bool(_TRADE_WRITE_RE.search(text_norm))
 
 
 def _detect_action_request(text_norm: str) -> bool:
@@ -297,6 +318,7 @@ def build_route(message: str, from_agent: str = "user", config_path: Path = DEFA
 
     text_norm = _normalize_text(message)
     is_write = _detect_write_action(text_norm)
+    is_trade_write = bool(_TRADE_WRITE_RE.search(text_norm))
     action_type = "pending_write" if is_write else "read_only"
     status = "pending_approval" if is_write else "routed"
 
@@ -307,6 +329,12 @@ def build_route(message: str, from_agent: str = "user", config_path: Path = DEFA
     tickers = _extract_tickers(message)
     amounts = _extract_amounts(message)
     high_impact, reviewers = _detect_high_impact(message, config, tickers, amounts)
+    # Trade/broker verbs always require multi-agent review in addition to write approval.
+    if is_trade_write:
+        high_impact = True
+        for req in ("risk_agent", "steph", "orchestrator"):
+            if req not in reviewers:
+                reviewers.append(req)
     if high_impact and not is_write:
         # High impact recommendations may start read-only, but need multi-agent review before execution.
         status = "routed_multi_review"
@@ -321,13 +349,19 @@ def build_route(message: str, from_agent: str = "user", config_path: Path = DEFA
         "requires_approval_before_write": is_write,
         "high_impact": high_impact,
         "reviewers": reviewers,
+        "trade_write": is_trade_write,
     }
 
     pending_actions: List[Dict[str, Any]] = []
     if is_write:
         pending_actions.append({
             "type": "approval_required",
-            "message": "User requested a write/update action. Do not modify YAML, DB, alerts, Gmail, or app state until approved.",
+            "message": (
+                "User requested a trade/broker or write/update action. Do not modify YAML, DB, "
+                "alerts, Gmail, broker, or app state until approved."
+                if is_trade_write
+                else "User requested a write/update action. Do not modify YAML, DB, alerts, Gmail, or app state until approved."
+            ),
         })
     if high_impact:
         pending_actions.append({

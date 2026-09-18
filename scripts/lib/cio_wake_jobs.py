@@ -22,7 +22,7 @@ import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Iterator, Optional
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Replicated primitives (identical semantics to P-1.3 cio_action_ledger.py)
@@ -244,14 +244,87 @@ class CIOWakeJobStore:
 
     # ── Low-level append ───────────────────────────────────────────────────
 
+    def _iter_event_lines(self) -> Iterator[tuple[int, str]]:
+        """Yield (1-based line_no, stripped_line) skipping blanks."""
+        if not self.event_store_path.exists():
+            return
+        with open(self.event_store_path, "r", encoding="utf-8", errors="replace") as f:
+            for i, line in enumerate(f, 1):
+                stripped = line.strip()
+                if stripped:
+                    yield i, stripped
+
+    def _loads_event_line(self, stripped: str, *, line_no: int | None = None) -> dict[str, Any] | None:
+        """Parse one JSONL event. Corrupt/truncated lines return None (ENOSPC mid-write)."""
+        try:
+            row = json.loads(stripped)
+        except json.JSONDecodeError:
+            return None
+        return row if isinstance(row, dict) else None
+
+    def quarantine_corrupt_trailing_events(self) -> dict[str, Any]:
+        """Drop trailing corrupt JSONL records (common after ENOSPC mid-write).
+
+        Rewrites the store under lock only when the final record(s) fail to parse.
+        Intact interior corruption is left for operator forensics — we only trim a
+        bad *suffix*, which is what blocks `_get_last_event` / enqueue.
+        """
+        if not self.event_store_path.exists():
+            return {"ok": True, "removed": 0, "reason": "missing"}
+        lock_fd = self._acquire_lock()
+        try:
+            raw = self.event_store_path.read_text(encoding="utf-8", errors="replace")
+            lines = raw.splitlines(keepends=True)
+            removed: list[str] = []
+            while lines:
+                candidate = lines[-1]
+                if not candidate.strip():
+                    removed.append(candidate)
+                    lines.pop()
+                    continue
+                try:
+                    json.loads(candidate.strip())
+                    break
+                except json.JSONDecodeError:
+                    removed.append(candidate)
+                    lines.pop()
+            if not removed:
+                return {"ok": True, "removed": 0, "reason": "clean"}
+            quarantine = self.event_store_path.with_suffix(
+                self.event_store_path.suffix + f".corrupt-tail-{int(time.time())}"
+            )
+            quarantine.write_text("".join(removed), encoding="utf-8")
+            tmp = self.event_store_path.with_suffix(".tmp")
+            tmp.write_text("".join(lines), encoding="utf-8")
+            os.replace(tmp, self.event_store_path)
+            return {
+                "ok": True,
+                "removed": len(removed),
+                "quarantine": str(quarantine),
+                "bytes_removed": sum(len(x) for x in removed),
+            }
+        finally:
+            self._release_lock(lock_fd)
+
     def _get_last_event(self) -> Optional[dict[str, Any]]:
         if not self.event_store_path.exists():
             return None
-        with open(self.event_store_path, "r") as f:
-            lines = f.readlines()
-            if not lines:
-                return None
-            return json.loads(lines[-1].strip())
+        last: dict[str, Any] | None = None
+        corrupt_suffix = False
+        for line_no, stripped in self._iter_event_lines() or ():
+            row = self._loads_event_line(stripped, line_no=line_no)
+            if row is None:
+                corrupt_suffix = True
+                continue
+            last = row
+            corrupt_suffix = False
+        if corrupt_suffix:
+            # Best-effort auto-trim so the next enqueue is not permanently wedged.
+            try:
+                self.quarantine_corrupt_trailing_events()
+            except Exception:
+                pass
+        return last
 
     def _get_last_event_hash(self) -> str:
         last = self._get_last_event()
@@ -713,16 +786,12 @@ class CIOWakeJobStore:
     def list_events(self, stream_id: str) -> list[dict[str, Any]]:
         """Return all events for a given stream, in insertion order."""
         events: list[dict[str, Any]] = []
-        if not self.event_store_path.exists():
-            return events
-        with open(self.event_store_path, "r") as f:
-            for line in f:
-                stripped = line.strip()
-                if not stripped:
-                    continue
-                event = json.loads(stripped)
-                if event["stream_id"] == stream_id:
-                    events.append(event)
+        for line_no, stripped in self._iter_event_lines() or ():
+            event = self._loads_event_line(stripped, line_no=line_no)
+            if event is None:
+                continue
+            if event.get("stream_id") == stream_id:
+                events.append(event)
         return events
 
     def get_wake_job(self, wake_job_id: str) -> Optional[dict[str, Any]]:
@@ -832,16 +901,13 @@ class CIOWakeJobStore:
         the old algorithm on the live store.
         """
         events_by_stream: dict[str, list[dict[str, Any]]] = {}
-        if self.event_store_path.exists():
-            with open(self.event_store_path, "r") as f:
-                for line in f:
-                    stripped = line.strip()
-                    if not stripped:
-                        continue
-                    event = json.loads(stripped)
-                    sid = event["stream_id"]
-                    if sid != "wake-store-genesis":
-                        events_by_stream.setdefault(sid, []).append(event)
+        for line_no, stripped in self._iter_event_lines() or ():
+            event = self._loads_event_line(stripped, line_no=line_no)
+            if event is None:
+                continue
+            sid = event.get("stream_id")
+            if sid and sid != "wake-store-genesis":
+                events_by_stream.setdefault(str(sid), []).append(event)
 
         wakes: list[dict[str, Any]] = []
         for sid, stream_events in events_by_stream.items():
