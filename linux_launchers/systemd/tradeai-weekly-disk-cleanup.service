@@ -1,0 +1,12 @@
+[Unit]
+Description=TradeAI weekly disk cleanup — hygiene + librarian + db_retention + Telegram summary
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=PYTHONUNBUFFERED=1
+# Hygiene rsync/deletes + DB purge can run long on a full host.
+TimeoutStartSec=7200
+ExecStart=/bin/bash -lc 'PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python; ROOT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild; cd "$ROOT"; exec "$PY" scripts/weekly_disk_cleanup_notify.py --apply'
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/weekly_disk_cleanup.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/weekly_disk_cleanup.log
