@@ -388,3 +388,68 @@ def test_the_budget_is_charged_before_the_row_exists(monkeypatch, root: Path):
 
     assert payload["enqueued"] == 0
     assert store.lease("sentinel", limit=10, lease_owner="t") == []
+
+
+# ── 5. a lap that was never admitted costs nothing ─────────────────────────
+
+
+def test_a_duplicate_enqueue_does_not_consume_a_lap(monkeypatch, root: Path):
+    """Measured live 2026-09-18, and it exhausted three real goals.
+
+    ``gate_candidate`` charges BEFORE ``store.enqueue`` — deliberately, so a lap
+    can never be enqueued unbudgeted. But intake refuses a repeat as DUPLICATE,
+    and the charge was not returned. Three goals were each billed 12 laps in 22
+    minutes while exactly ONE lap per goal reached the ledger: 33 of 36 charges
+    bought nothing, and all three then hit LAP_BUDGET_EXHAUSTED, which is
+    terminal until an operator or a predicate bump reopens the goal.
+
+    The whole allowance was spent on no-ops. A refused enqueue did no work and
+    must not be billed — the principle this module already states for denials.
+    """
+    _policy(root, max_laps=5)
+    store = InMemoryTriggerIntakeStore()
+
+    first = _run(monkeypatch, store, [_candidate("dup-1")], root)
+    assert first["enqueued"] == 1
+    assert gb.status(GOAL, PV, root=root)["laps"] == 1
+
+    second = _run(monkeypatch, store, [_candidate("dup-1")], root)
+    assert second["enqueued"] == 0
+    assert second["duplicates"] == 1
+    assert gb.status(GOAL, PV, root=root)["laps"] == 1, (
+        "a duplicate enqueue burned a lap of the goal's cumulative allowance"
+    )
+
+
+def test_an_admitted_lap_is_still_charged_exactly_once(monkeypatch, root: Path):
+    """Negative control for the refund.
+
+    Without this, the control above could be satisfied by never charging at all,
+    which would leave laps unbudgeted — the defect the budget exists to prevent.
+    """
+    _policy(root, max_laps=5)
+    store = InMemoryTriggerIntakeStore()
+
+    _run(monkeypatch, store, [_candidate("uniq-1")], root)
+    _run(monkeypatch, store, [_candidate("uniq-2")], root)
+
+    assert gb.status(GOAL, PV, root=root)["laps"] == 2, (
+        "two admitted laps must cost exactly two"
+    )
+
+
+def test_a_refund_floors_at_zero(root: Path):
+    """A refund must never mint allowance that was never charged."""
+    _policy(root, max_laps=5)
+    out = gb.refund_lap(GOAL, PV, root=root)
+    assert out["refunded"] is True
+    assert out["laps_after"] == 0
+    assert gb.status(GOAL, PV, root=root)["laps"] == 0
+
+
+def test_refunding_a_candidate_that_names_no_goal_is_a_no_op(root: Path):
+    """It was never charged, so there is nothing to give back."""
+    out = gb.refund_candidate({"n": "not-a-goal"}, root=root)
+    assert out["refunded"] is False
+    assert out["reason"] == gb.NOT_GOAL_SCOPED
+    assert not gb.budget_path(root).exists(), "a no-op refund wrote a ledger"
