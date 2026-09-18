@@ -1,0 +1,11 @@
+[Unit]
+Description=TradeAI weekly disk cleanup (Sun 06:30 ET) — notified summary
+
+[Timer]
+# After daily hygiene (04:15) and librarian (05:10) / db_retention cron (04:10).
+OnCalendar=Sun *-*-* 06:30:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target
