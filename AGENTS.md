@@ -1,17 +1,22 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.2.1
+Policy-Version:      1.2.2
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-09-16
-Last-Reviewed:       2026-09-16T08:45:00-04:00
+Effective-Date:      2026-09-18
+Last-Reviewed:       2026-09-18T13:07:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          1.2.0
+Supersedes:          1.2.1
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**1.2.2 is ACTIVE from 2026-09-18.** A MINOR release: it records the Postgres ENOSPC → Command Center
+false-green outage (symptoms, root cause, fix) under "What 2026-09-18 taught" and the matching operating
+rules. It does not touch §0, §2, §17 or role authority. Operator-directed merge/promote of PR #1068;
+rides the existing `APPROVE_AGENTS_POLICY_1_2_0` ratification for sections outside §0/§2/§17.
 
 **1.2.1 is ACTIVE from 2026-09-16.** A PATCH release: it corrects two statements in §7 that PR #1045 made
 factually wrong and records the free-web result in §12. It touches no rule, adds no restriction, and does not
@@ -1613,6 +1618,76 @@ Each line is something an agent got wrong today or was about to. The code carrie
 - **A pipeline ending in `| tail` hides pytest's exit code** under `set -e`. Save output to a file and test the exit status.
 - **Local acceptance must run with the venv first on PATH.** System `python3` has no ruff, and the ruff test fails for the environment, not the code.
 - **`pgrep -f <pattern>` matches the shell running it.** Check `/proc/<pid>/cwd` and skip `$$` before killing.
+
+## What 2026-09-18 taught — Postgres ENOSPC → Command Center false-green `[VERIFIED]` (PR #1068)
+
+Host `ms01` filled the root volume; main Postgres panicked and stayed down; Command Center kept serving.
+Empty SETUPS and a PARTIAL badge looked like a scanner bug. They were not.
+
+### Symptoms (what the board showed)
+- **SETUPS · LATEST RUN:** `0 GO · 0 WAIT · 0 NOGO`, `PARTIAL`, `0 classified / 0 scanned` while a run
+  label (e.g. `0700` / `0900`) still appeared finished.
+- **Universe chips** could still show NO-GO / AWARE rows (overlay / alternate path) while the latest-run
+  contract was empty — do not treat chip counts as proof the primary scan DB is healthy.
+- **Regime** blank or unavailable (`risk-regime/latest` empty) while VIX might still render from a
+  side channel.
+- **Health:** criticals including DB / kill-switch unavailability (`kill_switch_db_unavailable` class).
+- **Prices DEGRADED** / Finviz after-hours thin; portfolio **clock divergence** warnings.
+- **`/api/health` stayed `ok: true`.** A green process health check is not evidence that
+  `postgresql@17-main` is up or that `trade_ai_scans` is writable.
+
+### Root cause (ordered)
+1. **Disk pressure on `/`.** Portfolio-server immutable releases and large Postgres logs filled the
+   volume. Early canary: `tradeai-portfolio-backup-cadence` failed with `No space left on device`
+   (~02:30 ET).
+2. **Postgres hit ENOSPC** in `pgsql_tmp`, then **WAL PANIC** (observed during
+   `DELETE FROM schwab_stream_book`) and the cluster shut down — unit `postgresql@17-main` on **:5432**
+   failed (~04:10 ET). Lab Postgres on **:5433** is a separate instance; do not diagnose the main
+   outage against it.
+3. **`disk_hygiene_enforcer` reclaimed space (~41GB) and did not restart Postgres.** Free disk ≠
+   recovered database. CC kept running against caches / run summaries while `trade_ai_scans` was
+   unreachable.
+4. **Orchestrator slots that ran while Postgres was down** wrote `run_summary` with
+   `ticker_count > 0` and **zero** primary scan rows → honesty
+   `count_integrity=PARTIAL` (`primary(0) vs alternate(N)`). That PARTIAL is the contract telling the
+   truth, not a stale UI bug after Postgres returns.
+
+### Fix (immediate + lasting)
+- **Immediate restore:** `sudo systemctl start postgresql@17-main`, confirm `systemctl is-active` and
+  `:5432` listen, then warm caches (`scripts/warm_caches.py` from the served tree) and re-check
+  `/api/v2/trade-ai` (`setup_run_summary`) plus regime. Truncate huge Postgres logs with
+  `sudo bash -c ': > /var/log/postgresql/…'` (plain `truncate` may hit permission denied); vacuum
+  journals with `sudo journalctl --vacuum-size=…` when reclaiming disk.
+- **Do not "heal" PARTIAL by overwriting `run_label`.** After DB is back, either wait for the next
+  scheduled slot or re-run the affected orchestrator label so `trade_ai_scans` refills. A PARTIAL
+  badge with `primary(0) vs alternate(N)` after an outage is expected until that happens.
+- **Lasting controls (PR #1068):** `scripts/lib/postgres_main_health.py`,
+  `scripts/remediate_postgres_main.py` (disk floor → allowlisted `systemctl start` only), health-agent
+  `postgres_main_down` / disk findings, and user timer
+  `tradeai-postgres-main-watchdog.timer` → `remediate_postgres_main.py --apply`.
+- **`tradeai-health-agent` cannot start Postgres itself** (`NoNewPrivileges=true`). Auto-start needs
+  the **separate user watchdog** plus passwordless sudoers
+  `linux_launchers/sudoers/tradeai-postgres-main-start` installed under `/etc/sudoers.d/`.
+- **Sudoers must allow both `/bin/systemctl` and `/usr/bin/systemctl`.** Ubuntu resolves `systemctl`
+  via `/usr/bin`; a drop-in that lists only `/bin/…` still demands a password for `sudo -n systemctl …`.
+- **Soft remediate outcomes exit 0** (`already_active`, `cooldown`, `needs_sudoers`) so the watchdog
+  timer does not flap `failed` every interval while waiting on operator install.
+- **Release reclaim goes through `disk_hygiene_enforcer`** (protects `CURRENT` /
+  `EXPECTED_RELEASE` and live process cwds). Default `keep_n` can leave several ~13GB pins in place;
+  a lower `keep_n` one-shot needs explicit operator approval. Ad-hoc `rm` of release trees is not the
+  path. Installing/editing the sudoers drop-in or the watchdog user unit remains operator-gated
+  (§17 / scheduler install rules).
+
+### Quick verify
+```bash
+systemctl is-active postgresql@17-main
+ss -ltn | grep 5432
+curl -sS http://127.0.0.1:7777/api/health
+curl -sS http://127.0.0.1:7777/api/v2/system-health   # served_sha
+# trade-ai honesty: setup_run_summary.count_integrity / scanned_count
+.venv/bin/python scripts/remediate_postgres_main.py    # status / disk floor
+systemctl --user status tradeai-postgres-main-watchdog.timer
+```
 
 ## Remote approval by Telegram — when the operator is not at the keyboard
 
@@ -3232,6 +3307,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.2.2 | 2026-09-18 | ACTIVE | MINOR | Adds "What 2026-09-18 taught — Postgres ENOSPC → Command Center false-green" (symptoms, ordered root cause, immediate + lasting fix, verify commands). Records that `/api/health` ok is not Postgres liveness; hygiene reclaim does not restart `postgresql@17-main`; PARTIAL `primary(0) vs alternate(N)` after an outage is honesty until scans refill; watchdog + sudoers must cover `/usr/bin/systemctl`; health-agent cannot auto-start Postgres under `NoNewPrivileges`. Does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-18 ("also update the agents.md with root cause fix and symptoms"). **ACTIVE** on operator-directed merge/promote of PR #1068 (2026-09-18). |
 | 1.2.1 | 2026-09-16 | ACTIVE | PATCH | Corrections only, no rule change. §7 "Research and operator replies" corrected: "Brave spills to SearXNG only on quota or rate limit" was factually incomplete after PR #1045 — `CALLER_DAILY_CAP` remains out of `spill_on` (operator decision 2026-09-13), but a caller refused by it is now answered by a separate governed free call (`scripts/lib/free_search.py`, behind `RESEARCH_FREE_FALLBACK=1`), not a spill. §12 gains a `[VERIFIED]` 2026-09-16 note recording the first measured free-web result and that free usage is now metered in the same ledger as paid. Adds no restriction and weakens nothing; does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-16 ("make sure that if the agents.md needs to be updated it's updated ... add was validated"). PATCH corrections outside the operator-gated sections; rides the existing `APPROVE_AGENTS_POLICY_1_2_0` ratification. |
 | 1.2.0 | 2026-09-14 | ACTIVE | MINOR | §9.1 gains "Replies and alerts on the phone" (4,096 UTF-16 parts, `REPLY_NOT_DELIVERED`, one rich layout, collapsed provenance). §9.2 gains: every bridge caller names itself; the bridge answers while calls are in flight (deadline, slots, `/health`, watchdog); stalls are diagnosed at the bridge first; logged cost is checked against the provider balance. §9.3 gains the operator's scheduled-work window and "a backfill is scheduled work". §7 gains six tooling traps (CRLF via `read_text`, JSON re-dump escaping, `sys.modules` stubs, worktree data, docs index after merge, SOP bound files). §12 re-verifies DeepSeek prices (flash repriced 2026-09-10), records that the Pro policy binds to deepseek-flash, and adds the binding operator window. Records merged work from PRs #1011–#1019 and the scheduling/attribution PRs; does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-14 ("make sure ... everything ... has been documented ... and also updated in the standard operating procedures of the agents.md"; window quoted verbatim in §12). Ratification rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING · **RATIFIED** by the operator 2026-09-14: "APPROVE_AGENTS_POLICY_1_2_0" (sent without PR/sha; bound to `APPROVE_AGENTS_POLICY_1_2_0 1022 ad5c533b2abc0150feba19c071aa0ea56364b251`) |
 | 1.2.0 | 2026-09-14 | ACTIVE | MINOR | §12 records the operator's new daily provider spend cap, **$2.00/day of actual spend** (was $0.50), with the measured enforcement footprint (6 crontab lines, host cap file, unit drop-ins). Still policy rather than a universally enforced control. Does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-14 (instruction quoted verbatim in §12; PR #1015 and the cap consolidation). Ratification rides `APPROVE_AGENTS_POLICY_1_2_0` — PENDING · **RATIFIED** by the operator 2026-09-14: "APPROVE_AGENTS_POLICY_1_2_0" (sent without PR/sha; bound to `APPROVE_AGENTS_POLICY_1_2_0 1022 ad5c533b2abc0150feba19c071aa0ea56364b251`) |

@@ -239,7 +239,9 @@
       "paper_trade_stats_stale",
       "trade_ai_session_stale",
       "trade_ai_session_missing",
-      "orchestrator_setups_stale"
+      "orchestrator_setups_stale",
+      "postgres_main_down",
+      "disk_critical"
     ]
   },
   "scalp_catalyst_health": {
@@ -268,13 +270,34 @@
     ]
   },
   "db_connections": {
-    "_comment": "Count Postgres idle-in-transaction kills (script holding a txn through slow non-DB work; killed at the 120s session timeout). Caught the 2026-07-04 scope-governor outage class. slots_*: connection-slot saturation guard (2026-07-17 scanner incident: portfolio_server leaked idle conns to 97/100, warm_caches wrote an empty cache).",
+    "_comment": "Count Postgres idle-in-transaction kills (script holding a txn through slow non-DB work; killed at the 120s session timeout). Caught the 2026-07-04 scope-governor outage class. slots_*: connection-slot saturation guard (2026-07-17 scanner incident: portfolio_server leaked idle conns to 97/100, warm_caches wrote an empty cache). Connect refused/timeout now emits postgres_main_down (2026-09-18 ENOSPC WAL PANIC) instead of silently returning.",
     "enabled": true,
     "window_hours": 3,
     "idle_txn_kills_warn": 10,
     "pg_log_glob": "/var/log/postgresql/postgresql-*-main.log",
     "slots_per_app_warn": 40,
     "slots_total_crit": 70
+  },
+  "disk_space": {
+    "_comment": "Inclusive free floors for / (2026-09-18). Old gate used pct_used>90 only and missed ENOSPC while ~10% free remained. free_GB floors page earlier on this ~468G disk.",
+    "mountpoint": "/",
+    "warn_free_pct": 15.0,
+    "crit_free_pct": 10.0,
+    "warn_free_gb": 40.0,
+    "crit_free_gb": 15.0
+  },
+  "backup_cadence_enospc": {
+    "_comment": "Canary: tradeai-portfolio-backup-cadence logged ENOSPC at 02:30 on 2026-09-18, ~1.5h before Postgres PANIC.",
+    "enabled": true,
+    "unit": "tradeai-portfolio-backup-cadence.service",
+    "lookback_hours": 24
+  },
+  "postgres_main_restart": {
+    "_comment": "Allowlisted remediate_postgres_main.py only starts when free space is above this floor (avoid ENOSPC restart loops). GB is binding; pct is a low backstop.",
+    "min_free_pct": 5.0,
+    "min_free_gb": 15.0,
+    "unit": "postgresql@17-main",
+    "cooldown_minutes": 60
   },
   "remediation_map": {
     "_comment": "finding type -> allowlisted retry_cmd enqueued for claude_escalation_handler tier-1. Only verified, side-effect-safe scripts. LLM-heavy processor retries are flock-guarded on the SAME lock as the cron so they SINGLE-FLIGHT \u2014 multiple queued retries (or a retry racing the cron) can no longer stack concurrent processors and saturate the local LLM (the 2026-06-25 Ollama thundering-herd: 6+ --limit 15 processes \u2192 503/timeout cascade).",
@@ -347,7 +370,9 @@
     "db_dump_missing": "bash linux_launchers/run_pg_backup.sh",
     "log_errors": ".venv/bin/python scripts/unified_stop_supervisor.py --apply >> logs/unified_stop_supervisor.log 2>&1",
     "execution_log_errors": ".venv/bin/python scripts/unified_stop_supervisor.py --apply >> logs/unified_stop_supervisor.log 2>&1",
-    "data_source_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes"
+    "data_source_stale": ".venv/bin/python scripts/external_market_data_ingest.py --quotes",
+    "postgres_main_down": ".venv/bin/python scripts/remediate_postgres_main.py --apply",
+    "disk_critical": ".venv/bin/python scripts/disk_hygiene_enforcer.py --apply"
   },
   "data_source_remediation": {
     "_comment": "source_key -> producer command for the generic data_source_stale finding. The default remediation_map['data_source_stale'] runs external_market_data_ingest.py --quotes, which only refreshes QUOTE sources (yahoo_finance/finviz/alpaca). Non-quote sources (finnhub news, sec_edgar, youtube_api, …) must be listed here or they are NOT auto-retried — the finding escalates instead of looping a producer that can never clear it. finnhub is intentionally unmapped: a 401 routes to data_source_auth_failed (operator action), and a non-401 stall is the orchestrator/enrichment lane already covered by pipeline_failures.",

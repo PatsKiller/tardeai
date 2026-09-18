@@ -189,7 +189,41 @@ def fk_guard(cur, table: str) -> str:
     return "".join(parts)
 
 
+def _disk_too_low_for_retention():
+    """Skip DELETEs when free space is already critical — WAL for large deletes
+    is what PANICed postgres on 2026-09-18 (schwab_stream_book cleanup under ENOSPC).
+    """
+    try:
+        import shutil
+        from pathlib import Path as _Path
+
+        sys.path.insert(0, str(_Path(__file__).resolve().parent))
+        from lib.postgres_main_health import evaluate_disk_usage, DEFAULT_DISK_CFG
+
+        u = shutil.disk_usage("/")
+        # Use critical floors only; warn band still allows retention.
+        cfg = {
+            **DEFAULT_DISK_CFG,
+            "warn_free_pct": DEFAULT_DISK_CFG["crit_free_pct"],
+            "warn_free_gb": DEFAULT_DISK_CFG["crit_free_gb"],
+        }
+        v = evaluate_disk_usage(
+            total_bytes=u.total, used_bytes=u.used, free_bytes=u.free, cfg=cfg
+        )
+        if v.severity == "critical":
+            return v.message
+    except Exception:
+        return None
+    return None
+
+
 def run(dry_run: bool = False):
+    blocked = _disk_too_low_for_retention()
+    if blocked and not dry_run:
+        print(f"SKIP retention — disk below critical floor: {blocked}")
+        print("Free space first, then re-run. Refusing DELETEs that need WAL under ENOSPC.")
+        return {"ok": False, "skipped": True, "reason": blocked, "deleted": 0}
+
     conn = _connect()
     cur = conn.cursor()
     total_deleted = 0

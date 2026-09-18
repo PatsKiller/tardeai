@@ -1,0 +1,13 @@
+[Unit]
+Description=TradeAI Postgres main watchdog — allowlisted start when down and disk healthy
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/sudoers/tradeai-postgres-main-start
+After=network.target
+
+[Service]
+Type=oneshot
+Environment=PYTHONUNBUFFERED=1
+# Intentionally NO NoNewPrivileges — must be able to sudo -n systemctl start.
+# Privilege is still bounded by /etc/sudoers.d/tradeai-postgres-main-start.
+ExecStart=/bin/bash -lc 'PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python; for CAND in /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT; do if [ -f "$CAND/scripts/remediate_postgres_main.py" ]; then cd "$CAND"; exec "$PY" scripts/remediate_postgres_main.py --apply; fi; done; echo "remediate_postgres_main.py not found" >&2; exit 1'
+StandardOutput=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/postgres_main_watchdog.log
+StandardError=append:/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/postgres_main_watchdog.log
