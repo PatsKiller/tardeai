@@ -860,7 +860,23 @@ def _get_context(conn, symbol: str) -> dict:
     if e:
         ctx += f"RSI: {e.get('rsi', '?')}, Beta: {e.get('beta', '?')}, Sector: {e.get('sector', '?')}, Industry: {e.get('industry', '?')}\n"
         ctx += f"SMA20: {e.get('sma20_pct', '?')}%, SMA50: {e.get('sma50_pct', '?')}%, SMA200: {e.get('sma200_pct', '?')}%\n"
-        ctx += f"PE: {e.get('pe', '?')}, Forward PE: {e.get('forward_pe', '?')}, ATR: {e.get('atr', '?')}\n"
+        atr_v = e.get("atr")
+        ctx += f"PE: {e.get('pe', '?')}, Forward PE: {e.get('forward_pe', '?')}, ATR: {atr_v if atr_v not in (None, '') else '?'}\n"
+        # Put allowed R/ATR multiples in supplied context so number_grounding can
+        # verify risk_agent stop math (Production Ready soft-unsupported fix).
+        ctx += (
+            "ATR / R multiples allowed: 0.5, 0.75, 0.85, 0.9, 0.95, 1.0, 1.5, 2.0, 2.5, 3.0 "
+            "(use as R or ATR× for stops; new position stop = entry − (2 × ATR)).\n"
+        )
+        try:
+            atr_f = float(atr_v) if atr_v not in (None, "", "?") else None
+        except (TypeError, ValueError):
+            atr_f = None
+        if atr_f and atr_f > 0:
+            ctx += (
+                f"ATR×1={atr_f:.4g}, ATR×2={atr_f * 2:.4g}, ATR×0.85={atr_f * 0.85:.4g}, "
+                f"ATR×0.95={atr_f * 0.95:.4g} (precomputed for stop distance checks).\n"
+            )
     if sc:
         ctx += f"Strategy: {sc.get('strategy_type', '?')}, Support: ${sc.get('support', '?')}, Resistance: ${sc.get('resistance', '?')}\n"
         ctx += f"Stop: ${sc.get('stop_loss', '?')}, Target: ${sc.get('target_price', '?')}, R:R: {sc.get('risk_reward', '?')}\n"
