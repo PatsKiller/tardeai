@@ -1178,11 +1178,17 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
     global _last_rag_sources
     _last_rag_sources = []
     try:
-        from rag_retrieval import get_rag_context, format_rag_context_for_prompt
+        from rag_retrieval import get_rag_context, rag_or_refuse
         rag_results = get_rag_context(symbol=symbol, agent_name=agent, limit=5)
-        rag_block = format_rag_context_for_prompt(rag_results, symbol=symbol)
-        _last_rag_sources = [{"source_type": r["source_type"], "title": r.get("title", "")[:60], "rag_score": r["rag_score"]} for r in rag_results]
-        print(f"  [RAG] {symbol} ({agent}): {len(rag_results)} items" + (f", top score {rag_results[0]['rag_score']:.3f}" if rag_results else ""))
+        _rag_dec = rag_or_refuse(rag_results, symbol=symbol)
+        rag_block = _rag_dec.get("block") or ""
+        _last_rag_sources = [
+            {"source_type": r["source_type"], "title": r.get("title", "")[:60], "rag_score": r["rag_score"]}
+            for r in (rag_results or [])
+        ]
+        if _rag_dec.get("reason"):
+            _last_rag_sources.append({"source_type": "policy", "title": _rag_dec["reason"], "rag_score": 0.0})
+        print(f"  [RAG] {symbol} ({agent}): {len(rag_results or [])} items" + (f", top score {rag_results[0]['rag_score']:.3f}" if rag_results else f" ({_rag_dec.get('reason') or 'empty'})"))
     except Exception as e:
         print(f"  [RAG] {symbol} ({agent}): FAILED — {e}")
 
@@ -1214,6 +1220,38 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
         peer_notes = _get_peer_agent_notes(symbol, agent)
     except Exception:
         pass
+
+    # Phase 1 Control 4: delimit external/peer/RAG as UNTRUSTED_DATA (not system instructions).
+    try:
+        from scripts.lib.agent_untrusted_data import untrusted_delimiter
+    except Exception:
+        try:
+            from lib.agent_untrusted_data import untrusted_delimiter  # type: ignore
+        except Exception:
+            untrusted_delimiter = None  # type: ignore
+    if untrusted_delimiter:
+        if rag_block:
+            rag_block = untrusted_delimiter(content_type="rag", source="rag_retrieval", content=rag_block)
+        if research_block:
+            research_block = untrusted_delimiter(
+                content_type="research_advisory", source="user_research_topics", content=research_block,
+            )
+        if peer_notes:
+            peer_notes = untrusted_delimiter(
+                content_type="peer_summary", source="watchlist_agent_results", content=peer_notes,
+            )
+        if other_views:
+            other_views = untrusted_delimiter(
+                content_type="peer_summary", source="other_agent_views", content=other_views,
+            )
+        if sentiment_block:
+            sentiment_block = untrusted_delimiter(
+                content_type="news_social", source="news_articles+social_posts", content=sentiment_block,
+            )
+        if hermes_block:
+            hermes_block = untrusted_delimiter(
+                content_type="research_summary", source="hermes", content=hermes_block,
+            )
 
     # Content gap warnings from Iris librarian
     gap_warnings = ""
