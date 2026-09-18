@@ -46,10 +46,16 @@ def summarize(rows: Iterable[tuple[str, Any]]) -> dict[str, Any]:
             continue
         a = str(agent or "unknown")
         per[a]["results"] += 1
-        per[a][str(rep.get("verdict") or "unknown")] += 1
+        verdict = str(rep.get("verdict") or "unknown")
+        per[a][verdict] += 1
         if rep.get("demoted"):
             per[a]["demoted"] += 1
-        for tok in rep.get("unsupported") or []:
+        # Honesty: historical rows used verdict=grounded while still listing
+        # unsupported tokens. Count those as soft_unsupported for the report.
+        unsupported = list(rep.get("unsupported") or [])
+        if verdict == "soft_unsupported" or (verdict == "grounded" and unsupported):
+            per[a]["soft_unsupported"] += 1
+        for tok in unsupported:
             tokens[a][str(tok)] += 1
     agents = {}
     for a, c in sorted(per.items()):
