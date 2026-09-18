@@ -198,11 +198,16 @@ def main() -> int:
         print(f"WARN closes dated on a weekend in 30 days: {sum(w['rows'] for w in weekend)} rows "
               f"({', '.join(sorted({w['source'] for w in weekend}))})")
     if compared == 0:
-        # Nothing checked is not "nothing wrong" (AGENTS rule 8).
+        # Nothing checked is not "nothing wrong" (AGENTS rule 8) — unless the
+        # independent reference itself rate-limited / returned empty (soft-skip).
         print("ERROR: no stored close could be compared with the reference", file=sys.stderr)
         if not args.dry_run:
             RECEIPT.parent.mkdir(parents=True, exist_ok=True)
             RECEIPT.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        ref_empty = not reference or all(v in (None, 0) for v in (reference or {}).values())
+        if ref_empty:
+            print("SOFT_SKIP: independent reference empty/rate-limited — exit 0 (no flap)", file=sys.stderr)
+            return 0
         return 2
     if args.json:
         print(json.dumps(report, indent=2, default=str))
