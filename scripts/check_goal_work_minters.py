@@ -39,6 +39,20 @@ BASELINE = ROOT / "config" / "goal_work_minter_baseline.json"
 SCHEMA = "GoalWorkMinterAudit@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 
+#: This module is a CLI ratchet, not a library. `GoalWorkMinterAudit@v1` is the
+#: envelope of its own --json output, consumed by CI
+#: (.github/workflows/cio-production-hardening-ci.yml) and by
+#: tests/test_goal_work_minter_ratchet.py through a subprocess, which reads the
+#: payload rather than importing the name -- so no module will ever reference it.
+#:
+#: Declared rather than argued with: check_dark_contracts flagged this file the
+#: first time it ran in CI, which is the gate doing exactly its job one hour
+#: after being repaired to read declarations instead of merely counting them.
+NO_CONSUMER_REASON = (
+    "CLI ratchet invoked by CI and by its own subprocess test; the schema is an "
+    "output envelope, never an imported symbol."
+)
+
 #: Functions whose call MINTS a lap or the work item that becomes one.
 MINTING_CALLS = frozenset({
     "append_lap",            # writes the lap ledger directly
