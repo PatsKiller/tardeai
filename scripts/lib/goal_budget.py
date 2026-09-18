@@ -489,6 +489,67 @@ def try_consume_lap(goal_id: str, predicate_version: str, *,
                 "fail_open": False, "status": None}
 
 
+def refund_lap(goal_id: str, predicate_version: str, *,
+               reason: str = "ENQUEUE_NOT_ADMITTED",
+               now: Optional[datetime] = None,
+               root: Optional[Path] = None) -> dict[str, Any]:
+    """Return a lap that was charged but never admitted.
+
+    ``try_consume_lap`` charges BEFORE ``store.enqueue`` on purpose, so a lap can
+    never be enqueued unbudgeted — ``check`` warns against the reverse order
+    because two producer runs could otherwise both spend the last lap. The price
+    of that ordering is that an enqueue refused as DUPLICATE has already been
+    paid for.
+
+    Measured live 2026-09-18: three goals were each charged 12 laps in 22
+    minutes while exactly ONE lap per goal reached the ledger — 33 of 36 charges
+    bought nothing — and all three then hit ``LAP_BUDGET_EXHAUSTED``, which is
+    terminal until an operator or a predicate bump reopens the goal. The whole
+    allowance was spent on no-ops.
+
+    This restores the principle the module already states for denials: a lap
+    that did no work must not inflate the number an operator reads as this
+    goal's spend. Floors at zero, records the refund for audit, and never raises
+    — a failed refund must not take the caller down with it.
+    """
+    now = now or _now()
+    path = budget_path(root)
+    try:
+        with _exclusive(path):
+            doc = _load(path)
+            b = _bucket(doc, goal_id, predicate_version)
+            before = int(b.get("laps") or 0)
+            after = max(0, before - 1)
+            b["laps"] = after
+            b["refunded_laps"] = int(b.get("refunded_laps") or 0) + 1
+            b["last_refund_at"] = _iso(now)
+            b["last_refund_reason"] = str(reason)
+            _save(path, doc)
+            return {"refunded": True, "reason": str(reason),
+                    "laps_before": before, "laps_after": after}
+    except Exception as e:  # noqa: BLE001 — a refund is never load-bearing
+        return {"refunded": False,
+                "reason": f"REFUND_UNAVAILABLE: {type(e).__name__}: {e}"}
+
+
+def refund_candidate(payload: Optional[Mapping[str, Any]], *,
+                     reason: str = "ENQUEUE_NOT_ADMITTED",
+                     now: Optional[datetime] = None,
+                     root: Optional[Path] = None) -> dict[str, Any]:
+    """Producer-side mirror of ``gate_candidate``: hand back an unadmitted lap.
+
+    A candidate that names no goal was never charged, so there is nothing to
+    return and this is a no-op rather than an error.
+    """
+    key = goal_key(payload)
+    if key is None:
+        return {"refunded": False, "reason": NOT_GOAL_SCOPED}
+    goal_id, predicate_version = key
+    if not predicate_version:
+        return {"refunded": False, "reason": "PREDICATE_VERSION_MISSING"}
+    return refund_lap(goal_id, predicate_version, reason=reason, now=now, root=root)
+
+
 def record_spend(goal_id: str, predicate_version: str, *,
                  cost_usd: float = 0.0, paid_calls: int = 0, model_calls: int = 0,
                  now: Optional[datetime] = None,
@@ -592,6 +653,8 @@ __all__ = [
     "status",
     "check",
     "try_consume_lap",
+    "refund_lap",
+    "refund_candidate",
     "record_spend",
     "goal_key",
     "gate_candidate",

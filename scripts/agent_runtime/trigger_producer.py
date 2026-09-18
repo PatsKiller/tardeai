@@ -134,6 +134,14 @@ def produce_once(
                 accepted += 1
                 per_agent_depth[candidate.agent_id] = queued + 1
             else:
+                # The gate charged this lap BEFORE the enqueue outcome was known
+                # — deliberately, so a lap can never be enqueued unbudgeted.
+                # Intake refused it as a duplicate, so it did no work and must
+                # not be billed. Measured 2026-09-18: without this, three goals
+                # burned 12 laps each in 22 minutes of duplicate attempts while
+                # exactly ONE lap per goal reached the ledger, and all three hit
+                # LAP_BUDGET_EXHAUSTED — terminal until an operator intervenes.
+                gb.refund_candidate(candidate.payload, root=budget_root)
                 duplicates += 1
         # Every adapter reads strictly forward (WHERE <cursor_key> > cursor), so a candidate
         # dropped at max_queue_depth is lost for good once the cursor moves past its source
