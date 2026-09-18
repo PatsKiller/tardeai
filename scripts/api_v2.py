@@ -24382,9 +24382,14 @@ def _llm_health():
         pol = yaml.safe_load(pol_path.read_text()) if pol_path.exists() else {}
         cu = (pol or {}).get("cloud_unavailable") or {}
         roll = cu.get("free_oauth_bottleneck_rollover") or {}
+        # Operator 2026-09-18: free OAuth first, then DeepSeek; skip local.
+        # Higher/pro tasks: DeepSeek first (see llm_fallback.higher_need).
         out["hybrid_policy"] = {
-            "local_first": True,
+            "local_first": False,
+            "skip_local": True,
+            "oauth_first": True,
             "free_oauth_lanes": ["grok", "chatgpt"],
+            "higher_need_deepseek_first": True,
             "free_oauth_bottleneck_rollover": {
                 "enabled": bool(roll.get("enabled", True)),
                 "lane": roll.get("lane") or "deepseek-flash",
@@ -24407,7 +24412,10 @@ def _llm_health():
     except Exception as e:
         out["hybrid_policy"] = {
             "error": str(e)[:160],
-            "local_first": True,
+            "local_first": False,
+            "skip_local": True,
+            "oauth_first": True,
+            "higher_need_deepseek_first": True,
             "free_oauth_bottleneck_rollover": {
                 "enabled": True,
                 "lane": "deepseek-flash",

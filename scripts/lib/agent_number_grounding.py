@@ -201,8 +201,12 @@ def check_grounding(
     max_share: Optional[float] = None,
 ) -> dict[str, Any]:
     """Compare the numbers in ``texts`` with the numbers in ``supplied_text``."""
-    min_u = int(min_unsupported if min_unsupported is not None else _env_float(MIN_UNSUPPORTED_ENV, 3))
-    share_cap = float(max_share if max_share is not None else _env_float(MAX_SHARE_ENV, 0.5))
+    # Maturity 2026-09-18: prior defaults (3 / 0.5) left 0/942 "ungrounded"
+    # while many rows still listed unsupported tokens at ~14% share. Tighten so
+    # real invented figures demote; soft_unsupported is still reported when
+    # below the demotion bar.
+    min_u = int(min_unsupported if min_unsupported is not None else _env_float(MIN_UNSUPPORTED_ENV, 2))
+    share_cap = float(max_share if max_share is not None else _env_float(MAX_SHARE_ENV, 0.20))
     supplied = supplied_values(supplied_text)
     checked: list[str] = []
     unsupported: list[str] = []
@@ -220,6 +224,8 @@ def check_grounding(
         verdict = "no_numbers"
     elif len(unsupported) >= max(1, min_u) and share >= share_cap:
         verdict = "ungrounded"
+    elif unsupported:
+        verdict = "soft_unsupported"  # present but below demotion bar — report honesty
     else:
         verdict = "grounded"
     return {
@@ -261,6 +267,7 @@ def apply_number_grounding(
     report = check_grounding(_answer_texts(parsed), supplied_text)
     report["mode"] = m
     report["demoted"] = False
+    # soft_unsupported is honesty-only (no demotion); ungrounded demotes in enforce.
     if report["verdict"] != "ungrounded" or m != "enforce":
         return parsed, report
     out = dict(parsed)
