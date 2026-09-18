@@ -25,7 +25,12 @@ market_hours:
 
 # Free-OAuth cloud lanes (no paid key). Paid models may only run when explicitly cost-gated, never
 # as an automatic fallback.
+# Operator 2026-09-18: oauth_first (grok→chatgpt), then DeepSeek on bottleneck;
+# higher/pro need → DeepSeek first. Local generative skipped (skip_local).
 lanes:
+  oauth_first: true
+  skip_local: true
+  higher_need_deepseek_first: true
   free_oauth: ["grok", "chatgpt"]          # xAI :8645 + openai-codex :8646
   free_oauth_models: ["grok-3-mini", "gpt-5.4", "gpt-5-codex"]
   paid_models: ["claude-sonnet-4-6", "claude-opus-4-8", "gpt-4o"]

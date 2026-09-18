@@ -116,19 +116,46 @@ class FallbackResult:
         return f"served by {self.lane} AFTER {self.requested_lane} failed — {failed}"
 
 
-def build_chain(requested: str, *, allow_paid: bool = False,
-                extra: Optional[list[str]] = None) -> list[str]:
-    """The lanes to try, in order, starting with what the caller asked for.
+def build_chain(
+    requested: str,
+    *,
+    allow_paid: bool = False,
+    extra: Optional[list[str]] = None,
+    higher_need: bool = False,
+    oauth_first: bool = True,
+) -> list[str]:
+    """The lanes to try, in order.
 
-    The requested lane always goes first even when it is paid: the caller named
-    it, so it is not a substitution. `allow_paid` governs what we may fall back
-    ONTO, not what may be asked for directly.
+    Operator policy 2026-09-18 (maturity Production Ready):
+      * default: free OAuth (grok → chatgpt), then DeepSeek when allow_paid
+      * skip local always (NEVER_CHAIN)
+      * higher_need=True: DeepSeek first, then OAuth (paid/pro-class work)
+
+    When ``higher_need`` is False, the requested lane still leads when named
+    (caller intent), then the remainder of the oauth→paid chain.
     """
     req = (requested or "").lower().strip()
     chain: list[str] = []
+
+    if higher_need and allow_paid:
+        # DeepSeek first for higher/pro need, then free OAuth.
+        for lane in list(PAID_CHAIN) + list(FREE_CHAIN) + list(extra or []):
+            ln = lane.lower().strip()
+            if ln in NEVER_CHAIN or ln in chain:
+                continue
+            chain.append(ln)
+        if req and req not in NEVER_CHAIN and req not in chain:
+            chain.insert(0, req)
+        return chain
+
     if req and req not in NEVER_CHAIN:
         chain.append(req)
-    for lane in list(extra or []) + list(FREE_CHAIN) + (list(PAID_CHAIN) if allow_paid else []):
+    tail = list(extra or [])
+    if oauth_first:
+        tail = list(FREE_CHAIN) + tail + (list(PAID_CHAIN) if allow_paid else [])
+    else:
+        tail = tail + list(FREE_CHAIN) + (list(PAID_CHAIN) if allow_paid else [])
+    for lane in tail:
         ln = lane.lower().strip()
         if ln in NEVER_CHAIN or ln in chain:
             continue
@@ -142,6 +169,8 @@ def generate_with_fallback(
     lane: str = "grok",
     allow_paid: bool = False,
     extra_lanes: Optional[list[str]] = None,
+    higher_need: bool = False,
+    oauth_first: bool = True,
     generate: Optional[Callable[..., Any]] = None,
     available: Optional[Callable[[str], bool]] = None,
     **kwargs: Any,
@@ -168,7 +197,13 @@ def generate_with_fallback(
         available = available or _ll.available
 
     requested = (lane or "grok").lower().strip()
-    chain = build_chain(requested, allow_paid=allow_paid, extra=extra_lanes)
+    chain = build_chain(
+        requested,
+        allow_paid=allow_paid,
+        extra=extra_lanes,
+        higher_need=higher_need,
+        oauth_first=oauth_first,
+    )
     attempts: list[Attempt] = []
 
     for candidate in chain:

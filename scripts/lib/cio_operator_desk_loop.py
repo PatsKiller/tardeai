@@ -1550,6 +1550,20 @@ def answer_freeform_with_flash(
         if text.startswith("```"):
             text = re.sub(r"^```(?:\w+)?\s*", "", text)
             text = re.sub(r"\s*```$", "", text).strip()
+        # Model-level PI guard (maturity Production Ready — output exfil/echo scan).
+        try:
+            from scripts.lib.agent_model_pi_guard import refuse_text, scan_model_output
+            _pi = scan_model_output(text)
+            if _pi.get("refuse"):
+                return {
+                    "ok": True,
+                    "text": refuse_text(_pi),
+                    "source": "freeform_pi_refuse",
+                    "model": llm.get("model"),
+                    "flash_error": "model_pi_guard:" + ",".join(_pi.get("matches") or [])[:120],
+                }
+        except Exception:
+            pass
         bad = _validate_freeform_reply(text, context)
         if bad:
             return {

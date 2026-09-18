@@ -54,10 +54,13 @@ def summarize(rows: Iterable[tuple[str, Any]]) -> dict[str, Any]:
     agents = {}
     for a, c in sorted(per.items()):
         n = c["results"]
+        soft = c["soft_unsupported"]
         agents[a] = {
             "results": n,
             "ungrounded": c["ungrounded"],
             "ungrounded_share": round(c["ungrounded"] / n, 3) if n else 0.0,
+            "soft_unsupported": soft,
+            "soft_unsupported_share": round(soft / n, 3) if n else 0.0,
             "grounded": c["grounded"],
             "no_numbers": c["no_numbers"],
             "not_checked": c["not_checked"],
@@ -66,11 +69,14 @@ def summarize(rows: Iterable[tuple[str, Any]]) -> dict[str, Any]:
         }
     total = sum(v["results"] for v in agents.values())
     flagged = sum(v["ungrounded"] for v in agents.values())
+    soft_all = sum(v["soft_unsupported"] for v in agents.values())
     return {
         "schema": "AgentNumberGroundingReport@v1",
         "results": total,
         "ungrounded": flagged,
         "ungrounded_share": round(flagged / total, 3) if total else 0.0,
+        "soft_unsupported": soft_all,
+        "soft_unsupported_share": round(soft_all / total, 3) if total else 0.0,
         "agents": agents,
         "authority": "READ_ONLY_ADVISORY",
     }
@@ -119,12 +125,15 @@ def main() -> int:
     if args.json:
         print(json.dumps(report, indent=2))
         return 0
-    print(f"Agent number grounding, last {args.days} days: {report['ungrounded']}/{report['results']} "
-          f"results flagged ({report['ungrounded_share']:.0%})")
+    print(f"Agent number grounding, last {args.days} days: "
+          f"{report['ungrounded']}/{report['results']} ungrounded/demotion-bar "
+          f"({report['ungrounded_share']:.0%}); "
+          f"{report.get('soft_unsupported', 0)} soft_unsupported "
+          f"({report.get('soft_unsupported_share', 0):.0%})")
     for a, v in report["agents"].items():
         top = ", ".join(f"{t} x{n}" for t, n in v["top_unsupported"][:5]) or "none"
-        print(f"  {a:<12} {v['ungrounded']:>4}/{v['results']:<4} flagged ({v['ungrounded_share']:.0%}), "
-              f"demoted {v['demoted']}; top unsupported: {top}")
+        print(f"  {a:<12} {v['ungrounded']:>4}/{v['results']:<4} ungrounded ({v['ungrounded_share']:.0%}), "
+              f"soft {v.get('soft_unsupported', 0)}, demoted {v['demoted']}; top unsupported: {top}")
     if not report["results"]:
         print("  No checked results yet: the check writes its report as agent jobs complete.")
     return 0

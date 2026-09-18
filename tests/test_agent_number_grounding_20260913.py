@@ -111,7 +111,10 @@ def test_one_stray_number_among_many_real_ones_is_not_demoted():
     p = _parsed("SCHG $35.16, support $34.55, stop $34.35, target $36.40, RSI 49.38, yield 0.41%, beta 1.12, "
                 "and roughly 6.8% upside to $38.")
     out, rep = G.apply_number_grounding(p, CONTEXT, mode_override="enforce")
-    assert rep["verdict"] == "grounded" and out["recommendation"] == "BUY"
+    # May be grounded or soft_unsupported; must NOT demote.
+    assert rep["verdict"] in ("grounded", "soft_unsupported")
+    assert rep.get("demoted") is False
+    assert out["recommendation"] == "BUY"
 
 
 def test_record_and_off_modes_change_nothing(monkeypatch):
@@ -172,10 +175,14 @@ def test_missing_prompt_text_is_reported_not_guessed():
 def test_thresholds_come_from_env(monkeypatch):
     monkeypatch.delenv(G.MIN_UNSUPPORTED_ENV, raising=False)
     monkeypatch.delenv(G.MAX_SHARE_ENV, raising=False)
-    assert G.check_grounding(["x"], CONTEXT)["thresholds"] == {"min_unsupported": 3, "max_share": 0.5}
+    # Maturity 2026-09-18 defaults: min_unsupported=2, max_share=0.20
+    assert G.check_grounding(["x"], CONTEXT)["thresholds"] == {"min_unsupported": 2, "max_share": 0.20}
     monkeypatch.setenv(G.MIN_UNSUPPORTED_ENV, "5")
     r = G.check_grounding(["Price $412.50, target $520, up 27.3%."], CONTEXT)
-    assert r["verdict"] == "grounded" and r["thresholds"]["min_unsupported"] == 5
+    # Raising min_unsupported prevents demotion; soft_unsupported is ok honesty.
+    assert r["verdict"] in ("grounded", "soft_unsupported")
+    assert r["thresholds"]["min_unsupported"] == 5
+    assert r["verdict"] != "ungrounded"
 
 
 def _load_resolver():
