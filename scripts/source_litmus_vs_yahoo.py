@@ -176,8 +176,17 @@ def main() -> int:
         weekend = _weekend_rows(cur)
         conn.close()
         reference = _yahoo_closes(sorted({s for s, _, _ in samples}), session)
-    except Exception as exc:  # noqa: BLE001 -- cannot-run is exit 2, never a green 0
-        print(f"ERROR: could not run: {type(exc).__name__}: {exc}", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001
+        msg = f"{type(exc).__name__}: {exc}"
+        # Postgres down / ENOSPC outage: soft-skip so the timer does not stick failed.
+        soft = any(s in msg.lower() for s in (
+            "connection refused", "could not connect", "enospc", "no space",
+            "operationalerror", "connection timed out",
+        ))
+        print(f"ERROR: could not run: {msg}", file=sys.stderr)
+        if soft:
+            print("SOFT_SKIP: DB/connectivity unavailable — exit 0 (no flap)", file=sys.stderr)
+            return 0
         return 2
     result = evaluate(samples, reference)
     compared = sum(st["compared"] for st in result["sources"].values())

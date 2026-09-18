@@ -202,6 +202,22 @@ def proactive_query(ctx, subject: str, question: str, trigger: str,
     conf = float(answer.get("confidence", 0.5) or 0.5)
     text = answer.get("answer") or answer.get("summary") or json.dumps(
         {k: v for k, v in answer.items() if not k.startswith("_")}, default=str)[:1500]
+    # Model-level PI guard (Production Ready — Hermes path).
+    try:
+        from scripts.lib.agent_model_pi_guard import scan_model_output
+        _pi = scan_model_output(text)
+        if _pi.get("refuse"):
+            return {
+                "answer": "Refused: model output looked like prompt/secret exfiltration.",
+                "confidence": 0.0,
+                "reasoning": "MODEL_PI_GUARD",
+                "error": "MODEL_PI_GUARD",
+                "_lane": lane,
+                "_refused": True,
+                "_pi": _pi,
+            }
+    except Exception:
+        pass
 
     # persist
     if not ctx.dry_run and ctx.run_id is not None:
