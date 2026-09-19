@@ -709,6 +709,23 @@ def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
         f"Sector: {sector}\n"
         f"Decision: {decision}"
     )
+    # 2026-09-18 audit: join cio_decisions before would-send; fail closed if missing.
+    try:
+        from lib.cio_telegram_stance_gate import check_investment_send
+        from lib.comms_editor import default_db_query
+        gate = check_investment_send(
+            symbol=str(symbol),
+            message_text=msg,
+            asserted_stance="bullish",
+            db_query=default_db_query,
+        )
+        if not gate.allow:
+            logger.info("%s — GO alert held by CIO stance gate: %s (cio=%s)",
+                        symbol, gate.held_reason, gate.cio_action)
+            return
+    except Exception as exc:  # noqa: BLE001 — fail closed on gate errors
+        logger.warning("%s — GO alert held: CIO stance gate error (%s)", symbol, type(exc).__name__)
+        return
     send_telegram(msg)
     try:
         from lib.comms import CommunicationEvent, publish_communication

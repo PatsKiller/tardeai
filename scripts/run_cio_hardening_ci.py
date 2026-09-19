@@ -593,6 +593,8 @@ GATES = [
             "tests/test_screener_go_alerts_20260914.py",
             "tests/test_screener_go_alerts_delivery_20260914.py",
             "tests/test_comms_editor_mode_file_20260914.py",
+            # 2026-09-18: investment-shaped Telegram held on CIO Avoid / missing decision.
+            "tests/test_cio_telegram_stance_gate_20260918.py",
             # 2026-09-16 B-phase curation: STOP HEALTH per-symbol repeats collapse to one
             # batched card; GO + entry alerts carry a HELD / NOT HELD triage pill.
             "tests/test_stop_health_batch_20260916.py",
@@ -1421,6 +1423,7 @@ GATES = [
             "tests/test_prod_ready_final4_20260918.py",
             "tests/test_weekly_disk_cleanup_notify_20260918.py",
             "tests/test_alarm_fires_disk_and_handler_20260919.py",
+            "tests/test_cio_telegram_stance_gate_20260918.py",
         ],
     ),
     (

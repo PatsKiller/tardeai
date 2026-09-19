@@ -32,16 +32,19 @@ THE EDITOR, applied to every message at ``telegram_transport.deliver_text``:
   4. CIO agrees. Each named symbol's stance in the message is compared with the
      CIO's latest decision. In ``live`` mode a disagreement **holds** the send
      (2026-09-18 Telegram↔CIO audit: 225 disagreed messages were still
-     delivered when this only annotated). OPERATOR_PRODUCT_INVALID products are
-     also held. Index/macro tickers (SPY/QQQ/…) are excluded from stance
-     matching so a market-header "Bullish" line cannot suppress the desk.
+     delivered when this only annotated). Bullish investment-shaped messages
+     with **no** ``cio_decisions`` row are also held (fail closed).
+     OPERATOR_PRODUCT_INVALID products are held. Index/macro tickers
+     (SPY/QQQ/…) are excluded from stance matching so a market-header
+     "Bullish" line cannot suppress the desk.
   5. Links. Each named symbol gets its Command Center page on the fully
      qualified Tailscale host, and Finviz plus Yahoo as alternate sources.
   6. Pills. 🟢 Trade-AI · 🔵 Outside · 🟣 DeepSeek, from what the message says.
 
 MODES (``COMMS_EDITOR_MODE``): ``off`` (default) · ``shadow`` -- decide and
 write a receipt, send the original unchanged · ``live`` -- send the edited
-message and hold duplicates, invalid products, and CIO stance disagreements.
+message and hold duplicates, invalid products, CIO stance disagreements, and
+missing CIO decisions on bullish investment-shaped text.
 
 AUTHORITY: READ_ONLY_ADVISORY. Formatting, reads and one local ledger file.
 Never places, sizes or cancels anything. MBI_BEHAVIOR = 0.
@@ -80,8 +83,8 @@ DUPLICATE_WINDOW_HOURS = 20
 MAX_BODY_FOR_FOOTER = 3500
 
 _HTML_TAG = re.compile(r"</?(?:b|strong|i|em|u|s|code|pre|a|blockquote|tg-spoiler)(?:\s[^>]*)?>", re.I)
-_STANCE_BULL = re.compile(r"\b(GO|A\+|BUY|ADD(?:_ON_PULLBACK)?|ACCUMULATE|STRONG BUY)\b")
-_STANCE_BEAR = re.compile(r"\b(AVOID|SELL|EXIT|TRIM|REDUCE|DO NOT BUY)\b")
+_STANCE_BULL = re.compile(r"\b(GO|A\+|BUY|STRONG\s+BUY|ADD(?:_ON_PULLBACK)?|ACCUMULATE|BULLISH)\b")
+_STANCE_BEAR = re.compile(r"\b(AVOID|SELL|EXIT|TRIM|REDUCE|DO NOT BUY|BEARISH|HOLD)\b")
 # BUY_READY / ENTRY_NEAR are bullish-lean CIO actions (2026-09-18 audit: omitting
 # them labeled 202 GO alerts as "neutral" and flooded false disagreements).
 _CIO_BULL = {
@@ -299,12 +302,42 @@ def cio_disagreements(text: str, views: dict[str, dict[str, Any]]) -> list[dict[
     return out
 
 
-def _hold_reason(body: str, disagree: list[dict[str, Any]]) -> Optional[str]:
-    """Single hold policy for live mode: invalid product, then CIO disagreement."""
+def cio_missing_decisions(
+    text: str,
+    symbols: list[str],
+    views: dict[str, dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Bullish investment-shaped symbols with no ``cio_decisions`` row — fail closed.
+
+    Only bullish (Buy/GO/Accumulate) messages are held when the CIO row is
+    missing. Bearish CIO digests that *are* the decision product must still
+    ship (2026-09-16 morning-brief hold regression).
+    """
+    out = []
+    for sym in symbols:
+        s = str(sym or "").upper()
+        if not s or s in _STANCE_EXCLUDE_SYMBOLS or s in views:
+            continue
+        said = _stance_near(text, s)
+        if said == "bullish":
+            out.append({"symbol": s, "message": said, "cio_action": None, "cio_as_of": ""})
+    return out
+
+
+def _hold_reason(
+    body: str,
+    disagree: list[dict[str, Any]],
+    missing: Optional[list[dict[str, Any]]] = None,
+) -> Optional[str]:
+    """Live hold policy: invalid product, stance conflict, then missing CIO decision."""
     if _holds_invalid_product(body):
         return "operator_product_invalid"
     if disagree:
+        # Alias kept as cio_disagreement for receipts that already key on it;
+        # publishers use cio_stance_conflict via cio_telegram_stance_gate.
         return "cio_disagreement"
+    if missing:
+        return "cio_decision_missing"
     return None
 
 
@@ -405,9 +438,11 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
             changes.append("markdown_to_html")
 
     subs = subjects(body, resolve=resolve)
-    views = cio_views([s["symbol"] for s in subs], db_query)
+    syms = [s["symbol"] for s in subs]
+    views = cio_views(syms, db_query)
     disagree = cio_disagreements(body, views)
-    held = _hold_reason(body, disagree)
+    missing = cio_missing_decisions(body, syms, views)
+    held = _hold_reason(body, disagree, missing)
     prior = ledger.check(chat_id, fp, now)
 
     footer: list[str] = []
@@ -416,11 +451,17 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
         changes.append("links")
     for d in disagree:
         footer.append(f"⚠️ <b>CIO disagrees on {html.escape(d['symbol'])}</b>: message reads {d['message']}, "
-                      f"CIO decision is {html.escape(d['cio_action'])} ({html.escape(d['cio_as_of'])})"
+                      f"CIO decision is {html.escape(d['cio_action'] or 'UNKNOWN')} ({html.escape(d['cio_as_of'])})"
                       f" — <b>held</b>")
         changes.append(f"cio_disagreement:{d['symbol']}")
+    for d in missing:
+        footer.append(f"⚠️ <b>CIO decision missing for {html.escape(d['symbol'])}</b>: message reads "
+                      f"{d['message']} — <b>held</b> (fail closed)")
+        changes.append(f"cio_decision_missing:{d['symbol']}")
     if held == "cio_disagreement":
         changes.append("held:cio_disagreement")
+    if held == "cio_decision_missing":
+        changes.append("held:cio_decision_missing")
     if len(html_body) < MAX_BODY_FOR_FOOTER:
         ids = " ".join(f"{s['symbol']}:{s['guid'][:8]}" for s in subs[:4])
         footer.append(f"<i>{' · '.join(pills_for(body))} · 🆔 {guid[:8]}{(' · ' + ids) if ids else ''}</i>")
@@ -447,5 +488,5 @@ def commit(decision: EditorDecision, *, chat_id: Any, now: Optional[datetime] = 
 
 
 __all__ = ["DuplicateLedger", "EditorDecision", "PILL_HOUSE", "PILL_MODEL", "PILL_OUTSIDE", "cc_base",
-           "cio_disagreements", "commit", "default_db_query", "edit", "fingerprint", "markdown_to_html", "message_guid", "mode",
-           "subjects", "symbol_links"]
+           "cio_disagreements", "cio_missing_decisions", "commit", "default_db_query", "edit", "fingerprint",
+           "markdown_to_html", "message_guid", "mode", "subjects", "symbol_links"]
