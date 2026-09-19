@@ -182,6 +182,91 @@ def _m5_from_consult(consult: dict | None) -> tuple[str, str]:
     return ("NOT_OBSERVED", base)
 
 
+
+
+def _m5_from_consult_history(hist: Path) -> tuple[str, str] | None:
+    """Scan append-only consult history for a recent OBSERVED-qualifying cycle."""
+    if not _exists_nonempty(hist):
+        return None
+    last_obs = None
+    try:
+        size = hist.stat().st_size
+        with hist.open("r", encoding="utf-8", errors="replace") as fh:
+            if size > 2_000_000:
+                fh.seek(size - 2_000_000)
+                fh.readline()
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(row, dict):
+                    continue
+                v, note = _m5_from_consult(row)
+                if v == "OBSERVED":
+                    last_obs = (v, note + " via=consult_history")
+    except OSError:
+        return None
+    return last_obs
+
+
+def _m5_from_wake_log(*, log_path: Path | None = None) -> tuple[str, str] | None:
+    """Corroborate M5 from dispatcher log when the latest consult json was overwritten."""
+    path = log_path or (
+        Path.home()
+        / "trade-ai-releases"
+        / "persistent-state"
+        / "logs"
+        / "cio_wake_dispatcher.log"
+    )
+    if not _exists_nonempty(path):
+        return None
+    last = None
+    try:
+        size = path.stat().st_size
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            if size > 2_000_000:
+                fh.seek(size - 2_000_000)
+                fh.readline()
+            for line in fh:
+                if "record_consult:" not in line:
+                    continue
+                try:
+                    changed = int(line.split("changed_by_record=", 1)[1].split()[0])
+                    skipped = int(line.split("skipped_cadence_not_due=", 1)[1].split()[0])
+                    found = int(line.split("record_found=", 1)[1].split()[0])
+                except (IndexError, ValueError):
+                    continue
+                if found >= 1 and (changed >= 1 or skipped >= 1):
+                    ts = line.split(" [", 1)[0].strip() if " [" in line else None
+                    last = (
+                        "OBSERVED",
+                        "log record_consult as_of=%s record_found=%s "
+                        "changed_by_record=%s skipped_cadence=%s "
+                        "via=wake_dispatcher_log — disposition honored on schedule"
+                        % (ts, found, changed, skipped),
+                    )
+    except OSError:
+        return None
+    return last
+
+
+def _m5_evaluate(cio: Path) -> tuple[str, str]:
+    consult = _load_json(cio / "wake_record_consult.json")
+    v, note = _m5_from_consult(consult)
+    if v == "OBSERVED":
+        return v, note
+    hist = _m5_from_consult_history(cio / "wake_record_consult.jsonl")
+    if hist and hist[0] == "OBSERVED":
+        return hist
+    logged = _m5_from_wake_log()
+    if logged and logged[0] == "OBSERVED":
+        return logged
+    return v, note
+
+
 def _m1_from_persist(
     persist: dict | None,
     *,
@@ -383,12 +468,11 @@ def evaluate(root: Path | None = None) -> dict:
         cio = persist_cio
 
     wake_effects = cio / "wake_turn_effects.jsonl"
-    consult = _load_json(cio / "wake_record_consult.json")
     research_persist = _load_json(cio / "wake_research_persist.json")
     m1_v, m1_n = _m1_from_persist(research_persist)
     m2_v, m2_n = _m2_from_writeback(cio)
     m3_v, m3_n = _m3_from_effects(wake_effects)
-    m5_v, m5_n = _m5_from_consult(consult)
+    m5_v, m5_n = _m5_evaluate(cio)
     m4_v, m4_n = _m4_from_soak(root)
 
     proofs = {

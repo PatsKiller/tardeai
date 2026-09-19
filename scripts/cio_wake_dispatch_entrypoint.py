@@ -327,7 +327,7 @@ def main(argv: list[str] | None = None):
         # while disposition honor is real at the enqueue gate.
         _ie = result.get("instrument_enqueue") or {}
         _ie_skipped = int(_ie.get("skipped_cadence_count") or 0)
-        _p.write_text(_json.dumps({
+        _payload = {
             "schema": "WakeRecordConsult@v1",
             "authority": "READ_ONLY_ADVISORY",
             "as_of": _dt.now(_tz.utc).replace(microsecond=0).isoformat(),
@@ -341,7 +341,12 @@ def main(argv: list[str] | None = None):
                 "skipped_dedup": len(_ie.get("skipped_dedup") or []),
             },
             "instrument_enqueue_skipped_cadence": _ie_skipped,
-        }, indent=2, default=str) + "\n", encoding="utf-8")
+        }
+        _p.write_text(_json.dumps(_payload, indent=2, default=str) + "\n", encoding="utf-8")
+        # Append-only consult history for M5 (latest json alone flickers).
+        _hist = _p.with_suffix(".jsonl")
+        with _hist.open("a", encoding="utf-8") as _fh:
+            _fh.write(_json.dumps(_payload, sort_keys=True, default=str) + "\n")
     except Exception:
         log.exception("record_consult artifact write failed (fail-soft)")
 
