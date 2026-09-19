@@ -25,7 +25,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=4 on tip 4bafd6f83 @ 2026-09-19T20:02:08Z | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | PARTIAL | code on #1081; flag off | Flag on served + organic thin answer | receipt spilled_to/free climb |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
-| PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 16:12Z M1 OBSERVED; M2 NOT_OBSERVED (writeback on #1087 not served); M3 CANDIDATE; M4 PARTIAL soak YES; M5 CANDIDATE skipped=0 | Merge+promote #1087 + organic L3 writeback | all five OBSERVED |
+| PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 17:01Z M1 OBSERVED; M2 NOT_OBSERVED; M3 OBSERVED (wake_turn_effects with/without); M4 PARTIAL soak YES; M5 intermittent OBSERVED/CANDIDATE by cycle | Promote tip 6d577026f + organic M2 writeback | all five OBSERVED |
 | PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL | **#1083 MERGED**; cycle on main; not served | Promote + schedule/notify | cycle apply receipt from CURRENT |
 | PARTIAL-memory-four-spines | PARTIAL | spines on main via #1083; not served | Promote + wake load | wake reads spines from CURRENT |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
@@ -73,4 +73,10 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - #1087 OPEN `19d8264e4` — critique→InstrumentRecord writeback + instrument_record_due selection + consult instrument_enqueue stamp
 - release-write remote request `fadb526f2ce47469` PENDING (promote after #1087 merge)
 - No production bitemporal apply on :5432
+
+## 2026-09-19T17:01 ET — M3 bar + #1087 merge
+
+- #1087 MERGED `6d577026f`; tip not yet promoted (release-write pending)
+- M3 reporter now requires `turn_changed_decision` + differing with/without `next_research_question` → OBSERVED on HELD:SCHD @ 2026-09-08
+- M5 was OBSERVED @ 20:55Z consult then CANDIDATE @ 21:00Z (cycle variance) — still PARTIAL until stable
 

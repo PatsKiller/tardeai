@@ -315,6 +315,66 @@ def _m2_from_writeback(cio: Path) -> tuple[str, str]:
     return ("CANDIDATE", base)
 
 
+
+def _m3_from_effects(path: Path) -> tuple[str, str]:
+    """M3: operator turn changed next wake behaviour — with vs without the turn."""
+    if not _exists_nonempty(path):
+        return (
+            "NOT_OBSERVED",
+            "needs operator reply on a record that changed the next wake "
+            f"(wake_turn_effects missing path={path})",
+        )
+    last: dict | None = None
+    try:
+        # Bound scan: last ~2 MiB covers recent organic turns.
+        size = path.stat().st_size
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            if size > 2_000_000:
+                fh.seek(size - 2_000_000)
+                fh.readline()
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(row, dict):
+                    continue
+                if not row.get("turn_changed_decision"):
+                    continue
+                with_q = ((row.get("with_turn") or {}) if isinstance(row.get("with_turn"), dict) else {}).get(
+                    "next_research_question"
+                )
+                without_q = (
+                    (row.get("without_turn") or {}) if isinstance(row.get("without_turn"), dict) else {}
+                ).get("next_research_question")
+                if not with_q or not without_q or with_q == without_q:
+                    continue
+                last = row
+    except OSError as exc:
+        return ("NOT_OBSERVED", f"wake_turn_effects unreadable ({exc})")
+    if not last:
+        return (
+            "CANDIDATE",
+            f"wake_turn_effects present path={path} — no turn_changed_decision "
+            "row with differing with/without next_research_question",
+        )
+    with_t = last.get("with_turn") if isinstance(last.get("with_turn"), dict) else {}
+    without_t = last.get("without_turn") if isinstance(last.get("without_turn"), dict) else {}
+    turn = last.get("turn") if isinstance(last.get("turn"), dict) else {}
+    note = (
+        f"effect as_of={last.get('at')} subject_key={last.get('subject_key')} "
+        f"intent={turn.get('intent')} plan_id={turn.get('plan_id')} "
+        f"with={with_t.get('next_research_question')!r} "
+        f"without={without_t.get('next_research_question')!r}"
+    )
+    return (
+        "OBSERVED",
+        f"{note} — operator turn changed next_research_question vs counterfactual",
+    )
+
+
 def evaluate(root: Path | None = None) -> dict:
     root = root or ROOT
     cio = root / "data" / "cio"
@@ -327,6 +387,7 @@ def evaluate(root: Path | None = None) -> dict:
     research_persist = _load_json(cio / "wake_research_persist.json")
     m1_v, m1_n = _m1_from_persist(research_persist)
     m2_v, m2_n = _m2_from_writeback(cio)
+    m3_v, m3_n = _m3_from_effects(wake_effects)
     m5_v, m5_n = _m5_from_consult(consult)
     m4_v, m4_n = _m4_from_soak(root)
 
@@ -336,10 +397,7 @@ def evaluate(root: Path | None = None) -> dict:
             "verdict": m2_v,
             "note": m2_n,
         },
-        "M3_Feedback": {
-            "verdict": "CANDIDATE" if _exists_nonempty(wake_effects) else "NOT_OBSERVED",
-            "note": f"wake_turn_effects present={_exists_nonempty(wake_effects)} path={wake_effects}",
-        },
+        "M3_Feedback": {"verdict": m3_v, "note": m3_n},
         "M4_Consistency": {"verdict": m4_v, "note": m4_n},
         "M5_Persistence": {"verdict": m5_v, "note": m5_n},
     }
