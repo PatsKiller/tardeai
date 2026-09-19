@@ -17,6 +17,11 @@ import json
 import sys
 from pathlib import Path
 
+NO_CONSUMER_REASON = (
+    "AEC Command Center cycle entrypoint; stdout receipt is the consumer until "
+    "a scheduled Narrator/wake imports it (operator license 2026-09-19)"
+)
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
