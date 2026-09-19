@@ -2344,6 +2344,22 @@ a guarantee the runtime does not provide.**
 | python modules that **read** the variable | 11 |
 | per-process `daily_cost_cap_usd` values in `config/llm_process_registry.json` | 11 caps, **summing to $11.45/day** |
 
+### Request caps raised for risk/steph  `[VERIFIED]` 2026-09-19
+
+`watchlist_risk_flash_narrative` 60→**220** requests/day and `watchlist_steph_flash_narrative`
+40→**180**. Operator-directed in session ("raise cap to cover the demand"), after PR #1088 routed
+risk_agent/steph/tax_agent off Maria's pool and onto their own. Sizing is measured, not guessed:
+7-day peak demand is 171 distinct symbols/day for risk (plus 21 for tax, which shares risk's pool)
+and 155 for steph; settled cost is **$0.0015/call**, so the two raises add about **$0.40-0.65/day**
+against a measured total of $1.03-$1.53/day. **On a heavy day that reaches or exceeds the $2.00
+ceiling above** — the operator accepted that explicitly rather than raise the ceiling.
+
+`daily_cost_cap_usd` stays **$1.00** on both and remains the binding guard: at $0.0015/call the
+cost cap binds near 660 calls, well before the request cap. Worker throughput binds before either
+— one cron schedule (`*/15 10-20`, `--limit 8`) is about 352 job slots/day for all agents combined,
+against roughly 570 of combined demand. Raising the request caps removes the starvation, not the
+queue.
+
 So roughly **78 of 84 LLM-invoking lanes run with the global cap unset** and fall back to their
 per-process cap — `gate_d_bundle_2_advisory_canary.py:367` states the fallback plainly:
 *"LLM_GLOBAL_DAILY_USD_CAP not set. Will default to bridge's internal cap."*

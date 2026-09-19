@@ -52,6 +52,26 @@ def test_worker_routes_non_maria_reviews_by_agent():
     assert "raw = _llm(prompt, task_type=task_for_agent(agent))" in src
 
 
+def test_risk_steph_caps_cover_measured_demand():
+    """Operator-approved 2026-09-19: caps sized to 7d peak demand (risk 171+21 tax, steph 155).
+
+    daily_cost_cap_usd stays the binding guard at $1.00 (~660 calls at $0.0015/call).
+    """
+    import json
+    registry = json.loads((ROOT / "config" / "llm_process_registry.json").read_text())
+    by_id = {p["id"]: p for p in registry["processes"]}
+    risk = by_id["watchlist_risk_flash_narrative"]
+    steph = by_id["watchlist_steph_flash_narrative"]
+    assert risk["daily_soft_cap"] >= 192, "risk pool must cover risk 171 + tax 21"
+    assert steph["daily_soft_cap"] >= 155, "steph pool must cover steph peak 155"
+    for proc in (risk, steph):
+        assert proc["daily_cost_cap_usd"] == 1.0
+        assert proc["daily_soft_cap"] * 0.0015 < proc["daily_cost_cap_usd"], (
+            "cost cap must stay the binding guard"
+        )
+    assert by_id["watchlist_maria_flash_narrative"]["daily_soft_cap"] == 240
+
+
 def test_fast_default_think_only_on_deterministic_escalation():
     from lib.agent_flash_governance import policy_for_task, should_escalate_fast_think
     pol, reason = policy_for_task("agent_debate", metadata={}, prompt="ordinary debate prompt")
