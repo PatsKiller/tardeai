@@ -31,6 +31,26 @@ from typing import Any, Iterable
 PROJ = Path(__file__).resolve().parent.parent
 
 
+def _confidence_shaped_token(tok: str) -> bool:
+    """Bare 0–1 decimals (risk/score/prob) are not inventable market facts.
+
+    Stored ``number_grounding`` rows written before the 2026-09-19 confidence
+    exemption still list 0.85 / 0.95 as unsupported. The live checker no longer
+    does; the SLO report must apply the same policy when aggregating stored
+    tokens, or soft-share stays permanently FAIL on historical rows.
+    """
+    s = str(tok or "").strip()
+    if not s or s.startswith("$") or "%" in s:
+        return False
+    if "." not in s:
+        return False
+    try:
+        v = float(s.replace(",", ""))
+    except ValueError:
+        return False
+    return 0.0 <= v <= 1.0
+
+
 def summarize(rows: Iterable[tuple[str, Any]]) -> dict[str, Any]:
     """rows: (agent, full_result as dict or JSON text). Pure."""
     per: dict[str, Counter] = defaultdict(Counter)
@@ -47,29 +67,37 @@ def summarize(rows: Iterable[tuple[str, Any]]) -> dict[str, Any]:
         a = str(agent or "unknown")
         per[a]["results"] += 1
         verdict = str(rep.get("verdict") or "unknown")
-        per[a][verdict] += 1
+        # Keep verdict tallies under a prefix so soft_unsupported verdict rows
+        # do not collide with the soft_flag metric key (pre-fix double-count).
+        per[a][f"v:{verdict}"] += 1
         if rep.get("demoted"):
             per[a]["demoted"] += 1
         # Honesty: historical rows used verdict=grounded while still listing
-        # unsupported tokens. Count those as soft_unsupported for the report.
-        unsupported = list(rep.get("unsupported") or [])
-        if verdict == "soft_unsupported" or (verdict == "grounded" and unsupported):
-            per[a]["soft_unsupported"] += 1
-        for tok in unsupported:
-            tokens[a][str(tok)] += 1
+        # unsupported tokens. Count those as soft when residual tokens remain
+        # after applying the current confidence exemption.
+        remaining = [
+            str(tok)
+            for tok in (rep.get("unsupported") or [])
+            if not _confidence_shaped_token(str(tok))
+        ]
+        if remaining and verdict in ("soft_unsupported", "grounded"):
+            per[a]["soft_flag"] += 1
+        for tok in remaining:
+            tokens[a][tok] += 1
     agents = {}
     for a, c in sorted(per.items()):
         n = c["results"]
-        soft = c["soft_unsupported"]
+        soft = c["soft_flag"]
+        ungrounded = c["v:ungrounded"]
         agents[a] = {
             "results": n,
-            "ungrounded": c["ungrounded"],
-            "ungrounded_share": round(c["ungrounded"] / n, 3) if n else 0.0,
+            "ungrounded": ungrounded,
+            "ungrounded_share": round(ungrounded / n, 3) if n else 0.0,
             "soft_unsupported": soft,
             "soft_unsupported_share": round(soft / n, 3) if n else 0.0,
-            "grounded": c["grounded"],
-            "no_numbers": c["no_numbers"],
-            "not_checked": c["not_checked"],
+            "grounded": c["v:grounded"],
+            "no_numbers": c["v:no_numbers"],
+            "not_checked": c["v:not_checked"],
             "demoted": c["demoted"],
             "top_unsupported": tokens[a].most_common(10),
         }
