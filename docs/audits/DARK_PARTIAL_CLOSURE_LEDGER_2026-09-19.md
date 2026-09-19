@@ -13,7 +13,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | id | status | evidence | closure path | proof required |
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | VERIFY→likely PARTIAL | `cio_wake_dispatch_entrypoint.py` loads by subject; AGENTS §13.4 still says no scheduled wake — re-measure cron/timer | Confirm lane_registry + unattended run | OBSERVED wake log + record load |
-| DARK-OUTCOME-settlement | DARK | checkpoints exist; settlement dark | Wire OUTCOME→lesson producer | M2/M5 class artifact |
+| DARK-OUTCOME-settlement | PARTIAL | AEC cycle calls `evaluate_commitment` → CommitmentOutcome@v1 | Organic observer + served schedule | OBSERVED CONFIRMED/REFUTED |
 | DARK-AgentView-producer | PARTIAL | AEC cycle calls `produce_agent_view_v1` (2026-09-19); shadow cortex also produces | Schedule cycle / wake load | OBSERVED from served |
 | DARK-AGENT_COMMITMENT-producer | PARTIAL | AEC cycle mints via `mint_commitment_from_view` when critic_pass | Persist commitment store + OUTCOME | OBSERVED settlement |
 | DARK-librarian-index | DARK | grading law tested; index file absent | Create index + scheduled grade | file exists + job output_signal |

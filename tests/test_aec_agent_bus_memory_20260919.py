@@ -74,4 +74,9 @@ def test_cycle_dry_run_no_write(tmp_path, monkeypatch):
     assert len(out["events"]) == 3
     assert out.get("agent_view", {}).get("schema_version") == "AgentView@v1"
     assert out.get("commitment", {}).get("schema_version") == "AGENT_COMMITMENT@v1"
+    assert out.get("outcome", {}).get("schema_version") == "CommitmentOutcome@v1"
+    assert out["outcome"]["outcome"] == "INSUFFICIENT_EVIDENCE"
+    # Observation path closes the OUTCOME edge.
+    out2 = cycle.run_cycle(subject_key="WATCH:SCHG", apply=False, observe={"confirmed": True})
+    assert out2["outcome"]["outcome"] == "CONFIRMED"
     assert not (tmp_path / "bus.jsonl").exists()

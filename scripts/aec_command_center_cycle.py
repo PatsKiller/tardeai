@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 NO_CONSUMER_REASON = (
@@ -31,10 +32,10 @@ if str(ROOT / "scripts") not in sys.path:
 from lib import aec_agent_bus as bus  # noqa: E402
 from lib import aec_memory_spines as mem  # noqa: E402
 from lib.agent_view_v1 import persist_allowed, produce_agent_view_v1  # noqa: E402
-from lib.agent_commitment_v1 import mint_commitment_from_view  # noqa: E402
+from lib.agent_commitment_v1 import evaluate_commitment, mint_commitment_from_view  # noqa: E402
 
 
-def run_cycle(*, subject_key: str | None, apply: bool) -> dict:
+def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = None) -> dict:
     snap = mem.load()
     relevant = mem.retrieve_relevant(snap, subject_key=subject_key)
     recent = bus.read_recent(limit=20)
@@ -60,6 +61,7 @@ def run_cycle(*, subject_key: str | None, apply: bool) -> dict:
     repeated = mem.seen_claim(snap, fp)
     view_payload: dict = {}
     commitment_payload: dict | None = None
+    outcome_payload: dict | None = None
     if repeated:
         advisor_summary = f"SUPPRESSED_REPEAT fp={fp}"
     else:
@@ -75,13 +77,22 @@ def run_cycle(*, subject_key: str | None, apply: bool) -> dict:
         view_payload = view.to_dict()
         advisor_summary = f"{view.stance}: {advisor_claim}"
         if persist_allowed(view):
+            # due_at must be after mint time or evaluate_commitment returns EXPIRED
+            # immediately (horizon "7d" is the falsifier window, not produced_at).
+            due = datetime.now(timezone.utc) + timedelta(days=7)
             commitment = mint_commitment_from_view(
                 view.to_dict(),
-                due_at=view.produced_at,
+                due_at=due.isoformat().replace("+00:00", "Z"),
                 horizon="7d",
                 falsifier=view.falsifier,
             )
             commitment_payload = commitment.to_dict()
+            # OUTCOME edge: evaluate when observation supplied; else honest
+            # INSUFFICIENT_EVIDENCE. Never broker/policy.
+            outcome_payload = evaluate_commitment(
+                commitment_payload,
+                observation=observe,
+            )
         if apply:
             mem.append_fact(
                 "learning",
@@ -94,6 +105,27 @@ def run_cycle(*, subject_key: str | None, apply: bool) -> dict:
                     "stance": view.stance,
                 },
             )
+            if commitment_payload:
+                mem.append_fact(
+                    "learning",
+                    {
+                        "kind": "commitment",
+                        "subject_key": subject_key,
+                        "commitment_id": commitment_payload.get("commitment_id"),
+                        "claim_fp": fp,
+                    },
+                )
+            if outcome_payload:
+                mem.append_fact(
+                    "learning",
+                    {
+                        "kind": "commitment_outcome",
+                        "subject_key": subject_key,
+                        "outcome": outcome_payload.get("outcome"),
+                        "commitment_id": outcome_payload.get("commitment_id"),
+                        "claim_fp": fp,
+                    },
+                )
             mem.append_fact(
                 "strategic",
                 {"kind": "thesis_touch", "subject_key": subject_key, "note": "cycle touch", "view_id": view.view_id},
@@ -108,6 +140,7 @@ def run_cycle(*, subject_key: str | None, apply: bool) -> dict:
             "suppressed": repeated,
             "agent_view": view_payload or None,
             "commitment": commitment_payload,
+            "outcome": outcome_payload,
         },
         dry_run=not apply,
     )
@@ -134,6 +167,7 @@ def run_cycle(*, subject_key: str | None, apply: bool) -> dict:
         "events": [json.loads(cio_ev.to_json()), json.loads(adv_ev.to_json()), json.loads(narr_ev.to_json())],
         "agent_view": view_payload or None,
         "commitment": commitment_payload,
+        "outcome": outcome_payload,
         "authority": "READ_ONLY_ADVISORY",
     }
 
