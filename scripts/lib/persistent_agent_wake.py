@@ -223,6 +223,48 @@ def l3_live_provider_enabled(env: dict | None = None) -> bool:
     return str(e.get(L3_ALLOW_LIVE_PROVIDER_FLAG, "0")).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def load_aec_spines_for_wake(
+    *,
+    selection_meta: dict | None = None,
+    subject_key: str | None = None,
+) -> dict:
+    """Fail-soft load of AEC four-spine memory for a wake context.
+
+    Never raises into the wake loop. Missing/unreadable spines return
+    ``loaded=False`` with empty lists so InstrumentRecord memory remains the
+    refusal authority.
+    """
+    empty = {
+        "strategic": [],
+        "operational": [],
+        "relationship": [],
+        "learning": [],
+    }
+    sel = selection_meta if isinstance(selection_meta, dict) else {}
+    sk = subject_key or sel.get("subject_key")
+    if not sk and str(sel.get("source") or "") == "instrument_record_due":
+        sk = str(sel.get("source_id") or "").strip() or None
+    try:
+        from scripts.lib import aec_memory_spines as aec_mem
+
+        snap = aec_mem.load()
+        spines = aec_mem.retrieve_relevant(snap, subject_key=sk)
+        return {
+            "loaded": True,
+            "subject_key": sk,
+            "spines": spines,
+            "counts": {k: len(v or []) for k, v in spines.items()},
+        }
+    except Exception as exc:  # noqa: BLE001 — fail-soft additive context
+        return {
+            "loaded": False,
+            "subject_key": sk,
+            "spines": empty,
+            "counts": {k: 0 for k in empty},
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+
 def symbol_resolve_enabled(env: dict | None = None) -> bool:
     """Default ON, with an env kill switch so rollback needs no deploy."""
     e = env if env is not None else os.environ
@@ -751,6 +793,25 @@ class WakeEngine:
             # Selection provenance reaches decide unchanged (original source_id).
             "selection": selection_meta,
         }
+
+        # 1b) AEC four-spine memory (Strategic / Operational / Relationship /
+        # Learning). Additive context only — fail-soft so a missing spine file
+        # never refuses a wake the InstrumentRecord path already loaded.
+        aec_spines = load_aec_spines_for_wake(selection_meta=selection_meta)
+        context["aec_memory_spines"] = aec_spines.get("spines") or {
+            "strategic": [],
+            "operational": [],
+            "relationship": [],
+            "learning": [],
+        }
+        wake["provenance"]["aec_memory_spines"] = {
+            k: aec_spines.get(k) for k in ("counts", "subject_key", "error", "loaded")
+            if k in aec_spines
+        }
+        if aec_spines.get("loaded"):
+            wake["provenance"]["policy_decisions"].append("aec_spines_loaded")
+        elif aec_spines.get("error"):
+            wake["provenance"]["policy_decisions"].append("aec_spines_unavailable")
 
         # 3a) L3 judgment — the first caller node 6 has ever had.
         #
