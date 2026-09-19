@@ -186,7 +186,16 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         f"bitemporal_dry_run={bitemporal_receipt.get('dry_run')}"
     )
     brief = render_executive_brief(subject_key=subject_key)
-    notify_receipt = notify_executive_brief(brief, apply=False)  # never auto-Telegram from cycle
+    # Live Telegram only when AEC_NARRATOR_NOTIFY=1 and --apply. Default dry-run.
+    import os as _os
+
+    _narr_notify = str(_os.environ.get("AEC_NARRATOR_NOTIFY", "0")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    notify_receipt = notify_executive_brief(brief, apply=bool(apply and _narr_notify))
     narr_ev = bus.publish(
         agent_id="narrator_agent",
         topic="cycle.narrator.brief",
@@ -197,7 +206,12 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
             "telegram": notify_receipt.get("telegram"),
             "claim_fp": brief.get("claim_fp"),
             "brief_schema": brief.get("schema"),
-            "reason": "cycle_renders_brief_notify_requires_explicit_flag",
+            "reason": (
+                "cycle_narrator_notify"
+                if (apply and _narr_notify)
+                else "cycle_renders_brief_notify_requires_AEC_NARRATOR_NOTIFY"
+            ),
+            "aec_narrator_notify": bool(_narr_notify),
         },
         dry_run=not apply,
     )

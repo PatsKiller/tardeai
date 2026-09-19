@@ -72,8 +72,19 @@ def test_narrator_notify_reaches_transport(tmp_path, monkeypatch):
 def test_cycle_includes_narrator_brief(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
     monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "mem.json"))
+    monkeypatch.delenv("AEC_NARRATOR_NOTIFY", raising=False)
     cycle = _load("aec_command_center_cycle", "scripts/aec_command_center_cycle.py")
     out = cycle.run_cycle(subject_key="WATCH:SCHG", apply=False)
     assert out.get("narrator_brief", {}).get("schema") == "AecNarratorBrief@v1"
     assert out.get("narrator_notify", {}).get("telegram") == "dry_run"
     assert out.get("outcome", {}).get("schema_version") == "CommitmentOutcome@v1"
+
+
+def test_cycle_narrator_notify_env_still_dry_without_apply(tmp_path, monkeypatch):
+    """AEC_NARRATOR_NOTIFY alone must not send; --apply is also required."""
+    monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "mem.json"))
+    monkeypatch.setenv("AEC_NARRATOR_NOTIFY", "1")
+    cycle = _load("aec_command_center_cycle_notify", "scripts/aec_command_center_cycle.py")
+    out = cycle.run_cycle(subject_key="WATCH:SCHG", apply=False)
+    assert out.get("narrator_notify", {}).get("telegram") == "dry_run"

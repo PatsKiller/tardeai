@@ -111,3 +111,9 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - Fix in flight: `trim_hits` prefers persist evidence; reporter recovers M1 from wake_dispatcher_log when hits lost the row.
 - M2 still blocked: cron lacks `WAKE_L3_*` (see `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md`); DeepSeek 402 remains provider/operator.
 - PARTIAL-CIO-Advisor-Narrator-mesh / PARTIAL-memory-four-spines: unattended schedule OBSERVED at 18:00; narrator live telegram and relationship sources still operator.
+
+## 2026-09-19T18:15 ET — narrator notify env + WAKE_L3 cron
+
+- Cron: WAKE_L3_* on wake `*/5` (after `cd &&`).
+- Code: `AEC_NARRATOR_NOTIFY` gates cycle telegram; unit sets `=1` (needs #1094 promote for served code).
+- release-write requested (Telegram) for post-#1094 promote.
