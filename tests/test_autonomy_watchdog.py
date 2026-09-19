@@ -113,6 +113,15 @@ def test_persist_and_history_one_per_day(root: Path):
 
 
 def test_telegram_dedupe(root: Path, monkeypatch: pytest.MonkeyPatch):
+    """A repeat send for the same identity is deduped before any delivery is attempted.
+
+    Delivery is deliberately not exercised. send_system reaches
+    telegram_transport.deliver_text, which interdicts whenever PYTEST_CURRENT_TEST is set
+    OR CIO_TELEGRAM_INTERDICT is on — and the CI job running this file sets
+    CIO_TELEGRAM_INTERDICT=1 at job level, declaring itself Telegram-free. A test
+    asserting a successful send could only pass by standing down a control that is set on
+    purpose, so it asserts the dedupe branch, which sits above delivery in send_system.
+    """
     env = {"TELEGRAM_BOT_TOKEN": "x", "TELEGRAM_CHAT_ID": "1", "SYSTEM_TELEGRAM_ENABLED": "1"}
     sent = {"n": 0}
 
@@ -123,18 +132,44 @@ def test_telegram_dedupe(root: Path, monkeypatch: pytest.MonkeyPatch):
         return {"ok": True, "result": {"message_id": 99}}, 200
 
     monkeypatch.setattr(TG, "_http_post", fake_post)
-    _skip_without_transport_deps()
-    # send_system delivers through telegram_transport.deliver_text since the 2026-09-18
-    # audit, and that layer interdicts whenever PYTEST_CURRENT_TEST is set — so every send
-    # under pytest returns interdicted before dedupe is reached. Clear that one variable
-    # for this test: delivery is already faked via _http_post above, so no HTTP can leave,
-    # and test_transport_interdicts_under_pytest pins the control that is stood down here.
-    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
-    a = TG.send_system("hello", identity="system-heartbeat:2026-08-18", kind="daily_heartbeat", root=root, env=env)
-    b = TG.send_system("hello", identity="system-heartbeat:2026-08-18", kind="daily_heartbeat", root=root, env=env)
-    assert a["ok"] and a.get("message_id") == 99
-    assert b.get("deduped") is True
-    assert sent["n"] == 1
+    identity = "system-heartbeat:2026-08-18"
+    # A prior delivered send, written through the same ledger send_system appends to.
+    TG.record_send(
+        {
+            "at": "2026-08-18T12:00:00+00:00",
+            "identity": identity,
+            "kind": "daily_heartbeat",
+            "ok": True,
+            "message_id": 99,
+        },
+        root=root,
+    )
+    assert TG.already_sent(identity, root=root), "ledger seed must be visible to the dedupe check"
+
+    out = TG.send_system("hello", identity=identity, kind="daily_heartbeat", root=root, env=env)
+    assert out.get("deduped") is True
+    assert out["ok"] is True
+    assert out.get("message_id") == 99
+    assert sent["n"] == 0, "a deduped send must not reach the transport at all"
+
+
+def test_telegram_dedupe_is_identity_scoped(root: Path, monkeypatch: pytest.MonkeyPatch):
+    """The dedupe branch must key on identity, or it would silence every later send."""
+    env = {"TELEGRAM_BOT_TOKEN": "x", "TELEGRAM_CHAT_ID": "1", "SYSTEM_TELEGRAM_ENABLED": "1"}
+    TG.record_send(
+        {
+            "at": "2026-08-18T12:00:00+00:00",
+            "identity": "system-heartbeat:2026-08-18",
+            "kind": "daily_heartbeat",
+            "ok": True,
+            "message_id": 99,
+        },
+        root=root,
+    )
+    out = TG.send_system(
+        "hello", identity="system-heartbeat:2026-08-19", kind="daily_heartbeat", root=root, env=env
+    )
+    assert out.get("deduped") is not True, "a different identity must not be deduped"
 
 
 def test_transport_interdicts_under_pytest(root: Path, monkeypatch: pytest.MonkeyPatch):
