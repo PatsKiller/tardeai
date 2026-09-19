@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `fab8518392694deaabff2fea0a0b7a5a6943aa3440a6aee899f1e3e6232cfc82`
+**Tree fingerprint:** `621c1dae78ee15f545cf635a257fa3077c05debb9b372e8684fc156ffaa94311`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2557 |
-| Markdown (excl. this INDEX) | 2131 |
+| Files under `docs/` (excl. this INDEX) | 2558 |
+| Markdown (excl. this INDEX) | 2132 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2064 |
+| Header OK | 2065 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2186 |
+| review_required | 2187 |
 
 ## Markdown tree
 
@@ -1659,6 +1659,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | OK | `ad67ce75eb83` |
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | OK | `57b472ac277f` |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
+| `docs/ops/PROPOSED_RESEARCH_QUALITY_ESCALATE_HOST_2026-09-19.md` | PROPOSED / APPLIED — research quality escalate host arm | review_required | OK | `22e2223e1d01` |
 | `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §9.3) | review_required | OK | `d23e2d26a483` |
 | `docs/ops/R11_AUTONOMOUS_INVESTMENT_OFFICE_OPERATOR_VALUE_CLOSEOUT_2026-08-25.md` | R11 — Autonomous Investment Office Operator-Value Closeout | review_required | OK | `0539b80504f0` |
 | `docs/ops/R12_OPERATOR_INTELLIGENCE_NATURAL_NOTIFICATION_CLOSEOUT_2026-08-25.md` | R12 — Operator-intelligence natural notification closeout | review_required | OK | `dbcce083dfc0` |

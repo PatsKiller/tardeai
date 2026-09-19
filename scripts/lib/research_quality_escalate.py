@@ -5,7 +5,9 @@ escalates because an answer was thin. ``research_circle.score_lap`` already deci
 sufficiency; Phase 1 recorded ``climb`` and did not take it. This module is the
 minimal wire:
 
-  * behind ``RESEARCH_QUALITY_ESCALATE=1`` (off by default);
+  * behind ``RESEARCH_QUALITY_ESCALATE=1`` (off by default), or host file
+    ``~/.config/tradeai/research_quality_escalate`` (``1`` / ``on``);
+  * hermetic callers pass ``env=`` so the host file is never consulted;
   * reuses ``score_lap`` / ``SUFFICIENT_SCORE`` / ``deterministic_decision`` —
     no second rubric;
   * on thin evidence, makes **one** governed free SearXNG call
@@ -19,6 +21,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
 SCHEMA = "ResearchQualityEscalate@v1"
@@ -26,13 +29,37 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 FLAG = "RESEARCH_QUALITY_ESCALATE"
 REASON = "thin_answer"
 CALLER = "research_quality_escalate"
+# Host toggle (no crontab edit): ~/.config/tradeai/research_quality_escalate
+# Contents: 1|true|yes|on. Env always wins when set. Hermetic tests pass env={}.
+HOST_FLAG_PATH = Path.home() / ".config" / "tradeai" / "research_quality_escalate"
 
 SearchFn = Callable[..., Any]
 
 
+def _truthy(raw: str) -> bool:
+    return str(raw or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _host_flag_enabled() -> bool:
+    try:
+        if not HOST_FLAG_PATH.is_file():
+            return False
+        first = HOST_FLAG_PATH.read_text(encoding="utf-8").splitlines()
+        return _truthy(first[0] if first else "")
+    except OSError:
+        return False
+
+
 def enabled(env: Mapping[str, str] | None = None) -> bool:
-    src = env if env is not None else os.environ
-    return str(src.get(FLAG, "")).strip().lower() in {"1", "true", "yes", "on"}
+    """True when env flag is on, or (when env is omitted) host file is on.
+
+    Passing ``env=`` (including ``{}``) is hermetic: host file is not consulted.
+    """
+    if env is not None:
+        return _truthy(str(env.get(FLAG, "")))
+    if _truthy(str(os.environ.get(FLAG, ""))):
+        return True
+    return _host_flag_enabled()
 
 
 def _now_iso() -> str:

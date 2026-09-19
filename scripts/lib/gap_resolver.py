@@ -838,18 +838,23 @@ def resolve(
     res.evidence = gathered
 
     # Phase-2 quality escalate: thin search/answer → one free SearXNG climb.
-    # Off unless RESEARCH_QUALITY_ESCALATE=1. Reuses score_lap; never invents a rubric.
+    # Off unless RESEARCH_QUALITY_ESCALATE=1 (env) or host file
+    # ~/.config/tradeai/research_quality_escalate. Reuses score_lap; never invents a rubric.
     if res.outcome in ("partial", "answered"):
         try:
             from scripts.lib import research_quality_escalate as rqe
 
-            if rqe.enabled(ctx.env):
+            # Prefer explicit env value; when the key is absent, allow host-file arming.
+            _flag_env = ctx.env
+            if _flag_env is not None and rqe.FLAG not in _flag_env:
+                _flag_env = None
+            if rqe.enabled(_flag_env):
                 esc = rqe.maybe_escalate(
                     question=gap.question,
                     symbol=(list(gap.symbols)[0] if gap.symbols else gap.subject) or None,
                     search_hits=list((gathered or {}).get("search_results") or []),
                     answer=res.answer,
-                    env=ctx.env,
+                    env=_flag_env,
                     dry_run=not ctx.is_live(),
                 )
                 gathered = dict(gathered or {})
