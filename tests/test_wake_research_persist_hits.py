@@ -212,9 +212,22 @@ def test_hit_from_cycle_shape():
     h = hit_from_cycle(_hit_cycle())
     assert set(h) == {
         "as_of", "dispatched", "research_called", "persisted",
-        "subjects", "decisions", "unattended",
+        "subjects", "decisions", "field_changes", "unattended",
     }
+    assert h["field_changes"] == ["next_eligible_at"]
     assert "migration:deterministic" not in json.dumps(h)
+
+
+def test_hit_from_cycle_collects_unique_cognition_fields():
+    c = _hit_cycle(persisted=2)
+    c["persist"] = [
+        {"subject_key": "HELD:A", "persisted": True, "changed": ["next_eligible_at", "cc_narrative"]},
+        {"subject_key": "HELD:B", "persisted": True, "changed": ["cc_narrative", "notify_priority"]},
+    ]
+    h = hit_from_cycle(c)
+    assert h["field_changes"] == [
+        "next_eligible_at", "cc_narrative", "notify_priority",
+    ]
 
 
 def test_atomic_write_leaves_no_tmp(tmp_path: Path):

@@ -510,8 +510,13 @@ def run_once(
             "research_objects": research_objects,
             "receipts": receipts,
             "material_changes": material_changes,
+            "instrument_records": None,
         }
-        if inputs["research_objects"] is None and inputs["receipts"] is None and inputs["material_changes"] is None:
+        if (
+            inputs["research_objects"] is None
+            and inputs["receipts"] is None
+            and inputs["material_changes"] is None
+        ):
             loaded = load_selection_inputs(env)
             inputs = loaded
         # Union feed receipts with receipts this agent already emitted so a
@@ -525,6 +530,7 @@ def run_once(
             research_objects=inputs.get("research_objects") or [],
             receipts=inputs.get("receipts") or [],
             material_changes=inputs.get("material_changes") or [],
+            instrument_records=inputs.get("instrument_records") or [],
         )
         if not selection_meta:
             _emit({
