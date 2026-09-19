@@ -165,7 +165,7 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
     )
 
     # Narrator — executive briefing text (not sent here; publish to bus only)
-    # Cognitive memory dry-run (isolated substrate; never financial truth).
+    # Cognitive memory on isolated :55432 only (prod :5432 refused in integrator).
     bitemporal_receipt = integrate_wake_envelope(
         {
             "subject_key": subject,
@@ -178,7 +178,7 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
             },
             "wake_job_id": f"aec-cycle-{subject}",
         },
-        apply=False,
+        apply=apply,
     )
     narr_summary = (
         f"Narrator brief: cio={cio_ev.summary[:80]}; advisor={adv_ev.summary[:80]}; "

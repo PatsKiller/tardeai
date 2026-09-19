@@ -1,0 +1,10 @@
+[Unit]
+Description=Trade AI AEC Command Center cycle timer (hourly, advisory mesh)
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=tradeai-aec-command-center-cycle.service
+
+[Install]
+WantedBy=timers.target

@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "default_mode": "manual",
   "lane_policies": {
     "grok_only": "Grok only \u2014 single lane",
@@ -352,6 +352,34 @@
         "FAST",
         "FAST_THINK"
       ]
+    },
+    {
+      "id": "l3_judgment_author",
+      "name": "L3 Judgment Author (DeepSeek Flash)",
+      "category": "AgentRuntime",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Persistent-wake L3 author: forms AgentView claim/reasoning/confidence/falsifier from grounded research. READ_ONLY_ADVISORY; cognition only; MBI_BEHAVIOR=0. Cap closes the 2026-09-11 unregistered-lane defect (five paid organic calls with no llm_process_config row).",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 32000,
+      "max_output_tokens": 2048,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "daily_soft_cap": 48,
+      "daily_cost_cap_usd": 0.25,
+      "registered_by": "maturity-m2-l3-lane-20260919",
+      "registered_at": "2026-09-19T21:30:00Z",
+      "notes": "2026-09-19: register missing author sibling of l3_independent_critic so check_cost_cap enforces a process ceiling instead of only the global cap. Does not enable WAKE_L3_JUDGMENT; that flag remains the schedule gate."
     },
     {
       "id": "l3_independent_critic",
