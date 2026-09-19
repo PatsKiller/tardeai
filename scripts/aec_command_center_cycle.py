@@ -34,6 +34,7 @@ from lib import aec_memory_spines as mem  # noqa: E402
 from lib.agent_view_v1 import persist_allowed, produce_agent_view_v1  # noqa: E402
 from lib.agent_commitment_v1 import evaluate_commitment, mint_commitment_from_view  # noqa: E402
 from lib.cio_memory_integration import integrate_wake_envelope  # noqa: E402
+from lib.aec_narrator import render_executive_brief, notify_executive_brief  # noqa: E402
 
 
 def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = None) -> dict:
@@ -167,12 +168,20 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         f"learning_rows={len(relevant.get('learning') or [])}; "
         f"bitemporal_dry_run={bitemporal_receipt.get('dry_run')}"
     )
+    brief = render_executive_brief(subject_key=subject_key)
+    notify_receipt = notify_executive_brief(brief, apply=False)  # never auto-Telegram from cycle
     narr_ev = bus.publish(
         agent_id="narrator_agent",
         topic="cycle.narrator.brief",
-        summary=narr_summary,
+        summary=narr_summary if not brief.get("suppressed_repeat") else f"SUPPRESSED_REPEAT {brief.get('claim_fp')}",
         subject_key=subject_key,
-        payload={"would_telegram": False, "reason": "cycle_bus_only_until_narrator_transport_wired"},
+        payload={
+            "would_telegram": bool(notify_receipt.get("would_telegram")),
+            "telegram": notify_receipt.get("telegram"),
+            "claim_fp": brief.get("claim_fp"),
+            "brief_schema": brief.get("schema"),
+            "reason": "cycle_renders_brief_notify_requires_explicit_flag",
+        },
         dry_run=not apply,
     )
 
@@ -186,6 +195,8 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         "commitment": commitment_payload,
         "outcome": outcome_payload,
         "bitemporal": bitemporal_receipt,
+        "narrator_brief": brief,
+        "narrator_notify": notify_receipt,
         "authority": "READ_ONLY_ADVISORY",
     }
 
