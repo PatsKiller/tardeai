@@ -167,3 +167,70 @@ def test_m2_not_observed_without_artifact(tmp_path):
     assert v == "NOT_OBSERVED"
     assert "next_research_question" in note
 
+
+def test_m3_observed_when_turn_changed_decision(tmp_path):
+    M = _load()
+    art = tmp_path / "wake_turn_effects.jsonl"
+    art.write_text(
+        json.dumps(
+            {
+                "schema": "WakeTurnEffect@v1",
+                "at": "2026-09-08T19:08:48.960091+00:00",
+                "subject_key": "HELD:SCHD",
+                "turn": {"intent": "defer", "plan_id": "plan_x", "note": "wait"},
+                "with_turn": {
+                    "next_research_question": "Has a catalyst changed the defer (wait)?"
+                },
+                "without_turn": {
+                    "next_research_question": "Has a catalyst changed the deferred condition?"
+                },
+                "turn_changed_decision": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    v, note = M._m3_from_effects(art)
+    assert v == "OBSERVED"
+    assert "HELD:SCHD" in note
+    assert "with=" in note and "without=" in note
+
+
+def test_m3_candidate_when_file_present_but_no_change(tmp_path):
+    M = _load()
+    art = tmp_path / "wake_turn_effects.jsonl"
+    art.write_text(
+        json.dumps(
+            {
+                "turn_changed_decision": False,
+                "with_turn": {"next_research_question": "same"},
+                "without_turn": {"next_research_question": "same"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    v, _ = M._m3_from_effects(art)
+    assert v == "CANDIDATE"
+
+def test_m5_observed_via_wake_log_when_latest_consult_clean(tmp_path):
+    M = _load()
+    log = tmp_path / "cio_wake_dispatcher.log"
+    log.write_text(
+        "2026-09-19 16:55:07,746 [x] record_consult: wakes=5 subject_resolved=5 "
+        "record_found=5 changed_by_record=5 skipped_cadence_not_due=5 no_subject=0\n",
+        encoding="utf-8",
+    )
+    clean = {
+        "unattended": True,
+        "subject_resolved": 5,
+        "record_found": 5,
+        "decisions_changed_by_record": 0,
+        "skipped_cadence_not_due": 0,
+    }
+    assert M._m5_from_consult(clean)[0] == "CANDIDATE"
+    v, note = M._m5_from_wake_log(log_path=log)
+    assert v == "OBSERVED"
+    assert "via=wake_dispatcher_log" in note
+    assert "changed_by_record=5" in note
+
