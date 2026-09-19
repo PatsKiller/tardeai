@@ -206,17 +206,30 @@ class CIORunStore:
         self.store_path.parent.mkdir(parents=True, exist_ok=True)
 
     def _last_event_hash(self) -> str:
+        """Return the event_hash of the last *parseable* line.
+
+        A truncated trailing write (process killed mid-append, no newline) must
+        not poison create_run. Walk every non-empty line and keep the last valid
+        hash; skip JSONDecodeError / missing event_hash the same way
+        ``_project_run`` already skips corrupt rows. Incomplete tails are
+        archival material — never treated as the chain tip.
+        """
         if not self.store_path.exists():
             return GENESIS_PREV_HASH
+        last_hash = GENESIS_PREV_HASH
         with open(self.store_path, "r") as f:
-            last_line = None
             for line in f:
                 stripped = line.strip()
-                if stripped:
-                    last_line = stripped
-            if last_line is None:
-                return GENESIS_PREV_HASH
-            return json.loads(last_line)["event_hash"]
+                if not stripped:
+                    continue
+                try:
+                    event = json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+                h = event.get("event_hash") if isinstance(event, dict) else None
+                if isinstance(h, str) and h:
+                    last_hash = h
+        return last_hash
 
     def _acquire_lock(self) -> int:
         fd = os.open(str(self.lock_path), os.O_CREAT | os.O_RDWR, 0o644)
@@ -230,6 +243,17 @@ class CIORunStore:
     def _append_event(self, event: dict[str, Any]):
         line = json.dumps(event, sort_keys=True, ensure_ascii=False) + "\n"
         with open(self.store_path, "a") as f:
+            # If a prior write died mid-line (no trailing newline), isolate that
+            # fragment so this event is a clean JSONL row. Readers skip the
+            # unparseable fragment; the chain tip remains the last valid hash.
+            try:
+                if self.store_path.stat().st_size > 0:
+                    with open(self.store_path, "rb") as rf:
+                        rf.seek(-1, os.SEEK_END)
+                        if rf.read(1) != b"\n":
+                            f.write("\n")
+            except OSError:
+                pass
             f.write(line)
             f.flush()
             os.fsync(f.fileno())
