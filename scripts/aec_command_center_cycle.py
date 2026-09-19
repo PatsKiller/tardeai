@@ -42,6 +42,28 @@ from lib.cio_memory_integration import integrate_wake_envelope  # noqa: E402
 from lib.aec_narrator import render_executive_brief, notify_executive_brief  # noqa: E402
 
 
+def _prior_commitment_from_bus(recent: list) -> dict | None:
+    """Last non-suppressed advisor commitment on the bus (for OUTCOME re-eval)."""
+    for ev in reversed(list(recent or [])):
+        try:
+            agent = getattr(ev, "agent_id", None) or (
+                ev.get("agent_id") if isinstance(ev, dict) else None
+            )
+            if agent != "advisor_agent":
+                continue
+            payload = getattr(ev, "payload", None) or (
+                ev.get("payload") if isinstance(ev, dict) else None
+            ) or {}
+            if payload.get("suppressed"):
+                continue
+            cmt = payload.get("commitment")
+            if isinstance(cmt, dict) and cmt.get("commitment_id"):
+                return cmt
+        except Exception:  # noqa: BLE001 — bus shape may vary; fail soft
+            continue
+    return None
+
+
 def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = None) -> dict:
     snap = mem.load()
     relevant = mem.retrieve_relevant(snap, subject_key=subject_key)
@@ -66,8 +88,14 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         dry_run=not apply,
     )
 
-    # Advisor — AgentView@v1 (existing producer) + optional commitment
-    advisor_claim = f"Advisor reviewed subject={subject} against strategic spine"
+    # Advisor — AgentView@v1 (existing producer) + optional commitment.
+    # Day-bucket the claim so anti-repeat does not freeze AgentView/OUTCOME for
+    # the life of the spine after the first --apply (measured: timer fires at
+    # 18:00/19:00 were SUPPRESSED_REPEAT with null agent_view/commitment/outcome).
+    day_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    advisor_claim = (
+        f"Advisor reviewed subject={subject} against strategic spine [{day_utc}]"
+    )
     fp = mem.claim_fingerprint(advisor_claim)
     repeated = mem.seen_claim(snap, fp)
     view_payload: dict = {}
@@ -75,6 +103,28 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
     outcome_payload: dict | None = None
     if repeated:
         advisor_summary = f"SUPPRESSED_REPEAT fp={fp}"
+        # Same-day suppress still re-evaluates the open commitment so OUTCOME
+        # can move to CONFIRMED/REFUTED/EXPIRED without minting a new view.
+        prior = _prior_commitment_from_bus(recent)
+        if prior is not None:
+            commitment_payload = prior
+            outcome_payload = evaluate_commitment(prior, observation=observe)
+            if apply and outcome_payload.get("outcome") in {
+                "CONFIRMED",
+                "REFUTED",
+                "EXPIRED",
+            }:
+                mem.append_fact(
+                    "learning",
+                    {
+                        "kind": "commitment_outcome",
+                        "subject_key": subject_key,
+                        "outcome": outcome_payload.get("outcome"),
+                        "commitment_id": outcome_payload.get("commitment_id"),
+                        "claim_fp": fp,
+                        "via": "suppressed_repeat_reeval",
+                    },
+                )
     else:
         view = produce_agent_view_v1(
             subject=subject,

@@ -100,6 +100,30 @@ def test_cycle_dry_run_no_write(tmp_path, monkeypatch):
     assert not (tmp_path / "bus.jsonl").exists()
 
 
+def test_cycle_day_bucket_and_suppressed_reeval(tmp_path, monkeypatch):
+    """Anti-repeat must not freeze OUTCOME for the life of the spine.
+
+    After an applied cycle, same-day repeats re-evaluate the prior commitment
+    so CONFIRMED/REFUTED can land from the scheduled timer.
+    """
+    monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "mem.json"))
+    cycle = _load("aec_command_center_cycle_reeval", "scripts/aec_command_center_cycle.py")
+    first = cycle.run_cycle(subject_key="WATCH:SCHG", apply=True)
+    assert first.get("agent_view")
+    assert first.get("commitment", {}).get("commitment_id")
+    assert first["outcome"]["outcome"] == "INSUFFICIENT_EVIDENCE"
+    cmt_id = first["commitment"]["commitment_id"]
+
+    second = cycle.run_cycle(
+        subject_key="WATCH:SCHG", apply=True, observe={"confirmed": True}
+    )
+    assert second["events"][1]["payload"]["suppressed"] is True
+    assert second["outcome"]["outcome"] == "CONFIRMED"
+    assert second["outcome"]["commitment_id"] == cmt_id
+    assert second.get("agent_view") in (None, {})
+
+
 def test_cycle_apply_propagates_to_bitemporal_integrator(tmp_path, monkeypatch):
     """--apply must not hardcode bitemporal dry-run (isolated :55432 only)."""
     monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
