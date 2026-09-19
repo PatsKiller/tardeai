@@ -109,6 +109,16 @@ def test_cycle_day_bucket_and_suppressed_reeval(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
     monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "mem.json"))
     cycle = _load("aec_command_center_cycle_reeval", "scripts/aec_command_center_cycle.py")
+
+    def _fake_integrate(envelope, *, apply=False):
+        return {
+            "schema": "CIOEnvelopeIntegration@v1",
+            "dry_run": not apply,
+            "authority": "READ_ONLY_ADVISORY",
+            "mbi_behavior": 0,
+        }
+
+    monkeypatch.setattr(cycle, "integrate_wake_envelope", _fake_integrate)
     first = cycle.run_cycle(subject_key="WATCH:SCHG", apply=True)
     assert first.get("agent_view")
     assert first.get("commitment", {}).get("commitment_id")
