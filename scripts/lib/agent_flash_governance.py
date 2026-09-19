@@ -40,8 +40,29 @@ TASK_TO_PROCESS: dict[str, str] = {
     "sentiment": "watchlist_agent_flash_extract",
     "fast_summary": "watchlist_agent_flash_extract",
     "code_generation": "watchlist_agent_flash_extract",
+    # Per-agent watchlist reviews draw from their own registered pools. Until
+    # 2026-09-19 risk/steph/tax fell through to "default" and shared Maria's
+    # 240/day cap; Maria exhausts it every weekday, so they produced nothing.
+    # tax_agent has no pool of its own and shares risk's.
+    "risk_review": "watchlist_risk_flash_narrative",
+    "steph_review": "watchlist_steph_flash_narrative",
+    "tax_review": "watchlist_risk_flash_narrative",
     "default": "watchlist_maria_flash_narrative",
 }
+
+# requested_agent → task_type for process_watchlist_agent_jobs non-Maria reviews
+AGENT_TO_TASK: dict[str, str] = {
+    "risk_agent": "risk_review",
+    "risk": "risk_review",
+    "steph": "steph_review",
+    "tax_agent": "tax_review",
+    "tax": "tax_review",
+}
+
+
+def task_for_agent(agent: str | None) -> str:
+    """Task type for an agent's review call; unknown agents keep agent_narrative."""
+    return AGENT_TO_TASK.get((agent or "").strip().lower(), "agent_narrative")
 
 # Aggregate per-run budget (entire process_watchlist_agent_jobs invocation)
 _RUN_LOCK = threading.Lock()

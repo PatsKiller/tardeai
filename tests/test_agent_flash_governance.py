@@ -31,6 +31,27 @@ def test_process_matrix_mapping():
     assert FLASH_MODEL == "deepseek-flash"
 
 
+def test_non_maria_agents_use_their_own_pools():
+    """risk/steph/tax must not fall through to Maria's pool (starved 2026-09-16..19)."""
+    import json
+    from lib.agent_flash_governance import process_for_task, task_for_agent
+    maria = "watchlist_maria_flash_narrative"
+    assert process_for_task(task_for_agent("risk_agent")) == "watchlist_risk_flash_narrative"
+    assert process_for_task(task_for_agent("steph")) == "watchlist_steph_flash_narrative"
+    assert process_for_task(task_for_agent("tax_agent")) == "watchlist_risk_flash_narrative"
+    assert process_for_task(task_for_agent("maria")) == maria
+    assert process_for_task(task_for_agent("full_chain")) == maria
+    registry = json.loads((ROOT / "config" / "llm_process_registry.json").read_text())
+    ids = {p["id"] for p in registry["processes"]}
+    for agent in ("risk_agent", "steph", "tax_agent"):
+        assert process_for_task(task_for_agent(agent)) in ids
+
+
+def test_worker_routes_non_maria_reviews_by_agent():
+    src = (ROOT / "scripts" / "process_watchlist_agent_jobs.py").read_text()
+    assert "raw = _llm(prompt, task_type=task_for_agent(agent))" in src
+
+
 def test_fast_default_think_only_on_deterministic_escalation():
     from lib.agent_flash_governance import policy_for_task, should_escalate_fast_think
     pol, reason = policy_for_task("agent_debate", metadata={}, prompt="ordinary debate prompt")
