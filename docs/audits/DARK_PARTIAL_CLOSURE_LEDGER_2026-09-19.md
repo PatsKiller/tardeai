@@ -22,7 +22,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | PARTIAL-telegram-CIO-stance | PARTIAL | PR #1082 | Merge+promote | live hold receipt |
-| PARTIAL-bridge-pin-soak | PARTIAL | streak 1/3 | #1081 + promotes | soak_ready=YES |
+| PARTIAL-bridge-pin-soak | PARTIAL | streak 1/3; **#1081 MERGED** `93c1f5ea6` | promote exact SHAs after #1082/#1083 + soak observations | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | PARTIAL | code on #1081; flag off | Flag on served + organic thin answer | receipt spilled_to/free climb |
 | PARTIAL-soft-share-live-SLO | PARTIAL | hermetic PASS; live soft 0.22 stored | Promote fix + new agent rows | SLO ok on post-promote window |
 | PARTIAL-M1-M5 | PARTIAL | reporter mostly NOT_OBSERVED | Organic proofs | all five OBSERVED |
@@ -49,3 +49,11 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - `cio_disposition_identity` → `scripts/aec_command_center_cycle` commitment `decision_key`
 - `tests/test_identity_memory_module_wiring.py` KNOWN_DARK = set()
 - Proof: `pytest tests/test_aec_agent_bus_memory_20260919.py tests/test_identity_memory_module_wiring.py` → 9 passed
+
+
+## 2026-09-19T18:12 ET — #1081 merged
+
+- Merge commit `93c1f5ea66151b5cde41de72b75cc6e3081a110e`
+- Required check cio-hardening PASS 12m34s on head `c8031a7a1`
+- release-write remote approval requested `request_id=23da0962fe3d3f7f` (Telegram interrupt)
+- #1082/#1083 awaiting cio-hardening on post-merge-main heads
