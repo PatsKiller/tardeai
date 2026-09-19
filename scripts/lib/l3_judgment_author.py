@@ -187,6 +187,65 @@ def _default_deepseek_call(**kwargs: Any) -> Any:
     return chat(**kwargs)
 
 
+def _is_billing_refused(resp: Mapping[str, Any]) -> bool:
+    """DeepSeek HTTP 402 / payment / billing — free OAuth may still author."""
+    blob = f"{resp.get('error_class') or ''} {resp.get('error_message') or ''}".upper()
+    if "HTTP_402" in blob or "PAYMENT_REQUIRED" in blob:
+        return True
+    if "402" in blob and ("PAYMENT" in blob or "BILLING" in blob):
+        return True
+    if "INSUFFICIENT" in blob and ("BALANCE" in blob or "CREDIT" in blob or "QUOTA" in blob):
+        return True
+    if "BILLING" in blob and ("FAIL" in blob or "ERROR" in blob or "REQUIRE" in blob):
+        return True
+    return False
+
+
+def _default_chatgpt_author_call(**kwargs: Any) -> dict[str, Any]:
+    """Free OAuth author fallback — ChatGPT only (critic stays grok).
+
+    Never substitutes a local model. Routes through llm_lane so consumption
+    gating still applies under process_id=l3_judgment_author.
+    """
+    from scripts import llm_lane
+
+    prompt = str(kwargs.get("prompt") or "")
+    max_tokens = int(kwargs.get("max_tokens") or 2048)
+    try:
+        text = llm_lane.generate(
+            prompt,
+            lane="chatgpt",
+            process_id=str(kwargs.get("source_process") or "l3_judgment_author"),
+            response_json=bool(kwargs.get("response_json", True)),
+            max_tokens=max_tokens,
+            task_summary="l3_judgment_author free-oauth fallback after DeepSeek billing refuse",
+        )
+    except Exception as exc:  # noqa: BLE001 — map to author refusal shape
+        return {
+            "ok": False,
+            "content": None,
+            "requested_model_id": "chatgpt",
+            "returned_model": None,
+            "error_class": "FREE_AUTHOR_FALLBACK_FAILED",
+            "error_message": f"{type(exc).__name__}: {exc}",
+            "latency_ms": None,
+            "cost_usd": 0.0,
+        }
+    model_name = "chatgpt"
+    return {
+        "ok": True,
+        "content": text,
+        "requested_model_id": model_name,
+        "returned_model": model_name,
+        "error_class": None,
+        "error_message": None,
+        "latency_ms": None,
+        "cost_usd": 0.0,
+        "cost_basis": "free_oauth",
+        "pricing_tier": "oauth",
+    }
+
+
 def _extract_response(resp: Any) -> dict[str, Any]:
     """Normalize DeepSeekResponse or mapping/mock into a dict."""
     if hasattr(resp, "ok"):
@@ -229,6 +288,7 @@ def run_author(
     policy: L3ModelPolicy | None = None,
     cache: JudgmentCache | None = None,
     call_fn: AuthorCallFn | None = None,
+    fallback_call_fn: AuthorCallFn | None = None,
     source_sha: str = "",
     release: str = "",
     now: datetime | None = None,
@@ -294,6 +354,50 @@ def run_author(
 
     latency_ms = int((time.perf_counter() - t0) * 1000)
     resp = _extract_response(raw_resp)
+    provider_calls = 1
+    author_fallback_used = False
+    author_fallback_reason: str | None = None
+
+    if not resp.get("ok") and _is_billing_refused(resp):
+        # Free-first recovery: DeepSeek billing refuse must not dark M2 when
+        # ChatGPT OAuth can still author (critic remains grok — separated).
+        fb = fallback_call_fn
+        if fb is None and call_fn is None:
+            fb = _default_chatgpt_author_call
+        if fb is not None:
+            t1 = time.perf_counter()
+            try:
+                raw_fb = fb(
+                    policy="FREE_OAUTH",
+                    prompt=prompt,
+                    response_json=True,
+                    max_tokens=2048,
+                    source_service="l3_judgment",
+                    source_process="l3_judgment_author",
+                    source_lane="CHATGPT_OAUTH",
+                    agent="l3_author_fallback",
+                    run_id=str(uuid.uuid4()),
+                )
+                resp = _extract_response(raw_fb)
+                provider_calls = 2
+                author_fallback_used = True
+                author_fallback_reason = str(
+                    resp.get("error_class") or "deepseek_billing_refused"
+                )
+                if resp.get("ok"):
+                    binding = {
+                        "provider": "chatgpt",
+                        "logical_policy": "FREE_OAUTH",
+                        "model_id": str(
+                            resp.get("requested_model_id") or "chatgpt"
+                        ),
+                    }
+                latency_ms = int((time.perf_counter() - t0) * 1000)
+            except Exception as exc:  # noqa: BLE001
+                author_fallback_used = True
+                author_fallback_reason = f"fallback_exception:{type(exc).__name__}"
+                latency_ms = int((time.perf_counter() - t1) * 1000) + latency_ms
+
     if not resp.get("ok"):
         err = str(resp.get("error_class") or "")
         state = MODEL_UNAVAILABLE
@@ -303,15 +407,19 @@ def run_author(
             state = CAP_REFUSED
         elif "AUTH" in err.upper():
             state = MODEL_UNAVAILABLE
-        return {
+        out = {
             "ok": False,
             "refusal_state": state,
             "reasons": [err or str(resp.get("error_message") or "author_failed")],
-            "provider_calls": 1,
+            "provider_calls": provider_calls,
             "cache_key": cache_key,
             "cache_hit": False,
             "latency_ms": latency_ms,
         }
+        if author_fallback_used:
+            out["author_fallback_used"] = True
+            out["author_fallback_reason"] = author_fallback_reason
+        return out
 
     requested = str(resp.get("requested_model_id") or binding["model_id"])
     returned = resp.get("returned_model")
@@ -326,7 +434,7 @@ def run_author(
             "ok": False,
             "refusal_state": MODEL_MISMATCH,
             "reasons": [str(exc)],
-            "provider_calls": 1,
+            "provider_calls": provider_calls,
             "requested_model": requested,
             "returned_model": returned,
             "cache_key": cache_key,
@@ -345,7 +453,7 @@ def run_author(
             "ok": False,
             "refusal_state": SCHEMA_INVALID,
             "reasons": [f"author_parse:{exc}"],
-            "provider_calls": 1,
+            "provider_calls": provider_calls,
             "cache_key": cache_key,
             "cache_hit": False,
             "latency_ms": latency_ms,
@@ -402,7 +510,7 @@ def run_author(
         "evidence_source_ids": evidence_source_ids,
         "off_peak": offpeak.eligible,
         "mbi_behavior": 0,
-        "provider_calls": 1,
+        "provider_calls": provider_calls,
     }
 
     try:
@@ -412,7 +520,7 @@ def run_author(
             "ok": False,
             "refusal_state": QUARANTINED,
             "reasons": [str(exc)],
-            "provider_calls": 1,
+            "provider_calls": provider_calls,
             "cache_key": cache_key,
             "cache_hit": False,
             "latency_ms": latency_ms,
@@ -420,7 +528,10 @@ def run_author(
         }
 
     validated["ok"] = True
-    validated["provider_calls"] = 1
+    validated["provider_calls"] = provider_calls
+    if author_fallback_used:
+        validated["author_fallback_used"] = True
+        validated["author_fallback_reason"] = author_fallback_reason
     validated["produced_at"] = _now_iso()
     validated["confidence_calibration_caveat"] = validated.get("confidence_calibration_caveat") or (
         "confidence is model-elicited and uncalibrated until outcome settlement"
