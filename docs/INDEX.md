@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `d89eb536081430f6e20d9dbd7388f9b616e794a8236bffc6440e6313874af5be`
+**Tree fingerprint:** `c39e938be0cccfed201da2ea51e1ec16761db16afeb6141de28fe1467fdc1f97`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -448,7 +448,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/cio/ADR_CIO_STATE_ARCHITECTURE.md` | ADR: CIO State Architecture | review_required | OK | `78b3c731e31d` |
 | `docs/architecture/cio/ADR_CONTAINMENT_SPECIFICATION.md` | ADR: Containment Specification | review_required | OK | `e090bef207bf` |
 | `docs/architecture/cio/ADR_DURABLE_STATE_EVENT_SOURCING.md` | ADR: Durable State Event Sourcing | review_required | OK | `ce708501d377` |
-| `docs/architecture/cio/ADR_LLM_GOVERNANCE_BOUNDARY.md` | ADR: LLM Governance Boundary | review_required | OK | `769a7ea9993c` |
+| `docs/architecture/cio/ADR_LLM_GOVERNANCE_BOUNDARY.md` | ADR: LLM Governance Boundary | review_required | OK | `322036e96043` |
 | `docs/architecture/cio/ADR_OWNERSHIP_BOUNDARIES.md` | ADR: Platform Ownership Boundaries | review_required | OK | `6306c02ec5a3` |
 | `docs/architecture/cio/ADR_SCHEDULER_OWNERSHIP.md` | ADR: Scheduler Ownership | review_required | OK | `ce6bbb93b073` |
 | `docs/architecture/cio/ADR_SPECIALIST_CALCULATION_POLICY.md` | ADR: Specialist Calculation Policy | review_required | OK | `6fb1d320fe1e` |
