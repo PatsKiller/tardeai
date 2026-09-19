@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `ed6a24f5406f8ba29458971cfd5dbaa8a6c07720f1d7fb3b20dc4a9e4442de30`
+**Tree fingerprint:** `44aecdb5f8247e15bf5b048ac8b2891d2ecb7081e8cf99e866e9e4731ebc99be`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2533 |
-| Markdown (excl. this INDEX) | 2108 |
+| Files under `docs/` (excl. this INDEX) | 2534 |
+| Markdown (excl. this INDEX) | 2109 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2041 |
+| Header OK | 2042 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2162 |
+| review_required | 2163 |
 
 ## Markdown tree
 
@@ -299,7 +299,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/FINDING_interface_contracts_not_in_repo.md` | Finding — `INTERFACE_CONTRACTS.md` is cited everywhere and version-controlled nowhere | review_required | OK | `f9c9cfc0beea` |
 | `docs/architecture/GAIN_GUARDIAN.md` | Gain Guardian — Holdings Exit Intelligence (Live Book, Advisory-Only) | review_required | OK | `1d3bec366edc` |
 | `docs/architecture/GOOGLE_NOTES_BITEMPORAL_DDL_ARCHITECT_RECONCILIATION_2026-08-24.md` | Google Notes bitemporal DDL — architect reconciliation | review_required | OK | `8d29266fc3e6` |
-| `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `8610ddf22d19` |
+| `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `bc68c49ea023` |
 | `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | Hermes Persistent Ticker Intelligence Architecture | review_required | OK | `3a4320625b1e` |
 | `docs/architecture/HOME_COMMAND_BRAIN_V2.md` | Home v2 — The Command Brain (2026-07-17) | review_required | OK | `6e695df9a86e` |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
@@ -1463,6 +1463,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 | review_required | OK | `368297046d4f` |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) | review_required | OK | `e30957166ceb` |
 | `docs/ops/AUTONOMY_RUNTIME_TRUTH_2026-08-11.md` | Runtime truth — host verification (P0 ops) | review_required | OK | `b3ebf94fe56b` |
+| `docs/ops/BRIDGE_PIN_ALIGNMENT.md` | Governed bridge pin alignment | review_required | OK | `72a5c993261d` |
 | `docs/ops/CANONICAL_OBSERVATION_CONTRACT.md` | Canonical observation contract | review_required | OK | `f1efae3e4863` |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 | review_required | OK | `a49f0fc9b389` |
 | `docs/ops/CIO_ADVISORY_TRUTH_HARDENING_CLOSEOUT_2026-08-20.md` | CIO/Advisory truth + presentation hardening — closeout 2026-08-20 | review_required | OK | `1661c226ddf4` |
@@ -1610,7 +1611,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 | review_required | OK | `3490029f050c` |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) | review_required | OK | `9b701b444eb7` |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs | review_required | OK | `991bedac8b13` |
-| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `a3cb6510dbd8` |
+| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `7fe7427de196` |
 | `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md` | Flash activation + thesis canary — 2026-08-20 | review_required | OK | `2423165b9ce4` |
 | `docs/ops/GITHUB_ACTIONS_COST_REDUCTION_PLAN.md` | GitHub Actions cost-reduction plan | review_required | OK | `820bad46ce5f` |
 | `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` | GitHub Actions outage — repo visibility flip exhausted the private-repo minute quota | review_required | OK | `1d1b620b91db` |

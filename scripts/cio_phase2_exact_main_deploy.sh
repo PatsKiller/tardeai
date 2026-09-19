@@ -615,12 +615,17 @@ write_expected_release_pin() {
 # logs/ dir that no CURRENT-based audit could see (2026-09-01). Restarting after
 # CURRENT moves is what makes the promote actually reach them.
 #
+# 2026-09-18: cio-governed-bridge was still on 0162d0f19 (2026-09-14) while
+# portfolio-server served 71535687d (2026-09-18) — WorkingDirectory=CURRENT does
+# not help a process that already resolved the symlink at start. The bridge is
+# therefore a default bound unit, same class as the health agent.
+#
 # Correctness is checked by READING BACK each unit's cwd, not by "is-active":
 # the unit stays active across a promote precisely while being wrong, so
 # activeness is the one signal that cannot detect this.
 restart_root_frozen_units() {
   local dir="$1"
-  local units="${TRADEAI_CURRENT_BOUND_UNITS:-tradeai-health-agent.service}"
+  local units="${TRADEAI_CURRENT_BOUND_UNITS:-tradeai-health-agent.service cio-governed-bridge.service}"
   local u pid cwd
   for u in $units; do
     systemctl --user list-unit-files "$u" >/dev/null 2>&1 || { log "  skip $u (not installed)"; continue; }

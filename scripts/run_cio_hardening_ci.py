@@ -1406,8 +1406,9 @@ GATES = [
         "release_pin_and_validator",
         [
             "tests/test_release_pin_and_validator.py",
-            # Soak / grounding-SLO / quality-escalate tests ship with #1081; omit
-            # here so this branch does not gate files it does not carry.
+            "tests/test_record_bridge_pin_soak.py",
+            "tests/test_agent_number_grounding_slo_20260918.py",
+            "tests/test_research_quality_escalate_20260918.py",
             # Main landed these without gating — coverage gate treated them as NEW.
             "tests/test_agent_router_trade_write_gate_20260918.py",
             "tests/test_cio_wake_jobs_corrupt_tail_20260918.py",

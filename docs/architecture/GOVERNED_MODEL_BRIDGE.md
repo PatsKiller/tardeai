@@ -20,6 +20,12 @@ systemctl --user restart cio-governed-bridge     # scope: service. NOT sudo, NOT
 
 `:8766` is unavailable for a few seconds. Nothing else is touched.
 
+**Pin rule.** The unit's `WorkingDirectory` is `…/portfolio-server/CURRENT`, but the process
+resolves that symlink once at start. After every promote, its `/proc/<pid>/cwd` must equal the
+resolved CURRENT (and portfolio-server's cwd). `promote` restarts it via
+`TRADEAI_CURRENT_BOUND_UNITS` (default includes `cio-governed-bridge.service` since 2026-09-18).
+One-shot align and verification: `docs/ops/BRIDGE_PIN_ALIGNMENT.md`.
+
 ## 2. Caller identity is server-side and is NEVER taken from the caller
 
 ```
