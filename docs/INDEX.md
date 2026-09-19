@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `aacb9919da143b3ab32d73ec79f0d83a782daf11c792f96d853a24cea9e3dd68`
+**Tree fingerprint:** `12c6e767c2ddd3afad95c7dfd0a19651ddbb9b8b9df0fda0044705d1dbdf318d`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2548 |
-| Markdown (excl. this INDEX) | 2122 |
+| Files under `docs/` (excl. this INDEX) | 2551 |
+| Markdown (excl. this INDEX) | 2125 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2055 |
+| Header OK | 2058 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2177 |
+| review_required | 2180 |
 
 ## Markdown tree
 
@@ -283,14 +283,17 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO Agent — AS-IS vs SPEC (2026-09-09) | review_required | OK | `3b89fb965505` |
 | `docs/architecture/CIO_AS_IS_2026-09-19-1352.md` | CIO / AEC AS-IS — 2026-09-19 13:52 ET | review_required | OK | `d8bb7a991973` |
 | `docs/architecture/CIO_AS_IS_2026-09-19-1401.md` | CIO / AEC AS-IS — 2026-09-19 14:01 ET | review_required | OK | `8dcab97ad169` |
+| `docs/architecture/CIO_AS_IS_2026-09-19-1436.md` | CIO / AEC AS-IS — 2026-09-19 14:36 ET | review_required | OK | `381bde614ff5` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1352.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 13:52 ET | review_required | OK | `c6fd02492610` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1401.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:01 ET | review_required | OK | `d3da6ba1132c` |
+| `docs/architecture/CIO_FUTURE_2026-09-19-1436.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:36 ET | review_required | OK | `a8e36ace8e6b` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `4edef7d3ee4d` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-final.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 final) | review_required | OK | `5b412d2266d6` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09) | review_required | OK | `999bb7b18aab` |
 | `docs/architecture/CIO_GAP_2026-09-19-1352.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 13:52 ET | review_required | OK | `ce7582850a3d` |
 | `docs/architecture/CIO_GAP_2026-09-19-1401.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 14:01 ET | review_required | OK | `473218619794` |
+| `docs/architecture/CIO_GAP_2026-09-19-1436.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 14:36 ET | review_required | OK | `474cac5eea1f` |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
 | `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | OK | `56592a4af733` |
