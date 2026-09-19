@@ -26,7 +26,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-quality-escalate-organic | PARTIAL | code on #1081; flag off | Flag on served + organic thin answer | receipt spilled_to/free climb |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 21:20Z pin 18a41066d: M1/M3/M5 OBSERVED; M2 NOT_OBSERVED (writeback artifact absent; author HTTP 402); M4 PARTIAL soak=4 | Organic L3 critique→NRQ writeback unattended | all five OBSERVED |
-| PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL→CLOSING | [VERIFIED] `--apply` from hub@18a41066d wrote cio/advisor/narrator bus events (3) | Unattended schedule + optional narrator --notify | cycle apply receipt from CURRENT |
+| PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL→CLOSING | [VERIFIED] hand apply + systemd `tradeai-aec-command-center-cycle.timer` enabled (hourly; first oneshot exit 0 @ 17:34 ET) | Organic timer fire @ 18:00 ET + promote tip with wake spines | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | PARTIAL→CLOSING | [VERIFIED] spines after `--apply`; wake now fail-soft loads spines into context (`load_aec_spines_for_wake` / provenance aec_spines_loaded) — needs promote for served OBSERVED | Promote #1090 + organic wake provenance | wake reads spines from CURRENT |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
 | PARTIAL-narrator-unprompted-telegram | PARTIAL | aec_narrator renders brief; cycle dry-runs; live notify is explicit-flag only | Schedule + --notify under telegram grant + COVERS | unprompted brief delivered |
@@ -97,3 +97,9 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 
 - `persistent_agent_wake.load_aec_spines_for_wake` + context/provenance stamp (fail-soft)
 - Hermetic tests in `test_aec_agent_bus_memory_20260919.py`
+
+## 2026-09-19T17:34 ET — AEC cycle scheduled
+
+- Installed `tradeai-aec-command-center-cycle.{service,timer}` (hourly) under cron grant; lane_registry row ACTIVE; output_signal `data/cio/aec_agent_bus.jsonl`
+- Dry-run quoted then `systemctl --user enable --now`; oneshot `start` exit 0 (advisory apply; narrator telegram still dry_run)
+- Next natural fire ~18:00 ET
