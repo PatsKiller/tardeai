@@ -25,6 +25,10 @@ DeepSeek HTTP 402 on the paid author path remains a separate provider/operator
 issue; enabling the flags is necessary but not sufficient for organic M2 when
 the paid lane is refused.
 
+**Code prerequisite (landed with #1094 follow-up):** `_maybe_judge` now builds a
+material question for `instrument_record_due` as well as `unconsumed_research`.
+Without that, IR-due wakes skipped L3 even with flags on.
+
 ## Proposed crontab change (do not apply without operator grant)
 
 On the existing `*/5` `cio_wake_dispatch_entrypoint.py` line, prefix:
