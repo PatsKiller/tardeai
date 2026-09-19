@@ -138,6 +138,8 @@ GATES = [
             "tests/test_wake_state_root_stability.py",
             # SFR-A-FOLLOWUP2-001: wake subject selection.
             "tests/test_wake_subject_selector.py",
+            # M2: critique → InstrumentRecord next_research_question writeback.
+            "tests/test_critique_question_writeback_20260919.py",
             # M5: instrument-subject wakes so load-by-subject has a key.
             "tests/test_cio_instrument_wake_enqueue_20260919.py",
             "tests/test_wake_research_consumption.py",
@@ -748,6 +750,7 @@ GATES = [
             "tests/test_data_gap_registry_writer_20260913.py",
             "tests/test_desk_gap_queue_reconnect_20260913.py",
             "tests/test_agent_number_grounding_20260913.py",
+            "tests/test_report_maturity_bar_m1_m5_20260919.py",
             "tests/test_synthesis_prompt_budget_20260913.py",
             # Answer-quality monitor + offline litmus replay of the 2026-09-13 questions.
             "tests/test_operator_answer_quality_20260913.py",

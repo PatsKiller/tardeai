@@ -15,6 +15,7 @@ from scripts.lib.persistent_agent_wake import FEATURE_FLAG as WAKE_FLAG  # noqa:
 from scripts.lib.persistent_wake_schedule import FEATURE_FLAG as SCHED_FLAG  # noqa: E402
 from scripts.lib.persistent_wake_store import JsonlStore  # noqa: E402
 from scripts.lib.wake_subject_selector import (  # noqa: E402
+    SOURCE_INSTRUMENT_RECORD,
     SOURCE_MATERIAL_CHANGE,
     SOURCE_UNCONSUMED_RESEARCH,
     select_subjects,
@@ -159,6 +160,37 @@ def test_material_fills_after_research_within_limit():
     assert [c.subject_guid for c in cands] == [SG_A, SG_B, SG_D]
     assert cands[0].source == SOURCE_UNCONSUMED_RESEARCH
     assert cands[1].source == SOURCE_MATERIAL_CHANGE
+
+
+def test_instrument_record_due_outranks_material_change():
+    """Cadence-due InstrumentRecords sit between research and material (M2)."""
+    due = {
+        "subject_key": "HELD:AAA",
+        "next_eligible_at": (NOW - timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+    }
+    future = {
+        "subject_key": "WATCH:BBB",
+        "next_eligible_at": (NOW + timedelta(hours=6)).isoformat().replace("+00:00", "Z"),
+    }
+
+    def guid_for(sym: str) -> str | None:
+        return {"AAA": SG_B, "BBB": SG_C}.get(sym)
+
+    cands = select_subjects(
+        "cio",
+        limit=3,
+        now=NOW,
+        research_objects=[_ro("ro-a", SG_A)],
+        receipts=[],
+        material_changes=[_mc("ch-d", SG_D)],
+        instrument_records=[due, future],
+        guid_for_symbol=guid_for,
+    )
+    assert [c.subject_guid for c in cands] == [SG_A, SG_B, SG_D]
+    assert cands[0].source == SOURCE_UNCONSUMED_RESEARCH
+    assert cands[1].source == SOURCE_INSTRUMENT_RECORD
+    assert cands[1].source_id == "HELD:AAA"
+    assert cands[2].source == SOURCE_MATERIAL_CHANGE
 
 
 def test_respects_limit():

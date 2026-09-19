@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-19T15:15:00-04:00
-Measured at: origin/main tip d33f28ee8 (#1081–#1084 MERGED); served pin still 99c79ec17; release-write a981 PENDING
+as_of: 2026-09-19T16:13:00-04:00
+Measured at: served pin 4bafd6f83-main-exact-phase2-20260919-153247; #1086 MERGED; #1087 OPEN head 19d8264e4 (M2 writeback); soak_ready=YES streak=4; soft_unsupported_share=0.002; release-write request fadb526f2ce47469 PENDING
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -12,7 +12,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 
 | id | status | evidence | closure path | proof required |
 |---|---|---|---|---|
-| DARK-load-by-subject-schedule | PARTIAL | enqueue_instrument_wakes on main (`7bdbcc760`); served pin still pre-promote | Promote tip + unattended cycle | OBSERVED record_found>0 unattended |
+| DARK-load-by-subject-schedule | PARTIAL→CLOSING | [VERIFIED] served pin consult record_found=5 unattended; wake_ir_* jobs running; M5 still CANDIDATE (skipped_cadence=0 until #1087 stamp+not-due evidence) | Merge+promote #1087 | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
 | DARK-bitemporal-m2-substrate | PARTIAL | schema v2 + CIOEnvelopeIntegrator on :55432; 211 correctness tests; EXPLAIN Index Scan fact_valid_spgist; production :5432 NOT applied | Organic wake schedule + operator shadow cutover grant | OBSERVED unattended write from served |
 | DARK-OUTCOME-settlement | PARTIAL | AEC cycle calls `evaluate_commitment` → CommitmentOutcome@v1 | Organic observer + served schedule | OBSERVED CONFIRMED/REFUTED |
 | DARK-AgentView-producer | PARTIAL | AEC cycle calls `produce_agent_view_v1` (2026-09-19); shadow cortex also produces | Schedule cycle / wake load | OBSERVED from served |
@@ -21,11 +21,11 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-hermes_advisory_event_enqueue | KNOWN DARK · PROPOSED RETIRE | AGENTS research table; automatic writer is librarian backlog loop | Operator grant on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row or wired consumer |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | PARTIAL | **#1082 MERGED** `db114592b` on main; not served | Promote tip | live hold receipt from CURRENT |
-| PARTIAL-bridge-pin-soak | PARTIAL | soak ledger 1 obs @ 99c79ec17; #1081–#1083 MERGED | release-write + promote + ≥3 matching obs | soak_ready=YES |
+| PARTIAL-telegram-CIO-stance | PARTIAL | **#1082 MERGED**; served pin 4bafd6f83 includes tip lineage | Observe live hold receipt from CURRENT | live hold receipt from CURRENT |
+| PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=4 on tip 4bafd6f83 @ 2026-09-19T20:02:08Z | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | PARTIAL | code on #1081; flag off | Flag on served + organic thin answer | receipt spilled_to/free climb |
-| PARTIAL-soft-share-live-SLO | PARTIAL | [VERIFIED] 19:15Z soft_unsupported_share=0.22 FAIL (risk_agent 0.913 stored rows) | Promote #1081 confidence fix + new agent rows | SLO ok on post-promote window |
-| PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 19:15Z M1/M2/M5 NOT_OBSERVED; M3 CANDIDATE; M4 PARTIAL @ pin 99c79ec17 | Promote + organic proofs | all five OBSERVED |
+| PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
+| PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 17:01Z M1 OBSERVED; M2 NOT_OBSERVED; M3 OBSERVED (wake_turn_effects with/without); M4 PARTIAL soak YES; M5 intermittent OBSERVED/CANDIDATE by cycle | Promote tip 6d577026f + organic M2 writeback | all five OBSERVED |
 | PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL | **#1083 MERGED**; cycle on main; not served | Promote + schedule/notify | cycle apply receipt from CURRENT |
 | PARTIAL-memory-four-spines | PARTIAL | spines on main via #1083; not served | Promote + wake load | wake reads spines from CURRENT |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
@@ -64,4 +64,19 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - Served CURRENT still `99c79ec17…` — promote blocked on release-write request `a981abde177d13da` PENDING
 - Soft-share FAIL 0.22 (stored risk_agent confidence rows); M1/M2/M5 NOT_OBSERVED
 - No production bitemporal apply
+
+## 2026-09-19T16:13 ET — post-promote soak + #1087 M2
+
+- Served pin `4bafd6f83-main-exact-phase2-20260919-153247`
+- soak_ready=YES streak=4; soft_unsupported_share=0.002
+- M1 OBSERVED (field_changes next_eligible_at, cc_narrative via wake_dispatcher_log)
+- #1087 OPEN `19d8264e4` — critique→InstrumentRecord writeback + instrument_record_due selection + consult instrument_enqueue stamp
+- release-write remote request `fadb526f2ce47469` PENDING (promote after #1087 merge)
+- No production bitemporal apply on :5432
+
+## 2026-09-19T17:01 ET — M3 bar + #1087 merge
+
+- #1087 MERGED `6d577026f`; tip not yet promoted (release-write pending)
+- M3 reporter now requires `turn_changed_decision` + differing with/without `next_research_question` → OBSERVED on HELD:SCHD @ 2026-09-08
+- M5 was OBSERVED @ 20:55Z consult then CANDIDATE @ 21:00Z (cycle variance) — still PARTIAL until stable
 

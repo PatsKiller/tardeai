@@ -56,8 +56,11 @@ TERMINAL_WAKE = frozenset({
 _SELECTION_SOURCE_TO_KIND = {
     "unconsumed_research": "research_object",
     "material_change": "material_change",
+    "instrument_record_due": "instrument_record",
 }
-_WAKE_SOURCE_KINDS = frozenset(SOURCE_KINDS) | frozenset({"material_change"})
+_WAKE_SOURCE_KINDS = frozenset(SOURCE_KINDS) | frozenset(
+    {"material_change", "instrument_record"}
+)
 
 
 def _normalize_selection(selection: Any) -> dict[str, Any] | None:
@@ -1016,6 +1019,42 @@ class WakeEngine:
                 influence_source_ids=list(wake["memory_fact_ids"]),
             )
             receipts.append(erec)
+
+        # M2: critique-mediated next_research_question must land on the
+        # InstrumentRecord, not only on the AgentView. Prefer selection
+        # source_id when the selector picked instrument_record_due.
+        if judgment:
+            try:
+                from scripts.lib.critique_question_writeback import (
+                    apply_critique_question_writeback,
+                )
+
+                sel = selection_meta if isinstance(selection_meta, dict) else {}
+                wb = apply_critique_question_writeback(
+                    subject_guid=subject_guid,
+                    selection=sel,
+                    critique=(judgment or {}).get("critique"),
+                    author=(judgment or {}).get("author"),
+                    unattended=True,
+                )
+                wake["provenance"]["critique_question_writeback"] = {
+                    "applied": wb.get("applied"),
+                    "reason": wb.get("reason"),
+                    "subject_key": wb.get("subject_key"),
+                    "before": wb.get("before"),
+                    "after": wb.get("after"),
+                    "critique_verdict": wb.get("critique_verdict"),
+                    "critique_id": wb.get("critique_id"),
+                }
+                if wb.get("applied"):
+                    wake["provenance"]["policy_decisions"].append(
+                        "l3_critique_question_writeback"
+                    )
+            except Exception as exc:  # noqa: BLE001 — fail-soft
+                wake["provenance"]["critique_question_writeback"] = {
+                    "applied": False,
+                    "reason": f"{type(exc).__name__}: {exc}",
+                }
 
         wake["receipts_emitted"] = [r["receipt_id"] for r in receipts]
         wake["lifecycle_state"] = "ACTED" if decision.get("act") else (

@@ -320,14 +320,33 @@ def main(argv: list[str] | None = None):
         from datetime import datetime as _dt, timezone as _tz
         _p = _PROJECT / "data" / "cio" / "wake_record_consult.json"
         _p.parent.mkdir(parents=True, exist_ok=True)
-        _p.write_text(_json.dumps({
+        # Stamp instrument-enqueue cadence skips into the consult artifact.
+        # enqueue_instrument_wakes honors next_eligible_at BEFORE a PENDING wake
+        # exists, so those skips never appear in subject_decisions /
+        # skipped_cadence_not_due. Without this stamp M5 stays CANDIDATE forever
+        # while disposition honor is real at the enqueue gate.
+        _ie = result.get("instrument_enqueue") or {}
+        _ie_skipped = int(_ie.get("skipped_cadence_count") or 0)
+        _payload = {
             "schema": "WakeRecordConsult@v1",
             "authority": "READ_ONLY_ADVISORY",
             "as_of": _dt.now(_tz.utc).replace(microsecond=0).isoformat(),
             "unattended": True,
             "entrypoint": "cron: */5 * * * * cio_wake_dispatch_entrypoint.py",
             **consult,
-        }, indent=2, default=str) + "\n", encoding="utf-8")
+            "instrument_enqueue": {
+                "enqueued": len(_ie.get("enqueued") or []),
+                "skipped_cadence_count": _ie_skipped,
+                "skipped_cadence": list(_ie.get("skipped_cadence") or [])[:20],
+                "skipped_dedup": len(_ie.get("skipped_dedup") or []),
+            },
+            "instrument_enqueue_skipped_cadence": _ie_skipped,
+        }
+        _p.write_text(_json.dumps(_payload, indent=2, default=str) + "\n", encoding="utf-8")
+        # Append-only consult history for M5 (latest json alone flickers).
+        _hist = _p.with_suffix(".jsonl")
+        with _hist.open("a", encoding="utf-8") as _fh:
+            _fh.write(_json.dumps(_payload, sort_keys=True, default=str) + "\n")
     except Exception:
         log.exception("record_consult artifact write failed (fail-soft)")
 

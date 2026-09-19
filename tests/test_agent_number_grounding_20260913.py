@@ -166,6 +166,67 @@ def test_report_summarises_stored_checks_by_agent():
     assert "steph" not in rep["agents"]
 
 
+def test_report_drops_stored_confidence_tokens_from_soft_share():
+    """Pre-exemption risk_agent rows listed 0.85/0.95; current policy exempts them."""
+    S = _load_report_script()
+    rows = [
+        (
+            "risk_agent",
+            {
+                "number_grounding": {
+                    "verdict": "soft_unsupported",
+                    "unsupported": ["0.85", "0.95"],
+                }
+            },
+        ),
+        (
+            "risk_agent",
+            {
+                "number_grounding": {
+                    "verdict": "soft_unsupported",
+                    "unsupported": ["0.85", "4.3%", "$1.66"],
+                }
+            },
+        ),
+    ]
+    rep = S.summarize(rows)
+    assert rep["agents"]["risk_agent"]["soft_unsupported"] == 1
+    assert rep["soft_unsupported_share"] == 0.5
+    tops = dict(rep["agents"]["risk_agent"]["top_unsupported"])
+    assert "0.85" not in tops and "0.95" not in tops
+    assert tops.get("4.3%") == 1 and tops.get("$1.66") == 1
+
+
+def test_report_does_not_inflate_soft_share_from_stale_grounded_residuals():
+    """Pre-soft_unsupported schema: grounded + unsupported list. Not soft_flag."""
+    S = _load_report_script()
+    rows = [
+        (
+            "maria",
+            {
+                "number_grounding": {
+                    "verdict": "grounded",
+                    "unsupported": ["$45,600", "4.3%"],
+                }
+            },
+        ),
+        (
+            "maria",
+            {
+                "number_grounding": {
+                    "verdict": "soft_unsupported",
+                    "unsupported": ["$1.66"],
+                }
+            },
+        ),
+    ]
+    rep = S.summarize(rows)
+    assert rep["soft_unsupported"] == 1
+    assert rep["soft_unsupported_share"] == 0.5
+    assert rep["stale_grounded_residual"] == 1
+    assert rep["agents"]["maria"]["stale_grounded_residual"] == 1
+
+
 def test_missing_prompt_text_is_reported_not_guessed():
     p = _parsed("Price $412.50, target $520, up 27.3%.")
     out, rep = G.apply_number_grounding(p, "", mode_override="enforce")
