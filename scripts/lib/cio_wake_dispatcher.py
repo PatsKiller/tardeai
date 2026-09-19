@@ -143,6 +143,9 @@ class CIOWakeDispatcher:
         """
         # Goal/event secondary path (never replaces event-bus claim authority)
         goal_enqueue = self.enqueue_goal_wakes(max_new=max_dispatches)
+        # M5 path: enqueue instrument-subject wakes so load-by-subject has a key.
+        # Goal wakes alone leave subject_resolved=0 / record_found=0 forever.
+        instrument_enqueue = self.enqueue_instrument_wakes(max_new=max_dispatches)
 
         # Recover expired leases first
         recovered = self.wake_store.recover_expired_leases(
@@ -380,6 +383,7 @@ class CIOWakeDispatcher:
             "skipped": skipped,
             "errors": errors,
             "goal_enqueue": goal_enqueue,
+            "instrument_enqueue": instrument_enqueue,
         }
 
     # ── Goal-sourced wakes (WS2) ─────────────────────────────────────────
@@ -626,6 +630,120 @@ class CIOWakeDispatcher:
             except Exception as exc:
                 result["errors"].append({"goal_id": goal_id, "error": str(exc)})
 
+        return result
+
+    def enqueue_instrument_wakes(
+        self,
+        max_new: int = 5,
+        *,
+        record_store: Any = None,
+        now: Optional[datetime] = None,
+    ) -> dict[str, Any]:
+        """Enqueue NEW_RUN wakes that carry an InstrumentRecord subject_key.
+
+        Closes the M5 gap where goal wakes alone always report no_subject /
+        record_found=0. Uses existing InstrumentRecordStore — never invents
+        subjects. Cadence: skip when next_eligible_at is still in the future.
+        subject_key lives in context (wake replay stores context only).
+        """
+        result: dict[str, Any] = {
+            "enqueued": [],
+            "skipped_cadence": [],
+            "skipped_dedup": [],
+            "errors": [],
+        }
+        try:
+            if record_store is None:
+                from scripts.lib.cio_instrument_record import InstrumentRecordStore
+                record_store = InstrumentRecordStore()
+            records = list(record_store.all() or [])
+        except Exception as exc:
+            result["errors"].append(str(exc))
+            return result
+
+        when = now or datetime.now(timezone.utc)
+        kind_rank = {"HELD": 0, "WATCH": 1, "EXIT": 2, "SECTOR": 3, "SLEEVE": 4}
+
+        def _eligible(rec: dict[str, Any]) -> bool:
+            raw = rec.get("next_eligible_at")
+            if not raw:
+                return True
+            try:
+                dt = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt <= when
+            except Exception:
+                return True
+
+        candidates = [r for r in records if r.get("subject_key") and _eligible(r)]
+        candidates.sort(
+            key=lambda r: (
+                kind_rank.get(str(r.get("subject_key") or "").split(":", 1)[0].upper(), 9),
+                str(r.get("subject_key") or ""),
+            )
+        )
+
+        enqueued_n = 0
+        hour_bucket = when.strftime("%Y%m%d%H")
+        for rec in candidates:
+            if enqueued_n >= max_new:
+                break
+            sk = str(rec["subject_key"])
+            # Stable id: one instrument wake per subject per hour.
+            wake_job_id = f"wake_ir_{sk.replace(':', '_')}_{hour_bucket}"
+            try:
+                existing = self.wake_store.get_wake_job(wake_job_id)
+                if existing is not None:
+                    result["skipped_dedup"].append({
+                        "subject_key": sk,
+                        "wake_job_id": wake_job_id,
+                        "detail": "wake_job_exists",
+                    })
+                    continue
+                payload = {
+                    "wake_job_id": wake_job_id,
+                    "trigger_type": "SCHEDULE_DUE",
+                    "trigger_ref": sk,
+                    "trigger_hash": hashlib.sha256(
+                        f"ir:{sk}:{hour_bucket}".encode()
+                    ).hexdigest()[:16],
+                    "reason_codes": ["SCHEDULE_DUE"],
+                    "required_domains": ["portfolio"],
+                    "wake_intent": "NEW_RUN",
+                    "idempotency_key": f"ir:{sk}:{hour_bucket}",
+                    "source_snapshot_id": "",
+                    # Resolve path reads context.subject_key (wake store replay).
+                    "context": {
+                        "subject_key": sk,
+                        "source": "instrument_record_cadence",
+                        "notify_priority": rec.get("notify_priority"),
+                        "next_research_question": rec.get("next_research_question"),
+                    },
+                }
+                self.wake_store.enqueue(payload, actor_id="cio_wake_dispatcher")
+                result["enqueued"].append({
+                    "wake_job_id": wake_job_id,
+                    "subject_key": sk,
+                })
+                enqueued_n += 1
+            except ValueError as exc:
+                msg = str(exc).lower()
+                if "already exists" in msg or "idempoten" in msg:
+                    result["skipped_dedup"].append({"subject_key": sk, "detail": str(exc)})
+                else:
+                    result["errors"].append({"subject_key": sk, "error": str(exc)})
+            except Exception as exc:
+                result["errors"].append({"subject_key": sk, "error": str(exc)})
+
+        # Count cadence skips for evidence (records present but not due).
+        skipped_cadence = [
+            str(r.get("subject_key"))
+            for r in records
+            if r.get("subject_key") and not _eligible(r)
+        ]
+        result["skipped_cadence"] = skipped_cadence[:20]
+        result["skipped_cadence_count"] = len(skipped_cadence)
         return result
 
     def mark_in_flight(self, wake_job_id: str) -> bool:
