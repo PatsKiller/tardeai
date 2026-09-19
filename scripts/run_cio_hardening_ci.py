@@ -1403,6 +1403,7 @@ GATES = [
         "release_pin_and_validator",
         [
             "tests/test_release_pin_and_validator.py",
+            "tests/test_record_bridge_pin_soak.py",
         ],
     ),
     (
