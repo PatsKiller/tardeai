@@ -19,6 +19,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA = "MaturityBarM1M5Report@v1"
+NO_CONSUMER_REASON = (
+    "operator maturity report; stdout/JSON is the consumer until a CC surface "
+    "or scheduled digest imports it"
+)
 ROOT = Path(__file__).resolve().parents[1]
 
 

@@ -23,6 +23,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 SCHEMA = "BridgePinSoakObservation@v1"
+NO_CONSUMER_REASON = (
+    "operator/promote soak ledger; append-only JSONL is the consumer; "
+    "scheduled lane pending after streak≥3 proof"
+)
 DEFAULT_SOAK_N = 3
 
 
