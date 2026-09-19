@@ -186,6 +186,48 @@ def test_hits_cap_twenty_oldest_drop(tmp_path: Path):
     assert doc["hits"][-1]["subjects"] == ["SYM:20"]
 
 
+def test_hits_cap_prefers_persisted_over_research_only_flood(tmp_path: Path):
+    """Zero-persist research noise must not erase M1 field-change evidence."""
+    from scripts.lib.wake_research_persist import trim_hits
+
+    p = tmp_path / "wake_research_persist.json"
+    write_cycle(
+        p,
+        _hit_cycle(
+            as_of="2026-09-19T15:46:00+00:00",
+            subject="HELD:BAH",
+            research_called=1,
+            persisted=1,
+        ),
+    )
+    for i in range(HITS_CAP):
+        write_cycle(
+            p,
+            _hit_cycle(
+                as_of=f"2026-09-19T16:{i:02d}:00+00:00",
+                subject=f"EXIT:NOISE{i}",
+                research_called=5,
+                persisted=0,
+            ),
+        )
+    doc = load_document(p)
+    assert len(doc["hits"]) == HITS_CAP
+    persisted_hits = [h for h in doc["hits"] if int(h.get("persisted") or 0) >= 1]
+    assert persisted_hits, "persist evidence must survive research-only flood"
+    assert persisted_hits[0]["subjects"] == ["HELD:BAH"]
+    # Direct trim contract: one persist + many zeros keeps the persist.
+    mixed = [
+        {"as_of": "t0", "persisted": 1, "subjects": ["KEEP"]},
+        *[{"as_of": f"t{i}", "persisted": 0, "subjects": [f"N{i}"]} for i in range(25)],
+    ]
+    trimmed = trim_hits(mixed, cap=20)
+    assert len(trimmed) == 20
+    assert any(int(h.get("persisted") or 0) >= 1 for h in trimmed)
+    assert trimmed[0]["subjects"] == ["KEEP"] or any(
+        h.get("subjects") == ["KEEP"] for h in trimmed
+    )
+
+
 def test_legacy_load_no_throw_hits_empty(tmp_path: Path):
     p = tmp_path / "wake_research_persist.json"
     legacy = _idle_cycle(as_of="2026-09-01T19:19:57+00:00")

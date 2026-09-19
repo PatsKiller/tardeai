@@ -1204,6 +1204,23 @@ class WakeEngine:
                     "why_unresolved_by_research": "research selected this subject as unconsumed",
                     "materiality_basis": str(selection_meta.get("source") or "unconsumed_research"),
                 }
+            elif kind == "instrument_record" and sid:
+                # M2 path: instrument_record_due is the primary scheduled
+                # selector for cognition writeback. Skipping it left L3 dark on
+                # every IR-due wake even with WAKE_L3_* on (measured 2026-09-19).
+                question = {
+                    "present": True,
+                    "question_text": (
+                        f"The InstrumentRecord for {sid} is due for review. "
+                        f"What should the next research question be, and what "
+                        f"would falsify the standing thesis?"
+                    ),
+                    "why_unresolved_by_research": (
+                        "instrument_record next_eligible_at is due; critique may "
+                        "revise next_research_question"
+                    ),
+                    "materiality_basis": "instrument_record_due",
+                }
         if question is None:
             wake["provenance"]["policy_decisions"].append("l3_skipped_no_material_question")
             return None

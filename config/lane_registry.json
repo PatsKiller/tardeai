@@ -1201,7 +1201,7 @@
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-state/persistent_wake/state/wakes.jsonl"
       },
-      "note": "The L1/L2/L3 wake spine. Every maturity claim about grounded cognition rests on this lane, and it was undeclared: nothing would have reported it silent. The signal is the durable wake store, not the cron log \u2014 a wake that refuses still appends a row, so the file advancing proves the lane ran even on a slot that produced no judgment."
+      "note": "The L1/L2/L3 wake spine. Every maturity claim about grounded cognition rests on this lane, and it was undeclared: nothing would have reported it silent. The signal is the durable wake store, not the cron log \u2014 a wake that refuses still appends a row, so the file advancing proves the lane ran even on a slot that produced no judgment. 2026-09-19: WAKE_L3_JUDGMENT=1 WAKE_L3_ALLOW_LIVE_PROVIDER=1 on this hourly line (actual L3 consumer)."
     },
     {
       "lane_id": "governed-research-producer",
