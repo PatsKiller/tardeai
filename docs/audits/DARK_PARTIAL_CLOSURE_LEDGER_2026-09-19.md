@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-19T16:13:00-04:00
-Measured at: served pin 4bafd6f83-main-exact-phase2-20260919-153247; #1086 MERGED; #1087 OPEN head 19d8264e4 (M2 writeback); soak_ready=YES streak=4; soft_unsupported_share=0.002; release-write request fadb526f2ce47469 PENDING
+as_of: 2026-09-19T17:35:00-04:00
+Measured at: served pin 18a41066d-main-exact-phase2-20260919-171754 (PROMOTE OK); #1087/#1089 MERGED; M1/M3/M5 OBSERVED; M2 NOT_OBSERVED (no wake_critique_question.jsonl; DeepSeek HTTP 402 on author path); M4 PARTIAL soak streak=4; soft_unsupported_share=0.002; l3_judgment_author registered+synced
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -12,7 +12,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 
 | id | status | evidence | closure path | proof required |
 |---|---|---|---|---|
-| DARK-load-by-subject-schedule | PARTIAL→CLOSING | [VERIFIED] served pin consult record_found=5 unattended; wake_ir_* jobs running; M5 still CANDIDATE (skipped_cadence=0 until #1087 stamp+not-due evidence) | Merge+promote #1087 | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
+| DARK-load-by-subject-schedule | CLOSED | [VERIFIED] pin 18a41066d consult instrument_enqueue_skipped_cadence=9; M5 OBSERVED | #1087+#1089 promote | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
 | DARK-bitemporal-m2-substrate | PARTIAL | schema v2 + CIOEnvelopeIntegrator on :55432; 211 correctness tests; EXPLAIN Index Scan fact_valid_spgist; production :5432 NOT applied | Organic wake schedule + operator shadow cutover grant | OBSERVED unattended write from served |
 | DARK-OUTCOME-settlement | PARTIAL | AEC cycle calls `evaluate_commitment` → CommitmentOutcome@v1 | Organic observer + served schedule | OBSERVED CONFIRMED/REFUTED |
 | DARK-AgentView-producer | PARTIAL | AEC cycle calls `produce_agent_view_v1` (2026-09-19); shadow cortex also produces | Schedule cycle / wake load | OBSERVED from served |
@@ -25,9 +25,9 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=4 on tip 4bafd6f83 @ 2026-09-19T20:02:08Z | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | PARTIAL | code on #1081; flag off | Flag on served + organic thin answer | receipt spilled_to/free climb |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
-| PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 17:01Z M1 OBSERVED; M2 NOT_OBSERVED; M3 OBSERVED (wake_turn_effects with/without); M4 PARTIAL soak YES; M5 intermittent OBSERVED/CANDIDATE by cycle | Promote tip 6d577026f + organic M2 writeback | all five OBSERVED |
-| PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL | **#1083 MERGED**; cycle on main; not served | Promote + schedule/notify | cycle apply receipt from CURRENT |
-| PARTIAL-memory-four-spines | PARTIAL | spines on main via #1083; not served | Promote + wake load | wake reads spines from CURRENT |
+| PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 21:20Z pin 18a41066d: M1/M3/M5 OBSERVED; M2 NOT_OBSERVED (writeback artifact absent; author HTTP 402); M4 PARTIAL soak=4 | Organic L3 critique→NRQ writeback unattended | all five OBSERVED |
+| PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL→CLOSING | **#1083 MERGED**; code on served pin 18a41066d; cycle schedule/notify still thin | Observe cycle apply receipt from CURRENT | cycle apply receipt from CURRENT |
+| PARTIAL-memory-four-spines | PARTIAL→CLOSING | spines on served pin 18a41066d via #1083 | Observe wake spine read receipt | wake reads spines from CURRENT |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
 | PARTIAL-narrator-unprompted-telegram | PARTIAL | aec_narrator renders brief; cycle dry-runs; live notify is explicit-flag only | Schedule + --notify under telegram grant + COVERS | unprompted brief delivered |
 | DARK-cio-runs-truncated-tail | CLOSED | incomplete last line blocked create_run; wake errors=5 | archive + cio_run harden 7ea5835f9 | repair receipt + test |
@@ -80,3 +80,9 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - M3 reporter now requires `turn_changed_decision` + differing with/without `next_research_question` → OBSERVED on HELD:SCHD @ 2026-09-08
 - M5 was OBSERVED @ 20:55Z consult then CANDIDATE @ 21:00Z (cycle variance) — still PARTIAL until stable
 
+## 2026-09-19T17:35 ET — promote 18a41066d + L3 author registry
+
+- PROMOTE OK tip `18a41066d` (merge #1089) → `18a41066d-main-exact-phase2-20260919-171754`; telegram cwd matches
+- M1/M3/M5 OBSERVED; soft_unsupported_share=0.002 SLO PASS; soak streak=4
+- M2 still NOT_OBSERVED: `data/cio/wake_critique_question.jsonl` absent; persistent_wake log shows `llm_lane_unregistered process_id=l3_judgment_author` and DeepSeek `HTTP_402` on curation/author path
+- Fix landed on branch: register `l3_judgment_author` in `config/llm_process_registry.json` + `sync_cio_process_caps.py`; DB sync applied (cost=0.25 soft=48). Does not invent WAKE_L3 grant; does not clear provider 402
