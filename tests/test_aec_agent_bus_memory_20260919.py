@@ -72,4 +72,6 @@ def test_cycle_dry_run_no_write(tmp_path, monkeypatch):
     out = cycle.run_cycle(subject_key="WATCH:SCHG", apply=False)
     assert out["apply"] is False
     assert len(out["events"]) == 3
+    assert out.get("agent_view", {}).get("schema_version") == "AgentView@v1"
+    assert out.get("commitment", {}).get("schema_version") == "AGENT_COMMITMENT@v1"
     assert not (tmp_path / "bus.jsonl").exists()

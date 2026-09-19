@@ -30,12 +30,15 @@ if str(ROOT / "scripts") not in sys.path:
 
 from lib import aec_agent_bus as bus  # noqa: E402
 from lib import aec_memory_spines as mem  # noqa: E402
+from lib.agent_view_v1 import persist_allowed, produce_agent_view_v1  # noqa: E402
+from lib.agent_commitment_v1 import mint_commitment_from_view  # noqa: E402
 
 
 def run_cycle(*, subject_key: str | None, apply: bool) -> dict:
     snap = mem.load()
     relevant = mem.retrieve_relevant(snap, subject_key=subject_key)
     recent = bus.read_recent(limit=20)
+    subject = subject_key or "PORTFOLIO"
 
     # CIO — infrastructure / automation posture (placeholder from memory only)
     cio_summary = (
@@ -51,29 +54,61 @@ def run_cycle(*, subject_key: str | None, apply: bool) -> dict:
         dry_run=not apply,
     )
 
-    # Advisor — thesis / opportunity (cognition only)
-    advisor_claim = f"Advisor reviewed subject={subject_key or 'PORTFOLIO'} against strategic spine"
+    # Advisor — AgentView@v1 (existing producer) + optional commitment
+    advisor_claim = f"Advisor reviewed subject={subject} against strategic spine"
     fp = mem.claim_fingerprint(advisor_claim)
     repeated = mem.seen_claim(snap, fp)
+    view_payload: dict = {}
+    commitment_payload: dict | None = None
     if repeated:
         advisor_summary = f"SUPPRESSED_REPEAT fp={fp}"
     else:
-        advisor_summary = advisor_claim
+        view = produce_agent_view_v1(
+            subject=subject,
+            summary=advisor_claim,
+            citations=["aec_memory:strategic", "aec_agent_bus:recent"],
+            confidence=0.62,
+            source_sha="aec_cycle",
+            falsifier="strategic spine gains a contradicting fact within 7d",
+            provenance_class="T",
+        )
+        view_payload = view.to_dict()
+        advisor_summary = f"{view.stance}: {advisor_claim}"
+        if persist_allowed(view):
+            commitment = mint_commitment_from_view(
+                view.to_dict(),
+                due_at=view.produced_at,
+                horizon="7d",
+                falsifier=view.falsifier,
+            )
+            commitment_payload = commitment.to_dict()
         if apply:
             mem.append_fact(
                 "learning",
-                {"kind": "recommendation", "claim_fp": fp, "text": advisor_claim, "subject_key": subject_key},
+                {
+                    "kind": "agent_view",
+                    "claim_fp": fp,
+                    "text": advisor_claim,
+                    "subject_key": subject_key,
+                    "view_id": view.view_id,
+                    "stance": view.stance,
+                },
             )
             mem.append_fact(
                 "strategic",
-                {"kind": "thesis_touch", "subject_key": subject_key, "note": "cycle touch"},
+                {"kind": "thesis_touch", "subject_key": subject_key, "note": "cycle touch", "view_id": view.view_id},
             )
     adv_ev = bus.publish(
         agent_id="advisor_agent",
         topic="cycle.advisor.thesis",
         summary=advisor_summary,
         subject_key=subject_key,
-        payload={"claim_fp": fp, "suppressed": repeated},
+        payload={
+            "claim_fp": fp,
+            "suppressed": repeated,
+            "agent_view": view_payload or None,
+            "commitment": commitment_payload,
+        },
         dry_run=not apply,
     )
 
@@ -97,6 +132,8 @@ def run_cycle(*, subject_key: str | None, apply: bool) -> dict:
         "subject_key": subject_key,
         "memory_relevant": {k: len(v) for k, v in relevant.items()},
         "events": [json.loads(cio_ev.to_json()), json.loads(adv_ev.to_json()), json.loads(narr_ev.to_json())],
+        "agent_view": view_payload or None,
+        "commitment": commitment_payload,
         "authority": "READ_ONLY_ADVISORY",
     }
 

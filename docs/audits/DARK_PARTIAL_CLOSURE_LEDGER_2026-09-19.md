@@ -14,8 +14,8 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | VERIFY→likely PARTIAL | `cio_wake_dispatch_entrypoint.py` loads by subject; AGENTS §13.4 still says no scheduled wake — re-measure cron/timer | Confirm lane_registry + unattended run | OBSERVED wake log + record load |
 | DARK-OUTCOME-settlement | DARK | checkpoints exist; settlement dark | Wire OUTCOME→lesson producer | M2/M5 class artifact |
-| DARK-AgentView-producer | DARK | type registered, no producer | W4 producer on Advisor path | row written + Narrator sees via bus |
-| DARK-AGENT_COMMITMENT-producer | DARK | type registered, no producer | W4 with falsifier required | commitment row + checkpoint_id |
+| DARK-AgentView-producer | PARTIAL | AEC cycle calls `produce_agent_view_v1` (2026-09-19); shadow cortex also produces | Schedule cycle / wake load | OBSERVED from served |
+| DARK-AGENT_COMMITMENT-producer | PARTIAL | AEC cycle mints via `mint_commitment_from_view` when critic_pass | Persist commitment store + OUTCOME | OBSERVED settlement |
 | DARK-librarian-index | DARK | grading law tested; index file absent | Create index + scheduled grade | file exists + job output_signal |
 | DARK-hermes_advisory_event_enqueue | KNOWN DARK | AGENTS research table | Wire or RETIRE with reason | consumer or RETIRED row |
 | DARK-KNOWN_DARK-cio_identity_resolver | KNOWN_DARK | test_identity_memory_module_wiring | Wire to decision path or retire | removed from KNOWN_DARK |
