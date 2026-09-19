@@ -98,3 +98,27 @@ def test_cycle_dry_run_no_write(tmp_path, monkeypatch):
     out2 = cycle.run_cycle(subject_key="WATCH:SCHG", apply=False, observe={"confirmed": True})
     assert out2["outcome"]["outcome"] == "CONFIRMED"
     assert not (tmp_path / "bus.jsonl").exists()
+
+
+def test_cycle_apply_propagates_to_bitemporal_integrator(tmp_path, monkeypatch):
+    """--apply must not hardcode bitemporal dry-run (isolated :55432 only)."""
+    monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "mem.json"))
+    seen: dict = {}
+
+    def _fake_integrate(envelope, *, apply=False):
+        seen["apply"] = apply
+        return {
+            "schema": "CIOEnvelopeIntegration@v1",
+            "dry_run": not apply,
+            "authority": "READ_ONLY_ADVISORY",
+            "mbi_behavior": 0,
+        }
+
+    cycle = _load("aec_command_center_cycle_apply_prop", "scripts/aec_command_center_cycle.py")
+    monkeypatch.setattr(cycle, "integrate_wake_envelope", _fake_integrate)
+    out = cycle.run_cycle(subject_key="WATCH:SCHG", apply=True)
+    assert out["apply"] is True
+    assert seen.get("apply") is True
+    assert out["bitemporal"]["dry_run"] is False
+    assert (tmp_path / "bus.jsonl").exists()

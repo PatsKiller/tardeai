@@ -14,9 +14,9 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | CLOSED | [VERIFIED] pin 18a41066d consult instrument_enqueue_skipped_cadence=9; M5 OBSERVED | #1087+#1089 promote | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
 | DARK-bitemporal-m2-substrate | PARTIAL | schema v2 + CIOEnvelopeIntegrator on :55432; 211 correctness tests; EXPLAIN Index Scan fact_valid_spgist; production :5432 NOT applied | Organic wake schedule + operator shadow cutover grant | OBSERVED unattended write from served |
-| DARK-OUTCOME-settlement | PARTIAL | AEC cycle calls `evaluate_commitment` → CommitmentOutcome@v1 | Organic observer + served schedule | OBSERVED CONFIRMED/REFUTED |
-| DARK-AgentView-producer | PARTIAL | AEC cycle calls `produce_agent_view_v1` (2026-09-19); shadow cortex also produces | Schedule cycle / wake load | OBSERVED from served |
-| DARK-AGENT_COMMITMENT-producer | PARTIAL | AEC cycle mints via `mint_commitment_from_view` when critic_pass | Persist commitment store + OUTCOME | OBSERVED settlement |
+| DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] hand `--apply` cycle emitted CommitmentOutcome@v1 INSUFFICIENT_EVIDENCE; observe={confirmed:True} → CONFIRMED in hermetic test; learning spine stores commitment_outcome | Schedule unattended cycle + organic CONFIRMED/REFUTED | OBSERVED CONFIRMED/REFUTED |
+| DARK-AgentView-producer | PARTIAL→CLOSING | [VERIFIED] `--apply` cycle wrote AgentView@v1 on advisor bus event @ 2026-09-19T21:27:45Z | Unattended scheduled cycle | OBSERVED from served schedule |
+| DARK-AGENT_COMMITMENT-producer | PARTIAL→CLOSING | [VERIFIED] `--apply` minted AGENT_COMMITMENT@v1 cmt_df57fd… OPEN with falsifier; outcome evaluated | Unattended schedule + CONFIRMED/REFUTED | OBSERVED settlement |
 | DARK-librarian-index | CLOSED | [VERIFIED] persistent-state + CURRENT `research_source_index.json` ResearchSourceIndex@v1 n_sources=120 (mtime 2026-09-16) | — | file present on served path |
 | DARK-hermes_advisory_event_enqueue | KNOWN DARK · PROPOSED RETIRE | AGENTS research table; automatic writer is librarian backlog loop | Operator grant on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row or wired consumer |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
@@ -26,8 +26,8 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-quality-escalate-organic | PARTIAL | code on #1081; flag off | Flag on served + organic thin answer | receipt spilled_to/free climb |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 21:20Z pin 18a41066d: M1/M3/M5 OBSERVED; M2 NOT_OBSERVED (writeback artifact absent; author HTTP 402); M4 PARTIAL soak=4 | Organic L3 critique→NRQ writeback unattended | all five OBSERVED |
-| PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL→CLOSING | **#1083 MERGED**; code on served pin 18a41066d; cycle schedule/notify still thin | Observe cycle apply receipt from CURRENT | cycle apply receipt from CURRENT |
-| PARTIAL-memory-four-spines | PARTIAL→CLOSING | spines on served pin 18a41066d via #1083 | Observe wake spine read receipt | wake reads spines from CURRENT |
+| PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL→CLOSING | [VERIFIED] `--apply` from hub@18a41066d wrote cio/advisor/narrator bus events (3) | Unattended schedule + optional narrator --notify | cycle apply receipt from CURRENT |
+| PARTIAL-memory-four-spines | PARTIAL→CLOSING | [VERIFIED] aec_memory_spines.json strategic=1 learning=3 after `--apply`; relationship still empty (no approved sources) | Wake load + relationship grant | wake reads spines from CURRENT |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
 | PARTIAL-narrator-unprompted-telegram | PARTIAL | aec_narrator renders brief; cycle dry-runs; live notify is explicit-flag only | Schedule + --notify under telegram grant + COVERS | unprompted brief delivered |
 | DARK-cio-runs-truncated-tail | CLOSED | incomplete last line blocked create_run; wake errors=5 | archive + cio_run harden 7ea5835f9 | repair receipt + test |
@@ -86,3 +86,9 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - M1/M3/M5 OBSERVED; soft_unsupported_share=0.002 SLO PASS; soak streak=4
 - M2 still NOT_OBSERVED: `data/cio/wake_critique_question.jsonl` absent; persistent_wake log shows `llm_lane_unregistered process_id=l3_judgment_author` and DeepSeek `HTTP_402` on curation/author path
 - Fix landed on branch: register `l3_judgment_author` in `config/llm_process_registry.json` + `sync_cio_process_caps.py`; DB sync applied (cost=0.25 soft=48). Does not invent WAKE_L3 grant; does not clear provider 402
+
+## 2026-09-19T17:40 ET — AEC apply + bitemporal apply flag
+
+- Dry-run then `--apply` AEC cycle (advisory): bus events cio/advisor/narrator; spines strategic+learning written; AgentView + AGENT_COMMITMENT + CommitmentOutcome emitted
+- Found defect: `integrate_wake_envelope(..., apply=False)` hardcoded in cycle even when `--apply` — fixed to `apply=apply` (still isolated :55432; prod :5432 refused)
+- Narrator Telegram remains explicit-flag only (`notify_executive_brief(apply=False)` from cycle) — PARTIAL-narrator-unprompted-telegram unchanged
