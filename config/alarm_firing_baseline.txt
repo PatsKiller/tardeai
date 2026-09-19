@@ -133,7 +133,6 @@ scripts/system_health_alerts.py 1
 scripts/system_rollup_snapshot.py 1
 scripts/technicals_gap_backfill.py 1
 scripts/telegram_cio_summary.py 1
-scripts/telegram_command_handler.py 1
 scripts/telegram_reply_processor.py 1
 scripts/telegram_smart_alerts.py 1
 scripts/trade_ai_news_monitor.py 1

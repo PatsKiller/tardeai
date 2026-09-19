@@ -227,3 +227,13 @@ def test_gap_resolver_does_not_accept_a_demoted_result_as_proof():
     updates = [s for s, _ in cur.calls if s.startswith("UPDATE data_gap_registry")]
     assert len(updates) == 1 and "status = 'open'" in updates[0]
     assert "unverified numbers" in cur.calls[-1][1][0]
+
+def test_risk_score_decimals_are_not_soft_unsupported():
+    """risk_agent soft-share was 91% on tokens like 0.85 next to 'score'."""
+    report = G.check_grounding(
+        ["Risk score 0.85; probability 0.95 of mean-reversion."],
+        "Symbol: SCHG\nATR: 1.2\n",
+    )
+    assert report["unsupported"] == [], report
+    assert "0.85" not in report["unsupported"]
+    assert "0.95" not in report["unsupported"]
