@@ -20,6 +20,11 @@ from scripts.lib.autonomy_watchdog.model import (
     rollup,
 )
 from scripts.lib.autonomy_watchdog import telegram_system as TG
+
+try:  # same resolution order as telegram_system.send_system
+    import telegram_transport as _transport
+except ImportError:  # pragma: no cover - depends on sys.path shape
+    from scripts import telegram_transport as _transport
 from scripts import api_v3_maturity as api
 
 
@@ -108,11 +113,25 @@ def test_telegram_dedupe(root: Path, monkeypatch: pytest.MonkeyPatch):
         return {"ok": True, "result": {"message_id": 99}}, 200
 
     monkeypatch.setattr(TG, "_http_post", fake_post)
+    # send_system delivers through telegram_transport.deliver_text since the 2026-09-18
+    # audit, and that layer interdicts on PYTEST_CURRENT_TEST — so every send under pytest
+    # returns interdicted before dedupe is reached. Lift it for this test only: delivery is
+    # already faked via _http_post above, so no HTTP can leave. test_ci_never_sends and
+    # test_transport_interdicts_under_pytest keep the real control covered.
+    monkeypatch.setattr(_transport, "_interdicted", lambda: False)
     a = TG.send_system("hello", identity="system-heartbeat:2026-08-18", kind="daily_heartbeat", root=root, env=env)
     b = TG.send_system("hello", identity="system-heartbeat:2026-08-18", kind="daily_heartbeat", root=root, env=env)
     assert a["ok"] and a.get("message_id") == 99
     assert b.get("deduped") is True
     assert sent["n"] == 1
+
+
+def test_transport_interdicts_under_pytest():
+    """The control the dedupe test lifts must stay real: pytest alone interdicts delivery."""
+    assert _transport._interdicted() is True
+    out = _transport.deliver_text(token="x", chat_id="1", text="hello", parse_mode=None)
+    assert out.get("interdicted") is True
+    assert out.get("ok") is False
 
 
 def test_ci_never_sends(root: Path):
