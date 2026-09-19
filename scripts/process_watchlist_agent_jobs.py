@@ -3018,7 +3018,8 @@ def process_jobs(limit: int = 10):
         else:
             prompt = _build_prompt(agent, symbol, context["text"], note)
             prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
-            raw = _llm(prompt)
+            from lib.agent_flash_governance import task_for_agent
+            raw = _llm(prompt, task_type=task_for_agent(agent))
 
         # LLM/embed can run 90s+ — refresh DB before any writes.
         conn = _refresh_conn(conn)

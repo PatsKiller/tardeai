@@ -34,9 +34,17 @@ TASK_TO_PROCESS: dict[str, str] = {
     "sentiment": "watchlist_agent_flash_extract",
     "fast_summary": "watchlist_agent_flash_extract",
     "code_generation": "watchlist_agent_flash_extract",
+    "risk_review": "watchlist_risk_flash_narrative",
+    "steph_review": "watchlist_steph_flash_narrative",
+    "tax_review": "watchlist_risk_flash_narrative",
     "default": "watchlist_maria_flash_narrative",
 }
 ```
+
+**2026-09-19:** risk_agent, steph and tax_agent review calls in `process_watchlist_agent_jobs.py` pass
+`task_for_agent(agent)` (`AGENT_TO_TASK`). Before this they fell through to `default` and shared Maria's
+240/day pool, which Maria exhausts every weekday, so all three produced nothing from 2026-09-16. tax_agent
+has no registered pool and shares risk's. No cap was changed.
 
 ### Governance Methods
 
