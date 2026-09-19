@@ -21,10 +21,20 @@ from scripts.lib.autonomy_watchdog.model import (
 )
 from scripts.lib.autonomy_watchdog import telegram_system as TG
 
-try:  # same resolution order as telegram_system.send_system
-    import telegram_transport as _transport
-except ImportError:  # pragma: no cover - depends on sys.path shape
-    from scripts import telegram_transport as _transport
+
+def _transport_module():
+    """The transport send_system delivers through; skip if its deps are absent.
+
+    Imported lazily: a module-level import would pull in `requests` at collection
+    time and break CI jobs that install only pytest and pyyaml. importorskip is not
+    enough — the failing import is `requests`, nested inside telegram_transport, so
+    it propagates as an error instead of a skip.
+    """
+    try:
+        import telegram_transport
+    except ImportError as e:  # transport deps (requests) absent in a minimal CI job
+        pytest.skip(f"telegram_transport unavailable: {e}")
+    return telegram_transport
 from scripts import api_v3_maturity as api
 
 
@@ -118,7 +128,7 @@ def test_telegram_dedupe(root: Path, monkeypatch: pytest.MonkeyPatch):
     # returns interdicted before dedupe is reached. Lift it for this test only: delivery is
     # already faked via _http_post above, so no HTTP can leave. test_ci_never_sends and
     # test_transport_interdicts_under_pytest keep the real control covered.
-    monkeypatch.setattr(_transport, "_interdicted", lambda: False)
+    monkeypatch.setattr(_transport_module(), "_interdicted", lambda: False)
     a = TG.send_system("hello", identity="system-heartbeat:2026-08-18", kind="daily_heartbeat", root=root, env=env)
     b = TG.send_system("hello", identity="system-heartbeat:2026-08-18", kind="daily_heartbeat", root=root, env=env)
     assert a["ok"] and a.get("message_id") == 99
@@ -128,8 +138,9 @@ def test_telegram_dedupe(root: Path, monkeypatch: pytest.MonkeyPatch):
 
 def test_transport_interdicts_under_pytest():
     """The control the dedupe test lifts must stay real: pytest alone interdicts delivery."""
-    assert _transport._interdicted() is True
-    out = _transport.deliver_text(token="x", chat_id="1", text="hello", parse_mode=None)
+    transport = _transport_module()
+    assert transport._interdicted() is True
+    out = transport.deliver_text(token="x", chat_id="1", text="hello", parse_mode=None)
     assert out.get("interdicted") is True
     assert out.get("ok") is False
 
