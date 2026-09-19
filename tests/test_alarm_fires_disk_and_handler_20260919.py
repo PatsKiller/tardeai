@@ -16,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 COVERS = [
-    "scripts/weekly_disk_cleanup_notify.py:280",
+    "scripts/weekly_disk_cleanup_notify.py:285",
     "scripts/telegram_command_handler.py:103",
     "scripts/telegram_command_handler.py:793",
 ]
