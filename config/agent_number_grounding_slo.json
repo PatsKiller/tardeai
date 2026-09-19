@@ -1,0 +1,24 @@
+{
+  "schema": "AgentNumberGroundingSLO@v1",
+  "as_of": "2026-09-18",
+  "status": "PROPOSED",
+  "authority": "READ_ONLY_ADVISORY — operator ratifies floors; agent does not loosen enforce",
+  "mode_required": "enforce",
+  "windows": {
+    "days": 7
+  },
+  "floors": {
+    "max_ungrounded_share": 0.05,
+    "max_soft_unsupported_share": 0.15,
+    "min_results_for_slo": 20
+  },
+  "runtime_thresholds_env": {
+    "AGENT_NUMBER_GROUNDING_MIN_UNSUPPORTED": 2,
+    "AGENT_NUMBER_GROUNDING_MAX_SHARE": 0.20
+  },
+  "measure_command": "python3 scripts/report_agent_number_grounding.py --days 7 --json --check-slo",
+  "notes": [
+    "Live rate not measured by agents when DB secrets are hook-blocked.",
+    "Exit 0 when insufficient results (below min_results_for_slo) — report UNKNOWN, do not invent green."
+  ]
+}
