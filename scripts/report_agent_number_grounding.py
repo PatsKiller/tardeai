@@ -121,27 +121,83 @@ def fetch(days: int) -> list[tuple[str, str]]:
         conn.close()
 
 
+def evaluate_slo(report: dict[str, Any], slo_path: Path | None = None) -> dict[str, Any]:
+    """Compare a report to config/agent_number_grounding_slo.json. Pure."""
+    path = slo_path or (PROJ / "config" / "agent_number_grounding_slo.json")
+    slo = json.loads(path.read_text(encoding="utf-8"))
+    floors = slo.get("floors") or {}
+    min_n = int(floors.get("min_results_for_slo", 20))
+    n = int(report.get("results") or 0)
+    out: dict[str, Any] = {
+        "schema": "AgentNumberGroundingSLOEval@v1",
+        "slo_path": str(path),
+        "slo_status": slo.get("status"),
+        "results": n,
+        "min_results_for_slo": min_n,
+    }
+    if n < min_n:
+        out["verdict"] = "UNKNOWN"
+        out["reason"] = "insufficient_results"
+        out["ok"] = True  # do not invent red/green
+        return out
+    max_u = float(floors.get("max_ungrounded_share", 0.05))
+    max_s = float(floors.get("max_soft_unsupported_share", 0.15))
+    u = float(report.get("ungrounded_share") or 0.0)
+    s = float(report.get("soft_unsupported_share") or 0.0)
+    breaches = []
+    if u > max_u:
+        breaches.append(f"ungrounded_share {u:.4f} > {max_u}")
+    if s > max_s:
+        breaches.append(f"soft_unsupported_share {s:.4f} > {max_s}")
+    out["ungrounded_share"] = u
+    out["soft_unsupported_share"] = s
+    out["breaches"] = breaches
+    out["verdict"] = "PASS" if not breaches else "FAIL"
+    out["ok"] = not breaches
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--days", type=int, default=7)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument(
+        "--check-slo",
+        action="store_true",
+        help="exit 1 when SLO floors are breached (UNKNOWN if too few rows)",
+    )
+    ap.add_argument(
+        "--slo-config",
+        type=Path,
+        default=None,
+        help="override path to agent_number_grounding_slo.json",
+    )
     args = ap.parse_args()
     report = summarize(fetch(args.days))
     report["days"] = args.days
+    slo_eval = None
+    if args.check_slo:
+        slo_eval = evaluate_slo(report, args.slo_config)
+        report["slo"] = slo_eval
     if args.json:
         print(json.dumps(report, indent=2))
-        return 0
-    print(f"Agent number grounding, last {args.days} days: "
-          f"{report['ungrounded']}/{report['results']} ungrounded/demotion-bar "
-          f"({report['ungrounded_share']:.0%}); "
-          f"{report.get('soft_unsupported', 0)} soft_unsupported "
-          f"({report.get('soft_unsupported_share', 0):.0%})")
-    for a, v in report["agents"].items():
-        top = ", ".join(f"{t} x{n}" for t, n in v["top_unsupported"][:5]) or "none"
-        print(f"  {a:<12} {v['ungrounded']:>4}/{v['results']:<4} ungrounded ({v['ungrounded_share']:.0%}), "
-              f"soft {v.get('soft_unsupported', 0)}, demoted {v['demoted']}; top unsupported: {top}")
-    if not report["results"]:
-        print("  No checked results yet: the check writes its report as agent jobs complete.")
+    else:
+        print(f"Agent number grounding, last {args.days} days: "
+              f"{report['ungrounded']}/{report['results']} ungrounded/demotion-bar "
+              f"({report['ungrounded_share']:.0%}); "
+              f"{report.get('soft_unsupported', 0)} soft_unsupported "
+              f"({report.get('soft_unsupported_share', 0):.0%})")
+        for a, v in report["agents"].items():
+            top = ", ".join(f"{t} x{n}" for t, n in v["top_unsupported"][:5]) or "none"
+            print(f"  {a:<12} {v['ungrounded']:>4}/{v['results']:<4} ungrounded ({v['ungrounded_share']:.0%}), "
+                  f"soft {v.get('soft_unsupported', 0)}, demoted {v['demoted']}; top unsupported: {top}")
+        if not report["results"]:
+            print("  No checked results yet: the check writes its report as agent jobs complete.")
+        if slo_eval is not None:
+            detail = slo_eval.get("reason") or ", ".join(slo_eval.get("breaches") or ["ok"])
+            print(f"SLO: {slo_eval['verdict']} ({detail})")
+    if args.check_slo and slo_eval is not None and not slo_eval.get("ok", True):
+        return 1
     return 0
 
 

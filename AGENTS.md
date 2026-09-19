@@ -1,17 +1,23 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.2.3
+Policy-Version:      1.2.4
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
 Effective-Date:      2026-09-18
-Last-Reviewed:       2026-09-18T13:43:59-04:00
+Last-Reviewed:       2026-09-18T16:55:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          1.2.2
+Supersedes:          1.2.3
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**1.2.4 is ACTIVE from 2026-09-18.** A PATCH release: §10 documents that the default
+`TRADEAI_CURRENT_BOUND_UNITS` includes `cio-governed-bridge.service` (promote must re-resolve the
+bridge after CURRENT moves; observed 2026-09-18 pin drift vs portfolio-server). See
+`docs/ops/BRIDGE_PIN_ALIGNMENT.md`. Touches no §0/§2/§17 authority; rides
+`APPROVE_AGENTS_POLICY_1_2_0`.
 
 **1.2.3 is ACTIVE from 2026-09-18.** A MINOR release: it adds "What 2026-09-18 taught — Agent controls
 audit" (router write-gate gaps, prompt-injection PARTIAL ingress, failed-unit timer churn, alert
@@ -2252,11 +2258,13 @@ accumulates the divergence this document exists to remove.
 - One PR per finding, validation output quoted in the body.
 - **A push is not a deploy and a merge is not a deploy** — `AI_WORK_POLICY.md` §21, §27.
 - **`promote` restarts `portfolio-server` and the units in `TRADEAI_CURRENT_BOUND_UNITS` (default
-  `tradeai-health-agent.service`) — nothing else.** A long-lived process keeps the code it imported
-  at start. **After a deploy that changes desk or converse code, restart
-  `tradeai-cio-telegram.service`** and read back its cwd (`readlink /proc/<MainPID>/cwd` is the new
-  release). The Telegram callback poller is a `*/2` cron through the `CURRENT` launcher and picks
-  up the release on its next run.
+  `tradeai-health-agent.service cio-governed-bridge.service`) — nothing else.** A long-lived
+  process keeps the code it imported at start; `WorkingDirectory=…/CURRENT` does not re-resolve
+  after the symlink moves. *Cause 2026-09-18: bridge cwd frozen on `0162d0f19` while
+  portfolio-server served `71535687d`.* See `docs/ops/BRIDGE_PIN_ALIGNMENT.md`. **After a deploy
+  that changes desk or converse code, restart `tradeai-cio-telegram.service`** and read back its
+  cwd (`readlink /proc/<MainPID>/cwd` is the new release). The Telegram callback poller is a `*/2`
+  cron through the `CURRENT` launcher and picks up the release on its next run.
 - **A deploy does not install new user units.** A new `config/systemd/user/*.timer` reaches the host
   only by the `scripts/install_cio_operator_runtime.sh` convention — `install -m 0644` from
   `CURRENT/config/systemd/user` into `~/.config/systemd/user`, `systemctl --user daemon-reload`,
@@ -3396,6 +3404,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.2.4 | 2026-09-18 | ACTIVE | PATCH | §10: default `TRADEAI_CURRENT_BOUND_UNITS` documents `cio-governed-bridge.service` beside the health agent; cites 2026-09-18 bridge vs portfolio-server pin drift and `docs/ops/BRIDGE_PIN_ALIGNMENT.md`. No change to §0, §2, §17 or role authority. | PATCH documentation of deploy default; rides `APPROVE_AGENTS_POLICY_1_2_0`. |
 | 1.2.3 | 2026-09-18 | ACTIVE | MINOR | Adds "What 2026-09-18 taught — Agent controls audit" (router `WRITE_WORDS` miss buy/sell/order; BehaviorWriteRefused ≠ router HITL; prompt-injection PARTIAL on Telegram/watchlist/router ingress despite admission/partition/MCP probes; failed oneshot+timer churn especially `tradeai-cio-reactive` */2m; alert `runtime_mode` measured SHADOW not OFF; grounding 0%-flag caution; RAG empty-vs-cited verify). Does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-18 ("read update agents.md" after agent-controls audit). **ACTIVE** on operator-directed merge/promote of PR #1069 (2026-09-18). |
 | 1.2.2 | 2026-09-18 | ACTIVE on main (not yet on CURRENT) | MINOR | Adds "What 2026-09-18 taught — Postgres ENOSPC → Command Center false-green" (symptoms, ordered root cause, immediate + lasting fix, verify commands). Records that `/api/health` ok is not Postgres liveness; hygiene reclaim does not restart `postgresql@17-main`; PARTIAL `primary(0) vs alternate(N)` after an outage is honesty until scans refill; watchdog + sudoers must cover `/usr/bin/systemctl`; health-agent cannot auto-start Postgres under `NoNewPrivileges`. Does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-18 ("also update the agents.md with root cause fix and symptoms"). **Merged** PR #1068 2026-09-18; **live CURRENT still serves 1.2.1** until explicit promote. |
 | 1.2.1 | 2026-09-16 | ACTIVE | PATCH | Corrections only, no rule change. §7 "Research and operator replies" corrected: "Brave spills to SearXNG only on quota or rate limit" was factually incomplete after PR #1045 — `CALLER_DAILY_CAP` remains out of `spill_on` (operator decision 2026-09-13), but a caller refused by it is now answered by a separate governed free call (`scripts/lib/free_search.py`, behind `RESEARCH_FREE_FALLBACK=1`), not a spill. §12 gains a `[VERIFIED]` 2026-09-16 note recording the first measured free-web result and that free usage is now metered in the same ledger as paid. Adds no restriction and weakens nothing; does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-16 ("make sure that if the agents.md needs to be updated it's updated ... add was validated"). PATCH corrections outside the operator-gated sections; rides the existing `APPROVE_AGENTS_POLICY_1_2_0` ratification. |

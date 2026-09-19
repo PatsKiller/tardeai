@@ -1239,12 +1239,9 @@ def _build_prompt(agent: str, symbol: str, context_text: str, note: str = "") ->
 
     # Phase 1 Control 4: delimit external/peer/RAG as UNTRUSTED_DATA (not system instructions).
     try:
-        from scripts.lib.agent_untrusted_data import untrusted_delimiter
+        from lib.agent_untrusted_data import untrusted_delimiter  # type: ignore
     except Exception:
-        try:
-            from lib.agent_untrusted_data import untrusted_delimiter  # type: ignore
-        except Exception:
-            untrusted_delimiter = None  # type: ignore
+        untrusted_delimiter = None  # type: ignore
     if untrusted_delimiter:
         if rag_block:
             rag_block = untrusted_delimiter(content_type="rag", source="rag_retrieval", content=rag_block)

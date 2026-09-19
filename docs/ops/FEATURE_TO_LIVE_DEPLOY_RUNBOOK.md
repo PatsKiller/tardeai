@@ -137,7 +137,9 @@ non-zero *after* `PROMOTE OK` and names the blocking paths. The release is live 
 exit means the dev tree still needs attention. `CIO_DEPLOY_FF_DEV_TREE=0` skips the step.
 
 `promote` restarts `portfolio-server` and the units in `TRADEAI_CURRENT_BOUND_UNITS` (default
-`tradeai-health-agent.service`). Three things it does not do (`AGENTS.md` §9.3, §10):
+`tradeai-health-agent.service cio-governed-bridge.service`). Promote reads back each bound unit's
+`/proc/<pid>/cwd` and must match the new CURRENT dir — see `docs/ops/BRIDGE_PIN_ALIGNMENT.md`.
+Three things it does not do (`AGENTS.md` §9.3, §10):
 
 1. **Restart the Telegram desk bot when desk or converse code changed.** `tradeai-cio-telegram.service`
    is a long-lived loop that keeps the code it imported at start. The callback poller is a `*/2` cron
@@ -163,7 +165,9 @@ exit means the dev tree still needs attention. `CIO_DEPLOY_FF_DEV_TREE=0` skips 
 
    Then confirm with `check_expected_services.py`, and wait for the lane's `output_signal` on its natural
    schedule. *2026-09-13: `tradeai-operator-answer-quality.timer` shipped in a promoted release and ran
-   only after this step.*
+   only after this step.* For the bridge unit after a unit-file change, a one-shot
+   `install -m 0600` of `cio-governed-bridge.service` from CURRENT plus `daemon-reload` is enough
+   before the next promote (or before a manual align restart — `docs/ops/BRIDGE_PIN_ALIGNMENT.md`).
 
 3. **Declare a crontab edit.** Any crontab line changed alongside the deploy (a new `timeout`, a
    re-enabled job) needs its `config/lane_registry.json` row in the same PR, or
