@@ -1149,6 +1149,14 @@ GATES = [
             # that ceilings hold even for the operator, and that drift is
             # reported rather than silently reconciled.
             "tests/test_llm_cap_admin.py",
+            # 2026-09-19: /api/v2/paper-proposals/enrich-all spawned seven scripts with
+            # no env, so an LLM-spending child inherited whatever the server unit
+            # carried. With LLM_GLOBAL_DAILY_USD_CAP absent every governed call failed
+            # COST_CONFIGURATION_INVALID and eight of them opened the agent_flash
+            # circuit breaker for 900s, blocking the healthy cron drains too. Pins that
+            # the cap is resolved from the durable host file and that the steps are
+            # skipped, never run uncapped, when no cap resolves anywhere.
+            "tests/test_enrich_all_governed_env.py",
         ],
     ),
     (
