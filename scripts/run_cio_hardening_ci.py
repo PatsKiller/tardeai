@@ -1404,6 +1404,7 @@ GATES = [
         [
             "tests/test_release_pin_and_validator.py",
             "tests/test_aec_agent_bus_memory_20260919.py",
+            "tests/test_bitemporal_correctness.py",
         ],
     ),
     (

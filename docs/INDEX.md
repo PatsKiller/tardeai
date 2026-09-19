@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `0b74562dd3203b51d221931af276c35d5238858c099c8e6d6746c9225e5ab5b9`
+**Tree fingerprint:** `44b56cb03b8a04252aa22f932f3c124cc58715a9e9c62d0770a9fd60ebfa2dff`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2533 |
-| Markdown (excl. this INDEX) | 2108 |
+| Files under `docs/` (excl. this INDEX) | 2535 |
+| Markdown (excl. this INDEX) | 2110 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2041 |
+| Header OK | 2043 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2162 |
+| review_required | 2164 |
 
 ## Markdown tree
 
@@ -258,6 +258,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/alerts/PHASE68C_FALSE_FIXED_VERIFICATION_GATE.md` | Phase 68C — False-Fixed Verification Gate | review_required | OK | `7722b0a39795` |
 | `docs/alerts/PHASE68D_ALERT_TO_HERMES_BACKLOG_DESIGN.md` | Phase 68D — Alert-to-Hermes Backlog Design | review_required | OK | `761874de8ee9` |
 | `docs/alerts/PHASE68E_ALERT_DEDUPE_DRYRUN_REPORT.md` | Phase 68E — Alert Dedupe Dry-Run Report | review_required | OK | `d0286b9c9fc2` |
+| `docs/architecture/AEC_PARALLEL_AGENTS_AND_MEMORY.md` | AEC parallel agents and memory spines | review_required | OK | `541a2bfbe61a` |
 | `docs/architecture/AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v2_0.md` | AGENTIC FINANCIAL SYSTEM & COGNITIVE ARCHITECTURE v2.0 | review_required | OK | `4d1b395eee0f` |
 | `docs/architecture/AGENTIC_LAB_EXECUTION_PACKET_2026-07-24.md` | Agentic MVL Disposable LAB Execution Checklist — 2026-07-24 | review_required | OK | `77b3c7bfb04c` |
 | `docs/architecture/AGENTIC_LAB_PROVISIONING_BLOCKER_2026-07-24.md` | Agentic LAB Provisioning Checkpoint — 2026-07-24 | review_required | OK | `74d473239727` |
@@ -623,6 +624,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan | review_required | OK | `2224490a6526` |
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census | review_required | OK | `a5073ae48b02` |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche | review_required | OK | `3669faccf7ff` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `0238bf224ba9` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |

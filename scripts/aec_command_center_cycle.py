@@ -33,6 +33,7 @@ from lib import aec_agent_bus as bus  # noqa: E402
 from lib import aec_memory_spines as mem  # noqa: E402
 from lib.agent_view_v1 import persist_allowed, produce_agent_view_v1  # noqa: E402
 from lib.agent_commitment_v1 import evaluate_commitment, mint_commitment_from_view  # noqa: E402
+from lib.cio_memory_integration import integrate_wake_envelope  # noqa: E402
 
 
 def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = None) -> dict:
@@ -146,9 +147,25 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
     )
 
     # Narrator — executive briefing text (not sent here; publish to bus only)
+    # Cognitive memory dry-run (isolated substrate; never financial truth).
+    bitemporal_receipt = integrate_wake_envelope(
+        {
+            "subject_key": subject,
+            "predicate": "thesis",
+            "claim": advisor_summary[:240],
+            "object": {
+                "text": advisor_summary[:240],
+                "kind": "cognitive_hypothesis",
+                "cycle": True,
+            },
+            "wake_job_id": f"aec-cycle-{subject}",
+        },
+        apply=False,
+    )
     narr_summary = (
         f"Narrator brief: cio={cio_ev.summary[:80]}; advisor={adv_ev.summary[:80]}; "
-        f"learning_rows={len(relevant.get('learning') or [])}"
+        f"learning_rows={len(relevant.get('learning') or [])}; "
+        f"bitemporal_dry_run={bitemporal_receipt.get('dry_run')}"
     )
     narr_ev = bus.publish(
         agent_id="narrator_agent",
@@ -168,6 +185,7 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         "agent_view": view_payload or None,
         "commitment": commitment_payload,
         "outcome": outcome_payload,
+        "bitemporal": bitemporal_receipt,
         "authority": "READ_ONLY_ADVISORY",
     }
 
