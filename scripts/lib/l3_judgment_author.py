@@ -201,48 +201,89 @@ def _is_billing_refused(resp: Mapping[str, Any]) -> bool:
     return False
 
 
-def _default_chatgpt_author_call(**kwargs: Any) -> dict[str, Any]:
-    """Free OAuth author fallback — ChatGPT only (critic stays grok).
+def _free_oauth_lane_author_call(lane: str, **kwargs: Any) -> dict[str, Any]:
+    """One free OAuth author attempt via llm_lane (chatgpt or grok).
 
-    Never substitutes a local model. Routes through llm_lane so consumption
-    gating still applies under process_id=l3_judgment_author.
+    Critic stays on a separate provider. Never substitutes a local model.
     """
     from scripts import llm_lane
 
     prompt = str(kwargs.get("prompt") or "")
     max_tokens = int(kwargs.get("max_tokens") or 2048)
+    lane_name = str(lane or "").strip().lower() or "chatgpt"
     try:
         text = llm_lane.generate(
             prompt,
-            lane="chatgpt",
+            lane=lane_name,
             process_id=str(kwargs.get("source_process") or "l3_judgment_author"),
             response_json=bool(kwargs.get("response_json", True)),
             max_tokens=max_tokens,
-            task_summary="l3_judgment_author free-oauth fallback after DeepSeek billing refuse",
+            task_summary=(
+                f"l3_judgment_author free-oauth ({lane_name}) after DeepSeek billing refuse"
+            ),
         )
     except Exception as exc:  # noqa: BLE001 — map to author refusal shape
         return {
             "ok": False,
             "content": None,
-            "requested_model_id": "chatgpt",
+            "requested_model_id": lane_name,
             "returned_model": None,
             "error_class": "FREE_AUTHOR_FALLBACK_FAILED",
             "error_message": f"{type(exc).__name__}: {exc}",
             "latency_ms": None,
             "cost_usd": 0.0,
         }
-    model_name = "chatgpt"
     return {
         "ok": True,
         "content": text,
-        "requested_model_id": model_name,
-        "returned_model": model_name,
+        "requested_model_id": lane_name,
+        "returned_model": lane_name,
         "error_class": None,
         "error_message": None,
         "latency_ms": None,
         "cost_usd": 0.0,
         "cost_basis": "free_oauth",
         "pricing_tier": "oauth",
+    }
+
+
+def _default_chatgpt_author_call(**kwargs: Any) -> dict[str, Any]:
+    """Backward-compatible ChatGPT-only free OAuth author attempt."""
+    return _free_oauth_lane_author_call("chatgpt", **kwargs)
+
+
+def _default_free_oauth_author_call(**kwargs: Any) -> dict[str, Any]:
+    """Free OAuth author chain: ChatGPT, then Grok (critic remains separate).
+
+    Measured 2026-09-19 on persistent wake: DeepSeek HTTP 402 and ChatGPT
+    ``CODEX_HEADLESS_UNAVAILABLE`` left M2 dark with no further free lane.
+    """
+    first = _free_oauth_lane_author_call("chatgpt", **kwargs)
+    if first.get("ok"):
+        return first
+    second = _free_oauth_lane_author_call("grok", **kwargs)
+    if second.get("ok"):
+        second["prior_fallback_error"] = {
+            "lane": "chatgpt",
+            "error_class": first.get("error_class"),
+            "error_message": first.get("error_message"),
+        }
+        return second
+    return {
+        "ok": False,
+        "content": None,
+        "requested_model_id": "grok",
+        "returned_model": None,
+        "error_class": "FREE_AUTHOR_FALLBACK_FAILED",
+        "error_message": (
+            f"chatgpt={first.get('error_message')}; grok={second.get('error_message')}"
+        ),
+        "latency_ms": None,
+        "cost_usd": 0.0,
+        "attempts": [
+            {"lane": "chatgpt", "error_class": first.get("error_class")},
+            {"lane": "grok", "error_class": second.get("error_class")},
+        ],
     }
 
 
@@ -359,11 +400,11 @@ def run_author(
     author_fallback_reason: str | None = None
 
     if not resp.get("ok") and _is_billing_refused(resp):
-        # Free-first recovery: DeepSeek billing refuse must not dark M2 when
-        # ChatGPT OAuth can still author (critic remains grok — separated).
+        # Free-first recovery: DeepSeek billing refuse must not dark M2 when a
+        # free OAuth lane can still author (chatgpt → grok; critic stays separate).
         fb = fallback_call_fn
         if fb is None and call_fn is None:
-            fb = _default_chatgpt_author_call
+            fb = _default_free_oauth_author_call
         if fb is not None:
             t1 = time.perf_counter()
             try:
@@ -374,7 +415,7 @@ def run_author(
                     max_tokens=2048,
                     source_service="l3_judgment",
                     source_process="l3_judgment_author",
-                    source_lane="CHATGPT_OAUTH",
+                    source_lane="FREE_OAUTH_AUTHOR",
                     agent="l3_author_fallback",
                     run_id=str(uuid.uuid4()),
                 )
@@ -385,12 +426,11 @@ def run_author(
                     resp.get("error_class") or "deepseek_billing_refused"
                 )
                 if resp.get("ok"):
+                    model_id = str(resp.get("requested_model_id") or "chatgpt")
                     binding = {
-                        "provider": "chatgpt",
+                        "provider": model_id,
                         "logical_policy": "FREE_OAUTH",
-                        "model_id": str(
-                            resp.get("requested_model_id") or "chatgpt"
-                        ),
+                        "model_id": model_id,
                     }
                 latency_ms = int((time.perf_counter() - t0) * 1000)
             except Exception as exc:  # noqa: BLE001

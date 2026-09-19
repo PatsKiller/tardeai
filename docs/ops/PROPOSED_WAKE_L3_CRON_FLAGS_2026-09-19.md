@@ -1,43 +1,42 @@
 ---
-Status: APPLIED 2026-09-19 (cron grant overnight maturity)
-as_of: 2026-09-19T22:10:00Z
-Measured at: worktree tip (pre-merge); not applied to crontab
+Status: APPLIED 2026-09-19 (partial — wrong consumer)
+as_of: 2026-09-19T22:25:00Z
+Measured at: live persistent_wake.log + crontab inspection
 Canonical repo path: docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md
 Authority: AGENTS.md §9.3 / §17 — scheduler edits are operator-only
 ---
 
-# PROPOSED — enable WAKE_L3 flags on the wake dispatch cron
+# PROPOSED — enable WAKE_L3 flags on the **L3 consumer** cron
+
+## Correction `[VERIFIED]` 2026-09-19T22:25Z
+
+`WAKE_L3_*` was applied to `*/5 cio_wake_dispatch_entrypoint.py`. That entrypoint
+**never calls** `PersistentAgentWake._maybe_judge` / L3 (zero `l3`/`critique`
+lines in `cio_wake_dispatcher.log`). L3 lives in `scripts/run_persistent_wake.py`
+(hourly). Flags on the dispatch cron are inert for M2.
+
+Live `persistent_wake.log` still shows DeepSeek `HTTP_402` and ChatGPT
+`CODEX_HEADLESS_UNAVAILABLE` on author/curation paths. Free-oauth author chain
+(chatgpt→grok) lands with #1094 tip; promote required.
 
 ## Why
 
-M2 (critique → `next_research_question` writeback) is wired in code
-(`apply_critique_question_writeback` from `persistent_agent_wake`) but the
-scheduled entrypoint never sets:
+M2 (critique → `next_research_question` writeback) is wired in
+`persistent_agent_wake` but the **hourly** persistent-wake schedule must set:
 
 - `WAKE_L3_JUDGMENT=1`
 - `WAKE_L3_ALLOW_LIVE_PROVIDER=1`
 
-Both default OFF. Without them the organic L3 author/critic path never runs,
-so `wake_critique_question.jsonl` stays absent even after `l3_judgment_author`
-is registered (#1090).
+## Proposed crontab change (operator / cron grant)
 
-DeepSeek HTTP 402 on the paid author path remains a separate provider/operator
-issue; enabling the flags is necessary but not sufficient for organic M2 when
-the paid lane is refused.
-
-**Code prerequisite (landed with #1094 follow-up):** `_maybe_judge` now builds a
-material question for `instrument_record_due` as well as `unconsumed_research`.
-Without that, IR-due wakes skipped L3 even with flags on.
-
-## Proposed crontab change (do not apply without operator grant)
-
-On the existing `*/5` `cio_wake_dispatch_entrypoint.py` line, prefix:
+On the existing hourly `run_persistent_wake.py` line, after `set +a;`, add:
 
 ```bash
 WAKE_L3_JUDGMENT=1 WAKE_L3_ALLOW_LIVE_PROVIDER=1
 ```
 
 Keep free-first / cost caps unchanged. Lane registry row must stay in sync if
+the match string changes.
 the match string changes (§9.3).
 
 ## Proof after grant

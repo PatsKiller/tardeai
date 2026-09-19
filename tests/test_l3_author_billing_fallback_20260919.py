@@ -97,3 +97,61 @@ def test_author_does_not_fallback_on_non_billing_error():
     assert out.get("ok") is False
     assert out.get("author_fallback_used") is not True
     assert fb_calls == []
+
+
+def test_default_free_oauth_chain_tries_grok_after_chatgpt_fails(monkeypatch):
+    """Measured: ChatGPT CODEX_HEADLESS_UNAVAILABLE while DeepSeek is 402."""
+    from scripts.lib import l3_judgment_author as author_mod
+
+    calls: list[str] = []
+
+    def _fake_lane(lane: str, **_kwargs):
+        calls.append(lane)
+        if lane == "chatgpt":
+            return {
+                "ok": False,
+                "content": None,
+                "requested_model_id": "chatgpt",
+                "returned_model": None,
+                "error_class": "FREE_AUTHOR_FALLBACK_FAILED",
+                "error_message": "RuntimeError: CODEX_HEADLESS_UNAVAILABLE",
+                "latency_ms": None,
+                "cost_usd": 0.0,
+            }
+        import json
+
+        payload = make_author_json(subject_guid=SUBJECT_A)
+        return {
+            "ok": True,
+            "content": json.dumps(payload),
+            "requested_model_id": "grok",
+            "returned_model": "grok",
+            "error_class": None,
+            "error_message": None,
+            "latency_ms": 11,
+            "cost_usd": 0.0,
+            "cost_basis": "free_oauth",
+            "pricing_tier": "oauth",
+        }
+
+    monkeypatch.setattr(author_mod, "_free_oauth_lane_author_call", _fake_lane)
+    chain = author_mod._default_free_oauth_author_call(prompt="x", response_json=True)
+    assert chain.get("ok") is True
+    assert chain.get("requested_model_id") == "grok"
+    assert calls == ["chatgpt", "grok"]
+
+    # Full author path: DeepSeek 402 → free-oauth chain → grok.
+    primary = make_author_call_fn(ok=False, error_class="HTTP_402")
+    monkeypatch.setattr(author_mod, "_default_deepseek_call", primary)
+    grounded, gate = _gate_and_grounded(subject_guid=SUBJECT_A)
+    out = run_author(
+        grounded=grounded,
+        gate=gate,
+        call_fn=None,
+        fallback_call_fn=None,  # triggers _default_free_oauth_author_call
+        now=OFFPEAK_SUMMER_ET,
+    )
+    assert out.get("ok") is True, out
+    assert out.get("author_fallback_used") is True
+    assert out.get("provider") == "grok"
+    assert calls.count("chatgpt") >= 2 and calls.count("grok") >= 2
