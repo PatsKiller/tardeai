@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-19T17:35:00-04:00
-Measured at: served pin 18a41066d-main-exact-phase2-20260919-171754 (PROMOTE OK); #1087/#1089 MERGED; M1/M3/M5 OBSERVED; M2 NOT_OBSERVED (no wake_critique_question.jsonl; DeepSeek HTTP 402 on author path); M4 PARTIAL soak streak=4; soft_unsupported_share=0.002; l3_judgment_author registered+synced
+as_of: 2026-09-19T18:20:00-04:00
+Measured at: served pin a628ed0b3-main-exact-phase2-20260919-175532; #1094 OPEN tip 58114437a (cio-hardening pending); WAKE_L3_* on wake cron; M1 NOT_OBSERVED post-pin (research DAILY_CAP=5 exhausted → BUDGET_SKIPPED; hit-retention+log recover on #1094 not served); M2 NOT_OBSERVED; M3/M5 OBSERVED; M4 PARTIAL soak=4; soft=0.002
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -14,9 +14,9 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | CLOSED | [VERIFIED] pin 18a41066d consult instrument_enqueue_skipped_cadence=9; M5 OBSERVED | #1087+#1089 promote | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
 | DARK-bitemporal-m2-substrate | PARTIAL | schema v2 + CIOEnvelopeIntegrator on :55432; 211 correctness tests; EXPLAIN Index Scan fact_valid_spgist; production :5432 NOT applied | Organic wake schedule + operator shadow cutover grant | OBSERVED unattended write from served |
-| DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] hand `--apply` cycle emitted CommitmentOutcome@v1 INSUFFICIENT_EVIDENCE; observe={confirmed:True} → CONFIRMED in hermetic test; learning spine stores commitment_outcome | Schedule unattended cycle + organic CONFIRMED/REFUTED | OBSERVED CONFIRMED/REFUTED |
-| DARK-AgentView-producer | PARTIAL→CLOSING | [VERIFIED] `--apply` cycle wrote AgentView@v1 on advisor bus event @ 2026-09-19T21:27:45Z | Unattended scheduled cycle | OBSERVED from served schedule |
-| DARK-AGENT_COMMITMENT-producer | PARTIAL→CLOSING | [VERIFIED] `--apply` minted AGENT_COMMITMENT@v1 cmt_df57fd… OPEN with falsifier; outcome evaluated | Unattended schedule + CONFIRMED/REFUTED | OBSERVED settlement |
+| DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] hand `--apply` emitted INSUFFICIENT_EVIDENCE; hermetic CONFIRMED via observe; **defect**: static claim_fp froze OUTCOME after first apply (18:00/19:00 timer → null outcome). Fix on #1094: day-bucket claim + suppressed-repeat re-eval | Promote #1094 + unattended timer with observe/expiry | OBSERVED CONFIRMED/REFUTED/EXPIRED from schedule |
+| DARK-AgentView-producer | PARTIAL→CLOSING | [VERIFIED] AgentView@v1 @ 21:27:45Z then timer SUPPRESSED_REPEAT. Fix: day-bucketed advisor claim so schedule mints once/UTC-day | Promote #1094 + next day/new-day timer fire | OBSERVED AgentView from served schedule |
+| DARK-AGENT_COMMITMENT-producer | PARTIAL→CLOSING | [VERIFIED] cmt_df57fd… then frozen by anti-repeat. Same day-bucket + re-eval fix on #1094 | Promote #1094 + schedule | OBSERVED commitment+settlement from schedule |
 | DARK-librarian-index | CLOSED | [VERIFIED] persistent-state + CURRENT `research_source_index.json` ResearchSourceIndex@v1 n_sources=120 (mtime 2026-09-16) | — | file present on served path |
 | DARK-hermes_advisory_event_enqueue | KNOWN DARK · PROPOSED RETIRE | AGENTS research table; automatic writer is librarian backlog loop | Operator grant on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row or wired consumer |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
@@ -25,9 +25,9 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=4 on tip 4bafd6f83 @ 2026-09-19T20:02:08Z | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | PARTIAL | code on #1081; flag off | Flag on served + organic thin answer | receipt spilled_to/free climb |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
-| PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 21:20Z pin 18a41066d: M1/M3/M5 OBSERVED; M2 NOT_OBSERVED (writeback artifact absent; author HTTP 402); M4 PARTIAL soak=4 | Organic L3 critique→NRQ writeback unattended | all five OBSERVED |
-| PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL→CLOSING | [VERIFIED] hand apply + systemd `tradeai-aec-command-center-cycle.timer` enabled (hourly; first oneshot exit 0 @ 17:34 ET) | Organic timer fire @ 18:00 ET + promote tip with wake spines | unattended cycle from CURRENT |
-| PARTIAL-memory-four-spines | PARTIAL→CLOSING | [VERIFIED] spines after `--apply`; wake now fail-soft loads spines into context (`load_aec_spines_for_wake` / provenance aec_spines_loaded) — needs promote for served OBSERVED | Promote #1090 + organic wake provenance | wake reads spines from CURRENT |
+| PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 22:03Z pin a628ed0b3: M1/M3/M5 OBSERVED (M1 via log recover + trim_hits fix); M2 NOT_OBSERVED (no WAKE_L3 cron flags; 402); M4 PARTIAL soak=4 | Operator enable WAKE_L3_* + organic critique writeback | all five OBSERVED |
+| PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL→CLOSING | [VERIFIED] unattended timer fire LastTrigger=18:00:13 EDT (bitemporal dry_run=false; narrator telegram dry_run); next 19:00 | Live narrator --notify + organic AgentView when not SUPPRESSED_REPEAT | unattended cycle from CURRENT |
+| PARTIAL-memory-four-spines | PARTIAL→CLOSING | [VERIFIED] #1090 promoted (pin a628ed0b3); spines load on wake path; organic cycle 18:00 wrote bitemporal + bus | Organic wake provenance aec_spines_loaded on served | wake reads spines from CURRENT |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
 | PARTIAL-narrator-unprompted-telegram | PARTIAL | aec_narrator renders brief; cycle dry-runs; live notify is explicit-flag only | Schedule + --notify under telegram grant + COVERS | unprompted brief delivered |
 | DARK-cio-runs-truncated-tail | CLOSED | incomplete last line blocked create_run; wake errors=5 | archive + cio_run harden 7ea5835f9 | repair receipt + test |
@@ -103,3 +103,25 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - Installed `tradeai-aec-command-center-cycle.{service,timer}` (hourly) under cron grant; lane_registry row ACTIVE; output_signal `data/cio/aec_agent_bus.jsonl`
 - Dry-run quoted then `systemctl --user enable --now`; oneshot `start` exit 0 (advisory apply; narrator telegram still dry_run)
 - Next natural fire ~18:00 ET
+
+## 2026-09-19T18:10 ET — post-#1090 organic AEC + M1 hit-retention
+
+- [VERIFIED] `tradeai-aec-command-center-cycle.timer` LastTrigger=18:00:13 EDT; unattended cycle finished with bitemporal `dry_run=false`, narrator `telegram: dry_run`; next 19:00 EDT.
+- [VERIFIED] M1 NOT_OBSERVED root cause: hit FIFO dropped `persisted=True` rows (HELD:BAH 15:46 ET `next_eligible_at,cc_narrative`) under research-only flood; dispatcher log still held proof.
+- Fix in flight: `trim_hits` prefers persist evidence; reporter recovers M1 from wake_dispatcher_log when hits lost the row.
+- M2 still blocked: cron lacks `WAKE_L3_*` (see `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md`); DeepSeek 402 remains provider/operator.
+- PARTIAL-CIO-Advisor-Narrator-mesh / PARTIAL-memory-four-spines: unattended schedule OBSERVED at 18:00; narrator live telegram and relationship sources still operator.
+
+## 2026-09-19T18:15 ET — narrator notify env + WAKE_L3 cron
+
+- Cron: WAKE_L3_* on wake `*/5` (after `cd &&`).
+- Code: `AEC_NARRATOR_NOTIFY` gates cycle telegram; unit sets `=1` (needs #1094 promote for served code).
+- release-write requested (Telegram) for post-#1094 promote.
+
+## 2026-09-19T18:20 ET — post-1090 remeasure + AEC anti-repeat fix
+
+- [VERIFIED] pin a628ed0b3… server/telegram/health cwd match; no release-write → no re-promote.
+- [VERIFIED] AEC timer 18:00:13 EDT; bus last 22:00:13Z; advisor SUPPRESSED_REPEAT (null view/commitment/outcome).
+- [VERIFIED] M1 NOT_OBSERVED: post-pin wakes `daily_cap_reached` (DAILY_CAP=5) / cognition_noop; historical persist hits=0 in artifact; hub lacks #1094 log-alone recover.
+- [VERIFIED] soft_unsupported_share=0.002; M3/M5 OBSERVED; M4 PARTIAL soak=4; M2 NOT_OBSERVED.
+- Code: day-bucket advisor claim + suppressed-repeat commitment re-eval (`aec_command_center_cycle.py`); hermetic 12 passed.

@@ -95,6 +95,7 @@ GATES = [
             "tests/test_l3_judgment_pipeline.py",
             "tests/test_l3_judgment_cache.py",
             "tests/test_l3_judgment_author_registered_20260919.py",
+            "tests/test_l3_author_billing_fallback_20260919.py",
             "tests/test_l3_critic.py",
             "tests/test_l3_commitment.py",
             "tests/test_model_policy.py",
