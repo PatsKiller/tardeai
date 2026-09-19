@@ -37,3 +37,11 @@ See also: docs/ops/TRADE_AI_M2_MEMORY_SUBSTRATE_BENCHMARK_2026-08-24.md, AGENTS.
 - GUID spine linkage on identity rows
 - DB-owned `tx_period` via SECURITY DEFINER writer
 - Composite `(tenant_id, guid)` + FORCE RLS (proven as non-superuser `m2_agent`)
+
+
+## Studio 200-case matrix (2026-09-19)
+
+`tests/test_bitemporal_correctness.py` implements Suites 1–5 (200 docker cases + rails).
+Measured: **205 passed** against `tradeai-m2-shadow-v2` `:55432`.
+CI: `.github/workflows/bitemporal-memory-correctness-ci.yml` (service port **55432 only**; production `:5432` DSN refused).
+Reconciled: `row_kind` → `upper_inf(tx_period)`; `app.current_tenant` → `app.tenant_id`.
