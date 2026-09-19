@@ -2,7 +2,7 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-19T13:45:00-04:00
+as_of: 2026-09-19T13:52:00-04:00
 Measured at: code census on origin/main@99c79ec17 + in-flight PRs #1081/#1082
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
@@ -30,10 +30,12 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-memory-four-spines | ◆→PARTIAL | scaffold | Persist + load-before-decide on wake | wake reads spines |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
 | PARTIAL-narrator-unprompted-telegram | PARTIAL | aec_narrator renders brief; cycle dry-runs; live notify is explicit-flag only | Schedule + --notify under telegram grant + COVERS | unprompted brief delivered |
+| DARK-cio-runs-truncated-tail | CLOSED | incomplete last line blocked create_run; wake errors=5 | archive + cio_run harden 7ea5835f9 | repair receipt + test |
 | FORBIDDEN-broker | FORBIDDEN | §0/§2 | never | N/A |
 
 ## Closed this wave
 
 | id | closed_at | proof |
 |---|---|---|
+| DARK-cio-runs-truncated-tail | 2026-09-19 | repair + 7ea5835f9 |
 | DARK-librarian-index | 2026-09-19 | research_source_index.json n=120 on CURRENT+persistent-state |

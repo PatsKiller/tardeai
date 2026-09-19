@@ -1,0 +1,16 @@
+{
+  "schema": "CioRunsTruncatedTailRepair@v1",
+  "as_of": "2026-09-19T17:50:45.806156+00:00",
+  "store": "persistent-state/data/cio/cio_runs.jsonl",
+  "before_sha256": "388b2f02442a5cf6349ebc2450e2971a74819089130d959d1d13132ce8c15f5d",
+  "before_size": 14290944,
+  "after_sha256": "a8aa96600b0cef84c062aba29fb8dd9f5c86c3ff8d19d5e538c4e6e3b3eca0b8",
+  "after_size": 14289951,
+  "truncated_bytes": 993,
+  "truncated_sha256": "a13d52f7733ce4e3ab262b63abf42d233c2e749a2c78200e2909f8e1c389a182",
+  "archive_fragment": "archive/cio_runs_truncated_tail_20260919/truncated_tail_fragment.jsonl.partial",
+  "reason": "incomplete last line blocked CIORunStore._last_event_hash / create_run; wake dispatcher errors=5 every */5",
+  "ids_removed": 0,
+  "rows_removed": 0,
+  "code_commit": "7ea5835f9"
+}
