@@ -98,3 +98,59 @@ def test_cycle_dry_run_no_write(tmp_path, monkeypatch):
     out2 = cycle.run_cycle(subject_key="WATCH:SCHG", apply=False, observe={"confirmed": True})
     assert out2["outcome"]["outcome"] == "CONFIRMED"
     assert not (tmp_path / "bus.jsonl").exists()
+
+
+def test_cycle_apply_propagates_to_bitemporal_integrator(tmp_path, monkeypatch):
+    """--apply must not hardcode bitemporal dry-run (isolated :55432 only)."""
+    monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "mem.json"))
+    seen: dict = {}
+
+    def _fake_integrate(envelope, *, apply=False):
+        seen["apply"] = apply
+        return {
+            "schema": "CIOEnvelopeIntegration@v1",
+            "dry_run": not apply,
+            "authority": "READ_ONLY_ADVISORY",
+            "mbi_behavior": 0,
+        }
+
+    cycle = _load("aec_command_center_cycle_apply_prop", "scripts/aec_command_center_cycle.py")
+    monkeypatch.setattr(cycle, "integrate_wake_envelope", _fake_integrate)
+    out = cycle.run_cycle(subject_key="WATCH:SCHG", apply=True)
+    assert out["apply"] is True
+    assert seen.get("apply") is True
+    assert out["bitemporal"]["dry_run"] is False
+    assert (tmp_path / "bus.jsonl").exists()
+
+
+def test_wake_loads_aec_spines_fail_soft(tmp_path, monkeypatch):
+    """Wake helper reads four spines; spine errors never raise into the wake."""
+    wake = _load("persistent_agent_wake_spines", "scripts/lib/persistent_agent_wake.py")
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "missing_mem.json"))
+    out = wake.load_aec_spines_for_wake(selection_meta={"subject_key": "WATCH:SCHG"})
+    # Missing file → empty snapshot, still loaded (not an exception path).
+    assert out["loaded"] is True
+    assert out["counts"]["strategic"] == 0
+
+    mem = _load("aec_memory_spines_for_wake", "scripts/lib/aec_memory_spines.py")
+    path = tmp_path / "mem.json"
+    mem.append_fact(
+        "strategic",
+        {"kind": "thesis_touch", "subject_key": "WATCH:SCHG", "note": "x"},
+        path=path,
+    )
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(path))
+    out2 = wake.load_aec_spines_for_wake(
+        selection_meta={"subject_key": "WATCH:SCHG"},
+    )
+    assert out2["loaded"] is True
+    assert out2["counts"]["strategic"] >= 1
+
+    # Corrupt JSON → fail-soft, never raises.
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not-json", encoding="utf-8")
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(bad))
+    out3 = wake.load_aec_spines_for_wake(selection_meta={"subject_key": "WATCH:SCHG"})
+    assert out3["loaded"] is False
+    assert out3.get("error")
