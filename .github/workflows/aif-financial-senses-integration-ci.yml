@@ -31,7 +31,9 @@ jobs:
       - name: Install test deps
         run: |
           python3 -m pip install --upgrade pip
-          pip install pytest pyyaml
+          # requests: tests/test_autonomy_watchdog.py exercises telegram_transport,
+          # which imports it. Without it the transport tests error at import.
+          pip install pytest pyyaml requests
 
       - name: Integration CI (pinned manifest)
         run: python3 scripts/run_aif_financial_senses_ci.py
