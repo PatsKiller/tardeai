@@ -1,7 +1,7 @@
 ---
-Status: APPLIED 2026-09-19 (partial — wrong consumer)
-as_of: 2026-09-19T22:25:00Z
-Measured at: live persistent_wake.log + crontab inspection
+Status: APPLIED 2026-09-19T18:27 ET (correct consumer)
+as_of: 2026-09-19T22:27:00Z
+Measured at: crontab install under cron grant fbfcc0397b2a4975; backup /tmp/crontab.bak.wake_l3_persistent.20260919182730
 Canonical repo path: docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md
 Authority: AGENTS.md §9.3 / §17 — scheduler edits are operator-only
 ---
@@ -52,3 +52,11 @@ the match string changes (§9.3).
   (env after `&&` so it binds to python, not only `cd`).
 - Backup: `/tmp/cron-backup-wake-l3/crontab.before.20260919T220751Z`
 - Served code still needs #1094 merge+promote for IR-due L3 question + 402→chatgpt author fallback.
+
+
+## Applied receipt `[VERIFIED]` 2026-09-19T18:27 ET
+
+- Backup: `/tmp/crontab.bak.wake_l3_persistent.20260919182730`
+- Diff: single line — hourly `run_persistent_wake.py` gained `WAKE_L3_JUDGMENT=1 WAKE_L3_ALLOW_LIVE_PROVIDER=1` after `set +a;`
+- Match `scripts/run_persistent_wake.py --agent-id cio` unchanged
+- Grant: cron request `fbfcc0397b2a4975` (uses consumed)
