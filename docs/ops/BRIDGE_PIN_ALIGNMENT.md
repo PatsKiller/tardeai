@@ -87,3 +87,16 @@ the paid lane even if `portfolio-server` health passed.
 
 Operators may still set `TRADEAI_CURRENT_BOUND_UNITS` explicitly. Omitting the bridge
 re-introduces this class of drift; do that only with a documented reason.
+
+## Soak ledger (control-3)
+
+After live align and after every promote, record an observation:
+
+```bash
+python3 scripts/record_bridge_pin_soak.py --dry-run   # quote output
+python3 scripts/record_bridge_pin_soak.py            # append ledger
+python3 scripts/record_bridge_pin_soak.py --status    # streak / need=3
+```
+
+Production Ready on pin consistency requires `soak_ready=YES` (consecutive match streak ≥ 3 across promotes).
+Ledger default: `~/trade-ai-releases/persistent-state/data/runtime/bridge_pin_soak.jsonl`
