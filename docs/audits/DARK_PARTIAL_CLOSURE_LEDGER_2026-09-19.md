@@ -39,3 +39,11 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 |---|---|---|
 | DARK-cio-runs-truncated-tail | 2026-09-19 | repair + 7ea5835f9 |
 | DARK-librarian-index | 2026-09-19 | research_source_index.json n=120 on CURRENT+persistent-state |
+
+
+## 2026-09-19T14:01 ET — KNOWN_DARK emptied
+
+- `cio_identity_resolver` → `scripts/lib/aec_agent_bus.resolve_payload_agent_refs`
+- `cio_disposition_identity` → `scripts/aec_command_center_cycle` commitment `decision_key`
+- `tests/test_identity_memory_module_wiring.py` KNOWN_DARK = set()
+- Proof: `pytest tests/test_aec_agent_bus_memory_20260919.py tests/test_identity_memory_module_wiring.py` → 9 passed

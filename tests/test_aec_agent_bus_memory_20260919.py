@@ -36,6 +36,22 @@ def test_bus_refuses_behavior_fields(tmp_path):
         assert "MBI_BEHAVIOR=0" in str(e)
 
 
+def test_bus_resolves_specialist_aliases(tmp_path):
+    bus = _load("aec_agent_bus", "scripts/lib/aec_agent_bus.py")
+    path = tmp_path / "bus.jsonl"
+    ev = bus.publish(
+        agent_id="cio_agent",
+        topic="id",
+        summary="alias check",
+        payload={"specialist_agent_id": "risk_agent", "mentioned_agents": ["tax_agent"]},
+        path=path,
+        dry_run=True,
+    )
+    assert ev.payload["specialist_agent_id"] == "guardian"
+    assert ev.payload["specialist_display"] == "Guardian Risk"
+    assert ev.payload["mentioned_agents_canonical"] == ["ledger"]
+
+
 def test_bus_publish_and_cross_agent_visibility(tmp_path):
     bus = _load("aec_agent_bus", "scripts/lib/aec_agent_bus.py")
     path = tmp_path / "bus.jsonl"
@@ -74,6 +90,8 @@ def test_cycle_dry_run_no_write(tmp_path, monkeypatch):
     assert len(out["events"]) == 3
     assert out.get("agent_view", {}).get("schema_version") == "AgentView@v1"
     assert out.get("commitment", {}).get("schema_version") == "AGENT_COMMITMENT@v1"
+    assert out.get("commitment", {}).get("decision_key", "").startswith("decision:")
+    assert out.get("commitment", {}).get("decision_key_parsed", {}).get("kind") == "decision"
     assert out.get("outcome", {}).get("schema_version") == "CommitmentOutcome@v1"
     assert out["outcome"]["outcome"] == "INSUFFICIENT_EVIDENCE"
     # Observation path closes the OUTCOME edge.

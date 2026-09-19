@@ -33,6 +33,11 @@ from lib import aec_agent_bus as bus  # noqa: E402
 from lib import aec_memory_spines as mem  # noqa: E402
 from lib.agent_view_v1 import persist_allowed, produce_agent_view_v1  # noqa: E402
 from lib.agent_commitment_v1 import evaluate_commitment, mint_commitment_from_view  # noqa: E402
+from lib.cio_disposition_identity import (  # noqa: E402
+    applicable_dispositions,
+    canonical_key,
+    parse_key,
+)
 from lib.cio_memory_integration import integrate_wake_envelope  # noqa: E402
 from lib.aec_narrator import render_executive_brief, notify_executive_brief  # noqa: E402
 
@@ -53,7 +58,11 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         topic="cycle.cio.status",
         summary=cio_summary,
         subject_key=subject_key,
-        payload={"memory_counts": {k: len(v) for k, v in relevant.items()}},
+        payload={
+            "memory_counts": {k: len(v) for k, v in relevant.items()},
+            # Gate-B identity resolver consumer: alias → canonical on bus.
+            "mentioned_agents": ["risk_agent", "tax_agent", "guardian", "ledger"],
+        },
         dry_run=not apply,
     )
 
@@ -89,6 +98,14 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
                 falsifier=view.falsifier,
             )
             commitment_payload = commitment.to_dict()
+            # Immutable disposition identity (was KNOWN_DARK): commitment_id is
+            # the decision_id; legacy position: keys never auto-apply.
+            decision_id = str(commitment_payload.get("commitment_id") or "")
+            decision_key = canonical_key(decision_id=decision_id)
+            commitment_payload["decision_key"] = decision_key
+            commitment_payload["decision_key_parsed"] = parse_key(decision_key)
+            prior_disp = applicable_dispositions({}, decision_id=decision_id)
+            commitment_payload["prior_disposition"] = prior_disp
             # OUTCOME edge: evaluate when observation supplied; else honest
             # INSUFFICIENT_EVIDENCE. Never broker/policy.
             outcome_payload = evaluate_commitment(

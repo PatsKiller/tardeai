@@ -16,8 +16,44 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+try:
+    from scripts.lib.cio_identity_resolver import (
+        get_display_name,
+        is_financial_agent,
+        resolve_canonical_id,
+    )
+except ImportError:  # cron/path form (scripts on sys.path)
+    from lib.cio_identity_resolver import (  # type: ignore
+        get_display_name,
+        is_financial_agent,
+        resolve_canonical_id,
+    )
+
 SCHEMA = "AecAgentBusEvent@v1"
 AGENT_IDS = ("cio_agent", "advisor_agent", "narrator_agent")
+
+
+def resolve_payload_agent_refs(payload: dict[str, Any]) -> dict[str, Any]:
+    """Stamp Gate-B canonical identity onto any specialist refs in a bus payload.
+
+    Production consumer for cio_identity_resolver (was KNOWN_DARK). Bus agents
+    stay cio/advisor/narrator; this resolves legacy risk_agent/tax_agent aliases
+    when a payload names a financial specialist.
+    """
+    body = dict(payload)
+    raw = body.get("specialist_agent_id") or body.get("agent_ref")
+    if raw:
+        canonical = resolve_canonical_id(str(raw))
+        body["specialist_agent_id"] = canonical
+        body["specialist_display"] = get_display_name(canonical)
+        body["specialist_is_financial"] = bool(is_financial_agent(canonical))
+        body["specialist_alias_resolved_from"] = str(raw)
+    mentioned = body.get("mentioned_agents")
+    if isinstance(mentioned, list) and mentioned:
+        body["mentioned_agents_canonical"] = [
+            resolve_canonical_id(str(a)) for a in mentioned
+        ]
+    return body
 
 
 @dataclass(frozen=True)
@@ -70,7 +106,7 @@ def publish(
         "recommended_delta_usd", "size_usd", "shares", "qty", "order", "stop",
         "limit", "target_weight_pct", "trade", "execution",
     }
-    body = dict(payload or {})
+    body = resolve_payload_agent_refs(dict(payload or {}))
     bad = forbidden.intersection(body)
     if bad:
         raise ValueError(f"MBI_BEHAVIOR=0: refused behavior fields on bus: {sorted(bad)}")
