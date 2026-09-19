@@ -164,6 +164,14 @@ def _go_item():
 def test_go_alert_sends_the_rich_layout_with_buttons_and_chart(monkeypatch):
     monkeypatch.delenv("TELEGRAM_RICH_ALERTS", raising=False)
     g, item = _go_item()
+    # CIO stance gate must allow — this suite tests rich layout, not stance.
+    monkeypatch.setattr(
+        g,
+        "_cio_go_gate",
+        lambda symbol, text, db_query=None: {
+            "allow": True, "held_reason": None, "symbol": symbol, "cio_action": "BUY_READY",
+        },
+    )
     calls = []
     assert g._send_go(lambda text, **kw: calls.append((text, kw)) or True, item)
     text, kw = calls[0]
@@ -177,6 +185,13 @@ def test_go_alert_sends_the_rich_layout_with_buttons_and_chart(monkeypatch):
 def test_go_alert_falls_back_to_plain_text_when_rich_is_off(monkeypatch):
     monkeypatch.setenv("TELEGRAM_RICH_ALERTS", "0")
     g, item = _go_item()
+    monkeypatch.setattr(
+        g,
+        "_cio_go_gate",
+        lambda symbol, text, db_query=None: {
+            "allow": True, "held_reason": None, "symbol": symbol, "cio_action": "BUY_READY",
+        },
+    )
     calls = []
     g._send_go(lambda text, **kw: calls.append((text, kw)) or True, item)
     assert calls[0][0] == g.format_alert(item) and "reply_markup" not in calls[0][1]

@@ -1,6 +1,10 @@
 """Phase 1: UNTRUSTED_DATA wrapping + empty RAG policy helpers."""
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("numpy")  # rag_retrieval imports numpy; CI group may omit it
+
 from scripts.agent_collab import get_agent_context
 from scripts.lib.agent_untrusted_data import UNTRUSTED_DATA
 from scripts.rag_retrieval import empty_rag_mode, rag_or_refuse
