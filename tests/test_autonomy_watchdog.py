@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+import os
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,20 @@ from scripts.lib.autonomy_watchdog.model import (
     rollup,
 )
 from scripts.lib.autonomy_watchdog import telegram_system as TG
+
+
+def _skip_without_transport_deps():
+    """Skip when telegram_transport's deps are absent (a minimal CI job has no requests).
+
+    Checked with find_spec rather than an import: importing telegram_transport here
+    would register this file as a chokepoint bypass in check_telegram_chokepoint.py,
+    and that guard is right to flag it — nothing outside the approved delivery path
+    should reach for the transport.
+    """
+    import importlib.util
+
+    if importlib.util.find_spec("requests") is None:
+        pytest.skip("telegram_transport deps unavailable (requests)")
 from scripts import api_v3_maturity as api
 
 
@@ -98,6 +113,15 @@ def test_persist_and_history_one_per_day(root: Path):
 
 
 def test_telegram_dedupe(root: Path, monkeypatch: pytest.MonkeyPatch):
+    """A repeat send for the same identity is deduped before any delivery is attempted.
+
+    Delivery is deliberately not exercised. send_system reaches
+    telegram_transport.deliver_text, which interdicts whenever PYTEST_CURRENT_TEST is set
+    OR CIO_TELEGRAM_INTERDICT is on — and the CI job running this file sets
+    CIO_TELEGRAM_INTERDICT=1 at job level, declaring itself Telegram-free. A test
+    asserting a successful send could only pass by standing down a control that is set on
+    purpose, so it asserts the dedupe branch, which sits above delivery in send_system.
+    """
     env = {"TELEGRAM_BOT_TOKEN": "x", "TELEGRAM_CHAT_ID": "1", "SYSTEM_TELEGRAM_ENABLED": "1"}
     sent = {"n": 0}
 
@@ -108,11 +132,71 @@ def test_telegram_dedupe(root: Path, monkeypatch: pytest.MonkeyPatch):
         return {"ok": True, "result": {"message_id": 99}}, 200
 
     monkeypatch.setattr(TG, "_http_post", fake_post)
-    a = TG.send_system("hello", identity="system-heartbeat:2026-08-18", kind="daily_heartbeat", root=root, env=env)
-    b = TG.send_system("hello", identity="system-heartbeat:2026-08-18", kind="daily_heartbeat", root=root, env=env)
-    assert a["ok"] and a.get("message_id") == 99
-    assert b.get("deduped") is True
-    assert sent["n"] == 1
+    identity = "system-heartbeat:2026-08-18"
+    # A prior delivered send, written through the same ledger send_system appends to.
+    TG.record_send(
+        {
+            "at": "2026-08-18T12:00:00+00:00",
+            "identity": identity,
+            "kind": "daily_heartbeat",
+            "ok": True,
+            "message_id": 99,
+        },
+        root=root,
+    )
+    assert TG.already_sent(identity, root=root), "ledger seed must be visible to the dedupe check"
+
+    out = TG.send_system("hello", identity=identity, kind="daily_heartbeat", root=root, env=env)
+    assert out.get("deduped") is True
+    assert out["ok"] is True
+    assert out.get("message_id") == 99
+    assert sent["n"] == 0, "a deduped send must not reach the transport at all"
+
+
+def test_telegram_dedupe_is_identity_scoped(root: Path, monkeypatch: pytest.MonkeyPatch):
+    """The dedupe branch must key on identity, or it would silence every later send."""
+    env = {"TELEGRAM_BOT_TOKEN": "x", "TELEGRAM_CHAT_ID": "1", "SYSTEM_TELEGRAM_ENABLED": "1"}
+    TG.record_send(
+        {
+            "at": "2026-08-18T12:00:00+00:00",
+            "identity": "system-heartbeat:2026-08-18",
+            "kind": "daily_heartbeat",
+            "ok": True,
+            "message_id": 99,
+        },
+        root=root,
+    )
+    out = TG.send_system(
+        "hello", identity="system-heartbeat:2026-08-19", kind="daily_heartbeat", root=root, env=env
+    )
+    assert out.get("deduped") is not True, "a different identity must not be deduped"
+
+
+def test_transport_interdicts_under_pytest(root: Path, monkeypatch: pytest.MonkeyPatch):
+    """The control the dedupe test stands down must stay real.
+
+    PYTEST_CURRENT_TEST alone must stop delivery, even for a caller that passes an
+    explicit env dict (which legitimately stands down send_system's own _ci_locked).
+    Asserted through send_system rather than by importing the transport, so this file
+    stays out of the chokepoint bypass ledger.
+    """
+    _skip_without_transport_deps()
+    env = {"TELEGRAM_BOT_TOKEN": "x", "TELEGRAM_CHAT_ID": "1", "SYSTEM_TELEGRAM_ENABLED": "1"}
+
+    # A counter, not a raise: send_system wraps delivery in `except Exception`, so a
+    # raising fake would be swallowed and the test would pass while a send was attempted.
+    posted = {"n": 0}
+
+    def counting_post(url, payload):
+        posted["n"] += 1
+        return {"ok": True, "result": {"message_id": 7}}, 200
+
+    monkeypatch.setattr(TG, "_http_post", counting_post)
+    assert os.environ.get("PYTEST_CURRENT_TEST"), "pytest must set the variable the interdict reads"
+    out = TG.send_system("hello", identity="system-interdict:2026-09-19", kind="canary", root=root, env=env)
+    assert posted["n"] == 0, "the transport interdict was not applied — a send was attempted"
+    assert out["ok"] is False
+    assert out.get("message_id") is None
 
 
 def test_ci_never_sends(root: Path):
