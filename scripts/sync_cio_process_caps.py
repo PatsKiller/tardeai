@@ -43,6 +43,9 @@ CAPS: dict[str, tuple[float, int]] = {
     "hermes_usefulness_score": (0.30, 600),
     "cio_hermes_research": (0.40, 200),
     "hermes_golden_judge": (0.10, 150),
+    # 2026-09-19: L3 author was paid unregistered (2026-09-11); bind a process ceiling.
+    "l3_judgment_author": (0.25, 48),
+    "l3_independent_critic": (0.10, 24),
 }
 
 
