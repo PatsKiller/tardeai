@@ -1405,6 +1405,7 @@ GATES = [
             "tests/test_release_pin_and_validator.py",
             "tests/test_record_bridge_pin_soak.py",
             "tests/test_agent_number_grounding_slo_20260918.py",
+            "tests/test_research_quality_escalate_20260918.py",
         ],
     ),
     (
