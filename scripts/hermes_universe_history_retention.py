@@ -125,6 +125,17 @@ def run(days: int = DEFAULT_DAYS, trend_days: int = DEFAULT_TREND_DAYS,
         "errors": errors,
         "ts": now.isoformat(),
     }
+    # Durable run receipt: a deletion-only pass writes no other artifact, and the lane
+    # registry requires a signal that proves it ran (not an exit code or a log line).
+    try:
+        receipt = PROJECT_ROOT / "data" / "runtime" / "hermes_universe_history_retention_last_run.json"
+        receipt.parent.mkdir(parents=True, exist_ok=True)
+        receipt.write_text(json.dumps(out, indent=2), encoding="utf-8")
+        out["receipt_path"] = str(receipt)
+    except OSError as e:
+        out["errors"].append(f"receipt: {e}")
+        out["ok"] = False
+
     print(json.dumps(out, indent=2))
     return out
 

@@ -32,12 +32,12 @@ case "$TARGET" in
   # OAuth tokens in Postgres; also mirrored to SM 2026-07-22) + the .env.pre-sm-migration
   # fallback snapshot (via GLOB) that env_bootstrap uses when Bitwarden is unreachable.
   # KEEP=1 all families (2026-08-11): only leave latest on Drive
-  env)  PREFIX="env_backup";  KEEP=1;  SOURCES=(".env" "config/broker_credentials.env"); GLOB=".env.*" ;;
+  env)  PREFIX="env_backup";  KEEP=7;  SOURCES=(".env" "config/broker_credentials.env"); GLOB=".env.*" ;;
   data) PREFIX="data_backup"; KEEP=1;  SOURCES=("data");  GLOB="" ;;
-  memory) PREFIX="memory_backup"; KEEP=1; TAR_BASE="$HOME"
+  memory) PREFIX="memory_backup"; KEEP=7; TAR_BASE="$HOME"
           SOURCES=(".claude/projects/-home-johnclaw/memory"); GLOB="" ;;
   db)   PREFIX="db_backup"; KEEP=1; SOURCES=(); GLOB="" ;;
-  ops)  PREFIX="ops_backup"; KEEP=1; SOURCES=(); GLOB="" ;;
+  ops)  PREFIX="ops_backup"; KEEP=7; SOURCES=(); GLOB="" ;;
   apps) PREFIX="apps_backup"; KEEP=1; TAR_BASE="$HOME"
         SOURCES=(".openclaw/credentials" ".openclaw/agents" ".openclaw/memory"
                  ".openclaw/state" ".openclaw/openclaw.json" ".openclaw/exec-approvals.json"

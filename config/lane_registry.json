@@ -5,6 +5,22 @@
   "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink \u2014 the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI. Wave2-2026-09-01 batch1: shrink wake-dispatch duplicate; retire cron-freshness-watcher; promote due-checkpoints,cio-delivery,cio-defer-revisit,autonomy-watchdog,hermes-momentum-catalyst-morning. as_of=2026-08-31T16:58:07+00:00. Wave2-2026-09-01 batch2: promote portfolio-backup-cadence,portfolio-daily-cadence,portfolio-weekly-cadence,portfolio-monthly-cadence,portfolio-lookthrough-cadence,governance-pipeline,cio-nightly-reflection,cio-memory-shadow-measure,cio-desk-memo-regen,sm-render,tax-lots-rebuild,provider-cost-reconcile,free-first-circulation,holdings-agent-enqueue,hermes-update-check,portfolio-price-cache,agent-runtime-health; retire at-observation-01,at-observation-01-closeout. as_of=2026-08-31T17:06:54+00:00. Wave2 batch3: promote advisory-shadow-seed,cio-material-scan. as_of=2026-08-31T17:08:11+00:00. Wave-2026-09-01 portfolio-repricer: declare portfolio-repricer ACTIVE (*/15 market hours \u2192 holdings.json); remove 3 portfolio_repricer cron lines from undeclared_baseline. as_of=2026-09-01T20:41:10+00:00.",
   "lanes": [
     {
+      "lane_id": "hermes-universe-history-retention",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25 3 * * * .../hermes_universe_history_retention.py --apply",
+        "match": "scripts/hermes_universe_history_retention.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/hermes_universe_history_retention_last_run.json"
+      },
+      "note": "hermes_governed_universe_history grew unbounded to 4.7G/5,919 files since 2026-07-02: rotate_runtime_logs.sh only covers logs/*.log and nothing else referenced the dir. Thins to one snapshot per UTC day beyond --days so load_universe_trend() keeps its full 90-day reach. Deletion-only pass, so it writes an explicit run receipt."
+    },
+    {
       "lane_id": "research-lane-health",
       "owner": "platform",
       "scheduler": {
