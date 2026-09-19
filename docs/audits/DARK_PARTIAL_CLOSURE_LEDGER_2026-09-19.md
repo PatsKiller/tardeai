@@ -27,7 +27,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 21:20Z pin 18a41066d: M1/M3/M5 OBSERVED; M2 NOT_OBSERVED (writeback artifact absent; author HTTP 402); M4 PARTIAL soak=4 | Organic L3 critique→NRQ writeback unattended | all five OBSERVED |
 | PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL→CLOSING | [VERIFIED] `--apply` from hub@18a41066d wrote cio/advisor/narrator bus events (3) | Unattended schedule + optional narrator --notify | cycle apply receipt from CURRENT |
-| PARTIAL-memory-four-spines | PARTIAL→CLOSING | [VERIFIED] aec_memory_spines.json strategic=1 learning=3 after `--apply`; relationship still empty (no approved sources) | Wake load + relationship grant | wake reads spines from CURRENT |
+| PARTIAL-memory-four-spines | PARTIAL→CLOSING | [VERIFIED] spines after `--apply`; wake now fail-soft loads spines into context (`load_aec_spines_for_wake` / provenance aec_spines_loaded) — needs promote for served OBSERVED | Promote #1090 + organic wake provenance | wake reads spines from CURRENT |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
 | PARTIAL-narrator-unprompted-telegram | PARTIAL | aec_narrator renders brief; cycle dry-runs; live notify is explicit-flag only | Schedule + --notify under telegram grant + COVERS | unprompted brief delivered |
 | DARK-cio-runs-truncated-tail | CLOSED | incomplete last line blocked create_run; wake errors=5 | archive + cio_run harden 7ea5835f9 | repair receipt + test |
@@ -92,3 +92,8 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - Dry-run then `--apply` AEC cycle (advisory): bus events cio/advisor/narrator; spines strategic+learning written; AgentView + AGENT_COMMITMENT + CommitmentOutcome emitted
 - Found defect: `integrate_wake_envelope(..., apply=False)` hardcoded in cycle even when `--apply` — fixed to `apply=apply` (still isolated :55432; prod :5432 refused)
 - Narrator Telegram remains explicit-flag only (`notify_executive_brief(apply=False)` from cycle) — PARTIAL-narrator-unprompted-telegram unchanged
+
+## 2026-09-19T17:45 ET — wake loads AEC spines
+
+- `persistent_agent_wake.load_aec_spines_for_wake` + context/provenance stamp (fail-soft)
+- Hermetic tests in `test_aec_agent_bus_memory_20260919.py`

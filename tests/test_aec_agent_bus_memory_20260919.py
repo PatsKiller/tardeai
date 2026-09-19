@@ -122,3 +122,35 @@ def test_cycle_apply_propagates_to_bitemporal_integrator(tmp_path, monkeypatch):
     assert seen.get("apply") is True
     assert out["bitemporal"]["dry_run"] is False
     assert (tmp_path / "bus.jsonl").exists()
+
+
+def test_wake_loads_aec_spines_fail_soft(tmp_path, monkeypatch):
+    """Wake helper reads four spines; spine errors never raise into the wake."""
+    wake = _load("persistent_agent_wake_spines", "scripts/lib/persistent_agent_wake.py")
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "missing_mem.json"))
+    out = wake.load_aec_spines_for_wake(selection_meta={"subject_key": "WATCH:SCHG"})
+    # Missing file → empty snapshot, still loaded (not an exception path).
+    assert out["loaded"] is True
+    assert out["counts"]["strategic"] == 0
+
+    mem = _load("aec_memory_spines_for_wake", "scripts/lib/aec_memory_spines.py")
+    path = tmp_path / "mem.json"
+    mem.append_fact(
+        "strategic",
+        {"kind": "thesis_touch", "subject_key": "WATCH:SCHG", "note": "x"},
+        path=path,
+    )
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(path))
+    out2 = wake.load_aec_spines_for_wake(
+        selection_meta={"subject_key": "WATCH:SCHG"},
+    )
+    assert out2["loaded"] is True
+    assert out2["counts"]["strategic"] >= 1
+
+    # Corrupt JSON → fail-soft, never raises.
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not-json", encoding="utf-8")
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(bad))
+    out3 = wake.load_aec_spines_for_wake(selection_meta={"subject_key": "WATCH:SCHG"})
+    assert out3["loaded"] is False
+    assert out3.get("error")
