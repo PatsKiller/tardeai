@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `44aecdb5f8247e15bf5b048ac8b2891d2ecb7081e8cf99e866e9e4731ebc99be`
+**Tree fingerprint:** `12c6e767c2ddd3afad95c7dfd0a19651ddbb9b8b9df0fda0044705d1dbdf318d`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2534 |
-| Markdown (excl. this INDEX) | 2109 |
+| Files under `docs/` (excl. this INDEX) | 2551 |
+| Markdown (excl. this INDEX) | 2125 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2042 |
+| Header OK | 2058 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2163 |
+| review_required | 2180 |
 
 ## Markdown tree
 
@@ -47,6 +47,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | OK | `401363e962e2` |
 | `docs/CHANGELOG.md` | Changelog | review_required | OK | `1c3ab9ad3ee8` |
 | `docs/CHEAT_SHEET.md` | Trade AI v12 -- Operator Cheat Sheet | active_keep | OK | `5fbf6fb2ebe7` |
+| `docs/CIO_AS_IS_2026-09-19-1352.md` | CIO / AEC AS-IS — 2026-09-19 13:52 ET | review_required | OK | `ede8abe935f8` |
+| `docs/CIO_FUTURE_2026-09-19-1352.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 13:52 ET | review_required | OK | `fcb3fd3fbc51` |
+| `docs/CIO_GAP_2026-09-19-1352.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 13:52 ET | review_required | OK | `cda431962847` |
 | `docs/CIO_PROMPT_INPUT_AUDIT_2026_07_01.md` | CIO Prompt & Input Audit — 2026-07-01 | review_required | OK | `927dbe10051c` |
 | `docs/CLAUDE_CHALLENGER_AND_ANALYST_LANES.md` | Claude Challenger Cohort (A/B) + Analyst Lanes | review_required | OK | `3159e054b153` |
 | `docs/COMMAND_CENTER_PAGE_MATRIX.md` | Command Center — Complete Page Matrix | review_required | OK | `3620582300fa` |
@@ -258,6 +261,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/alerts/PHASE68C_FALSE_FIXED_VERIFICATION_GATE.md` | Phase 68C — False-Fixed Verification Gate | review_required | OK | `7722b0a39795` |
 | `docs/alerts/PHASE68D_ALERT_TO_HERMES_BACKLOG_DESIGN.md` | Phase 68D — Alert-to-Hermes Backlog Design | review_required | OK | `761874de8ee9` |
 | `docs/alerts/PHASE68E_ALERT_DEDUPE_DRYRUN_REPORT.md` | Phase 68E — Alert Dedupe Dry-Run Report | review_required | OK | `d0286b9c9fc2` |
+| `docs/architecture/AEC_PARALLEL_AGENTS_AND_MEMORY.md` | AEC parallel agents and memory spines | review_required | OK | `541a2bfbe61a` |
 | `docs/architecture/AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v2_0.md` | AGENTIC FINANCIAL SYSTEM & COGNITIVE ARCHITECTURE v2.0 | review_required | OK | `4d1b395eee0f` |
 | `docs/architecture/AGENTIC_LAB_EXECUTION_PACKET_2026-07-24.md` | Agentic MVL Disposable LAB Execution Checklist — 2026-07-24 | review_required | OK | `77b3c7bfb04c` |
 | `docs/architecture/AGENTIC_LAB_PROVISIONING_BLOCKER_2026-07-24.md` | Agentic LAB Provisioning Checkpoint — 2026-07-24 | review_required | OK | `74d473239727` |
@@ -277,10 +281,19 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-ceiling.md` | CIO Agent — AS-IS vs SPEC (2026-09-09 live ceiling) | review_required | OK | `11646742f3fe` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-final.md` | CIO Agent — AS-IS vs SPEC (2026-09-09 final) | review_required | OK | `dd2922037c1f` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO Agent — AS-IS vs SPEC (2026-09-09) | review_required | OK | `3b89fb965505` |
+| `docs/architecture/CIO_AS_IS_2026-09-19-1352.md` | CIO / AEC AS-IS — 2026-09-19 13:52 ET | review_required | OK | `d8bb7a991973` |
+| `docs/architecture/CIO_AS_IS_2026-09-19-1401.md` | CIO / AEC AS-IS — 2026-09-19 14:01 ET | review_required | OK | `8dcab97ad169` |
+| `docs/architecture/CIO_AS_IS_2026-09-19-1436.md` | CIO / AEC AS-IS — 2026-09-19 14:36 ET | review_required | OK | `381bde614ff5` |
+| `docs/architecture/CIO_FUTURE_2026-09-19-1352.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 13:52 ET | review_required | OK | `c6fd02492610` |
+| `docs/architecture/CIO_FUTURE_2026-09-19-1401.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:01 ET | review_required | OK | `d3da6ba1132c` |
+| `docs/architecture/CIO_FUTURE_2026-09-19-1436.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:36 ET | review_required | OK | `a8e36ace8e6b` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `4edef7d3ee4d` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-final.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 final) | review_required | OK | `5b412d2266d6` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09) | review_required | OK | `999bb7b18aab` |
+| `docs/architecture/CIO_GAP_2026-09-19-1352.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 13:52 ET | review_required | OK | `ce7582850a3d` |
+| `docs/architecture/CIO_GAP_2026-09-19-1401.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 14:01 ET | review_required | OK | `473218619794` |
+| `docs/architecture/CIO_GAP_2026-09-19-1436.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 14:36 ET | review_required | OK | `474cac5eea1f` |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
 | `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | OK | `56592a4af733` |
@@ -623,6 +636,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan | review_required | OK | `2224490a6526` |
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census | review_required | OK | `a5073ae48b02` |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche | review_required | OK | `3669faccf7ff` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `cab1f2336f17` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |
@@ -1463,6 +1477,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/AUTONOMOUS_ADVISOR_SESSION_CLOSEOUT_2026-08-20.md` | Autonomous Advisor Session Closeout — 2026-08-20 | review_required | OK | `368297046d4f` |
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) | review_required | OK | `e30957166ceb` |
 | `docs/ops/AUTONOMY_RUNTIME_TRUTH_2026-08-11.md` | Runtime truth — host verification (P0 ops) | review_required | OK | `b3ebf94fe56b` |
+| `docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md` | Bitemporal Memory Substrate v2 — deploy receipt | review_required | OK | `96fa1cf70811` |
 | `docs/ops/BRIDGE_PIN_ALIGNMENT.md` | Governed bridge pin alignment | review_required | OK | `72a5c993261d` |
 | `docs/ops/CANONICAL_OBSERVATION_CONTRACT.md` | Canonical observation contract | review_required | OK | `f1efae3e4863` |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 | review_required | OK | `a49f0fc9b389` |
@@ -1638,6 +1653,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | OK | `ad67ce75eb83` |
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | OK | `57b472ac277f` |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
+| `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §9.3) | review_required | OK | `d23e2d26a483` |
 | `docs/ops/R11_AUTONOMOUS_INVESTMENT_OFFICE_OPERATOR_VALUE_CLOSEOUT_2026-08-25.md` | R11 — Autonomous Investment Office Operator-Value Closeout | review_required | OK | `0539b80504f0` |
 | `docs/ops/R12_OPERATOR_INTELLIGENCE_NATURAL_NOTIFICATION_CLOSEOUT_2026-08-25.md` | R12 — Operator-intelligence natural notification closeout | review_required | OK | `dbcce083dfc0` |
 | `docs/ops/R13_INSTITUTIONAL_MATURITY_CLOSEOUT_2026-08-25.md` | R13 Institutional maturity closeout | review_required | OK | `58eb48120061` |

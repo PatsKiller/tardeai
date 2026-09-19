@@ -569,6 +569,23 @@ def test_crash_recovery(store):
     assert ok, msg
 
 
+def test_last_event_hash_skips_truncated_trailing_line(store):
+    """Incomplete last line must not poison create_run (live defect 2026-09-19)."""
+    e1 = store.create_run(trigger_type="MANUAL", trigger_ref="good")
+    tip = e1["event_hash"]
+    assert store._last_event_hash() == tip
+
+    # Simulate a killed mid-append: truncated JSON, no trailing newline.
+    with open(store.store_path, "ab") as f:
+        f.write(b'{"actor": "cio_wake_dispatcher", "event_hash": "deadbeef')
+
+    assert store._last_event_hash() == tip
+    e2 = store.create_run(trigger_type="MANUAL", trigger_ref="after-truncation")
+    assert e2["prev_event_hash"] == tip
+    assert e2["event_hash"] != tip
+    assert store._last_event_hash() == e2["event_hash"]
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
 # Concurrent runs
 # ═══════════════════════════════════════════════════════════════════════════════
