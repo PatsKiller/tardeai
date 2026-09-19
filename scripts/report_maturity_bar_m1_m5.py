@@ -270,6 +270,51 @@ def _m4_from_soak(root: Path) -> tuple[str, str]:
     return ("PARTIAL", note)
 
 
+def _m2_from_writeback(cio: Path) -> tuple[str, str]:
+    """M2: critique verdict changed next_research_question on a live record."""
+    try:
+        # Path-load so `python scripts/report_maturity_bar_m1_m5.py` works when
+        # `scripts` is not an importable package on sys.path (cron form).
+        import importlib.util
+
+        mod_path = Path(__file__).resolve().parent / "lib" / "critique_question_writeback.py"
+        spec = importlib.util.spec_from_file_location(
+            "_maturity_critique_question_writeback", mod_path
+        )
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load {mod_path}")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        artifact = cio / "wake_critique_question.jsonl"
+        row = mod.latest_applied_writeback(artifact)
+    except Exception as exc:  # noqa: BLE001
+        return (
+            "NOT_OBSERVED",
+            f"needs critic verdict changing next_research_question on a live record ({exc})",
+        )
+    if not row:
+        return (
+            "NOT_OBSERVED",
+            "needs critic verdict changing next_research_question on a live record",
+        )
+    before = row.get("before")
+    after = row.get("after")
+    base = (
+        f"writeback as_of={row.get('as_of')} subject_key={row.get('subject_key')} "
+        f"verdict={row.get('critique_verdict')} critique_id={row.get('critique_id')} "
+        f"before={before!r} after={after!r} unattended={row.get('unattended')}"
+    )
+    if (
+        row.get("applied")
+        and row.get("unattended")
+        and row.get("critique_id")
+        and (before or "") != (after or "")
+        and after
+    ):
+        return ("OBSERVED", f"{base} — critique changed next_research_question on the record")
+    return ("CANDIDATE", base)
+
+
 def evaluate(root: Path | None = None) -> dict:
     root = root or ROOT
     cio = root / "data" / "cio"
@@ -281,14 +326,15 @@ def evaluate(root: Path | None = None) -> dict:
     consult = _load_json(cio / "wake_record_consult.json")
     research_persist = _load_json(cio / "wake_research_persist.json")
     m1_v, m1_n = _m1_from_persist(research_persist)
+    m2_v, m2_n = _m2_from_writeback(cio)
     m5_v, m5_n = _m5_from_consult(consult)
     m4_v, m4_n = _m4_from_soak(root)
 
     proofs = {
         "M1_Research": {"verdict": m1_v, "note": m1_n},
         "M2_Advice": {
-            "verdict": "NOT_OBSERVED",
-            "note": "needs critic verdict changing next_research_question on a live record",
+            "verdict": m2_v,
+            "note": m2_n,
         },
         "M3_Feedback": {
             "verdict": "CANDIDATE" if _exists_nonempty(wake_effects) else "NOT_OBSERVED",

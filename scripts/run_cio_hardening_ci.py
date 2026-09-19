@@ -138,6 +138,8 @@ GATES = [
             "tests/test_wake_state_root_stability.py",
             # SFR-A-FOLLOWUP2-001: wake subject selection.
             "tests/test_wake_subject_selector.py",
+            # M2: critique → InstrumentRecord next_research_question writeback.
+            "tests/test_critique_question_writeback_20260919.py",
             # M5: instrument-subject wakes so load-by-subject has a key.
             "tests/test_cio_instrument_wake_enqueue_20260919.py",
             "tests/test_wake_research_consumption.py",

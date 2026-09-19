@@ -11,7 +11,9 @@ universe is quiet.
 Priority (soak-aligned):
   1. subjects with unconsumed research (ResearchObject lacking a non-none
      AgentConsumptionReceipt@v2 for this agent)
-  2. subjects with a recent MaterialChange@v1
+  2. InstrumentRecord subjects that are cadence-due (HELD/WATCH/EXIT) — closes
+     the M2 gap where L3 wakes never overlapped InstrumentRecords
+  3. subjects with a recent MaterialChange@v1
 
 Deterministic: same inputs ⇒ same order. Ties broken by subject_guid.
 Bounded by ``limit`` (default 3). Empty list is an honest answer.
@@ -34,6 +36,7 @@ DEFAULT_LIMIT = 3
 MATERIAL_CHANGE_REEVAL_HOURS = 24
 
 SOURCE_UNCONSUMED_RESEARCH = "unconsumed_research"
+SOURCE_INSTRUMENT_RECORD = "instrument_record_due"
 SOURCE_MATERIAL_CHANGE = "material_change"
 
 
@@ -153,6 +156,62 @@ def material_change_is_suppressed(
     return (now - latest_consume) < timedelta(hours=float(reeval_hours))
 
 
+def instrument_record_candidates(
+    records: Iterable[dict],
+    *,
+    now: datetime | None = None,
+    guid_for_symbol: Callable[[str], str | None] | None = None,
+) -> list[SubjectCandidate]:
+    """Cadence-due HELD/WATCH/EXIT InstrumentRecords as wake subjects.
+
+    ``source_id`` is the subject_key so critique writeback can target the record
+    without a second registry round-trip.
+    """
+    now = now or _now()
+    resolve = guid_for_symbol
+    if resolve is None:
+        def resolve(sym: str) -> str | None:  # type: ignore[misc]
+            try:
+                from scripts.lib import identity_registry as ir
+
+                doc = ir.load()
+                hit = ir.lookup_symbol(doc, sym)
+                if not hit:
+                    return None
+                return str(hit.get("subject_guid") or "") or None
+            except Exception:
+                return None
+
+    out: list[SubjectCandidate] = []
+    seen: set[str] = set()
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        sk = str(rec.get("subject_key") or "").strip()
+        if ":" not in sk:
+            continue
+        kind, sym = sk.split(":", 1)
+        if kind.upper() not in ("HELD", "WATCH", "EXIT") or not sym:
+            continue
+        nxt = _parse_ts(rec.get("next_eligible_at"))
+        if nxt is not None and nxt > now:
+            continue
+        guid = resolve(sym)
+        if not guid or guid in seen:
+            continue
+        seen.add(guid)
+        out.append(
+            SubjectCandidate(
+                subject_guid=guid,
+                source=SOURCE_INSTRUMENT_RECORD,
+                source_id=sk,
+                observed_at=(nxt.isoformat().replace("+00:00", "Z") if nxt else None),
+            )
+        )
+    out.sort(key=lambda c: (c.subject_guid, c.source_id))
+    return out
+
+
 def select_subjects(
     agent_id: str,
     *,
@@ -161,6 +220,8 @@ def select_subjects(
     research_objects: Iterable[dict] | None = None,
     receipts: Iterable[dict] | None = None,
     material_changes: Iterable[dict] | None = None,
+    instrument_records: Iterable[dict] | None = None,
+    guid_for_symbol: Callable[[str], str | None] | None = None,
     recent_hours: float = DEFAULT_RECENT_HOURS,
     material_change_reeval_hours: float = MATERIAL_CHANGE_REEVAL_HOURS,
 ) -> list[SubjectCandidate]:
@@ -175,6 +236,7 @@ def select_subjects(
     research_objects = list(research_objects or [])
     receipts = list(receipts or [])
     material_changes = list(material_changes or [])
+    instrument_records = list(instrument_records or [])
 
     # --- priority a: unconsumed research ---
     research_candidates: list[SubjectCandidate] = []
@@ -208,7 +270,17 @@ def select_subjects(
 
     research_candidates.sort(key=lambda c: (c.subject_guid, c.source_id))
 
-    # --- priority b: recent MaterialChange@v1 ---
+    # --- priority b: cadence-due InstrumentRecords (M2 bridge) ---
+    ir_candidates = [
+        c
+        for c in instrument_record_candidates(
+            instrument_records, now=now, guid_for_symbol=guid_for_symbol
+        )
+        if c.subject_guid not in seen_research_subjects
+    ]
+    seen_ir = {c.subject_guid for c in ir_candidates}
+
+    # --- priority c: recent MaterialChange@v1 ---
     cutoff = now - timedelta(hours=float(recent_hours))
     mc_by_subject: dict[str, SubjectCandidate] = {}
     for mc in material_changes:
@@ -253,12 +325,13 @@ def select_subjects(
                 observed_at=observed.isoformat().replace("+00:00", "Z"),
             )
 
+    blocked = seen_research_subjects | seen_ir
     material_candidates = sorted(
-        (c for sg, c in mc_by_subject.items() if sg not in seen_research_subjects),
+        (c for sg, c in mc_by_subject.items() if sg not in blocked),
         key=lambda c: (c.subject_guid, c.source_id),
     )
 
-    ordered = research_candidates + material_candidates
+    ordered = research_candidates + ir_candidates + material_candidates
     return ordered[:limit]
 
 
@@ -269,12 +342,25 @@ def load_selection_inputs(env: dict | None = None) -> dict[str, list[dict]]:
       TRADEAI_WAKE_RESEARCH_OBJECTS_PATH
       TRADEAI_WAKE_RECEIPTS_PATH
       TRADEAI_WAKE_MATERIAL_CHANGES_PATH
+      TRADEAI_WAKE_INSTRUMENT_RECORDS_PATH
     """
     e = env if env is not None else {}
+    ir_path = e.get("TRADEAI_WAKE_INSTRUMENT_RECORDS_PATH")
+    if not ir_path:
+        shared = (
+            Path.home()
+            / "trade-ai-releases"
+            / "persistent-state"
+            / "data"
+            / "cio"
+            / "cio_instrument_records.jsonl"
+        )
+        ir_path = str(shared) if shared.is_file() else None
     return {
         "research_objects": _load_jsonl(e.get("TRADEAI_WAKE_RESEARCH_OBJECTS_PATH")),
         "receipts": _load_jsonl(e.get("TRADEAI_WAKE_RECEIPTS_PATH")),
         "material_changes": _load_jsonl(e.get("TRADEAI_WAKE_MATERIAL_CHANGES_PATH")),
+        "instrument_records": _load_jsonl(ir_path),
     }
 
 
@@ -284,9 +370,11 @@ __all__ = [
     "DEFAULT_RECENT_HOURS",
     "MATERIAL_CHANGE_REEVAL_HOURS",
     "SOURCE_UNCONSUMED_RESEARCH",
+    "SOURCE_INSTRUMENT_RECORD",
     "SOURCE_MATERIAL_CHANGE",
     "research_is_consumed",
     "material_change_is_suppressed",
+    "instrument_record_candidates",
     "select_subjects",
     "load_selection_inputs",
 ]

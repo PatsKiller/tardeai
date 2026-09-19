@@ -134,3 +134,36 @@ def test_m5_observed_when_instrument_enqueue_honors_cadence():
     )
     assert v == "OBSERVED"
     assert "instrument_enqueue_skipped_cadence=12" in note
+
+
+def test_m2_observed_from_applied_writeback(tmp_path):
+    M = _load()
+    art = tmp_path / "wake_critique_question.jsonl"
+    art.write_text(
+        json.dumps(
+            {
+                "applied": True,
+                "unattended": True,
+                "as_of": "2026-09-19T20:15:00Z",
+                "subject_key": "HELD:CSWC",
+                "critique_verdict": "revise",
+                "critique_id": "crit-1",
+                "before": "old",
+                "after": "new question",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    v, note = M._m2_from_writeback(tmp_path)
+    assert v == "OBSERVED"
+    assert "critique changed next_research_question" in note
+    assert "crit-1" in note
+
+
+def test_m2_not_observed_without_artifact(tmp_path):
+    M = _load()
+    v, note = M._m2_from_writeback(tmp_path)
+    assert v == "NOT_OBSERVED"
+    assert "next_research_question" in note
+
