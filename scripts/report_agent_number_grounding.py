@@ -72,18 +72,27 @@ def summarize(rows: Iterable[tuple[str, Any]]) -> dict[str, Any]:
         per[a][f"v:{verdict}"] += 1
         if rep.get("demoted"):
             per[a]["demoted"] += 1
-        # Honesty: historical rows used verdict=grounded while still listing
-        # unsupported tokens. Count those as soft when residual tokens remain
-        # after applying the current confidence exemption.
+        # Soft-share keys on the current checker vocabulary:
+        # soft_unsupported (honesty, no demotion). Current checker never emits
+        # grounded with a non-empty unsupported list — that dual-state is a
+        # pre-soft_unsupported schema. Counting those residuals as soft made
+        # soft_share permanently FAIL (~0.22) on stale rows while live policy
+        # already labels the same case soft_unsupported. Track the stale
+        # dual-state separately; do not inflate soft_flag with it.
         remaining = [
             str(tok)
             for tok in (rep.get("unsupported") or [])
             if not _confidence_shaped_token(str(tok))
         ]
-        if remaining and verdict in ("soft_unsupported", "grounded"):
+        if verdict == "soft_unsupported" and remaining:
             per[a]["soft_flag"] += 1
-        for tok in remaining:
-            tokens[a][tok] += 1
+            for tok in remaining:
+                tokens[a][tok] += 1
+        elif verdict == "grounded" and remaining:
+            per[a]["stale_grounded_residual"] += 1
+        elif remaining:
+            for tok in remaining:
+                tokens[a][tok] += 1
     agents = {}
     for a, c in sorted(per.items()):
         n = c["results"]
@@ -95,6 +104,7 @@ def summarize(rows: Iterable[tuple[str, Any]]) -> dict[str, Any]:
             "ungrounded_share": round(ungrounded / n, 3) if n else 0.0,
             "soft_unsupported": soft,
             "soft_unsupported_share": round(soft / n, 3) if n else 0.0,
+            "stale_grounded_residual": int(c["stale_grounded_residual"]),
             "grounded": c["v:grounded"],
             "no_numbers": c["v:no_numbers"],
             "not_checked": c["v:not_checked"],
@@ -104,6 +114,7 @@ def summarize(rows: Iterable[tuple[str, Any]]) -> dict[str, Any]:
     total = sum(v["results"] for v in agents.values())
     flagged = sum(v["ungrounded"] for v in agents.values())
     soft_all = sum(v["soft_unsupported"] for v in agents.values())
+    stale_all = sum(v["stale_grounded_residual"] for v in agents.values())
     return {
         "schema": "AgentNumberGroundingReport@v1",
         "results": total,
@@ -111,6 +122,7 @@ def summarize(rows: Iterable[tuple[str, Any]]) -> dict[str, Any]:
         "ungrounded_share": round(flagged / total, 3) if total else 0.0,
         "soft_unsupported": soft_all,
         "soft_unsupported_share": round(soft_all / total, 3) if total else 0.0,
+        "stale_grounded_residual": stale_all,
         "agents": agents,
         "authority": "READ_ONLY_ADVISORY",
     }

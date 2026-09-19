@@ -68,3 +68,69 @@ def test_m1_candidate_on_unattended_persist_without_field_diff():
     )
     assert v == "CANDIDATE"
     assert "field diff" in note
+
+
+def test_m1_observed_when_named_cognition_fields_present():
+    M = _load()
+    v, note = M._m1_from_persist(
+        {
+            "current": {
+                "persisted": 2,
+                "unattended": True,
+                "as_of": "2026-09-19T19:47:19+00:00",
+                "persist": [
+                    {
+                        "subject_key": "HELD:CSWC",
+                        "persisted": True,
+                        "changed": ["next_eligible_at", "cc_narrative"],
+                    }
+                ],
+            },
+            "hits": [],
+        }
+    )
+    assert v == "OBSERVED"
+    assert "next_eligible_at" in note and "cc_narrative" in note
+
+
+def test_m1_observed_via_wake_log_when_hits_omit_field_changes(tmp_path):
+    M = _load()
+    log = tmp_path / "cio_wake_dispatcher.log"
+    log.write_text(
+        "2026-09-19 15:45:48 [x] cognition_persist subject=HELD:CSWC "
+        "persisted=True reason=persisted changed=next_eligible_at,cc_narrative\n",
+        encoding="utf-8",
+    )
+    persist = {
+        "current": {"persisted": 0, "unattended": True},
+        "hits": [
+            {
+                "as_of": "2026-09-19T19:47:19+00:00",
+                "persisted": 3,
+                "unattended": True,
+                "subjects": ["HELD:CSWC", "HELD:BND", "HELD:BAH"],
+            }
+        ],
+    }
+    v, note = M._m1_from_persist(persist, log_path=log)
+    assert v == "OBSERVED"
+    assert "next_eligible_at" in note and "cc_narrative" in note
+    assert "via=wake_dispatcher_log" in note
+
+
+def test_m5_observed_when_instrument_enqueue_honors_cadence():
+    M = _load()
+    v, note = M._m5_from_consult(
+        {
+            "unattended": True,
+            "as_of": "2026-09-19T19:55:08+00:00",
+            "entrypoint": "cron: */5",
+            "subject_resolved": 5,
+            "record_found": 5,
+            "decisions_changed_by_record": 0,
+            "skipped_cadence_not_due": 0,
+            "instrument_enqueue": {"skipped_cadence_count": 12},
+        }
+    )
+    assert v == "OBSERVED"
+    assert "instrument_enqueue_skipped_cadence=12" in note

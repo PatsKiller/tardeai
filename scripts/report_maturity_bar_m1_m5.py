@@ -46,6 +46,102 @@ def _load_json(p: Path) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+# Cognition fields MBI_COGNITION may move (AGENTS.md §2). Behaviour fields never.
+_M1_COGNITION_FIELDS = frozenset({
+    "next_research_question",
+    "next_eligible_at",
+    "notify_priority",
+    "cc_narrative",
+})
+
+
+def _named_cognition_fields(persist: dict) -> list[str]:
+    """Collect named cognition field diffs from current.persist and retained hits."""
+    named: list[str] = []
+    seen: set[str] = set()
+
+    def _add(values) -> None:
+        for raw in values or []:
+            key = str(raw).strip()
+            if key in _M1_COGNITION_FIELDS and key not in seen:
+                seen.add(key)
+                named.append(key)
+
+    current = persist.get("current") if isinstance(persist.get("current"), dict) else {}
+    for row in current.get("persist") or []:
+        if isinstance(row, dict) and row.get("persisted"):
+            _add(row.get("changed"))
+    for hit in persist.get("hits") or []:
+        if not isinstance(hit, dict):
+            continue
+        if int(hit.get("persisted") or 0) < 1:
+            continue
+        _add(hit.get("field_changes") or hit.get("changed_fields"))
+    return named
+
+
+def _field_changes_from_wake_log(
+    subjects: list[str],
+    *,
+    log_path: Path | None = None,
+) -> list[str]:
+    """Corroborate M1 from the durable entrypoint log when hits omit field_changes.
+
+    `cognition_persist ... changed=a,b` lines are written by the scheduled
+    entrypoint into persistent-state/logs. Hits retained before field_changes
+    was added to hit_from_cycle still prove persist; the log names the fields.
+    """
+    if not subjects:
+        return []
+    path = log_path or (
+        Path.home()
+        / "trade-ai-releases"
+        / "persistent-state"
+        / "logs"
+        / "cio_wake_dispatcher.log"
+    )
+    if not _exists_nonempty(path):
+        return []
+    wanted = {str(s) for s in subjects if s}
+    found: list[str] = []
+    seen: set[str] = set()
+    try:
+        # Bound the scan: last ~2 MiB covers recent unattended cycles.
+        size = path.stat().st_size
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            if size > 2_000_000:
+                fh.seek(size - 2_000_000)
+                fh.readline()
+            for line in fh:
+                if "cognition_persist" not in line or "changed=" not in line:
+                    continue
+                if "persisted=True" not in line and "persisted=true" not in line:
+                    continue
+                # subject=<key> ... changed=a,b
+                subj = None
+                if "subject=" in line:
+                    try:
+                        subj = line.split("subject=", 1)[1].split()[0].strip()
+                    except IndexError:
+                        subj = None
+                if subj not in wanted:
+                    continue
+                try:
+                    raw = line.split("changed=", 1)[1].strip()
+                except IndexError:
+                    continue
+                # Rest of the line may continue; fields are comma-separated tokens.
+                raw = raw.split()[0] if raw.split() else raw
+                for part in raw.split(","):
+                    key = part.strip()
+                    if key in _M1_COGNITION_FIELDS and key not in seen:
+                        seen.add(key)
+                        found.append(key)
+    except OSError:
+        return []
+    return found
+
+
 def _m5_from_consult(consult: dict | None) -> tuple[str, str]:
     """M5: unattended load-by-subject + days-later disposition still honored."""
     if not consult:
@@ -58,14 +154,21 @@ def _m5_from_consult(consult: dict | None) -> tuple[str, str]:
     resolved = int(consult.get("subject_resolved") or 0)
     changed = int(consult.get("decisions_changed_by_record") or 0)
     skipped = int(consult.get("skipped_cadence_not_due") or 0)
+    ie = consult.get("instrument_enqueue") if isinstance(consult.get("instrument_enqueue"), dict) else {}
+    ie_skipped = int(
+        consult.get("instrument_enqueue_skipped_cadence")
+        or ie.get("skipped_cadence_count")
+        or 0
+    )
     as_of = consult.get("as_of")
     entry = consult.get("entrypoint")
     base = (
         f"consult as_of={as_of} entry={entry} unattended={unattended} "
         f"subject_resolved={resolved} record_found={found} "
-        f"changed_by_record={changed} skipped_cadence={skipped}"
+        f"changed_by_record={changed} skipped_cadence={skipped} "
+        f"instrument_enqueue_skipped_cadence={ie_skipped}"
     )
-    disposition = changed >= 1 or skipped >= 1
+    disposition = changed >= 1 or skipped >= 1 or ie_skipped >= 1
     if unattended and found >= 1 and disposition:
         return (
             "OBSERVED",
@@ -79,8 +182,12 @@ def _m5_from_consult(consult: dict | None) -> tuple[str, str]:
     return ("NOT_OBSERVED", base)
 
 
-def _m1_from_persist(persist: dict | None) -> tuple[str, str]:
-    """M1: self-raised research that persisted onto a record (field diff still required for OBSERVED)."""
+def _m1_from_persist(
+    persist: dict | None,
+    *,
+    log_path: Path | None = None,
+) -> tuple[str, str]:
+    """M1: self-raised research that persisted onto a named InstrumentRecord field."""
     if not persist:
         return (
             "NOT_OBSERVED",
@@ -90,6 +197,27 @@ def _m1_from_persist(persist: dict | None) -> tuple[str, str]:
     hits = persist.get("hits") if isinstance(persist.get("hits"), list) else []
     recent = [h for h in hits if isinstance(h, dict) and int(h.get("persisted") or 0) >= 1]
     cur_persisted = int(current.get("persisted") or 0)
+    named = _named_cognition_fields(persist)
+    evidence_src = "persist_artifact"
+    if not named and recent:
+        last = recent[-1]
+        subjects = [str(s) for s in (last.get("subjects") or []) if s]
+        named = _field_changes_from_wake_log(subjects, log_path=log_path)
+        if named:
+            evidence_src = "wake_dispatcher_log"
+    unattended = bool(current.get("unattended")) or any(
+        bool(h.get("unattended", True)) for h in recent
+    )
+    if named and unattended and (cur_persisted >= 1 or recent):
+        as_of = current.get("as_of") if cur_persisted >= 1 else (
+            recent[-1].get("as_of") if recent else None
+        )
+        persisted_n = cur_persisted or (recent[-1].get("persisted") if recent else 0)
+        return (
+            "OBSERVED",
+            f"unattended persist as_of={as_of} persisted={persisted_n} "
+            f"field_changes={named} via={evidence_src}",
+        )
     if cur_persisted >= 1 and current.get("unattended"):
         return (
             "CANDIDATE",

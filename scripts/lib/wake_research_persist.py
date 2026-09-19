@@ -10,7 +10,7 @@ Shape:
       "schema": "WakeResearchPersist@v1",
       "current": { ...full last-cycle object... },
       "hits": [ {as_of, dispatched, research_called, persisted,
-                 subjects[], decisions[], unattended}, ... ]
+                 subjects[], decisions[], field_changes[], unattended}, ... ]
     }
 
 Legacy last-cycle-only files load as ``current=<that object>, hits=[]``.
@@ -65,6 +65,20 @@ def hit_from_cycle(cycle: dict[str, Any]) -> dict[str, Any]:
         if sk is not None and sk != "":
             subjects.append(sk)
         decisions.append(row.get("decision"))
+    # M1 evidence: name the InstrumentRecord cognition fields that moved.
+    # Dropping `changed` here forced the maturity bar to stay CANDIDATE even
+    # when cognition_persist had already rewritten next_eligible_at / cc_narrative.
+    field_changes: list[str] = []
+    seen: set[str] = set()
+    for prow in cycle.get("persist") or []:
+        if not isinstance(prow, dict):
+            continue
+        for name in prow.get("changed") or []:
+            key = str(name).strip()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            field_changes.append(key)
     return {
         "as_of": cycle.get("as_of"),
         "dispatched": cycle.get("dispatched"),
@@ -72,6 +86,7 @@ def hit_from_cycle(cycle: dict[str, Any]) -> dict[str, Any]:
         "persisted": int(cycle.get("persisted") or 0),
         "subjects": subjects,
         "decisions": decisions,
+        "field_changes": field_changes,
         "unattended": bool(cycle.get("unattended", True)),
     }
 
