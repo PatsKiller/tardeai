@@ -25,9 +25,9 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=4 on tip 4bafd6f83 @ 2026-09-19T20:02:08Z | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | PARTIAL | code on #1081; flag off | Flag on served + organic thin answer | receipt spilled_to/free climb |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
-| PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 21:20Z pin 18a41066d: M1/M3/M5 OBSERVED; M2 NOT_OBSERVED (writeback artifact absent; author HTTP 402); M4 PARTIAL soak=4 | Organic L3 critique→NRQ writeback unattended | all five OBSERVED |
-| PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL→CLOSING | [VERIFIED] hand apply + systemd `tradeai-aec-command-center-cycle.timer` enabled (hourly; first oneshot exit 0 @ 17:34 ET) | Organic timer fire @ 18:00 ET + promote tip with wake spines | unattended cycle from CURRENT |
-| PARTIAL-memory-four-spines | PARTIAL→CLOSING | [VERIFIED] spines after `--apply`; wake now fail-soft loads spines into context (`load_aec_spines_for_wake` / provenance aec_spines_loaded) — needs promote for served OBSERVED | Promote #1090 + organic wake provenance | wake reads spines from CURRENT |
+| PARTIAL-M1-M5 | PARTIAL | [VERIFIED] 22:03Z pin a628ed0b3: M1/M3/M5 OBSERVED (M1 via log recover + trim_hits fix); M2 NOT_OBSERVED (no WAKE_L3 cron flags; 402); M4 PARTIAL soak=4 | Operator enable WAKE_L3_* + organic critique writeback | all five OBSERVED |
+| PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL→CLOSING | [VERIFIED] unattended timer fire LastTrigger=18:00:13 EDT (bitemporal dry_run=false; narrator telegram dry_run); next 19:00 | Live narrator --notify + organic AgentView when not SUPPRESSED_REPEAT | unattended cycle from CURRENT |
+| PARTIAL-memory-four-spines | PARTIAL→CLOSING | [VERIFIED] #1090 promoted (pin a628ed0b3); spines load on wake path; organic cycle 18:00 wrote bitemporal + bus | Organic wake provenance aec_spines_loaded on served | wake reads spines from CURRENT |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
 | PARTIAL-narrator-unprompted-telegram | PARTIAL | aec_narrator renders brief; cycle dry-runs; live notify is explicit-flag only | Schedule + --notify under telegram grant + COVERS | unprompted brief delivered |
 | DARK-cio-runs-truncated-tail | CLOSED | incomplete last line blocked create_run; wake errors=5 | archive + cio_run harden 7ea5835f9 | repair receipt + test |
@@ -103,3 +103,11 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - Installed `tradeai-aec-command-center-cycle.{service,timer}` (hourly) under cron grant; lane_registry row ACTIVE; output_signal `data/cio/aec_agent_bus.jsonl`
 - Dry-run quoted then `systemctl --user enable --now`; oneshot `start` exit 0 (advisory apply; narrator telegram still dry_run)
 - Next natural fire ~18:00 ET
+
+## 2026-09-19T18:10 ET — post-#1090 organic AEC + M1 hit-retention
+
+- [VERIFIED] `tradeai-aec-command-center-cycle.timer` LastTrigger=18:00:13 EDT; unattended cycle finished with bitemporal `dry_run=false`, narrator `telegram: dry_run`; next 19:00 EDT.
+- [VERIFIED] M1 NOT_OBSERVED root cause: hit FIFO dropped `persisted=True` rows (HELD:BAH 15:46 ET `next_eligible_at,cc_narrative`) under research-only flood; dispatcher log still held proof.
+- Fix in flight: `trim_hits` prefers persist evidence; reporter recovers M1 from wake_dispatcher_log when hits lost the row.
+- M2 still blocked: cron lacks `WAKE_L3_*` (see `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md`); DeepSeek 402 remains provider/operator.
+- PARTIAL-CIO-Advisor-Narrator-mesh / PARTIAL-memory-four-spines: unattended schedule OBSERVED at 18:00; narrator live telegram and relationship sources still operator.

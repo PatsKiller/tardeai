@@ -189,6 +189,28 @@ def load_document(path: Path | str) -> dict[str, Any]:
     return {"schema": SCHEMA, "current": raw, "hits": []}
 
 
+def trim_hits(hits: list[dict[str, Any]], *, cap: int = HITS_CAP) -> list[dict[str, Any]]:
+    """Cap retained hits without discarding M1 persist evidence first.
+
+    Measured 2026-09-19: five unattended ``persisted=True`` rows (e.g. HELD:BAH
+    ``next_eligible_at,cc_narrative`` at 15:46 ET) were pushed out of the FIFO
+    window by later ``research_called>0`` / ``persisted=0`` cycles, so the
+    maturity bar flipped to NOT_OBSERVED while the dispatcher log still held
+    the proof. Drop oldest zero-persist hits before any persist hit.
+    """
+    out = [h for h in hits if isinstance(h, dict)]
+    while len(out) > cap:
+        drop_i = None
+        for i, h in enumerate(out):
+            if int(h.get("persisted") or 0) < 1:
+                drop_i = i
+                break
+        if drop_i is None:
+            drop_i = 0
+        out.pop(drop_i)
+    return out
+
+
 def write_cycle(path: Path | str, cycle: dict[str, Any]) -> dict[str, Any]:
     """Set current to this cycle; append a hit when is_hit; cap hits; atomic write.
 
@@ -201,7 +223,7 @@ def write_cycle(path: Path | str, cycle: dict[str, Any]) -> dict[str, Any]:
     if is_hit(cycle):
         hits.append(hit_from_cycle(cycle))
         if len(hits) > HITS_CAP:
-            hits = hits[-HITS_CAP:]
+            hits = trim_hits(hits, cap=HITS_CAP)
     out = {
         "schema": SCHEMA,
         "current": cycle,
