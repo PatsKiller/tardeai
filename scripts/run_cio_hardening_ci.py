@@ -138,6 +138,8 @@ GATES = [
             "tests/test_wake_state_root_stability.py",
             # SFR-A-FOLLOWUP2-001: wake subject selection.
             "tests/test_wake_subject_selector.py",
+            # M5: instrument-subject wakes so load-by-subject has a key.
+            "tests/test_cio_instrument_wake_enqueue_20260919.py",
             "tests/test_wake_research_consumption.py",
             # Grok-closure Phase 2: canonical recurring research -> wake feed
             # producer. Governed Brave router + budget -> durable ResearchObject
@@ -1406,6 +1408,9 @@ GATES = [
         "release_pin_and_validator",
         [
             "tests/test_release_pin_and_validator.py",
+            "tests/test_aec_agent_bus_memory_20260919.py",
+            "tests/test_aec_narrator_20260919.py",
+            "tests/test_bitemporal_correctness.py",
             "tests/test_record_bridge_pin_soak.py",
             "tests/test_agent_number_grounding_slo_20260918.py",
             "tests/test_research_quality_escalate_20260918.py",

@@ -1,0 +1,36 @@
+{
+  "schema": "AecAgentMesh@v1",
+  "as_of": "2026-09-19T17:15:00Z",
+  "authority": "READ_ONLY_ADVISORY",
+  "operator_license": "2026-09-19 parallel agents and memory granted",
+  "mbi_behavior": 0,
+  "agents": [
+    {
+      "agent_id": "cio_agent",
+      "role": "CIO",
+      "goals": ["technology_roadmap", "security_posture", "infrastructure_health", "automation_maturity", "cost_optimization"],
+      "reads": ["operational", "learning"],
+      "writes_topics": ["cycle.cio.status", "risk.infra", "automation.maturity"]
+    },
+    {
+      "agent_id": "advisor_agent",
+      "role": "StrategicAdvisor",
+      "goals": ["thesis_refinement", "strategic_planning", "risk_management", "opportunity_identification", "competitive_intelligence"],
+      "reads": ["strategic", "learning", "relationship"],
+      "writes_topics": ["cycle.advisor.thesis", "opportunity", "risk.thesis"]
+    },
+    {
+      "agent_id": "narrator_agent",
+      "role": "TelegramNarrator",
+      "goals": ["executive_context", "unprompted_brief", "exception_surface"],
+      "reads": ["strategic", "operational", "relationship", "learning"],
+      "writes_topics": ["cycle.narrator.brief"],
+      "transport": "telegram_transport_pending_wire"
+    }
+  ],
+  "memory_spines": ["strategic", "operational", "relationship", "learning"],
+  "anti_repetition": {
+    "mechanism": "aec_memory_spines.claim_fingerprint + learning spine",
+    "rule": "suppress identical claim_fp unless circumstance hash changes"
+  }
+}

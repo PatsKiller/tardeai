@@ -1,0 +1,99 @@
+name: bitemporal-memory-correctness-ci
+
+# Isolated M2 bitemporal correctness (Studio 200-case matrix).
+# NEVER targets production :5432 — service publishes host port 55432 only.
+# READ_ONLY_ADVISORY · MBI_BEHAVIOR=0 · cognitive memory only.
+
+on:
+  pull_request:
+    paths:
+      - "sql/r10_m2_isolated_benchmark.sql"
+      - "sql/trade-ai-bitemporal-schema-v2.sql"
+      - "scripts/lib/cio_memory_integration.py"
+      - "scripts/lib/memory_m2_v2.py"
+      - "scripts/lib/memory_m2_benchmark.py"
+      - "scripts/cio_memory_integration.py"
+      - "tests/test_bitemporal_correctness.py"
+      - ".github/workflows/bitemporal-memory-correctness-ci.yml"
+  workflow_dispatch:
+
+jobs:
+  bitemporal-200:
+    runs-on: ubuntu-latest
+    services:
+      m2shadow:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: m2
+          POSTGRES_PASSWORD: m2shadow
+          POSTGRES_DB: m2_shadow
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U m2 -d m2_shadow"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      TRADE_AI_CI: "1"
+      M2_DSN: "postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow"
+      # Explicitly refuse Studio-style production-looking DSNs in this job.
+      TEST_DB_DSN: "postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest psycopg2-binary
+
+      - name: Refuse production port DSN
+        run: |
+          python3 - <<'PY'
+          from scripts.lib.memory_m2_benchmark import _assert_isolated_dsn
+          import os
+          dsn = os.environ["M2_DSN"]
+          assert "55432" in dsn and ":5432" not in dsn.split("@")[-1]
+          _assert_isolated_dsn(dsn)
+          try:
+              _assert_isolated_dsn("postgresql://postgres:postgres@localhost:5432/trade_ai_test")
+          except RuntimeError as e:
+              assert "PRODUCTION_PORT" in str(e)
+          else:
+              raise SystemExit("production DSN was accepted")
+          print("dsn_rail_ok", dsn)
+          PY
+
+      - name: Apply schema + run 200-case suite
+        run: |
+          python3 scripts/cio_memory_integration.py --apply-schema --dry-run
+          python3 -m pytest tests/test_bitemporal_correctness.py -q --tb=line
+
+      - name: EXPLAIN ANALYZE index pruning receipt
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from scripts.lib.memory_m2_v2 import connect
+          conn = connect(os.environ["M2_DSN"])
+          cur = conn.cursor()
+          cur.execute("""
+            EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
+            SELECT memory_version_id
+              FROM memory_r10_m2.memory_fact_version
+             WHERE upper_inf(tx_period)
+               AND valid_period @> NOW()
+               AND tx_period @> NOW()
+          """)
+          plan = cur.fetchone()[0]
+          blob = json.dumps(plan)
+          print(blob[:2000])
+          assert "Index" in blob
+          assert "Seq Scan" not in blob or blob.index("Index") < blob.find("Seq Scan")
+          conn.close()
+          print("explain_index_ok")
+          PY

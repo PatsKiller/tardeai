@@ -41,15 +41,10 @@ BENCHMARK_OR_LAB = {
 # Real gaps: written, tested, and reachable from nothing that runs. This set must
 # shrink or hold — never grow. Adding to it is an explicit admission, which is
 # the behaviour this guard is trying to produce.
-KNOWN_DARK = {
-    # Gate-B agent alias resolution (guardian/ledger vs legacy risk_agent/tax_agent).
-    # Test-only. Retire or wire during the Gate-B follow-up; deleting it blind
-    # risks dropping a governance assumption nothing else encodes.
-    "cio_identity_resolver",
-    # Immutable decision disposition identity. Test-only. Supersedes the legacy
-    # position:<symbol>:<account> key, and wants a consumer on the decision path.
-    "cio_disposition_identity",
-}
+#
+# 2026-09-19: emptied. cio_identity_resolver → aec_agent_bus.resolve_payload_agent_refs;
+# cio_disposition_identity → aec_command_center_cycle (commitment decision_key).
+KNOWN_DARK: set[str] = set()
 
 
 def _modules() -> list[str]:
