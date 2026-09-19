@@ -74,8 +74,9 @@ def test_shadow_mode_never_records_so_it_cannot_suppress(tmp_path):
 
 
 def test_every_message_gets_a_guid_and_subject_guids_on_the_footer(tmp_path):
+    q = _cio([{"symbol": "AXTI", "action": "BUY_READY", "created_at": "2026-09-13T17:08:53-04:00"}])
     d = ce.edit("✅ GO *AXTI* — Scalp setup", chat_id="1", now=NOW, ledger=ce.DuplicateLedger(tmp_path / "l.json"),
-                resolve=_resolve, editor_mode="live")
+                db_query=q, resolve=_resolve, editor_mode="live")
     assert d.guid and d.subjects == [{"symbol": "AXTI", "guid": "11111111-2222-3333-4444-555555555555"}]
     footer = d.text.split("\n")[-1]
     assert f"🆔 {d.guid[:8]}" in footer and "AXTI:11111111" in footer

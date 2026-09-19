@@ -222,6 +222,35 @@ def main():
             "send_decision": check, "message_preview": message[:300],
         }
 
+        # 2026-09-18 audit: consult cio_decisions before would-send; fail closed if missing.
+        _cio_ok = True
+        try:
+            from lib.cio_telegram_stance_gate import check_investment_send, text_is_investment_shaped
+            # Proposal cards are entry/add shaped (entry/stop/target). Gate as bullish
+            # whenever the body is investment-shaped; otherwise still check if Action
+            # is an entry verb so WATCH+dip-buy cards cannot skip the join.
+            _assert = "bullish" if (
+                text_is_investment_shaped(message)
+                or str(packet.get("recommended_action") or "").upper() in {
+                    "APPROVE_PAPER", "REBUILD", "WATCH", "BUY", "ADD",
+                }
+            ) else None
+            if _assert:
+                _gate = check_investment_send(
+                    symbol=str(pr.get("symbol") or ""),
+                    message_text=message,
+                    asserted_stance=_assert,
+                    db_query=_db_query,
+                )
+                result["cio_stance_gate"] = _gate.as_dict()
+                if not _gate.allow:
+                    _cio_ok = False
+                    result["held_reason"] = _gate.held_reason
+        except Exception as _cio_exc:  # noqa: BLE001 — fail closed
+            _cio_ok = False
+            result["held_reason"] = "cio_decision_missing"
+            result["cio_stance_gate_error"] = type(_cio_exc).__name__
+
         # ALERT-FATIGUE-1: Check central router before sending
         _router_ok = True
         try:
@@ -232,7 +261,7 @@ def main():
         except ImportError:
             pass
 
-        if check["send"] and not args.dry_run and _router_ok:
+        if check["send"] and not args.dry_run and _router_ok and _cio_ok:
             try:
                 # Destination + keyboard via telegram_alert chokepoint (no raw Bot API).
                 dest: dict = {}
@@ -296,9 +325,13 @@ def main():
                           packet["alert_type"], packet["urgency"], False, "error", str(e)[:100])
         else:
             result["sent"] = False
-            result["mode"] = "dry_run" if args.dry_run else "suppressed"
+            if not _cio_ok:
+                result["mode"] = "cio_held"
+            else:
+                result["mode"] = "dry_run" if args.dry_run else "suppressed"
             _log_alert(check["key"], pr.get("id"), pr.get("symbol"),
-                      packet["alert_type"], packet["urgency"], False, "dry_run" if args.dry_run else "suppressed")
+                      packet["alert_type"], packet["urgency"], False,
+                      result.get("mode") or ("dry_run" if args.dry_run else "suppressed"))
 
         recent_keys.add(check["key"])
         results.append(result)

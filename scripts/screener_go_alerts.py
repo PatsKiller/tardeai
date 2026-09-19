@@ -111,16 +111,38 @@ def rich_alert(item: dict) -> Optional[dict]:
         return None
 
 
-def _send_go(send_telegram: Callable[..., Any], item: dict) -> bool:
+def _cio_go_gate(symbol: str, text: str,
+                 db_query: Optional[Callable[..., list[dict]]] = None) -> dict[str, Any]:
+    """Consult ``cio_decisions`` before a GO would-send. Fail closed when missing."""
+    try:
+        from lib.cio_telegram_stance_gate import check_investment_send  # noqa: PLC0415
+    except ImportError:
+        from scripts.lib.cio_telegram_stance_gate import check_investment_send  # type: ignore
+    verdict = check_investment_send(
+        symbol=symbol,
+        message_text=text,
+        asserted_stance="bullish",
+        db_query=db_query,
+    )
+    return verdict.as_dict()
+
+
+def _send_go(send_telegram: Callable[..., Any], item: dict,
+             db_query: Optional[Callable[..., list[dict]]] = None) -> tuple[bool, Optional[str]]:
     # bypass_router: the legacy router classified "momentum scalp setup" as
     # job_telemetry -> DIGEST and send_telegram returned True for the digested
     # message, so ARMP (A+) and ELMT were recorded as sent at 12:15 on
     # 2026-09-14 and never reached the operator.
     rich = rich_alert(item)
+    text = rich["text"] if rich else format_alert(item)
+    sym = str(item["row"].get("symbol") or "").upper()
+    gate = _cio_go_gate(sym, text, db_query=db_query)
+    if not gate.get("allow", False):
+        return False, str(gate.get("held_reason") or "cio_stance_conflict")
     extra = ({"reply_markup": rich["reply_markup"], "link_preview_options": rich["link_preview_options"]}
              if rich else {})
-    return bool(send_telegram(rich["text"] if rich else format_alert(item), bypass_router=True,
-                              message_class="operator_alert", **extra))
+    ok = bool(send_telegram(text, bypass_router=True, message_class="operator_alert", **extra))
+    return ok, None
 
 
 def _load_ledger(path: Path) -> dict:
@@ -178,6 +200,11 @@ def main() -> int:
     for item in plan["alert"]:
         item["held"] = str(item["row"]["symbol"]).upper() in held_set
     sent_now: list[str] = []
+    cio_held: list[dict[str, str]] = []
+    try:
+        from lib.comms_editor import default_db_query as _cio_db  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        _cio_db = None
     if args.send:
         from telegram_alert import send_telegram  # noqa: PLC0415
 
@@ -189,19 +216,34 @@ def main() -> int:
             # 2026-09-14 and never reached the operator -- the same silence that hid
             # GO signals for months. The operator asked for these in real time; the
             # Communications Editor still formats every message at the transport.
-            if _send_go(send_telegram, item):
+            # 2026-09-18: also join cio_decisions before would-send (fail closed).
+            ok, held_reason = _send_go(send_telegram, item, db_query=_cio_db)
+            if ok:
                 ledger[f"{session.isoformat()}:{sym}"] = datetime.now(timezone.utc).isoformat()
                 sent_now.append(sym)
+            elif held_reason:
+                cio_held.append({"symbol": sym, "held_reason": held_reason})
         LEDGER.parent.mkdir(parents=True, exist_ok=True)
         LEDGER.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
+    else:
+        # Dry-run still consults CIO so the receipt shows what would be held.
+        for item in plan["alert"]:
+            sym = str(item["row"]["symbol"]).upper()
+            text = format_alert(item)
+            gate = _cio_go_gate(sym, text, db_query=_cio_db)
+            if not gate.get("allow", False):
+                cio_held.append({"symbol": sym, "held_reason": str(gate.get("held_reason") or "cio_stance_conflict")})
     report = {"schema": "ScreenerGoAlerts@v1", "ran_at": datetime.now(timezone.utc).isoformat(),
               "session": session.isoformat(), "mode": "send" if args.send else "dry_run",
               "go_rows": len(rows), "qualifying": [a["row"]["symbol"] for a in plan["alert"]],
               "sent": sent_now, "already_sent": plan["already_sent"], "withheld": plan["withheld"],
-              "authority": AUTHORITY}
-    print(json.dumps({k: report[k] for k in ("session", "mode", "go_rows", "qualifying", "sent", "already_sent")}))
+              "cio_held": cio_held, "authority": AUTHORITY}
+    print(json.dumps({k: report[k] for k in ("session", "mode", "go_rows", "qualifying", "sent",
+                                              "already_sent", "cio_held")}))
     for w in plan["withheld"][:10]:
         print(f"  withheld {w['symbol']}: failed={w['failed']} missing={w['missing']}")
+    for c in cio_held[:10]:
+        print(f"  cio_held {c['symbol']}: {c['held_reason']}")
     if not args.send:
         for item in plan["alert"][:3]:
             print("---- would send ----\n" + format_alert(item))
