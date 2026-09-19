@@ -282,6 +282,16 @@ GATES = [
             "tests/test_gog_broker_approval.py",
         ],
     ),
+    # A paid provider lane can die without anything noticing: DeepSeek ran to a -$0.09
+    # balance on 2026-09-17 and returned HTTP 402 on every call for three days while
+    # risk/steph/tax produced nothing. This gate holds the alarm that names a billing or
+    # auth stop, and the OAuth soft fallback that keeps those agents producing through one.
+    (
+        "provider_billing_alarm",
+        [
+            "tests/test_provider_health_alarm.py",
+        ],
+    ),
     # C1 (batch 1: send_telegram). Every alarm must be OBSERVED firing; the
     # uncovered set is a named number in config/alarm_firing_baseline.txt that can
     # only shrink. Presence of alarm code is not evidence it fires.
