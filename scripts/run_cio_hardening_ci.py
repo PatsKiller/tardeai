@@ -289,6 +289,7 @@ GATES = [
             "tests/test_alarm_fires_batch4.py",
             "tests/test_alarm_fires_batch5.py",
             "tests/test_alarm_fires_guard_approval.py",
+            "tests/test_alarm_fires_disk_and_handler_20260919.py",
             "tests/test_alarm_coverage.py",
         ],
     ),
@@ -1405,6 +1406,18 @@ GATES = [
         "release_pin_and_validator",
         [
             "tests/test_release_pin_and_validator.py",
+            # Soak / grounding-SLO / quality-escalate tests ship with #1081; omit
+            # here so this branch does not gate files it does not carry.
+            # Main landed these without gating — coverage gate treated them as NEW.
+            "tests/test_agent_router_trade_write_gate_20260918.py",
+            "tests/test_cio_wake_jobs_corrupt_tail_20260918.py",
+            "tests/test_maturity_oauth_envelope_20260918.py",
+            "tests/test_phase1_pi_untrusted_20260918.py",
+            "tests/test_postgres_main_health.py",
+            "tests/test_prod_ready_final4_20260918.py",
+            "tests/test_weekly_disk_cleanup_notify_20260918.py",
+            "tests/test_alarm_fires_disk_and_handler_20260919.py",
+            "tests/test_cio_telegram_stance_gate_20260918.py",
         ],
     ),
     (
