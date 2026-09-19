@@ -792,6 +792,7 @@ def _notify_both(msg: str):
         from telegram_alert import send_telegram
         send_telegram(msg, bypass_router=True)
     except Exception:
+        # ALARM-DELIVERY-DECLARED: best-effort dual-chat broadcast; never blocks slash-command path
         pass
 
 

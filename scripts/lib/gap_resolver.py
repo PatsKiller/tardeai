@@ -836,6 +836,62 @@ def resolve(
         elif res.outcome != "partial":
             res.outcome = "no_coverage"
     res.evidence = gathered
+
+    # Phase-2 quality escalate: thin search/answer → one free SearXNG climb.
+    # Off unless RESEARCH_QUALITY_ESCALATE=1. Reuses score_lap; never invents a rubric.
+    if res.outcome in ("partial", "answered"):
+        try:
+            from scripts.lib import research_quality_escalate as rqe
+
+            if rqe.enabled(ctx.env):
+                esc = rqe.maybe_escalate(
+                    question=gap.question,
+                    symbol=(list(gap.symbols)[0] if gap.symbols else gap.subject) or None,
+                    search_hits=list((gathered or {}).get("search_results") or []),
+                    answer=res.answer,
+                    env=ctx.env,
+                    dry_run=not ctx.is_live(),
+                )
+                gathered = dict(gathered or {})
+                gathered["quality_escalate"] = esc
+                if esc.get("escalated") and esc.get("hits"):
+                    prior = list(gathered.get("search_results") or [])
+                    gathered["search_results"] = prior + list(esc["hits"])
+                    if not res.answered:
+                        res.outcome = "partial"
+                        res.source = res.source or "quality_escalate:searxng"
+                    # Durable receipt so "thin_answer" climbs are measurable.
+                    _append_receipt(
+                        ctx.receipts,
+                        {
+                            "schema": RECEIPT_SCHEMA,
+                            "authority": AUTHORITY,
+                            "gap_id": gap.gap_id,
+                            "goal_id": gap.goal_id,
+                            "domain": canonical_domain(gap.domain),
+                            "subject": gap.subject,
+                            "question": gap.question[:300],
+                            "vector": "quality_escalate",
+                            "provider": "searxng",
+                            "outcome": "partial",
+                            "detail": esc.get("detail") or rqe.REASON,
+                            "reason": rqe.REASON,
+                            "started": esc.get("as_of") or "",
+                            "finished": esc.get("as_of") or "",
+                        },
+                    )
+                    res.attempts.append(
+                        {
+                            "vector": "quality_escalate",
+                            "provider": "searxng",
+                            "outcome": "partial",
+                            "detail": esc.get("detail"),
+                        }
+                    )
+                res.evidence = gathered
+        except Exception:  # noqa: BLE001 — escalate must never break resolve
+            pass
+
     return res
 
 

@@ -82,7 +82,12 @@ _PRICE_LINE_RE = re.compile(r"\b(price|prices|close|closed|closing|last|current)
 DEFAULT_MODE = "enforce"
 #: Tokens that look like numbers with a k/b suffix but name account types.
 _ACCOUNT_TOKENS = frozenset({"401k", "403b", "457b", "401K", "403B", "457B"})
-_CONFIDENCE_WORDS = ("confidence", "conf ", "conf:", "conf=")
+_CONFIDENCE_WORDS = (
+    "confidence", "conf ", "conf:", "conf=",
+    "probability", "prob ", "prob:", "prob=",
+    "score ", "score:", "rating ", "rating:",
+    "conviction", "likelihood",
+)
 
 _SUFFIX = {"k": 1e3, "m": 1e6, "b": 1e9}
 #: A minus sign counts as part of a code only when glued to a word or digit
@@ -205,9 +210,28 @@ def _supported(n: dict[str, Any], supplied: tuple[list[float], list[float]]) -> 
 
 
 def _is_stated_confidence(text: str, n: dict[str, Any]) -> bool:
-    before = str(text)[max(0, n["start"] - 24):n["start"]].lower()
-    after = str(text)[n["end"]:n["end"] + 14].lower()
-    return any(w in before for w in _CONFIDENCE_WORDS) or "confiden" in after
+    """Confidence / probability / score figures are not inventable market facts.
+
+    risk_agent soft-share was dominated by 0.85/0.95 without the word 'confidence'
+    immediately before the token (e.g. 'risk score 0.85'). Expand the window and
+    vocabulary. Dollar amounts and unit-suffixed figures are never confidence.
+    Percent forms next to confidence language (``conf: 72%``, ``85% confident``)
+    stay exempt — same as before this soft-share fix.
+    """
+    if n.get("is_dollar") or n.get("has_suffix"):
+        return False
+    v = float(n.get("value") or 0.0)
+    # Bare 0–1 decimals (score/prob) OR 0–100 percents next to confidence words.
+    if n.get("is_pct"):
+        if v < 0.0 or v > 100.0:
+            return False
+    elif v < 0.0 or v > 1.0:
+        return False
+    before = str(text)[max(0, n["start"] - 36):n["start"]].lower()
+    after = str(text)[n["end"]:n["end"] + 20].lower()
+    if any(w in before for w in _CONFIDENCE_WORDS):
+        return True
+    return any(tok in after for tok in ("confidence", "prob", "score", "rating", "confiden", "confident"))
 
 
 def _env_float(name: str, default: float) -> float:

@@ -89,6 +89,40 @@ def test_the_deploy_script_still_parses():
     assert r.returncode == 0, r.stderr
 
 
+def test_promote_restarts_governed_bridge_by_default():
+    """WorkingDirectory=CURRENT does not re-resolve after promote. Without a
+    bound-unit restart the bridge freezes on the pre-promote concrete release
+    (2026-09-18: 0162d0f19 while portfolio-server served 71535687d)."""
+    src = DEPLOY.read_text(encoding="utf-8")
+    fn = src.split("restart_root_frozen_units() {", 1)[1].split("\n}", 1)[0]
+    default_line = [
+        ln for ln in fn.splitlines()
+        if "TRADEAI_CURRENT_BOUND_UNITS:-" in ln
+    ]
+    assert default_line, "bound-units default missing from restart_root_frozen_units"
+    assert "cio-governed-bridge.service" in default_line[0], (
+        "bridge omitted from default BOUND_UNITS — pin drift will recur on every promote")
+    assert "tradeai-health-agent.service" in default_line[0]
+
+
+def test_promote_invokes_bound_unit_restart():
+    src = DEPLOY.read_text(encoding="utf-8")
+    promote = src.split("cmd_promote()", 1)[1].split("\n}", 1)[0]
+    assert "restart_root_frozen_units" in promote
+
+
+def test_bridge_unit_runs_from_served_current_not_hub():
+    """Repo unit must match the release layout promote restarts into."""
+    unit = (ROOT / "config/systemd/user/cio-governed-bridge.service").read_text(
+        encoding="utf-8"
+    )
+    assert "WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT" in unit
+    assert "trade-ai-v12-rebuild/trade-ai-v12-rebuild" not in [
+        ln for ln in unit.splitlines() if ln.startswith("WorkingDirectory=")
+    ][0]
+    assert "PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT" in unit
+
+
 # ── the validator must accept the argument its only caller passes ───────────
 
 def test_portfolio_validator_accepts_live_dir():
