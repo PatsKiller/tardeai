@@ -114,6 +114,19 @@ def run_cycle(
         },
         dry_run=not apply,
     )
+    # Operational spine — infrastructure / automation posture (internal AEC
+    # facts only; never invents relationship-domain sources).
+    if apply:
+        mem.append_fact(
+            "operational",
+            {
+                "kind": "cio_cycle_status",
+                "subject_key": subject_key,
+                "bus_seen": len(bus.topics_for("cio_agent", recent)),
+                "memory_counts": {k: len(v) for k, v in relevant.items()},
+                "summary": cio_summary[:240],
+            },
+        )
 
     # Settle any open prior advisor commitment before minting (hourly EXPIRED /
     # observe path). Not gated on claim fingerprint — a new hour/day claim must
