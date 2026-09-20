@@ -45,3 +45,38 @@ See also: docs/ops/TRADE_AI_M2_MEMORY_SUBSTRATE_BENCHMARK_2026-08-24.md, AGENTS.
 Measured: **205 passed** against `tradeai-m2-shadow-v2` `:55432`.
 CI: `.github/workflows/bitemporal-memory-correctness-ci.yml` (service port **55432 only**; production `:5432` DSN refused).
 Reconciled: `row_kind` → `upper_inf(tx_period)`; `app.current_tenant` → `app.tenant_id`.
+
+## Production cutover attempt — 2026-09-19T20:34 ET (BLOCKED, nothing applied)
+
+Operator granted the `:5432` cutover. It **could not be executed**. A probe transaction was
+run against the live `trade_ai` database and **rolled back**; `production_sql_applied`
+remains **false** and production is unchanged.
+
+Measured on production (PostgreSQL **17.10**, satisfies ≥14):
+
+| probe | result |
+|---|---|
+| `CREATE EXTENSION btree_gist` | OK (trusted in PG17) |
+| `CREATE EXTENSION pgcrypto` | OK |
+| `CREATE EXTENSION "uuid-ossp"` | OK |
+| `CREATE EXTENSION vector` | **BLOCKED — extension "vector" is not available** |
+| `CREATE ROLE m2_agent` | **BLOCKED — permission denied to create role** |
+| `CREATE SCHEMA` | OK (`trade_ai` holds CREATE on database) |
+
+`trade_ai` is `rolsuper=f, rolcreatedb=f, rolcreaterole=f`. Schema `memory_r10_m2` is absent
+from production; only `plpgsql` is installed.
+
+**Prerequisites for a retry (both need superuser / OS access):**
+
+1. Install pgvector on the production host (e.g. `postgresql-17-pgvector`) and
+   `CREATE EXTENSION vector` — `memory_fact_version.embedding` and the
+   `write_fact_version(...)` signature both require type `vector`.
+2. Create role `m2_agent` (or grant `CREATEROLE` to `trade_ai`). Do **not** reuse the
+   shadow's `m2agent` literal password in production.
+
+**Hazard:** `sql/r10_m2_isolated_benchmark.sql:9` is
+`DROP SCHEMA IF EXISTS memory_r10_m2 CASCADE;`. Harmless on first production apply (schema
+absent) and on the rebuilt shadow, but **destructive on re-run**. Guard or split it before
+applying to `:5432`.
+
+Correctness re-run on the shadow at this measurement: **205 passed in 3.13s**.
