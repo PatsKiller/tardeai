@@ -232,3 +232,57 @@ def test_gap_resolver_wires_escalate_when_armed(tmp_path: Path):
     assert len(res.evidence.get("search_results") or []) >= 3  # 1 prior + 2 climb
     lines = [json.loads(L) for L in receipts.read_text().splitlines() if L.strip()]
     assert any(r.get("vector") == "quality_escalate" for r in lines)
+
+def test_thin_dry_run_writes_quality_escalate_receipt(tmp_path, monkeypatch):
+    """Armed + thin must leave a receipt even when GAP_RESOLVER_LIVE is off.
+
+    Organic PARTIAL stayed open because only escalated+hits wrote; cron often
+    runs dry_run and never stamped vector=quality_escalate.
+    """
+    from scripts.lib.gap_resolver import (
+        Context, DataGap, VectorResult, resolve,
+    )
+
+    receipts = tmp_path / "gap_resolution_receipts.jsonl"
+
+    def fake_search(gap, entry, ctx):
+        return VectorResult(
+            "partial",
+            provider="brave",
+            detail="1 thin hit",
+            evidence={
+                "search_results": [
+                    {"title": "thin", "snippet": "x", "url": "https://ex.com/1", "domain": "ex.com"}
+                ]
+            },
+        )
+
+    gap = DataGap(
+        domain="research_thesis",
+        subject="ELMT",
+        question="why is ELMT up today news",
+        symbols=["ELMT"],
+        why="no_coverage",
+        requester="test",
+    )
+    res = resolve(
+        gap,
+        chain=[{"vector": "governed_search", "cost_class": "metered", "max_per_day": 5}],
+        vectors={"governed_search": fake_search},
+        ctx=Context(
+            receipts_path=receipts,
+            live=False,
+            env={rqe.FLAG: "1"},
+        ),
+    )
+    esc = (res.evidence or {}).get("quality_escalate") or {}
+    assert esc.get("thin") is True
+    assert esc.get("would_escalate") is True
+    assert esc.get("escalated") is False
+    lines = [json.loads(L) for L in receipts.read_text().splitlines() if L.strip()]
+    qe = [r for r in lines if r.get("vector") == "quality_escalate"]
+    assert qe, lines
+    assert qe[0].get("reason") == "thin_answer"
+    assert qe[0].get("outcome") == "dry_run"
+    assert qe[0].get("would_escalate") is True
+
