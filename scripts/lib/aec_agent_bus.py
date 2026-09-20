@@ -16,18 +16,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-try:
-    from scripts.lib.cio_identity_resolver import (
-        get_display_name,
-        is_financial_agent,
-        resolve_canonical_id,
-    )
-except ImportError:  # cron/path form (scripts on sys.path)
-    from lib.cio_identity_resolver import (  # type: ignore
-        get_display_name,
-        is_financial_agent,
-        resolve_canonical_id,
-    )
+# G2: single spelling, no try/except fallback. The fallback form is banned
+# (tests/test_overnight_g2_import_normalise.py::test_no_spelling_fallbacks_between_lib_and_scripts_lib)
+# because it silently re-creates a dual module identity one level below an
+# entrypoint that has itself been normalised: the entrypoint imports
+# scripts.lib.aec_agent_bus, which would then load lib.cio_identity_resolver,
+# and the two identity resolvers stop comparing equal.
+from scripts.lib.cio_identity_resolver import (
+    get_display_name,
+    is_financial_agent,
+    resolve_canonical_id,
+)
 
 SCHEMA = "AecAgentBusEvent@v1"
 AGENT_IDS = ("cio_agent", "advisor_agent", "narrator_agent")

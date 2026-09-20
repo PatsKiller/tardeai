@@ -1,7 +1,7 @@
 # Remediation plan — 5-stage hardening, governance and bitemporal cutover
 
 ```
-Status: 4 of 5 stages CLOSED; Stage 3 production cutover BLOCKED (infrastructure)
+Status: 4 of 5 stages CLOSED; Stage 3 production cutover BLOCKED (two SQL statements, operator)
 as_of: 2026-09-19T20:34:54-04:00
 Measured at: dev tree 170532178 (= origin/main after #1095); live trade_ai DB; shadow tradeai-m2-shadow-v2 :55432
 Authority: READ_ONLY_ADVISORY / MBI_BEHAVIOR=0 — operator grant required for production memory writes
@@ -171,3 +171,52 @@ exist under that name.
 | `PARTIAL-telegram-CIO-stance` | schedule | live hold receipt observed from CURRENT |
 | SLO ratification | operator | `slo_status: PROPOSED` → ratified floors |
 | `risk_agent` stale residual (157) | time | ages out of the 7-day window |
+
+
+---
+
+## 2026-09-20 wave — hardening landed; cutover still operator-blocked
+
+The 5-stage directive closed on 2026-09-19. This wave hardened everything the cutover
+would have made reachable, and fixed defects that were harmless only because production
+was unreachable.
+
+### Landed
+
+| PR | change |
+|---|---|
+| #1111 | destructive reset made opt-in; isolated-DSN claim enforced rather than asserted |
+| #1132 | production memory behind `TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED=1`; fail-safe commit ordering |
+| #1135 | the 3 undeclared schedulers declared — `ai_local_acceptance.sh` exits 0 for the first time since 09-18 |
+| #1136 | ledger split so its append log union-merges; the status table stays hand-merged |
+| #1137 | spoofable host check fixed; `M2_ALLOW_NONDEFAULT_PORT` → `MEMORY_SHADOW_ALLOW_NONDEFAULT_PORT` |
+| #1138 | AEC dual module identity ended; constitutional rails re-raise instead of being swallowed |
+
+### Defects found that the plan did not anticipate
+
+- **`--dry-run` was inert.** Declared and never read, so `--apply-schema --dry-run`
+  applied the schema. An operator rehearsing the cutover would have performed it.
+- **`PRIVATE_COT_FORBIDDEN` was swallowed.** Found by the test written for the financial
+  rail, not by reading. A constitutional rail that fires invisibly cannot be audited.
+- **The projector's allowlist was spoofable.** `"55432" in dsn` matched a credential
+  containing those digits, so `…:pass55432word@127.0.0.1:5433/…` passed while pointing
+  elsewhere. That guard had no test at all.
+- **`FORBIDDEN_PORTS` is a mutable module-level set**, so under the dual import identity
+  the production-port refusal was per-module-object.
+- **Relative `output_signal` paths read the wrong file.** They resolve under
+  `persistent-state`, not the code tree: measured 7.32h stale for the watchdog and absent
+  for disk-cleanup. A lane declared that way alarms on a healthy job.
+
+### Still blocked — operator only
+
+The cutover needs two SQL statements run inside a superuser `psql` session; see
+`docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md`. pgvector is installed;
+`CREATE EXTENSION vector` and `CREATE ROLE m2_agent` are not done, and
+`memory_r10_m2` does not exist in `trade_ai`.
+
+Also operator-only (AGENTS §17, branch-protection/required-context): repointing the
+required check at a fast always-reporting gate (PHASE D in
+`docs/ops/GITHUB_ACTIONS_COST_REDUCTION_PLAN.md`). `allow_auto_merge` and
+`allow_update_branch` are now enabled, but auto-merge does not update a behind branch,
+so with `strict: true` and `cio-hardening` at 10-16 minutes a PR can still be invalidated
+faster than it can merge. That is the remaining structural cost.

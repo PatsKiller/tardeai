@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -915,5 +916,38 @@ def test_aec_reraises_target_misconfiguration(monkeypatch):
     from pathlib import Path
 
     src = (Path(__file__).resolve().parents[1] / "scripts" / "aec_command_center_cycle.py").read_text()
-    assert 'if any(m in _msg for m in ("M2_DSN_", "M2_DESTRUCTIVE_")):' in src
-    assert "raise" in src.split('if any(m in _msg for m in ("M2_DSN_", "M2_DESTRUCTIVE_")):')[1][:40]
+    assert '"M2_DSN_", "M2_DESTRUCTIVE_", "FINANCIAL_TRUTH_REFUSED", "PRIVATE_COT_FORBIDDEN",' in src
+
+    # Mis-targeting and constitutional rails must be loud. Caller validation
+    # errors stay fail-soft, so the cycle still completes after AgentView and
+    # the commitment have landed.
+    LOUD = ("M2_DSN_", "M2_DESTRUCTIVE_", "FINANCIAL_TRUTH_REFUSED", "PRIVATE_COT_FORBIDDEN")
+    # Caller-validation errors: the caller passed something malformed. Not a
+    # rail, not a mis-targeted write — fail-soft is correct, so the cycle still
+    # completes after AgentView and the commitment have landed. Listed
+    # explicitly so a NEW sentinel cannot default into silence: adding one
+    # fails this test until someone classifies it.
+    SOFT_BY_DESIGN = {
+        "VALID_AND_TX_REQUIRED", "VALID_AT_REQUIRED", "TX_AT_REQUIRED",
+        "TENANT_SCOPE_REQUIRED", "TX_TIME_RESERVED_FOR_PERSISTENCE_LAYER",
+        "UNKNOWN_MEMORY_STATUS", "UNKNOWN_QUERY_MODE",
+        "USE_",  # RuntimeError("USE_changed_between") — memory_fact.py
+    }
+
+    root = Path(__file__).resolve().parents[1]
+    sentinels = set()
+    for rel in ("scripts/lib/memory_m2_benchmark.py", "scripts/lib/cio_memory_integration.py",
+                "scripts/lib/memory_m2_v2.py", "scripts/lib/adjudication_receipt.py",
+                "scripts/lib/memory_fact.py"):
+        # [A-Z0-9_]+ — not [A-Z_]+, which truncates M2_* at the digit and yields "M".
+        for m in re.finditer(r'RuntimeError\(\s*f?"([A-Z][A-Z0-9_]+)', (root / rel).read_text()):
+            sentinels.add(m.group(1))
+    for m in re.finditer(r"(M2_DESTRUCTIVE[A-Z0-9_]*)",
+                         (root / "sql" / "r10_m2_isolated_benchmark.sql").read_text()):
+        sentinels.add(m.group(1))
+
+    uncovered = {s for s in sentinels if not s.startswith(LOUD)} - SOFT_BY_DESIGN
+    assert not uncovered, (
+        "guard sentinels neither re-raised nor declared soft-by-design: "
+        f"{sorted(uncovered)} — decide which, do not let a new rail default to silence"
+    )

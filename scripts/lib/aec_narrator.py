@@ -19,12 +19,11 @@ import hashlib
 from datetime import datetime, timezone
 from typing import Any
 
-try:
-    from scripts.lib import aec_agent_bus as bus
-    from scripts.lib import aec_memory_spines as mem
-except ImportError:  # cron/path form
-    from lib import aec_agent_bus as bus  # type: ignore
-    from lib import aec_memory_spines as mem  # type: ignore
+# G2: single spelling, no try/except fallback — see the note in aec_agent_bus.
+# The only entrypoint reaching this module (aec_command_center_cycle) is
+# root-only + scripts.lib, so the fallback branch was unreachable-but-loaded.
+from scripts.lib import aec_agent_bus as bus
+from scripts.lib import aec_memory_spines as mem
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI_BEHAVIOR = 0
