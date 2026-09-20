@@ -2,7 +2,11 @@
 
 ```
 Status: ACTIVE
+<<<<<<< HEAD
 as_of: 2026-09-19T21:16:19-04:00
+=======
+as_of: 2026-09-19T21:09:38-04:00
+>>>>>>> origin/main
 Measured at: served pin 170532178-main-exact-phase2-20260919-202251; M1–M5 OBSERVED; soft≈0.003; AEC 20:00 timer AgentView+commitment+narrator telegram=accepted
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
@@ -14,7 +18,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | CLOSED | [VERIFIED] pin 18a41066d consult instrument_enqueue_skipped_cadence=9; M5 OBSERVED | #1087+#1089 promote | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
 | DARK-bitemporal-m2-substrate | PARTIAL | schema v2 + CIOEnvelopeIntegrator on :55432; 211 correctness tests; EXPLAIN Index Scan fact_valid_spgist; production :5432 NOT applied | Organic wake schedule + operator shadow cutover grant | OBSERVED unattended write from served |
-| DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] unattended 20:00 EDT emitted INSUFFICIENT_EVIDENCE; cycle due_at now 1h so next hourly SUPPRESSED_REPEAT can EXPIRE without hand observe (hermetic test) | Promote #1099 + observe EXPIRED on schedule | OBSERVED CONFIRMED/REFUTED/EXPIRED from schedule |
+| DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] hermetic: prior_open_settle writes EXPIRED on prior id while hour-bucket mints fresh INSUFFICIENT (`prior_outcome`); served still INSUFFICIENT until promote+next hourly fire | Land prior_outcome PR + observe EXPIRED on schedule | OBSERVED CONFIRMED/REFUTED/EXPIRED from schedule |
 | DARK-AgentView-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AgentView@v1 (PORTFOLIO / day-bucket claim) from tradeai-aec-command-center-cycle.timer | — | OBSERVED AgentView from served schedule |
 | DARK-AGENT_COMMITMENT-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AGENT_COMMITMENT@v1 cmt_7f86ca… + CommitmentOutcome@v1 | — | OBSERVED commitment+settlement from schedule |
 | DARK-librarian-index | CLOSED | [VERIFIED] persistent-state + CURRENT `research_source_index.json` ResearchSourceIndex@v1 n_sources=120 (mtime 2026-09-16) | — | file present on served path |
@@ -27,7 +31,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | CLOSED | [VERIFIED] 2026-09-20T00:05–00:23Z pins 0ed980353→170532178: M1–M5 OBSERVED; census pass=9 fail=0; soft 3/998≈0.003 | #1097+#1095 promote | all five OBSERVED from served |
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
-| PARTIAL-memory-four-spines | PARTIAL→CLOSING | [VERIFIED] AEC cycle loads spines; wake path stamps aec_spines_loaded in memory but receipt was missing — fix: durable `aec_wake_spine_receipts.jsonl` | Promote receipt writer + observe organic wake line | wake receipt aec_spines_loaded |
+| PARTIAL-memory-four-spines | CLOSED | [VERIFIED] organic `aec_wake_spine_receipts.jsonl` as_of=2026-09-20T01:04:31Z subject=PORTFOLIO policy_decision=aec_spines_loaded counts strategic=2 learning=5; wake consult 01:05:09Z | #1099 promote | wake receipt aec_spines_loaded |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
 | PARTIAL-narrator-unprompted-telegram | CLOSED | [VERIFIED] unattended 20:00:15 EDT narrator_notify notify_attempted=true telegram=accepted (AEC_NARRATOR_NOTIFY on unit) | — | unprompted brief delivered |
 | DARK-cio-runs-truncated-tail | CLOSED | incomplete last line blocked create_run; wake errors=5 | archive + cio_run harden 7ea5835f9 | repair receipt + test |
@@ -46,6 +50,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-AGENT_COMMITMENT-producer | 2026-09-19 | AEC timer 20:00 cmt_7f86ca… |
 | PARTIAL-CIO-Advisor-Narrator-mesh | 2026-09-19 | AEC timer 20:00 mesh+telegram |
 | PARTIAL-narrator-unprompted-telegram | 2026-09-19 | narrator_notify telegram=accepted |
+| PARTIAL-memory-four-spines | 2026-09-20 | aec_wake_spine_receipts.jsonl 01:04:31Z aec_spines_loaded |
 
 
 ## 2026-09-19T14:01 ET — KNOWN_DARK emptied

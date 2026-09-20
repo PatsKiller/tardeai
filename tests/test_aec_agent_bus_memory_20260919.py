@@ -155,13 +155,16 @@ def test_cycle_suppressed_reeval_expires_after_horizon(tmp_path, monkeypatch):
     first = cycle.run_cycle(subject_key="WATCH:SCHG", apply=True, now=t0)
     assert first["outcome"]["outcome"] == "INSUFFICIENT_EVIDENCE"
     cmt_id = first["commitment"]["commitment_id"]
-    # Horizon is 1h for AEC cycle commitments — next timer after due → EXPIRED.
+    # +2h rolls the hour-bucket claim → fresh mint (outcome=INSUFFICIENT on the
+    # new id) while prior_open_settle closes the previous commitment as EXPIRED.
     second = cycle.run_cycle(
         subject_key="WATCH:SCHG", apply=True, now=t0 + timedelta(hours=2)
     )
-    assert second["events"][1]["payload"]["suppressed"] is True
-    assert second["outcome"]["outcome"] == "EXPIRED"
-    assert second["outcome"]["commitment_id"] == cmt_id
+    assert second["prior_outcome"]["outcome"] == "EXPIRED"
+    assert second["prior_outcome"]["commitment_id"] == cmt_id
+    assert second["outcome"]["outcome"] == "INSUFFICIENT_EVIDENCE"
+    assert second["outcome"]["commitment_id"] != cmt_id
+    assert second["events"][1]["payload"]["prior_outcome"]["outcome"] == "EXPIRED"
 
 
 def test_cycle_apply_propagates_to_bitemporal_integrator(tmp_path, monkeypatch):
