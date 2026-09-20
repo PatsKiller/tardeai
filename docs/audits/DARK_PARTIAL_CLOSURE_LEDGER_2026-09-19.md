@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T01:04:55-04:00
-Measured at: #1112 merged a11564398; AEC 01:00 EDT hour-bucket mint cmt_fb32f783 due 06:00Z; M1–M5 OBSERVED (M4 soak streak=5); soft fail=0; QE=desk-only; bitemporal fail-soft pending promote
+as_of: 2026-09-20T02:02:35-04:00
+Measured at: PROMOTE OK 8c12ea757 (#1113); AEC 02:00 EDT organic EXPIRED cmt_fb32f783 via prior_open_settle; M1–M5 OBSERVED; soak streak=6; soft census fail=0
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -14,7 +14,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | CLOSED | [VERIFIED] pin 18a41066d consult instrument_enqueue_skipped_cadence=9; M5 OBSERVED | #1087+#1089 promote | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
 | DARK-bitemporal-m2-substrate | PARTIAL | schema v2 + CIOEnvelopeIntegrator on :55432; 205 correctness tests (2026-09-19 re-run); EXPLAIN Index Scan fact_valid_spgist; production :5432 NOT applied — **blocked: `vector` ext unavailable on prod host + `trade_ai` cannot CREATE ROLE m2_agent** (probed 20:34 ET, rolled back) | Install pgvector on prod + create m2_agent role (superuser); guard `DROP SCHEMA ... CASCADE` in r10_m2_isolated_benchmark.sql:9; then apply + organic wake | OBSERVED unattended write from served |
-| DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] 01:00 EDT mint hour-bucket `cmt_fb32f783` due 06:00Z horizon=1h on **8090bf675**; prior 7d `cmt_7f86ca` stays INSUFFICIENT; await 02:00 EDT prior_open_settle EXPIRED | Observe EXPIRED on schedule from CURRENT | OBSERVED CONFIRMED/REFUTED/EXPIRED from schedule |
+| DARK-OUTCOME-settlement | CLOSED | [VERIFIED] AEC 02:00:13 EDT on pin **8c12ea757**: learning `commitment_outcome` outcome=EXPIRED commitment_id=`cmt_fb32f783…` via=`prior_open_settle`; cycle Result=success exit 0; narrator telegram=accepted | — | OBSERVED EXPIRED from schedule |
 | DARK-AgentView-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AgentView@v1 (PORTFOLIO / day-bucket claim) from tradeai-aec-command-center-cycle.timer | — | OBSERVED AgentView from served schedule |
 | DARK-AGENT_COMMITMENT-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AGENT_COMMITMENT@v1 cmt_7f86ca… + CommitmentOutcome@v1 | — | OBSERVED commitment+settlement from schedule |
 | DARK-librarian-index | CLOSED | [VERIFIED] persistent-state + CURRENT `research_source_index.json` ResearchSourceIndex@v1 n_sources=120 (mtime 2026-09-16) | — | file present on served path |
@@ -48,6 +48,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-CIO-Advisor-Narrator-mesh | 2026-09-19 | AEC timer 20:00 mesh+telegram |
 | PARTIAL-narrator-unprompted-telegram | 2026-09-19 | narrator_notify telegram=accepted |
 | PARTIAL-memory-four-spines | 2026-09-20 | aec_wake_spine_receipts.jsonl 01:04:31Z aec_spines_loaded |
+| DARK-OUTCOME-settlement | 2026-09-20 | AEC 02:00:13 EDT EXPIRED cmt_fb32f783 prior_open_settle on 8c12ea757 |
 
 
 ## 2026-09-19T14:01 ET — KNOWN_DARK emptied
@@ -230,3 +231,12 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - [VERIFIED] M1–M5 all OBSERVED from pin 8090bf675 (soft census fail=0; soak streak=5). User M4 PARTIAL reconciles to OBSERVED on local dual-write soak+census.
 - [VERIFIED] AEC 01:00:00 EDT LastTrigger; advisor minted `cmt_fb32f783…` claim `[2026-09-20T05]` due `2026-09-20T06:00:00.280077Z` horizon=1h. Service exit 1 after mint: bitemporal `save_bitemporal_fact_version(... vector)` UndefinedFunction on isolated schema — narrator skipped. Fail-soft + inclusive due bound in flight for 02:00 EXPIRE.
 - Organic QE: only desk `_resolve_blocking_gaps` → `resolve`; `data_gap_resolver.py` and gap-resolution.timer do not call it.
+
+## 2026-09-20T02:02 ET — organic EXPIRED OBSERVED; #1113 promoted
+
+- PROMOTE OK `8c12ea757-main-exact-phase2-20260920-012445` (#1113 fail-soft + inclusive due)
+- [VERIFIED] `tradeai-aec-command-center-cycle.timer` LastTrigger=02:00:13 EDT; Result=success ExecMainStatus=0
+- [VERIFIED] learning spine: `cmt_fb32f783…` outcome=EXPIRED via=`prior_open_settle` recorded_at=2026-09-20T06:00:13Z
+- [VERIFIED] narrator telegram=accepted; bitemporal fail-soft kept cycle green (no UndefinedFunction abort)
+- M1–M5 OBSERVED; soak streak=6; census fail=0
+- Still open: PARTIAL-quality-escalate-organic (desk-only), PARTIAL-telegram-CIO-stance (organic CURRENT hold), §17 bitemporal/hermes/relationship
