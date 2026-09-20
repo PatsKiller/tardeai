@@ -718,6 +718,7 @@ def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
             message_text=msg,
             asserted_stance="bullish",
             db_query=default_db_query,
+            source="social_scalp_scanner",
         )
         if not gate.allow:
             logger.info("%s — GO alert held by CIO stance gate: %s (cio=%s)",

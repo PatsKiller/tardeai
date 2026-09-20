@@ -62,24 +62,83 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "GapResolution@v1"
 RECEIPT_SCHEMA = "GapResolutionReceipt@v1"
 
-#: Append-only. Prefer the served persistent-state copy (Phase 1 linked dir);
-#: fall back to checkout-relative when persistent root is unreachable.
+#: Append-only. Prefer ``~/.local/state/tradeai/`` (measurable without
+#: release-write), then served persistent-state, then checkout-relative.
 RECEIPTS_REL = "data/cio/gap_resolution_receipts.jsonl"
 RECEIPTS_PATH = PROJECT_ROOT / RECEIPTS_REL
 
 
-def default_receipts_path() -> Path:
-    """Served persistent-state path when available; else checkout-relative."""
+def _local_receipts_path() -> Path:
+    return Path.home() / ".local/state/tradeai/gap_resolution_receipts.jsonl"
+
+
+def _persistent_receipts_path() -> Optional[Path]:
     try:
         from scripts.lib.persistent_state_root import good_persistent_root
 
-        served = good_persistent_root() / RECEIPTS_REL
-        # Prefer served when the parent exists (symlink or directory).
-        if served.parent.is_dir() or served.parent.parent.is_dir():
-            return served
+        return good_persistent_root() / RECEIPTS_REL
     except Exception:  # noqa: BLE001 — resolution must never block resolve()
-        pass
+        return None
+
+
+def default_receipts_path() -> Path:
+    """Local state first; persistent-state when present; else checkout-relative.
+
+    Tests monkeypatch ``RECEIPTS_PATH`` onto a tmp file — honour that redirect
+    before any production preference so hermetic suites never dual-write the
+    operator's local ledger.
+    """
+    canonical = PROJECT_ROOT / RECEIPTS_REL
+    try:
+        if RECEIPTS_PATH.resolve() != canonical.resolve():
+            return RECEIPTS_PATH
+    except OSError:
+        if RECEIPTS_PATH != canonical:
+            return RECEIPTS_PATH
+    local = _local_receipts_path()
+    if local.is_file() or local.parent.is_dir():
+        return local
+    served = _persistent_receipts_path()
+    if served is not None and (
+        served.parent.is_dir() or served.parent.parent.is_dir()
+    ):
+        return served
     return RECEIPTS_PATH
+
+
+def _receipt_write_targets(primary: Path) -> list[Path]:
+    """Dual-write local + persistent (+ checkout) on default paths; single path for tests."""
+    canonical = PROJECT_ROOT / RECEIPTS_REL
+    known: list[Path] = [_local_receipts_path(), canonical]
+    served = _persistent_receipts_path()
+    if served is not None:
+        known.append(served)
+
+    def _key(p: Path) -> str:
+        try:
+            return str(p.resolve())
+        except OSError:
+            return str(p)
+
+    primary_key = _key(primary)
+    # Monkeypatched RECEIPTS_PATH / Context.receipts_path → single target only.
+    if primary_key not in {_key(k) for k in known}:
+        return [primary]
+    targets: list[Path] = [_local_receipts_path()]
+    if served is not None and served.parent.is_dir():
+        targets.append(served)
+    if canonical.parent.is_dir():
+        targets.append(canonical)
+    out: list[Path] = []
+    seen: set[str] = set()
+    for t in targets:
+        k = _key(t)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(t)
+    return out or [primary]
+
 AUTHORITY_PATH = PROJECT_ROOT / "config" / "data_source_authority.json"
 
 #: Arm for real side effects (running a producer, calling a provider, sending).
@@ -361,9 +420,14 @@ def normalise_chain(chain: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _append_receipt(path: Path, row: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+    line = json.dumps(row, sort_keys=True, default=str) + "\n"
+    for target in _receipt_write_targets(path):
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("a", encoding="utf-8") as fh:
+                fh.write(line)
+        except OSError:
+            continue
 
 
 def read_receipts(path: Optional[Path] = None) -> list[dict[str, Any]]:
@@ -860,9 +924,13 @@ def resolve(
             from scripts.lib import research_quality_escalate as rqe
 
             # Prefer explicit env value; when the key is absent, allow host-file arming.
+            # Under pytest with no Context.env, stay hermetic — never consult the host file
+            # (otherwise a live ~/.config/tradeai/research_quality_escalate arms every suite).
             _flag_env = ctx.env
             if _flag_env is not None and rqe.FLAG not in _flag_env:
                 _flag_env = None
+            if _flag_env is None and os.environ.get("PYTEST_CURRENT_TEST"):
+                _flag_env = {}
             if rqe.enabled(_flag_env):
                 esc = rqe.maybe_escalate(
                     question=gap.question,

@@ -73,15 +73,60 @@ def measure() -> dict:
     }
 
 
+def _local_ledger() -> Path:
+    return Path.home() / ".local/state/tradeai/bridge_pin_soak.jsonl"
+
+
+def _persistent_ledger() -> Path:
+    return (
+        Path.home()
+        / "trade-ai-releases/persistent-state/data/runtime/bridge_pin_soak.jsonl"
+    )
+
+
 def ledger_path() -> Path:
+    """Primary soak ledger (status / single-path override).
+
+    Default preference: local state (readable without release-write), then
+    persistent-state, then checkout-relative. Env TRADEAI_BRIDGE_PIN_SOAK
+    pins a single path and disables dual-write.
+    """
     env = os.environ.get("TRADEAI_BRIDGE_PIN_SOAK")
     if env:
         return Path(env)
-    # Prefer persistent runtime if present; else cwd-relative for worktrees
-    persistent = Path.home() / "trade-ai-releases/persistent-state/data/runtime/bridge_pin_soak.jsonl"
+    local = _local_ledger()
+    if local.is_file() or local.parent.is_dir():
+        return local
+    persistent = _persistent_ledger()
     if persistent.parent.is_dir():
         return persistent
     return Path("data/runtime/bridge_pin_soak.jsonl")
+
+
+def write_targets() -> list[Path]:
+    """Append targets for one observation. Env override → single path only."""
+    env = os.environ.get("TRADEAI_BRIDGE_PIN_SOAK")
+    if env:
+        return [Path(env)]
+    targets: list[Path] = [_local_ledger()]
+    persistent = _persistent_ledger()
+    if persistent.parent.is_dir():
+        targets.append(persistent)
+    checkout = Path("data/runtime/bridge_pin_soak.jsonl")
+    if checkout.parent.is_dir():
+        targets.append(checkout)
+    seen: set[str] = set()
+    out: list[Path] = []
+    for t in targets:
+        try:
+            key = str(t.resolve())
+        except OSError:
+            key = str(t)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(t)
+    return out
 
 
 def read_rows(path: Path) -> list[dict]:
@@ -124,6 +169,12 @@ def status_report(rows: list[dict], need: int = DEFAULT_SOAK_N) -> str:
     return "\n".join(lines)
 
 
+def _append_obs(path: Path, obs: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(obs, sort_keys=True) + "\n")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -146,12 +197,16 @@ def main() -> int:
         print("DRY_RUN no write")
         return 0 if obs["pins_match"] else 2
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(obs, sort_keys=True) + "\n")
-    rows = read_rows(path)
+    wrote: list[str] = []
+    for target in write_targets():
+        try:
+            _append_obs(target, obs)
+            wrote.append(str(target))
+        except OSError as exc:
+            print(f"write_failed path={target} err={exc}", file=sys.stderr)
+    rows = read_rows(path if path.is_file() else Path(wrote[0]) if wrote else path)
     print(status_report(rows, args.need))
-    print(f"wrote {path}")
+    print(f"wrote {', '.join(wrote) if wrote else '(none)'}")
     return 0 if obs["pins_match"] else 2
 
 

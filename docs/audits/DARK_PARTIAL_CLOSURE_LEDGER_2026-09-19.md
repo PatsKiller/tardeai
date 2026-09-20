@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-19T21:16:19-04:00
-Measured at: served pin 170532178-main-exact-phase2-20260919-202251; M1–M5 OBSERVED; soft≈0.003; AEC 20:00 timer AgentView+commitment+narrator telegram=accepted; 20:34 ET directive re-verify: SLO PASS soft=0.003 (998), bitemporal 205 passed, :5432 cutover BLOCKED (no pgvector + no CREATE ROLE)
+as_of: 2026-09-20T00:25:00-04:00
+Measured at: PROMOTE OK a3891ec86-main-exact-phase2-20260920-002125; M1–M5 OBSERVED; soak streak=4; soft≈0.002; #1110 CI fix pushed c446a686b
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -14,18 +14,19 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | CLOSED | [VERIFIED] pin 18a41066d consult instrument_enqueue_skipped_cadence=9; M5 OBSERVED | #1087+#1089 promote | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
 | DARK-bitemporal-m2-substrate | PARTIAL | schema v2 + CIOEnvelopeIntegrator on :55432; 205 correctness tests (2026-09-19 re-run); EXPLAIN Index Scan fact_valid_spgist; production :5432 NOT applied — **blocked: `vector` ext unavailable on prod host + `trade_ai` cannot CREATE ROLE m2_agent** (probed 20:34 ET, rolled back) | Install pgvector on prod + create m2_agent role (superuser); guard `DROP SCHEMA ... CASCADE` in r10_m2_isolated_benchmark.sql:9; then apply + organic wake | OBSERVED unattended write from served |
-| DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] hermetic: prior_open_settle writes EXPIRED on prior id while hour-bucket mints fresh INSUFFICIENT (`prior_outcome`); served still INSUFFICIENT until promote+next hourly fire | Land prior_outcome PR + observe EXPIRED on schedule | OBSERVED CONFIRMED/REFUTED/EXPIRED from schedule |
+| DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] hermetic prior_outcome EXPIRED; **PROMOTE OK a3891ec86** 2026-09-20T04:22:27Z — await next hourly AEC fire for organic EXPIRED | Observe EXPIRED on schedule from CURRENT | OBSERVED CONFIRMED/REFUTED/EXPIRED from schedule |
 | DARK-AgentView-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AgentView@v1 (PORTFOLIO / day-bucket claim) from tradeai-aec-command-center-cycle.timer | — | OBSERVED AgentView from served schedule |
 | DARK-AGENT_COMMITMENT-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AGENT_COMMITMENT@v1 cmt_7f86ca… + CommitmentOutcome@v1 | — | OBSERVED commitment+settlement from schedule |
 | DARK-librarian-index | CLOSED | [VERIFIED] persistent-state + CURRENT `research_source_index.json` ResearchSourceIndex@v1 n_sources=120 (mtime 2026-09-16) | — | file present on served path |
 | DARK-hermes_advisory_event_enqueue | KNOWN DARK · PROPOSED RETIRE | AGENTS research table; automatic writer is librarian backlog loop | Operator grant on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row or wired consumer |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | PARTIAL | **#1082 MERGED**; served pin 4bafd6f83 includes tip lineage | Observe live hold receipt from CURRENT | live hold receipt from CURRENT |
-| PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=4 on tip 4bafd6f83 @ 2026-09-19T20:02:08Z | — | soak_ready=YES |
-| PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | [CODE] thin+armed now writes `vector=quality_escalate` receipt even on dry_run (`would_escalate`); receipts prefer persistent-state path | Promote + observe receipt from scheduled gap_resolver | receipt vector=quality_escalate |
-| PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
-| PARTIAL-M1-M5 | CLOSED | [VERIFIED] 2026-09-20T00:05–00:23Z pins 0ed980353→170532178: M1–M5 OBSERVED; census pass=9 fail=0; soft 3/998≈0.003 | #1097+#1095 promote | all five OBSERVED from served |
+| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | [CODE]+local probe hold; #1104 on served a3891ec86; dual-write #1110 CI-fixing | Observe live hold from CURRENT traffic | live hold receipt from CURRENT |
+| PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=4 @ 2026-09-20T04:22:38Z post-promote; pins_match | — | soak_ready=YES |
+| PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | [CODE] thin dry_run + dual-write on #1110; host arm=1; local_qe=0 until scheduled gap_resolver | Observe vector=quality_escalate from schedule | receipt vector=quality_escalate |
+| PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share≈0.002; stale_grounded_residual tracked not soft; #1087 report filter | — | share≤0.15 |
+| PARTIAL-M1-M5 | CLOSED | [VERIFIED] post-promote 2026-09-20T04:24:33Z pin a3891ec86: M1–M5 OBSERVED; soak streak=4; census pass=9 fail=0; soft≈0.002 | promote a3891ec86 | all five OBSERVED |
+
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | CLOSED | [VERIFIED] organic `aec_wake_spine_receipts.jsonl` as_of=2026-09-20T01:04:31Z subject=PORTFOLIO policy_decision=aec_spines_loaded counts strategic=2 learning=5; wake consult 01:05:09Z | #1099 promote | wake receipt aec_spines_loaded |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
@@ -148,7 +149,17 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - Code: durable `aec_wake_spine_receipts.jsonl` from `load_aec_spines_for_wake` (closes measurement gap for PARTIAL-memory-four-spines after promote).
 - Still open: OUTCOME CONFIRMED/REFUTED, quality-escalate organic receipt, relationship sources §17, bitemporal prod :5432, hermes RETIRE.
 
+## 2026-09-19T21:17 ET — operational spine producer
 
+- AEC CIO cycle `--apply` now appends `kind=cio_cycle_status` to the **operational** spine (internal infra posture only).
+- Relationship spine remains ◆ — no domain sources without operator grant (§17).
+## 2026-09-19T21:28 ET — operator table vs remasure (M4)
+
+- Operator paste: M1/M2/M3/M5 OBSERVED; M4 PARTIAL; soft≈0.002.
+- [VERIFIED] remasure: **M1–M5 all OBSERVED** on pin `f14dbdfee…210329`; M2 HELD:NOC critique writeback; census pass=9 fail=0 as_of=2026-09-20T01:09:08Z; live pins_match=True (server=bridge=CURRENT); soft≈0.002.
+- M4 PARTIAL in the paste was stale vs census+soak; local soak dual-write landed so M4 remains measurable without release-write.
+- Open PRs: #1103 prior_outcome, #1104 stance hold, #1105 QE thin receipt, #1106 operational spine, #1107 relationship §17 propose.
+- release-write remote request `524c81d781a0bd26` PENDING for promote after merges.
 ## 2026-09-19T20:34 ET — 5-stage directive verification; bitemporal :5432 BLOCKED (infrastructure)
 
 Directive re-verification against dev tree `170532178` (= origin/main after #1095). Stages 1/2/4/5
@@ -177,3 +188,22 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Superseded local work discarded: worktree `tradeai-wt-directive-20260919` held an uncommitted variant of
   the risk/steph flash routing + soft-share report filter; `origin/main` already carries both via
   **#1088** (`task_for_agent()`) and **#1087** (`_confidence_shaped_token`/`soft_flag`). Not re-landed.
+
+
+## 2026-09-19T23:33 ET — #1103 timer: already merged; promote blocked
+
+- [VERIFIED] PR #1103 MERGED at 2026-09-20T01:45:11Z → `5d6c02cdb` (prior_outcome / hour settle).
+- [VERIFIED] Follow-ons also on `origin/main`: #1105 QE thin receipt, #1108 M4 soak dual-write, #1104 stance hold, #1106 operational spine, #1107 relationship §17 propose. Tip **`be33f0202`**.
+- Served CURRENT still `f14dbdfee-main-exact-phase2-20260919-210329` — **no release-write grant**; promote deferred. Latest Telegram request `8d6757a06d9a01ff`.
+- [VERIFIED] M1–M5 OBSERVED from pin `f14dbdfee…`; soft 3 soft_unsupported / 998 (~0.003).
+- [VERIFIED] AEC bus hourly through 03:00Z; advisor SUPPRESSED_REPEAT; CommitmentOutcome still **INSUFFICIENT_EVIDENCE** (no EXPIRED / prior_outcome on served — expected until tip promote + next hour fire).
+- [VERIFIED] `research_quality_escalate` host arm=1; gap_resolution_receipts tail has **0** `quality_escalate` lines — thin-receipt code not yet on served pin.
+- Stance hold / cio_cycle_status / durable hold receipt files absent on served (same promote lag).
+- Still open: promote tip; organic EXPIRED; organic QE receipt; organic stance hold; §17 relationship/:5432/hermes; wave-close AS-IS/FUTURE/GAP+email.
+
+## 2026-09-19T23:59 ET — operator M4 PARTIAL remasured OBSERVED; dual-write stance+QE
+
+- Operator paste: M1/M2/M3/M5 OBSERVED; **M4 PARTIAL**; soft≈0.002.
+- [VERIFIED] tip remasure `report_maturity_bar_m1_m5.py` @ 2026-09-20T03:59:26Z: **M4 OBSERVED** — soak streak=3 soak_ready=YES last_as_of=2026-09-20T01:28:40Z; census as_of=2026-09-20T01:09:08Z pass=9 warn=2 fail=0 (local paths). M2 HELD:NOC writeback crt_926c909… confirmed.
+- Agent-owned while release-write absent: stance hold + gap_resolver receipt **local dual-write** (`~/.local/state/tradeai/…` primary, persist mirror).
+- Still blocked: tip promote (no release-write); organic EXPIRED / QE / stance on served pin `f14dbdfee…`; §17 relationship/:5432/hermes; wave-close docs+email.
