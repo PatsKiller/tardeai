@@ -1971,6 +1971,36 @@
         "path": "data/cio/aec_agent_bus.jsonl"
       },
       "note": "2026-09-19 maturity: unattended AEC mesh apply (bus + spines). Advisory only; narrator notify remains explicit-flag."
+    },
+    {
+      "lane_id": "postgres-main-watchdog",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-postgres-main-watchdog.timer"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/postgres_main_remediate.jsonl"
+      },
+      "note": "Installed 2026-09-18 09:43 after an ENOSPC/disk-hygiene crash left postgres-main down. Every 5 min it checks the unit and, only when postgres is down AND disk is healthy, starts it through the allowlisted sudoers entry /etc/sudoers.d/tradeai-postgres-main-start (privilege is bounded there, not in the unit). remediate_postgres_main.py writes the receipt above on EVERY run, not only when it remediates -- an idle healthy run appends action=already_active -- so the cadence below is honest and a quiet lane means a dead watchdog, not a healthy database. Soft outcomes (already_active, cooldown, refused_disk, missing sudoers) exit 0 so the timer does not flap failed every 5 min while waiting on an operator."
+    },
+    {
+      "lane_id": "weekly-disk-cleanup",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-weekly-disk-cleanup.timer"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/weekly_disk_cleanup_receipts.jsonl"
+      },
+      "note": "Installed 2026-09-18 20:00. Sun 06:30 ET (after daily hygiene 04:15, librarian 05:10 and the db_retention cron 04:10), running weekly_disk_cleanup_notify.py --apply: hygiene + librarian + db_retention with a Telegram summary. The receipt above is appended per run and is the proof it ran; the unit's StandardOutput log is not. TimeoutStartSec=7200 because rsync/deletes plus a DB purge run long on a full host."
     }
   ],
   "undeclared_baseline": [
