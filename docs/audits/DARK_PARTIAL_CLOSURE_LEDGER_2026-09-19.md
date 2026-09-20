@@ -370,3 +370,16 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Hub fast-forward refused on local gap_resolver overlays — checked out tip copies of gap_resolver/data_gap_resolver/stance_gate onto hub.
 - Next: refresh `ai_analysis_cache` via `portfolio_ai_analyst.py` (state-write); remasure warn→0 → M4 OBSERVED; weekly QE 08:00 ET; organic stance; wave-close email.
 - Goal remains open.
+
+## 2026-09-20T07:28 ET — Operator remasure; AI Analyst grants re-requested
+
+- Operator remasure [DOC-CLAIM→logged]: **M1 OBSERVED · M2 OBSERVED (HELD:NOC critique writeback) · M3/M5 OBSERVED · M4 still PARTIAL · soft-share ~0.002 (pass)**.
+- Live pin still `f8eb9803f` (PROMOTE OK earlier). M4 residual = census **AI Analyst freshness** WARN (`generated_at=2026-09-18T07:15:08Z`).
+- Root cause [CODE]: `portfolio_orchestrator.py` weekday cron `15 7 * * 1-5` is the only producer of `ai_analysis_cache.json`; today is Sunday so the Fri 07:15 cache aged past the API `is_stale` window. `portfolio_ai_analyst.py` itself is **not** in crontab.
+- Prior remasure grants SUPERSEDED unanswered: `a7a6faf04e145753` (release-write), `8f80f59a4ac59b6d` (state-write).
+- Re-requested Telegram remote approval (router-bypassed):
+  - `8236bc2d3c2b13e3` **state-write** 30m/3u — refresh `ai_analysis_cache` via `portfolio_ai_analyst.py`
+  - `23bb4e52b91d7154` **release-write** 30m/4u — remasure census+M1–M5 expecting warn→0 → M4 OBSERVED
+- #1127 ledger PR open; cio-hardening still pending at request time.
+- Still open after M4: weekly unattended QE (Sun 08:00 ET), organic stance (`source=check_investment_send`), wave-close AS-IS/FUTURE/GAP email.
+- Goal remains open.
