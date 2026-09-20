@@ -3,7 +3,7 @@
 ```
 Status: ACTIVE
 as_of: 2026-09-20T06:08:00-04:00
-Measured at: #1123 OPEN; tip origin/main 2b8a896bd; M4 PARTIAL warn=1; soft 0.003 (operator ~0.002); release-write PENDING
+Measured at: #1123 OPEN head 9cdfa360b; organic QE ARKQ/NEE OBSERVED (hand-run cron path); M4 PARTIAL warn=1; soft~0.002; release-write PENDING
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -23,7 +23,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | dual-write on tip; holds only probe/canary so far; live callers: screener_go_alerts, send_telegram_proposal_alert, social_scalp_scanner → check_investment_send | Observe hold with source=check_investment_send (not canary/probe) | organic hold receipt |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
-| PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | controlled_canary receipt only; **code wire**: data_gap_resolver.chain_resolve_open_gaps → gap_resolver.resolve (requester=data_gap_resolver) — was falsely claimed already wired | merge+promote + unattended cron receipt | vector=quality_escalate requester=data_gap_resolver (not canary) |
+| PARTIAL-quality-escalate-organic | CLOSING→OBSERVED (hand) | [VERIFIED] 2026-09-20T10:30:39Z live data_gap_resolver.py: requester=data_gap_resolver vector=quality_escalate provider=searxng outcome=partial ARKQ+NEE; free residual router_disabled. Honesty: hand cron path ≠ unattended 08:00 yet | weekly 08:00 ET unattended echo | unattended same stamps |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | CLOSED | [VERIFIED] post-promote 2026-09-20T04:44:54Z pin 8090bf675: M1–M5 OBSERVED under prior bar (fail=0); operator remasure 2026-09-20 keeps M4 PARTIAL on census WARN — see PARTIAL-M4-census-warn | promote #1110 tip | all five OBSERVED |
 | PARTIAL-M4-census-warn | OPEN | [VERIFIED] 2026-09-20T09:17:59Z census pass=10 **warn=1** fail=0 — only Command snapshot_source (phantom PASS). Tip `bace5bfcd` has fix; CURRENT `8c12ea757` until promote. | release-write promote tip ≥`bace5bfcd` + remasure | warn=0 → M4 OBSERVED |
@@ -338,3 +338,13 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Hermetic: `test_governed_search_free_fallback_when_router_dark_and_live` + dry router-disabled path; **37 passed**.
 - release-write still **absent**; `01d9146085bc55c4` PENDING expires 2026-09-20T12:12:42Z (~1.77h left) → no re-request.
 - Still open: merge #1123+this tip; promote → census warn=0 → M4 OBSERVED; organic QE receipt; organic stance; wave-close email. Goal remains open.
+
+## 2026-09-20T06:30 ET — organic QE receipt (hand cron path)
+
+- DRY_RUN quoted: 0 registry opens; walk ARKQ/NEE stale-held → would resolve.
+- LIVE [VERIFIED]: Chain resolve 2/2; receipts at `~/.local/state/tradeai/gap_resolution_receipts.jsonl` mtime 2026-09-20T06:30:39 ET:
+  - ARKQ/NEE `governed_search` provider=searxng outcome=partial detail=`5 free results (router_disabled)`
+  - ARKQ/NEE `quality_escalate` requester=`data_gap_resolver` provider=searxng outcome=partial source=`data_gap_resolver` detail=`climbed via searxng (thin_answer); +5 hits`
+- Honesty: hand-invoked crontab entrypoint, not yet unattended Sunday 08:00 ET. Row stays CLOSING until weekly echo.
+- llm_curation HTTP 400 on both symbols — separate agent-owned follow-up; QE still climbed.
+- M4 / promote / stance / wave-close email still open. Goal remains open.
