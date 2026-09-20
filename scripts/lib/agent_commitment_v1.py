@@ -127,7 +127,9 @@ def evaluate_commitment(
         outcome = "REFUTED"
     elif obs.get("confirmed") is True:
         outcome = "CONFIRMED"
-    elif when > due and not obs:
+    # Inclusive bound: hourly timer fires at due_at wall-clock; a strict `>`
+    # left 1h commitments INSUFFICIENT until the *next* hour (280ms mint skew).
+    elif when >= due and not obs:
         outcome = "EXPIRED"
     elif not obs:
         outcome = "INSUFFICIENT_EVIDENCE"
