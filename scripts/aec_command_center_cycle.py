@@ -115,13 +115,43 @@ def run_cycle(
         dry_run=not apply,
     )
 
+    # Settle any open prior advisor commitment before minting (hourly EXPIRED /
+    # observe path). Not gated on claim fingerprint — a new hour/day claim must
+    # still close yesterday's open OUTCOME edge.
+    prior_open = _prior_commitment_from_bus(recent)
+    settled_prior_outcome: dict | None = None
+    if prior_open is not None and not _learning_has_terminal_outcome(
+        snap, str(prior_open.get("commitment_id") or "")
+    ):
+        settled_prior_outcome = evaluate_commitment(
+            prior_open, observation=observe, now=when
+        )
+        if apply and settled_prior_outcome.get("outcome") in {
+            "CONFIRMED",
+            "REFUTED",
+            "EXPIRED",
+        }:
+            mem.append_fact(
+                "learning",
+                {
+                    "kind": "commitment_outcome",
+                    "subject_key": subject_key,
+                    "outcome": settled_prior_outcome.get("outcome"),
+                    "commitment_id": settled_prior_outcome.get("commitment_id"),
+                    "via": "prior_open_settle",
+                },
+            )
+            # Refresh snap so same-cycle suppress path sees the terminal row.
+            snap = mem.load()
+
     # Advisor — AgentView@v1 (existing producer) + optional commitment.
-    # Day-bucket the claim so anti-repeat does not freeze AgentView/OUTCOME for
-    # the life of the spine after the first --apply (measured: timer fires at
-    # 18:00/19:00 were SUPPRESSED_REPEAT with null agent_view/commitment/outcome).
-    day_utc = when.strftime("%Y-%m-%d")
+    # Hour-bucket the claim so each timer fire can mint a fresh 1h commitment
+    # while prior_open_settle closes the previous hour's OUTCOME (EXPIRED /
+    # observe). Day-only bucketing left OUTCOME stuck on INSUFFICIENT until the
+    # next calendar day — and then never re-evaluated the prior commitment.
+    hour_utc = when.strftime("%Y-%m-%dT%H")
     advisor_claim = (
-        f"Advisor reviewed subject={subject} against strategic spine [{day_utc}]"
+        f"Advisor reviewed subject={subject} against strategic spine [{hour_utc}]"
     )
     fp = mem.claim_fingerprint(advisor_claim)
     repeated = mem.seen_claim(snap, fp)
@@ -155,6 +185,12 @@ def run_cycle(
                         "claim_fp": fp,
                         "via": "suppressed_repeat_reeval",
                     },
+                )
+        elif prior is not None:
+            commitment_payload = prior
+            if outcome_payload is None:
+                outcome_payload = evaluate_commitment(
+                    prior, observation=observe, now=when
                 )
     else:
         view = produce_agent_view_v1(
@@ -245,6 +281,10 @@ def run_cycle(
             "agent_view": view_payload or None,
             "commitment": commitment_payload,
             "outcome": outcome_payload,
+            # Prior hour's settle (EXPIRED/CONFIRMED/REFUTED) when this fire
+            # mints a fresh 1h claim — kept separate so mint INSUFFICIENT does
+            # not erase the OUTCOME edge that just closed.
+            "prior_outcome": settled_prior_outcome,
         },
         dry_run=not apply,
     )
@@ -310,6 +350,7 @@ def run_cycle(
         "agent_view": view_payload or None,
         "commitment": commitment_payload,
         "outcome": outcome_payload,
+        "prior_outcome": settled_prior_outcome,
         "bitemporal": bitemporal_receipt,
         "narrator_brief": brief,
         "narrator_notify": notify_receipt,
