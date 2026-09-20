@@ -82,7 +82,19 @@ def _persistent_receipts_path() -> Optional[Path]:
 
 
 def default_receipts_path() -> Path:
-    """Local state first; persistent-state when present; else checkout-relative."""
+    """Local state first; persistent-state when present; else checkout-relative.
+
+    Tests monkeypatch ``RECEIPTS_PATH`` onto a tmp file — honour that redirect
+    before any production preference so hermetic suites never dual-write the
+    operator's local ledger.
+    """
+    canonical = PROJECT_ROOT / RECEIPTS_REL
+    try:
+        if RECEIPTS_PATH.resolve() != canonical.resolve():
+            return RECEIPTS_PATH
+    except OSError:
+        if RECEIPTS_PATH != canonical:
+            return RECEIPTS_PATH
     local = _local_receipts_path()
     if local.is_file() or local.parent.is_dir():
         return local
@@ -95,8 +107,9 @@ def default_receipts_path() -> Path:
 
 
 def _receipt_write_targets(primary: Path) -> list[Path]:
-    """Dual-write local + persistent when using a default path; single path for tests."""
-    known: list[Path] = [_local_receipts_path(), RECEIPTS_PATH]
+    """Dual-write local + persistent (+ checkout) on default paths; single path for tests."""
+    canonical = PROJECT_ROOT / RECEIPTS_REL
+    known: list[Path] = [_local_receipts_path(), canonical]
     served = _persistent_receipts_path()
     if served is not None:
         known.append(served)
@@ -108,11 +121,14 @@ def _receipt_write_targets(primary: Path) -> list[Path]:
             return str(p)
 
     primary_key = _key(primary)
+    # Monkeypatched RECEIPTS_PATH / Context.receipts_path → single target only.
     if primary_key not in {_key(k) for k in known}:
         return [primary]
     targets: list[Path] = [_local_receipts_path()]
     if served is not None and served.parent.is_dir():
         targets.append(served)
+    if canonical.parent.is_dir():
+        targets.append(canonical)
     out: list[Path] = []
     seen: set[str] = set()
     for t in targets:
@@ -122,6 +138,7 @@ def _receipt_write_targets(primary: Path) -> list[Path]:
         seen.add(k)
         out.append(t)
     return out or [primary]
+
 AUTHORITY_PATH = PROJECT_ROOT / "config" / "data_source_authority.json"
 
 #: Arm for real side effects (running a producer, calling a provider, sending).
@@ -907,9 +924,13 @@ def resolve(
             from scripts.lib import research_quality_escalate as rqe
 
             # Prefer explicit env value; when the key is absent, allow host-file arming.
+            # Under pytest with no Context.env, stay hermetic — never consult the host file
+            # (otherwise a live ~/.config/tradeai/research_quality_escalate arms every suite).
             _flag_env = ctx.env
             if _flag_env is not None and rqe.FLAG not in _flag_env:
                 _flag_env = None
+            if _flag_env is None and os.environ.get("PYTEST_CURRENT_TEST"):
+                _flag_env = {}
             if rqe.enabled(_flag_env):
                 esc = rqe.maybe_escalate(
                     question=gap.question,

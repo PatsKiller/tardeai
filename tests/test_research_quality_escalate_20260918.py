@@ -297,6 +297,8 @@ def test_default_receipt_dual_write_prefers_local(tmp_path, monkeypatch):
     persist_root = tmp_path / "persist"
     (persist_root / "data" / "cio").mkdir(parents=True)
     monkeypatch.setenv("HOME", str(home))
+    # Reset any prior RECEIPTS_PATH redirect from sibling suites.
+    monkeypatch.setattr(gr, "RECEIPTS_PATH", gr.PROJECT_ROOT / gr.RECEIPTS_REL)
     monkeypatch.setattr(gr, "_persistent_receipts_path", lambda: persist_root / gr.RECEIPTS_REL)
 
     primary = gr.default_receipts_path()
