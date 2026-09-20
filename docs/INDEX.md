@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `b7cfbcd61b8cc4595297622e08b9f3e8fd9c4c9e42b150771f5c15d2c9d24e08`
+**Tree fingerprint:** `7d2b87d97ac88259859671bd6a2cf88c925429386df722dca71f690b76a87c30`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2577 |
-| Markdown (excl. this INDEX) | 2151 |
+| Files under `docs/` (excl. this INDEX) | 2578 |
+| Markdown (excl. this INDEX) | 2152 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2084 |
+| Header OK | 2085 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2206 |
+| review_required | 2207 |
 
 ## Markdown tree
 
@@ -1675,9 +1675,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | OK | `ad67ce75eb83` |
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | OK | `57b472ac277f` |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
-| `docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §7A) | review_required | OK | `5ceaace1d434` |
+| `docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` | PROPOSED — operator decision required (AGENTS.md §17) | review_required | OK | `7e3b80ca9940` |
+| `docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §7A) | review_required | OK | `2fa75dff149c` |
 | `docs/ops/PROPOSED_RESEARCH_QUALITY_ESCALATE_HOST_2026-09-19.md` | PROPOSED / APPLIED — research quality escalate host arm | review_required | OK | `f313951ad560` |
-| `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §9.3) | review_required | OK | `d23e2d26a483` |
+| `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §9.3) | review_required | OK | `4ff4e395a485` |
 | `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md` | PROPOSED — enable WAKE_L3 flags on the **L3 consumer** cron | review_required | OK | `a4a573fe18a8` |
 | `docs/ops/R11_AUTONOMOUS_INVESTMENT_OFFICE_OPERATOR_VALUE_CLOSEOUT_2026-08-25.md` | R11 — Autonomous Investment Office Operator-Value Closeout | review_required | OK | `0539b80504f0` |
 | `docs/ops/R12_OPERATOR_INTELLIGENCE_NATURAL_NOTIFICATION_CLOSEOUT_2026-08-25.md` | R12 — Operator-intelligence natural notification closeout | review_required | OK | `dbcce083dfc0` |

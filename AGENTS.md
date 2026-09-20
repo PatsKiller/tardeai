@@ -1099,7 +1099,7 @@ without reading the reason is how the tagger nearly burnt the corpus.
 |---|---|---|
 | `hermes-deep-research-local` | **ON**, hourly 22:00–05:35 ET | never executed once before 2026-09-06; see below |
 | `taxonomy_tagger` cron | **OFF — deliberate** | heuristic hit rate ~15%, 0% on sector. Do **not** re-enable until the classifier improves; see the sentinel rule |
-| `hermes_advisory_event_enqueue` | **KNOWN DARK** | no caller — no cron, no timer, no importer. `hermes_advisory_events` last written 2026-07-14, 2,509 rows. The consumer timer still fires every ~10h and finds nothing |
+| `hermes_advisory_event_enqueue` | **KNOWN DARK — PROPOSED RETIRE** | no caller — no cron, no timer, no importer; no `lane_registry` row. `hermes_advisory_events` last written 2026-07-14, 2,509 rows (automatic writer is librarian backlog loop). Consumer timer still fires ~10h and finds nothing. Operator decision: `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` — do not cron or mutate registry without grant |
 | `tradeai-research-lane-health` | ON, ~15 min | the alarm surface for all of the above |
 | RI overnight (cron 02:15 / 05:15) | ON | gated to non-trading hours |
 
