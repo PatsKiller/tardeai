@@ -386,8 +386,12 @@ def run_cycle(
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dry-run", action="store_true", default=True)
-    ap.add_argument("--apply", action="store_true", help="append bus + memory (still advisory)")
+    # Mutually exclusive: --dry-run was previously declared but never read, so
+    # `--dry-run --apply` silently applied. argparse now rejects that pairing
+    # instead of letting the more dangerous flag win by accident.
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="default; no durable write")
+    mode.add_argument("--apply", action="store_true", help="append bus + memory (still advisory)")
     ap.add_argument("--subject-key", default=None)
     args = ap.parse_args()
     apply = bool(args.apply)

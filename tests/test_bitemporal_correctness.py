@@ -814,3 +814,49 @@ def test_conn_targets_production_fails_closed_on_unreadable_dsn():
         def get_dsn_parameters(self): raise RuntimeError("no dsn")
 
     assert conn_targets_production(Unreadable()) is True
+
+
+def test_dry_run_is_not_inert_for_apply_schema():
+    """--dry-run used to be declared and never read, so `--apply-schema
+    --dry-run` applied the schema for real — an operator rehearsing a
+    production cutover would have performed it. Dry-run must now open no
+    connection, and the contradictory pairing must be rejected outright."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+
+    dry = subprocess.run(
+        [sys.executable, "scripts/cio_memory_integration.py", "--apply-schema", "--dry-run"],
+        cwd=root, capture_output=True, text=True, timeout=120,
+    )
+    assert dry.returncode == 0, dry.stderr
+    payload = json.loads(dry.stdout)
+    assert payload["dry_run"] is True
+    assert "no connection opened" in payload["note"]
+    assert "@" not in payload["target"], "DSN credential leaked into output"
+
+    clash = subprocess.run(
+        [sys.executable, "scripts/cio_memory_integration.py",
+         "--apply-schema", "--dry-run", "--apply"],
+        cwd=root, capture_output=True, text=True, timeout=60,
+    )
+    assert clash.returncode != 0
+    assert "not allowed with argument" in clash.stderr
+
+
+def test_aec_cycle_rejects_contradictory_mode_flags():
+    """Same defect in the hourly writer's entrypoint: `--dry-run --apply` must
+    not let the more dangerous flag win by accident."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    clash = subprocess.run(
+        [sys.executable, "scripts/aec_command_center_cycle.py", "--dry-run", "--apply"],
+        cwd=root, capture_output=True, text=True, timeout=60,
+    )
+    assert clash.returncode != 0
+    assert "not allowed with argument" in clash.stderr
