@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-19T23:59:00-04:00
-Measured at: tip a3891ec86; served pin f14dbdfee… (promote blocked); M1–M5 OBSERVED from tip+local soak/census; soft≈0.002
+as_of: 2026-09-20T00:25:00-04:00
+Measured at: PROMOTE OK a3891ec86-main-exact-phase2-20260920-002125; M1–M5 OBSERVED; soak streak=4; soft≈0.002; #1110 CI fix pushed c446a686b
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -14,18 +14,18 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | CLOSED | [VERIFIED] pin 18a41066d consult instrument_enqueue_skipped_cadence=9; M5 OBSERVED | #1087+#1089 promote | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
 | DARK-bitemporal-m2-substrate | PARTIAL | schema v2 + CIOEnvelopeIntegrator on :55432; 205 correctness tests (2026-09-19 re-run); EXPLAIN Index Scan fact_valid_spgist; production :5432 NOT applied — **blocked: `vector` ext unavailable on prod host + `trade_ai` cannot CREATE ROLE m2_agent** (probed 20:34 ET, rolled back) | Install pgvector on prod + create m2_agent role (superuser); guard `DROP SCHEMA ... CASCADE` in r10_m2_isolated_benchmark.sql:9; then apply + organic wake | OBSERVED unattended write from served |
-| DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] hermetic: prior_open_settle writes EXPIRED on prior id while hour-bucket mints fresh INSUFFICIENT (`prior_outcome`); served still INSUFFICIENT until promote+next hourly fire | Land prior_outcome PR + observe EXPIRED on schedule | OBSERVED CONFIRMED/REFUTED/EXPIRED from schedule |
+| DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] hermetic prior_outcome EXPIRED; **PROMOTE OK a3891ec86** 2026-09-20T04:22:27Z — await next hourly AEC fire for organic EXPIRED | Observe EXPIRED on schedule from CURRENT | OBSERVED CONFIRMED/REFUTED/EXPIRED from schedule |
 | DARK-AgentView-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AgentView@v1 (PORTFOLIO / day-bucket claim) from tradeai-aec-command-center-cycle.timer | — | OBSERVED AgentView from served schedule |
 | DARK-AGENT_COMMITMENT-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AGENT_COMMITMENT@v1 cmt_7f86ca… + CommitmentOutcome@v1 | — | OBSERVED commitment+settlement from schedule |
 | DARK-librarian-index | CLOSED | [VERIFIED] persistent-state + CURRENT `research_source_index.json` ResearchSourceIndex@v1 n_sources=120 (mtime 2026-09-16) | — | file present on served path |
 | DARK-hermes_advisory_event_enqueue | KNOWN DARK · PROPOSED RETIRE | AGENTS research table; automatic writer is librarian backlog loop | Operator grant on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row or wired consumer |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | [CODE] hold dual-writes `~/.local/state/tradeai/cio_telegram_stance_holds.jsonl` + persist mirror; served pin still pre-#1104 | Promote tip; observe live hold line | live hold receipt from CURRENT or local after promote |
-| PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=3 @ 2026-09-20T01:28:40Z local ledger; pins_match | — | soak_ready=YES |
-| PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | [CODE] thin dry_run receipt + gap_resolver dual-write local/persist; served still 0 `quality_escalate` lines (pre-#1105) | Promote tip; observe scheduled receipt | receipt vector=quality_escalate |
+| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | [CODE]+local probe hold; #1104 on served a3891ec86; dual-write #1110 CI-fixing | Observe live hold from CURRENT traffic | live hold receipt from CURRENT |
+| PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=4 @ 2026-09-20T04:22:38Z post-promote; pins_match | — | soak_ready=YES |
+| PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | [CODE] thin dry_run + dual-write on #1110; host arm=1; local_qe=0 until scheduled gap_resolver | Observe vector=quality_escalate from schedule | receipt vector=quality_escalate |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share≈0.002; stale_grounded_residual tracked not soft; #1087 report filter | — | share≤0.15 |
-| PARTIAL-M1-M5 | CLOSED | [VERIFIED] 2026-09-20T03:59:26Z tip a3891ec86: M1–M5 OBSERVED (M4 soak streak=3 + census pass=9 fail=0 local); soft≈0.002 | local soak dual-write (#1108) | all five OBSERVED |
+| PARTIAL-M1-M5 | CLOSED | [VERIFIED] post-promote 2026-09-20T04:24:33Z pin a3891ec86: M1–M5 OBSERVED; soak streak=4; census pass=9 fail=0; soft≈0.002 | promote a3891ec86 | all five OBSERVED |
 
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | CLOSED | [VERIFIED] organic `aec_wake_spine_receipts.jsonl` as_of=2026-09-20T01:04:31Z subject=PORTFOLIO policy_decision=aec_spines_loaded counts strategic=2 learning=5; wake consult 01:05:09Z | #1099 promote | wake receipt aec_spines_loaded |
