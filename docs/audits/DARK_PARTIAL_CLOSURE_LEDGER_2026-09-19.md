@@ -545,3 +545,10 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Propose file status → **CONFIRMED**. Sunday organic=0 is schedule-bound only — not a missing cron.
 - Goal NOT complete (await organic hold Mon + §17 parks).
 
+## 2026-09-20T12:14 ET — #1139 MERGED `486f240d6`
+
+- [VERIFIED] #1139 MERGED @ 2026-09-20T16:14:21Z → `486f240d6` (AST organic source= guard + crontab CONFIRM + ledger).
+- Remasure @ 16:18Z: **M1–M5 OBSERVED**; soft 12/1022 ≈0.012 PASS; organic still PARTIAL exit 2.
+- Live pin unchanged `5b7e24c95…114233` (docs/test; promote not required for this tip).
+- Goal NOT complete.
+
