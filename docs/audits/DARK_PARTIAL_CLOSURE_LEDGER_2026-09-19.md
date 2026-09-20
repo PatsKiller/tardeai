@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-19T19:26:00-04:00
-Measured at: served pin 2258b16c6-main-exact-phase2-20260919-192238 (#1094 PROMOTE OK); M1 OBSERVED (wake_dispatcher_log HELD:BAH); M2 OBSERVED (critique writeback HELD:NOC); M3/M5 OBSERVED; M4 PARTIAL soak=4; soft≈0.002
+as_of: 2026-09-19T20:05:00-04:00
+Measured at: served pin 0ed980353-main-exact-phase2-20260919-200406 (#1097 PROMOTE OK); M1–M5 all OBSERVED; soft≈0.003 (3/998); #1095 OPEN
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -24,8 +24,8 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-telegram-CIO-stance | PARTIAL | **#1082 MERGED**; served pin 4bafd6f83 includes tip lineage | Observe live hold receipt from CURRENT | live hold receipt from CURRENT |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=4 on tip 4bafd6f83 @ 2026-09-19T20:02:08Z | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | PARTIAL | code on #1081; flag off | Flag on served + organic thin answer | receipt spilled_to/free climb |
-| PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
-| PARTIAL-M1-M5 | PARTIAL→CLOSING | [VERIFIED] 23:26Z pin 2258b16c6: M1/M2/M3/M5 OBSERVED; M4 PARTIAL (soak=4; full operator-number census not run) | Run operator-number census; keep M1–M5 green on schedule | M4 OBSERVED + census |
+| PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998 ≈0.003 on pin 0ed980353 @ 2026-09-20T00:05Z; ≤0.15 | — | share≤0.15 |
+| PARTIAL-M1-M5 | CLOSED | [VERIFIED] 2026-09-20T00:05:17Z pin 0ed980353: M1–M5 OBSERVED (M2 HELD:NOC; M4 soak+census pass=9 fail=0); soft 3/998≈0.003 | #1094+#1097 promote | all five OBSERVED from served |
 | PARTIAL-CIO-Advisor-Narrator-mesh | PARTIAL→CLOSING | [VERIFIED] unattended timer fire LastTrigger=18:00:13 EDT (bitemporal dry_run=false; narrator telegram dry_run); next 19:00 | Live narrator --notify + organic AgentView when not SUPPRESSED_REPEAT | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | PARTIAL→CLOSING | [VERIFIED] #1090 promoted (pin a628ed0b3); spines load on wake path; organic cycle 18:00 wrote bitemporal + bus | Organic wake provenance aec_spines_loaded on served | wake reads spines from CURRENT |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
@@ -41,6 +41,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-librarian-index | 2026-09-19 | research_source_index.json n=120 on CURRENT+persistent-state |
 | DARK-KNOWN_DARK-cio_identity_resolver | 2026-09-19 | 850b9fda9 AEC bus consumer |
 | DARK-KNOWN_DARK-cio_disposition_identity | 2026-09-19 | 850b9fda9 AEC cycle consumer |
+| PARTIAL-M1-M5 | 2026-09-19 | #1097 promote 0ed980353; census+soak; soft≈0.003 |
 
 
 ## 2026-09-19T14:01 ET — KNOWN_DARK emptied
@@ -135,3 +136,10 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - #1095 quality-escalate host-file arm OPEN tip e52fd4018 (cio-hardening pending after main sync).
 - Remaining PARTIAL: M4 census, narrator live telegram, quality-escalate organic receipt, relationship sources, bitemporal :5432, hermes RETIRE, organic AEC CONFIRMED/REFUTED on day-bucket schedule.
 
+## 2026-09-19T20:05 ET — M1–M5 OBSERVED on served
+
+- #1097 MERGED `0ed980353` → PREPARE+PROMOTE OK pin `0ed980353-main-exact-phase2-20260919-200406`
+- [VERIFIED] `report_maturity_bar_m1_m5.py` from served: M1–M5 OBSERVED; census pass=9 warn=2 fail=0
+- [VERIFIED] soft_unsupported 3/998 ≈ 0.003 (≤0.15)
+- #1096 ledger MERGED earlier; #1095 quality-escalate still OPEN (CI after sync)
+- Goal remains open: remaining PARTIAL/DARK (quality-escalate host arm, narrator organic, relationship, bitemporal :5432, hermes RETIRE, AEC CONFIRMED/REFUTED)
