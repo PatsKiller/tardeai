@@ -257,6 +257,7 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 | `docs/agent_runtime/FLEET_LIFECYCLE_AND_PROMOTION.md` | Agent promotion contract — gates, evidence requirements, HUMAN_ONLY policy | Active |
 | `docs/agent_runtime/LANE_D_SHADOW_AGENTS.md` | Lane D shadow agent architecture and governance | Active |
 | `docs/agent_runtime/PERSISTENCE_RUNBOOK.md` | Agent runtime durable state persistence | Active |
+| `docs/GOAL_LAP_PIPELINE.md` | **Goal lap pipeline** — how a goal earns a lap, the budgeted producer path, the two operator flags, and which agents may own a lapping goal (added 2026-09-19) | Active |
 | `docs/architecture/cio/CIO_PHASE_3_DELIVERY.md` | **CIO Phase 3 — DELIVERED 2026-08-09**: Alex autonomous CIOrity Officer — hybrid OpenClaw+Trade AI, 9 PRs, action ledger, 30-min heartbeat, wake worker, `/v3/cio` API, Hermes challenge bridge, DeepSeek V4 Pro primary | Active |
 | `docs/advisory/desk-v1/` | **Advisory Desk v1** — phases 0–7 outcomes, autonomy/scheduling truth, situation catalog freeze, runtime truth | Active (2026-08-11) |
 | `docs/cio/THESIS_STORE_P3.md` | **CIO P3 versioned thesis store** — `desk@vN` pins, plans/enrich/context wiring, `/cio thesis` | Active (2026-08-11) |
