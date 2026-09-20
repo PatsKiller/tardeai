@@ -300,3 +300,10 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Hub cron path: checked out `data_gap_resolver.py` + `gap_resolver.py` from `origin/main` onto hub (still detached `8c12ea757`); dry-run showed chain resolve with 0 open gaps.
 - release-write still absent; `01d914…` age ~1.1h — not re-requested.
 
+## 2026-09-20T05:54 ET — #1122 MERGED (ledger + INDEX drift fix)
+
+- [VERIFIED] #1122 MERGED → `2b8a896bd` (docs INDEX regenerated after ledger staging).
+- Tip now includes #1119+#1120+#1121+#1122; CURRENT still `8c12ea757` until release-write promote.
+- M4 still PARTIAL on live census warn=1 (Command snapshot_source). Soft-share remasure next.
+- Subscribed once: observe Sunday 08:00 ET weekly `data_gap_resolver --weekly-audit` for organic QE.
+
