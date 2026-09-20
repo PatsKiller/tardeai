@@ -528,3 +528,11 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Observe timers: `stance-organic-observe` 09:05 + `stance-organic-observe-early` 06:35 Mon–Fri.
 - Goal NOT complete.
 
+## 2026-09-20T11:59 ET — propose verify screener_go crontab (organic path)
+
+- New `docs/ops/PROPOSED_VERIFY_SCREENER_GO_ALERTS_CRON_2026-09-20.md` — propose-and-stop.
+- Lane registry ACTIVE for GO; live crontab verify needs operator (`CONFIRM_SCREENER_GO_INSTALLED` /
+  `APPROVE_INSTALL_SCREENER_GO_CRON` / DEFER / REJECT). No crontab mutation.
+- Scalp + proposal_alert still cover organic callers if GO path dark.
+- Goal NOT complete.
+
