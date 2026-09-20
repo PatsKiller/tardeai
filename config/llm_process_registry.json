@@ -883,6 +883,20 @@
       "output_schema": "watch_narrative.v1"
     },
     {
+      "id": "watchlist_agent_oauth_fallback",
+      "name": "Watchlist Agent OAuth Fallback",
+      "category": "Watch",
+      "lane_policy": "either",
+      "default_mode": "automated",
+      "description": "Free OAuth (grok then chatgpt) as an explicit SOFT fallback for risk_agent/steph/tax_agent watchlist reviews, used only after their governed DeepSeek Flash pool has already failed. Never preempts Flash. Carries the non-professional LEGACY_WATCH_RESEARCH provenance, like the Maria OAuth tier.",
+      "daily_soft_cap": 400,
+      "daily_cost_cap_usd": 1.0,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "notes": "2026-09-19: created after the DeepSeek account ran to -$0.09 and every deepseek-flash call returned HTTP 402 from 2026-09-17. Maria kept producing because _llm preempts to grok-oauth for her; risk/steph/tax had no such path and produced ZERO output for three days with nothing alarming. Operator decision in session: extend the free OAuth lane to them so a provider billing outage degrades instead of going silent. daily_soft_cap 400 covers the two flash pools it backstops (risk 220 + steph 180) on a day when Flash is down for all of them; OAuth lanes log $0.00, so daily_cost_cap_usd 1.0 is a guard, not a budget."
+    },
+    {
       "id": "watchlist_risk_flash_narrative",
       "name": "Watchlist Risk Flash Narrative",
       "category": "Watch",

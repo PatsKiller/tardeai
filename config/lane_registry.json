@@ -5,6 +5,22 @@
   "note": "Declared lanes below. `undeclared_baseline` is inherited debt, captured so the CI gate is green on day one and can only shrink \u2014 the precedent that made the dark-contract gate adoptable. A NEW scheduled job not in either list fails CI. Wave2-2026-09-01 batch1: shrink wake-dispatch duplicate; retire cron-freshness-watcher; promote due-checkpoints,cio-delivery,cio-defer-revisit,autonomy-watchdog,hermes-momentum-catalyst-morning. as_of=2026-08-31T16:58:07+00:00. Wave2-2026-09-01 batch2: promote portfolio-backup-cadence,portfolio-daily-cadence,portfolio-weekly-cadence,portfolio-monthly-cadence,portfolio-lookthrough-cadence,governance-pipeline,cio-nightly-reflection,cio-memory-shadow-measure,cio-desk-memo-regen,sm-render,tax-lots-rebuild,provider-cost-reconcile,free-first-circulation,holdings-agent-enqueue,hermes-update-check,portfolio-price-cache,agent-runtime-health; retire at-observation-01,at-observation-01-closeout. as_of=2026-08-31T17:06:54+00:00. Wave2 batch3: promote advisory-shadow-seed,cio-material-scan. as_of=2026-08-31T17:08:11+00:00. Wave-2026-09-01 portfolio-repricer: declare portfolio-repricer ACTIVE (*/15 market hours \u2192 holdings.json); remove 3 portfolio_repricer cron lines from undeclared_baseline. as_of=2026-09-01T20:41:10+00:00.",
   "lanes": [
     {
+      "lane_id": "hermes-universe-history-retention",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25 3 * * * .../hermes_universe_history_retention.py --apply",
+        "match": "scripts/hermes_universe_history_retention.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/hermes_universe_history_retention_last_run.json"
+      },
+      "note": "hermes_governed_universe_history grew unbounded to 4.7G/5,919 files since 2026-07-02: rotate_runtime_logs.sh only covers logs/*.log and nothing else referenced the dir. Thins to one snapshot per UTC day beyond --days so load_universe_trend() keeps its full 90-day reach. Deletion-only pass, so it writes an explicit run receipt."
+    },
+    {
       "lane_id": "research-lane-health",
       "owner": "platform",
       "scheduler": {
@@ -1973,6 +1989,22 @@
       "note": "2026-09-19 maturity: unattended AEC mesh apply (bus + spines). Advisory only; narrator notify remains explicit-flag."
     },
     {
+      "lane_id": "llm-provider-health",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 * * * * cd $PROJ && $PY scripts/check_llm_provider_health.py",
+        "match": "scripts/check_llm_provider_health.py"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/llm_provider_health.json"
+      },
+      "note": "2026-09-19: the DeepSeek account ran to -$0.09 on 09-17 and returned HTTP 402 on every call for three days; risk/steph/tax and hermes_external_research produced nothing and NOTHING alarmed, because every health check watches data freshness rather than provider errors. This lane reads llm_consumption_log and pages on billing/auth failures. It writes the heartbeat above on every run, healthy or not, so the monitor cannot go silent unnoticed the way the lanes it watches did."
+    },
+    {
       "lane_id": "postgres-main-watchdog",
       "owner": "platform",
       "scheduler": {
@@ -1985,7 +2017,7 @@
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/postgres_main_remediate.jsonl"
       },
-      "note": "remediate_postgres_main.py --apply every 5 min; appends a receipt on every outcome including already_active/cooldown. ABSOLUTE path deliberately: a relative path resolves under persistent-state, whose copy of this receipt was 7h stale (800B @ 04:16) against the rebuild tree's 241KB @ 11:00 on 2026-09-20 — the lane would have read the stale copy and reported green on a 5-minute cadence."
+      "note": "Installed 2026-09-18 09:43 after an ENOSPC/disk-hygiene crash left postgres-main down. Every 5 min it checks the unit and, only when postgres is down AND disk is healthy, starts it through the allowlisted sudoers entry /etc/sudoers.d/tradeai-postgres-main-start (privilege is bounded there, not in the unit). remediate_postgres_main.py writes the receipt above on EVERY run, not only when it remediates -- an idle healthy run appends action=already_active -- so the cadence below is honest and a quiet lane means a dead watchdog, not a healthy database. Soft outcomes (already_active, cooldown, refused_disk, missing sudoers) exit 0 so the timer does not flap failed every 5 min while waiting on an operator. ABSOLUTE path (2026-09-20): a relative path resolves under state_root() = persistent-state, whose copy of this receipt was 7.32h stale against a 5-minute cadence (08:16 vs the rebuild tree's live 15:36), so the lane read the wrong file and would have alarmed on a healthy watchdog."
     },
     {
       "lane_id": "weekly-disk-cleanup",
@@ -2000,23 +2032,23 @@
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/weekly_disk_cleanup_receipts.jsonl"
       },
-      "note": "weekly_disk_cleanup_notify.py --apply, Sun 06:30, Persistent=true. ABSOLUTE path deliberately: this receipt does not exist under persistent-state at all, so a relative path would read an absent file and go SILENT immediately. logs/weekly_disk_cleanup.log is the StandardOutput target and is NOT a valid signal — a log file existing does not prove the job ran."
+      "note": "Installed 2026-09-18 20:00. Sun 06:30 ET (after daily hygiene 04:15, librarian 05:10 and the db_retention cron 04:10), running weekly_disk_cleanup_notify.py --apply: hygiene + librarian + db_retention with a Telegram summary. The receipt above is appended per run and is the proof it ran; the unit's StandardOutput log is not. TimeoutStartSec=7200 because rsync/deletes plus a DB purge run long on a full host. ABSOLUTE path (2026-09-20): this receipt does not exist under persistent-state at all, so a relative path resolves to an absent file."
     },
     {
-      "lane_id": "hermes-universe-history-retention",
+      "lane_id": "llm-deferred-drain",
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "25 3 * * * .../hermes_universe_history_retention.py --apply",
-        "match": "scripts/hermes_universe_history_retention.py"
+        "expression": "10 10,13,16,19 * * * cd $PROJ && $PY scripts/drain_llm_deferred.py",
+        "match": "scripts/drain_llm_deferred.py"
       },
       "expected_cadence_hours": 24.0,
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "data/runtime/hermes_universe_history_retention_last_run.json"
+        "path": "data/runtime/llm_deferred_drain.json"
       },
-      "note": "Row taken verbatim from 3557855f5 (wt/backup-deref-universe-retention). hermes_governed_universe_history grew unbounded to 4.7G/5,919 files since 2026-07-02: rotate_runtime_logs.sh only covers logs/*.log and nothing else referenced the dir. Thins to one snapshot per UTC day beyond --days so load_universe_trend() keeps its full 90-day reach. Deletion-only pass, so it writes an explicit run receipt. Relative path is correct here because data/runtime symlinks into persistent-state. NOTE: scripts/hermes_universe_history_retention.py is not on this branch's ancestry (it is on wt/backup-deref-universe-retention); the cron is live on the host and the gate reads the live crontab, not the tree."
+      "note": "2026-09-19 operator directive: when the free lanes are exhausted, paid DeepSeek work that is not time-sensitive is queued rather than paid for at peak (roughly double off-peak). This lane drains that queue inside the off-peak window; it refuses to run outside it, because a drainer that ignores the window is only a delayed way of paying peak prices. It writes the heartbeat above on EVERY run, including runs that drain nothing, so an empty queue and a dead drainer are distinguishable. Operator priorities per caller are set in Command Center -> Ops -> LLM Spend -> 'LLM Routing'. Inert until LLM_DEFER_OFFPEAK=1."
     }
   ],
   "undeclared_baseline": [
