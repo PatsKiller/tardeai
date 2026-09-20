@@ -53,6 +53,13 @@ OTHER_ROW = {**SCHG_ROW, "symbol": "ADBE", "held": False, "price": 252.32, "entr
              "intel": {"state": "READY TO REVIEW"}, "advisory": {"date": "2026-09-13", "action": "Buy-limit in zone"}}
 HOLDING = {"shares": 0.2294, "market_value": 8.07, "account": "schwab_taxable"}
 
+#: Routing fixture, not a credential: passed into desk calls and asserted back
+#: out unchanged, so its identity is irrelevant. tg_chat_ids.chat_ids() is not
+#: used -- it reads TELEGRAM_CHAT_ID from the environment and returns a LIST,
+#: which would break these equality assertions and make an offline test depend
+#: on the host.
+OPERATOR_CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
+
 
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch, tmp_path):
@@ -152,7 +159,7 @@ def test_a_named_symbol_missing_from_the_desk_is_a_blocking_gap_not_a_book_dump(
 
 def test_full_desk_turn_answers_about_schg_with_a_sources_line(monkeypatch):
     _rows_fixture(monkeypatch)
-    res = desk.handle_operator_desk_question("Is now a good time to get back into schg", chat_id="6993102664", message_id="1")
+    res = desk.handle_operator_desk_question("Is now a good time to get back into schg", chat_id=OPERATOR_CHAT, message_id="1")
     assert res["kind"] == "answered"
     txt = res["text"]
     assert "SCHG — re-entry check" in txt and "Monitor / No Action" in txt
