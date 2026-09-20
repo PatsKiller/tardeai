@@ -534,3 +534,9 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Remasure @ 17:06Z: **M1–M5 OBSERVED**; soft SLO PASS; organic still PARTIAL exit 2 (Sunday).
 - Live pin unchanged `5b7e24c95…114233` (docs/units; promote not required).
 - Goal NOT complete: Mon organic stance + §17 parks (or continue-park) + optional `APPROVE_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS`.
+
+## 2026-09-20T13:08 ET — organic report next-window hint
+
+- [CODE] `report_organic_stance_hold.py` prints Mon–Fri ET observe/producer windows when PARTIAL.
+- Test: `test_report_organic_stance_hold_cli_exit_codes` asserts the hint; 2 passed.
+- Goal NOT complete (organic exit 2; §17 parks).

@@ -74,6 +74,10 @@ def main(argv: list[str] | None = None) -> int:
                 "  latest: none — awaits Mon–Fri GO/scalp/proposal "
                 "hold with source=check_investment_send"
             )
+            print(
+                "  next windows ET: scalp 06:00/06:30 · observe-early 06:35 · "
+                "GO */15 + proposal */2 from 09:00 · observe 09:05"
+            )
 
     if summary.get("observed"):
         return 0
