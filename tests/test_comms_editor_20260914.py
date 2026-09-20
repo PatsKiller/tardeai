@@ -102,18 +102,78 @@ def test_cio_disagreement_is_stated_on_the_message_and_held_in_live(tmp_path):
     assert not d.send and d.held_reason == "cio_disagreement"
 
 
-def test_go_alert_held_when_cio_says_research_more(tmp_path):
-    """2026-09-18 audit: NEW GO shipped while CIO RESEARCH_MORE / Synthesis=AVOID."""
+def test_go_alert_rewritten_to_watch_when_cio_says_research_more(tmp_path):
+    """2026-09-20 C2: NEW GO + CIO RESEARCH_MORE → WATCH rewrite (not bullish send)."""
     q = _cio([{"symbol": "ELMT", "action": "RESEARCH_MORE", "created_at": "2026-09-13T17:08:53-04:00"}])
 
     def _resolve_elmt(text):
         return [{"symbol": "ELMT", "guid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}] if "ELMT" in text else []
 
-    d = ce.edit("🎯 *NEW GO* — *ELMT* score=44 RVOL 165.3x\nElmet Group Secures $450 Million",
+    d = ce.edit(
+        "🎯 *NEW GO* — *ELMT* score=44 RVOL 165.3x\n"
+        "📊 Finviz\n_Elmet Group Secures $450 Million_\n"
+        "⚠️ Critic: *DOWNGRADE* — _Caution: MICRO_FLOAT_HALT_RISK_",
+        chat_id="1", now=NOW, ledger=ce.DuplicateLedger(tmp_path / "l.json"),
+        db_query=q, resolve=_resolve_elmt, editor_mode="live",
+    )
+    assert "rewrote:go_to_watch:ELMT" in d.changes
+    assert "NEW GO" not in d.text.upper().replace("WATCH", "")
+    assert "WATCH" in d.text.upper()
+    assert d.cio_disagreements == []
+    assert d.send and d.held_reason is None
+    assert "publish_packet" in d.changes
+    assert "Publish packet" in d.text
+    assert "CIO ELMT" in d.text and "RESEARCH_MORE" in d.text
+
+
+def test_lsta_go_rewritten_when_cio_human_review(tmp_path):
+    """2026-09-20 C4: LSTA NEW GO + HUMAN_REVIEW (Synthesis=AVOID class) → WATCH."""
+    q = _cio([{"symbol": "LSTA", "action": "HUMAN_REVIEW", "created_at": "2026-09-17T10:00:00-04:00"}])
+
+    def _resolve_lsta(text):
+        return [{"symbol": "LSTA", "guid": "bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee"}] if "LSTA" in text else []
+
+    d = ce.edit(
+        "🎯 *NEW GO* — *LSTA* score=47 RVOL 26.7x\n"
+        "📊 Finviz\n_Lisata Therapeutics Announces Acquisition_\n"
+        "⚠️ Critic: *DOWNGRADE* — MICRO_FLOAT_HALT_RISK",
+        chat_id="1", now=NOW, ledger=ce.DuplicateLedger(tmp_path / "l.json"),
+        db_query=q, resolve=_resolve_lsta, editor_mode="live",
+    )
+    assert "rewrote:go_to_watch:LSTA" in d.changes
+    assert d.send and d.held_reason is None
+    assert d.cio_disagreements == []
+
+
+def test_msgm_go_rewritten_when_cio_research_more(tmp_path):
+    """2026-09-20 C4: MSGM post-#1077 hold class — soft-block now rewrites to WATCH."""
+    q = _cio([{"symbol": "MSGM", "action": "RESEARCH_MORE", "created_at": "2026-09-18T11:02:00-04:00"}])
+
+    def _resolve_msgm(text):
+        return [{"symbol": "MSGM", "guid": "cccccccc-bbbb-cccc-dddd-eeeeeeeeeeee"}] if "MSGM" in text else []
+
+    d = ce.edit(
+        "✅ GO *MSGM* — Scalp setup RVOL 12x",
+        chat_id="1", now=NOW, ledger=ce.DuplicateLedger(tmp_path / "l.json"),
+        db_query=q, resolve=_resolve_msgm, editor_mode="live",
+    )
+    assert "rewrote:go_to_watch:MSGM" in d.changes
+    assert d.send and "WATCH" in d.text.upper()
+
+
+def test_go_still_held_when_cio_says_avoid(tmp_path):
+    """Hard-bear CIO: never soft-deliver WATCH over AVOID."""
+    q = _cio([{"symbol": "ELMT", "action": "AVOID", "created_at": "2026-09-13T17:08:53-04:00"}])
+
+    def _resolve_elmt(text):
+        return [{"symbol": "ELMT", "guid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}] if "ELMT" in text else []
+
+    d = ce.edit("🎯 *NEW GO* — *ELMT* score=44 RVOL 165.3x",
                 chat_id="1", now=NOW, ledger=ce.DuplicateLedger(tmp_path / "l.json"),
                 db_query=q, resolve=_resolve_elmt, editor_mode="live")
-    assert d.cio_disagreements and d.cio_disagreements[0]["symbol"] == "ELMT"
+    assert d.cio_disagreements and d.cio_disagreements[0]["cio_action"] == "AVOID"
     assert not d.send and d.held_reason == "cio_disagreement"
+    assert not any(c.startswith("rewrote:go_to_watch:") for c in d.changes)
 
 
 def test_go_with_buy_ready_cio_is_aligned_and_sends(tmp_path):
