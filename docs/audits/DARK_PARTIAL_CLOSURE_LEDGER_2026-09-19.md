@@ -2,7 +2,7 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-19T20:30:00-04:00
+as_of: 2026-09-19T21:16:19-04:00
 Measured at: served pin 170532178-main-exact-phase2-20260919-202251; M1–M5 OBSERVED; soft≈0.003; AEC 20:00 timer AgentView+commitment+narrator telegram=accepted
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
@@ -23,7 +23,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | PARTIAL-telegram-CIO-stance | PARTIAL | **#1082 MERGED**; served pin 4bafd6f83 includes tip lineage | Observe live hold receipt from CURRENT | live hold receipt from CURRENT |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=4 on tip 4bafd6f83 @ 2026-09-19T20:02:08Z | — | soak_ready=YES |
-| PARTIAL-quality-escalate-organic | PARTIAL | #1095 served; host file `research_quality_escalate=1` (`enabled(None)=True`); no thin-answer receipt yet | Organic gap_resolver thin answer | receipt vector=quality_escalate |
+| PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | [CODE] thin+armed now writes `vector=quality_escalate` receipt even on dry_run (`would_escalate`); receipts prefer persistent-state path | Promote + observe receipt from scheduled gap_resolver | receipt vector=quality_escalate |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | CLOSED | [VERIFIED] 2026-09-20T00:05–00:23Z pins 0ed980353→170532178: M1–M5 OBSERVED; census pass=9 fail=0; soft 3/998≈0.003 | #1097+#1095 promote | all five OBSERVED from served |
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
