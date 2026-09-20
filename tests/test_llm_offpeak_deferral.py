@@ -93,6 +93,34 @@ def test_disabled_by_default_so_it_ships_inert(monkeypatch):
     assert D.evaluate("anything", now=WED_PEAK).reason == "DEFERRAL_DISABLED"
 
 
+def test_a_disabled_feature_touches_no_database(monkeypatch):
+    """Off must cost nothing and say nothing.
+
+    This sits on the paid-call chokepoint. Resolving a tier costs a DB round-trip and a
+    registry read, and the first version resolved it BEFORE checking the flag — so with
+    the feature off (its shipped state) every DeepSeek call ran a SELECT against
+    llm_caller_priority, and printed a SQL error for each one when the table was absent.
+    """
+    monkeypatch.delenv("LLM_DEFER_OFFPEAK", raising=False)
+
+    def _boom():
+        raise AssertionError("the disabled path must not resolve a tier")
+
+    monkeypatch.setattr(D, "resolve_tier", lambda *a, **k: _boom())
+    d = D.evaluate("any_caller", now=WED_PEAK)
+    assert d.defer is False and d.reason == "DEFERRAL_DISABLED"
+    assert d.tier == "unresolved", "do not report a tier that was never looked up"
+
+
+def test_the_bypass_path_also_resolves_nothing(monkeypatch):
+    """The drainer already knows it is draining; making it pay for a lookup is waste."""
+    def _boom():
+        raise AssertionError("the bypass path must not resolve a tier")
+
+    monkeypatch.setattr(D, "resolve_tier", lambda *a, **k: _boom())
+    assert D.evaluate("any_caller", bypass=True, now=WED_PEAK).reason == "DRAIN_BYPASS"
+
+
 def test_the_drainer_bypass_cannot_requeue_its_own_work():
     assert D.evaluate("anything", bypass=True, now=WED_PEAK).reason == "DRAIN_BYPASS"
 

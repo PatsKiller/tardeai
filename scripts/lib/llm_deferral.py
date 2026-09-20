@@ -213,12 +213,22 @@ def next_window_start(now: datetime | None = None) -> datetime:
 
 def evaluate(process_id: str, *, manual_trigger: bool = False,
              bypass: bool = False, now: datetime | None = None) -> Decision:
-    """Should this paid call happen now, or wait for the off-peak window?"""
-    tier = resolve_tier(process_id)
+    """Should this paid call happen now, or wait for the off-peak window?
+
+    The two short-circuits come FIRST, before `resolve_tier`, because resolving a tier
+    costs a database round-trip and a registry read. This sits on the paid-call
+    chokepoint, so with the feature disabled — its shipped state — it ran a
+    `SELECT ... FROM llm_caller_priority` on EVERY DeepSeek call and, if the table did
+    not exist, printed a SQL error for each one. A feature that is switched off must
+    cost nothing and say nothing. The tier is reported `unresolved` on these paths
+    because it genuinely was not looked up; the defer path below resolves it for real,
+    and that is the only path whose tier is ever stored.
+    """
     if bypass:
-        return Decision(False, "DRAIN_BYPASS", tier)
+        return Decision(False, "DRAIN_BYPASS", "unresolved")
     if not enabled():
-        return Decision(False, "DEFERRAL_DISABLED", tier)
+        return Decision(False, "DEFERRAL_DISABLED", "unresolved")
+    tier = resolve_tier(process_id)
     if manual_trigger:
         # The operator is waiting. This is the exemption the off-peak rule already carries.
         return Decision(False, "OPERATOR_REQUEST", tier)
