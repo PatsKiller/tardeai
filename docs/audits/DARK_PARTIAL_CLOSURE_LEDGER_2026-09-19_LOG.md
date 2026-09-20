@@ -587,3 +587,12 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Email sent: messageId=`1a0bfd7aeb84edd4` (operator close brief to john@jwwhiting.com).
 - Repo copy: `docs/ops/OPERATOR_CLOSE_BRIEF_AEC_MATURITY_2026-09-20.md` (Status ACTIVE; #1144 MERGED into #1142 tip `c607cd2ba`; #1142 OPEN).
 - Goal still **NOT COMPLETE** — organic stance PARTIAL (Sunday) + three §17 proposes PENDING. No grants invented.
+
+## 2026-09-20T15:29 ET — relationship §7A propose-and-stop (docs path; no registry)
+
+- Prior propose #1107 already on main (`docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md`); Status still PROPOSED / PENDING.
+- [CODE] `check_data_source_authority.check_approvals`: non-blank `approved_by` passes — so `approved_by: PENDING` in live `config/data_source_authority.json` would weaken UNAPPROVED_SOURCE. Blank fields fail CI. **No registry edit.**
+- Amended propose with draft `relationship_memory` manual row (private_company-shaped; `writer: operator`; `no_coverage: refuse_up_front`; cognition-only scope) + cites hermes RETIRE + bitemporal DEFER proposes.
+- Ledger row `PARTIAL-relationship-spine-data` remains §17 PARKED · ◆ — not CONTINUE-PARK (no operator token).
+- Sibling parks unchanged: `PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md`; `PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` (recommend DEFER).
+- Goal NOT COMPLETE. No grants invented. No call sites. No :5432.
