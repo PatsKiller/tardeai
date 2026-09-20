@@ -447,3 +447,10 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Telegram PENDING (no re-request): `b429d99303069209` release-write (~3.8h answer TTL left) · `1e25d22286dbc808` state-write (~4.0h left). Guard show: no RW/SW active yet.
 - Merge+promote polls restarted (RESTART4 / RESTART3). Organic QE OBSERVED (Sun 08:00). Organic stance still Mon–Fri. Wave-close email after M4.
 - Goal remains open — **not complete**.
+
+## 2026-09-20T09:42 ET — #1129 CI fail docs_index_drift; M4 72h pre-proof
+
+- cio-hardening FAIL on head `60bad9521`: `docs_index_drift` / `overnight_g3_docs_index` after ledger remasure commit (INDEX fingerprint stale).
+- Regenerated `docs/INDEX.md` (`--write-index`); local `--check-index` PASS; `test_overnight_g3_docs_index` 7 passed.
+- [VERIFIED] tip 72h pre-proof: cache age≈50.3h → `ai_analyst_is_stale` False under 72h, True under live 48h. **Promote alone clears M4 weekend WARN**; state-write refresh optional.
+- release-write / state-write still PENDING (`b429d993` / `1e25d222`); not re-requested. Goal remains open.
