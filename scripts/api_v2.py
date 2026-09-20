@@ -29086,6 +29086,8 @@ def _morning_command():
 
     return {
         "generated_at": datetime.now().isoformat(),
+        # OperatorNumberCensus M4: Command must name its producer (rebalance/retirement already do).
+        "snapshot_source": "holdings.json (canonical) + risk_management.json",
         "llm_intelligence": llm_cache,
         "portfolio": {
             "total_value": total,

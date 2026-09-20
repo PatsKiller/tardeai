@@ -753,6 +753,8 @@ GATES = [
             "tests/test_desk_gap_queue_reconnect_20260913.py",
             "tests/test_agent_number_grounding_20260913.py",
             "tests/test_report_maturity_bar_m1_m5_20260919.py",
+            # 2026-09-20: Command /api/v2/command must name snapshot_source (M4 census WARN).
+            "tests/test_command_snapshot_source_20260920.py",
             "tests/test_synthesis_prompt_budget_20260913.py",
             # Answer-quality monitor + offline litmus replay of the 2026-09-13 questions.
             "tests/test_operator_answer_quality_20260913.py",

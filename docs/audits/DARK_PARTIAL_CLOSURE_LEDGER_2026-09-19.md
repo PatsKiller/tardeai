@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T03:17:15-04:00
-Measured at: timer aec-expired-observe-0100 re-verify 02:53 ET; pin 8c12ea757; EXPIRED CLOSED; M1–M5 OBSERVED; soft 3/998≈0.003
+as_of: 2026-09-20T03:39:29-04:00
+Measured at: operator paste M4 PARTIAL; tip remasure M1–M5 OBSERVED soak=6; soft 3/998≈0.003; Command snapshot_source fix in flight
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -257,3 +257,12 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 
 - [VERIFIED] AEC 03:00:13 EDT Result=success: `cmt_8ed5cdbac401…` outcome=EXPIRED via=`prior_open_settle` recorded_at=2026-09-20T07:00:13Z (prior hour mint). Fresh mint `cmt_64396346…` INSUFFICIENT.
 - Confirms hour-bucket OUTCOME settle is repeating unattended on pin 8c12ea757 — not a one-shot.
+
+## 2026-09-20T03:39 ET — operator paste M4 PARTIAL; remasure OBSERVED; Command snapshot_source
+
+- Operator paste: M1/M2 (HELD:NOC)/M3/M5 OBSERVED; **M4 PARTIAL**; soft≈0.002.
+- [VERIFIED] `report_maturity_bar_m1_m5.py` from pin **8c12ea757** @ 2026-09-20T07:36:04Z: **M1–M5 all OBSERVED** (M4 soak streak=6 soak_ready=YES; census pass=9 warn=2 fail=0). Soft [VERIFIED] 3/998≈0.003 (pass ≤0.15).
+- Census WARNs still open: (1) Phantom accounts file `fidelity_rollover_ira`, `moomoo_taxable_live` (API filters — holdings edit §17/protected); (2) **Command snapshot_source** missing on `/api/v2/command` while rebalance/retirement pass.
+- Agent-owned fix: `_morning_command` now emits `snapshot_source`; hermetic AST pin `tests/test_command_snapshot_source_20260920.py`. Promote required for live census WARN drop.
+- Still open: PARTIAL-quality-escalate-organic (desk, not canary); PARTIAL-telegram-CIO-stance (organic CURRENT); §17 bitemporal/:5432 + hermes RETIRE + relationship; wave-close docs+email. Goal remains open.
+
