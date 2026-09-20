@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `74e419d0e23b095fd4797271b874efcc79449093fe4b2959dd8d10d4c78f27fb`
+**Tree fingerprint:** `af457962ff822a005f7ad20d9719386c0387c98b5191bdf39651c0698f0a653f`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -650,7 +650,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan | review_required | OK | `2224490a6526` |
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census | review_required | OK | `a5073ae48b02` |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche | review_required | OK | `3669faccf7ff` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `87120c767e69` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `cb697994971d` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |

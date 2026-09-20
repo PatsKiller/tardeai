@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T05:18:00-04:00
-Measured at: #1121 merged; census warn=1 (Command snapshot_source only); soft 0.003; hub QE wire synced; promote blocked
+as_of: 2026-09-20T06:08:00-04:00
+Measured at: #1123 OPEN; tip origin/main 2b8a896bd; M4 PARTIAL warn=1; soft 0.003 (operator ~0.002); release-write PENDING
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -307,3 +307,12 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - M4 still PARTIAL on live census warn=1 (Command snapshot_source). Soft-share remasure next.
 - Subscribed once: observe Sunday 08:00 ET weekly `data_gap_resolver --weekly-audit` for organic QE.
 
+
+## 2026-09-20T06:08 ET — operator remasure (M4 still PARTIAL; soft~0.002)
+
+- Operator paste: M1 OBSERVED · M2 OBSERVED (HELD:NOC critique writeback) · M3/M5 OBSERVED · **M4 still PARTIAL** · soft≈0.002 pass.
+- [VERIFIED] soft remasure `report_agent_number_grounding.py --json`: soft_unsupported=3/998 **share=0.003** (pass ≤0.15); ungrounded_share=0.0. Operator ~0.002 and agent 0.003 both PASS — no SLO regression.
+- [VERIFIED] release-write still **absent**; remote request `01d9146085bc55c4` status=PENDING created_at=2026-09-20T08:12:42Z expires_at=2026-09-20T12:12:42Z — age ~1.9h, **~2.1h TTL remaining** → do **not** re-request.
+- #1123 OPEN head `70019cea5` (wave-close 0604); cio-hardening IN_PROGRESS; other checks PASS. Tip still `2b8a896bd`; promote still blocked.
+- Open agent-owned: promote tip → census warn=0 → M4 OBSERVED; organic QE requester=data_gap_resolver; organic stance source=check_investment_send; email AS-IS/FUTURE/GAP after promote.
+- Goal remains open — **not complete**.
