@@ -266,3 +266,12 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Agent-owned fix: `_morning_command` now emits `snapshot_source`; hermetic AST pin `tests/test_command_snapshot_source_20260920.py`. Promote required for live census WARN drop.
 - Still open: PARTIAL-quality-escalate-organic (desk, not canary); PARTIAL-telegram-CIO-stance (organic CURRENT); §17 bitemporal/:5432 + hermes RETIRE + relationship; wave-close docs+email. Goal remains open.
 
+## 2026-09-20T04:12 ET — #1119 MERGED; promote blocked on release-write
+
+- [VERIFIED] #1119 MERGED @ 2026-09-20T08:12:23Z → `5f467e359` (Command `snapshot_source` + SOP digest + docs INDEX).
+- cio-hardening PASS 15m55s on head `630d7d460`.
+- release-write grant absent; remote request `01d9146085bc55c4` PENDING (Telegram interrupt).
+- CURRENT still `8c12ea757…` until promote. Census Command WARN remains until tip serves.
+- Stance: CURRENT tip canary hold `source=controlled_canary_current_tip` NOC (not organic).
+- Soft remasure still 3/998≈0.003. Operator M4 PARTIAL vs tip bar OBSERVED unchanged until census WARN drops post-promote.
+
