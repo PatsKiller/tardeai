@@ -540,3 +540,9 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - [CODE] `report_organic_stance_hold.py` prints Mon–Fri ET observe/producer windows when PARTIAL.
 - Test: `test_report_organic_stance_hold_cli_exit_codes` asserts the hint; 2 passed.
 - Goal NOT complete (organic exit 2; §17 parks).
+## 2026-09-20T13:12 ET — stance observe timers INSTALLED (CURRENT-bound)
+
+- [VERIFIED] `systemctl --user enable --now` early 06:35 + observe 09:05 Mon–Fri under overnight `cron` grant.
+- Service WorkingDirectory=CURRENT; hand start Result=success ExecMainStatus=2 (PARTIAL Sunday).
+- Lane registry: `tradeai-stance-organic-observe` + `-early`; observe receipt writer → `data/runtime/organic_stance_hold_observe.json`.
+- Propose file → CONFIRMED. Goal NOT complete (await organic hold + §17 parks).
