@@ -6,6 +6,7 @@ import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 import SpendPanel from '../components/SpendPanel'
 import LlmRoutingModal from '../components/LlmRoutingModal'
+import { BB, RAIL } from '../lib/watchTokens'
 
 const GREEN = '#22c55e', RED = '#ef4444', AMBER = '#f59e0b', BLUE = '#60a5fa', MUTED = '#94a3b8', TEXT = '#f8fafc'
 
@@ -141,8 +142,9 @@ export default function ConsumptionHub() {
         {/* Off-peak routing is a spend decision, so it lives behind an explicit operator
             action rather than inline controls that can be changed by a stray click. */}
         <button onClick={() => setRoutingOpen(true)}
-                style={{ marginLeft: 'auto', background: '#1e293b', color: TEXT, border: '1px solid #334155',
-                         borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 11 }}>
+                style={{ marginLeft: 'auto', background: BB.border, color: BB.text0,
+                         border: `1px solid ${RAIL.neutral}`, borderRadius: 6,
+                         padding: '5px 10px', cursor: 'pointer', fontSize: 11 }}>
           LLM Routing — off-peak priority
         </button>
       </div>

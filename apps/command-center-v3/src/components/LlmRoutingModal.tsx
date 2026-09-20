@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'react'
+import { BB, T } from '../lib/watchTokens'
 
 /**
  * Operator control for off-peak LLM routing.
@@ -15,8 +16,6 @@ import { useCallback, useEffect, useMemo, useState, type CSSProperties } from 'r
  * `tier_source` matters: a caller nobody has classified shows as a default, never as a
  * decision someone made. Only rows the operator actually changed are sent on save.
  */
-
-const GREEN = '#22c55e', AMBER = '#f59e0b', BLUE = '#60a5fa', MUTED = '#94a3b8', TEXT = '#f8fafc'
 
 export type CallerRow = {
   process_id: string
@@ -39,9 +38,9 @@ type QueueSummary = {
 type Props = { open: boolean; onClose: () => void; onSaved?: () => void }
 
 const TIER_META: Record<string, { color: string; hint: string }> = {
-  critical: { color: AMBER, hint: 'Spends at any hour, including peak rates.' },
-  standard: { color: GREEN, hint: 'Runs in the off-peak window; queued outside it.' },
-  deferred: { color: BLUE, hint: 'Always queued for the next off-peak window.' },
+  critical: { color: BB.orange, hint: 'Spends at any hour, including peak rates.' },
+  standard: { color: BB.green, hint: 'Runs in the off-peak window; queued outside it.' },
+  deferred: { color: T.link, hint: 'Always queued for the next off-peak window.' },
 }
 
 export default function LlmRoutingModal({ open, onClose, onSaved }: Props) {
@@ -116,54 +115,54 @@ export default function LlmRoutingModal({ open, onClose, onSaved }: Props) {
   if (!open) return null
 
   const overlay: CSSProperties = {
-    position: 'fixed', inset: 0, background: 'rgba(2,6,23,0.72)', zIndex: 1000,
+    position: 'fixed', inset: 0, background: 'rgba(2, 6, 23, 0.72)', zIndex: 1000,
     display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16,
   }
   const panel: CSSProperties = {
-    background: '#0b1220', border: '1px solid #1e293b', borderRadius: 10,
+    background: BB.bg, border: `1px solid ${BB.border}`, borderRadius: 10,
     width: 'min(980px, 96vw)', maxHeight: '88vh', display: 'flex', flexDirection: 'column',
-    color: TEXT, fontSize: 13,
+    color: BB.text0, fontSize: 13,
   }
   const th: CSSProperties = {
-    textAlign: 'left', padding: '6px 8px', color: MUTED, fontWeight: 600,
-    borderBottom: '1px solid #1e293b', position: 'sticky', top: 0, background: '#0b1220',
+    textAlign: 'left', padding: '6px 8px', color: BB.text3, fontWeight: 600,
+    borderBottom: `1px solid ${BB.border}`, position: 'sticky', top: 0, background: BB.bg,
   }
-  const td: CSSProperties = { padding: '6px 8px', borderBottom: '1px solid #111c30' }
+  const td: CSSProperties = { padding: '6px 8px', borderBottom: `1px solid ${BB.border}` }
 
   return (
     <div style={overlay} onClick={onClose} role="presentation">
       <div style={panel} onClick={e => e.stopPropagation()} role="dialog"
            aria-modal="true" aria-label="LLM off-peak routing">
-        <div style={{ padding: '12px 14px', borderBottom: '1px solid #1e293b' }}>
+        <div style={{ padding: '12px 14px', borderBottom: `1px solid ${BB.border}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong>LLM Routing — off-peak priority</strong>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', color: MUTED,
+            <button onClick={onClose} style={{ background: 'none', border: 'none', color: BB.text3,
                                                cursor: 'pointer', fontSize: 18 }}>×</button>
           </div>
-          <div style={{ color: MUTED, marginTop: 6, lineHeight: 1.5 }}>
+          <div style={{ color: BB.text3, marginTop: 6, lineHeight: 1.5 }}>
             DeepSeek bills peak hours at roughly double off-peak. Work that is not
             time-sensitive is queued for the next off-peak window rather than paid for now.
             Operator-initiated asks always run immediately, whatever a caller is set to.
           </div>
           <div style={{ marginTop: 8, display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-            <span style={{ color: queue.enabled ? GREEN : AMBER }}>
+            <span style={{ color: queue.enabled ? BB.green : BB.orange }}>
               deferral {queue.enabled ? 'ARMED' : 'not armed (LLM_DEFER_OFFPEAK unset)'}
             </span>
-            <span style={{ color: MUTED }}>
+            <span style={{ color: BB.text3 }}>
               window {queue.window_open_now ? 'OPEN' : 'closed'}
             </span>
-            <span style={{ color: MUTED }}>queued: {queue.pending ?? 0}</span>
+            <span style={{ color: BB.text3 }}>queued: {queue.pending ?? 0}</span>
             {queue.next_run_after && (
-              <span style={{ color: MUTED }}>next drain: {queue.next_run_after}</span>
+              <span style={{ color: BB.text3 }}>next drain: {queue.next_run_after}</span>
             )}
           </div>
         </div>
 
-        <div style={{ padding: '8px 14px', borderBottom: '1px solid #1e293b' }}>
+        <div style={{ padding: '8px 14px', borderBottom: `1px solid ${BB.border}` }}>
           <input value={filter} onChange={e => setFilter(e.target.value)}
                  placeholder="filter by caller, name or category"
-                 style={{ width: '100%', background: '#020617', color: TEXT,
-                          border: '1px solid #1e293b', borderRadius: 6, padding: '6px 8px' }} />
+                 style={{ width: '100%', background: BB.bgPanel, color: BB.text0,
+                          border: `1px solid ${BB.border}`, borderRadius: 6, padding: '6px 8px' }} />
         </div>
 
         <div style={{ overflow: 'auto', flex: 1 }}>
@@ -182,26 +181,26 @@ export default function LlmRoutingModal({ open, onClose, onSaved }: Props) {
                 const cur = edits[r.process_id] ?? r.tier
                 const changed = cur !== r.tier
                 return (
-                  <tr key={r.process_id} style={{ background: changed ? '#12203a' : undefined }}>
+                  <tr key={r.process_id} style={{ background: changed ? BB.bgShift : undefined }}>
                     <td style={td}>
                       <div>{r.name}</div>
-                      <div style={{ color: MUTED, fontSize: 11 }}>{r.process_id}</div>
+                      <div style={{ color: BB.text3, fontSize: 11 }}>{r.process_id}</div>
                     </td>
-                    <td style={{ ...td, color: MUTED }}>{r.category || '—'}</td>
-                    <td style={{ ...td, color: MUTED }}>
+                    <td style={{ ...td, color: BB.text3 }}>{r.category || '—'}</td>
+                    <td style={{ ...td, color: BB.text3 }}>
                       {r.daily_cost_cap_usd == null ? '—' : `$${Number(r.daily_cost_cap_usd).toFixed(2)}`}
                     </td>
-                    <td style={{ ...td, color: r.tier_source === 'operator' ? TEXT : MUTED }}>
+                    <td style={{ ...td, color: r.tier_source === 'operator' ? BB.text0 : BB.text3 }}>
                       {r.tier_source}
                     </td>
                     <td style={td}>
                       <select value={cur} disabled={busy}
                               onChange={e => setEdits(p => ({ ...p, [r.process_id]: e.target.value }))}
-                              style={{ background: '#020617', color: TIER_META[cur]?.color ?? TEXT,
-                                       border: '1px solid #1e293b', borderRadius: 6, padding: '4px 6px' }}>
+                              style={{ background: BB.bgPanel, color: TIER_META[cur]?.color ?? BB.text0,
+                                       border: `1px solid ${BB.border}`, borderRadius: 6, padding: '4px 6px' }}>
                         {tiers.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
-                      <div style={{ color: MUTED, fontSize: 11, marginTop: 2 }}>
+                      <div style={{ color: BB.text3, fontSize: 11, marginTop: 2 }}>
                         {TIER_META[cur]?.hint}
                       </div>
                     </td>
@@ -209,27 +208,27 @@ export default function LlmRoutingModal({ open, onClose, onSaved }: Props) {
                 )
               })}
               {!shown.length && (
-                <tr><td style={{ ...td, color: MUTED }} colSpan={5}>No callers match.</td></tr>
+                <tr><td style={{ ...td, color: BB.text3 }} colSpan={5}>No callers match.</td></tr>
               )}
             </tbody>
           </table>
         </div>
 
-        <div style={{ padding: '10px 14px', borderTop: '1px solid #1e293b',
+        <div style={{ padding: '10px 14px', borderTop: `1px solid ${BB.border}`,
                       display: 'flex', alignItems: 'center', gap: 12 }}>
-          <span style={{ color: dirty.length ? AMBER : MUTED }}>
+          <span style={{ color: dirty.length ? BB.orange : BB.text3 }}>
             {dirty.length ? `${dirty.length} unsaved change(s)` : 'no changes'}
           </span>
-          {err && <span style={{ color: '#ef4444' }}>{err}</span>}
-          {note && <span style={{ color: GREEN }}>{note}</span>}
+          {err && <span style={{ color: BB.red }}>{err}</span>}
+          {note && <span style={{ color: BB.green }}>{note}</span>}
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
             <button onClick={onClose} disabled={busy}
-                    style={{ background: '#1e293b', color: TEXT, border: 'none',
+                    style={{ background: BB.border, color: BB.text0, border: 'none',
                              borderRadius: 6, padding: '6px 12px', cursor: 'pointer' }}>
               Close
             </button>
             <button onClick={save} disabled={busy || !dirty.length}
-                    style={{ background: dirty.length ? '#2563eb' : '#1e293b', color: TEXT,
+                    style={{ background: dirty.length ? T.link : BB.border, color: BB.text0,
                              border: 'none', borderRadius: 6, padding: '6px 12px',
                              cursor: dirty.length ? 'pointer' : 'default' }}>
               {busy ? 'Saving…' : 'Save priorities'}
