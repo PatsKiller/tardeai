@@ -404,6 +404,16 @@ def _m4_census_paths() -> list[Path]:
     ]
 
 
+def _m4_soak_paths(root: Path) -> list[Path]:
+    """Prefer local state (no release-write), then persistent, then checkout."""
+    return [
+        Path.home() / ".local/state/tradeai/bridge_pin_soak.jsonl",
+        Path.home()
+        / "trade-ai-releases/persistent-state/data/runtime/bridge_pin_soak.jsonl",
+        root / "data" / "runtime" / "bridge_pin_soak.jsonl",
+    ]
+
+
 def _m4_from_soak(
     root: Path,
     *,
@@ -411,10 +421,14 @@ def _m4_from_soak(
     census_paths: list[Path] | None = None,
 ) -> tuple[str, str]:
     """M4: pin soak + operator-number census (one producer / no FAIL)."""
-    soak = soak_path or (
-        Path.home()
-        / "trade-ai-releases/persistent-state/data/runtime/bridge_pin_soak.jsonl"
-    )
+    soak = soak_path
+    if soak is None:
+        for cand in _m4_soak_paths(root):
+            if _exists_nonempty(cand):
+                soak = cand
+                break
+        else:
+            soak = _m4_soak_paths(root)[0]
     if not _exists_nonempty(soak):
         return (
             "PARTIAL",
