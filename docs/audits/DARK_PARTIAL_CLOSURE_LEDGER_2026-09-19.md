@@ -3,7 +3,7 @@
 ```
 Status: ACTIVE
 as_of: 2026-09-20T06:08:00-04:00
-Measured at: #1123 OPEN head 9cdfa360b; organic QE ARKQ/NEE OBSERVED (hand-run cron path); M4 PARTIAL warn=1; soft~0.002; release-write PENDING
+Measured at: #1129 OPEN head 644aa1863; main 6a78d41cc (#1128); live pin f8eb9803f; M1–M3/M5 OBSERVED; M4 PARTIAL (AI Analyst 48h on live / 72h tip unpromoted); soft 3/998=0.003; RW/SW PENDING b429d993/1e25d222
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -439,3 +439,11 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - M4 still PARTIAL until promote → census warn=0. Soft 0.003 PASS. Organic QE OBSERVED. Organic stance Mon–Fri.
 - Goal remains open.
 
+## 2026-09-20T09:24 ET — operator remasure (M4 still PARTIAL; soft~0.002)
+
+- Operator paste: **M1 OBSERVED · M2 OBSERVED (HELD:NOC critique writeback) · M3/M5 OBSERVED · M4 still PARTIAL · soft-share ~0.002 (pass)**.
+- [VERIFIED] soft remasure `report_agent_number_grounding.py --json` @ 2026-09-20T13:24Z: soft_unsupported=3/998 **share=0.003** (pass ≤0.15); ungrounded_share=0.0. Operator ~0.002 and agent 0.003 both PASS.
+- Live pin still **PROMOTE OK** `f8eb9803f-main-exact-phase2-20260920-072254` until next promote. Main tip `6a78d41cc` (#1128); deploy detached on `73ced82d9` (72h SLA). #1129 OPEN head `644aa1863` (INDEX drift fix) — cio-hardening pending on run 35513321256.
+- Telegram PENDING (no re-request): `b429d99303069209` release-write (~3.8h answer TTL left) · `1e25d22286dbc808` state-write (~4.0h left). Guard show: no RW/SW active yet.
+- Merge+promote polls restarted (RESTART4 / RESTART3). Organic QE OBSERVED (Sun 08:00). Organic stance still Mon–Fri. Wave-close email after M4.
+- Goal remains open — **not complete**.
