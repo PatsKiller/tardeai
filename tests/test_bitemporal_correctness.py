@@ -860,3 +860,60 @@ def test_aec_cycle_rejects_contradictory_mode_flags():
     )
     assert clash.returncode != 0
     assert "not allowed with argument" in clash.stderr
+
+
+def _reload_benchmark(monkeypatch, value):
+    """Reload the module under a given opt-in value; the guard reads env live,
+    but reloading also proves nothing is cached at import time."""
+    import importlib
+
+    import scripts.lib.memory_m2_benchmark as m
+
+    monkeypatch.delenv("TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED", raising=False)
+    if value is not None:
+        monkeypatch.setenv("TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED", value)
+    return importlib.reload(m)
+
+
+PROD_DSN = "postgresql://trade_ai:x@127.0.0.1:5432/trade_ai"
+
+
+@pytest.mark.parametrize("value", [None, "0", "true", "yes", "", "2"])
+def test_production_dsn_refused_unless_authorized_exactly_one(monkeypatch, value):
+    """THE regression guard for this whole change: with the opt-in absent or
+    anything other than an exact "1", a production DSN raises exactly as it did
+    before the rail was made conditional. Fail closed."""
+    m = _reload_benchmark(monkeypatch, value)
+    assert m.production_memory_authorized() is False
+    with pytest.raises(RuntimeError, match="M2_DSN_PRODUCTION_PORT_FORBIDDEN"):
+        m._assert_isolated_dsn(PROD_DSN)
+
+
+def test_production_dsn_permitted_when_authorized(monkeypatch):
+    m = _reload_benchmark(monkeypatch, "1")
+    assert m.production_memory_authorized() is True
+    assert m._assert_isolated_dsn(PROD_DSN) == PROD_DSN
+    # Authorization permits the CONNECTION only — never the destructive reset.
+    prod = _FakeConn("5432")
+    m.apply_schema(prod)
+    assert not _reset_opt_in_issued(prod.executed), (
+        "authorizing production memory must not also authorize DROP SCHEMA CASCADE"
+    )
+
+
+def test_isolated_dsn_unaffected_by_authorization(monkeypatch):
+    """The shadow path must behave identically either way."""
+    shadow = "postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow"
+    for value in (None, "1"):
+        m = _reload_benchmark(monkeypatch, value)
+        assert m._assert_isolated_dsn(shadow) == shadow
+
+
+def test_aec_reraises_target_misconfiguration(monkeypatch):
+    """Fail-soft must not hide a mis-targeted memory write. Guard errors are
+    re-raised; incidental errors stay soft."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "scripts" / "aec_command_center_cycle.py").read_text()
+    assert 'if any(m in _msg for m in ("M2_DSN_", "M2_DESTRUCTIVE_")):' in src
+    assert "raise" in src.split('if any(m in _msg for m in ("M2_DSN_", "M2_DESTRUCTIVE_")):')[1][:40]

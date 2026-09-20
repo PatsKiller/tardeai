@@ -81,9 +81,20 @@ def _now() -> str:
 
 
 def _assert_isolated_dsn(dsn: str) -> str:
+    """Refuse a production DSN unless the operator has explicitly authorized
+    production cognitive memory via TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED=1.
+
+    With the variable unset — the default — behaviour is identical to before:
+    every production DSN raises. Authorizing permits the *connection* only; it
+    never permits the destructive schema reset, which conn_targets_production()
+    suppresses and the SQL file's isolated-database allowlist refuses
+    independently.
+    """
     s = str(dsn)
-    if ":5432" in s or s.rstrip("/").endswith(":5432"):
-        raise RuntimeError("M2_DSN_PRODUCTION_PORT_FORBIDDEN")
+    if dsn_targets_production(s):
+        if not production_memory_authorized():
+            raise RuntimeError("M2_DSN_PRODUCTION_PORT_FORBIDDEN")
+        return s
     # A dead `if ... M2_ALLOW_NONDEFAULT_PORT ... : pass` branch used to sit here.
     # It read as a live control but did nothing, while the SAME env var IS live in
     # memory_shadow_projector.py — a dangerous pair to confuse during a cutover.
