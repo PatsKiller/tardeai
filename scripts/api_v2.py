@@ -13833,10 +13833,15 @@ def _llm_caller_priorities():
     _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from lib import llm_deferral as _ld
 
-    return _json_clean({"ok": True, "tiers": list(_ld.TIERS),
-                        "default_tier": _ld.DEFAULT_TIER,
-                        "callers": _ld.list_callers(),
-                        "queue": _ld.queue_summary()})
+    return _json_clean(
+        {
+            "ok": True,
+            "tiers": list(_ld.TIERS),
+            "default_tier": _ld.DEFAULT_TIER,
+            "callers": _ld.list_callers(),
+            "queue": _ld.queue_summary(),
+        }
+    )
 
 
 def _llm_deferred_queue():
@@ -13846,14 +13851,17 @@ def _llm_deferred_queue():
     _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
     from lib import llm_deferral as _ld
 
-    rows = _db_query(
-        """SELECT id, process_id, lane, task_summary, tier, reason, status,
+    rows = (
+        _db_query(
+            """SELECT id, process_id, lane, task_summary, tier, reason, status,
                   attempts, created_at, run_after, expires_at, error
              FROM llm_deferred_requests
             WHERE status IN ('pending','claimed')
             ORDER BY run_after LIMIT 200""",
-        fetch="all",
-    ) or []
+            fetch="all",
+        )
+        or []
+    )
     return _json_clean({"ok": True, "queue": _ld.queue_summary(), "requests": rows})
 
 
@@ -51081,11 +51089,9 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 pid = str((u or {}).get("process_id") or "").strip()
                 tier = str((u or {}).get("tier") or "").strip().lower()
                 if not pid or tier not in _ld.TIERS:
-                    rejected.append({"process_id": pid, "tier": tier,
-                                     "error": "unknown process_id or tier"})
+                    rejected.append({"process_id": pid, "tier": tier, "error": "unknown process_id or tier"})
                     continue
-                _ld.set_tier(pid, tier, updated_by=by,
-                             note=str((u or {}).get("note") or "")[:500] or None)
+                _ld.set_tier(pid, tier, updated_by=by, note=str((u or {}).get("note") or "")[:500] or None)
                 saved.append({"process_id": pid, "tier": tier})
             code = 200 if saved else 400
             return code, {"ok": bool(saved), "saved": saved, "rejected": rejected}
