@@ -536,3 +536,12 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Scalp + proposal_alert still cover organic callers if GO path dark.
 - Goal NOT complete.
 
+## 2026-09-20T12:00 ET — CONFIRM screener_go + all organic callers on live crontab
+
+- [VERIFIED] `crontab -l` under active cron grant: **all three** ORGANIC_HOLD_CALLERS installed Mon–Fri:
+  - `send_telegram_proposal_alert` `*/2 9-16 * * 1-5`
+  - `social_scalp_scanner` `0,30 6-9 * * 1-5`
+  - `screener_go_alerts` `*/15 9-16 * * 1-5` (hub tree)
+- Propose file status → **CONFIRMED**. Sunday organic=0 is schedule-bound only — not a missing cron.
+- Goal NOT complete (await organic hold Mon + §17 parks).
+

@@ -1,51 +1,34 @@
-# PROPOSED — operator decision required (AGENTS.md §9.3 / §17)
+# CONFIRMED — live crontab verified (AGENTS.md §9.3)
 
 ```
-Status: PROPOSED
-Effective-Date: PENDING
-as_of: 2026-09-20T11:59:00-04:00
-Measured at: config/lane_registry.json lane screener-go-alerts ACTIVE; organic stance hunt (Sunday) could not read live crontab (no cron grant)
+Status: CONFIRMED / SUPERSEDES PROPOSED
+Effective-Date: 2026-09-20
+as_of: 2026-09-20T12:00:30-04:00
+Measured at: crontab -l under active cron grant (maturity overnight campaign)
 Canonical repo path: docs/ops/PROPOSED_VERIFY_SCREENER_GO_ALERTS_CRON_2026-09-20.md
-Authority: propose-and-stop — installing or editing a crontab line is operator-only
-Subject: Verify screener_go_alerts is installed on the live Mon–Fri crontab (organic stance path)
-See also: PARTIAL-telegram-CIO-stance; ORGANIC_HOLD_CALLERS; scripts/screener_go_alerts.py
+Authority: read-only crontab inspect; no install mutation
+Subject: screener_go_alerts + peer organic stance producers — INSTALLED on live Mon–Fri crontab
+See also: PARTIAL-telegram-CIO-stance; ORGANIC_HOLD_CALLERS
 ```
 
-## Finding
+## Operator decision
 
-`PARTIAL-telegram-CIO-stance` closes only when a live producer records
-`source=check_investment_send` with `caller` ∈
-`{screener_go_alerts, social_scalp_scanner, send_telegram_proposal_alert}`.
+**CONFIRM_SCREENER_GO_INSTALLED** — verified by agent under active `cron` grant
+(inspect-only). No crontab edit.
 
-Lane registry declares:
+## [VERIFIED] live lines (Mon–Fri)
 
 ```
-*/15 9-16 * * 1-5 … screener_go_alerts.py --send
+*/2 9-16 * * 1-5 … scripts/send_telegram_proposal_alert.py --mode pending --send
+0,30 6-9 * * 1-5 … scripts/social_scalp_scanner.py
+*/15 9-16 * * 1-5 … scripts/screener_go_alerts.py --send
+  (cwd=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild)
 ```
 
-A Sunday organic-stance hunt reported that expression as **ACTIVE in the registry**
-but **absent from a crontab snapshot** available without a live `crontab -l` grant.
-`social_scalp_scanner` and `send_telegram_proposal_alert` remain declared Mon–Fri and
-are sufficient for organic OBSERVED if they fire a hold — but losing the GO path
-narrows the Monday observe window.
+All three `ORGANIC_HOLD_CALLERS` have scheduled Mon–Fri paths. Sunday organic=0 is
+schedule-bound, not a missing-job defect.
 
-Agents must **not** edit the live crontab. This file proposes verification only.
+## Residual
 
-## Exact operator decision ask
-
-Reply with one of:
-
-1. **CONFIRM_SCREENER_GO_INSTALLED** — live crontab already carries the
-   `screener_go_alerts.py --send` Mon–Fri line matching the lane registry
-   (`*/15 9-16 * * 1-5` or equivalent). Quote the line.
-2. **APPROVE_INSTALL_SCREENER_GO_CRON** — operator (or granted `cron` scope) installs
-   the lane registry expression into the live crontab + confirms
-   `lane_registry` / `check_lane_registry.py` stay green.
-3. **DEFER** — rely on `social_scalp_scanner` + `send_telegram_proposal_alert` alone
-   for organic stance proof; leave GO path unverified.
-4. **REJECT** — retire or keep GO lane dark deliberately; update ledger reason.
-
-## Why not auto-close
-
-§9.3 / §17 — scheduler install is operator-only. No crontab mutation was made.
-Organic stance itself remains schedule-bound until a real Mon–Fri hold lands.
+Organic OBSERVED still requires a real hold receipt Mon–Fri
+(`source=check_investment_send` + organic caller). Observe timers remain armed.
