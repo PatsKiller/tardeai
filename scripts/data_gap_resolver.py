@@ -383,14 +383,12 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
     gaps = cur.fetchall()
     log(f"Found {len(gaps)} open gaps" + (" (pre-overnight sweep)" if pre_overnight else ""))
 
-    # on_gap / quality-escalate chain — runs even when enrichment GAP_RESOLVERS
-    # have nothing left, so a thin catalyst answer still leaves a receipt.
-    try:
-        chain_resolve_open_gaps(conn, dry_run=dry_run)
-    except Exception as exc:  # noqa: BLE001 — enrichment path must still run
-        log(f"Chain resolve skipped: {exc}")
-
     if not gaps and not weekly_audit:
+        # Still walk on_gap for catalyst-shaped opens (separate query) before exit.
+        try:
+            chain_resolve_open_gaps(conn, dry_run=dry_run)
+        except Exception as exc:  # noqa: BLE001
+            log(f"Chain resolve skipped: {exc}")
         conn.close()
         return
 
@@ -467,6 +465,13 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
             if abandoned:
                 log(f"Abandoned {abandoned} gaps older than 30 days")
             conn.commit()
+
+    # on_gap / quality-escalate after enrichment so FakeCursor hermetic sequences
+    # (and live Maria dispatch) are not starved by an earlier SELECT.
+    try:
+        chain_resolve_open_gaps(conn, dry_run=dry_run)
+    except Exception as exc:  # noqa: BLE001 — enrichment path already finished
+        log(f"Chain resolve skipped: {exc}")
 
     log(f"Done: {resolved} resolved, {dispatched} dispatched, {failed} failed, {skipped} skipped")
     conn.close()

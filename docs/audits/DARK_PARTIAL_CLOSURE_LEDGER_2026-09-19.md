@@ -13,15 +13,15 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | id | status | evidence | closure path | proof required |
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | CLOSED | [VERIFIED] pin 18a41066d consult instrument_enqueue_skipped_cadence=9; M5 OBSERVED | #1087+#1089 promote | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
-| DARK-bitemporal-m2-substrate | PARTIAL | schema v2 + CIOEnvelopeIntegrator on :55432; 205 correctness tests (2026-09-19 re-run); EXPLAIN Index Scan fact_valid_spgist; production :5432 NOT applied — **blocked: `vector` ext unavailable on prod host + `trade_ai` cannot CREATE ROLE m2_agent** (probed 20:34 ET, rolled back) | Install pgvector on prod + create m2_agent role (superuser); guard `DROP SCHEMA ... CASCADE` in r10_m2_isolated_benchmark.sql:9; then apply + organic wake | OBSERVED unattended write from served |
+| DARK-bitemporal-m2-substrate | §17 PARKED | schema v2 + integrator on :55432 OBSERVED; prod :5432 blocked — `vector` ext unavailable + cannot CREATE ROLE m2_agent (probed 2026-09-19, rolled back) | Operator: install pgvector + m2_agent role; guard DROP SCHEMA CASCADE | prod apply + unattended write |
 | DARK-OUTCOME-settlement | CLOSED | [VERIFIED] AEC 02:00:13 EDT on pin **8c12ea757**: learning `commitment_outcome` outcome=EXPIRED commitment_id=`cmt_fb32f783…` via=`prior_open_settle`; cycle Result=success exit 0; narrator telegram=accepted | — | OBSERVED EXPIRED from schedule |
 | DARK-AgentView-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AgentView@v1 (PORTFOLIO / day-bucket claim) from tradeai-aec-command-center-cycle.timer | — | OBSERVED AgentView from served schedule |
 | DARK-AGENT_COMMITMENT-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AGENT_COMMITMENT@v1 cmt_7f86ca… + CommitmentOutcome@v1 | — | OBSERVED commitment+settlement from schedule |
 | DARK-librarian-index | CLOSED | [VERIFIED] persistent-state + CURRENT `research_source_index.json` ResearchSourceIndex@v1 n_sources=120 (mtime 2026-09-16) | — | file present on served path |
-| DARK-hermes_advisory_event_enqueue | KNOWN DARK · PROPOSED RETIRE | AGENTS research table; automatic writer is librarian backlog loop | Operator grant on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row or wired consumer |
+| DARK-hermes_advisory_event_enqueue | §17 PARKED · PROPOSED RETIRE | AGENTS research table; automatic writer is librarian backlog loop; no caller | Operator grant on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row or wired consumer |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | [CODE] dual-write on served **8c12ea757**; local probe hold only (`maturity_agent_local_probe`); await organic CURRENT traffic hold | Observe live hold from CURRENT | live hold receipt from CURRENT |
+| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | dual-write on tip; holds only probe/canary so far; live callers: screener_go_alerts, send_telegram_proposal_alert, social_scalp_scanner → check_investment_send | Observe hold with source=check_investment_send (not canary/probe) | organic hold receipt |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | controlled_canary receipt only; **code wire**: data_gap_resolver.chain_resolve_open_gaps → gap_resolver.resolve (requester=data_gap_resolver) — was falsely claimed already wired | merge+promote + unattended cron receipt | vector=quality_escalate requester=data_gap_resolver (not canary) |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
@@ -29,7 +29,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | CLOSED | [VERIFIED] organic `aec_wake_spine_receipts.jsonl` as_of=2026-09-20T01:04:31Z subject=PORTFOLIO policy_decision=aec_spines_loaded counts strategic=2 learning=5; wake consult 01:05:09Z | #1099 promote | wake receipt aec_spines_loaded |
-| PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
+| PARTIAL-relationship-spine-data | §17 PARKED · ◆ | no domain data; spine slot exists | Operator-approved DataSourceAuthority grant only (§7A/§17) | registry approval rows |
 | PARTIAL-narrator-unprompted-telegram | CLOSED | [VERIFIED] unattended 20:00:15 EDT narrator_notify notify_attempted=true telegram=accepted (AEC_NARRATOR_NOTIFY on unit) | — | unprompted brief delivered |
 | DARK-cio-runs-truncated-tail | CLOSED | incomplete last line blocked create_run; wake errors=5 | archive + cio_run harden 7ea5835f9 | repair receipt + test |
 | FORBIDDEN-broker | FORBIDDEN | §0/§2 | never | N/A |
@@ -274,4 +274,11 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - CURRENT still `8c12ea757…` until promote. Census Command WARN remains until tip serves.
 - Stance: CURRENT tip canary hold `source=controlled_canary_current_tip` NOC (not organic).
 - Soft remasure still 3/998≈0.003. Operator M4 PARTIAL vs tip bar OBSERVED unchanged until census WARN drops post-promote.
+
+## 2026-09-20T04:28 ET — §17 park + stance organic caller map
+
+- Parked operator-only rows: DARK-bitemporal-m2-substrate, DARK-hermes_advisory_event_enqueue, PARTIAL-relationship-spine-data (shrink-only; no agent apply).
+- Stance organic path [CODE]: `screener_go_alerts`, `send_telegram_proposal_alert`, `social_scalp_scanner` call `check_investment_send` — hold receipts will stamp source=`check_investment_send` when CIO conflicts; not impersonated.
+- Still agent-owned open: promote #1119+#1120 tip; census Command snapshot_source WARN; unattended QE requester=data_gap_resolver; organic stance hold.
+- release-write `01d9146085bc55c4` PENDING.
 
