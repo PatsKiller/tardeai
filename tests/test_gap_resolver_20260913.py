@@ -48,6 +48,13 @@ INCOMPLETE = {
     "sources": [],
 }
 
+#: Routing fixture, not a credential: passed into desk calls and asserted back
+#: out unchanged, so its identity is irrelevant. tg_chat_ids.chat_ids() is not
+#: used -- it reads TELEGRAM_CHAT_ID from the environment and returns a LIST,
+#: which would break these equality assertions and make an offline test depend
+#: on the host.
+OPERATOR_CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
+
 
 def _rows(path: Path) -> list[dict]:
     if not path.exists():
@@ -455,7 +462,7 @@ def test_desk_answers_now_when_a_fast_vector_answers(desk_offline, monkeypatch):
     _wire(monkeypatch, _all_fakes(backup_provider=_Fake(
         "answered", answer={"rating": "buy", "target_mean": 110.0}, as_of="2026-09-13T17:00:00+00:00",
         provider="yfinance_on_demand")))
-    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id="6993102664", message_id="7")
+    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id=OPERATOR_CHAT, message_id="7")
     assert res["kind"] == "answered"
     assert res["pending_id"] is None
     assert res["reply_source"] == "gap_resolver:backup_provider"
@@ -468,7 +475,7 @@ def test_desk_answers_now_when_a_fast_vector_answers(desk_offline, monkeypatch):
 
 def test_desk_opens_a_pending_with_the_eta_when_only_a_slow_vector_queued(desk_offline, monkeypatch):
     _wire(monkeypatch, _all_fakes(hermes_research=_Fake("queued", provider="hermes", eta_seconds=1800)))
-    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id="6993102664", message_id="7")
+    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id=OPERATOR_CHAT, message_id="7")
     assert res["kind"] == "deferred"
     assert res["pending_id"]
     assert res["eta_seconds"] == 1800
@@ -482,7 +489,7 @@ def test_desk_says_no_coverage_and_opens_nothing_when_every_vector_is_denied(des
     fakes = _all_fakes()
     fakes["governed_search"] = _Fake("budget_denied", provider="brave")
     _wire(monkeypatch, fakes)
-    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id="6993102664", message_id="7")
+    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id=OPERATOR_CHAT, message_id="7")
     assert res["kind"] == "no_coverage"
     assert res["pending_id"] is None
     assert "no coverage through any declared source" in res["text"]
@@ -508,7 +515,7 @@ def test_desk_uses_the_store_when_a_refresh_makes_it_complete(desk_offline, monk
                                           "source": "tradeai_deterministic", "model": None})
     _wire(monkeypatch, _all_fakes(refresh_producer=_Fake("answered", answer={"ran": True},
                                                          as_of=NOW.isoformat(), provider="yahoo")))
-    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id="6993102664", message_id="7")
+    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id=OPERATOR_CHAT, message_id="7")
     assert res["kind"] == "answered" and res["reply_source"] == "tradeai_deterministic"
     assert res["evidence_complete"] is True and res["blocking_gaps"] == []
     assert _rows(desk.PENDING_PATH) == []
@@ -519,7 +526,7 @@ def test_desk_still_refuses_an_unanswerable_ask_before_any_vector_runs(desk_offl
     monkeypatch.setattr(desk, "analyze_operator_intent", lambda text: dict(spacex))
     fakes = {v: (lambda g, e, c: pytest.fail("vector ran for an unanswerable ask")) for v in gr.VECTORS}
     _wire(monkeypatch, fakes)
-    res = desk.handle_operator_desk_question("outlook for SpaceX", chat_id="6993102664", message_id="7")
+    res = desk.handle_operator_desk_question("outlook for SpaceX", chat_id=OPERATOR_CHAT, message_id="7")
     assert res["kind"] == "unanswerable" and res["pending_id"] is None
     assert not gr.RECEIPTS_PATH.exists()
 
@@ -529,7 +536,7 @@ def test_negative_control_resolver_off_opens_a_pending_with_no_eta(desk_offline,
     monkeypatch.setenv("CIO_GAP_RESOLVER", "0")
     monkeypatch.setattr(desk, "_enqueue_hermes_research", lambda *a, **k: {"ok": True})
     _wire(monkeypatch, {v: (lambda g, e, c: pytest.fail("resolver ran while disabled")) for v in gr.VECTORS})
-    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id="6993102664", message_id="7")
+    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id=OPERATOR_CHAT, message_id="7")
     assert res["kind"] == "deferred" and res["pending_id"]
     assert "≈" not in res["text"]
     assert res.get("eta_seconds") is None
@@ -542,7 +549,7 @@ def test_desk_falls_back_to_the_old_path_when_the_resolver_itself_breaks(desk_of
     """A resolver traceback is a defect, not a fact about coverage."""
     monkeypatch.setattr(desk, "_enqueue_hermes_research", lambda *a, **k: {"ok": True})
     monkeypatch.setattr(gr, "resolve", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("resolver bug")))
-    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id="6993102664", message_id="7")
+    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id=OPERATOR_CHAT, message_id="7")
     assert res["kind"] == "deferred" and res["pending_id"]
     assert "≈" not in res["text"]
     assert res["gap_resolution"]["errors"] == ["analyst_view:RuntimeError"]
@@ -557,8 +564,8 @@ def test_desk_hands_its_own_hermes_enqueue_to_the_resolver(desk_offline, monkeyp
     fakes = _all_fakes()
     fakes["hermes_research"] = gr._v_hermes_research   # the real vector, fake enqueue
     _wire(monkeypatch, fakes)
-    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id="6993102664", message_id="7")
-    assert calls and calls[0]["symbols"] == ["WMT"] and calls[0]["chat_id"] == "6993102664"
+    res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id=OPERATOR_CHAT, message_id="7")
+    assert calls and calls[0]["symbols"] == ["WMT"] and calls[0]["chat_id"] == OPERATOR_CHAT
     assert res["kind"] == "deferred" and "≈ 30 min" in res["text"]
 
 
