@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T00:25:00-04:00
-Measured at: PROMOTE OK a3891ec86-main-exact-phase2-20260920-002125; M1–M5 OBSERVED; soak streak=4; soft≈0.002; #1110 CI fix pushed c446a686b
+as_of: 2026-09-20T00:45:00-04:00
+Measured at: PROMOTE OK 8090bf675-main-exact-phase2-20260920-004357 (#1110 dual-write); M1–M5 OBSERVED; soak streak=5; soft 3/998≈0.003
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -207,3 +207,11 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - [VERIFIED] tip remasure `report_maturity_bar_m1_m5.py` @ 2026-09-20T03:59:26Z: **M4 OBSERVED** — soak streak=3 soak_ready=YES last_as_of=2026-09-20T01:28:40Z; census as_of=2026-09-20T01:09:08Z pass=9 warn=2 fail=0 (local paths). M2 HELD:NOC writeback crt_926c909… confirmed.
 - Agent-owned while release-write absent: stance hold + gap_resolver receipt **local dual-write** (`~/.local/state/tradeai/…` primary, persist mirror).
 - Still blocked: tip promote (no release-write); organic EXPIRED / QE / stance on served pin `f14dbdfee…`; §17 relationship/:5432/hermes; wave-close docs+email.
+
+## 2026-09-20T00:25 ET — PROMOTE OK a3891ec86; #1110 CI fix
+
+- [VERIFIED] `cio_phase2_exact_main_deploy.sh promote` → **PROMOTE OK** live=`a3891ec867a9…` release `a3891ec86-main-exact-phase2-20260920-002125` (prev `f14dbdfee…`).
+- [VERIFIED] M1–M5 OBSERVED @ 04:24:33Z; soak streak=4 pins_match; soft≈0.002.
+- #1110 cio-hardening FAIL was `maturity_overnight` desk tests (RECEIPTS_PATH monkeypatch ignored by dual-write default). Fix `c446a686b` pushed; await green → merge → optional second promote (1 release-write use left, 12m).
+- Local stance hold probe line present; local_qe still 0. Await hourly AEC for organic EXPIRED; scheduled gap_resolver for QE receipt.
+- Still open: #1110 merge; organic EXPIRED/QE/stance; §17 relationship/:5432/hermes; wave-close AS-IS/FUTURE/GAP+email.
