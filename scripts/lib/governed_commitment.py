@@ -254,7 +254,7 @@ def evaluate_outcome(
         outcome = "REFUTED"
     elif obs.get("confirmed") is True:
         outcome = "CONFIRMED"
-    elif due is not None and when > due and not obs:
+    elif due is not None and when >= due and not obs:
         outcome = "EXPIRED"
     else:
         outcome = "INSUFFICIENT_EVIDENCE"
