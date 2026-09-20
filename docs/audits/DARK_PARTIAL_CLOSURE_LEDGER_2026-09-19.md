@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T02:26:32-04:00
-Measured at: tip 8c12ea757; OUTCOME CLOSED; QE controlled_canary thin dry_run receipt on CURRENT+persist; soft 3/998≈0.003; M1–M5 OBSERVED
+as_of: 2026-09-20T02:53:31-04:00
+Measured at: timer aec-expired-observe-0100 re-verify 02:53 ET; pin 8c12ea757; EXPIRED CLOSED; M1–M5 OBSERVED; soft 3/998≈0.003
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -21,7 +21,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-hermes_advisory_event_enqueue | KNOWN DARK · PROPOSED RETIRE | AGENTS research table; automatic writer is librarian backlog loop | Operator grant on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row or wired consumer |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | [CODE] dual-write on served **8090bf675**; local probe hold exists; await organic CURRENT traffic hold | Observe live hold from CURRENT | live hold receipt from CURRENT |
+| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | [CODE] dual-write on served **8c12ea757**; local probe hold only (`maturity_agent_local_probe`); await organic CURRENT traffic hold | Observe live hold from CURRENT | live hold receipt from CURRENT |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | [VERIFIED] CURRENT tip **8c12ea757** host arm=1 wrote `vector=quality_escalate` outcome=dry_run reason=thin_answer @ 06:26:10Z (`source=controlled_canary_current_tip`) to local+persist receipts — **not** organic desk; await desk ask → partial/answered | Organic desk receipt | organic vector=quality_escalate |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
@@ -246,3 +246,9 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - [VERIFIED] From pin 8c12ea757: `research_quality_escalate.enabled(None)=True`; thin dry_run would_escalate; receipt appended dual-write local+persist `vector=quality_escalate`.
 - Honesty: controlled_canary ≠ organic desk SETTLED. PARTIAL-quality-escalate-organic stays open until a desk `_resolve_blocking_gaps` walk lands the same vector.
 - Soft-share [VERIFIED]: 3 soft_unsupported / 998 rows ≈ 0.003 (pass ≤0.15).
+
+## 2026-09-20T02:53 ET — timer aec-expired-observe-0100
+
+- Re-verified: EXPIRED still present on spines; AEC last success 02:00:13 EDT; tip 8c12ea757; M1–M5 OBSERVED; soft 3/998≈0.003.
+- 01:00 minted 1h commitment; 02:00 settled EXPIRED (correct for horizon=1h). No further promote needed for this timer.
+- Goal open: organic QE desk, organic stance, §17.
