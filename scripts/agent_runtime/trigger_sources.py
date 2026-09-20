@@ -714,15 +714,34 @@ def _goal_lap_adapter(cursor_value: str | None) -> AdapterResult:
     need_path = root / "cio_goal_need_ledger.jsonl"
     candidates: list[TriggerCandidate] = []
     not_in_fleet: list[str] = []
+    not_operable: list[str] = []
     for goal in open_goals:
         owner = str(goal.get("owner_agent") or "").strip().lower()
         owner = AGENT_ALIASES.get(owner, owner)
-        if owner not in FLEET:
+        spec = FLEET.get(owner)
+        if spec is None:
             # produce_once drops a non-FLEET candidate with a bare `continue` and
             # no counter, so an unknown owner would vanish leaving no receipt --
             # the same silence that let orphan timers fire 896 times a day doing
             # nothing. Name it in the probe instead of queueing unleasable work.
             not_in_fleet.append(f"{goal.get('goal_id')}:{goal.get('owner_agent')}")
+            continue
+        if not getattr(spec, "is_operable_now", False):
+            # In FLEET but DESIGNED / disabled: its runner exits "no-work" every
+            # tick, so a lap enqueued here can never be leased -- and since
+            # gate_candidate charges at ENQUEUE, it would spend the goal's
+            # cumulative allowance on work nothing will ever do. Five agents are
+            # DESIGNED (aegis, ledger, maria, risk_agent, vega); guardian aliases
+            # onto risk_agent, so this is live, not hypothetical.
+            #
+            # Until now only the queue being full at max_queue_depth stopped it:
+            # 64 stale SCHEDULED_SWEEP rows from 2026-09-15 pin risk_agent's
+            # queue, so the candidate was silently dropped for capacity. Clearing
+            # that backlog -- the obvious "fix" -- would have turned a harmless
+            # drop into a charged, unworkable lap.
+            state = getattr(getattr(spec, "definition", None), "deployment_state", None)
+            not_operable.append(
+                f"{goal.get('goal_id')}:{owner}({getattr(state, 'value', state)})")
             continue
         generation = gg.generation_for_goal(
             goal, laps_path=laps_path, need_ledger_path=need_path
@@ -732,6 +751,9 @@ def _goal_lap_adapter(cursor_value: str | None) -> AdapterResult:
     detail = f"{len(candidates)} open goal(s) eligible"
     if not_in_fleet:
         detail += f"; skipped (owner not in FLEET): {', '.join(sorted(not_in_fleet))}"
+    if not_operable:
+        detail += (f"; skipped (owner not operable): "
+                   f"{', '.join(sorted(not_operable))}")
     return AdapterResult(
         GOAL_LAP_SOURCE_ID,
         SourceProbe(
