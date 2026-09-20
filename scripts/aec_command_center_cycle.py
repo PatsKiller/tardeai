@@ -304,20 +304,33 @@ def run_cycle(
 
     # Narrator — executive briefing text (not sent here; publish to bus only)
     # Cognitive memory on isolated :55432 only (prod :5432 refused in integrator).
-    bitemporal_receipt = integrate_wake_envelope(
-        {
-            "subject_key": subject,
-            "predicate": "thesis",
-            "claim": advisor_summary[:240],
-            "object": {
-                "text": advisor_summary[:240],
-                "kind": "cognitive_hypothesis",
-                "cycle": True,
+    # Fail-soft: a bitemporal schema/function miss must not abort the cycle after
+    # AgentView/commitment/OUTCOME already landed (2026-09-20T05:00Z exit 1 left
+    # narrator unrun while hour-bucket mint had succeeded).
+    try:
+        bitemporal_receipt = integrate_wake_envelope(
+            {
+                "subject_key": subject,
+                "predicate": "thesis",
+                "claim": advisor_summary[:240],
+                "object": {
+                    "text": advisor_summary[:240],
+                    "kind": "cognitive_hypothesis",
+                    "cycle": True,
+                },
+                "wake_job_id": f"aec-cycle-{subject}",
             },
-            "wake_job_id": f"aec-cycle-{subject}",
-        },
-        apply=apply,
-    )
+            apply=apply,
+        )
+    except Exception as exc:  # noqa: BLE001 — isolated memory must not kill AEC
+        bitemporal_receipt = {
+            "schema": "CIOEnvelopeIntegration@v1",
+            "dry_run": not apply,
+            "error": f"{type(exc).__name__}: {exc}"[:400],
+            "authority": "READ_ONLY_ADVISORY",
+            "mbi_behavior": 0,
+            "via": "aec_bitemporal_fail_soft",
+        }
     narr_summary = (
         f"Narrator brief: cio={cio_ev.summary[:80]}; advisor={adv_ev.summary[:80]}; "
         f"learning_rows={len(relevant.get('learning') or [])}; "

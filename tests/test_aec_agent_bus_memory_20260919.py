@@ -191,6 +191,47 @@ def test_cycle_apply_propagates_to_bitemporal_integrator(tmp_path, monkeypatch):
     assert (tmp_path / "bus.jsonl").exists()
 
 
+def test_cycle_bitemporal_raise_fail_soft(tmp_path, monkeypatch):
+    """Schema/function miss on isolated memory must not abort narrator/OUTCOME."""
+    monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "mem.json"))
+    cycle = _load("aec_command_center_cycle_bt_soft", "scripts/aec_command_center_cycle.py")
+
+    def _boom(envelope, *, apply=False):
+        raise RuntimeError("save_bitemporal_fact_version missing")
+
+    monkeypatch.setattr(cycle, "integrate_wake_envelope", _boom)
+    out = cycle.run_cycle(subject_key="WATCH:SCHG", apply=True)
+    assert out["commitment"]["commitment_id"]
+    assert out["bitemporal"].get("via") == "aec_bitemporal_fail_soft"
+    assert "RuntimeError" in str(out["bitemporal"].get("error") or "")
+    # Narrator still published (3 bus events).
+    assert len(out["events"]) == 3
+    assert out["events"][2]["agent_id"] == "narrator_agent"
+
+
+def test_evaluate_commitment_expires_at_exact_due(tmp_path, monkeypatch):
+    """Hourly timer at due_at wall-clock must EXPIRE (inclusive bound)."""
+    from datetime import datetime, timezone
+
+    ac = _load("agent_commitment_v1_due", "scripts/lib/agent_commitment_v1.py")
+    due = datetime(2026, 9, 20, 6, 0, 0, 280077, tzinfo=timezone.utc)
+    cmt = {
+        "schema_version": "AGENT_COMMITMENT@v1",
+        "commitment_id": "cmt_test_due",
+        "subject": "PORTFOLIO",
+        "claim": "x",
+        "confidence": 0.5,
+        "horizon": "1h",
+        "falsifier": "y",
+        "due_at": due.isoformat().replace("+00:00", "Z"),
+        "authority": "READ_ONLY_ADVISORY",
+        "mbi_behavior": 0,
+    }
+    out = ac.evaluate_commitment(cmt, now=due, observation=None)
+    assert out["outcome"] == "EXPIRED"
+
+
 def test_wake_loads_aec_spines_fail_soft(tmp_path, monkeypatch):
     """Wake helper reads four spines; spine errors never raise into the wake."""
     wake = _load("persistent_agent_wake_spines", "scripts/lib/persistent_agent_wake.py")
