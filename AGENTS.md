@@ -1,17 +1,23 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.2.4
+Policy-Version:      1.2.5
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              ACTIVE
-Effective-Date:      2026-09-18
-Last-Reviewed:       2026-09-18T16:55:00-04:00
+Effective-Date:      2026-09-20
+Last-Reviewed:       2026-09-20T10:55:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          1.2.3
+Supersedes:          1.2.4
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**1.2.5 is ACTIVE from 2026-09-20.** A PATCH release: §13.4 dark-contracts list and the
+AgentView/AGENT_COMMITMENT “no producer” prose are corrected to match measured CLOSED rows in
+`docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` (load-by-subject / OUTCOME / AgentView /
+commitment / librarian index OBSERVED). Touches no §0/§2/§17 authority; rides
+`APPROVE_AGENTS_POLICY_1_2_0`.
 
 **1.2.4 is ACTIVE from 2026-09-18.** A PATCH release: §10 documents that the default
 `TRADEAI_CURRENT_BOUND_UNITS` includes `cio-governed-bridge.service` (promote must re-resolve the
@@ -2699,9 +2705,9 @@ AGENT_COMMITMENT@v1          subject_key · claim · confidence · horizon · fa
                              MBI_BEHAVIOR stays 0: a commitment is a belief, never an order.
 ```
 
-**`AgentView@v1` and `AGENT_COMMITMENT@v1` are specified and currently have no producer.** They are
-not missing types. They are unbuilt producers for existing types, and building them is the
-judgment and commitment work in the future-state spec.
+**`AgentView@v1` and `AGENT_COMMITMENT@v1` have scheduled producers** on the AEC command-center
+cycle (ledger CLOSED 2026-09-19: unattended AgentView + AGENT_COMMITMENT + CommitmentOutcome).
+They are not missing types. Do not rebuild parallel producers — extend the AEC cycle writers.
 
 ### Provenance classes — every operator-facing field carries one
 
@@ -2726,20 +2732,27 @@ MBI_COGNITION = 1    cognition MAY move next_research_question, next_eligible_at
 
 ### Dark contracts — do not report these as LIVE
 
-These mechanisms exist in code or spec. They are not scheduled consumers.
-An agent that ships a feature on top of them without wiring the consumer
-is repeating the filing-cabinet defect.
+A **dark contract** is a mechanism that exists in code or spec without a scheduled consumer
+(or without a producer). Shipping a feature on top of one without wiring the consumer repeats
+the filing-cabinet defect. **Re-measure before quoting this list** — several former dark
+rows are CLOSED in `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md`.
 
-- `load-by-subject` — built, tested, **no scheduled wake consumes it**.
-  Wiring that call is P1 / M5. Until a cron loads the record before
-  `decide()`, persistence is unwired.
-- `OUTCOME` edge — checkpoints exist; settlement is dark. Lessons on
-  disk today are **research-derived**. Do not call them scored.
-- `AgentView@v1` / `AGENT_COMMITMENT@v1` — types registered, **no producer**.
-- librarian grade/stale-out law — tested; **index file absent**.
-- `CIO_TELEGRAM_INTERDICT` — name exceeds code. Before claiming Telegram
-  is interdicted or enabled, grep the **actual send gate** that reaches
-  the operator family and name that symbol. INTERDICT is not that gate.
+**Still dark / do not report as LIVE:**
+
+- `hermes_advisory_event_enqueue` — **KNOWN DARK — PROPOSED RETIRE** (manual CLI; no caller).
+  Automatic writer of `hermes_advisory_events` is the librarian backlog loop. Operator grant:
+  `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md`.
+- `CIO_TELEGRAM_INTERDICT` — name exceeds code. Before claiming Telegram is interdicted or
+  enabled, grep the **actual send gate** that reaches the operator family and name that
+  symbol. INTERDICT is not that gate.
+
+**Formerly dark — CLOSED (do not rebuild; do not re-list as dark):**
+
+- `load-by-subject` — scheduled wake consult OBSERVED (M5); ledger `DARK-load-by-subject-schedule`.
+- `OUTCOME` settlement — unattended EXPIRED via AEC `prior_open_settle`; ledger `DARK-OUTCOME-settlement`.
+- `AgentView@v1` / `AGENT_COMMITMENT@v1` — AEC timer producers OBSERVED; ledger rows CLOSED.
+- librarian grade/stale-out — `research_source_index.json` present on served path; ledger
+  `DARK-librarian-index` CLOSED.
 
 ### Before proposing anything new
 
@@ -3420,6 +3433,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.2.5 | 2026-09-20 | ACTIVE | PATCH | §13.4: dark-contracts list + AgentView/AGENT_COMMITMENT “no producer” prose corrected to match ledger CLOSED (load-by-subject, OUTCOME, AgentView, commitment, librarian index OBSERVED). hermes enqueue remains KNOWN DARK — PROPOSED RETIRE. No change to §0, §2, §17 or role authority. | PATCH stale measurements; rides `APPROVE_AGENTS_POLICY_1_2_0`. |
 | 1.2.4 | 2026-09-18 | ACTIVE | PATCH | §10: default `TRADEAI_CURRENT_BOUND_UNITS` documents `cio-governed-bridge.service` beside the health agent; cites 2026-09-18 bridge vs portfolio-server pin drift and `docs/ops/BRIDGE_PIN_ALIGNMENT.md`. No change to §0, §2, §17 or role authority. | PATCH documentation of deploy default; rides `APPROVE_AGENTS_POLICY_1_2_0`. |
 | 1.2.3 | 2026-09-18 | ACTIVE | MINOR | Adds "What 2026-09-18 taught — Agent controls audit" (router `WRITE_WORDS` miss buy/sell/order; BehaviorWriteRefused ≠ router HITL; prompt-injection PARTIAL on Telegram/watchlist/router ingress despite admission/partition/MCP probes; failed oneshot+timer churn especially `tradeai-cio-reactive` */2m; alert `runtime_mode` measured SHADOW not OFF; grounding 0%-flag caution; RAG empty-vs-cited verify). Does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-18 ("read update agents.md" after agent-controls audit). **ACTIVE** on operator-directed merge/promote of PR #1069 (2026-09-18). |
 | 1.2.2 | 2026-09-18 | ACTIVE on main (not yet on CURRENT) | MINOR | Adds "What 2026-09-18 taught — Postgres ENOSPC → Command Center false-green" (symptoms, ordered root cause, immediate + lasting fix, verify commands). Records that `/api/health` ok is not Postgres liveness; hygiene reclaim does not restart `postgresql@17-main`; PARTIAL `primary(0) vs alternate(N)` after an outage is honesty until scans refill; watchdog + sudoers must cover `/usr/bin/systemctl`; health-agent cannot auto-start Postgres under `NoNewPrivileges`. Does not touch §0, §2, §17 or role authority. | **Operator-directed** 2026-09-18 ("also update the agents.md with root cause fix and symptoms"). **Merged** PR #1068 2026-09-18; **live CURRENT still serves 1.2.1** until explicit promote. |
