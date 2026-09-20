@@ -2,7 +2,7 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-19T21:19:25-04:00
+as_of: 2026-09-19T21:29:52-04:00
 Measured at: served pin 170532178-main-exact-phase2-20260919-202251; M1–M5 OBSERVED; soft≈0.003; AEC 20:00 timer AgentView+commitment+narrator telegram=accepted
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
@@ -152,6 +152,13 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 
 - AEC CIO cycle `--apply` now appends `kind=cio_cycle_status` to the **operational** spine (internal infra posture only).
 - Relationship spine remains ◆ — no domain sources without operator grant (§17).
+## 2026-09-19T21:28 ET — operator table vs remasure (M4)
+
+- Operator paste: M1/M2/M3/M5 OBSERVED; M4 PARTIAL; soft≈0.002.
+- [VERIFIED] remasure: **M1–M5 all OBSERVED** on pin `f14dbdfee…210329`; M2 HELD:NOC critique writeback; census pass=9 fail=0 as_of=2026-09-20T01:09:08Z; live pins_match=True (server=bridge=CURRENT); soft≈0.002.
+- M4 PARTIAL in the paste was stale vs census+soak; local soak dual-write landed so M4 remains measurable without release-write.
+- Open PRs: #1103 prior_outcome, #1104 stance hold, #1105 QE thin receipt, #1106 operational spine, #1107 relationship §17 propose.
+- release-write remote request `524c81d781a0bd26` PENDING for promote after merges.
 ## 2026-09-19T20:34 ET — 5-stage directive verification; bitemporal :5432 BLOCKED (infrastructure)
 
 Directive re-verification against dev tree `170532178` (= origin/main after #1095). Stages 1/2/4/5

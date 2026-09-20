@@ -272,3 +272,11 @@ def test_m4_partial_when_census_missing(tmp_path):
     v, note = M._m4_from_soak(tmp_path, soak_path=soak, census_paths=[tmp_path / "missing.json"])
     assert v == "PARTIAL"
     assert "census not run" in note
+
+
+def test_m4_soak_paths_prefer_local_state():
+    M = _load()
+    paths = M._m4_soak_paths(ROOT)
+    assert paths[0].name == "bridge_pin_soak.jsonl"
+    assert ".local/state/tradeai" in str(paths[0])
+    assert "persistent-state" in str(paths[1])
