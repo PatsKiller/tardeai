@@ -363,6 +363,38 @@ def summarize_stance_holds(path: Optional[Path] = None) -> dict[str, Any]:
     }
 
 
+def write_organic_observe_receipt(summary: dict[str, Any]) -> list[str]:
+    """Persist the latest observe summary for lane/timer evidence (not a hold)."""
+    import json
+
+    payload = dict(summary)
+    payload["schema"] = "CioTelegramStanceObserveReceipt@v1"
+    body = json.dumps(payload, sort_keys=True, indent=2) + "\n"
+    written: list[str] = []
+    targets = [Path.home() / ".local/state/tradeai/organic_stance_hold_observe.json"]
+    try:
+        from scripts.lib.persistent_state_root import good_persistent_root
+
+        persist = (
+            good_persistent_root()
+            / "data"
+            / "runtime"
+            / "organic_stance_hold_observe.json"
+        )
+        if persist.parent.is_dir():
+            targets.append(persist)
+    except Exception:  # noqa: BLE001
+        pass
+    for target in targets:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body, encoding="utf-8")
+            written.append(str(target))
+        except OSError:
+            continue
+    return written
+
+
 __all__ = [
     "AUTHORITY",
     "HELD_DISAGREEMENT",
@@ -380,5 +412,6 @@ __all__ = [
     "load_hold_receipt_rows",
     "record_hold",
     "summarize_stance_holds",
+    "write_organic_observe_receipt",
     "text_is_investment_shaped",
 ]
