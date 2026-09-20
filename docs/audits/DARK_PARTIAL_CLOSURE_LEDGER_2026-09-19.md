@@ -26,7 +26,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-quality-escalate-organic | CLOSING→OBSERVED (hand) | [VERIFIED] 2026-09-20T10:30:39Z live data_gap_resolver.py: requester=data_gap_resolver vector=quality_escalate provider=searxng outcome=partial ARKQ+NEE; free residual router_disabled. Honesty: hand cron path ≠ unattended 08:00 yet | weekly 08:00 ET unattended echo | unattended same stamps |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | CLOSED | [VERIFIED] post-promote 2026-09-20T04:44:54Z pin 8090bf675: M1–M5 OBSERVED under prior bar (fail=0); operator remasure 2026-09-20 keeps M4 PARTIAL on census WARN — see PARTIAL-M4-census-warn | promote #1110 tip | all five OBSERVED |
-| PARTIAL-M4-census-warn | OPEN | [VERIFIED] 2026-09-20T09:17:59Z census pass=10 **warn=1** fail=0 — only Command snapshot_source (phantom PASS). Tip `bace5bfcd` has fix; CURRENT `8c12ea757` until promote. | release-write promote tip ≥`bace5bfcd` + remasure | warn=0 → M4 OBSERVED |
+| PARTIAL-M4-census-warn | OPEN→CLOSING | Prior: AI Analyst freshness WARN on 48h SLA vs weekday producer. Tip now: 72h SLA + lane declare (agent-owned). Live pin still 48h until promote. | release-write promote tip + remasure census warn=0 | warn=0 → M4 OBSERVED |
 
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | CLOSED | [VERIFIED] organic `aec_wake_spine_receipts.jsonl` as_of=2026-09-20T01:04:31Z subject=PORTFOLIO policy_decision=aec_spines_loaded counts strategic=2 learning=5; wake consult 01:05:09Z | #1099 promote | wake receipt aec_spines_loaded |
@@ -382,4 +382,16 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
   - `23bb4e52b91d7154` **release-write** 30m/4u — remasure census+M1–M5 expecting warn→0 → M4 OBSERVED
 - #1127 ledger PR open; cio-hardening still pending at request time.
 - Still open after M4: weekly unattended QE (Sun 08:00 ET), organic stance (`source=check_investment_send`), wave-close AS-IS/FUTURE/GAP email.
+- Goal remains open.
+
+## 2026-09-20T07:35 ET — Agent-owned M4: AI Analyst SLA 48h→72h + lane declare
+
+- Root cause of Sunday WARN: `ai_analyst()` used a **48h** wall-clock stale bound while the only producer is **Mon–Fri 07:15** `portfolio_orchestrator`. Fri 07:15 → Sun 07:31 ≈ 48.3h → false WARN every weekend.
+- Agent-owned fix (no state-write required to clear the WARN once promoted):
+  - `scripts/lib/ai_analyst_freshness.py` — `AI_ANALYST_STALE_AFTER_HOURS=72` + `ai_analyst_is_stale()`
+  - `api_v2.ai_analyst` + data-product health check consume 72h
+  - Lane `portfolio-ai-analyst` declared; orchestrator cron line removed from `undeclared_baseline`
+  - Hermetic tests `tests/test_ai_analyst_freshness.py` + CI group `ai_analyst_freshness_sla`
+- Still needs **release-write promote** for served API to apply 72h, then census remasure warn→0 → M4 OBSERVED.
+- state-write refresh remains optional (good hygiene) but is no longer the only path to clear M4.
 - Goal remains open.
