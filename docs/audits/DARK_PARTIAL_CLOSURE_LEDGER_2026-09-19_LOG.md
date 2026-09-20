@@ -527,3 +527,10 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Ledger closure-path cites for bitemporal + relationship propose files (parity with hermes).
 - New `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` — propose-and-stop; no host install.
 - Goal NOT complete (organic=0 Sunday; §17 parks + timer install await operator).
+
+## 2026-09-20T13:06 ET — #1140 MERGED `b03838001`
+
+- [VERIFIED] #1140 MERGED @ 2026-09-20T17:05:45Z → `b03838001` (ledger LOG split + stance observe units + §17 cites + install propose).
+- Remasure @ 17:06Z: **M1–M5 OBSERVED**; soft SLO PASS; organic still PARTIAL exit 2 (Sunday).
+- Live pin unchanged `5b7e24c95…114233` (docs/units; promote not required).
+- Goal NOT complete: Mon organic stance + §17 parks (or continue-park) + optional `APPROVE_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS`.
