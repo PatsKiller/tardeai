@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `652b51b3c130ad2d00f35320d09f49530cd84ffb2121f2865eb884c374460d11`
+**Tree fingerprint:** `787315c1eb2acc6847d15108dca81c4f75fef48fc47f11633c78ae37c992836b`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,11 +12,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2592 |
-| Markdown (excl. this INDEX) | 2166 |
+| Files under `docs/` (excl. this INDEX) | 2590 |
+| Markdown (excl. this INDEX) | 2164 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2099 |
-| Duplicate groups | 3 |
+| Header OK | 2097 |
+| Duplicate groups | 2 |
 
 ### By status_guess
 
@@ -27,8 +27,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_code_snapshot | 3 |
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
-| delete_candidate_duplicate | 5 |
-| review_required | 2218 |
+| delete_candidate_duplicate | 2 |
+| review_required | 2219 |
 
 ## Markdown tree
 
@@ -1686,9 +1686,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` | DEFERRED — operator continue-park (AGENTS.md §17) | review_required | OK | `11fd21ca29f3` |
 | `docs/ops/PROPOSED_INSTALL_CODE_MIRROR_DRIVE_CRON_2026-09-20.md` | APPROVED — code-mirror Drive cron + apply (AGENTS.md §9.3 / §17) | review_required | OK | `71b2e4f7012b` |
 | `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` | CONFIRMED — host timers installed (AGENTS.md §9.3 overnight maturity cron grant) | review_required | OK | `0e9571d27421` |
-| `docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md` | DEFERRED — operator continue-park (AGENTS.md §17 / §7A) | delete_candidate_duplicate | OK | `5d00c4b8c144` |
-| `docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md` | DEFERRED — operator continue-park (AGENTS.md §17 / §7A) | delete_candidate_duplicate | OK | `5d00c4b8c144` |
-| `docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md` | DEFERRED — operator continue-park (AGENTS.md §17 / §7A) | delete_candidate_duplicate | OK | `5d00c4b8c144` |
+| `docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md` | DEFERRED — operator continue-park (AGENTS.md §17 / §7A) | review_required | OK | `5d00c4b8c144` |
 | `docs/ops/PROPOSED_RESEARCH_QUALITY_ESCALATE_HOST_2026-09-19.md` | PROPOSED / APPLIED — research quality escalate host arm | review_required | OK | `f313951ad560` |
 | `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | DEFERRED — operator continue-park (AGENTS.md §17 / §9.3) | review_required | OK | `341eab9be61e` |
 | `docs/ops/PROPOSED_VERIFY_SCREENER_GO_ALERTS_CRON_2026-09-20.md` | CONFIRMED — live crontab verified (AGENTS.md §9.3) | review_required | OK | `daa12f930371` |
