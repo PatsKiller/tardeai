@@ -357,3 +357,16 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - release-write absent; `01d914…` PENDING ~1.17h left — no re-request.
 - Organic QE hand proof already on tip; weekly 08:00 ET unattended echo still owed.
 - M4 PARTIAL until promote clears live census Command WARN. Goal remains open.
+
+## 2026-09-20T07:24 ET — PROMOTE OK f8eb9803f; M4 still PARTIAL (AI Analyst)
+
+- [VERIFIED] prepare+promote from deploy worktree → **PROMOTE OK** live=`f8eb9803f525…` release `f8eb9803f-main-exact-phase2-20260920-072254` (prev `8c12ea757…`).
+- Health ok + `/v3/cio=200`. release-write grant exhausted (3 uses).
+- Census [VERIFIED] as_of=2026-09-20T11:24:05Z: **pass=10 warn=1 fail=0**
+  - Command `snapshot_source` **PASS** (the prior M4 blocker)
+  - Remaining WARN: **AI Analyst freshness** stale `generated_at=2026-09-18T07:15:08Z`
+- Maturity bar @ 11:24 still showed M4 PARTIAL (had read older census as_of 09:54; fresh receipt now warn=1 on AI Analyst).
+- Soft 3/998≈0.003. M1/M2(HELD:NOC)/M3/M5 OBSERVED.
+- Hub fast-forward refused on local gap_resolver overlays — checked out tip copies of gap_resolver/data_gap_resolver/stance_gate onto hub.
+- Next: refresh `ai_analysis_cache` via `portfolio_ai_analyst.py` (state-write); remasure warn→0 → M4 OBSERVED; weekly QE 08:00 ET; organic stance; wave-close email.
+- Goal remains open.
