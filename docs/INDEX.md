@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `20dbf27e88af05080f38b55927347a8936d650810727210ee3fa12369182fd13`
+**Tree fingerprint:** `e7254f2f468f290647e456de5f1a654575472cb70840dd85ce0806da03608d18`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -659,7 +659,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census | review_required | OK | `a5073ae48b02` |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche | review_required | OK | `3669faccf7ff` |
 | `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `a93e9c0422d7` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `dd290a417f16` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `5fb57476de60` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |
@@ -1680,7 +1680,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
 | `docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` | PROPOSED — operator decision required (AGENTS.md §17) | review_required | OK | `7e3b80ca9940` |
 | `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` | CONFIRMED — host timers installed (AGENTS.md §9.3 overnight maturity cron grant) | review_required | OK | `0e9571d27421` |
-| `docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §7A) | review_required | OK | `2fa75dff149c` |
+| `docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §7A) | review_required | OK | `6a97c3b2b87b` |
 | `docs/ops/PROPOSED_RESEARCH_QUALITY_ESCALATE_HOST_2026-09-19.md` | PROPOSED / APPLIED — research quality escalate host arm | review_required | OK | `f313951ad560` |
 | `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §9.3) | review_required | OK | `4ff4e395a485` |
 | `docs/ops/PROPOSED_VERIFY_SCREENER_GO_ALERTS_CRON_2026-09-20.md` | CONFIRMED — live crontab verified (AGENTS.md §9.3) | review_required | OK | `daa12f930371` |
