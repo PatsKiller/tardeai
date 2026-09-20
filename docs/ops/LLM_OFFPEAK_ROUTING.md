@@ -1,6 +1,31 @@
 # LLM Off-Peak Routing — operator guide
 
-**Status:** shipped 2026-09-19, **inert until armed**. Set `LLM_DEFER_OFFPEAK=1` to turn it on.
+**Status: ARMED 2026-09-20** (operator). Deployed 2026-09-20 in PR #1134 and #1143.
+
+| surface | armed | paid callers it covers (7-day out-of-window volume) |
+|---|---|---|
+| crontab, line 9 `LLM_DEFER_OFFPEAK=1` | **yes** | every cron-launched caller — `watchlist_maria_flash_narrative` (293), `watchlist_cio_synthesis_cron` (79), `advisory_desk_opinion` (262) |
+| `tradeai-cio-reactive` drop-in | **yes** | `cio_plan_enrichment` (129) |
+| `tradeai-hermes-cio-worker` drop-in | **yes** | `cio_hermes_research` (29) |
+| `tradeai-cio-nightly-reflection` drop-in | **yes** | `reflective_critic_flash` (56) |
+| `portfolio-server` | **no** | `hermes_external_research` (117) — arming needs a live API restart |
+
+Roughly **850 of the 965** deferrable calls are covered. Measured baseline: 965 of 4,590
+successful paid DeepSeek calls over 7 days (21%) fell outside the window.
+
+**There is no single file that arms everything.** The runtime env at
+`/run/user/$UID/tradeai/env` is rendered from Bitwarden Secrets Manager, not from the repo
+`.env` (which is a legacy dual-write for cron that sources it), and a non-secret feature flag does
+not belong in a secrets store. Cron-launched jobs inherit the crontab-level variable; **systemd
+units do not**, so each paid caller that runs as a unit needs its own drop-in.
+
+**To disarm:** delete the crontab line, or delete the unit's
+`<unit>.service.d/offpeak-defer.conf` and `systemctl --user daemon-reload`. Nothing else changes.
+The armed units are timer-driven oneshots, so arming and disarming need no restart.
+
+**The critical allowlist is empty.** No caller is marked `critical`, so *everything* automated
+outside the window defers. If a caller genuinely must be current overnight, set it in
+Command Center → Ops → LLM Spend → **LLM Routing**; it takes effect on the next call.
 
 ## What problem this solves
 
@@ -93,6 +118,13 @@ will run later, quietly paying peak prices is the one outcome the operator ruled
 
    Use `crontab - < file`; `crontab <file>` fails silently.
 4. Verify with `scripts/drain_llm_deferred.py --dry-run --json` before the first live drain.
+
+> **`--dry-run` was destructive before #1143.** It called `claim_due()`, which moves rows
+> `pending → claimed`, then printed and exited — so the preview consumed the work it was
+> previewing and stranded it, invisible to `pending` counts. Fixed: the dry-run branch returns
+> before `claim_due` is reachable, and `reclaim_stale()` returns claims older than 30 minutes to
+> the queue (retiring anything past 3 attempts). **If you are on a release older than
+> `348d4fdba`, do not run `--dry-run`.**
 
 ## API
 

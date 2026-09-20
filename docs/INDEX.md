@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `94ef186b2d9e6e8b0cd635932f57208bf534f1f735631e81b864c74ece22c52f`
+**Tree fingerprint:** `58b2f4453a5502b34a4a4ed2171a645b35d60b82b4180ffe6e8a3d18323cfb4c`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,9 +12,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2590 |
-| Markdown (excl. this INDEX) | 2164 |
-| **MISSING HEADER** | **67** |
+| Files under `docs/` (excl. this INDEX) | 2591 |
+| Markdown (excl. this INDEX) | 2165 |
+| **MISSING HEADER** | **68** |
 | Header OK | 2097 |
 | Duplicate groups | 2 |
 
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2219 |
+| review_required | 2220 |
 
 ## Markdown tree
 
@@ -342,6 +342,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0945.md` | Honest maturity assessment — 2026-09-20 09:45 ET | review_required | OK | `04de608df23b` |
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-1445.md` | Honest maturity assessment — 2026-09-20 14:45 ET | review_required | OK | `79aa2ff04ce9` |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
+| `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-1600.md` | LLM Cost Governance AS-IS — 2026-09-20 16:00 ET | review_required | OK | `de26ed67aa20` |
 | `docs/architecture/M2_PRODUCTION_SHADOW_MIGRATION_DESIGN_2026-08-24.md` | M2 production shadow migration — DESIGN ONLY | review_required | OK | `18aa33439911` |
 | `docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md` | Material change → due-diligence questions | review_required | OK | `665175b2ce35` |
 | `docs/architecture/MENTIONS_SCHEDULING_AND_RETENTION.md` | Mentions: scheduling, retention, and who decides relevance | review_required | OK | `44f38a74e254` |
@@ -1669,7 +1670,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 | review_required | OK | `cd49b9ce53e7` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `f88b31c995fa` |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention | review_required | OK | `b54b463e120a` |
-| `docs/ops/LLM_OFFPEAK_ROUTING.md` | LLM Off-Peak Routing — operator guide | review_required | OK | `feb6cba97f0a` |
+| `docs/ops/LLM_OFFPEAK_ROUTING.md` | LLM Off-Peak Routing — operator guide | review_required | MISSING HEADER | `4f402b8a0824` |
 | `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` | How LLMs, Hermes, SearXNG, and ticker data actually work | review_required | OK | `3b36a08165b8` |
 | `docs/ops/M2_DARK_READ_PARITY_2026-08-24.md` | M2 dark-read parity | review_required | OK | `ebee0b2213fc` |
 | `docs/ops/M2_PRODUCTION_MEMORY_SHADOW_CLOSEOUT_2026-08-24.md` | M2 production memory shadow — R10.10 closeout | review_required | OK | `5122cc7ad84c` |
