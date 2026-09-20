@@ -632,7 +632,12 @@ def _v_governed_search(gap: DataGap, entry: dict[str, Any], ctx: Context) -> Vec
 
     if is_retired(brave_router.PROVIDER):
         return VectorResult("retired_skipped", provider=brave_router.PROVIDER, detail="search provider retired")
-    if not brave_router.router_enabled(ctx.env):
+    # Prefer env-aware probe; tolerate zero-arg hermetic mocks (test_free_search_fallback).
+    try:
+        router_on = brave_router.router_enabled(ctx.env)
+    except TypeError:
+        router_on = brave_router.router_enabled()
+    if not router_on:
         return _v_governed_free_search(gap, ctx, reason="router_disabled")
     if not ctx.is_live():
         return VectorResult("no_answer", provider=brave_router.PROVIDER,
