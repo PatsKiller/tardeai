@@ -145,6 +145,10 @@ AUTHORITY_PATH = PROJECT_ROOT / "config" / "data_source_authority.json"
 #: Tests never set it. Unset, every side-effecting vector is a dry run that
 #: records what it would have done.
 FLAG_LIVE = "GAP_RESOLVER_LIVE"
+#: Host toggle (no crontab edit): ``~/.config/tradeai/gap_resolver_live``.
+#: Same pattern as ``research_quality_escalate`` — env always wins when set;
+#: hermetic tests pass ``env={}`` or run under pytest so the host file is ignored.
+HOST_FLAG_PATH = Path.home() / ".config" / "tradeai" / "gap_resolver_live"
 #: Operator grant for a vector whose cost_class is "paid". Absent, the
 #: free_first rail (reject_paid_transition) refuses the slot and says so.
 FLAG_PAID = "GAP_RESOLVER_PAID_AUTHORIZED"
@@ -222,9 +226,34 @@ def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
 
 
+def _truthy_flag(raw: str) -> bool:
+    return str(raw or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _host_live_enabled() -> bool:
+    try:
+        if not HOST_FLAG_PATH.is_file():
+            return False
+        first = HOST_FLAG_PATH.read_text(encoding="utf-8").splitlines()
+        return _truthy_flag(first[0] if first else "")
+    except OSError:
+        return False
+
+
 def live_armed(env: Optional[dict[str, str]] = None) -> bool:
-    e = env if env is not None else os.environ
-    return str(e.get(FLAG_LIVE, "")).strip().lower() in ("1", "true", "yes", "on")
+    """True when ``GAP_RESOLVER_LIVE`` is on, or (when env omitted) the host file is.
+
+    Passing ``env=`` (including ``{}``) is hermetic: the host file is not consulted.
+    Under pytest with ``env is None``, stay hermetic — never consult the host file
+    (otherwise a live ``~/.config/tradeai/gap_resolver_live`` arms every suite).
+    """
+    if env is not None:
+        return _truthy_flag(str(env.get(FLAG_LIVE, "")))
+    if _truthy_flag(str(os.environ.get(FLAG_LIVE, ""))):
+        return True
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    return _host_live_enabled()
 
 
 def paid_authorized(env: Optional[dict[str, str]] = None) -> bool:

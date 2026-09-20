@@ -316,3 +316,10 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - #1123 OPEN head `70019cea5` (wave-close 0604); cio-hardening IN_PROGRESS; other checks PASS. Tip still `2b8a896bd`; promote still blocked.
 - Open agent-owned: promote tip → census warn=0 → M4 OBSERVED; organic QE requester=data_gap_resolver; organic stance source=check_investment_send; email AS-IS/FUTURE/GAP after promote.
 - Goal remains open — **not complete**.
+
+## 2026-09-20T06:15 ET — QE starvation fix (stale-held + live host arm)
+
+- [VERIFIED] `data_gap_registry` has **0 open** rows (73 resolved; last write 2026-05-24) → chain_resolve could never leave organic `requester=data_gap_resolver` receipts.
+- Agent-owned: (1) `live_armed` reads host file `~/.config/tradeai/gap_resolver_live` (pytest/hermetic env={} unchanged); (2) chain_resolve falls back to held symbols with news older than 18h (`schwab_positions_live` × `news_articles`) without inventing registry rows; (3) host file armed `1`.
+- Proof still required: unattended cron receipt `vector=quality_escalate` + `requester=data_gap_resolver` (weekly 08:00 ET or weekday hourly).
+- release-write still absent; M4 PARTIAL unchanged until promote.
