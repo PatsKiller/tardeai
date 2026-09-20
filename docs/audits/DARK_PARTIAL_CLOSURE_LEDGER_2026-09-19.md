@@ -2,7 +2,7 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-19T20:30:00-04:00
+as_of: 2026-09-19T21:08:35-04:00
 Measured at: served pin 170532178-main-exact-phase2-20260919-202251; M1–M5 OBSERVED; soft≈0.003; AEC 20:00 timer AgentView+commitment+narrator telegram=accepted
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
@@ -14,7 +14,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | CLOSED | [VERIFIED] pin 18a41066d consult instrument_enqueue_skipped_cadence=9; M5 OBSERVED | #1087+#1089 promote | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
 | DARK-bitemporal-m2-substrate | PARTIAL | schema v2 + CIOEnvelopeIntegrator on :55432; 211 correctness tests; EXPLAIN Index Scan fact_valid_spgist; production :5432 NOT applied | Organic wake schedule + operator shadow cutover grant | OBSERVED unattended write from served |
-| DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] unattended 20:00 EDT emitted INSUFFICIENT_EVIDENCE; cycle due_at now 1h so next hourly SUPPRESSED_REPEAT can EXPIRE without hand observe (hermetic test) | Promote #1099 + observe EXPIRED on schedule | OBSERVED CONFIRMED/REFUTED/EXPIRED from schedule |
+| DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] hermetic: prior_open_settle writes EXPIRED on prior id while hour-bucket mints fresh INSUFFICIENT (`prior_outcome`); served still INSUFFICIENT until promote+next hourly fire | Land prior_outcome PR + observe EXPIRED on schedule | OBSERVED CONFIRMED/REFUTED/EXPIRED from schedule |
 | DARK-AgentView-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AgentView@v1 (PORTFOLIO / day-bucket claim) from tradeai-aec-command-center-cycle.timer | — | OBSERVED AgentView from served schedule |
 | DARK-AGENT_COMMITMENT-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AGENT_COMMITMENT@v1 cmt_7f86ca… + CommitmentOutcome@v1 | — | OBSERVED commitment+settlement from schedule |
 | DARK-librarian-index | CLOSED | [VERIFIED] persistent-state + CURRENT `research_source_index.json` ResearchSourceIndex@v1 n_sources=120 (mtime 2026-09-16) | — | file present on served path |
