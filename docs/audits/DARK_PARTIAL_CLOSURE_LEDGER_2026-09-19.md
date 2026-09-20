@@ -3,7 +3,7 @@
 ```
 Status: ACTIVE
 as_of: 2026-09-20T06:08:00-04:00
-Measured at: #1123 OPEN head 9cdfa360b; organic QE ARKQ/NEE OBSERVED (hand-run cron path); M4 PARTIAL warn=1; soft~0.002; release-write PENDING
+Measured at: live pin 6a78d41cc PROMOTE OK; M1–M5 OBSERVED (M4 warn=0); soft 0.003; #1129 OPEN ba1f732f5; organic stance + wave-close email remain; §17 parks
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -26,7 +26,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-quality-escalate-organic | **OBSERVED (unattended)** | [VERIFIED] Sun 08:00 ET weekly cron: ARKQ+NEE `requester=data_gap_resolver` `vector=quality_escalate` `provider=searxng` `outcome=partial` started 2026-09-20T12:00:07Z/12:00:11Z; weekly.log Chain resolve 2/2. Hand proof at 10:30Z was precursor. | — | unattended same stamps |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | CLOSED | [VERIFIED] post-promote 2026-09-20T04:44:54Z pin 8090bf675: M1–M5 OBSERVED under prior bar (fail=0); operator remasure 2026-09-20 keeps M4 PARTIAL on census WARN — see PARTIAL-M4-census-warn | promote #1110 tip | all five OBSERVED |
-| PARTIAL-M4-census-warn | OPEN→CLOSING | Prior: AI Analyst freshness WARN on 48h SLA vs weekday producer. Tip now: 72h SLA + lane declare (agent-owned). Live pin still 48h until promote. | release-write promote tip + remasure census warn=0 | warn=0 → M4 OBSERVED |
+| PARTIAL-M4-census-warn | **CLOSED** | [VERIFIED] PROMOTE OK `6a78d41cc-main-exact-phase2-20260920-094308`; census as_of=2026-09-20T13:44:45Z **pass=11 warn=0 fail=0**; M4 OBSERVED (AI Analyst Fresh under 72h) | — | warn=0 → M4 OBSERVED |
 
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | CLOSED | [VERIFIED] organic `aec_wake_spine_receipts.jsonl` as_of=2026-09-20T01:04:31Z subject=PORTFOLIO policy_decision=aec_spines_loaded counts strategic=2 learning=5; wake consult 01:05:09Z | #1099 promote | wake receipt aec_spines_loaded |
@@ -430,3 +430,54 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Operator remasure unchanged: M1–M3/M5 OBSERVED, **M4 PARTIAL**, soft~0.002/0.003 PASS.
 - Still open: promote → census warn→0 → M4 OBSERVED; organic stance (Mon–Fri); wave-close email.
 - Goal remains open.
+
+## 2026-09-20T08:58 ET — #1128 MERGED; release-write still absent
+
+- [VERIFIED] #1128 MERGED (cio-hardening PASS 15m58s) — post-#1127 remasure + merge ledger on tip.
+- Tip still `73ced82d9` (72h SLA). Deploy worktree detached; **no release-write grant** yet.
+- Live Telegram requests `c33d8cc20c620a0e` / `94a0fbba1876271d` window until ~13:12Z — not re-requested.
+- M4 still PARTIAL until promote → census warn=0. Soft 0.003 PASS. Organic QE OBSERVED. Organic stance Mon–Fri.
+- Goal remains open.
+
+## 2026-09-20T09:24 ET — operator remasure (M4 still PARTIAL; soft~0.002)
+
+- Operator paste: **M1 OBSERVED · M2 OBSERVED (HELD:NOC critique writeback) · M3/M5 OBSERVED · M4 still PARTIAL · soft-share ~0.002 (pass)**.
+- [VERIFIED] soft remasure `report_agent_number_grounding.py --json` @ 2026-09-20T13:24Z: soft_unsupported=3/998 **share=0.003** (pass ≤0.15); ungrounded_share=0.0. Operator ~0.002 and agent 0.003 both PASS.
+- Live pin still **PROMOTE OK** `f8eb9803f-main-exact-phase2-20260920-072254` until next promote. Main tip `6a78d41cc` (#1128); deploy detached on `73ced82d9` (72h SLA). #1129 OPEN head `644aa1863` (INDEX drift fix) — cio-hardening pending on run 35513321256.
+- Telegram PENDING (no re-request): `b429d99303069209` release-write (~3.8h answer TTL left) · `1e25d22286dbc808` state-write (~4.0h left). Guard show: no RW/SW active yet.
+- Merge+promote polls restarted (RESTART4 / RESTART3). Organic QE OBSERVED (Sun 08:00). Organic stance still Mon–Fri. Wave-close email after M4.
+- Goal remains open — **not complete**.
+
+## 2026-09-20T09:42 ET — #1129 CI fail docs_index_drift; M4 72h pre-proof
+
+- cio-hardening FAIL on head `60bad9521`: `docs_index_drift` / `overnight_g3_docs_index` after ledger remasure commit (INDEX fingerprint stale).
+- Regenerated `docs/INDEX.md` (`--write-index`); local `--check-index` PASS; `test_overnight_g3_docs_index` 7 passed.
+- [VERIFIED] tip 72h pre-proof: cache age≈50.3h → `ai_analyst_is_stale` False under 72h, True under live 48h. **Promote alone clears M4 weekend WARN**; state-write refresh optional.
+- release-write / state-write still PENDING (`b429d993` / `1e25d222`); not re-requested. Goal remains open.
+
+## 2026-09-20T09:45 ET — PROMOTE OK 6a78d41cc; M4 OBSERVED (warn=0)
+
+- Telegram granted release-write `b429d993` + state-write `1e25d222` (button).
+- [VERIFIED] prepare+promote → **PROMOTE OK** live=`6a78d41cc578…` release `6a78d41cc-main-exact-phase2-20260920-094308` (prev `f8eb9803f…`). health ok + `/v3/cio=200`.
+- Census refresh [VERIFIED] as_of=2026-09-20T13:44:45Z: **pass=11 warn=0 fail=0** — AI Analyst freshness **PASS** (`generated_at=2026-09-18T07:15:08` under live **72h** SLA).
+- Maturity bar [VERIFIED] as_of=2026-09-20T13:44:58Z pin `6a78d41cc…094308`: **M1–M5 all OBSERVED** (M4 soak streak=6 + census warn=0).
+- Soft [VERIFIED] 3/998 share=0.003 PASS.
+- state-write unused (refresh optional; pre-proof held). PARTIAL-M4-census-warn → **CLOSED**.
+- Still open: organic stance (`source=check_investment_send`); wave-close email; §17 parks; merge #1129 when CI green.
+- Goal remains open — not complete (stance + email + §17).
+
+## 2026-09-20T09:46 ET — wave-close email sent (attach_count=4)
+
+- Dry-run quoted attach_count=4 (AS-IS/FUTURE/GAP/HONEST 0945) before live.
+- Live gog gmail send → messageId=`1a0bf1188684eda7` to john@jwwhiting.com.
+- Subject: Trade AI Maturity Gap Closure — AS-IS/FUTURE/GAP 2026-09-20-0945 (supersedes 0902; M1–M5 OBSERVED).
+- 0902 package marked SUPERSEDED. Goal remains open: organic stance + §17 parks; #1129 CI on ba1f732f5.
+
+## 2026-09-20T10:10 ET — operator remasure paste; tip still M4 OBSERVED
+
+- Operator paste: M1 OBSERVED · M2 OBSERVED (HELD:NOC critique writeback) · M3/M5 OBSERVED · **M4 still PARTIAL** · soft≈0.002 pass.
+- [VERIFIED] `report_maturity_bar_m1_m5.py` @ 2026-09-20T14:09:57Z pin `6a78d41cc-main-exact-phase2-20260920-094308`: **M1–M5 all OBSERVED** — M4 census as_of=2026-09-20T13:44:45Z pass=11 warn=0 fail=0 (local `~/.local/state/tradeai/operator_number_census.json`).
+- Soft [VERIFIED] 3/998 soft_unsupported ≈0.003 (pass ≤0.15).
+- Operator M4 PARTIAL paste reconciles to tip OBSERVED post-promote; no AI Analyst refresh needed (state-write grant unused this cycle).
+- Open: fix #1129 docs INDEX drift (0945 package committed before `--write-index`); organic stance `source=check_investment_send`; §17 parks. Goal remains open.
+
