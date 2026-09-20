@@ -395,9 +395,23 @@ def _m1_from_persist(
     )
 
 
-def _m4_from_soak(root: Path) -> tuple[str, str]:
-    """M4 partial: pin soak readiness is one consistency signal, not the full census."""
-    soak = (
+def _m4_census_paths() -> list[Path]:
+    return [
+        Path.home() / ".local/state/tradeai/operator_number_census.json",
+        Path.home()
+        / "trade-ai-releases/persistent-state/data/runtime/operator_number_census.json",
+        ROOT / "data" / "runtime" / "operator_number_census.json",
+    ]
+
+
+def _m4_from_soak(
+    root: Path,
+    *,
+    soak_path: Path | None = None,
+    census_paths: list[Path] | None = None,
+) -> tuple[str, str]:
+    """M4: pin soak + operator-number census (one producer / no FAIL)."""
+    soak = soak_path or (
         Path.home()
         / "trade-ai-releases/persistent-state/data/runtime/bridge_pin_soak.jsonl"
     )
@@ -421,11 +435,39 @@ def _m4_from_soak(root: Path) -> tuple[str, str]:
     except (OSError, ValueError):
         return ("PARTIAL", "bridge pin soak ledger unreadable")
     ready = streak >= 3 and bool((last or {}).get("pins_match"))
-    note = (
+    soak_note = (
         f"bridge pin soak streak={streak} soak_ready={'YES' if ready else 'NO'} "
-        f"last_as_of={(last or {}).get('as_of')}; full operator-number census not run"
+        f"last_as_of={(last or {}).get('as_of')}"
     )
-    return ("PARTIAL", note)
+
+    census = None
+    census_path = None
+    for cand in census_paths or _m4_census_paths():
+        if cand.is_file():
+            try:
+                census = json.loads(cand.read_text(encoding="utf-8"))
+                census_path = cand
+                break
+            except (OSError, ValueError):
+                continue
+    if not isinstance(census, dict) or not census.get("as_of"):
+        return (
+            "PARTIAL",
+            f"{soak_note}; full operator-number census not run "
+            "(run scripts/check_command_center_data_consistency.py)",
+        )
+    fails = int(census.get("fail") or 0)
+    ok = bool(census.get("ok")) and fails == 0
+    census_note = (
+        f"census as_of={census.get('as_of')} pass={census.get('pass')} "
+        f"warn={census.get('warn')} fail={fails} path={census_path}"
+    )
+    if ready and ok:
+        return (
+            "OBSERVED",
+            f"{soak_note}; {census_note} — one producer / no FAIL on operator-number census",
+        )
+    return ("PARTIAL", f"{soak_note}; {census_note}")
 
 
 def _m2_from_writeback(cio: Path) -> tuple[str, str]:
