@@ -546,3 +546,9 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Service WorkingDirectory=CURRENT; hand start Result=success ExecMainStatus=2 (PARTIAL Sunday).
 - Lane registry: `tradeai-stance-organic-observe` + `-early`; observe receipt writer → `data/runtime/organic_stance_hold_observe.json`.
 - Propose file → CONFIRMED. Goal NOT complete (await organic hold + §17 parks).
+
+## 2026-09-20T13:15 ET — agent-owned: stance `active_days` crashed lane report
+
+- [VERIFIED] `collect_lane_registry_report` raised `ValueError: invalid literal for int() with base 10: 'M'` because stance observe lanes declared `active_days: "Mon-Fri"` (string iterates chars). Convention requires `0=Mon..6=Sun` ints.
+- Fix: both lanes → `[0,1,2,3,4]`; `validate_row` rejects string forms; `evaluate_lane` returns UNVERIFIABLE instead of aborting the whole report.
+- Not a ledger reopen — monitor regression from timer-install rows. Goal still NOT complete (organic + §17).

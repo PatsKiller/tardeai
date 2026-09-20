@@ -2058,7 +2058,7 @@
         "expression": "tradeai-stance-organic-observe.timer"
       },
       "expected_cadence_hours": 26.0,
-      "active_days": "Mon-Fri",
+      "active_days": [0, 1, 2, 3, 4],
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
@@ -2074,7 +2074,7 @@
         "expression": "tradeai-stance-organic-observe-early.timer"
       },
       "expected_cadence_hours": 26.0,
-      "active_days": "Mon-Fri",
+      "active_days": [0, 1, 2, 3, 4],
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
