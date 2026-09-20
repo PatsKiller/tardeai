@@ -241,6 +241,7 @@ def main():
                     message_text=message,
                     asserted_stance=_assert,
                     db_query=_db_query,
+                    source="send_telegram_proposal_alert",
                 )
                 result["cio_stance_gate"] = _gate.as_dict()
                 if not _gate.allow:
