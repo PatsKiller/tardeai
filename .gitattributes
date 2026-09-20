@@ -6,6 +6,19 @@
 #
 # Enable once per clone:   bash scripts/setup_merge_drivers.sh
 docs/INDEX.md                                                        merge=regenerate
+
+# Append-only wave log: union-merge so concurrent sessions appending at the same
+# time do not conflict. 5 of 12 commits in two hours touched the ledger on
+# 2026-09-20 and three upstream commits exist only to clear its conflict markers.
+#
+# merge=union is a git BUILT-IN: no `git config`, so it works in a fresh clone and
+# in GitHub's own server-side merge, unlike merge=regenerate above.
+#
+# Deliberately scoped to the _LOG file only. The status table in the main ledger is
+# edited in place and is shrink-only; union there would duplicate rows and emit two
+# `as_of:` lines. Same reason AGENTS.md is excluded — see
+# tests/test_generated_file_merge_driver.py::test_agents_md_is_deliberately_not_covered.
+docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_*_LOG.md                     merge=union
 docs/implementation/maturity-program/*/FULL_TEST_MATRIX.txt          merge=regenerate
 docs/implementation/maturity-program/*/RUFF_SHELLCHECK.txt           merge=regenerate
 docs/implementation/maturity-program/*/CONTROL7_WORKFLOW_PROOF.txt   merge=regenerate
