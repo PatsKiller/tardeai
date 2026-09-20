@@ -71,8 +71,12 @@ def test_live_holds_an_invalid_operator_product(env, monkeypatch):
     assert out["suppressed"] == "operator_product_invalid" and sent == []
 
 
-def test_live_holds_cio_disagreement_go_vs_research_more(env, monkeypatch):
-    """2026-09-18: NEW GO must not reach Telegram when CIO says RESEARCH_MORE."""
+def test_live_rewrites_go_to_watch_when_cio_says_research_more(env, monkeypatch):
+    """2026-09-20 C2: NEW GO + CIO RESEARCH_MORE soft-rewrites to WATCH and delivers.
+
+    Pre-C2 this path held with ``suppressed=cio_disagreement``. Hard-bear CIO
+    (AVOID) still holds — see ``test_live_holds_cio_disagreement_go_vs_avoid``.
+    """
     tmp, sent, post = env
     monkeypatch.setenv("COMMS_EDITOR_MODE", "live")
     monkeypatch.setattr(ce, "subjects", lambda text, resolve=None: (
@@ -81,6 +85,26 @@ def test_live_holds_cio_disagreement_go_vs_research_more(env, monkeypatch):
         ce, "default_db_query",
         lambda sql, params=None, fetch="all": [
             {"symbol": "ELMT", "action": "RESEARCH_MORE", "created_at": "2026-09-13T17:08:00-04:00"}
+        ],
+    )
+    out = _send(post, "🎯 *NEW GO* — *ELMT* score=44 RVOL 165.3x")
+    assert out["ok"] and not out.get("suppressed") and sent
+    body = sent[0]["text"].upper()
+    assert "WATCH" in body
+    assert "NEW GO" not in body.replace("WATCH", "")
+    assert "RESEARCH_MORE" in body or "CIO ELMT" in body
+
+
+def test_live_holds_cio_disagreement_go_vs_avoid(env, monkeypatch):
+    """Hard-bear CIO: GO vs AVOID stays held at the transport (no soft rewrite)."""
+    tmp, sent, post = env
+    monkeypatch.setenv("COMMS_EDITOR_MODE", "live")
+    monkeypatch.setattr(ce, "subjects", lambda text, resolve=None: (
+        [{"symbol": "ELMT", "guid": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"}] if "ELMT" in (text or "") else []))
+    monkeypatch.setattr(
+        ce, "default_db_query",
+        lambda sql, params=None, fetch="all": [
+            {"symbol": "ELMT", "action": "AVOID", "created_at": "2026-09-13T17:08:00-04:00"}
         ],
     )
     out = _send(post, "🎯 *NEW GO* — *ELMT* score=44 RVOL 165.3x")
