@@ -323,3 +323,9 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Agent-owned: (1) `live_armed` reads host file `~/.config/tradeai/gap_resolver_live` (pytest/hermetic env={} unchanged); (2) chain_resolve falls back to held symbols with news older than 18h (`schwab_positions_live` × `news_articles`) without inventing registry rows; (3) host file armed `1`.
 - Proof still required: unattended cron receipt `vector=quality_escalate` + `requester=data_gap_resolver` (weekly 08:00 ET or weekday hourly).
 - release-write still absent; M4 PARTIAL unchanged until promote.
+
+## 2026-09-20T06:20 ET — organic stance receipt source alignment
+
+- Live callers passed `source=screener_go_alerts|social_scalp_scanner|send_telegram_proposal_alert`, so organic holds could never match ledger proof `source=check_investment_send`.
+- Agent-owned: normalize those three to `source=check_investment_send` + `caller=<producer>`; canary/probe sources stay distinct.
+- Hermetic tests added. Observation of a live organic hold still required (not canary).

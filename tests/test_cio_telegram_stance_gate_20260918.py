@@ -203,6 +203,45 @@ def test_hold_writes_durable_receipt(tmp_path, monkeypatch):
     assert rows[0]["symbol"] == "AXTI"
     assert rows[0]["source"] == "unit_test"
     assert rows[0]["mbi_behavior"] == 0
+    assert "caller" not in rows[0]
+
+
+def test_organic_caller_stamps_source_check_investment_send(tmp_path, monkeypatch):
+    """Live producers must prove as source=check_investment_send (ledger), caller=producer."""
+    import json
+    from lib.cio_telegram_stance_gate import check_investment_send
+
+    receipt = tmp_path / "cio_telegram_stance_holds.jsonl"
+    monkeypatch.setenv("CIO_STANCE_HOLD_RECEIPTS", str(receipt))
+    v = check_investment_send(
+        symbol="NOC",
+        message_text="GO NOC",
+        asserted_stance="bullish",
+        cio_view={"symbol": "NOC", "action": "AVOID"},
+        source="screener_go_alerts",
+    )
+    assert v.allow is False
+    rows = [json.loads(line) for line in receipt.read_text().splitlines() if line.strip()]
+    assert rows[0]["source"] == "check_investment_send"
+    assert rows[0]["caller"] == "screener_go_alerts"
+
+
+def test_canary_source_stays_distinct_from_organic(tmp_path, monkeypatch):
+    import json
+    from lib.cio_telegram_stance_gate import check_investment_send
+
+    receipt = tmp_path / "cio_telegram_stance_holds.jsonl"
+    monkeypatch.setenv("CIO_STANCE_HOLD_RECEIPTS", str(receipt))
+    check_investment_send(
+        symbol="NOC",
+        message_text="BUY NOC",
+        asserted_stance="bullish",
+        cio_view={"symbol": "NOC", "action": "AVOID"},
+        source="controlled_canary_current_tip",
+    )
+    rows = [json.loads(line) for line in receipt.read_text().splitlines() if line.strip()]
+    assert rows[0]["source"] == "controlled_canary_current_tip"
+    assert "caller" not in rows[0]
 
 
 def test_allow_does_not_write_hold_receipt(tmp_path, monkeypatch):

@@ -30,6 +30,17 @@ SCHEMA = "CioTelegramStanceGate@v1"
 HOLD_RECEIPT_SCHEMA = "CioTelegramStanceHold@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 
+#: Live producers that call ``check_investment_send``. Their holds prove the
+#: organic PARTIAL-telegram-CIO-stance close when stamped ``source=
+#: check_investment_send`` (ledger proof). Canary/probe sources stay distinct.
+ORGANIC_HOLD_CALLERS = frozenset(
+    {
+        "screener_go_alerts",
+        "send_telegram_proposal_alert",
+        "social_scalp_scanner",
+    }
+)
+
 # Mirror comms_editor vocabulary so publisher + transport agree.
 _CIO_BULL = {
     "BUY", "ADD", "ADD_ON_PULLBACK", "ACCUMULATE", "INITIATE", "REENTER", "RE_ENTER",
@@ -104,6 +115,19 @@ def _should_persist_hold() -> bool:
     return hold_receipts_path() is not None
 
 
+def _normalize_hold_source(source: str) -> tuple[str, Optional[str]]:
+    """Return ``(source, caller)`` for the hold receipt.
+
+    Organic producers keep ``source=check_investment_send`` (ledger proof) and
+    record their name in ``caller``. Canary/probe/test sources stay as ``source``
+    so they cannot be mistaken for organic.
+    """
+    s = str(source or "check_investment_send").strip() or "check_investment_send"
+    if s in ORGANIC_HOLD_CALLERS:
+        return "check_investment_send", s
+    return s, None
+
+
 def record_hold(
     verdict: "StanceGateVerdict",
     *,
@@ -115,11 +139,12 @@ def record_hold(
     path = hold_receipts_path()
     if path is None:
         return None
-    row = {
+    gate_source, caller = _normalize_hold_source(source)
+    row: dict[str, Any] = {
         "schema": HOLD_RECEIPT_SCHEMA,
         "authority": AUTHORITY,
         "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "source": source,
+        "source": gate_source,
         "symbol": verdict.symbol,
         "held_reason": verdict.held_reason,
         "message_stance": verdict.message_stance,
@@ -127,6 +152,8 @@ def record_hold(
         "cio_side": verdict.cio_side,
         "mbi_behavior": 0,
     }
+    if caller:
+        row["caller"] = caller
     wrote: Optional[Path] = None
     line = json.dumps(row, sort_keys=True) + "\n"
     for target in _hold_write_targets(path):
@@ -278,6 +305,7 @@ __all__ = [
     "HELD_DISAGREEMENT",
     "HELD_MISSING",
     "HOLD_RECEIPT_SCHEMA",
+    "ORGANIC_HOLD_CALLERS",
     "SCHEMA",
     "StanceGateVerdict",
     "check_investment_send",
