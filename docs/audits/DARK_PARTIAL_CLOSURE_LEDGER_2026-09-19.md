@@ -148,7 +148,10 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - Code: durable `aec_wake_spine_receipts.jsonl` from `load_aec_spines_for_wake` (closes measurement gap for PARTIAL-memory-four-spines after promote).
 - Still open: OUTCOME CONFIRMED/REFUTED, quality-escalate organic receipt, relationship sources §17, bitemporal prod :5432, hermes RETIRE.
 
+## 2026-09-19T21:17 ET — operational spine producer
 
+- AEC CIO cycle `--apply` now appends `kind=cio_cycle_status` to the **operational** spine (internal infra posture only).
+- Relationship spine remains ◆ — no domain sources without operator grant (§17).
 ## 2026-09-19T21:28 ET — operator table vs remasure (M4)
 
 - Operator paste: M1/M2/M3/M5 OBSERVED; M4 PARTIAL; soft≈0.002.
