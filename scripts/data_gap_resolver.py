@@ -198,6 +198,87 @@ GAP_RESOLVERS = {
     'missing_setup_details': _resolve_missing_setup,
 }
 
+#: gap_type → data_source_authority domain for the on_gap / quality-escalate chain.
+#: Corrects the 2026-09-19 false claim that this cron already called gap_resolver.resolve.
+CHAIN_GAP_DOMAINS = {
+    "missing_catalyst": "catalyst_news",
+    "stale_news": "catalyst_news",
+    "explicit": "catalyst_news",
+}
+CHAIN_RESOLVE_LIMIT = int(os.environ.get("DATA_GAP_CHAIN_RESOLVE_LIMIT", "5"))
+
+
+def chain_resolve_open_gaps(conn, *, dry_run: bool = False, limit: int | None = None) -> int:
+    """Walk ``gap_resolver.resolve`` for catalyst-shaped open gaps.
+
+    Fail-soft: one bad gap must not abort the cron. Uses Context dry-run unless
+    ``GAP_RESOLVER_LIVE=1`` (same rail as the desk). Stamps
+    ``requester=data_gap_resolver`` so quality_escalate receipts are not
+    confused with controlled canaries.
+    """
+    lim = CHAIN_RESOLVE_LIMIT if limit is None else int(limit)
+    if lim <= 0:
+        return 0
+    types = tuple(CHAIN_GAP_DOMAINS.keys())
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, symbol, gap_type, gap_detail
+        FROM data_gap_registry
+        WHERE status = 'open' AND gap_type = ANY(%s) AND symbol IS NOT NULL
+        ORDER BY
+          CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+          detected_at ASC
+        LIMIT %s
+        """,
+        [list(types), lim],
+    )
+    rows = cur.fetchall() or []
+    if not rows:
+        log("Chain resolve: 0 catalyst-shaped open gaps")
+        return 0
+    try:
+        from scripts.lib.gap_resolver import Context, DataGap, resolve
+    except ImportError:  # pragma: no cover — hub import path
+        from lib.gap_resolver import Context, DataGap, resolve  # type: ignore
+
+    ctx = Context()  # honors GAP_RESOLVER_LIVE; default dry-run
+    n = 0
+    for gap_id, symbol, gap_type, detail in rows:
+        domain = CHAIN_GAP_DOMAINS.get(str(gap_type) or "")
+        if not domain or not symbol:
+            continue
+        sym = str(symbol).upper().strip()
+        question = (
+            str(detail).strip()
+            if detail and str(detail).strip()
+            else f"what is the near-term catalyst for {sym}?"
+        )
+        if dry_run:
+            log(f"  [DRY chain] {sym}: {gap_type} -> would gap_resolver.resolve({domain})")
+            n += 1
+            continue
+        try:
+            gap = DataGap(
+                domain=domain,
+                subject=sym,
+                question=question[:500],
+                why="no_coverage",
+                requester="data_gap_resolver",
+                symbols=[sym],
+                gap_id=f"dgr-{gap_id}",
+            )
+            res = resolve(gap, ctx=ctx)
+            n += 1
+            log(
+                f"  CHAIN {sym}: {gap_type} outcome={getattr(res, 'outcome', None)} "
+                f"vector={getattr(res, 'vector', None)}"
+            )
+        except Exception as exc:  # noqa: BLE001 — one gap must not kill the cron
+            log(f"  CHAIN ERROR {symbol}: {gap_type} — {exc}")
+    log(f"Chain resolve: {n}/{len(rows)} catalyst gaps walked via gap_resolver.resolve")
+    return n
+
 
 def _requeue_source_job(gap_id, conn):
     """Re-queue the original job that flagged this gap with elevated priority."""
@@ -301,6 +382,13 @@ def resolve_gaps(dry_run=False, pre_overnight=False, weekly_audit=False):
     """, [limit])
     gaps = cur.fetchall()
     log(f"Found {len(gaps)} open gaps" + (" (pre-overnight sweep)" if pre_overnight else ""))
+
+    # on_gap / quality-escalate chain — runs even when enrichment GAP_RESOLVERS
+    # have nothing left, so a thin catalyst answer still leaves a receipt.
+    try:
+        chain_resolve_open_gaps(conn, dry_run=dry_run)
+    except Exception as exc:  # noqa: BLE001 — enrichment path must still run
+        log(f"Chain resolve skipped: {exc}")
 
     if not gaps and not weekly_audit:
         conn.close()

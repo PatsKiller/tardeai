@@ -23,7 +23,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | [CODE] dual-write on served **8c12ea757**; local probe hold only (`maturity_agent_local_probe`); await organic CURRENT traffic hold | Observe live hold from CURRENT | live hold receipt from CURRENT |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
-| PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | [VERIFIED] CURRENT tip **8c12ea757** host arm=1 wrote `vector=quality_escalate` outcome=dry_run reason=thin_answer @ 06:26:10Z (`source=controlled_canary_current_tip`) to local+persist receipts — **not** organic desk; await desk ask → partial/answered | Organic desk receipt | organic vector=quality_escalate |
+| PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | controlled_canary receipt only; **code wire**: data_gap_resolver.chain_resolve_open_gaps → gap_resolver.resolve (requester=data_gap_resolver) — was falsely claimed already wired | merge+promote + unattended cron receipt | vector=quality_escalate requester=data_gap_resolver (not canary) |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | CLOSED | [VERIFIED] post-promote 2026-09-20T04:44:54Z pin 8090bf675: M1–M5 OBSERVED; soak streak=5 | promote #1110 tip | all five OBSERVED |
 

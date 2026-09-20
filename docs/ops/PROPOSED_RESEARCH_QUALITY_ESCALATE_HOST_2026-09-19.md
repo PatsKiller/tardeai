@@ -1,10 +1,9 @@
 # PROPOSED / APPLIED — research quality escalate host arm
 
 ```
-Status: PROPOSED (host file write blocked by secret-scope hook on ~/.config/tradeai/)
-as_of: 2026-09-19T23:10:00Z
+Status: APPLIED (host arm) + CODE WIRE 2026-09-20
+as_of: 2026-09-20T08:20:00Z
 Authority: config-write maturity overnight grant; MBI_BEHAVIOR=0
-Code branch: cursor/quality-escalate-unit-667c
 ```
 
 ## What
@@ -15,20 +14,23 @@ Arm `RESEARCH_QUALITY_ESCALATE` without editing crontab:
 2. Host file contents: `1` (truthy: `1|true|yes|on`).
 3. Explicit env `0` / hermetic `env={}` still disables.
 
-## Operator one-liner (after merge+promote of the code)
+## Operator one-liner (host arm)
 
 ```bash
 printf '1\n# maturity quality escalate host arm\n' > ~/.config/tradeai/research_quality_escalate
 chmod 0644 ~/.config/tradeai/research_quality_escalate
 ```
 
-Agent could not write that path (secret-scope hook on `~/.config/tradeai/`).
+## Cron wire (corrected 2026-09-20)
 
-## Why
+**[DOC-CLAIM was false]** The earlier draft said `data_gap_resolver.py` cron already called
+`gap_resolver.resolve`. Measured: it only dispatched Maria jobs / enrichment — never
+`resolve()`, so quality_escalate could not fire on schedule.
 
-PARTIAL-quality-escalate-organic was blocked on crontab edits (cron grant). Existing
-`data_gap_resolver.py` cron lines call `gap_resolver.resolve`, which now honors the
-host file when `RESEARCH_QUALITY_ESCALATE` is absent from the process env.
+**[CODE]** `scripts/data_gap_resolver.py` now walks `gap_resolver.resolve` for open
+`missing_catalyst` / `stale_news` / `explicit` gaps (domain `catalyst_news`), stamping
+`requester=data_gap_resolver`. Existing weekday/evening/Sunday cron lines pick this up
+after merge+promote — no crontab edit.
 
 ## Rollback
 
@@ -38,5 +40,5 @@ mv ~/.config/tradeai/research_quality_escalate ~/.config/tradeai/research_qualit
 
 ## Proof required
 
-Organic thin-answer receipt with `vector=quality_escalate` / `reason=thin_answer`
-after code is served (merge+promote) and a gap resolver run hits a thin answer.
+Unattended receipt with `vector=quality_escalate` and `requester=data_gap_resolver`
+(or desk ask with `requester=desk`) after promote — not `controlled_canary_*`.
