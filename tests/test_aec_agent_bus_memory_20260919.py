@@ -134,6 +134,36 @@ def test_cycle_day_bucket_and_suppressed_reeval(tmp_path, monkeypatch):
     assert second.get("agent_view") in (None, {})
 
 
+def test_cycle_suppressed_reeval_expires_after_horizon(tmp_path, monkeypatch):
+    """Hourly timer can settle OUTCOME as EXPIRED without a hand observation."""
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "mem.json"))
+    cycle = _load("aec_command_center_cycle_expire", "scripts/aec_command_center_cycle.py")
+
+    def _fake_integrate(envelope, *, apply=False):
+        return {
+            "schema": "CIOEnvelopeIntegration@v1",
+            "dry_run": not apply,
+            "authority": "READ_ONLY_ADVISORY",
+            "mbi_behavior": 0,
+        }
+
+    monkeypatch.setattr(cycle, "integrate_wake_envelope", _fake_integrate)
+    t0 = datetime(2026, 9, 20, 0, 0, 0, tzinfo=timezone.utc)
+    first = cycle.run_cycle(subject_key="WATCH:SCHG", apply=True, now=t0)
+    assert first["outcome"]["outcome"] == "INSUFFICIENT_EVIDENCE"
+    cmt_id = first["commitment"]["commitment_id"]
+    # Horizon is 1h for AEC cycle commitments — next timer after due → EXPIRED.
+    second = cycle.run_cycle(
+        subject_key="WATCH:SCHG", apply=True, now=t0 + timedelta(hours=2)
+    )
+    assert second["events"][1]["payload"]["suppressed"] is True
+    assert second["outcome"]["outcome"] == "EXPIRED"
+    assert second["outcome"]["commitment_id"] == cmt_id
+
+
 def test_cycle_apply_propagates_to_bitemporal_integrator(tmp_path, monkeypatch):
     """--apply must not hardcode bitemporal dry-run (isolated :55432 only)."""
     monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
@@ -166,6 +196,9 @@ def test_wake_loads_aec_spines_fail_soft(tmp_path, monkeypatch):
     # Missing file → empty snapshot, still loaded (not an exception path).
     assert out["loaded"] is True
     assert out["counts"]["strategic"] == 0
+    receipt = (tmp_path / "aec_wake_spine_receipts.jsonl")
+    assert receipt.is_file()
+    assert "aec_spines_loaded" in receipt.read_text(encoding="utf-8")
 
     mem = _load("aec_memory_spines_for_wake", "scripts/lib/aec_memory_spines.py")
     path = tmp_path / "mem.json"
@@ -188,3 +221,4 @@ def test_wake_loads_aec_spines_fail_soft(tmp_path, monkeypatch):
     out3 = wake.load_aec_spines_for_wake(selection_meta={"subject_key": "WATCH:SCHG"})
     assert out3["loaded"] is False
     assert out3.get("error")
+    assert "aec_spines_unavailable" in receipt.read_text(encoding="utf-8")

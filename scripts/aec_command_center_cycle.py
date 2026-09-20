@@ -64,7 +64,34 @@ def _prior_commitment_from_bus(recent: list) -> dict | None:
     return None
 
 
-def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = None) -> dict:
+def _learning_has_terminal_outcome(snap, commitment_id: str) -> bool:
+    """True when learning spine already recorded a terminal OUTCOME for this id."""
+    cid = str(commitment_id or "")
+    if not cid:
+        return False
+    spines = getattr(snap, "spines", None) or {}
+    for fact in spines.get("learning") or []:
+        if not isinstance(fact, dict):
+            continue
+        if str(fact.get("commitment_id") or "") != cid:
+            continue
+        if fact.get("kind") == "commitment_outcome" and fact.get("outcome") in {
+            "CONFIRMED",
+            "REFUTED",
+            "EXPIRED",
+        }:
+            return True
+    return False
+
+
+def run_cycle(
+    *,
+    subject_key: str | None,
+    apply: bool,
+    observe: dict | None = None,
+    now: datetime | None = None,
+) -> dict:
+    when = now or datetime.now(timezone.utc)
     snap = mem.load()
     relevant = mem.retrieve_relevant(snap, subject_key=subject_key)
     recent = bus.read_recent(limit=20)
@@ -92,7 +119,7 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
     # Day-bucket the claim so anti-repeat does not freeze AgentView/OUTCOME for
     # the life of the spine after the first --apply (measured: timer fires at
     # 18:00/19:00 were SUPPRESSED_REPEAT with null agent_view/commitment/outcome).
-    day_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    day_utc = when.strftime("%Y-%m-%d")
     advisor_claim = (
         f"Advisor reviewed subject={subject} against strategic spine [{day_utc}]"
     )
@@ -106,9 +133,13 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         # Same-day suppress still re-evaluates the open commitment so OUTCOME
         # can move to CONFIRMED/REFUTED/EXPIRED without minting a new view.
         prior = _prior_commitment_from_bus(recent)
-        if prior is not None:
+        if prior is not None and not _learning_has_terminal_outcome(
+            snap, str(prior.get("commitment_id") or "")
+        ):
             commitment_payload = prior
-            outcome_payload = evaluate_commitment(prior, observation=observe)
+            outcome_payload = evaluate_commitment(
+                prior, observation=observe, now=when
+            )
             if apply and outcome_payload.get("outcome") in {
                 "CONFIRMED",
                 "REFUTED",
@@ -138,13 +169,15 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         view_payload = view.to_dict()
         advisor_summary = f"{view.stance}: {advisor_claim}"
         if persist_allowed(view):
-            # due_at must be after mint time or evaluate_commitment returns EXPIRED
-            # immediately (horizon "7d" is the falsifier window, not produced_at).
-            due = datetime.now(timezone.utc) + timedelta(days=7)
+            # AEC cycle commitments are short-horizon settlement probes for the
+            # OUTCOME edge on the hourly timer (1h). The falsifier text still
+            # names the 7d strategic-spine contradiction window; due_at is the
+            # schedule-settlement clock so EXPIRED can land unattended.
+            due = when + timedelta(hours=1)
             commitment = mint_commitment_from_view(
                 view.to_dict(),
                 due_at=due.isoformat().replace("+00:00", "Z"),
-                horizon="7d",
+                horizon="1h",
                 falsifier=view.falsifier,
             )
             commitment_payload = commitment.to_dict()
@@ -161,6 +194,7 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
             outcome_payload = evaluate_commitment(
                 commitment_payload,
                 observation=observe,
+                now=when,
             )
         if apply:
             mem.append_fact(
@@ -193,6 +227,7 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
                         "outcome": outcome_payload.get("outcome"),
                         "commitment_id": outcome_payload.get("commitment_id"),
                         "claim_fp": fp,
+                        "via": "fresh_mint",
                     },
                 )
             mem.append_fact(
