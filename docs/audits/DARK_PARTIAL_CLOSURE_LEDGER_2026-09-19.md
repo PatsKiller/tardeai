@@ -3,7 +3,7 @@
 ```
 Status: ACTIVE
 as_of: 2026-09-20T06:08:00-04:00
-Measured at: pin 498ecd0f6; M1–M5 OBSERVED; #1133 MERGED 5b7e24c95; organic=0; §17 parks operator-ready; goal open
+Measured at: PROMOTE OK 5b7e24c95…114233; M1–M5 OBSERVED; census warn=0; organic=0; #1139 OPEN; §17 parks; goal open
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -509,4 +509,12 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - [VERIFIED] maturity bar @ 15:41:11Z pin `498ecd0f6-main-exact-phase2-20260920-111554`: **M1–M5 OBSERVED** (census warn=0 as_of 13:44:45Z).
 - [VERIFIED] `report_organic_stance_hold.py`: still **PARTIAL** organic=0 (Sunday).
 - §17 parks: propose notes on main; await operator tokens. Goal NOT complete.
+
+## 2026-09-20T11:50 ET — PROMOTE OK 5b7e24c95 (#1133 tip); goal audit still incomplete
+
+- [VERIFIED] PROMOTE OK live=`5b7e24c95-main-exact-phase2-20260920-114233` (exact main after #1133).
+- [VERIFIED] maturity bar @ 15:50:01Z: **M1–M5 OBSERVED**; census re-run PASS 11 WARN 0 FAIL 0.
+- Soft 8/1016 ≈0.008 PASS.
+- Organic stance still PARTIAL (organic=0) — Sunday; Mon–Fri timer armed.
+- Remaining to close goal: organic stance OBSERVED + operator tokens on three §17 parks (or explicit continue-park).
 
