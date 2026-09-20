@@ -240,7 +240,7 @@ def test_the_gap_receipt_names_the_provider_that_actually_answered(tmp_path: Pat
     from scripts.lib import retired_providers as rp
 
     monkeypatch.setattr(rp, "is_retired", lambda p: False)
-    monkeypatch.setattr(br, "router_enabled", lambda: True)
+    monkeypatch.setattr(br, "router_enabled", lambda *a, **k: True)
 
     def _answers(provider: str):
         def _search(*a, **kw):

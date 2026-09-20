@@ -100,3 +100,42 @@ def test_chain_resolve_dry_run_does_not_call_resolve():
         n = R.chain_resolve_open_gaps(conn, dry_run=True, limit=5)
     assert n == 1
     assert called == []
+
+
+def test_chain_resolve_falls_back_to_stale_held_when_registry_empty():
+    R = _load()
+    conn = _Conn([])  # no open registry rows
+    seen = []
+
+    class FakeRes:
+        outcome = "partial"
+        vector = "quality_escalate"
+
+    def fake_resolve(gap, ctx=None):
+        seen.append(gap)
+        return FakeRes()
+
+    fake_mod = mock.Mock()
+    fake_mod.Context = mock.Mock(return_value=mock.Mock())
+    fake_mod.DataGap = lambda **kw: mock.Mock(**kw)
+    fake_mod.resolve = fake_resolve
+
+    with mock.patch.object(R, "_stale_held_catalyst_symbols", return_value=["NOC", "BAH"]):
+        with mock.patch.dict(
+            sys.modules,
+            {"scripts.lib.gap_resolver": fake_mod, "lib.gap_resolver": fake_mod},
+        ):
+            n = R.chain_resolve_open_gaps(conn, dry_run=False, limit=5)
+
+    assert n == 2
+    assert [g.subject for g in seen] == ["NOC", "BAH"]
+    assert all(g.requester == "data_gap_resolver" for g in seen)
+    assert all(g.domain == "catalyst_news" for g in seen)
+
+
+def test_chain_resolve_empty_registry_and_no_stale_held_returns_zero():
+    R = _load()
+    conn = _Conn([])
+    with mock.patch.object(R, "_stale_held_catalyst_symbols", return_value=[]):
+        n = R.chain_resolve_open_gaps(conn, dry_run=False, limit=5)
+    assert n == 0

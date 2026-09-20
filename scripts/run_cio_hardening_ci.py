@@ -759,6 +759,7 @@ GATES = [
             "tests/test_census_phantom_accounts_20260920.py",
             # 2026-09-20: data_gap_resolver cron walks gap_resolver.resolve (QE organic path).
             "tests/test_data_gap_resolver_chain_resolve_20260920.py",
+            "tests/test_gap_resolver_live_host_flag_20260920.py",
             "tests/test_synthesis_prompt_budget_20260913.py",
             # Answer-quality monitor + offline litmus replay of the 2026-09-13 questions.
             "tests/test_operator_answer_quality_20260913.py",

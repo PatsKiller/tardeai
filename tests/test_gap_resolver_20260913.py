@@ -400,7 +400,31 @@ def test_governed_search_makes_no_call_when_the_router_is_disabled(ctx, gap, mon
     monkeypatch.delenv(br.FLAG_ENABLED, raising=False)
     monkeypatch.setattr(br, "search", lambda *a, **k: pytest.fail("router called while disabled"))
     out = gr._v_governed_search(gap, {}, ctx)
-    assert out.outcome == "no_answer" and "router_disabled" in out.detail
+    # Dry Context: free_search residual is dry-run, Brave never called.
+    assert out.outcome == "no_answer"
+    assert "router_disabled" in out.detail
+    assert "free_search" in out.detail or out.provider == "searxng"
+
+
+def test_governed_search_free_fallback_when_router_dark_and_live(gap, monkeypatch, tmp_path):
+    """Live + router dark → free_search partial (feeds quality_escalate)."""
+    import scripts.lib.brave_router as br
+    import scripts.lib.free_search as fs
+
+    monkeypatch.delenv(br.FLAG_ENABLED, raising=False)
+    monkeypatch.setattr(br, "search", lambda *a, **k: pytest.fail("brave called"))
+
+    class Resp:
+        ok = True
+        results = [{"title": "t", "snippet": "s", "url": "https://ex.com/1"}]
+        reason = None
+
+    monkeypatch.setattr(fs, "search", lambda *a, **k: Resp())
+    ctx = gr.Context(live=True, receipts_path=tmp_path / "r.jsonl", env={})
+    out = gr._v_governed_search(gap, {}, ctx)
+    assert out.outcome == "partial"
+    assert out.provider == "searxng"
+    assert out.evidence.get("search_results")
 
 
 def test_refresh_producer_dry_runs_without_the_arm_flag(ctx, monkeypatch):
