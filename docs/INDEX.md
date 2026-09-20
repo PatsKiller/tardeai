@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `fbc658dbfe667ea436c4373231e87b970f71a1b838dea6d815659e8f8e48b0dc`
+**Tree fingerprint:** `1cee70d5e93ce8e0890bfa83d391584c18e1f7720e6d11b69c5e2e985a6fad7e`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2572 |
-| Markdown (excl. this INDEX) | 2146 |
+| Files under `docs/` (excl. this INDEX) | 2573 |
+| Markdown (excl. this INDEX) | 2147 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2079 |
+| Header OK | 2080 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2201 |
+| review_required | 2202 |
 
 ## Markdown tree
 
@@ -332,6 +332,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `bc68c49ea023` |
 | `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | Hermes Persistent Ticker Intelligence Architecture | review_required | OK | `3a4320625b1e` |
 | `docs/architecture/HOME_COMMAND_BRAIN_V2.md` | Home v2 — The Command Brain (2026-07-17) | review_required | OK | `6e695df9a86e` |
+| `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0902.md` | Honest maturity assessment — 2026-09-20 09:02 ET | review_required | OK | `49120608ece2` |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
 | `docs/architecture/M2_PRODUCTION_SHADOW_MIGRATION_DESIGN_2026-08-24.md` | M2 production shadow migration — DESIGN ONLY | review_required | OK | `18aa33439911` |
 | `docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md` | Material change → due-diligence questions | review_required | OK | `665175b2ce35` |
