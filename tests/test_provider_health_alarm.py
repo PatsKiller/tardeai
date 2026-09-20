@@ -326,6 +326,63 @@ def test_the_monitor_is_scheduled_and_declared_as_a_lane():
     assert lane["expected_cadence_hours"] <= 3
 
 
+def test_an_undeliverable_alert_is_recorded_not_just_logged(monkeypatch, tmp_path):
+    """A dead lane and an undeliverable alert look identical from outside: silence.
+
+    So a failed send lands on the heartbeat — the durable artifact the lane registry
+    watches — and not only in a cron log. C3 (tests/test_no_swallowed_alarms.py) is the
+    generalisation of this; it caught exactly this handler on 2026-09-19.
+    """
+    import check_llm_provider_health as c
+    import telegram_alert
+
+    monkeypatch.setattr(c, "STATE_PATH", tmp_path / "alert.json")
+    monkeypatch.setattr(c, "HEARTBEAT_PATH", tmp_path / "health.json")
+    monkeypatch.setattr(c, "_deepseek_balance", lambda: None)
+    monkeypatch.setattr(c, "_rows", lambda hours: [
+        {"model_name": "deepseek-flash", "process_id": "watchlist_risk_flash_narrative",
+         "success": False, "error_message": "HTTP_402: HTTP 402"}
+    ])
+
+    def _boom(msg, *a, **k):
+        raise RuntimeError("telegram unreachable")
+
+    monkeypatch.setattr(telegram_alert, "send_telegram", _boom)
+    monkeypatch.setattr(sys, "argv", ["check_llm_provider_health.py"])
+    c.main()
+
+    beat = json.loads((tmp_path / "health.json").read_text())
+    assert beat["alert_delivery"]["ok"] is False
+    assert "telegram unreachable" in beat["alert_delivery"]["reason"]
+    assert beat["alert_delivery"]["undelivered"] == ["deepseek-flash:BILLING"]
+    # The finding itself is still on the heartbeat, not replaced by the delivery error.
+    assert beat["worst_severity"] == "CRITICAL"
+    # And an undelivered alert must NOT mark the dedupe state, or the retry never happens.
+    assert not (tmp_path / "alert.json").exists()
+
+
+def test_a_send_that_returns_false_is_also_recorded(monkeypatch, tmp_path):
+    """send_telegram reports failure by return value too, not only by raising."""
+    import check_llm_provider_health as c
+    import telegram_alert
+
+    monkeypatch.setattr(c, "STATE_PATH", tmp_path / "alert.json")
+    monkeypatch.setattr(c, "HEARTBEAT_PATH", tmp_path / "health.json")
+    monkeypatch.setattr(c, "_deepseek_balance", lambda: None)
+    monkeypatch.setattr(c, "_rows", lambda hours: [
+        {"model_name": "deepseek-flash", "process_id": "p", "success": False,
+         "error_message": "HTTP_402: HTTP 402"}
+    ])
+    monkeypatch.setattr(telegram_alert, "send_telegram", lambda msg, *a, **k: False)
+    monkeypatch.setattr(sys, "argv", ["check_llm_provider_health.py"])
+    c.main()
+
+    beat = json.loads((tmp_path / "health.json").read_text())
+    assert beat["alert_delivery"]["ok"] is False
+    assert "falsy" in beat["alert_delivery"]["reason"]
+    assert not (tmp_path / "alert.json").exists()
+
+
 def test_every_real_run_leaves_proof_it_ran(capture_transport, monkeypatch, tmp_path):
     """Including the quiet ones — a monitor that only writes when it fires cannot be
     told apart from a monitor that has stopped."""

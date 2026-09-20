@@ -132,6 +132,26 @@ def _fresh(findings: list, state: dict, now: float) -> list:
     return out
 
 
+def _record_delivery_failure(heartbeat: dict, reason: str, undelivered: list) -> None:
+    """The alarm failing to deliver is the one failure nobody else would notice.
+
+    A dead provider lane and an undeliverable alert look identical from the outside:
+    silence. So the delivery failure goes onto the heartbeat — the durable artifact
+    `config/lane_registry.json` already watches for this lane — and not only into a
+    cron log nobody reads. Re-written rather than appended: the next run's outcome is
+    what matters, and a heartbeat that only grows is its own problem.
+    """
+    heartbeat["alert_delivery"] = {
+        "ok": False,
+        "reason": str(reason)[:300],
+        "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "undelivered": [f"{f.lane}:{f.kind}" for f in undelivered],
+    }
+    _write_heartbeat(heartbeat)
+    print(f"[provider-health] ALERT UNDELIVERED ({reason}) — recorded to "
+          f"{HEARTBEAT_PATH.name}", file=sys.stderr)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--hours", type=float, default=DEFAULT_WINDOW_HOURS)
@@ -178,37 +198,43 @@ def main() -> int:
                   f"({f.fail_rate:.0%}) — {f.kind}{note}")
 
     critical = any(f.severity == "CRITICAL" for f in live)
+    heartbeat = {
+        "checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "window_hours": args.hours,
+        "calls_examined": len(rows),
+        "worst_severity": ("CRITICAL" if critical else
+                           "WARN" if live else "OK"),
+        "balance": balance,
+        "findings": [
+            {"lane": f.lane, "kind": f.kind, "severity": f.severity,
+             "calls": f.calls, "failures": f.failures, "recovered": f.recovered}
+            for f in findings
+        ],
+    }
     if not args.dry_run:
-        _write_heartbeat({
-            "checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
-            "window_hours": args.hours,
-            "calls_examined": len(rows),
-            "worst_severity": ("CRITICAL" if critical else
-                               "WARN" if live else "OK"),
-            "balance": balance,
-            "findings": [
-                {"lane": f.lane, "kind": f.kind, "severity": f.severity,
-                 "calls": f.calls, "failures": f.failures, "recovered": f.recovered}
-                for f in findings
-            ],
-        })
+        _write_heartbeat(heartbeat)
     if live and not args.dry_run:
         now = time.time()
         state = _load_state()
         fresh = _fresh(live, state, now)
         if fresh:
             message = format_alert(fresh, window_hours=args.hours, balance=balance)
+            recorded = False
             try:
                 from telegram_alert import send_telegram
                 sent = send_telegram(message)
             except Exception as e:
-                print(f"[provider-health] alert send failed: {e}", file=sys.stderr)
+                _record_delivery_failure(heartbeat, f"{type(e).__name__}: {e}", fresh)
                 sent = False
+                recorded = True
             if sent:
                 for f in fresh:
                     state[f"{f.lane}:{f.kind}"] = now
                 _save_state(state)
                 print(f"[provider-health] alerted on {len(fresh)} lane(s)")
+            elif not recorded:
+                # send_telegram reports failure by return value as well as by raising.
+                _record_delivery_failure(heartbeat, "send_telegram returned falsy", fresh)
         else:
             print("[provider-health] findings suppressed by dedupe window")
 
