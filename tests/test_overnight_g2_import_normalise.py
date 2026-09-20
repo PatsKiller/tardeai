@@ -36,6 +36,11 @@ G2_ALLOWLIST: tuple[str, ...] = (
     "scripts/research_lane_health.py",
     "scripts/memory_shadow_project.py",
     "scripts/holdings_gain_guardian.py",
+    # 2026-09-20: a live systemd entrypoint (tradeai-aec-command-center-cycle,
+    # hourly --apply) that inserted BOTH root and scripts/ and imported lib.*.
+    # Its twin's FORBIDDEN_PORTS is a mutable module-level set, so the
+    # production-port refusal was per-module-object.
+    "scripts/aec_command_center_cycle.py",
 )
 
 # alert_dispatcher had no dual-load path inserts; recorded as already-clean.
@@ -49,6 +54,7 @@ ROOT_ONLY = frozenset(
         "scripts/provider_cost_reconcile.py",
         "scripts/research_lane_health.py",
         "scripts/memory_shadow_project.py",
+        "scripts/aec_command_center_cycle.py",
     }
 )
 SCRIPTS_ONLY = frozenset(G2_ALLOWLIST) - ROOT_ONLY
@@ -222,4 +228,4 @@ def test_light_scripts_only_module_level_lib_import_by_path(tmp_path):
 
 def test_normalised_count_matches_allowlist():
     """Ship metric: files normalised this tranche == allowlist length."""
-    assert len(G2_ALLOWLIST) == 10
+    assert len(G2_ALLOWLIST) == 11
