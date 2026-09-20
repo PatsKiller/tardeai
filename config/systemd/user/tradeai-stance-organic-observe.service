@@ -6,11 +6,14 @@
 #
 # Does not invent holds, send Telegram, or touch the broker.
 Description=Trade AI organic CIO stance hold observe (PARTIAL-telegram-CIO-stance)
-Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/report_organic_stance_hold.py
+Documentation=file:///home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/report_organic_stance_hold.py
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts
+Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin:/bin
+EnvironmentFile=-/run/user/%U/tradeai/env
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
     scripts/report_organic_stance_hold.py --json
 # 0 = OBSERVED; 2 = PARTIAL (expected until a Mon–Fri organic hold lands)

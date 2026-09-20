@@ -425,6 +425,7 @@ def test_report_organic_stance_hold_cli_exit_codes(tmp_path):
     )
     assert r.returncode == 2
     assert "PARTIAL" in r.stdout
+    assert "next windows ET" in r.stdout
 
     organic = tmp_path / "organic.jsonl"
     organic.write_text(
