@@ -1,14 +1,17 @@
-# PROPOSED — operator decision required (AGENTS.md §17)
+# DEFERRED — operator continue-park (AGENTS.md §17)
 
 ```
-Status: PROPOSED
-Effective-Date: PENDING
-as_of: 2026-09-20T10:51:00-04:00
+Status: DEFERRED
+Effective-Date: 2026-09-20
+as_of: 2026-09-20T14:45:00-04:00
 Measured at: docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md (probe rolled back; production_sql_applied=false)
 Canonical repo path: docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md
 Authority: propose-and-stop — production DB extension/role install and cutover are operator-only
 Supersedes: none (crisp decision ask extracted from BITEMPORAL_MEMORY_V2_DEPLOY + remediation-plan)
 See also: docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md, docs/remediation-plan.md § Stage 3, ledger DARK-bitemporal-m2-substrate
+Operator-decision: DEFER (continue-park; no prod cutover)
+decided_on: 2026-09-20T14:45:00-04:00
+decision_reference: Grok session plan approve — triple-DEFER maturity gap closeout
 ```
 
 ## Finding
@@ -58,3 +61,16 @@ operator-only. This file proposes and stops. Nothing was applied.
 - Shadow suite green (`tests/test_bitemporal_correctness.py`, port **55432 only**).
 - Production probe quoted in `docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md`.
 - Destructive-reset guard landed 2026-09-20; appliers refuse port 5432.
+
+---
+
+## Operator decision (recorded)
+
+```
+token: DEFER
+decided_on: 2026-09-20T14:45:00-04:00
+reference: Grok Build session — plan approve (triple-DEFER maturity gap closeout)
+effect: continue-park for goal accounting; no production mutation; no build started
+```
+
+Prior propose text above is retained for history. A later `APPROVE_*` may reopen this park.

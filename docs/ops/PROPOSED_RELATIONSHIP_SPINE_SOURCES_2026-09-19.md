@@ -1,19 +1,21 @@
-# PROPOSED — operator decision required (AGENTS.md §17 / §7A)
+# DEFERRED — operator continue-park (AGENTS.md §17 / §7A)
 
 ```
-Status: PROPOSED
-Effective-Date: PENDING
-as_of: 2026-09-19T21:20:00-04:00
-Last-amended: 2026-09-20T15:29:00-04:00 (draft registry row + path choice; Status still PROPOSED)
+Status: DEFERRED
+Effective-Date: 2026-09-20
+as_of: 2026-09-20T14:45:00-04:00
+Last-amended: 2026-09-20T16:15:00-04:00 (merge origin/main draft-row prose; Status remains DEFERRED)
 Measured at: AEC four-spine INTEGRATED; relationship domain data ABSENT by design until granted
 Canonical repo path: docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md
 Authority: propose-and-stop — adding a data source or writer of an authoritative store is operator-only
 Subject: Relationship memory spine — first granted sources (no call sites until approved)
 See also: ledger PARTIAL-relationship-spine-data; config/data_source_authority.json (§7A);
-  sibling parks: docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md (hermes RETIRE);
-  docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md (bitemporal :5432 — recommend DEFER)
+  sibling parks: docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md;
+  docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md
+Operator-decision: DEFER (continue-park; spine stays empty; no data_source_authority edit)
+decided_on: 2026-09-20T14:45:00-04:00
+decision_reference: Grok session plan approve — triple-DEFER maturity gap closeout
 ```
-
 ## Finding
 
 AEC four-spine memory (`strategic` / `operational` / `relationship` / `learning`) is live.
@@ -128,6 +130,19 @@ the same cognition-only scope — still **no call sites** in the grant PR.
 ## Why not auto-close
 
 §7A / §17 — agents propose and stop. This file is the proposal (amended 2026-09-20 with draft
-row + path choice). **No** `data_source_authority.json` mutation. **No** invented
-`approved_by=operator`. Goal remains NOT COMPLETE until Telegram/keyboard settles or
-continue-parks this park (and the two siblings above).
+row + path choice from main). **No** `data_source_authority.json` mutation. **No** invented
+`approved_by=operator`.
+
+---
+
+## Operator decision (recorded)
+
+```
+token: DEFER
+decided_on: 2026-09-20T14:45:00-04:00
+reference: Grok Build session — plan approve (triple-DEFER maturity gap closeout)
+effect: continue-park for goal accounting; no production mutation; no build started
+```
+
+Prior propose text above is retained for history. A later `APPROVE_*` may reopen this park.
+
