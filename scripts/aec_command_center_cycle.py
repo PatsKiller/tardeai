@@ -24,22 +24,29 @@ NO_CONSUMER_REASON = (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+# G2: root-only + scripts.lib. Never also put scripts/ on the path — inserting
+# both made `lib.X` and `scripts.lib.X` distinct module objects in this process
+# (docs/audits/overnight/G2_IMPORT_NORMALISE_2026-08-31.md).
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-if str(ROOT / "scripts") not in sys.path:
-    sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib import aec_agent_bus as bus  # noqa: E402
-from lib import aec_memory_spines as mem  # noqa: E402
-from lib.agent_view_v1 import persist_allowed, produce_agent_view_v1  # noqa: E402
-from lib.agent_commitment_v1 import evaluate_commitment, mint_commitment_from_view  # noqa: E402
-from lib.cio_disposition_identity import (  # noqa: E402
+from scripts.lib import aec_agent_bus as bus  # noqa: E402
+from scripts.lib import aec_memory_spines as mem  # noqa: E402
+from scripts.lib.agent_view_v1 import persist_allowed, produce_agent_view_v1  # noqa: E402
+from scripts.lib.agent_commitment_v1 import (  # noqa: E402
+    evaluate_commitment,
+    mint_commitment_from_view,
+)
+from scripts.lib.cio_disposition_identity import (  # noqa: E402
     applicable_dispositions,
     canonical_key,
     parse_key,
 )
-from lib.cio_memory_integration import integrate_wake_envelope  # noqa: E402
-from lib.aec_narrator import render_executive_brief, notify_executive_brief  # noqa: E402
+from scripts.lib.cio_memory_integration import integrate_wake_envelope  # noqa: E402
+from scripts.lib.aec_narrator import (  # noqa: E402
+    render_executive_brief,
+    notify_executive_brief,
+)
 
 
 def _prior_commitment_from_bus(recent: list) -> dict | None:
@@ -331,8 +338,24 @@ def run_cycle(
         # this writer runs unattended hourly against a real database; a DSN or
         # reset refusal degrading to a logged string would make a mis-targeted
         # run look identical to a healthy one. Those are raised, not swallowed.
+        # FINANCIAL_TRUTH_REFUSED is a constitutional rail, not an incident:
+        # cognitive memory may never hold cash, positions or prices. The rail
+        # still WORKS when swallowed — nothing is stored — but an attempt to
+        # store financial data would have become a string in a receipt and gone
+        # unnoticed. A rail that fires invisibly cannot be audited.
+        # Constitutional rails are not incidents. FINANCIAL_TRUTH_REFUSED
+        # (no cash/positions/prices in cognitive memory) and PRIVATE_COT_FORBIDDEN
+        # (no chain-of-thought persisted) still WORK when swallowed — nothing is
+        # stored — but the attempt would become a string in a receipt and go
+        # unnoticed. A rail that fires invisibly cannot be audited.
+        #
+        # VALID_AND_TX_REQUIRED is deliberately NOT here: it is a caller
+        # validation error, not a rail or a mis-targeted write, and fail-soft is
+        # correct for it.
         _msg = f"{type(exc).__name__}: {exc}"
-        if any(m in _msg for m in ("M2_DSN_", "M2_DESTRUCTIVE_")):
+        if any(m in _msg for m in (
+            "M2_DSN_", "M2_DESTRUCTIVE_", "FINANCIAL_TRUTH_REFUSED", "PRIVATE_COT_FORBIDDEN",
+        )):
             raise
         bitemporal_receipt = {
             "schema": "CIOEnvelopeIntegration@v1",
@@ -396,6 +419,14 @@ def run_cycle(
 
 
 def main() -> int:
+    # G2: after imports settle — refuse a dual lib.X / scripts.lib.X identity.
+    # This is a live systemd entrypoint running --apply hourly, and the twin's
+    # FORBIDDEN_PORTS is a mutable module-level set, so the production-port
+    # refusal would otherwise be per-module-object.
+    from scripts.lib import assert_single_import_identity  # noqa: PLC0415
+
+    assert_single_import_identity()
+
     ap = argparse.ArgumentParser()
     # Mutually exclusive: --dry-run was previously declared but never read, so
     # `--dry-run --apply` silently applied. argparse now rejects that pairing
