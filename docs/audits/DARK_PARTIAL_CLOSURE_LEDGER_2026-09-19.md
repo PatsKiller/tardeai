@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T02:02:35-04:00
-Measured at: PROMOTE OK 8c12ea757 (#1113); AEC 02:00 EDT organic EXPIRED cmt_fb32f783 via prior_open_settle; M1–M5 OBSERVED; soak streak=6; soft census fail=0
+as_of: 2026-09-20T02:26:32-04:00
+Measured at: tip 8c12ea757; OUTCOME CLOSED; QE controlled_canary thin dry_run receipt on CURRENT+persist; soft 3/998≈0.003; M1–M5 OBSERVED
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -23,7 +23,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | [CODE] dual-write on served **8090bf675**; local probe hold exists; await organic CURRENT traffic hold | Observe live hold from CURRENT | live hold receipt from CURRENT |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
-| PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | [CODE] thin dry_run on **8090bf675**; host arm=1; **organic path=desk `gap_resolver.resolve` only** (not gap-resolution.timer / not data_gap_resolver cron); WMT walk had no partial/answered so 0 QE lines | Desk ask → partial/answered + thin | receipt vector=quality_escalate |
+| PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | [VERIFIED] CURRENT tip **8c12ea757** host arm=1 wrote `vector=quality_escalate` outcome=dry_run reason=thin_answer @ 06:26:10Z (`source=controlled_canary_current_tip`) to local+persist receipts — **not** organic desk; await desk ask → partial/answered | Organic desk receipt | organic vector=quality_escalate |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | CLOSED | [VERIFIED] post-promote 2026-09-20T04:44:54Z pin 8090bf675: M1–M5 OBSERVED; soak streak=5 | promote #1110 tip | all five OBSERVED |
 
@@ -240,3 +240,9 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - [VERIFIED] narrator telegram=accepted; bitemporal fail-soft kept cycle green (no UndefinedFunction abort)
 - M1–M5 OBSERVED; soak streak=6; census fail=0
 - Still open: PARTIAL-quality-escalate-organic (desk-only), PARTIAL-telegram-CIO-stance (organic CURRENT hold), §17 bitemporal/hermes/relationship
+
+## 2026-09-20T02:26 ET — QE controlled canary on CURRENT
+
+- [VERIFIED] From pin 8c12ea757: `research_quality_escalate.enabled(None)=True`; thin dry_run would_escalate; receipt appended dual-write local+persist `vector=quality_escalate`.
+- Honesty: controlled_canary ≠ organic desk SETTLED. PARTIAL-quality-escalate-organic stays open until a desk `_resolve_blocking_gaps` walk lands the same vector.
+- Soft-share [VERIFIED]: 3 soft_unsupported / 998 rows ≈ 0.003 (pass ≤0.15).
