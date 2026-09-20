@@ -1,16 +1,18 @@
-# PROPOSED — operator decision required (AGENTS.md §17 / §7A)
+# DEFERRED — operator continue-park (AGENTS.md §17 / §7A)
 
 ```
-Status: PROPOSED
-Effective-Date: PENDING
-as_of: 2026-09-19T21:20:00-04:00
+Status: DEFERRED
+Effective-Date: 2026-09-20
+as_of: 2026-09-20T14:45:00-04:00
 Measured at: AEC four-spine live; relationship empty by design until granted sources
 Canonical repo path: docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md
 Authority: propose-and-stop — adding a data source or writer of an authoritative store is operator-only
 Subject: Relationship memory spine — first granted sources (no call sites until approved)
 See also: ledger PARTIAL-relationship-spine-data; config/data_source_authority.json (§7A)
+Operator-decision: DEFER (continue-park; spine stays empty; no data_source_authority edit)
+decided_on: 2026-09-20T14:45:00-04:00
+decision_reference: Grok session plan approve — triple-DEFER maturity gap closeout
 ```
-
 ## Finding
 
 AEC four-spine memory (`strategic` / `operational` / `relationship` / `learning`) is live.
@@ -64,3 +66,16 @@ For whichever candidate is accepted, the PR that lands **only** the registry row
 
 §7A / §17 — agents propose registry rows and stop. This file is the proposal.
 No `data_source_authority.json` mutation was made.
+
+---
+
+## Operator decision (recorded)
+
+```
+token: DEFER
+decided_on: 2026-09-20T14:45:00-04:00
+reference: Grok Build session — plan approve (triple-DEFER maturity gap closeout)
+effect: continue-park for goal accounting; no production mutation; no build started
+```
+
+Prior propose text above is retained for history. A later `APPROVE_*` may reopen this park.

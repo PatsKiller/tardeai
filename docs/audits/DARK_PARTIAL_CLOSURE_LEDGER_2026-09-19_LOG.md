@@ -509,35 +509,6 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Propose file status → **CONFIRMED**. Sunday organic=0 is schedule-bound only — not a missing cron.
 - Goal NOT complete (await organic hold Mon + §17 parks).
 
-## 2026-09-20T12:45 ET — M2 hardening wave; bitemporal :5432 still operator-blocked
-
-- [VERIFIED] `ai_local_acceptance.sh` **exit 0** (#1135) — first clean gate since 09-18.
-  `undeclared (NEW) 0`, `authority_green true`. Two lanes use ABSOLUTE output_signal paths:
-  relative resolves under persistent-state and measured 7.32h stale (watchdog) / absent
-  (disk-cleanup), which alarms on a healthy job.
-- [VERIFIED] Ledger split (#1136 `61ff56b99`): append log carries `merge=union`; the status
-  table stays hand-merged because it is shrink-only. Proven both ways — two branches
-  appending merge with 0 markers, two editing the header still conflict.
-- [VERIFIED] M2 production access gated behind `TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED=1`
-  (#1132). Unset — as now — every production DSN still raises. Destructive reset requires
-  two independent signals (session GUC + isolated-database allowlist) and is never enabled
-  for production even when authorized.
-- [VERIFIED] `--dry-run` was inert: `--apply-schema --dry-run` applied the schema. Fixed;
-  applying now needs an explicit `--apply` (AGENTS §0 rule 7).
-- [VERIFIED] AEC dual module identity ended (#1138): the hourly `--apply` entrypoint loaded
-  `lib.*` and `scripts.lib.*` as distinct objects, and `FORBIDDEN_PORTS` is a mutable
-  module-level set, so the production-port refusal was per-object.
-- [VERIFIED] Constitutional rails no longer swallowed: `FINANCIAL_TRUTH_REFUSED` and
-  `PRIVATE_COT_FORBIDDEN` re-raise. The second was found by the test, not by reading.
-- **DARK-bitemporal-m2-substrate stays PARTIAL.** Measured 16:39Z on live `trade_ai`:
-  pgvector 0.8.6 installed on the host, but `CREATE EXTENSION vector` not done, role
-  `m2_agent` absent, schema `memory_r10_m2` absent. The two statements were entered at the
-  bash prompt instead of inside `psql`. `production_sql_applied` false.
-- PGDG install upgraded PG 17.10 -> 17.11 and restarted the production cluster at 00:25:55;
-  all user-scope units came back, API 200. Pin the package before the next `apt upgrade`.
-- `allow_auto_merge` + `allow_update_branch` enabled by the operator. Auto-merge does not
-  update a behind branch, so with `strict: true` and cio-hardening at 10-16 min the race
-  persists; §17 PHASE D (fast always-reporting required gate) remains the structural fix.
 ## 2026-09-20T12:14 ET — #1139 MERGED `486f240d6`
 
 - [VERIFIED] #1139 MERGED @ 2026-09-20T16:14:21Z → `486f240d6` (AST organic source= guard + crontab CONFIRM + ledger).
@@ -557,33 +528,15 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - New `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` — propose-and-stop; no host install.
 - Goal NOT complete (organic=0 Sunday; §17 parks + timer install await operator).
 
-## 2026-09-20T13:06 ET — #1140 MERGED `b03838001`
+## 2026-09-20T14:45 ET — triple-DEFER + PARK_STANCE_AWAIT_ORGANIC (goal accounting)
 
-- [VERIFIED] #1140 MERGED @ 2026-09-20T17:05:45Z → `b03838001` (ledger LOG split + stance observe units + §17 cites + install propose).
-- Remasure @ 17:06Z: **M1–M5 OBSERVED**; soft SLO PASS; organic still PARTIAL exit 2 (Sunday).
-- Live pin unchanged `5b7e24c95…114233` (docs/units; promote not required).
-- Goal NOT complete: Mon organic stance + §17 parks (or continue-park) + optional `APPROVE_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS`.
-
-## 2026-09-20T13:08 ET — organic report next-window hint
-
-- [CODE] `report_organic_stance_hold.py` prints Mon–Fri ET observe/producer windows when PARTIAL.
-- Test: `test_report_organic_stance_hold_cli_exit_codes` asserts the hint; 2 passed.
-- Goal NOT complete (organic exit 2; §17 parks).
-## 2026-09-20T13:12 ET — stance observe timers INSTALLED (CURRENT-bound)
-
-- [VERIFIED] `systemctl --user enable --now` early 06:35 + observe 09:05 Mon–Fri under overnight `cron` grant.
-- Service WorkingDirectory=CURRENT; hand start Result=success ExecMainStatus=2 (PARTIAL Sunday).
-- Lane registry: `tradeai-stance-organic-observe` + `-early`; observe receipt writer → `data/runtime/organic_stance_hold_observe.json`.
-- Propose file → CONFIRMED. Goal NOT complete (await organic hold + §17 parks).
-
-## 2026-09-20T13:15 ET — agent-owned: stance `active_days` crashed lane report
-
-- [VERIFIED] `collect_lane_registry_report` raised `ValueError: invalid literal for int() with base 10: 'M'` because stance observe lanes declared `active_days: "Mon-Fri"` (string iterates chars). Convention requires `0=Mon..6=Sun` ints.
-- Fix: both lanes → `[0,1,2,3,4]`; `validate_row` rejects string forms; `evaluate_lane` returns UNVERIFIABLE instead of aborting the whole report.
-- Not a ledger reopen — monitor regression from timer-install rows. Goal still NOT complete (organic + §17).
-
-## 2026-09-20T13:24 ET — operator close brief emailed + parked in repo
-
-- Email sent: messageId=`1a0bfd7aeb84edd4` (operator close brief to john@jwwhiting.com).
-- Repo copy: `docs/ops/OPERATOR_CLOSE_BRIEF_AEC_MATURITY_2026-09-20.md` (Status ACTIVE; #1144 MERGED into #1142 tip `c607cd2ba`; #1142 OPEN).
-- Goal still **NOT COMPLETE** — organic stance PARTIAL (Sunday) + three §17 proposes PENDING. No grants invented.
+- Operator plan approve (Grok session): **DEFER** ×3 on bitemporal `:5432`, Hermes enqueue retire, relationship spine.
+- Operator token **`PARK_STANCE_AWAIT_ORGANIC`** — docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md.
+- Remasure `[VERIFIED]` 2026-09-20T18:45:36Z pin `5b7e24c95…114233`:
+  - M1–M5 **all OBSERVED** (m1m5_rc=0)
+  - soft_unsupported **18/1043 ≈ 0.017** SLO **PASS** (soft_rc=0)
+  - organic **PARTIAL** organic=0 non_organic=2 **exit 2** (expected; park covers goal gate)
+  - soak streak=6; census pass=11 warn=0
+- Timers still armed Mon 06:35 / 09:05 ET.
+- Residuals (not goal blockers under 13:22 brief): CURRENT tip lag vs `origin/main`; code-mirror cron still PROPOSED; #1141 OPEN.
+- Goal accounting: gates (1)+(2)+(3) satisfied with park+DEFER+remasure — **park ≠ Monday organic OBSERVED**.
