@@ -155,3 +155,73 @@ def test_m3_shadow_soak_no_policy(tmp_path):
         "authority": "READ_ONLY_ADVISORY",
     }
     assert soak["behavior_influence"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Isolation guard. This guard had NO test before 2026-09-20 — it is the only
+# thing standing between the projector and a non-isolated database.
+# ---------------------------------------------------------------------------
+
+_SHADOW = "postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow"
+_PROD = "postgresql://u:p@127.0.0.1:5432/trade_ai"
+_OTHER = "postgresql://u:p@127.0.0.1:5433/other"
+# The credential contains the digits 55432 while the PORT is 5433. The old check
+# tested `"55432" in dsn` over the whole string, so this spoofed the allowlist.
+_SPOOF = "postgresql://u:pass55432word@127.0.0.1:5433/other"
+
+
+def _guard():
+    from scripts.lib.memory_shadow_projector import _assert_isolated
+
+    return _assert_isolated
+
+
+def test_production_port_always_refused(monkeypatch):
+    """Not overridable: the opt-in relaxes non-default ports, never :5432."""
+    monkeypatch.setenv("MEMORY_SHADOW_ALLOW_NONDEFAULT_PORT", "1")
+    with pytest.raises(RuntimeError, match="MEMORY_SHADOW_PRODUCTION_PORT_FORBIDDEN"):
+        _guard()(_PROD)
+
+
+def test_isolated_shadow_accepted(monkeypatch):
+    monkeypatch.delenv("MEMORY_SHADOW_ALLOW_NONDEFAULT_PORT", raising=False)
+    assert _guard()(_SHADOW) == _SHADOW
+
+
+def test_nondefault_port_refused_unless_opted_in(monkeypatch):
+    monkeypatch.delenv("MEMORY_SHADOW_ALLOW_NONDEFAULT_PORT", raising=False)
+    with pytest.raises(RuntimeError, match="MEMORY_SHADOW_ISOLATED_PORT_REQUIRED"):
+        _guard()(_OTHER)
+    monkeypatch.setenv("MEMORY_SHADOW_ALLOW_NONDEFAULT_PORT", "1")
+    assert _guard()(_OTHER) == _OTHER
+
+
+def test_credential_containing_55432_cannot_spoof_the_allowlist(monkeypatch):
+    """Regression: the check now reads the host tail, not the whole DSN."""
+    monkeypatch.delenv("MEMORY_SHADOW_ALLOW_NONDEFAULT_PORT", raising=False)
+    with pytest.raises(RuntimeError, match="MEMORY_SHADOW_ISOLATED_PORT_REQUIRED"):
+        _guard()(_SPOOF)
+
+
+def test_env_var_is_subsystem_scoped_not_the_m2_name():
+    """The old name M2_ALLOW_NONDEFAULT_PORT was shared with the M2 benchmark,
+    where it was a no-op, and the two guards are semantic inverses. Setting the
+    M2 name must no longer affect this subsystem."""
+    src = (Path(__file__).resolve().parents[1]
+           / "scripts" / "lib" / "memory_shadow_projector.py").read_text(encoding="utf-8")
+    assert 'os.getenv("MEMORY_SHADOW_ALLOW_NONDEFAULT_PORT")' in src
+    assert 'os.getenv("M2_ALLOW_NONDEFAULT_PORT")' not in src
+
+
+def test_backup_restore_suite_has_no_tautological_guard():
+    """backup_restore_suite is safe because its connection parameters are
+    hardcoded literals, not because of an assertion over a constant it never
+    uses. Keep the literals; do not reintroduce a DSN parameter."""
+    src = (Path(__file__).resolve().parents[1]
+           / "scripts" / "lib" / "memory_m2_v2.py").read_text(encoding="utf-8")
+    body = src.split("def backup_restore_suite")[1].split("\ndef ")[0]
+    # Strip the docstring: it names the removed call deliberately, to explain why
+    # the literals are the guarantee. Assert on executable lines only.
+    code = body.split('"""')[2] if body.count('"""') >= 2 else body
+    assert "_assert_isolated_dsn(" not in code
+    assert code.count('"55432"') >= 6, "the hardcoded isolated port IS the guarantee"
