@@ -37,6 +37,15 @@ THE EDITOR, applied to every message at ``telegram_transport.deliver_text``:
      OPERATOR_PRODUCT_INVALID products are held. Index/macro tickers
      (SPY/QQQ/…) are excluded from stance matching so a market-header
      "Bullish" line cannot suppress the desk.
+  4b. Soft-block rewrite (2026-09-20 audit C2). When the message is bullish/GO
+     and CIO is RESEARCH_MORE / HUMAN_REVIEW / HOLD (etc.), demote GO/BUY
+     headlines to WATCH/RESEARCH and re-check stance so the operator gets a
+     watch alert instead of silence. Hard-bear CIO (AVOID/SELL/TRIM/…) still
+     holds — never soft-deliver a watch over an avoid.
+  4c. Publish packet (2026-09-20 audit C3). Recommendation-shaped sends
+     (GO/BUY/WATCH-from-rewrite) get a structured footer: thesis, CIO
+     action+as_of, risks, evidence, portfolio fit (best-effort from body +
+     CIO row; thin fields marked n/a).
   5. Links. Each named symbol gets its Command Center page on the fully
      qualified Tailscale host, and Finviz plus Yahoo as alternate sources.
   6. Pills. 🟢 Trade-AI · 🔵 Outside · 🟣 DeepSeek, from what the message says.
@@ -92,11 +101,29 @@ _CIO_BULL = {
     "BUY_READY", "ENTRY_NEAR",
 }
 _CIO_BEAR = {"AVOID", "SELL", "EXIT", "TRIM", "REDUCE", "HOLD_REDUCE"}
+# Soft non-bull CIO actions: allow GO/BUY → WATCH rewrite then re-check (C2).
+_CIO_SOFT_BLOCK = frozenset({
+    "RESEARCH_MORE", "HUMAN_REVIEW", "HOLD", "WAIT", "NEUTRAL", "NO_GO", "NOGO", "WATCH",
+})
 # Broad market / macro symbols: regime words near these are not investment recs.
 _STANCE_EXCLUDE_SYMBOLS = frozenset({
     "SPY", "QQQ", "IWM", "DIA", "VIX", "TLT", "IEF", "HYG", "LQD", "USO", "GLD", "SLV",
 })
 _CIO_DECISION_HEADER = re.compile(r"^\[CIO DECISION\]", re.M)
+_REC_SHAPED = re.compile(
+    r"\bNEW\s+GO\b|\b\[GO\]\b|\b\[WATCH\]\b|\bSTRONG\s+BUY\b|"
+    r"\b(?:GO|BUY|ACCUMULATE|WATCH)\b.{0,40}\bRVOL\b|"
+    r"\bRVOL\b.{0,40}\b(?:GO|WATCH)\b",
+    re.I | re.S,
+)
+_THESIS_LINE = re.compile(
+    r"(?:Finviz[^\n]*\n\s*)?_([^_\n]{12,160})_|Finviz[^\n]*\n\s*([^\n]{12,160})",
+    re.I,
+)
+_RISK_LINE = re.compile(
+    r"(Critic:[^\n]{0,160}|MICRO_FLOAT[^\n]{0,120}|DOWNGRADE[^\n]{0,120}|⚠️[^\n]{0,160})",
+    re.I,
+)
 
 
 def _holds_invalid_product(body: str) -> bool:
@@ -324,6 +351,119 @@ def cio_missing_decisions(
     return out
 
 
+def rewrite_bullish_to_watch(text: str, symbols: list[str]) -> tuple[str, list[str]]:
+    """Demote GO/BUY lexicon near soft-block conflict symbols to WATCH/RESEARCH.
+
+    Used when Telegram is bullish but CIO is RESEARCH_MORE / HUMAN_REVIEW / HOLD
+    (etc.): ban the GO headline, keep a watch-shaped alert for the operator.
+    Hard-bear CIO actions must not call this path — those stay held.
+    """
+    out = text or ""
+    changes: list[str] = []
+    for sym in symbols:
+        s = str(sym or "").upper()
+        if not s or s in _STANCE_EXCLUDE_SYMBOLS:
+            continue
+        before = out
+        # NEW GO — SYM  /  *NEW GO* — *SYM*
+        out = re.sub(
+            rf"\*?NEW\s+GO\*?\s*[—\-:-]\s*\*?{re.escape(s)}\*?",
+            f"WATCH — *{s}*",
+            out,
+            flags=re.I,
+        )
+        # [GO] near SYM / SYM … [GO]
+        out = re.sub(
+            rf"\[GO\](?=[^\n]{{0,50}}\b{re.escape(s)}\b)",
+            "[WATCH]",
+            out,
+            flags=re.I,
+        )
+        out = re.sub(
+            rf"(\b{re.escape(s)}\b[^\n]{{0,50}})\[GO\]",
+            r"\1[WATCH]",
+            out,
+            flags=re.I,
+        )
+        # Bare GO token immediately before SYM (✅ GO *SYM*)
+        out = re.sub(
+            rf"\bGO\b(\s+\*?{re.escape(s)}\*?)",
+            r"WATCH\1",
+            out,
+            flags=re.I,
+        )
+        # BUY / STRONG BUY / ACCUMULATE / BULLISH near SYM (either side)
+        out = re.sub(
+            rf"\b(STRONG\s+BUY|BUY|ACCUMULATE|ADD(?:_ON_PULLBACK)?|BULLISH)\b"
+            rf"([^\n]{{0,50}}\b{re.escape(s)}\b)",
+            rf"WATCH\2",
+            out,
+            flags=re.I,
+        )
+        out = re.sub(
+            rf"(\b{re.escape(s)}\b[^\n]{{0,50}})\b(STRONG\s+BUY|BUY|ACCUMULATE|BULLISH)\b",
+            rf"\1WATCH",
+            out,
+            flags=re.I,
+        )
+        if out != before:
+            changes.append(f"rewrote:go_to_watch:{s}")
+    return out, changes
+
+
+def _recommendation_shaped(text: str) -> bool:
+    return bool(_REC_SHAPED.search(text or ""))
+
+
+def _publish_packet_lines(
+    text: str,
+    views: dict[str, dict[str, Any]],
+    symbols: list[str],
+) -> list[str]:
+    """Best-effort thesis / CIO / risks / evidence / portfolio-fit lines for the footer."""
+    plain = re.sub(r"<[^>]+>", " ", text or "")
+    thesis = "n/a · not stated"
+    m = _THESIS_LINE.search(text or "")
+    if m:
+        thesis = (m.group(1) or m.group(2) or "").strip().rstrip("_")[:140] or thesis
+    elif re.search(r"\bRVOL\b", plain, re.I):
+        thesis = "scanner catalyst (RVOL/score) — see body"
+    risk = "n/a · not stated"
+    rm = _RISK_LINE.search(text or "")
+    if rm:
+        risk = re.sub(r"\s+", " ", rm.group(1)).strip()[:140]
+    evidence = "n/a · not stated"
+    if re.search(r"\bFinviz\b", plain, re.I):
+        evidence = "Finviz headline/blurb"
+    elif re.search(r"\b(RVOL|SEC|Form\s*4|earnings|ATR)\b", plain, re.I):
+        evidence = "in-body scanner/market fields"
+    lines = ["📋 <b>Publish packet</b>"]
+    lines.append(f"• Thesis: {html.escape(thesis)}")
+    for sym in symbols[:4]:
+        v = views.get(sym) or {}
+        action = str(v.get("action") or "UNKNOWN")
+        as_of = str(v.get("created_at") or "")[:16] or "n/a"
+        lines.append(f"• CIO {html.escape(sym)}: {html.escape(action)} as_of {html.escape(as_of)}")
+    if not symbols:
+        lines.append("• CIO: n/a · no subject symbols")
+    lines.append(f"• Risks: {html.escape(risk)}")
+    lines.append(f"• Evidence: {html.escape(evidence)}")
+    lines.append("• Portfolio fit: n/a · scanner-watch (not book-checked)")
+    return lines
+
+
+def soft_block_rewrite_symbols(disagree: list[dict[str, Any]]) -> list[str]:
+    """Symbols eligible for GO→WATCH rewrite (bullish msg + soft-block CIO)."""
+    out: list[str] = []
+    for d in disagree:
+        action = str(d.get("cio_action") or "").upper()
+        if d.get("message") == "bullish" and action in _CIO_SOFT_BLOCK:
+            sym = str(d.get("symbol") or "").upper()
+            if sym and sym not in out:
+                out.append(sym)
+    return out
+
+
 def _hold_reason(
     body: str,
     disagree: list[dict[str, Any]],
@@ -425,23 +565,39 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
     now = now or datetime.now(timezone.utc)
     ledger = ledger or DuplicateLedger()
     m = editor_mode or mode()
-    fp = fingerprint(text)
-    guid = message_guid(str(chat_id), fp, now)
     changes: list[str] = []
 
     body = text or ""
-    if parse_mode == "HTML" or looks_like_html(body):
-        html_body = body
-    else:
-        html_body = markdown_to_html(body)
-        if html_body != body:
-            changes.append("markdown_to_html")
+    was_html = parse_mode == "HTML" or looks_like_html(body)
 
     subs = subjects(body, resolve=resolve)
     syms = [s["symbol"] for s in subs]
     views = cio_views(syms, db_query)
     disagree = cio_disagreements(body, views)
     missing = cio_missing_decisions(body, syms, views)
+
+    # C2: soft-block GO/BUY → WATCH rewrite, then re-check stance.
+    rewrite_syms = soft_block_rewrite_symbols(disagree)
+    if rewrite_syms:
+        new_body, rw_changes = rewrite_bullish_to_watch(body, rewrite_syms)
+        if rw_changes and new_body != body:
+            body = new_body
+            changes.extend(rw_changes)
+            # Subjects may still resolve; refresh disagreements on demoted text.
+            disagree = cio_disagreements(body, views)
+            missing = cio_missing_decisions(body, syms, views)
+
+    # Fingerprint the body that will ship (post-rewrite) so WATCH dupes collapse.
+    fp = fingerprint(body)
+    guid = message_guid(str(chat_id), fp, now)
+
+    if was_html:
+        html_body = body
+    else:
+        html_body = markdown_to_html(body)
+        if html_body != body:
+            changes.append("markdown_to_html")
+
     held = _hold_reason(body, disagree, missing)
     prior = ledger.check(chat_id, fp, now)
 
@@ -462,6 +618,13 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
         changes.append("held:cio_disagreement")
     if held == "cio_decision_missing":
         changes.append("held:cio_decision_missing")
+
+    # C3: structured publish packet on recommendation-shaped sends (and on holds
+    # that were recommendation-shaped, so receipts/operators see the packet).
+    if _recommendation_shaped(body) and len(html_body) < MAX_BODY_FOR_FOOTER:
+        footer.extend(_publish_packet_lines(body, views, syms))
+        changes.append("publish_packet")
+
     if len(html_body) < MAX_BODY_FOR_FOOTER:
         ids = " ".join(f"{s['symbol']}:{s['guid'][:8]}" for s in subs[:4])
         footer.append(f"<i>{' · '.join(pills_for(body))} · 🆔 {guid[:8]}{(' · ' + ids) if ids else ''}</i>")
@@ -489,4 +652,5 @@ def commit(decision: EditorDecision, *, chat_id: Any, now: Optional[datetime] = 
 
 __all__ = ["DuplicateLedger", "EditorDecision", "PILL_HOUSE", "PILL_MODEL", "PILL_OUTSIDE", "cc_base",
            "cio_disagreements", "cio_missing_decisions", "commit", "default_db_query", "edit", "fingerprint",
-           "markdown_to_html", "message_guid", "mode", "subjects", "symbol_links"]
+           "markdown_to_html", "message_guid", "mode", "rewrite_bullish_to_watch", "soft_block_rewrite_symbols",
+           "subjects", "symbol_links"]

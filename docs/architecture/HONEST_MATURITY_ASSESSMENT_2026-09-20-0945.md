@@ -1,4 +1,4 @@
-Status: ACTIVE
+Status: SUPERSEDED BY docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-1445.md
 as_of: 2026-09-20T09:45:00-04:00
 Measured at: pin 6a78d41cc; census warn=0; M1–M5 OBSERVED; soft 0.003
 Canonical repo path: docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0945.md

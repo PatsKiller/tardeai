@@ -1,14 +1,17 @@
-# PROPOSED — operator decision required (AGENTS.md §17 / §9.3)
+# DEFERRED — operator continue-park (AGENTS.md §17 / §9.3)
 
 ```
-Status: PROPOSED
-Effective-Date: PENDING
-as_of: 2026-09-19T14:05:00-04:00
+Status: DEFERRED
+Effective-Date: 2026-09-20
+as_of: 2026-09-20T14:45:00-04:00
 Measured at: AGENTS.md research-lanes table; no lane_registry row for this script
 Canonical repo path: docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md
 Authority: propose-and-stop — installing, editing or removing a scheduler entry is operator-only
 Subject: RETIRE scripts/hermes_advisory_event_enqueue.py as a scheduled/automatic producer claim
 See also: ledger DARK-hermes_advisory_event_enqueue; AGENTS.md research lanes (KNOWN DARK — PROPOSED RETIRE)
+Operator-decision: DEFER (continue-park; no RETIRE archive / no schedule invent)
+decided_on: 2026-09-20T14:45:00-04:00
+decision_reference: Grok session plan approve — triple-DEFER maturity gap closeout
 ```
 
 ## Finding
@@ -60,3 +63,16 @@ or registry mutation was made in this change.
 - Script has no production importer (filename grep + AGENTS research table).
 - Librarian backlog loop writes `hermes_advisory_events` (`[CODE]`).
 - Last automatic advisory activity historically aged while the manual CLI sat unused.
+
+---
+
+## Operator decision (recorded)
+
+```
+token: DEFER
+decided_on: 2026-09-20T14:45:00-04:00
+reference: Grok Build session — plan approve (triple-DEFER maturity gap closeout)
+effect: continue-park for goal accounting; no production mutation; no build started
+```
+
+Prior propose text above is retained for history. A later `APPROVE_*` may reopen this park.
