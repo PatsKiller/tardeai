@@ -2,16 +2,18 @@
 
 ```
 Status: DEFERRED
-Effective-Date: 2026-09-20
-as_of: 2026-09-20T14:45:00-04:00
+Effective-Date: 2026-09-20T17:15:00-04:00
+as_of: 2026-09-20T17:15:00-04:00
 Measured at: docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md (probe rolled back; production_sql_applied=false)
 Canonical repo path: docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md
 Authority: propose-and-stop — production DB extension/role install and cutover are operator-only
-Supersedes: none (crisp decision ask extracted from BITEMPORAL_MEMORY_V2_DEPLOY + remediation-plan)
+Supersedes: prior DEFERRED stamp 2026-09-20T14:45 (Grok/email provenance — not a kit-valid Operator-Token)
 See also: docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md, docs/remediation-plan.md § Stage 3, ledger DARK-bitemporal-m2-substrate
-Operator-decision: DEFER (continue-park; no prod cutover)
-decided_on: 2026-09-20T14:45:00-04:00
-decision_reference: Grok session plan approve — triple-DEFER maturity gap closeout
+Operator-Token: DEFER
+Operator-Token-Surface: cursor_chat|operator|2026-09-20T17:15:00-04:00
+Operator-Token-as_of: 2026-09-20T17:15:00-04:00
+Operator-Token-Evidence: "i approve or send telegram grant request" (verbatim Cursor chat; no Telegram PMID invented)
+Operator-decision: DEFER (continue-park; no prod cutover; never touch :5432)
 ```
 
 ## Finding
@@ -68,9 +70,11 @@ operator-only. This file proposes and stops. Nothing was applied.
 
 ```
 token: DEFER
-decided_on: 2026-09-20T14:45:00-04:00
-reference: Grok Build session — plan approve (triple-DEFER maturity gap closeout)
-effect: continue-park for goal accounting; no production mutation; no build started
+decided_on: 2026-09-20T17:15:00-04:00
+surface: cursor_chat|operator (no Telegram PMID invented)
+evidence: "i approve or send telegram grant request" (verbatim Cursor chat ~17:15 ET)
+effect: CONTINUE-PARK; no :5432 work; shadow :55432 remains the only OBSERVED substrate
+supersedes: 2026-09-20T14:45 DEFER stamp (Grok/email — not kit-valid Operator-Token)
 ```
 
-Prior propose text above is retained for history. A later `APPROVE_*` may reopen this park.
+Prior propose text above is retained for history. A later `APPROVE_BITTEMPORAL_PROD_PREREQS` may reopen this park.
