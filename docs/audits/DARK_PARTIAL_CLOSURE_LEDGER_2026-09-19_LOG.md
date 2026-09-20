@@ -591,3 +591,14 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Hermès follow-on still needed: optional `lane_registry` `state: RETIRED` row and/or archive+tripwire — **not** in this docs-only apply; no live schedule
 - R9: PASS (continue-park/settle recorded). No :5432 work. No data_source_authority edit. No schedule invent.
 - Goal still **NOT COMPLETE** until Mon organic hold OBSERVED
+
+## 2026-09-20T18:51 ET — hermes RETIRE follow-on (lane_registry RETIRED)
+
+- [CODE] `config/lane_registry.json` lane `hermes-advisory-event-enqueue`: `state=RETIRED`,
+  `reason_confidence=ESTABLISHED`, evidence cites Operator-Token + PR #1151 (`7010eb104`).
+  `scheduler.kind=none` — never scheduled; no cron uninstall invented.
+- Script kept as manual ops tool (archive+tripwire not used — optional under approve path).
+- AGENTS research table + §13.4 dark list → RETIRED / formerly-dark CLOSED.
+- Ledger row `DARK-hermes_advisory_event_enqueue` → **CLOSED**.
+- R9 hermes park: CLOSED. Remaining §17 parks: bitemporal DEFER + relationship DEFER (continue-park).
+- Goal still **NOT COMPLETE** — only open gate = Mon organic stance OBSERVED.

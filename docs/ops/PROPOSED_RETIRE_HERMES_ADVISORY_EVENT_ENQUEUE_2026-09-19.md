@@ -1,20 +1,21 @@
 # APPROVED RETIRE — operator settle (AGENTS.md §17 / §9.3)
 
 ```
-Status: APPROVED
+Status: APPROVED · FOLLOW-ON APPLIED
 Effective-Date: 2026-09-20T17:15:00-04:00
-as_of: 2026-09-20T17:15:00-04:00
-Measured at: AGENTS.md research-lanes table; no lane_registry row for this script
+as_of: 2026-09-20T18:51:00-04:00
+Measured at: lane_registry hermes-advisory-event-enqueue state=RETIRED (follow-on after #1151)
 Canonical repo path: docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md
 Authority: propose-and-stop — installing, editing or removing a scheduler entry is operator-only
 Subject: RETIRE scripts/hermes_advisory_event_enqueue.py as a scheduled/automatic producer claim
-See also: ledger DARK-hermes_advisory_event_enqueue; AGENTS.md research lanes (KNOWN DARK — PROPOSED RETIRE)
+See also: ledger DARK-hermes_advisory_event_enqueue CLOSED; AGENTS.md research lanes RETIRED
 Supersedes: prior DEFERRED stamp 2026-09-20T14:45 (Grok/email provenance — not a kit-valid Operator-Token)
 Operator-Token: APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE
 Operator-Token-Surface: cursor_chat|operator|2026-09-20T17:15:00-04:00
 Operator-Token-as_of: 2026-09-20T17:15:00-04:00
 Operator-Token-Evidence: "i approve or send telegram grant request" (verbatim Cursor chat; mapped to APPROVE_RETIRE per packet recommended settle path; no Telegram PMID invented)
-Operator-decision: APPROVE_RETIRE (settle token recorded; follow-on RETIRED lane row / archive+tripwire still pending — no schedule invent this PR)
+Operator-decision: APPROVE_RETIRE
+Follow-on: lane_registry RETIRED row landed; script kept as manual ops tool (not archived); no schedule invented
 ```
 
 ## Finding
@@ -82,4 +83,15 @@ effect: settle token recorded; RETIRE expectation for scheduled/automatic produc
 supersedes: 2026-09-20T14:45 DEFER stamp (Grok/email — not kit-valid Operator-Token)
 ```
 
-Prior propose text above is retained for history. Follow-on RETIRED lane / archive is a separate PR.
+Prior propose text above is retained for history.
+
+## Follow-on applied (2026-09-20T18:51 ET)
+
+1. `config/lane_registry.json` lane `hermes-advisory-event-enqueue`: `state: RETIRED`,
+   `reason_confidence: ESTABLISHED`, `reason_evidence` cites Operator-Token + PR #1151
+   (`7010eb104`). `scheduler.kind: none` — never scheduled; no cron uninstall invented.
+2. Script retained at `scripts/hermes_advisory_event_enqueue.py` as manual ops tool
+   (archive+tripwire optional under approve path; not used).
+3. Automatic producer remains `hermes_autonomous_librarian_backlog_loop`.
+4. AGENTS research table + §13.4 dark list → RETIRED / formerly-dark CLOSED.
+5. Ledger `DARK-hermes_advisory_event_enqueue` → CLOSED.
