@@ -1,8 +1,9 @@
 """AGENTS.md §13.4 type vocabulary must stay discoverable.
 
 A pre-build check (§13.5) is unusable if an agent cannot learn the registered
-names. This guards presence of the vocabulary section and the explicit
-"specified, no producer" marking for AgentView@v1 / AGENT_COMMITMENT@v1.
+names. This guards presence of the vocabulary section, AgentView@v1 /
+AGENT_COMMITMENT@v1 (scheduled producers as of ledger CLOSED 2026-09-19), and
+explicit "SPECIFIED, no producer yet" marking for INDUSTRY/THEME/EVENT prefixes.
 """
 
 from __future__ import annotations
@@ -48,11 +49,15 @@ def test_section_134_names_registered_ids_and_subject_keys():
         assert name in body, name
 
 
-def test_no_producer_types_are_marked_explicitly():
+def test_agentview_commitment_and_specified_prefixes_marked_explicitly():
     body = _section_134()
     assert "AgentView@v1" in body
     assert "AGENT_COMMITMENT@v1" in body
-    assert "specified and currently have no producer" in body
+    # 1.2.5: these have AEC scheduled producers (ledger CLOSED) — do not re-assert
+    # the former "specified and currently have no producer" wording.
+    assert "have scheduled producers" in body
+    # Prefixes still specified without a record producer:
+    assert "SPECIFIED, no producer yet" in body
 
 
 def test_section_19_lists_diagram_documents():
