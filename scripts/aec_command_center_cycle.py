@@ -114,6 +114,19 @@ def run_cycle(
         },
         dry_run=not apply,
     )
+    # Operational spine — infrastructure / automation posture (internal AEC
+    # facts only; never invents relationship-domain sources).
+    if apply:
+        mem.append_fact(
+            "operational",
+            {
+                "kind": "cio_cycle_status",
+                "subject_key": subject_key,
+                "bus_seen": len(bus.topics_for("cio_agent", recent)),
+                "memory_counts": {k: len(v) for k, v in relevant.items()},
+                "summary": cio_summary[:240],
+            },
+        )
 
     # Advisor — AgentView@v1 (existing producer) + optional commitment.
     # Day-bucket the claim so anti-repeat does not freeze AgentView/OUTCOME for

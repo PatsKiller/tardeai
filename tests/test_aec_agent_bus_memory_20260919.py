@@ -222,3 +222,28 @@ def test_wake_loads_aec_spines_fail_soft(tmp_path, monkeypatch):
     assert out3["loaded"] is False
     assert out3.get("error")
     assert "aec_spines_unavailable" in receipt.read_text(encoding="utf-8")
+
+def test_cycle_writes_operational_spine(tmp_path, monkeypatch):
+    """CIO cycle must feed the operational spine (not only bus publish)."""
+    import json
+    monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "mem.json"))
+    cycle = _load("aec_command_center_cycle_ops", "scripts/aec_command_center_cycle.py")
+
+    def _fake_integrate(envelope, *, apply=False):
+        return {
+            "schema": "CIOEnvelopeIntegration@v1",
+            "dry_run": not apply,
+            "authority": "READ_ONLY_ADVISORY",
+            "mbi_behavior": 0,
+        }
+
+    monkeypatch.setattr(cycle, "integrate_wake_envelope", _fake_integrate)
+    out = cycle.run_cycle(subject_key="WATCH:SCHG", apply=True)
+    assert out["events"][0]["agent_id"] == "cio_agent"
+    mem = json.loads((tmp_path / "mem.json").read_text())
+    ops = (mem.get("spines") or {}).get("operational") or []
+    assert ops, mem
+    assert ops[-1].get("kind") == "cio_cycle_status"
+    assert ops[-1].get("subject_key") == "WATCH:SCHG"
+
