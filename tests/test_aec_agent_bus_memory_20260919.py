@@ -166,6 +166,9 @@ def test_wake_loads_aec_spines_fail_soft(tmp_path, monkeypatch):
     # Missing file → empty snapshot, still loaded (not an exception path).
     assert out["loaded"] is True
     assert out["counts"]["strategic"] == 0
+    receipt = (tmp_path / "aec_wake_spine_receipts.jsonl")
+    assert receipt.is_file()
+    assert "aec_spines_loaded" in receipt.read_text(encoding="utf-8")
 
     mem = _load("aec_memory_spines_for_wake", "scripts/lib/aec_memory_spines.py")
     path = tmp_path / "mem.json"
@@ -188,3 +191,4 @@ def test_wake_loads_aec_spines_fail_soft(tmp_path, monkeypatch):
     out3 = wake.load_aec_spines_for_wake(selection_meta={"subject_key": "WATCH:SCHG"})
     assert out3["loaded"] is False
     assert out3.get("error")
+    assert "aec_spines_unavailable" in receipt.read_text(encoding="utf-8")
