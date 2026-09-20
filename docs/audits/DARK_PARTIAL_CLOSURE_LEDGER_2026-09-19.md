@@ -472,3 +472,12 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Live gog gmail send → messageId=`1a0bf1188684eda7` to john@jwwhiting.com.
 - Subject: Trade AI Maturity Gap Closure — AS-IS/FUTURE/GAP 2026-09-20-0945 (supersedes 0902; M1–M5 OBSERVED).
 - 0902 package marked SUPERSEDED. Goal remains open: organic stance + §17 parks; #1129 CI on ba1f732f5.
+
+## 2026-09-20T10:10 ET — operator remasure paste; tip still M4 OBSERVED
+
+- Operator paste: M1 OBSERVED · M2 OBSERVED (HELD:NOC critique writeback) · M3/M5 OBSERVED · **M4 still PARTIAL** · soft≈0.002 pass.
+- [VERIFIED] `report_maturity_bar_m1_m5.py` @ 2026-09-20T14:09:57Z pin `6a78d41cc-main-exact-phase2-20260920-094308`: **M1–M5 all OBSERVED** — M4 census as_of=2026-09-20T13:44:45Z pass=11 warn=0 fail=0 (local `~/.local/state/tradeai/operator_number_census.json`).
+- Soft [VERIFIED] 3/998 soft_unsupported ≈0.003 (pass ≤0.15).
+- Operator M4 PARTIAL paste reconciles to tip OBSERVED post-promote; no AI Analyst refresh needed (state-write grant unused this cycle).
+- Open: fix #1129 docs INDEX drift (0945 package committed before `--write-index`); organic stance `source=check_investment_send`; §17 parks. Goal remains open.
+
