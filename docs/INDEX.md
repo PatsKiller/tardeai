@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `6899d1da6921f8725754138fb1c55bea2eca26e9ae36c83fc62f7c71c6813d8c`
+**Tree fingerprint:** `c37b35b107cb296650b60494f8f622587d8368b608acef545cb4a10b3d509917`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2558 |
-| Markdown (excl. this INDEX) | 2132 |
+| Files under `docs/` (excl. this INDEX) | 2559 |
+| Markdown (excl. this INDEX) | 2133 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2065 |
+| Header OK | 2066 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2187 |
+| review_required | 2188 |
 
 ## Markdown tree
 
@@ -1659,6 +1659,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | OK | `ad67ce75eb83` |
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | OK | `57b472ac277f` |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
+| `docs/ops/PROPOSED_RESEARCH_QUALITY_ESCALATE_HOST_2026-09-19.md` | PROPOSED / APPLIED — research quality escalate host arm | review_required | OK | `22e2223e1d01` |
 | `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §9.3) | review_required | OK | `d23e2d26a483` |
 | `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md` | PROPOSED — enable WAKE_L3 flags on the **L3 consumer** cron | review_required | OK | `a4a573fe18a8` |
 | `docs/ops/R11_AUTONOMOUS_INVESTMENT_OFFICE_OPERATOR_VALUE_CLOSEOUT_2026-08-25.md` | R11 — Autonomous Investment Office Operator-Value Closeout | review_required | OK | `0539b80504f0` |

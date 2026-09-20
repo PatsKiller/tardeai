@@ -65,6 +65,18 @@ def test_flag_off_never_climbs():
     assert "unset" in out["detail"]
 
 
+def test_host_flag_arms_when_env_omitted(tmp_path, monkeypatch):
+    """Host file arms escalate only when env mapping is omitted (live path)."""
+    flag = tmp_path / "research_quality_escalate"
+    flag.write_text("1\n", encoding="utf-8")
+    monkeypatch.setattr(rqe, "HOST_FLAG_PATH", flag)
+    monkeypatch.delenv(rqe.FLAG, raising=False)
+    assert rqe.enabled() is True
+    assert rqe.enabled(env={}) is False  # hermetic: host ignored
+    flag.write_text("0\n", encoding="utf-8")
+    assert rqe.enabled() is False
+
+
 def test_thin_dry_run_would_escalate_without_calling_search():
     calls: list[str] = []
 
