@@ -50,6 +50,13 @@ def main(argv: list[str] | None = None) -> int:
     summary = summarize_stance_holds(args.path)
     summary["no_consumer_reason"] = NO_CONSUMER_REASON
 
+    # Durable observe receipt (lane output_signal / Monday timers).
+    try:
+        from scripts.lib.cio_telegram_stance_gate import write_organic_observe_receipt
+    except ImportError:  # cron form
+        from lib.cio_telegram_stance_gate import write_organic_observe_receipt  # type: ignore
+    summary["observe_receipt"] = write_organic_observe_receipt(summary)
+
     if args.json:
         print(json.dumps(summary, sort_keys=True, indent=2))
     else:
@@ -73,6 +80,10 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 "  latest: none — awaits Mon–Fri GO/scalp/proposal "
                 "hold with source=check_investment_send"
+            )
+            print(
+                "  next windows ET: scalp 06:00/06:30 · observe-early 06:35 · "
+                "GO */15 + proposal */2 from 09:00 · observe 09:05"
             )
 
     if summary.get("observed"):

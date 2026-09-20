@@ -527,3 +527,10 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Ledger closure-path cites for bitemporal + relationship propose files (parity with hermes).
 - New `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` — propose-and-stop; no host install.
 - Goal NOT complete (organic=0 Sunday; §17 parks + timer install await operator).
+
+## 2026-09-20T13:12 ET — stance observe timers INSTALLED (CURRENT-bound)
+
+- [VERIFIED] `systemctl --user enable --now` early 06:35 + observe 09:05 Mon–Fri under overnight `cron` grant.
+- Service WorkingDirectory=CURRENT; hand start Result=success ExecMainStatus=2 (PARTIAL Sunday).
+- Lane registry: `tradeai-stance-organic-observe` + `-early`; observe receipt writer → `data/runtime/organic_stance_hold_observe.json`.
+- Propose file → CONFIRMED. Goal NOT complete (await organic hold + §17 parks).
