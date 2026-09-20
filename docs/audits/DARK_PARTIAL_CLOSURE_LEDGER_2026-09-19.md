@@ -3,7 +3,7 @@
 ```
 Status: ACTIVE
 as_of: 2026-09-20T06:08:00-04:00
-Measured at: live pin 6a78d41cc; M1–M5 OBSERVED; soft 0.003; #1129 MERGED 428edeabb; organic stance + §17 parks remain
+Measured at: pin 6a78d41cc; M1–M5 OBSERVED; organic=0; #1133 OPEN; AGENTS 1.2.5 dark-list PATCH + §17 propose notes; goal open
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -21,7 +21,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-hermes_advisory_event_enqueue | §17 PARKED · PROPOSED RETIRE | AGENTS research table; automatic writer is librarian backlog loop; no caller | Operator grant on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row or wired consumer |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | dual-write on tip; holds only probe/canary so far; live callers: screener_go_alerts, send_telegram_proposal_alert, social_scalp_scanner → check_investment_send | Observe hold with source=check_investment_send (not canary/probe) | organic hold receipt |
+| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | dual-write on tip+pin; holds probe/canary only (organic=0); live callers normalize to source=check_investment_send; `scripts/report_organic_stance_hold.py` reports exit 2 until organic | Mon–Fri GO/scalp/proposal hold; report exit 0 | organic hold receipt |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | **OBSERVED (unattended)** | [VERIFIED] Sun 08:00 ET weekly cron: ARKQ+NEE `requester=data_gap_resolver` `vector=quality_escalate` `provider=searxng` `outcome=partial` started 2026-09-20T12:00:07Z/12:00:11Z; weekly.log Chain resolve 2/2. Hand proof at 10:30Z was precursor. | — | unattended same stamps |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
@@ -487,4 +487,19 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - cio-hardening/agent-governance/provider-cost/release-readiness/aif all SUCCESS on head.
 - Stance holds file still probe/canary only (n=2); organic `source=check_investment_send` awaits Mon–Fri GO/scalp/proposal.
 - Goal remains open: organic stance + §17 parks (bitemporal/:5432, hermes RETIRE, relationship).
+
+## 2026-09-20T10:47 ET — organic stance observer; goal audit still incomplete
+
+- [VERIFIED] `report_organic_stance_hold.py` @ 2026-09-20T14:47:06Z: **PARTIAL** organic=0 non_organic=2 (probe+canary). Exit 2.
+- [VERIFIED] pin `6a78d41cc` already contains ORGANIC_HOLD_CALLERS normalize (`fcd8de172` ancestor) — Monday live producers will stamp correctly without a new promote.
+- Agent-owned: `summarize_stance_holds` / CLI + hermetic tests (18 pass). Timer `stance-organic-observe` should call the report.
+- §17 still parked: bitemporal/:5432, hermes RETIRE propose, relationship propose. Goal NOT complete.
+
+## 2026-09-20T10:53 ET — multi-agent follow-up: organic hunt N; census; AGENTS 1.2.5 + §17 proposes
+
+- [Hunt organic stance](bc-463ce235-3be6-54e9-8215-abbd3918792c): **organic=0** (probe+canary only); pin already has ORGANIC_HOLD_CALLERS normalize.
+- [Gap census](bc-69011b78-118f-5931-b89d-eb70c6e87261): remaining = stance SCHEDULE-BOUND + 3× §17; agent-owned doc drift DOC-AGENTS-§13.4.
+- Agent-owned close: AGENTS.md **1.2.5 PATCH** — §13.4 dark contracts + AgentView/commitment prose match ledger CLOSED.
+- §17 propose hardened: hermes RETIRE, relationship sources, new `PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` (exact operator asks). No grants applied.
+- Goal NOT complete.
 
