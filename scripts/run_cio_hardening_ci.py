@@ -282,6 +282,16 @@ GATES = [
             "tests/test_gog_broker_approval.py",
         ],
     ),
+    # A paid provider lane can die without anything noticing: DeepSeek ran to a -$0.09
+    # balance on 2026-09-17 and returned HTTP 402 on every call for three days while
+    # risk/steph/tax produced nothing. This gate holds the alarm that names a billing or
+    # auth stop, and the OAuth soft fallback that keeps those agents producing through one.
+    (
+        "provider_billing_alarm",
+        [
+            "tests/test_provider_health_alarm.py",
+        ],
+    ),
     # C1 (batch 1: send_telegram). Every alarm must be OBSERVED firing; the
     # uncovered set is a named number in config/alarm_firing_baseline.txt that can
     # only shrink. Presence of alarm code is not evidence it fires.
@@ -635,6 +645,10 @@ GATES = [
             # 2026-09-14 operator rule: scheduled paid work weekdays 09-21 ET or weekends, never DeepSeek peak;
             # spend report checks itself against the DeepSeek balance.
             "tests/test_operator_offpeak_window_20260914.py",
+            # 2026-09-19 operator directive: the same window, but paid work that falls outside
+            # it is now QUEUED rather than dropped by a PEAK_SKIP that recorded nothing, and
+            # the operator sets per-caller priority in Command Center -> Ops -> LLM Spend.
+            "tests/test_llm_offpeak_deferral.py",
             # 2026-09-14 Telegram: rich layouts, and a written-but-undelivered reply is a finding.
             "tests/test_telegram_rich_20260914.py",
             "tests/test_answer_quality_reply_not_delivered_20260914.py",

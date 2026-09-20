@@ -196,12 +196,16 @@ def _attempt_symbol_enrichment(symbol: str, missing: list) -> bool:
 # Steph/Risk/tail research use governed cloud routing. Daily cap via llm_consumption_log (~80/day);
 # per-run cap prevents a single cron burst from draining the budget.
 from lib.maria_oauth_priority import (
+    AGENT_OAUTH_FALLBACK_RUN_CAP,
     MARIA_OAUTH_DAILY_CAP,
     MARIA_OAUTH_PROCESS_ID,
     MARIA_OAUTH_RUN_CAP,
+    OAUTH_FALLBACK_AGENTS,
+    OAUTH_FALLBACK_TASK_TYPES,
     WAIT_SETUP_HOURS,
     WAIT_SETUP_LIMIT,
     maria_priority_tier,
+    oauth_fallback_process_id,
 )
 
 _CURRENT_JOB_PRIORITY: int | None = None
@@ -212,6 +216,7 @@ _CURRENT_JOB_REQUEST_TYPE: str | None = None
 _PORTFOLIO_SYMS_RUN: frozenset[str] = frozenset()
 _WAIT_SETUP_SYMS_RUN: frozenset[str] = frozenset()
 _MARIA_OAUTH_RUN_CALLS = 0
+_AGENT_OAUTH_FALLBACK_RUN_CALLS = 0
 
 
 def _wait_setup_symbol_set(conn) -> frozenset[str]:
@@ -310,12 +315,41 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
     _llm._fallback_reason = None
     _llm._manual_vs_automatic = "manual" if job_lane != "AUTO_QUEUE" else "automatic"
 
-    def _try_maria_oauth(*, fallback_reason: str | None) -> str | None:
-        global _MARIA_OAUTH_RUN_CALLS
-        if task_type not in ("agent_narrative", "agent_debate"):
+    def _oauth_lane_eligible(*, preempt: bool) -> bool:
+        """Who may use the free OAuth lanes, and when.
+
+        PREEMPT (before Flash) is unchanged and stays Maria-only: OAuth must not silently
+        preempt governed Flash because a symbol is a holding or a top-N WAIT setup.
+
+        SOFT FALLBACK (after Flash already failed) also covers risk_agent/steph/tax_agent.
+        Added 2026-09-19: the DeepSeek account ran out of credit on 2026-09-17 and every
+        deepseek-flash call returned HTTP 402, so those three agents emitted nothing for
+        three days while Maria — who had this path — kept producing.
+        """
+        agent = (_CURRENT_AGENT or "").lower()
+        if agent == "maria":
+            return task_type in ("agent_narrative", "agent_debate")
+        if preempt:
+            return False
+        return agent in OAUTH_FALLBACK_AGENTS and task_type in OAUTH_FALLBACK_TASK_TYPES
+
+    def _try_oauth_lane(*, fallback_reason: str | None, preempt: bool = False) -> str | None:
+        global _MARIA_OAUTH_RUN_CALLS, _AGENT_OAUTH_FALLBACK_RUN_CALLS
+        if not _oauth_lane_eligible(preempt=preempt):
             return None
-        if (_CURRENT_AGENT or "").lower() != "maria":
-            return None
+        agent = (_CURRENT_AGENT or "").lower()
+        is_maria = agent == "maria"
+        process_id = oauth_fallback_process_id(agent)
+        if not is_maria:
+            # Per-run burst guard, mirroring Maria's. The daily cap is the registry's.
+            if _AGENT_OAUTH_FALLBACK_RUN_CALLS >= AGENT_OAUTH_FALLBACK_RUN_CAP:
+                return None
+            try:
+                from lib.llm_consumption import over_daily_cap
+                if over_daily_cap(process_id):
+                    return None
+            except Exception:
+                pass
         try:
             from lib.llm_consumption import gate_and_generate
             from lib.maria_oauth_priority import is_manual_refresh
@@ -330,8 +364,8 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                     out = gate_and_generate(
                         cloud_prompt,
                         lane=lane,
-                        process_id=MARIA_OAUTH_PROCESS_ID,
-                        task_summary=f"maria {task_type} {_CURRENT_JOB_SYMBOL or ''}".strip(),
+                        process_id=process_id,
+                        task_summary=f"{agent or 'maria'} {task_type} {_CURRENT_JOB_SYMBOL or ''}".strip(),
                         manual_trigger=manual,
                         timeout=120,
                         metadata={
@@ -341,6 +375,7 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                             "provenance_identity": "LEGACY_WATCH_RESEARCH_NON_PROFESSIONAL",
                             "declared_lanes": ["grok-oauth", "chatgpt-oauth"],
                             "submitted_from": _CURRENT_JOB_SUBMITTED_FROM,
+                            "requested_agent": _CURRENT_AGENT,
                         },
                     )
                 except Exception:
@@ -348,7 +383,10 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                 if _is_refusal(out):
                     continue
                 if out and len(str(out).strip()) > 20:
-                    _MARIA_OAUTH_RUN_CALLS += 1
+                    if is_maria:
+                        _MARIA_OAUTH_RUN_CALLS += 1
+                    else:
+                        _AGENT_OAUTH_FALLBACK_RUN_CALLS += 1
                     _llm._last_model = f"{lane}-oauth"
                     _llm._last_provider = lane
                     _llm._last_cost = 0
@@ -358,6 +396,7 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                         {"attempted": "chatgpt-oauth"},
                         {"used": f"{lane}-oauth"},
                         {"fallback_reason": fallback_reason},
+                        {"process_id": process_id},
                     ]
                     return str(out)
         except Exception:
@@ -365,7 +404,7 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
         return None
 
     if task_type in ("agent_narrative", "agent_debate") and _prefer_maria_oauth():
-        preempt = _try_maria_oauth(fallback_reason="EXPLICIT_OAUTH_LANE")
+        preempt = _try_oauth_lane(fallback_reason="EXPLICIT_OAUTH_LANE", preempt=True)
         if preempt:
             return preempt
         _llm._fallback_chain = [{"attempted": "grok-oauth", "failed": True},
@@ -403,7 +442,7 @@ def _llm(prompt: str, max_tokens: int = 800, task_type: str = "agent_narrative",
                 _llm._fallback_chain.append({"hard_failure": err[:160]})
                 return f"LLM error: {err}"
             if oauth_soft_fallback_permitted(job_lane, err):
-                oauth_out = _try_maria_oauth(fallback_reason="FLASH_SOFT_FAILURE")
+                oauth_out = _try_oauth_lane(fallback_reason="FLASH_SOFT_FAILURE")
                 if oauth_out:
                     return oauth_out
             return f"LLM error: {err}"

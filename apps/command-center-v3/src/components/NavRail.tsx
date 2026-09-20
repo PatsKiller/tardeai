@@ -29,6 +29,9 @@ const SECTIONS: { label: string; hubs: Hub[] }[] = [
     label: 'Ops',
     hubs: [
       { to: '/health', label: 'Health' },
+      // The /consumption route existed since v3 but was never on the rail, so the only
+      // way to reach LLM spend and its off-peak routing control was to know the URL.
+      { to: '/consumption', label: 'LLM Spend' },
       { to: '/system', label: 'System', exact: true },
     ],
   },
