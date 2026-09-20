@@ -540,3 +540,40 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Timers still armed Mon 06:35 / 09:05 ET.
 - Residuals (not goal blockers under 13:22 brief): CURRENT tip lag vs `origin/main`; code-mirror cron still PROPOSED; #1141 OPEN.
 - Goal accounting: gates (1)+(2)+(3) satisfied with park+DEFER+remasure — **park ≠ Monday organic OBSERVED**.
+- [VERIFIED] #1140 MERGED @ 2026-09-20T17:05:45Z → `b03838001` (ledger LOG split + stance observe units + §17 cites + install propose).
+- Remasure @ 17:06Z: **M1–M5 OBSERVED**; soft SLO PASS; organic still PARTIAL exit 2 (Sunday).
+- Live pin unchanged `5b7e24c95…114233` (docs/units; promote not required).
+- Goal NOT complete: Mon organic stance + §17 parks (or continue-park) + optional `APPROVE_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS`.
+
+## 2026-09-20T13:08 ET — organic report next-window hint
+
+- [CODE] `report_organic_stance_hold.py` prints Mon–Fri ET observe/producer windows when PARTIAL.
+- Test: `test_report_organic_stance_hold_cli_exit_codes` asserts the hint; 2 passed.
+- Goal NOT complete (organic exit 2; §17 parks).
+## 2026-09-20T13:12 ET — stance observe timers INSTALLED (CURRENT-bound)
+
+- [VERIFIED] `systemctl --user enable --now` early 06:35 + observe 09:05 Mon–Fri under overnight `cron` grant.
+- Service WorkingDirectory=CURRENT; hand start Result=success ExecMainStatus=2 (PARTIAL Sunday).
+- Lane registry: `tradeai-stance-organic-observe` + `-early`; observe receipt writer → `data/runtime/organic_stance_hold_observe.json`.
+- Propose file → CONFIRMED. Goal NOT complete (await organic hold + §17 parks).
+
+## 2026-09-20T13:15 ET — agent-owned: stance `active_days` crashed lane report
+
+- [VERIFIED] `collect_lane_registry_report` raised `ValueError: invalid literal for int() with base 10: 'M'` because stance observe lanes declared `active_days: "Mon-Fri"` (string iterates chars). Convention requires `0=Mon..6=Sun` ints.
+- Fix: both lanes → `[0,1,2,3,4]`; `validate_row` rejects string forms; `evaluate_lane` returns UNVERIFIABLE instead of aborting the whole report.
+- Not a ledger reopen — monitor regression from timer-install rows. Goal still NOT complete (organic + §17).
+
+## 2026-09-20T13:24 ET — operator close brief emailed + parked in repo
+
+- Email sent: messageId=`1a0bfd7aeb84edd4` (operator close brief to john@jwwhiting.com).
+- Repo copy: `docs/ops/OPERATOR_CLOSE_BRIEF_AEC_MATURITY_2026-09-20.md` (Status ACTIVE; #1144 MERGED into #1142 tip `c607cd2ba`; #1142 OPEN).
+- Goal still **NOT COMPLETE** — organic stance PARTIAL (Sunday) + three §17 proposes PENDING. No grants invented.
+
+## 2026-09-20T15:29 ET — relationship §7A propose-and-stop (docs path; no registry)
+
+- Prior propose #1107 already on main (`docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md`); Status still PROPOSED / PENDING.
+- [CODE] `check_data_source_authority.check_approvals`: non-blank `approved_by` passes — so `approved_by: PENDING` in live `config/data_source_authority.json` would weaken UNAPPROVED_SOURCE. Blank fields fail CI. **No registry edit.**
+- Amended propose with draft `relationship_memory` manual row (private_company-shaped; `writer: operator`; `no_coverage: refuse_up_front`; cognition-only scope) + cites hermes RETIRE + bitemporal DEFER proposes.
+- Ledger row `PARTIAL-relationship-spine-data` remains §17 PARKED · ◆ — not CONTINUE-PARK (no operator token).
+- Sibling parks unchanged: `PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md`; `PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` (recommend DEFER).
+- Goal NOT COMPLETE. No grants invented. No call sites. No :5432.
