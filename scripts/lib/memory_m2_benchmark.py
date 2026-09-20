@@ -84,9 +84,10 @@ def _assert_isolated_dsn(dsn: str) -> str:
     s = str(dsn)
     if ":5432" in s or s.rstrip("/").endswith(":5432"):
         raise RuntimeError("M2_DSN_PRODUCTION_PORT_FORBIDDEN")
-    if "55432" not in s and os.getenv("M2_ALLOW_NONDEFAULT_PORT") != "1":
-        # still allow explicit isolated hosts if they are not 5432
-        pass
+    # A dead `if ... M2_ALLOW_NONDEFAULT_PORT ... : pass` branch used to sit here.
+    # It read as a live control but did nothing, while the SAME env var IS live in
+    # memory_shadow_projector.py — a dangerous pair to confuse during a cutover.
+    # Non-5432 isolated hosts are allowed; only the forbidden ports are refused.
     for p in FORBIDDEN_PORTS:
         if f":{p}" in s.split("@")[-1]:
             raise RuntimeError("M2_DSN_PRODUCTION_PORT_FORBIDDEN")

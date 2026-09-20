@@ -81,10 +81,11 @@ def apply_bitemporal_schema_v2(conn) -> dict[str, Any]:
             cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(base)
         cur.execute(delta)
-        try:
-            cur.execute("GRANT CONNECT ON DATABASE m2_shadow TO m2_agent")
-        except Exception:
-            pass
+        # Was hardcoded to m2_shadow, so it silently granted nothing useful on
+        # any other database. Grant on whichever database we are actually in.
+        from scripts.lib.memory_m2_v2 import _grant_connect_current_db  # noqa: PLC0415
+
+        _grant_connect_current_db(cur)
         cur.execute(
             """
             SELECT

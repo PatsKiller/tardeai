@@ -28,7 +28,10 @@ from scripts.lib.memory_namespace import DEFAULT_TENANT, require_tenant
 from scripts.lib.similarity_candidate import from_similarity
 
 AUTHORITY = "READ_ONLY_ADVISORY"
-AGENT_DSN = "postgresql://m2_agent:m2agent@127.0.0.1:55432/m2_shadow"
+# Isolated shadow agent role. Overridable so a non-shadow deployment supplies
+# its own credential from env rather than inheriting the shadow literal — the
+# fallback below is a well-known throwaway for the local container only.
+AGENT_DSN = os.getenv("M2_AGENT_DSN") or "postgresql://m2_agent:m2agent@127.0.0.1:55432/m2_shadow"
 
 
 def connect(dsn: str | None = None):
@@ -40,6 +43,25 @@ def connect(dsn: str | None = None):
     return conn
 
 
+def _grant_connect_current_db(cur) -> None:
+    """GRANT CONNECT on whatever database we are actually in.
+
+    This was hardcoded to `m2_shadow`, which silently granted nothing useful on
+    any other database. Quoted as an identifier, and tolerant: on a database
+    where the role does not exist yet the grant is not the caller's problem.
+    """
+    from psycopg2 import sql as _sql  # noqa: PLC0415
+
+    try:
+        cur.execute("SELECT current_database()")
+        dbname = cur.fetchone()[0]
+        cur.execute(
+            _sql.SQL("GRANT CONNECT ON DATABASE {} TO m2_agent").format(_sql.Identifier(dbname))
+        )
+    except Exception:
+        pass
+
+
 def apply_schema(conn) -> None:
     sql = SQL_PATH.read_text(encoding="utf-8")
     with conn.cursor() as cur:
@@ -49,7 +71,7 @@ def apply_schema(conn) -> None:
         if not conn_targets_production(conn):
             cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(sql)
-        cur.execute("GRANT CONNECT ON DATABASE m2_shadow TO m2_agent")
+        _grant_connect_current_db(cur)
 
 
 def set_tenant(conn, tenant_id: str) -> None:
