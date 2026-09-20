@@ -308,3 +308,144 @@ def test_hold_dual_write_mirrors_when_persist_parent_exists(tmp_path, monkeypatc
     assert local_rows[0]["symbol"] == "AXTI"
     assert persist_rows[0]["symbol"] == "AXTI"
     assert local_rows[0]["source"] == "dual_write_test"
+
+
+def test_organic_producers_pass_caller_as_source_kwarg():
+    """AST guard: Mon–Fri organic OBSERVED requires these call sites stamp source=caller.
+
+    PARTIAL-telegram-CIO-stance closes only when a live producer records
+    source=check_investment_send with caller in ORGANIC_HOLD_CALLERS. A silent
+    rename of the source= kwarg would leave the schedule firing and organic=0.
+    """
+    import ast
+    from pathlib import Path
+
+    from lib.cio_telegram_stance_gate import ORGANIC_HOLD_CALLERS
+
+    root = Path(__file__).resolve().parents[1]
+    producers = {
+        "screener_go_alerts": root / "scripts" / "screener_go_alerts.py",
+        "social_scalp_scanner": root / "scripts" / "social_scalp_scanner.py",
+        "send_telegram_proposal_alert": root / "scripts" / "send_telegram_proposal_alert.py",
+    }
+    assert set(producers) == set(ORGANIC_HOLD_CALLERS)
+
+    for caller, path in producers.items():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        sources: list[str] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = fn.id if isinstance(fn, ast.Name) else (
+                fn.attr if isinstance(fn, ast.Attribute) else None
+            )
+            if name != "check_investment_send":
+                continue
+            for kw in node.keywords:
+                if kw.arg == "source" and isinstance(kw.value, ast.Constant):
+                    sources.append(str(kw.value.value))
+        assert caller in sources, f"{path.name}: missing source={caller!r} (got {sources})"
+
+
+def test_is_organic_hold_row_requires_source_and_caller():
+    from lib.cio_telegram_stance_gate import is_organic_hold_row
+
+    assert is_organic_hold_row(
+        {"source": "check_investment_send", "caller": "screener_go_alerts"}
+    )
+    assert not is_organic_hold_row(
+        {"source": "check_investment_send", "caller": "unit_test"}
+    )
+    assert not is_organic_hold_row(
+        {"source": "controlled_canary_current_tip", "caller": "screener_go_alerts"}
+    )
+    assert not is_organic_hold_row({"source": "check_investment_send"})
+
+
+def test_summarize_stance_holds_observed_only_on_organic(tmp_path):
+    import json
+    from lib.cio_telegram_stance_gate import summarize_stance_holds
+
+    path = tmp_path / "holds.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "source": "controlled_canary_current_tip",
+                "symbol": "NOC",
+            }
+        )
+        + "\n"
+        + json.dumps(
+            {
+                "source": "check_investment_send",
+                "caller": "social_scalp_scanner",
+                "symbol": "AXTI",
+                "as_of": "2026-09-22T14:00:00Z",
+                "held_reason": "cio_stance_conflict",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    s = summarize_stance_holds(path)
+    assert s["total"] == 2
+    assert s["organic"] == 1
+    assert s["non_organic"] == 1
+    assert s["observed"] is True
+    assert s["latest_organic"]["symbol"] == "AXTI"
+    assert s["latest_organic"]["caller"] == "social_scalp_scanner"
+
+    canary_only = tmp_path / "canary.jsonl"
+    canary_only.write_text(
+        json.dumps({"source": "maturity_agent_local_probe", "symbol": "X"}) + "\n",
+        encoding="utf-8",
+    )
+    s2 = summarize_stance_holds(canary_only)
+    assert s2["observed"] is False
+    assert s2["organic"] == 0
+
+
+def test_report_organic_stance_hold_cli_exit_codes(tmp_path):
+    import json
+    import subprocess
+    import sys
+
+    script = Path(__file__).resolve().parents[1] / "scripts" / "report_organic_stance_hold.py"
+    canary = tmp_path / "canary.jsonl"
+    canary.write_text(
+        json.dumps({"source": "controlled_canary_current_tip", "symbol": "NOC"}) + "\n",
+        encoding="utf-8",
+    )
+    r = subprocess.run(
+        [sys.executable, str(script), "--path", str(canary)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert r.returncode == 2
+    assert "PARTIAL" in r.stdout
+
+    organic = tmp_path / "organic.jsonl"
+    organic.write_text(
+        json.dumps(
+            {
+                "source": "check_investment_send",
+                "caller": "send_telegram_proposal_alert",
+                "symbol": "AXTI",
+                "as_of": "2026-09-22T15:00:00Z",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    r2 = subprocess.run(
+        [sys.executable, str(script), "--path", str(organic), "--json"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert r2.returncode == 0
+    payload = json.loads(r2.stdout)
+    assert payload["observed"] is True
+    assert payload["organic"] == 1

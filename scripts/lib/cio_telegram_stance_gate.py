@@ -300,6 +300,69 @@ def check_investment_send(
     )
 
 
+def is_organic_hold_row(row: dict[str, Any]) -> bool:
+    """True when a hold receipt proves a live producer (ledger close condition).
+
+    Requires ``source=check_investment_send`` and ``caller`` in
+    ``ORGANIC_HOLD_CALLERS``. Canary/probe sources never qualify.
+    """
+    if not isinstance(row, dict):
+        return False
+    if str(row.get("source") or "") != "check_investment_send":
+        return False
+    return str(row.get("caller") or "") in ORGANIC_HOLD_CALLERS
+
+
+def load_hold_receipt_rows(path: Optional[Path] = None) -> list[dict[str, Any]]:
+    """Load hold receipt JSONL rows from ``path`` or the default primary."""
+    target = path if path is not None else hold_receipts_path()
+    if target is None or not target.is_file():
+        return []
+    out: list[dict[str, Any]] = []
+    try:
+        for line in target.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict):
+                out.append(row)
+    except OSError:
+        return []
+    return out
+
+
+def summarize_stance_holds(path: Optional[Path] = None) -> dict[str, Any]:
+    """Count organic vs non-organic holds for PARTIAL-telegram-CIO-stance."""
+    rows = load_hold_receipt_rows(path)
+    organic = [r for r in rows if is_organic_hold_row(r)]
+    other = [r for r in rows if not is_organic_hold_row(r)]
+    latest = organic[-1] if organic else None
+    return {
+        "schema": "CioTelegramStanceHoldSummary@v1",
+        "authority": AUTHORITY,
+        "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "path": str(path or hold_receipts_path() or ""),
+        "total": len(rows),
+        "organic": len(organic),
+        "non_organic": len(other),
+        "observed": len(organic) > 0,
+        "latest_organic": (
+            {
+                "as_of": latest.get("as_of"),
+                "symbol": latest.get("symbol"),
+                "caller": latest.get("caller"),
+                "held_reason": latest.get("held_reason"),
+            }
+            if latest
+            else None
+        ),
+        "mbi_behavior": 0,
+    }
+
+
 __all__ = [
     "AUTHORITY",
     "HELD_DISAGREEMENT",
@@ -312,7 +375,10 @@ __all__ = [
     "cio_side",
     "hold_receipts_path",
     "infer_message_stance",
+    "is_organic_hold_row",
     "load_cio_view",
+    "load_hold_receipt_rows",
     "record_hold",
+    "summarize_stance_holds",
     "text_is_investment_shaped",
 ]
