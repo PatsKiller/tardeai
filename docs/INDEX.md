@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `11f1314b1bf3377caa742ab407b610eb15248d526c712abfc5bc6ab618ba254e`
+**Tree fingerprint:** `7de05c2450ad8121066876b2763eff62c3d203f8392f52082861d856c5ee4628`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -292,14 +292,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_AS_IS_2026-09-19-1452.md` | CIO / AEC AS-IS — 2026-09-19 14:52 ET | review_required | OK | `205ae246b32a` |
 | `docs/architecture/CIO_AS_IS_2026-09-19-1541.md` | CIO / AEC AS-IS — 2026-09-19 15:41 ET | review_required | OK | `515016da7ea5` |
 | `docs/architecture/CIO_AS_IS_2026-09-20-0604.md` | CIO / AEC AS-IS — 2026-09-20 06:04 ET | review_required | OK | `b0eb4b77e06a` |
-| `docs/architecture/CIO_AS_IS_2026-09-20-0902.md` | CIO / AEC AS-IS — 2026-09-20 09:02 ET | review_required | OK | `8233f122dd39` |
+| `docs/architecture/CIO_AS_IS_2026-09-20-0902.md` | CIO / AEC AS-IS — 2026-09-20 09:02 ET | review_required | OK | `d7525cec0ad8` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1352.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 13:52 ET | review_required | OK | `c6fd02492610` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1401.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:01 ET | review_required | OK | `d3da6ba1132c` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1436.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:36 ET | review_required | OK | `a8e36ace8e6b` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1452.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:52 ET | review_required | OK | `42ed1a7f9a1f` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1541.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 15:41 ET | review_required | OK | `81101b520dfa` |
 | `docs/architecture/CIO_FUTURE_2026-09-20-0604.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 06:04 ET | review_required | OK | `fd9c45fff458` |
-| `docs/architecture/CIO_FUTURE_2026-09-20-0902.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 09:02 ET | review_required | OK | `a2a45a4afab6` |
+| `docs/architecture/CIO_FUTURE_2026-09-20-0902.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 09:02 ET | review_required | OK | `85651c22a853` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `4edef7d3ee4d` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-final.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 final) | review_required | OK | `5b412d2266d6` |
@@ -310,7 +310,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_GAP_2026-09-19-1452.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 14:52 ET | review_required | OK | `1593a284fbbe` |
 | `docs/architecture/CIO_GAP_2026-09-19-1541.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 15:41 ET | review_required | OK | `0af5e23e53f2` |
 | `docs/architecture/CIO_GAP_2026-09-20-0604.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 06:04 ET | review_required | OK | `e3dabb7a2089` |
-| `docs/architecture/CIO_GAP_2026-09-20-0902.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 09:02 ET | review_required | OK | `7556d3f1a838` |
+| `docs/architecture/CIO_GAP_2026-09-20-0902.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 09:02 ET | review_required | OK | `f42c6580aae2` |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
 | `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | OK | `56592a4af733` |
@@ -332,7 +332,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `bc68c49ea023` |
 | `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | Hermes Persistent Ticker Intelligence Architecture | review_required | OK | `3a4320625b1e` |
 | `docs/architecture/HOME_COMMAND_BRAIN_V2.md` | Home v2 — The Command Brain (2026-07-17) | review_required | OK | `6e695df9a86e` |
-| `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0902.md` | Honest maturity assessment — 2026-09-20 09:02 ET | review_required | OK | `49120608ece2` |
+| `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0902.md` | Honest maturity assessment — 2026-09-20 09:02 ET | review_required | OK | `9400539bf093` |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
 | `docs/architecture/M2_PRODUCTION_SHADOW_MIGRATION_DESIGN_2026-08-24.md` | M2 production shadow migration — DESIGN ONLY | review_required | OK | `18aa33439911` |
 | `docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md` | Material change → due-diligence questions | review_required | OK | `665175b2ce35` |
@@ -654,7 +654,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan | review_required | OK | `2224490a6526` |
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census | review_required | OK | `a5073ae48b02` |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche | review_required | OK | `3669faccf7ff` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `ad1ec66b1177` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `002dab054b71` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |

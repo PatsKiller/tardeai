@@ -1,4 +1,4 @@
-Status: ACTIVE
+Status: SUPERSEDED BY docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0945.md
 as_of: 2026-09-20T09:02:00-04:00
 Measured at: pin f8eb9803f; tip 73ced82d9; operator remasure ~08:11 ET; soft 0.003
 Canonical repo path: docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0902.md
