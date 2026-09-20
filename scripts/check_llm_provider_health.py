@@ -33,7 +33,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
-from lib.provider_health import evaluate, format_alert  # noqa: E402
+from lib.provider_health import evaluate, format_alert, pageable  # noqa: E402
 
 STATE_PATH = PROJECT_ROOT / "data/runtime/llm_provider_health_alert.json"
 # Durable proof the check itself ran, written every real run — a lane is verified by an
@@ -51,7 +51,7 @@ def _rows(hours: float) -> list[dict]:
     from db_adapter import _execute
 
     sql = """
-        SELECT model_name, model_lane, process_id, success, error_message
+        SELECT model_name, model_lane, process_id, success, error_message, created_at
         FROM llm_consumption_log
         WHERE created_at > NOW() - (%s || ' hours')::interval
     """
@@ -63,7 +63,7 @@ def _rows(hours: float) -> list[dict]:
         else:  # tuple cursor
             rows.append({
                 "model_name": r[0], "model_lane": r[1], "process_id": r[2],
-                "success": r[3], "error_message": r[4],
+                "success": r[3], "error_message": r[4], "created_at": r[5],
             })
     return rows
 
@@ -149,6 +149,9 @@ def main() -> int:
         return 2
 
     findings = evaluate(rows, min_calls=args.min_calls, fail_rate=args.fail_rate)
+    # A lane that failed earlier in the window but is answering again is reported
+    # everywhere below and paged nowhere: the operator already fixed it.
+    live = pageable(findings)
     balance = _deepseek_balance() if any(
         f.kind == "BILLING" or "deepseek" in f.lane.lower() for f in findings
     ) else None
@@ -161,7 +164,8 @@ def main() -> int:
             "findings": [
                 {"lane": f.lane, "kind": f.kind, "severity": f.severity, "calls": f.calls,
                  "failures": f.failures, "fail_rate": round(f.fail_rate, 4),
-                 "processes": f.processes, "sample_error": f.sample_error}
+                 "processes": f.processes, "sample_error": f.sample_error,
+                 "recovered": f.recovered}
                 for f in findings
             ],
         }, indent=2))
@@ -169,28 +173,29 @@ def main() -> int:
         print(f"[provider-health] {len(rows)} calls in the last {args.hours:g}h, "
               f"{len(findings)} finding(s)")
         for f in findings:
+            note = "  [recovered — not paged]" if f.recovered else ""
             print(f"  {f.severity:<8} {f.lane}: {f.failures}/{f.calls} failed "
-                  f"({f.fail_rate:.0%}) — {f.kind}")
+                  f"({f.fail_rate:.0%}) — {f.kind}{note}")
 
-    critical = any(f.severity == "CRITICAL" for f in findings)
+    critical = any(f.severity == "CRITICAL" for f in live)
     if not args.dry_run:
         _write_heartbeat({
             "checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
             "window_hours": args.hours,
             "calls_examined": len(rows),
             "worst_severity": ("CRITICAL" if critical else
-                               "WARN" if findings else "OK"),
+                               "WARN" if live else "OK"),
             "balance": balance,
             "findings": [
                 {"lane": f.lane, "kind": f.kind, "severity": f.severity,
-                 "calls": f.calls, "failures": f.failures}
+                 "calls": f.calls, "failures": f.failures, "recovered": f.recovered}
                 for f in findings
             ],
         })
-    if findings and not args.dry_run:
+    if live and not args.dry_run:
         now = time.time()
         state = _load_state()
-        fresh = _fresh(findings, state, now)
+        fresh = _fresh(live, state, now)
         if fresh:
             message = format_alert(fresh, window_hours=args.hours, balance=balance)
             try:

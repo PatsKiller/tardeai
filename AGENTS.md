@@ -2385,8 +2385,13 @@ outage degrade instead of go silent):
    TRANSPORT / UNKNOWN. **Billing and auth page at any volume** — one 402 is already the whole
    account, and waiting for a rate wastes more calls; transport pages only when a lane fails
    essentially every call over at least five. One page per lane per cause per 6h, because a billing
-   stop lasts until a human acts. It writes `data/runtime/llm_provider_health.json` on **every** run,
-   healthy or not, so the monitor cannot itself go silent unnoticed — the failure it exists to catch.
+   stop lasts until a human acts. A lane that has answered normally at least three times since its
+   last failure is **reported but not paged** — the window is hours wide, so a fixed outage stays
+   inside it, and this run proved the point: the last 402 landed at 19:15:06, the account was topped
+   up by 19:46, and the 3h window still read CRITICAL with the lane healthy. Paging someone for what
+   they just fixed is how pages get ignored. It writes `data/runtime/llm_provider_health.json` on
+   **every** run, healthy or not, so the monitor cannot itself go silent unnoticed — the failure it
+   exists to catch.
 2. **OAuth soft fallback for risk/steph/tax** (`watchlist_agent_oauth_fallback`, lane_policy
    `either`, so it is structurally incapable of spending DeepSeek). Maria survived the outage only
    because `_llm` could pre-empt her work to grok-oauth; risk/steph/tax had no such path. They now

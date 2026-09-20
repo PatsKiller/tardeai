@@ -92,6 +92,82 @@ def test_fully_dead_transport_lane_alarms_at_warn():
     assert findings[0].fail_rate == 1.0
 
 
+def test_a_lane_that_recovered_is_reported_but_never_paged():
+    """The operator fixed it; do not page them for it again.
+
+    Measured 2026-09-19: the last 402 landed at 19:15:06 and the account was topped up by
+    19:46, yet the 3h window still reported CRITICAL with the lane answering normally. An
+    alarm that re-fires on a resolved incident is how pages get ignored.
+    """
+    from datetime import datetime, timedelta
+
+    from lib.provider_health import evaluate, pageable
+
+    t0 = datetime(2026, 9, 19, 19, 15, 6)
+    rows = [{"model_name": "deepseek-flash", "process_id": "watchlist_risk_flash_narrative",
+             "success": False, "error_message": "HTTP_402: HTTP 402",
+             "created_at": t0 - timedelta(minutes=m)} for m in range(9)]
+    rows += [{"model_name": "deepseek-flash", "process_id": "hermes_cloud_json", "success": True,
+              "error_message": None, "created_at": t0 + timedelta(minutes=m)}
+             for m in range(1, 8)]
+
+    findings = evaluate(rows)
+    assert len(findings) == 1, "the outage is still reported — silence would lose the record"
+    assert findings[0].kind == "BILLING"
+    assert findings[0].recovered is True
+    assert pageable(findings) == []
+
+
+def test_a_still_dead_lane_is_paged_even_beside_a_recovered_one():
+    from datetime import datetime, timedelta
+
+    from lib.provider_health import evaluate, pageable
+
+    t0 = datetime(2026, 9, 19, 19, 15, 6)
+    rows = [{"model_name": "deepseek-flash", "process_id": "p", "success": False,
+             "error_message": "HTTP_402: HTTP 402", "created_at": t0}]
+    rows += [{"model_name": "deepseek-flash", "process_id": "p", "success": True,
+              "error_message": None, "created_at": t0 + timedelta(minutes=m)}
+             for m in range(1, 5)]
+    # The chatgpt bridge is still returning 502 with no success after it.
+    rows += [{"model_name": "chatgpt", "process_id": "oauth_lane_keepalive", "success": False,
+              "error_message": "502 Server Error: Bad Gateway",
+              "created_at": t0 + timedelta(minutes=m)} for m in range(10)]
+
+    live = pageable(evaluate(rows))
+    assert [f.lane for f in live] == ["chatgpt"]
+
+
+def test_one_stray_success_does_not_count_as_recovery():
+    """A partial outage lets the occasional call through; that is not a fix."""
+    from datetime import datetime, timedelta
+
+    from lib.provider_health import evaluate, pageable
+
+    t0 = datetime(2026, 9, 19, 19, 0, 0)
+    rows = [{"model_name": "deepseek-flash", "process_id": "p", "success": False,
+             "error_message": "HTTP_402: HTTP 402", "created_at": t0 + timedelta(minutes=m)}
+            for m in range(20)]
+    rows.append({"model_name": "deepseek-flash", "process_id": "p", "success": True,
+                 "error_message": None, "created_at": t0 + timedelta(minutes=30)})
+    findings = evaluate(rows)
+    assert findings[0].recovered is False
+    assert len(pageable(findings)) == 1
+
+
+def test_rows_without_timestamps_keep_the_loud_behaviour():
+    """A caller that supplies no created_at must not be silently de-escalated."""
+    from lib.provider_health import evaluate, pageable
+
+    rows = [{"model_name": "deepseek-flash", "process_id": "p", "success": False,
+             "error_message": "HTTP_402: HTTP 402"}]
+    rows += [{"model_name": "deepseek-flash", "process_id": "p", "success": True,
+              "error_message": None} for _ in range(20)]
+    findings = evaluate(rows)
+    assert findings[0].recovered is False
+    assert len(pageable(findings)) == 1
+
+
 def test_critical_findings_sort_first_and_name_the_remedy():
     from lib.provider_health import evaluate, format_alert
 
@@ -111,8 +187,9 @@ def test_critical_findings_sort_first_and_name_the_remedy():
 
 def test_alarm_script_never_sends_under_dry_run_and_probes_no_secret():
     src = (ROOT / "scripts/check_llm_provider_health.py").read_text()
-    # The send is gated on `not args.dry_run` — a dry run must stay silent.
-    assert "if findings and not args.dry_run:" in src
+    # The send is gated on `not args.dry_run` — a dry run must stay silent. It is gated
+    # on `live`, not `findings`: a recovered lane is reported and never paged.
+    assert "if live and not args.dry_run:" in src
     assert "send_telegram" in src
     # The key is read, never printed or returned.
     assert 'os.environ.get("deepseek_tradeai")' in src

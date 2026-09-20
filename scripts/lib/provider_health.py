@@ -19,6 +19,14 @@ from typing import Any, Iterable
 DEFAULT_MIN_CALLS = 5
 DEFAULT_FAIL_RATE = 0.9
 
+# Successes after a lane's last failure that count as recovery. The window is hours wide,
+# so a resolved outage stays inside it and would otherwise be re-paged after the operator
+# had already fixed it — measured 2026-09-19: the last 402 landed at 19:15:06, the account
+# was topped up by 19:46, and the 3h window still reported CRITICAL with the lane healthy.
+# Paging someone for a thing they just fixed is how alerts get ignored. More than one
+# success is required because a partial outage can let a single call through.
+DEFAULT_RECOVERY_SUCCESSES = 3
+
 BILLING_MARKERS = (
     "HTTP_402",
     "402",
@@ -80,6 +88,8 @@ class Finding:
     failures: int
     processes: list[str] = field(default_factory=list)
     sample_error: str = ""
+    # The lane failed inside the window but has since succeeded: reported, never paged.
+    recovered: bool = False
 
     @property
     def fail_rate(self) -> float:
@@ -91,10 +101,12 @@ def evaluate(
     *,
     min_calls: int = DEFAULT_MIN_CALLS,
     fail_rate: float = DEFAULT_FAIL_RATE,
+    recovery_successes: int = DEFAULT_RECOVERY_SUCCESSES,
 ) -> list[Finding]:
     """Findings for lanes that are failing hard enough to be someone's problem.
 
-    Each row is one ledger call: model_name, process_id, success, error_message.
+    Each row is one ledger call: model_name, process_id, success, error_message, and
+    optionally created_at — supplied, it lets a recovered lane be marked instead of paged.
     A lane is reported when its failure rate meets the threshold over enough calls.
     Billing and auth failures are reported at ANY volume — one 402 is already the
     whole account, and waiting for five of them wastes five more calls.
@@ -104,12 +116,15 @@ def evaluate(
         lane = str(row.get("model_name") or row.get("model_lane") or "unknown")
         b = buckets.setdefault(
             lane,
-            {"calls": 0, "failures": 0, "kinds": {}, "processes": set(), "sample": ""},
+            {"calls": 0, "failures": 0, "kinds": {}, "processes": set(), "sample": "",
+             "success_at": [], "failure_at": []},
         )
         b["calls"] += 1
         if row.get("success"):
+            b["success_at"].append(row.get("created_at"))
             continue
         b["failures"] += 1
+        b["failure_at"].append(row.get("created_at"))
         kind = classify_error(row.get("error_message")) or "UNKNOWN"
         b["kinds"][kind] = b["kinds"].get(kind, 0) + 1
         if row.get("process_id"):
@@ -135,11 +150,36 @@ def evaluate(
                 failures=b["failures"],
                 processes=sorted(b["processes"]),
                 sample_error=b["sample"],
+                recovered=_recovered(b, recovery_successes),
             )
         )
     # Loudest first, so a truncated alert still carries the billing line.
     findings.sort(key=lambda f: (f.severity != "CRITICAL", -f.failures))
     return findings
+
+
+def _recovered(bucket: dict[str, Any], needed: int) -> bool:
+    """True when the lane has succeeded enough times since its last failure.
+
+    Timestamps are optional, and a caller that supplies none gets the old behaviour:
+    everything that failed in the window is still a finding.
+    """
+    if needed <= 0:
+        return False
+    fails = [t for t in bucket["failure_at"] if t is not None]
+    if not fails or len(fails) != bucket["failures"]:
+        return False  # partial timestamps prove nothing; stay loud
+    try:
+        last_fail = max(fails)
+        after = sum(1 for t in bucket["success_at"] if t is not None and t > last_fail)
+    except TypeError:
+        return False  # mixed naive/aware datetimes — not worth a wrong silence
+    return after >= needed
+
+
+def pageable(findings: Iterable[Finding]) -> list[Finding]:
+    """The findings worth waking someone for: everything that has not recovered."""
+    return [f for f in findings if not f.recovered]
 
 
 def format_alert(
