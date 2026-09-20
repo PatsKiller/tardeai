@@ -133,6 +133,31 @@ OpenClaw provides the Telegram/WhatsApp interface layer for agent interaction.
 
 ## Wave-3 Agent Runtime (Trade AI — SHADOW/LAB only)
 
+### Operability: which agents may own a lapping goal
+
+An agent being **in `FLEET` is not sufficient**. It must also be
+`is_operable_now` — i.e. `deployment_state == SHADOW` and enabled. A `DESIGNED`
+agent has a timer and a queue, and its runner fires on schedule, but it prints
+`no-work … not SHADOW-operable` and exits. Work enqueued for it is never leased.
+
+| Operable (`SHADOW`) | Not operable (`DESIGNED`) |
+|---|---|
+| alex, argus, darwin, iris, morgan, reflection, sentinel, steph, vigil | aegis, ledger, maria, risk_agent, vega |
+
+This matters for goals specifically: the per-goal budget charges a lap at
+**enqueue**, so admitting a lap for an inoperable owner spends that goal's
+cumulative allowance on work nothing will ever perform. The `goals:laps` producer
+adapter therefore skips inoperable owners and names them in its probe.
+
+`AGENT_ALIASES` (`guardian → risk_agent`, `tax_agent → ledger`) is applied only
+in `run_once.py` — never in intake, the registry or the dispatcher — so any
+producer must resolve the alias itself before checking operability. A
+`guardian`-owned goal resolves to `risk_agent`, which is `DESIGNED`, and so
+cannot lap until risk_agent is promoted.
+
+See `docs/GOAL_LAP_PIPELINE.md`.
+
+
 | Agent | Wave | DeploymentState | Enabled | OutputKinds | Reviewer | Scorer |
 |-------|------|-----------------|---------|-------------|----------|--------|
 | alex (CIO) | 3 | SHADOW | ✅ | CIO_SYNTHESIS, ACTION_ITEM | iris | darwin |

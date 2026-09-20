@@ -9,7 +9,13 @@
 #   * ConditionPathExists gates the whole unit behind an explicit operator opt-in
 #     file that this change does NOT create.
 #   * Environment requires AGENT_RUNTIME_OPERATOR_AUTH=1; the runner fails closed
-#     without it and without a wired queue backend.
+#     without it and without a wired queue backend. NOTE: the body below sets
+#     it to 0 ON PURPOSE -- that is the fail-closed default for a host which
+#     has NOT opted in. A host opts in via the tracked drop-in
+#     config/systemd/user/tradeai-agent-runtime@.service.d/20-operator-auth.conf,
+#     which re-asserts =1 -- needed because a drop-in
+#     EnvironmentFile= is applied BEFORE the unit body's bare Environment=,
+#     so agent-operator.env alone would be clobbered back to 0. See README.md.
 #   * The service is Type=oneshot and bounded (--once): it processes at most one
 #     batch and exits. It does not stay resident and cannot self-reschedule.
 #
