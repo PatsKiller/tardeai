@@ -53,6 +53,13 @@ INCOMPLETE = {
     "sources": [],
 }
 
+#: Routing fixture, not a credential: passed into desk calls and asserted back
+#: out unchanged, so its identity is irrelevant. tg_chat_ids.chat_ids() is not
+#: used -- it reads TELEGRAM_CHAT_ID from the environment and returns a LIST,
+#: which would break these equality assertions and make an offline test depend
+#: on the host.
+OPERATOR_CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
+
 
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch, tmp_path):
@@ -76,7 +83,7 @@ def _open_row(pending_id: str, intent: dict, age_hours: float) -> dict:
     ts = datetime.now(timezone.utc) - timedelta(hours=age_hours)
     return {
         "pending_id": pending_id,
-        "chat_id": "6993102664",
+        "chat_id": OPERATOR_CHAT,
         "message_id": "42",
         "channel": "telegram",
         "operator_text": intent["text"],
@@ -114,7 +121,7 @@ def test_non_market_need_without_symbol_is_answerable():
 
 def test_spacex_question_is_refused_not_promised(monkeypatch):
     monkeypatch.setattr(desk, "analyze_operator_intent", lambda text: dict(SPACEX_INTENT))
-    res = desk.handle_operator_desk_question(SPACEX_INTENT["text"], chat_id="6993102664", message_id="7")
+    res = desk.handle_operator_desk_question(SPACEX_INTENT["text"], chat_id=OPERATOR_CHAT, message_id="7")
     assert res["kind"] == "unanswerable"
     assert res["pending_id"] is None
     assert "can't answer that from Trade-AI" in res["reply_preview"]
@@ -127,7 +134,7 @@ def test_negative_control_without_is_answerable_a_pending_is_opened(monkeypatch)
     """The pre-fix behaviour: the question is deferred and a ticket is issued."""
     monkeypatch.setattr(desk, "analyze_operator_intent", lambda text: dict(SPACEX_INTENT))
     monkeypatch.setattr(desk, "is_answerable", lambda intent: (True, ""))
-    res = desk.handle_operator_desk_question(SPACEX_INTENT["text"], chat_id="6993102664", message_id="7")
+    res = desk.handle_operator_desk_question(SPACEX_INTENT["text"], chat_id=OPERATOR_CHAT, message_id="7")
     assert res["kind"] != "unanswerable"
     assert res["pending_id"]
     rows = _rows(desk.PENDING_PATH)
@@ -136,7 +143,7 @@ def test_negative_control_without_is_answerable_a_pending_is_opened(monkeypatch)
 
 def test_answerable_gap_still_opens_a_pending(monkeypatch):
     monkeypatch.setattr(desk, "analyze_operator_intent", lambda text: dict(WMT_INTENT))
-    res = desk.handle_operator_desk_question("outlook for WMT", chat_id="6993102664", message_id="7")
+    res = desk.handle_operator_desk_question("outlook for WMT", chat_id=OPERATOR_CHAT, message_id="7")
     assert res["kind"] != "unanswerable"
     assert res["pending_id"]
     assert _rows(desk.PENDING_PATH)[-1]["status"] == "open"
@@ -152,7 +159,7 @@ def test_unanswerable_pending_is_expired_immediately_and_operator_told():
     assert out["expired"] == 1 and out["fulfilled"] == 0 and out["failed"] == 0
     assert len(sender.sent) == 1
     chat_id, text, reply_to = sender.sent[0]
-    assert chat_id == "6993102664" and reply_to == "42"
+    assert chat_id == OPERATOR_CHAT and reply_to == "42"
     assert "Closing" in text and "opr_5bc20393b457" in text
     last = _rows(desk.PENDING_PATH)[-1]
     assert last["status"] == "expired"

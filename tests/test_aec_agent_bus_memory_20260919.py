@@ -134,6 +134,39 @@ def test_cycle_day_bucket_and_suppressed_reeval(tmp_path, monkeypatch):
     assert second.get("agent_view") in (None, {})
 
 
+def test_cycle_suppressed_reeval_expires_after_horizon(tmp_path, monkeypatch):
+    """Hourly timer can settle OUTCOME as EXPIRED without a hand observation."""
+    from datetime import datetime, timedelta, timezone
+
+    monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "mem.json"))
+    cycle = _load("aec_command_center_cycle_expire", "scripts/aec_command_center_cycle.py")
+
+    def _fake_integrate(envelope, *, apply=False):
+        return {
+            "schema": "CIOEnvelopeIntegration@v1",
+            "dry_run": not apply,
+            "authority": "READ_ONLY_ADVISORY",
+            "mbi_behavior": 0,
+        }
+
+    monkeypatch.setattr(cycle, "integrate_wake_envelope", _fake_integrate)
+    t0 = datetime(2026, 9, 20, 0, 0, 0, tzinfo=timezone.utc)
+    first = cycle.run_cycle(subject_key="WATCH:SCHG", apply=True, now=t0)
+    assert first["outcome"]["outcome"] == "INSUFFICIENT_EVIDENCE"
+    cmt_id = first["commitment"]["commitment_id"]
+    # +2h rolls the hour-bucket claim → fresh mint (outcome=INSUFFICIENT on the
+    # new id) while prior_open_settle closes the previous commitment as EXPIRED.
+    second = cycle.run_cycle(
+        subject_key="WATCH:SCHG", apply=True, now=t0 + timedelta(hours=2)
+    )
+    assert second["prior_outcome"]["outcome"] == "EXPIRED"
+    assert second["prior_outcome"]["commitment_id"] == cmt_id
+    assert second["outcome"]["outcome"] == "INSUFFICIENT_EVIDENCE"
+    assert second["outcome"]["commitment_id"] != cmt_id
+    assert second["events"][1]["payload"]["prior_outcome"]["outcome"] == "EXPIRED"
+
+
 def test_cycle_apply_propagates_to_bitemporal_integrator(tmp_path, monkeypatch):
     """--apply must not hardcode bitemporal dry-run (isolated :55432 only)."""
     monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
@@ -158,6 +191,47 @@ def test_cycle_apply_propagates_to_bitemporal_integrator(tmp_path, monkeypatch):
     assert (tmp_path / "bus.jsonl").exists()
 
 
+def test_cycle_bitemporal_raise_fail_soft(tmp_path, monkeypatch):
+    """Schema/function miss on isolated memory must not abort narrator/OUTCOME."""
+    monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "mem.json"))
+    cycle = _load("aec_command_center_cycle_bt_soft", "scripts/aec_command_center_cycle.py")
+
+    def _boom(envelope, *, apply=False):
+        raise RuntimeError("save_bitemporal_fact_version missing")
+
+    monkeypatch.setattr(cycle, "integrate_wake_envelope", _boom)
+    out = cycle.run_cycle(subject_key="WATCH:SCHG", apply=True)
+    assert out["commitment"]["commitment_id"]
+    assert out["bitemporal"].get("via") == "aec_bitemporal_fail_soft"
+    assert "RuntimeError" in str(out["bitemporal"].get("error") or "")
+    # Narrator still published (3 bus events).
+    assert len(out["events"]) == 3
+    assert out["events"][2]["agent_id"] == "narrator_agent"
+
+
+def test_evaluate_commitment_expires_at_exact_due(tmp_path, monkeypatch):
+    """Hourly timer at due_at wall-clock must EXPIRE (inclusive bound)."""
+    from datetime import datetime, timezone
+
+    ac = _load("agent_commitment_v1_due", "scripts/lib/agent_commitment_v1.py")
+    due = datetime(2026, 9, 20, 6, 0, 0, 280077, tzinfo=timezone.utc)
+    cmt = {
+        "schema_version": "AGENT_COMMITMENT@v1",
+        "commitment_id": "cmt_test_due",
+        "subject": "PORTFOLIO",
+        "claim": "x",
+        "confidence": 0.5,
+        "horizon": "1h",
+        "falsifier": "y",
+        "due_at": due.isoformat().replace("+00:00", "Z"),
+        "authority": "READ_ONLY_ADVISORY",
+        "mbi_behavior": 0,
+    }
+    out = ac.evaluate_commitment(cmt, now=due, observation=None)
+    assert out["outcome"] == "EXPIRED"
+
+
 def test_wake_loads_aec_spines_fail_soft(tmp_path, monkeypatch):
     """Wake helper reads four spines; spine errors never raise into the wake."""
     wake = _load("persistent_agent_wake_spines", "scripts/lib/persistent_agent_wake.py")
@@ -166,6 +240,9 @@ def test_wake_loads_aec_spines_fail_soft(tmp_path, monkeypatch):
     # Missing file → empty snapshot, still loaded (not an exception path).
     assert out["loaded"] is True
     assert out["counts"]["strategic"] == 0
+    receipt = (tmp_path / "aec_wake_spine_receipts.jsonl")
+    assert receipt.is_file()
+    assert "aec_spines_loaded" in receipt.read_text(encoding="utf-8")
 
     mem = _load("aec_memory_spines_for_wake", "scripts/lib/aec_memory_spines.py")
     path = tmp_path / "mem.json"
@@ -188,3 +265,29 @@ def test_wake_loads_aec_spines_fail_soft(tmp_path, monkeypatch):
     out3 = wake.load_aec_spines_for_wake(selection_meta={"subject_key": "WATCH:SCHG"})
     assert out3["loaded"] is False
     assert out3.get("error")
+    assert "aec_spines_unavailable" in receipt.read_text(encoding="utf-8")
+
+def test_cycle_writes_operational_spine(tmp_path, monkeypatch):
+    """CIO cycle must feed the operational spine (not only bus publish)."""
+    import json
+    monkeypatch.setenv("TRADEAI_AEC_BUS", str(tmp_path / "bus.jsonl"))
+    monkeypatch.setenv("TRADEAI_AEC_MEMORY", str(tmp_path / "mem.json"))
+    cycle = _load("aec_command_center_cycle_ops", "scripts/aec_command_center_cycle.py")
+
+    def _fake_integrate(envelope, *, apply=False):
+        return {
+            "schema": "CIOEnvelopeIntegration@v1",
+            "dry_run": not apply,
+            "authority": "READ_ONLY_ADVISORY",
+            "mbi_behavior": 0,
+        }
+
+    monkeypatch.setattr(cycle, "integrate_wake_envelope", _fake_integrate)
+    out = cycle.run_cycle(subject_key="WATCH:SCHG", apply=True)
+    assert out["events"][0]["agent_id"] == "cio_agent"
+    mem = json.loads((tmp_path / "mem.json").read_text())
+    ops = (mem.get("spines") or {}).get("operational") or []
+    assert ops, mem
+    assert ops[-1].get("kind") == "cio_cycle_status"
+    assert ops[-1].get("subject_key") == "WATCH:SCHG"
+

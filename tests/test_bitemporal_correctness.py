@@ -684,3 +684,32 @@ def test_suite_case_count_is_200():
     assert len(range(186, 201)) == 15
     total = 50 + 25 + 25 + 20 + 20 + 15 + 15 + 15 + 15
     assert total == 200
+
+
+def test_schema_file_refuses_destructive_reset_without_optin(m2_conn):
+    """Re-running r10_m2_isolated_benchmark.sql must NOT silently CASCADE-drop
+    an existing memory_r10_m2. Without m2.allow_destructive_reset=on it raises;
+    with it, the shadow still rebuilds. Guards a manual/production `psql -f`."""
+    from pathlib import Path
+
+    import psycopg2
+
+    sql = Path("sql/r10_m2_isolated_benchmark.sql").read_text(encoding="utf-8")
+    # The schema exists (module fixture applied it), so an un-opted-in re-run refuses.
+    with m2_conn.cursor() as cur:
+        cur.execute("RESET m2.allow_destructive_reset")
+        with pytest.raises(psycopg2.errors.RaiseException) as exc:
+            cur.execute(sql)
+        assert "M2_DESTRUCTIVE_RESET_REFUSED" in str(exc.value)
+
+    # The schema survived the refusal — nothing was dropped.
+    with m2_conn.cursor() as cur:
+        cur.execute("SELECT to_regclass('memory_r10_m2.memory_fact_version')")
+        assert cur.fetchone()[0] is not None
+
+    # Opting in explicitly still rebuilds the isolated shadow.
+    with m2_conn.cursor() as cur:
+        cur.execute("SET m2.allow_destructive_reset = 'on'")
+        cur.execute(sql)
+        cur.execute("SELECT to_regclass('memory_r10_m2.memory_fact_version')")
+        assert cur.fetchone()[0] is not None

@@ -763,6 +763,13 @@ GATES = [
             "tests/test_desk_gap_queue_reconnect_20260913.py",
             "tests/test_agent_number_grounding_20260913.py",
             "tests/test_report_maturity_bar_m1_m5_20260919.py",
+            # 2026-09-20: Command /api/v2/command must name snapshot_source (M4 census WARN).
+            "tests/test_command_snapshot_source_20260920.py",
+            # 2026-09-20: file phantoms PASS when Attribution already filters (§17 holdings stay).
+            "tests/test_census_phantom_accounts_20260920.py",
+            # 2026-09-20: data_gap_resolver cron walks gap_resolver.resolve (QE organic path).
+            "tests/test_data_gap_resolver_chain_resolve_20260920.py",
+            "tests/test_gap_resolver_live_host_flag_20260920.py",
             "tests/test_synthesis_prompt_budget_20260913.py",
             # Answer-quality monitor + offline litmus replay of the 2026-09-13 questions.
             "tests/test_operator_answer_quality_20260913.py",
@@ -827,14 +834,19 @@ GATES = [
             "tests/test_ai_analyst_cache_fails_closed.py",
         ],
     ),
+    (
+        "ai_analyst_freshness_sla",
+        [
+            "tests/test_ai_analyst_freshness.py",
+        ],
+    ),
     # A held position is never a re-entry candidate.
     (
         "s3_detector_excludes_held",
         [
             "tests/test_s3_detector_excludes_held.py",
         ],
-    ),
-    # A directory a served surface reads must be linked into the release.
+    ),    # A directory a served surface reads must be linked into the release.
     (
         "release_links_reports",
         [

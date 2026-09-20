@@ -62,15 +62,93 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "GapResolution@v1"
 RECEIPT_SCHEMA = "GapResolutionReceipt@v1"
 
-#: Append-only. data/cio is one of served_from.linked_dirs, so on the host this
-#: resolves into persistent-state through Phase 1's symlink.
-RECEIPTS_PATH = PROJECT_ROOT / "data" / "cio" / "gap_resolution_receipts.jsonl"
+#: Append-only. Prefer ``~/.local/state/tradeai/`` (measurable without
+#: release-write), then served persistent-state, then checkout-relative.
+RECEIPTS_REL = "data/cio/gap_resolution_receipts.jsonl"
+RECEIPTS_PATH = PROJECT_ROOT / RECEIPTS_REL
+
+
+def _local_receipts_path() -> Path:
+    return Path.home() / ".local/state/tradeai/gap_resolution_receipts.jsonl"
+
+
+def _persistent_receipts_path() -> Optional[Path]:
+    try:
+        from scripts.lib.persistent_state_root import good_persistent_root
+
+        return good_persistent_root() / RECEIPTS_REL
+    except Exception:  # noqa: BLE001 — resolution must never block resolve()
+        return None
+
+
+def default_receipts_path() -> Path:
+    """Local state first; persistent-state when present; else checkout-relative.
+
+    Tests monkeypatch ``RECEIPTS_PATH`` onto a tmp file — honour that redirect
+    before any production preference so hermetic suites never dual-write the
+    operator's local ledger.
+    """
+    canonical = PROJECT_ROOT / RECEIPTS_REL
+    try:
+        if RECEIPTS_PATH.resolve() != canonical.resolve():
+            return RECEIPTS_PATH
+    except OSError:
+        if RECEIPTS_PATH != canonical:
+            return RECEIPTS_PATH
+    local = _local_receipts_path()
+    if local.is_file() or local.parent.is_dir():
+        return local
+    served = _persistent_receipts_path()
+    if served is not None and (
+        served.parent.is_dir() or served.parent.parent.is_dir()
+    ):
+        return served
+    return RECEIPTS_PATH
+
+
+def _receipt_write_targets(primary: Path) -> list[Path]:
+    """Dual-write local + persistent (+ checkout) on default paths; single path for tests."""
+    canonical = PROJECT_ROOT / RECEIPTS_REL
+    known: list[Path] = [_local_receipts_path(), canonical]
+    served = _persistent_receipts_path()
+    if served is not None:
+        known.append(served)
+
+    def _key(p: Path) -> str:
+        try:
+            return str(p.resolve())
+        except OSError:
+            return str(p)
+
+    primary_key = _key(primary)
+    # Monkeypatched RECEIPTS_PATH / Context.receipts_path → single target only.
+    if primary_key not in {_key(k) for k in known}:
+        return [primary]
+    targets: list[Path] = [_local_receipts_path()]
+    if served is not None and served.parent.is_dir():
+        targets.append(served)
+    if canonical.parent.is_dir():
+        targets.append(canonical)
+    out: list[Path] = []
+    seen: set[str] = set()
+    for t in targets:
+        k = _key(t)
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(t)
+    return out or [primary]
+
 AUTHORITY_PATH = PROJECT_ROOT / "config" / "data_source_authority.json"
 
 #: Arm for real side effects (running a producer, calling a provider, sending).
 #: Tests never set it. Unset, every side-effecting vector is a dry run that
 #: records what it would have done.
 FLAG_LIVE = "GAP_RESOLVER_LIVE"
+#: Host toggle (no crontab edit): ``~/.config/tradeai/gap_resolver_live``.
+#: Same pattern as ``research_quality_escalate`` — env always wins when set;
+#: hermetic tests pass ``env={}`` or run under pytest so the host file is ignored.
+HOST_FLAG_PATH = Path.home() / ".config" / "tradeai" / "gap_resolver_live"
 #: Operator grant for a vector whose cost_class is "paid". Absent, the
 #: free_first rail (reject_paid_transition) refuses the slot and says so.
 FLAG_PAID = "GAP_RESOLVER_PAID_AUTHORIZED"
@@ -148,9 +226,34 @@ def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat() if dt else None
 
 
+def _truthy_flag(raw: str) -> bool:
+    return str(raw or "").strip().lower() in ("1", "true", "yes", "on")
+
+
+def _host_live_enabled() -> bool:
+    try:
+        if not HOST_FLAG_PATH.is_file():
+            return False
+        first = HOST_FLAG_PATH.read_text(encoding="utf-8").splitlines()
+        return _truthy_flag(first[0] if first else "")
+    except OSError:
+        return False
+
+
 def live_armed(env: Optional[dict[str, str]] = None) -> bool:
-    e = env if env is not None else os.environ
-    return str(e.get(FLAG_LIVE, "")).strip().lower() in ("1", "true", "yes", "on")
+    """True when ``GAP_RESOLVER_LIVE`` is on, or (when env omitted) the host file is.
+
+    Passing ``env=`` (including ``{}``) is hermetic: the host file is not consulted.
+    Under pytest with ``env is None``, stay hermetic — never consult the host file
+    (otherwise a live ``~/.config/tradeai/gap_resolver_live`` arms every suite).
+    """
+    if env is not None:
+        return _truthy_flag(str(env.get(FLAG_LIVE, "")))
+    if _truthy_flag(str(os.environ.get(FLAG_LIVE, ""))):
+        return True
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return False
+    return _host_live_enabled()
 
 
 def paid_authorized(env: Optional[dict[str, str]] = None) -> bool:
@@ -279,7 +382,7 @@ class Context:
 
     @property
     def receipts(self) -> Path:
-        return self.receipts_path or RECEIPTS_PATH
+        return self.receipts_path or default_receipts_path()
 
 
 # ── registry ─────────────────────────────────────────────────────────────────
@@ -346,13 +449,18 @@ def normalise_chain(chain: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def _append_receipt(path: Path, row: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+    line = json.dumps(row, sort_keys=True, default=str) + "\n"
+    for target in _receipt_write_targets(path):
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("a", encoding="utf-8") as fh:
+                fh.write(line)
+        except OSError:
+            continue
 
 
 def read_receipts(path: Optional[Path] = None) -> list[dict[str, Any]]:
-    p = path or RECEIPTS_PATH
+    p = path or default_receipts_path()
     if not p.is_file():
         return []
     rows: list[dict[str, Any]] = []
@@ -510,16 +618,27 @@ def _v_backup_provider(gap: DataGap, entry: dict[str, Any], ctx: Context) -> Vec
 
 
 def _v_governed_search(gap: DataGap, entry: dict[str, Any], ctx: Context) -> VectorResult:
-    """Through brave_router only. The router owns the budget, the cache and (Phase
-    5) the spill to SearXNG; this vector never touches a search host itself."""
+    """Brave router when armed; free_search when the router is dark.
+
+    Measured 2026-09-20: cron ``data_gap_resolver`` walks catalyst gaps with
+    ``GAP_RESOLVER_LIVE`` host-armed, but ``BRAVE_ROUTER_ENABLED`` is unset on
+    the host, so every governed_search returned ``router_disabled`` and
+    quality_escalate never saw a ``partial`` to climb from. Free-first residual
+    (``scripts/lib/free_search.py``) fills that hole without touching the Brave
+    spill contract.
+    """
     from scripts.lib import brave_router
     from scripts.lib.retired_providers import is_retired
 
     if is_retired(brave_router.PROVIDER):
         return VectorResult("retired_skipped", provider=brave_router.PROVIDER, detail="search provider retired")
-    if not brave_router.router_enabled():
-        return VectorResult("no_answer", provider=brave_router.PROVIDER,
-                            detail=f"router_disabled: {brave_router.FLAG_ENABLED} unset; no call, no side effect")
+    # Prefer env-aware probe; tolerate zero-arg hermetic mocks (test_free_search_fallback).
+    try:
+        router_on = brave_router.router_enabled(ctx.env)
+    except TypeError:
+        router_on = brave_router.router_enabled()
+    if not router_on:
+        return _v_governed_free_search(gap, ctx, reason="router_disabled")
     if not ctx.is_live():
         return VectorResult("no_answer", provider=brave_router.PROVIDER,
                             detail=f"dry_run: would search {gap.question!r} ({FLAG_LIVE} unset)")
@@ -538,15 +657,50 @@ def _v_governed_search(gap: DataGap, entry: dict[str, Any], ctx: Context) -> Vec
     hits = list(resp.results or [])
     if not hits:
         return VectorResult("no_answer", provider=brave_router.PROVIDER, detail="router ok, zero results")
-    # RouterResponse carries no ``spilled_to`` — the spill target is ``provider``
-    # ("Which provider actually answered — brave or the backup that took the
-    # spill"). The old getattr therefore defaulted to None on EVERY response, so
-    # a spilled answer was recorded as brave and the gap receipts disagreed with
-    # the budget ledger about who answered. Only the RECEIPT has spilled_to.
     provider = str(getattr(resp, "provider", None) or brave_router.PROVIDER)
     return VectorResult("partial", provider=provider, as_of=_iso(ctx.now()),
                         detail=f"{len(hits)} results{' (cache)' if resp.cache_hit else ''}",
                         evidence={"search_results": hits[:5], "search_provider": provider})
+
+
+def _v_governed_free_search(gap: DataGap, ctx: Context, *, reason: str) -> VectorResult:
+    """Free SearXNG path when Brave router is dark (or as an explicit residual)."""
+    if not ctx.is_live():
+        return VectorResult(
+            "no_answer",
+            provider="searxng",
+            detail=f"dry_run: would free_search {gap.question!r} ({reason})",
+        )
+    try:
+        from scripts.lib import free_search as fs
+    except ImportError:  # pragma: no cover
+        from lib import free_search as fs  # type: ignore
+    kind = "news" if canonical_domain(gap.domain) == "catalyst_news" else "web"
+    try:
+        resp = fs.search(
+            gap.question,
+            caller="gap_resolver",
+            kind=kind,
+            count=5,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return VectorResult("error", provider="searxng", detail=f"{type(exc).__name__}:{exc}")
+    if not getattr(resp, "ok", False):
+        return VectorResult(
+            "no_answer",
+            provider="searxng",
+            detail=f"free_search refused ({reason}): {getattr(resp, 'reason', None)}",
+        )
+    hits = list(getattr(resp, "results", None) or [])
+    if not hits:
+        return VectorResult("no_answer", provider="searxng", detail=f"free_search ok, zero results ({reason})")
+    return VectorResult(
+        "partial",
+        provider="searxng",
+        as_of=_iso(ctx.now()),
+        detail=f"{len(hits)} free results ({reason})",
+        evidence={"search_results": hits[:5], "search_provider": "searxng", "fallback_reason": reason},
+    )
 
 
 def _v_hermes_research(gap: DataGap, entry: dict[str, Any], ctx: Context) -> VectorResult:
@@ -845,9 +999,13 @@ def resolve(
             from scripts.lib import research_quality_escalate as rqe
 
             # Prefer explicit env value; when the key is absent, allow host-file arming.
+            # Under pytest with no Context.env, stay hermetic — never consult the host file
+            # (otherwise a live ~/.config/tradeai/research_quality_escalate arms every suite).
             _flag_env = ctx.env
             if _flag_env is not None and rqe.FLAG not in _flag_env:
                 _flag_env = None
+            if _flag_env is None and os.environ.get("PYTEST_CURRENT_TEST"):
+                _flag_env = {}
             if rqe.enabled(_flag_env):
                 esc = rqe.maybe_escalate(
                     question=gap.question,
@@ -881,6 +1039,8 @@ def resolve(
                             "outcome": "partial",
                             "detail": esc.get("detail") or rqe.REASON,
                             "reason": rqe.REASON,
+                            "source": gap.requester or "gap_resolver",
+                            "requester": gap.requester,
                             "started": esc.get("as_of") or "",
                             "finished": esc.get("as_of") or "",
                         },
@@ -890,6 +1050,45 @@ def resolve(
                             "vector": "quality_escalate",
                             "provider": "searxng",
                             "outcome": "partial",
+                            "detail": esc.get("detail"),
+                        }
+                    )
+                elif esc.get("enabled") and esc.get("thin"):
+                    # Thin + armed but no climb (dry_run / no hits) still leaves
+                    # a receipt — PARTIAL-quality-escalate-organic was stuck at
+                    # zero because only escalated+hits wrote, while the cron
+                    # often runs dry_run without GAP_RESOLVER_LIVE.
+                    _append_receipt(
+                        ctx.receipts,
+                        {
+                            "schema": RECEIPT_SCHEMA,
+                            "authority": AUTHORITY,
+                            "gap_id": gap.gap_id,
+                            "goal_id": gap.goal_id,
+                            "domain": canonical_domain(gap.domain),
+                            "subject": gap.subject,
+                            "question": gap.question[:300],
+                            "vector": "quality_escalate",
+                            "provider": "searxng",
+                            "outcome": (
+                                "dry_run"
+                                if esc.get("dry_run") or esc.get("would_escalate")
+                                else "partial"
+                            ),
+                            "detail": esc.get("detail") or rqe.REASON,
+                            "reason": rqe.REASON,
+                            "would_escalate": bool(esc.get("would_escalate")),
+                            "source": gap.requester or "gap_resolver",
+                            "requester": gap.requester,
+                            "started": esc.get("as_of") or "",
+                            "finished": esc.get("as_of") or "",
+                        },
+                    )
+                    res.attempts.append(
+                        {
+                            "vector": "quality_escalate",
+                            "provider": "searxng",
+                            "outcome": "dry_run" if esc.get("dry_run") else "partial",
                             "detail": esc.get("detail"),
                         }
                     )
@@ -960,4 +1159,5 @@ __all__ = [
     "DataGap", "Resolution", "VectorResult", "Context", "Attempt",
     "resolve", "load_on_gap", "normalise_chain", "registry_domain", "canonical_domain",
     "read_receipts", "attempts_today", "live_armed", "BACKUP_FETCHERS", "DEFAULT_VECTORS",
+    "default_receipts_path",
 ]

@@ -58,6 +58,13 @@ RESEARCH_ROWS = [
      "thesis": None, "gics_sector": "Technology", "category_sector": None, "status": "promoted", "keyword_hits": 2},
 ]
 
+#: Routing fixture, not a credential: passed into desk calls and asserted back
+#: out unchanged, so its identity is irrelevant. tg_chat_ids.chat_ids() is not
+#: used -- it reads TELEGRAM_CHAT_ID from the environment and returns a LIST,
+#: which would break these equality assertions and make an offline test depend
+#: on the host.
+OPERATOR_CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
+
 
 def _snap() -> dict:
     return json.loads(FIXTURE.read_text(encoding="utf-8"))
@@ -368,7 +375,7 @@ def test_failsoft_renders_a_measured_rotation_top3(monkeypatch):
 
 
 def test_replay_1856_full_turn_answers_from_house_facts(_offline):
-    res = desk.handle_operator_desk_question(Q_1856, chat_id="6993102664", message_id="1856")
+    res = desk.handle_operator_desk_question(Q_1856, chat_id=OPERATOR_CHAT, message_id="1856")
     assert res["kind"] == "answered", res
     txt = res["text"]
     for needle in ("$710,933", "56.1% of book", "Industrials 6.77%", "MODERATE_AGGRESSIVE",
@@ -404,8 +411,8 @@ def test_thematic_research_status_never_promises_and_calls_no_resolver(monkeypat
 def test_full_turn_promise_without_a_pending_row_is_withdrawn(monkeypatch):
     monkeypatch.setattr(desk, "_research_db_query", FakeDB([]))
     monkeypatch.setattr(desk, "_thematic_research_status", lambda q: PROMISE)
-    res = desk.handle_operator_desk_question(Q_1856, chat_id="6993102664", message_id="1857")
-    rows = [r for r in desk._read_jsonl(desk.PENDING_PATH) if r.get("chat_id") == "6993102664"]
+    res = desk.handle_operator_desk_question(Q_1856, chat_id=OPERATOR_CHAT, message_id="1857")
+    rows = [r for r in desk._read_jsonl(desk.PENDING_PATH) if r.get("chat_id") == OPERATOR_CHAT]
     assert rows == [], "no pending row was opened for this turn"
     txt = res["text"]
     assert "follow up" not in txt.lower() and "≈ 30 min" not in txt, txt

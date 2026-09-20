@@ -45,12 +45,29 @@ def _refuse_financial_payload(obj: dict[str, Any]) -> None:
         raise RuntimeError(f"FINANCIAL_TRUTH_REFUSED: cognitive memory cannot store {sorted(bad)}")
 
 
+def _assert_isolated_conn(conn) -> None:
+    """The docstring below has always claimed 'isolated DSN only', but nothing
+    enforced it — the caller just handed in a connection. Since apply opts in to
+    a destructive schema reset, verify it here rather than trusting the caller."""
+    try:
+        params = conn.get_dsn_parameters()
+    except Exception:  # pragma: no cover - psycopg2 always provides this
+        raise RuntimeError("M2_DSN_UNVERIFIABLE: refusing destructive apply") from None
+    port = str(params.get("port") or "")
+    if port == "5432":
+        raise RuntimeError("M2_DSN_PRODUCTION_PORT_FORBIDDEN")
+
+
 def apply_bitemporal_schema_v2(conn) -> dict[str, Any]:
-    """Apply base M2 SQL then v2 packaging delta. Isolated DSN only."""
+    """Apply base M2 SQL then v2 packaging delta. Isolated DSN only (enforced)."""
+    _assert_isolated_conn(conn)
     base = SQL_PATH.read_text(encoding="utf-8")
     delta = SCHEMA_V2.read_text(encoding="utf-8")
     # Strip leading comment-only banner from delta for clarity; execute whole file.
     with conn.cursor() as cur:
+        # Opt in to the base file's destructive reset. Safe only because
+        # _assert_isolated_conn above proved this is not production.
+        cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(base)
         cur.execute(delta)
         try:

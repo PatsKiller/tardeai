@@ -64,7 +64,34 @@ def _prior_commitment_from_bus(recent: list) -> dict | None:
     return None
 
 
-def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = None) -> dict:
+def _learning_has_terminal_outcome(snap, commitment_id: str) -> bool:
+    """True when learning spine already recorded a terminal OUTCOME for this id."""
+    cid = str(commitment_id or "")
+    if not cid:
+        return False
+    spines = getattr(snap, "spines", None) or {}
+    for fact in spines.get("learning") or []:
+        if not isinstance(fact, dict):
+            continue
+        if str(fact.get("commitment_id") or "") != cid:
+            continue
+        if fact.get("kind") == "commitment_outcome" and fact.get("outcome") in {
+            "CONFIRMED",
+            "REFUTED",
+            "EXPIRED",
+        }:
+            return True
+    return False
+
+
+def run_cycle(
+    *,
+    subject_key: str | None,
+    apply: bool,
+    observe: dict | None = None,
+    now: datetime | None = None,
+) -> dict:
+    when = now or datetime.now(timezone.utc)
     snap = mem.load()
     relevant = mem.retrieve_relevant(snap, subject_key=subject_key)
     recent = bus.read_recent(limit=20)
@@ -87,14 +114,57 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         },
         dry_run=not apply,
     )
+    # Operational spine — infrastructure / automation posture (internal AEC
+    # facts only; never invents relationship-domain sources).
+    if apply:
+        mem.append_fact(
+            "operational",
+            {
+                "kind": "cio_cycle_status",
+                "subject_key": subject_key,
+                "bus_seen": len(bus.topics_for("cio_agent", recent)),
+                "memory_counts": {k: len(v) for k, v in relevant.items()},
+                "summary": cio_summary[:240],
+            },
+        )
+
+    # Settle any open prior advisor commitment before minting (hourly EXPIRED /
+    # observe path). Not gated on claim fingerprint — a new hour/day claim must
+    # still close yesterday's open OUTCOME edge.
+    prior_open = _prior_commitment_from_bus(recent)
+    settled_prior_outcome: dict | None = None
+    if prior_open is not None and not _learning_has_terminal_outcome(
+        snap, str(prior_open.get("commitment_id") or "")
+    ):
+        settled_prior_outcome = evaluate_commitment(
+            prior_open, observation=observe, now=when
+        )
+        if apply and settled_prior_outcome.get("outcome") in {
+            "CONFIRMED",
+            "REFUTED",
+            "EXPIRED",
+        }:
+            mem.append_fact(
+                "learning",
+                {
+                    "kind": "commitment_outcome",
+                    "subject_key": subject_key,
+                    "outcome": settled_prior_outcome.get("outcome"),
+                    "commitment_id": settled_prior_outcome.get("commitment_id"),
+                    "via": "prior_open_settle",
+                },
+            )
+            # Refresh snap so same-cycle suppress path sees the terminal row.
+            snap = mem.load()
 
     # Advisor — AgentView@v1 (existing producer) + optional commitment.
-    # Day-bucket the claim so anti-repeat does not freeze AgentView/OUTCOME for
-    # the life of the spine after the first --apply (measured: timer fires at
-    # 18:00/19:00 were SUPPRESSED_REPEAT with null agent_view/commitment/outcome).
-    day_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    # Hour-bucket the claim so each timer fire can mint a fresh 1h commitment
+    # while prior_open_settle closes the previous hour's OUTCOME (EXPIRED /
+    # observe). Day-only bucketing left OUTCOME stuck on INSUFFICIENT until the
+    # next calendar day — and then never re-evaluated the prior commitment.
+    hour_utc = when.strftime("%Y-%m-%dT%H")
     advisor_claim = (
-        f"Advisor reviewed subject={subject} against strategic spine [{day_utc}]"
+        f"Advisor reviewed subject={subject} against strategic spine [{hour_utc}]"
     )
     fp = mem.claim_fingerprint(advisor_claim)
     repeated = mem.seen_claim(snap, fp)
@@ -106,9 +176,13 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         # Same-day suppress still re-evaluates the open commitment so OUTCOME
         # can move to CONFIRMED/REFUTED/EXPIRED without minting a new view.
         prior = _prior_commitment_from_bus(recent)
-        if prior is not None:
+        if prior is not None and not _learning_has_terminal_outcome(
+            snap, str(prior.get("commitment_id") or "")
+        ):
             commitment_payload = prior
-            outcome_payload = evaluate_commitment(prior, observation=observe)
+            outcome_payload = evaluate_commitment(
+                prior, observation=observe, now=when
+            )
             if apply and outcome_payload.get("outcome") in {
                 "CONFIRMED",
                 "REFUTED",
@@ -125,6 +199,12 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
                         "via": "suppressed_repeat_reeval",
                     },
                 )
+        elif prior is not None:
+            commitment_payload = prior
+            if outcome_payload is None:
+                outcome_payload = evaluate_commitment(
+                    prior, observation=observe, now=when
+                )
     else:
         view = produce_agent_view_v1(
             subject=subject,
@@ -138,13 +218,15 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         view_payload = view.to_dict()
         advisor_summary = f"{view.stance}: {advisor_claim}"
         if persist_allowed(view):
-            # due_at must be after mint time or evaluate_commitment returns EXPIRED
-            # immediately (horizon "7d" is the falsifier window, not produced_at).
-            due = datetime.now(timezone.utc) + timedelta(days=7)
+            # AEC cycle commitments are short-horizon settlement probes for the
+            # OUTCOME edge on the hourly timer (1h). The falsifier text still
+            # names the 7d strategic-spine contradiction window; due_at is the
+            # schedule-settlement clock so EXPIRED can land unattended.
+            due = when + timedelta(hours=1)
             commitment = mint_commitment_from_view(
                 view.to_dict(),
                 due_at=due.isoformat().replace("+00:00", "Z"),
-                horizon="7d",
+                horizon="1h",
                 falsifier=view.falsifier,
             )
             commitment_payload = commitment.to_dict()
@@ -161,6 +243,7 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
             outcome_payload = evaluate_commitment(
                 commitment_payload,
                 observation=observe,
+                now=when,
             )
         if apply:
             mem.append_fact(
@@ -193,6 +276,7 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
                         "outcome": outcome_payload.get("outcome"),
                         "commitment_id": outcome_payload.get("commitment_id"),
                         "claim_fp": fp,
+                        "via": "fresh_mint",
                     },
                 )
             mem.append_fact(
@@ -210,26 +294,43 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
             "agent_view": view_payload or None,
             "commitment": commitment_payload,
             "outcome": outcome_payload,
+            # Prior hour's settle (EXPIRED/CONFIRMED/REFUTED) when this fire
+            # mints a fresh 1h claim — kept separate so mint INSUFFICIENT does
+            # not erase the OUTCOME edge that just closed.
+            "prior_outcome": settled_prior_outcome,
         },
         dry_run=not apply,
     )
 
     # Narrator — executive briefing text (not sent here; publish to bus only)
     # Cognitive memory on isolated :55432 only (prod :5432 refused in integrator).
-    bitemporal_receipt = integrate_wake_envelope(
-        {
-            "subject_key": subject,
-            "predicate": "thesis",
-            "claim": advisor_summary[:240],
-            "object": {
-                "text": advisor_summary[:240],
-                "kind": "cognitive_hypothesis",
-                "cycle": True,
+    # Fail-soft: a bitemporal schema/function miss must not abort the cycle after
+    # AgentView/commitment/OUTCOME already landed (2026-09-20T05:00Z exit 1 left
+    # narrator unrun while hour-bucket mint had succeeded).
+    try:
+        bitemporal_receipt = integrate_wake_envelope(
+            {
+                "subject_key": subject,
+                "predicate": "thesis",
+                "claim": advisor_summary[:240],
+                "object": {
+                    "text": advisor_summary[:240],
+                    "kind": "cognitive_hypothesis",
+                    "cycle": True,
+                },
+                "wake_job_id": f"aec-cycle-{subject}",
             },
-            "wake_job_id": f"aec-cycle-{subject}",
-        },
-        apply=apply,
-    )
+            apply=apply,
+        )
+    except Exception as exc:  # noqa: BLE001 — isolated memory must not kill AEC
+        bitemporal_receipt = {
+            "schema": "CIOEnvelopeIntegration@v1",
+            "dry_run": not apply,
+            "error": f"{type(exc).__name__}: {exc}"[:400],
+            "authority": "READ_ONLY_ADVISORY",
+            "mbi_behavior": 0,
+            "via": "aec_bitemporal_fail_soft",
+        }
     narr_summary = (
         f"Narrator brief: cio={cio_ev.summary[:80]}; advisor={adv_ev.summary[:80]}; "
         f"learning_rows={len(relevant.get('learning') or [])}; "
@@ -275,6 +376,7 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         "agent_view": view_payload or None,
         "commitment": commitment_payload,
         "outcome": outcome_payload,
+        "prior_outcome": settled_prior_outcome,
         "bitemporal": bitemporal_receipt,
         "narrator_brief": brief,
         "narrator_notify": notify_receipt,

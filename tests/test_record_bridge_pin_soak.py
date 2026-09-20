@@ -44,3 +44,34 @@ def test_status_report_not_ready_below_need(tmp_path):
 def test_schema_constant():
     m = _load()
     assert m.SCHEMA == "BridgePinSoakObservation@v1"
+
+
+def test_write_targets_env_override_is_single(tmp_path, monkeypatch):
+    m = _load()
+    only = tmp_path / "only.jsonl"
+    monkeypatch.setenv("TRADEAI_BRIDGE_PIN_SOAK", str(only))
+    assert m.write_targets() == [only]
+
+
+def test_write_targets_includes_local_state(monkeypatch, tmp_path):
+    m = _load()
+    monkeypatch.delenv("TRADEAI_BRIDGE_PIN_SOAK", raising=False)
+    local = tmp_path / "local_state" / "bridge_pin_soak.jsonl"
+    monkeypatch.setattr(m, "_local_ledger", lambda: local)
+    monkeypatch.setattr(
+        m,
+        "_persistent_ledger",
+        lambda: tmp_path / "missing-persistent" / "bridge_pin_soak.jsonl",
+    )
+    # no checkout runtime dir from cwd — still must include local
+    targets = m.write_targets()
+    assert local in targets
+
+
+def test_append_obs_creates_parent(tmp_path):
+    m = _load()
+    path = tmp_path / "nested" / "soak.jsonl"
+    m._append_obs(path, {"pins_match": True, "as_of": "t"})
+    assert path.is_file()
+    rows = m.read_rows(path)
+    assert rows[0]["pins_match"] is True

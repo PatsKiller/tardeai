@@ -46,7 +46,7 @@ COVERS = [
     "scripts/lib/reply_provenance.py",
 ]
 
-CHAT = "6993102664"
+CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
 _mid = itertools.count(70000)
 
 SCHG_ROW = {

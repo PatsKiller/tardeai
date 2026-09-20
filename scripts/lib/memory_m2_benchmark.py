@@ -100,6 +100,10 @@ def apply_schema(conn) -> None:
     sql = SQL_PATH.read_text(encoding="utf-8")
     with conn.cursor() as cur:
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+        # The schema file refuses to DROP ... CASCADE an existing memory_r10_m2
+        # unless this is set. Only reachable here because connect() already ran
+        # _assert_isolated_dsn, so this can never be a production connection.
+        cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(sql)
 
 

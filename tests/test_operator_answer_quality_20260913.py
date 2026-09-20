@@ -43,6 +43,13 @@ COVERS = ["scripts/check_operator_answer_quality.py"]
 NOW = datetime(2026, 9, 13, 23, 30, tzinfo=timezone.utc)
 FIX = ROOT / "tests" / "fixtures" / "litmus_20260913"
 
+#: Routing fixture, not a credential: passed into desk calls and asserted back
+#: out unchanged, so its identity is irrelevant. tg_chat_ids.chat_ids() is not
+#: used -- it reads TELEGRAM_CHAT_ID from the environment and returns a LIST,
+#: which would break these equality assertions and make an offline test depend
+#: on the host.
+OPERATOR_CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
+
 
 def _ago(h: float) -> str:
     return (NOW - timedelta(hours=h)).isoformat()
@@ -207,7 +214,7 @@ def test_a_turn_with_no_reply_text_is_reported_not_silently_passed():
 
 
 def _event(mid, text, ts, source, kind, pending=None, prov=None):
-    payload = {"text": text, "chat_id": "6993102664", "message_id": mid, "channel": "telegram", "ts": ts,
+    payload = {"text": text, "chat_id": OPERATOR_CHAT, "message_id": mid, "channel": "telegram", "ts": ts,
                "reply_source": source, "desk_kind": kind, "pending_id": pending}
     if prov is not None:
         payload["reply_provenance"] = prov

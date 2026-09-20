@@ -49,6 +49,14 @@ ROWS = [
 PRICE = {"V": {"close": 372.10, "price_date": "2026-09-15", "change_30d_pct": 2.0,
                "bars": [["2026-09-10", 367.23], ["2026-09-11", 370.45], ["2026-09-15", 372.10]]}}
 
+#: The operator chat this desk test threads through its calls. It is a ROUTING
+#: FIXTURE, not a credential: the tests below pass it in and assert it comes back
+#: out unchanged, so its identity is irrelevant. tg_chat_ids.chat_ids() is
+#: deliberately NOT used -- it reads TELEGRAM_CHAT_ID from the environment and
+#: returns a LIST, which would break the equality assertions and make a
+#: deliberately offline test depend on the host.
+OPERATOR_CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
+
 
 @pytest.fixture(autouse=True)
 def _offline(monkeypatch, tmp_path):
@@ -77,12 +85,12 @@ def test_guids_come_from_resolved_subjects_first():
 
 def test_the_read_is_scoped_to_guid_and_chat_excludes_this_question_and_pairs_replies(monkeypatch):
     calls = _capture(monkeypatch, ROWS)
-    mem = desk.subject_memory(INTENT, chat_id="6993102664", message_id="51700")
+    mem = desk.subject_memory(INTENT, chat_id=OPERATOR_CHAT, message_id="51700")
     sql, params = calls[0]
     assert "o.role = 'operator'" in sql and "a.role = 'agent'" in sql
     assert "a.reply_to_message_id = o.message_id" in sql and "a.chat_id = o.chat_id" in sql
     assert "o.subject_guid = ANY(%s::uuid[])" in sql and "o.message_id IS DISTINCT FROM %s" in sql
-    assert params == ([VISA_GUID], "6993102664", 51700, 30, 3)
+    assert params == ([VISA_GUID], OPERATOR_CHAT, 51700, 30, 3)
     assert [e["message_id"] for e in mem["V"]] == [51691, 90000]
     assert mem["V"][1]["answer"] is None
 
@@ -140,9 +148,9 @@ def test_memory_reaches_the_reply_and_its_sources(monkeypatch):
         return {"V": [{"asked_at": ROWS[0]["occurred_at"], "question": ROWS[0]["question"],
                        "answer": ROWS[0]["answer"], "message_id": 51691}]}
     monkeypatch.setattr(desk, "subject_memory", fake_memory)
-    res = desk.handle_operator_desk_question("How is Visa doing now", chat_id="6993102664", message_id="51700")
+    res = desk.handle_operator_desk_question("How is Visa doing now", chat_id=OPERATOR_CHAT, message_id="51700")
     text = res.get("text") or ""
-    assert seen == {"chat_id": "6993102664", "message_id": "51700"}
+    assert seen == {"chat_id": OPERATOR_CHAT, "message_id": "51700"}
     assert "Earlier on V (from our conversation):" in text and "Price $372.10" in text
     assert "conversation memory (operator_conversation_turns)" in text
     assert res.get("memory_recall") == {"V": 1}

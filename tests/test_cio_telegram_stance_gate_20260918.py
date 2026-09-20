@@ -179,3 +179,132 @@ def test_screener_go_send_allowed_when_cio_buy_ready(monkeypatch):
     ok, reason = g._send_go(fake_send, item, db_query=q)
     assert ok is True and reason is None
     assert calls and "ELMT" in calls[0]
+
+def test_hold_writes_durable_receipt(tmp_path, monkeypatch):
+    """PARTIAL-telegram-CIO-stance closes on a durable hold receipt, not a log line."""
+    import json
+    from lib.cio_telegram_stance_gate import HOLD_RECEIPT_SCHEMA, check_investment_send
+
+    receipt = tmp_path / "cio_telegram_stance_holds.jsonl"
+    monkeypatch.setenv("CIO_STANCE_HOLD_RECEIPTS", str(receipt))
+    v = check_investment_send(
+        symbol="AXTI",
+        message_text="BUY AXTI",
+        asserted_stance="bullish",
+        cio_view={"symbol": "AXTI", "action": "AVOID"},
+        source="unit_test",
+    )
+    assert v.allow is False
+    assert receipt.is_file()
+    rows = [json.loads(line) for line in receipt.read_text().splitlines() if line.strip()]
+    assert len(rows) == 1
+    assert rows[0]["schema"] == HOLD_RECEIPT_SCHEMA
+    assert rows[0]["held_reason"] == HELD_DISAGREEMENT
+    assert rows[0]["symbol"] == "AXTI"
+    assert rows[0]["source"] == "unit_test"
+    assert rows[0]["mbi_behavior"] == 0
+    assert "caller" not in rows[0]
+
+
+def test_organic_caller_stamps_source_check_investment_send(tmp_path, monkeypatch):
+    """Live producers must prove as source=check_investment_send (ledger), caller=producer."""
+    import json
+    from lib.cio_telegram_stance_gate import check_investment_send
+
+    receipt = tmp_path / "cio_telegram_stance_holds.jsonl"
+    monkeypatch.setenv("CIO_STANCE_HOLD_RECEIPTS", str(receipt))
+    v = check_investment_send(
+        symbol="NOC",
+        message_text="GO NOC",
+        asserted_stance="bullish",
+        cio_view={"symbol": "NOC", "action": "AVOID"},
+        source="screener_go_alerts",
+    )
+    assert v.allow is False
+    rows = [json.loads(line) for line in receipt.read_text().splitlines() if line.strip()]
+    assert rows[0]["source"] == "check_investment_send"
+    assert rows[0]["caller"] == "screener_go_alerts"
+
+
+def test_canary_source_stays_distinct_from_organic(tmp_path, monkeypatch):
+    import json
+    from lib.cio_telegram_stance_gate import check_investment_send
+
+    receipt = tmp_path / "cio_telegram_stance_holds.jsonl"
+    monkeypatch.setenv("CIO_STANCE_HOLD_RECEIPTS", str(receipt))
+    check_investment_send(
+        symbol="NOC",
+        message_text="BUY NOC",
+        asserted_stance="bullish",
+        cio_view={"symbol": "NOC", "action": "AVOID"},
+        source="controlled_canary_current_tip",
+    )
+    rows = [json.loads(line) for line in receipt.read_text().splitlines() if line.strip()]
+    assert rows[0]["source"] == "controlled_canary_current_tip"
+    assert "caller" not in rows[0]
+
+
+def test_allow_does_not_write_hold_receipt(tmp_path, monkeypatch):
+    from lib.cio_telegram_stance_gate import check_investment_send
+
+    receipt = tmp_path / "cio_telegram_stance_holds.jsonl"
+    monkeypatch.setenv("CIO_STANCE_HOLD_RECEIPTS", str(receipt))
+    v = check_investment_send(
+        symbol="AXTI",
+        message_text="BUY AXTI",
+        asserted_stance="bullish",
+        cio_view={"symbol": "AXTI", "action": "BUY"},
+        source="unit_test",
+    )
+    assert v.allow is True
+    assert not receipt.exists()
+
+
+def test_hold_receipts_path_defaults_to_local_state(monkeypatch, tmp_path):
+    """Without env pin, primary is ~/.local/state/tradeai (measurable without release-write)."""
+    monkeypatch.delenv("CIO_STANCE_HOLD_RECEIPTS", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    from lib import cio_telegram_stance_gate as gate
+
+    path = gate.hold_receipts_path()
+    assert path is not None
+    assert path == tmp_path / ".local/state/tradeai/cio_telegram_stance_holds.jsonl"
+
+
+def test_hold_dual_write_mirrors_when_persist_parent_exists(tmp_path, monkeypatch):
+    """Default path dual-writes local + persist mirror (outside pytest hold-suppress)."""
+    import json
+    from lib import cio_telegram_stance_gate as gate
+    import scripts.lib.persistent_state_root as psr
+
+    monkeypatch.delenv("CIO_STANCE_HOLD_RECEIPTS", raising=False)
+    monkeypatch.delenv("CIO_STANCE_HOLD_RECEIPTS_DISABLE", raising=False)
+    # Production persist path is suppressed under pytest unless env pins a path;
+    # dual-write is the production default — exercise it with the guard cleared.
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    home = tmp_path / "home"
+    (home / ".local" / "state" / "tradeai").mkdir(parents=True)
+    persist_root = tmp_path / "persist"
+    (persist_root / "data" / "cio").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(psr, "good_persistent_root", lambda: persist_root)
+
+    verdict = gate.StanceGateVerdict(
+        allow=False,
+        held_reason=gate.HELD_DISAGREEMENT,
+        symbol="AXTI",
+        message_stance="bullish",
+        cio_action="AVOID",
+        cio_side="bearish",
+    )
+    wrote = gate.record_hold(verdict, source="dual_write_test")
+    assert wrote is not None
+    local = home / ".local" / "state" / "tradeai" / "cio_telegram_stance_holds.jsonl"
+    persist = persist_root / "data" / "cio" / "cio_telegram_stance_holds.jsonl"
+    assert local.is_file()
+    assert persist.is_file()
+    local_rows = [json.loads(L) for L in local.read_text().splitlines() if L.strip()]
+    persist_rows = [json.loads(L) for L in persist.read_text().splitlines() if L.strip()]
+    assert local_rows[0]["symbol"] == "AXTI"
+    assert persist_rows[0]["symbol"] == "AXTI"
+    assert local_rows[0]["source"] == "dual_write_test"
