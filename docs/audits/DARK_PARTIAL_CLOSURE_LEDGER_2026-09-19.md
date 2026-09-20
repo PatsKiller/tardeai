@@ -430,3 +430,12 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Operator remasure unchanged: M1–M3/M5 OBSERVED, **M4 PARTIAL**, soft~0.002/0.003 PASS.
 - Still open: promote → census warn→0 → M4 OBSERVED; organic stance (Mon–Fri); wave-close email.
 - Goal remains open.
+
+## 2026-09-20T08:58 ET — #1128 MERGED; release-write still absent
+
+- [VERIFIED] #1128 MERGED (cio-hardening PASS 15m58s) — post-#1127 remasure + merge ledger on tip.
+- Tip still `73ced82d9` (72h SLA). Deploy worktree detached; **no release-write grant** yet.
+- Live Telegram requests `c33d8cc20c620a0e` / `94a0fbba1876271d` window until ~13:12Z — not re-requested.
+- M4 still PARTIAL until promote → census warn=0. Soft 0.003 PASS. Organic QE OBSERVED. Organic stance Mon–Fri.
+- Goal remains open.
+
