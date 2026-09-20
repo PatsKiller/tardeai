@@ -23,7 +23,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | dual-write on tip; holds only probe/canary so far; live callers: screener_go_alerts, send_telegram_proposal_alert, social_scalp_scanner → check_investment_send | Observe hold with source=check_investment_send (not canary/probe) | organic hold receipt |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
-| PARTIAL-quality-escalate-organic | CLOSING→OBSERVED (hand) | [VERIFIED] 2026-09-20T10:30:39Z live data_gap_resolver.py: requester=data_gap_resolver vector=quality_escalate provider=searxng outcome=partial ARKQ+NEE; free residual router_disabled. Honesty: hand cron path ≠ unattended 08:00 yet | weekly 08:00 ET unattended echo | unattended same stamps |
+| PARTIAL-quality-escalate-organic | **OBSERVED (unattended)** | [VERIFIED] Sun 08:00 ET weekly cron: ARKQ+NEE `requester=data_gap_resolver` `vector=quality_escalate` `provider=searxng` `outcome=partial` started 2026-09-20T12:00:07Z/12:00:11Z; weekly.log Chain resolve 2/2. Hand proof at 10:30Z was precursor. | — | unattended same stamps |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | CLOSED | [VERIFIED] post-promote 2026-09-20T04:44:54Z pin 8090bf675: M1–M5 OBSERVED under prior bar (fail=0); operator remasure 2026-09-20 keeps M4 PARTIAL on census WARN — see PARTIAL-M4-census-warn | promote #1110 tip | all five OBSERVED |
 | PARTIAL-M4-census-warn | OPEN→CLOSING | Prior: AI Analyst freshness WARN on 48h SLA vs weekday producer. Tip now: 72h SLA + lane declare (agent-owned). Live pin still 48h until promote. | release-write promote tip + remasure census warn=0 | warn=0 → M4 OBSERVED |
@@ -395,3 +395,16 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Still needs **release-write promote** for served API to apply 72h, then census remasure warn→0 → M4 OBSERVED.
 - state-write refresh remains optional (good hygiene) but is no longer the only path to clear M4.
 - Goal remains open.
+
+## 2026-09-20T08:06 ET — Unattended weekly QE OBSERVED
+
+- [VERIFIED] crontab `0 8 * * 0 … data_gap_resolver.py --weekly-audit` fired; hub log:
+  - `2026-09-20 08:00:01 Found 0 open gaps`
+  - `08:00:04 Chain resolve: walking 2 stale-held`
+  - `08:00:09 CHAIN ARKQ stale_news outcome=partial`
+  - `08:00:12 CHAIN NEE stale_news outcome=partial`
+- Receipts `~/.local/state/tradeai/gap_resolution_receipts.jsonl`:
+  - ARKQ `started=2026-09-20T12:00:07Z` requester=data_gap_resolver vector=**quality_escalate** provider=searxng outcome=partial
+  - NEE `started=2026-09-20T12:00:11Z` same stamps
+- PARTIAL-quality-escalate-organic → **OBSERVED (unattended)**. Hand 10:30Z proof was precursor only.
+- Still open: M4 promote (72h SLA tip), organic stance, wave-close email. Goal remains open.
