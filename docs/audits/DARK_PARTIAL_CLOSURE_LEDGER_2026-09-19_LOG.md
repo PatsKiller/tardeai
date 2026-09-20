@@ -520,3 +520,10 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 
 - Mid-merge `origin/main`: conflict only in table file wave section — kept main’s pointer to `_LOG.md` (`merge=union`); appended #1139 MERGED wave here.
 - Goal NOT complete: organic stance Mon–Fri + §17 parks (or continue-park).
+
+## 2026-09-20T12:45 ET — stance observe units + §17 cite patch + install propose
+
+- [CODE] `tradeai-stance-organic-observe{,-early}.timer` + `.service` in repo (`80ca81295`); early timer gets explicit `Unit=` (basename `-early` would miss the service).
+- Ledger closure-path cites for bitemporal + relationship propose files (parity with hermes).
+- New `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` — propose-and-stop; no host install.
+- Goal NOT complete (organic=0 Sunday; §17 parks + timer install await operator).

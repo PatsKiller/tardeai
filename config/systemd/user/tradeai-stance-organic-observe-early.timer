@@ -5,6 +5,8 @@ Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/sc
 [Timer]
 # After social_scalp_scanner 06:00/06:30 fires; before market open.
 # Host local time is America/New_York.
+# Explicit Unit= — basename ends in -early, so default would miss the service.
+Unit=tradeai-stance-organic-observe.service
 OnCalendar=Mon..Fri *-*-* 06:35:00
 AccuracySec=1min
 Persistent=true
