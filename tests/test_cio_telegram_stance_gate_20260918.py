@@ -220,3 +220,52 @@ def test_allow_does_not_write_hold_receipt(tmp_path, monkeypatch):
     assert v.allow is True
     assert not receipt.exists()
 
+
+def test_hold_receipts_path_defaults_to_local_state(monkeypatch, tmp_path):
+    """Without env pin, primary is ~/.local/state/tradeai (measurable without release-write)."""
+    monkeypatch.delenv("CIO_STANCE_HOLD_RECEIPTS", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    from lib import cio_telegram_stance_gate as gate
+
+    path = gate.hold_receipts_path()
+    assert path is not None
+    assert path == tmp_path / ".local/state/tradeai/cio_telegram_stance_holds.jsonl"
+
+
+def test_hold_dual_write_mirrors_when_persist_parent_exists(tmp_path, monkeypatch):
+    """Default path dual-writes local + persist mirror (outside pytest hold-suppress)."""
+    import json
+    from lib import cio_telegram_stance_gate as gate
+    import scripts.lib.persistent_state_root as psr
+
+    monkeypatch.delenv("CIO_STANCE_HOLD_RECEIPTS", raising=False)
+    monkeypatch.delenv("CIO_STANCE_HOLD_RECEIPTS_DISABLE", raising=False)
+    # Production persist path is suppressed under pytest unless env pins a path;
+    # dual-write is the production default — exercise it with the guard cleared.
+    monkeypatch.delenv("PYTEST_CURRENT_TEST", raising=False)
+    home = tmp_path / "home"
+    (home / ".local" / "state" / "tradeai").mkdir(parents=True)
+    persist_root = tmp_path / "persist"
+    (persist_root / "data" / "cio").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(psr, "good_persistent_root", lambda: persist_root)
+
+    verdict = gate.StanceGateVerdict(
+        allow=False,
+        held_reason=gate.HELD_DISAGREEMENT,
+        symbol="AXTI",
+        message_stance="bullish",
+        cio_action="AVOID",
+        cio_side="bearish",
+    )
+    wrote = gate.record_hold(verdict, source="dual_write_test")
+    assert wrote is not None
+    local = home / ".local" / "state" / "tradeai" / "cio_telegram_stance_holds.jsonl"
+    persist = persist_root / "data" / "cio" / "cio_telegram_stance_holds.jsonl"
+    assert local.is_file()
+    assert persist.is_file()
+    local_rows = [json.loads(L) for L in local.read_text().splitlines() if L.strip()]
+    persist_rows = [json.loads(L) for L in persist.read_text().splitlines() if L.strip()]
+    assert local_rows[0]["symbol"] == "AXTI"
+    assert persist_rows[0]["symbol"] == "AXTI"
+    assert local_rows[0]["source"] == "dual_write_test"

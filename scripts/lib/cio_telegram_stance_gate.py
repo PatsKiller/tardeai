@@ -58,21 +58,34 @@ def hold_receipts_path() -> Optional[Path]:
     """Durable hold receipt path.
 
     * ``CIO_STANCE_HOLD_RECEIPTS`` redirects (tests) or disables (``0``/``off``).
-    * Default: ``persistent-state/data/cio/cio_telegram_stance_holds.jsonl``.
+    * Default: prefer ``~/.local/state/tradeai/`` (readable without release-write),
+      then persistent-state when present.
     """
     raw = str(os.environ.get("CIO_STANCE_HOLD_RECEIPTS") or "").strip()
     if raw.lower() in {"0", "off", "false", "no", "disable"}:
         return None
     if raw:
         return Path(raw)
+    # Prefer local primary so measurement works without release-write.
+    # Dual-write in record_hold still mirrors to persistent-state when present.
+    return Path.home() / ".local/state/tradeai/cio_telegram_stance_holds.jsonl"
+
+
+def _hold_write_targets(primary: Path) -> list[Path]:
+    """Primary plus persistent-state mirror when env does not pin a single path."""
+    raw = str(os.environ.get("CIO_STANCE_HOLD_RECEIPTS") or "").strip()
+    if raw and raw.lower() not in {"0", "off", "false", "no", "disable"}:
+        return [primary]
+    targets = [primary]
     try:
-        from scripts.lib.persistent_state_root import production_state_root
+        from scripts.lib.persistent_state_root import good_persistent_root
+
+        persist = good_persistent_root() / "data" / "cio" / "cio_telegram_stance_holds.jsonl"
+        if persist.parent.is_dir() and persist.resolve() != primary.resolve():
+            targets.append(persist)
     except Exception:  # noqa: BLE001
-        try:
-            from lib.persistent_state_root import production_state_root  # type: ignore
-        except Exception:  # noqa: BLE001
-            return None
-    return production_state_root() / "data" / "cio" / "cio_telegram_stance_holds.jsonl"
+        pass
+    return targets
 
 
 def _should_persist_hold() -> bool:
@@ -114,13 +127,18 @@ def record_hold(
         "cio_side": verdict.cio_side,
         "mbi_behavior": 0,
     }
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(row, sort_keys=True) + "\n")
-        return path
-    except OSError:
-        return None
+    wrote: Optional[Path] = None
+    line = json.dumps(row, sort_keys=True) + "\n"
+    for target in _hold_write_targets(path):
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("a", encoding="utf-8") as fh:
+                fh.write(line)
+            if wrote is None:
+                wrote = target
+        except OSError:
+            continue
+    return wrote
 
 
 @dataclass(frozen=True)

@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-19T23:34:18-04:00
-Measured at: served pin 170532178-main-exact-phase2-20260919-202251; M1–M5 OBSERVED; soft≈0.003; AEC 20:00 timer AgentView+commitment+narrator telegram=accepted
+as_of: 2026-09-19T23:59:00-04:00
+Measured at: tip a3891ec86; served pin f14dbdfee… (promote blocked); M1–M5 OBSERVED from tip+local soak/census; soft≈0.002
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -21,11 +21,12 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-hermes_advisory_event_enqueue | KNOWN DARK · PROPOSED RETIRE | AGENTS research table; automatic writer is librarian backlog loop | Operator grant on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row or wired consumer |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | [CODE] gate hold now appends `cio_telegram_stance_holds.jsonl` (CioTelegramStanceHold@v1) from check_investment_send chokepoint; publishers stamp source= | Promote + observe live hold line on CURRENT | live hold receipt from CURRENT |
-| PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=4 on tip 4bafd6f83 @ 2026-09-19T20:02:08Z | — | soak_ready=YES |
-| PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | [CODE] thin+armed now writes `vector=quality_escalate` receipt even on dry_run (`would_escalate`); receipts prefer persistent-state path | Promote + observe receipt from scheduled gap_resolver | receipt vector=quality_escalate |
-| PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |
-| PARTIAL-M1-M5 | CLOSED | [VERIFIED] 2026-09-20T00:05–00:23Z pins 0ed980353→170532178: M1–M5 OBSERVED; census pass=9 fail=0; soft 3/998≈0.003 | #1097+#1095 promote | all five OBSERVED from served |
+| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | [CODE] hold dual-writes `~/.local/state/tradeai/cio_telegram_stance_holds.jsonl` + persist mirror; served pin still pre-#1104 | Promote tip; observe live hold line | live hold receipt from CURRENT or local after promote |
+| PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=3 @ 2026-09-20T01:28:40Z local ledger; pins_match | — | soak_ready=YES |
+| PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | [CODE] thin dry_run receipt + gap_resolver dual-write local/persist; served still 0 `quality_escalate` lines (pre-#1105) | Promote tip; observe scheduled receipt | receipt vector=quality_escalate |
+| PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share≈0.002; stale_grounded_residual tracked not soft; #1087 report filter | — | share≤0.15 |
+| PARTIAL-M1-M5 | CLOSED | [VERIFIED] 2026-09-20T03:59:26Z tip a3891ec86: M1–M5 OBSERVED (M4 soak streak=3 + census pass=9 fail=0 local); soft≈0.002 | local soak dual-write (#1108) | all five OBSERVED |
+
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | CLOSED | [VERIFIED] organic `aec_wake_spine_receipts.jsonl` as_of=2026-09-20T01:04:31Z subject=PORTFOLIO policy_decision=aec_spines_loaded counts strategic=2 learning=5; wake consult 01:05:09Z | #1099 promote | wake receipt aec_spines_loaded |
 | PARTIAL-relationship-spine-data | ◆ | no domain data yet | Operator-approved sources only | registry approval rows |
@@ -199,3 +200,10 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - [VERIFIED] `research_quality_escalate` host arm=1; gap_resolution_receipts tail has **0** `quality_escalate` lines — thin-receipt code not yet on served pin.
 - Stance hold / cio_cycle_status / durable hold receipt files absent on served (same promote lag).
 - Still open: promote tip; organic EXPIRED; organic QE receipt; organic stance hold; §17 relationship/:5432/hermes; wave-close AS-IS/FUTURE/GAP+email.
+
+## 2026-09-19T23:59 ET — operator M4 PARTIAL remasured OBSERVED; dual-write stance+QE
+
+- Operator paste: M1/M2/M3/M5 OBSERVED; **M4 PARTIAL**; soft≈0.002.
+- [VERIFIED] tip remasure `report_maturity_bar_m1_m5.py` @ 2026-09-20T03:59:26Z: **M4 OBSERVED** — soak streak=3 soak_ready=YES last_as_of=2026-09-20T01:28:40Z; census as_of=2026-09-20T01:09:08Z pass=9 warn=2 fail=0 (local paths). M2 HELD:NOC writeback crt_926c909… confirmed.
+- Agent-owned while release-write absent: stance hold + gap_resolver receipt **local dual-write** (`~/.local/state/tradeai/…` primary, persist mirror).
+- Still blocked: tip promote (no release-write); organic EXPIRED / QE / stance on served pin `f14dbdfee…`; §17 relationship/:5432/hermes; wave-close docs+email.

@@ -286,3 +286,34 @@ def test_thin_dry_run_writes_quality_escalate_receipt(tmp_path, monkeypatch):
     assert qe[0].get("outcome") == "dry_run"
     assert qe[0].get("would_escalate") is True
 
+
+def test_default_receipt_dual_write_prefers_local(tmp_path, monkeypatch):
+    """Default receipts dual-write local + persist; tmp receipts_path stays single."""
+    from scripts.lib import gap_resolver as gr
+
+    home = tmp_path / "home"
+    local_parent = home / ".local" / "state" / "tradeai"
+    local_parent.mkdir(parents=True)
+    persist_root = tmp_path / "persist"
+    (persist_root / "data" / "cio").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setattr(gr, "_persistent_receipts_path", lambda: persist_root / gr.RECEIPTS_REL)
+
+    primary = gr.default_receipts_path()
+    assert primary == local_parent / "gap_resolution_receipts.jsonl"
+    gr._append_receipt(primary, {"vector": "quality_escalate", "outcome": "dry_run", "probe": 1})
+    local = local_parent / "gap_resolution_receipts.jsonl"
+    persist = persist_root / gr.RECEIPTS_REL
+    assert local.is_file() and persist.is_file()
+    assert '"probe": 1' in local.read_text()
+    assert '"probe": 1' in persist.read_text()
+
+    only = tmp_path / "only.jsonl"
+    gr._append_receipt(only, {"vector": "quality_escalate", "outcome": "dry_run", "probe": 2})
+    assert only.is_file()
+    assert not (local_parent / "only.jsonl").exists()
+    assert '"probe": 2' in only.read_text()
+    # Dual-write must not leak the test-only row into default ledgers.
+    assert '"probe": 2' not in local.read_text()
+    assert '"probe": 2' not in persist.read_text()
+
