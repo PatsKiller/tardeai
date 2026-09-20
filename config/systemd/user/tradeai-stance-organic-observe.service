@@ -1,0 +1,21 @@
+[Unit]
+# Read-only observe for PARTIAL-telegram-CIO-stance.
+# Exit 0 = organic OBSERVED (source=check_investment_send + ORGANIC_HOLD_CALLERS).
+# Exit 2 = still PARTIAL (canary/probe only or empty) — a valid observation, not a unit failure.
+# Exit 1 = error.
+#
+# Does not invent holds, send Telegram, or touch the broker.
+Description=Trade AI organic CIO stance hold observe (PARTIAL-telegram-CIO-stance)
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/report_organic_stance_hold.py
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
+    scripts/report_organic_stance_hold.py --json
+# 0 = OBSERVED; 2 = PARTIAL (expected until a Mon–Fri organic hold lands)
+SuccessExitStatus=0 2
+TimeoutStartSec=120
+
+[Install]
+WantedBy=default.target
