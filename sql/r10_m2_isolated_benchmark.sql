@@ -6,8 +6,25 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-DROP SCHEMA IF EXISTS memory_r10_m2 CASCADE;
-CREATE SCHEMA memory_r10_m2;
+-- Destructive reset is OPT-IN (2026-09-20). The isolated harness sets
+--     SET m2.allow_destructive_reset = 'on';
+-- before applying this file, so a shadow rebuild still wipes cleanly. A manual
+-- or production apply does NOT set it, so re-running this file over an existing
+-- memory_r10_m2 refuses loudly instead of CASCADE-dropping live cognitive memory.
+DO $reset$
+BEGIN
+  IF coalesce(current_setting('m2.allow_destructive_reset', true), 'off') = 'on' THEN
+    DROP SCHEMA IF EXISTS memory_r10_m2 CASCADE;
+  ELSIF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'memory_r10_m2') THEN
+    RAISE EXCEPTION
+      'M2_DESTRUCTIVE_RESET_REFUSED: schema memory_r10_m2 already exists. '
+      'Re-running this file would DROP ... CASCADE it. Set '
+      'm2.allow_destructive_reset=on to reset an ISOLATED shadow only.';
+  END IF;
+END
+$reset$;
+
+CREATE SCHEMA IF NOT EXISTS memory_r10_m2;
 
 -- Agent role: not superuser, not BYPASSRLS, not table owner.
 DO $$
