@@ -171,6 +171,32 @@ def validate_row(row: dict[str, Any]) -> list[str]:
 
     if state == STATE_ACTIVE and not row.get("expected_cadence_hours"):
         errs.append(f"{lane_id}: expected_cadence_hours is required when ACTIVE")
+
+    # active_days is 0=Mon..6=Sun ints (docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md).
+    # A string like "Mon-Fri" iterates characters → int('M') and took down
+    # collect_lane_registry_report entirely (stance observe lanes, 2026-09-20).
+    days = row.get("active_days")
+    if days is not None:
+        if isinstance(days, str) or not isinstance(days, (list, tuple)):
+            errs.append(
+                f"{lane_id}: active_days must be a list of weekday ints 0-6 "
+                f"(0=Mon..6=Sun), not {type(days).__name__} {days!r}"
+            )
+        else:
+            for d in days:
+                try:
+                    di = int(d)
+                except (TypeError, ValueError):
+                    errs.append(
+                        f"{lane_id}: active_days entries must be ints 0-6, "
+                        f"got {d!r}"
+                    )
+                    break
+                if di < 0 or di > 6:
+                    errs.append(
+                        f"{lane_id}: active_days entry {di} out of range 0-6"
+                    )
+                    break
     return errs
 
 
@@ -426,12 +452,20 @@ def _within_declared_days(row: dict[str, Any], now: datetime) -> bool:
 
     A weekday-only lane must not alarm on a Sunday; a quiet system reports QUIET
     rather than paging.
+
+    ``active_days`` must be a list of ints 0=Mon..6=Sun. A string form such as
+    ``"Mon-Fri"`` is invalid: iterating it yields characters and ``int('M')``
+    raises — which previously aborted the whole lane-registry report.
     """
     days = row.get("active_days")
     if not days:
         return True
+    if isinstance(days, str) or not isinstance(days, (list, tuple)):
+        raise ValueError(
+            f"active_days must be a list of weekday ints 0-6, got {days!r}"
+        )
     # 0=Mon .. 6=Sun, matching datetime.weekday()
-    return now.weekday() in set(int(d) for d in days)
+    return now.weekday() in {int(d) for d in days}
 
 
 def evaluate_lane(row: dict[str, Any], *, now: Optional[datetime] = None,
@@ -449,12 +483,21 @@ def evaluate_lane(row: dict[str, Any], *, now: Optional[datetime] = None,
     age_h = round((now - last).total_seconds() / 3600.0, 2) if last else None
 
     sched_ok = _scheduler_present(row, found)
-    in_window = _within_declared_days(row, now)
+    try:
+        in_window = _within_declared_days(row, now)
+        days_err: Optional[str] = None
+    except (TypeError, ValueError) as exc:
+        # A bad declaration must not abort collect_lane_registry_report.
+        # UNVERIFIABLE (not SILENT): we could not judge the window, not silence.
+        in_window = True
+        days_err = str(exc)
 
     # Order matters. A declared-off lane is never a finding, whatever its
     # scheduler or its silence — that is the whole point of declaring it.
     if state in SILENCE_EXPECTED:
         verdict = EXPECTED_SILENT
+    elif days_err is not None:
+        verdict = UNVERIFIABLE
     elif not sched_ok:
         verdict = ORPHANED
     elif str((row.get("output_signal") or {}).get("kind")) == "none":
@@ -477,7 +520,7 @@ def evaluate_lane(row: dict[str, Any], *, now: Optional[datetime] = None,
     else:
         verdict = SILENT if in_window else EXPECTED_SILENT
 
-    return {
+    out = {
         "lane": lane_id,
         "lane_id": lane_id,
         "owner": row.get("owner"),
@@ -498,6 +541,9 @@ def evaluate_lane(row: dict[str, Any], *, now: Optional[datetime] = None,
         "authority": AUTHORITY,
         "as_of": now.replace(microsecond=0).isoformat(),
     }
+    if days_err is not None:
+        out["active_days_error"] = days_err
+    return out
 
 
 def find_undeclared(reg: dict[str, Any], found: dict[str, Any]) -> list[dict[str, Any]]:

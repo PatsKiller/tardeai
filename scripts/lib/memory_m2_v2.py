@@ -265,10 +265,21 @@ def adversarial_rls_suite(conn) -> dict[str, Any]:
 
 
 def backup_restore_suite() -> dict[str, Any]:
-    """pg_dump/pg_restore against isolated :55432 only."""
-    from scripts.lib.memory_m2_benchmark import DEFAULT_DSN, _assert_isolated_dsn
+    """pg_dump/pg_restore against the isolated container only.
 
-    _assert_isolated_dsn(DEFAULT_DSN)
+    Safety here is STRUCTURAL, not asserted. Every subprocess below hardcodes
+    `-h 127.0.0.1 -p 55432 -U m2` and the function takes no DSN parameter, so
+    there is no input by which a caller could redirect it at production.
+
+    A `_assert_isolated_dsn(DEFAULT_DSN)` call used to sit here. It was a
+    tautology — DEFAULT_DSN is a module constant that can never contain :5432 —
+    over a value none of the subprocesses consume, and it read as a runtime gate
+    on the commands that follow. Worse, it implied this function is
+    DSN-parameterisable: a future edit adding a `dsn` argument would plausibly
+    thread it into the assert and leave the six hardcoded `-p 55432` lists
+    untouched, producing a guard that checks one target and dumps another.
+    The literals are the guarantee; do not replace them with a parameter.
+    """
     env = {**os.environ, "PGPASSWORD": "m2shadow"}
     dump = Path("/tmp/m2_isolated_backup.dump")
     t0 = time.perf_counter()
