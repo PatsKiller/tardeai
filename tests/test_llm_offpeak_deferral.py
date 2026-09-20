@@ -197,6 +197,52 @@ def test_claim_uses_skip_locked_so_two_drainers_cannot_double_spend(fake_db):
     assert "FOR UPDATE SKIP LOCKED" in claim[0]
 
 
+def test_dry_run_previews_without_claiming(fake_db):
+    """A preview that consumes the work it previews is worse than no preview.
+
+    Measured 2026-09-20 on the first live exercise: --dry-run called claim_due(), which
+    moves rows pending -> claimed, printed them and exited. The row was stranded in
+    'claimed' forever — never run, never expired, invisible to pending counts.
+    """
+    D.preview_due(limit=5)
+    sql = " ".join(s for s, _ in fake_db.sql)
+    assert "SELECT" in sql
+    assert "SET status = 'claimed'" not in sql, "preview must not mutate"
+    assert "FOR UPDATE" not in sql
+
+
+def test_the_drain_script_dry_run_path_never_calls_claim():
+    """Pinned against the source: the ordering is the whole bug."""
+    src = (ROOT / "scripts" / "drain_llm_deferred.py").read_text(encoding="utf-8")
+    dry = src.index("if args.dry_run:")
+    claim = src.index("batch = llm_deferral.claim_due")
+    assert dry < claim, "the dry-run branch must return before claim_due is reached"
+    assert "llm_deferral.preview_due(limit=args.limit)" in src
+
+
+def test_a_stranded_claim_comes_back_to_the_queue(fake_db):
+    """A drain killed mid-batch must not remove work from existence."""
+    D.reclaim_stale()
+    sql = " ".join(s for s, _ in fake_db.sql)
+    assert "SET status = 'pending', claimed_at = NULL" in sql
+    assert "status = 'claimed' AND claimed_at <" in sql
+
+
+def test_a_poison_request_is_retired_not_retried_forever(fake_db):
+    """Retrying a request that always fails burns the money the queue exists to save."""
+    D.reclaim_stale()
+    calls = [s for s, _ in fake_db.sql if "SET status = 'failed'" in s]
+    assert calls, "rows past MAX_ATTEMPTS must be retired"
+    assert "attempts >= " in calls[0]
+    assert D.MAX_ATTEMPTS >= 1
+
+
+def test_reclaim_runs_before_the_queue_is_counted():
+    """Counting first would report a queue smaller than the outstanding work."""
+    src = (ROOT / "scripts" / "drain_llm_deferred.py").read_text(encoding="utf-8")
+    assert src.index("reclaim_stale()") < src.index("queue_summary()")
+
+
 def test_the_queue_table_mints_its_own_ids():
     """watchlist_agent_jobs.id has no default and every insert must supply one."""
     assert "id            UUID PRIMARY KEY DEFAULT gen_random_uuid()" in D.DDL
