@@ -62,9 +62,24 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "GapResolution@v1"
 RECEIPT_SCHEMA = "GapResolutionReceipt@v1"
 
-#: Append-only. data/cio is one of served_from.linked_dirs, so on the host this
-#: resolves into persistent-state through Phase 1's symlink.
-RECEIPTS_PATH = PROJECT_ROOT / "data" / "cio" / "gap_resolution_receipts.jsonl"
+#: Append-only. Prefer the served persistent-state copy (Phase 1 linked dir);
+#: fall back to checkout-relative when persistent root is unreachable.
+RECEIPTS_REL = "data/cio/gap_resolution_receipts.jsonl"
+RECEIPTS_PATH = PROJECT_ROOT / RECEIPTS_REL
+
+
+def default_receipts_path() -> Path:
+    """Served persistent-state path when available; else checkout-relative."""
+    try:
+        from scripts.lib.persistent_state_root import good_persistent_root
+
+        served = good_persistent_root() / RECEIPTS_REL
+        # Prefer served when the parent exists (symlink or directory).
+        if served.parent.is_dir() or served.parent.parent.is_dir():
+            return served
+    except Exception:  # noqa: BLE001 — resolution must never block resolve()
+        pass
+    return RECEIPTS_PATH
 AUTHORITY_PATH = PROJECT_ROOT / "config" / "data_source_authority.json"
 
 #: Arm for real side effects (running a producer, calling a provider, sending).
@@ -279,7 +294,7 @@ class Context:
 
     @property
     def receipts(self) -> Path:
-        return self.receipts_path or RECEIPTS_PATH
+        return self.receipts_path or default_receipts_path()
 
 
 # ── registry ─────────────────────────────────────────────────────────────────
@@ -352,7 +367,7 @@ def _append_receipt(path: Path, row: dict[str, Any]) -> None:
 
 
 def read_receipts(path: Optional[Path] = None) -> list[dict[str, Any]]:
-    p = path or RECEIPTS_PATH
+    p = path or default_receipts_path()
     if not p.is_file():
         return []
     rows: list[dict[str, Any]] = []
@@ -893,6 +908,43 @@ def resolve(
                             "detail": esc.get("detail"),
                         }
                     )
+                elif esc.get("enabled") and esc.get("thin"):
+                    # Thin + armed but no climb (dry_run / no hits) still leaves
+                    # a receipt — PARTIAL-quality-escalate-organic was stuck at
+                    # zero because only escalated+hits wrote, while the cron
+                    # often runs dry_run without GAP_RESOLVER_LIVE.
+                    _append_receipt(
+                        ctx.receipts,
+                        {
+                            "schema": RECEIPT_SCHEMA,
+                            "authority": AUTHORITY,
+                            "gap_id": gap.gap_id,
+                            "goal_id": gap.goal_id,
+                            "domain": canonical_domain(gap.domain),
+                            "subject": gap.subject,
+                            "question": gap.question[:300],
+                            "vector": "quality_escalate",
+                            "provider": "searxng",
+                            "outcome": (
+                                "dry_run"
+                                if esc.get("dry_run") or esc.get("would_escalate")
+                                else "partial"
+                            ),
+                            "detail": esc.get("detail") or rqe.REASON,
+                            "reason": rqe.REASON,
+                            "would_escalate": bool(esc.get("would_escalate")),
+                            "started": esc.get("as_of") or "",
+                            "finished": esc.get("as_of") or "",
+                        },
+                    )
+                    res.attempts.append(
+                        {
+                            "vector": "quality_escalate",
+                            "provider": "searxng",
+                            "outcome": "dry_run" if esc.get("dry_run") else "partial",
+                            "detail": esc.get("detail"),
+                        }
+                    )
                 res.evidence = gathered
         except Exception:  # noqa: BLE001 — escalate must never break resolve
             pass
@@ -960,4 +1012,5 @@ __all__ = [
     "DataGap", "Resolution", "VectorResult", "Context", "Attempt",
     "resolve", "load_on_gap", "normalise_chain", "registry_domain", "canonical_domain",
     "read_receipts", "attempts_today", "live_armed", "BACKUP_FETCHERS", "DEFAULT_VECTORS",
+    "default_receipts_path",
 ]
