@@ -1,0 +1,14 @@
+[Unit]
+Description=Trade AI organic stance observe — 09:05 ET Mon–Fri
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/report_organic_stance_hold.py
+
+[Timer]
+# After market-hours GO/proposal producers start (screener */15 9–16, proposal */2 9–16).
+# Host local time is America/New_York.
+OnCalendar=Mon..Fri *-*-* 09:05:00
+AccuracySec=1min
+Persistent=true
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target
