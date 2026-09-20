@@ -552,3 +552,9 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - [VERIFIED] `collect_lane_registry_report` raised `ValueError: invalid literal for int() with base 10: 'M'` because stance observe lanes declared `active_days: "Mon-Fri"` (string iterates chars). Convention requires `0=Mon..6=Sun` ints.
 - Fix: both lanes → `[0,1,2,3,4]`; `validate_row` rejects string forms; `evaluate_lane` returns UNVERIFIABLE instead of aborting the whole report.
 - Not a ledger reopen — monitor regression from timer-install rows. Goal still NOT complete (organic + §17).
+
+## 2026-09-20T13:24 ET — operator close brief emailed + parked in repo
+
+- Email sent: messageId=`1a0bfd7aeb84edd4` (operator close brief to john@jwwhiting.com).
+- Repo copy: `docs/ops/OPERATOR_CLOSE_BRIEF_AEC_MATURITY_2026-09-20.md` (Status ACTIVE; #1144 MERGED into #1142 tip `c607cd2ba`; #1142 OPEN).
+- Goal still **NOT COMPLETE** — organic stance PARTIAL (Sunday) + three §17 proposes PENDING. No grants invented.
