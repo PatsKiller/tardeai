@@ -451,3 +451,18 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - cio-hardening/agent-governance/provider-cost/release-readiness/aif all SUCCESS on head.
 - Stance holds file still probe/canary only (n=2); organic `source=check_investment_send` awaits Mon–Fri GO/scalp/proposal.
 - Goal remains open: organic stance + §17 parks (bitemporal/:5432, hermes RETIRE, relationship).
+
+## 2026-09-20T10:47 ET — organic stance observer; goal audit still incomplete
+
+- [VERIFIED] `report_organic_stance_hold.py` @ 2026-09-20T14:47:06Z: **PARTIAL** organic=0 non_organic=2 (probe+canary). Exit 2.
+- [VERIFIED] pin `6a78d41cc` already contains ORGANIC_HOLD_CALLERS normalize (`fcd8de172` ancestor) — Monday live producers will stamp correctly without a new promote.
+- Agent-owned: `summarize_stance_holds` / CLI + hermetic tests (18 pass). Timer `stance-organic-observe` should call the report.
+- §17 still parked: bitemporal/:5432, hermes RETIRE propose, relationship propose. Goal NOT complete.
+
+## 2026-09-20T10:53 ET — multi-agent follow-up: organic hunt N; census; AGENTS 1.2.5 + §17 proposes
+
+- [Hunt organic stance](bc-463ce235-3be6-54e9-8215-abbd3918792c): **organic=0** (probe+canary only); pin already has ORGANIC_HOLD_CALLERS normalize.
+- [Gap census](bc-69011b78-118f-5931-b89d-eb70c6e87261): remaining = stance SCHEDULE-BOUND + 3× §17; agent-owned doc drift DOC-AGENTS-§13.4.
+- Agent-owned close: AGENTS.md **1.2.5 PATCH** — §13.4 dark contracts + AgentView/commitment prose match ledger CLOSED.
+- §17 propose hardened: hermes RETIRE, relationship sources, new `PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` (exact operator asks). No grants applied.
+- Goal NOT complete.
