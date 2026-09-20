@@ -2342,7 +2342,7 @@ a guarantee the runtime does not provide.**
 | crontab lines that **set** `LLM_GLOBAL_DAILY_USD_CAP=2.00` (measured 2026-09-14; 0 still set 0.50) | **6** |
 | active crontab lines that invoke an LLM-spending script | **84** |
 | python modules that **read** the variable | 11 |
-| per-process `daily_cost_cap_usd` values in `config/llm_process_registry.json` | 11 caps, **summing to $11.45/day** |
+| per-process `daily_cost_cap_usd` values in `config/llm_process_registry.json` | **30 caps** (measured 2026-09-19): 29 paid lanes **summing to $18.05/day**, plus the OAuth-only `watchlist_agent_oauth_fallback` whose $1.00 is a guard on a $0.00 lane. The earlier "11 caps / $11.45" predates the 2026-09-14 caller label split, the L3 bindings and the risk/steph pools. |
 
 ### Request caps raised for risk/steph  `[VERIFIED]` 2026-09-19
 
@@ -2359,6 +2359,48 @@ cost cap binds near 660 calls, well before the request cap. Worker throughput bi
 — one cron schedule (`*/15 10-20`, `--limit 8`) is about 352 job slots/day for all agents combined,
 against roughly 570 of combined demand. Raising the request caps removes the starvation, not the
 queue.
+
+### A paid lane died for three days and nothing said so  `[VERIFIED]` 2026-09-19
+
+The DeepSeek account ran to a **-$0.09** balance and returned **HTTP 402 on every call** from
+2026-09-17 until the operator topped it up on 2026-09-19. Measured, not inferred: 244 failures on
+09-17, 242 on 09-18, **660+** in all, `error_message` uniformly
+`HTTP_402: policy=FAST model=deepseek-flash`; `hermes_external_research` ate 172 of them, so
+external research was dead the same three days. Recovery is equally measured — last 402 at
+**19:15:06 ET**, balance **$99.89** at 19:46 ET, and the 19:30 cron run succeeded across
+`watchlist_risk_flash_narrative`, `watchlist_steph_flash_narrative`, `watchlist_cio_synthesis_cron`
+and `hermes_cloud_json`.
+
+**Nothing alarmed for three days.** Every health check in this system watches data freshness or
+lane cadence; **none of them read `llm_consumption_log.error_message`**, so a provider that answers
+every request with a billing refusal looks, to the monitors, like a system doing no work. A failed
+call also still settles its cap reservation at projected cost, so the outage quietly drained the
+daily *request* pools while producing nothing — **cap consumption is not evidence of work.**
+
+Two controls, both operator-directed in session 2026-09-19 (*"both"* — top up **and** make a future
+outage degrade instead of go silent):
+
+1. **`llm-provider-health`** (`scripts/check_llm_provider_health.py`, cron `20 * * * *`, declared in
+   `config/lane_registry.json`). Reads the ledger window and classifies failures as BILLING / AUTH /
+   TRANSPORT / UNKNOWN. **Billing and auth page at any volume** — one 402 is already the whole
+   account, and waiting for a rate wastes more calls; transport pages only when a lane fails
+   essentially every call over at least five. One page per lane per cause per 6h, because a billing
+   stop lasts until a human acts. A lane that has answered normally at least three times since its
+   last failure is **reported but not paged** — the window is hours wide, so a fixed outage stays
+   inside it, and this run proved the point: the last 402 landed at 19:15:06, the account was topped
+   up by 19:46, and the 3h window still read CRITICAL with the lane healthy. Paging someone for what
+   they just fixed is how pages get ignored. It writes `data/runtime/llm_provider_health.json` on
+   **every** run, healthy or not, so the monitor cannot itself go silent unnoticed — the failure it
+   exists to catch.
+2. **OAuth soft fallback for risk/steph/tax** (`watchlist_agent_oauth_fallback`, lane_policy
+   `either`, so it is structurally incapable of spending DeepSeek). Maria survived the outage only
+   because `_llm` could pre-empt her work to grok-oauth; risk/steph/tax had no such path. They now
+   share this pool **after** their governed Flash call has already failed.
+
+**The pre-empt rule is unchanged and still Maria-only:** OAuth must not silently pre-empt governed
+Flash. What changed is the *fallback* tier, which is reached only once the governed lane has refused
+— degradation, not substitution. OAuth output keeps the non-professional
+`LEGACY_WATCH_RESEARCH_NON_PROFESSIONAL` provenance it carries for Maria.
 
 So roughly **78 of 84 LLM-invoking lanes run with the global cap unset** and fall back to their
 per-process cap — `gate_d_bundle_2_advisory_canary.py:367` states the fallback plainly:
