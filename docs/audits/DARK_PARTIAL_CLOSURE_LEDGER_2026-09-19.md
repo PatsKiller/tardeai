@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T03:39:29-04:00
-Measured at: operator paste M4 PARTIAL; tip remasure M1–M5 OBSERVED soak=6; soft 3/998≈0.003; Command snapshot_source fix in flight
+as_of: 2026-09-20T04:55:00-04:00
+Measured at: operator paste M4 PARTIAL (confirmed); soft≈0.002; M4 bar now warn=0; promote still blocked
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -25,7 +25,8 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | controlled_canary receipt only; **code wire**: data_gap_resolver.chain_resolve_open_gaps → gap_resolver.resolve (requester=data_gap_resolver) — was falsely claimed already wired | merge+promote + unattended cron receipt | vector=quality_escalate requester=data_gap_resolver (not canary) |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
-| PARTIAL-M1-M5 | CLOSED | [VERIFIED] post-promote 2026-09-20T04:44:54Z pin 8090bf675: M1–M5 OBSERVED; soak streak=5 | promote #1110 tip | all five OBSERVED |
+| PARTIAL-M1-M5 | CLOSED | [VERIFIED] post-promote 2026-09-20T04:44:54Z pin 8090bf675: M1–M5 OBSERVED under prior bar (fail=0); operator remasure 2026-09-20 keeps M4 PARTIAL on census WARN — see PARTIAL-M4-census-warn | promote #1110 tip | all five OBSERVED |
+| PARTIAL-M4-census-warn | OPEN | Operator paste 2026-09-20: M4 PARTIAL; live census warn=2 (Command snapshot_source + file phantoms). Reporter now requires warn=0. File phantoms → PASS when Attribution filters (§17 holdings untouched). | promote tip (≥`2e45dbc94`) + remasure census | warn=0 → M4 OBSERVED |
 
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | CLOSED | [VERIFIED] organic `aec_wake_spine_receipts.jsonl` as_of=2026-09-20T01:04:31Z subject=PORTFOLIO policy_decision=aec_spines_loaded counts strategic=2 learning=5; wake consult 01:05:09Z | #1099 promote | wake receipt aec_spines_loaded |
@@ -281,4 +282,12 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Stance organic path [CODE]: `screener_go_alerts`, `send_telegram_proposal_alert`, `social_scalp_scanner` call `check_investment_send` — hold receipts will stamp source=`check_investment_send` when CIO conflicts; not impersonated.
 - Still agent-owned open: promote #1119+#1120 tip; census Command snapshot_source WARN; unattended QE requester=data_gap_resolver; organic stance hold.
 - release-write `01d9146085bc55c4` PENDING.
+
+## 2026-09-20T04:55 ET — operator remasure confirms M4 PARTIAL; align bar
+
+- Operator paste (again): M1 OBSERVED · M2 OBSERVED (HELD:NOC) · M3/M5 OBSERVED · **M4 still PARTIAL** · soft≈0.002 pass.
+- Root cause of reporter/operator skew: `_m4_from_soak` treated fail=0+warn>0 as OBSERVED; operator does not.
+- Agent-owned: (1) M4 OBSERVED requires census **warn=0**; (2) file phantoms PASS when Attribution already filters (holdings edit still §17); (3) hermetic tests + CI allowlist.
+- Still blocked: promote tip (release-write absent; prior request not re-fired). Command snapshot_source remains the live WARN until tip serves.
+- Soft-share pass unchanged. Goal remains open.
 
