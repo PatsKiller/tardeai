@@ -114,3 +114,46 @@ repo addition. The supported route is to add the PGDG apt repo, which ships
 
 `production_sql_applied` remains **false**. Both cutover prerequisites still need operator
 action with superuser / OS access.
+
+## 2026-09-20 wave close — code ready, cutover still BLOCKED on two SQL statements
+
+`production_sql_applied` remains **false**. Measured against the live `trade_ai`
+database at 2026-09-20T16:39Z:
+
+| prerequisite | state |
+|---|---|
+| pgvector package on host | **installed** (0.8.6, via PGDG) |
+| `CREATE EXTENSION vector` in `trade_ai` | **not done** |
+| role `m2_agent` | **does not exist** |
+| schema `memory_r10_m2` | **absent** |
+
+The package install succeeded; the two SQL statements did not. They were entered at
+the **bash** prompt rather than inside `psql`, which returns `CREATE: command not
+found`. They must run inside a superuser psql session:
+
+```bash
+sudo -u postgres psql -d trade_ai
+```
+```sql
+CREATE EXTENSION vector;
+CREATE ROLE m2_agent LOGIN PASSWORD '<a real password, NOT the shadow literal m2agent>'
+    NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+```
+
+Store that password where `M2_AGENT_DSN` can read it — not in the repo.
+
+**Side effect already taken:** installing from PGDG upgraded PostgreSQL 17.10 → 17.11
+and restarted the production cluster at 00:25:55. Services came back (all user-scope
+units active, API 200). PGDG will continue to offer PG17 point releases, so pin the
+package or review upgrades before the next `apt upgrade` moves the server version again.
+
+### What IS ready
+
+The code path is complete and merged/landing:
+
+- production DSNs gated behind `TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED=1` (unset = refused)
+- the destructive reset requires two independent signals and is never enabled for production
+- `--dry-run` actually dry-runs; `--apply-schema` needs an explicit `--apply`
+- guard sentinels re-raise instead of degrading into a receipt string
+
+Nothing in that changes behaviour while the env var is unset, which it is.

@@ -508,3 +508,33 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
   - `screener_go_alerts` `*/15 9-16 * * 1-5` (hub tree)
 - Propose file status → **CONFIRMED**. Sunday organic=0 is schedule-bound only — not a missing cron.
 - Goal NOT complete (await organic hold Mon + §17 parks).
+
+## 2026-09-20T12:45 ET — M2 hardening wave; bitemporal :5432 still operator-blocked
+
+- [VERIFIED] `ai_local_acceptance.sh` **exit 0** (#1135) — first clean gate since 09-18.
+  `undeclared (NEW) 0`, `authority_green true`. Two lanes use ABSOLUTE output_signal paths:
+  relative resolves under persistent-state and measured 7.32h stale (watchdog) / absent
+  (disk-cleanup), which alarms on a healthy job.
+- [VERIFIED] Ledger split (#1136 `61ff56b99`): append log carries `merge=union`; the status
+  table stays hand-merged because it is shrink-only. Proven both ways — two branches
+  appending merge with 0 markers, two editing the header still conflict.
+- [VERIFIED] M2 production access gated behind `TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED=1`
+  (#1132). Unset — as now — every production DSN still raises. Destructive reset requires
+  two independent signals (session GUC + isolated-database allowlist) and is never enabled
+  for production even when authorized.
+- [VERIFIED] `--dry-run` was inert: `--apply-schema --dry-run` applied the schema. Fixed;
+  applying now needs an explicit `--apply` (AGENTS §0 rule 7).
+- [VERIFIED] AEC dual module identity ended (#1138): the hourly `--apply` entrypoint loaded
+  `lib.*` and `scripts.lib.*` as distinct objects, and `FORBIDDEN_PORTS` is a mutable
+  module-level set, so the production-port refusal was per-object.
+- [VERIFIED] Constitutional rails no longer swallowed: `FINANCIAL_TRUTH_REFUSED` and
+  `PRIVATE_COT_FORBIDDEN` re-raise. The second was found by the test, not by reading.
+- **DARK-bitemporal-m2-substrate stays PARTIAL.** Measured 16:39Z on live `trade_ai`:
+  pgvector 0.8.6 installed on the host, but `CREATE EXTENSION vector` not done, role
+  `m2_agent` absent, schema `memory_r10_m2` absent. The two statements were entered at the
+  bash prompt instead of inside `psql`. `production_sql_applied` false.
+- PGDG install upgraded PG 17.10 -> 17.11 and restarted the production cluster at 00:25:55;
+  all user-scope units came back, API 200. Pin the package before the next `apt upgrade`.
+- `allow_auto_merge` + `allow_update_branch` enabled by the operator. Auto-merge does not
+  update a behind branch, so with `strict: true` and cio-hardening at 10-16 min the race
+  persists; §17 PHASE D (fast always-reporting required gate) remains the structural fix.
