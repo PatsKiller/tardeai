@@ -2,7 +2,7 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-19T21:29:52-04:00
+as_of: 2026-09-19T23:34:18-04:00
 Measured at: served pin 170532178-main-exact-phase2-20260919-202251; M1–M5 OBSERVED; soft≈0.003; AEC 20:00 timer AgentView+commitment+narrator telegram=accepted
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
@@ -187,3 +187,15 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Superseded local work discarded: worktree `tradeai-wt-directive-20260919` held an uncommitted variant of
   the risk/steph flash routing + soft-share report filter; `origin/main` already carries both via
   **#1088** (`task_for_agent()`) and **#1087** (`_confidence_shaped_token`/`soft_flag`). Not re-landed.
+
+
+## 2026-09-19T23:33 ET — #1103 timer: already merged; promote blocked
+
+- [VERIFIED] PR #1103 MERGED at 2026-09-20T01:45:11Z → `5d6c02cdb` (prior_outcome / hour settle).
+- [VERIFIED] Follow-ons also on `origin/main`: #1105 QE thin receipt, #1108 M4 soak dual-write, #1104 stance hold, #1106 operational spine, #1107 relationship §17 propose. Tip **`be33f0202`**.
+- Served CURRENT still `f14dbdfee-main-exact-phase2-20260919-210329` — **no release-write grant**; promote deferred. Latest Telegram request `8d6757a06d9a01ff`.
+- [VERIFIED] M1–M5 OBSERVED from pin `f14dbdfee…`; soft 3 soft_unsupported / 998 (~0.003).
+- [VERIFIED] AEC bus hourly through 03:00Z; advisor SUPPRESSED_REPEAT; CommitmentOutcome still **INSUFFICIENT_EVIDENCE** (no EXPIRED / prior_outcome on served — expected until tip promote + next hour fire).
+- [VERIFIED] `research_quality_escalate` host arm=1; gap_resolution_receipts tail has **0** `quality_escalate` lines — thin-receipt code not yet on served pin.
+- Stance hold / cio_cycle_status / durable hold receipt files absent on served (same promote lag).
+- Still open: promote tip; organic EXPIRED; organic QE receipt; organic stance hold; §17 relationship/:5432/hermes; wave-close AS-IS/FUTURE/GAP+email.
