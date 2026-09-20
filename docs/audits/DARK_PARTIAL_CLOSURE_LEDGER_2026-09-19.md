@@ -408,3 +408,15 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
   - NEE `started=2026-09-20T12:00:11Z` same stamps
 - PARTIAL-quality-escalate-organic → **OBSERVED (unattended)**. Hand 10:30Z proof was precursor only.
 - Still open: M4 promote (72h SLA tip), organic stance, wave-close email. Goal remains open.
+
+## 2026-09-20T08:11 ET — operator remasure (M4 still PARTIAL; soft~0.002)
+
+- Operator paste: **M1 OBSERVED · M2 OBSERVED (HELD:NOC critique writeback) · M3/M5 OBSERVED · M4 still PARTIAL · soft-share ~0.002 (pass)**.
+- [VERIFIED] soft remasure `report_agent_number_grounding.py --json` @ 2026-09-20T12:11:00Z: soft_unsupported=3/998 **share=0.003** (pass ≤0.15); ungrounded_share=0.0. Operator ~0.002 and agent 0.003 both PASS.
+- Live pin still **PROMOTE OK** `f8eb9803f-main-exact-phase2-20260920-072254`. M4 residual = census **AI Analyst freshness** WARN under live 48h SLA; tip has 72h SLA (`4c418c21a`) **not yet on main** (#1127 OPEN head `0b147525c`).
+- Prior release-write `23bb4e52b91d7154` / state-write `8236bc2d3c2b13e3` unanswered/expired. Re-requested Telegram interrupt:
+  - `22b0d0c3cab47bd9` **release-write** 30m/4u — promote 72h tip after #1127 merge → remasure warn→0 → M4 OBSERVED
+- #1127: agent-governance PASS; cio-hardening **in_progress** (run 35509710625 started 12:07:13Z); mergeStateStatus=BLOCKED until required check green.
+- Stance holds file: only probe/canary rows — **0** organic `source=check_investment_send` yet (Sunday; GO/scalp producers idle).
+- Still open: merge #1127 → promote 72h → M4 OBSERVED; organic stance; wave-close AS-IS/FUTURE/GAP email.
+- Goal remains open — **not complete**.
