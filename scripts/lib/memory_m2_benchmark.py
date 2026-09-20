@@ -38,6 +38,32 @@ SCHEMA = "M2SubstrateBenchmark@v1"
 PGMNEMO_TARGET = "0.20.0"  # official current stable as of 2026-08-20 (pgxn/github)
 FORBIDDEN_PORTS = {"5432"}
 DEFAULT_DSN = "postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow"
+
+# Production cognitive-memory access is refused unless the operator sets this to
+# exactly "1". It is the single opt-in for the whole M2 substrate: unset, every
+# path below fails closed exactly as before (M2_DSN_PRODUCTION_PORT_FORBIDDEN).
+PRODUCTION_AUTH_ENV = "TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED"
+
+
+def production_memory_authorized() -> bool:
+    """True only on an exact "1". Any other value, unset included, is refused."""
+    return os.getenv(PRODUCTION_AUTH_ENV) == "1"
+
+
+def dsn_targets_production(dsn: str) -> bool:
+    """Port check against the host part, so a credential containing the digits
+    cannot spoof it. Note ':5432' is not a substring of ':55432'."""
+    tail = str(dsn).split("@")[-1]
+    return any(f":{p}" in tail for p in FORBIDDEN_PORTS)
+
+
+def conn_targets_production(conn) -> bool:
+    """Port 5432 as reported by the live connection. Fails CLOSED — an
+    unreadable DSN is treated as production."""
+    try:
+        return str(conn.get_dsn_parameters().get("port") or "") in FORBIDDEN_PORTS
+    except Exception:
+        return True
 SQL_PATH = Path(__file__).resolve().parents[2] / "sql" / "r10_m2_isolated_benchmark.sql"
 
 CATEGORIES = [

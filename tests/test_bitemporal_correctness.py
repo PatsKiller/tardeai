@@ -713,3 +713,51 @@ def test_schema_file_refuses_destructive_reset_without_optin(m2_conn):
         cur.execute(sql)
         cur.execute("SELECT to_regclass('memory_r10_m2.memory_fact_version')")
         assert cur.fetchone()[0] is not None
+
+
+def test_destructive_reset_refused_on_non_isolated_database(m2_conn):
+    """Second, independent guard: even with m2.allow_destructive_reset=on, the
+    schema file refuses to DROP unless current_database() is in the isolated
+    allowlist. This is enforced INSIDE the database, so a client-side ordering
+    mistake (e.g. a half-applied change that permits production while the GUC
+    is still set) cannot wipe live cognitive memory.
+
+    Production is simulated by narrowing the allowlist rather than connecting to
+    :5432 — the assertion is about the database's own refusal, not the port.
+    Port cannot be the signal: inet_server_port() reports 5432 for the shadow
+    too, since it is a container publishing its internal 5432 on host 55432.
+    """
+    from pathlib import Path
+
+    import psycopg2
+
+    sql = Path("sql/r10_m2_isolated_benchmark.sql").read_text(encoding="utf-8")
+    try:
+        with m2_conn.cursor() as cur:
+            cur.execute("SET m2.allow_destructive_reset = 'on'")
+            cur.execute("SET m2.isolated_databases = 'not_this_database'")
+            with pytest.raises(psycopg2.errors.RaiseException) as exc:
+                cur.execute(sql)
+            assert "M2_DESTRUCTIVE_RESET_REFUSED_NON_ISOLATED_DB" in str(exc.value)
+
+        # The schema survived the refusal — nothing was dropped.
+        with m2_conn.cursor() as cur:
+            cur.execute("SELECT to_regclass('memory_r10_m2.memory_fact_version')")
+            assert cur.fetchone()[0] is not None
+    finally:
+        with m2_conn.cursor() as cur:
+            cur.execute("RESET m2.isolated_databases")
+            cur.execute("RESET m2.allow_destructive_reset")
+
+
+def test_isolated_allowlist_default_survives_reset(m2_conn):
+    """RESET on a custom GUC yields '' (not NULL), so the allowlist default must
+    be guarded with nullif() or the shadow refuses its own rebuild. Regression
+    for a bug in the first cut of the guard."""
+    with m2_conn.cursor() as cur:
+        cur.execute("RESET m2.isolated_databases")
+        cur.execute(
+            "SELECT coalesce(nullif(current_setting('m2.isolated_databases', true), ''), "
+            "'m2_shadow') = current_database()"
+        )
+        assert cur.fetchone()[0] is True
