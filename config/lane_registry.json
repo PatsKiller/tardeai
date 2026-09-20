@@ -2110,6 +2110,28 @@
         "key": "finished_utc"
       },
       "note": "Hourly hub+CURRENT code archives to Trade_AI_Docs_v2/code_mirror/. APPROVED 2026-09-20."
+    },
+    {
+      "lane_id": "hermes-advisory-event-enqueue",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "RETIRED",
+      "state_since": "2026-09-20",
+      "state_reason": "Operator APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE (Cursor chat 2026-09-20T17:15 ET; PR #1151 merge 7010eb104). Standalone scripts/hermes_advisory_event_enqueue.py was never scheduled (no cron/timer/importer). Automatic writer of hermes_advisory_events remains hermes_autonomous_librarian_backlog_loop. Script kept as manual ops tool \u2014 not archived.",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": [
+        "Operator-Token: APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE; surface cursor_chat|operator|2026-09-20T17:15:00-04:00; recorded in docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md and PR #1151 (merge 7010eb104).",
+        "No production importer/cron/timer for scripts/hermes_advisory_event_enqueue.py (AGENTS research lanes; filename grep).",
+        "Automatic producer is hermes_autonomous_librarian_backlog_loop (INSERT hermes_advisory_events)."
+      ],
+      "output_signal": {
+        "kind": "none"
+      },
+      "note": "RETIRED as scheduled/automatic producer claim only. Manual CLI retained at scripts/hermes_advisory_event_enqueue.py. Do not invent a schedule. Silence is EXPECTED_SILENT.",
+      "superseded_by": "hermes_autonomous_librarian_backlog_loop"
     }
   ],
   "undeclared_baseline": [

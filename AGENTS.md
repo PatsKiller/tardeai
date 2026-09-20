@@ -6,7 +6,7 @@ Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-09-20T14:40:00-04:00
+Last-Reviewed:       2026-09-20T18:51:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          1.2.5
@@ -1133,7 +1133,7 @@ without reading the reason is how the tagger nearly burnt the corpus.
 |---|---|---|
 | `hermes-deep-research-local` | **ON**, hourly 22:00–05:35 ET | never executed once before 2026-09-06; see below |
 | `taxonomy_tagger` cron | **OFF — deliberate** | heuristic hit rate ~15%, 0% on sector. Do **not** re-enable until the classifier improves; see the sentinel rule |
-| `hermes_advisory_event_enqueue` | **KNOWN DARK — PROPOSED RETIRE** | no caller — no cron, no timer, no importer; no `lane_registry` row. `hermes_advisory_events` last written 2026-07-14, 2,509 rows (automatic writer is librarian backlog loop). Consumer timer still fires ~10h and finds nothing. Operator decision: `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` — do not cron or mutate registry without grant |
+| `hermes_advisory_event_enqueue` | **RETIRED** (`lane_registry` `hermes-advisory-event-enqueue`) | Operator-Token `APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE` (Cursor chat 2026-09-20T17:15 ET; PR #1151). Never scheduled; automatic writer is `hermes_autonomous_librarian_backlog_loop`. Manual CLI kept at `scripts/hermes_advisory_event_enqueue.py` (not archived). Do not invent a schedule. |
 | `tradeai-research-lane-health` | ON, ~15 min | the alarm surface for all of the above |
 | RI overnight (cron 02:15 / 05:15) | ON | gated to non-trading hours |
 
@@ -2853,15 +2853,17 @@ rows are CLOSED in `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md`.
 
 **Still dark / do not report as LIVE:**
 
-- `hermes_advisory_event_enqueue` — **KNOWN DARK — PROPOSED RETIRE** (manual CLI; no caller).
-  Automatic writer of `hermes_advisory_events` is the librarian backlog loop. Operator grant:
-  `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md`.
 - `CIO_TELEGRAM_INTERDICT` — name exceeds code. Before claiming Telegram is interdicted or
   enabled, grep the **actual send gate** that reaches the operator family and name that
   symbol. INTERDICT is not that gate.
 
 **Formerly dark — CLOSED (do not rebuild; do not re-list as dark):**
 
+- `hermes_advisory_event_enqueue` — **RETIRED** as scheduled/automatic producer
+  (`config/lane_registry.json` lane `hermes-advisory-event-enqueue`, EXPECTED_SILENT).
+  Operator-Token `APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE` via PR #1151; follow-on
+  RETIRED row landed after. Manual CLI retained; automatic writer remains librarian
+  backlog loop. Ledger `DARK-hermes_advisory_event_enqueue` CLOSED.
 - `load-by-subject` — scheduled wake consult OBSERVED (M5); ledger `DARK-load-by-subject-schedule`.
 - `OUTCOME` settlement — unattended EXPIRED via AEC `prior_open_settle`; ledger `DARK-OUTCOME-settlement`.
 - `AgentView@v1` / `AGENT_COMMITMENT@v1` — AEC timer producers OBSERVED; ledger rows CLOSED.
@@ -3547,6 +3549,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.2.6 | 2026-09-20 | PROPOSED (ACTIVE on merge) | PATCH | Research lanes + §13.4 dark list: `hermes_advisory_event_enqueue` → **RETIRED** after Operator-Token `APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE` (PR #1151) and follow-on `lane_registry` row `hermes-advisory-event-enqueue` (EXPECTED_SILENT; manual CLI retained; no archive). No change to §0, §2, §17 or role authority. | PATCH documenting operator-settled RETIRE; rides `APPROVE_AGENTS_POLICY_1_2_0`. |
 | 1.2.6 | 2026-09-20 | PROPOSED (ACTIVE on merge) | MINOR | §6: a dry run must not be able to REACH the mutation — `--dry-run` called `claim_due()` and stranded the row it previewed (PR #1143) — and anything that claims work owes a reclaimer. §12: `should_scheduled_skip` superseded by `lib/llm_deferral`; out-of-window paid work is queued in `llm_deferred_requests` and drained by lane `llm-deferred-drain`; three operator-set caller tiers; `LLM_DEFER_OFFPEAK` arming; measured 21% (965/4,590) blast radius of arming globally (PR #1134), and records that the process-boundary wrapper (25 active crontab lines) still DROPS. §9.3: a refused scheduled call is queued not dropped; `llm-deferred-drain` and `llm-provider-health` declared. No change to §0, §2, §17 or role authority. | **Operator-directed** 2026-09-20 ("update documentation agents.md"). MINOR — adds proof obligations, weakens nothing; rides `APPROVE_AGENTS_POLICY_1_2_0`. |
 | 1.2.5 | 2026-09-20 | ACTIVE | PATCH | §13.4: dark-contracts list + AgentView/AGENT_COMMITMENT “no producer” prose corrected to match ledger CLOSED (load-by-subject, OUTCOME, AgentView, commitment, librarian index OBSERVED). hermes enqueue remains KNOWN DARK — PROPOSED RETIRE. No change to §0, §2, §17 or role authority. | PATCH stale measurements; rides `APPROVE_AGENTS_POLICY_1_2_0`. |
 | 1.2.4 | 2026-09-18 | ACTIVE | PATCH | §10: default `TRADEAI_CURRENT_BOUND_UNITS` documents `cio-governed-bridge.service` beside the health agent; cites 2026-09-18 bridge vs portfolio-server pin drift and `docs/ops/BRIDGE_PIN_ALIGNMENT.md`. No change to §0, §2, §17 or role authority. | PATCH documentation of deploy default; rides `APPROVE_AGENTS_POLICY_1_2_0`. |

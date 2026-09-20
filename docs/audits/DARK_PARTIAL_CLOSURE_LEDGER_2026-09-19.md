@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T17:15:00-04:00
-Measured at: Cursor-chat Operator-Token apply (kit s17-apply-on-token); R9 continue-park/settle recorded; organic still PARTIAL (Mon OBSERVED open)
+as_of: 2026-09-20T18:51:00-04:00
+Measured at: hermes RETIRED lane_registry follow-on; R9 continue-park/settle CLOSED for hermes; organic still PARTIAL (Mon OBSERVED open)
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -18,7 +18,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-AgentView-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AgentView@v1 (PORTFOLIO / day-bucket claim) from tradeai-aec-command-center-cycle.timer | — | OBSERVED AgentView from served schedule |
 | DARK-AGENT_COMMITMENT-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AGENT_COMMITMENT@v1 cmt_7f86ca… + CommitmentOutcome@v1 | — | OBSERVED commitment+settlement from schedule |
 | DARK-librarian-index | CLOSED | [VERIFIED] persistent-state + CURRENT `research_source_index.json` ResearchSourceIndex@v1 n_sources=120 (mtime 2026-09-16) | — | file present on served path |
-| DARK-hermes_advisory_event_enqueue | §17 SETTLED · APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE · follow-on pending | AGENTS research table; automatic writer is librarian backlog loop; no caller | Operator **APPROVE_RETIRE_*** Cursor chat 2026-09-20T17:15 ET on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row / archive+tripwire (no live schedule) |
+| DARK-hermes_advisory_event_enqueue | **CLOSED** · RETIRED lane `hermes-advisory-event-enqueue` | Operator-Token APPROVE_RETIRE + #1151 `7010eb104`; follow-on lane_registry RETIRED (EXPECTED_SILENT); manual CLI retained; no schedule | Operator **APPROVE_RETIRE_*** Cursor chat 2026-09-20T17:15 ET; follow-on PR after #1151 | CLOSED — RETIRED row + AGENTS update; archive skipped (keep manual) |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | PARTIAL-telegram-CIO-stance | **PARKED_AWAIT_ORGANIC** | dual-write on tip+pin; holds probe/canary only (organic=0 exit 2); timers armed Mon 06:35/09:05; token `PARK_STANCE_AWAIT_ORGANIC` recorded | docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md; Mon–Fri natural hold | organic hold receipt (exit 0) — park ≠ OBSERVED |
@@ -39,6 +39,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 
 | id | closed_at | proof |
 |---|---|---|
+| DARK-hermes_advisory_event_enqueue | 2026-09-20 | APPROVE_RETIRE #1151 + lane_registry RETIRED follow-on |
 | DARK-cio-runs-truncated-tail | 2026-09-19 | repair + 7ea5835f9 |
 | DARK-librarian-index | 2026-09-19 | research_source_index.json n=120 on CURRENT+persistent-state |
 | DARK-KNOWN_DARK-cio_identity_resolver | 2026-09-19 | 850b9fda9 AEC bus consumer |
