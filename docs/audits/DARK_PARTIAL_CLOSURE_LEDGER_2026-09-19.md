@@ -3,7 +3,7 @@
 ```
 Status: ACTIVE
 as_of: 2026-09-20T06:08:00-04:00
-Measured at: pin 6a78d41cc; M1–M5 OBSERVED; organic=0; #1133 OPEN; AGENTS 1.2.5 dark-list PATCH + §17 propose notes; goal open
+Measured at: PROMOTE OK 5b7e24c95…114233; M1–M5 OBSERVED; census warn=0; organic=0; #1139 + AST organic call-site guard; §17 parks; goal open
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -21,7 +21,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-hermes_advisory_event_enqueue | §17 PARKED · PROPOSED RETIRE | AGENTS research table; automatic writer is librarian backlog loop; no caller | Operator grant on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row or wired consumer |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | dual-write on tip+pin; holds probe/canary only (organic=0); live callers normalize to source=check_investment_send; `scripts/report_organic_stance_hold.py` reports exit 2 until organic | Mon–Fri GO/scalp/proposal hold; report exit 0 | organic hold receipt |
+| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | dual-write on tip+pin; holds probe/canary only (organic=0); live callers normalize to source=check_investment_send; AST guard pins three producer `source=` kwargs; `scripts/report_organic_stance_hold.py` exit 2 until organic | Mon–Fri GO/scalp/proposal hold; report exit 0 | organic hold receipt |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | **OBSERVED (unattended)** | [VERIFIED] Sun 08:00 ET weekly cron: ARKQ+NEE `requester=data_gap_resolver` `vector=quality_escalate` `provider=searxng` `outcome=partial` started 2026-09-20T12:00:07Z/12:00:11Z; weekly.log Chain resolve 2/2. Hand proof at 10:30Z was precursor. | — | unattended same stamps |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
