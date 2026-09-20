@@ -18,11 +18,15 @@ drive_db:
   max_count: 1                 # single offsite DB copy
 
 drive_other:
-  # 2026-08-11 operator directive: only leave latest of each family on Drive
-  env_backup: 1
+  # 2026-08-11 operator directive: only leave latest of each family on Drive.
+  # 2026-09-19 operator directive: one week of retention. The daily families are
+  # kilobytes each (env 12K, memory 770K, ops 97K), so 7 copies is ~6MB total and
+  # cannot re-trigger the Aug 2026 storm. The weekly families stay at 1 — for a
+  # weekly cadence, one copy already IS one week's worth. The DB is unchanged.
+  env_backup: 7
   data_backup: 1
-  memory_backup: 1
-  ops_backup: 1
+  memory_backup: 7
+  ops_backup: 7
   apps_backup: 1
 
 health:
