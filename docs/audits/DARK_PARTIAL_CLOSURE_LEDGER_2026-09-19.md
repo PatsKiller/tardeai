@@ -348,3 +348,12 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Honesty: hand-invoked crontab entrypoint, not yet unattended Sunday 08:00 ET. Row stays CLOSING until weekly echo.
 - llm_curation HTTP 400 on both symbols — separate agent-owned follow-up; QE still climbed.
 - M4 / promote / stance / wave-close email still open. Goal remains open.
+
+## 2026-09-20T07:02 ET — #1123 MERGED
+
+- [VERIFIED] #1123 MERGED @ 2026-09-20T11:02:29Z → `fcd8de172` (free_search QE residual + stance source + organic QE ledger + router_enabled mock fix).
+- cio-hardening PASS 15m42s on head `9894feef0`.
+- Tip now includes Command snapshot_source + M4 warn=0 bar + QE wire + free residual; CURRENT still behind until release-write promote.
+- release-write absent; `01d914…` PENDING ~1.17h left — no re-request.
+- Organic QE hand proof already on tip; weekly 08:00 ET unattended echo still owed.
+- M4 PARTIAL until promote clears live census Command WARN. Goal remains open.
