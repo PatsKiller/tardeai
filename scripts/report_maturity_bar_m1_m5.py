@@ -420,7 +420,11 @@ def _m4_from_soak(
     soak_path: Path | None = None,
     census_paths: list[Path] | None = None,
 ) -> tuple[str, str]:
-    """M4: pin soak + operator-number census (one producer / no FAIL)."""
+    """M4: pin soak + operator-number census (one producer / no FAIL / no WARN).
+
+    Operator remasures treat residual census WARNs as M4 PARTIAL even when
+    ``ok`` is true (fail=0). Match that bar: WARN>0 stays PARTIAL.
+    """
     soak = soak_path
     if soak is None:
         for cand in _m4_soak_paths(root):
@@ -471,15 +475,16 @@ def _m4_from_soak(
             "(run scripts/check_command_center_data_consistency.py)",
         )
     fails = int(census.get("fail") or 0)
-    ok = bool(census.get("ok")) and fails == 0
+    warns = int(census.get("warn") or 0)
+    ok = bool(census.get("ok")) and fails == 0 and warns == 0
     census_note = (
         f"census as_of={census.get('as_of')} pass={census.get('pass')} "
-        f"warn={census.get('warn')} fail={fails} path={census_path}"
+        f"warn={warns} fail={fails} path={census_path}"
     )
     if ready and ok:
         return (
             "OBSERVED",
-            f"{soak_note}; {census_note} — one producer / no FAIL on operator-number census",
+            f"{soak_note}; {census_note} — one producer / no FAIL / no WARN on operator-number census",
         )
     return ("PARTIAL", f"{soak_note}; {census_note}")
 

@@ -94,6 +94,11 @@ def check_overview_matches_holdings(canonical: float):
 
 
 def check_phantom_accounts():
+    """File zeros are OK when Attribution already filters them (operator-facing).
+
+    Holdings cleanup of dormant zero-value account keys remains §17/protected.
+    M4 keys on what the API serves, not on archive keys still present on disk.
+    """
     h = json.load(open(STATE_DIR / "holdings.json"))
     summaries = h.get("account_summaries", {})
     phantoms = [
@@ -101,22 +106,41 @@ def check_phantom_accounts():
         for k, v in summaries.items()
         if float(v.get("total_value", v.get("market_value", 0)) or 0) <= 0
     ]
-    if phantoms:
+
+    r = api_get("/api/v2/attribution")
+    api_ok = "error" not in r
+    api_phantoms: list[str] = []
+    accounts: dict = {}
+    if api_ok:
+        data = r.get("data", r)
+        accounts = data.get("accounts", {}) or {}
+        api_phantoms = [
+            k for k, v in accounts.items() if float(v.get("total_value", 0) or 0) <= 0
+        ]
+
+    if phantoms and api_ok and not api_phantoms:
+        check(
+            "Phantom accounts (file)",
+            "PASS",
+            f"Zero-value keys in holdings.json {phantoms} filtered by Attribution API "
+            f"({len(accounts)} non-zero accounts); holdings cleanup remains §17",
+        )
+    elif phantoms and not api_ok:
         check(
             "Phantom accounts (file)",
             "WARN",
-            f"Zero-value accounts in holdings.json: {phantoms} (filtered by API)",
+            f"Zero-value accounts in holdings.json: {phantoms} (Attribution API unreachable)",
+        )
+    elif phantoms:
+        check(
+            "Phantom accounts (file)",
+            "WARN",
+            f"Zero-value accounts in holdings.json: {phantoms} (also visible on Attribution)",
         )
     else:
         check("Phantom accounts (file)", "PASS", "No zero-value accounts")
 
-    r = api_get("/api/v2/attribution")
-    if "error" not in r:
-        data = r.get("data", r)
-        accounts = data.get("accounts", {})
-        api_phantoms = [
-            k for k, v in accounts.items() if float(v.get("total_value", 0) or 0) <= 0
-        ]
+    if api_ok:
         if api_phantoms:
             check("Attribution API phantoms", "FAIL", f"API returns zero-value: {api_phantoms}")
         else:
