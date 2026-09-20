@@ -13,7 +13,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | id | status | evidence | closure path | proof required |
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | CLOSED | [VERIFIED] pin 18a41066d consult instrument_enqueue_skipped_cadence=9; M5 OBSERVED | #1087+#1089 promote | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
-| DARK-bitemporal-m2-substrate | §17 PARKED | schema v2 + integrator on :55432 OBSERVED; prod :5432 blocked — `vector` ext unavailable + cannot CREATE ROLE m2_agent (probed 2026-09-19, rolled back) | Operator: install pgvector + m2_agent role; guard DROP SCHEMA CASCADE | prod apply + unattended write |
+| DARK-bitemporal-m2-substrate | §17 PARKED | schema v2 + integrator on :55432 OBSERVED; prod :5432 blocked — `vector` ext unavailable + cannot CREATE ROLE m2_agent (probed 2026-09-19, rolled back) | Operator grant on docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md | prod apply + unattended write |
 | DARK-OUTCOME-settlement | CLOSED | [VERIFIED] AEC 02:00:13 EDT on pin **8c12ea757**: learning `commitment_outcome` outcome=EXPIRED commitment_id=`cmt_fb32f783…` via=`prior_open_settle`; cycle Result=success exit 0; narrator telegram=accepted | — | OBSERVED EXPIRED from schedule |
 | DARK-AgentView-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AgentView@v1 (PORTFOLIO / day-bucket claim) from tradeai-aec-command-center-cycle.timer | — | OBSERVED AgentView from served schedule |
 | DARK-AGENT_COMMITMENT-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AGENT_COMMITMENT@v1 cmt_7f86ca… + CommitmentOutcome@v1 | — | OBSERVED commitment+settlement from schedule |
@@ -30,7 +30,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | CLOSED | [VERIFIED] organic `aec_wake_spine_receipts.jsonl` as_of=2026-09-20T01:04:31Z subject=PORTFOLIO policy_decision=aec_spines_loaded counts strategic=2 learning=5; wake consult 01:05:09Z | #1099 promote | wake receipt aec_spines_loaded |
-| PARTIAL-relationship-spine-data | §17 PARKED · ◆ | no domain data; spine slot exists | Operator-approved DataSourceAuthority grant only (§7A/§17) | registry approval rows |
+| PARTIAL-relationship-spine-data | §17 PARKED · ◆ | no domain data; spine slot exists | Operator grant on docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md (§7A/§17) | registry approval rows |
 | PARTIAL-narrator-unprompted-telegram | CLOSED | [VERIFIED] unattended 20:00:15 EDT narrator_notify notify_attempted=true telegram=accepted (AEC_NARRATOR_NOTIFY on unit) | — | unprompted brief delivered |
 | DARK-cio-runs-truncated-tail | CLOSED | incomplete last line blocked create_run; wake errors=5 | archive + cio_run harden 7ea5835f9 | repair receipt + test |
 | FORBIDDEN-broker | FORBIDDEN | §0/§2 | never | N/A |
