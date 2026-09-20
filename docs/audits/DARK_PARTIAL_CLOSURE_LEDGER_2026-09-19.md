@@ -4,6 +4,7 @@
 Status: ACTIVE
 as_of: 2026-09-19T21:16:19-04:00
 Measured at: served pin 170532178-main-exact-phase2-20260919-202251; M1–M5 OBSERVED; soft≈0.003; AEC 20:00 timer AgentView+commitment+narrator telegram=accepted
+Measured at: served pin 170532178-main-exact-phase2-20260919-202251; M1–M5 OBSERVED; soft≈0.003; AEC 20:00 timer AgentView+commitment+narrator telegram=accepted; 20:34 ET directive re-verify: SLO PASS soft=0.003 (998), bitemporal 205 passed, :5432 cutover BLOCKED (no pgvector + no CREATE ROLE)
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -13,7 +14,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | id | status | evidence | closure path | proof required |
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | CLOSED | [VERIFIED] pin 18a41066d consult instrument_enqueue_skipped_cadence=9; M5 OBSERVED | #1087+#1089 promote | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
-| DARK-bitemporal-m2-substrate | PARTIAL | schema v2 + CIOEnvelopeIntegrator on :55432; 211 correctness tests; EXPLAIN Index Scan fact_valid_spgist; production :5432 NOT applied | Organic wake schedule + operator shadow cutover grant | OBSERVED unattended write from served |
+| DARK-bitemporal-m2-substrate | PARTIAL | schema v2 + CIOEnvelopeIntegrator on :55432; 205 correctness tests (2026-09-19 re-run); EXPLAIN Index Scan fact_valid_spgist; production :5432 NOT applied — **blocked: `vector` ext unavailable on prod host + `trade_ai` cannot CREATE ROLE m2_agent** (probed 20:34 ET, rolled back) | Install pgvector on prod + create m2_agent role (superuser); guard `DROP SCHEMA ... CASCADE` in r10_m2_isolated_benchmark.sql:9; then apply + organic wake | OBSERVED unattended write from served |
 | DARK-OUTCOME-settlement | PARTIAL→CLOSING | [VERIFIED] hermetic: prior_open_settle writes EXPIRED on prior id while hour-bucket mints fresh INSUFFICIENT (`prior_outcome`); served still INSUFFICIENT until promote+next hourly fire | Land prior_outcome PR + observe EXPIRED on schedule | OBSERVED CONFIRMED/REFUTED/EXPIRED from schedule |
 | DARK-AgentView-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AgentView@v1 (PORTFOLIO / day-bucket claim) from tradeai-aec-command-center-cycle.timer | — | OBSERVED AgentView from served schedule |
 | DARK-AGENT_COMMITMENT-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AGENT_COMMITMENT@v1 cmt_7f86ca… + CommitmentOutcome@v1 | — | OBSERVED commitment+settlement from schedule |
@@ -147,3 +148,33 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 - Served pin `170532178` (#1095); M1–M5 OBSERVED; soft≈0.003.
 - Code: durable `aec_wake_spine_receipts.jsonl` from `load_aec_spines_for_wake` (closes measurement gap for PARTIAL-memory-four-spines after promote).
 - Still open: OUTCOME CONFIRMED/REFUTED, quality-escalate organic receipt, relationship sources §17, bitemporal prod :5432, hermes RETIRE.
+
+
+## 2026-09-19T20:34 ET — 5-stage directive verification; bitemporal :5432 BLOCKED (infrastructure)
+
+Directive re-verification against dev tree `170532178` (= origin/main after #1095). Stages 1/2/4/5
+confirmed CLOSED on already-merged work; no stage re-implemented.
+
+- [VERIFIED] Stage 1 SLO PASS: `soft_unsupported_share=0.003` (998 results, 7d), `ungrounded_share=0.0`,
+  `breaches: []`. Per agent — maria 2/651 (0.003), risk_agent 1/173 (**0.006**, was 0.913),
+  steph 0/155, tax_agent 0/19. Pre-emit gate already wired `process_watchlist_agent_jobs.py:3075`
+  (`apply_number_grounding` → RESEARCH_MORE demotion; receipt at :3118). Doc: `docs/GROUNDING_SLO_2026-09-18.md`.
+- [VERIFIED] Stage 2: #1081 MERGED 18:09Z, #1082 MERGED 18:35Z; `record_bridge_pin_soak.py --status`
+  → `soak_ready=YES consecutive_match_streak=4 need=3`. Row `PARTIAL-bridge-pin-soak` already CLOSED.
+- [VERIFIED] Stage 4: `tests/test_bitemporal_correctness.py` **205 passed in 3.13s** vs `tradeai-m2-shadow-v2` :55432.
+- [VERIFIED] Stage 5: EXPLAIN → Index Scan `fact_valid_spgist`, Shared Hit Blocks, 0 disk reads.
+- **[BLOCKED] Stage 3 production cutover.** Operator granted :5432 apply 2026-09-19; **not executed** —
+  probe transaction (rolled back, production unchanged) measured two hard blockers:
+  (a) `vector` extension **not available** on the production server (`pg_available_extensions` has no
+  `vector` row); `memory_fact_version.embedding` and `write_fact_version(...)` both require it.
+  (b) `CREATE ROLE m2_agent` → `permission denied to create role` (`trade_ai` is
+  `rolsuper=f rolcreaterole=f`). Production is PG **17.10** (≥14 OK); `btree_gist`/`pgcrypto`/`uuid-ossp`
+  are creatable by `trade_ai` and are **not** blockers. `memory_r10_m2` absent in production.
+  `production_sql_applied` stays **false**.
+- **[HAZARD]** `sql/r10_m2_isolated_benchmark.sql:9` is `DROP SCHEMA IF EXISTS memory_r10_m2 CASCADE;` —
+  safe on shadow and on first production apply, **destructive on re-run**. Guard before any :5432 apply.
+- Row `DARK-bitemporal-m2-substrate` stays **PARTIAL**; closure path updated to name the two
+  infrastructure prerequisites. Plan: `docs/remediation-plan.md`.
+- Superseded local work discarded: worktree `tradeai-wt-directive-20260919` held an uncommitted variant of
+  the risk/steph flash routing + soft-share report filter; `origin/main` already carries both via
+  **#1088** (`task_for_agent()`) and **#1087** (`_confidence_shaped_token`/`soft_flag`). Not re-landed.
