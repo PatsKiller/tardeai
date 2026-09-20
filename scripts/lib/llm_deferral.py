@@ -78,6 +78,12 @@ DEFAULT_TIER = TIER_STANDARD
 # A queued question is about a moment. Re-asking a stale one wastes the money the queue
 # exists to save, so a request that missed its window by this much is retired, not run.
 DEFAULT_TTL_HOURS = float(os.environ.get("LLM_DEFER_TTL_HOURS", "24"))
+# A claim older than this means the drainer died holding it. The drain runs every three
+# hours, so anything still 'claimed' after 30 minutes is not in flight, it is stranded.
+STALE_CLAIM_MINUTES = int(os.environ.get("LLM_DEFER_STALE_CLAIM_MIN", "30"))
+# A request that has failed this many times is poison; retrying it forever burns the money
+# the queue exists to save.
+MAX_ATTEMPTS = int(os.environ.get("LLM_DEFER_MAX_ATTEMPTS", "3"))
 # Walk forward in steps to find the next open window. 15 minutes is finer than any
 # boundary the window arithmetic uses, and 8 days covers a holiday weekend.
 _STEP = timedelta(minutes=15)
@@ -324,6 +330,63 @@ def enqueue(*, process_id: str, lane: str, prompt: str, decision: Decision,
     if not row:
         return None
     return str(row["id"] if isinstance(row, dict) else row[0])
+
+
+def preview_due(limit: int = 25, now: datetime | None = None) -> list[dict[str, Any]]:
+    """What a drain WOULD claim. Read-only — this is what --dry-run must call.
+
+    Added 2026-09-20 after the first live exercise: --dry-run called claim_due(), which
+    moves rows pending -> claimed, printed them, and exited. The preview consumed the work
+    it was previewing and stranded it, with nothing to put it back. A dry run that mutates
+    is worse than no dry run, because the whole point is to look before touching.
+    """
+    ensure_schema()
+    from db_adapter import _execute
+    t = now or datetime.now(ET)
+    return _execute(
+        """
+        SELECT id, process_id, lane, task_summary, tier, run_after, attempts
+          FROM llm_deferred_requests
+         WHERE status = 'pending' AND run_after <= %s AND expires_at > %s
+         ORDER BY run_after
+         LIMIT %s
+        """,
+        (t, t, int(limit)), fetch="all",
+    ) or []
+
+
+def reclaim_stale(now: datetime | None = None) -> dict[str, int]:
+    """Return stranded claims to the queue, and retire the ones that keep failing.
+
+    Nothing recovered a claim before this. A drain killed mid-batch — or a --dry-run, which
+    used to claim — left rows in 'claimed' permanently: never run, never expired, invisible
+    to `pending` counts. Work that silently stops being work is the failure this whole
+    feature exists to prevent, one level up.
+    """
+    ensure_schema()
+    from db_adapter import _execute
+    t = now or datetime.now(ET)
+    cutoff = t - timedelta(minutes=STALE_CLAIM_MINUTES)
+    dead = _execute(
+        """
+        UPDATE llm_deferred_requests
+           SET status = 'failed', completed_at = NOW(),
+               error = COALESCE(error, '') || ' | retired after ' || attempts || ' attempts'
+         WHERE status = 'claimed' AND claimed_at < %s AND attempts >= %s
+        RETURNING id
+        """,
+        (cutoff, MAX_ATTEMPTS), fetch="all",
+    ) or []
+    back = _execute(
+        """
+        UPDATE llm_deferred_requests
+           SET status = 'pending', claimed_at = NULL
+         WHERE status = 'claimed' AND claimed_at < %s AND attempts < %s
+        RETURNING id
+        """,
+        (cutoff, MAX_ATTEMPTS), fetch="all",
+    ) or []
+    return {"requeued": len(back), "retired": len(dead)}
 
 
 def claim_due(limit: int = 25, now: datetime | None = None) -> list[dict[str, Any]]:

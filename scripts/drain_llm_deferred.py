@@ -83,6 +83,9 @@ def main() -> int:
 
     in_window = is_scheduled_deepseek_window()
     try:
+        # Recover anything a previous run stranded BEFORE counting, or the summary
+        # reports a queue that is smaller than the work actually outstanding.
+        reclaimed = llm_deferral.reclaim_stale()
         expired = llm_deferral.expire_stale()
         summary = llm_deferral.queue_summary()
     except Exception as e:
@@ -91,7 +94,8 @@ def main() -> int:
 
     if not in_window and not args.force:
         # Not an error. The queue exists precisely so this work waits.
-        result = {"skipped": "OUTSIDE_OFFPEAK_WINDOW", "expired": expired, **summary}
+        result = {"skipped": "OUTSIDE_OFFPEAK_WINDOW", "expired": expired,
+                  "reclaimed": reclaimed, **summary}
         if not args.dry_run:
             _write_heartbeat({"checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"), **result})
         print(json.dumps(result, indent=2) if args.json
@@ -99,18 +103,25 @@ def main() -> int:
                    f"{summary['pending']} pending, {expired} expired")
         return 0
 
+    if args.dry_run:
+        # READ-ONLY. This must never call claim_due(): a preview that claims consumes the
+        # work it is previewing and strands it. Measured 2026-09-20, on the first live use.
+        try:
+            preview = llm_deferral.preview_due(limit=args.limit)
+        except Exception as e:
+            print(f"[deferred-drain] could not preview: {e}", file=sys.stderr)
+            return 2
+        print(json.dumps({"would_run": [
+            {"id": str(r["id"]), "process_id": r["process_id"], "lane": r["lane"],
+             "task_summary": r.get("task_summary")} for r in preview],
+            "expired": expired, "reclaimed": reclaimed, **summary}, indent=2))
+        return 0
+
     try:
         batch = llm_deferral.claim_due(limit=args.limit)
     except Exception as e:
         print(f"[deferred-drain] could not claim: {e}", file=sys.stderr)
         return 2
-
-    if args.dry_run:
-        print(json.dumps({"would_run": [
-            {"id": str(r["id"]), "process_id": r["process_id"], "lane": r["lane"],
-             "task_summary": r.get("task_summary")} for r in batch],
-            "expired": expired, **summary}, indent=2))
-        return 0
 
     ok_n = fail_n = 0
     for row in batch:
@@ -123,7 +134,8 @@ def main() -> int:
     after = llm_deferral.queue_summary()
     result = {"checked_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
               "claimed": len(batch), "ok": ok_n, "failed": fail_n,
-              "expired": expired, "forced": bool(args.force), **after}
+              "expired": expired, "reclaimed": reclaimed,
+              "forced": bool(args.force), **after}
     _write_heartbeat(result)
     print(json.dumps(result, indent=2) if args.json
           else f"[deferred-drain] {len(batch)} claimed, {ok_n} ok, {fail_n} failed, "
