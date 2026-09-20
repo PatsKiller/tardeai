@@ -538,3 +538,21 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - `allow_auto_merge` + `allow_update_branch` enabled by the operator. Auto-merge does not
   update a behind branch, so with `strict: true` and cio-hardening at 10-16 min the race
   persists; §17 PHASE D (fast always-reporting required gate) remains the structural fix.
+## 2026-09-20T12:14 ET — #1139 MERGED `486f240d6`
+
+- [VERIFIED] #1139 MERGED @ 2026-09-20T16:14:21Z → `486f240d6` (AST organic source= guard + crontab CONFIRM + ledger).
+- Remasure @ 16:18Z: **M1–M5 OBSERVED**; soft 12/1022 ≈0.012 PASS; organic still PARTIAL exit 2.
+- Live pin unchanged `5b7e24c95…114233` (docs/test; promote not required for this tip).
+- Goal NOT complete.
+
+## 2026-09-20T12:40 ET — #1140 conflict resolve (wave log split)
+
+- Mid-merge `origin/main`: conflict only in table file wave section — kept main’s pointer to `_LOG.md` (`merge=union`); appended #1139 MERGED wave here.
+- Goal NOT complete: organic stance Mon–Fri + §17 parks (or continue-park).
+
+## 2026-09-20T12:45 ET — stance observe units + §17 cite patch + install propose
+
+- [CODE] `tradeai-stance-organic-observe{,-early}.timer` + `.service` in repo (`80ca81295`); early timer gets explicit `Unit=` (basename `-early` would miss the service).
+- Ledger closure-path cites for bitemporal + relationship propose files (parity with hermes).
+- New `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` — propose-and-stop; no host install.
+- Goal NOT complete (organic=0 Sunday; §17 parks + timer install await operator).
