@@ -127,9 +127,12 @@ def apply_schema(conn) -> None:
     with conn.cursor() as cur:
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
         # The schema file refuses to DROP ... CASCADE an existing memory_r10_m2
-        # unless this is set. Only reachable here because connect() already ran
-        # _assert_isolated_dsn, so this can never be a production connection.
-        cur.execute("SET m2.allow_destructive_reset = 'on'")
+        # unless this is set. A production connection is NEVER opted in, even if
+        # production memory is later authorized: re-applying must refuse rather
+        # than wipe live memory. The SQL file enforces the same rule independently
+        # via its isolated-database allowlist; this is the client-side half.
+        if not conn_targets_production(conn):
+            cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(sql)
 
 

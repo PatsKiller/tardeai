@@ -15,7 +15,12 @@ from typing import Any
 
 from scripts.lib.adjudication_receipt import build_receipt
 from scripts.lib.memory_fact import subject_from_security
-from scripts.lib.memory_m2_benchmark import DEFAULT_DSN, SQL_PATH, _assert_isolated_dsn
+from scripts.lib.memory_m2_benchmark import (
+    DEFAULT_DSN,
+    SQL_PATH,
+    _assert_isolated_dsn,
+    conn_targets_production,
+)
 from scripts.lib.memory_namespace import DEFAULT_TENANT, require_tenant
 
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -48,13 +53,17 @@ def _refuse_financial_payload(obj: dict[str, Any]) -> None:
 def _assert_isolated_conn(conn) -> None:
     """The docstring below has always claimed 'isolated DSN only', but nothing
     enforced it — the caller just handed in a connection. Since apply opts in to
-    a destructive schema reset, verify it here rather than trusting the caller."""
+    a destructive schema reset, verify it here rather than trusting the caller.
+
+    Shares conn_targets_production() with the benchmark module so the two cannot
+    drift apart. Both fail closed; the unverifiable case keeps its own message
+    because "I could not read the DSN" and "this is production" call for
+    different responses when diagnosing a cutover."""
     try:
-        params = conn.get_dsn_parameters()
+        conn.get_dsn_parameters()
     except Exception:  # pragma: no cover - psycopg2 always provides this
         raise RuntimeError("M2_DSN_UNVERIFIABLE: refusing destructive apply") from None
-    port = str(params.get("port") or "")
-    if port == "5432":
+    if conn_targets_production(conn):
         raise RuntimeError("M2_DSN_PRODUCTION_PORT_FORBIDDEN")
 
 
@@ -65,9 +74,11 @@ def apply_bitemporal_schema_v2(conn) -> dict[str, Any]:
     delta = SCHEMA_V2.read_text(encoding="utf-8")
     # Strip leading comment-only banner from delta for clarity; execute whole file.
     with conn.cursor() as cur:
-        # Opt in to the base file's destructive reset. Safe only because
-        # _assert_isolated_conn above proved this is not production.
-        cur.execute("SET m2.allow_destructive_reset = 'on'")
+        # Opt in to the base file's destructive reset — never for production,
+        # even once production memory is authorized. Belt and braces with the
+        # SQL file's own isolated-database allowlist.
+        if not conn_targets_production(conn):
+            cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(base)
         cur.execute(delta)
         try:

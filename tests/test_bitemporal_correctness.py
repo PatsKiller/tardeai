@@ -761,3 +761,56 @@ def test_isolated_allowlist_default_survives_reset(m2_conn):
             "'m2_shadow') = current_database()"
         )
         assert cur.fetchone()[0] is True
+
+
+class _FakeCursor:
+    """Records SQL instead of executing it, so the opt-in decision can be
+    asserted without a real production connection."""
+
+    def __init__(self, sink): self.sink = sink
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def execute(self, sql, params=None): self.sink.append(str(sql))
+
+
+class _FakeConn:
+    def __init__(self, port): self._port, self.executed = port, []
+    def get_dsn_parameters(self): return {"host": "127.0.0.1", "port": self._port}
+    def cursor(self): return _FakeCursor(self.executed)
+
+
+def _reset_opt_in_issued(executed) -> bool:
+    """Match the SET statement specifically. A substring search would also match
+    the schema file's own guard block, which mentions the GUC in its SQL and
+    comments — a false positive that made this assertion pass vacuously."""
+    return any(s.strip().upper().startswith("SET M2.ALLOW_DESTRUCTIVE_RESET") for s in executed)
+
+
+def test_production_connection_never_opts_in_to_destructive_reset():
+    """The client half of the two-signal guard: apply_schema must not set
+    m2.allow_destructive_reset on a production connection, even if production
+    memory is authorized. Regression for a half-applied change that permitted
+    production while this opt-in was still unconditional."""
+    from scripts.lib.memory_m2_benchmark import apply_schema, conn_targets_production
+
+    prod, shadow = _FakeConn("5432"), _FakeConn("55432")
+    assert conn_targets_production(prod) is True
+    assert conn_targets_production(shadow) is False
+
+    apply_schema(prod)
+    assert not _reset_opt_in_issued(prod.executed), (
+        "production connection was opted in to DROP SCHEMA ... CASCADE"
+    )
+
+    apply_schema(shadow)
+    assert _reset_opt_in_issued(shadow.executed), "shadow rebuild lost its opt-in"
+
+
+def test_conn_targets_production_fails_closed_on_unreadable_dsn():
+    """An unreadable DSN is treated as production, never as isolated."""
+    from scripts.lib.memory_m2_benchmark import conn_targets_production
+
+    class Unreadable:
+        def get_dsn_parameters(self): raise RuntimeError("no dsn")
+
+    assert conn_targets_production(Unreadable()) is True
