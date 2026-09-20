@@ -10,16 +10,24 @@ This module is the minimum hard gate:
   must align with the latest CIO action for that symbol.
 * Missing CIO row, unreadable store, or non-aligned action → hold
   (``allow=False`` + ``held_reason``). Never annotate-and-send from here.
+* Every hold appends one durable receipt line
+  (``cio_telegram_stance_holds.jsonl``) so PARTIAL-telegram-CIO-stance can be
+  observed from the served release — not only as a log line.
 
 AUTHORITY: READ_ONLY_ADVISORY. Reads ``cio_decisions`` only. MBI_BEHAVIOR = 0.
 """
 from __future__ import annotations
 
+import json
+import os
 import re
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 SCHEMA = "CioTelegramStanceGate@v1"
+HOLD_RECEIPT_SCHEMA = "CioTelegramStanceHold@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
 
 # Mirror comms_editor vocabulary so publisher + transport agree.
@@ -44,6 +52,75 @@ _INVESTMENT_BEAR = re.compile(
 
 HELD_DISAGREEMENT = "cio_stance_conflict"
 HELD_MISSING = "cio_decision_missing"
+
+
+def hold_receipts_path() -> Optional[Path]:
+    """Durable hold receipt path.
+
+    * ``CIO_STANCE_HOLD_RECEIPTS`` redirects (tests) or disables (``0``/``off``).
+    * Default: ``persistent-state/data/cio/cio_telegram_stance_holds.jsonl``.
+    """
+    raw = str(os.environ.get("CIO_STANCE_HOLD_RECEIPTS") or "").strip()
+    if raw.lower() in {"0", "off", "false", "no", "disable"}:
+        return None
+    if raw:
+        return Path(raw)
+    try:
+        from scripts.lib.persistent_state_root import production_state_root
+    except Exception:  # noqa: BLE001
+        try:
+            from lib.persistent_state_root import production_state_root  # type: ignore
+        except Exception:  # noqa: BLE001
+            return None
+    return production_state_root() / "data" / "cio" / "cio_telegram_stance_holds.jsonl"
+
+
+def _should_persist_hold() -> bool:
+    """Production records; pytest only when ``CIO_STANCE_HOLD_RECEIPTS`` is set."""
+    if str(os.environ.get("CIO_STANCE_HOLD_RECEIPTS_DISABLE") or "").strip() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return False
+    if os.environ.get("PYTEST_CURRENT_TEST") and not str(
+        os.environ.get("CIO_STANCE_HOLD_RECEIPTS") or ""
+    ).strip():
+        return False
+    return hold_receipts_path() is not None
+
+
+def record_hold(
+    verdict: "StanceGateVerdict",
+    *,
+    source: str = "check_investment_send",
+) -> Optional[Path]:
+    """Append one hold receipt. No-op when allowed or persistence disabled."""
+    if verdict.allow or not _should_persist_hold():
+        return None
+    path = hold_receipts_path()
+    if path is None:
+        return None
+    row = {
+        "schema": HOLD_RECEIPT_SCHEMA,
+        "authority": AUTHORITY,
+        "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "source": source,
+        "symbol": verdict.symbol,
+        "held_reason": verdict.held_reason,
+        "message_stance": verdict.message_stance,
+        "cio_action": verdict.cio_action,
+        "cio_side": verdict.cio_side,
+        "mbi_behavior": 0,
+    }
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, sort_keys=True) + "\n")
+        return path
+    except OSError:
+        return None
 
 
 @dataclass(frozen=True)
@@ -127,12 +204,15 @@ def check_investment_send(
     asserted_stance: Optional[str] = None,
     db_query: Optional[Callable[..., list[dict]]] = None,
     cio_view: Optional[dict[str, Any]] = None,
+    source: str = "check_investment_send",
 ) -> StanceGateVerdict:
     """Allow or hold an investment-shaped Telegram send for one symbol.
 
     ``asserted_stance`` lets GO publishers declare bullish without relying on
     text proximity. When neither asserted nor inferred stance is investment-shaped,
     the gate is a no-op (allow) — non-recommendation traffic must not be blocked.
+
+    Holds are appended to ``cio_telegram_stance_holds.jsonl`` (see ``record_hold``).
     """
     sym = (symbol or "").upper().strip()
     if not sym or sym in _STANCE_EXCLUDE_SYMBOLS:
@@ -144,17 +224,19 @@ def check_investment_send(
 
     view = cio_view if cio_view is not None else load_cio_view(sym, db_query)
     if not view:
-        return StanceGateVerdict(
+        verdict = StanceGateVerdict(
             allow=False,
             held_reason=HELD_MISSING,
             symbol=sym,
             message_stance=said,
         )
+        record_hold(verdict, source=source)
+        return verdict
 
     action = str(view.get("action") or "").upper()
     side = cio_side(action)
     if said != side:
-        return StanceGateVerdict(
+        verdict = StanceGateVerdict(
             allow=False,
             held_reason=HELD_DISAGREEMENT,
             symbol=sym,
@@ -162,6 +244,8 @@ def check_investment_send(
             cio_action=action or None,
             cio_side=side,
         )
+        record_hold(verdict, source=source)
+        return verdict
     return StanceGateVerdict(
         allow=True,
         symbol=sym,
@@ -175,11 +259,14 @@ __all__ = [
     "AUTHORITY",
     "HELD_DISAGREEMENT",
     "HELD_MISSING",
+    "HOLD_RECEIPT_SCHEMA",
     "SCHEMA",
     "StanceGateVerdict",
     "check_investment_send",
     "cio_side",
+    "hold_receipts_path",
     "infer_message_stance",
     "load_cio_view",
+    "record_hold",
     "text_is_investment_shaped",
 ]
