@@ -179,3 +179,44 @@ def test_screener_go_send_allowed_when_cio_buy_ready(monkeypatch):
     ok, reason = g._send_go(fake_send, item, db_query=q)
     assert ok is True and reason is None
     assert calls and "ELMT" in calls[0]
+
+def test_hold_writes_durable_receipt(tmp_path, monkeypatch):
+    """PARTIAL-telegram-CIO-stance closes on a durable hold receipt, not a log line."""
+    import json
+    from lib.cio_telegram_stance_gate import HOLD_RECEIPT_SCHEMA, check_investment_send
+
+    receipt = tmp_path / "cio_telegram_stance_holds.jsonl"
+    monkeypatch.setenv("CIO_STANCE_HOLD_RECEIPTS", str(receipt))
+    v = check_investment_send(
+        symbol="AXTI",
+        message_text="BUY AXTI",
+        asserted_stance="bullish",
+        cio_view={"symbol": "AXTI", "action": "AVOID"},
+        source="unit_test",
+    )
+    assert v.allow is False
+    assert receipt.is_file()
+    rows = [json.loads(line) for line in receipt.read_text().splitlines() if line.strip()]
+    assert len(rows) == 1
+    assert rows[0]["schema"] == HOLD_RECEIPT_SCHEMA
+    assert rows[0]["held_reason"] == HELD_DISAGREEMENT
+    assert rows[0]["symbol"] == "AXTI"
+    assert rows[0]["source"] == "unit_test"
+    assert rows[0]["mbi_behavior"] == 0
+
+
+def test_allow_does_not_write_hold_receipt(tmp_path, monkeypatch):
+    from lib.cio_telegram_stance_gate import check_investment_send
+
+    receipt = tmp_path / "cio_telegram_stance_holds.jsonl"
+    monkeypatch.setenv("CIO_STANCE_HOLD_RECEIPTS", str(receipt))
+    v = check_investment_send(
+        symbol="AXTI",
+        message_text="BUY AXTI",
+        asserted_stance="bullish",
+        cio_view={"symbol": "AXTI", "action": "BUY"},
+        source="unit_test",
+    )
+    assert v.allow is True
+    assert not receipt.exists()
+

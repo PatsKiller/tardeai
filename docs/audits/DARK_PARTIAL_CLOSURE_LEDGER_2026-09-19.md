@@ -21,7 +21,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-hermes_advisory_event_enqueue | KNOWN DARK · PROPOSED RETIRE | AGENTS research table; automatic writer is librarian backlog loop | Operator grant on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | RETIRED lane row or wired consumer |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | PARTIAL | **#1082 MERGED**; served pin 4bafd6f83 includes tip lineage | Observe live hold receipt from CURRENT | live hold receipt from CURRENT |
+| PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | [CODE] gate hold now appends `cio_telegram_stance_holds.jsonl` (CioTelegramStanceHold@v1) from check_investment_send chokepoint; publishers stamp source= | Promote + observe live hold line on CURRENT | live hold receipt from CURRENT |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=4 on tip 4bafd6f83 @ 2026-09-19T20:02:08Z | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | [CODE] thin+armed now writes `vector=quality_escalate` receipt even on dry_run (`would_escalate`); receipts prefer persistent-state path | Promote + observe receipt from scheduled gap_resolver | receipt vector=quality_escalate |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported_share=0.002 (2/995); stale_grounded_residual=215 tracked not soft; #1087 report filter | — | share≤0.15 |

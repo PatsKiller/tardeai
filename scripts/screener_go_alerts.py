@@ -123,6 +123,7 @@ def _cio_go_gate(symbol: str, text: str,
         message_text=text,
         asserted_stance="bullish",
         db_query=db_query,
+        source="screener_go_alerts",
     )
     return verdict.as_dict()
 
