@@ -1123,6 +1123,29 @@
       "note": "Writes holdings.json and data_as_of (LITMUS_LANES F7 / #831). Cadence matches the installed */15 9-16 market-hours cron, not a fake 24h. Artifact is the holdings.json CURRENT serves (persistent-state via symlink), not $PROJ. Three cron lines (*/15 9-16, 5 9 open, 10 16 postclose) share match=portfolio_repricer.py. F3 live_monitor and F5 warm_caches stay loose \u2014 out of scope."
     },
     {
+      "lane_id": "portfolio-ai-analyst",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15 7 * * 1-5 portfolio_orchestrator.py (AI Analyst stage)",
+        "match": "portfolio_orchestrator.py"
+      },
+      "expected_cadence_hours": 72.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/portfolios/state/ai_analysis_cache.json"
+      },
+      "note": "AI Analyst sections via portfolio_orchestrator Mon-Fri 07:15. Cadence 72h covers Fri\u2192Mon weekend gap (48h false-WARNed Sundays)."
+    },
+    {
       "lane_id": "sector-momentum-engine",
       "owner": "defense",
       "scheduler": {
@@ -2193,7 +2216,6 @@
     "15 7 * * 1-5 cd $PROJ && $PY scripts/external_market_data_ingest.py --quotes >> logs/market_data.log 2>&1",
     "15 7 * * 1-5 cd $PROJ && $PY scripts/write_state_freshness_history.py >> logs/state_freshness_db_cron.log 2>&1",
     "15 7 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/holdings_llm_refresh.lock env AGENT_DECISION_PAYLOAD=1 $PY scripts/holdings_llm_refresh.py --run --limit 50 >> logs/holdings_llm_refresh.log 2>&1",
-    "15 7 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/portfolio_orch.lock $PY scripts/portfolio_orchestrator.py >> logs/portfolio_orchestrator.log 2>&1",
     "15 7 * * 6 cd $PROJ && flock -n /tmp/etf_perf.lock $PY scripts/etf_performance_enrich.py >> logs/etf_performance_enrich.log 2>&1  # weekly: ETF YTD/yield/dividends",
     "15 7-17/2 * * 1-5 cd $PROJ && $PY scripts/pipeline_freshness_slo.py --telegram >> logs/freshness_slo.log 2>&1",
     "15 8 * * * cd $PROJ && flock -n /tmp/lockup_alert.lock $PY scripts/ipo_lockup_alert.py >> logs/lockup_alert.log 2>&1  # fire IPO lockup-expiry alerts (14d lead) to Telegram",

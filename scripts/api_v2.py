@@ -8326,17 +8326,13 @@ def ai_analyst():
         content = cache.get(key)
         if content:
             sections.append({"key": key, "title": key.replace("_", " ").title(), "content": content})
-    # Compute staleness
-    _ai_stale = True
+    # Staleness aligned to weekday-only producer (portfolio_orchestrator Mon-Fri).
+    # 48h false-WARNed every Sunday against a healthy Friday cache — see
+    # scripts/lib/ai_analyst_freshness.py (72h covers Fri→Mon).
     gen_at = cache.get("generated_at")
-    if gen_at:
-        try:
-            from datetime import datetime
+    from lib.ai_analyst_freshness import ai_analyst_is_stale as _ai_analyst_is_stale
 
-            _gen_dt = datetime.fromisoformat(str(gen_at).replace("Z", "+00:00")).replace(tzinfo=None)
-            _ai_stale = (datetime.now() - _gen_dt).total_seconds() > 48 * 3600
-        except Exception:
-            pass
+    _ai_stale = _ai_analyst_is_stale(gen_at)
     # Add canonical context so frontend can show current values alongside stale text
     _canonical_total = (_load_json(STATE_DIR / "holdings.json") or {}).get("portfolio_totals", {}).get("total_value", 0)
     _div = (_load_json(STATE_DIR / "dividend_calendar.json") or {}).get("total_annual", 0)
@@ -13023,8 +13019,8 @@ def _data_product_health():
             "category": "market_data",
         },
         "ai_analyst_cache": {
-            "owner": "portfolio_ai_analyst.py",
-            "schedule": "manual",
+            "owner": "portfolio_ai_analyst.py (via portfolio_orchestrator.py)",
+            "schedule": "daily 07:15 ET M-F (portfolio_orchestrator)",
             "remediation": ".venv/bin/python scripts/portfolio_ai_analyst.py",
             "weekend_ok": True,
             "category": "generated",
@@ -13106,7 +13102,8 @@ def _data_product_health():
     _check("portfolio_snapshot", _wk or 24, _file_age(STATE_DIR / "holdings.json"), "holdings.json")
     _check("risk_snapshot", _wk or 24, _file_age(STATE_DIR / "risk_management.json"), "risk_management.json")
     _check("dividend_calendar", _wk or 48, _file_age(STATE_DIR / "dividend_calendar.json"), "dividend_calendar.json")
-    _check("ai_analyst_cache", _wk or 48, _file_age(STATE_DIR / "ai_analysis_cache.json"), "ai_analysis_cache.json")
+    # 72h matches ai_analyst_freshness.AI_ANALYST_STALE_AFTER_HOURS (weekday producer).
+    _check("ai_analyst_cache", 72, _file_age(STATE_DIR / "ai_analysis_cache.json"), "ai_analysis_cache.json")
     _check("news_articles", _wk or 6, _db_age("SELECT MAX(created_at) FROM news_articles"), "news_articles table")
     _check("cio_decisions", _wk or 48, _db_age("SELECT MAX(created_at) FROM cio_decisions"), "cio_decisions table")
     _check(

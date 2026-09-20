@@ -824,14 +824,19 @@ GATES = [
             "tests/test_ai_analyst_cache_fails_closed.py",
         ],
     ),
+    (
+        "ai_analyst_freshness_sla",
+        [
+            "tests/test_ai_analyst_freshness.py",
+        ],
+    ),
     # A held position is never a re-entry candidate.
     (
         "s3_detector_excludes_held",
         [
             "tests/test_s3_detector_excludes_held.py",
         ],
-    ),
-    # A directory a served surface reads must be linked into the release.
+    ),    # A directory a served surface reads must be linked into the release.
     (
         "release_links_reports",
         [

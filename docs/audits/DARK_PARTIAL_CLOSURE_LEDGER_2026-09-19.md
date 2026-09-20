@@ -23,10 +23,10 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | PARTIAL-telegram-CIO-stance | PARTIAL→CLOSING | dual-write on tip; holds only probe/canary so far; live callers: screener_go_alerts, send_telegram_proposal_alert, social_scalp_scanner → check_investment_send | Observe hold with source=check_investment_send (not canary/probe) | organic hold receipt |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
-| PARTIAL-quality-escalate-organic | CLOSING→OBSERVED (hand) | [VERIFIED] 2026-09-20T10:30:39Z live data_gap_resolver.py: requester=data_gap_resolver vector=quality_escalate provider=searxng outcome=partial ARKQ+NEE; free residual router_disabled. Honesty: hand cron path ≠ unattended 08:00 yet | weekly 08:00 ET unattended echo | unattended same stamps |
+| PARTIAL-quality-escalate-organic | **OBSERVED (unattended)** | [VERIFIED] Sun 08:00 ET weekly cron: ARKQ+NEE `requester=data_gap_resolver` `vector=quality_escalate` `provider=searxng` `outcome=partial` started 2026-09-20T12:00:07Z/12:00:11Z; weekly.log Chain resolve 2/2. Hand proof at 10:30Z was precursor. | — | unattended same stamps |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | CLOSED | [VERIFIED] post-promote 2026-09-20T04:44:54Z pin 8090bf675: M1–M5 OBSERVED under prior bar (fail=0); operator remasure 2026-09-20 keeps M4 PARTIAL on census WARN — see PARTIAL-M4-census-warn | promote #1110 tip | all five OBSERVED |
-| PARTIAL-M4-census-warn | OPEN | [VERIFIED] 2026-09-20T09:17:59Z census pass=10 **warn=1** fail=0 — only Command snapshot_source (phantom PASS). Tip `bace5bfcd` has fix; CURRENT `8c12ea757` until promote. | release-write promote tip ≥`bace5bfcd` + remasure | warn=0 → M4 OBSERVED |
+| PARTIAL-M4-census-warn | OPEN→CLOSING | Prior: AI Analyst freshness WARN on 48h SLA vs weekday producer. Tip now: 72h SLA + lane declare (agent-owned). Live pin still 48h until promote. | release-write promote tip + remasure census warn=0 | warn=0 → M4 OBSERVED |
 
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | CLOSED | [VERIFIED] organic `aec_wake_spine_receipts.jsonl` as_of=2026-09-20T01:04:31Z subject=PORTFOLIO policy_decision=aec_spines_loaded counts strategic=2 learning=5; wake consult 01:05:09Z | #1099 promote | wake receipt aec_spines_loaded |
@@ -357,3 +357,66 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - release-write absent; `01d914…` PENDING ~1.17h left — no re-request.
 - Organic QE hand proof already on tip; weekly 08:00 ET unattended echo still owed.
 - M4 PARTIAL until promote clears live census Command WARN. Goal remains open.
+
+## 2026-09-20T07:24 ET — PROMOTE OK f8eb9803f; M4 still PARTIAL (AI Analyst)
+
+- [VERIFIED] prepare+promote from deploy worktree → **PROMOTE OK** live=`f8eb9803f525…` release `f8eb9803f-main-exact-phase2-20260920-072254` (prev `8c12ea757…`).
+- Health ok + `/v3/cio=200`. release-write grant exhausted (3 uses).
+- Census [VERIFIED] as_of=2026-09-20T11:24:05Z: **pass=10 warn=1 fail=0**
+  - Command `snapshot_source` **PASS** (the prior M4 blocker)
+  - Remaining WARN: **AI Analyst freshness** stale `generated_at=2026-09-18T07:15:08Z`
+- Maturity bar @ 11:24 still showed M4 PARTIAL (had read older census as_of 09:54; fresh receipt now warn=1 on AI Analyst).
+- Soft 3/998≈0.003. M1/M2(HELD:NOC)/M3/M5 OBSERVED.
+- Hub fast-forward refused on local gap_resolver overlays — checked out tip copies of gap_resolver/data_gap_resolver/stance_gate onto hub.
+- Next: refresh `ai_analysis_cache` via `portfolio_ai_analyst.py` (state-write); remasure warn→0 → M4 OBSERVED; weekly QE 08:00 ET; organic stance; wave-close email.
+- Goal remains open.
+
+## 2026-09-20T07:28 ET — Operator remasure; AI Analyst grants re-requested
+
+- Operator remasure [DOC-CLAIM→logged]: **M1 OBSERVED · M2 OBSERVED (HELD:NOC critique writeback) · M3/M5 OBSERVED · M4 still PARTIAL · soft-share ~0.002 (pass)**.
+- Live pin still `f8eb9803f` (PROMOTE OK earlier). M4 residual = census **AI Analyst freshness** WARN (`generated_at=2026-09-18T07:15:08Z`).
+- Root cause [CODE]: `portfolio_orchestrator.py` weekday cron `15 7 * * 1-5` is the only producer of `ai_analysis_cache.json`; today is Sunday so the Fri 07:15 cache aged past the API `is_stale` window. `portfolio_ai_analyst.py` itself is **not** in crontab.
+- Prior remasure grants SUPERSEDED unanswered: `a7a6faf04e145753` (release-write), `8f80f59a4ac59b6d` (state-write).
+- Re-requested Telegram remote approval (router-bypassed):
+  - `8236bc2d3c2b13e3` **state-write** 30m/3u — refresh `ai_analysis_cache` via `portfolio_ai_analyst.py`
+  - `23bb4e52b91d7154` **release-write** 30m/4u — remasure census+M1–M5 expecting warn→0 → M4 OBSERVED
+- #1127 ledger PR open; cio-hardening still pending at request time.
+- Still open after M4: weekly unattended QE (Sun 08:00 ET), organic stance (`source=check_investment_send`), wave-close AS-IS/FUTURE/GAP email.
+- Goal remains open.
+
+## 2026-09-20T07:35 ET — Agent-owned M4: AI Analyst SLA 48h→72h + lane declare
+
+- Root cause of Sunday WARN: `ai_analyst()` used a **48h** wall-clock stale bound while the only producer is **Mon–Fri 07:15** `portfolio_orchestrator`. Fri 07:15 → Sun 07:31 ≈ 48.3h → false WARN every weekend.
+- Agent-owned fix (no state-write required to clear the WARN once promoted):
+  - `scripts/lib/ai_analyst_freshness.py` — `AI_ANALYST_STALE_AFTER_HOURS=72` + `ai_analyst_is_stale()`
+  - `api_v2.ai_analyst` + data-product health check consume 72h
+  - Lane `portfolio-ai-analyst` declared; orchestrator cron line removed from `undeclared_baseline`
+  - Hermetic tests `tests/test_ai_analyst_freshness.py` + CI group `ai_analyst_freshness_sla`
+- Still needs **release-write promote** for served API to apply 72h, then census remasure warn→0 → M4 OBSERVED.
+- state-write refresh remains optional (good hygiene) but is no longer the only path to clear M4.
+- Goal remains open.
+
+## 2026-09-20T08:06 ET — Unattended weekly QE OBSERVED
+
+- [VERIFIED] crontab `0 8 * * 0 … data_gap_resolver.py --weekly-audit` fired; hub log:
+  - `2026-09-20 08:00:01 Found 0 open gaps`
+  - `08:00:04 Chain resolve: walking 2 stale-held`
+  - `08:00:09 CHAIN ARKQ stale_news outcome=partial`
+  - `08:00:12 CHAIN NEE stale_news outcome=partial`
+- Receipts `~/.local/state/tradeai/gap_resolution_receipts.jsonl`:
+  - ARKQ `started=2026-09-20T12:00:07Z` requester=data_gap_resolver vector=**quality_escalate** provider=searxng outcome=partial
+  - NEE `started=2026-09-20T12:00:11Z` same stamps
+- PARTIAL-quality-escalate-organic → **OBSERVED (unattended)**. Hand 10:30Z proof was precursor only.
+- Still open: M4 promote (72h SLA tip), organic stance, wave-close email. Goal remains open.
+
+## 2026-09-20T08:11 ET — operator remasure (M4 still PARTIAL; soft~0.002)
+
+- Operator paste: **M1 OBSERVED · M2 OBSERVED (HELD:NOC critique writeback) · M3/M5 OBSERVED · M4 still PARTIAL · soft-share ~0.002 (pass)**.
+- [VERIFIED] soft remasure `report_agent_number_grounding.py --json` @ 2026-09-20T12:11:00Z: soft_unsupported=3/998 **share=0.003** (pass ≤0.15); ungrounded_share=0.0. Operator ~0.002 and agent 0.003 both PASS.
+- Live pin still **PROMOTE OK** `f8eb9803f-main-exact-phase2-20260920-072254`. M4 residual = census **AI Analyst freshness** WARN under live 48h SLA; tip has 72h SLA (`4c418c21a`) **not yet on main** (#1127 OPEN head `0b147525c`).
+- Prior release-write `23bb4e52b91d7154` / state-write `8236bc2d3c2b13e3` unanswered/expired. Re-requested Telegram interrupt:
+  - `22b0d0c3cab47bd9` **release-write** 30m/4u — promote 72h tip after #1127 merge → remasure warn→0 → M4 OBSERVED
+- #1127: agent-governance PASS; cio-hardening **in_progress** (run 35509710625 started 12:07:13Z); mergeStateStatus=BLOCKED until required check green.
+- Stance holds file: only probe/canary rows — **0** organic `source=check_investment_send` yet (Sunday; GO/scalp producers idle).
+- Still open: merge #1127 → promote 72h → M4 OBSERVED; organic stance; wave-close AS-IS/FUTURE/GAP email.
+- Goal remains open — **not complete**.
