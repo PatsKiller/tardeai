@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `059dd484965790f959243ce9dceacc70643a315159de60a88ab99ce519ebd06f`
+**Tree fingerprint:** `40635726f995140188316d102884549143f798cd066ca531bd3f69fec51346c1`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2562 |
-| Markdown (excl. this INDEX) | 2136 |
+| Files under `docs/` (excl. this INDEX) | 2563 |
+| Markdown (excl. this INDEX) | 2137 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2069 |
+| Header OK | 2070 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2191 |
+| review_required | 2192 |
 
 ## Markdown tree
 
@@ -1661,6 +1661,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | OK | `ad67ce75eb83` |
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | OK | `57b472ac277f` |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
+| `docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §7A) | review_required | OK | `5ceaace1d434` |
 | `docs/ops/PROPOSED_RESEARCH_QUALITY_ESCALATE_HOST_2026-09-19.md` | PROPOSED / APPLIED — research quality escalate host arm | review_required | OK | `22e2223e1d01` |
 | `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §9.3) | review_required | OK | `d23e2d26a483` |
 | `docs/ops/PROPOSED_WAKE_L3_CRON_FLAGS_2026-09-19.md` | PROPOSED — enable WAKE_L3 flags on the **L3 consumer** cron | review_required | OK | `a4a573fe18a8` |
