@@ -55689,6 +55689,33 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             # Status file for async tracking
             _status_file = PROJECT_ROOT / "logs" / "enrich_all_status.json"
 
+            def _governed_child_env():
+                """Env for an LLM-spending child. Fail-closed: (env, None) or (None, reason).
+
+                The pipeline used to inherit whatever the server unit happened to carry. When
+                LLM_GLOBAL_DAILY_USD_CAP was absent there, every governed call returned
+                COST_CONFIGURATION_INVALID and eight of them opened the agent_flash circuit
+                breaker for 900s, which also blocked the healthy cron drains. Resolve the cap
+                from the durable host cap file instead of trusting inheritance.
+                """
+                env = dict(os.environ)
+                raw = env.get("LLM_GLOBAL_DAILY_USD_CAP")
+                try:
+                    if raw not in (None, "") and float(raw) > 0:
+                        return env, None
+                except (TypeError, ValueError):
+                    pass  # malformed inherited value — re-resolve below
+                try:
+                    from lib.llm_spend import configured_global_cap
+
+                    cap = configured_global_cap()
+                except Exception as e:
+                    return None, f"cap file unreadable: {str(e)[:80]}"
+                if not cap or cap <= 0:
+                    return None, "LLM_GLOBAL_DAILY_USD_CAP unset and host cap file has no positive value"
+                env["LLM_GLOBAL_DAILY_USD_CAP"] = f"{cap:.2f}"
+                return env, None
+
             def _run_pipeline():
                 steps = [
                     ("tech_snapshot", "proposal_technical_snapshot.py", ["--pending", "--apply"], 60),
@@ -55701,7 +55728,11 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     ("monitor", "proposal_monitor.py", ["--pending", "--include-intraday", "--apply"], 120),
                 ]
                 results = {}
+                child_env, env_reason = _governed_child_env()
                 for key, script, args, timeout in steps:
+                    if child_env is None:
+                        results[key] = f"skipped: {env_reason}"
+                        continue
                     results[key] = "running"
                     try:
                         _status_file.write_text(json.dumps({"state": "running", "current_step": key, "steps": results}))
@@ -55714,6 +55745,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                             text=True,
                             timeout=timeout,
                             cwd=str(PROJECT_ROOT),
+                            env=child_env,
                         )
                         results[key] = "ok" if r.returncode == 0 else f"exit:{r.returncode}"
                     except Exception as e:
