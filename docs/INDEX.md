@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `7ea143fae1c887e6ee797d9fbcf9f70bd4a3ab1c9dcffe98bd9484882aa36b06`
+**Tree fingerprint:** `f1a1997ee6b74b575341bce162dcced6e3119c7cf2b686e47b4fe913b8204a29`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2582 |
-| Markdown (excl. this INDEX) | 2156 |
+| Files under `docs/` (excl. this INDEX) | 2583 |
+| Markdown (excl. this INDEX) | 2157 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2089 |
+| Header OK | 2090 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2211 |
+| review_required | 2212 |
 
 ## Markdown tree
 
@@ -659,7 +659,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census | review_required | OK | `a5073ae48b02` |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche | review_required | OK | `3669faccf7ff` |
 | `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `a93e9c0422d7` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `cf025a227ea8` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `5110d7f87481` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |
@@ -1674,11 +1674,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/MATURE_INVESTMENT_OFFICE_LIVE_CONVERGENCE_2026-08-23.md` | Trade AI v12 R9.1 - Mature Investment Office Live Convergence | review_required | OK | `05d7f40f4fee` |
 | `docs/ops/MATURITY_SCORECARD.md` | Maturity scorecard (GET-only) | review_required | OK | `45731da83d49` |
 | `docs/ops/OPERATOR_ACTION_REQUIRED.md` | OPERATOR_ACTION_REQUIRED — live advisory notification canary | review_required | OK | `840fa4562f95` |
+| `docs/ops/OPERATOR_CLOSE_BRIEF_AEC_MATURITY_2026-09-20.md` | Operator close brief — Trade AI AEC maturity goal | review_required | OK | `563472683d55` |
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | OK | `ad67ce75eb83` |
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | OK | `57b472ac277f` |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
 | `docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` | PROPOSED — operator decision required (AGENTS.md §17) | review_required | OK | `7e3b80ca9940` |
-| `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` | PROPOSED — operator decision required (AGENTS.md §9.3 / §17) | review_required | OK | `8662f94c3b3d` |
+| `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` | CONFIRMED — host timers installed (AGENTS.md §9.3 overnight maturity cron grant) | review_required | OK | `0e9571d27421` |
 | `docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §7A) | review_required | OK | `2fa75dff149c` |
 | `docs/ops/PROPOSED_RESEARCH_QUALITY_ESCALATE_HOST_2026-09-19.md` | PROPOSED / APPLIED — research quality escalate host arm | review_required | OK | `f313951ad560` |
 | `docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md` | PROPOSED — operator decision required (AGENTS.md §17 / §9.3) | review_required | OK | `4ff4e395a485` |
