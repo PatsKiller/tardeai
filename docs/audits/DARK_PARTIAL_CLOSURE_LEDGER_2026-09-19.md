@@ -420,3 +420,13 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Stance holds file: only probe/canary rows — **0** organic `source=check_investment_send` yet (Sunday; GO/scalp producers idle).
 - Still open: merge #1127 → promote 72h → M4 OBSERVED; organic stance; wave-close AS-IS/FUTURE/GAP email.
 - Goal remains open — **not complete**.
+
+## 2026-09-20T08:32 ET — #1127 MERGED; promote blocked on release-write
+
+- [VERIFIED] #1127 MERGED @ 2026-09-20T12:28:51Z → `73ced82d9` (MERGE_EXIT=0; cio-hardening PASS 16m16s on head `3b3ca1efb`).
+- Tip on `origin/main` includes 72h AI Analyst SLA (`4c418c21a`) + unattended QE OBSERVED ledger.
+- Deploy worktree detached onto `73ced82d9` awaiting release-write.
+- release-write still **absent**; Telegram request `22b0d0c3cab47bd9` PENDING (30m window from ~12:11Z — expires ~12:41Z). Do not re-request while live.
+- Operator remasure unchanged: M1–M3/M5 OBSERVED, **M4 PARTIAL**, soft~0.002/0.003 PASS.
+- Still open: promote → census warn→0 → M4 OBSERVED; organic stance (Mon–Fri); wave-close email.
+- Goal remains open.
