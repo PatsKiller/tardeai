@@ -3,7 +3,7 @@
 ```
 Status: ACTIVE
 as_of: 2026-09-20T06:08:00-04:00
-Measured at: pin 6a78d41cc; M1–M5 OBSERVED; organic=0; #1133 OPEN; AGENTS 1.2.5 dark-list PATCH + §17 propose notes; goal open
+Measured at: pin 498ecd0f6; M1–M5 OBSERVED; #1133 MERGED 5b7e24c95; organic=0; §17 parks operator-ready; goal open
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -502,4 +502,11 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Agent-owned close: AGENTS.md **1.2.5 PATCH** — §13.4 dark contracts + AgentView/commitment prose match ledger CLOSED.
 - §17 propose hardened: hermes RETIRE, relationship sources, new `PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` (exact operator asks). No grants applied.
 - Goal NOT complete.
+
+## 2026-09-20T11:41 ET — #1133 MERGED; remasure on pin 498ecd0f6
+
+- [VERIFIED] #1133 MERGED @ 2026-09-20T15:40:35Z → `5b7e24c95` (organic stance observer + AGENTS 1.2.5 dark-list + §17 proposes).
+- [VERIFIED] maturity bar @ 15:41:11Z pin `498ecd0f6-main-exact-phase2-20260920-111554`: **M1–M5 OBSERVED** (census warn=0 as_of 13:44:45Z).
+- [VERIFIED] `report_organic_stance_hold.py`: still **PARTIAL** organic=0 (Sunday).
+- §17 parks: propose notes on main; await operator tokens. Goal NOT complete.
 
