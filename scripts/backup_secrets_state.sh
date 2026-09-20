@@ -32,12 +32,12 @@ case "$TARGET" in
   # OAuth tokens in Postgres; also mirrored to SM 2026-07-22) + the .env.pre-sm-migration
   # fallback snapshot (via GLOB) that env_bootstrap uses when Bitwarden is unreachable.
   # KEEP=1 all families (2026-08-11): only leave latest on Drive
-  env)  PREFIX="env_backup";  KEEP=1;  SOURCES=(".env" "config/broker_credentials.env"); GLOB=".env.*" ;;
+  env)  PREFIX="env_backup";  KEEP=7;  SOURCES=(".env" "config/broker_credentials.env"); GLOB=".env.*" ;;
   data) PREFIX="data_backup"; KEEP=1;  SOURCES=("data");  GLOB="" ;;
-  memory) PREFIX="memory_backup"; KEEP=1; TAR_BASE="$HOME"
+  memory) PREFIX="memory_backup"; KEEP=7; TAR_BASE="$HOME"
           SOURCES=(".claude/projects/-home-johnclaw/memory"); GLOB="" ;;
   db)   PREFIX="db_backup"; KEEP=1; SOURCES=(); GLOB="" ;;
-  ops)  PREFIX="ops_backup"; KEEP=1; SOURCES=(); GLOB="" ;;
+  ops)  PREFIX="ops_backup"; KEEP=7; SOURCES=(); GLOB="" ;;
   apps) PREFIX="apps_backup"; KEEP=1; TAR_BASE="$HOME"
         SOURCES=(".openclaw/credentials" ".openclaw/agents" ".openclaw/memory"
                  ".openclaw/state" ".openclaw/openclaw.json" ".openclaw/exec-approvals.json"
@@ -107,12 +107,25 @@ else
       bn="$(basename "$f")"
       [ "$bn" = ".env.example" ] && continue
       LIST+=("$bn")
-    done < <(find "$PROJ" -maxdepth 1 -name "$GLOB" -type f 2>/dev/null)
+    done < <(find "$PROJ" -maxdepth 1 -name "$GLOB" \( -type f -o -type l \) 2>/dev/null)
   fi
   [ ${#LIST[@]} -gt 0 ] || { echo "FATAL: nothing to back up for target '$TARGET'" >&2; exit 1; }
 
   echo "[backup:$TARGET] bundling ${#LIST[@]} path(s): ${LIST[*]}"
-  tar czf "$TAR" -C "$TAR_BASE" "${LIST[@]}"
+  # 2026-09-19: env/memory live behind symlinks when $PROJ resolves to a release copy
+  # (release trees symlink .env -> dev tree), so plain `tar czf` archived 0-byte links and
+  # shipped a 292B archive containing NO secret bytes. -h/--dereference follows them.
+  # NOT applied to `data`: its 7 persistent-state symlinks would expand 1.9G -> 9.6G.
+  TAR_FLAGS="czf"
+  EXCLUDES=()
+  case "$TARGET" in
+    env|memory) TAR_FLAGS="czhf" ;;
+    # data/ reaches its live state through 6 symlinks into persistent-state; without -h
+    # tar stored them as 0-byte links (the 2026-09-18 archive held 69 entries / 595K).
+    # runtime/ is excluded: 5.4G of ephemeral logs, 9.6G -> 4.2G dereferenced without it.
+    data) TAR_FLAGS="czhf"; EXCLUDES=(--exclude=data/runtime) ;;
+  esac
+  tar "$TAR_FLAGS" "$TAR" -C "$TAR_BASE" "${EXCLUDES[@]}" "${LIST[@]}"
 fi
 
 # Encrypt (AES-256, symmetric). Plaintext tar is deleted with $TMP on exit.
