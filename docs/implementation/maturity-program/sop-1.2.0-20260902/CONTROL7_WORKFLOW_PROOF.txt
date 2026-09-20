@@ -1,6 +1,6 @@
 === CONTROL7 WORKFLOW PROOF (reproducible; Layer 1) ===
 schema=SopControl7WorkflowProof@v1
-control_surface_digest=4b80324c90d99eb56cc3d3f5b2bd29b5d8609a9e34315335022a8c01b1972849
+control_surface_digest=8915d4a7f87d757011cc9387aceb59bb47be71327c1a4c715eda662a1877d6f3
 workflow_path=.github/workflows/agent-governance.yml
 workflow_blob_sha256=c03a4ef8c6f74a40fcb801c5e3e2ec5a2efd476972139677f1029894fb7d72f2
 workflow_lines=125
