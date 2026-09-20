@@ -310,6 +310,44 @@ def test_hold_dual_write_mirrors_when_persist_parent_exists(tmp_path, monkeypatc
     assert local_rows[0]["source"] == "dual_write_test"
 
 
+def test_organic_producers_pass_caller_as_source_kwarg():
+    """AST guard: Mon–Fri organic OBSERVED requires these call sites stamp source=caller.
+
+    PARTIAL-telegram-CIO-stance closes only when a live producer records
+    source=check_investment_send with caller in ORGANIC_HOLD_CALLERS. A silent
+    rename of the source= kwarg would leave the schedule firing and organic=0.
+    """
+    import ast
+    from pathlib import Path
+
+    from lib.cio_telegram_stance_gate import ORGANIC_HOLD_CALLERS
+
+    root = Path(__file__).resolve().parents[1]
+    producers = {
+        "screener_go_alerts": root / "scripts" / "screener_go_alerts.py",
+        "social_scalp_scanner": root / "scripts" / "social_scalp_scanner.py",
+        "send_telegram_proposal_alert": root / "scripts" / "send_telegram_proposal_alert.py",
+    }
+    assert set(producers) == set(ORGANIC_HOLD_CALLERS)
+
+    for caller, path in producers.items():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        sources: list[str] = []
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            fn = node.func
+            name = fn.id if isinstance(fn, ast.Name) else (
+                fn.attr if isinstance(fn, ast.Attribute) else None
+            )
+            if name != "check_investment_send":
+                continue
+            for kw in node.keywords:
+                if kw.arg == "source" and isinstance(kw.value, ast.Constant):
+                    sources.append(str(kw.value.value))
+        assert caller in sources, f"{path.name}: missing source={caller!r} (got {sources})"
+
+
 def test_is_organic_hold_row_requires_source_and_caller():
     from lib.cio_telegram_stance_gate import is_organic_hold_row
 
