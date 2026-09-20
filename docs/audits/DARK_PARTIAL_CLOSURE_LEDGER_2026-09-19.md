@@ -3,7 +3,7 @@
 ```
 Status: ACTIVE
 as_of: 2026-09-20T06:08:00-04:00
-Measured at: live pin 6a78d41cc PROMOTE OK; M1–M5 OBSERVED (M4 warn=0); soft 0.003; #1129 OPEN ba1f732f5; organic stance + wave-close email remain; §17 parks
+Measured at: live pin 6a78d41cc; M1–M5 OBSERVED; soft 0.003; #1129 MERGED 428edeabb; organic stance + §17 parks remain
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -480,4 +480,11 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Soft [VERIFIED] 3/998 soft_unsupported ≈0.003 (pass ≤0.15).
 - Operator M4 PARTIAL paste reconciles to tip OBSERVED post-promote; no AI Analyst refresh needed (state-write grant unused this cycle).
 - Open: fix #1129 docs INDEX drift (0945 package committed before `--write-index`); organic stance `source=check_investment_send`; §17 parks. Goal remains open.
+
+## 2026-09-20T10:27 ET — #1129 MERGED; INDEX drift closed
+
+- [VERIFIED] #1129 MERGED @ 2026-09-20T14:26:52Z → merge `428edeabb` (head `21df8c18b`: INDEX regen after 0945 package + remasure ledger).
+- cio-hardening/agent-governance/provider-cost/release-readiness/aif all SUCCESS on head.
+- Stance holds file still probe/canary only (n=2); organic `source=check_investment_send` awaits Mon–Fri GO/scalp/proposal.
+- Goal remains open: organic stance + §17 parks (bitemporal/:5432, hermes RETIRE, relationship).
 
