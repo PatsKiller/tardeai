@@ -329,3 +329,12 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Live callers passed `source=screener_go_alerts|social_scalp_scanner|send_telegram_proposal_alert`, so organic holds could never match ledger proof `source=check_investment_send`.
 - Agent-owned: normalize those three to `source=check_investment_send` + `caller=<producer>`; canary/probe sources stay distinct.
 - Hermetic tests added. Observation of a live organic hold still required (not canary).
+
+## 2026-09-20T06:25 ET — free_search fallback when Brave router dark
+
+- Operator remasure (session continue): M1 OBSERVED · M2 OBSERVED (HELD:NOC) · M3/M5 OBSERVED · **M4 still PARTIAL** · soft≈0.002 pass — unchanged.
+- [VERIFIED] `BRAVE_ROUTER_ENABLED` unset on host → every `_v_governed_search` returned `router_disabled` / no_answer, so quality_escalate never saw a `partial` even after stale-held walk + `gap_resolver_live=1`.
+- Agent-owned: when router dark, `_v_governed_search` calls `_v_governed_free_search` (SearXNG via `free_search`, caller=`gap_resolver`) and returns `partial` on hits — feeds the existing QE climb without touching Brave spill contract. Dry Context still no side effects.
+- Hermetic: `test_governed_search_free_fallback_when_router_dark_and_live` + dry router-disabled path; **37 passed**.
+- release-write still **absent**; `01d9146085bc55c4` PENDING expires 2026-09-20T12:12:42Z (~1.77h left) → no re-request.
+- Still open: merge #1123+this tip; promote → census warn=0 → M4 OBSERVED; organic QE receipt; organic stance; wave-close email. Goal remains open.

@@ -618,16 +618,22 @@ def _v_backup_provider(gap: DataGap, entry: dict[str, Any], ctx: Context) -> Vec
 
 
 def _v_governed_search(gap: DataGap, entry: dict[str, Any], ctx: Context) -> VectorResult:
-    """Through brave_router only. The router owns the budget, the cache and (Phase
-    5) the spill to SearXNG; this vector never touches a search host itself."""
+    """Brave router when armed; free_search when the router is dark.
+
+    Measured 2026-09-20: cron ``data_gap_resolver`` walks catalyst gaps with
+    ``GAP_RESOLVER_LIVE`` host-armed, but ``BRAVE_ROUTER_ENABLED`` is unset on
+    the host, so every governed_search returned ``router_disabled`` and
+    quality_escalate never saw a ``partial`` to climb from. Free-first residual
+    (``scripts/lib/free_search.py``) fills that hole without touching the Brave
+    spill contract.
+    """
     from scripts.lib import brave_router
     from scripts.lib.retired_providers import is_retired
 
     if is_retired(brave_router.PROVIDER):
         return VectorResult("retired_skipped", provider=brave_router.PROVIDER, detail="search provider retired")
-    if not brave_router.router_enabled():
-        return VectorResult("no_answer", provider=brave_router.PROVIDER,
-                            detail=f"router_disabled: {brave_router.FLAG_ENABLED} unset; no call, no side effect")
+    if not brave_router.router_enabled(ctx.env):
+        return _v_governed_free_search(gap, ctx, reason="router_disabled")
     if not ctx.is_live():
         return VectorResult("no_answer", provider=brave_router.PROVIDER,
                             detail=f"dry_run: would search {gap.question!r} ({FLAG_LIVE} unset)")
@@ -646,15 +652,50 @@ def _v_governed_search(gap: DataGap, entry: dict[str, Any], ctx: Context) -> Vec
     hits = list(resp.results or [])
     if not hits:
         return VectorResult("no_answer", provider=brave_router.PROVIDER, detail="router ok, zero results")
-    # RouterResponse carries no ``spilled_to`` — the spill target is ``provider``
-    # ("Which provider actually answered — brave or the backup that took the
-    # spill"). The old getattr therefore defaulted to None on EVERY response, so
-    # a spilled answer was recorded as brave and the gap receipts disagreed with
-    # the budget ledger about who answered. Only the RECEIPT has spilled_to.
     provider = str(getattr(resp, "provider", None) or brave_router.PROVIDER)
     return VectorResult("partial", provider=provider, as_of=_iso(ctx.now()),
                         detail=f"{len(hits)} results{' (cache)' if resp.cache_hit else ''}",
                         evidence={"search_results": hits[:5], "search_provider": provider})
+
+
+def _v_governed_free_search(gap: DataGap, ctx: Context, *, reason: str) -> VectorResult:
+    """Free SearXNG path when Brave router is dark (or as an explicit residual)."""
+    if not ctx.is_live():
+        return VectorResult(
+            "no_answer",
+            provider="searxng",
+            detail=f"dry_run: would free_search {gap.question!r} ({reason})",
+        )
+    try:
+        from scripts.lib import free_search as fs
+    except ImportError:  # pragma: no cover
+        from lib import free_search as fs  # type: ignore
+    kind = "news" if canonical_domain(gap.domain) == "catalyst_news" else "web"
+    try:
+        resp = fs.search(
+            gap.question,
+            caller="gap_resolver",
+            kind=kind,
+            count=5,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return VectorResult("error", provider="searxng", detail=f"{type(exc).__name__}:{exc}")
+    if not getattr(resp, "ok", False):
+        return VectorResult(
+            "no_answer",
+            provider="searxng",
+            detail=f"free_search refused ({reason}): {getattr(resp, 'reason', None)}",
+        )
+    hits = list(getattr(resp, "results", None) or [])
+    if not hits:
+        return VectorResult("no_answer", provider="searxng", detail=f"free_search ok, zero results ({reason})")
+    return VectorResult(
+        "partial",
+        provider="searxng",
+        as_of=_iso(ctx.now()),
+        detail=f"{len(hits)} free results ({reason})",
+        evidence={"search_results": hits[:5], "search_provider": "searxng", "fallback_reason": reason},
+    )
 
 
 def _v_hermes_research(gap: DataGap, entry: dict[str, Any], ctx: Context) -> VectorResult:
