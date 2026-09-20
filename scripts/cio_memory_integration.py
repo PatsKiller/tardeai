@@ -4,9 +4,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import uuid
 from pathlib import Path
+
+
+def _redact_dsn(dsn: str) -> str:
+    """host:port/dbname only — never echo the credential into a log."""
+    tail = str(dsn).rsplit("@", 1)[-1]
+    return tail or "unknown"
 
 NO_CONSUMER_REASON = (
     "CIO bitemporal memory integrator CLI; wake/AEC import scripts.lib.cio_memory_integration. "
@@ -26,8 +33,12 @@ from scripts.lib.cio_memory_integration import (  # noqa: E402
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--dry-run", action="store_true", default=True)
-    ap.add_argument("--apply", action="store_true")
+    # Mutually exclusive: --dry-run was previously declared but never read, so
+    # `--apply-schema --dry-run` applied the schema for real. argparse now
+    # rejects the contradictory pairing rather than silently applying.
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="default; no durable write")
+    mode.add_argument("--apply", action="store_true")
     ap.add_argument("--apply-schema", action="store_true")
     ap.add_argument("--envelope-json", default=None)
     ap.add_argument("--subject-key", default="WATCH:SCHG")
@@ -36,16 +47,39 @@ def main() -> int:
     apply = bool(args.apply)
 
     if args.apply_schema:
+        from scripts.lib.memory_m2_benchmark import DEFAULT_DSN, conn_targets_production
         from scripts.lib.memory_m2_v2 import connect
+
+        target = os.getenv("M2_DSN") or DEFAULT_DSN
+        if not apply:
+            # --dry-run used to be inert: --apply-schema applied the schema
+            # regardless, so an operator rehearsing a production cutover would
+            # have applied it for real. Applying now requires an explicit
+            # --apply (AGENTS §0 rule 7).
+            print(json.dumps({
+                "dry_run": True,
+                "would_apply": ["sql/r10_m2_isolated_benchmark.sql",
+                                "sql/trade-ai-bitemporal-schema-v2.sql"],
+                "target": _redact_dsn(target),
+                "note": "no connection opened; re-run with --apply to execute",
+            }, indent=2))
+            print("DRY_RUN no schema applied", file=sys.stderr)
+            return 0
 
         conn = connect()
         try:
             verify = apply_bitemporal_schema_v2(conn)
-            print(json.dumps({"schema_apply": verify, "production_sql_applied": False}, indent=2))
+            # Was hardcoded False, which would have misreported a real
+            # production apply. Derive it from the connection instead.
+            print(json.dumps({
+                "schema_apply": verify,
+                "production_sql_applied": conn_targets_production(conn),
+            }, indent=2))
             if not all(verify.values()):
                 return 2
         finally:
             conn.close()
+        return 0
 
     if args.envelope_json:
         envelope = json.loads(Path(args.envelope_json).read_text(encoding="utf-8"))

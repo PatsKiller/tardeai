@@ -71,7 +71,9 @@ jobs:
 
       - name: Apply schema + run 200-case suite
         run: |
-          python3 scripts/cio_memory_integration.py --apply-schema --dry-run
+          # --apply is now required to actually apply. Previously --dry-run was
+          # inert and --apply-schema applied regardless; this step relied on that.
+          python3 scripts/cio_memory_integration.py --apply-schema --apply
           python3 -m pytest tests/test_bitemporal_correctness.py -q --tb=line
 
       - name: EXPLAIN ANALYZE index pruning receipt

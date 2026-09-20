@@ -303,7 +303,10 @@ def run_cycle(
     )
 
     # Narrator — executive briefing text (not sent here; publish to bus only)
-    # Cognitive memory on isolated :55432 only (prod :5432 refused in integrator).
+    # Cognitive memory targets isolated :55432 by default. Production :5432 is
+    # refused by the integrator unless the operator sets
+    # TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED=1; the destructive schema reset is
+    # never permitted there regardless.
     # Fail-soft: a bitemporal schema/function miss must not abort the cycle after
     # AgentView/commitment/OUTCOME already landed (2026-09-20T05:00Z exit 1 left
     # narrator unrun while hour-bucket mint had succeeded).
@@ -323,10 +326,18 @@ def run_cycle(
             apply=apply,
         )
     except Exception as exc:  # noqa: BLE001 — isolated memory must not kill AEC
+        # Fail-soft is right for an incidental miss, but it must not hide a
+        # MISCONFIGURED TARGET. Once production cognitive memory is authorized
+        # this writer runs unattended hourly against a real database; a DSN or
+        # reset refusal degrading to a logged string would make a mis-targeted
+        # run look identical to a healthy one. Those are raised, not swallowed.
+        _msg = f"{type(exc).__name__}: {exc}"
+        if any(m in _msg for m in ("M2_DSN_", "M2_DESTRUCTIVE_")):
+            raise
         bitemporal_receipt = {
             "schema": "CIOEnvelopeIntegration@v1",
             "dry_run": not apply,
-            "error": f"{type(exc).__name__}: {exc}"[:400],
+            "error": _msg[:400],
             "authority": "READ_ONLY_ADVISORY",
             "mbi_behavior": 0,
             "via": "aec_bitemporal_fail_soft",
@@ -386,8 +397,12 @@ def run_cycle(
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dry-run", action="store_true", default=True)
-    ap.add_argument("--apply", action="store_true", help="append bus + memory (still advisory)")
+    # Mutually exclusive: --dry-run was previously declared but never read, so
+    # `--dry-run --apply` silently applied. argparse now rejects that pairing
+    # instead of letting the more dangerous flag win by accident.
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="default; no durable write")
+    mode.add_argument("--apply", action="store_true", help="append bus + memory (still advisory)")
     ap.add_argument("--subject-key", default=None)
     args = ap.parse_args()
     apply = bool(args.apply)
