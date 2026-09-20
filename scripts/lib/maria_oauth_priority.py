@@ -9,6 +9,27 @@ MARIA_OAUTH_RUN_CAP = int(os.environ.get("MARIA_OAUTH_RUN_CAP", "12"))
 WAIT_SETUP_LIMIT = int(os.environ.get("MARIA_OAUTH_WAIT_LIMIT", "3"))
 WAIT_SETUP_HOURS = int(os.environ.get("MARIA_OAUTH_WAIT_HOURS", "48"))
 
+# Agent OAuth soft fallback (operator decision 2026-09-19).
+#
+# Maria alone could preempt to the free OAuth lanes, so when the DeepSeek account ran out of
+# credit on 2026-09-17 (HTTP 402 on every deepseek-flash call) she kept producing while
+# risk_agent/steph/tax_agent emitted nothing for three days. These constants let those agents
+# use the same free lanes, but ONLY as a soft fallback after their governed Flash pool has
+# already failed — the "OAuth must not preempt governed Flash" rule is unchanged.
+AGENT_OAUTH_FALLBACK_PROCESS_ID = "watchlist_agent_oauth_fallback"
+AGENT_OAUTH_FALLBACK_RUN_CAP = int(os.environ.get("AGENT_OAUTH_FALLBACK_RUN_CAP", "12"))
+
+# Agents eligible for the soft fallback, and the review task types it covers.
+OAUTH_FALLBACK_AGENTS = frozenset({"risk_agent", "risk", "steph", "tax_agent", "tax"})
+OAUTH_FALLBACK_TASK_TYPES = frozenset({"risk_review", "steph_review", "tax_review"})
+
+
+def oauth_fallback_process_id(agent: str | None) -> str:
+    """Maria keeps her own OAuth pool; the review agents share the fallback pool."""
+    if (agent or "").strip().lower() == "maria":
+        return MARIA_OAUTH_PROCESS_ID
+    return AGENT_OAUTH_FALLBACK_PROCESS_ID
+
 MANUAL_SUBMITTED_FROM = frozenset({
     "watchlist_requeue",
     "holdings_change_trigger",
