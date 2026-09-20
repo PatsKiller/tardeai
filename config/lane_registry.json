@@ -2015,9 +2015,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "logs/postgres_main_remediate.jsonl"
+        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/postgres_main_remediate.jsonl"
       },
-      "note": "Installed 2026-09-18 09:43 after an ENOSPC/disk-hygiene crash left postgres-main down. Every 5 min it checks the unit and, only when postgres is down AND disk is healthy, starts it through the allowlisted sudoers entry /etc/sudoers.d/tradeai-postgres-main-start (privilege is bounded there, not in the unit). remediate_postgres_main.py writes the receipt above on EVERY run, not only when it remediates -- an idle healthy run appends action=already_active -- so the cadence below is honest and a quiet lane means a dead watchdog, not a healthy database. Soft outcomes (already_active, cooldown, refused_disk, missing sudoers) exit 0 so the timer does not flap failed every 5 min while waiting on an operator."
+      "note": "Installed 2026-09-18 09:43 after an ENOSPC/disk-hygiene crash left postgres-main down. Every 5 min it checks the unit and, only when postgres is down AND disk is healthy, starts it through the allowlisted sudoers entry /etc/sudoers.d/tradeai-postgres-main-start (privilege is bounded there, not in the unit). remediate_postgres_main.py writes the receipt above on EVERY run, not only when it remediates -- an idle healthy run appends action=already_active -- so the cadence below is honest and a quiet lane means a dead watchdog, not a healthy database. Soft outcomes (already_active, cooldown, refused_disk, missing sudoers) exit 0 so the timer does not flap failed every 5 min while waiting on an operator. ABSOLUTE path (2026-09-20): a relative path resolves under state_root() = persistent-state, whose copy of this receipt was 7.32h stale against a 5-minute cadence (08:16 vs the rebuild tree's live 15:36), so the lane read the wrong file and would have alarmed on a healthy watchdog."
     },
     {
       "lane_id": "weekly-disk-cleanup",
@@ -2030,9 +2030,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "logs/weekly_disk_cleanup_receipts.jsonl"
+        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/weekly_disk_cleanup_receipts.jsonl"
       },
-      "note": "Installed 2026-09-18 20:00. Sun 06:30 ET (after daily hygiene 04:15, librarian 05:10 and the db_retention cron 04:10), running weekly_disk_cleanup_notify.py --apply: hygiene + librarian + db_retention with a Telegram summary. The receipt above is appended per run and is the proof it ran; the unit's StandardOutput log is not. TimeoutStartSec=7200 because rsync/deletes plus a DB purge run long on a full host."
+      "note": "Installed 2026-09-18 20:00. Sun 06:30 ET (after daily hygiene 04:15, librarian 05:10 and the db_retention cron 04:10), running weekly_disk_cleanup_notify.py --apply: hygiene + librarian + db_retention with a Telegram summary. The receipt above is appended per run and is the proof it ran; the unit's StandardOutput log is not. TimeoutStartSec=7200 because rsync/deletes plus a DB purge run long on a full host. ABSOLUTE path (2026-09-20): this receipt does not exist under persistent-state at all, so a relative path resolves to an absent file."
     },
     {
       "lane_id": "llm-deferred-drain",
