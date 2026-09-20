@@ -2033,6 +2033,22 @@
         "path": "logs/weekly_disk_cleanup_receipts.jsonl"
       },
       "note": "Installed 2026-09-18 20:00. Sun 06:30 ET (after daily hygiene 04:15, librarian 05:10 and the db_retention cron 04:10), running weekly_disk_cleanup_notify.py --apply: hygiene + librarian + db_retention with a Telegram summary. The receipt above is appended per run and is the proof it ran; the unit's StandardOutput log is not. TimeoutStartSec=7200 because rsync/deletes plus a DB purge run long on a full host."
+    },
+    {
+      "lane_id": "llm-deferred-drain",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 10,13,16,19 * * * cd $PROJ && $PY scripts/drain_llm_deferred.py",
+        "match": "scripts/drain_llm_deferred.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/llm_deferred_drain.json"
+      },
+      "note": "2026-09-19 operator directive: when the free lanes are exhausted, paid DeepSeek work that is not time-sensitive is queued rather than paid for at peak (roughly double off-peak). This lane drains that queue inside the off-peak window; it refuses to run outside it, because a drainer that ignores the window is only a delayed way of paying peak prices. It writes the heartbeat above on EVERY run, including runs that drain nothing, so an empty queue and a dead drainer are distinguishable. Operator priorities per caller are set in Command Center -> Ops -> LLM Spend -> 'LLM Routing'. Inert until LLM_DEFER_OFFPEAK=1."
     }
   ],
   "undeclared_baseline": [

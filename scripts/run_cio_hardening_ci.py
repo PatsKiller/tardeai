@@ -645,6 +645,10 @@ GATES = [
             # 2026-09-14 operator rule: scheduled paid work weekdays 09-21 ET or weekends, never DeepSeek peak;
             # spend report checks itself against the DeepSeek balance.
             "tests/test_operator_offpeak_window_20260914.py",
+            # 2026-09-19 operator directive: the same window, but paid work that falls outside
+            # it is now QUEUED rather than dropped by a PEAK_SKIP that recorded nothing, and
+            # the operator sets per-caller priority in Command Center -> Ops -> LLM Spend.
+            "tests/test_llm_offpeak_deferral.py",
             # 2026-09-14 Telegram: rich layouts, and a written-but-undelivered reply is a finding.
             "tests/test_telegram_rich_20260914.py",
             "tests/test_answer_quality_reply_not_delivered_20260914.py",
