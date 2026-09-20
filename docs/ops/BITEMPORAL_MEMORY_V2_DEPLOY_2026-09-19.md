@@ -80,3 +80,37 @@ absent) and on the rebuilt shadow, but **destructive on re-run**. Guard or split
 applying to `:5432`.
 
 Correctness re-run on the shadow at this measurement: **205 passed in 3.13s**.
+
+## 2026-09-20 — destructive-reset guard + corrected pgvector path
+
+**Hazard fixed.** `sql/r10_m2_isolated_benchmark.sql` no longer drops unconditionally. The
+`DROP SCHEMA IF EXISTS memory_r10_m2 CASCADE` now runs only when the session sets
+`m2.allow_destructive_reset = 'on'`; if the schema exists and the flag is unset, the file
+raises `M2_DESTRUCTIVE_RESET_REFUSED` and changes nothing. A manual or production
+`psql -f` therefore cannot wipe live cognitive memory by re-running the file.
+
+All three in-repo appliers set the flag explicitly and each sits behind an isolated-DSN
+assertion:
+
+| applier | isolation |
+|---|---|
+| `memory_m2_benchmark.apply_schema` | `connect()` → `_assert_isolated_dsn` |
+| `memory_m2_v2.apply_schema` | `connect()` → `_assert_isolated_dsn` |
+| `cio_memory_integration.apply_bitemporal_schema_v2` | **new** `_assert_isolated_conn` (refuses port 5432) |
+
+The third previously only claimed "Isolated DSN only" in its docstring while accepting any
+caller-supplied connection — that claim is now enforced rather than asserted.
+
+Suite: **206 passed** (was 205; `test_schema_file_refuses_destructive_reset_without_optin`
+asserts the refusal, that the schema survives it, and that an opted-in rebuild still works).
+
+**pgvector path corrected.** The earlier note suggested `postgresql-17-pgvector`. That
+package **does not exist** in the configured Ubuntu repos — `apt-cache search pgvector`
+returns only `postgresql-18-pgvector`, while production is the PG **17** cluster
+(`pg_lsclusters`: `17/main` on `:5432`, the only cluster). `postgresql-server-dev-17` has no
+candidate either and no PGDG repo is configured, so building from source does not avoid the
+repo addition. The supported route is to add the PGDG apt repo, which ships
+`postgresql-17-pgvector` — see `docs/remediation-plan.md` § "Getting pgvector onto PG17".
+
+`production_sql_applied` remains **false**. Both cutover prerequisites still need operator
+action with superuser / OS access.

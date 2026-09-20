@@ -42,6 +42,9 @@ def connect(dsn: str | None = None):
 def apply_schema(conn) -> None:
     sql = SQL_PATH.read_text(encoding="utf-8")
     with conn.cursor() as cur:
+        # Opt in to the base file's destructive reset; connect() above already
+        # ran _assert_isolated_dsn, so this is never a production connection.
+        cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(sql)
         cur.execute("GRANT CONNECT ON DATABASE m2_shadow TO m2_agent")
 

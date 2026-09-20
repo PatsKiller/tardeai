@@ -71,7 +71,7 @@ blockers were measured against the live database (probe transaction, rolled back
 
 | blocker | detail | needs |
 |---|---|---|
-| `vector` extension absent | `pg_available_extensions` has no `vector` row — pgvector is not installed on the production server. `memory_fact_version.embedding` and the `write_fact_version(...)` signature both require type `vector`. | OS package install (e.g. `postgresql-17-pgvector`) + `CREATE EXTENSION vector` as superuser |
+| `vector` extension absent | `pg_available_extensions` has no `vector` row — pgvector is not installed on the production server. `memory_fact_version.embedding` and the `write_fact_version(...)` signature both require type `vector`. **No `postgresql-17-pgvector` package exists in the configured Ubuntu repos** — only `postgresql-18-pgvector`, and production is the PG **17** cluster. `postgresql-server-dev-17` is also unavailable and no PGDG repo is configured. | Add the PGDG apt repo (ships `postgresql-17-pgvector`), then `CREATE EXTENSION vector` as superuser. See "Getting pgvector onto PG17" below. |
 | cannot `CREATE ROLE` | `trade_ai` is `rolsuper=f, rolcreaterole=f`. `CREATE ROLE m2_agent` → `permission denied to create role`. The RLS isolation proof depends on a non-owner, non-BYPASSRLS role. | superuser, or `CREATEROLE` granted to `trade_ai` |
 
 Production is **PostgreSQL 17.10**, satisfying the ≥14 requirement. `btree_gist`,
@@ -82,20 +82,62 @@ the database, so schema creation itself is permitted.
 **Nothing was applied to production.** The probe ran inside a transaction that was rolled
 back; `production_sql_applied` remains `false`.
 
-### Additional hazard before any cutover
+### Getting pgvector onto PG17
 
-`sql/r10_m2_isolated_benchmark.sql:9` begins
-`DROP SCHEMA IF EXISTS memory_r10_m2 CASCADE;`. That is safe on a shadow that is rebuilt
-per run and safe on first application to production (the schema is absent), but it makes
-the file **destructive on re-run**. A production runbook must either split the DDL or
-guard that line before it is applied a second time.
+The obvious `apt install postgresql-17-pgvector` **will fail** — that package is not in the
+Ubuntu archive. Measured on this host: `apt-cache search pgvector` returns only
+`postgresql-18-pgvector`; `postgresql-server-dev-17` has no candidate; `pg_lsclusters` shows
+a single cluster, `17/main` on `:5432`. PG18 packages are installed but run no cluster.
+
+Two options, in order of preference:
+
+1. **Add the PGDG apt repo**, which ships `postgresql-17-pgvector` built against PG17:
+   ```
+   sudo install -d /usr/share/postgresql-common/pgdg
+   sudo curl -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+       https://www.postgresql.org/media/keys/ACCC4CF8.asc
+   sudo sh -c 'echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] \
+       https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+       > /etc/apt/sources.list.d/pgdg.list'
+   sudo apt update && sudo apt install postgresql-17-pgvector
+   ```
+   Adding PGDG makes newer PG17 point releases available too, so pin or review before a
+   later `apt upgrade` moves the production server version.
+2. **Build pgvector from source** against PG17 — needs `postgresql-server-dev-17`, which is
+   itself only in PGDG, so this does not avoid step 1's repo addition.
+
+Do **not** "solve" this by moving production to the PG18 cluster to use
+`postgresql-18-pgvector`. That is a major-version migration of a 26 GB live database and is
+out of scope for a memory-substrate cutover.
+
+### Destructive-reset hazard — FIXED 2026-09-20
+
+`sql/r10_m2_isolated_benchmark.sql` began with an unguarded
+`DROP SCHEMA IF EXISTS memory_r10_m2 CASCADE;`. Safe on a per-run shadow and on a first
+production apply, but **destructive on re-run** — a second `psql -f` would have
+CASCADE-dropped live cognitive memory.
+
+Now opt-in. The drop only runs when the session sets
+`m2.allow_destructive_reset = 'on'`; otherwise, if the schema already exists, the file
+raises `M2_DESTRUCTIVE_RESET_REFUSED` and changes nothing. All three in-repo appliers
+(`memory_m2_benchmark.apply_schema`, `memory_m2_v2.apply_schema`,
+`cio_memory_integration.apply_bitemporal_schema_v2`) set the flag explicitly, and each is
+behind an isolated-DSN assertion. A manual or production `psql -f` does not set it, so a
+re-run refuses.
+
+`apply_bitemporal_schema_v2` previously only *claimed* "Isolated DSN only" in its docstring
+while accepting any caller-supplied connection; it now enforces that with
+`_assert_isolated_conn` (refuses port 5432) before opting in.
+
+Covered by `test_schema_file_refuses_destructive_reset_without_optin` — asserts the refusal,
+asserts the schema survives it, and asserts an opted-in rebuild still works.
 
 ### Cutover path
 
 1. Operator installs pgvector on the production host and creates the extension as superuser.
 2. Operator creates role `m2_agent` (or grants `CREATEROLE`). Do **not** reuse the shadow's
    `m2agent` literal password in production.
-3. Guard or remove the `DROP SCHEMA ... CASCADE` line for the production apply.
+3. ~~Guard the `DROP SCHEMA ... CASCADE` line~~ — **done 2026-09-20**; the file now refuses an un-opted-in re-run.
 4. Apply both SQL files in one transaction; verify the four views, the writer function, the
    trigger and `fact_single_valued_current_excl`.
 5. Re-run `tests/test_bitemporal_correctness.py` against the production DSN — the CI
