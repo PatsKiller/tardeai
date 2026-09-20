@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `c37b35b107cb296650b60494f8f622587d8368b608acef545cb4a10b3d509917`
+**Tree fingerprint:** `447c1b92c6f0f97b20d8d32effb8fd6bcfe09ea0f9a980662c37db57056cce35`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2559 |
-| Markdown (excl. this INDEX) | 2133 |
+| Files under `docs/` (excl. this INDEX) | 2560 |
+| Markdown (excl. this INDEX) | 2134 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2066 |
+| Header OK | 2067 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2188 |
+| review_required | 2189 |
 
 ## Markdown tree
 
@@ -37,7 +37,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/A1A.md` | A1A Documentation Protocol (Authoritative) | active_keep | OK | `18ef2a6322cf` |
 | `docs/AGENT_AND_HERMES_WORKFLOWS.md` | Agent & Hermes Workflows | review_required | OK | `493f51c193ed` |
 | `docs/AGENT_PAGES_DETAIL.md` | Agent Pages — Detailed Function Matrix | review_required | OK | `c52bb8ece19f` |
-| `docs/AGENT_ROSTER.md` | Trade AI v12 — Agent Roster | review_required | OK | `2421229298b1` |
+| `docs/AGENT_ROSTER.md` | Trade AI v12 — Agent Roster | review_required | OK | `e1ee476f64f8` |
 | `docs/AI_TRADE_CRITIQUE.md` | AI Trade Critique — Persistence & System Integration | review_required | OK | `a36de70f5d2c` |
 | `docs/APPENDIX_E_SCRIPT_ROUTING_MATRIX.md` | Appendix E — Initial Script Routing Matrix | review_required | OK | `1bf4f69d9156` |
 | `docs/ATM_PROPOSAL_CONTROLS_2026_06_04.md` | Editable ATM + Proposal Controls — PAPER-ONLY, GATE-INTERLOCKED (2026-06-04) | review_required | OK | `fcd9627cba2d` |
@@ -62,7 +62,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/CURSOR_CLOUD_PLAIN_ENGLISH_STARTER_GUIDE.md` | Cursor Cloud Plain-English Starter Guide | review_required | OK | `c7ab9524a7e1` |
 | `docs/DAILY_OPS_LOG.md` | DAILY_OPS_LOG.md | review_required | OK | `80578251dbf0` |
 | `docs/DASHBOARD_AUDIT_WORKFLOW.md` | Dashboard Visual Audit — Operator Workflow | review_required | OK | `4f878d49e6a9` |
-| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `c28ae1b6110d` |
+| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `5082eccd17fe` |
 | `docs/ENGINEERING_HARD_RULES.md` | Engineering Hard Rules (enforced) | review_required | OK | `c9798da3d1f2` |
 | `docs/ENGINE_ROOM_V1.md` | Engine Room v1 — Plumbing & Intake Hardening (2026-07-16) | review_required | OK | `c13ce7b7e784` |
 | `docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md` | Trade AI v12 — Executive Architecture Overview | review_required | OK | `84fd22510408` |
@@ -71,6 +71,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/FINVIZ_SOURCE_AUTHORITY.md` | Finviz Source Authority & Phase 0 Reconciliation | review_required | OK | `93533d98e174` |
 | `docs/GAP_RESOLUTION.md` | Gap Resolution — when the answer is stale or missing, go find out | review_required | OK | `8b86f70d497e` |
 | `docs/GIT_HYGIENE.md` | Git Hygiene — protect the live primary tree (2026-07-01) | review_required | OK | `bb52d4d23b64` |
+| `docs/GOAL_LAP_PIPELINE.md` | Goal Lap Pipeline | review_required | OK | `e63bfa42a604` |
 | `docs/GPU_OLLAMA_SETUP.md` | Intel Arc B50: Trade AI Runtime Status | review_required | OK | `8c1dff864802` |
 | `docs/HEALTH_AGENT.md` | Health Agent + Multi-Coder Auto-Fix | review_required | OK | `e6f4cbc44b06` |
 | `docs/HEALTH_AUTONOMOUS_LOOP.md` | Health autonomous fix loop (no manual operator / no one-off agent fixes) | review_required | OK | `e4865c52f780` |
