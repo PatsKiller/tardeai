@@ -21,6 +21,7 @@ from scripts.lib.lane_registry import (
     ORPHANED,
     SILENT,
     SLOW,
+    UNVERIFIABLE,
     changed_findings,
     collect_lane_registry_report,
     discover_commented_cron,
@@ -244,6 +245,37 @@ def test_a_weekday_only_lane_does_not_alarm_on_sunday(tmp_path):
     # The same lane on a Monday is a finding.
     monday = NOW + timedelta(days=1)
     assert evaluate_lane(row, now=monday, found=_found())["verdict"] == SILENT
+
+
+def test_active_days_string_mon_fri_is_rejected_not_a_crash(tmp_path):
+    """Stance lanes briefly used active_days=\"Mon-Fri\"; iterating chars → int('M').
+
+    That ValueError aborted collect_lane_registry_report for every lane. A bad
+    declaration must validate as structural error and evaluate as UNVERIFIABLE
+    without taking the monitor down.
+    """
+    bad = _row(
+        expected_cadence_hours=1.0,
+        active_days="Mon-Fri",
+        output_signal=_sig(tmp_path, 50),
+    )
+    errs = validate_row(bad)
+    assert any("active_days" in e and "Mon-Fri" in e for e in errs), errs
+    v = evaluate_lane(bad, now=NOW, found=_found())
+    assert v["verdict"] == UNVERIFIABLE
+    assert "active_days_error" in v
+
+
+def test_stance_organic_observe_lanes_use_weekday_int_lists():
+    """Convention is 0=Mon..6=Sun ints — not prose \"Mon-Fri\"."""
+    reg = load_registry()
+    for lid in (
+        "tradeai-stance-organic-observe",
+        "tradeai-stance-organic-observe-early",
+    ):
+        lane = next(r for r in reg["lanes"] if r["lane_id"] == lid)
+        assert lane["active_days"] == [0, 1, 2, 3, 4], lane["active_days"]
+        assert validate_row(lane) == []
 
 
 def test_a_clean_report_says_quiet():

@@ -19,6 +19,7 @@ from scripts.lib.memory_m2_benchmark import (
     PGMNEMO_TARGET,
     SQL_PATH,
     _assert_isolated_dsn,
+    conn_targets_production,
     _vec,
     golden_200_in_memory,
     probe_pgmnemo,
@@ -27,7 +28,10 @@ from scripts.lib.memory_namespace import DEFAULT_TENANT, require_tenant
 from scripts.lib.similarity_candidate import from_similarity
 
 AUTHORITY = "READ_ONLY_ADVISORY"
-AGENT_DSN = "postgresql://m2_agent:m2agent@127.0.0.1:55432/m2_shadow"
+# Isolated shadow agent role. Overridable so a non-shadow deployment supplies
+# its own credential from env rather than inheriting the shadow literal — the
+# fallback below is a well-known throwaway for the local container only.
+AGENT_DSN = os.getenv("M2_AGENT_DSN") or "postgresql://m2_agent:m2agent@127.0.0.1:55432/m2_shadow"
 
 
 def connect(dsn: str | None = None):
@@ -39,11 +43,35 @@ def connect(dsn: str | None = None):
     return conn
 
 
+def _grant_connect_current_db(cur) -> None:
+    """GRANT CONNECT on whatever database we are actually in.
+
+    This was hardcoded to `m2_shadow`, which silently granted nothing useful on
+    any other database. Quoted as an identifier, and tolerant: on a database
+    where the role does not exist yet the grant is not the caller's problem.
+    """
+    from psycopg2 import sql as _sql  # noqa: PLC0415
+
+    try:
+        cur.execute("SELECT current_database()")
+        dbname = cur.fetchone()[0]
+        cur.execute(
+            _sql.SQL("GRANT CONNECT ON DATABASE {} TO m2_agent").format(_sql.Identifier(dbname))
+        )
+    except Exception:
+        pass
+
+
 def apply_schema(conn) -> None:
     sql = SQL_PATH.read_text(encoding="utf-8")
     with conn.cursor() as cur:
+        # Opt in to the base file's destructive reset — never for production,
+        # even once production memory is authorized. The SQL file enforces the
+        # same rule independently via its isolated-database allowlist.
+        if not conn_targets_production(conn):
+            cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(sql)
-        cur.execute("GRANT CONNECT ON DATABASE m2_shadow TO m2_agent")
+        _grant_connect_current_db(cur)
 
 
 def set_tenant(conn, tenant_id: str) -> None:
@@ -237,10 +265,21 @@ def adversarial_rls_suite(conn) -> dict[str, Any]:
 
 
 def backup_restore_suite() -> dict[str, Any]:
-    """pg_dump/pg_restore against isolated :55432 only."""
-    from scripts.lib.memory_m2_benchmark import DEFAULT_DSN, _assert_isolated_dsn
+    """pg_dump/pg_restore against the isolated container only.
 
-    _assert_isolated_dsn(DEFAULT_DSN)
+    Safety here is STRUCTURAL, not asserted. Every subprocess below hardcodes
+    `-h 127.0.0.1 -p 55432 -U m2` and the function takes no DSN parameter, so
+    there is no input by which a caller could redirect it at production.
+
+    A `_assert_isolated_dsn(DEFAULT_DSN)` call used to sit here. It was a
+    tautology — DEFAULT_DSN is a module constant that can never contain :5432 —
+    over a value none of the subprocesses consume, and it read as a runtime gate
+    on the commands that follow. Worse, it implied this function is
+    DSN-parameterisable: a future edit adding a `dsn` argument would plausibly
+    thread it into the assert and leave the six hardcoded `-p 55432` lists
+    untouched, producing a guard that checks one target and dumps another.
+    The literals are the guarantee; do not replace them with a parameter.
+    """
     env = {**os.environ, "PGPASSWORD": "m2shadow"}
     dump = Path("/tmp/m2_isolated_backup.dump")
     t0 = time.perf_counter()

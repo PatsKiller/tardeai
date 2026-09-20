@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -684,3 +685,269 @@ def test_suite_case_count_is_200():
     assert len(range(186, 201)) == 15
     total = 50 + 25 + 25 + 20 + 20 + 15 + 15 + 15 + 15
     assert total == 200
+
+
+def test_schema_file_refuses_destructive_reset_without_optin(m2_conn):
+    """Re-running r10_m2_isolated_benchmark.sql must NOT silently CASCADE-drop
+    an existing memory_r10_m2. Without m2.allow_destructive_reset=on it raises;
+    with it, the shadow still rebuilds. Guards a manual/production `psql -f`."""
+    from pathlib import Path
+
+    import psycopg2
+
+    sql = Path("sql/r10_m2_isolated_benchmark.sql").read_text(encoding="utf-8")
+    # The schema exists (module fixture applied it), so an un-opted-in re-run refuses.
+    with m2_conn.cursor() as cur:
+        cur.execute("RESET m2.allow_destructive_reset")
+        with pytest.raises(psycopg2.errors.RaiseException) as exc:
+            cur.execute(sql)
+        assert "M2_DESTRUCTIVE_RESET_REFUSED" in str(exc.value)
+
+    # The schema survived the refusal — nothing was dropped.
+    with m2_conn.cursor() as cur:
+        cur.execute("SELECT to_regclass('memory_r10_m2.memory_fact_version')")
+        assert cur.fetchone()[0] is not None
+
+    # Opting in explicitly still rebuilds the isolated shadow.
+    with m2_conn.cursor() as cur:
+        cur.execute("SET m2.allow_destructive_reset = 'on'")
+        cur.execute(sql)
+        cur.execute("SELECT to_regclass('memory_r10_m2.memory_fact_version')")
+        assert cur.fetchone()[0] is not None
+
+
+def test_destructive_reset_refused_on_non_isolated_database(m2_conn):
+    """Second, independent guard: even with m2.allow_destructive_reset=on, the
+    schema file refuses to DROP unless current_database() is in the isolated
+    allowlist. This is enforced INSIDE the database, so a client-side ordering
+    mistake (e.g. a half-applied change that permits production while the GUC
+    is still set) cannot wipe live cognitive memory.
+
+    Production is simulated by narrowing the allowlist rather than connecting to
+    :5432 — the assertion is about the database's own refusal, not the port.
+    Port cannot be the signal: inet_server_port() reports 5432 for the shadow
+    too, since it is a container publishing its internal 5432 on host 55432.
+    """
+    from pathlib import Path
+
+    import psycopg2
+
+    sql = Path("sql/r10_m2_isolated_benchmark.sql").read_text(encoding="utf-8")
+    try:
+        with m2_conn.cursor() as cur:
+            cur.execute("SET m2.allow_destructive_reset = 'on'")
+            cur.execute("SET m2.isolated_databases = 'not_this_database'")
+            with pytest.raises(psycopg2.errors.RaiseException) as exc:
+                cur.execute(sql)
+            assert "M2_DESTRUCTIVE_RESET_REFUSED_NON_ISOLATED_DB" in str(exc.value)
+
+        # The schema survived the refusal — nothing was dropped.
+        with m2_conn.cursor() as cur:
+            cur.execute("SELECT to_regclass('memory_r10_m2.memory_fact_version')")
+            assert cur.fetchone()[0] is not None
+    finally:
+        with m2_conn.cursor() as cur:
+            cur.execute("RESET m2.isolated_databases")
+            cur.execute("RESET m2.allow_destructive_reset")
+
+
+def test_isolated_allowlist_default_survives_reset(m2_conn):
+    """RESET on a custom GUC yields '' (not NULL), so the allowlist default must
+    be guarded with nullif() or the shadow refuses its own rebuild. Regression
+    for a bug in the first cut of the guard."""
+    with m2_conn.cursor() as cur:
+        cur.execute("RESET m2.isolated_databases")
+        cur.execute(
+            "SELECT coalesce(nullif(current_setting('m2.isolated_databases', true), ''), "
+            "'m2_shadow') = current_database()"
+        )
+        assert cur.fetchone()[0] is True
+
+
+class _FakeCursor:
+    """Records SQL instead of executing it, so the opt-in decision can be
+    asserted without a real production connection."""
+
+    def __init__(self, sink): self.sink = sink
+    def __enter__(self): return self
+    def __exit__(self, *a): return False
+    def execute(self, sql, params=None): self.sink.append(str(sql))
+
+
+class _FakeConn:
+    def __init__(self, port): self._port, self.executed = port, []
+    def get_dsn_parameters(self): return {"host": "127.0.0.1", "port": self._port}
+    def cursor(self): return _FakeCursor(self.executed)
+
+
+def _reset_opt_in_issued(executed) -> bool:
+    """Match the SET statement specifically. A substring search would also match
+    the schema file's own guard block, which mentions the GUC in its SQL and
+    comments — a false positive that made this assertion pass vacuously."""
+    return any(s.strip().upper().startswith("SET M2.ALLOW_DESTRUCTIVE_RESET") for s in executed)
+
+
+def test_production_connection_never_opts_in_to_destructive_reset():
+    """The client half of the two-signal guard: apply_schema must not set
+    m2.allow_destructive_reset on a production connection, even if production
+    memory is authorized. Regression for a half-applied change that permitted
+    production while this opt-in was still unconditional."""
+    from scripts.lib.memory_m2_benchmark import apply_schema, conn_targets_production
+
+    prod, shadow = _FakeConn("5432"), _FakeConn("55432")
+    assert conn_targets_production(prod) is True
+    assert conn_targets_production(shadow) is False
+
+    apply_schema(prod)
+    assert not _reset_opt_in_issued(prod.executed), (
+        "production connection was opted in to DROP SCHEMA ... CASCADE"
+    )
+
+    apply_schema(shadow)
+    assert _reset_opt_in_issued(shadow.executed), "shadow rebuild lost its opt-in"
+
+
+def test_conn_targets_production_fails_closed_on_unreadable_dsn():
+    """An unreadable DSN is treated as production, never as isolated."""
+    from scripts.lib.memory_m2_benchmark import conn_targets_production
+
+    class Unreadable:
+        def get_dsn_parameters(self): raise RuntimeError("no dsn")
+
+    assert conn_targets_production(Unreadable()) is True
+
+
+def test_dry_run_is_not_inert_for_apply_schema():
+    """--dry-run used to be declared and never read, so `--apply-schema
+    --dry-run` applied the schema for real — an operator rehearsing a
+    production cutover would have performed it. Dry-run must now open no
+    connection, and the contradictory pairing must be rejected outright."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+
+    dry = subprocess.run(
+        [sys.executable, "scripts/cio_memory_integration.py", "--apply-schema", "--dry-run"],
+        cwd=root, capture_output=True, text=True, timeout=120,
+    )
+    assert dry.returncode == 0, dry.stderr
+    payload = json.loads(dry.stdout)
+    assert payload["dry_run"] is True
+    assert "no connection opened" in payload["note"]
+    assert "@" not in payload["target"], "DSN credential leaked into output"
+
+    clash = subprocess.run(
+        [sys.executable, "scripts/cio_memory_integration.py",
+         "--apply-schema", "--dry-run", "--apply"],
+        cwd=root, capture_output=True, text=True, timeout=60,
+    )
+    assert clash.returncode != 0
+    assert "not allowed with argument" in clash.stderr
+
+
+def test_aec_cycle_rejects_contradictory_mode_flags():
+    """Same defect in the hourly writer's entrypoint: `--dry-run --apply` must
+    not let the more dangerous flag win by accident."""
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    clash = subprocess.run(
+        [sys.executable, "scripts/aec_command_center_cycle.py", "--dry-run", "--apply"],
+        cwd=root, capture_output=True, text=True, timeout=60,
+    )
+    assert clash.returncode != 0
+    assert "not allowed with argument" in clash.stderr
+
+
+def _reload_benchmark(monkeypatch, value):
+    """Reload the module under a given opt-in value; the guard reads env live,
+    but reloading also proves nothing is cached at import time."""
+    import importlib
+
+    import scripts.lib.memory_m2_benchmark as m
+
+    monkeypatch.delenv("TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED", raising=False)
+    if value is not None:
+        monkeypatch.setenv("TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED", value)
+    return importlib.reload(m)
+
+
+PROD_DSN = "postgresql://trade_ai:x@127.0.0.1:5432/trade_ai"
+
+
+@pytest.mark.parametrize("value", [None, "0", "true", "yes", "", "2"])
+def test_production_dsn_refused_unless_authorized_exactly_one(monkeypatch, value):
+    """THE regression guard for this whole change: with the opt-in absent or
+    anything other than an exact "1", a production DSN raises exactly as it did
+    before the rail was made conditional. Fail closed."""
+    m = _reload_benchmark(monkeypatch, value)
+    assert m.production_memory_authorized() is False
+    with pytest.raises(RuntimeError, match="M2_DSN_PRODUCTION_PORT_FORBIDDEN"):
+        m._assert_isolated_dsn(PROD_DSN)
+
+
+def test_production_dsn_permitted_when_authorized(monkeypatch):
+    m = _reload_benchmark(monkeypatch, "1")
+    assert m.production_memory_authorized() is True
+    assert m._assert_isolated_dsn(PROD_DSN) == PROD_DSN
+    # Authorization permits the CONNECTION only — never the destructive reset.
+    prod = _FakeConn("5432")
+    m.apply_schema(prod)
+    assert not _reset_opt_in_issued(prod.executed), (
+        "authorizing production memory must not also authorize DROP SCHEMA CASCADE"
+    )
+
+
+def test_isolated_dsn_unaffected_by_authorization(monkeypatch):
+    """The shadow path must behave identically either way."""
+    shadow = "postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow"
+    for value in (None, "1"):
+        m = _reload_benchmark(monkeypatch, value)
+        assert m._assert_isolated_dsn(shadow) == shadow
+
+
+def test_aec_reraises_target_misconfiguration(monkeypatch):
+    """Fail-soft must not hide a mis-targeted memory write. Guard errors are
+    re-raised; incidental errors stay soft."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "scripts" / "aec_command_center_cycle.py").read_text()
+    assert '"M2_DSN_", "M2_DESTRUCTIVE_", "FINANCIAL_TRUTH_REFUSED", "PRIVATE_COT_FORBIDDEN",' in src
+
+    # Mis-targeting and constitutional rails must be loud. Caller validation
+    # errors stay fail-soft, so the cycle still completes after AgentView and
+    # the commitment have landed.
+    LOUD = ("M2_DSN_", "M2_DESTRUCTIVE_", "FINANCIAL_TRUTH_REFUSED", "PRIVATE_COT_FORBIDDEN")
+    # Caller-validation errors: the caller passed something malformed. Not a
+    # rail, not a mis-targeted write — fail-soft is correct, so the cycle still
+    # completes after AgentView and the commitment have landed. Listed
+    # explicitly so a NEW sentinel cannot default into silence: adding one
+    # fails this test until someone classifies it.
+    SOFT_BY_DESIGN = {
+        "VALID_AND_TX_REQUIRED", "VALID_AT_REQUIRED", "TX_AT_REQUIRED",
+        "TENANT_SCOPE_REQUIRED", "TX_TIME_RESERVED_FOR_PERSISTENCE_LAYER",
+        "UNKNOWN_MEMORY_STATUS", "UNKNOWN_QUERY_MODE",
+        "USE_",  # RuntimeError("USE_changed_between") — memory_fact.py
+    }
+
+    root = Path(__file__).resolve().parents[1]
+    sentinels = set()
+    for rel in ("scripts/lib/memory_m2_benchmark.py", "scripts/lib/cio_memory_integration.py",
+                "scripts/lib/memory_m2_v2.py", "scripts/lib/adjudication_receipt.py",
+                "scripts/lib/memory_fact.py"):
+        # [A-Z0-9_]+ — not [A-Z_]+, which truncates M2_* at the digit and yields "M".
+        for m in re.finditer(r'RuntimeError\(\s*f?"([A-Z][A-Z0-9_]+)', (root / rel).read_text()):
+            sentinels.add(m.group(1))
+    for m in re.finditer(r"(M2_DESTRUCTIVE[A-Z0-9_]*)",
+                         (root / "sql" / "r10_m2_isolated_benchmark.sql").read_text()):
+        sentinels.add(m.group(1))
+
+    uncovered = {s for s in sentinels if not s.startswith(LOUD)} - SOFT_BY_DESIGN
+    assert not uncovered, (
+        "guard sentinels neither re-raised nor declared soft-by-design: "
+        f"{sorted(uncovered)} — decide which, do not let a new rail default to silence"
+    )

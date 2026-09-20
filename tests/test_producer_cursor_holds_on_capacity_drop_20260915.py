@@ -167,15 +167,66 @@ def test_a_goal_owned_outside_the_fleet_is_named_not_silently_dropped(
     assert "hermes" in result.probe.detail, "a silent skip leaves no receipt"
 
 
-def test_the_guardian_alias_resolves_onto_a_fleet_agent(monkeypatch, tmp_path):
-    """guardian -> risk_agent. AGENT_ALIASES is applied only in run_once, not in
-    intake or dispatch, so without resolving it here the live guardian-owned goal
-    would enqueue for an agent that does not exist."""
+def test_the_guardian_alias_resolves_before_the_operability_check(monkeypatch, tmp_path):
+    """guardian -> risk_agent. AGENT_ALIASES is applied only in run_once, never in
+    intake, the registry or the dispatcher, so the adapter must resolve it itself.
+
+    Amended 2026-09-19. This control previously asserted the alias produced a
+    CANDIDATE -- which encoded a defect: risk_agent is DESIGNED, so that lap could
+    never be leased, and the budget charges at enqueue. The alias guarantee is
+    still load-bearing and is what is pinned here: the probe must name the
+    RESOLVED owner (`risk_agent`), not the raw one (`guardian`). Reported as
+    `guardian` it would read as "not in FLEET" -- a true statement that points at
+    the wrong cause.
+    """
     store = _goal_store(tmp_path)
     store.create_goal(owner_agent="guardian", title="G", success_criteria="y")
     _arm(monkeypatch, tmp_path, store)
 
     result = ts._goal_lap_adapter(None)
+    assert result.candidates == (), "risk_agent is DESIGNED; the lap cannot be leased"
+    assert "risk_agent" in result.probe.detail, "the alias was not resolved"
+    assert "guardian" not in result.probe.detail, (
+        "reported the raw owner; the skip would read as 'not in FLEET'")
+    assert "not operable" in result.probe.detail
+
+
+def test_a_goal_owned_by_an_inoperable_agent_is_skipped(monkeypatch, tmp_path):
+    """`risk_agent` is in FLEET but DESIGNED (`is_operable_now` False): its runner
+    prints "no-work ... not SHADOW-operable" and exits every tick, so a lap
+    enqueued for it can NEVER be leased.
+
+    `gate_candidate` charges at ENQUEUE, so admitting one would spend the goal's
+    cumulative allowance on work nothing will ever do. Guardian aliases onto
+    risk_agent, so this is a live goal, not a hypothetical.
+
+    Until this check, only capacity saved us: 64 stale SCHEDULED_SWEEP rows from
+    2026-09-15 pin risk_agent's queue at max_queue_depth, so the candidate was
+    silently dropped. Clearing that backlog -- the obvious fix -- would have
+    turned a harmless drop into a charged, unworkable lap.
+    """
+    spec = FLEET.get("risk_agent")
+    assert spec is not None and not getattr(spec, "is_operable_now", False), (
+        "control assumes risk_agent is in FLEET but not operable")
+
+    store = _goal_store(tmp_path)
+    store.create_goal(owner_agent="guardian", title="G", success_criteria="y")
+    _arm(monkeypatch, tmp_path, store)
+
+    result = ts._goal_lap_adapter(None)
+    assert result.candidates == (), "charged a lap for an agent that cannot run it"
+    assert "not operable" in result.probe.detail
+    assert "risk_agent" in result.probe.detail, "a silent skip leaves no receipt"
+
+
+def test_a_goal_owned_by_an_operable_agent_is_still_offered(monkeypatch, tmp_path):
+    """Negative control: "skip everything" would satisfy the test above while
+    disabling the whole lane."""
+    store = _goal_store(tmp_path)
+    store.create_goal(owner_agent="alex", title="A", success_criteria="need one")
+    _arm(monkeypatch, tmp_path, store)
+
+    result = ts._goal_lap_adapter(None)
     assert len(result.candidates) == 1
-    assert result.candidates[0].agent_id == "risk_agent"
-    assert result.candidates[0].agent_id in FLEET
+    assert result.candidates[0].agent_id == "alex"
+    assert "not operable" not in result.probe.detail

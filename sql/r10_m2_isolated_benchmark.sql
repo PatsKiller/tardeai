@@ -6,8 +6,54 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-DROP SCHEMA IF EXISTS memory_r10_m2 CASCADE;
-CREATE SCHEMA memory_r10_m2;
+-- Destructive reset is OPT-IN (2026-09-20) and requires TWO independent signals.
+--
+--   1. the session sets   SET m2.allow_destructive_reset = 'on';
+--   2. current_database() is an ISOLATED database
+--
+-- Both are required. Signal 2 is checked inside the database itself, at the
+-- lowest durable boundary, so no client-side ordering mistake can defeat it:
+-- a caller that wrongly sets the GUC against production is still refused here.
+-- This exists because a half-applied client change once permitted production
+-- while the GUC was still set unconditionally (2026-09-20) — the drop must not
+-- depend on client code being correct.
+--
+-- Port is deliberately NOT the signal. inet_server_port() reports 5432 for the
+-- shadow too: it is a container publishing its internal 5432 on host 55432.
+-- current_database() discriminates cleanly (m2_shadow vs trade_ai).
+--
+-- The allowlist fails CLOSED: an unknown database is refused, never assumed
+-- isolated. Other isolated environments extend it via
+--     SET m2.isolated_databases = 'm2_shadow,my_other_shadow';
+DO $reset$
+DECLARE
+  -- nullif('') matters: RESET on a custom GUC yields an empty string, not NULL,
+  -- so a bare coalesce() would collapse the allowlist to [''] and refuse the
+  -- shadow's own rebuild.
+  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow');
+  v_isolated  boolean := current_database() = ANY (string_to_array(v_allowed, ','));
+  v_opted_in  boolean := coalesce(current_setting('m2.allow_destructive_reset', true), 'off') = 'on';
+  v_exists    boolean := EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'memory_r10_m2');
+BEGIN
+  IF v_opted_in AND NOT v_isolated THEN
+    RAISE EXCEPTION
+      'M2_DESTRUCTIVE_RESET_REFUSED_NON_ISOLATED_DB: database % is not in the '
+      'isolated allowlist (%). Refusing DROP SCHEMA memory_r10_m2 CASCADE even '
+      'though m2.allow_destructive_reset=on. Live cognitive memory is never reset '
+      'by re-applying this file.', current_database(), v_allowed;
+  ELSIF v_opted_in AND v_isolated THEN
+    DROP SCHEMA IF EXISTS memory_r10_m2 CASCADE;
+  ELSIF v_exists THEN
+    RAISE EXCEPTION
+      'M2_DESTRUCTIVE_RESET_REFUSED: schema memory_r10_m2 already exists in '
+      'database %. Re-running this file would DROP ... CASCADE it. Set '
+      'm2.allow_destructive_reset=on to reset an ISOLATED shadow only.',
+      current_database();
+  END IF;
+END
+$reset$;
+
+CREATE SCHEMA IF NOT EXISTS memory_r10_m2;
 
 -- Agent role: not superuser, not BYPASSRLS, not table owner.
 DO $$

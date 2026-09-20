@@ -142,6 +142,76 @@ def _field_changes_from_wake_log(
     return found
 
 
+def _m1_from_wake_log_alone(
+    *,
+    log_path: Path | None = None,
+) -> tuple[str, str] | None:
+    """Recover M1 when hit retention dropped persist rows but the log still has them.
+
+    Measured 2026-09-19: HELD:BAH ``persisted=True changed=next_eligible_at,cc_narrative``
+    at 15:46 ET was real and unattended; later research-only hits FIFO-evicted it
+    from ``wake_research_persist.json``. Prefer the log over reporting NOT_OBSERVED.
+    """
+    path = log_path or (
+        Path.home()
+        / "trade-ai-releases"
+        / "persistent-state"
+        / "logs"
+        / "cio_wake_dispatcher.log"
+    )
+    if not _exists_nonempty(path):
+        return None
+    last: dict | None = None
+    try:
+        size = path.stat().st_size
+        with path.open("r", encoding="utf-8", errors="replace") as fh:
+            if size > 2_000_000:
+                fh.seek(size - 2_000_000)
+                fh.readline()
+            for line in fh:
+                if "cognition_persist" not in line or "changed=" not in line:
+                    continue
+                if "persisted=True" not in line and "persisted=true" not in line:
+                    continue
+                subj = None
+                if "subject=" in line:
+                    try:
+                        subj = line.split("subject=", 1)[1].split()[0].strip()
+                    except IndexError:
+                        subj = None
+                if not subj or subj in {"None", "null"}:
+                    continue
+                try:
+                    raw = line.split("changed=", 1)[1].strip()
+                except IndexError:
+                    continue
+                raw = raw.split()[0] if raw.split() else raw
+                named = [
+                    p.strip()
+                    for p in raw.split(",")
+                    if p.strip() in _M1_COGNITION_FIELDS
+                ]
+                if not named:
+                    continue
+                # leading "YYYY-MM-DD HH:MM:SS,mmm"
+                as_of = line[:19].replace(" ", "T") + "Z" if len(line) >= 19 else None
+                last = {
+                    "as_of": as_of,
+                    "subject_key": subj,
+                    "field_changes": named,
+                }
+    except OSError:
+        return None
+    if not last:
+        return None
+    return (
+        "OBSERVED",
+        f"unattended persist as_of={last['as_of']} subject_key={last['subject_key']} "
+        f"field_changes={last['field_changes']} via=wake_dispatcher_log "
+        f"(hit retention lost persist row; log is authoritative)",
+    )
+
+
 def _m5_from_consult(consult: dict | None) -> tuple[str, str]:
     """M5: unattended load-by-subject + days-later disposition still honored."""
     if not consult:
@@ -316,18 +386,53 @@ def _m1_from_persist(
             f"historical unattended persist hit as_of={last.get('as_of')} "
             f"subjects={last.get('subjects')} — need named field diff on served pin",
         )
+    recovered = _m1_from_wake_log_alone(log_path=log_path)
+    if recovered is not None:
+        return recovered
     return (
         "NOT_OBSERVED",
         "needs self-raised research → InstrumentRecord field diff from served release",
     )
 
 
-def _m4_from_soak(root: Path) -> tuple[str, str]:
-    """M4 partial: pin soak readiness is one consistency signal, not the full census."""
-    soak = (
+def _m4_census_paths() -> list[Path]:
+    return [
+        Path.home() / ".local/state/tradeai/operator_number_census.json",
         Path.home()
-        / "trade-ai-releases/persistent-state/data/runtime/bridge_pin_soak.jsonl"
-    )
+        / "trade-ai-releases/persistent-state/data/runtime/operator_number_census.json",
+        ROOT / "data" / "runtime" / "operator_number_census.json",
+    ]
+
+
+def _m4_soak_paths(root: Path) -> list[Path]:
+    """Prefer local state (no release-write), then persistent, then checkout."""
+    return [
+        Path.home() / ".local/state/tradeai/bridge_pin_soak.jsonl",
+        Path.home()
+        / "trade-ai-releases/persistent-state/data/runtime/bridge_pin_soak.jsonl",
+        root / "data" / "runtime" / "bridge_pin_soak.jsonl",
+    ]
+
+
+def _m4_from_soak(
+    root: Path,
+    *,
+    soak_path: Path | None = None,
+    census_paths: list[Path] | None = None,
+) -> tuple[str, str]:
+    """M4: pin soak + operator-number census (one producer / no FAIL / no WARN).
+
+    Operator remasures treat residual census WARNs as M4 PARTIAL even when
+    ``ok`` is true (fail=0). Match that bar: WARN>0 stays PARTIAL.
+    """
+    soak = soak_path
+    if soak is None:
+        for cand in _m4_soak_paths(root):
+            if _exists_nonempty(cand):
+                soak = cand
+                break
+        else:
+            soak = _m4_soak_paths(root)[0]
     if not _exists_nonempty(soak):
         return (
             "PARTIAL",
@@ -348,11 +453,40 @@ def _m4_from_soak(root: Path) -> tuple[str, str]:
     except (OSError, ValueError):
         return ("PARTIAL", "bridge pin soak ledger unreadable")
     ready = streak >= 3 and bool((last or {}).get("pins_match"))
-    note = (
+    soak_note = (
         f"bridge pin soak streak={streak} soak_ready={'YES' if ready else 'NO'} "
-        f"last_as_of={(last or {}).get('as_of')}; full operator-number census not run"
+        f"last_as_of={(last or {}).get('as_of')}"
     )
-    return ("PARTIAL", note)
+
+    census = None
+    census_path = None
+    for cand in census_paths or _m4_census_paths():
+        if cand.is_file():
+            try:
+                census = json.loads(cand.read_text(encoding="utf-8"))
+                census_path = cand
+                break
+            except (OSError, ValueError):
+                continue
+    if not isinstance(census, dict) or not census.get("as_of"):
+        return (
+            "PARTIAL",
+            f"{soak_note}; full operator-number census not run "
+            "(run scripts/check_command_center_data_consistency.py)",
+        )
+    fails = int(census.get("fail") or 0)
+    warns = int(census.get("warn") or 0)
+    ok = bool(census.get("ok")) and fails == 0 and warns == 0
+    census_note = (
+        f"census as_of={census.get('as_of')} pass={census.get('pass')} "
+        f"warn={warns} fail={fails} path={census_path}"
+    )
+    if ready and ok:
+        return (
+            "OBSERVED",
+            f"{soak_note}; {census_note} — one producer / no FAIL / no WARN on operator-number census",
+        )
+    return ("PARTIAL", f"{soak_note}; {census_note}")
 
 
 def _m2_from_writeback(cio: Path) -> tuple[str, str]:

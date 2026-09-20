@@ -95,6 +95,26 @@ def test_grounded_without_a_material_question_does_not_spend(tmp_path):
     assert r["wake"]["provenance"]["llm"] is None
 
 
+def test_instrument_record_due_enters_the_pipeline(tmp_path):
+    """IR-due wakes must reach L3 — otherwise M2 writeback never runs on schedule."""
+    r = _run(
+        tmp_path,
+        env=ENV_L3_ON,
+        rows=[_row("f1", FRESH)],
+        selection={
+            "source": "instrument_record_due",
+            "source_id": "HELD:BAH",
+            "observed_at": FRESH,
+        },
+    )
+    assert r["ok"] is True
+    prov = r["wake"]["provenance"]
+    decisions = prov["policy_decisions"]
+    assert "l3_skipped_no_material_question" not in decisions, decisions
+    assert "l3" in prov, "instrument_record_due must enter the judgment pipeline"
+    assert prov["l3"]["status"] in {"JUDGED", "REFUSED"}
+
+
 def test_grounded_with_a_question_enters_the_pipeline(tmp_path):
     """The positive control: the call site is reached and its verdict recorded.
 

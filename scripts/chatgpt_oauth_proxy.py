@@ -49,6 +49,23 @@ _SESSION_LINE = re.compile(r"\n?session_id:\s*\S+\s*$")
 
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[a-zA-Z]|\x1b\][^\x07]*\x07")
 _RELOGIN = "hermes auth add openai-codex --type oauth   (free under your ChatGPT subscription)"
+# A rate-limited free quota heals by waiting. Advertise that rather than letting the
+# caller treat it as a dead bridge and retry immediately into the same wall.
+RATE_LIMIT_RETRY_AFTER = int(os.environ.get("CHATGPT_PROXY_RETRY_AFTER", "900"))
+
+# What the upstream did last, so /health can stop implying the lane is serving when it
+# is not. Measured 2026-09-19: `/health` returned 200 while 21 of 21 calls failed, and
+# the ledger recorded them all as `502 Bad Gateway` — the lane looked broken when the
+# ChatGPT account had simply exhausted its free Codex quota (HTTP 429). This is the same
+# shape as the gpt-5.4 incident above: a real cause, reported as an anonymous error streak.
+_LAST_UPSTREAM = {"state": "unknown", "at": None, "detail": ""}
+
+
+def _note_upstream(state: str, detail: str = "") -> None:
+    # Plain assignment of a fresh dict: readers take one consistent snapshot without a lock.
+    global _LAST_UPSTREAM
+    _LAST_UPSTREAM = {"state": state, "at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                      "detail": str(detail)[:200]}
 
 
 def _codex_token_state():
@@ -105,9 +122,21 @@ def _run_codex(prompt, model):
     low = (out + " " + err).lower()
     if any(s in low for s in ("session has ended", "please log in again", "token refresh failed",
                               "not logged in", "auth_pending")):
+        _note_upstream("auth_expired")
         raise RuntimeError("AUTH_EXPIRED")
+    # An exhausted free quota is not a broken gateway. Folding it into CODEX_RUN_FAILED
+    # made every caller see `502 Bad Gateway` and log a transport fault, which is how a
+    # three-day billing-class outage can hide behind a plausible-looking network error.
+    if any(s in low for s in ("http 429", "429:", "usage limit", "rate limit", "rate_limit",
+                              "too many requests", "quota exceeded")):
+        detail = (err or out)[-200:] or "upstream usage limit reached"
+        _note_upstream("rate_limited", detail)
+        raise RuntimeError(f"RATE_LIMITED: {detail}")
     if r.returncode != 0 or not out:
-        raise RuntimeError(f"CODEX_RUN_FAILED: {(err or out)[-300:] or 'empty response'}")
+        detail = (err or out)[-300:] or "empty response"
+        _note_upstream("failed", detail)
+        raise RuntimeError(f"CODEX_RUN_FAILED: {detail}")
+    _note_upstream("ok")
     return out
 
 
@@ -188,11 +217,13 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
-    def _send(self, code, obj):
+    def _send(self, code, obj, headers=None):
         b = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(b)))
+        for k, v in (headers or {}).items():
+            self.send_header(k, str(v))
         self.end_headers()
         self.wfile.write(b)
 
@@ -202,8 +233,14 @@ class Handler(BaseHTTPRequestHandler):
             note = ("ready" if present and not expired else
                     "session may be expired — a call will confirm; re-login: " + _RELOGIN
                     if present else "openai-codex not logged in — " + _RELOGIN)
+            last = _LAST_UPSTREAM
+            # 200 means THIS PROCESS is alive. It has never meant the lane can serve, and
+            # on 2026-09-19 that gap let a rate-limited lane look healthy for hours.
+            # `serving` is the field a monitor should read.
             return self._send(200, {"status": "ok", "upstream": "ChatGPT openai-codex OAuth",
-                                    "authenticated": bool(present), "token_expired": expired, "note": note})
+                                    "authenticated": bool(present), "token_expired": expired,
+                                    "serving": last["state"] in ("ok", "unknown"),
+                                    "last_upstream": last, "note": note})
         if self.path.startswith("/v1/models"):
             return self._send(200, {"object": "list", "data": [{"id": m, "object": "model"} for m in MODELS]})
         return self._send(404, {"error": "not found"})
@@ -246,6 +283,16 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 return self._send(401, {"error": {"message": "ChatGPT openai-codex session ended — re-login: "
                                                   + _RELOGIN, "type": "auth_expired"}})
+            if msg.startswith("RATE_LIMITED"):
+                detail = ("ChatGPT openai-codex usage limit reached — the free OAuth quota is "
+                          "exhausted and resets on its own. This is NOT a bridge failure: "
+                          + msg[len("RATE_LIMITED: "):])
+                if stream:
+                    _finish_sse_stream(self, completion_id, model, created, detail[:300],
+                                       include_usage=include_usage)
+                    return
+                return self._send(429, {"error": {"message": detail[:300], "type": "rate_limited"}},
+                                  headers={"retry-after": RATE_LIMIT_RETRY_AFTER})
             if stream:
                 _finish_sse_stream(self, completion_id, model, created, f"Codex proxy error: {msg[:300]}",
                                    include_usage=include_usage)

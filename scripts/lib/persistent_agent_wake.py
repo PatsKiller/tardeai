@@ -223,6 +223,31 @@ def l3_live_provider_enabled(env: dict | None = None) -> bool:
     return str(e.get(L3_ALLOW_LIVE_PROVIDER_FLAG, "0")).strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _append_aec_spine_wake_receipt(payload: dict) -> None:
+    """Durable OBSERVED proof that a wake loaded AEC spines (fail-soft).
+
+    Provenance on the in-memory wake dict alone never reached a store, so
+    PARTIAL-memory-four-spines could not close from schedule evidence. One
+    append-only receipt line per load is enough for the ledger / M-bar.
+    """
+    try:
+        from datetime import datetime, timezone
+        from scripts.lib import aec_memory_spines as aec_mem
+
+        path = aec_mem.spines_path().with_name("aec_wake_spine_receipts.jsonl")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        row = {
+            "schema": "AecWakeSpineReceipt@v1",
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            **payload,
+        }
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+    except Exception:  # noqa: BLE001 — never refuse a wake for a receipt miss
+        return
+
+
 def load_aec_spines_for_wake(
     *,
     selection_meta: dict | None = None,
@@ -249,20 +274,39 @@ def load_aec_spines_for_wake(
 
         snap = aec_mem.load()
         spines = aec_mem.retrieve_relevant(snap, subject_key=sk)
-        return {
+        out = {
             "loaded": True,
             "subject_key": sk,
             "spines": spines,
             "counts": {k: len(v or []) for k, v in spines.items()},
         }
+        _append_aec_spine_wake_receipt(
+            {
+                "loaded": True,
+                "subject_key": sk,
+                "counts": out["counts"],
+                "policy_decision": "aec_spines_loaded",
+            }
+        )
+        return out
     except Exception as exc:  # noqa: BLE001 — fail-soft additive context
-        return {
+        out = {
             "loaded": False,
             "subject_key": sk,
             "spines": empty,
             "counts": {k: 0 for k in empty},
             "error": f"{type(exc).__name__}: {exc}",
         }
+        _append_aec_spine_wake_receipt(
+            {
+                "loaded": False,
+                "subject_key": sk,
+                "counts": out["counts"],
+                "error": out["error"],
+                "policy_decision": "aec_spines_unavailable",
+            }
+        )
+        return out
 
 
 def symbol_resolve_enabled(env: dict | None = None) -> bool:
@@ -1203,6 +1247,23 @@ class WakeEngine:
                     ),
                     "why_unresolved_by_research": "research selected this subject as unconsumed",
                     "materiality_basis": str(selection_meta.get("source") or "unconsumed_research"),
+                }
+            elif kind == "instrument_record" and sid:
+                # M2 path: instrument_record_due is the primary scheduled
+                # selector for cognition writeback. Skipping it left L3 dark on
+                # every IR-due wake even with WAKE_L3_* on (measured 2026-09-19).
+                question = {
+                    "present": True,
+                    "question_text": (
+                        f"The InstrumentRecord for {sid} is due for review. "
+                        f"What should the next research question be, and what "
+                        f"would falsify the standing thesis?"
+                    ),
+                    "why_unresolved_by_research": (
+                        "instrument_record next_eligible_at is due; critique may "
+                        "revise next_research_question"
+                    ),
+                    "materiality_basis": "instrument_record_due",
                 }
         if question is None:
             wake["provenance"]["policy_decisions"].append("l3_skipped_no_material_question")

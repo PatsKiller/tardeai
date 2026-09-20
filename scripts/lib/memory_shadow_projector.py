@@ -38,7 +38,18 @@ def _assert_isolated(dsn: str) -> str:
     for p in FORBIDDEN_PORTS:
         if f":{p}" in hostport:
             raise RuntimeError("MEMORY_SHADOW_PRODUCTION_PORT_FORBIDDEN")
-    if "55432" not in s and os.getenv("M2_ALLOW_NONDEFAULT_PORT") != "1":
+    # Check the HOST TAIL, not the whole DSN. `"55432" in s` was satisfied by a
+    # credential containing those digits, so e.g.
+    #     postgresql://u:pass55432word@127.0.0.1:5433/other
+    # passed this allowlist while pointing at a different port entirely.
+    #
+    # The env var is MEMORY_SHADOW_* because it governs THIS subsystem
+    # (tradeai_memory_shadow) only. It was previously M2_ALLOW_NONDEFAULT_PORT,
+    # a name shared with the M2 benchmark where it was a no-op — and the two
+    # guards are semantic inverses: for 127.0.0.1:55433 the benchmark allows
+    # with no var set, this one refuses without it. One name over two opposite
+    # behaviours is how a cutover goes wrong.
+    if "55432" not in hostport and os.getenv("MEMORY_SHADOW_ALLOW_NONDEFAULT_PORT") != "1":
         raise RuntimeError("MEMORY_SHADOW_ISOLATED_PORT_REQUIRED")
     return s
 

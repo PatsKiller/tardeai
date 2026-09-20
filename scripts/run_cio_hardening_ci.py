@@ -95,6 +95,7 @@ GATES = [
             "tests/test_l3_judgment_pipeline.py",
             "tests/test_l3_judgment_cache.py",
             "tests/test_l3_judgment_author_registered_20260919.py",
+            "tests/test_l3_author_billing_fallback_20260919.py",
             "tests/test_l3_critic.py",
             "tests/test_l3_commitment.py",
             "tests/test_model_policy.py",
@@ -279,6 +280,16 @@ GATES = [
         "gog_broker_approval",
         [
             "tests/test_gog_broker_approval.py",
+        ],
+    ),
+    # A paid provider lane can die without anything noticing: DeepSeek ran to a -$0.09
+    # balance on 2026-09-17 and returned HTTP 402 on every call for three days while
+    # risk/steph/tax produced nothing. This gate holds the alarm that names a billing or
+    # auth stop, and the OAuth soft fallback that keeps those agents producing through one.
+    (
+        "provider_billing_alarm",
+        [
+            "tests/test_provider_health_alarm.py",
         ],
     ),
     # C1 (batch 1: send_telegram). Every alarm must be OBSERVED firing; the
@@ -634,6 +645,10 @@ GATES = [
             # 2026-09-14 operator rule: scheduled paid work weekdays 09-21 ET or weekends, never DeepSeek peak;
             # spend report checks itself against the DeepSeek balance.
             "tests/test_operator_offpeak_window_20260914.py",
+            # 2026-09-19 operator directive: the same window, but paid work that falls outside
+            # it is now QUEUED rather than dropped by a PEAK_SKIP that recorded nothing, and
+            # the operator sets per-caller priority in Command Center -> Ops -> LLM Spend.
+            "tests/test_llm_offpeak_deferral.py",
             # 2026-09-14 Telegram: rich layouts, and a written-but-undelivered reply is a finding.
             "tests/test_telegram_rich_20260914.py",
             "tests/test_answer_quality_reply_not_delivered_20260914.py",
@@ -752,6 +767,13 @@ GATES = [
             "tests/test_desk_gap_queue_reconnect_20260913.py",
             "tests/test_agent_number_grounding_20260913.py",
             "tests/test_report_maturity_bar_m1_m5_20260919.py",
+            # 2026-09-20: Command /api/v2/command must name snapshot_source (M4 census WARN).
+            "tests/test_command_snapshot_source_20260920.py",
+            # 2026-09-20: file phantoms PASS when Attribution already filters (§17 holdings stay).
+            "tests/test_census_phantom_accounts_20260920.py",
+            # 2026-09-20: data_gap_resolver cron walks gap_resolver.resolve (QE organic path).
+            "tests/test_data_gap_resolver_chain_resolve_20260920.py",
+            "tests/test_gap_resolver_live_host_flag_20260920.py",
             "tests/test_synthesis_prompt_budget_20260913.py",
             # Answer-quality monitor + offline litmus replay of the 2026-09-13 questions.
             "tests/test_operator_answer_quality_20260913.py",
@@ -816,14 +838,19 @@ GATES = [
             "tests/test_ai_analyst_cache_fails_closed.py",
         ],
     ),
+    (
+        "ai_analyst_freshness_sla",
+        [
+            "tests/test_ai_analyst_freshness.py",
+        ],
+    ),
     # A held position is never a re-entry candidate.
     (
         "s3_detector_excludes_held",
         [
             "tests/test_s3_detector_excludes_held.py",
         ],
-    ),
-    # A directory a served surface reads must be linked into the release.
+    ),    # A directory a served surface reads must be linked into the release.
     (
         "release_links_reports",
         [

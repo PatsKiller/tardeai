@@ -38,6 +38,32 @@ SCHEMA = "M2SubstrateBenchmark@v1"
 PGMNEMO_TARGET = "0.20.0"  # official current stable as of 2026-08-20 (pgxn/github)
 FORBIDDEN_PORTS = {"5432"}
 DEFAULT_DSN = "postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow"
+
+# Production cognitive-memory access is refused unless the operator sets this to
+# exactly "1". It is the single opt-in for the whole M2 substrate: unset, every
+# path below fails closed exactly as before (M2_DSN_PRODUCTION_PORT_FORBIDDEN).
+PRODUCTION_AUTH_ENV = "TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED"
+
+
+def production_memory_authorized() -> bool:
+    """True only on an exact "1". Any other value, unset included, is refused."""
+    return os.getenv(PRODUCTION_AUTH_ENV) == "1"
+
+
+def dsn_targets_production(dsn: str) -> bool:
+    """Port check against the host part, so a credential containing the digits
+    cannot spoof it. Note ':5432' is not a substring of ':55432'."""
+    tail = str(dsn).split("@")[-1]
+    return any(f":{p}" in tail for p in FORBIDDEN_PORTS)
+
+
+def conn_targets_production(conn) -> bool:
+    """Port 5432 as reported by the live connection. Fails CLOSED — an
+    unreadable DSN is treated as production."""
+    try:
+        return str(conn.get_dsn_parameters().get("port") or "") in FORBIDDEN_PORTS
+    except Exception:
+        return True
 SQL_PATH = Path(__file__).resolve().parents[2] / "sql" / "r10_m2_isolated_benchmark.sql"
 
 CATEGORIES = [
@@ -55,12 +81,24 @@ def _now() -> str:
 
 
 def _assert_isolated_dsn(dsn: str) -> str:
+    """Refuse a production DSN unless the operator has explicitly authorized
+    production cognitive memory via TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED=1.
+
+    With the variable unset — the default — behaviour is identical to before:
+    every production DSN raises. Authorizing permits the *connection* only; it
+    never permits the destructive schema reset, which conn_targets_production()
+    suppresses and the SQL file's isolated-database allowlist refuses
+    independently.
+    """
     s = str(dsn)
-    if ":5432" in s or s.rstrip("/").endswith(":5432"):
-        raise RuntimeError("M2_DSN_PRODUCTION_PORT_FORBIDDEN")
-    if "55432" not in s and os.getenv("M2_ALLOW_NONDEFAULT_PORT") != "1":
-        # still allow explicit isolated hosts if they are not 5432
-        pass
+    if dsn_targets_production(s):
+        if not production_memory_authorized():
+            raise RuntimeError("M2_DSN_PRODUCTION_PORT_FORBIDDEN")
+        return s
+    # A dead `if ... M2_ALLOW_NONDEFAULT_PORT ... : pass` branch used to sit here.
+    # It read as a live control but did nothing, while the SAME env var IS live in
+    # memory_shadow_projector.py — a dangerous pair to confuse during a cutover.
+    # Non-5432 isolated hosts are allowed; only the forbidden ports are refused.
     for p in FORBIDDEN_PORTS:
         if f":{p}" in s.split("@")[-1]:
             raise RuntimeError("M2_DSN_PRODUCTION_PORT_FORBIDDEN")
@@ -100,6 +138,13 @@ def apply_schema(conn) -> None:
     sql = SQL_PATH.read_text(encoding="utf-8")
     with conn.cursor() as cur:
         cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+        # The schema file refuses to DROP ... CASCADE an existing memory_r10_m2
+        # unless this is set. A production connection is NEVER opted in, even if
+        # production memory is later authorized: re-applying must refuse rather
+        # than wipe live memory. The SQL file enforces the same rule independently
+        # via its isolated-database allowlist; this is the client-side half.
+        if not conn_targets_production(conn):
+            cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(sql)
 
 

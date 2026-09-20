@@ -24,25 +24,81 @@ NO_CONSUMER_REASON = (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+# G2: root-only + scripts.lib. Never also put scripts/ on the path — inserting
+# both made `lib.X` and `scripts.lib.X` distinct module objects in this process
+# (docs/audits/overnight/G2_IMPORT_NORMALISE_2026-08-31.md).
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-if str(ROOT / "scripts") not in sys.path:
-    sys.path.insert(0, str(ROOT / "scripts"))
 
-from lib import aec_agent_bus as bus  # noqa: E402
-from lib import aec_memory_spines as mem  # noqa: E402
-from lib.agent_view_v1 import persist_allowed, produce_agent_view_v1  # noqa: E402
-from lib.agent_commitment_v1 import evaluate_commitment, mint_commitment_from_view  # noqa: E402
-from lib.cio_disposition_identity import (  # noqa: E402
+from scripts.lib import aec_agent_bus as bus  # noqa: E402
+from scripts.lib import aec_memory_spines as mem  # noqa: E402
+from scripts.lib.agent_view_v1 import persist_allowed, produce_agent_view_v1  # noqa: E402
+from scripts.lib.agent_commitment_v1 import (  # noqa: E402
+    evaluate_commitment,
+    mint_commitment_from_view,
+)
+from scripts.lib.cio_disposition_identity import (  # noqa: E402
     applicable_dispositions,
     canonical_key,
     parse_key,
 )
-from lib.cio_memory_integration import integrate_wake_envelope  # noqa: E402
-from lib.aec_narrator import render_executive_brief, notify_executive_brief  # noqa: E402
+from scripts.lib.cio_memory_integration import integrate_wake_envelope  # noqa: E402
+from scripts.lib.aec_narrator import (  # noqa: E402
+    render_executive_brief,
+    notify_executive_brief,
+)
 
 
-def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = None) -> dict:
+def _prior_commitment_from_bus(recent: list) -> dict | None:
+    """Last non-suppressed advisor commitment on the bus (for OUTCOME re-eval)."""
+    for ev in reversed(list(recent or [])):
+        try:
+            agent = getattr(ev, "agent_id", None) or (
+                ev.get("agent_id") if isinstance(ev, dict) else None
+            )
+            if agent != "advisor_agent":
+                continue
+            payload = getattr(ev, "payload", None) or (
+                ev.get("payload") if isinstance(ev, dict) else None
+            ) or {}
+            if payload.get("suppressed"):
+                continue
+            cmt = payload.get("commitment")
+            if isinstance(cmt, dict) and cmt.get("commitment_id"):
+                return cmt
+        except Exception:  # noqa: BLE001 — bus shape may vary; fail soft
+            continue
+    return None
+
+
+def _learning_has_terminal_outcome(snap, commitment_id: str) -> bool:
+    """True when learning spine already recorded a terminal OUTCOME for this id."""
+    cid = str(commitment_id or "")
+    if not cid:
+        return False
+    spines = getattr(snap, "spines", None) or {}
+    for fact in spines.get("learning") or []:
+        if not isinstance(fact, dict):
+            continue
+        if str(fact.get("commitment_id") or "") != cid:
+            continue
+        if fact.get("kind") == "commitment_outcome" and fact.get("outcome") in {
+            "CONFIRMED",
+            "REFUTED",
+            "EXPIRED",
+        }:
+            return True
+    return False
+
+
+def run_cycle(
+    *,
+    subject_key: str | None,
+    apply: bool,
+    observe: dict | None = None,
+    now: datetime | None = None,
+) -> dict:
+    when = now or datetime.now(timezone.utc)
     snap = mem.load()
     relevant = mem.retrieve_relevant(snap, subject_key=subject_key)
     recent = bus.read_recent(limit=20)
@@ -65,9 +121,58 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         },
         dry_run=not apply,
     )
+    # Operational spine — infrastructure / automation posture (internal AEC
+    # facts only; never invents relationship-domain sources).
+    if apply:
+        mem.append_fact(
+            "operational",
+            {
+                "kind": "cio_cycle_status",
+                "subject_key": subject_key,
+                "bus_seen": len(bus.topics_for("cio_agent", recent)),
+                "memory_counts": {k: len(v) for k, v in relevant.items()},
+                "summary": cio_summary[:240],
+            },
+        )
 
-    # Advisor — AgentView@v1 (existing producer) + optional commitment
-    advisor_claim = f"Advisor reviewed subject={subject} against strategic spine"
+    # Settle any open prior advisor commitment before minting (hourly EXPIRED /
+    # observe path). Not gated on claim fingerprint — a new hour/day claim must
+    # still close yesterday's open OUTCOME edge.
+    prior_open = _prior_commitment_from_bus(recent)
+    settled_prior_outcome: dict | None = None
+    if prior_open is not None and not _learning_has_terminal_outcome(
+        snap, str(prior_open.get("commitment_id") or "")
+    ):
+        settled_prior_outcome = evaluate_commitment(
+            prior_open, observation=observe, now=when
+        )
+        if apply and settled_prior_outcome.get("outcome") in {
+            "CONFIRMED",
+            "REFUTED",
+            "EXPIRED",
+        }:
+            mem.append_fact(
+                "learning",
+                {
+                    "kind": "commitment_outcome",
+                    "subject_key": subject_key,
+                    "outcome": settled_prior_outcome.get("outcome"),
+                    "commitment_id": settled_prior_outcome.get("commitment_id"),
+                    "via": "prior_open_settle",
+                },
+            )
+            # Refresh snap so same-cycle suppress path sees the terminal row.
+            snap = mem.load()
+
+    # Advisor — AgentView@v1 (existing producer) + optional commitment.
+    # Hour-bucket the claim so each timer fire can mint a fresh 1h commitment
+    # while prior_open_settle closes the previous hour's OUTCOME (EXPIRED /
+    # observe). Day-only bucketing left OUTCOME stuck on INSUFFICIENT until the
+    # next calendar day — and then never re-evaluated the prior commitment.
+    hour_utc = when.strftime("%Y-%m-%dT%H")
+    advisor_claim = (
+        f"Advisor reviewed subject={subject} against strategic spine [{hour_utc}]"
+    )
     fp = mem.claim_fingerprint(advisor_claim)
     repeated = mem.seen_claim(snap, fp)
     view_payload: dict = {}
@@ -75,6 +180,38 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
     outcome_payload: dict | None = None
     if repeated:
         advisor_summary = f"SUPPRESSED_REPEAT fp={fp}"
+        # Same-day suppress still re-evaluates the open commitment so OUTCOME
+        # can move to CONFIRMED/REFUTED/EXPIRED without minting a new view.
+        prior = _prior_commitment_from_bus(recent)
+        if prior is not None and not _learning_has_terminal_outcome(
+            snap, str(prior.get("commitment_id") or "")
+        ):
+            commitment_payload = prior
+            outcome_payload = evaluate_commitment(
+                prior, observation=observe, now=when
+            )
+            if apply and outcome_payload.get("outcome") in {
+                "CONFIRMED",
+                "REFUTED",
+                "EXPIRED",
+            }:
+                mem.append_fact(
+                    "learning",
+                    {
+                        "kind": "commitment_outcome",
+                        "subject_key": subject_key,
+                        "outcome": outcome_payload.get("outcome"),
+                        "commitment_id": outcome_payload.get("commitment_id"),
+                        "claim_fp": fp,
+                        "via": "suppressed_repeat_reeval",
+                    },
+                )
+        elif prior is not None:
+            commitment_payload = prior
+            if outcome_payload is None:
+                outcome_payload = evaluate_commitment(
+                    prior, observation=observe, now=when
+                )
     else:
         view = produce_agent_view_v1(
             subject=subject,
@@ -88,13 +225,15 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         view_payload = view.to_dict()
         advisor_summary = f"{view.stance}: {advisor_claim}"
         if persist_allowed(view):
-            # due_at must be after mint time or evaluate_commitment returns EXPIRED
-            # immediately (horizon "7d" is the falsifier window, not produced_at).
-            due = datetime.now(timezone.utc) + timedelta(days=7)
+            # AEC cycle commitments are short-horizon settlement probes for the
+            # OUTCOME edge on the hourly timer (1h). The falsifier text still
+            # names the 7d strategic-spine contradiction window; due_at is the
+            # schedule-settlement clock so EXPIRED can land unattended.
+            due = when + timedelta(hours=1)
             commitment = mint_commitment_from_view(
                 view.to_dict(),
                 due_at=due.isoformat().replace("+00:00", "Z"),
-                horizon="7d",
+                horizon="1h",
                 falsifier=view.falsifier,
             )
             commitment_payload = commitment.to_dict()
@@ -111,6 +250,7 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
             outcome_payload = evaluate_commitment(
                 commitment_payload,
                 observation=observe,
+                now=when,
             )
         if apply:
             mem.append_fact(
@@ -143,6 +283,7 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
                         "outcome": outcome_payload.get("outcome"),
                         "commitment_id": outcome_payload.get("commitment_id"),
                         "claim_fp": fp,
+                        "via": "fresh_mint",
                     },
                 )
             mem.append_fact(
@@ -160,33 +301,86 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
             "agent_view": view_payload or None,
             "commitment": commitment_payload,
             "outcome": outcome_payload,
+            # Prior hour's settle (EXPIRED/CONFIRMED/REFUTED) when this fire
+            # mints a fresh 1h claim — kept separate so mint INSUFFICIENT does
+            # not erase the OUTCOME edge that just closed.
+            "prior_outcome": settled_prior_outcome,
         },
         dry_run=not apply,
     )
 
     # Narrator — executive briefing text (not sent here; publish to bus only)
-    # Cognitive memory on isolated :55432 only (prod :5432 refused in integrator).
-    bitemporal_receipt = integrate_wake_envelope(
-        {
-            "subject_key": subject,
-            "predicate": "thesis",
-            "claim": advisor_summary[:240],
-            "object": {
-                "text": advisor_summary[:240],
-                "kind": "cognitive_hypothesis",
-                "cycle": True,
+    # Cognitive memory targets isolated :55432 by default. Production :5432 is
+    # refused by the integrator unless the operator sets
+    # TRADEAI_M2_PRODUCTION_MEMORY_AUTHORIZED=1; the destructive schema reset is
+    # never permitted there regardless.
+    # Fail-soft: a bitemporal schema/function miss must not abort the cycle after
+    # AgentView/commitment/OUTCOME already landed (2026-09-20T05:00Z exit 1 left
+    # narrator unrun while hour-bucket mint had succeeded).
+    try:
+        bitemporal_receipt = integrate_wake_envelope(
+            {
+                "subject_key": subject,
+                "predicate": "thesis",
+                "claim": advisor_summary[:240],
+                "object": {
+                    "text": advisor_summary[:240],
+                    "kind": "cognitive_hypothesis",
+                    "cycle": True,
+                },
+                "wake_job_id": f"aec-cycle-{subject}",
             },
-            "wake_job_id": f"aec-cycle-{subject}",
-        },
-        apply=apply,
-    )
+            apply=apply,
+        )
+    except Exception as exc:  # noqa: BLE001 — isolated memory must not kill AEC
+        # Fail-soft is right for an incidental miss, but it must not hide a
+        # MISCONFIGURED TARGET. Once production cognitive memory is authorized
+        # this writer runs unattended hourly against a real database; a DSN or
+        # reset refusal degrading to a logged string would make a mis-targeted
+        # run look identical to a healthy one. Those are raised, not swallowed.
+        # FINANCIAL_TRUTH_REFUSED is a constitutional rail, not an incident:
+        # cognitive memory may never hold cash, positions or prices. The rail
+        # still WORKS when swallowed — nothing is stored — but an attempt to
+        # store financial data would have become a string in a receipt and gone
+        # unnoticed. A rail that fires invisibly cannot be audited.
+        # Constitutional rails are not incidents. FINANCIAL_TRUTH_REFUSED
+        # (no cash/positions/prices in cognitive memory) and PRIVATE_COT_FORBIDDEN
+        # (no chain-of-thought persisted) still WORK when swallowed — nothing is
+        # stored — but the attempt would become a string in a receipt and go
+        # unnoticed. A rail that fires invisibly cannot be audited.
+        #
+        # VALID_AND_TX_REQUIRED is deliberately NOT here: it is a caller
+        # validation error, not a rail or a mis-targeted write, and fail-soft is
+        # correct for it.
+        _msg = f"{type(exc).__name__}: {exc}"
+        if any(m in _msg for m in (
+            "M2_DSN_", "M2_DESTRUCTIVE_", "FINANCIAL_TRUTH_REFUSED", "PRIVATE_COT_FORBIDDEN",
+        )):
+            raise
+        bitemporal_receipt = {
+            "schema": "CIOEnvelopeIntegration@v1",
+            "dry_run": not apply,
+            "error": _msg[:400],
+            "authority": "READ_ONLY_ADVISORY",
+            "mbi_behavior": 0,
+            "via": "aec_bitemporal_fail_soft",
+        }
     narr_summary = (
         f"Narrator brief: cio={cio_ev.summary[:80]}; advisor={adv_ev.summary[:80]}; "
         f"learning_rows={len(relevant.get('learning') or [])}; "
         f"bitemporal_dry_run={bitemporal_receipt.get('dry_run')}"
     )
     brief = render_executive_brief(subject_key=subject_key)
-    notify_receipt = notify_executive_brief(brief, apply=False)  # never auto-Telegram from cycle
+    # Live Telegram only when AEC_NARRATOR_NOTIFY=1 and --apply. Default dry-run.
+    import os as _os
+
+    _narr_notify = str(_os.environ.get("AEC_NARRATOR_NOTIFY", "0")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    notify_receipt = notify_executive_brief(brief, apply=bool(apply and _narr_notify))
     narr_ev = bus.publish(
         agent_id="narrator_agent",
         topic="cycle.narrator.brief",
@@ -197,7 +391,12 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
             "telegram": notify_receipt.get("telegram"),
             "claim_fp": brief.get("claim_fp"),
             "brief_schema": brief.get("schema"),
-            "reason": "cycle_renders_brief_notify_requires_explicit_flag",
+            "reason": (
+                "cycle_narrator_notify"
+                if (apply and _narr_notify)
+                else "cycle_renders_brief_notify_requires_AEC_NARRATOR_NOTIFY"
+            ),
+            "aec_narrator_notify": bool(_narr_notify),
         },
         dry_run=not apply,
     )
@@ -211,6 +410,7 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
         "agent_view": view_payload or None,
         "commitment": commitment_payload,
         "outcome": outcome_payload,
+        "prior_outcome": settled_prior_outcome,
         "bitemporal": bitemporal_receipt,
         "narrator_brief": brief,
         "narrator_notify": notify_receipt,
@@ -219,9 +419,21 @@ def run_cycle(*, subject_key: str | None, apply: bool, observe: dict | None = No
 
 
 def main() -> int:
+    # G2: after imports settle — refuse a dual lib.X / scripts.lib.X identity.
+    # This is a live systemd entrypoint running --apply hourly, and the twin's
+    # FORBIDDEN_PORTS is a mutable module-level set, so the production-port
+    # refusal would otherwise be per-module-object.
+    from scripts.lib import assert_single_import_identity  # noqa: PLC0415
+
+    assert_single_import_identity()
+
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dry-run", action="store_true", default=True)
-    ap.add_argument("--apply", action="store_true", help="append bus + memory (still advisory)")
+    # Mutually exclusive: --dry-run was previously declared but never read, so
+    # `--dry-run --apply` silently applied. argparse now rejects that pairing
+    # instead of letting the more dangerous flag win by accident.
+    mode = ap.add_mutually_exclusive_group()
+    mode.add_argument("--dry-run", action="store_true", help="default; no durable write")
+    mode.add_argument("--apply", action="store_true", help="append bus + memory (still advisory)")
     ap.add_argument("--subject-key", default=None)
     args = ap.parse_args()
     apply = bool(args.apply)

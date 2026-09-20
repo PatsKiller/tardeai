@@ -65,6 +65,18 @@ def test_flag_off_never_climbs():
     assert "unset" in out["detail"]
 
 
+def test_host_flag_arms_when_env_omitted(tmp_path, monkeypatch):
+    """Host file arms escalate only when env mapping is omitted (live path)."""
+    flag = tmp_path / "research_quality_escalate"
+    flag.write_text("1\n", encoding="utf-8")
+    monkeypatch.setattr(rqe, "HOST_FLAG_PATH", flag)
+    monkeypatch.delenv(rqe.FLAG, raising=False)
+    assert rqe.enabled() is True
+    assert rqe.enabled(env={}) is False  # hermetic: host ignored
+    flag.write_text("0\n", encoding="utf-8")
+    assert rqe.enabled() is False
+
+
 def test_thin_dry_run_would_escalate_without_calling_search():
     calls: list[str] = []
 
@@ -220,3 +232,90 @@ def test_gap_resolver_wires_escalate_when_armed(tmp_path: Path):
     assert len(res.evidence.get("search_results") or []) >= 3  # 1 prior + 2 climb
     lines = [json.loads(L) for L in receipts.read_text().splitlines() if L.strip()]
     assert any(r.get("vector") == "quality_escalate" for r in lines)
+
+def test_thin_dry_run_writes_quality_escalate_receipt(tmp_path, monkeypatch):
+    """Armed + thin must leave a receipt even when GAP_RESOLVER_LIVE is off.
+
+    Organic PARTIAL stayed open because only escalated+hits wrote; cron often
+    runs dry_run and never stamped vector=quality_escalate.
+    """
+    from scripts.lib.gap_resolver import (
+        Context, DataGap, VectorResult, resolve,
+    )
+
+    receipts = tmp_path / "gap_resolution_receipts.jsonl"
+
+    def fake_search(gap, entry, ctx):
+        return VectorResult(
+            "partial",
+            provider="brave",
+            detail="1 thin hit",
+            evidence={
+                "search_results": [
+                    {"title": "thin", "snippet": "x", "url": "https://ex.com/1", "domain": "ex.com"}
+                ]
+            },
+        )
+
+    gap = DataGap(
+        domain="research_thesis",
+        subject="ELMT",
+        question="why is ELMT up today news",
+        symbols=["ELMT"],
+        why="no_coverage",
+        requester="test",
+    )
+    res = resolve(
+        gap,
+        chain=[{"vector": "governed_search", "cost_class": "metered", "max_per_day": 5}],
+        vectors={"governed_search": fake_search},
+        ctx=Context(
+            receipts_path=receipts,
+            live=False,
+            env={rqe.FLAG: "1"},
+        ),
+    )
+    esc = (res.evidence or {}).get("quality_escalate") or {}
+    assert esc.get("thin") is True
+    assert esc.get("would_escalate") is True
+    assert esc.get("escalated") is False
+    lines = [json.loads(L) for L in receipts.read_text().splitlines() if L.strip()]
+    qe = [r for r in lines if r.get("vector") == "quality_escalate"]
+    assert qe, lines
+    assert qe[0].get("reason") == "thin_answer"
+    assert qe[0].get("outcome") == "dry_run"
+    assert qe[0].get("would_escalate") is True
+
+
+def test_default_receipt_dual_write_prefers_local(tmp_path, monkeypatch):
+    """Default receipts dual-write local + persist; tmp receipts_path stays single."""
+    from scripts.lib import gap_resolver as gr
+
+    home = tmp_path / "home"
+    local_parent = home / ".local" / "state" / "tradeai"
+    local_parent.mkdir(parents=True)
+    persist_root = tmp_path / "persist"
+    (persist_root / "data" / "cio").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    # Reset any prior RECEIPTS_PATH redirect from sibling suites.
+    monkeypatch.setattr(gr, "RECEIPTS_PATH", gr.PROJECT_ROOT / gr.RECEIPTS_REL)
+    monkeypatch.setattr(gr, "_persistent_receipts_path", lambda: persist_root / gr.RECEIPTS_REL)
+
+    primary = gr.default_receipts_path()
+    assert primary == local_parent / "gap_resolution_receipts.jsonl"
+    gr._append_receipt(primary, {"vector": "quality_escalate", "outcome": "dry_run", "probe": 1})
+    local = local_parent / "gap_resolution_receipts.jsonl"
+    persist = persist_root / gr.RECEIPTS_REL
+    assert local.is_file() and persist.is_file()
+    assert '"probe": 1' in local.read_text()
+    assert '"probe": 1' in persist.read_text()
+
+    only = tmp_path / "only.jsonl"
+    gr._append_receipt(only, {"vector": "quality_escalate", "outcome": "dry_run", "probe": 2})
+    assert only.is_file()
+    assert not (local_parent / "only.jsonl").exists()
+    assert '"probe": 2' in only.read_text()
+    # Dual-write must not leak the test-only row into default ledgers.
+    assert '"probe": 2' not in local.read_text()
+    assert '"probe": 2' not in persist.read_text()
+

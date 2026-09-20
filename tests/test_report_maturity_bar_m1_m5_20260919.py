@@ -234,3 +234,78 @@ def test_m5_observed_via_wake_log_when_latest_consult_clean(tmp_path):
     assert "via=wake_dispatcher_log" in note
     assert "changed_by_record=5" in note
 
+def test_m4_observed_when_soak_ready_and_census_warn_free(tmp_path):
+    M = _load()
+    soak = tmp_path / "bridge_pin_soak.jsonl"
+    rows = [
+        {"as_of": f"2026-09-19T{h:02d}:00:00Z", "pins_match": True}
+        for h in range(17, 21)
+    ]
+    soak.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    census = tmp_path / "operator_number_census.json"
+    census.write_text(
+        json.dumps(
+            {
+                "schema": "OperatorNumberCensus@v1",
+                "as_of": "2026-09-19T23:30:00Z",
+                "pass": 11,
+                "warn": 0,
+                "fail": 0,
+                "ok": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    v, note = M._m4_from_soak(tmp_path, soak_path=soak, census_paths=[census])
+    assert v == "OBSERVED"
+    assert "soak_ready=YES" in note
+    assert "warn=0" in note
+    assert "fail=0" in note
+
+
+def test_m4_partial_when_census_has_warns(tmp_path):
+    """Operator paste treats residual WARNs as M4 PARTIAL (2026-09-20 remasure)."""
+    M = _load()
+    soak = tmp_path / "bridge_pin_soak.jsonl"
+    rows = [
+        {"as_of": f"2026-09-19T{h:02d}:00:00Z", "pins_match": True}
+        for h in range(17, 21)
+    ]
+    soak.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    census = tmp_path / "operator_number_census.json"
+    census.write_text(
+        json.dumps(
+            {
+                "schema": "OperatorNumberCensus@v1",
+                "as_of": "2026-09-20T05:26:07Z",
+                "pass": 9,
+                "warn": 2,
+                "fail": 0,
+                "ok": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    v, note = M._m4_from_soak(tmp_path, soak_path=soak, census_paths=[census])
+    assert v == "PARTIAL"
+    assert "warn=2" in note
+
+
+def test_m4_partial_when_census_missing(tmp_path):
+    M = _load()
+    soak = tmp_path / "bridge_pin_soak.jsonl"
+    soak.write_text(
+        json.dumps({"as_of": "2026-09-19T20:00:00Z", "pins_match": True}) + "\n",
+        encoding="utf-8",
+    )
+    v, note = M._m4_from_soak(tmp_path, soak_path=soak, census_paths=[tmp_path / "missing.json"])
+    assert v == "PARTIAL"
+    assert "census not run" in note
+
+
+def test_m4_soak_paths_prefer_local_state():
+    M = _load()
+    paths = M._m4_soak_paths(ROOT)
+    assert paths[0].name == "bridge_pin_soak.jsonl"
+    assert ".local/state/tradeai" in str(paths[0])
+    assert "persistent-state" in str(paths[1])

@@ -3,13 +3,14 @@ Description=Trade AI AEC Command Center cycle (CIO/Advisor/Narrator + four spine
 After=network-online.target
 # Maturity mesh: unattended apply of bus + memory spines. Never broker.
 # Bitemporal writes stay on isolated :55432 (prod :5432 refused in integrator).
-# Narrator Telegram stays explicit-flag only (cycle never auto-notifies).
+# Narrator Telegram: set AEC_NARRATOR_NOTIFY=1 with --apply (advisory only).
 
 [Service]
 Type=oneshot
 WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
 Environment=PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts
 Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin:/bin
+Environment=AEC_NARRATOR_NOTIFY=1
 EnvironmentFile=-/run/user/%U/tradeai/env
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/aec_command_center_cycle.py --apply
 Nice=10

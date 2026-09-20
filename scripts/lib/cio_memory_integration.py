@@ -15,7 +15,12 @@ from typing import Any
 
 from scripts.lib.adjudication_receipt import build_receipt
 from scripts.lib.memory_fact import subject_from_security
-from scripts.lib.memory_m2_benchmark import DEFAULT_DSN, SQL_PATH, _assert_isolated_dsn
+from scripts.lib.memory_m2_benchmark import (
+    DEFAULT_DSN,
+    SQL_PATH,
+    _assert_isolated_dsn,
+    conn_targets_production,
+)
 from scripts.lib.memory_namespace import DEFAULT_TENANT, require_tenant
 
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -45,18 +50,42 @@ def _refuse_financial_payload(obj: dict[str, Any]) -> None:
         raise RuntimeError(f"FINANCIAL_TRUTH_REFUSED: cognitive memory cannot store {sorted(bad)}")
 
 
+def _assert_isolated_conn(conn) -> None:
+    """The docstring below has always claimed 'isolated DSN only', but nothing
+    enforced it — the caller just handed in a connection. Since apply opts in to
+    a destructive schema reset, verify it here rather than trusting the caller.
+
+    Shares conn_targets_production() with the benchmark module so the two cannot
+    drift apart. Both fail closed; the unverifiable case keeps its own message
+    because "I could not read the DSN" and "this is production" call for
+    different responses when diagnosing a cutover."""
+    try:
+        conn.get_dsn_parameters()
+    except Exception:  # pragma: no cover - psycopg2 always provides this
+        raise RuntimeError("M2_DSN_UNVERIFIABLE: refusing destructive apply") from None
+    if conn_targets_production(conn):
+        raise RuntimeError("M2_DSN_PRODUCTION_PORT_FORBIDDEN")
+
+
 def apply_bitemporal_schema_v2(conn) -> dict[str, Any]:
-    """Apply base M2 SQL then v2 packaging delta. Isolated DSN only."""
+    """Apply base M2 SQL then v2 packaging delta. Isolated DSN only (enforced)."""
+    _assert_isolated_conn(conn)
     base = SQL_PATH.read_text(encoding="utf-8")
     delta = SCHEMA_V2.read_text(encoding="utf-8")
     # Strip leading comment-only banner from delta for clarity; execute whole file.
     with conn.cursor() as cur:
+        # Opt in to the base file's destructive reset — never for production,
+        # even once production memory is authorized. Belt and braces with the
+        # SQL file's own isolated-database allowlist.
+        if not conn_targets_production(conn):
+            cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(base)
         cur.execute(delta)
-        try:
-            cur.execute("GRANT CONNECT ON DATABASE m2_shadow TO m2_agent")
-        except Exception:
-            pass
+        # Was hardcoded to m2_shadow, so it silently granted nothing useful on
+        # any other database. Grant on whichever database we are actually in.
+        from scripts.lib.memory_m2_v2 import _grant_connect_current_db  # noqa: PLC0415
+
+        _grant_connect_current_db(cur)
         cur.execute(
             """
             SELECT

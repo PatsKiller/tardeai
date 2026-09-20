@@ -10,17 +10,36 @@ This module is the minimum hard gate:
   must align with the latest CIO action for that symbol.
 * Missing CIO row, unreadable store, or non-aligned action → hold
   (``allow=False`` + ``held_reason``). Never annotate-and-send from here.
+* Every hold appends one durable receipt line
+  (``cio_telegram_stance_holds.jsonl``) so PARTIAL-telegram-CIO-stance can be
+  observed from the served release — not only as a log line.
 
 AUTHORITY: READ_ONLY_ADVISORY. Reads ``cio_decisions`` only. MBI_BEHAVIOR = 0.
 """
 from __future__ import annotations
 
+import json
+import os
 import re
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 SCHEMA = "CioTelegramStanceGate@v1"
+HOLD_RECEIPT_SCHEMA = "CioTelegramStanceHold@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
+
+#: Live producers that call ``check_investment_send``. Their holds prove the
+#: organic PARTIAL-telegram-CIO-stance close when stamped ``source=
+#: check_investment_send`` (ledger proof). Canary/probe sources stay distinct.
+ORGANIC_HOLD_CALLERS = frozenset(
+    {
+        "screener_go_alerts",
+        "send_telegram_proposal_alert",
+        "social_scalp_scanner",
+    }
+)
 
 # Mirror comms_editor vocabulary so publisher + transport agree.
 _CIO_BULL = {
@@ -44,6 +63,109 @@ _INVESTMENT_BEAR = re.compile(
 
 HELD_DISAGREEMENT = "cio_stance_conflict"
 HELD_MISSING = "cio_decision_missing"
+
+
+def hold_receipts_path() -> Optional[Path]:
+    """Durable hold receipt path.
+
+    * ``CIO_STANCE_HOLD_RECEIPTS`` redirects (tests) or disables (``0``/``off``).
+    * Default: prefer ``~/.local/state/tradeai/`` (readable without release-write),
+      then persistent-state when present.
+    """
+    raw = str(os.environ.get("CIO_STANCE_HOLD_RECEIPTS") or "").strip()
+    if raw.lower() in {"0", "off", "false", "no", "disable"}:
+        return None
+    if raw:
+        return Path(raw)
+    # Prefer local primary so measurement works without release-write.
+    # Dual-write in record_hold still mirrors to persistent-state when present.
+    return Path.home() / ".local/state/tradeai/cio_telegram_stance_holds.jsonl"
+
+
+def _hold_write_targets(primary: Path) -> list[Path]:
+    """Primary plus persistent-state mirror when env does not pin a single path."""
+    raw = str(os.environ.get("CIO_STANCE_HOLD_RECEIPTS") or "").strip()
+    if raw and raw.lower() not in {"0", "off", "false", "no", "disable"}:
+        return [primary]
+    targets = [primary]
+    try:
+        from scripts.lib.persistent_state_root import good_persistent_root
+
+        persist = good_persistent_root() / "data" / "cio" / "cio_telegram_stance_holds.jsonl"
+        if persist.parent.is_dir() and persist.resolve() != primary.resolve():
+            targets.append(persist)
+    except Exception:  # noqa: BLE001
+        pass
+    return targets
+
+
+def _should_persist_hold() -> bool:
+    """Production records; pytest only when ``CIO_STANCE_HOLD_RECEIPTS`` is set."""
+    if str(os.environ.get("CIO_STANCE_HOLD_RECEIPTS_DISABLE") or "").strip() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }:
+        return False
+    if os.environ.get("PYTEST_CURRENT_TEST") and not str(
+        os.environ.get("CIO_STANCE_HOLD_RECEIPTS") or ""
+    ).strip():
+        return False
+    return hold_receipts_path() is not None
+
+
+def _normalize_hold_source(source: str) -> tuple[str, Optional[str]]:
+    """Return ``(source, caller)`` for the hold receipt.
+
+    Organic producers keep ``source=check_investment_send`` (ledger proof) and
+    record their name in ``caller``. Canary/probe/test sources stay as ``source``
+    so they cannot be mistaken for organic.
+    """
+    s = str(source or "check_investment_send").strip() or "check_investment_send"
+    if s in ORGANIC_HOLD_CALLERS:
+        return "check_investment_send", s
+    return s, None
+
+
+def record_hold(
+    verdict: "StanceGateVerdict",
+    *,
+    source: str = "check_investment_send",
+) -> Optional[Path]:
+    """Append one hold receipt. No-op when allowed or persistence disabled."""
+    if verdict.allow or not _should_persist_hold():
+        return None
+    path = hold_receipts_path()
+    if path is None:
+        return None
+    gate_source, caller = _normalize_hold_source(source)
+    row: dict[str, Any] = {
+        "schema": HOLD_RECEIPT_SCHEMA,
+        "authority": AUTHORITY,
+        "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "source": gate_source,
+        "symbol": verdict.symbol,
+        "held_reason": verdict.held_reason,
+        "message_stance": verdict.message_stance,
+        "cio_action": verdict.cio_action,
+        "cio_side": verdict.cio_side,
+        "mbi_behavior": 0,
+    }
+    if caller:
+        row["caller"] = caller
+    wrote: Optional[Path] = None
+    line = json.dumps(row, sort_keys=True) + "\n"
+    for target in _hold_write_targets(path):
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("a", encoding="utf-8") as fh:
+                fh.write(line)
+            if wrote is None:
+                wrote = target
+        except OSError:
+            continue
+    return wrote
 
 
 @dataclass(frozen=True)
@@ -127,12 +249,15 @@ def check_investment_send(
     asserted_stance: Optional[str] = None,
     db_query: Optional[Callable[..., list[dict]]] = None,
     cio_view: Optional[dict[str, Any]] = None,
+    source: str = "check_investment_send",
 ) -> StanceGateVerdict:
     """Allow or hold an investment-shaped Telegram send for one symbol.
 
     ``asserted_stance`` lets GO publishers declare bullish without relying on
     text proximity. When neither asserted nor inferred stance is investment-shaped,
     the gate is a no-op (allow) — non-recommendation traffic must not be blocked.
+
+    Holds are appended to ``cio_telegram_stance_holds.jsonl`` (see ``record_hold``).
     """
     sym = (symbol or "").upper().strip()
     if not sym or sym in _STANCE_EXCLUDE_SYMBOLS:
@@ -144,17 +269,19 @@ def check_investment_send(
 
     view = cio_view if cio_view is not None else load_cio_view(sym, db_query)
     if not view:
-        return StanceGateVerdict(
+        verdict = StanceGateVerdict(
             allow=False,
             held_reason=HELD_MISSING,
             symbol=sym,
             message_stance=said,
         )
+        record_hold(verdict, source=source)
+        return verdict
 
     action = str(view.get("action") or "").upper()
     side = cio_side(action)
     if said != side:
-        return StanceGateVerdict(
+        verdict = StanceGateVerdict(
             allow=False,
             held_reason=HELD_DISAGREEMENT,
             symbol=sym,
@@ -162,6 +289,8 @@ def check_investment_send(
             cio_action=action or None,
             cio_side=side,
         )
+        record_hold(verdict, source=source)
+        return verdict
     return StanceGateVerdict(
         allow=True,
         symbol=sym,
@@ -171,15 +300,118 @@ def check_investment_send(
     )
 
 
+def is_organic_hold_row(row: dict[str, Any]) -> bool:
+    """True when a hold receipt proves a live producer (ledger close condition).
+
+    Requires ``source=check_investment_send`` and ``caller`` in
+    ``ORGANIC_HOLD_CALLERS``. Canary/probe sources never qualify.
+    """
+    if not isinstance(row, dict):
+        return False
+    if str(row.get("source") or "") != "check_investment_send":
+        return False
+    return str(row.get("caller") or "") in ORGANIC_HOLD_CALLERS
+
+
+def load_hold_receipt_rows(path: Optional[Path] = None) -> list[dict[str, Any]]:
+    """Load hold receipt JSONL rows from ``path`` or the default primary."""
+    target = path if path is not None else hold_receipts_path()
+    if target is None or not target.is_file():
+        return []
+    out: list[dict[str, Any]] = []
+    try:
+        for line in target.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict):
+                out.append(row)
+    except OSError:
+        return []
+    return out
+
+
+def summarize_stance_holds(path: Optional[Path] = None) -> dict[str, Any]:
+    """Count organic vs non-organic holds for PARTIAL-telegram-CIO-stance."""
+    rows = load_hold_receipt_rows(path)
+    organic = [r for r in rows if is_organic_hold_row(r)]
+    other = [r for r in rows if not is_organic_hold_row(r)]
+    latest = organic[-1] if organic else None
+    return {
+        "schema": "CioTelegramStanceHoldSummary@v1",
+        "authority": AUTHORITY,
+        "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "path": str(path or hold_receipts_path() or ""),
+        "total": len(rows),
+        "organic": len(organic),
+        "non_organic": len(other),
+        "observed": len(organic) > 0,
+        "latest_organic": (
+            {
+                "as_of": latest.get("as_of"),
+                "symbol": latest.get("symbol"),
+                "caller": latest.get("caller"),
+                "held_reason": latest.get("held_reason"),
+            }
+            if latest
+            else None
+        ),
+        "mbi_behavior": 0,
+    }
+
+
+def write_organic_observe_receipt(summary: dict[str, Any]) -> list[str]:
+    """Persist the latest observe summary for lane/timer evidence (not a hold)."""
+    import json
+
+    payload = dict(summary)
+    payload["schema"] = "CioTelegramStanceObserveReceipt@v1"
+    body = json.dumps(payload, sort_keys=True, indent=2) + "\n"
+    written: list[str] = []
+    targets = [Path.home() / ".local/state/tradeai/organic_stance_hold_observe.json"]
+    try:
+        from scripts.lib.persistent_state_root import good_persistent_root
+
+        persist = (
+            good_persistent_root()
+            / "data"
+            / "runtime"
+            / "organic_stance_hold_observe.json"
+        )
+        if persist.parent.is_dir():
+            targets.append(persist)
+    except Exception:  # noqa: BLE001
+        pass
+    for target in targets:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(body, encoding="utf-8")
+            written.append(str(target))
+        except OSError:
+            continue
+    return written
+
+
 __all__ = [
     "AUTHORITY",
     "HELD_DISAGREEMENT",
     "HELD_MISSING",
+    "HOLD_RECEIPT_SCHEMA",
+    "ORGANIC_HOLD_CALLERS",
     "SCHEMA",
     "StanceGateVerdict",
     "check_investment_send",
     "cio_side",
+    "hold_receipts_path",
     "infer_message_stance",
+    "is_organic_hold_row",
     "load_cio_view",
+    "load_hold_receipt_rows",
+    "record_hold",
+    "summarize_stance_holds",
+    "write_organic_observe_receipt",
     "text_is_investment_shaped",
 ]

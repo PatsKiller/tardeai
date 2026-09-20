@@ -1091,6 +1091,44 @@ def gate_and_generate(
     is_deepseek_lane = lane.startswith("deepseek") or lane in (
         "fast", "fast_think", "pro", "pro_think", "pro_max",
     )
+
+    # Off-peak deferral (operator directive 2026-09-19). DeepSeek bills peak at roughly
+    # double, so work that is not time-sensitive is queued for the next off-peak window
+    # instead of being paid for now — or, as before this, silently dropped by a PEAK_SKIP
+    # that recorded nothing and never asked the question again. Only the operator's own
+    # asks and callers they have marked critical spend at peak.
+    #
+    # Inert unless LLM_DEFER_OFFPEAK=1. Deliberately placed after the policy decision and
+    # before any reservation: a deferred call must not consume the cap it never spent.
+    if is_deepseek_lane and not meta.get("deferral_bypass"):
+        try:
+            from lib.llm_deferral import DeferredToOffPeak, enqueue, evaluate
+        except ImportError:
+            DeferredToOffPeak = None  # module absent: behave exactly as before it existed
+        if DeferredToOffPeak is not None:
+            _verdict = evaluate(process_id, manual_trigger=manual_trigger)
+            if _verdict.defer:
+                try:
+                    _req_id = enqueue(
+                        process_id=process_id, lane=lane, prompt=prompt,
+                        decision=_verdict,
+                        task_summary=task_summary or summarize_prompt(prompt),
+                        payload={"model": model, "max_tokens": max_tokens,
+                                 "response_json": bool(response_json),
+                                 "output_schema_id": output_schema_id,
+                                 "policy": policy, "metadata": meta},
+                    )
+                except Exception as _qe:
+                    # Refuse rather than spend. If the queue is unreachable we cannot
+                    # promise the work will run later, and quietly paying peak prices
+                    # is the one outcome the operator ruled out. Named, not swallowed.
+                    raise RuntimeError(
+                        f"DEFERRAL_QUEUE_UNAVAILABLE: {process_id} on {lane} "
+                        f"({_verdict.reason}) — not queued and not spent: {_qe}"
+                    ) from _qe
+                raise DeferredToOffPeak(process_id, lane, _req_id,
+                                        _verdict.run_after, _verdict.reason)
+
     reservation_id = None
     projected = 0.0
     cfg = get_process_config(process_id)
