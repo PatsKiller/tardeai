@@ -1971,6 +1971,52 @@
         "path": "data/cio/aec_agent_bus.jsonl"
       },
       "note": "2026-09-19 maturity: unattended AEC mesh apply (bus + spines). Advisory only; narrator notify remains explicit-flag."
+    },
+    {
+      "lane_id": "postgres-main-watchdog",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-postgres-main-watchdog.timer"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/postgres_main_remediate.jsonl"
+      },
+      "note": "remediate_postgres_main.py --apply every 5 min; appends a receipt on every outcome including already_active/cooldown. ABSOLUTE path deliberately: a relative path resolves under persistent-state, whose copy of this receipt was 7h stale (800B @ 04:16) against the rebuild tree's 241KB @ 11:00 on 2026-09-20 — the lane would have read the stale copy and reported green on a 5-minute cadence."
+    },
+    {
+      "lane_id": "weekly-disk-cleanup",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-weekly-disk-cleanup.timer"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/weekly_disk_cleanup_receipts.jsonl"
+      },
+      "note": "weekly_disk_cleanup_notify.py --apply, Sun 06:30, Persistent=true. ABSOLUTE path deliberately: this receipt does not exist under persistent-state at all, so a relative path would read an absent file and go SILENT immediately. logs/weekly_disk_cleanup.log is the StandardOutput target and is NOT a valid signal — a log file existing does not prove the job ran."
+    },
+    {
+      "lane_id": "hermes-universe-history-retention",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "25 3 * * * .../hermes_universe_history_retention.py --apply",
+        "match": "scripts/hermes_universe_history_retention.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/hermes_universe_history_retention_last_run.json"
+      },
+      "note": "Row taken verbatim from 3557855f5 (wt/backup-deref-universe-retention). hermes_governed_universe_history grew unbounded to 4.7G/5,919 files since 2026-07-02: rotate_runtime_logs.sh only covers logs/*.log and nothing else referenced the dir. Thins to one snapshot per UTC day beyond --days so load_universe_trend() keeps its full 90-day reach. Deletion-only pass, so it writes an explicit run receipt. Relative path is correct here because data/runtime symlinks into persistent-state. NOTE: scripts/hermes_universe_history_retention.py is not on this branch's ancestry (it is on wt/backup-deref-universe-retention); the cron is live on the host and the gate reads the live crontab, not the tree."
     }
   ],
   "undeclared_baseline": [
