@@ -577,3 +577,17 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Ledger row `PARTIAL-relationship-spine-data` remains §17 PARKED · ◆ — not CONTINUE-PARK (no operator token).
 - Sibling parks unchanged: `PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md`; `PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` (recommend DEFER).
 - Goal NOT COMPLETE. No grants invented. No call sites. No :5432.
+
+## 2026-09-20T17:15 ET — §17 CONTINUE-PARK / SETTLE (Cursor-chat Operator-Token)
+
+- Tokens quoted from Cursor chat (operator John, ~17:15 ET): `i approve or send telegram grant request`
+- Mapping (packet recommended settle path; kit-accepted strings):
+  - bitemporal/:5432 → **DEFER** (never touch prod)
+  - hermes RETIRE → **APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE**
+  - relationship → **DEFER** (spine empty; no registry edit)
+- Operator-Token-Surface: `cursor_chat|operator|2026-09-20T17:15:00-04:00` — **no Telegram PMID invented**
+- Supersedes 14:45 Grok/email DEFERRED stamps (kit §5: not valid Operator-Token)
+- Propose headers updated; ledger status → CONTINUE-PARK (DEFER) ×2 + SETTLED · APPROVE_RETIRE · follow-on pending (hermes)
+- Hermès follow-on still needed: optional `lane_registry` `state: RETIRED` row and/or archive+tripwire — **not** in this docs-only apply; no live schedule
+- R9: PASS (continue-park/settle recorded). No :5432 work. No data_source_authority edit. No schedule invent.
+- Goal still **NOT COMPLETE** until Mon organic hold OBSERVED

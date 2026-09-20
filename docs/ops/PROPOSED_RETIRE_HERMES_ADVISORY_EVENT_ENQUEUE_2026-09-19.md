@@ -1,17 +1,20 @@
-# DEFERRED — operator continue-park (AGENTS.md §17 / §9.3)
+# APPROVED RETIRE — operator settle (AGENTS.md §17 / §9.3)
 
 ```
-Status: DEFERRED
-Effective-Date: 2026-09-20
-as_of: 2026-09-20T14:45:00-04:00
+Status: APPROVED
+Effective-Date: 2026-09-20T17:15:00-04:00
+as_of: 2026-09-20T17:15:00-04:00
 Measured at: AGENTS.md research-lanes table; no lane_registry row for this script
 Canonical repo path: docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md
 Authority: propose-and-stop — installing, editing or removing a scheduler entry is operator-only
 Subject: RETIRE scripts/hermes_advisory_event_enqueue.py as a scheduled/automatic producer claim
 See also: ledger DARK-hermes_advisory_event_enqueue; AGENTS.md research lanes (KNOWN DARK — PROPOSED RETIRE)
-Operator-decision: DEFER (continue-park; no RETIRE archive / no schedule invent)
-decided_on: 2026-09-20T14:45:00-04:00
-decision_reference: Grok session plan approve — triple-DEFER maturity gap closeout
+Supersedes: prior DEFERRED stamp 2026-09-20T14:45 (Grok/email provenance — not a kit-valid Operator-Token)
+Operator-Token: APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE
+Operator-Token-Surface: cursor_chat|operator|2026-09-20T17:15:00-04:00
+Operator-Token-as_of: 2026-09-20T17:15:00-04:00
+Operator-Token-Evidence: "i approve or send telegram grant request" (verbatim Cursor chat; mapped to APPROVE_RETIRE per packet recommended settle path; no Telegram PMID invented)
+Operator-decision: APPROVE_RETIRE (settle token recorded; follow-on RETIRED lane row / archive+tripwire still pending — no schedule invent this PR)
 ```
 
 ## Finding
@@ -69,10 +72,14 @@ or registry mutation was made in this change.
 ## Operator decision (recorded)
 
 ```
-token: DEFER
-decided_on: 2026-09-20T14:45:00-04:00
-reference: Grok Build session — plan approve (triple-DEFER maturity gap closeout)
-effect: continue-park for goal accounting; no production mutation; no build started
+token: APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE
+decided_on: 2026-09-20T17:15:00-04:00
+surface: cursor_chat|operator (no Telegram PMID invented)
+evidence: "i approve or send telegram grant request" (verbatim Cursor chat ~17:15 ET)
+effect: settle token recorded; RETIRE expectation for scheduled/automatic producer;
+  follow-on still pending — optional lane_registry state:RETIRED row and/or archive+tripwire;
+  no live schedule invented this change
+supersedes: 2026-09-20T14:45 DEFER stamp (Grok/email — not kit-valid Operator-Token)
 ```
 
-Prior propose text above is retained for history. A later `APPROVE_*` may reopen this park.
+Prior propose text above is retained for history. Follow-on RETIRED lane / archive is a separate PR.

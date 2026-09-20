@@ -2,9 +2,9 @@
 
 ```
 Status: DEFERRED
-Effective-Date: 2026-09-20
-as_of: 2026-09-20T14:45:00-04:00
-Last-amended: 2026-09-20T16:15:00-04:00 (merge origin/main draft-row prose; Status remains DEFERRED)
+Effective-Date: 2026-09-20T17:15:00-04:00
+as_of: 2026-09-20T17:15:00-04:00
+Last-amended: 2026-09-20T17:15:00-04:00 (Cursor-chat Operator-Token continue-park)
 Measured at: AEC four-spine INTEGRATED; relationship domain data ABSENT by design until granted
 Canonical repo path: docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md
 Authority: propose-and-stop — adding a data source or writer of an authoritative store is operator-only
@@ -12,9 +12,12 @@ Subject: Relationship memory spine — first granted sources (no call sites unti
 See also: ledger PARTIAL-relationship-spine-data; config/data_source_authority.json (§7A);
   sibling parks: docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md;
   docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md
+Supersedes: prior DEFERRED stamp 2026-09-20T14:45 (Grok/email provenance — not a kit-valid Operator-Token)
+Operator-Token: DEFER
+Operator-Token-Surface: cursor_chat|operator|2026-09-20T17:15:00-04:00
+Operator-Token-as_of: 2026-09-20T17:15:00-04:00
+Operator-Token-Evidence: "i approve or send telegram grant request" (verbatim Cursor chat; continue-park — spine stays empty; no data_source_authority edit; no Telegram PMID invented)
 Operator-decision: DEFER (continue-park; spine stays empty; no data_source_authority edit)
-decided_on: 2026-09-20T14:45:00-04:00
-decision_reference: Grok session plan approve — triple-DEFER maturity gap closeout
 ```
 ## Finding
 
@@ -139,10 +142,12 @@ row + path choice from main). **No** `data_source_authority.json` mutation. **No
 
 ```
 token: DEFER
-decided_on: 2026-09-20T14:45:00-04:00
-reference: Grok Build session — plan approve (triple-DEFER maturity gap closeout)
-effect: continue-park for goal accounting; no production mutation; no build started
+decided_on: 2026-09-20T17:15:00-04:00
+surface: cursor_chat|operator (no Telegram PMID invented)
+evidence: "i approve or send telegram grant request" (verbatim Cursor chat ~17:15 ET)
+effect: CONTINUE-PARK; spine stays empty; no data_source_authority.json edit; no call sites
+supersedes: 2026-09-20T14:45 DEFER stamp (Grok/email — not kit-valid Operator-Token)
 ```
 
-Prior propose text above is retained for history. A later `APPROVE_*` may reopen this park.
+Prior propose text above is retained for history. A later `APPROVE_RELATIONSHIP_*` may reopen this park.
 
