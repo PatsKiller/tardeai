@@ -515,3 +515,8 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Remasure @ 16:18Z: **M1–M5 OBSERVED**; soft 12/1022 ≈0.012 PASS; organic still PARTIAL exit 2.
 - Live pin unchanged `5b7e24c95…114233` (docs/test; promote not required for this tip).
 - Goal NOT complete.
+
+## 2026-09-20T12:40 ET — #1140 conflict resolve (wave log split)
+
+- Mid-merge `origin/main`: conflict only in table file wave section — kept main’s pointer to `_LOG.md` (`merge=union`); appended #1139 MERGED wave here.
+- Goal NOT complete: organic stance Mon–Fri + §17 parks (or continue-park).
