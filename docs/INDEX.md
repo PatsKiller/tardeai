@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `222a3dc50f0c19a95c893047ec5fee0bb543de00b4dc0492108bc20c3e3f8662`
+**Tree fingerprint:** `06f61ebc7a5cad472e703d0d488111bcf7e59f248e0a839a166d2e391d81644a`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2569 |
-| Markdown (excl. this INDEX) | 2143 |
+| Files under `docs/` (excl. this INDEX) | 2572 |
+| Markdown (excl. this INDEX) | 2146 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2076 |
+| Header OK | 2079 |
 | Duplicate groups | 5 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 8 |
-| review_required | 2192 |
+| review_required | 2195 |
 
 ## Markdown tree
 
@@ -292,12 +292,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_AS_IS_2026-09-19-1452.md` | CIO / AEC AS-IS — 2026-09-19 14:52 ET | review_required | OK | `205ae246b32a` |
 | `docs/architecture/CIO_AS_IS_2026-09-19-1541.md` | CIO / AEC AS-IS — 2026-09-19 15:41 ET | review_required | OK | `515016da7ea5` |
 | `docs/architecture/CIO_AS_IS_2026-09-20-0604.md` | CIO / AEC AS-IS — 2026-09-20 06:04 ET | delete_candidate_duplicate | OK | `0d40294364bc` |
+| `docs/architecture/CIO_AS_IS_2026-09-20-0902.md` | CIO / AEC AS-IS — 2026-09-20 09:02 ET | review_required | OK | `8233f122dd39` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1352.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 13:52 ET | review_required | OK | `c6fd02492610` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1401.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:01 ET | review_required | OK | `d3da6ba1132c` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1436.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:36 ET | review_required | OK | `a8e36ace8e6b` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1452.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:52 ET | review_required | OK | `42ed1a7f9a1f` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1541.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 15:41 ET | review_required | OK | `81101b520dfa` |
 | `docs/architecture/CIO_FUTURE_2026-09-20-0604.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 06:04 ET | delete_candidate_duplicate | OK | `445dbe9c7f2a` |
+| `docs/architecture/CIO_FUTURE_2026-09-20-0902.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 09:02 ET | review_required | OK | `a2a45a4afab6` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `4edef7d3ee4d` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-final.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 final) | review_required | OK | `5b412d2266d6` |
@@ -308,6 +310,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_GAP_2026-09-19-1452.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 14:52 ET | review_required | OK | `1593a284fbbe` |
 | `docs/architecture/CIO_GAP_2026-09-19-1541.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 15:41 ET | review_required | OK | `0af5e23e53f2` |
 | `docs/architecture/CIO_GAP_2026-09-20-0604.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 06:04 ET | delete_candidate_duplicate | OK | `1e304f682a26` |
+| `docs/architecture/CIO_GAP_2026-09-20-0902.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 09:02 ET | review_required | OK | `7556d3f1a838` |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
 | `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | OK | `56592a4af733` |
