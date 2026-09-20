@@ -2,7 +2,7 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T02:53:31-04:00
+as_of: 2026-09-20T03:17:15-04:00
 Measured at: timer aec-expired-observe-0100 re-verify 02:53 ET; pin 8c12ea757; EXPIRED CLOSED; M1–M5 OBSERVED; soft 3/998≈0.003
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
@@ -252,3 +252,8 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Re-verified: EXPIRED still present on spines; AEC last success 02:00:13 EDT; tip 8c12ea757; M1–M5 OBSERVED; soft 3/998≈0.003.
 - 01:00 minted 1h commitment; 02:00 settled EXPIRED (correct for horizon=1h). No further promote needed for this timer.
 - Goal open: organic QE desk, organic stance, §17.
+
+## 2026-09-20T03:09 ET — second organic EXPIRED (loop healthy)
+
+- [VERIFIED] AEC 03:00:13 EDT Result=success: `cmt_8ed5cdbac401…` outcome=EXPIRED via=`prior_open_settle` recorded_at=2026-09-20T07:00:13Z (prior hour mint). Fresh mint `cmt_64396346…` INSUFFICIENT.
+- Confirms hour-bucket OUTCOME settle is repeating unattended on pin 8c12ea757 — not a one-shot.
