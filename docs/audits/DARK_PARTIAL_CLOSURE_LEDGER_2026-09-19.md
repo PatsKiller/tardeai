@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T04:55:00-04:00
-Measured at: operator paste M4 PARTIAL (confirmed); soft≈0.002; M4 bar now warn=0; promote still blocked
+as_of: 2026-09-20T05:18:00-04:00
+Measured at: #1121 merged; census warn=1 (Command snapshot_source only); soft 0.003; hub QE wire synced; promote blocked
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -26,7 +26,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | PARTIAL-quality-escalate-organic | PARTIAL→CLOSING | controlled_canary receipt only; **code wire**: data_gap_resolver.chain_resolve_open_gaps → gap_resolver.resolve (requester=data_gap_resolver) — was falsely claimed already wired | merge+promote + unattended cron receipt | vector=quality_escalate requester=data_gap_resolver (not canary) |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
 | PARTIAL-M1-M5 | CLOSED | [VERIFIED] post-promote 2026-09-20T04:44:54Z pin 8090bf675: M1–M5 OBSERVED under prior bar (fail=0); operator remasure 2026-09-20 keeps M4 PARTIAL on census WARN — see PARTIAL-M4-census-warn | promote #1110 tip | all five OBSERVED |
-| PARTIAL-M4-census-warn | OPEN | Operator paste 2026-09-20: M4 PARTIAL; live census warn=2 (Command snapshot_source + file phantoms). Reporter now requires warn=0. File phantoms → PASS when Attribution filters (§17 holdings untouched). | promote tip (≥`2e45dbc94`) + remasure census | warn=0 → M4 OBSERVED |
+| PARTIAL-M4-census-warn | OPEN | [VERIFIED] 2026-09-20T09:17:59Z census pass=10 **warn=1** fail=0 — only Command snapshot_source (phantom PASS). Tip `bace5bfcd` has fix; CURRENT `8c12ea757` until promote. | release-write promote tip ≥`bace5bfcd` + remasure | warn=0 → M4 OBSERVED |
 
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | CLOSED | [VERIFIED] organic `aec_wake_spine_receipts.jsonl` as_of=2026-09-20T01:04:31Z subject=PORTFOLIO policy_decision=aec_spines_loaded counts strategic=2 learning=5; wake consult 01:05:09Z | #1099 promote | wake receipt aec_spines_loaded |
@@ -290,4 +290,13 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Agent-owned: (1) M4 OBSERVED requires census **warn=0**; (2) file phantoms PASS when Attribution already filters (holdings edit still §17); (3) hermetic tests + CI allowlist.
 - Still blocked: promote tip (release-write absent; prior request not re-fired). Command snapshot_source remains the live WARN until tip serves.
 - Soft-share pass unchanged. Goal remains open.
+
+## 2026-09-20T05:18 ET — #1121 MERGED; phantom WARN cleared; hub QE synced
+
+- [VERIFIED] #1121 MERGED → `bace5bfcd` (M4 bar warn=0; filtered-phantom PASS).
+- [VERIFIED] census remasure @ 2026-09-20T09:17:59Z: **pass=10 warn=1 fail=0** — only remaining WARN is **Command snapshot_source** (tip has fix; CURRENT still `8c12ea757` until release-write promote).
+- Phantom file WARN → PASS (Attribution filters; §17 holdings untouched).
+- [VERIFIED] `report_maturity_bar_m1_m5.py`: M1/M2(HELD:NOC)/M3/M5 OBSERVED; **M4 PARTIAL** warn=1 — matches operator paste.
+- Hub cron path: checked out `data_gap_resolver.py` + `gap_resolver.py` from `origin/main` onto hub (still detached `8c12ea757`); dry-run showed chain resolve with 0 open gaps.
+- release-write still absent; `01d914…` age ~1.1h — not re-requested.
 
