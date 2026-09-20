@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `c37b35b107cb296650b60494f8f622587d8368b608acef545cb4a10b3d509917`
+**Tree fingerprint:** `34daf6813ee4ce4800acfcc512c7d434c4794f67735832a1214b61b5e6da0d72`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2559 |
-| Markdown (excl. this INDEX) | 2133 |
+| Files under `docs/` (excl. this INDEX) | 2560 |
+| Markdown (excl. this INDEX) | 2134 |
 | **MISSING HEADER** | **67** |
-| Header OK | 2066 |
+| Header OK | 2067 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2188 |
+| review_required | 2189 |
 
 ## Markdown tree
 
@@ -1648,6 +1648,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 | review_required | OK | `cd49b9ce53e7` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `f88b31c995fa` |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention | review_required | OK | `b54b463e120a` |
+| `docs/ops/LLM_OFFPEAK_ROUTING.md` | LLM Off-Peak Routing — operator guide | review_required | OK | `feb6cba97f0a` |
 | `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` | How LLMs, Hermes, SearXNG, and ticker data actually work | review_required | OK | `3b36a08165b8` |
 | `docs/ops/M2_DARK_READ_PARITY_2026-08-24.md` | M2 dark-read parity | review_required | OK | `ebee0b2213fc` |
 | `docs/ops/M2_PRODUCTION_MEMORY_SHADOW_CLOSEOUT_2026-08-24.md` | M2 production memory shadow — R10.10 closeout | review_required | OK | `5122cc7ad84c` |

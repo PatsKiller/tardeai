@@ -1948,6 +1948,22 @@
         "path": "data/cio/aec_agent_bus.jsonl"
       },
       "note": "2026-09-19 maturity: unattended AEC mesh apply (bus + spines). Advisory only; narrator notify remains explicit-flag."
+    },
+    {
+      "lane_id": "llm-deferred-drain",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 10,13,16,19 * * * cd $PROJ && $PY scripts/drain_llm_deferred.py",
+        "match": "scripts/drain_llm_deferred.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/llm_deferred_drain.json"
+      },
+      "note": "2026-09-19 operator directive: when the free lanes are exhausted, paid DeepSeek work that is not time-sensitive is queued rather than paid for at peak (roughly double off-peak). This lane drains that queue inside the off-peak window; it refuses to run outside it, because a drainer that ignores the window is only a delayed way of paying peak prices. It writes the heartbeat above on EVERY run, including runs that drain nothing, so an empty queue and a dead drainer are distinguishable. Operator priorities per caller are set in Command Center -> Ops -> LLM Spend -> 'LLM Routing'. Inert until LLM_DEFER_OFFPEAK=1."
     }
   ],
   "undeclared_baseline": [

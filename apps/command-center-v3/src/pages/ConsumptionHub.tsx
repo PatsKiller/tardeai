@@ -5,6 +5,7 @@ import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubPanel } from '../lib/terminalHubChrome'
 import SpendPanel from '../components/SpendPanel'
+import LlmRoutingModal from '../components/LlmRoutingModal'
 
 const GREEN = '#22c55e', RED = '#ef4444', AMBER = '#f59e0b', BLUE = '#60a5fa', MUTED = '#94a3b8', TEXT = '#f8fafc'
 
@@ -42,6 +43,7 @@ export default function ConsumptionHub() {
   const [filterPid, setFilterPid] = useState<string | null>(null)
   const [busy, setBusy] = useState('')
   const [msg, setMsg] = useState('')
+  const [routingOpen, setRoutingOpen] = useState(false)
 
   const load = useCallback(async () => {
     try {
@@ -134,7 +136,17 @@ export default function ConsumptionHub() {
 
   return (
     <div style={{ maxWidth: 1100 }}>
-      <div style={hubTitle()}>LLM Consumption</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={hubTitle()}>LLM Consumption</div>
+        {/* Off-peak routing is a spend decision, so it lives behind an explicit operator
+            action rather than inline controls that can be changed by a stray click. */}
+        <button onClick={() => setRoutingOpen(true)}
+                style={{ marginLeft: 'auto', background: '#1e293b', color: TEXT, border: '1px solid #334155',
+                         borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 11 }}>
+          LLM Routing — off-peak priority
+        </button>
+      </div>
+      <LlmRoutingModal open={routingOpen} onClose={() => setRoutingOpen(false)} onSaved={load} />
       <p style={{ ...hubSubtitle(terminalUi), marginBottom: 16, lineHeight: 1.5, fontSize: 9 }}>
         Track and control <b style={{ color: TEXT }}>free OAuth</b> usage — Grok (xAI :8645) and ChatGPT (codex :8646),
         plus <b style={{ color: '#a78bfa' }}>DeepSeek</b> metered API (Flash / Pro).

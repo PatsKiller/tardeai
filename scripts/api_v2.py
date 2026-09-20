@@ -13821,6 +13821,42 @@ def _consumption_processes():
     return _json_clean({"ok": True, "processes": _lc.list_processes()})
 
 
+def _llm_caller_priorities():
+    """GET /api/v2/consumption/caller-priorities — the operator-set off-peak tiers.
+
+    Backs the Command Center "LLM Routing" modal. `tier_source` distinguishes an explicit
+    operator choice from an inherited default, so an unreviewed default is never presented
+    as a decision someone made.
+    """
+    import sys as _sys
+
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib import llm_deferral as _ld
+
+    return _json_clean({"ok": True, "tiers": list(_ld.TIERS),
+                        "default_tier": _ld.DEFAULT_TIER,
+                        "callers": _ld.list_callers(),
+                        "queue": _ld.queue_summary()})
+
+
+def _llm_deferred_queue():
+    """GET /api/v2/consumption/deferred-queue — what is waiting for the off-peak window."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib import llm_deferral as _ld
+
+    rows = _db_query(
+        """SELECT id, process_id, lane, task_summary, tier, reason, status,
+                  attempts, created_at, run_after, expires_at, error
+             FROM llm_deferred_requests
+            WHERE status IN ('pending','claimed')
+            ORDER BY run_after LIMIT 200""",
+        fetch="all",
+    ) or []
+    return _json_clean({"ok": True, "queue": _ld.queue_summary(), "requests": rows})
+
+
 def _consumption_lane_registry():
     import sys as _sys
 
@@ -46163,6 +46199,8 @@ ROUTES = {
     "/api/v2/llm/oauth-lanes": lambda: _llm_oauth_lanes(),
     "/api/v2/consumption/overview": lambda: _consumption_overview(),
     "/api/v2/consumption/processes": lambda: _consumption_processes(),
+    "/api/v2/consumption/caller-priorities": lambda: _llm_caller_priorities(),
+    "/api/v2/consumption/deferred-queue": lambda: _llm_deferred_queue(),
     "/api/v2/consumption/lane-registry": lambda: _consumption_lane_registry(),
     "/api/v2/consumption/logs": _consumption_logs,
     "/api/v2/consumption/spend": _consumption_spend,
@@ -51024,6 +51062,35 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)}
     # Operator star toggle — starred symbols always make the watchlist window, sort first, and get a
     # faster entry-plan refresh cadence (see watchlist_entry_planner._weekly_drain_clause). Advisory.
+    # Operator sets which callers may spend at DeepSeek peak rates and which are queued
+    # for the next off-peak window. This is a spend policy, so the write is recorded with
+    # who made it (AGENTS operator-only decisions) and nothing here can raise a cap.
+    if method == "POST" and base_path == "/api/v2/consumption/caller-priorities":
+        try:
+            import sys as _sys
+
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            from lib import llm_deferral as _ld
+
+            updates = (body or {}).get("updates")
+            if not isinstance(updates, list) or not updates:
+                return 400, {"ok": False, "error": "updates[] required"}
+            by = str((body or {}).get("updated_by") or "operator")[:64]
+            saved, rejected = [], []
+            for u in updates:
+                pid = str((u or {}).get("process_id") or "").strip()
+                tier = str((u or {}).get("tier") or "").strip().lower()
+                if not pid or tier not in _ld.TIERS:
+                    rejected.append({"process_id": pid, "tier": tier,
+                                     "error": "unknown process_id or tier"})
+                    continue
+                _ld.set_tier(pid, tier, updated_by=by,
+                             note=str((u or {}).get("note") or "")[:500] or None)
+                saved.append({"process_id": pid, "tier": tier})
+            code = 200 if saved else 400
+            return code, {"ok": bool(saved), "saved": saved, "rejected": rejected}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:300]}
     if method == "POST" and base_path == "/api/v2/watchlist/star":
         try:
             sym = str((body or {}).get("symbol", "")).strip().upper()
