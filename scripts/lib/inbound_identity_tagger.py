@@ -126,6 +126,22 @@ def _is_sentence_initial(text: str, start: int) -> bool:
     return bool(_SENT_BOUNDARY.search(text[:start]))
 
 
+def _is_sentence_initial_mention(text: str, name: str) -> bool:
+    """True when `name` is a LONE capitalised word opening a sentence.
+
+    Guards the ticker-alias path the way extract_name_mentions already guards
+    its own output. Multi-word runs ("Northrop Grumman") and mid-sentence
+    capitals are untouched, and an all-caps ticker never reaches here as an
+    alias -- NVDA resolves via matched_via="ticker".
+    """
+    if not name or " " in name.strip():
+        return False
+    if name.upper() == name:          # NVDA, AES -- an explicit ticker, not prose
+        return False
+    start = (text or "").find(name)
+    return start >= 0 and _is_sentence_initial(text, start)
+
+
 def extract_name_mentions(text: str) -> list[str]:
     """Capitalised runs, longest first, with leading agent/question words peeled.
 
@@ -155,6 +171,25 @@ def extract_name_mentions(text: str) -> list[str]:
     return out
 
 
+#: Uppercase words that appear in machine-generated alert CHROME and are also
+#: real tickers. Measured 2026-09-21 on the live spine: the EOD open-trade report
+#: header alone yielded ['EOD','OPEN','TRADE','REPORT','ET','DOWN','ALLE','P','L']
+#: -- eight boilerplate words and one real position -- and tagged the report's
+#: PRIMARY subject as OPEN (Opendoor) while SWK, BAX, BWA and WDAY appeared
+#: nowhere. _STOPWORDS already curates this class (UP and RSI are members); these
+#: are the members it was missing.
+_TEMPLATE_CHROME = frozenset({
+    "EOD", "OPEN", "DOWN", "TRADE", "REPORT", "MARKET", "TOTAL", "ET",
+    "AFTER", "PRICE", "QUOTE", "LIVE", "ALERT", "MOVE", "DATA", "CHECK",
+    "GAP", "WENT", "NONE", "AUTO", "RETRY", "PAUSED", "TAB", "DB",
+})
+
+#: A one-character bare token is never worth its false-positive rate in a machine
+#: template: "P&L" yields P and L, both real tickers. An explicit cashtag ($V)
+#: still resolves, because that carries deliberate operator intent.
+_MIN_BARE_TICKER_LEN = 2
+
+
 def extract_candidates(text: str) -> list[str]:
     """Cashtags first (explicit intent), then bare uppercase runs."""
     if not text:
@@ -166,6 +201,8 @@ def extract_candidates(text: str) -> list[str]:
             out.append(s)
     for m in _BARE.finditer(text):
         s = m.group(1).upper()
+        if len(s) < _MIN_BARE_TICKER_LEN or s in _TEMPLATE_CHROME:
+            continue
         if s in _STOPWORDS or s in out:
             continue
         out.append(s)
@@ -252,6 +289,34 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
         resolve_name = None                                # type: ignore
 
     for name in extract_name_mentions(text):
+        # A lone capitalised word opening a sentence is punctuation, not a
+        # security -- even when it happens to BE a ticker alias. Measured
+        # 2026-09-21: the alias attempt below was guarded by nothing, while
+        # _is_generic_term guarded only the company-name fallback. One ops alert
+        # ending "After 17 retries; autonomous re-arm in 30m." wrote AFTER as the
+        # PRIMARY subject of 28,934 messages, and 44,637 of 77,667 links in the
+        # whole spine (57.5%) came from that one template. Eleven template words
+        # leaked the same way: After, Price, Move, Live, Alert, Quote, Data,
+        # Check, Gap, Went, None.
+        #
+        # extract_name_mentions already applies exactly this rule to its own
+        # output (_SENTENCE_STARTERS + _is_sentence_initial); it simply was never
+        # consulted here. Tickers are unaffected: NVDA resolves via "ticker", and
+        # company prose ("Apple", "Northrop Grumman") via "company_name".
+        if _is_sentence_initial_mention(text, name):
+            continue
+        # The bare-token path filters through _STOPWORDS; this one never did, so
+        # a word already declared "not a ticker" still bound an issuer here.
+        # Measured: "RSI 41" -> RSI via ticker_alias with in_STOPWORDS=True, and
+        # extract_name_mentions yields ['Material','FBRT','RSI','AI Briefing',
+        # 'Root','Position'] where extract_candidates correctly yields ['FBRT'].
+        # _TEMPLATE_CHROME alone only patched the words I had happened to test.
+        # Both doors, one policy: a single token refused by either list is not a
+        # security. Multi-word runs ("AI Briefing") are unaffected -- they are
+        # resolved as NAMES, which is the company path's job.
+        up = name.upper()
+        if " " not in name.strip() and (up in _TEMPLATE_CHROME or up in _STOPWORDS):
+            continue
         tag = RI.resolve(doc, name)          # a name that is also a ticker alias
         via = "ticker_alias"
         if tag is None and resolve_name is not None and not _is_generic_term(name):
