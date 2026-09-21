@@ -98,10 +98,18 @@ DEFAULT_MIN_AGE_DAYS = 3
 
 
 def _git(args: list[str], cwd: Path) -> tuple[int, str]:
+    """Return (rc, output). Output is stdout on success, STDERR on failure.
+
+    The first --apply run reported six bare "FAILED <name>:" lines with no
+    reason, because this returned stdout only and `git worktree remove` writes
+    its refusal to stderr. A failure you cannot read is not a report.
+    """
     try:
         p = subprocess.run(["git", *args], cwd=str(cwd), capture_output=True,
                            text=True, timeout=60)
-        return p.returncode, (p.stdout or "").strip()
+        out = (p.stdout or "").strip()
+        err = (p.stderr or "").strip()
+        return p.returncode, (out if p.returncode == 0 else (err or out))
     except Exception as exc:  # noqa: BLE001
         return 1, f"{type(exc).__name__}: {exc}"
 
@@ -131,6 +139,26 @@ def classify(wt: Path, min_age_days: int) -> dict:
     except OSError:
         age_days = 0.0
     info["age_days"] = round(age_days, 1)
+
+    # A locked worktree belongs to a RUNNING agent. Measured 2026-09-21: six
+    # were locked by "claude agent ... (pid 43373)" -- this very session. git
+    # refused them correctly; the script should never have tried. Removing a
+    # live agent's tree with `remove -f -f` would delete work in progress.
+    rc, locked = _git(["worktree", "list", "--porcelain"], ROOT)
+    if rc == 0:
+        block, hit = [], False
+        for line in locked.splitlines() + [""]:
+            if line.startswith("worktree "):
+                if hit and any(b.startswith("locked") for b in block):
+                    info["action"] = "keep"
+                    info["reason"] = "locked:live_agent_session"
+                    return info
+                block, hit = [], str(wt) in line
+            block.append(line)
+        if hit and any(b.startswith("locked") for b in block):
+            info["action"] = "keep"
+            info["reason"] = "locked:live_agent_session"
+            return info
 
     if info["ahead"] > 0:
         rc, last = _git(["log", "-1", "--format=%ad %s", "--date=short"], wt)
