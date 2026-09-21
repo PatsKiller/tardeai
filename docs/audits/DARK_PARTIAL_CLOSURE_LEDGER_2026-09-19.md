@@ -2,8 +2,8 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T18:51:00-04:00
-Measured at: hermes RETIRED lane_registry follow-on; R9 continue-park/settle CLOSED for hermes; organic still PARTIAL (Mon OBSERVED open)
+as_of: 2026-09-20T20:10:00-04:00
+Measured at: organic stance OBSERVED exit 0 (organic=4); PARTIAL-telegram-CIO-stance CLOSED; M1–M5 OBSERVED; soft 0.024 PASS
 Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
@@ -21,7 +21,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-hermes_advisory_event_enqueue | **CLOSED** · RETIRED lane `hermes-advisory-event-enqueue` | Operator-Token APPROVE_RETIRE + #1151 `7010eb104`; follow-on lane_registry RETIRED (EXPECTED_SILENT); manual CLI retained; no schedule | Operator **APPROVE_RETIRE_*** Cursor chat 2026-09-20T17:15 ET; follow-on PR after #1151 | CLOSED — RETIRED row + AGENTS update; archive skipped (keep manual) |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | **PARKED_AWAIT_ORGANIC** | dual-write on tip+pin; holds probe/canary only (organic=0 exit 2); timers armed Mon 06:35/09:05; token `PARK_STANCE_AWAIT_ORGANIC` recorded | docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md; Mon–Fri natural hold | organic hold receipt (exit 0) — park ≠ OBSERVED |
+| PARTIAL-telegram-CIO-stance | **CLOSED** · OBSERVED | [VERIFIED] 2026-09-21T00:09:53Z `report_organic_stance_hold.py` exit **0** organic=**4** non_organic=2; rows AEMD+LSTA `source=check_investment_send` `caller=screener_go_alerts` (dry then live `--send` session 2026-09-18; `sent=[]` CIO held); observe service ExecMainStatus=0 | operator "do monday organic now"; `scripts/screener_go_alerts.py` | organic hold receipt exit 0 |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | **OBSERVED (unattended)** | [VERIFIED] Sun 08:00 ET weekly cron: ARKQ+NEE `requester=data_gap_resolver` `vector=quality_escalate` `provider=searxng` `outcome=partial` started 2026-09-20T12:00:07Z/12:00:11Z; weekly.log Chain resolve 2/2. Hand proof at 10:30Z was precursor. | — | unattended same stamps |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
@@ -39,6 +39,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 
 | id | closed_at | proof |
 |---|---|---|
+| PARTIAL-telegram-CIO-stance | 2026-09-20T20:10 ET | organic=4 exit 0; AEMD/LSTA check_investment_send + screener_go_alerts |
 | DARK-hermes_advisory_event_enqueue | 2026-09-20 | APPROVE_RETIRE #1151 + lane_registry RETIRED follow-on |
 | DARK-cio-runs-truncated-tail | 2026-09-19 | repair + 7ea5835f9 |
 | DARK-librarian-index | 2026-09-19 | research_source_index.json n=120 on CURRENT+persistent-state |
