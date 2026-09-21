@@ -371,6 +371,17 @@ GATES = [
         [
             "tests/test_telegram_notification_normalization.py",
             "tests/test_r20_v2_notification_idempotency.py",
+            # 2026-09-21: these three were written for this subsystem and run by
+            # NOTHING -- named only in check_test_coverage.py's UNLISTED_BASELINE.
+            # Unrun is how they rotted: two stubs in the blockers file drifted out
+            # of sync with telegram_alert.send_telegram (a lambda that no longer
+            # accepted reply_markup) and with the live SHADOW runtime mode, and no
+            # gate said so for months. The two _db files SKIP without ALERT_TEST_DSN
+            # (30 skipped, exit 0), so in CI they buy collection integrity, not
+            # coverage -- which is precisely the rot that hid the stubs.
+            "tests/test_alert_normalization_blockers.py",
+            "tests/test_alert_occurrence_persistence_db.py",
+            "tests/test_alert_delivery_recording_db.py",
         ],
     ),
     (
