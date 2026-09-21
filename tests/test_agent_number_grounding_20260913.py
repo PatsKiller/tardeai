@@ -298,3 +298,80 @@ def test_risk_score_decimals_are_not_soft_unsupported():
     assert report["unsupported"] == [], report
     assert "0.85" not in report["unsupported"]
     assert "0.95" not in report["unsupported"]
+
+
+# --------------------------------------------------- derived arithmetic (2026-09-21)
+#
+# Measured over 7 days of live risk_agent output: ALL 47 flagged tokens were arithmetic
+# the agent derived from figures it was given and showed its working for — stop
+# distances, ATR as a percent of price, risk per share, a recomputed R:R. None were
+# invented. The check matches numbers LITERALLY, so an agent that shows its work scored
+# worse than one that narrates: risk_agent sat at 0.103 soft share against maria's 0.003
+# while inventing nothing. These pin the derivation shapes, and — more importantly — the
+# guard that widening the net has not blinded the check.
+
+
+def test_volatility_stated_as_a_percent_of_price_is_derived():
+    """"ATR of $0.06 (9.5% of the $0.63 price)" — a ratio, not an invention."""
+    report = G.check_grounding(
+        ["the ATR of $0.06 (9.5% of the $0.63 price) is the dominant volatility fact"],
+        "Price: $0.63\nATR of $0.06\n",
+    )
+    assert report["unsupported"] == [], report
+    assert report["verdict"] == "grounded"
+
+
+def test_distance_to_an_atr_multiple_stop_is_derived():
+    """"the stop would be $1.13, a distance of 12.4%" — 2xATR/price, second order."""
+    report = G.check_grounding(
+        ["With ATR $0.08 the stop would be $1.13, a distance of 12.4%"],
+        "Last price $1.29\nATR $0.08\n",
+    )
+    assert report["unsupported"] == [], report
+
+
+def test_recomputed_rr_from_named_legs_is_derived():
+    """The agent CATCHING a bad packaged plan must not be counted as inventing.
+
+    Live GXAI 2026-09-20: "using entry $0.63, stop $0.54, target $0.88 gives R:R 2.78,
+    not the 3.25 quoted" — (0.88-0.63)/(0.63-0.54). The correction was flagged.
+    """
+    report = G.check_grounding(
+        ["using entry $0.63, stop $0.54, target $0.88 gives R:R 2.78"],
+        "entry $0.63, stop $0.54, target $0.88\nR:R 2.78 quoted\n",
+    )
+    assert "2.78" not in report["unsupported"], report
+
+
+def test_widening_has_not_blinded_the_check():
+    """The whole point of the check: invented figures must still demote.
+
+    _ANCHOR_LIMIT is capped at 2 precisely because more anchors let an invented
+    percentage match some pair by chance. Every value added to `derived` is a value
+    that will never be flagged again, so this guard is the one that matters.
+    """
+    report = G.check_grounding(
+        ["the stop is $412.77 and the target is $999.12 with R:R of 8.4"],
+        "Price: $0.63\nATR of $0.06\n",
+    )
+    assert report["verdict"] == "ungrounded", report
+    for token in ("$412.77", "$999.12", "8.4"):
+        assert token in report["unsupported"], report
+
+
+def test_a_plausible_but_underivable_percent_still_flags():
+    """Near-miss guard: a number in ATR context that no derivation produces."""
+    report = G.check_grounding(
+        ["ATR of $0.06 on the $0.63 price implies a 37.8% daily range"],
+        "Price: $0.63\nATR of $0.06\n",
+    )
+    assert "37.8%" in report["unsupported"], report
+
+
+def test_rr_derivation_requires_all_three_named_legs():
+    """Two legs must not license an arbitrary ratio — (t-e)/(e-s) needs all three."""
+    report = G.check_grounding(
+        ["the R:R works out to 2.78"],
+        "entry $0.63, stop $0.54\n",          # no target
+    )
+    assert "2.78" in report["unsupported"], report
