@@ -1,0 +1,10 @@
+[Unit]
+Description=TradeAI agent worktree retention — reclaim merged+clean agent worktrees
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/agent_worktree_retention.py
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/bin/bash -lc 'PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python; ROOT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild; cd "$ROOT"; exec "$PY" scripts/agent_worktree_retention.py --apply --min-age-days 3'
+Nice=10
+IOSchedulingClass=idle
