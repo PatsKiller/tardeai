@@ -66,15 +66,27 @@ def test_a_typed_catalyst_beats_generic_news(mod):
 def test_provenance_strategy_plan_and_cio_are_in_the_notice(mod):
     msg = mod.render([_row()], {"g-1": dict(INFO, cio={"action": "HUMAN_REVIEW", "date": "2026-09-14"})})
     assert "on your watchlist since 2026-05-19 — found by AI discovery (Consumer Cyclical)" in msg
-    assert "Strategy: none assigned · plan entry $0.08 / stop $0.06 / target $0.12 · price is +1.4% from the entry" in msg
+    # 2026-09-21: the line now says where price sits INSIDE the plan, not only its
+    # distance from entry — distance alone described a won plan and a blown plan alike.
+    assert ("Strategy: none assigned · plan entry $0.08 / stop $0.06 / target $0.12 · "
+            "working — 3% of the way from entry to target (+1.4% from entry)") in msg
     assert "CIO decision: Human Review (2026-09-14)" in msg
     assert "$0.08 · Nano cap · $9M" in msg
 
 
-def test_stale_plan_and_missing_cio_are_said_plainly(mod):
+def test_a_plan_that_reached_its_target_says_so(mod):
+    """Renamed and corrected 2026-09-21 — this case WAS the bug.
+
+    price 0.60 against a 0.59 target is a plan that HIT ITS TARGET, and the old
+    assertion demanded it be called "stale". The branch behind it was
+    `abs(dist) > 25 -> "plan is stale"`, so the same words also described price
+    31% through the stop. The test encoded the defect, so fixing the code fails it.
+    """
     info = dict(INFO, price=0.60, plan={"entry": 0.20, "stop": 0.13, "target": 0.59})
     msg = mod.render([_row(symbol="PDSB")], {"g-1": info})
-    assert "plan is stale — price is +200% from its entry" in msg and "CIO stance: no entry plan yet" in msg
+    assert "TARGET REACHED" in msg and "$0.59 target" in msg, msg
+    assert "stale" not in msg.lower(), msg
+    assert "CIO stance: no entry plan yet" in msg
 
 
 def test_rich_notice_carries_the_same_lines_without_advice_words(mod):

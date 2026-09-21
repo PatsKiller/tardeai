@@ -502,11 +502,50 @@ def _strategy_line(info: dict) -> str | None:
     levels = f"plan entry ${plan['entry']:,.2f}" + (f" / stop ${plan['stop']:,.2f}" if plan.get("stop") else "") + (
         f" / target ${plan['target']:,.2f}" if plan.get("target") else "")
     if price and plan["entry"]:
-        dist = (price - plan["entry"]) / plan["entry"] * 100.0
-        where = (f"plan is stale — price is {dist:+.0f}% from its entry" if abs(dist) > 25
-                 else f"price is {dist:+.1f}% from the entry")
-        return f"{head} · {levels} · {where}"
+        return f"{head} · {levels} · {_plan_state(plan, price)}"
     return f"{head} · {levels}"
+
+
+def _plan_state(plan: dict, price: float) -> str:
+    """Where price sits INSIDE the plan's own levels — not merely how far from entry.
+
+    The previous line read `abs(dist) > 25 -> "plan is stale"`, which described two
+    opposite outcomes identically. Operator-reported 2026-09-21 on HPE: entry $44.47,
+    stop $40.28, target $63.32, price $61.95 — 92.7% of the way to target, and the alert
+    called the plan stale. The same branch emits the same words for price $28.00, which
+    is 31% THROUGH the stop. A won plan and a blown plan cannot share a sentence.
+
+    `abs()` erased the sign, and `target`/`stop` were already in the dict, unused. Entry
+    being unreachable is a real and separate fact, so it is reported as "entry missed"
+    alongside what the plan is actually doing, never instead of it.
+    """
+    entry = float(plan["entry"])
+    if entry <= 0:
+        return "plan has no usable entry"
+    target = plan.get("target")
+    stop = plan.get("stop")
+    target = float(target) if target else None
+    stop = float(stop) if stop else None
+    dist = (price - entry) / entry * 100.0
+    # Direction comes from the plan's own geometry, so shorts read correctly too.
+    short = target is not None and target < entry
+    hit_stop = stop is not None and (price >= stop if short else price <= stop)
+    hit_target = target is not None and (price <= target if short else price >= target)
+    if hit_stop:
+        return f"STOP BREACHED — price {dist:+.1f}% from entry, at or through the ${stop:,.2f} stop"
+    if hit_target:
+        return f"TARGET REACHED — price {dist:+.1f}% from entry, at or through the ${target:,.2f} target"
+    if target is not None and target != entry:
+        progress = (price - entry) / (target - entry) * 100.0
+        if progress >= 0:
+            missed = " — entry no longer available" if abs(dist) > 25 else ""
+            return (f"working — {progress:.0f}% of the way from entry to target "
+                    f"({dist:+.1f}% from entry){missed}")
+        return f"below entry — price {dist:+.1f}% from entry, still above the stop"
+    # No target to judge against: distance from entry is all we have, so say only that.
+    if abs(dist) > 25:
+        return f"entry is stale — price is {dist:+.1f}% from it, and the plan has no target"
+    return f"price is {dist:+.1f}% from the entry"
 
 
 def _cio_line(info: dict) -> str | None:
