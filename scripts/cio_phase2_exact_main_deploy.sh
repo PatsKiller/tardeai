@@ -423,6 +423,13 @@ overlay_main() {
     --exclude='.env' --exclude='config/broker_credentials.env' \
     --exclude='__pycache__/' --exclude='*.pyc' \
     --exclude='.pytest_cache/' --exclude='.mypy_cache/' --exclude='.ruff_cache/' \
+    `# 2026-09-21: .claude is 11,591 MB of Claude Code SESSION data and was` \
+    `# cloned into every release -- 103 GB duplicated across ten of them, the` \
+    `# single largest consumer on a disk that hit 100% full with 84 MB free.` \
+    `# It is not tracked in git (1 file), is not served, and has nothing to do` \
+    `# with the application. Every other cache dir here was already excluded;` \
+    `# this one was simply missed.` \
+    --exclude='.claude/' \
     "${ROOT}/" "${dest}/"
 }
 
