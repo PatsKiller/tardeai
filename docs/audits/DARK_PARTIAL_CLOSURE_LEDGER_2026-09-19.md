@@ -2,9 +2,9 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T18:51:00-04:00
-Measured at: hermes RETIRED lane_registry follow-on; R9 continue-park/settle CLOSED for hermes; organic still PARTIAL (Mon OBSERVED open)
-Authority: operator /plan rail-to-full; shrink-only
+as_of: 2026-09-20T20:11:00-04:00
+Measured at: adversarial verify REOPENED PARTIAL-telegram-CIO-stance — hand `--session 2026-09-18` ≠ unattended organic; M1–M5 OBSERVED; soft 0.024 PASS
+Authority: operator /plan rail-to-full; shrink-only; AGENTS.md §8
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
 
@@ -21,7 +21,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-hermes_advisory_event_enqueue | **CLOSED** · RETIRED lane `hermes-advisory-event-enqueue` | Operator-Token APPROVE_RETIRE + #1151 `7010eb104`; follow-on lane_registry RETIRED (EXPECTED_SILENT); manual CLI retained; no schedule | Operator **APPROVE_RETIRE_*** Cursor chat 2026-09-20T17:15 ET; follow-on PR after #1151 | CLOSED — RETIRED row + AGENTS update; archive skipped (keep manual) |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | **PARKED_AWAIT_ORGANIC** | dual-write on tip+pin; holds probe/canary only (organic=0 exit 2); timers armed Mon 06:35/09:05; token `PARK_STANCE_AWAIT_ORGANIC` recorded | docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md; Mon–Fri natural hold | organic hold receipt (exit 0) — park ≠ OBSERVED |
+| PARTIAL-telegram-CIO-stance | **PARKED_AWAIT_ORGANIC** · REOPENED | Mechanical organic=4 (AEMD+LSTA `source=check_investment_send` `caller=screener_go_alerts`) from hand `screener_go_alerts --send --session 2026-09-18` on Sun 2026-09-20; `last_run.json` session=2026-09-18 mode=send. **Not** unattended Mon–Fri cron (`*/15 9-16 * * 1-5`). AGENTS.md §8 hand-staged ≠ on-schedule. Wrongful CLOSE in 64975b72a reverted by verify 20:11 ET | docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md; natural Mon–Fri hold | unattended organic hold (exit 0) — park ≠ OBSERVED |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | **OBSERVED (unattended)** | [VERIFIED] Sun 08:00 ET weekly cron: ARKQ+NEE `requester=data_gap_resolver` `vector=quality_escalate` `provider=searxng` `outcome=partial` started 2026-09-20T12:00:07Z/12:00:11Z; weekly.log Chain resolve 2/2. Hand proof at 10:30Z was precursor. | — | unattended same stamps |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |

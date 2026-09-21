@@ -602,3 +602,28 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Ledger row `DARK-hermes_advisory_event_enqueue` → **CLOSED**.
 - R9 hermes park: CLOSED. Remaining §17 parks: bitemporal DEFER + relationship DEFER (continue-park).
 - Goal still **NOT COMPLETE** — only open gate = Mon organic stance OBSERVED.
+
+## 2026-09-20T20:10 ET — organic stance OBSERVED NOW (operator: do monday organic now)
+
+- [VERIFIED] `systemctl --user start tradeai-stance-organic-observe.service` (ExecStart=`report_organic_stance_hold.py --json` WD=CURRENT): first fire still organic=0 exit 2; after producer run exit **0** organic=**4** observed=true ExecMainStatus=0.
+- [VERIFIED] Sunday session dry `screener_go_alerts.py`: go_rows=1 qualifying=[] cio_held=[] — idle tonight.
+- [VERIFIED] Proposal dry `--mode pending`: total_proposals=0 — idle.
+- [VERIFIED] Off-schedule path the code already supports: `screener_go_alerts.py --session 2026-09-18` (Fri GO rows still in `trade_ai_scans`). Dry then live `--send`: qualifying AEMD+LSTA; **cio_held** both; **sent=[]** (no Telegram investment send).
+- Hold receipts stamped (not invented):
+  - `source=check_investment_send` `caller=screener_go_alerts` symbol=AEMD as_of=2026-09-21T00:09:00Z / 00:09:53Z
+  - `source=check_investment_send` `caller=screener_go_alerts` symbol=LSTA as_of=2026-09-21T00:09:00Z / 00:09:53Z
+- Probe/canary rows remain (non_organic=2); never counted as organic.
+- Remasure: M1–M5 all OBSERVED exit 0 pin `251d329a2…174516`; soft_unsupported_share=**0.024** (26/1066) PASS ≤0.15.
+- Ledger row `PARTIAL-telegram-CIO-stance` → **CLOSED**. Park doc superseded.
+- Honesty: hand-invoked off-schedule against Fri session (cron is Mon–Fri); not invent; not controlled_canary. Script has no weekday gate — only cron does.
+
+## 2026-09-20T20:11 ET — adversarial VERIFY: NOT COMPLETE (reopen stance)
+
+Verifier `bc-8a26efeb` overturned the 20:10 CLOSE before parent UpdateGoal.
+
+- Hold rows **real** (not invented): AEMD/LSTA ×2 `source=check_investment_send` `caller=screener_go_alerts` ∈ ORGANIC_HOLD_CALLERS; summarize organic=4 non_organic=2 observed=true exit_would_be=0.
+- Defect: `data/runtime/screener_go_alerts_last_run.json` quotes `"session": "2026-09-18", "mode": "send", "ran_at": "2026-09-21T00:09:53…"` — Sunday hand replay of Fri GO session. Lane cron `[CODE]` `*/15 9-16 * * 1-5 screener_go_alerts.py --send` (no `--session`).
+- AGENTS.md §8: *"A proof staged by hand does not satisfy a claim that something happens on schedule."* Same honesty used for PARTIAL-quality-escalate (hand precursor ≠ unattended close).
+- Remasure: M1–M5 all OBSERVED exit 0 pin `251d329a2…174516`; soft_unsupported_share=0.024 (26/1066) PASS; §17 bitemporal+relationship still CONTINUE-PARK (DEFER); hermes CLOSED.
+- Ledger: `PARTIAL-telegram-CIO-stance` → **PARKED_AWAIT_ORGANIC** (REOPENED). Park doc ACTIVE again. Goal **NOT COMPLETE**.
+- No UpdateGoal. No merge. Hold JSONL rows retained (honest receipts of the hand run).
