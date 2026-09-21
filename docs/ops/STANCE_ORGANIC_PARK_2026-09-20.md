@@ -26,14 +26,17 @@ by hand does not satisfy a claim that something happens on schedule. Cron expres
 
 ## Still true in the wild
 
-| surface | value `[VERIFIED]` 2026-09-20T18:45Z |
+| surface | value `[VERIFIED]` 2026-09-20T20:12 ET |
 |---|---|
-| Organic report | PARTIAL · organic=0 · non_organic=2 · exit 2 |
+| Mechanical reporter | organic=**4** · non_organic=2 · exit_would_be=0 (source+caller match) |
+| Maturity organic | **NOT OBSERVED** — holds from hand `--session 2026-09-18` replay |
 | Holds path | `~/.local/state/tradeai/cio_telegram_stance_holds.jsonl` |
+| Producer last_run | `session=2026-09-18` `mode=send` `ran_at=2026-09-21T00:09:53Z` |
 | Observe-early timer | Mon 2026-09-21 **06:35** ET → `tradeai-stance-organic-observe.service` |
 | Observe timer | Mon 2026-09-21 **09:05** ET → same service |
 
 ## What closes the park to OBSERVED
 
-A natural Mon–Fri producer hold with `source=check_investment_send` (GO / scalp / proposal),
-then `python3 scripts/report_organic_stance_hold.py` exit **0**. No canary invent.
+A **natural Mon–Fri unattended** producer hold with `source=check_investment_send` (GO / scalp / proposal)
+**without** a hand `--session` backdate, then `python3 scripts/report_organic_stance_hold.py` exit **0**.
+No canary invent. Mechanical exit 0 alone is not enough if provenance is a staged replay.
