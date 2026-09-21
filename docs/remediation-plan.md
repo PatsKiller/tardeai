@@ -1,13 +1,15 @@
 # Remediation plan — 5-stage hardening, governance and bitemporal cutover
 
 ```
-Status: 4 of 5 stages CLOSED; Stage 3 production cutover BLOCKED (two SQL statements, operator)
-as_of: 2026-09-19T20:34:54-04:00
-Measured at: dev tree 170532178 (= origin/main after #1095); live trade_ai DB; shadow tradeai-m2-shadow-v2 :55432
+Status: 4 of 5 stages CLOSED; Stage 3 production cutover DEFERRED (§17); staging re-audited 2026-09-20
+as_of: 2026-09-20T17:50:00-04:00
+Measured at: shadow tradeai-m2-shadow-v2 :55432; pytest 221 passed; docs/STAGING_VS_V2_BITEMPORAL_STATUS_REPORT.md
 Authority: READ_ONLY_ADVISORY / MBI_BEHAVIOR=0 — operator grant required for production memory writes
 Canonical: docs/remediation-plan.md
 See also: docs/GROUNDING_SLO_2026-09-18.md, docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md,
-          docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md
+          docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md,
+          docs/STAGING_VS_V2_BITEMPORAL_STATUS_REPORT.md,
+          docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md (DEFERRED)
 ```
 
 ## Scope correction
@@ -23,9 +25,10 @@ not what was re-implemented. **No stage was re-done to satisfy the directive's n
 |---|---|---|---|
 | 1 | `risk_agent` grounding SLO below 0.15 soft share | **CLOSED** | `soft_unsupported_share=0.003` (998 results); `risk_agent` 1/173 = 0.006; `breaches: []` |
 | 2 | Merge + promote #1081, #1082; 3-promote pin soak | **CLOSED** | both MERGED 2026-09-19 18:09Z / 18:35Z; `soak_ready=YES streak=4 need=3` |
-| 3 | Bitemporal substrate v2 on PostgreSQL ≥14 | **PARTIAL — production BLOCKED** | shadow `:55432` ACTIVE; production `:5432` `production_sql_applied=false` |
-| 4 | 200-case correctness suite | **CLOSED** | `tests/test_bitemporal_correctness.py` — **205 passed** (re-run 2026-09-19) |
-| 5 | Scale benchmark + EXPLAIN proof | **CLOSED** | Index Scan on `fact_valid_spgist`, Shared Hit Blocks, **0 disk reads** |
+| 3 | Bitemporal substrate v2 on PostgreSQL ≥14 | **PARTIAL — prod §17 DEFERRED** | staging `:55432` ALIGNED after v2 re-apply; production `:5432` not applied (`DEFER` 2026-09-20) |
+| 4 | 200-case correctness suite | **CLOSED** | `tests/test_bitemporal_correctness.py` — **221 passed** (re-run 2026-09-20T17:50 ET) |
+| 5 | Scale benchmark + EXPLAIN proof | **CLOSED** | Index Scan (btree/GiST set); Shared Hit Blocks; named `idx_fact_version_bitemporal_gist` absent by design |
+
 
 ## Stage 1 — grounding SLO
 
@@ -48,9 +51,26 @@ Soak exceeds requirement (`need=3`, observed streak **4**), last match
 `4bafd6f83-main-exact-phase2-20260919-153247`.
 Ledger row `PARTIAL-bridge-pin-soak` is **CLOSED**.
 
-**Residual:** `PARTIAL-telegram-CIO-stance` stays PARTIAL until a *live* hold receipt is
-observed from CURRENT. Code is merged; the proof bar is an observed interdiction, not a
-passing test.
+### `LIVE-cio-stance-governance` (supersedes `PARTIAL-telegram-CIO-stance`)
+
+**Adopted 2026-09-20/21.** Stance enforcement is **24/7**, **asset-agnostic**, and
+**multi-workflow** — not a weekday equity-alert-only bar.
+
+`OBSERVED_LIVE` when **any** organic, unprompted investment-related workflow — any asset
+class (equities, ETFs, commodities, crypto, macro theses), any workflow (intraday scalp,
+swing, watchlist promotion, portfolio rebalance proposal, risk alert, weekend executive
+briefing), any day Mon–Sun — hits an active CIO constraint (AVOID/HOLD) and executes
+hold/suppression/modification with
+`source=check_investment_send` and `held_reason=cio_stance_conflict` on a served release,
+without human intervention.
+
+Applies across outbound advisory channels (Telegram investment sends, weekend intel,
+watchlist promotions, portfolio proposals). **`MBI_BEHAVIOR=0` / non-authoritative memory
+unchanged** — stance gates advisory emission only; never sizes, orders, or broker writes.
+
+`[VERIFIED]` 2026-09-21T01:42:03Z — `report_organic_stance_hold.py` **OBSERVED**
+`organic=4` (latest `LSTA` / `screener_go_alerts` / `cio_stance_conflict` at
+2026-09-21T00:09:53Z). Ledger id **`LIVE-cio-stance-governance` → CLOSED / OBSERVED_LIVE**.
 
 ## Stage 3 — bitemporal substrate (the open item)
 
@@ -147,14 +167,18 @@ asserts the schema survives it, and asserts an opted-in rebuild still works.
 
 ## Stages 4 and 5 — correctness and scale
 
-`tests/test_bitemporal_correctness.py` re-run 2026-09-19: **205 passed in 3.13s** against
+`tests/test_bitemporal_correctness.py` re-run 2026-09-20: **221 passed in 2.79s** against
 `tradeai-m2-shadow-v2`. Covers the five required criteria — single-valued overlap exclusion
 raises, multi-valued overlap permitted, automatic version closure with `tx_period` closed by
 the DB, RLS tenant isolation proven as `m2_agent`, and direct `UPDATE`/`DELETE` on fact rows
-rejected.
+rejected. Full eight-dimension audit: `docs/STAGING_VS_V2_BITEMPORAL_STATUS_REPORT.md`.
 
-`EXPLAIN (ANALYZE, BUFFERS)` on the point-in-time query resolves via **Index Scan** on
-`fact_valid_spgist` — not a Seq Scan — with Shared Hit Blocks and **0 disk reads**.
+`EXPLAIN (ANALYZE, BUFFERS)` on the point-in-time query resolves via **Index Scan** (e.g.
+`fact_subject_pred_btree` / `fact_current_idx`) — not a Seq Scan — with Shared Hit Blocks.
+**Operational note (2026-09-20):** destructive `r10` rebuild strips v2 packaging —
+**RESOLVED** via `scripts/lib/bitemporal_schema_heal.py` + `scripts/init_bitemporal_db.sh`
+(idempotent packaging-only heal on isolated `:55432`; hooked after `apply_schema` and in
+correctness tests). Production `:5432` heal remains refused.
 
 **Honesty note:** the architect reconciliation **rejected** the directive's `row_kind` and
 `is_single_valued` column names. CURRENT is expressed as `upper_inf(tx_period)` and
@@ -168,7 +192,7 @@ exist under that name.
 | item | owner | bar |
 |---|---|---|
 | Production bitemporal cutover | operator | pgvector installed + `m2_agent` role created |
-| `PARTIAL-telegram-CIO-stance` | schedule | live hold receipt observed from CURRENT |
+| `LIVE-cio-stance-governance` (was `PARTIAL-telegram-CIO-stance`) | — | **CLOSED** 2026-09-21 — organic=4 OBSERVED_LIVE under 24/7 definition |
 | SLO ratification | operator | `slo_status: PROPOSED` → ratified floors |
 | `risk_agent` stale residual (157) | time | ages out of the 7-day window |
 
