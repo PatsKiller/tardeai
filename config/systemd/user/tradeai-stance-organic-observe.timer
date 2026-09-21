@@ -1,11 +1,13 @@
 [Unit]
-Description=Trade AI organic stance observe — 09:05 ET Mon–Fri
+Description=Trade AI LIVE-cio-stance-governance observe — 09:05 ET daily (24/7)
 Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/report_organic_stance_hold.py
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md
 
 [Timer]
-# After market-hours GO/proposal producers start (screener */15 9–16, proposal */2 9–16).
+# Daily (Mon–Sun). After market-hours GO/proposal producers on weekdays; still
+# remasures weekend organic holds (briefs/proposals) under 24/7 definition.
 # Host local time is America/New_York.
-OnCalendar=Mon..Fri *-*-* 09:05:00
+OnCalendar=*-*-* 09:05:00
 AccuracySec=1min
 Persistent=true
 RandomizedDelaySec=30

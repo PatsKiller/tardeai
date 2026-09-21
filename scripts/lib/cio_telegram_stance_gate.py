@@ -11,8 +11,9 @@ This module is the minimum hard gate:
 * Missing CIO row, unreadable store, or non-aligned action → hold
   (``allow=False`` + ``held_reason``). Never annotate-and-send from here.
 * Every hold appends one durable receipt line
-  (``cio_telegram_stance_holds.jsonl``) so PARTIAL-telegram-CIO-stance can be
-  observed from the served release — not only as a log line.
+  (``cio_telegram_stance_holds.jsonl``) so ``LIVE-cio-stance-governance``
+  (24/7 multi-workflow) can be observed from the served release — not only as a
+  log line. Formerly ``PARTIAL-telegram-CIO-stance`` (weekday equity-only bar).
 
 AUTHORITY: READ_ONLY_ADVISORY. Reads ``cio_decisions`` only. MBI_BEHAVIOR = 0.
 """
@@ -28,11 +29,16 @@ from typing import Any, Callable, Optional
 
 SCHEMA = "CioTelegramStanceGate@v1"
 HOLD_RECEIPT_SCHEMA = "CioTelegramStanceHold@v1"
+SUMMARY_SCHEMA = "CioTelegramStanceHoldSummary@v2"
 AUTHORITY = "READ_ONLY_ADVISORY"
+GAP_ID = "LIVE-cio-stance-governance"
+GAP_ID_FORMER = "PARTIAL-telegram-CIO-stance"
 
-#: Live producers that call ``check_investment_send``. Their holds prove the
-#: organic PARTIAL-telegram-CIO-stance close when stamped ``source=
-#: check_investment_send`` (ledger proof). Canary/probe sources stay distinct.
+#: Live producers that call ``check_investment_send``. Their holds prove
+#: LIVE-cio-stance-governance OBSERVED_LIVE when stamped
+#: ``source=check_investment_send`` (ledger proof). Canary/probe sources stay
+#: distinct. Set is workflow-agnostic (GO / scalp / proposal); day-of-week is
+#: not a filter — 24/7 continuous governance.
 ORGANIC_HOLD_CALLERS = frozenset(
     {
         "screener_go_alerts",
@@ -47,8 +53,10 @@ _CIO_BULL = {
     "BUY_READY", "ENTRY_NEAR",
 }
 _CIO_BEAR = {"AVOID", "SELL", "EXIT", "TRIM", "REDUCE", "HOLD_REDUCE"}
+# Broad market *context* tickers only (not investment advisories). Commodity /
+# sector ETFs (GLD, SLV, USO, …) are gated — asset-agnostic 24/7 definition.
 _STANCE_EXCLUDE_SYMBOLS = frozenset({
-    "SPY", "QQQ", "IWM", "DIA", "VIX", "TLT", "IEF", "HYG", "LQD", "USO", "GLD", "SLV",
+    "SPY", "QQQ", "IWM", "DIA", "VIX",
 })
 
 # Investment-shaped tokens in Telegram text (Buy / Strong Buy / Accumulate / Add / Bullish / GO).
@@ -335,16 +343,19 @@ def load_hold_receipt_rows(path: Optional[Path] = None) -> list[dict[str, Any]]:
 
 
 def summarize_stance_holds(path: Optional[Path] = None) -> dict[str, Any]:
-    """Count organic vs non-organic holds for PARTIAL-telegram-CIO-stance."""
+    """Count organic vs non-organic holds for LIVE-cio-stance-governance."""
     rows = load_hold_receipt_rows(path)
     organic = [r for r in rows if is_organic_hold_row(r)]
     other = [r for r in rows if not is_organic_hold_row(r)]
     latest = organic[-1] if organic else None
     return {
-        "schema": "CioTelegramStanceHoldSummary@v1",
+        "schema": SUMMARY_SCHEMA,
+        "gap_id": GAP_ID,
+        "gap_id_former": GAP_ID_FORMER,
         "authority": AUTHORITY,
         "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "path": str(path or hold_receipts_path() or ""),
+        "scope": "24/7 continuous; asset-agnostic; multi-workflow",
         "total": len(rows),
         "organic": len(organic),
         "non_organic": len(other),
@@ -397,11 +408,14 @@ def write_organic_observe_receipt(summary: dict[str, Any]) -> list[str]:
 
 __all__ = [
     "AUTHORITY",
+    "GAP_ID",
+    "GAP_ID_FORMER",
     "HELD_DISAGREEMENT",
     "HELD_MISSING",
     "HOLD_RECEIPT_SCHEMA",
     "ORGANIC_HOLD_CALLERS",
     "SCHEMA",
+    "SUMMARY_SCHEMA",
     "StanceGateVerdict",
     "check_investment_send",
     "cio_side",
