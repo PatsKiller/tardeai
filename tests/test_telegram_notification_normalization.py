@@ -12,6 +12,7 @@ from evaluate_telegram_notification_normalization import evaluate
 from notification_url_builder import build_alert_url, sanitize_operator_message
 from operator_alert_policy_v2 import (
     APPROVALS_ONLY,
+    CRITICAL_IMMEDIATE_TYPES,
     CRITICAL_OPERATIONS,
     AlertEvent,
     alert_fingerprint,
@@ -88,6 +89,47 @@ def test_orphaned_stops_batch_to_one_incident():
         assert decision.logical_destination == CRITICAL_OPERATIONS
         incidents.add(publish_event(ev)["incident_id"])
     assert len(incidents) == 1
+
+
+def test_a_lane_state_token_is_not_a_capital_protection_alert():
+    """`ORPHANED` as a lane state token must not reach the protection channel.
+
+    `research_lane_health` emits the lane state token `lane-registry: ORPHANED,SILENT`.
+    Until 2026-09-21 the bare-substring regex classified that research-lane health report
+    as `orphaned_stop` — critical, operator_action_required, PROTECTION_REPAIR. Measured
+    the same day: it was the ONLY occurrence `orphaned_stop` had ever recorded, so the
+    capital-protection channel's entire history was this one false positive.
+    """
+    lane = (
+        "⚠️ *Research lane RAW-store health*\n"
+        "Reads RAW stores (research rows including `[ERROR]…`). Silence is not health.\n"
+        "Watched:\n  • deepseek (watched): ok=False streak=0 ok_24h=0 attempts_24h=0\n"
+        "Firing:\n  • lane-registry: ORPHANED,SILENT  streak=None  (state held 50h)"
+    )
+    ev = classify_legacy_message(lane)
+    assert ev.alert_type not in CRITICAL_IMMEDIATE_TYPES
+    assert ev.alert_type == "job_telemetry"
+    assert ev.operator_action_required is False
+    assert ev.operator_action_type != "PROTECTION_REPAIR"
+
+
+def test_genuine_protection_alerts_still_classify():
+    """The guard must not become a false negative on the channel that cannot miss.
+
+    The genuine producer shape separates the tokens ("STOP HEALTH — ORPHANED: ANET"), so
+    the guard tests for stop/position anywhere in the text, never adjacency.
+    """
+    for msg, expected in [
+        ("\U0001f6a8 STOP HEALTH — ORPHANED: ANET (fidelityrolloverira)", "orphaned_stop"),
+        ("⚠️ Orphaned stop detected on AAPL — no matching position", "orphaned_stop"),
+        ("\U0001f6a8 Position unprotected: MSFT has no stop", "position_unprotected"),
+        ("naked position detected on TSLA", "position_unprotected"),
+    ]:
+        ev = classify_legacy_message(msg)
+        assert ev.alert_type == expected, msg
+        assert ev.alert_type in CRITICAL_IMMEDIATE_TYPES, msg
+        assert ev.severity == "critical", msg
+        assert ev.operator_action_required is True, msg
 
 
 def test_url_redaction_and_alert_deeplink():
