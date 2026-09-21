@@ -169,19 +169,44 @@ def operator_send(text: str) -> dict:
         return {"operator": False, "operator_error": f"{type(exc).__name__}: {str(exc)[:120]}"}
 
 
-def alert_worthy(actionable: list[dict], prior: dict, done: set) -> list[dict]:
+def starred_symbols(cur) -> set[str]:
+    """Symbols the operator starred on the watchlist. Same idiom as
+    watch_decision_scheduler.py:67 rather than a ninth bespoke variant.
+
+    Fails CLOSED to the empty set: if the store cannot be read we page on
+    BUY_READY only, which is quieter, never noisier.
+    """
+    try:
+        cur.execute("SELECT upper(symbol) FROM operator_starred_symbols")
+        return {row[0] for row in cur.fetchall() if row and row[0]}
+    except Exception:
+        return set()
+
+
+def alert_worthy(actionable: list[dict], prior: dict, done: set,
+                 starred: set[str] | None = None) -> list[dict]:
     """Page only on a move TOWARD a buy, once per symbol, state and day.
 
     On 2026-09-15 at 12:40, RTX and BZFD fell from BUY_READY back to ENTRY_NEAR, a price step out of
     the zone, and the operator got a second "getting close" for names already paged BUY READY at
     12:30. A downgrade is not news, and ENTRY_NEAR after a same-day BUY_READY alert is not either.
+
+    Operator decision 2026-09-21: "Only alert when time to purchase unless starred on watchlist."
+    ENTRY_NEAR is not a time to purchase -- it is a heads-up -- so it pages ONLY for a starred
+    symbol. On 2026-09-21 at 15:10 the operator was paged "getting close" for GNL (+1.1%) and LOMA
+    (+2.9%), neither starred and neither actionable. BUY_READY is unaffected and always pages.
+    The suppression is of PAGING only: the cio_decisions row is still written for every state
+    change, so the CIO keeps tracking names it no longer wakes the operator for.
     """
+    starred = starred or set()
     out = []
     for r in actionable:
         if ces.transition_key(r) in done:
             continue
         if r["state"] == "ENTRY_NEAR" and (prior.get(r["symbol"]) == "BUY_READY"
                                            or ces.transition_key({**r, "state": "BUY_READY"}) in done):
+            continue
+        if r["state"] == "ENTRY_NEAR" and str(r.get("symbol") or "").upper() not in starred:
             continue
         out.append(r)
     return out
@@ -240,7 +265,8 @@ def main() -> int:
     keys = [ces.transition_key(r) for r in actionable]
     buy_keys = [ces.transition_key({**r, "state": "BUY_READY"}) for r in actionable if r["state"] == "ENTRY_NEAR"]
     done = alerted_today(cur, keys + buy_keys) if (a.apply and keys) else set()
-    pending = alert_worthy(actionable, prior, done)
+    starred = starred_symbols(cur)
+    pending = alert_worthy(actionable, prior, done, starred)
     to_alert = pending[: max(0, a.max_alerts)]
     digest = pending[max(0, a.max_alerts):]
     sent = []
