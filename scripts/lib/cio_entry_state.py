@@ -122,12 +122,38 @@ def _cap_text(ev: dict) -> str:
     return pill(ev.get("market_cap_label") or {})
 
 
+def _identity_text(ev: dict) -> str:
+    """Company name and sector/industry, when known. Empty string when not.
+
+    description_1s already reads 'Esco Technologies Inc — Scientific & Technical
+    Instruments', so the industry is dropped when it would merely repeat that tail.
+    """
+    company = (ev.get("company") or "").strip()
+    sector = (ev.get("sector") or "").strip()
+    industry = (ev.get("industry") or "").strip()
+    if not (company or sector or industry):
+        return ""
+    if company:
+        head = company.rstrip(".")
+        if sector and sector.lower() not in head.lower():
+            head = f"{head} · {sector}"
+        return head
+    return " · ".join(p for p in (sector, industry) if p)
+
+
 def render_operator(result: dict, ev: dict) -> str:
     """Plain operator text. Header is the routing sentinel ('CIO entry —'); no WAIT/AVOID wording."""
     head = "🟢 CIO entry — BUY READY" if result["state"] == "BUY_READY" else "🟡 CIO entry — getting close"
     where = ("price is inside the entry zone" if result["state"] == "BUY_READY"
              else f"price is {result['distance_pct']:+.1f}% from the top of the entry zone")
     lines = [f"{head}: {result['symbol']}"]
+    # Identity before mechanics. Until 2026-09-21 this alert named a bare ticker and a
+    # market-cap pill: the operator was asked to decide on "ESE" without being told it
+    # is Esco Technologies, a Technology / Scientific & Technical Instruments name.
+    # Every field came from symbol_profiles, which the runner never queried.
+    ident = _identity_text(ev)
+    if ident:
+        lines.append(ident)
     cap = _cap_text(ev)
     if cap:
         lines.append(cap)

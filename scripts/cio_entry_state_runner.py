@@ -99,6 +99,14 @@ def gather(cur) -> dict[str, dict]:
                     WHERE upper(symbol) = ANY(%s) AND action_class <> 'entry'
                     ORDER BY upper(symbol), created_at DESC""", (syms,))
     cio = {row[0]: row[1] for row in cur.fetchall()}
+    # Identity. The alert used to name a bare ticker and a market-cap pill, so the
+    # operator was asked to act on "ESE" with no idea it is Esco Technologies, a
+    # Technology / Scientific & Technical Instruments name. symbol_profiles already
+    # carries all three and was simply never read here.
+    cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol), description_1s, sector, industry
+                     FROM symbol_profiles WHERE upper(symbol) = ANY(%s)
+                    ORDER BY upper(symbol), updated_at DESC NULLS LAST""", (syms,))
+    profiles = {row[0]: row[1:] for row in cur.fetchall()}
     cur.execute("""SELECT upper(symbol), packet FROM decision_packets
                     WHERE superseded_by IS NULL AND upper(symbol) = ANY(%s)""", (syms,))
     packets = {row[0]: row[1] or {} for row in cur.fetchall()}
@@ -126,6 +134,12 @@ def gather(cur) -> dict[str, dict]:
             e["catalyst"] = cards[sym][5]
         e["cio_action"] = cio.get(sym)
         e["held"] = bool(e.get("held")) or sym in held
+        if sym in profiles:
+            # Conditional on purpose: symbol_profiles covers ~3,136 symbols, fewer than
+            # the tracked set, and a blank identity line under a BUY READY call is worse
+            # than no line at all.
+            desc, sector, industry = profiles[sym]
+            e["company"], e["sector"], e["industry"] = desc, sector, industry
         pk = packets.get(sym)
         if pk is not None and pq is not None:
             e["quality_state"] = pq.packet_gate(pk).get("quality")
