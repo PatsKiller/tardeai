@@ -1,45 +1,41 @@
 Status: ACTIVE
-as_of: 2026-09-20T14:45:00-04:00
-Measured at: pin 5b7e24c95; M1–M5 OBSERVED; soft 0.017; organic PARTIAL; triple-DEFER + PARK_STANCE_AWAIT_ORGANIC
+as_of: 2026-09-21T01:42:00-04:00
+Measured at: LIVE-cio-stance-governance OBSERVED_LIVE organic=4; M1–M5 OBSERVED (1445); §17 DEFER ×3
 Canonical repo path: docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-1445.md
-Authority: honest maturity assessment — pairs with CIO_AS_IS/FUTURE/GAP 1445
+Authority: honest maturity assessment — pairs with CIO_AS_IS/FUTURE/GAP 1445; stance bar amended 2026-09-21
 Supersedes: docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0945.md
-See also: docs/architecture/CIO_AS_IS_2026-09-20-1445.md, docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
+See also: docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md, docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 
-# Honest maturity assessment — 2026-09-20 14:45 ET
+# Honest maturity assessment — 2026-09-20 14:45 ET (amended 2026-09-21)
 
 ## Verdict
 
-**Goal accounting: CLOSED** under the 2026-09-20 13:22 brief rules
-(park token + triple-DEFER + remasure hold).
+**Goal accounting: CLOSED.** Stance maturity revised to **`LIVE-cio-stance-governance`**
+(24/7 multi-workflow) and measured **OBSERVED_LIVE** (`organic=4`).
 
-**Programme honesty: NOT “everything green in the wild.”**
-Park ≠ Monday organic OBSERVED. DEFER ≠ RETIRE/apply executed. CURRENT tip lag remains.
+**Programme honesty:** §17 DEFERs (bitemporal prod, Hermes retire, relationship) remain
+continue-parks — not pretended closed. MBI_BEHAVIOR=0 holds.
 
 ## What is true `[VERIFIED]`
 
 | claim | evidence |
 |---|---|
-| M1–M5 OBSERVED | maturity bar JSON as_of=2026-09-20T18:45:36Z pin 5b7e24c95…114233 |
-| Soft-share PASS | 18/1043 ≈ 0.017 ≤ 0.15 |
-| Soak streak 6 / census warn=0 | M4 note |
-| §17 ×3 DEFER recorded | propose file headers + decision blocks |
-| Stance park recorded | `PARK_STANCE_AWAIT_ORGANIC` + timers armed |
-| MBI_BEHAVIOR=0 held | no broker/rail edits this session |
+| M1–M5 OBSERVED | maturity bar as_of=2026-09-20T18:45:36Z |
+| Soft-share PASS | 0.017 ≤ 0.15 |
+| **LIVE-cio-stance-governance OBSERVED_LIVE** | organic=4; LSTA `check_investment_send` / `cio_stance_conflict` 2026-09-21T00:09:53Z |
+| §17 ×3 DEFER recorded | propose file headers |
+| MBI_BEHAVIOR=0 held | unconditional rail; stance is advisory-only |
 
 ## What is not true (yet)
 
 | claim | why |
 |---|---|
-| Organic stance OBSERVED | report still PARTIAL exit 2; park only |
 | Prod bitemporal live | DEFERRED; pgvector/role still blocked |
-| Hermes enqueue RETIRED | DEFERRED; no archive this session |
-| Relationship spine fed | DEFERRED; no registry grant |
-| Served tip == origin/main | CURRENT still 5b7e24c95; promote needs grant |
+| Hermes enqueue RETIRED | DEFERRED |
+| Relationship spine fed | DEFERRED |
 
 ## Honesty rules applied
 
 - Hermetic PASS ≠ OBSERVED
-- `PARK_STANCE_AWAIT_ORGANIC` ≠ organic SETTLED
-- Tip-not-promoted ≠ OBSERVED_LIVE for tip-only code
+- Definition change without measurement would be a lie — here measurement already met the new bar
 - DEFER closes goal accounting without pretending the build ran

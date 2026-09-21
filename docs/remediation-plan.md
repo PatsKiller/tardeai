@@ -51,9 +51,26 @@ Soak exceeds requirement (`need=3`, observed streak **4**), last match
 `4bafd6f83-main-exact-phase2-20260919-153247`.
 Ledger row `PARTIAL-bridge-pin-soak` is **CLOSED**.
 
-**Residual:** `PARTIAL-telegram-CIO-stance` stays PARTIAL until a *live* hold receipt is
-observed from CURRENT. Code is merged; the proof bar is an observed interdiction, not a
-passing test.
+### `LIVE-cio-stance-governance` (supersedes `PARTIAL-telegram-CIO-stance`)
+
+**Adopted 2026-09-20/21.** Stance enforcement is **24/7**, **asset-agnostic**, and
+**multi-workflow** — not a weekday equity-alert-only bar.
+
+`OBSERVED_LIVE` when **any** organic, unprompted investment-related workflow — any asset
+class (equities, ETFs, commodities, crypto, macro theses), any workflow (intraday scalp,
+swing, watchlist promotion, portfolio rebalance proposal, risk alert, weekend executive
+briefing), any day Mon–Sun — hits an active CIO constraint (AVOID/HOLD) and executes
+hold/suppression/modification with
+`source=check_investment_send` and `held_reason=cio_stance_conflict` on a served release,
+without human intervention.
+
+Applies across outbound advisory channels (Telegram investment sends, weekend intel,
+watchlist promotions, portfolio proposals). **`MBI_BEHAVIOR=0` / non-authoritative memory
+unchanged** — stance gates advisory emission only; never sizes, orders, or broker writes.
+
+`[VERIFIED]` 2026-09-21T01:42:03Z — `report_organic_stance_hold.py` **OBSERVED**
+`organic=4` (latest `LSTA` / `screener_go_alerts` / `cio_stance_conflict` at
+2026-09-21T00:09:53Z). Ledger id **`LIVE-cio-stance-governance` → CLOSED / OBSERVED_LIVE**.
 
 ## Stage 3 — bitemporal substrate (the open item)
 
@@ -175,7 +192,7 @@ exist under that name.
 | item | owner | bar |
 |---|---|---|
 | Production bitemporal cutover | operator | pgvector installed + `m2_agent` role created |
-| `PARTIAL-telegram-CIO-stance` | schedule | live hold receipt observed from CURRENT |
+| `LIVE-cio-stance-governance` (was `PARTIAL-telegram-CIO-stance`) | — | **CLOSED** 2026-09-21 — organic=4 OBSERVED_LIVE under 24/7 definition |
 | SLO ratification | operator | `slo_status: PROPOSED` → ratified floors |
 | `risk_agent` stale residual (157) | time | ages out of the 7-day window |
 
