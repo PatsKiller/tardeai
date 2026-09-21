@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `1dc598a855b0b085dc75100f7c77a9fb34aef13d7ab80104e264dd12b543ccf7`
+**Tree fingerprint:** `fbed522c1e0838f58ae159d83f8f59a0fd226f6becacdb6e2b24831881389418`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,9 +12,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2596 |
-| Markdown (excl. this INDEX) | 2170 |
-| **MISSING HEADER** | **68** |
+| Files under `docs/` (excl. this INDEX) | 2598 |
+| Markdown (excl. this INDEX) | 2172 |
+| **MISSING HEADER** | **70** |
 | Header OK | 2102 |
 | Duplicate groups | 2 |
 
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2225 |
+| review_required | 2227 |
 
 ## Markdown tree
 
@@ -343,6 +343,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0902.md` | Honest maturity assessment — 2026-09-20 09:02 ET | review_required | OK | `9400539bf093` |
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0945.md` | Honest maturity assessment — 2026-09-20 09:45 ET | review_required | OK | `04de608df23b` |
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-1445.md` | Honest maturity assessment — 2026-09-20 14:45 ET (amended 2026-09-21) | review_required | OK | `24cd6d6edd4b` |
+| `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-21-1905.md` | Where this actually stands — 2026-09-21, 19:05 ET | review_required | MISSING HEADER | `0d6be8ffe087` |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
 | `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-1600.md` | LLM Cost Governance AS-IS — 2026-09-20 16:00 ET | review_required | OK | `c33d84747e79` |
 | `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-2100.md` | LLM Cost Governance AS-IS — 2026-09-20 21:00 ET | review_required | OK | `ae7ab963993b` |
@@ -647,6 +648,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audit/current-state.md` | Communications Gateway — Current State | review_required | MISSING HEADER | `5bf7544d0919` |
 | `docs/audit/gap-analysis.md` | Communications Gateway — Gap Analysis | review_required | MISSING HEADER | `af219b786e39` |
 | `docs/audit/live-attest-2026-09-05.md` | Communications Gateway — Live Attestation (re-attest, post #862/#864/#868, then #871/#872/#873) | review_required | OK | `e68820396f59` |
+| `docs/audit/message-identity-audit-2026-09-21.md` | Message audit — 60 days, channels and identity | review_required | MISSING HEADER | `717b6a512bef` |
 | `docs/audit/phase0-signoff.md` | Phase 0 Sign-off | review_required | OK | `02114eff814d` |
 | `docs/audit/phase9-sender-migration.md` | Phase 9 — High-risk Telegram sender migration | review_required | OK | `3872cbce012e` |
 | `docs/audit/runtime-attestation.md` | Communications Gateway — Runtime Attestation | review_required | MISSING HEADER | `68b98afb64a9` |
