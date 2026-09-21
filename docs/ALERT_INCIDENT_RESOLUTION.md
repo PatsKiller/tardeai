@@ -103,5 +103,10 @@ SELECT alert_type, COUNT(*) FROM alert_incidents WHERE status='open' GROUP BY 1 
   recovery, and some may be genuinely still-broken. Closing them is an operator decision.
 - **`acknowledged_at` is still 0 across every row.** Acknowledgement exists in the API and UI
   but is manual and has been used four times, by hand, in June.
-- **Eleven other producers** still send without a resolution signal; each needs the same
-  one-line wiring as the health check.
+- **Six other producers** already use `alert_transition`, so they have `t.recovered` for
+  free and need the same one line as the health check: `check_expected_services`,
+  `check_operator_answer_quality`, `check_served_copy_split`, `data_plausibility_monitor`,
+  `paper_performance_governance`, `research_lane_health`.
+- Every **other** `send_telegram` caller (198 files call it) has no recovery signal at all.
+  Those need a condition state machine first, not a parameter — wiring `resolving` there
+  without one would just pass a constant `False`.
