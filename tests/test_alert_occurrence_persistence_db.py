@@ -167,6 +167,44 @@ class TestOccurrencePersistence:
         occ, notified, inc = _counts(conn)
         assert inc == 2, "a resolved condition must be able to recur as a NEW incident"
 
+    def test_resolution_then_recurrence_reopens_the_same_incident(self, conn):
+        """The case the test above cannot reach: the SAME incident_id after closure.
+
+        `test_resolution_then_recurrence_opens_a_new_incident` passes incident="inc2",
+        so no primary key is ever reused and the collision cannot occur. Production does
+        the opposite: `incident_id_for()` is deterministic, so a recurring condition
+        computes the id its own row already holds. Before 2026-09-21 `load_prior_state`
+        selected WHERE status='open', never found the closed row, and the INSERT died on
+        alert_incidents_pkey -- 9,223 occurrences across 64 log files were delivered to
+        the operator and never recorded ("shadow persist skipped").
+
+        RED without the primary-key fallback: this raises UniqueViolation.
+        """
+        publish(conn, ev(), at=T0, dedupe="FPSAME", incident="inc_same")
+        r = publish(conn, ev(), at=T0 + timedelta(minutes=30), alert_id="al_res2",
+                    dedupe="FPSAME", incident="inc_same", resolving=True)
+        assert r["decision"]["is_resolution"] is True
+        with conn.cursor() as cur:
+            cur.execute("SELECT status FROM alert_incidents WHERE incident_id='inc_same'")
+            assert cur.fetchone()[0] == "resolved"
+
+        again = publish(conn, ev(), at=T0 + timedelta(hours=2), alert_id="al_recur2",
+                        dedupe="FPSAME", incident="inc_same")
+        assert again["suppressed"] is False
+        assert again["decision"]["reason"] == "recurred_after_resolution", \
+            "the reopen must take the designed path, not merely avoid the exception"
+
+        with conn.cursor() as cur:
+            cur.execute("""SELECT status, resolved_at IS NULL, occurrence_count
+                             FROM alert_incidents WHERE incident_id='inc_same'""")
+            status, cleared, occ = cur.fetchone()
+            cur.execute("""SELECT count(*), max(occurrence_seq) FROM alert_occurrences
+                            WHERE incident_id='inc_same'""")
+            rows, seq = cur.fetchone()
+        assert status == "open" and cleared, "a recurrence must reopen the incident"
+        assert (occ, rows, seq) == (3, 3, 3), \
+            "the recurrence must be RECORDED and continue the sequence, not be dropped"
+
     def test_escalation_deadline_reraises(self, conn):
         publish(conn, ev(), at=T0)
         r = publish(conn, ev(), at=T0 + timedelta(minutes=40), alert_id="al_esc",
