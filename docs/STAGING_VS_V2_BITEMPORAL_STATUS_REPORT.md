@@ -149,6 +149,14 @@ Companion base-table form used `fact_current_idx` with `Buffers: shared hit=2`. 
 
 ---
 
+## Drive memorialization `[VERIFIED]`
+
+| file | drive_id | url |
+|---|---|---|
+| `STAGING_VS_V2_BITEMPORAL_STATUS_REPORT.md` | `15Ux3YRkkTyVqAPYvQs-gJ4P301Ap2E0m` | https://drive.google.com/file/d/15Ux3YRkkTyVqAPYvQs-gJ4P301Ap2E0m/view |
+
+Parent: `Trade_AI_Docs_v2/docs` (`1BMxbxU9c9rF3NBvXVQtVEewdvkifVkwP`). Hash-verified via `gog_drive_safe.py execute`.
+
 ## One-sentence version
 
 Isolated staging on `:55432` matches the v2 bitemporal substrate (with architect renames) and is **221/221 green**; production cutover stays **DEFERRED**, flat JSONL memory still runs live, and v2 packaging must be re-applied after destructive `r10` resets.
