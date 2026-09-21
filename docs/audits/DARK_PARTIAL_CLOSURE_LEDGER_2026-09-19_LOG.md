@@ -616,3 +616,14 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Remasure: M1–M5 all OBSERVED exit 0 pin `251d329a2…174516`; soft_unsupported_share=**0.024** (26/1066) PASS ≤0.15.
 - Ledger row `PARTIAL-telegram-CIO-stance` → **CLOSED**. Park doc superseded.
 - Honesty: hand-invoked off-schedule against Fri session (cron is Mon–Fri); not invent; not controlled_canary. Script has no weekday gate — only cron does.
+
+## 2026-09-20T20:11 ET — adversarial VERIFY: NOT COMPLETE (reopen stance)
+
+Verifier `bc-8a26efeb` overturned the 20:10 CLOSE before parent UpdateGoal.
+
+- Hold rows **real** (not invented): AEMD/LSTA ×2 `source=check_investment_send` `caller=screener_go_alerts` ∈ ORGANIC_HOLD_CALLERS; summarize organic=4 non_organic=2 observed=true exit_would_be=0.
+- Defect: `data/runtime/screener_go_alerts_last_run.json` quotes `"session": "2026-09-18", "mode": "send", "ran_at": "2026-09-21T00:09:53…"` — Sunday hand replay of Fri GO session. Lane cron `[CODE]` `*/15 9-16 * * 1-5 screener_go_alerts.py --send` (no `--session`).
+- AGENTS.md §8: *"A proof staged by hand does not satisfy a claim that something happens on schedule."* Same honesty used for PARTIAL-quality-escalate (hand precursor ≠ unattended close).
+- Remasure: M1–M5 all OBSERVED exit 0 pin `251d329a2…174516`; soft_unsupported_share=0.024 (26/1066) PASS; §17 bitemporal+relationship still CONTINUE-PARK (DEFER); hermes CLOSED.
+- Ledger: `PARTIAL-telegram-CIO-stance` → **PARKED_AWAIT_ORGANIC** (REOPENED). Park doc ACTIVE again. Goal **NOT COMPLETE**.
+- No UpdateGoal. No merge. Hold JSONL rows retained (honest receipts of the hand run).

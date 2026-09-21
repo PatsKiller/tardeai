@@ -1,29 +1,39 @@
 # Stance organic park — PARK_STANCE_AWAIT_ORGANIC
 
 ```
-Status: SUPERSEDED BY CLOSED / OBSERVED
-as_of: 2026-09-20T20:10:00-04:00
-Measured at: report_organic_stance_hold.py organic=4 non_organic=2 exit=0; PARTIAL-telegram-CIO-stance CLOSED
+Status: ACTIVE · REOPENED 2026-09-20T20:11 ET (adversarial verify)
+as_of: 2026-09-20T20:11:00-04:00
+Measured at: verify — mechanical organic=4 exit_would_be=0 BUT producer was hand `--session 2026-09-18` replay (NOT unattended); maturity bar NOT organic OBSERVED
 Canonical repo path: docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md
-Authority: operator "do monday organic now" + organic hold receipts
-Token: PARK_STANCE_AWAIT_ORGANIC (historical; park closed by OBSERVED)
-Supersedes: ACTIVE park text as of 2026-09-20T14:45 ET
+Authority: AGENTS.md §8 hand-staged ≠ on-schedule; operator park token PARK_STANCE_AWAIT_ORGANIC
+Token: PARK_STANCE_AWAIT_ORGANIC
+Supersedes: wrongful CLOSED claim in commit 64975b72a (reverted by verify)
 ```
 
-## Decision (historical)
+## Decision
 
-Operator recorded **`PARK_STANCE_AWAIT_ORGANIC`** on 2026-09-20 while awaiting a Mon–Fri natural hold.
+Operator recorded **`PARK_STANCE_AWAIT_ORGANIC`** on 2026-09-20.
 
-## Close proof `[VERIFIED]` 2026-09-21T00:09:53Z
+This closes **goal gate (1)** from the 2026-09-20 13:22 ET operator close brief
+(organic exit 0 **or** explicit stance park token). It does **not** invent an organic hold
+and does **not** claim Monday OBSERVED.
 
-| surface | value |
+**2026-09-20T20:11 ET verify:** Sunday hand `screener_go_alerts --send --session 2026-09-18`
+stamped real `source=check_investment_send` rows. That satisfies the *mechanical* reporter
+(source+caller only) but **not** maturity/organic OBSERVED — AGENTS.md §8: a proof staged
+by hand does not satisfy a claim that something happens on schedule. Cron expression remains
+`*/15 9-16 * * 1-5` (Mon–Fri). Awaiting natural Mon–Fri unattended hold.
+
+## Still true in the wild
+
+| surface | value `[VERIFIED]` 2026-09-20T18:45Z |
 |---|---|
-| Organic report | **OBSERVED** · organic=**4** · non_organic=2 · exit **0** |
+| Organic report | PARTIAL · organic=0 · non_organic=2 · exit 2 |
 | Holds path | `~/.local/state/tradeai/cio_telegram_stance_holds.jsonl` |
-| Organic rows | AEMD + LSTA · `source=check_investment_send` · `caller=screener_go_alerts` |
-| Live send | `screener_go_alerts.py --send --session 2026-09-18` → `sent=[]` · `cio_held` both |
-| Observe service | ExecMainStatus=**0** after producer run |
+| Observe-early timer | Mon 2026-09-21 **06:35** ET → `tradeai-stance-organic-observe.service` |
+| Observe timer | Mon 2026-09-21 **09:05** ET → same service |
 
-Ledger row **PARTIAL-telegram-CIO-stance → CLOSED**. See `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` (2026-09-20T20:10 ET).
+## What closes the park to OBSERVED
 
-Honesty: hand off-schedule against Fri GO session (Sunday night; cron is Mon–Fri). Not canary. Not invented rows.
+A natural Mon–Fri producer hold with `source=check_investment_send` (GO / scalp / proposal),
+then `python3 scripts/report_organic_stance_hold.py` exit **0**. No canary invent.
