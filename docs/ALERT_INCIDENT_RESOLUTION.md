@@ -145,9 +145,23 @@ recurrence and proves nothing. `expires_at` is also not a closure signal — it 
 *delivery* TTL fixed at incident creation, so a `scanner_candidate` can sit 95.8h past
 expiry and still have fired 3.8h ago.
 
-**Closure is self-correcting.** `alert_occurrence_store.py:187` sets
-`resolved_at = CASE WHEN %s THEN %s ELSE NULL END`, so the next non-resolving occurrence
-reopens the incident and `alert_dedupe.py:124` fires `NOTIFY_RECURRED_AFTER_RESOLUTION`.
+**Closure is self-correcting — but only since 2026-09-21, and the earlier claim here was
+wrong.** This document previously stated that the UPDATE at the end of `record_occurrence`
+(`resolved_at = CASE WHEN %s THEN %s ELSE NULL END`) meant the next non-resolving
+occurrence reopened the incident and `alert_dedupe` fired `NOTIFY_RECURRED_AFTER_RESOLUTION`.
+Both halves of that were real, and both were unreachable: `load_prior_state` selected
+`WHERE status = 'open'`, so a resolved or expired incident was never loaded, the code took
+its "new incident" branch, and the INSERT collided with the still-existing row on
+`alert_incidents_pkey`. The occurrence was delivered to the operator and **dropped** —
+9,223 times across 64 log files, logged only as "shadow persist skipped".
+
+Reproduced against an isolated Postgres: unpatched, the recurrence raises
+`UniqueViolation … alert_incidents_pkey` and the incident stays at `occurrence_count=1`
+with one row; patched, it records `decision_reason='recurred_after_resolution'`, returns
+the incident to `status='open'` with `resolved_at` cleared, and continues the occurrence
+sequence (`occurrence_count=2`, `max(occurrence_seq)=2`).
+
+**Do not treat closure as reversible on any deployment predating that fix.**
 
 Closed 2026-09-21, each against named evidence:
 
@@ -155,7 +169,11 @@ Closed 2026-09-21, each against named evidence:
 |---|---|---|---|
 | `a71e498cc5b2106a399d` | `platform_availability` | resolved | `check_expected_services --json` reports `off=0`; the four timers named in the alert no longer exist |
 | `1b23f2df678db8d1719d` | `stop_warning` | resolved | LYB absent from `schwab_positions_live` (48 rows) and from `stop_lifecycle` |
-| `4e25f628fd9c854dbb30` | `scanner_candidate` | expired | quiet 101.3h against its declared TTL of 4h |
+| ~~`4e25f628fd9c854dbb30`~~ | `scanner_candidate` | **RETRACTED — reopened** | quiet 101.3h against a 4h TTL, but this incident appears **57 times** in `alert_incidents_pkey` collision logs; dropped occurrences never advance `last_seen_at`, so "quiet" measured lost writes, not a dormant condition |
+
+The retraction is the point: `occurrence_count` and `last_seen_at` are a **floor**, not a
+census, on any incident that ever collided. Staleness-based closure is only safe once an
+incident is known to be collision-free — check the logs for its `incident_id` first.
 
 Left open deliberately: `data_integrity` (**still VIOLATION** — `analyst_data_history.payload`,
 12,636 of 12,636 rows empty, severity BLOCK), two `siem_without_trading_impact` whose
