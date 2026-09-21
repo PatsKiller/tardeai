@@ -72,6 +72,13 @@ def apply_schema(conn) -> None:
             cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(sql)
         _grant_connect_current_db(cur)
+    # r10 rebuild strips v2 packaging (PR #1158). Re-heal aliases/views/trigger.
+    if not conn_targets_production(conn):
+        from scripts.lib.bitemporal_schema_heal import (  # noqa: PLC0415
+            ensure_bitemporal_packaging_v2,
+        )
+
+        ensure_bitemporal_packaging_v2(conn)
 
 
 def set_tenant(conn, tenant_id: str) -> None:
