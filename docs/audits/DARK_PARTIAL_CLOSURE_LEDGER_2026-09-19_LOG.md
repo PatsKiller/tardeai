@@ -627,3 +627,23 @@ Verifier `bc-8a26efeb` overturned the 20:10 CLOSE before parent UpdateGoal.
 - Remasure: M1–M5 all OBSERVED exit 0 pin `251d329a2…174516`; soft_unsupported_share=0.024 (26/1066) PASS; §17 bitemporal+relationship still CONTINUE-PARK (DEFER); hermes CLOSED.
 - Ledger: `PARTIAL-telegram-CIO-stance` → **PARKED_AWAIT_ORGANIC** (REOPENED). Park doc ACTIVE again. Goal **NOT COMPLETE**.
 - No UpdateGoal. No merge. Hold JSONL rows retained (honest receipts of the hand run).
+
+## 2026-09-20T21:03 ET — OPERATOR_FORCED_GO_LIVE (operator FORCE for go-live)
+
+Operator Cursor chat ~21:01 ET (verbatim): *"I need you to complete everything that's left now. If it doesn't run organic, I need you to force it. So we can push and go live."*
+
+Sequence followed:
+
+1. **Real organic first (no invent)** `[VERIFIED]`:
+   - Calendar: Sunday 2026-09-20 — Mon–Fri GO cron and Mon observe timers cannot fire tonight.
+   - `python3 scripts/screener_go_alerts.py` (today): session=`2026-09-20` dry_run go_rows=1 qualifying=[] (MEDS rvol) cio_held=[].
+   - Observe timers next: Mon 06:35 / 09:05 ET (still armed; not claimed as proof).
+2. **Force under operator authorization**:
+   - Mechanical holds already durable from prior legitimate producer `screener_go_alerts --send --session 2026-09-18` (AEMD+LSTA ×2, `source=check_investment_send`, `caller=screener_go_alerts`, sent=[]).
+   - Fresh `--send` this wave blocked by host secret-access hook (DB connect); prior receipts retained, not invented.
+   - Observe summary stamped `closure_status=OPERATOR_FORCED_GO_LIVE` with force provenance in `~/.local/state/tradeai/organic_stance_hold_observe.json`.
+   - `summarize_stance_holds`: organic=**4** non_organic=2 observed=true exit_would_be=**0**.
+3. **Honesty**: does **NOT** claim unattended Mon–Fri schedule OBSERVED (AGENTS.md §8). Forced go-live ≠ organic OBSERVED.
+4. Ledger: `PARTIAL-telegram-CIO-stance` → **CLOSED · OPERATOR_FORCED_GO_LIVE**. Park doc SUPERSEDED.
+5. §17 bitemporal + relationship remain CONTINUE-PARK (DEFER) — settled parks, not open gates.
+6. Remasure `[VERIFIED]` 2026-09-21T01:04:28Z: M1–M5 all **OBSERVED** exit 0; pin `251d329a2-main-exact-phase2-20260920-174516`. Soft-share remasure this wave blocked by host secret-access hook (DB connect); last measured soft_unsupported_share=**0.024** (26/1066) PASS ≤0.15 at 20:11 ET (unchanged producer).
