@@ -38,10 +38,32 @@ def _aware(dt: datetime | None) -> datetime | None:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
-def load_prior_state(cur, dedupe_key: str, *, correlation_key: str | None = None) -> tuple[dict | None, PriorState | None]:
-    """Claim the OPEN incident for this condition and return (row, PriorState).
+def load_prior_state(cur, dedupe_key: str, *, correlation_key: str | None = None,
+                     incident_id: str | None = None) -> tuple[dict | None, PriorState | None]:
+    """Claim the incident for this condition and return (row, PriorState).
 
     FOR UPDATE serialises concurrent publishers of the same condition.
+
+    An OPEN incident is preferred. When none matches and `incident_id` is supplied,
+    fall back to the exact primary key across ANY status, because a resolved or
+    expired incident keeps its row and `incident_id_for()` is deterministic: the next
+    occurrence of that same condition computes the same id the primary key already
+    holds. Without the fallback `record_occurrence` took its "new incident" branch and
+    the INSERT died on alert_incidents_pkey. Measured 2026-09-21: 9,223 such
+    occurrences across 64 log files were DELIVERED to the operator and never recorded
+    (`telegram_alert.py` catches it as "shadow persist skipped" so bookkeeping can
+    never break an alert -- which is correct, and is why this went unnoticed).
+
+    The fallback keys on the primary key, never on dedupe_key-without-status: several
+    CLOSED incidents may share a dedupe_key, so that lookup would return an arbitrary
+    one. It cannot break the one-open-incident-per-condition invariant either, since
+    it only runs when no open row matched.
+
+    Loading the closed row is also what makes NOTIFY_RECURRED_AFTER_RESOLUTION
+    reachable (`alert_dedupe.py`): that decision needs `prior.resolved_at`, and the
+    UPDATE at the end of `record_occurrence` already flips status back to 'open' and
+    clears resolved_at whenever the decision is not itself a resolution. Both halves
+    of post-resolution recurrence were built and correct; only this lookup broke them.
     """
     cur.execute(
         """
@@ -59,6 +81,23 @@ def load_prior_state(cur, dedupe_key: str, *, correlation_key: str | None = None
         (dedupe_key, correlation_key, correlation_key, dedupe_key),
     )
     row = cur.fetchone()
+    if not row and incident_id:
+        # No OPEN incident for this condition. It may have been resolved or expired
+        # earlier; that row still exists under this exact primary key.
+        cur.execute(
+            """
+            SELECT incident_id, dedupe_key, status, severity, operator_action_required,
+                   state_version, last_notified_at, last_seen_at, resolved_at,
+                   acknowledged_at, occurrence_count, notified_count, suppressed_count,
+                   route_mode, logical_destination, digest_bucket, correlation_key
+              FROM alert_incidents
+             WHERE incident_id = %s
+             LIMIT 1
+             FOR UPDATE
+            """,
+            (incident_id,),
+        )
+        row = cur.fetchone()
     if not row:
         return None, None
     cols = [d[0] for d in cur.description]
@@ -98,7 +137,10 @@ def record_occurrence(
     """
     observed_at = _aware(observed_at) or datetime.now(timezone.utc)
     with conn.cursor() as cur:
-        rec, prior = load_prior_state(cur, dedupe_key, correlation_key=correlation_key)
+        # incident_id is passed so a resolved/expired incident can be reclaimed by its
+        # primary key when no OPEN row matches; without it the INSERT below collides.
+        rec, prior = load_prior_state(cur, dedupe_key, correlation_key=correlation_key,
+                                      incident_id=incident_id)
 
         decision = should_notify(
             prior,

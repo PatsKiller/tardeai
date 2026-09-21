@@ -296,3 +296,59 @@ def test_send_telegram_carries_resolving_to_the_publish_layer(monkeypatch):
     captured.clear()
     ta.send_telegram("data source is down")
     assert captured.get("resolving") is False, "a plain alert must not claim to resolve"
+
+
+def test_load_prior_state_reclaims_a_closed_incident_by_primary_key():
+    """A closed incident must be findable again, or its recurrence is silently lost.
+
+    `load_prior_state` selected WHERE status='open'. A resolved or expired incident was
+    therefore never loaded, `record_occurrence` took its "new incident" branch, and the
+    INSERT collided with the still-existing row on alert_incidents_pkey. Measured
+    2026-09-21: 9,223 such occurrences across 64 log files were DELIVERED to the operator
+    and never recorded -- visible only as "shadow persist skipped", because shadow
+    bookkeeping is deliberately wrapped so it can never break an operator alert.
+
+    The DB suite cannot catch this (it re-publishes under a different incident id) and
+    does not run in CI. This test needs no database: it asserts the primary-key fallback
+    query is issued at all.
+    """
+    from datetime import datetime, timezone
+
+    from alert_occurrence_store import load_prior_state
+
+    COLS = ["incident_id", "dedupe_key", "status", "severity", "operator_action_required",
+            "state_version", "last_notified_at", "last_seen_at", "resolved_at",
+            "acknowledged_at", "occurrence_count", "notified_count", "suppressed_count",
+            "route_mode", "logical_destination", "digest_bucket", "correlation_key"]
+    CLOSED = ("inc_closed", "dk", "resolved", "warning", False, "1", None, None,
+              datetime(2026, 9, 21, 12, 0, tzinfo=timezone.utc), None, 4, 2, 0,
+              "IMMEDIATE", None, None, None)
+
+    class FakeCursor:
+        def __init__(self):
+            self.statements = []
+            self.description = [(c,) for c in COLS]
+            self._row = None
+
+        def execute(self, sql, params=None):
+            flat = " ".join(sql.split())
+            self.statements.append(flat)
+            # open-scoped lookup finds nothing; the primary-key lookup finds the closed row
+            self._row = CLOSED if "WHERE incident_id = %s" in flat else None
+
+        def fetchone(self):
+            return self._row
+
+    cur = FakeCursor()
+    rec, prior = load_prior_state(cur, "dk", incident_id="inc_closed")
+    assert len(cur.statements) == 2, "no primary-key fallback was issued"
+    assert "status = 'open'" in cur.statements[0]
+    assert "WHERE incident_id = %s" in cur.statements[1]
+    assert rec is not None and rec["status"] == "resolved"
+    assert prior is not None and prior.resolved_at is not None, \
+        "resolved_at must survive the load, or recurred_after_resolution can never fire"
+
+    # A caller that supplies no incident_id keeps the original single-query behaviour.
+    bare = FakeCursor()
+    rec2, prior2 = load_prior_state(bare, "dk")
+    assert len(bare.statements) == 1 and rec2 is None and prior2 is None
