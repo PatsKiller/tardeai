@@ -227,7 +227,8 @@ def _legacy_send(
 
 
 def publish_operator_message(message: str, *, bypass_router: bool = False,
-                             source_producer: str = "legacy_send_telegram") -> dict:
+                             source_producer: str = "legacy_send_telegram",
+                             resolving: bool = False) -> dict:
     """Mode-aware publish. Returns the structured PublishResult mapping.
 
     OFF     legacy router + legacy sender; the normalized tables are never touched.
@@ -257,7 +258,8 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
             if can_persist_shadow():
                 from alert_outbox import publish_legacy_message
                 shadow = publish_legacy_message(
-                    message, source_producer=source_producer, bypass_router=bypass_router)
+                    message, source_producer=source_producer,
+                    bypass_router=bypass_router, resolving=resolving)
                 shadow["persisted"] = True
         except Exception as e:
             # Never let shadow bookkeeping affect the operator's alert.
@@ -275,7 +277,7 @@ def publish_operator_message(message: str, *, bypass_router: bool = False,
     require_active_capability()
     from alert_outbox import publish_legacy_message
     return publish_legacy_message(message, source_producer=source_producer,
-                                  bypass_router=bypass_router)
+                                  bypass_router=bypass_router, resolving=resolving)
 
 
 def _comms_gateway_owns(message_class: str) -> bool:
@@ -507,6 +509,7 @@ def send_telegram(
     message_class: str = "operator_alert",
     _gateway_owned: bool = False,
     link_preview_options: dict | None = None,
+    resolving: bool = False,
 ) -> bool:
     """Send/publish an operator alert. Returns True when the event was ACCEPTED.
 
@@ -576,7 +579,13 @@ def send_telegram(
         _best_effort_comms_publish(message, message_class=mc, delivered=bool(ok))
         return ok
     try:
-        result = publish_operator_message(message, bypass_router=bypass_router)
+        # `resolving` says the condition ENDED. Without it every incident in the
+        # normalized plane opens and none ever closes -- 41 open / 0 resolved,
+        # measured 2026-09-21. NOTE: the reply_markup/chat_ids/thread_id branch
+        # above short-circuits to _legacy_send and never reaches here, so a
+        # recovery sent with a keyboard still will not resolve its incident.
+        result = publish_operator_message(message, bypass_router=bypass_router,
+                                          resolving=resolving)
     except Exception as e:
         # ACTIVE with a missing migration lands here. Loud, and NOT silently dropped:
         # fall back to legacy delivery so the operator still gets the alert.

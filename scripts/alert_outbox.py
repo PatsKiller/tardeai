@@ -119,12 +119,30 @@ def _delivery_fingerprint(message: str) -> str:
     return hashlib.sha256(norm.encode("utf-8")).hexdigest()
 
 
-def publish_legacy_message(message: str, *, source_producer: str = "legacy_send_telegram", bypass_router: bool = False) -> dict[str, Any]:
+def publish_legacy_message(message: str, *, source_producer: str = "legacy_send_telegram",
+                           bypass_router: bool = False,
+                           resolving: bool = False) -> dict[str, Any]:
+    """Publish one legacy message as an observation.
+
+    ``resolving`` says this observation reports the condition ENDING, not
+    starting. It must be supplied by the caller: the input here is raw message
+    text and ``classify_legacy_message`` carries no recovery vocabulary, so a
+    recovery send is indistinguishable from an alert send by inspection.
+
+    Measured 2026-09-21: this was the one missing link. ``publish_event`` has
+    accepted ``resolving`` since it was written and threads it to the occurrence
+    store, which sets ``resolved_at``/``status='resolved'`` from the dedupe
+    decision -- and ``alert_dedupe`` only ever sets ``is_resolution`` when its
+    caller says so. But this function, the SOLE production entry point into that
+    plane, called ``publish_event(event)`` bare. So every incident could open and
+    none could ever close: 41 open, 41 distinct dedupe keys, 0 resolved, oldest
+    2026-09-16.
+    """
     event = classify_legacy_message(message, source_producer=source_producer)
     payload = dict(event.payload)
     payload["bypass_router_requested"] = bool(bypass_router)
     event = AlertEvent(**{**event.__dict__, "payload": payload})
-    return publish_event(event)
+    return publish_event(event, resolving=resolving)
 
 
 def occurrence_alert_id(fingerprint: str, observed_at: datetime) -> str:
