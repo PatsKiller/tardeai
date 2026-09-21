@@ -114,23 +114,16 @@ Companion base-table form used `fact_current_idx` with `Buffers: shared hit=2`. 
 
 ---
 
-## Operational finding — v2 packaging vs test reset → **RESOLVED**
+## Operational finding — v2 packaging vs test reset
 
-`[VERIFIED]` 2026-09-20 audit found:
+`[VERIFIED]` Order of operations:
 
-1. Staging could hold **base `r10` tables** while **missing** v2 packaging (`save_bitemporal_fact_version`, `trg_block_fact_manipulation`, `@v*` views).
-2. Destructive `r10` rebuild under `m2.allow_destructive_reset` stripped packaging again.
+1. Before this audit, staging had **base `r10` tables + RLS + exclusion**, but **missing** `save_bitemporal_fact_version`, `block_bitemporal_manipulation`, `trg_block_fact_manipulation`, and `@v*` views.
+2. Applying `sql/trade-ai-bitemporal-schema-v2.sql` restored packaging.
+3. Running the correctness suite (which may rebuild `r10` under `m2.allow_destructive_reset`) **cleared the packaging again**.
+4. Re-applying v2 after tests restored aliases/views/trigger.
 
-**Resolution (this change):**
-
-| mechanism | role |
-|---|---|
-| `scripts/lib/bitemporal_schema_heal.py` | Idempotent `ensure_bitemporal_packaging_v2(conn)` — applies **only** `trade-ai-bitemporal-schema-v2.sql` when unhealthy |
-| `scripts/init_bitemporal_db.sh` | Boot/CI hook; **isolated `:55432` only**; refuses `:5432` |
-| `memory_m2_benchmark.apply_schema` / `memory_m2_v2.apply_schema` | Call ensure after every r10 apply |
-| Correctness tests | Assert heal after opt-in r10 rebuild; idempotent skip; heal after view/fn drop |
-
-**Not wired:** `ExecStartPre` on `portfolio-server` / `cio-governed-bridge` — those services target production; prod bitemporal remains §17 DEFERRED. Shadow Docker may invoke `init_bitemporal_db.sh` with `M2_DSN=…:55432/…` only.
+**Gap:** harness / CI should apply **`r10` then `trade-ai-bitemporal-schema-v2.sql`** on every isolated bootstrap, or packaging drifts silently while tables still look “present.”
 
 ---
 
