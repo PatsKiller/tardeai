@@ -1,13 +1,15 @@
 [Unit]
-Description=Trade AI organic stance observe early — 06:35 ET Mon–Fri
+Description=Trade AI LIVE-cio-stance-governance observe early — 06:35 ET daily (24/7)
 Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/report_organic_stance_hold.py
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md
 
 [Timer]
-# After social_scalp_scanner 06:00/06:30 fires; before market open.
+# Daily (Mon–Sun). After social_scalp early window on weekdays; remasures any
+# overnight/weekend organic holds under 24/7 definition.
 # Host local time is America/New_York.
 # Explicit Unit= — basename ends in -early, so default would miss the service.
 Unit=tradeai-stance-organic-observe.service
-OnCalendar=Mon..Fri *-*-* 06:35:00
+OnCalendar=*-*-* 06:35:00
 AccuracySec=1min
 Persistent=true
 RandomizedDelaySec=30
