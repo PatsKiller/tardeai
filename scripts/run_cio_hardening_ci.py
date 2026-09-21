@@ -1571,6 +1571,9 @@ GATES = [
         "material_change_notice_context",
         [
             "tests/test_material_change_notice_context_20260915.py",
+            # 2026-09-21 operator: "plan is stale" was emitted for a plan 93% of the way
+            # to its target AND for one 31% through its stop — abs() erased the sign.
+            "tests/test_plan_state_not_stale_20260921.py",
             "tests/test_material_change_sql_placeholders_20260915.py",
             "tests/test_maturity_runtime_evidence_per_agent_20260915.py",
             "tests/test_material_change_notice_position_20260915.py",
