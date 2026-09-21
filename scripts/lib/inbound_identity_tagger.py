@@ -305,10 +305,17 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
         # company prose ("Apple", "Northrop Grumman") via "company_name".
         if _is_sentence_initial_mention(text, name):
             continue
-        # All-caps chrome reaches here as a NAME mention rather than a bare
-        # candidate ("16:05 ET" -> ET, Energy Transfer), so the uppercase guard
-        # in extract_candidates does not see it. Same list, both doors.
-        if name.upper() in _TEMPLATE_CHROME:
+        # The bare-token path filters through _STOPWORDS; this one never did, so
+        # a word already declared "not a ticker" still bound an issuer here.
+        # Measured: "RSI 41" -> RSI via ticker_alias with in_STOPWORDS=True, and
+        # extract_name_mentions yields ['Material','FBRT','RSI','AI Briefing',
+        # 'Root','Position'] where extract_candidates correctly yields ['FBRT'].
+        # _TEMPLATE_CHROME alone only patched the words I had happened to test.
+        # Both doors, one policy: a single token refused by either list is not a
+        # security. Multi-word runs ("AI Briefing") are unaffected -- they are
+        # resolved as NAMES, which is the company path's job.
+        up = name.upper()
+        if " " not in name.strip() and (up in _TEMPLATE_CHROME or up in _STOPWORDS):
             continue
         tag = RI.resolve(doc, name)          # a name that is also a ticker alias
         via = "ticker_alias"

@@ -103,10 +103,15 @@ def main() -> int:
     # in place before anything is written.
     from scripts.lib.cio_outbound_identity import subjects_from_tag, tag_text  # noqa: PLC0415
 
-    cur.execute(f"""SELECT event_id, left(sanitized_body, 300)
+    # The FULL body, exactly as --apply passes it. An earlier version previewed
+    # left(sanitized_body, 300) while --apply used the whole column, so the dry
+    # run resolved a different subject set than the real run -- ('AI','subject')
+    # appeared at 300 chars and vanished at 260. A dry run that does not match
+    # the run it previews is worse than no dry run: it is false assurance.
+    cur.execute(f"""SELECT event_id, sanitized_body
                       FROM communication_events WHERE {scope}
                      ORDER BY created_at DESC LIMIT 5""")
-    print("\n  what the CURRENT tagger resolves (proves the fix is live):")
+    print("\n  what the CURRENT tagger resolves on the FULL body (as --apply will):")
     for eid, body in cur.fetchall():
         subs = subjects_from_tag(tag_text(body or ""))
         shown = [(s.get("value"), s.get("relationship")) for s in subs] or "— no subject (correct for boilerplate)"
