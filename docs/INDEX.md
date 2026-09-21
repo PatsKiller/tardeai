@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `ca94173647a8f606afd0e84faa54add3aa16fd9b0714ab083c00348f078aada6`
+**Tree fingerprint:** `79182c22ab889f8673ae3d1c9b10bd8b9bad97fd526620d9d6cfb7a2e2376f54`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -663,8 +663,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan | review_required | OK | `2224490a6526` |
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census | review_required | OK | `a5073ae48b02` |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche | review_required | OK | `3669faccf7ff` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `ad491defa7ec` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `b4f221508731` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `1d6fba37aaa1` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `7ef6a630faaa` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |
@@ -1722,7 +1722,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | Research tiers, watchlist, and when each gets an LLM | review_required | OK | `28c7d73a7129` |
 | `docs/ops/ROLLBACK_COMMANDS.md` | CURRENT rollback (exact-main phase2) | review_required | OK | `ec18ccb0ad96` |
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | Session closeout — 2026-08-22 | review_required | OK | `22febcb04ade` |
-| `docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md` | Stance organic park — PARK_STANCE_AWAIT_ORGANIC | review_required | OK | `89e0e9f14759` |
+| `docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md` | Stance organic park — PARK_STANCE_AWAIT_ORGANIC | review_required | OK | `dd076886ee9a` |
 | `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md` | Symbol-thesis acquisition pipeline — live (autonomous, debt-sensitive) — 2026-08-20 | review_required | OK | `c2bbceeb4d87` |
 | `docs/ops/SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md` | Bounded canary dry-run — SCHG / CSCO / ANET | review_required | OK | `fb6602cf2a8a` |
 | `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md` | Telegram feed audit — P0 gates (freeze window) + P1 queue | review_required | OK | `bf3111399284` |
