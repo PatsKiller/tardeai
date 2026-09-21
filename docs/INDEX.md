@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `04df5939d2bde3de4f508f31f1d734ef86d733320dd79f65e2918057f8dd8095`
+**Tree fingerprint:** `19e83b70c054df5f2a9e153cbf526d6272e6d78114d1f8aabb93e6d1d2f23e46`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -39,7 +39,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/AGENT_PAGES_DETAIL.md` | Agent Pages — Detailed Function Matrix | review_required | OK | `c52bb8ece19f` |
 | `docs/AGENT_ROSTER.md` | Trade AI v12 — Agent Roster | review_required | OK | `e1ee476f64f8` |
 | `docs/AI_TRADE_CRITIQUE.md` | AI Trade Critique — Persistence & System Integration | review_required | OK | `a36de70f5d2c` |
-| `docs/ALERT_INCIDENT_RESOLUTION.md` | Alert Incident Resolution | review_required | OK | `4e3f7658ec73` |
+| `docs/ALERT_INCIDENT_RESOLUTION.md` | Alert Incident Resolution | review_required | OK | `642fbc9ee5b0` |
 | `docs/APPENDIX_E_SCRIPT_ROUTING_MATRIX.md` | Appendix E — Initial Script Routing Matrix | review_required | OK | `1bf4f69d9156` |
 | `docs/ATM_PROPOSAL_CONTROLS_2026_06_04.md` | Editable ATM + Proposal Controls — PAPER-ONLY, GATE-INTERLOCKED (2026-06-04) | review_required | OK | `fcd9627cba2d` |
 | `docs/BROKER_PROPOSALS_UI.md` | Broker Proposals UI — Live Execution Desk (v3) | review_required | OK | `f9f26cffd1f3` |
