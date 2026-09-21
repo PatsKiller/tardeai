@@ -1,12 +1,13 @@
 [Unit]
-# Read-only observe for PARTIAL-telegram-CIO-stance.
+# Read-only observe for LIVE-cio-stance-governance (24/7 multi-workflow).
 # Exit 0 = organic OBSERVED (source=check_investment_send + ORGANIC_HOLD_CALLERS).
 # Exit 2 = still PARTIAL (canary/probe only or empty) — a valid observation, not a unit failure.
 # Exit 1 = error.
 #
-# Does not invent holds, send Telegram, or touch the broker.
-Description=Trade AI organic CIO stance hold observe (PARTIAL-telegram-CIO-stance)
+# Does not invent holds, send Telegram, or touch the broker. MBI_BEHAVIOR=0.
+Description=Trade AI LIVE-cio-stance-governance observe (24/7 organic hold remasure)
 Documentation=file:///home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/report_organic_stance_hold.py
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md
 
 [Service]
 Type=oneshot
@@ -14,9 +15,10 @@ WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
 Environment=PYTHONPATH=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT:/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts
 Environment=PATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin:/usr/bin:/bin
 EnvironmentFile=-/run/user/%U/tradeai/env
+# Prefer CURRENT script when present; hub path is the development source of truth.
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python \
-    scripts/report_organic_stance_hold.py --json
-# 0 = OBSERVED; 2 = PARTIAL (expected until a Mon–Fri organic hold lands)
+    /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/report_organic_stance_hold.py --json
+# 0 = OBSERVED; 2 = PARTIAL (expected until an organic hold exists)
 SuccessExitStatus=0 2
 TimeoutStartSec=120
 

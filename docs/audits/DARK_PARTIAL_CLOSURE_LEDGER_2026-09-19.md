@@ -2,9 +2,9 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T14:45:00-04:00
-Measured at: pin 5b7e24c95…114233; M1–M5 OBSERVED; soft 0.017 PASS; organic=0 PARTIAL exit 2; triple-DEFER §17 + PARK_STANCE_AWAIT_ORGANIC; goal accounting CLOSED pending honesty residuals
-Authority: operator /plan rail-to-full; shrink-only
+as_of: 2026-09-20T21:03:00-04:00
+Measured at: OPERATOR_FORCED_GO_LIVE closes PARTIAL-telegram-CIO-stance — NOT unattended Mon–Fri OBSERVED; mechanical organic=4 exit_would_be=0; M1–M5 + soft remasured same wave
+Authority: operator Cursor chat 2026-09-20T21:01 ET FORCE directive; shrink-only; AGENTS.md §8 honesty preserved
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
 
@@ -21,7 +21,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | DARK-hermes_advisory_event_enqueue | §17 **DEFERRED** · PROPOSED RETIRE available | AGENTS research table; automatic writer is librarian backlog loop; no caller | Operator **DEFER** 2026-09-20 on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | later APPROVE_RETIRE_* or WIRE |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | **PARKED_AWAIT_ORGANIC** | dual-write on tip+pin; holds probe/canary only (organic=0 exit 2); timers armed Mon 06:35/09:05; token `PARK_STANCE_AWAIT_ORGANIC` recorded | docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md; Mon–Fri natural hold | organic hold receipt (exit 0) — park ≠ OBSERVED |
+| PARTIAL-telegram-CIO-stance | **CLOSED** · OPERATOR_FORCED_GO_LIVE | Operator FORCE 2026-09-20T21:01 ET (“if it doesn’t run organic, force it… push and go live”). Tonight (Sun) dry `screener_go_alerts` session=2026-09-20: go_rows=1 qualifying=[] — no natural hold. Mechanical organic=**4** (AEMD+LSTA `source=check_investment_send` `caller=screener_go_alerts`) from prior legitimate producer `--send --session 2026-09-18`; observe exit_would_be=0. **Does NOT claim unattended Mon–Fri schedule OBSERVED.** | docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md SUPERSEDED | OPERATOR_FORCED_GO_LIVE + mechanical organic≥1 + honest non-claim of schedule OBSERVED |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | **OBSERVED (unattended)** | [VERIFIED] Sun 08:00 ET weekly cron: ARKQ+NEE `requester=data_gap_resolver` `vector=quality_escalate` `provider=searxng` `outcome=partial` started 2026-09-20T12:00:07Z/12:00:11Z; weekly.log Chain resolve 2/2. Hand proof at 10:30Z was precursor. | — | unattended same stamps |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
@@ -39,6 +39,9 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 
 | id | closed_at | proof |
 |---|---|---|
+| PARTIAL-telegram-CIO-stance | 2026-09-20T21:03 ET | OPERATOR_FORCED_GO_LIVE (operator Cursor chat 21:01 ET); mechanical organic=4; NOT unattended OBSERVED |
+| DARK-hermes_advisory_event_enqueue | 2026-09-20 | APPROVE_RETIRE #1151 + lane_registry RETIRED follow-on |
+
 | DARK-cio-runs-truncated-tail | 2026-09-19 | repair + 7ea5835f9 |
 | DARK-librarian-index | 2026-09-19 | research_source_index.json n=120 on CURRENT+persistent-state |
 | DARK-KNOWN_DARK-cio_identity_resolver | 2026-09-19 | 850b9fda9 AEC bus consumer |

@@ -311,11 +311,11 @@ def test_hold_dual_write_mirrors_when_persist_parent_exists(tmp_path, monkeypatc
 
 
 def test_organic_producers_pass_caller_as_source_kwarg():
-    """AST guard: Mon–Fri organic OBSERVED requires these call sites stamp source=caller.
+    """AST guard: LIVE-cio-stance-governance OBSERVED requires these call sites stamp source=caller.
 
-    PARTIAL-telegram-CIO-stance closes only when a live producer records
-    source=check_investment_send with caller in ORGANIC_HOLD_CALLERS. A silent
-    rename of the source= kwarg would leave the schedule firing and organic=0.
+    Gap closes only when a live producer records source=check_investment_send with
+    caller in ORGANIC_HOLD_CALLERS (any day Mon–Sun). A silent rename of the
+    source= kwarg would leave the schedule firing and organic=0.
     """
     import ast
     from pathlib import Path
@@ -346,6 +346,56 @@ def test_organic_producers_pass_caller_as_source_kwarg():
                 if kw.arg == "source" and isinstance(kw.value, ast.Constant):
                     sources.append(str(kw.value.value))
         assert caller in sources, f"{path.name}: missing source={caller!r} (got {sources})"
+
+
+
+def test_commodity_etf_not_auto_allowed_under_asset_agnostic_bar(monkeypatch):
+    """GLD/SLV/USO are gated (24/7 asset-agnostic); broad indices may still pass-through."""
+    from lib.cio_telegram_stance_gate import check_investment_send
+
+    # Missing CIO view → hold (not auto-allow) for commodity ETF.
+    v = check_investment_send(
+        symbol="GLD",
+        message_text="BUY GLD — Accumulate gold",
+        asserted_stance="bullish",
+        cio_view=None,
+        source="screener_go_alerts",
+    )
+    assert v.allow is False
+    assert v.held_reason == "cio_decision_missing"
+
+    # Broad index context still excluded (pass-through).
+    v2 = check_investment_send(
+        symbol="SPY",
+        message_text="BUY SPY",
+        asserted_stance="bullish",
+        cio_view={"action": "AVOID"},
+        source="screener_go_alerts",
+    )
+    assert v2.allow is True
+
+
+def test_summarize_includes_live_cio_stance_gap_id(tmp_path):
+    import json
+    from lib.cio_telegram_stance_gate import GAP_ID, summarize_stance_holds
+
+    path = tmp_path / "holds.jsonl"
+    path.write_text(
+        json.dumps(
+            {
+                "source": "check_investment_send",
+                "caller": "screener_go_alerts",
+                "symbol": "LSTA",
+                "held_reason": "cio_stance_conflict",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    s = summarize_stance_holds(path)
+    assert s["gap_id"] == GAP_ID == "LIVE-cio-stance-governance"
+    assert s["observed"] is True
+    assert "24/7" in s.get("scope", "")
 
 
 def test_is_organic_hold_row_requires_source_and_caller():
@@ -425,7 +475,8 @@ def test_report_organic_stance_hold_cli_exit_codes(tmp_path):
     )
     assert r.returncode == 2
     assert "PARTIAL" in r.stdout
-    assert "next windows ET" in r.stdout
+    assert "LIVE-cio-stance-governance" in r.stdout
+    assert "observe windows ET" in r.stdout
 
     organic = tmp_path / "organic.jsonl"
     organic.write_text(
