@@ -117,3 +117,75 @@ def test_runner_digests_past_the_cap_and_marks_them_alerted():
     src = (ROOT / "scripts" / "cio_entry_state_runner.py").read_text(encoding="utf-8")
     assert "digest = pending[max(0, a.max_alerts):]" in src
     assert '"via": "digest"' in src and "ces.render_digest(digest)" in src
+
+
+# ── operator decision 2026-09-21: only page when it is time to purchase ──────
+#
+# "Only alert when time to purchase unless stared on watchlist"
+#
+# At 15:10 on 2026-09-21 the operator was paged two amber "getting close" cards
+# -- GNL at +1.1% and LOMA at +2.9% above the zone -- for names that were not
+# starred and on which no action was available. ENTRY_NEAR is a heads-up, not a
+# purchase moment, so it now pages only for a starred symbol.
+
+
+def _runner():
+    import cio_entry_state_runner as runner
+    return runner
+
+
+def _near(sym):
+    return {"symbol": sym, "state": "ENTRY_NEAR"}
+
+
+def _ready(sym):
+    return {"symbol": sym, "state": "BUY_READY"}
+
+
+def test_getting_close_does_not_page_for_an_unstarred_symbol():
+    """The GNL / LOMA regression, verbatim from the 15:10 alerts."""
+    r = _runner()
+    out = r.alert_worthy([_near("GNL"), _near("LOMA")], prior={}, done=set(), starred=set())
+    assert out == [], [x["symbol"] for x in out]
+
+
+def test_getting_close_still_pages_for_a_starred_symbol():
+    """Starring is the operator's opt-in, so it must survive the new gate."""
+    r = _runner()
+    out = r.alert_worthy([_near("ANET"), _near("GNL")], prior={}, done=set(),
+                         starred={"ANET"})
+    assert [x["symbol"] for x in out] == ["ANET"]
+
+
+def test_buy_ready_always_pages_starred_or_not():
+    """'Time to purchase' is exactly what the operator asked to keep."""
+    r = _runner()
+    out = r.alert_worthy([_ready("GNL"), _ready("ANET")], prior={}, done=set(),
+                         starred={"ANET"})
+    assert [x["symbol"] for x in out] == ["GNL", "ANET"]
+
+
+def test_starring_is_case_insensitive():
+    r = _runner()
+    out = r.alert_worthy([_near("anet")], prior={}, done=set(), starred={"ANET"})
+    assert [x["symbol"] for x in out] == ["anet"]
+
+
+def test_the_older_downgrade_suppression_still_applies_to_a_starred_name():
+    """A starred symbol must not reopen the 2026-09-15 defect: ENTRY_NEAR after
+    a same-day BUY_READY is still not news."""
+    r = _runner()
+    out = r.alert_worthy([_near("ANET")], prior={"ANET": "BUY_READY"}, done=set(),
+                         starred={"ANET"})
+    assert out == []
+
+
+def test_an_unreadable_star_store_fails_quiet_not_loud():
+    """If the store cannot be read we page BUY_READY only -- never MORE alerts."""
+    r = _runner()
+
+    class Boom:
+        def execute(self, *a, **k):
+            raise RuntimeError("no such table")
+
+    assert r.starred_symbols(Boom()) == set()
