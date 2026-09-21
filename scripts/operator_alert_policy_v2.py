@@ -311,7 +311,20 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
         r"\b(?:new go|wait|avoid|entry candidate|scanner|social scalp setup|trade ai live)\b", text, re.I
     ):
         return ev("scanner_candidate", "info")
-    if re.search(r"orphan(?:ed|s)|naked .*position|position.*unprotected|unprotected live position", text, re.I):
+    # A capital-protection alert must name a stop or a position. Without that guard
+    # `orphan(?:ed|s)` matches a bare substring anywhere in the text: research_lane_health
+    # emits the lane state token `lane-registry: ORPHANED,SILENT`, and a research-lane
+    # health report was therefore classified `orphaned_stop` — a CRITICAL_IMMEDIATE_TYPES
+    # member carrying operator_action_required=True and PROTECTION_REPAIR. Measured
+    # 2026-09-21: that false positive is the ONLY occurrence this alert type has ever
+    # recorded, so the protection channel's entire history was one misrouted lane report.
+    #
+    # The guard deliberately tests for `stop`/`position` ANYWHERE, not adjacent to the
+    # orphan token. The genuine producer shape is "STOP HEALTH — ORPHANED: ANET", where
+    # the two words are separated; requiring adjacency would turn a misrouting bug into a
+    # silent false negative on the one channel that must never miss.
+    if re.search(r"orphan(?:ed|s)|naked .*position|position.*unprotected|unprotected live position", text, re.I) \
+            and re.search(r"\b(?:stop|position)s?\b", text, re.I):
         return ev("orphaned_stop" if "orphan" in low else "position_unprotected", "critical", True, "PROTECTION_REPAIR")
     if re.search(r"protection.*(?:failed|uncertain)|stop.*placement.*(?:failed|uncertain)", text, re.I):
         return ev("protection_failure", "critical", True, "PROTECTION_REPAIR")
