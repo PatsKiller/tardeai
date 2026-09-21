@@ -647,3 +647,17 @@ Sequence followed:
 4. Ledger: `PARTIAL-telegram-CIO-stance` → **CLOSED · OPERATOR_FORCED_GO_LIVE**. Park doc SUPERSEDED.
 5. §17 bitemporal + relationship remain CONTINUE-PARK (DEFER) — settled parks, not open gates.
 6. Remasure `[VERIFIED]` 2026-09-21T01:04:28Z: M1–M5 all **OBSERVED** exit 0; pin `251d329a2-main-exact-phase2-20260920-174516`. Soft-share remasure this wave blocked by host secret-access hook (DB connect); last measured soft_unsupported_share=**0.024** (26/1066) PASS ≤0.15 at 20:11 ET (unchanged producer).
+
+## 2026-09-20T21:39 ET — PROMOTE OK #1157 tip (OPERATOR_FORCED_GO_LIVE on CURRENT)
+
+- [VERIFIED] peer force/go-live wave: `cio_phase2_exact_main_deploy.sh prepare` → `0e5b9a4dc-main-exact-phase2-20260920-212949`; `promote` → **PROMOTE OK** live=`0e5b9a4dc6d718883ddc83f8f15db2b65000c051`.
+- Boot / health: loaded_pin_sha=`0e5b9a4dc…`; `/v3/cio=200`; health HTTP 200.
+- Post-promote remasure (peer): M1–M5 **OBSERVED** exit 0 on pin `0e5b9a4dc-…212949` @ 2026-09-21T01:39:55Z.
+- **Honesty unchanged:** forced go-live ≠ unattended Mon–Fri organic OBSERVED.
+
+## 2026-09-20T22:26 ET — docs sync: live pin vs origin/main tip
+
+- [VERIFIED] served `/v3/build-meta.json`: `source_commit`/`git_sha`=`0e5b9a4dc6d718883ddc83f8f15db2b65000c051` (built_at 2026-09-21T01:39:23.261Z).
+- [VERIFIED] `origin/main`=`a40601f01f1532a7f5ba8e482c5bb72a5b5d4eea` (Merge #1161 LIVE-cio-stance-impl) — live **behind** by 2 commits.
+- Ops note: `docs/ops/OPERATOR_FORCED_GO_LIVE_PROMOTE_2026-09-20.md`. Tip promote of `a40601f01…` is a separate `release-write` ceremony (peer request `addc2b8ed58a48c2`); this wave is docs + Drive + git only.
+- §17 bitemporal / relationship still CONTINUE-PARK (DEFER). MBI/broker untouched.

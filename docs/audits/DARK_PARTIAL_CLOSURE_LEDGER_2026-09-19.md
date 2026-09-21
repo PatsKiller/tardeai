@@ -2,10 +2,11 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T21:03:00-04:00
-Measured at: OPERATOR_FORCED_GO_LIVE closes PARTIAL-telegram-CIO-stance — NOT unattended Mon–Fri OBSERVED; mechanical organic=4 exit_would_be=0; M1–M5 + soft remasured same wave
-Authority: operator Cursor chat 2026-09-20T21:01 ET FORCE directive; shrink-only; AGENTS.md §8 honesty preserved
+as_of: 2026-09-20T22:26:00-04:00
+Measured at: OPERATOR_FORCED_GO_LIVE closed + PROMOTE OK pin 0e5b9a4dc-…212949; live still ≠ origin/main tip a40601f01 (#1161); NOT unattended Mon–Fri OBSERVED
+Authority: operator Cursor chat 2026-09-20T21:01 ET FORCE; promote 21:39 ET; docs sync 22:26 ET; shrink-only; AGENTS.md §8 honesty preserved
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
+See also: docs/ops/OPERATOR_FORCED_GO_LIVE_PROMOTE_2026-09-20.md
 ```
 
 **Rule:** this table may only shrink or move rows to CLOSED with proof. Adding a row requires naming the evidence that it is dark/partial.
