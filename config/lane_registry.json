@@ -2057,7 +2057,7 @@
         "kind": "systemd",
         "expression": "tradeai-stance-organic-observe.timer"
       },
-      "expected_cadence_hours": 26.0,
+      "expected_cadence_hours": 24.0,
       "active_days": [
         0,
         1,
@@ -2070,7 +2070,7 @@
         "kind": "file_mtime",
         "path": "data/runtime/organic_stance_hold_observe.json"
       },
-      "note": "2026-09-20: read-only Mon\u2013Fri observe for PARTIAL-telegram-CIO-stance. Exit 2 PARTIAL is SuccessExitStatus. Sibling early timer 06:35 shares the same service (Unit=)."
+      "note": "2026-09-21: daily 09:05 ET observe for LIVE-cio-stance-governance (24/7). Exit 2 PARTIAL is SuccessExitStatus. Sibling early timer 06:35 shares the same service (Unit=). Formerly PARTIAL-telegram-CIO-stance Mon\u2013Fri-only."
     },
     {
       "lane_id": "tradeai-stance-organic-observe-early",
@@ -2079,7 +2079,7 @@
         "kind": "systemd",
         "expression": "tradeai-stance-organic-observe-early.timer"
       },
-      "expected_cadence_hours": 26.0,
+      "expected_cadence_hours": 24.0,
       "active_days": [
         0,
         1,
@@ -2092,7 +2092,7 @@
         "kind": "file_mtime",
         "path": "data/runtime/organic_stance_hold_observe.json"
       },
-      "note": "2026-09-20: 06:35 ET early observe after social_scalp; same service + receipt as tradeai-stance-organic-observe."
+      "note": "2026-09-21: daily 06:35 ET early observe for LIVE-cio-stance-governance (24/7); same service + receipt as tradeai-stance-organic-observe."
     },
     {
       "lane_id": "code-mirror-drive-sync",
@@ -2110,28 +2110,6 @@
         "key": "finished_utc"
       },
       "note": "Hourly hub+CURRENT code archives to Trade_AI_Docs_v2/code_mirror/. APPROVED 2026-09-20."
-    },
-    {
-      "lane_id": "hermes-advisory-event-enqueue",
-      "owner": "cio",
-      "scheduler": {
-        "kind": "none"
-      },
-      "expected_cadence_hours": 24.0,
-      "state": "RETIRED",
-      "state_since": "2026-09-20",
-      "state_reason": "Operator APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE (Cursor chat 2026-09-20T17:15 ET; PR #1151 merge 7010eb104). Standalone scripts/hermes_advisory_event_enqueue.py was never scheduled (no cron/timer/importer). Automatic writer of hermes_advisory_events remains hermes_autonomous_librarian_backlog_loop. Script kept as manual ops tool \u2014 not archived.",
-      "reason_confidence": "ESTABLISHED",
-      "reason_evidence": [
-        "Operator-Token: APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE; surface cursor_chat|operator|2026-09-20T17:15:00-04:00; recorded in docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md and PR #1151 (merge 7010eb104).",
-        "No production importer/cron/timer for scripts/hermes_advisory_event_enqueue.py (AGENTS research lanes; filename grep).",
-        "Automatic producer is hermes_autonomous_librarian_backlog_loop (INSERT hermes_advisory_events)."
-      ],
-      "output_signal": {
-        "kind": "none"
-      },
-      "note": "RETIRED as scheduled/automatic producer claim only. Manual CLI retained at scripts/hermes_advisory_event_enqueue.py. Do not invent a schedule. Silence is EXPECTED_SILENT.",
-      "superseded_by": "hermes_autonomous_librarian_backlog_loop"
     }
   ],
   "undeclared_baseline": [
