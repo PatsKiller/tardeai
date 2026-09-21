@@ -2,9 +2,9 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-20T20:11:00-04:00
-Measured at: adversarial verify REOPENED PARTIAL-telegram-CIO-stance — hand `--session 2026-09-18` ≠ unattended organic; M1–M5 OBSERVED; soft 0.024 PASS
-Authority: operator /plan rail-to-full; shrink-only; AGENTS.md §8
+as_of: 2026-09-20T14:45:00-04:00
+Measured at: pin 5b7e24c95…114233; M1–M5 OBSERVED; soft 0.017 PASS; organic=0 PARTIAL exit 2; triple-DEFER §17 + PARK_STANCE_AWAIT_ORGANIC; goal accounting CLOSED pending honesty residuals
+Authority: operator /plan rail-to-full; shrink-only
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 ```
 
@@ -13,15 +13,15 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 | id | status | evidence | closure path | proof required |
 |---|---|---|---|---|
 | DARK-load-by-subject-schedule | CLOSED | [VERIFIED] pin 18a41066d consult instrument_enqueue_skipped_cadence=9; M5 OBSERVED | #1087+#1089 promote | M5 OBSERVED skipped_cadence/instrument_enqueue_skipped>0 |
-| DARK-bitemporal-m2-substrate | §17 PARKED · CONTINUE-PARK (DEFER) | schema v2 + integrator on :55432 OBSERVED; prod :5432 blocked — `vector` ext unavailable + cannot CREATE ROLE m2_agent (probed 2026-09-19, rolled back) | Operator **DEFER** Cursor chat 2026-09-20T17:15 ET on docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md (kit Operator-Token) | later APPROVE_* + prod apply |
+| DARK-bitemporal-m2-substrate | §17 **DEFERRED** · staging ALIGNED | staging `:55432` audited; packaging auto-heal landed (`init_bitemporal_db.sh` / `bitemporal_schema_heal`); prod `:5432` still blocked | Operator **DEFER**; report + heal docs | later APPROVE_* + prod apply |
 | DARK-OUTCOME-settlement | CLOSED | [VERIFIED] AEC 02:00:13 EDT on pin **8c12ea757**: learning `commitment_outcome` outcome=EXPIRED commitment_id=`cmt_fb32f783…` via=`prior_open_settle`; cycle Result=success exit 0; narrator telegram=accepted | — | OBSERVED EXPIRED from schedule |
 | DARK-AgentView-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AgentView@v1 (PORTFOLIO / day-bucket claim) from tradeai-aec-command-center-cycle.timer | — | OBSERVED AgentView from served schedule |
 | DARK-AGENT_COMMITMENT-producer | CLOSED | [VERIFIED] unattended 20:00:15 EDT AGENT_COMMITMENT@v1 cmt_7f86ca… + CommitmentOutcome@v1 | — | OBSERVED commitment+settlement from schedule |
 | DARK-librarian-index | CLOSED | [VERIFIED] persistent-state + CURRENT `research_source_index.json` ResearchSourceIndex@v1 n_sources=120 (mtime 2026-09-16) | — | file present on served path |
-| DARK-hermes_advisory_event_enqueue | **CLOSED** · RETIRED lane `hermes-advisory-event-enqueue` | Operator-Token APPROVE_RETIRE + #1151 `7010eb104`; follow-on lane_registry RETIRED (EXPECTED_SILENT); manual CLI retained; no schedule | Operator **APPROVE_RETIRE_*** Cursor chat 2026-09-20T17:15 ET; follow-on PR after #1151 | CLOSED — RETIRED row + AGENTS update; archive skipped (keep manual) |
+| DARK-hermes_advisory_event_enqueue | §17 **DEFERRED** · PROPOSED RETIRE available | AGENTS research table; automatic writer is librarian backlog loop; no caller | Operator **DEFER** 2026-09-20 on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | later APPROVE_RETIRE_* or WIRE |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| PARTIAL-telegram-CIO-stance | **PARKED_AWAIT_ORGANIC** · REOPENED | Mechanical organic=4 (AEMD+LSTA `source=check_investment_send` `caller=screener_go_alerts`) from hand `screener_go_alerts --send --session 2026-09-18` on Sun 2026-09-20; `last_run.json` session=2026-09-18 mode=send. **Not** unattended Mon–Fri cron (`*/15 9-16 * * 1-5`). AGENTS.md §8 hand-staged ≠ on-schedule. Wrongful CLOSE in 64975b72a reverted by verify 20:11 ET | docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md; natural Mon–Fri hold | unattended organic hold (exit 0) — park ≠ OBSERVED |
+| PARTIAL-telegram-CIO-stance | **PARKED_AWAIT_ORGANIC** | dual-write on tip+pin; holds probe/canary only (organic=0 exit 2); timers armed Mon 06:35/09:05; token `PARK_STANCE_AWAIT_ORGANIC` recorded | docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md; Mon–Fri natural hold | organic hold receipt (exit 0) — park ≠ OBSERVED |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | **OBSERVED (unattended)** | [VERIFIED] Sun 08:00 ET weekly cron: ARKQ+NEE `requester=data_gap_resolver` `vector=quality_escalate` `provider=searxng` `outcome=partial` started 2026-09-20T12:00:07Z/12:00:11Z; weekly.log Chain resolve 2/2. Hand proof at 10:30Z was precursor. | — | unattended same stamps |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
@@ -30,7 +30,7 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 
 | PARTIAL-CIO-Advisor-Narrator-mesh | CLOSED | [VERIFIED] unattended 20:00 EDT: AgentView+commitment+narrator telegram=accepted; spines strategic=2 learning=5; bitemporal dry_run=false | — | unattended cycle from CURRENT |
 | PARTIAL-memory-four-spines | CLOSED | [VERIFIED] organic `aec_wake_spine_receipts.jsonl` as_of=2026-09-20T01:04:31Z subject=PORTFOLIO policy_decision=aec_spines_loaded counts strategic=2 learning=5; wake consult 01:05:09Z | #1099 promote | wake receipt aec_spines_loaded |
-| PARTIAL-relationship-spine-data | §17 PARKED · CONTINUE-PARK (DEFER) · ◆ | no domain data; spine slot exists | Operator **DEFER** Cursor chat 2026-09-20T17:15 ET on docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md (§7A/§17) | later APPROVE_RELATIONSHIP_* + registry rows |
+| PARTIAL-relationship-spine-data | §17 **DEFERRED** · ◆ | no domain data; spine slot exists | Operator **DEFER** 2026-09-20 on docs/ops/PROPOSED_RELATIONSHIP_SPINE_SOURCES_2026-09-19.md (§7A/§17) | later APPROVE_RELATIONSHIP_* + registry rows |
 | PARTIAL-narrator-unprompted-telegram | CLOSED | [VERIFIED] unattended 20:00:15 EDT narrator_notify notify_attempted=true telegram=accepted (AEC_NARRATOR_NOTIFY on unit) | — | unprompted brief delivered |
 | DARK-cio-runs-truncated-tail | CLOSED | incomplete last line blocked create_run; wake errors=5 | archive + cio_run harden 7ea5835f9 | repair receipt + test |
 | FORBIDDEN-broker | FORBIDDEN | §0/§2 | never | N/A |
@@ -39,7 +39,6 @@ Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 
 | id | closed_at | proof |
 |---|---|---|
-| DARK-hermes_advisory_event_enqueue | 2026-09-20 | APPROVE_RETIRE #1151 + lane_registry RETIRED follow-on |
 | DARK-cio-runs-truncated-tail | 2026-09-19 | repair + 7ea5835f9 |
 | DARK-librarian-index | 2026-09-19 | research_source_index.json n=120 on CURRENT+persistent-state |
 | DARK-KNOWN_DARK-cio_identity_resolver | 2026-09-19 | 850b9fda9 AEC bus consumer |
