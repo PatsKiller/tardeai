@@ -1,0 +1,10 @@
+[Unit]
+Description=TradeAI disk pressure guard — reclaim immediately at >=85%% used, do not wait for Sunday
+Documentation=file:///home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/disk_pressure_guard.py
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+ExecStart=/bin/bash -lc 'PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python; ROOT=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild; cd "$ROOT"; exec "$PY" scripts/disk_pressure_guard.py'
+Nice=10
+IOSchedulingClass=idle
