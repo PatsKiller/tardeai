@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `6782d9f5e8e527ee4e0356a27a2cbf875f26ef299437af969735fc7b11b160d7`
+**Tree fingerprint:** `a0b243ee6a034890482e59b946a4041e677eea12fbb2d29d9081b88344791ad4`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2594 |
-| Markdown (excl. this INDEX) | 2168 |
+| Files under `docs/` (excl. this INDEX) | 2595 |
+| Markdown (excl. this INDEX) | 2169 |
 | **MISSING HEADER** | **68** |
-| Header OK | 2100 |
+| Header OK | 2101 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2223 |
+| review_required | 2224 |
 
 ## Markdown tree
 
@@ -666,7 +666,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census | review_required | OK | `a5073ae48b02` |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche | review_required | OK | `3669faccf7ff` |
 | `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `a464a3e1a876` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `c21e244f35a6` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `ee57933d06ee` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |
@@ -1508,6 +1508,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/AUTONOMY_OPERATOR_RUNBOOK.md` | Autonomy Operator Runbook (READ_ONLY_ADVISORY) | review_required | OK | `e30957166ceb` |
 | `docs/ops/AUTONOMY_RUNTIME_TRUTH_2026-08-11.md` | Runtime truth — host verification (P0 ops) | review_required | OK | `b3ebf94fe56b` |
 | `docs/ops/BITEMPORAL_MEMORY_V2_DEPLOY_2026-09-19.md` | Bitemporal Memory Substrate v2 — deploy receipt | review_required | OK | `3ca94549abf2` |
+| `docs/ops/BITEMPORAL_PACKAGING_AUTO_HEAL_2026-09-20.md` | Bitemporal v2 packaging auto-heal | review_required | OK | `5a89fe962bf5` |
 | `docs/ops/BRIDGE_PIN_ALIGNMENT.md` | Governed bridge pin alignment | review_required | OK | `72a5c993261d` |
 | `docs/ops/CANONICAL_OBSERVATION_CONTRACT.md` | Canonical observation contract | review_required | OK | `f1efae3e4863` |
 | `docs/ops/CANON_SOURCE_ACQUISITION_QUEUE_2026-08-23.md` | Canon Source Acquisition Queue - 2026-08-23 | review_required | OK | `a49f0fc9b389` |

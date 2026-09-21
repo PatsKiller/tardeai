@@ -715,6 +715,45 @@ def test_schema_file_refuses_destructive_reset_without_optin(m2_conn):
         cur.execute("SELECT to_regclass('memory_r10_m2.memory_fact_version')")
         assert cur.fetchone()[0] is not None
 
+    # PR #1158 gap: r10-only rebuild strips v2 packaging — heal must restore it.
+    from scripts.lib.bitemporal_schema_heal import ensure_bitemporal_packaging_v2
+
+    healed = ensure_bitemporal_packaging_v2(m2_conn)
+    assert healed["after"]["healthy"] is True
+    assert healed["after"]["save_fn_ok"] is True
+    assert healed["after"]["block_trg_ok"] is True
+
+
+def test_bitemporal_packaging_heal_is_idempotent(m2_conn):
+    """Boot hook / ensure_* must no-op when packaging is already healthy."""
+    from scripts.lib.bitemporal_schema_heal import ensure_bitemporal_packaging_v2
+
+    first = ensure_bitemporal_packaging_v2(m2_conn)
+    assert first["after"]["healthy"] is True
+    second = ensure_bitemporal_packaging_v2(m2_conn)
+    assert second["action"] == "skip"
+    assert second["reason"] == "HEALTHY"
+
+
+def test_bitemporal_packaging_heal_after_view_drop(m2_conn):
+    """Simulate stripped packaging (drop v2 view + save fn) then auto-heal."""
+    from scripts.lib.bitemporal_schema_heal import (
+        check_bitemporal_packaging_health,
+        ensure_bitemporal_packaging_v2,
+    )
+
+    with m2_conn.cursor() as cur:
+        cur.execute('DROP VIEW IF EXISTS memory_r10_m2."MemoryFactVersion@v2"')
+        cur.execute(
+            "DROP FUNCTION IF EXISTS memory_r10_m2.save_bitemporal_fact_version("
+            "text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector)"
+        )
+    before = check_bitemporal_packaging_health(m2_conn)
+    assert before["healthy"] is False
+    healed = ensure_bitemporal_packaging_v2(m2_conn)
+    assert healed["action"] == "applied"
+    assert healed["after"]["healthy"] is True
+
 
 def test_destructive_reset_refused_on_non_isolated_database(m2_conn):
     """Second, independent guard: even with m2.allow_destructive_reset=on, the
@@ -768,10 +807,34 @@ class _FakeCursor:
     """Records SQL instead of executing it, so the opt-in decision can be
     asserted without a real production connection."""
 
-    def __init__(self, sink): self.sink = sink
-    def __enter__(self): return self
-    def __exit__(self, *a): return False
-    def execute(self, sql, params=None): self.sink.append(str(sql))
+    _HEALTH_COLS = (
+        "identity_ok", "fact_ok", "adj_ok", "prov_ok", "view_fact_ok",
+        "save_fn_ok", "block_fn_ok", "block_trg_ok", "excl_ok",
+    )
+
+    def __init__(self, sink):
+        self.sink = sink
+        self.description = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *a):
+        return False
+
+    def execute(self, sql, params=None):
+        text = str(sql)
+        self.sink.append(text)
+        # Packaging heal health probe (after apply_schema) needs fetchone/description.
+        if "save_bitemporal_fact_version" in text and "fact_single_valued_current_excl" in text:
+            self.description = [(c,) for c in self._HEALTH_COLS]
+            self._last = tuple(True for _ in self._HEALTH_COLS)
+        else:
+            self.description = None
+            self._last = None
+
+    def fetchone(self):
+        return self._last
 
 
 class _FakeConn:

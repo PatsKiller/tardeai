@@ -610,6 +610,14 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
 - Tests: heal after destructive r10; idempotent skip; heal after view/fn drop.
 - `[VERIFIED]` shell: skip → strip → applied → skip; prod DSN exit 1.
 - Explicitly **not** ExecStartPre on portfolio-server / cio-governed-bridge (prod).
+- [CODE] `config/lane_registry.json` lane `hermes-advisory-event-enqueue`: `state=RETIRED`,
+  `reason_confidence=ESTABLISHED`, evidence cites Operator-Token + PR #1151 (`7010eb104`).
+  `scheduler.kind=none` — never scheduled; no cron uninstall invented.
+- Script kept as manual ops tool (archive+tripwire not used — optional under approve path).
+- AGENTS research table + §13.4 dark list → RETIRED / formerly-dark CLOSED.
+- Ledger row `DARK-hermes_advisory_event_enqueue` → **CLOSED**.
+- R9 hermes park: CLOSED. Remaining §17 parks: bitemporal DEFER + relationship DEFER (continue-park).
+- Goal still **NOT COMPLETE** — only open gate = Mon organic stance OBSERVED.
 
 ## 2026-09-21T01:42 ET — LIVE-cio-stance-governance (24/7) adopted + CLOSED
 
