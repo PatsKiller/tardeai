@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `f9bd40e8bf07a460128528c79a2a2125d3a5c29f8ca8c621bb0b2243f92916b3`
+**Tree fingerprint:** `9dad774f2cdcc2bf04bbc16771169ff84fd1675c5d041942c97b293913aa2120`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -303,7 +303,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_FUTURE_2026-09-20-0604.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 06:04 ET | review_required | OK | `fd9c45fff458` |
 | `docs/architecture/CIO_FUTURE_2026-09-20-0902.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 09:02 ET | review_required | OK | `85651c22a853` |
 | `docs/architecture/CIO_FUTURE_2026-09-20-0945.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 09:45 ET | review_required | OK | `8981ae27954a` |
-| `docs/architecture/CIO_FUTURE_2026-09-20-1445.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 14:45 ET | review_required | OK | `1b8262b22839` |
+| `docs/architecture/CIO_FUTURE_2026-09-20-1445.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 14:45 ET | review_required | OK | `60a4819f9f02` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `4edef7d3ee4d` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-final.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 final) | review_required | OK | `5b412d2266d6` |
