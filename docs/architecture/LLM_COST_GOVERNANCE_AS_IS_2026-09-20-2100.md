@@ -1,7 +1,8 @@
-Status: SUPERSEDED BY docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-2100.md
-as_of: 2026-09-20T16:00:00-04:00
-Measured at: served CURRENT d6057bc43-main-exact-phase2-20260920-145154; api :7777 = 200
-Canonical repo path: docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-1600.md
+Status: ACTIVE
+as_of: 2026-09-20T21:00:00-04:00
+Measured at: served CURRENT 251d329a2-main-exact-phase2-20260920-174516; api :7777 = 200; lane registry clean (undeclared 0, structural 0)
+Canonical repo path: docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-2100.md
+Supersedes: docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-1600.md
 Authority: dated live reading of the paid-LLM cost-governance surface — not a behaviour spec
 Scope: provider-failure alarming, off-peak deferral, and the lanes that carry them. The
   CIO/AEC maturity surface is a SEPARATE series (docs/architecture/CIO_AS_IS_*), which as of
@@ -9,7 +10,7 @@ Scope: provider-failure alarming, off-peak deferral, and the lanes that carry th
 See also: docs/ops/LLM_OFFPEAK_ROUTING.md, AGENTS.md §12,
   config/lane_registry.json (lanes llm-provider-health, llm-deferred-drain)
 
-# LLM Cost Governance AS-IS — 2026-09-20 16:00 ET
+# LLM Cost Governance AS-IS — 2026-09-20 21:00 ET
 
 ## LEGEND
 
@@ -25,9 +26,9 @@ See also: docs/ops/LLM_OFFPEAK_ROUTING.md, AGENTS.md §12,
 
 | Field | Value |
 |---|---|
-| Served CURRENT | `d6057bc43-main-exact-phase2-20260920-145154` █ |
-| Deployed SHA | `d6057bc437751fa585b7a1ee42b3a9dc60b4ec3c` █ |
-| `origin/main` | `a74c85db80c1450e19d0dd5470f2b7d52316e69f` ▓ (live is behind; other sessions merging) |
+| Served CURRENT | `251d329a2-main-exact-phase2-20260920-174516` █ |
+| Deployed SHA | `251d329a207d17d21f666e604e0a46967a12b052` █ |
+| `origin/main` | `d381bae649a5b077e537b81c13837e9a4f537da8` ▓ (live is behind; other sessions merging) |
 | API | `:7777 /api/v2/health` = 200 █ |
 
 **The served release was promoted by another session at 14:51**, not by this work. It is a
@@ -78,36 +79,55 @@ a 200 only ever meant the process was alive.
 | `tradeai-cio-reactive.service.d/offpeak-defer.conf` | █ ARMED | `cio_plan_enrichment` (129) |
 | `tradeai-hermes-cio-worker.service.d/offpeak-defer.conf` | █ ARMED | `cio_hermes_research` (29) |
 | `tradeai-cio-nightly-reflection.service.d/canary-offpeak-defer.conf` | █ ARMED | `reflective_critic_flash` (56) |
-| `portfolio-server` | ⊠ NOT ARMED | `hermes_external_research` (117) — needs a live API restart |
+| `portfolio-server.service.d/offpeak-defer.conf` | █ ARMED 20:50 | `hermes_external_research` (117) |
 
-Three drop-in files, three units confirmed by `systemctl --user show -p Environment`.
+**Deferral is now global.** Four drop-in files plus the crontab line. The flag was verified in the
+**running process** via `/proc/<pid>/environ`, not merely in the unit definition — a unit showing
+`Environment=` proves only what systemd *would* pass, not what the live process holds.
+
+**`portfolio-server` restart, 20:50:55.** MainPID 2994288 → 3183196, health back within 2s, no
+observed downtime. **The recorded restart procedure would have taken the API down:** an older note
+states `Restart=always`, so `kill -TERM MainPID` would be revived by systemd. This unit is
+**`Restart=on-failure`** — a clean TERM would have left the API dead until someone noticed. That
+note also names `tradeai-portfolio-server.service`, which is **inactive and vestigial**; the live
+unit is `portfolio-server.service` in **user scope**, restartable via `systemctl --user restart`
+with no sudo.
 **Systemd units do not inherit a crontab variable**, so each unit-driven paid caller needs its own
 drop-in. There is no single file: the runtime env is rendered from Bitwarden Secrets Manager, not
 from the repo `.env` (a legacy dual-write for cron that sources it), and a non-secret feature flag
 does not belong in a secrets store.
 
 **Measured baseline.** 965 of 4,590 successful paid DeepSeek calls over 7 days (**21%**) fell
-outside the window. Roughly **850 of 965** are covered. `cio_operator_reply` is 251/251 manual and
+outside the window. **All 965** are now covered. `cio_operator_reply` is 251/251 manual and
 **never** defers; `hermes_usefulness_score` (1,643) is entirely in-window and unaffected.
 
 ### 3. Queue state `[VERIFIED]` 16:00 ET
 
-`{'done': 3, 'pending': 1}` — **all four are canaries. No organic deferral has occurred yet**, and
-that is correct: 16:00 ET is *inside* the 09:00–21:00 window, so nothing should defer until
-tonight. The pending row is reserved for the 16:10 cron.
+`{'done': 4}` — **all four are canaries, none organic.** Correct at as_of: 21:00 ET is the boundary
+and the window predicate still read open, so nothing should have deferred yet. **Organic deferral
+remains UNPROVEN** and is the one open question; the first opportunity is tonight once the window
+closes.
 
-**Proven end to end** under a cron-equivalent invocation (`env -i`, minimal PATH, cron's own
-`$PROJ`/`$PY`, the verbatim crontab line): `2 claimed, 2 ok, 0 failed`, with ledger rows
-`15:51:59` and `15:52:02` on `deepseek-flash`, and the heartbeat written.
+The distinction matters because the same reading inverts within minutes: before 21:00, zero rows is
+the precondition being met; after it, zero rows would mean the flag is not reaching callers despite
+all five surfaces reporting armed. The armed callers were confirmed live and spending at 20:46 —
+`cio_plan_enrichment` (5 calls, last 20:39:32), `cio_hermes_research` (3, last 20:46:05),
+`hermes_external_research` (21, last 20:01:06) — so an empty queue tonight is a finding, not an
+absence of work.
+
+**Proven end to end by the REAL scheduled lane.** The 16:10 cron claimed and ran canary 3
+unattended: `completed_at 16:10:02`, `attempts 1`, lane log `1 claimed, 1 ok, 0 failed`, heartbeat
+`data/runtime/llm_deferred_drain.json` written at 16:10:02. Earlier proofs were hand-invoked or
+cron-equivalent (`env -i`, minimal PATH, the verbatim crontab line); this one was the scheduler
+itself.
 
 ## Known-not-done ⊠
 
 | item | state |
 |---|---|
-| `portfolio-server` arming | ⊠ needs a deliberate restart window (live API traffic) |
 | Critical allowlist | ✗ **EMPTY** — nothing is marked `critical`, so everything automated outside the window defers |
 | Organic deferral | ▓ not yet observed; first opportunity is after 21:00 ET tonight |
-| Lane gate | ⊠ red again from **other sessions**: 2 undeclared timers (installed 13:11, declared only on an unmerged branch) + 1 structural error (`code-mirror-drive-sync`, `reason_confidence: None`) |
+| Lane gate | █ **CLEAN** again as of 21:00 — undeclared 0, structural errors 0; the other sessions landed their declarations |
 
 ## Defects found by running the code, not reading it
 
