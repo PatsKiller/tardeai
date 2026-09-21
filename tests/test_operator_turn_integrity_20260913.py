@@ -115,12 +115,28 @@ def test_the_subject_still_resolves_from_the_operators_question(resolvers):
 
 
 def test_negative_control_without_the_guard_research_would_bind_refr(resolvers, monkeypatch):
-    """Prove the fakes reproduce the defect: disable the guard and REFR appears."""
+    """Prove the fakes reproduce the defect: disable the guards and REFR appears.
+
+    There are now TWO guards over this text, added 2026-09-21, and a negative
+    control must defeat every one of them or it silently stops proving anything:
+
+      _is_generic_term            "research" is an ordinary word (company path)
+      _is_sentence_initial_mention "Research on file" opens the message, so it is
+                                   prose -- this one also blocks the ticker-ALIAS
+                                   path, which was previously unguarded and let
+                                   AFTER become the primary subject of 28,966
+                                   messages.
+
+    The second guard subsumes the first for THIS fixture. Patching only the first
+    left the control passing-by-accident, which is the exact failure mode a
+    negative control exists to prevent.
+    """
     import lib.inbound_identity_tagger as tagger
 
     monkeypatch.setattr(tagger, "_is_generic_term", lambda name: False)
+    monkeypatch.setattr(tagger, "_is_sentence_initial_mention", lambda text, name: False)
     assert "REFR" in _symbols(AGENT_REPLY), (
-        "with the guard off, 'Research' must bind REFR -- else this test proves nothing"
+        "with the guards off, 'Research' must bind REFR -- else this test proves nothing"
     )
 
 
