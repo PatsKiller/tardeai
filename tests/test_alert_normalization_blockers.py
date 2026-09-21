@@ -57,10 +57,29 @@ def _clean_mode(monkeypatch):
 
 # ── Blocker 1: explicit runtime modes, default OFF, fail closed ───────────────
 class TestRuntimeModes:
-    def test_default_is_off(self, monkeypatch):
+    def test_default_is_off(self, monkeypatch, tmp_path):
+        """The seed default: nothing declared anywhere resolves to OFF.
+
+        This asserted `no env => OFF` against the REAL policy file until 2026-09-21,
+        which was wrong twice over. The live policy deliberately sets
+        `runtime_mode: "SHADOW"` (operator_alert_policy.yaml), so the assertion failed
+        while production was behaving exactly as configured -- and nobody saw it,
+        because this file is referenced by no CI runner. Pinning SHADOW instead would
+        merely track whatever config happens to say, which is not a blocker.
+
+        It also must not duplicate `test_unreadable_config_fails_closed` below, which
+        already covers the missing-file path. The distinct case -- and the only reason
+        string no sibling claims -- is a policy block present that declares neither
+        `runtime_mode` nor `runtime_enabled`: resolve_mode's seed, `default OFF`.
+        """
+        p = tmp_path / "policy.yaml"
+        p.write_text("telegram_normalization: {}\n", encoding="utf-8")
         monkeypatch.delenv(rt.ENV_VAR, raising=False)
+        monkeypatch.setattr(rt, "POLICY_PATH", p)
         rt.reset_cache()
-        assert rt.get_mode(refresh=True) == rt.MODE_OFF
+        mode, why = rt.resolve_mode(refresh=True)
+        assert mode == rt.MODE_OFF, "fail-closed default must be OFF when nothing is declared"
+        assert why == "policy:runtime_mode_absent"
 
     @pytest.mark.parametrize("value,expected", [
         ("ACTIVE", rt.MODE_ACTIVE), ("SHADOW", rt.MODE_SHADOW),
@@ -132,7 +151,15 @@ class TestMigrationSafety:
         monkeypatch.setenv(rt.ENV_VAR, "OFF")
         rt.reset_cache()
         sent: list[str] = []
-        monkeypatch.setattr(ta, "_raw_send_telegram", lambda m, chat_ids=None: sent.append(m) or True)
+        # Must mirror the real signature. telegram_alert.py passes reply_markup,
+        # thread_id and link_preview_options at the _legacy_send call site; those
+        # kwargs were added 2026-09-04/05 and this stub was never updated, so the
+        # test raised TypeError from inside production code and reported a failure
+        # that had nothing to do with what it was asserting.
+        monkeypatch.setattr(
+            ta, "_raw_send_telegram",
+            lambda m, chat_ids=None, *, reply_markup=None, thread_id=None,
+            link_preview_options=None: sent.append(m) or True)
         monkeypatch.setattr(ta, "_token", lambda: "t")
         monkeypatch.setattr(ta, "_chat_ids", lambda: ["1"])
 
