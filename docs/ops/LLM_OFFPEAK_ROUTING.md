@@ -8,9 +8,9 @@
 | `tradeai-cio-reactive` drop-in | **yes** | `cio_plan_enrichment` (129) |
 | `tradeai-hermes-cio-worker` drop-in | **yes** | `cio_hermes_research` (29) |
 | `tradeai-cio-nightly-reflection` drop-in | **yes** | `reflective_critic_flash` (56) |
-| `portfolio-server` | **no** | `hermes_external_research` (117) — arming needs a live API restart |
+| `portfolio-server` drop-in | **yes** (20:50) | `hermes_external_research` (117) |
 
-Roughly **850 of the 965** deferrable calls are covered. Measured baseline: 965 of 4,590
+**All 965** deferrable calls are covered — deferral is global as of 2026-09-20 20:50 ET. Measured baseline: 965 of 4,590
 successful paid DeepSeek calls over 7 days (21%) fell outside the window.
 
 **There is no single file that arms everything.** The runtime env at
@@ -20,8 +20,20 @@ not belong in a secrets store. Cron-launched jobs inherit the crontab-level vari
 units do not**, so each paid caller that runs as a unit needs its own drop-in.
 
 **To disarm:** delete the crontab line, or delete the unit's
-`<unit>.service.d/offpeak-defer.conf` and `systemctl --user daemon-reload`. Nothing else changes.
-The armed units are timer-driven oneshots, so arming and disarming need no restart.
+`<unit>.service.d/offpeak-defer.conf` and `systemctl --user daemon-reload`.
+
+The three CIO units are timer-driven oneshots, so arming and disarming them need no restart.
+**`portfolio-server` is long-running and only picks the flag up on restart.**
+
+> **Restarting `portfolio-server` — read this first.** The live unit is
+> `portfolio-server.service` in **user scope**: `systemctl --user restart portfolio-server.service`,
+> **no sudo needed**. Do **not** use `kill -TERM <MainPID>`. An older note claims `Restart=always`,
+> which would make a TERM safe — this unit is **`Restart=on-failure`**, so a clean TERM leaves the
+> API **down**. That note refers to `tradeai-portfolio-server.service`, which is inactive and
+> vestigial. Verify a restart really happened by a changed MainPID plus `/api/v2/health` = 200, and
+> confirm the flag reached the *running process* with
+> `tr '\0' '\n' < /proc/<pid>/environ | grep LLM_DEFER_OFFPEAK` — a unit showing `Environment=`
+> only proves what systemd would pass.
 
 **The critical allowlist is empty.** No caller is marked `critical`, so *everything* automated
 outside the window defers. If a caller genuinely must be current overnight, set it in
