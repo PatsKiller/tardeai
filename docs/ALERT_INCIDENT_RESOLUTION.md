@@ -160,7 +160,9 @@ Closed 2026-09-21, each against named evidence:
 Left open deliberately: `data_integrity` (**still VIOLATION** — `analyst_data_history.payload`,
 12,636 of 12,636 rows empty, severity BLOCK), two `siem_without_trading_impact` whose
 components fired again the same day (`alpaca_reconciler` 11:10, `journal_review_builder`
-11:00), and 28 `job_telemetry`, several still incrementing (`ENRD` occ=105, quiet 0.1h).
+11:00), and the `job_telemetry` bucket, several still incrementing (`ENRD` occ=105,
+quiet 0.1h). That bucket was 28 at the time of the closure pass and 32 three hours later;
+see the growth rate at the end of this document before reading any count here as fixed.
 
 ## The protection channel carried exactly one alert, and it was false
 
@@ -176,6 +178,36 @@ the genuine producer shape is `STOP HEALTH — ORPHANED: ANET`, where the tokens
 separated, so an adjacency rule would have converted a misrouting bug into a silent false
 negative on the one channel that must never miss.
 
-Still open, and an operator decision (§17): `job_telemetry` has **no entry in
-`DEFAULT_TTLS`** while being the classifier's fallback branch, so it silently inherits the
-7-day default and accounts for 28 of the 39 still-open incidents.
+## Nothing applies expiry — and expiry alone is not safe to apply
+
+`job_telemetry` has no entry in `DEFAULT_TTLS` and is the classifier's fallback branch, so
+it inherits the 7-day default. **Adding a TTL entry for it would close nothing:** measured
+2026-09-21, 0 of 32 open `job_telemetry` incidents are quiet beyond 168h, and the longest
+inter-occurrence gap ever seen for the type is 95.9h. The inherited default already exceeds
+observed recurrence.
+
+The real defect is that **no reaper exists**. Nothing in cron or systemd closes an incident
+when its declared `expires_at` passes; 6 of the 45 open at 12:00 on 2026-09-21 are already
+past theirs. (41 at first measurement, 42 at the closure pass, 45 by 12:00 — the totals in
+this document are timestamps, not constants.)
+
+But an **expiry-only** reaper would be actively harmful, because `expires_at` is fixed at
+incident creation and says nothing about the condition:
+
+- `data_integrity` `f1c73c0dab579996a168` is 77.8h past expiry **and still violating** —
+  `data_plausibility_monitor --json` reports `analyst_data_history.payload` at 12,636 of
+  12,636 rows empty, severity BLOCK. A naive reaper would close a live BLOCK finding.
+- Two `scanner_candidate` rows are 96.6h past expiry but **fired 4.6h ago**.
+
+A reaper must therefore carry the event-vs-condition split: expire event-shaped types on
+their own TTL, and for condition-shaped types ask the producer, read-only, before closing.
+
+Two further cautions for whoever builds it. `alert_type` does **not** identify a condition:
+`[DATA_INTEGRITY]` is emitted by at least three different producers, and the two open
+`data_integrity` incidents are unrelated conditions (a column-scale violation and an
+operator-answer-quality report). And plane B cannot attribute an incident to the script that
+raised it — all 45 open incidents carry `source_producer='legacy_send_telegram'`, and 0 of
+503 occurrences store `source_system` at all.
+
+Finally, the backlog grows faster than manual closure: roughly 1.8 new incidents per hour
+(+1, +1, +2, +5, +2 over the hours to 12:00 on 2026-09-21). Closing rows by hand is bailing.
