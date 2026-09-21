@@ -433,7 +433,20 @@ def materialize(symbols: list[str] | None = None):
                           # suppressed rec looks like it was never produced.
                           "agent_rec_agent": ar.get("agent"),
                           "agent_rec_suppressed": _suppressed.get(sym.upper()) or None,
-                          "agent_rec_authority": "synthesis"})))
+                          "agent_rec_authority": "synthesis"},
+                         # default=str or this whole job dies. catalyst_events.impact_score
+                         # and .confidence are numeric, so psycopg2 hands back Decimal, which
+                         # json.dumps cannot encode. 710fa6f78 (2026-09-15) added
+                         # "catalysts": catalyst_items to this payload and thereby killed the
+                         # writer: the dumps raises INSIDE the per-symbol loop, while
+                         # conn.commit() is below it, so a failing run persists ZERO cards.
+                         # Measured 2026-09-21: 1,154 successful completions then 82
+                         # consecutive crashes, cards frozen at 2026-09-15, catalyst_summary
+                         # NULL on all 5,808 rows -- and the operator's "CIO entry" alert has
+                         # therefore never once rendered its catalyst line. Same defect class
+                         # as the NaN-kills-the-write bug: a serialization error silently
+                         # destroying a durable write while cron discards the exit status.
+                         default=str)))
 
         results.append({"symbol": sym, "strategy_type": strategy_type, "latest_price": latest_price,
                         "support": support, "resistance": resistance, "stop_loss": stop_loss,
