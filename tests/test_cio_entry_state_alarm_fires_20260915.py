@@ -95,7 +95,26 @@ def test_a_downgrade_from_buy_ready_does_not_page_again(monkeypatch):
 
 
 def test_moving_up_toward_a_buy_still_pages_once(monkeypatch):
+    """ONCE, and only for a starred symbol.
+
+    Operator, 2026-09-21: "Only alert when time to purchase unless stared on
+    watchlist." That supersedes this test's original premise -- that any upward
+    move into ENTRY_NEAR pages. The guard this test actually exists for is the
+    once-only rule, and that is preserved verbatim below: the second call, with
+    the transition key already recorded, must still return [].
+    """
     runner, _, _ = _runner(monkeypatch)
     near = ces.evaluate(_evidence(symbol="HAS", price=7.25), today=date(2026, 9, 15))
-    assert runner.alert_worthy([near], {"HAS": "NOT_YET"}, set()) == [near]
-    assert runner.alert_worthy([near], {"HAS": "NOT_YET"}, {ces.transition_key(near)}) == []
+    assert runner.alert_worthy([near], {"HAS": "NOT_YET"}, set(), {"HAS"}) == [near]
+    assert runner.alert_worthy([near], {"HAS": "NOT_YET"}, {ces.transition_key(near)}, {"HAS"}) == []
+
+
+def test_an_unstarred_name_moving_up_no_longer_pages(monkeypatch):
+    """The other half of the same operator decision, pinned so it cannot regress.
+
+    Identical inputs to the test above minus the star: GNL (+1.1%) and LOMA
+    (+2.9%) were paged this way on 2026-09-21 at 15:10 and neither was actionable.
+    """
+    runner, _, _ = _runner(monkeypatch)
+    near = ces.evaluate(_evidence(symbol="HAS", price=7.25), today=date(2026, 9, 15))
+    assert runner.alert_worthy([near], {"HAS": "NOT_YET"}, set(), set()) == []
