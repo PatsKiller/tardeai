@@ -73,6 +73,14 @@ _DERIVE_LIMIT = 40
 #: percentages match a pair by chance (27.3% matched $35.40 vs a $27.80 low).
 _ANCHOR_LIMIT = 2
 _PRICE_LINE_RE = re.compile(r"\b(price|prices|close|closed|closing|last|current)\b", re.I)
+#: Labelled plan legs. R:R is derived ONLY from figures the input actually names,
+#: never from arbitrary dollar triples — (t-e)/(e-s) over every ordered triple would
+#: match almost any small ratio by chance, which is the failure _ANCHOR_LIMIT guards.
+_LEG_RE = {
+    "entry": re.compile(r"\bentry\b[^0-9\n]{0,14}\$?\s?(\d+(?:\.\d+)?)", re.I),
+    "stop": re.compile(r"\bstop\b[^0-9\n]{0,14}\$?\s?(\d+(?:\.\d+)?)", re.I),
+    "target": re.compile(r"\b(?:target|tgt)\b[^0-9\n]{0,14}\$?\s?(\d+(?:\.\d+)?)", re.I),
+}
 #: Why enforce is the default: a dry run 2026-09-13 over 300 stored results, with
 #: each answer checked against its stored input snapshot plus the static prompt
 #: rules, flagged 3 at the default thresholds. The live prompt carries everything
@@ -185,6 +193,37 @@ def supplied_values(text: str) -> tuple[list[float], list[float]]:
     if r_mult_context:
         for m in _ATR_MULTIPLES:
             derived.add(m)
+    # A volatility figure stated as a percent OF price: "ATR of $0.06 (9.5% of the
+    # $0.63 price)". Measured 2026-09-21: this and the stop-distance form below were
+    # the whole of risk_agent's residual soft share — every one of 47 flagged tokens
+    # in 7 days was arithmetic it derived and showed, none invented. Gated on a named
+    # ATR and the <=2 price anchors, so it adds at most a handful of values rather
+    # than every pairwise ratio.
+    if atr_explicit:
+        for atr in atr_candidates:
+            for px in anchors[:_ANCHOR_LIMIT]:
+                if px > 0:
+                    derived.add(atr / px * 100.0)
+                    # Distance to an ATR-multiple stop, as a percent of price:
+                    # "stop would be $1.13, a distance of 12.4%".
+                    for m in _ATR_MULTIPLES:
+                        derived.add(atr * m / px * 100.0)
+    # R:R recomputed from legs the INPUT names. This is how an agent catches a bad
+    # packaged plan — "entry $0.63, stop $0.54, target $0.88 gives R:R 2.78, not the
+    # 3.25 quoted" — and the old check counted that correction as an unsupported number.
+    legs = {}
+    for name, rx in _LEG_RE.items():
+        m = rx.search(text_s)
+        if m:
+            try:
+                legs[name] = float(m.group(1))
+            except ValueError:
+                pass
+    if len(legs) == 3:
+        e, st, tg = legs["entry"], legs["stop"], legs["target"]
+        risk = e - st
+        if risk > 0:
+            derived.add((tg - e) / risk)
     # Dollar ATR×m and price±ATR×m only when ATR is named and valued.
     if atr_explicit:
         for atr in atr_candidates:
