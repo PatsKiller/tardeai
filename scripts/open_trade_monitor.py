@@ -478,10 +478,25 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
     if not price:
         return alerts
 
-    # Update current price / unrealized PnL
+    # Update current price / unrealized PnL.
+    #
+    # 1R comes from the ORIGINAL risk, never the current stop. Computing it from `stop`
+    # made R inflate every time the stop trailed up: the denominator shrank, R rose, a
+    # higher tier fired, the stop rose again -- a feedback loop that terminates only when
+    # the stop crosses the price. Measured 2026-09-21: SYF #2505 rendered "R: 2.2" at a
+    # true 0.22R (entry 74.86, planned_stop 73.56, exit 75.15), took the >= 3.0R tier and
+    # set a stop $1.01 ABOVE the market. 62 trades have closed this way, 47 booked WIN.
+    #
+    # _auto_close_position already divides by dollar_risk, which is the correct basis.
+    # This makes the monitor agree with the close path instead of contradicting it.
     pnl = round((price - entry) * shares, 2)
-    risk_per_share = abs(entry - stop) if stop else None
-    r_mult = round(pnl / (risk_per_share * shares), 2) if risk_per_share and risk_per_share > 0 else None
+    initial_stop = float(trade.get('planned_stop') or 0)
+    if initial_stop <= 0:
+        # Fallback: recover 1R from dollar_risk when planned_stop is unavailable.
+        dr = float(trade.get('dollar_risk') or 0)
+        initial_stop = round(entry - (dr / shares), 2) if shares and dr > 0 else stop
+    initial_risk = abs(entry - initial_stop) if initial_stop > 0 else (abs(entry - stop) if stop else 0)
+    r_mult = round(pnl / (initial_risk * shares), 2) if initial_risk > 0 and shares else None
 
     cur = conn.cursor()
     cur.execute("""
@@ -567,14 +582,10 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
         log.warning(f"[{symbol}] Time stop check error: {_tse}")
 
     # ── TRAILING STOP: 4-tier R-multiple trailing ──
-    # Use planned_stop or dollar_risk to recover initial 1R (stop_loss may have been moved)
-    initial_stop = float(trade.get('planned_stop') or 0)
-    if initial_stop <= 0:
-        # Fallback: compute from dollar_risk if planned_stop unavailable
-        dr = float(trade.get('dollar_risk') or 0)
-        initial_stop = round(entry - (dr / shares), 2) if shares and dr > 0 else stop
-    initial_risk = abs(entry - initial_stop) if initial_stop > 0 else (abs(entry - stop) if stop else 0)
-
+    # initial_risk (the original 1R) is recovered above, where r_mult is computed, so the
+    # tier GATE and the tier ARITHMETIC share one basis. They used to disagree: the gate
+    # read R off the moving stop while the arithmetic used planned_stop, so the gate let a
+    # 0.22R trade into the 3.0R tier and the arithmetic then placed the stop above price.
     if r_mult is not None and r_mult >= 1.0 and initial_risk > 0 and entry > 0:
         # Determine tier-based stop
         if r_mult >= 3.0:
@@ -590,8 +601,20 @@ def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
             new_stop = round(entry, 2)
             tier_reason = f"R={r_mult:.1f} >= 1.0R — moving to breakeven"
 
-        # Stops only move UP
-        if new_stop > stop:
+        # Stops only move UP -- and must stay BELOW the market.
+        #
+        # Without the second condition a long's stop could be placed above the price.
+        # Alpaca rejects that outright ("stop price must be less than current price",
+        # code 42210000) but the local row had ALREADY been written, so the next pass
+        # read its own phantom stop, saw price <= stop, and auto-closed the trade --
+        # booking a self-inflicted exit as a WIN. SYF #2505, 2026-09-21.
+        #
+        # Refusing is logged rather than silent: a stop that cannot be placed is a real
+        # condition, and silence is how this survived 62 trades.
+        if new_stop > stop and new_stop >= price:
+            log.warning(f"[{symbol}] trailing stop ${new_stop:.2f} would sit at/above "
+                        f"price ${price:.2f} — refusing to move (R={r_mult}, {tier_reason})")
+        elif new_stop > stop:
             msg = f"TRAILING STOP: {symbol} {tier_reason}, stop ${stop:.2f} → ${new_stop:.2f}"
             log.info(msg)
             _log_risk_action(conn, tid, symbol, 'trailing_stop_update', stop, new_stop, price,
