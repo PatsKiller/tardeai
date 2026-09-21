@@ -191,3 +191,66 @@ def test_telegram_chokepoint_baseline_is_honest():
         assert r.returncode == 0, r.stderr
         assert "zero bypasses" in (r.stdout + r.stderr).lower()
 
+
+
+# ── an incident that can open must be able to close ─────────────────────────
+
+
+def test_publish_legacy_message_threads_resolving_to_publish_event(monkeypatch):
+    """The one missing link, measured 2026-09-21.
+
+    `publish_event(event, *, resolving=False)` has always accepted the flag and
+    threads it to the occurrence store, which sets resolved_at/status='resolved'
+    from the dedupe decision -- and `alert_dedupe` only sets `is_resolution` when
+    its caller says so. But `publish_legacy_message`, the SOLE production entry
+    into that plane, called `publish_event(event)` bare.
+
+    So every incident could open and none could ever close: 41 open, 41 distinct
+    dedupe keys, 0 resolved, 0 acknowledged, oldest 2026-09-16 -- while dedupe
+    itself worked correctly (occurrence counts climbing, notifications throttled).
+    """
+    import alert_outbox as ao
+
+    seen = {}
+
+    def fake_publish_event(event, *, resolving=False):
+        seen["resolving"] = resolving
+        return {"alert_id": "al_test", "incident_id": "inc_test"}
+
+    monkeypatch.setattr(ao, "publish_event", fake_publish_event)
+
+    ao.publish_legacy_message("finnhub recovered", source_producer="pytest", resolving=True)
+    assert seen["resolving"] is True, "a recovery was published as a new alert"
+
+    seen.clear()
+    ao.publish_legacy_message("finnhub is down", source_producer="pytest")
+    assert seen["resolving"] is False, "an ordinary alert must not resolve anything"
+
+
+def test_send_telegram_carries_resolving_to_the_publish_layer(monkeypatch):
+    """End of the chain: the producer's signal must survive the whole path.
+
+    `check_data_source_health` passes `resolving=t.recovered`; that has to reach
+    `publish_operator_message`, or the seam below it is unreachable in production
+    and the capability exists without the behaviour -- the exact defect class
+    this alert plane already demonstrated for five days.
+    """
+    import telegram_alert as ta
+
+    captured = {}
+
+    def fake_publish_operator_message(message, *, bypass_router=False, resolving=False):
+        captured["resolving"] = resolving
+        return {"accepted": True, "delivered": True, "route_mode": "LEGACY"}
+
+    monkeypatch.setattr(ta, "publish_operator_message", fake_publish_operator_message)
+    monkeypatch.setattr(ta, "_comms_gateway_owns", lambda mc: False)
+    monkeypatch.setattr(ta, "_best_effort_comms_publish", lambda *a, **k: None)
+    monkeypatch.setattr(ta, "_enabled", lambda: True, raising=False)
+
+    ta.send_telegram("data source recovered", resolving=True)
+    assert captured.get("resolving") is True, "the recovery signal was dropped in send_telegram"
+
+    captured.clear()
+    ta.send_telegram("data source is down")
+    assert captured.get("resolving") is False, "a plain alert must not claim to resolve"

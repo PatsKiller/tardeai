@@ -446,7 +446,12 @@ def _alert(off: list[dict]) -> None:
         sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
         import telegram_alert as _ta
 
-        ok = _ta.send_telegram(body, message_class="operator_alert")
+        # `resolving` tells the normalized plane this observation reports the
+        # condition ENDING. The transition already knows -- `t.recovered` is
+        # "was bad, now healthy" -- and without passing it every incident opens
+        # and none ever closes (41 open / 0 resolved, measured 2026-09-21).
+        ok = _ta.send_telegram(body, message_class="operator_alert",
+                               resolving=t.recovered)
         message_id = getattr(_ta, "last_message_id", lambda: None)()
         print(f"\n  alert: {'accepted' if ok else 'NOT accepted'} by the platform")
     except Exception as exc:
