@@ -74,6 +74,47 @@ def test_operator_message_labels_small_cap_and_is_advisory():
         assert noisy not in msg
 
 
+def test_operator_message_names_the_company_and_sector():
+    """The alert must say WHAT it is, not just the ticker.
+
+    Until 2026-09-21 this message carried a bare ticker and a market-cap pill: the
+    operator was asked to decide on "ESE" without being told it is Esco Technologies,
+    a Technology name. Every field was already in symbol_profiles; the runner simply
+    never queried that table.
+    """
+    r = ces.evaluate(ev(), today=TODAY)
+    msg = ces.render_operator(r, ev(
+        company="Esco Technologies Inc — Scientific & Technical Instruments.",
+        sector="Technology", industry="Scientific & Technical Instruments"))
+    assert "Esco Technologies Inc" in msg
+    assert "Technology" in msg
+    # description_1s already ends with the industry, so it must not be repeated
+    assert msg.count("Scientific & Technical Instruments") == 1
+    # and the trailing full stop from description_1s is not carried into the line
+    assert "Instruments. ·" not in msg
+
+
+def test_identity_line_is_omitted_when_no_profile_exists():
+    """A blank identity line under a BUY READY call is worse than no line.
+
+    symbol_profiles covers ~3,136 symbols, fewer than the tracked set, so the absent
+    case is normal and must render nothing rather than an empty or dangling separator.
+    """
+    r = ces.evaluate(ev(), today=TODAY)
+    msg = ces.render_operator(r, ev())          # ev() carries no company/sector/industry
+    lines = msg.split("\n")
+    assert all(ln.strip() not in {"", "·", "—"} for ln in lines), lines
+    # the line after the header is the cap pill, not an empty identity slot
+    assert lines[1].startswith("Small cap")
+
+
+def test_identity_falls_back_to_sector_and_industry_without_a_company_name():
+    r = ces.evaluate(ev(), today=TODAY)
+    msg = ces.render_operator(r, ev(company=None, sector="Energy",
+                                    industry="Oil & Gas Equipment & Services"))
+    assert "Energy · Oil & Gas Equipment & Services" in msg
+
+
 def test_operator_message_routes_immediate_and_router_does_not_suppress():
     r = ces.evaluate(ev(price=7.25), today=TODAY)
     msg = ces.render_operator(r, ev(price=7.25))
