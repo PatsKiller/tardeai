@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `3a8910887e9ef8b6ff595123014cb7bf543d5c4b207f070ec27914120c7ee8ae`
+**Tree fingerprint:** `8f4efc048403f6ee9c954a384104380ecb3d0bfc58f5a18f6323edd164f617e2`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2602 |
-| Markdown (excl. this INDEX) | 2176 |
+| Files under `docs/` (excl. this INDEX) | 2603 |
+| Markdown (excl. this INDEX) | 2177 |
 | **MISSING HEADER** | **74** |
-| Header OK | 2102 |
+| Header OK | 2103 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2231 |
+| review_required | 2232 |
 
 ## Markdown tree
 
@@ -101,7 +101,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | Momentum Scalp — Stop & Trailing-Stop Policy | review_required | OK | `354954d22052` |
 | `docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md` | Stop Monitoring & Adjustment Protocol | review_required | OK | `8196359bfabe` |
 | `docs/MONDAY_BURNIN_CHECKLIST.md` | Monday ATM Burn-In Checklist | review_required | OK | `362afe5ab3ac` |
-| `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | OK | `09cbfcec79ff` |
+| `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | OK | `4089b52d53c4` |
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator Runbook — LLM Fleet v4.1 Final Execution Pack | active_keep | OK | `22e1f1116a74` |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options & Broker Execution Flows | review_required | OK | `8b8b79559aae` |
 | `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `629259dafb19` |
@@ -652,7 +652,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audit/current-state.md` | Communications Gateway — Current State | review_required | MISSING HEADER | `5bf7544d0919` |
 | `docs/audit/gap-analysis.md` | Communications Gateway — Gap Analysis | review_required | MISSING HEADER | `af219b786e39` |
 | `docs/audit/live-attest-2026-09-05.md` | Communications Gateway — Live Attestation (re-attest, post #862/#864/#868, then #871/#872/#873) | review_required | OK | `e68820396f59` |
-| `docs/audit/message-identity-audit-2026-09-21.md` | Message audit — 60 days, channels and identity | review_required | MISSING HEADER | `717b6a512bef` |
+| `docs/audit/message-identity-audit-2026-09-21.md` | Message audit — 60 days, channels and identity | review_required | MISSING HEADER | `97d349a9e867` |
 | `docs/audit/phase0-signoff.md` | Phase 0 Sign-off | review_required | OK | `02114eff814d` |
 | `docs/audit/phase9-sender-migration.md` | Phase 9 — High-risk Telegram sender migration | review_required | OK | `3872cbce012e` |
 | `docs/audit/runtime-attestation.md` | Communications Gateway — Runtime Attestation | review_required | MISSING HEADER | `68b98afb64a9` |
@@ -696,6 +696,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/REPLAY_INTEGRITY_2026-07-15.md` | Replay chart integrity audit — 2026-07-15 | review_required | OK | `ffa7ae34ab5f` |
 | `docs/audits/REPLAY_INTEGRITY_LATEST.md` | Replay chart integrity audit — 2026-07-15 | review_required | OK | `eda2fd4b85bb` |
 | `docs/audits/REPLAY_SCALE_FIX_2026-06-27.md` | Replay price-scale fix — 2026-06-27 | review_required | OK | `47f67ee8a8ab` |
+| `docs/audits/SINGLE_LETTER_TICKER_S_FIX_2026-09-22.md` | Single-letter ticker `S` — link bleed / research-first / stale quotes | review_required | OK | `596b210f7287` |
 | `docs/audits/STALE_DATA_RCA_AND_REMEDIATION_PLAN_2026-09-01.md` | STALE_DATA_RCA_AND_REMEDIATION_PLAN_2026-09-01 | review_required | OK | `f243325fcec6` |
 | `docs/audits/STOP_MGMT_DISCOVERY_2026-05-23.md` | Stop Management System Discovery — 2026-05-23 | review_required | OK | `05cb7b189dc7` |
 | `docs/audits/STORAGE_SAFEGUARDS_AUDIT_2026-08-11.md` | Storage Safeguards Audit — 2026-08-11 | review_required | OK | `cdedb00b3ff6` |
