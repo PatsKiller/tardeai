@@ -216,9 +216,22 @@ def main() -> int:
 
     out["receipt"] = _write_receipt(out)
     print(json.dumps(out, indent=2))
-    # Non-zero only when we are STILL over after acting: that is the operator's
-    # signal that automatic reclaim was not enough.
-    return 0 if final_used < a.used_pct else 1
+    # Exit 0 whenever the guard DID ITS JOB, even if the disk is still over the
+    # threshold. Returning 1 for "still over" made systemd mark the unit failed
+    # on a run that worked perfectly -- it reclaimed, it paged, it wrote its
+    # receipt -- and made a genuine crash indistinguishable from normal
+    # operation. That is the same three-way collapse as
+    # pipeline_freshness_monitor._age_days_table returning None for "absent",
+    # "errored" and "empty" alike, which cost ~1,800 false pages a day.
+    #
+    # The operator signal for "reclaim was not enough" is the Telegram alert and
+    # the receipt, both of which already fired. The exit code's only job is to
+    # say whether the PROCESS succeeded (AGENTS §0 rule 8: exit 0 is not
+    # evidence of work -- so it must not be overloaded as evidence of state).
+    enf = out.get("enforcer") or {}
+    if enf.get("skipped") or enf.get("error"):
+        return 1  # the enforcer could not run: a real failure
+    return 0
 
 
 if __name__ == "__main__":
