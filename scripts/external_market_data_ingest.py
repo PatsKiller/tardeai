@@ -79,10 +79,31 @@ UNIVERSE_SQL = """
 """
 
 
+def _dict_cursor(conn):
+    """A dict-row cursor, without making the psycopg2 driver a hard requirement.
+
+    2026-09-22: `_get_symbols` is pure SQL over UNIVERSE_SQL and its test drives
+    it against sqlite with `_get_conn` monkeypatched -- yet it still raised
+    ModuleNotFoundError, because the cursor FACTORY reached for
+    psycopg2.extras. CI installs only `pytest pyyaml`, so five tests that pass
+    on any developer machine failed there and nowhere else.
+
+    In production psycopg2 is always present and the behaviour is unchanged:
+    the same RealDictCursor as before. Absent the driver, the connection's own
+    cursor is used -- which is what a sqlite shim already provides.
+
+    Applied at ALL THREE identical sites, not just the one that went red.
+    """
+    try:
+        import psycopg2.extras  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 - driver absent (CI); caller supplies its own conn
+        return conn.cursor()
+    return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+
 def _get_symbols() -> list:
-    import psycopg2.extras
     conn = _get_conn()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = _dict_cursor(conn)
     cur.execute(UNIVERSE_SQL)
     symbols = [r["symbol"] for r in cur.fetchall()]
     conn.close()
@@ -608,9 +629,8 @@ def ingest_fred() -> dict:
 
 def get_macro_context() -> str:
     """Get macro economic context for agent prompt injection."""
-    import psycopg2.extras
     conn = _get_conn()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = _dict_cursor(conn)
 
     cur.execute("""
         SELECT DISTINCT ON (series_id) series_id, series_name, value, observation_date
@@ -631,9 +651,8 @@ def get_macro_context() -> str:
 
 def get_yfinance_context(symbol: str) -> str:
     """Get latest yfinance quote context for a symbol."""
-    import psycopg2.extras
     conn = _get_conn()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = _dict_cursor(conn)
     cur.execute("""
         SELECT * FROM market_quotes WHERE symbol=%s ORDER BY fetched_at DESC LIMIT 1
     """, (symbol,))
