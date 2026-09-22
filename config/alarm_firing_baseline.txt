@@ -80,14 +80,14 @@ scripts/pipeline_alert.py 1
 scripts/pipeline_freshness_slo.py 1
 scripts/pipeline_health_monitor.py 1
 scripts/pipeline_watchdog.py 2
-scripts/portfolio_alerts.py 1
+scripts/portfolio_alerts.py 2
 scripts/portfolio_level_qa.py 2
 scripts/portfolio_live_monitor.py 1
-scripts/portfolio_monthly_report.py 1
+scripts/portfolio_monthly_report.py 2
 scripts/portfolio_monthly_synthesis.py 1
 scripts/portfolio_orchestrator.py 1
 scripts/portfolio_technical.py 1
-scripts/portfolio_weekly_report.py 1
+scripts/portfolio_weekly_report.py 2
 scripts/premarket_watcher.py 1
 scripts/previously_traded_watchlist.py 1
 scripts/pro_analyst_monitor.py 1
@@ -146,3 +146,4 @@ scripts/weekly_learning_digest_delivery.py 1
 scripts/weekly_summary_local.py 1
 scripts/youtube_cookie_health_check.py 1
 scripts/youtube_transcript_ingest.py 1
+scripts/portfolio_report_ms.py 1

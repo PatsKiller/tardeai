@@ -1,14 +1,15 @@
 {
   "schema": "SLOTargets@v1",
   "as_of": "2026-09-22",
-  "status": "PROPOSED",
-  "authority": "READ_ONLY_ADVISORY — the reporter measures and prints. Arming any alert on these budgets is an operator decision (AGENTS.md §17).",
+  "status": "RATIFIED",
+  "authority": "OPERATOR-RATIFIED. The three targets and both staleness budgets below were ratified by the operator on 2026-09-22, with the honesty notes on each feed read and accepted as stated -- in particular that alert_delivery measures PROVABILITY of delivery rather than delivery, and that card_freshness burns by construction because its producer runs roughly weekly. Ratification does NOT silence those caveats; it authorises the budgets to be measured and alerted on as written.",
   "period_days": 30,
   "notes": [
     "Targets live here, not in code: scripts/lib/slo_burn_rate.py holds no number an operator would want to change.",
     "Every feed below was verified against information_schema on 2026-09-22 before being written down. No column is assumed.",
     "The four tiers are the Google SRE Workbook multiwindow table. Each long window is exactly 12x its short window, and the same threshold applies to both halves; scripts/lib/slo_burn_rate.py rejects a pair that is not ~12:1.",
-    "min_events suppresses a tier whose windows carry too little traffic to make a ratio meaningful. It is per-SLO because a bursty event feed and a fixed-cadence freshness feed have very different sample rates."
+    "min_events suppresses a tier whose windows carry too little traffic to make a ratio meaningful. It is per-SLO because a bursty event feed and a fixed-cadence freshness feed have very different sample rates.",
+    "2026-09-22 ratification: targets accepted unchanged. No budget was loosened to make a burning SLO look healthy -- card_freshness still burns against 36h and that remains the finding, not a mis-set target."
   ],
   "tier_table": "1h/5m @14.4 PAGE (2% of budget), 6h/30m @6 PAGE (5%), 24h/2h @3 TICKET (10%), 72h/6h @1 TICKET (10%)",
   "slos": [
@@ -44,7 +45,7 @@
         "verified_on": "2026-09-22",
         "verified_note": "information_schema: watchlist_strategy_cards has 22 columns; updated_at (timestamptz, nullable) exists. 5,892 rows; newest 2026-09-22 07:00.",
         "budget_rationale": "36h. A card carrying entry, stop and target older than a day and a half is not something a desk should size a position from.",
-        "honesty": "Measured 2026-09-22: the producer does not run daily. Distinct update bursts in the last 21 days were 09-22 07:00 (5,430 cards), 09-15 12:00 (13), 09-11 16:00 (72), 09-04 (18) — i.e. roughly weekly. Against a 36h budget this SLO burns hard by construction, which is the finding, not a mis-set target. Raising the budget to hide it would make the number meaningless."
+        "honesty": "Measured 2026-09-22: the producer does not run daily. Distinct update bursts in the last 21 days were 09-22 07:00 (5,430 cards), 09-15 12:00 (13), 09-11 16:00 (72), 09-04 (18) \u2014 i.e. roughly weekly. Against a 36h budget this SLO burns hard by construction, which is the finding, not a mis-set target. Raising the budget to hide it would make the number meaningless."
       }
     },
     {
@@ -68,9 +69,35 @@
     }
   ],
   "tiers": [
-    {"label": "fast_page", "long_window_seconds": 3600, "short_window_seconds": 300, "threshold": 14.4, "severity": "PAGE"},
-    {"label": "slow_page", "long_window_seconds": 21600, "short_window_seconds": 1800, "threshold": 6.0, "severity": "PAGE"},
-    {"label": "fast_ticket", "long_window_seconds": 86400, "short_window_seconds": 7200, "threshold": 3.0, "severity": "TICKET"},
-    {"label": "slow_ticket", "long_window_seconds": 259200, "short_window_seconds": 21600, "threshold": 1.0, "severity": "TICKET"}
-  ]
+    {
+      "label": "fast_page",
+      "long_window_seconds": 3600,
+      "short_window_seconds": 300,
+      "threshold": 14.4,
+      "severity": "PAGE"
+    },
+    {
+      "label": "slow_page",
+      "long_window_seconds": 21600,
+      "short_window_seconds": 1800,
+      "threshold": 6.0,
+      "severity": "PAGE"
+    },
+    {
+      "label": "fast_ticket",
+      "long_window_seconds": 86400,
+      "short_window_seconds": 7200,
+      "threshold": 3.0,
+      "severity": "TICKET"
+    },
+    {
+      "label": "slow_ticket",
+      "long_window_seconds": 259200,
+      "short_window_seconds": 21600,
+      "threshold": 1.0,
+      "severity": "TICKET"
+    }
+  ],
+  "ratified_by": "operator",
+  "ratified_at": "2026-09-22"
 }

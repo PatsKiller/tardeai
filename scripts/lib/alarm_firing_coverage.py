@@ -25,12 +25,14 @@ from pathlib import Path
 #: written to make impossible. A denominator that shrinks when code is edited
 #: is not a denominator.
 #:
-#: NOT counted, and named here rather than silently omitted: send_telegram_document
-#: has 4 call sites and has never been counted -- not on this branch and not on
-#: main. Including it would EXPAND the ratchet from 188 to 192 and require four
-#: new baseline entries. That is a deliberate widening of the gate, not a repair,
-#: so it is left as a recorded gap for an explicit decision.
-TRANSPORT = ("send_telegram", "send_telegram_with_id")
+#: send_telegram_document is counted too, by operator decision 2026-09-22. It had
+#: NEVER been counted -- not on any branch -- so its 4 call sites were alarms
+#: nobody could see were untested. Including it is a deliberate WIDENING of the
+#: ratchet (188 -> 192), not a repair, and it was taken as an explicit decision
+#: rather than left as a silent omission. It sends a document to the operator
+#: over the same transport; "the alarm is a PDF" is not a reason to stop counting
+#: whether it was ever observed firing.
+TRANSPORT = ("send_telegram", "send_telegram_with_id", "send_telegram_document")
 
 
 def call_sites(scripts_dir: Path) -> list[tuple[str, int]]:

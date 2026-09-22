@@ -505,6 +505,15 @@ cmd_prepare() {
   rsync -a --delete \
     --exclude='.venv' --exclude='.git' --exclude='logs/' \
     --exclude='__pycache__/' --exclude='*.pyc' --exclude='exports/' \
+    `# 2026-09-22: THIS is where the 12 GB came back. 8dc78d9aa (09-21) added` \
+    `# --exclude='.claude/' to overlay_main, the GIT-TREE overlay -- but this` \
+    `# rsync clones the PREVIOUS RELEASE, and carried .claude forward` \
+    `# generation after generation. 58dac0884 was prepared AFTER that fix and` \
+    `# still held 12 GB, inherited from its predecessor, not from the repo.` \
+    `# Measured: 9 releases x 13 GB = 117 GB, of which 12 GB each was` \
+    `# .claude/worktrees -- Claude Code agent session trees, not application` \
+    `# data. Excluding it in ONE of two copy paths reclaimed nothing.` \
+    --exclude='.claude/' \
     "${PREV_RELEASE}/" "${NEW_RELEASE}/"
   overlay_main "$NEW_RELEASE"
   link_pipeline_data "$NEW_RELEASE"
