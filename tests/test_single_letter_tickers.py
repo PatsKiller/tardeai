@@ -134,3 +134,144 @@ def test_research_gap_auto_trigger(monkeypatch):
     assert second.get("deduped") is True
     assert second.get("emitted") == 0
     assert "say 'research S'" not in (first.get("ack") or "")
+
+
+def test_dossier_does_not_prompt_say_research():
+    """format_dossier no longer tells the operator to type research X."""
+    import scripts.lib.subject_dossier as sd
+
+    dossier = {
+        "S": {
+            "symbol": "S",
+            "profile": {"sector": "Technology", "industry": "Software"},
+            "agents": [],
+            "synthesis": None,
+            "thesis": {},
+            "research": [],
+            "analyst": None,
+            "catalysts": [],
+            "news": [],
+            "sector": None,
+            "industry": None,
+            "iv": None,
+            "dividends": None,
+            "held": {},
+        }
+    }
+    text = sd.format_dossier(["S"], dossier, prices={"S": 19.84})
+    assert "🔵 Looked up outside Trade-AI: nothing for these lines" in text
+    assert "say 'research S'" not in text
+    assert "desk queues research when house coverage is thin" in text
+
+
+def test_hollow_s_subject_brief_opens_pending_followup(tmp_path, monkeypatch):
+    """Analyst/subject ask with no house research → answer-now + PENDING_PATH for Hermes.
+
+    Reproduces the hollow DeepSeek path for ticker S: thin house facts still
+    complete the turn; research must be auto-queued with a pending the fulfill
+    loop can join — not 'say research S'.
+    """
+    monkeypatch.setenv("CIO_OPERATOR_INTENT_FLASH", "0")
+    monkeypatch.setenv("CIO_SUBJECT_FLASH", "0")
+    monkeypatch.setenv("CIO_OPERATOR_FREEFORM_FLASH", "0")
+    monkeypatch.setenv("CIO_SUBJECT_DOSSIER", "0")  # keep reply short; dossier covered separately
+    monkeypatch.setattr(desk, "PENDING_PATH", tmp_path / "pending.jsonl")
+    monkeypatch.setattr(desk, "OPERATOR_GAP_REQUESTS_PATH", tmp_path / "gap_requests.jsonl")
+    desk._RESEARCH_GAP_ENQUEUED.clear()
+
+    enq_calls: list[dict] = []
+
+    def fake_enqueue(**kwargs):
+        enq_calls.append(kwargs)
+        return {"ok": True, "emitted": 1, "plan_id": "plan_s_hollow"}
+
+    monkeypatch.setattr(desk, "_enqueue_hermes_research", fake_enqueue)
+    monkeypatch.setattr(desk, "_register_gaps", lambda *a, **k: {"registered": 0})
+    monkeypatch.setattr(desk, "_emit_telegram_desk_payload", lambda *a, **k: None)
+    monkeypatch.setattr(desk, "_gap_resolver_enabled", lambda: False)
+    monkeypatch.setattr(desk, "subject_research", lambda *a, **k: [])
+    monkeypatch.setattr(desk, "subject_analyst_view", lambda syms: [{
+        "symbol": "S",
+        "rating": "Hold",
+        "target_mean": 22.0,
+        "target_low": 18.0,
+        "target_high": 28.0,
+        "n_analysts": 4,
+        "as_of": "2026-08-01",
+        "age_days": 52,
+        "stale": True,
+    }])
+    monkeypatch.setattr(desk, "subject_price_facts", lambda syms: {
+        "S": {
+            "close": 19.84,
+            "price_date": "2026-09-04",
+            "change_30d_pct": -10.8,
+            "start_close": 22.25,
+            "start_date": "2026-08-05",
+            "age_hours": 432.0,
+        }
+    })
+    monkeypatch.setattr(desk, "_subject_levels", lambda syms: ({}, None, None))
+    monkeypatch.setattr(desk, "analyze_operator_intent", lambda text: {
+        "intent": "analyst_view",
+        "needs": ["analyst_view"],
+        "symbols": ["S"],
+        "text": text,
+    })
+
+    out = desk.handle_operator_desk_question(
+        "is S a good investment?",
+        chat_id="42",
+        message_id="9",
+    )
+
+    text = out.get("text") or ""
+    assert out["kind"] == "answered"
+    assert out.get("research_queued") is True
+    assert out.get("pending_id")
+    assert "say 'research S'" not in text
+    assert "say 'research <ticker>'" not in text
+    assert f"Pending `{out['pending_id']}`" in text or f"Pending: `{out['pending_id']}`" in text
+    assert "House research for S is queued" in text or "queued" in text.lower()
+    assert "19.84" in text
+    assert "STALE" in text  # Sep 04 close must not read as fresh
+    assert enq_calls and enq_calls[0]["symbols"] == ["S"]
+
+    rows = [
+        __import__("json").loads(line)
+        for line in desk.PENDING_PATH.read_text().splitlines()
+        if line.strip()
+    ]
+    assert rows, "soft research enqueue must open PENDING_PATH for Hermes join-back"
+    assert rows[-1]["status"] == "open"
+    assert rows[-1]["pending_id"] == out["pending_id"]
+    assert rows[-1].get("kind") == "soft_research_queue"
+    assert rows[-1]["intent"]["symbols"] == ["S"]
+
+
+def test_subject_gather_emits_soft_missing_research_without_blocking(monkeypatch):
+    """analyst_view-only subject brief gets a soft hermes gap, not a blocking one."""
+    monkeypatch.setattr(desk, "subject_research", lambda *a, **k: [])
+    monkeypatch.setattr(desk, "subject_analyst_view", lambda syms: [{
+        "symbol": "S", "rating": "Hold", "target_mean": 22.0, "as_of": "2026-08-01",
+        "age_days": 52, "stale": True, "n_analysts": 1, "target_low": 18, "target_high": 28,
+    }])
+    monkeypatch.setattr(desk, "subject_price_facts", lambda syms: {
+        "S": {"close": 19.84, "price_date": "2026-09-04"},
+    })
+    monkeypatch.setattr(desk, "_subject_levels", lambda syms: ({}, None, None))
+    monkeypatch.setattr(desk, "_attach_contract_findings", lambda *a, **k: None)
+
+    intent = {
+        "intent": "analyst_view",
+        "needs": ["analyst_view"],
+        "symbols": ["S"],
+        "text": "is S a good investment?",
+    }
+    ev = desk._gather_tradeai_evidence_core(intent)
+    soft = [g for g in (ev.get("gaps") or []) if g.get("domain") == "hermes_research"]
+    assert soft and soft[0]["gap_type"] == "missing_research"
+    assert soft[0]["symbol"] == "S"
+    assert not any(g.get("domain") == "hermes_research" for g in (ev.get("blocking_gaps") or []))
+    assert ev.get("complete") is True
+    assert "S" in (ev.get("available") or {}).get("subject_symbols", [])

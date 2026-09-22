@@ -424,8 +424,9 @@ def format_dossier(symbols: list[str], dossier: dict[str, dict[str, Any]],
     if not blocks:
         return ""
     out = "\n\n".join(blocks)
-    out += (f"\n{PILL_OUTSIDE}: nothing for these lines — "
-            f"say 'research {str(symbols[0]).upper()}' to queue a fresh pull.")
+    # Desk owns enqueue (enqueue_research_gap / soft pending follow-up). Do not
+    # tell the operator to type "research X" — that left hollow answers unqueued.
+    out += f"\n{PILL_OUTSIDE}: nothing for these lines — desk queues research when house coverage is thin."
     if len(out) > MAX_CHARS:
         out = out[: MAX_CHARS - 1].rstrip() + "…"
     return out
