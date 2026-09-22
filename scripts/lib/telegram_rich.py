@@ -45,6 +45,46 @@ MAX_TEXT = 4096
 AUTHORITY = "READ_ONLY_ADVISORY"
 _SAFE_URL = re.compile(r"^https://[^\s<>\"']+$")
 
+#: NYSE/Nasdaq single-letter common stocks. Bare single letters in prose are
+#: otherwise English (P&L → P,L); these bind only with word boundaries / $cashtag.
+SINGLE_LETTER_TICKERS = frozenset({
+    "B", "C", "D", "F", "H", "K", "L", "M", "O", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+})
+
+
+def scope_primary_symbols(symbols: Optional[Iterable[str]]) -> list[str]:
+    """Turn-scoped primary tickers only: uppercase, deduped, no residual bleed.
+
+    Callers pass the active turn's ``primary_symbols`` / intent symbols. Prior-turn
+    names (e.g. TROW left in message body from subject memory) must not appear here.
+    """
+    out: list[str] = []
+    for raw in symbols or []:
+        u = str(raw or "").strip().lstrip("$").upper()
+        if not u or not u.isalpha() or not (1 <= len(u) <= 5):
+            continue
+        if u not in out:
+            out.append(u)
+    return out
+
+
+def build_outbound_links(
+    symbols: Optional[Iterable[str]],
+    *,
+    surface: str = "intelligence",
+) -> str:
+    """Command Center / Finviz / Yahoo links for primary symbols only.
+
+    ``symbols=["S"]`` emits S links alone — never secondary/footer bleed for
+    residual names mentioned in the message body.
+    """
+    syms = scope_primary_symbols(symbols)
+    if not syms:
+        return ""
+    if len(syms) == 1:
+        return symbol_links(syms[0], surface=surface)
+    return " · ".join(symbol_links(s, surface=surface) for s in syms[:3])
+
 
 def esc(value: Any) -> str:
     return html.escape("" if value is None else str(value), quote=False)
@@ -124,14 +164,16 @@ class RichMessage:
         # 2026-09-15 operator review of GO alerts ("needs polishing"): one symbol -> the title itself links to
         # Command Center and the buttons carry Command Center / Finviz / Yahoo, so no second line repeats the
         # same three links; several symbols keep the per-symbol link line.
-        single = len(self.symbols) == 1
+        # 2026-09-22: scope to turn primary symbols only (purge residual bleed e.g. TROW).
+        symbols = scope_primary_symbols(self.symbols)
+        single = len(symbols) == 1
         title_html = esc(self.title)
-        if single and safe_url(self._primary_url(self.symbols[0])):
-            title_html = link(self.title, self._primary_url(self.symbols[0]))
+        if single and safe_url(self._primary_url(symbols[0])):
+            title_html = link(self.title, self._primary_url(symbols[0]))
         head = f"{self.marker + ' ' if self.marker else ''}<b>{title_html}</b>"
         parts = [head]
-        if self.symbols and not single:
-            parts.append(" · ".join(symbol_links(s, surface=self.primary_surface) for s in self.symbols[:3]))
+        if symbols and not single:
+            parts.append(build_outbound_links(symbols[:3], surface=self.primary_surface))
         parts.extend(esc(f) for f in self.facts if f)
         if self.why:
             parts.append(f"<blockquote>{esc(self.why)}</blockquote>")
@@ -169,9 +211,10 @@ class RichMessage:
         reply_markup = (
             {"inline_keyboard": [[{"text": label, "url": url} for label, url in buttons[:3]]]} if buttons else None
         )
+        chart_sym = scope_primary_symbols([self.chart_symbol] if self.chart_symbol else symbols[:1])
         preview = (
-            {"url": chart_image_url(self.chart_symbol), "prefer_large_media": True, "show_above_text": True}
-            if self.chart_symbol
+            {"url": chart_image_url(chart_sym[0]), "prefer_large_media": True, "show_above_text": True}
+            if chart_sym
             else {"is_disabled": True}
         )
         return {"text": text, "parse_mode": "HTML", "reply_markup": reply_markup, "link_preview_options": preview,
@@ -179,8 +222,9 @@ class RichMessage:
 
     def _buttons(self) -> list[tuple[str, str]]:
         buttons = [(label, url) for label, url in self.buttons if safe_url(url)]
-        if not buttons and self.symbols:
-            s = self.symbols[0].upper()
+        symbols = scope_primary_symbols(self.symbols)
+        if not buttons and symbols:
+            s = symbols[0]
             label = "📊 Trading" if self.primary_surface == "trading" else "📊 Command Center"
             buttons = [
                 (label, self._primary_url(s)),
@@ -319,6 +363,8 @@ def desk_answer(
 
 __all__ = [
     "RichMessage",
+    "SINGLE_LETTER_TICKERS",
+    "build_outbound_links",
     "cc_symbol_url",
     "cc_trading_url",
     "chart_image_url",
@@ -330,6 +376,7 @@ __all__ = [
     "link",
     "material_change",
     "safe_url",
+    "scope_primary_symbols",
     "symbol_links",
     "yahoo_url",
 ]

@@ -374,10 +374,18 @@ def extract_symbols(text: str) -> list[str]:
         "CEO", "CFO", "ETF", "USD", "ALL", "NOW", "BUY", "SELL", "HOLD", "TRIM",
         "ACK", "PLAN", "GOAL", "CIO", "WHAT", "HOW", "WHY", "CAN", "YOU", "ME",
     }
+    try:
+        from scripts.lib.operator_subject_resolver import SINGLE_LETTER_TICKERS  # noqa: PLC0415
+    except ImportError:  # pragma: no cover
+        from lib.operator_subject_resolver import SINGLE_LETTER_TICKERS  # type: ignore  # noqa: PLC0415
     found = []
     for m in SYMBOL_RE.finditer(text or ""):
         s = m.group(1)
-        if s in stop or len(s) < 2:
+        if s in stop:
+            continue
+        # Single-letter listed tickers (S, C, F, …) need word boundaries — SYMBOL_RE
+        # already supplies \b — and must not be dropped by a blanket len<2 rule.
+        if len(s) < 2 and s not in SINGLE_LETTER_TICKERS:
             continue
         if s not in found:
             found.append(s)

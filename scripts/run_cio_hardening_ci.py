@@ -614,6 +614,7 @@ GATES = [
             "tests/test_subject_dossier_pills_20260914.py",
             "tests/test_comms_editor_20260914.py",
             "tests/test_comms_editor_transport_20260914.py",
+            "tests/test_single_letter_tickers.py",
             "tests/test_tg_chat_routing_20260914.py",
             "tests/test_cio_checkin_only_with_action_20260914.py",
             "tests/test_screener_go_alerts_20260914.py",

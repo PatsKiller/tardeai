@@ -552,6 +552,17 @@ def process_operator_message(
         )
     final_reply = _prepare_reply(reply, desk_prov)
 
+    # Scope comms-editor footer links to this turn's primary symbols only
+    # (purge residual bleed e.g. TROW from prior-turn memory still in the body).
+    _primary_tok = None
+    try:
+        from scripts.lib.comms_editor import set_primary_symbols, reset_primary_symbols
+        desk_syms = list((desk.get("intent") or {}).get("symbols") or [])
+        if desk_syms:
+            _primary_tok = set_primary_symbols(desk_syms)
+    except Exception:
+        _primary_tok = None
+
     # Audit wake / rate only — do not use plan enrichment as the Telegram body
     event_id = None
     wake_id = None
@@ -603,7 +614,14 @@ def process_operator_message(
         )
         mark_wake_rate(chat_id, path=rate_path)
 
-    sent = _send(final_reply, reply_to=reply_to_message_id)
+    try:
+        sent = _send(final_reply, reply_to=reply_to_message_id)
+    finally:
+        if _primary_tok is not None:
+            try:
+                reset_primary_symbols(_primary_tok)
+            except Exception:
+                pass
     out.update({
         "handled": True,
         "kind": "operator_desk",
