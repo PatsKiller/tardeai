@@ -368,12 +368,34 @@ def _best_effort_comms_publish(
             )
         published = publish_communication(event)
         _tag_outbound(published, wire)
+        # The id the send that just happened actually minted, if any.
+        # `_raw_send_telegram_result` clears this list at the START of every send
+        # and repopulates it only on success, and `send_telegram` /
+        # `send_telegram_document` clear it before choosing a path — so an id
+        # visible here belongs to THIS message and cannot be inherited from the
+        # previous one. Empty is the honest answer for a suppressed, digested,
+        # or document send, and it is left empty rather than guessed.
+        mids = last_message_ids()
+        # One id per chat, comma-joined: the same shape channel_adapters records
+        # on the gateway path, so both paths read back identically.
+        provider_message_id = ",".join(mids) if mids else None
         # Say what was observed, not what is convenient. SUPPRESSED and UNKNOWN
         # are already valid terminal statuses; using LEGACY_DELIVERED for all
         # three is what let the Communications page show a delivered alert the
         # operator never received.
         if delivered is True:
-            status = "LEGACY_DELIVERED"
+            # WHY the status depends on the id, and not on delivery alone:
+            # `_persist_event_settlement_pg` maps LEGACY_DELIVERED to
+            # UNKNOWN_LEGACY unconditionally, and reaches SETTLED only for
+            # SENT/DELIVERED/ACKNOWLEDGED *carrying a provider id*. So while
+            # this path settled LEGACY_DELIVERED it could never produce a
+            # SETTLED row no matter what it had in hand. Measured 2026-09-22:
+            # 51,193 of 52,930 communication_events UNSETTLED against 79
+            # SETTLED — and every one of the 79 came from the gateway path,
+            # which passes the id. This is that same input, not a relabelling:
+            # when there is genuinely no id we still say LEGACY_DELIVERED and
+            # the row still settles UNKNOWN_LEGACY, which remains the truth.
+            status = "SENT" if provider_message_id else "LEGACY_DELIVERED"
         elif delivered is False:
             status = "SUPPRESSED"
         else:
@@ -383,8 +405,10 @@ def _best_effort_comms_publish(
                 settle_delivery(
                     delivery_id,
                     status=status,
+                    provider_message_id=provider_message_id,
                     provider_coordinates={"delivery_owner": "legacy",
                                           "observed_delivered": delivered},
+                    delivery_owner="legacy",
                 )
             except Exception as e:
                 # Never swallow a settle failure silently (§7): a RESERVED stub
@@ -529,6 +553,12 @@ def send_telegram(
     """
     if not _enabled():
         return False
+    # Forget the previous send before choosing a path. Only `_raw_send_telegram_result`
+    # clears this, and several branches below (gateway-owned, digested, suppressed,
+    # early-return) never reach it — so without this a caller reading
+    # `last_message_id()` afterwards could be handed the id of an EARLIER message
+    # and staple it to this alert. An absent id must stay absent.
+    reset_last_message_ids()
     # Phase 6 Tier D broker — SHADOW ingest only; never suppresses delivery.
     try:
         from lib.advisory.notification_broker import wrap_send_hook
@@ -664,6 +694,11 @@ def send_telegram_document(
     """
     if not _enabled():
         return False
+    # Documents go out via `send_document`, which mints no message id into
+    # `_LAST_MESSAGE_IDS`. Without this clear, a document send would leave the id
+    # of the last TEXT alert standing and the ledger would settle the document
+    # row against a message it never sent.
+    reset_last_message_ids()
     from pathlib import Path
 
     path = Path(file_path)

@@ -341,14 +341,20 @@ Respond with EXACTLY this JSON:
     return result
 
 
-def send_stop_brief_telegram(result: Dict):
-    """Send the decision brief via the shared chokepoint (captures to Reports portal)."""
+def send_stop_brief_telegram(result: Dict) -> Optional[str]:
+    """Send the decision brief via the shared chokepoint (captures to Reports portal).
+
+    Returns the provider message id when the brief actually reached Telegram,
+    else None (empty body, suppressed, or digested). The previous bare `return`
+    is preserved as None, and the single caller ignores the value unless it is
+    stamping the alert_events row.
+    """
     msg = result.get("telegram_msg", "")
     if not msg:
-        return
+        return None
 
-    from telegram_alert import send_telegram
-    send_telegram(msg, bypass_router=True)
+    from telegram_alert import send_telegram_with_id
+    return send_telegram_with_id(msg, bypass_router=True).get("message_id")
 
 
 def process_stop_alerts(danger_list: List[Dict], state_dir: str, root: str = ".") -> List[Dict]:
@@ -364,12 +370,13 @@ def process_stop_alerts(danger_list: List[Dict], state_dir: str, root: str = "."
             result = generate_stop_brief(sym, d, state_dir, root)
 
             # DB first, Telegram second
+            alert_event_id = None
             try:
                 from alert_event_writer import save_alert_event
                 price = result.get("price", d.get("price", 0))
                 stop_p = result.get("stop_price", d.get("stop_price", 0))
                 dec = result.get("decision", {})
-                save_alert_event(
+                alert_event_id = save_alert_event(
                     alert_type="stop_brief",
                     raw_text=result.get("telegram_msg", "")[:2000],
                     symbol=sym,
@@ -390,7 +397,15 @@ def process_stop_alerts(danger_list: List[Dict], state_dir: str, root: str = "."
             except Exception as e:
                 print(f"  [stop-brief] Alert DB write failed (non-fatal): {e}")
 
-            send_stop_brief_telegram(result)
+            telegram_message_id = send_stop_brief_telegram(result)
+            # Telegram second, so the id only exists now. Link it to the row the
+            # write above already created instead of reordering the two.
+            if alert_event_id and telegram_message_id:
+                try:
+                    from alert_event_writer import attach_telegram_message_id
+                    attach_telegram_message_id(alert_event_id, telegram_message_id)
+                except Exception as e:
+                    print(f"  [stop-brief] id attach failed (non-fatal): {e}")
             rec = result.get("decision", {}).get("recommendation", "?")
             conf = result.get("decision", {}).get("confidence", 0)
             print(f"  [stop-brief] {sym}: {rec} ({conf}% confidence)")

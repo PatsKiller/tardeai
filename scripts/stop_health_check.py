@@ -27,20 +27,47 @@ sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 _COMPONENT = "stop_health"
 
 
-def _send_telegram(msg: str) -> bool:
+def _send_telegram(msg: str) -> str | None:
+    """Send via the central router. Returns the provider message id, or None.
+
+    None covers every case where no message reached Telegram — suppressed by the
+    router, digested, or a transport error. An absent id is information (there is
+    nothing for the operator to acknowledge), not a failure, and it is returned
+    as None rather than guessed. The previous bare `True` told the caller nothing
+    it did not already know.
+    """
     try:
-        from telegram_alert import send_telegram
-        send_telegram(msg)
-        return True
+        from telegram_alert import send_telegram_with_id
+        return send_telegram_with_id(msg).get("message_id")
     except Exception:
-        return False
+        return None
 
 
-def _siem(symbol: str, severity: str, text: str, payload: dict) -> None:
+def _siem(symbol: str, severity: str, text: str, payload: dict) -> int | None:
+    """Write the SIEM row. Returns its alert_events id so a send can stamp it."""
     try:
         from alert_event_writer import save_alert_event
-        save_alert_event(alert_type="strategic_alert", severity=severity, source_script=_COMPONENT,
-                         symbol=symbol or "", raw_text=text, parsed_payload=payload)
+        return save_alert_event(alert_type="strategic_alert", severity=severity, source_script=_COMPONENT,
+                                symbol=symbol or "", raw_text=text, parsed_payload=payload)
+    except Exception:
+        return None
+
+
+def _attach_telegram_id(alert_event_ids, telegram_message_id: str | None) -> None:
+    """Link SIEM rows to the message that actually carried them.
+
+    The phone gets ONE batched card for N conditions (B2, 2026-09-16), so all N
+    rows legitimately share a single provider id — that batched card is what the
+    operator would acknowledge. A missing id links nothing rather than inventing
+    an association.
+    """
+    if not telegram_message_id:
+        return
+    try:
+        from alert_event_writer import attach_telegram_message_id
+        for aid in alert_event_ids:
+            if aid:
+                attach_telegram_message_id(aid, telegram_message_id)
     except Exception:
         pass
 
@@ -195,9 +222,11 @@ def _portfolio_drawdown_guard() -> dict | None:
                 f"${float(peak):,.0f} ({peak_date}) — review stops/exposure (advisory; no orders placed)")
         if not _recently_alerted("PORTFOLIO", cond, hours=dedup_h):
             payload = {"kind": "stop_health", "condition": cond, **out}
-            _siem("PORTFOLIO", "critical" if level == "critical" else "warning",
-                  f"[stop-health] {cond} · {line}", payload)
-            _send_telegram(f"{'🚨' if level == 'critical' else '⚠️'} PORTFOLIO DRAWDOWN — {line}")
+            alert_event_id = _siem("PORTFOLIO", "critical" if level == "critical" else "warning",
+                                   f"[stop-health] {cond} · {line}", payload)
+            # DB first, Telegram second — so the id exists only now.
+            mid = _send_telegram(f"{'🚨' if level == 'critical' else '⚠️'} PORTFOLIO DRAWDOWN — {line}")
+            _attach_telegram_id([alert_event_id], mid)
             _hermes_finding("PORTFOLIO", cond, line, payload)
         return {**out, "level": level, "condition": cond}
     except Exception as e:
@@ -211,6 +240,9 @@ def run(quiet: bool = False) -> dict:
     summary, alerts = res["summary"], res["alerts"]
     fired = []
     batch: list[tuple[str, str, str, str, str]] = []  # (sev, cond, sym, acct, line)
+    # Parallel to `batch`: the alert_events id each entry wrote, so the batched
+    # card's provider id can be stamped onto every row it carried.
+    batch_alert_event_ids: list = []
     for r in alerts:
         sym, acct = r["symbol"], r["account"]
         # the single most severe condition for the message
@@ -235,7 +267,8 @@ def run(quiet: bool = False) -> dict:
         # dedup ALL persistence (SIEM + Telegram + Hermes) to one per (symbol,condition) per 2h — the cron
         # runs every 10 min, so without this a single stop-out would write a row every run for hours.
         if not _recently_alerted(sym, cond):
-            _siem(sym, sev, f"[stop-health] {cond} · {sym}@{acct} · {line}", payload)
+            batch_alert_event_ids.append(
+                _siem(sym, sev, f"[stop-health] {cond} · {sym}@{acct} · {line}", payload))
             _hermes_finding(sym, cond, line, payload)   # enter Hermes' research stream (deduped via the same 2h window)
             batch.append((sev, cond, sym, acct, line))
             fired.append(f"{sym}:{cond}")
@@ -244,7 +277,7 @@ def run(quiet: bool = False) -> dict:
     if batch:
         if len(batch) == 1:
             sev, cond, sym, acct, line = batch[0]
-            _send_telegram(f"{'🚨' if sev == 'urgent' else '⚠️'} STOP HEALTH — {cond}: *{sym}* ({acct})\n{line}")
+            mid = _send_telegram(f"{'🚨' if sev == 'urgent' else '⚠️'} STOP HEALTH — {cond}: *{sym}* ({acct})\n{line}")
         else:
             n_urgent = sum(1 for b in batch if b[0] == "urgent")
             head = f"{'🚨' if n_urgent else '⚠️'} STOP HEALTH — {len(batch)} alert(s)"
@@ -252,7 +285,9 @@ def run(quiet: bool = False) -> dict:
                 head += f" ({n_urgent} urgent)"
             lines = [f"{'🚨' if sev == 'urgent' else '⚠️'} {cond}: *{sym}* ({acct})\n{line}"
                      for sev, cond, sym, acct, line in batch]
-            _send_telegram(head + "\n\n" + "\n\n".join(lines))
+            mid = _send_telegram(head + "\n\n" + "\n\n".join(lines))
+        # One card carried every row in this run — link them all to it.
+        _attach_telegram_id(batch_alert_event_ids, mid)
     dd = _portfolio_drawdown_guard()
     if dd and dd.get("level") in ("warning", "critical"):
         fired.append(f"PORTFOLIO:{dd['condition']}")

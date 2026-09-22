@@ -273,16 +273,24 @@ def run(send=False):
 
     def _emit(msg, sym, payload, kind):
         nonlocal sent
+        alert_event_id = None
         try:
             from alert_event_writer import save_alert_event
-            save_alert_event(alert_type="strategic_alert", severity="info", source_script="stop_drift_alert",
-                             symbol=sym, raw_text=msg, parsed_payload={"kind": kind, **payload, "advisory_only": True})
+            alert_event_id = save_alert_event(
+                alert_type="strategic_alert", severity="info", source_script="stop_drift_alert",
+                symbol=sym, raw_text=msg, parsed_payload={"kind": kind, **payload, "advisory_only": True})
         except Exception:
             pass
         if send:
             try:
-                from telegram_alert import send_telegram
-                send_telegram(msg); sent += 1
+                from telegram_alert import send_telegram_with_id
+                # DB first, Telegram second — stamp the row we already own with
+                # the id the send just minted. send_telegram_with_id returns the
+                # same bool as send_telegram under "accepted".
+                res = send_telegram_with_id(msg); sent += 1
+                if alert_event_id and res.get("message_id"):
+                    from alert_event_writer import attach_telegram_message_id
+                    attach_telegram_message_id(alert_event_id, res["message_id"])
             except Exception:
                 pass
 

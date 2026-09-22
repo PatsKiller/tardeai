@@ -70,10 +70,11 @@ def run(send: bool = False) -> dict:
             f"({c.get('consensus_analysts')} analysts) — review trailing width / ratchet "
             f"(advisory; never auto-modifies stops)."
         )
+        alert_event_id = None
         try:
             from alert_event_writer import save_alert_event
 
-            save_alert_event(
+            alert_event_id = save_alert_event(
                 alert_type="strategic_alert",
                 severity="warning",
                 source_script="stop_over_consensus_monitor",
@@ -85,10 +86,19 @@ def run(send: bool = False) -> dict:
             pass
         if send:
             try:
-                from telegram_alert import send_telegram
+                from telegram_alert import send_telegram_with_id
 
-                send_telegram(msg)
+                # DB first, Telegram second: the row exists before the id does,
+                # so the id is stamped on afterwards rather than the write being
+                # reordered (a DB outage must never block the operator's alert).
+                # send_telegram_with_id returns send_telegram's bool under
+                # "accepted" and additionally hands back the id it already had.
+                res = send_telegram_with_id(msg)
                 sent += 1
+                if alert_event_id and res.get("message_id"):
+                    from alert_event_writer import attach_telegram_message_id
+
+                    attach_telegram_message_id(alert_event_id, res["message_id"])
             except Exception:
                 pass
         emitted.append(c)

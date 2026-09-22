@@ -862,7 +862,7 @@ GATES = [
         [
             "tests/test_s3_detector_excludes_held.py",
         ],
-    ),    # A directory a served surface reads must be linked into the release.
+    ),  # A directory a served surface reads must be linked into the release.
     (
         "release_links_reports",
         [
@@ -1063,8 +1063,21 @@ GATES = [
     # contract means the provider id does not exist at save_alert_event() time.
     (
         "alert_delivery_id",
+        ["tests/test_alert_delivery_id_attach_20260921.py"],
+    ),
+    # Phase 2 of the same work: the writer existed but NOTHING called it, and the
+    # legacy settle path dropped the id it already held. Measured 2026-09-22:
+    # 62 of 8,003 alert_events carried a telegram_message_id (0.78%), 51,193 of
+    # 52,930 communication_events were UNSETTLED (the 79 SETTLED all came from
+    # the gateway path, which passes provider_message_id), and
+    # destination_policy_id was NULL on all 52,929 delivery + outbox rows. This
+    # gate holds the wiring down: it fails if a call site stops binding the id
+    # save_alert_event returns, if the legacy settle stops passing the provider
+    # id, or if the outbox stops recording which policy chose the channel.
+    (
+        "alert_delivery_wiring",
         [
-            "tests/test_alert_delivery_id_attach_20260921.py"
+            "tests/test_alert_delivery_wiring_20260922.py",
         ],
     ),
     # pipeline_freshness_monitor._age_days_table returned None for an ABSENT
