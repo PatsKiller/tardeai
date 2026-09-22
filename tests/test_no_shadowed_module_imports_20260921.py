@@ -41,6 +41,26 @@ ROOT = Path(__file__).resolve().parent.parent
 
 #: Files whose runtime failure is silent and operator-facing. Widen deliberately;
 #: a shadow in any of these costs alerting, not just a traceback.
+#:
+#: SCOPE, measured 2026-09-21 across all 2,711 files under scripts/:
+#:   171 bare function-local re-imports shadow a module-level name
+#:   162 of those are BENIGN -- the local import precedes every use
+#:     4 load the name before the local import (the fatal signature)
+#:     1 was a live bug: claude_escalation_handler:295
+#:
+#: The other 3 line-order candidates (api_v2.py:52224, crawl_v3_dashboard.py:94,
+#: telegram_command_handler.py:1173, portfolio_orchestrator.py:1040) are refuted
+#: by production: those functions run constantly and their logs contain ZERO
+#: UnboundLocalError. Line order is only a PROXY for execution order -- the early
+#: use and the local import sit on branches that do not run in the same call.
+#:
+#: So this list is deliberately NOT the whole repo. Scanning 79 files would turn
+#: a ratchet into 170 failures that are mostly inert, and a gate that cries wolf
+#: gets disabled. Widen it when a file's alerting path matters, not by default.
+#:
+#: Note for anyone tempted to "adopt the alias idiom" repo-wide: it is not the
+#: house convention. Only 4 re-imports are aliased against 171 bare. health_agent
+#: is the exception, not the rule.
 SCANNED = [
     "scripts/claude_escalation_handler.py",
     "scripts/pipeline_freshness_monitor.py",
