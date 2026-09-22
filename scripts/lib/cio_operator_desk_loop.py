@@ -2043,6 +2043,334 @@ def _gap_queue_note(reg: dict[str, Any]) -> str:
     return f"{head}; no resolver run time is known, so no follow-up is promised._"
 
 
+# ── the research gap loop: say wait, go find out, answer truthfully ──────────
+#
+# WHY THIS EXISTS. Operator, 2026-09-22, verbatim: "the proper thing to do is
+# say wait while i research, reach it and give truthfull answer and add to
+# memoery".
+#
+# The transcript that produced it:
+#
+#     Operator: "how is S for entry on cyber give me CIO opinion"
+#     Desk:     "...Research on file: none about S. CIO opinion: I can't give
+#                one -- no research, no levels, and it's not on the re-entry
+#                desk. Next: say 'research S' to queue a fresh review."
+#
+# The honesty is correct and stays. STOPPING there is the defect: the desk made
+# the operator issue a second command to start work it had already decided was
+# needed.
+#
+# MEASURED, not assumed. `data/cio/cio_operator_gap_requests.jsonl` at
+# 2026-09-22T17:03:00Z, chat 8797974247, carries that exact turn:
+#
+#     "gaps": [{"domain": "analyst_view", "symbol": "S",
+#               "gap_type": "missing_analyst_coverage", ...}],
+#     "registered": 0, "not_registered": 1
+#
+# Two separate failures produced it, and both are addressed here:
+#
+#   1. The gap resolver NEVER RAN. It is gated on `if blocking:` in
+#      handle_operator_desk_question. Re-running that question's evidence gather
+#      offline gives intent `analyst_view`, needs `["analyst_view"]`,
+#      `blocking_gaps == []` and `complete == True` -- so the desk took the
+#      "answer now" path and the whole declared on_gap chain was skipped. The
+#      chain for `analyst_opinion` is real and armed: it names
+#      `yfinance_on_demand`, for which `gap_resolver.BACKUP_FETCHERS` holds a
+#      live single-symbol adapter (`_yf_analyst`).
+#   2. `_registry_gap_type` has no mapping for `missing_analyst_coverage`, so
+#      the one gap that did reach `_register_gaps` was skipped -- hence
+#      registered 0. That mapping is NOT invented here: the registry's
+#      vocabulary (`data_gap_registry_writer.GAP_TYPES`) only admits a gap type
+#      the resolver has an action for, and no action in
+#      `data_gap_resolver.GAP_RESOLVERS` fetches analyst coverage
+#      (`missing_market_data` delegates to `_resolve_missing_div_yield`, which
+#      queues a maria_research job noted "missing div_yield"). Claiming that
+#      would be the "reply promises a refresh nothing will perform" defect the
+#      writer module exists to prevent. Analyst coverage is therefore pursued
+#      through the declared chain, and a registry action for it is proposed to
+#      the operator instead.
+#
+# What this loop does NOT do: spend. Only free vectors run here (see
+# DESK_INLINE_VECTORS). Arming a metered or paid vector on a path that fires on
+# every subject question is an operator decision (AGENTS §17).
+
+#: Where the desk records what it went and found for a subject gap. Desk-owned
+#: and append-only: this is NOT a write to an authoritative store, because
+#: making the desk a writer of one is operator-only (AGENTS §7A / §17).
+GAP_ANSWERS_PATH = PROJECT_ROOT / "data" / "cio" / "cio_operator_gap_answers.jsonl"
+
+#: How long a recorded outcome stands before the desk goes looking again. The
+#: point of recording is that the SAME question is not empty twice; the point of
+#: the TTL is that "nothing found" does not harden into a permanent answer.
+GAP_ANSWER_TTL_HOURS = 6.0
+
+#: Desk gap types meaning "the house holds nothing about this subject" -- the
+#: answers that used to end at "say 'research <ticker>'". Both spellings of the
+#: research gap are listed because the module emits both: the subject evidence
+#: path writes `missing_research` (see the hermes_research branch of
+#: _gather_tradeai_evidence_core) and the freeform path writes `research`.
+_EMPTY_SUBJECT_GAP_TYPES = frozenset({"research", "missing_research", "missing_analyst_coverage"})
+
+#: The ONLY vectors the desk may run inline while the operator waits.
+#:
+#: Free cost class only -- see the §17 note above. `refresh_producer` is
+#: excluded deliberately even though it is free: the writer it would run for
+#: analyst_opinion is `scripts/pro_analyst_fetch.py`, which fetches a whole
+#: universe with a 1.5 s sleep per symbol under a 600 s subprocess timeout, and
+#: would hold the operator's reply open for minutes. `backup_provider` is the
+#: on-demand, single-symbol vector; `operator_ask` returns immediately with an
+#: ETA and never blocks.
+DESK_INLINE_VECTORS = ("backup_provider", "operator_ask")
+
+
+def _gap_loop_enabled() -> bool:
+    return _env("CIO_OPERATOR_GAP_LOOP", "1").lower() not in ("0", "false", "off", "no")
+
+
+def _desk_inline_chain(domain: str) -> list[dict[str, Any]]:
+    """The domain's declared on_gap chain, cut down to what may run inline.
+
+    Reads the registry rather than hardcoding a chain, so a domain the operator
+    later re-declares is honoured. Anything metered or paid is dropped here, not
+    refused later, so no receipt ever shows the desk attempting to spend.
+    """
+    try:
+        from scripts.lib.gap_resolver import load_on_gap  # noqa: PLC0415
+    except ImportError:  # pragma: no cover -- hub import path
+        from lib.gap_resolver import load_on_gap  # type: ignore  # noqa: PLC0415
+    return [
+        dict(c) for c in load_on_gap(domain)
+        if str(c.get("vector") or "") in DESK_INLINE_VECTORS
+        and str(c.get("cost_class") or "") == "free"
+    ]
+
+
+def _recall_gap_answer(
+    symbol: str, domain: str, *, now: Optional[datetime] = None,
+    ttl_hours: Optional[float] = None,
+) -> Optional[dict[str, Any]]:
+    """The most recent outcome this desk recorded for subject+domain, inside its TTL.
+
+    This is what stops the same question being empty twice: the second asking
+    reads the first asking's result instead of re-deciding that nothing is on
+    file. Returns None when nothing was recorded, or the record has aged out.
+    """
+    from datetime import timedelta  # noqa: PLC0415
+
+    sym = str(symbol or "").strip().upper()
+    if not sym:
+        return None
+    dom = str(domain or "").strip()
+    ttl = GAP_ANSWER_TTL_HOURS if ttl_hours is None else float(ttl_hours)
+    cutoff = (now or datetime.now(timezone.utc)) - timedelta(hours=ttl)
+    latest: Optional[dict[str, Any]] = None
+    for r in _read_jsonl(GAP_ANSWERS_PATH)[-400:]:
+        if str(r.get("symbol") or "").strip().upper() != sym:
+            continue
+        if dom and str(r.get("domain") or "").strip() != dom:
+            continue
+        try:
+            ts = datetime.fromisoformat(str(r.get("ts") or ""))
+        except ValueError:
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        if ts < cutoff:
+            continue
+        latest = r
+    return latest
+
+
+def _close_subject_gap_loop(
+    soft: list[dict[str, Any]],
+    *,
+    intent: dict[str, Any],
+    text: str,
+    chat_id: str,
+    pending_id: str,
+) -> dict[str, Any]:
+    """RAISE what could not be answered, go find out, and record the outcome.
+
+    Never raises: a broken loop must still let the desk reply. Returns the
+    summary the reply note is built from -- `recalled` (answered from what a
+    previous asking recorded), `answered`, `queued` (research is RUNNING) and
+    `still_nothing` (looked, found nothing, and says so).
+    """
+    out: dict[str, Any] = {
+        "considered": 0, "raised": {}, "recalled": [], "answered": [],
+        "queued": [], "still_nothing": [], "errors": [],
+    }
+    gaps = [
+        g for g in (soft or [])
+        if str(g.get("gap_type") or "") in _EMPTY_SUBJECT_GAP_TYPES
+        and str(g.get("symbol") or "").strip()
+    ]
+    out["considered"] = len(gaps)
+    if not gaps or not _gap_loop_enabled():
+        return out
+
+    # One entry per (domain, subject); the same subject is one gap however many
+    # needs named it.
+    seen: set[tuple[str, str]] = set()
+    unique: list[dict[str, Any]] = []
+    for g in gaps:
+        key = (str(g.get("domain") or ""), str(g.get("symbol") or "").upper())
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(g)
+    unique = unique[:4]
+
+    # 1. RAISE. The write module keeps its own rails: a gap whose type has no
+    #    resolver action is counted `not_registered` rather than queued, so the
+    #    reply can never promise a refresh nothing will perform.
+    try:
+        out["raised"] = _register_gaps(unique, chat_id=str(chat_id), pending_id=pending_id) or {}
+    except Exception as exc:  # noqa: BLE001 -- a failed raise must not eat the reply
+        out["raised"] = {"error": f"{type(exc).__name__}:{exc}"[:160]}
+
+    # 2. GO FIND OUT -- but read the record first, so a repeat asking is
+    #    answered from what the last one found.
+    try:
+        from scripts.lib.gap_resolver import Context, DataGap, resolve  # noqa: PLC0415
+    except ImportError:  # pragma: no cover -- hub import path
+        from lib.gap_resolver import Context, DataGap, resolve  # type: ignore  # noqa: PLC0415
+
+    symbols = [str(s).upper() for s in (intent.get("symbols") or []) if str(s).strip()]
+
+    def _recheck() -> Any:
+        ev = gather_tradeai_evidence(intent)
+        return ev.get("available") if ev.get("complete") else None
+
+    ctx = Context(
+        chat_id=str(chat_id), pending_id=pending_id, operator_text=text or "",
+        recheck=_recheck, hermes_enqueue=_enqueue_hermes_research,
+    )
+
+    for g in unique:
+        domain = str(g.get("domain") or g.get("field") or "unknown")
+        subject = str(g.get("symbol") or "").upper()
+        prior = _recall_gap_answer(subject, domain)
+        if prior is not None:
+            out["recalled"].append(prior)
+            continue
+
+        chain = _desk_inline_chain(domain)
+        if not chain:
+            # Nothing free may run for this domain. That is a fact about the
+            # registry, not an answer, and it is said rather than hidden.
+            row = {"domain": domain, "subject": subject, "outcome": "no_free_vector",
+                   "tried": [], "detail": "registry declares no free vector this desk may run inline"}
+            out["still_nothing"].append(row)
+            _record_gap_answer(row, pending_id=pending_id, chat_id=str(chat_id))
+            continue
+
+        gap = DataGap(
+            domain=domain,
+            subject=subject,
+            question=(text or f"{domain} for {subject}")[:300],
+            why="no_coverage",
+            requester=f"operator:{chat_id}" if chat_id else "desk",
+            symbols=symbols or [subject],
+        )
+        try:
+            res = resolve(gap, chain=chain, ctx=ctx)
+        except Exception as exc:  # noqa: BLE001 -- one domain failing must not kill the reply
+            out["errors"].append(f"{domain}:{type(exc).__name__}")
+            continue
+
+        tried = [f"{a.get('vector')}={a.get('outcome')}" for a in (res.attempts or [])]
+        row = {
+            "domain": res.domain or domain, "subject": subject, "outcome": res.outcome,
+            "tried": tried, "vector": res.vector, "source": res.source,
+            "as_of": res.as_of, "eta_seconds": res.eta_seconds,
+            "answer": res.answer if res.answered else None,
+            "detail": res.operator_question or "",
+        }
+        if res.answered:
+            out["answered"].append(row)
+        elif res.eta_seconds is not None:
+            out["queued"].append(row)
+        else:
+            out["still_nothing"].append(row)
+        _record_gap_answer(row, pending_id=pending_id, chat_id=str(chat_id))
+    return out
+
+
+def _record_gap_answer(row: dict[str, Any], *, pending_id: str, chat_id: str) -> None:
+    """Persist one outcome so the next identical question is not empty twice."""
+    try:
+        _append_jsonl(GAP_ANSWERS_PATH, {
+            "ts": _now(),
+            "pending_id": pending_id,
+            "chat_id": chat_id,
+            "authority": AUTHORITY,
+            # The resolver calls it `subject`; every other desk ledger keys on
+            # `symbol`, and _recall_gap_answer reads that. Writing only one of
+            # the two made every recall miss, so the second asking re-ran the
+            # search it was supposed to read back.
+            "symbol": row.get("subject"),
+            **row,
+        })
+    except Exception:  # noqa: BLE001 -- a ledger failure must not eat the reply
+        pass
+
+
+def _gap_loop_note(summary: dict[str, Any]) -> str:
+    """The operator-facing line. Says WAIT and what is running -- never 'ask me again'.
+
+    Every branch here is a thing that actually happened: an answer found, work
+    running with an ETA, or a search that came back empty. "Still nothing found"
+    is a legitimate outcome and is said plainly; it is never dressed up as a
+    result, and no branch invents one.
+    """
+    bits: list[str] = []
+    for r in summary.get("recalled") or []:
+        sub, dom = r.get("subject"), str(r.get("domain") or "").replace("_", " ")
+        when = str(r.get("ts") or "")[:16]
+        outcome = str(r.get("outcome") or "")
+        if outcome == "answered":
+            bits.append(f"{sub} {dom}: already found it ({r.get('source') or r.get('vector')}, {when}).")
+        elif outcome == "queued":
+            # A recalled QUEUED gap is work still running. Reporting it as
+            # "found nothing" would be false twice over: nothing was concluded,
+            # and it would tell the operator the work had finished.
+            bits.append(
+                f"{sub} {dom}: already researching this since {when} via "
+                f"{r.get('vector') or 'a declared vector'} — still running, no answer yet."
+            )
+        else:
+            bits.append(
+                f"{sub} {dom}: I already went looking at {when} and found nothing — "
+                "not asking the same source again yet."
+            )
+    for r in summary.get("answered") or []:
+        sub, dom = r.get("subject"), str(r.get("domain") or "").replace("_", " ")
+        age = f", as of {str(r.get('as_of'))[:16]}" if r.get("as_of") else ""
+        bits.append(f"{sub} {dom}: went and found it via {r.get('source') or r.get('vector')}{age}.")
+    for r in summary.get("queued") or []:
+        sub, dom = r.get("subject"), str(r.get("domain") or "").replace("_", " ")
+        eta = r.get("eta_seconds")
+        eta_txt = f" — about {max(1, int(round(float(eta) / 60.0)))} min" if eta is not None else ""
+        bits.append(
+            f"{sub} {dom}: wait — I am researching this now via {r.get('vector')}{eta_txt}. "
+            "I will answer here; you do not need to ask again."
+        )
+    for r in summary.get("still_nothing") or []:
+        sub, dom = r.get("subject"), str(r.get("domain") or "").replace("_", " ")
+        tried = ", ".join(r.get("tried") or []) or str(r.get("detail") or "nothing declared to try")
+        bits.append(f"{sub} {dom}: I went looking ({tried}) and still found nothing.")
+    if not bits:
+        return ""
+    reg = summary.get("raised") or {}
+    head = "_I did not stop at 'nothing on file' — "
+    tail = ""
+    if int(reg.get("registered") or 0) > 0:
+        ids = ", ".join(f"#{i}" for i in (reg.get("gap_ids") or [])[:6])
+        tail = f" Raised in the data gap queue{f' ({ids})' if ids else ''}."
+    return head + " ".join(bits) + tail + "_"
+
+
 def _register_gap_ids_on_spine(conn: Any, gap_ids: list[int]) -> dict[str, Any]:
     """Put the queue's integer ids on the subject spine. Returns a receipt.
 
@@ -3833,7 +4161,12 @@ def handle_operator_desk_question(
         )
         research_gaps = [
             g for g in soft
-            if g.get("gap_type") == "research" and g.get("symbol")
+            # Both spellings. The freeform context emits `research`; the subject
+            # evidence path emits `missing_research` (see the hermes_research
+            # branch of _gather_tradeai_evidence_core). Matching only the first
+            # silently drops a subject-shaped research gap that reaches here.
+            if str(g.get("gap_type") or "") in ("research", "missing_research")
+            and g.get("symbol")
         ]
         if queue_on and research_gaps:
             _register_gaps(research_gaps[:10], chat_id=str(chat_id), pending_id=pending_id)
@@ -3880,6 +4213,30 @@ def handle_operator_desk_question(
         return result
 
     if soft and "DATA_UNAVAILABLE" not in text_out and intent_name != "meta_system":
+        # The subject gaps that mean "the house holds nothing about this" get
+        # the full loop: raise, go find out through the free declared vectors,
+        # say WAIT, and record the outcome. Before this they fell through to the
+        # note below, which told the operator to issue a second command.
+        gap_loop = _close_subject_gap_loop(
+            soft, intent=intent, text=text or "", chat_id=str(chat_id), pending_id=pending_id,
+        )
+        result["gap_loop"] = gap_loop
+        loop_note = _gap_loop_note(gap_loop)
+        if loop_note:
+            text_out = _insert_before_authority_tail(text_out, loop_note)
+        # Whatever the loop took responsibility for is not also described by the
+        # partial-levels note, which would otherwise contradict it in the same
+        # reply -- "researching it now" directly above "say 'research <ticker>'".
+        handled = {
+            (str(g.get("domain") or ""), str(g.get("symbol") or "").upper())
+            for g in soft
+            if str(g.get("gap_type") or "") in _EMPTY_SUBJECT_GAP_TYPES
+            and str(g.get("symbol") or "").strip()
+        }
+        soft = [
+            g for g in soft
+            if (str(g.get("domain") or ""), str(g.get("symbol") or "").upper()) not in handled
+        ]
         soft_syms = sorted({g.get("symbol") for g in soft if g.get("symbol")})
         if soft_syms:
             # Claim "queued" only when the registry accepted the gaps. _register_gaps
