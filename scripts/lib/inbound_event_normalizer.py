@@ -215,6 +215,11 @@ def correlate_inbound(
             event.parent_event_id = eid
             event.parent_id = eid
             event.parent_kind = "comm_event"
+            # Replace the ROOT causation marker minted by mint_identity() with
+            # the event that actually caused this reply. A producer-supplied
+            # causation_id pointing elsewhere is left alone.
+            if event.causation_id in (None, event.event_id):
+                event.causation_id = eid
             if parent.get("correlation_id"):
                 event.correlation_id = str(parent["correlation_id"])
             if parent.get("thread_id"):

@@ -165,6 +165,12 @@ def _apply_reply_threading(
     event.parent_event_id = parent_id
     event.parent_id = parent_id
     event.parent_kind = "comm_event"
+    # mint_identity() has already run, so the event carries the ROOT causation
+    # marker (causation_id == event_id). A resolved reply has a real cause, so
+    # the marker is replaced here -- but never a causation_id a producer set
+    # explicitly to some other event.
+    if event.causation_id in (None, event.event_id):
+        event.causation_id = parent_id
     # Preserve inbound correlation with the parent thread when present.
     parent_corr = parent.get("correlation_id")
     if parent_corr:
