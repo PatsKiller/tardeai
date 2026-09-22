@@ -141,6 +141,46 @@ def save_alert_event(
         return None
 
 
+
+def attach_telegram_message_id(alert_event_id: int, telegram_message_id: str) -> bool:
+    """Stamp an already-written alert_events row with the id its send returned.
+
+    WHY THIS EXISTS instead of passing the id to save_alert_event().
+    This module's contract is "DB first, Telegram second" (see the module
+    docstring): 27 of 28 call sites write the row BEFORE sending, so the provider
+    id does not exist yet at write time. Measured 2026-09-21:
+
+        alert_events carrying a telegram_message_id : 62 of 7,991  (0.78%)
+        communication_events UNSETTLED              : 51,193 of 52,930
+
+    Reordering those 27 call sites to send-then-save would break the guarantee
+    the module docstring states -- a DB outage must never block the Telegram
+    send. So this is additive: send, then stamp the row you already own. It is
+    the same shape as the 79 rows that DO settle correctly today
+    (channel_adapters: send -> get id -> settle_delivery(provider_message_id=)).
+
+    Pair it with telegram_alert.last_message_id(), which is already populated on
+    BOTH the legacy and gateway paths, so this works regardless of
+    COMMS_GATEWAY_MODE. send_telegram's bare-bool contract is deliberately
+    untouched -- roughly 182 call sites across 150 files depend on it, so
+    changing its return type is not a low-blast-radius option.
+
+    Idempotent by design: the WHERE clause refuses to overwrite an id that is
+    already set, mirroring the COALESCE in save_alert_event's ON CONFLICT. A
+    second call for the same row therefore returns False, which means
+    "nothing changed", not "failed".
+
+    Returns True only when a row was actually updated.
+    """
+    if not alert_event_id or not telegram_message_id:
+        return False
+    row = _db_write(
+        "UPDATE alert_events SET telegram_message_id = %s, telegram_sent_at = now() "
+        "WHERE id = %s AND telegram_message_id IS NULL RETURNING id",
+        (str(telegram_message_id), int(alert_event_id)),
+    )
+    return row is not None
+
 # ── Lifecycle ───────────────────────────────────────────────────────
 
 def resolve_alert_events(
