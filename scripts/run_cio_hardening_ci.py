@@ -1155,6 +1155,17 @@ GATES = [
             "tests/test_hermes_escalation_dedupe_20260922.py",
         ],
     ),
+    # A DELIVERED message must not discard its provider id. _legacy_send called
+    # the bool wrapper instead of _raw_send_telegram_result, and only the result
+    # variant populates _LAST_MESSAGE_IDS -- so all 121 LEGACY_DELIVERED messages
+    # in 24h reached Telegram with the id thrown away one frame later, and
+    # attach_telegram_message_id honestly no-opped at all 7 wired call sites.
+    (
+        "legacy_send_captures_message_id",
+        [
+            "tests/test_legacy_send_captures_message_id_20260922.py",
+        ],
+    ),
     # Measured 2026-09-22: grep for error_budget|slo_target|burn_rate across
     # scripts/ and config/ returned NOTHING. Every alarm in the tree is a
     # threshold on a CAUSE, which is how one AUTO-RETRY alert became 57% of the
