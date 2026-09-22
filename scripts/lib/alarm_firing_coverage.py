@@ -12,7 +12,25 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-TRANSPORT = "send_telegram"
+#: BOTH public sending entrypoints count. send_telegram_with_id is not a second
+#: transport -- telegram_alert.py:636 defines it as "send_telegram(), plus the
+#: provider message id it already had", and its docstring says send_telegram's
+#: own contract is deliberately untouched.
+#:
+#: Matching only the bare name made six real alarm sites INVISIBLE the moment
+#: delivery provenance was wired into them (2026-09-22): the denominator fell
+#: 188 -> 182, and five of the six lost sites were UNCOVERED ones still listed
+#: in config/alarm_firing_baseline.txt. Coverage therefore "improved" because
+#: the measured thing disappeared, which is the exact failure this module was
+#: written to make impossible. A denominator that shrinks when code is edited
+#: is not a denominator.
+#:
+#: NOT counted, and named here rather than silently omitted: send_telegram_document
+#: has 4 call sites and has never been counted -- not on this branch and not on
+#: main. Including it would EXPAND the ratchet from 188 to 192 and require four
+#: new baseline entries. That is a deliberate widening of the gate, not a repair,
+#: so it is left as a recorded gap for an explicit decision.
+TRANSPORT = ("send_telegram", "send_telegram_with_id")
 
 
 def call_sites(scripts_dir: Path) -> list[tuple[str, int]]:
@@ -28,7 +46,7 @@ def call_sites(scripts_dir: Path) -> list[tuple[str, int]]:
             if isinstance(n, ast.Call):
                 f = n.func
                 nm = f.attr if isinstance(f, ast.Attribute) else (f.id if isinstance(f, ast.Name) else None)
-                if nm == TRANSPORT:
+                if nm in TRANSPORT:
                     try:
                         rel = str(path.relative_to(Path(scripts_dir).parent))
                     except ValueError:
