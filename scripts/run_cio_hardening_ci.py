@@ -1056,6 +1056,17 @@ GATES = [
             "tests/test_alert_delivery_id_attach_20260921.py",
         ],
     ),
+    # pipeline_freshness_monitor._age_days_table returned None for an ABSENT
+    # table, a RAISED query, and a table that EXISTS BUT IS EMPTY. check()
+    # rendered all three as "no output / table/file absent" and the escalation
+    # handler paged on it: seven missing_* components, ~126 pages each per day,
+    # against tables that all exist with fresh rows.
+    (
+        "freshness_reason",
+        [
+            "tests/test_freshness_reason_is_not_conflated_20260921.py",
+        ],
+    ),
     (
         "lane_registry",
         [
