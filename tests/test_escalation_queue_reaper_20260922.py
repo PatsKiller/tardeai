@@ -69,15 +69,24 @@ def test_a_resolved_component_is_removable(reaper) -> None:
     assert reaper.is_reapable(_item("health:pipeline_freshness:missing_morning_synthesis"), live) is True
 
 
-def test_anything_actionable_is_never_removed(reaper) -> None:
-    """fixable or retry_cmd means something may still act on it.
+def test_liveness_is_the_test_not_retry_cmd(reaper) -> None:
+    """A retryable entry whose condition is GONE is still reapable.
 
-    Measured 2026-09-22: of the storm items queued, 0 had fixable=True and 0 had
-    a retry_cmd -- which is precisely why they could never clear. An entry that
-    HAS either one is reachable by Tier1 and is not ours to remove.
+    The original rule vetoed anything carrying fixable/retry_cmd. Measured
+    2026-09-22 that was wrong: 5 retryable entries (data_source_stale,
+    news_stale, market_quotes_stale, schwab_journal_ingest_stale,
+    approved_paper_test_stuck) exhaust at attempts=4, log "retries exhausted",
+    never run their retry_cmd, and re-arm every 1800s forever -- the same trap
+    as the non-retryable ones, wearing fixable=True.
+
+    The protection is no longer "does it carry a command" but "is the condition
+    still true", measured against a probe that fails closed.
     """
     live: set[str] = set()
-    assert reaper.is_reapable(_item("health:pipeline_freshness:missing_x", fixable=True), live) is False
+    assert reaper.is_reapable(_item("health:pipeline_freshness:missing_x", fixable=True), live) is True
+    assert reaper.is_reapable(_item("health:pipeline_freshness:missing_x", retry_cmd="echo hi"), live) is True
+    # ...but a LIVE one is still refused, retry_cmd or not
+    live = {"health:pipeline_freshness:missing_x"}
     assert reaper.is_reapable(_item("health:pipeline_freshness:missing_x", retry_cmd="echo hi"), live) is False
 
 
@@ -88,10 +97,46 @@ def test_other_producers_are_out_of_scope(reaper) -> None:
     not measured is the defect it exists to fix.
     """
     live: set[str] = set()
-    for comp in ("hermes_health_inspector:staleness_escalation",
+    assert reaper.is_reapable(_item("hermes_health_inspector:staleness_escalation"), live) is False
+
+
+def test_a_failed_aggregate_probe_holds_EVERYTHING(reaper) -> None:
+    """The strongest fail-closed case. compute() is the whole live-set.
+
+    If it raises and the set comes back empty, every queued entry looks
+    resolved and the reaper drains the queue. __HOLD__ALL must veto all
+    families, not merely the one that failed.
+    """
+    live = {"__HOLD__ALL"}
+    for comp in ("health:pipeline_freshness:missing_x",
+                 "health:intelligence_quality:research_lane_firing:chatgpt",
                  "health:data_quality:news_stale",
                  "health:execution_health:pipeline_failures"):
         assert reaper.is_reapable(_item(comp), live) is False, comp
+
+
+def test_the_probe_is_the_producer_aggregate_not_hand_picked_collectors(reaper) -> None:
+    """REGRESSION GUARD. This is the bug that nearly deleted live alerts.
+
+    An earlier probe called collect_data_quality() and
+    collect_intelligence_quality() and treated absence from those two as
+    "resolved". But a category is not owned by one collector:
+    data_source_stale comes from collect_data_source_health:2942 and
+    research_lane_firing from collect_research_heartbeat:1153. Against the live
+    queue the narrow probe called 14 entries removable when 8 were LIVE.
+
+    The probe must call health_agent.compute(), which runs every collector in
+    COLLECTORS, so it cannot fall behind the producer.
+    """
+    src = TARGET.read_text(encoding="utf-8")
+    assert "HA.compute(" in src, "the probe no longer calls the producer aggregate"
+    assert "__HOLD__ALL" in src, "no global fail-closed sentinel"
+    for narrow in ("HA.collect_data_quality()", "HA.collect_intelligence_quality()",
+                   "HA.collect_execution_health()"):
+        assert narrow not in src, (
+            f"probe narrowed back to a hand-picked collector ({narrow}); "
+            "a category is emitted by several collectors -- use compute()"
+        )
 
 
 def test_a_failed_probe_holds_its_whole_family(reaper) -> None:

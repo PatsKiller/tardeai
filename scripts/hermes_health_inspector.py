@@ -359,6 +359,40 @@ def _record_remediation_outcome(conn, finding_id, success, duration_ms, pattern_
         _log(f"Failed to record remediation outcome for id={finding_id}: {e}")
 
 
+def _merge_escalation(items: list, item: dict) -> list:
+    """Append `item`, or fold it into the identical entry already queued.
+
+    WHY THIS EXISTS
+    ---------------
+    `component` below is a CONSTANT string -- every P0/P1 finding from every run
+    carries `hermes_health_inspector:staleness_escalation`. The old code called
+    `.append()` unconditionally, so each run added a fresh row for a condition
+    that was already queued. Measured 2026-09-22: 6 duplicate rows accreted from
+    2026-08-07 onward, all describing the same staleness, each one notifying the
+    operator separately.
+
+    Identity is (component, detail): the detail carries the priority and root
+    cause, so two genuinely different findings still get their own rows. A
+    repeat updates the existing row in place and counts it, which keeps the
+    evidence that it recurred without multiplying the notification.
+    """
+    key = (item.get("component"), item.get("detail"))
+    for existing_item in items:
+        if not isinstance(existing_item, dict):
+            continue
+        if (existing_item.get("component"), existing_item.get("detail")) != key:
+            continue
+        existing_item["_seen_count"] = int(existing_item.get("_seen_count") or 1) + 1
+        existing_item["_last_seen_ts"] = item.get("captured_at")
+        # refresh the fields that can legitimately change between sightings
+        for field in ("status", "critical", "priority", "recommendation", "linked_producers"):
+            if field in item:
+                existing_item[field] = item[field]
+        return items
+    items.append(item)
+    return items
+
+
 def _escalate(findings: list[dict]):
     """Write P0/P1 findings to escalation queues."""
     for f in findings:
@@ -383,7 +417,7 @@ def _escalate(findings: list[dict]):
             existing = json.loads(ESCALATION_QUEUE.read_text()) if ESCALATION_QUEUE.exists() else []
         except Exception:
             existing = []
-        existing.append(item)
+        existing = _merge_escalation(existing, item)
         try:
             ESCALATION_QUEUE.parent.mkdir(parents=True, exist_ok=True)
             ESCALATION_QUEUE.write_text(json.dumps(existing, indent=2))
@@ -396,7 +430,7 @@ def _escalate(findings: list[dict]):
             stale_q = json.loads(STALENESS_QUEUE.read_text()) if STALENESS_QUEUE.exists() else []
         except Exception:
             stale_q = []
-        stale_q.append(item)
+        stale_q = _merge_escalation(stale_q, item)
         try:
             STALENESS_QUEUE.parent.mkdir(parents=True, exist_ok=True)
             STALENESS_QUEUE.write_text(json.dumps(stale_q, indent=2))
