@@ -27,8 +27,22 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
+#: Declared WHOLE, deliberately, not pinned to a line.
+#:
+#: This first read `scripts/disk_pressure_guard.py:118`. Fixing the used-pct
+#: denominator added a docstring above notify(), moving send_telegram to line
+#: 132, and the pin silently stopped matching its own call site -- the gate went
+#: red saying "1 untested send_telegram sites" about a site with six tests on it.
+#: A line pin breaks on any edit ABOVE the call, which is a check failing on a
+#: dimension that has nothing to do with whether the alarm fires.
+#:
+#: config/alarm_firing_baseline.txt permits a whole file "when the sites funnel
+#: through one tested path". This file has exactly ONE send_telegram, inside
+#: notify(), and test_disk_pressure_alarm_reaches_the_transport drives it. If a
+#: second site is ever added, these tests will not cover it and the ratchet
+#: SHOULD be made to notice -- so keep notify() the only transport caller here.
 COVERS = [
-    "scripts/disk_pressure_guard.py:118",
+    "scripts/disk_pressure_guard.py",
 ]
 
 
@@ -100,6 +114,37 @@ def test_pressure_state_pages_and_recovery_does_not_page_twice(monkeypatch, tmp_
     assert g.REALERT_MINUTES == 360, "OPERATIONS.md:71-75 specifies a 6h re-alert throttle"
     assert g.DEFAULT_USED_PCT == 85.0, "operator asked for 85%; enforcer warn_free_pct is 15%"
     assert g.CONDITION_KEY.startswith("system_health:"), g.CONDITION_KEY
+
+
+def test_used_pct_means_what_df_means_not_the_root_reserve():
+    """85% must be the number on the operator's screen, or the trigger is fiction.
+
+    Measured during the dry run, 2026-09-21: `df -h /` reported 89% used while
+    disk_used_pct() reported 83.63% and the guard printed
+    `over_threshold: false` — silent through the exact condition it exists for,
+    and silent until df would have read ~90.5%.
+
+    Cause: shutil.disk_usage() reports `total` over ALL blocks but `free` over
+    blocks an unprivileged writer can reach. The ~5% root reserve sits between
+    them, so used/total is a looser denominator than df's used/(used+avail).
+    This is the session's recurring defect in miniature: a check that passes on
+    the wrong dimension is worse than no check.
+    """
+    import shutil as _shutil
+    import subprocess
+
+    import disk_pressure_guard as g
+
+    total, used, free = _shutil.disk_usage("/")
+    pct, _, _ = g.disk_used_pct("/")
+
+    assert pct == pytest.approx(used / (used + free) * 100.0, abs=0.01)
+    # and never the looser denominator that hid the condition
+    assert pct >= (used / total * 100.0), "regressed to used/total"
+
+    proc = subprocess.run(["df", "-P", "/"], capture_output=True, text=True, timeout=30)
+    df_pct = float(proc.stdout.strip().splitlines()[-1].split()[4].rstrip("%"))
+    assert abs(pct - df_pct) <= 1.0, f"guard reads {pct:.2f}%, df reads {df_pct}%"
 
 
 def test_the_guard_never_deletes_anything_itself():

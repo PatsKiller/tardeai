@@ -306,6 +306,7 @@ GATES = [
             "tests/test_alarm_fires_batch5.py",
             "tests/test_alarm_fires_guard_approval.py",
             "tests/test_alarm_fires_disk_and_handler_20260919.py",
+            "tests/test_alarm_fires_disk_pressure_20260921.py",
             "tests/test_alarm_coverage.py",
         ],
     ),

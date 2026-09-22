@@ -76,8 +76,22 @@ CONDITION_KEY = "system_health:disk_pressure"
 
 
 def disk_used_pct(path: str = "/") -> tuple[float, int, int]:
+    """Percent used AS `df` REPORTS IT — used/(used+available), not used/total.
+
+    Found by dry-running against the real disk, 2026-09-21: `df -h /` said 89%
+    while this returned 83.63%, so the guard printed `over_threshold: false`
+    for an operator who had just been told 85% would act.
+
+    The gap is the ~5% root reserve. `shutil.disk_usage()` reports `total` over
+    ALL blocks but `free` over blocks reachable by an UNPRIVILEGED writer, so
+    used/total mixes two denominators. `df` divides by what a normal process can
+    actually reach, and "over 85% full" in the request means the number on the
+    operator's screen — not a second, quieter number only this script can see.
+    Trigger 85 now fires at df 85 instead of df ~90.5.
+    """
     total, used, free = shutil.disk_usage(path)
-    return (used / total * 100.0) if total else 0.0, free, total
+    reachable = used + free  # df's "1K-blocks used + available"
+    return (used / reachable * 100.0) if reachable else 0.0, free, total
 
 
 def _fmt_gb(n: int) -> str:
