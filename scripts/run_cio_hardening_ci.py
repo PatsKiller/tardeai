@@ -1046,6 +1046,16 @@ GATES = [
             "tests/test_finviz_cookie_classification.py",
         ],
     ),
+    # Delivery must be PROVABLE. Measured 2026-09-21: 62 of 7,991 alert_events
+    # carried a telegram_message_id (0.78%) and 51,193 of 52,930
+    # communication_events sat UNSETTLED, because the "DB first, Telegram second"
+    # contract means the provider id does not exist at save_alert_event() time.
+    (
+        "alert_delivery_id",
+        [
+            "tests/test_alert_delivery_id_attach_20260921.py",
+        ],
+    ),
     (
         "lane_registry",
         [
