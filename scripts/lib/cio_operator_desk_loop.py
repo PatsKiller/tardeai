@@ -4013,6 +4013,11 @@ def handle_operator_desk_question(
                 note = "not refreshed automatically; house research stays thin until queued."
             # Phase 1/2A: soft enqueue without a PENDING_PATH row was fire-and-forget —
             # try_fulfill_pending_replies could never deliver Hermes. Mirror freeform.
+            # A pending without eta_seconds / ≈ in the reply fails the SpaceX litmus
+            # (test_operator_answer_quality): "a pending is only opened with an ETA".
+            # Hermes CIO default expected_seconds is 1800 (gap_resolver hermes vector).
+            soft_eta_seconds = 1800
+            soft_eta_text = f"≈ {max(1, int(round(soft_eta_seconds / 60.0)))} min"
             opened_pending = False
             if enq and (enq.get("ok") or enq.get("emitted") or enq.get("deduped")):
                 _append_jsonl(PENDING_PATH, {
@@ -4027,14 +4032,22 @@ def handle_operator_desk_question(
                     "blocking_gaps": researchish[:10] if researchish else soft[:10],
                     "authority": AUTHORITY,
                     "kind": "soft_research_queue",
+                    "eta_seconds": soft_eta_seconds,
                 })
                 result["pending_id"] = pending_id
+                result["eta_seconds"] = soft_eta_seconds
                 opened_pending = True
-            if opened_pending and f"`{pending_id}`" not in text_out:
-                text_out = _insert_before_authority_tail(
-                    text_out,
-                    f"_{note} · Pending `{pending_id}`_",
+            if opened_pending:
+                pending_note = (
+                    f"_{note} — {soft_eta_text} until it lands · Pending `{pending_id}`_"
                 )
+                if f"`{pending_id}`" not in text_out:
+                    text_out = _insert_before_authority_tail(text_out, pending_note)
+                elif "≈" not in text_out:
+                    text_out = _insert_before_authority_tail(
+                        text_out,
+                        f"_Follow-up ETA {soft_eta_text}_",
+                    )
             else:
                 text_out = _insert_before_authority_tail(
                     text_out,

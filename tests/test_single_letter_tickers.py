@@ -232,6 +232,7 @@ def test_hollow_s_subject_brief_opens_pending_followup(tmp_path, monkeypatch):
     assert "say 'research S'" not in text
     assert "say 'research <ticker>'" not in text
     assert f"Pending `{out['pending_id']}`" in text or f"Pending: `{out['pending_id']}`" in text
+    assert "≈" in text, "pending ack must show an ETA the operator can see"
     assert "House research for S is queued" in text or "queued" in text.lower()
     assert "19.84" in text
     assert "STALE" in text  # Sep 04 close must not read as fresh
@@ -247,6 +248,7 @@ def test_hollow_s_subject_brief_opens_pending_followup(tmp_path, monkeypatch):
     assert rows[-1]["pending_id"] == out["pending_id"]
     assert rows[-1].get("kind") == "soft_research_queue"
     assert rows[-1]["intent"]["symbols"] == ["S"]
+    assert rows[-1].get("eta_seconds") == 1800
 
 
 def test_subject_gather_emits_soft_missing_research_without_blocking(monkeypatch):
