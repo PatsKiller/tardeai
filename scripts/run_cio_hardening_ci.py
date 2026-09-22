@@ -1094,6 +1094,20 @@ GATES = [
             "tests/test_publish_chokepoint_identity_20260922.py",
         ],
     ),
+    # The memory join was open at both ends. Measured 2026-09-22: causation_id
+    # and parent_event_id were NULL on all 54,928 communication_events, so no
+    # reply resolved to the event that caused it; and subject_guid was NULL on
+    # all 199 agent consumption receipts, because the column exists on the
+    # table and on the dataclass but was missing from the INSERT. Both were
+    # wiring, not design. This gate pins the defaults (a root event points at
+    # itself; a root has NO parent, because self-parenting loops a recursive
+    # walk) and pins subject_guid into the receipt write.
+    (
+        "comms_lineage_join",
+        [
+            "tests/test_phase4_lineage_join_20260922.py",
+        ],
+    ),
     # market_quotes is 34.2M rows / 5.67 GB, of which 97.7% is intraday
     # resolution nobody queries: both consumers read one row per symbol per day.
     # The downsampler deletes, so its gate pins dry-run-by-default, DELETE

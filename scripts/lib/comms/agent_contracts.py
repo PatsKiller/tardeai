@@ -651,6 +651,16 @@ def emit_consumption_receipt(
     if not purp:
         raise AgentContractError("purpose required")
 
+    # Phase 4 memory join: a receipt that does not name its subject cannot be
+    # joined to one. Measured 2026-09-22: subject_guid was NULL on all 199 rows
+    # -- the column exists on the table AND on the dataclass, but was simply
+    # absent from the INSERT below. When the caller supplies none, fall back to
+    # the guid the ledger row already carries. Read-only from the identity
+    # spine; never minted here (see CommunicationEvent.subject_guid).
+    if not subject_guid and event is not None:
+        _spine_guid = event.get("subject_guid")
+        subject_guid = str(_spine_guid) if _spine_guid else None
+
     # Knowledge-status gate: a consumed event must itself be a verified fact
     # before any truth claim can stand. A Hermes hypothesis / research artifact
     # carries provenance and cannot be consumed as truth without the gate.
@@ -716,12 +726,14 @@ def emit_consumption_receipt(
                         receipt_id, agent_id, agent_version, event_id, thread_id,
                         artifact_ids, purpose, policy_decision, retrieved_at,
                         acknowledged_at, derived_artifact_ids,
-                        influence_declaration, influence_event_ids, schema_version
+                        influence_declaration, influence_event_ids, schema_version,
+                        subject_guid, wake_id
                     ) VALUES (
                         %s, %s, %s, %s, %s,
                         %s::jsonb, %s, %s, %s,
                         %s, %s::jsonb,
-                        %s, %s::jsonb, %s
+                        %s, %s::jsonb, %s,
+                        %s, %s
                     )
                     ON CONFLICT (agent_id, event_id, purpose) DO UPDATE SET
                         agent_version = EXCLUDED.agent_version,
@@ -734,7 +746,15 @@ def emit_consumption_receipt(
                             communication_agent_consumption_receipts.influence_declaration
                         ),
                         influence_event_ids = EXCLUDED.influence_event_ids,
-                        schema_version = EXCLUDED.schema_version
+                        schema_version = EXCLUDED.schema_version,
+                        subject_guid = COALESCE(
+                            EXCLUDED.subject_guid,
+                            communication_agent_consumption_receipts.subject_guid
+                        ),
+                        wake_id = COALESCE(
+                            EXCLUDED.wake_id,
+                            communication_agent_consumption_receipts.wake_id
+                        )
                     RETURNING receipt_id
                     """,
                     (
@@ -752,6 +772,8 @@ def emit_consumption_receipt(
                         receipt.influence_declaration,
                         json.dumps(receipt.influence_event_ids),
                         SCHEMA_VERSION,
+                        receipt.subject_guid,
+                        receipt.wake_id,
                     ),
                 )
                 returned = cur.fetchone()
