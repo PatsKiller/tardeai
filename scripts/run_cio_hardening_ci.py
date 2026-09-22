@@ -1142,6 +1142,21 @@ GATES = [
             "tests/test_hermes_escalation_dedupe_20260922.py",
         ],
     ),
+    # Measured 2026-09-22: grep for error_budget|slo_target|burn_rate across
+    # scripts/ and config/ returned NOTHING. Every alarm in the tree is a
+    # threshold on a CAUSE, which is how one AUTO-RETRY alert became 57% of the
+    # identity spine while "did the alert reach a human" had no number at all.
+    # The gate pins the three things an earlier draft got wrong -- a decorative
+    # window_seconds, consumed_budget_pct as burn_rate*100, and validation
+    # deferred out of the config -- each with its own negative control, plus
+    # suppression on thin traffic so the budget alarm does not become the next
+    # storm. DB assertions skip when hermetic; the math never does.
+    (
+        "slo_burn_rate",
+        [
+            "tests/test_slo_burn_rate_20260922.py",
+        ],
+    ),
     (
         "lane_registry",
         [
