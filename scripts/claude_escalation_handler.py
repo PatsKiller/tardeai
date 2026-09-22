@@ -292,7 +292,6 @@ def _verify_remediation(item) -> tuple[bool, str]:
             hold_until = mem.get("hold_until")
             rc = mem.get("last_root_cause") or ""
             if hold_until and rc in ("low_max_score_regime", "news_or_social_feed_dead"):
-                from datetime import datetime, timezone
                 hu = datetime.fromisoformat(str(hold_until).replace("Z", "+00:00"))
                 if datetime.now(timezone.utc) < hu:
                     return True, f"scalp_hold_accepted rc={rc} until={hold_until}"
