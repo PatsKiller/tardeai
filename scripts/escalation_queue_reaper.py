@@ -72,6 +72,8 @@ sys.path.insert(0, str(ROOT / "scripts"))
 REAPABLE_PREFIXES = (
     "health:pipeline_freshness:",
     "health:intelligence_quality:",
+    "health:data_quality:",
+    "health:execution_health:",
 )
 
 #: A larger removal than this means the live-findings probe probably failed and
@@ -84,36 +86,76 @@ RECEIPT = ROOT / "logs" / "escalation_queue_reaper_receipts.jsonl"
 def live_components() -> tuple[set[str], list[str]]:
     """Components whose condition is TRUE right now. Returns (set, notes).
 
-    Fails CLOSED: if a probe raises, its family is reported as live so nothing
-    from that family is removed. An empty set from a broken probe would make
-    every queued item look resolved.
+    WHY THIS CALLS compute() AND NOT INDIVIDUAL COLLECTORS
+    ------------------------------------------------------
+    Measured 2026-09-22, and this is the defect that nearly made this script
+    delete live alerts. An earlier version probed two named collectors and
+    treated "absent from those two" as "resolved". But a finding's CATEGORY is
+    not owned by a collector of the same name -- `health_agent` has 38
+    collectors and several emit into the same category:
+
+        health:data_quality:news_stale            <- collect_data_quality:784
+        health:data_quality:schwab_journal_ingest_stale
+                                                  <- collect_trade_in_view_health:2379
+        health:data_quality:data_source_stale     <- collect_data_source_health:2942
+        health:execution_health:release_manifest_warn
+                                                  <- collect_execution_hardening_health:2583
+        health:execution_health:systemd_unit_failed
+                                                  <- collect_failed_systemd_units:3036
+        health:intelligence_quality:research_lane_firing:<lane>
+                                                  <- collect_research_heartbeat:1153
+
+    Against the live queue that hand-picked probe reported 14 entries
+    removable. The full probe below shows **8 of them are LIVE**, including all
+    five research lanes. Reaping on the narrow probe would have deleted true
+    conditions and called it cleanup.
+
+    So the probe is now the producer's own aggregate. `compute()` runs every
+    collector in COLLECTORS and `enqueue_escalations` builds its component key
+    at health_agent.py:3748 as exactly `f"health:{category}:{type}"` -- the same
+    expression used here. Producer and reaper cannot drift apart by
+    construction; adding a 39th collector extends both at once.
+
+    Fails CLOSED: if compute() raises, `__HOLD__ALL` is injected and NOTHING is
+    reapable. An empty live-set from a broken probe would make every queued item
+    look resolved.
     """
     live: set[str] = set()
     notes: list[str] = []
 
     try:
+        import health_agent as HA  # noqa: PLC0415
+
+        _, _, _, cat_findings = HA.compute(HA.load_policy())
+        n = 0
+        for _cat, findings in (cat_findings or {}).items():
+            for f in findings or []:
+                live.add(f"health:{f.get('category')}:{f.get('type')}")
+                n += 1
+        notes.append(
+            f"health_agent.compute(): {n} finding(s) -> "
+            f"{len(live)} distinct component(s) across {len(cat_findings or {})} categories"
+        )
+    except Exception as exc:  # noqa: BLE001
+        notes.append(f"health_agent.compute() PROBE FAILED ({type(exc).__name__}) -> ALL families held")
+        live.add("__HOLD__ALL")
+
+    # Second, independent probe. pipeline_freshness reaches the queue through
+    # collect_pipeline_freshness (covered above), but the standalone monitor is
+    # the authority for that family and may see a condition the collector
+    # swallowed. The union is deliberate: more live means fewer reaped.
+    try:
         import pipeline_freshness_monitor as pfm  # noqa: PLC0415
 
         stale, missing, ok = pfm.check()
-        for s in stale:
-            live.add(f"health:pipeline_freshness:stale_{s['name']}")
+        for s_ in stale:
+            live.add(f"health:pipeline_freshness:stale_{s_['name']}")
         for m in missing:
             live.add(f"health:pipeline_freshness:missing_{m['name']}")
-        notes.append(f"pipeline_freshness: stale={len(stale)} missing={len(missing)} ok={len(ok)}")
+        notes.append(f"pipeline_freshness monitor: stale={len(stale)} missing={len(missing)} ok={len(ok)}")
     except Exception as exc:  # noqa: BLE001
         notes.append(f"pipeline_freshness PROBE FAILED ({type(exc).__name__}) -> family held")
         live.add("__HOLD__health:pipeline_freshness:")
-
-    try:
-        import health_agent as HA  # noqa: PLC0415
-
-        found = HA.collect_intelligence_quality() or []
-        for f in found:
-            live.add(f"health:{f.get('category')}:{f.get('type')}")
-        notes.append(f"intelligence_quality: {len(found)} finding(s)")
-    except Exception as exc:  # noqa: BLE001
-        notes.append(f"intelligence_quality PROBE FAILED ({type(exc).__name__}) -> family held")
-        live.add("__HOLD__health:intelligence_quality:")
 
     return live, notes
 
@@ -123,14 +165,26 @@ def is_reapable(item: dict, live: set[str]) -> bool:
     comp = str(item.get("component") or "")
     if not comp.startswith(REAPABLE_PREFIXES):
         return False
-    # a failed probe holds its whole family
+    # the aggregate probe failed -> nothing is provably resolved, hold everything
+    if "__HOLD__ALL" in live:
+        return False
+    # a failed family probe holds its whole family
     for prefix in REAPABLE_PREFIXES:
         if f"__HOLD__{prefix}" in live and comp.startswith(prefix):
             return False
     if comp in live:
         return False
-    if item.get("fixable") or item.get("retry_cmd"):
-        return False
+    # retry_cmd used to veto removal. That guard was right when written -- I had
+    # not yet checked whether retryable entries were live. Measured 2026-09-22:
+    # 5 of 6 retryable entries (data_source_stale, approved_paper_test_stuck,
+    # news_stale, market_quotes_stale, schwab_journal_ingest_stale) are ABSENT
+    # from current findings. They exhaust at attempts=4, hit
+    # "Skipping ...: retries exhausted", never run their retry_cmd, and re-arm
+    # every 1800s forever -- the same trap as the no-retry_cmd items, wearing
+    # fixable=True. Liveness is the correct test; carrying a command is not.
+    #
+    # The protection that remains is stronger: the component must be absent from
+    # a probe that FAILS CLOSED, and its family must not be held.
     return True
 
 

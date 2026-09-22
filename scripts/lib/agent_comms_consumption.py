@@ -35,6 +35,7 @@ _EVENT_COLUMNS = (
     "subject_key",
     "thread_id",
     "correlation_id",
+    "subject_guid",
     "knowledge_eligibility",
     "knowledge_status",
     "expires_at",
@@ -131,8 +132,15 @@ def consume_event(
     if not event_id:
         return {"ok": False, "reason": "event_missing_id"}
     subject_key = str(event.get("subject_key") or "").strip()
+    # Prefer the identity-spine guid the ledger row already carries: it names
+    # the real subject, which is what "join a receipt to a subject" means.
+    # comms_subject_guid() is the fallback and identifies the CONVERSATION
+    # only, so the two are not interchangeable -- spine first, never minted.
     subject_guid = None
-    if subject_key:
+    spine_guid = event.get("subject_guid")
+    if spine_guid:
+        subject_guid = str(spine_guid)
+    elif subject_key:
         try:
             subject_guid = comms_subject_guid(subject_key)
         except ValueError:

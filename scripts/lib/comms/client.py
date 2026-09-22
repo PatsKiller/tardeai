@@ -38,6 +38,8 @@ class PublishResult:
     errors: list[str] = field(default_factory=list)
     delivery_owned: bool = False  # Phase 1–3 always False (SHADOW stubs only)
     delivery_ids: list[str] = field(default_factory=list)
+    # Which policy chose the channels above. See _destination_policy_for().
+    destination_policy_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -51,6 +53,7 @@ class PublishResult:
             "errors": list(self.errors),
             "delivery_owned": self.delivery_owned,
             "delivery_ids": list(self.delivery_ids),
+            "destination_policy_id": self.destination_policy_id,
         }
 
 
@@ -85,24 +88,61 @@ def _db_conn():
     return conn
 
 
-def _channels_for(event: CommunicationEvent) -> list[str]:
+# The four ways a channel can get chosen, named so a stored row says which one
+# ran. These are the ONLY branches in _destination_policy_for below; if a branch
+# is added there it needs an id here, or the row will claim a policy that did not
+# choose it.
+POLICY_EVENT_CHANNELS = "event.channels@v1"
+POLICY_DELIVERY_POLICY_CHANNELS = "event.delivery_policy.channels@v1"
+POLICY_DEFAULT_OUTBOUND_TELEGRAM = "default.outbound_telegram@v1"
+POLICY_NONE_NOT_OUTBOUND = "none.not_outbound@v1"
+
+
+def _destination_policy_for(event: CommunicationEvent) -> tuple[list[str], str]:
+    """Return the channels AND the id of the policy that selected them.
+
+    The selection logic is unchanged — this is the same cascade _channels_for
+    has always run, with each branch now naming itself. Measured 2026-09-22:
+    destination_policy_id was NULL on all 52,929 communication_deliveries rows
+    and all communication_outbox rows, because the one place that knows why a
+    channel was picked threw that reason away on return.
+
+    The default-outbound branch is the interesting one to be able to see: it
+    means nobody asked for Telegram, it was assumed.
+    """
     if event.channels:
-        return list(event.channels)
+        return list(event.channels), POLICY_EVENT_CHANNELS
     pol = event.delivery_policy or {}
     ch = pol.get("channels")
     if isinstance(ch, list) and ch:
-        return [str(x) for x in ch]
-    return ["telegram"] if event.direction == "OUTBOUND" else []
+        return [str(x) for x in ch], POLICY_DELIVERY_POLICY_CHANNELS
+    if event.direction == "OUTBOUND":
+        return ["telegram"], POLICY_DEFAULT_OUTBOUND_TELEGRAM
+    return [], POLICY_NONE_NOT_OUTBOUND
 
 
-def _reserve_deliveries(result: PublishResult, channels: list[str]) -> PublishResult:
+def _channels_for(event: CommunicationEvent) -> list[str]:
+    """Channels only. Kept as the existing callers' entry point."""
+    return _destination_policy_for(event)[0]
+
+
+def _reserve_deliveries(
+    result: PublishResult,
+    channels: list[str],
+    destination_policy_id: str | None = None,
+) -> PublishResult:
     """Phase 3: RESERVED stubs per channel. Never sends; never claims ownership."""
+    # Stamp the decision before the guard: a result with no channels still made
+    # a routing decision (POLICY_NONE_NOT_OUTBOUND), and that is worth reading back.
+    result.destination_policy_id = destination_policy_id
     if not result.ok or not result.event_id or not channels:
         return result
     delivery_ids: list[str] = []
     for ch in channels:
         try:
-            stub = attach_delivery_reservation(result.event_id, ch)
+            stub = attach_delivery_reservation(
+                result.event_id, ch, destination_policy_id=destination_policy_id
+            )
             if stub.delivery_id:
                 delivery_ids.append(stub.delivery_id)
         except Exception as e:
@@ -112,7 +152,11 @@ def _reserve_deliveries(result: PublishResult, channels: list[str]) -> PublishRe
     return result
 
 
-def _persist_memory(event: CommunicationEvent, channels: list[str]) -> PublishResult:
+def _persist_memory(
+    event: CommunicationEvent,
+    channels: list[str],
+    destination_policy_id: str | None = None,
+) -> PublishResult:
     mode = get_gateway_mode()
     assert event.event_id and event.idempotency_key
     with _lock:
@@ -127,6 +171,7 @@ def _persist_memory(event: CommunicationEvent, channels: list[str]) -> PublishRe
                 duplicate=True,
                 outbox_channels=channels,
                 delivery_owned=False,
+                destination_policy_id=destination_policy_id,
             )
         row = event.to_row()
         row["gateway_mode_at_write"] = mode
@@ -141,10 +186,16 @@ def _persist_memory(event: CommunicationEvent, channels: list[str]) -> PublishRe
         duplicate=False,
         outbox_channels=channels,
         delivery_owned=False,
+        destination_policy_id=destination_policy_id,
     )
 
 
-def _persist_db(conn, event: CommunicationEvent, channels: list[str]) -> PublishResult:
+def _persist_db(
+    conn,
+    event: CommunicationEvent,
+    channels: list[str],
+    destination_policy_id: str | None = None,
+) -> PublishResult:
     mode = get_gateway_mode()
     assert event.event_id and event.idempotency_key
     row = event.to_row()
@@ -215,11 +266,12 @@ def _persist_db(conn, event: CommunicationEvent, channels: list[str]) -> Publish
             for ch in channels:
                 cur.execute(
                     """
-                    INSERT INTO communication_outbox (event_id, channel, status)
-                    VALUES (%s, %s, 'recorded')
+                    INSERT INTO communication_outbox
+                        (event_id, channel, status, destination_policy_id)
+                    VALUES (%s, %s, 'recorded', %s)
                     ON CONFLICT (event_id, channel) DO NOTHING
                     """,
-                    (event_id, ch),
+                    (event_id, ch, destination_policy_id),
                 )
             for etype, eid in (event.entity_refs or {}).items():
                 if eid is None:
@@ -247,7 +299,49 @@ def _persist_db(conn, event: CommunicationEvent, channels: list[str]) -> Publish
         duplicate=duplicate,
         outbox_channels=channels,
         delivery_owned=False,
+        destination_policy_id=destination_policy_id,
     )
+
+
+def _stamp_subject_identity(event: CommunicationEvent) -> None:
+    """Read this message's subject from the identity spine. Never mints, never raises.
+
+    WHY HERE. `subject_guid` was back-filled AFTER publish by exactly one caller
+    (`telegram_alert._tag_outbound`), so a producer that published through the
+    gateway path -- or through any of the ~40 direct `publish_communication`
+    call sites -- wrote a row with no subject at all. Measured 2026-09-22 on the
+    live ledger: 8,786 of 54,676 OUTBOUND events carry a subject_guid (16.1%),
+    and a random 3,000-row sample of the untagged remainder contains watchpool,
+    watch-alert, revalidation and material-change messages that name their
+    ticker in the first line -- identity that was available and simply never
+    read. One chokepoint fixes every producer, including ones not yet written.
+
+    BEFORE PERSIST, not after. The INSERT then carries the subject, so there is
+    no second UPDATE to lose, and the in-memory fallback (OFF/SHADOW, or any host
+    with no database) gets the same identity as the DB path instead of silently
+    getting less.
+
+    NEVER OVERWRITES. A producer that already knows its subject is not
+    second-guessed -- the field stays read-only from the spine's point of view.
+
+    NEVER RAISES. Alerting is the operator's live path; identity is an
+    enrichment on it. A registry that cannot be read means "unknown", not
+    "refuse to publish".
+    """
+    if event.subject_guid:
+        return
+    try:
+        try:
+            from scripts.lib.cio_outbound_identity import primary_subject_guid
+        except ImportError:  # SCRIPTS_ONLY callers put scripts/ on the path
+            from lib.cio_outbound_identity import primary_subject_guid  # type: ignore
+
+        text = event.sanitized_body or event.short_summary or ""
+        guid = primary_subject_guid(text)
+        if guid:
+            event.subject_guid = guid
+    except Exception:
+        return
 
 
 def publish_communication(event: CommunicationEvent) -> PublishResult:
@@ -264,6 +358,7 @@ def publish_communication(event: CommunicationEvent) -> PublishResult:
     # classes pass through unchanged (never coerced).
     event.message_class = normalize_message_class(event.message_class)
     event.mint_identity()
+    _stamp_subject_identity(event)
     missing = required_missing(event)
     if missing:
         return PublishResult(
@@ -276,25 +371,27 @@ def publish_communication(event: CommunicationEvent) -> PublishResult:
             delivery_owned=False,
         )
 
-    channels = _channels_for(event)
+    # Decide the channels and remember WHY, once, so the ledger row and the
+    # delivery reservation cannot disagree about which policy chose them.
+    channels, destination_policy_id = _destination_policy_for(event)
     conn = _db_conn()
     if conn is not None:
         try:
-            result = _persist_db(conn, event, channels)
+            result = _persist_db(conn, event, channels, destination_policy_id)
         except Exception as e:
             try:
                 conn.rollback()
             except Exception:
                 pass
             # Degrade to memory rather than drop the logical event in OFF/SHADOW.
-            result = _persist_memory(event, channels)
+            result = _persist_memory(event, channels, destination_policy_id)
             result.errors.append(f"db_fallback:{type(e).__name__}")
     else:
-        result = _persist_memory(event, channels)
+        result = _persist_memory(event, channels, destination_policy_id)
 
     if result.ok and result.event_id and event.subject_key:
         _attach_subject_memory(event, result.event_id, channels)
-    return _reserve_deliveries(result, channels)
+    return _reserve_deliveries(result, channels, destination_policy_id)
 
 
 def _attach_subject_memory(

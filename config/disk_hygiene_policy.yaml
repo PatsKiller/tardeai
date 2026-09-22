@@ -5,7 +5,12 @@
 releases:
   root: "~/trade-ai-releases/portfolio-server"
   glob: "*-main-exact-*"
-  keep_n: 10                    # newest by directory mtime, plus always-protected
+  keep_n: 2                     # operator 2026-09-22: CURRENT + ONE previous, nothing more.
+                                # Count-based retention with 13 GB releases meant keep_n=10 could
+                                # never reach the space: 12 releases, 3 protected, would_delete=0
+                                # while 9 x 13 GB sat on disk and free fell 52.2 -> 31.9 GB in 11h.
+                                # Protections are unchanged: CURRENT, EXPECTED_RELEASE, and any
+                                # release that is the cwd of a live process are never deleted.
   protect_symlinks:
     - "CURRENT"
     - "EXPECTED_RELEASE"

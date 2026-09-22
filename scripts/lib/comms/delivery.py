@@ -344,9 +344,30 @@ def reserve_delivery(
     return _persist_memory(delivery)
 
 
-def attach_delivery_reservation(event_id: str, channel: str) -> ChannelDelivery:
-    """Helper for publish_communication: reserve a stub after ledger persist."""
-    return reserve_delivery(event_id=event_id, channel=channel, attempt_id="1")
+def attach_delivery_reservation(
+    event_id: str,
+    channel: str,
+    *,
+    destination_policy_id: str | None = None,
+) -> ChannelDelivery:
+    """Helper for publish_communication: reserve a stub after ledger persist.
+
+    ``destination_policy_id`` records WHICH policy chose this channel. The
+    column has existed since the 2026-09-05 delivery-ledger migration and was
+    written by nothing: measured 2026-09-22, 0 of 52,929 rows carried one, on
+    both communication_deliveries and communication_outbox. A reservation that
+    cannot say why it targeted a channel cannot be audited when the routing is
+    wrong — which is the failure the Communications ledger exists to catch.
+
+    Keyword-only and defaulted, so the two existing positional call sites keep
+    working unchanged.
+    """
+    return reserve_delivery(
+        event_id=event_id,
+        channel=channel,
+        attempt_id="1",
+        destination_policy_id=destination_policy_id,
+    )
 
 
 def _load_memory(delivery_id: str) -> ChannelDelivery | None:

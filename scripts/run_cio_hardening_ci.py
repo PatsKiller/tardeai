@@ -862,7 +862,7 @@ GATES = [
         [
             "tests/test_s3_detector_excludes_held.py",
         ],
-    ),    # A directory a served surface reads must be linked into the release.
+    ),  # A directory a served surface reads must be linked into the release.
     (
         "release_links_reports",
         [
@@ -1063,8 +1063,21 @@ GATES = [
     # contract means the provider id does not exist at save_alert_event() time.
     (
         "alert_delivery_id",
+        ["tests/test_alert_delivery_id_attach_20260921.py"],
+    ),
+    # Phase 2 of the same work: the writer existed but NOTHING called it, and the
+    # legacy settle path dropped the id it already held. Measured 2026-09-22:
+    # 62 of 8,003 alert_events carried a telegram_message_id (0.78%), 51,193 of
+    # 52,930 communication_events were UNSETTLED (the 79 SETTLED all came from
+    # the gateway path, which passes provider_message_id), and
+    # destination_policy_id was NULL on all 52,929 delivery + outbox rows. This
+    # gate holds the wiring down: it fails if a call site stops binding the id
+    # save_alert_event returns, if the legacy settle stops passing the provider
+    # id, or if the outbox stops recording which policy chose the channel.
+    (
+        "alert_delivery_wiring",
         [
-            "tests/test_alert_delivery_id_attach_20260921.py"
+            "tests/test_alert_delivery_wiring_20260922.py",
         ],
     ),
     # pipeline_freshness_monitor._age_days_table returned None for an ABSENT
@@ -1076,6 +1089,36 @@ GATES = [
         "freshness_reason",
         [
             "tests/test_freshness_reason_is_not_conflated_20260921.py",
+        ],
+    ),
+    # communication_events.subject_guid was written by exactly ONE caller
+    # (telegram_alert._tag_outbound), as an UPDATE after publish. Every other
+    # producer — the gateway-owned path and ~40 direct publish_communication
+    # call sites — wrote a row with no subject: 8,786 of 54,676 OUTBOUND events
+    # carried one on 2026-09-22 (16.1%). The stamp now happens inside
+    # publish_communication, before persist. That is only safe while the
+    # 2026-09-21 template guards hold — one alert's boilerplate ("After <n>
+    # retries") had become 57.5% of the identity spine — so the wiring and the
+    # guards are gated by the same suite, against a registry in which the
+    # template words ARE registered entities.
+    (
+        "publish_chokepoint_identity",
+        [
+            "tests/test_publish_chokepoint_identity_20260922.py",
+        ],
+    ),
+    # The memory join was open at both ends. Measured 2026-09-22: causation_id
+    # and parent_event_id were NULL on all 54,928 communication_events, so no
+    # reply resolved to the event that caused it; and subject_guid was NULL on
+    # all 199 agent consumption receipts, because the column exists on the
+    # table and on the dataclass but was missing from the INSERT. Both were
+    # wiring, not design. This gate pins the defaults (a root event points at
+    # itself; a root has NO parent, because self-parenting loops a recursive
+    # walk) and pins subject_guid into the receipt write.
+    (
+        "comms_lineage_join",
+        [
+            "tests/test_phase4_lineage_join_20260922.py",
         ],
     ),
     # market_quotes is 34.2M rows / 5.67 GB, of which 97.7% is intraday
@@ -1100,6 +1143,31 @@ GATES = [
         "escalation_queue_reaper",
         [
             "tests/test_escalation_queue_reaper_20260922.py",
+        ],
+    ),
+    # The queue also GROWS on its own. hermes_health_inspector._escalate builds
+    # every item with the same constant component and used to append it
+    # unconditionally, so each run re-queued an already-queued condition --
+    # 6 duplicate rows accreted from 2026-08-07. This gate holds the dedupe.
+    (
+        "hermes_escalation_dedupe",
+        [
+            "tests/test_hermes_escalation_dedupe_20260922.py",
+        ],
+    ),
+    # Measured 2026-09-22: grep for error_budget|slo_target|burn_rate across
+    # scripts/ and config/ returned NOTHING. Every alarm in the tree is a
+    # threshold on a CAUSE, which is how one AUTO-RETRY alert became 57% of the
+    # identity spine while "did the alert reach a human" had no number at all.
+    # The gate pins the three things an earlier draft got wrong -- a decorative
+    # window_seconds, consumed_budget_pct as burn_rate*100, and validation
+    # deferred out of the config -- each with its own negative control, plus
+    # suppression on thin traffic so the budget alarm does not become the next
+    # storm. DB assertions skip when hermetic; the math never does.
+    (
+        "slo_burn_rate",
+        [
+            "tests/test_slo_burn_rate_20260922.py",
         ],
     ),
     (
@@ -2067,6 +2135,53 @@ GATES = [
             "tests/test_research_budget_live_wire_p10.py",
             "tests/test_dormant_lane_wiring_p10.py",
             "tests/test_archive_manifest_proposal_p10.py",
+        ],
+    ),
+    (
+        # 2026-09-22 P6 — two gates that were green for the wrong reason.
+        #
+        # reviewer != scorer was enforced from the SCORING side only, and only in
+        # one insertion order: record_score asked the durable agent_reviews rows
+        # whether the scorer had already reviewed, while nothing asked agent_scores
+        # whether the reviewer had already scored. Score-then-review by one agent
+        # was accepted; review-then-score by the same agent was refused. Review
+        # also carried no scorer_agent_id, so the contract answered the same
+        # question differently depending on which record the caller built. Both
+        # sides and both orders are pinned now.
+        #
+        # The alarm batch is the other half: ten send_telegram sites that were
+        # lines in config/alarm_firing_baseline.txt — named, counted, unproven —
+        # are now driven to the transport and REMOVED from that file. The ratchet
+        # number moved because the alarms were tested, not because the baseline
+        # absorbed them, which is the only direction that file may move.
+        "gate_honesty_p6_20260922",
+        [
+            "tests/test_independence_reviewer_scorer_20260922.py",
+            "tests/test_alarm_fires_batch6_20260922.py",
+        ],
+    ),
+    (
+        # 2026-09-22 P6 — ten suites promoted out of UNLISTED_BASELINE.
+        #
+        # Measured before this entry: 1,461 test files, 506 run by CI (34.6%), with
+        # 949 files sitting in check_test_coverage.UNLISTED_BASELINE as inherited
+        # debt. That baseline makes the gap visible and may only shrink; these ten
+        # shrink it. Each was run on 2026-09-22 and passes hermetically in under a
+        # second with no database, network or broker — chosen for that reason, so
+        # registering them adds real coverage without adding a flaky gate that
+        # someone would later disable.
+        "agent_runtime_suites_promoted_20260922",
+        [
+            "tests/test_agent_context_envelope.py",
+            "tests/test_agent_decision_payload.py",
+            "tests/test_agent_replay_harness.py",
+            "tests/test_agent_run_trace.py",
+            "tests/test_agent_runtime_critics.py",
+            "tests/test_agent_runtime_deadlines.py",
+            "tests/test_agent_runtime_instrumentation.py",
+            "tests/test_agent_runtime_knowledge.py",
+            "tests/test_agent_runtime_migration_contract.py",
+            "tests/test_agent_runtime_missing_modules.py",
         ],
     ),
 ]
