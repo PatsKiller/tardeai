@@ -232,11 +232,30 @@ def run(document: dict[str, Any], conn, only: str | None = None) -> dict[str, An
     }
 
 
+#: Stable-named mirror of the newest receipt. config/lane_registry.json declares
+#: this lane's output_signal as file_mtime on THIS path, and file_mtime resolves
+#: one fixed path -- it supports no glob. The timestamped receipts below live in
+#: artifacts/, which is gitignored (.gitignore:185), so they cannot serve as the
+#: durable signal a lane row must name. Declaring output_signal "none" would have
+#: been the shortcut; the registry rejects that reasoning in its own words --
+#: "code 0 has been wrong about this system three times."
+LATEST_RECEIPT_REL = Path("data") / "runtime" / "slo_burn_rate_last.json"
+
+
 def write_receipt(report: dict[str, Any], out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = report["generated_at"].replace(":", "").replace("-", "")
     path = out_dir / f"slo_burn_rate_{stamp}.json"
-    path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    body = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    path.write_text(body, encoding="utf-8")
+    # Mirror to the fixed path the lane registry observes. Best-effort: a failure
+    # here must not lose the timestamped receipt that was already written.
+    try:
+        latest = PROJECT_ROOT / LATEST_RECEIPT_REL
+        latest.parent.mkdir(parents=True, exist_ok=True)
+        latest.write_text(body, encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001
+        print(f"  latest-receipt mirror failed: {exc}", file=sys.stderr)
     return path
 
 

@@ -2140,6 +2140,21 @@
         "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/agent_worktree_retention_receipts.jsonl"
       },
       "note": "Operator-requested 2026-09-21: automatic retention for Claude/agent data. Daily 04:40 ET, --apply --min-age-days 3. Reclaims a worktree ONLY when merged AND clean AND older than the age floor; removal is `git worktree remove`, never rm -rf, because all 111 are registered worktrees. Age alone reclaims nothing (none exceeded 30 days) and a blanket reaper would destroy the five 2026-07-28 trees holding unmerged work. A LOCKED worktree belongs to a running agent and is always kept."
+    },
+    {
+      "lane_id": "slo-burn-rate",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-slo-burn-rate.timer"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/slo_burn_rate_last.json"
+      },
+      "note": "Armed 2026-09-22 by operator decision. READ-ONLY measurement: the reporter opens a read-only cursor, prints, and writes a receipt. It sends no alert and touches no queue -- there is no paging path built on these budgets, deliberately, because alert_delivery reads 99.6x and card_freshness burns by construction. Arming it armed MEASUREMENT, not notification. The signal is the mirrored receipt, not the timestamped one under artifacts/ (gitignored) and not an exit code."
     }
   ],
   "undeclared_baseline": [

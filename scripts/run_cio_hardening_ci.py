@@ -1145,6 +1145,19 @@ GATES = [
             "tests/test_escalation_queue_reaper_20260922.py",
         ],
     ),
+    # The last three storming conditions, measured 2026-09-22 11:07 EDT. Each
+    # exhausted at max attempts, logged "Skipping ...: retries exhausted", never
+    # ran its retry_cmd again and re-armed every 1800s forever. Root causes, in
+    # order: a verify predicate stricter than the detector it verifies; a
+    # detector reading the frozen served copy of a log the cron writes in the DEV
+    # tree; and a review-only item that escaped the shed because its component
+    # was in neither hard-coded namespace. This gate holds all three.
+    (
+        "escalation_storm_last3",
+        [
+            "tests/test_escalation_storm_last3_20260922.py",
+        ],
+    ),
     # The queue also GROWS on its own. hermes_health_inspector._escalate builds
     # every item with the same constant component and used to append it
     # unconditionally, so each run re-queued an already-queued condition --
@@ -1168,6 +1181,17 @@ GATES = [
             "tests/test_paper_trades_never_page_20260922.py",
         ],
     ),
+    # A DELIVERED message must not discard its provider id. _legacy_send called
+    # the bool wrapper instead of _raw_send_telegram_result, and only the result
+    # variant populates _LAST_MESSAGE_IDS -- so all 121 LEGACY_DELIVERED messages
+    # in 24h reached Telegram with the id thrown away one frame later, and
+    # attach_telegram_message_id honestly no-opped at all 7 wired call sites.
+    (
+        "legacy_send_captures_message_id",
+        [
+            "tests/test_legacy_send_captures_message_id_20260922.py",
+        ],
+    ),
     # Measured 2026-09-22: grep for error_budget|slo_target|burn_rate across
     # scripts/ and config/ returned NOTHING. Every alarm in the tree is a
     # threshold on a CAUSE, which is how one AUTO-RETRY alert became 57% of the
@@ -1181,6 +1205,25 @@ GATES = [
         "slo_burn_rate",
         [
             "tests/test_slo_burn_rate_20260922.py",
+        ],
+    ),
+    # Two gates in the maturity roadmap were unmeasurable as written, for
+    # reasons unrelated to the system's behaviour. Phase 1 froze the storm
+    # baseline at a MID-DAY count (1,673) and compared it to a per-day target;
+    # the full 09-21 day is 7,627. Phase 2 required >=95% of "last-7-day
+    # alerts" to carry a provider message id, while 97.67% of delivery rows are
+    # SUPPRESSED and can never acquire one -- a ceiling of 2.1% against a 95%
+    # bar. This gate pins both restatements to the measured numbers AND holds
+    # the line against a future loosening: separate controls assert the 95%
+    # threshold is unchanged, that the worse 7-day window was not swapped for
+    # the flattering 24-hour one, and that the corrected storm baseline demands
+    # a LARGER reduction than the partial figure did. The doc predicates are
+    # each run against the exact superseded wording, so a predicate that
+    # returned True for everything would fail here. Hermetic: no DB, no log.
+    (
+        "maturity_gate_restatement",
+        [
+            "tests/test_maturity_gate_restatement_20260922.py",
         ],
     ),
     (
@@ -2195,6 +2238,29 @@ GATES = [
             "tests/test_agent_runtime_knowledge.py",
             "tests/test_agent_runtime_migration_contract.py",
             "tests/test_agent_runtime_missing_modules.py",
+        ],
+    ),
+    (
+        # 2026-09-22 — the four `send_telegram_document` alarms, observed firing.
+        #
+        # send_telegram_document entered alarm_firing_coverage.TRANSPORT earlier
+        # the same day by operator decision (sites_total 188 -> 192). That made
+        # four alarm call sites COUNTED for the first time on any branch — and all
+        # four were untested, so they became four lines of named debt in
+        # config/alarm_firing_baseline.txt. This gate is the receipt for paying
+        # them: all four files are REMOVED from that file because every transport
+        # site in each of them is now driven to the transport, documents included.
+        #
+        # test_alarm_coverage.py rides with it deliberately. The firing test and
+        # the ratchet that reads its COVERS list must move together: the COVERS
+        # list is parsed with `ast` and accepts only literal strings, so a
+        # comprehension there reads as ZERO coverage while the firing test stays
+        # green. Running both in one gate means the baseline and the tests cannot
+        # disagree without something going red.
+        "alarm_document_sites_20260922",
+        [
+            "tests/test_alarm_fires_documents_20260922.py",
+            "tests/test_alarm_coverage.py",
         ],
     ),
 ]

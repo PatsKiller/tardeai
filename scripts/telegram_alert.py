@@ -220,9 +220,29 @@ def _legacy_send(
             mark_sent(message)
         except ImportError:
             pass  # Router not available — send normally
-    return _raw_send_telegram(
-        message, chat_ids=targets, reply_markup=reply_markup, thread_id=thread_id,
-        link_preview_options=link_preview_options,
+    # Call the RESULT variant, not the bool wrapper. _raw_send_telegram_result is
+    # the ONLY function that populates _LAST_MESSAGE_IDS, and _raw_send_telegram
+    # discards everything but .ok -- so every legacy delivery reached Telegram with
+    # its provider message id thrown away one frame later.
+    #
+    # Measured 2026-09-22 over 24h: communication_deliveries held 5,072 SUPPRESSED,
+    # 121 LEGACY_DELIVERED, 17 SENT. Of the 138 messages actually DELIVERED only 17
+    # carried a provider id -- 12.3%. All 121 id-less deliveries came from a single
+    # producer, telegram_alert.send_telegram, i.e. this one call. #1179 wired
+    # attach_telegram_message_id into 7 call sites, but on this path last_message_id()
+    # correctly returned None every time, so attach honestly no-opped. The wiring was
+    # never the defect; the id never survived the send.
+    #
+    # The bool contract is unchanged -- >=36 verified boolean callers (182 across 150
+    # files by the code's own count) still receive exactly what they received before.
+    return bool(
+        _raw_send_telegram_result(
+            message,
+            targets,
+            reply_markup=reply_markup,
+            thread_id=thread_id,
+            link_preview_options=link_preview_options,
+        ).get("ok")
     )
 
 
