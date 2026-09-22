@@ -205,6 +205,34 @@ _TEMPLATE_CHROME = frozenset({
 _MIN_BARE_TICKER_LEN = 2
 
 
+def is_template_chrome(token: Any) -> bool:
+    """True when a bare token is machine-template CHROME, not an instrument.
+
+    ONE list, every caller. `_TEMPLATE_CHROME` guarded only the INBOUND
+    extractor when it was written. The OUTBOUND link/footer renderer
+    (`comms_editor.subjects` -> `operator_subject_resolver._tickers`) carried a
+    SECOND, hand-written list (`_STOP`) which did not contain ALERT -- so on
+    2026-09-22 13:02 a real operator message carried
+
+        ALERT in Command Center (.../v3/watch/intelligence/ALERT) ·
+        Finviz (...t=ALERT) · Yahoo (.../quote/ALERT)
+        Trade-AI · ID 7bb93171 · ALERT:373d9b16 DY:b441e4b4
+
+    beside a correctly tagged DY. The word came from this system's own title
+    template, "READY ENTRY ALERT - DY (advisory)".
+
+    Measured the same day on the live ledger: 3,515 of 7,104 subject-carrying
+    communication_events in 7 days (49.5%) were bound to a chrome word --
+    ET 2,586, ALERT 564, FIX 169, NONE 108.
+
+    Exported rather than duplicated because two lists WILL diverge; they already
+    had. This answers ONE question. A caller that needs a chrome word to still
+    bind -- the operator's own book, or an explicit $cashtag -- checks that
+    itself, which is how the guard fails OPEN for a genuine ticker.
+    """
+    return str(token or "").strip().upper() in _TEMPLATE_CHROME
+
+
 def extract_candidates(text: str) -> list[str]:
     """Cashtags first (explicit intent), then bare uppercase runs."""
     if not text:

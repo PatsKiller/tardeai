@@ -269,7 +269,43 @@ class DuplicateLedger:
 # ── subjects, CIO agreement, links, pills ────────────────────────────────────
 
 
-def subjects(text: str, *, resolve: Optional[Callable[[str], list[dict]]] = None) -> list[dict[str, str]]:
+def known_instruments(symbols: list[str]) -> Optional[set[str]]:
+    """Which of `symbols` the system actually holds an instrument for, or None.
+
+    Second, independent guard behind the shared chrome list -- drift insurance.
+    A chrome word that is NOT yet on `inbound_identity_tagger._TEMPLATE_CHROME`
+    still must not be handed Command Center / Finviz / Yahoo quote links, because
+    those links are a claim that the thing is tradeable. "ALERT" had 0 rows in
+    symbol_profiles on 2026-09-22 and was given all three.
+
+    Evidence is either an instrument row (`symbol_profiles`) or an established
+    narrative subject (`narrative_subjects`). Cheap: two indexed lookups against
+    the symbols already on the message, under the module's 2 s statement timeout.
+
+    Returns None for UNKNOWN -- no database, a timeout, any error. None means the
+    caller must FAIL OPEN and keep every symbol: suppressing a genuine ticker to
+    kill chrome is the worse failure, and a resolver that answers "nothing
+    exists" when the database is merely absent would silently strip every link
+    from every message.
+    """
+    syms = [s for s in {str(x).upper() for x in symbols or []} if s]
+    if not syms:
+        return set()
+    try:
+        rows = default_db_query(
+            "SELECT DISTINCT upper(symbol) AS symbol FROM symbol_profiles WHERE upper(symbol) = ANY(%s) "
+            "UNION SELECT DISTINCT upper(semantic_subject) AS symbol FROM narrative_subjects "
+            "WHERE entity_type = 'SECURITY' AND upper(semantic_subject) = ANY(%s)",
+            (syms, syms),
+        )
+    except Exception:  # noqa: BLE001 - unknown, never "nothing exists"
+        return None
+    return {str(r["symbol"]).upper() for r in rows if r.get("symbol")}
+
+
+def subjects(text: str, *, resolve: Optional[Callable[[str], list[dict]]] = None,
+             instruments: Optional[Callable[[list[str]], Optional[set[str]]]] = None
+             ) -> list[dict[str, str]]:
     """Registry-backed companies the message names: [{symbol, guid}]. Never a guessed ticker."""
     plain = re.sub(r"<[^>]+>", " ", text or "")
     try:
@@ -285,7 +321,16 @@ def subjects(text: str, *, resolve: Optional[Callable[[str], list[dict]]] = None
     for r in rows:
         if r.get("symbol") and r.get("guid") and r["symbol"] not in [o["symbol"] for o in out]:
             out.append({"symbol": str(r["symbol"]).upper(), "guid": str(r["guid"])})
-    return out[:6]
+    out = out[:6]
+    # Instrument-existence guard. `known_instruments` returning None is UNKNOWN,
+    # and unknown keeps everything -- see its docstring.
+    try:
+        known = (instruments or known_instruments)([o["symbol"] for o in out])
+    except Exception:  # noqa: BLE001
+        known = None
+    if known is not None:
+        out = [o for o in out if o["symbol"] in known]
+    return out
 
 
 def cio_views(symbols: list[str], db_query: Optional[Callable[..., list[dict]]]) -> dict[str, dict[str, Any]]:
@@ -560,7 +605,8 @@ class EditorDecision:
 
 def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Optional[datetime] = None,
          ledger: Optional[DuplicateLedger] = None, db_query: Optional[Callable[..., list[dict]]] = None,
-         resolve: Optional[Callable[[str], list[dict]]] = None, editor_mode: Optional[str] = None) -> EditorDecision:
+         resolve: Optional[Callable[[str], list[dict]]] = None, editor_mode: Optional[str] = None,
+         instruments: Optional[Callable[[list[str]], Optional[set[str]]]] = None) -> EditorDecision:
     """Decide what one message becomes. Pure apart from reads; ``commit`` records it."""
     now = now or datetime.now(timezone.utc)
     ledger = ledger or DuplicateLedger()
@@ -570,7 +616,12 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
     body = text or ""
     was_html = parse_mode == "HTML" or looks_like_html(body)
 
-    subs = subjects(body, resolve=resolve)
+    # Pass `instruments` only when the caller set it: `subjects` already
+    # defaults to the DB-backed `known_instruments`, so production keeps the
+    # existence guard while a caller that substitutes its own `subjects`
+    # (the transport tests do) is not handed a keyword it never declared.
+    subs = (subjects(body, resolve=resolve) if instruments is None
+            else subjects(body, resolve=resolve, instruments=instruments))
     syms = [s["symbol"] for s in subs]
     views = cio_views(syms, db_query)
     disagree = cio_disagreements(body, views)
@@ -652,5 +703,5 @@ def commit(decision: EditorDecision, *, chat_id: Any, now: Optional[datetime] = 
 
 __all__ = ["DuplicateLedger", "EditorDecision", "PILL_HOUSE", "PILL_MODEL", "PILL_OUTSIDE", "cc_base",
            "cio_disagreements", "cio_missing_decisions", "commit", "default_db_query", "edit", "fingerprint",
-           "markdown_to_html", "message_guid", "mode", "rewrite_bullish_to_watch", "soft_block_rewrite_symbols",
+           "known_instruments", "markdown_to_html", "message_guid", "mode", "rewrite_bullish_to_watch", "soft_block_rewrite_symbols",
            "subjects", "symbol_links"]
