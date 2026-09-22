@@ -129,6 +129,40 @@ def _send_telegram(message: str) -> None:
         print("  [weekly-report] Telegram not sent")
 
 
+def _send_telegram_doc(docx_path, caption: str = "") -> bool:
+    """Send the weekly DOCX via the telegram_alert.send_telegram_document chokepoint.
+
+    EXTRACTED 2026-09-22, unchanged in behaviour. This send sat inline at the end
+    of run_weekly_report(), which means the only way to reach it was to run the
+    entire weekly report: OAuth LLM narratives, DOCX render, HTML write, report
+    rotation. No test could do that, so this alarm could not be observed firing —
+    and an alarm never observed firing is indistinguishable from no alarm. It is a
+    module-level function now for exactly one reason: so that the condition can be
+    injected and the document can be watched reaching the transport
+    (tests/test_alarm_fires_documents_20260922.py).
+
+    The missing-file check moved in here with it. Inline it was the caller's
+    `if ... and Path(docx_path).exists()`, silent when false; here it says so,
+    because "no DOCX was produced" is worth a line in the job log.
+    """
+    p = Path(docx_path)
+    if not p.is_file():
+        print(f"  [weekly-report] Telegram DOCX missing: {p}")
+        return False
+    try:
+        from telegram_alert import send_telegram_document
+        ok = bool(send_telegram_document(
+            str(p),
+            caption=caption or p.name,
+            bypass_router=True,
+        ))
+        print("  [weekly-report] Telegram DOCX sent" if ok else "  [weekly-report] Telegram DOCX not sent")
+        return ok
+    except Exception as e:
+        print(f"  [weekly-report] Telegram DOCX error: {type(e).__name__}: {str(e)[:120]}")
+        return False
+
+
 def _build_performance_section(data: Dict) -> Dict:
     """Build performance data dict for the report."""
     perf = data.get("perf", {})
@@ -1100,17 +1134,8 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
         f"<a href='https://ms01-openclaw.tail163d14.ts.net/reports/weekly/weekly_{date_str}.html'>📄 Full Report</a>"
     )
     _send_telegram(tg_msg)
-    if docx_path and Path(docx_path).exists():
-        try:
-            from telegram_alert import send_telegram_document
-            ok = bool(send_telegram_document(
-                str(docx_path),
-                caption=f"Weekly portfolio DOCX — {date_str}",
-                bypass_router=True,
-            ))
-            print("  [weekly-report] Telegram DOCX sent" if ok else "  [weekly-report] Telegram DOCX not sent")
-        except Exception as e:
-            print(f"  [weekly-report] Telegram DOCX error: {type(e).__name__}: {str(e)[:120]}")
+    if docx_path:
+        _send_telegram_doc(docx_path, f"Weekly portfolio DOCX — {date_str}")
     print(f"[weekly-report] Done. Report: {html_path}")
     return html_path
 

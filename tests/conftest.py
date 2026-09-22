@@ -265,6 +265,17 @@ class Captured:
     def text(self) -> str:
         return "\n".join(m.get("text", "") for m in self.transport)
 
+    @property
+    def documents(self) -> list[dict]:
+        """The sends that carried a file, not just words.
+
+        `send_telegram_document` is a counted alarm transport (2026-09-22), and a
+        document send that lost its file is not the alarm the operator needs: the
+        caption alone says a report exists without attaching it. Kept separate
+        from `transport` entries so a test can assert the file made the trip.
+        """
+        return [m for m in self.transport if m.get("document")]
+
     def assert_fired(self, contains: str | None = None) -> None:
         assert self.transport, (
             "alarm did not reach the transport. "
@@ -295,9 +306,26 @@ def alarm_capture(monkeypatch):
         _next_id[0] += 1
         return {"ok": True, "status_code": 200, "message_id": _next_id[0]}
 
+    # Documents leave by a SECOND transport function, not send_message.
+    # `send_telegram_document` calls `send_document`, so before 2026-09-22 this
+    # fixture could not observe a document alarm at all: the four document call
+    # sites had no way to be captured, which is part of why none had ever been
+    # observed firing. The caption is recorded under "text" so `text()`,
+    # `assert_fired(contains=...)` and `fired` work on a document exactly as they
+    # do on a message; "document" carries the file that was actually attached.
+    def _fake_send_document(token=None, chat_id=None, file_path="", caption=None, **kw):
+        cap.transport.append({
+            "chat_id": chat_id,
+            "text": caption or "",
+            "document": file_path,
+        })
+        _next_id[0] += 1
+        return {"ok": True, "status_code": 200, "message_id": _next_id[0]}
+
     # Bound into telegram_alert's namespace by `from telegram_transport import ...`,
     # so patching the source module alone would not intercept it.
     monkeypatch.setattr(TA, "send_message", _fake_send_message, raising=True)
+    monkeypatch.setattr(TA, "send_document", _fake_send_document, raising=True)
     # _enabled() gates send_telegram before anything else. Patching only _token and
     # _chat_ids passed locally (a real token in the environment) and failed in CI,
     # where send_telegram returned at the first line and produced nothing at all.
@@ -411,6 +439,22 @@ def _production_receipt_write_barrier(monkeypatch):
                     for m in pkgutil.iter_modules(_comms.__path__)]
     except Exception:
         pass
+
+    # The SAME package under its other import name, but only where the process
+    # has already loaded it. `scripts.lib.comms.client` and `lib.comms.client`
+    # are distinct module objects (PROJECT_ROOT/scripts is on sys.path), and
+    # patching one leaves the other holding the real connector -- measured
+    # 2026-09-22 while covering the document alarms: the barrier was installed on
+    # scripts.lib.comms.client._db_conn while lib.comms.client._db_conn was still
+    # live, and the report helpers publish through the `lib.` spelling.
+    #
+    # Read from sys.modules and NEVER imported here. Importing the second
+    # spelling is what scripts/lib/__init__.py raises DualImportIdentityError for,
+    # and doing it in a fixture made that guard fire inside an unrelated suite
+    # (tests/test_research_lane_health_alert.py) -- a barrier that breaks the
+    # tests it is meant to protect. Where only one spelling is loaded, that is the
+    # one the code is using, and it is the one patched.
+    targets += [m for m in list(sys.modules) if m == "lib.comms" or m.startswith("lib.comms.")]
     for mod in targets:
         try:
             m = importlib.import_module(mod)
