@@ -1102,6 +1102,16 @@ GATES = [
             "tests/test_escalation_queue_reaper_20260922.py",
         ],
     ),
+    # The queue also GROWS on its own. hermes_health_inspector._escalate builds
+    # every item with the same constant component and used to append it
+    # unconditionally, so each run re-queued an already-queued condition --
+    # 6 duplicate rows accreted from 2026-08-07. This gate holds the dedupe.
+    (
+        "hermes_escalation_dedupe",
+        [
+            "tests/test_hermes_escalation_dedupe_20260922.py",
+        ],
+    ),
     (
         "lane_registry",
         [
