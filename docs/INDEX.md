@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `74f55fffefbd07e035baaa57700e0e560aecbdc2d6715e6245fb0aa09cb71c5d`
+**Tree fingerprint:** `5370a0a823075aaff1ca22337a599ce37e562f6acd1aa3fd79b82bbafde21349`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,9 +12,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2600 |
-| Markdown (excl. this INDEX) | 2174 |
-| **MISSING HEADER** | **72** |
+| Files under `docs/` (excl. this INDEX) | 2601 |
+| Markdown (excl. this INDEX) | 2175 |
+| **MISSING HEADER** | **73** |
 | Header OK | 2102 |
 | Duplicate groups | 2 |
 
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2229 |
+| review_required | 2230 |
 
 ## Markdown tree
 
@@ -349,7 +349,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-2100.md` | LLM Cost Governance AS-IS — 2026-09-20 21:00 ET | review_required | OK | `ae7ab963993b` |
 | `docs/architecture/M2_PRODUCTION_SHADOW_MIGRATION_DESIGN_2026-08-24.md` | M2 production shadow migration — DESIGN ONLY | review_required | OK | `18aa33439911` |
 | `docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md` | Material change → due-diligence questions | review_required | OK | `665175b2ce35` |
-| `docs/architecture/MATURITY_PLAN_4_TO_8.5_2026-09-21.md` | Getting from 4 to 8.5 — the plan, with the arithmetic shown | review_required | MISSING HEADER | `f2362cb9fb36` |
+| `docs/architecture/MATURITY_PLAN_4_TO_8.5_2026-09-21.md` | Getting from 4 to 8.5 — the plan, with the arithmetic shown | review_required | MISSING HEADER | `9d0f384de05a` |
+| `docs/architecture/MATURITY_PLAN_4_TO_8.5_2026-09-21_ENHANCED.md` | Enhanced six-phase maturity plan — 4.75 → 8.6 | review_required | MISSING HEADER | `fbd06caa95c5` |
 | `docs/architecture/MATURITY_STATUS_2026-09-21-2205.md` | Where we are: 4.75 / 10 — and what moves it to 8.5 | review_required | MISSING HEADER | `833bdb36740f` |
 | `docs/architecture/MENTIONS_SCHEDULING_AND_RETENTION.md` | Mentions: scheduling, retention, and who decides relevance | review_required | OK | `44f38a74e254` |
 | `docs/architecture/OPENCLAW_HERMES_UPGRADE_ROLLBACK_PLAN_2026-07-23.md` | OpenClaw and Hermes Shadow Upgrade / Rollback Plan — 2026-07-23 | review_required | OK | `9fd429af3119` |
