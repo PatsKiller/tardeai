@@ -261,3 +261,84 @@ storm traffic would be meaningless.
   wrong: `rotation_ladders._sector_momentum_returns` reads it at 21/63/126-day
   lookbacks. The correct fix is downsampling (117.4 intraday rows per daily
   close), which reclaims ~5.67 GB *and* extends history — a separate PR.
+
+---
+
+## 7. Operator review, 2026-09-21 — five enhancements, two corrections
+
+An independent review of this plan proposed five additions. Four are adopted as
+written. One is adopted with a **material change of location**, and the review's
+headline arithmetic needs correcting.
+
+### Correction A — the score
+
+The review states 38/80 as **3.8/10**. It is **4.75/10** (38 ÷ 8 dimensions, not
+÷ 10). This matters: it sizes the remaining work at **+31 points**, not +47.
+
+### Correction B — where the stance interdict must live
+
+The review places the 24/7 CIO stance gate inside `publish_communication`.
+**Verified against the source, that placement would not hold a message on the
+default path.**
+
+```
+telegram_alert.send_telegram, legacy branch:
+    ok = _legacy_send(...)                                   # <- message is SENT
+    _best_effort_comms_publish(message, delivered=bool(ok))  # <- ledger write
+    return ok
+```
+
+`publish_communication` runs **after** the send on the legacy path, and only
+before it on the gateway path (`Order: publish_communication →
+send_via_gateway(..., deliver=True)`). Since `COMMS_GATEWAY_MODE` fails closed to
+`OFF`, the legacy path is the default — so a gate there would interdict ~79
+messages and merely *annotate* the other ~53,000.
+
+That is the review's own "annotate-not-hold" defect (its item 2), reproduced one
+layer down.
+
+**Correct host: `telegram_transport.send_message()`** — *"the only module allowed
+to know the sendMessage / editMessageText Bot API"*. Both paths import it (legacy
+via `telegram_alert:19`, gateway via `channel_adapters`), it is pre-send by
+construction, and it already hosts `_interdicted()`, which proves the pattern
+works at that layer and notes that any caller reaching past it bypasses the
+interdict entirely.
+
+### What already exists (so this is wiring, not building)
+
+`scripts/lib/cio_telegram_stance_gate.py` — `CioTelegramStanceGate@v1` — already
+implements the hard gate *and* Enhancement 3's fail-closed rule verbatim:
+
+> *"Missing CIO row, unreadable store, or non-aligned action → hold
+> (`allow=False` + `held_reason`). Never annotate-and-send from here."*
+
+It writes durable hold receipts to `cio_telegram_stance_holds.jsonl` for
+`LIVE-cio-stance-governance`. `cio_decisions` is healthy: **53,410 rows**, newest
+2026-09-21 16:20.
+
+**But only five publishers call it** — `send_telegram_proposal_alert`,
+`screener_go_alerts`, `social_scalp_scanner`, `comms_editor`,
+`report_organic_stance_hold`. That scatter is exactly the ungated-publisher
+finding. Moving the call to the transport closes it for every current and future
+producer at once.
+
+### Adopted
+
+| # | enhancement | phase | change from the review |
+|---|---|---|---|
+| 1 | 24/7 stance interdict | **3** | host at `telegram_transport.send_message`, not `publish_communication` |
+| 2 | `AdjudicationReceipt@v1` written synchronously before operator commit | **4** | adopted as written |
+| 3 | Fail-closed on stale/unknown stance | **1+3** | **already implemented** in the existing gate — wire it, don't build it |
+| 4 | Hermetic negative-control test: synthetic BUY against an active AVOID must hold | **6** | adopted as written; this is the discipline the whole plan runs on |
+| 5 | `MemoryRetrievalUnit@v1` bounded context (12k cap) for Telegram briefs | **5** | adopted as written |
+
+Enhancement 4 deserves emphasis. Every gate added tonight shipped with a control
+proving it can fail — a stubbed body failing 3 of 6 tests, a shadowed import
+going RED on pristine main. A stance gate without that control would be the
+seventh instance of a check passing on the wrong dimension.
+
+### Not verified here
+
+The review cites a Telegram layer audit at **32/100** and agent controls at
+**21/30**. Those come from its own sources; I have not reproduced them and do not
+restate them as measured facts.

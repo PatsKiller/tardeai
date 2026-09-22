@@ -1,0 +1,201 @@
+# Enhanced six-phase maturity plan — 4.75 → 8.6
+
+**2026-09-21 ENHANCED.** Supersedes `MATURITY_PLAN_4_TO_8.5_2026-09-21.md` as the
+active operational roadmap. Integrates five architectural enhancements from the
+2026-09-21 operator review, **two of which are relocated** after verification
+against the source.
+
+---
+
+## 0. Two corrections to the review, before anything else
+
+### 0.1 The score is 4.75/10, not 3.8/10
+
+38/80 divides by **8 dimensions**, not 10. The gap is **+31 points**, not +47.
+Every phase target below is sized against 4.75 → 8.6.
+
+### 0.2 The stance interdict cannot live in `publish_communication`
+
+The review places the 24/7 CIO stance gate inside `publish_communication`.
+**Verified against the source, that placement cannot hold a message on the
+default path.**
+
+```python
+# scripts/telegram_alert.py — send_telegram, legacy branch
+ok = _legacy_send(...)                                    # <- message is SENT
+_best_effort_comms_publish(message, delivered=bool(ok))   # <- ledger write
+return ok
+```
+
+`publish_communication` runs **after** the send on the legacy path, and before it
+only on the gateway path (`Order: publish_communication → send_via_gateway(...,
+deliver=True)`). `COMMS_GATEWAY_MODE` fails closed to `OFF`, so legacy is the
+default: a gate there would interdict ~79 messages and merely **annotate** the
+other ~53,000.
+
+That reproduces the review's own "annotate-not-hold" defect one layer down.
+
+**Correct host: `telegram_transport.deliver_text()`.** Not `send_message` —
+`telegram_transport.py:471` states it outright:
+
+> *"C4: the interdict now lives in `deliver_text`, the lowest common layer, so it
+> cannot be bypassed by calling that directly."*
+
+`_interdicted()` already sits there and `CIO_TELEGRAM_INTERDICT` already proves
+the pattern works at that layer. `scripts/check_telegram_chokepoint.py` is a
+registered CI gate that enforces this discipline. The stance gate belongs beside
+the interdict, governed by the same gate.
+
+### 0.3 Enhancement 3 is already built
+
+`scripts/lib/cio_telegram_stance_gate.py` (`CioTelegramStanceGate@v1`) already
+implements fail-closed-on-stale verbatim:
+
+> *"Missing CIO row, unreadable store, or non-aligned action → hold
+> (`allow=False` + `held_reason`). Never annotate-and-send from here."*
+
+`check_investment_send(symbol=, message_text=, asserted_stance=, db_query=,
+cio_view=, source=) -> StanceGateVerdict{allow, held_reason, symbol,
+message_stance, cio_action, cio_side}`. Holds append durable receipts to
+`cio_telegram_stance_holds.jsonl` for `LIVE-cio-stance-governance`.
+`cio_decisions` is healthy: **53,410 rows**, newest 2026-09-21 16:20.
+
+**Only 5 publishers call it** — `send_telegram_proposal_alert`,
+`screener_go_alerts`, `social_scalp_scanner`, `comms_editor`,
+`report_organic_stance_hold`. That scatter *is* the ungated-publisher finding.
+Moving the call to `deliver_text` closes it for every current and future producer
+at once. **This is wiring, not building.**
+
+---
+
+## 1. Phases
+
+### Phase 0 — Collect what is already paid for (Day 1)
+Validate existing unproven PRs by **database state query**, never by exit code
+(AGENTS §0 rule 8).
+
+- #1176 disk guard + worktree retention — **MERGED**; timers installed, guard
+  fired 22:03:37 with receipt `used_pct 88.24`, `telegram: accepted`
+- #1170 strategy cards — proof at 06:00: fresh count must exceed 1 of 5,808
+- #1172 starred-only paging — proof at 09:00: zero `ENTRY_NEAR` for unstarred
+
+**Gate:** three queries return, not three exit codes. **Status: complete and
+verified.**
+
+### Phase 1 — Kill the storm (Week 1) · signal 2 → 7
+Root cause found and fixed: `claude_escalation_handler.py:295` re-imported
+`datetime` inside `_verify_remediation`, making the name function-local and
+raising `UnboundLocalError` on every earlier use. **122 of 124 runs crashed
+today.** The crash landed before `_safe_write_queue`, so nothing ever cleared.
+
+1. Delete the shadow *(done — #1177)*
+2. Disambiguate `_age_days_table`'s three-way `None` (absent / errored / **empty
+   table**) — the third case is undocumented and is why `missing_*` fires on
+   tables that exist
+3. Route `_notify()` through `lib/alert_transition` with
+   `min_realert_minutes=360` — **not** `dispatch_alert`, whose dedupe is
+   day-scoped and would collapse a `*/10` producer to 1/day then auto-downgrade
+   it to INFO on day 3, silencing the channel
+4. **[E3]** Fail closed on stale/unknown CIO stance — already implemented, wire it
+
+**Gate:** escalation notifications/day **< 20** against the frozen baseline
+**1,673**, measured by the identical command before and after:
+```bash
+grep -c '^<DATE>.*exhausted after' logs/claude_escalation.log
+```
+
+### Phase 2 — Provable delivery (Weeks 1-2) · delivery 5 → 9
+**MERGED (#1179).** `attach_telegram_message_id()` added — additive, because
+`send_telegram`'s bare-bool contract has ≥36 verified boolean callers (182 across
+150 files by the code's own count). `send_telegram_with_id()` and
+`last_message_id()` already existed.
+
+Remaining: wire the 27 call sites; write `destination_policy_id` at the outbox
+(0 of 52,929 today); pass `provider_message_id` to `settle_delivery` on the
+legacy path, which currently cannot write `SETTLED` at all.
+
+**Gate:** ≥95% of last-7-day alerts carry a `telegram_message_id`; `SETTLED`
+≥95%; `destination_policy_id` non-null ≥95%.
+
+### Phase 3 — Identity + stance at the chokepoint (Week 2) · identity 5 → 9
+Tag `subject_guid` inside `publish_communication` — one function closes all 43
+producers.
+
+**[E1 — relocated]** Wire `check_investment_send()` into
+`telegram_transport.deliver_text()`, beside `_interdicted()`:
+
+- bullish stance (`BUY` / `Accumulate` / `GO`) against an active `AVOID`/`HOLD`
+  → `held_reason=cio_stance_conflict`, **suppress**
+- unknown or stale (>72h) stance → `held_reason=cio_stance_unknown`, demote to
+  `COMMAND_CENTER_ONLY`
+- 24/7, every asset class, every day — no weekday or equity-only carve-out
+- non-investment traffic is a **no-op**; the gate must not block ordinary alerts
+
+**Gate:** outbound `subject_guid` ≥95% (from 16.4%); inbound ≥90% (from 1 of
+252); a synthetic BUY against an AVOID symbol is held, proven by receipt.
+
+### Phase 4 — Close the memory join (Week 3) · memory 3 → 8
+`correlation_id` and `thread_id` are already **100%** populated; only
+`causation_id` and `parent_event_id` are zero. This is wiring two existing
+columns.
+
+- **[E2]** Write `AdjudicationReceipt@v1` **synchronously to PostgreSQL before
+  the operator commit**, so replay reads the recorded decision instead of
+  re-invoking an LLM judge (TOKI N1 replay inconsistency)
+- **[E5]** Telegram Narrator briefings draw from `MemoryRetrievalUnit@v1`
+  envelopes capped at **12k tokens**, not raw transcripts
+- Carry `subject_guid` into agent consumption receipts (0 of 199 today)
+
+**Gate:** every reply in a 7-day window resolves to its cause; GUID join ≥90%.
+
+### Phase 5 — SLOs and self-observability (Weeks 3-4) · observability 3 → 8
+`grep -rl "error_budget\|slo_target\|burn_rate" scripts/ config/` returns
+**nothing**. There is no SLO for anything, which is why every alert is a
+threshold alert on a cause rather than a symptom alert against a budget.
+
+1. Define three error budgets: alert delivery, card freshness, quote freshness
+2. Multiwindow, multi-burn-rate alerting (SRE Workbook)
+3. A runbook link on every alert
+4. Rotate `.jsonl` — `rotate_runtime_logs.sh` matches only `*.log`, so
+   `safe_flock_events.jsonl` (86 MB) grows unbounded
+5. Consolidate 128 monitors onto `lib/alert_condition_state` — first fixing its
+   two known hazards: a corrupt state file re-alerts all 1,681 conditions then
+   silently erases history, and the whole-file read-modify-write is unlocked
+
+**Gate:** ≥3 SLOs with budgets; every alert has a runbook; no log >100 MB; every
+scheduled monitor fired or has a passing negative control.
+
+### Phase 6 — Gate honesty (continuous) · gates 5 → 8
+- Alarm firing coverage **19.1% → 60%** (36 of 188)
+- CI test files **67% → 85%** (971 of 1,446)
+- Enforce `producer ≠ reviewer ≠ scorer` in `contracts.py` — producer ≠ reviewer
+  is enforced; one agent may still both review and score
+- **[E4]** Hermetic negative control: publish a synthetic `BUY` against a symbol
+  with an active `AVOID`. **Fails red if emitted; passes green only when
+  `held_reason=cio_stance_conflict` appears in the ledger, with no external
+  HTTP.**
+
+**Gate:** ratchet at 60%; no new `send_telegram` site merges without a firing
+test **listed in the gate**, not merely declared in `COVERS`.
+
+---
+
+## 2. Why E4 is the load-bearing enhancement
+
+Seven checks in this repo were found passing on the wrong dimension on 2026-09-21
+alone — a dry run that skipped the crashing path, a test that passed against the
+unpatched file, a test whose result depended on import order, a negative control
+that skipped every assertion, a gate wrapper rewritten four times, a raw pattern
+count nearly reported as 166 bugs when triage showed 1, and a guard whose exit
+code made a successful run look failed.
+
+Every gate added under this plan ships with a control proving it can fail. A
+stance gate without one would be the eighth.
+
+> **A check that passes on the wrong dimension is worse than no check.**
+
+## 3. Not verified here
+
+The review cites a Telegram layer audit at 32/100 and agent controls at 21/30.
+Those come from its own sources; they are not reproduced here and are not
+restated as measured facts.
