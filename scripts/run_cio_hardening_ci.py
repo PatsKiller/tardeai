@@ -1170,6 +1170,25 @@ GATES = [
             "tests/test_slo_burn_rate_20260922.py",
         ],
     ),
+    # Two gates in the maturity roadmap were unmeasurable as written, for
+    # reasons unrelated to the system's behaviour. Phase 1 froze the storm
+    # baseline at a MID-DAY count (1,673) and compared it to a per-day target;
+    # the full 09-21 day is 7,627. Phase 2 required >=95% of "last-7-day
+    # alerts" to carry a provider message id, while 97.67% of delivery rows are
+    # SUPPRESSED and can never acquire one -- a ceiling of 2.1% against a 95%
+    # bar. This gate pins both restatements to the measured numbers AND holds
+    # the line against a future loosening: separate controls assert the 95%
+    # threshold is unchanged, that the worse 7-day window was not swapped for
+    # the flattering 24-hour one, and that the corrected storm baseline demands
+    # a LARGER reduction than the partial figure did. The doc predicates are
+    # each run against the exact superseded wording, so a predicate that
+    # returned True for everything would fail here. Hermetic: no DB, no log.
+    (
+        "maturity_gate_restatement",
+        [
+            "tests/test_maturity_gate_restatement_20260922.py",
+        ],
+    ),
     (
         "lane_registry",
         [

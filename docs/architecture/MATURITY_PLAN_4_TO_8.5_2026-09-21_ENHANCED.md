@@ -99,10 +99,31 @@ today.** The crash landed before `_safe_write_queue`, so nothing ever cleared.
 4. **[E3]** Fail closed on stale/unknown CIO stance — already implemented, wire it
 
 **Gate:** escalation notifications/day **< 20** against the frozen baseline
-**1,673**, measured by the identical command before and after:
+**7,627 — one FULL day, 2026-09-21** — measured by the identical command before
+and after:
 ```bash
 grep -c '^<DATE>.*exhausted after' logs/claude_escalation.log
 ```
+
+**Baseline corrected 2026-09-22. The figure previously frozen here, 1,673, was a
+PARTIAL day.** It was taken mid-day on 09-21 while the storm was still
+producing, and was then compared against a *per-day* target — part of one day
+measured against all of another. Re-measured 2026-09-22 against the same
+unrotated log (`persistent-state/logs/claude_escalation.log`, continuous since
+2026-08-27, so each date below is complete unless marked otherwise):
+
+| Date | `exhausted after` lines | Coverage |
+|---|---|---|
+| 2026-09-18 | 3,682 | full day |
+| 2026-09-19 | 2,278 | full day |
+| 2026-09-20 | 6,110 | full day |
+| **2026-09-21** | **7,627** | **full day — THE BASELINE** |
+| 2026-09-22 | 1,433 | partial, to 11:40 EDT — *not a daily rate* |
+
+The correction makes this gate **harder, not easier**: clearing it now demands a
+**99.74%** reduction (7,627 → <20) where the partial figure implied 98.8%. Any
+future reading must cover a whole calendar day. A mid-day count is not a daily
+rate, and must never again be frozen as one.
 
 ### Phase 2 — Provable delivery (Weeks 1-2) · delivery 5 → 9
 **MERGED (#1179).** `attach_telegram_message_id()` added — additive, because
@@ -114,8 +135,71 @@ Remaining: wire the 27 call sites; write `destination_policy_id` at the outbox
 (0 of 52,929 today); pass `provider_message_id` to `settle_delivery` on the
 legacy path, which currently cannot write `SETTLED` at all.
 
-**Gate:** ≥95% of last-7-day alerts carry a `telegram_message_id`; `SETTLED`
-≥95%; `destination_policy_id` non-null ≥95%.
+**Gate (restated 2026-09-22 — the original denominator was unreachable):**
+≥95% of **DELIVERED** messages in the last 7 days carry a `provider_message_id`,
+where DELIVERED means `status IN ('SENT','LEGACY_DELIVERED')`.
+`destination_policy_id` non-null ≥95% **on that same DELIVERED denominator**.
+
+#### Why the original wording could never pass
+
+It read "≥95% of last-7-day **alerts**", which counts every row in
+`communication_deliveries` — and **97.67% of those rows are `SUPPRESSED`**. The
+router deliberately never hands a suppressed row to Telegram, so no provider can
+ever return an id for it; `NULL` is the correct and honest value there, not a
+defect. Even if every message that actually reached Telegram carried an id, the
+all-rows denominator would top out at **2.1%** (942 / 45,236). The gate as
+written was unpassable by any amount of correct work — it measured the router's
+suppression policy, not delivery provenance.
+
+Measured 2026-09-22, 7-day window:
+
+```sql
+SELECT status, count(*) AS rows,
+       count(provider_message_id) AS with_id,
+       round(100.0*count(provider_message_id)/count(*),1) AS pct
+FROM communication_deliveries
+WHERE reserved_at >= now() - interval '7 days'
+GROUP BY status ORDER BY rows DESC;
+```
+
+```
+ SUPPRESSED       | 44182 |  0 |   0.0
+ LEGACY_DELIVERED |   885 |  0 |   0.0
+ RESERVED         |   112 |  0 |   0.0
+ SENT             |    57 | 55 |  96.5
+```
+
+```sql
+SELECT count(*) AS delivered,
+       count(provider_message_id) AS with_id,
+       round(100.0*count(provider_message_id)/NULLIF(count(*),0),1) AS pct
+FROM communication_deliveries
+WHERE reserved_at >= now() - interval '7 days'
+  AND status IN ('SENT','LEGACY_DELIVERED');
+```
+
+```
+ 942 | 55 | 5.8
+```
+
+So the restated gate stands at **5.8% against an unchanged 95% target** (55 of
+942). Only the denominator is corrected. The honest denominator reports a
+**worse** number than the 24-hour slice (13.8%, 19 of 138), because the legacy
+path carried no id for most of the week — the 7-day window the gate names is the
+one that governs.
+
+`destination_policy_id` on the same DELIVERED denominator: **1.9%** (18 of 942).
+Across all rows it is 0.4% (186 of 45,236).
+
+#### The `SETTLED ≥95%` clause is withdrawn — `SETTLED` is not a legal status
+
+`communication_deliveries_status_check` admits only RESERVED, SENDING, SENT,
+DELIVERED, ACKNOWLEDGED, FAILED, BOUNCED, SUPPRESSED, EXPIRED, CANCELLED,
+UNKNOWN, LEGACY_DELIVERED. `SELECT count(*) FROM communication_deliveries WHERE
+status='SETTLED'` returns **0**, and always will — the constraint forbids the
+value. A gate demanding ≥95% of a status the schema cannot hold is not a strict
+gate, it is an unmeasurable one. The terminal success states are the two named
+in the restated gate above.
 
 ### Phase 3 — Identity + stance at the chokepoint (Week 2) · identity 5 → 9
 Tag `subject_guid` inside `publish_communication` — one function closes all 43
