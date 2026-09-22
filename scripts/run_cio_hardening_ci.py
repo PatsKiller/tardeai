@@ -1078,6 +1078,22 @@ GATES = [
             "tests/test_freshness_reason_is_not_conflated_20260921.py",
         ],
     ),
+    # communication_events.subject_guid was written by exactly ONE caller
+    # (telegram_alert._tag_outbound), as an UPDATE after publish. Every other
+    # producer — the gateway-owned path and ~40 direct publish_communication
+    # call sites — wrote a row with no subject: 8,786 of 54,676 OUTBOUND events
+    # carried one on 2026-09-22 (16.1%). The stamp now happens inside
+    # publish_communication, before persist. That is only safe while the
+    # 2026-09-21 template guards hold — one alert's boilerplate ("After <n>
+    # retries") had become 57.5% of the identity spine — so the wiring and the
+    # guards are gated by the same suite, against a registry in which the
+    # template words ARE registered entities.
+    (
+        "publish_chokepoint_identity",
+        [
+            "tests/test_publish_chokepoint_identity_20260922.py",
+        ],
+    ),
     # market_quotes is 34.2M rows / 5.67 GB, of which 97.7% is intraday
     # resolution nobody queries: both consumers read one row per symbol per day.
     # The downsampler deletes, so its gate pins dry-run-by-default, DELETE

@@ -250,6 +250,47 @@ def _persist_db(conn, event: CommunicationEvent, channels: list[str]) -> Publish
     )
 
 
+def _stamp_subject_identity(event: CommunicationEvent) -> None:
+    """Read this message's subject from the identity spine. Never mints, never raises.
+
+    WHY HERE. `subject_guid` was back-filled AFTER publish by exactly one caller
+    (`telegram_alert._tag_outbound`), so a producer that published through the
+    gateway path -- or through any of the ~40 direct `publish_communication`
+    call sites -- wrote a row with no subject at all. Measured 2026-09-22 on the
+    live ledger: 8,786 of 54,676 OUTBOUND events carry a subject_guid (16.1%),
+    and a random 3,000-row sample of the untagged remainder contains watchpool,
+    watch-alert, revalidation and material-change messages that name their
+    ticker in the first line -- identity that was available and simply never
+    read. One chokepoint fixes every producer, including ones not yet written.
+
+    BEFORE PERSIST, not after. The INSERT then carries the subject, so there is
+    no second UPDATE to lose, and the in-memory fallback (OFF/SHADOW, or any host
+    with no database) gets the same identity as the DB path instead of silently
+    getting less.
+
+    NEVER OVERWRITES. A producer that already knows its subject is not
+    second-guessed -- the field stays read-only from the spine's point of view.
+
+    NEVER RAISES. Alerting is the operator's live path; identity is an
+    enrichment on it. A registry that cannot be read means "unknown", not
+    "refuse to publish".
+    """
+    if event.subject_guid:
+        return
+    try:
+        try:
+            from scripts.lib.cio_outbound_identity import primary_subject_guid
+        except ImportError:  # SCRIPTS_ONLY callers put scripts/ on the path
+            from lib.cio_outbound_identity import primary_subject_guid  # type: ignore
+
+        text = event.sanitized_body or event.short_summary or ""
+        guid = primary_subject_guid(text)
+        if guid:
+            event.subject_guid = guid
+    except Exception:
+        return
+
+
 def publish_communication(event: CommunicationEvent) -> PublishResult:
     """Mint identity, fail closed on required fields, persist ledger row.
 
@@ -264,6 +305,7 @@ def publish_communication(event: CommunicationEvent) -> PublishResult:
     # classes pass through unchanged (never coerced).
     event.message_class = normalize_message_class(event.message_class)
     event.mint_identity()
+    _stamp_subject_identity(event)
     missing = required_missing(event)
     if missing:
         return PublishResult(
