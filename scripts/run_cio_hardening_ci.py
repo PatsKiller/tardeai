@@ -1056,6 +1056,17 @@ GATES = [
             "tests/test_alert_delivery_id_attach_20260921.py",
         ],
     ),
+    # market_quotes is 34.2M rows / 5.67 GB, of which 97.7% is intraday
+    # resolution nobody queries: both consumers read one row per symbol per day.
+    # The downsampler deletes, so its gate pins dry-run-by-default, DELETE
+    # confined to one function, and the keep-query ordered DESC (ASC would keep
+    # the session's FIRST quote and shift every close by a full day).
+    (
+        "market_quotes_downsample",
+        [
+            "tests/test_market_quotes_downsample_20260921.py",
+        ],
+    ),
     (
         "lane_registry",
         [
