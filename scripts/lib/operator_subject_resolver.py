@@ -146,6 +146,31 @@ def _identity(doc: Mapping[str, Any], symbol: str) -> dict[str, Any]:
             "identity_status": row.get("identity_status")}
 
 
+def _is_template_chrome(token: str) -> bool:
+    """Delegate to the ONE chrome list -- `inbound_identity_tagger`.
+
+    Deliberately NOT a copy. This module's `_STOP` and the tagger's
+    `_TEMPLATE_CHROME` were two hand-written lists for the same job, and the
+    2026-09-22 "ALERT in Command Center" message is what their drift looks like
+    in front of the operator.
+
+    Fails OPEN (returns False) when the tagger cannot be imported: suppressing a
+    genuine ticker is worse than letting one chrome word through, and the tests
+    assert the guard directly so a silent no-op cannot pass for a fix.
+    """
+    try:
+        from scripts.lib.inbound_identity_tagger import is_template_chrome  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 - SCRIPTS_ONLY callers
+        try:
+            from lib.inbound_identity_tagger import is_template_chrome  # type: ignore  # noqa: PLC0415
+        except Exception:  # noqa: BLE001
+            return False
+    try:
+        return is_template_chrome(token)
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _book_symbols() -> frozenset[str]:
     try:
         from scripts.lib import cio_operator_desk_loop as desk  # noqa: PLC0415
@@ -233,8 +258,20 @@ def _tickers(text: str, book: frozenset[str], doc: Mapping[str, Any]) -> list[di
         add(m.group(1).upper(), m.group(0), "cashtag")
     for m in _UPPER_TOKEN.finditer(text):
         tok = m.group(1)
-        if tok not in _STOP and not inside(m.start(1)):
-            add(tok, tok, "uppercase")
+        if tok in _STOP or inside(m.start(1)):
+            continue
+        # Machine-template CHROME (ALERT, ET, QUOTE, EOD, FIX, NONE, ...) is
+        # boilerplate this system prints about itself, not an instrument. One
+        # shared list with the inbound tagger; see `_is_template_chrome`.
+        #
+        # Fails OPEN twice, so a real ticker is never suppressed to kill chrome:
+        #   * a chrome word the operator actually HOLDS still binds (book), and
+        #   * an explicit $cashtag never reaches here -- the cashtag loop above
+        #     already bound it, which is how "$ET" still resolves to Energy
+        #     Transfer while "13:02 ET" does not.
+        if _is_template_chrome(tok) and tok not in book:
+            continue
+        add(tok, tok, "uppercase")
     if book:
         for m in _ANYCASE_TOKEN.finditer(text):
             tok = m.group(1)

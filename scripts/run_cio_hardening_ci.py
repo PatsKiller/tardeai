@@ -2263,6 +2263,34 @@ GATES = [
             "tests/test_alarm_coverage.py",
         ],
     ),
+    # 2026-09-22 — "ALERT in Command Center · Finviz · Yahoo", sent to the
+    # operator at 13:02 with the footer tag "ALERT:373d9b16", beside a correctly
+    # tagged DY. "ALERT" is not a ticker (0 rows in symbol_profiles); the word
+    # came from this system's own title template, "READY ENTRY ALERT — DY".
+    #
+    # The INBOUND guard was present and working — _TEMPLATE_CHROME already held
+    # "ALERT". The bad tag came from the OUTBOUND renderer, which reached
+    # operator_subject_resolver._tickers and was filtered by that module's OWN
+    # `_STOP` list: a second hand-written list for the same job, holding EOD but
+    # not ALERT/OPEN/PRICE/QUOTE/LIVE/MOVE/DATA/GAP/CHECK. Phase 3 repeating —
+    # one chokepoint guarded, a second one not.
+    #
+    # Measured on the live ledger, 7 days: 3,515 of 7,104 subject-carrying
+    # communication_events (49.5%) were bound to a chrome word — ET 2,586,
+    # ALERT 564, FIX 169, NONE 108.
+    #
+    # Both paths now read ONE list (inbound_identity_tagger.is_template_chrome),
+    # and the gate pins that: the trap words are REGISTERED entities in the
+    # test's isolated registry, so a guard that stops running RESOLVES and goes
+    # red rather than passing on an empty registry. DY, BAX, an explicit
+    # $cashtag, and a chrome word in the operator's own book must all still
+    # bind — a guard that suppresses everything is not a fix.
+    (
+        "alert_chrome_outbound_tag_20260922",
+        [
+            "tests/test_alert_chrome_outbound_tag_20260922.py",
+        ],
+    ),
 ]
 
 
