@@ -157,3 +157,32 @@ def test_the_guard_never_deletes_anything_itself():
     for forbidden in ("shutil.rmtree", "os.remove", "os.unlink", "rm -rf"):
         assert forbidden not in src, f"guard must delegate deletion, found {forbidden!r}"
     assert "disk_hygiene_enforcer" in src
+
+
+def test_exit_code_reports_the_PROCESS_not_the_CONDITION(monkeypatch, tmp_path):
+    """A successful run must exit 0 even while the disk is still over threshold.
+
+    Authored 2026-09-21 and caught by its own timer 40 minutes later. The guard
+    returned `0 if final_used < used_pct else 1` as an "operator signal", so
+    systemd marked a run that reclaimed, paged and wrote its receipt as
+    `failed` -- and made a genuine crash indistinguishable from normal
+    operation. That is the same three-way collapse as
+    pipeline_freshness_monitor._age_days_table returning None for "absent",
+    "errored" and "empty" alike, which cost ~1,800 false pages a day.
+
+    AGENTS §0 rule 8 inverted: exit 0 is not evidence of work, so the exit code
+    must not be overloaded as evidence of STATE. The operator signal is the
+    Telegram alert and the receipt.
+
+    Negative control: restore the old expression and this test fails.
+    """
+    import disk_pressure_guard as g
+
+    src = (ROOT / "scripts" / "disk_pressure_guard.py").read_text(encoding="utf-8")
+    assert "return 0 if final_used < a.used_pct else 1" not in src, (
+        "the exit code is reporting the CONDITION again, not the process"
+    )
+    # a real failure must still be non-zero
+    assert "if enf.get(\"skipped\") or enf.get(\"error\"):" in src, (
+        "a genuinely failed enforcer must still exit non-zero"
+    )
