@@ -66,6 +66,7 @@ import html
 import json
 import os
 import re
+import sys
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -88,6 +89,29 @@ MSG_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "tradeai:operator-message")
 _PRIMARY_SYMBOLS_CV: contextvars.ContextVar[Optional[tuple[str, ...]]] = contextvars.ContextVar(
     "comms_editor_primary_symbols", default=None,
 )
+
+#: Process-global primary-symbol store. Cron puts ``scripts/`` on ``sys.path``, so
+#: ``lib.comms_editor`` and ``scripts.lib.comms_editor`` load as *two* module
+#: objects with *two* ContextVars. Live 2026-09-22: converse set primary on
+#: ``scripts.lib`` while ``deliver_text`` read ``lib`` — S ask footer still had
+#: ``S:… TROW:… HODO:…``. One ``sys.modules`` bucket is shared by every import.
+_PRIMARY_BUCKET_KEY = "_tradeai_comms_editor_primary_symbols"
+
+
+def _primary_bucket() -> dict[str, Any]:
+    return sys.modules.setdefault(  # type: ignore[return-value]
+        _PRIMARY_BUCKET_KEY,
+        {"stack": [], "value": None},
+    )
+
+
+class _PrimarySymbolsToken:
+    """Opaque token that resets the shared bucket (and same-module ContextVar)."""
+
+    __slots__ = ("cv_token",)
+
+    def __init__(self, cv_token: Optional[contextvars.Token] = None) -> None:
+        self.cv_token = cv_token
 
 PILL_HOUSE = "🟢 Trade-AI"
 PILL_OUTSIDE = "🔵 Outside"
@@ -295,19 +319,48 @@ def subjects(text: str, *, resolve: Optional[Callable[[str], list[dict]]] = None
     return out[:6]
 
 
-def set_primary_symbols(symbols: Optional[Iterable[str]]) -> contextvars.Token:
-    """Bind turn-scoped primary tickers for the next ``edit`` / deliver_text call."""
+def set_primary_symbols(symbols: Optional[Iterable[str]]) -> _PrimarySymbolsToken:
+    """Bind turn-scoped primary tickers for the next ``edit`` / deliver_text call.
+
+    Writes the shared process bucket *and* this module's ContextVar so dual
+    imports of the file (``lib`` vs ``scripts.lib``) still agree.
+    """
     try:
         from scripts.lib.telegram_rich import scope_primary_symbols  # noqa: PLC0415
     except ImportError:  # pragma: no cover
         from lib.telegram_rich import scope_primary_symbols  # type: ignore  # noqa: PLC0415
+    scoped: Optional[tuple[str, ...]]
     if symbols is None:
-        return _PRIMARY_SYMBOLS_CV.set(None)
-    return _PRIMARY_SYMBOLS_CV.set(tuple(scope_primary_symbols(symbols)))
+        scoped = None
+    else:
+        scoped = tuple(scope_primary_symbols(symbols))
+    bucket = _primary_bucket()
+    stack = bucket.setdefault("stack", [])
+    stack.append(bucket.get("value"))
+    bucket["value"] = scoped
+    cv_token = _PRIMARY_SYMBOLS_CV.set(scoped)
+    return _PrimarySymbolsToken(cv_token)
 
 
-def reset_primary_symbols(token: contextvars.Token) -> None:
-    _PRIMARY_SYMBOLS_CV.reset(token)
+def reset_primary_symbols(token: Any) -> None:
+    """Reset primary symbols after send. Accepts shared or legacy ContextVar tokens."""
+    bucket = _primary_bucket()
+    stack = bucket.get("stack") or []
+    if stack:
+        bucket["value"] = stack.pop()
+    else:
+        bucket["value"] = None
+    cv_token = getattr(token, "cv_token", None)
+    if cv_token is not None:
+        try:
+            _PRIMARY_SYMBOLS_CV.reset(cv_token)
+        except Exception:  # noqa: BLE001
+            pass
+    elif isinstance(token, contextvars.Token):
+        try:
+            _PRIMARY_SYMBOLS_CV.reset(token)
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def _resolve_primary_symbols(explicit: Optional[Iterable[str]]) -> Optional[list[str]]:
@@ -317,6 +370,11 @@ def _resolve_primary_symbols(explicit: Optional[Iterable[str]]) -> Optional[list
         from lib.telegram_rich import scope_primary_symbols  # type: ignore  # noqa: PLC0415
     if explicit is not None:
         return scope_primary_symbols(explicit)
+    # Shared bucket first — survives dual import of this module under cron.
+    bucket = _primary_bucket()
+    shared = bucket.get("value")
+    if shared is not None:
+        return scope_primary_symbols(shared)
     cv = _PRIMARY_SYMBOLS_CV.get()
     if cv is None:
         return None
