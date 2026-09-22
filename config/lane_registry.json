@@ -2110,6 +2110,36 @@
         "key": "finished_utc"
       },
       "note": "Hourly hub+CURRENT code archives to Trade_AI_Docs_v2/code_mirror/. APPROVED 2026-09-20."
+    },
+    {
+      "lane_id": "disk-pressure-guard",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-disk-pressure-guard.timer"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/disk_pressure_guard_receipts.jsonl"
+      },
+      "note": "Operator-requested 2026-09-21: act at >=85% used instead of waiting for Sunday's tradeai-weekly-disk-cleanup, after the disk hit 100% with 84MB free. Every 15 min; shells disk_hygiene_enforcer.py --apply, which owns ALL deletion and its CURRENT/EXPECTED_RELEASE protections -- this guard deletes nothing itself. Pages only on a transition via alert_condition_state (6h re-alert): a 15-min timer with no dedupe would add 96 messages/day. Threshold is read as df reads it, used/(used+avail); used/total left it silent at df 89%. ABSOLUTE path for the same reason as weekly-disk-cleanup."
+    },
+    {
+      "lane_id": "agent-worktree-retention",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-agent-worktree-retention.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/agent_worktree_retention_receipts.jsonl"
+      },
+      "note": "Operator-requested 2026-09-21: automatic retention for Claude/agent data. Daily 04:40 ET, --apply --min-age-days 3. Reclaims a worktree ONLY when merged AND clean AND older than the age floor; removal is `git worktree remove`, never rm -rf, because all 111 are registered worktrees. Age alone reclaims nothing (none exceeded 30 days) and a blanket reaper would destroy the five 2026-07-28 trees holding unmerged work. A LOCKED worktree belongs to a running agent and is always kept."
     }
   ],
   "undeclared_baseline": [

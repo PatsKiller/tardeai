@@ -123,6 +123,23 @@ def _dir_mb(p: Path) -> int:
         return 0
 
 
+#: The lane's proof-of-run -- see disk_pressure_guard.RECEIPT for why the unit's
+#: exit code cannot serve. evaluate_lane() reads this file's mtime.
+RECEIPT = ROOT / "logs" / "agent_worktree_retention_receipts.jsonl"
+
+
+def _write_receipt(payload: dict) -> str:
+    """Append one line per run. Never raises; a receipt is not worth a crash."""
+    try:
+        payload = {"ts": datetime.now(timezone.utc).isoformat(), **payload}
+        RECEIPT.parent.mkdir(parents=True, exist_ok=True)
+        with RECEIPT.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, separators=(",", ":"), default=str) + "\n")
+        return "written"
+    except Exception as exc:  # noqa: BLE001
+        return f"error:{type(exc).__name__}"
+
+
 def classify(wt: Path, min_age_days: int) -> dict:
     """Decide one worktree's fate. Every 'keep' carries its reason."""
     info: dict = {"path": str(wt), "name": wt.name}
@@ -214,6 +231,9 @@ def main() -> int:
         size = sum(_dir_mb(Path(p["path"])) for p in reclaim)
         print(f"\n  would reclaim: ~{size/1024:.1f} GB")
         print("\nDRY RUN — nothing removed. Re-run with --apply to execute.")
+        _write_receipt({"apply": False, "found": len(plans), "reclaimable": len(reclaim),
+                        "kept": len(keep), "unmerged": len(unmerged),
+                        "would_reclaim_mb": size})
         if a.json:
             print(json.dumps({"plans": plans}, indent=2))
         return 0
@@ -241,6 +261,9 @@ def main() -> int:
     print(f"  reclaimed : ~{mb/1024:.1f} GB")
     print(f"  failed    : {failed}")
     print(f"  kept      : {len(keep)} ({len(unmerged)} holding unmerged work)")
+    _write_receipt({"apply": True, "found": len(plans), "removed": removed,
+                    "reclaimed_mb": mb, "failed": failed, "kept": len(keep),
+                    "unmerged": len(unmerged)})
     return 0 if failed == 0 else 1
 
 

@@ -135,6 +135,30 @@ def notify(text: str) -> str:
         return f"error:{type(exc).__name__}"
 
 
+#: The lane's proof-of-run. config/lane_registry.json declares this path as the
+#: lane's output_signal, and evaluate_lane() derives LIVE/SLOW/SILENT from THIS
+#: FILE'S MTIME -- not from the unit's exit code (AGENTS §0 rule 8: exit 0 is not
+#: evidence). A lane declared without a receipt evaluates SILENT forever, which
+#: is the stdout-only-monitor defect: 24 scheduled monitors in this repo compute
+#: a verdict, print it to a log nobody reads, and exit 0.
+RECEIPT = ROOT / "logs" / "disk_pressure_guard_receipts.jsonl"
+
+
+def _write_receipt(payload: dict) -> str:
+    """Append one line per run. Never raises.
+
+    A receipt-write failure must not abort the reclaim the operator actually
+    needs -- same reasoning as notify(). Report it in the payload instead.
+    """
+    try:
+        RECEIPT.parent.mkdir(parents=True, exist_ok=True)
+        with RECEIPT.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(payload, separators=(",", ":"), default=str) + "\n")
+        return "written"
+    except Exception as exc:  # noqa: BLE001
+        return f"error:{type(exc).__name__}"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--used-pct", type=float, default=DEFAULT_USED_PCT,
@@ -190,6 +214,7 @@ def main() -> int:
             line += "\n(dry run — nothing deleted)"
         out["telegram"] = notify(line)
 
+    out["receipt"] = _write_receipt(out)
     print(json.dumps(out, indent=2))
     # Non-zero only when we are STILL over after acting: that is the operator's
     # signal that automatic reclaim was not enough.
