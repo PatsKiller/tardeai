@@ -1,0 +1,10 @@
+[Unit]
+Description=TradeAI agent worktree retention — daily 04:40 ET
+
+[Timer]
+OnCalendar=*-*-* 04:40:00
+Persistent=true
+RandomizedDelaySec=600
+
+[Install]
+WantedBy=timers.target
