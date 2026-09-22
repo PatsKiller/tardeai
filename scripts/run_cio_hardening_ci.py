@@ -1046,7 +1046,6 @@ GATES = [
             "tests/test_finviz_cookie_classification.py",
         ],
     ),
-<<<<<<< HEAD
     # A function-local import that shadows a module-level one makes the name
     # local for the WHOLE function -> UnboundLocalError on every earlier use.
     # claude_escalation_handler:295 did exactly that from 2026-08-08, which broke
@@ -1056,7 +1055,8 @@ GATES = [
         "import_shadowing",
         [
             "tests/test_no_shadowed_module_imports_20260921.py",
-=======
+        ],
+    ),
     # Delivery must be PROVABLE. Measured 2026-09-21: 62 of 7,991 alert_events
     # carried a telegram_message_id (0.78%) and 51,193 of 52,930
     # communication_events sat UNSETTLED, because the "DB first, Telegram second"
@@ -1064,8 +1064,7 @@ GATES = [
     (
         "alert_delivery_id",
         [
-            "tests/test_alert_delivery_id_attach_20260921.py",
->>>>>>> origin/main
+            "tests/test_alert_delivery_id_attach_20260921.py"
         ],
     ),
     (
