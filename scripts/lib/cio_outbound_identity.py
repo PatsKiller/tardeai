@@ -106,6 +106,52 @@ def subjects_from_tag(tag: dict[str, Any]) -> list[dict[str, Any]]:
     return out
 
 
+#: The chokepoint stamps a subject ONLY from an explicit, upper-case ticker --
+#: `matched_via == "ticker"`, which `extract_candidates` produces from a cashtag
+#: ($AES) or an all-caps token that survived _STOPWORDS, _TEMPLATE_CHROME and the
+#: one-character refusal.
+#:
+#: `ticker_alias` is deliberately excluded here even though `subjects_from_tag`
+#: keeps it for the telegram back-fill path. An alias hit is a Title-Case PROSE
+#: word that happens to be a registry alias, and that is exactly the 2026-09-21
+#: failure: "After <n> retries; autonomous re-arm in 30m." bound AFTER as the
+#: PRIMARY subject of 28,934 messages -- 57.5% of the whole identity spine -- and
+#: ten more template words (Price, Move, Live, Alert, Quote, Data, Check, Gap,
+#: Went, None) leaked the same way. A machine template never names a company in
+#: sentence case; an operator typing prose does, and that is the INBOUND path,
+#: which is unaffected.
+_CHOKEPOINT_MATCH_KINDS = ("ticker",)
+
+
+def primary_subject_guid(text: str, *, match_kinds: tuple[str, ...] = _CHOKEPOINT_MATCH_KINDS) -> str | None:
+    """The subject guid an outbound message is ABOUT, or None. Never raises.
+
+    Pure resolution: it READS the identity spine (registry lookup) and mints
+    nothing, which is what `CommunicationEvent.subject_guid` has always
+    promised. Returns None rather than a guess -- a wrong subject is worse than
+    no subject, because every later rollup of that issuer inherits it.
+
+    Only the FIRST resolved security counts. The rest are mentions, and a
+    mention is not what the message is about: "XAR crossed 50-day MA" resolves
+    XAR and MA (Mastercard), and stamping MA would file a sector-ETF alert under
+    an unrelated issuer.
+    """
+    try:
+        tag = tag_text(text)
+        kept = [r for r in (tag.get("resolved") or [])
+                if r.get("matched_via") in match_kinds and r.get("symbol")]
+        if not kept:
+            return None
+        from scripts.lib.cio_narrative_subjects import resolve_subject  # noqa: PLC0415
+
+        ref = resolve_subject("SECURITY", kept[0]["symbol"])
+        return (ref or {}).get("entity_guid") or None
+    except Exception:
+        # Identity is an enrichment on the operator's live path, never a gate on
+        # it. A registry that cannot be read means "unknown", not "fail".
+        return None
+
+
 def tag_outbound_event(cur, event_id: str, text: str, *,
                        author_agent_id: str = "cio") -> dict[str, Any]:
     """Stamp one outbound event with its subjects and link it. Never raises.
