@@ -185,6 +185,13 @@ over-match is inside `operator_subject_resolver.resolve_subjects`. This is a
 correctness bug in exactly the field you asked to validate: **the message is
 tagged with another security's identity.**
 
+**Follow-up status `[VERIFIED]` 2026-09-22 — still not live.** Draft PR #1187
+(`ed957509d…`, branch `cursor/fix-single-letter-ticker-s-667c`) scopes outbound
+link chrome to turn `primary_symbols` and hardens single-letter extract / research-gap
+auto-enqueue. Lifecycle = **PR_ONLY**: not merged to `main`, served pin remains
+`466c781d0…`. Full note: `docs/audits/SINGLE_LETTER_TICKER_S_FIX_2026-09-22.md`.
+Do not mark §4 closed until observed from CURRENT.
+
 ## 5. Recommendations, in dependency order
 
 1. **Move tagging into `publish_communication`.** One change closes all 43 direct

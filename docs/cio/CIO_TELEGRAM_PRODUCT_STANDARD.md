@@ -124,6 +124,10 @@ One layout for GO alerts, entry alerts, material-change notices and desk answers
 - **Provenance on desk answers** is one plain footer line plus an expandable source list. *Cause: a raw provenance tail read as "Gibberish".*
 - **A refused HTML send is retried once as plain text with the tags stripped** (`html_to_plain`), keeping link addresses.
 - **`TELEGRAM_RICH_ALERTS=0`** reverts GO, entry and material-change alerts to their plain text without a deploy.
+- **Pending (PR #1187, lifecycle PR_ONLY as of 2026-09-22):** scope outbound links to turn
+  `primary_symbols` so body-extract bleed (e.g. TROW tags on an unrelated card) cannot attach
+  Finviz/Yahoo/CC chrome. Not on served pin — see
+  `docs/audits/SINGLE_LETTER_TICKER_S_FIX_2026-09-22.md`.
 
 ## Action-button discipline
 

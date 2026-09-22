@@ -2,8 +2,9 @@
 
 ```
 Status:      ACTIVE
-as_of:       2026-09-13T23:59:00-04:00
-Measured at: 034ff2c90 (file:line references in the map) · a8a62217e (section "What PRs #1000 and #1001 added")
+as_of:       2026-09-22T14:38:00-04:00
+Measured at: 034ff2c90 (file:line references in the map) · a8a62217e (section "What PRs #1000 and #1001 added") ·
+             2026-09-22 lifecycle of draft PR #1187 (single-letter ticker S) = PR_ONLY — see section below
 ```
 
 `READ_ONLY_ADVISORY` · MBI_BEHAVIOR = 0 · written 2026-09-13 · branch `feat/route-a-every-reply-cites-sources` (merged in PR #998)
@@ -176,6 +177,24 @@ The contract above is unchanged; these change what the desk rows put in front of
   outside Trade-AI for this reply · 🟣 purple = written by an AI model (DeepSeek), check before acting`; labels are
   defined once in `reply_provenance` (`PILL_HOUSE`, `PILL_OUTSIDE`, `PILL_MODEL`, `LEGEND`).
 - First live delivery: HPE research, asked 09:12 ET, delivered automatically 10:36 ET.
+
+## Pending: single-letter ticker `S` / link chrome / research-gap enqueue (PR #1187) — **PR_ONLY**
+
+**Lifecycle `[VERIFIED]` 2026-09-22:** draft PR https://github.com/PatsKiller/tardeai/pull/1187 at
+`ed957509def15cb8db9c3efd2372b71e7c8ba59c` — **not** on `origin/main`, **not** on the served pin
+(`source_commit` `466c781d0…` from `/v3/build-meta.json`). Do **not** treat as OBSERVED_LIVE.
+
+What it would fix when promoted (branch evidence only):
+
+- Scope outbound Command Center / Finviz / Yahoo chrome to turn `primary_symbols` (stops TROW-class
+  body-extract bleed into links — same defect family as
+  `docs/audit/message-identity-audit-2026-09-21.md` §4).
+- Strict single-letter ticker extract (`S` / `$S`) via resolver + `extract_symbols` +
+  `telegram_rich.SINGLE_LETTER_TICKERS`.
+- Desk auto-enqueues research gaps instead of only prompting `research S`.
+
+Canonical write-up: `docs/audits/SINGLE_LETTER_TICKER_S_FIX_2026-09-22.md`. Tests on the PR branch:
+`tests/test_single_letter_tickers.py`.
 
 ## Known limits — named, not closed
 
