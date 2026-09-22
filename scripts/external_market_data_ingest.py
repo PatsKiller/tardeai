@@ -43,24 +43,47 @@ def _env(key: str) -> str:
     return val
 
 
+# Universe = strategy-classified symbols PLUS every currently-open position. Open paper trades
+# aren't always in ticker_strategy_classifications (e.g. TMHC, a swing_breakout entry), and without
+# this UNION they'd never get a quote -> no current price on the Open Trades page. Generic: any open
+# position is always quoted, regardless of classification.
+#
+# 'researched' joined 'active' on 2026-09-22. The operator asked "how is S for entry on cyber" and
+# the desk answered with S's 2026-09-04 close. Measured that day: market_quotes held 4,975 distinct
+# symbols refreshed within 0.2h and S's newest row was 431.1h old. The refresher was healthy; S was
+# simply not in this universe. watchlist_items held two rows for S -- status='removed' (05-31) and
+# status='researched' (updated 09-18) -- and NEITHER matched the predicate, because the per-row OR
+# tested only in_directive_watch and 'active'. The duplicate row is a red herring: this is a UNION of
+# rows, so the 'removed' row cannot suppress anything; the 'researched' row simply never qualified.
+#
+# ticker_prices is downstream of this table (4,752 of 4,813 rows on 2026-09-22 carry
+# source='market_quotes'), so a symbol dropped here loses its daily close too -- which is the store
+# the operator desk actually quoted. One exclusion, both stores.
+#
+# 'researched' means the house has studied the name, which is exactly the cohort the desk gets asked
+# about; 659 symbols join the universe (4,874 -> 5,533, +4 Alpaca batch requests). 'removed' stays
+# out: 6,899 symbols the operator deliberately dropped are not worth a provider call, and a desk
+# answer about one is now marked stale rather than served as current (cio_operator_desk_loop
+# .price_age_note).
+UNIVERSE_SQL = """
+    SELECT DISTINCT symbol FROM ticker_strategy_classifications WHERE active=TRUE
+    UNION
+    SELECT DISTINCT symbol FROM paper_trades WHERE status = 'open' AND symbol IS NOT NULL
+    UNION
+    -- names the operator explicitly tracks (directive-watch), active watchlist items, or names the
+    -- house has researched: keep them priced even before promotion, so newly-IPO'd directives
+    -- (e.g. SPCX) and researched names (e.g. S) don't go stale.
+    SELECT DISTINCT symbol FROM watchlist_items
+        WHERE (in_directive_watch = TRUE OR status IN ('active', 'researched'))
+          AND symbol IS NOT NULL
+"""
+
+
 def _get_symbols() -> list:
     import psycopg2.extras
     conn = _get_conn()
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    # Universe = strategy-classified symbols PLUS every currently-open position. Open paper trades
-    # aren't always in ticker_strategy_classifications (e.g. TMHC, a swing_breakout entry), and without
-    # this UNION they'd never get a quote -> no current price on the Open Trades page. Generic: any open
-    # position is always quoted, regardless of classification.
-    cur.execute("""
-        SELECT DISTINCT symbol FROM ticker_strategy_classifications WHERE active=TRUE
-        UNION
-        SELECT DISTINCT symbol FROM paper_trades WHERE status = 'open' AND symbol IS NOT NULL
-        UNION
-        -- names the operator explicitly tracks (directive-watch) or active watchlist items: keep them
-        -- priced even before promotion, so newly-IPO'd directives (e.g. SPCX) don't go stale.
-        SELECT DISTINCT symbol FROM watchlist_items
-            WHERE (in_directive_watch = TRUE OR status = 'active') AND symbol IS NOT NULL
-    """)
+    cur.execute(UNIVERSE_SQL)
     symbols = [r["symbol"] for r in cur.fetchall()]
     conn.close()
     return [s for s in symbols if "-" not in s and len(s) <= 5]

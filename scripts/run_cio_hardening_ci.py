@@ -2263,6 +2263,29 @@ GATES = [
             "tests/test_alarm_coverage.py",
         ],
     ),
+    (
+        # 2026-09-22 — a price the market has moved past, spoken as a current price.
+        #
+        # "how is S for entry on cyber" was answered with "$19.84 close Sep 04" -- flat, no
+        # age, on a question about entering that day. Measured the same afternoon:
+        # market_quotes held 4,975 distinct symbols refreshed within 0.2h while S's newest
+        # row was 431.1h old, so the refresher was healthy and S was simply outside its
+        # universe (watchlist_items 'researched' matched neither `in_directive_watch` nor
+        # 'active'). ticker_prices is downstream of that table -- 4,752 of 4,813 rows that
+        # day carry source='market_quotes' -- so one exclusion emptied both stores.
+        #
+        # Two halves, and the second is the one that must hold regardless: 6,899 'removed'
+        # symbols stay out of the universe by design and the operator can still ask about
+        # any of them. The marker is measured in market time (lib.cio_market_aware_freshness)
+        # so it cannot become a way of making old data look young, and the tests pin both
+        # directions -- Friday's close is NOT stale on a Saturday, and it IS once Monday has
+        # closed. A marker that cries wolf is one someone turns off.
+        "desk_stale_price_marker_20260922",
+        [
+            "tests/test_desk_stale_price_marker_20260922.py",
+            "tests/test_market_aware_freshness_20260913.py",
+        ],
+    ),
 ]
 
 

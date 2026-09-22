@@ -1509,7 +1509,10 @@ def answer_freeform_with_flash(
             "2g) Never promise to follow up or say anything was queued.\n"
             "2h) For a named stock, when TRADE_AI_FACTS.price_for_symbols or levels_for_symbols is "
             "present, give its last close with the date, then support (entry zone, SMA50, stop) and "
-            "resistance and target from those facts — never DATA_UNAVAILABLE for them.\n"
+            "resistance and target from those facts — never DATA_UNAVAILABLE for them. If that "
+            "symbol carries price_stale_note, you MUST repeat it in the same sentence as the price, "
+            "including the word STALE and the days old — never present that close as the current "
+            "price, and say that levels measured against it are not current either.\n"
             "3) Never invent holdings or re-entry candidate dumps.\n"
             "4) Mention SOFT_GAPS briefly when relevant.\n"
             "5) Keep reply under ~900 chars; Telegram markdown ok (*bold*, `code`).\n"
@@ -2263,11 +2266,19 @@ def subject_price_facts(symbols: list[str], *, days: int = 45) -> dict[str, dict
         change = None
         if start is not last and start.get("close"):
             change = round((float(last["close"]) - float(start["close"])) / float(start["close"]) * 100.0, 1)
+        # The age of the close travels WITH the close, so every consumer -- the deterministic
+        # brief, the Flash facts payload, the takeaway -- gets it without having to remember to
+        # ask. `stale` from the broker envelope is a 26h wall-clock verdict (True all weekend for
+        # everything, which is why nothing rendered it); price_age_note is the session-relative
+        # one that is safe to say out loud.
+        age = price_age_note(str(last["price_date"])[:10])
         out[sym] = {
             "close": float(last["close"]), "price_date": str(last["price_date"])[:10],
             "start_close": float(start["close"]) if start is not last else None,
             "start_date": str(start["price_date"])[:10] if start is not last else None,
             "change_30d_pct": change, "stale": res.get("stale"),
+            "price_stale": age["stale"], "price_age_days": age["age_days"],
+            "price_stale_note": age["note"],
             "bars": [[str(b["price_date"])[:10], float(b["close"])] for b in bars],
         }
     return out
@@ -2315,6 +2326,51 @@ def _fmt_day(d: Any) -> str:
     return dt.strftime("%b %d") if dt.year == datetime.now().year else dt.strftime("%b %d %Y")
 
 
+def price_age_note(price_date: Any, *, now: Optional[datetime] = None,
+                   service: Any = None) -> dict[str, Any]:
+    """Is this daily close older than the most recent COMPLETED session? {stale, age_days, note}.
+
+    The operator asked "how is S for entry on cyber" on 2026-09-22 and the desk answered
+    "$19.84 close Sep 04" -- flat, with no age. S had been outside the quote-refresh universe
+    for 18 days, so that WAS the newest close on file; nothing said so. A price older than the
+    session, presented as a plain close, is the dangerous half of that bug: every gap the desk
+    then computes against it (resistance, stop cushion, analyst upside) is measured off a number
+    the market left behind.
+
+    Measured in market time, reusing lib.cio_market_aware_freshness so this cannot become a way
+    of making old data look young OR a way of crying stale every weekend: the reference is the
+    last completed session's close, not a wall-clock window. Friday's close is current all
+    weekend and through Monday's pre-market; it goes stale once Monday has closed.
+    """
+    out: dict[str, Any] = {"stale": False, "age_days": None, "note": ""}
+    try:
+        bar = datetime.fromisoformat(str(price_date)[:10]).date()
+    except (TypeError, ValueError):
+        return out
+    try:
+        from scripts.lib.cio_market_aware_freshness import last_session_close  # noqa: PLC0415
+    except ImportError:
+        try:
+            from lib.cio_market_aware_freshness import last_session_close  # noqa: PLC0415
+        except ImportError:
+            return out
+    ref = now or datetime.now(ZoneInfo("America/New_York"))
+    try:
+        close = last_session_close(ref, service)
+    except Exception:  # noqa: BLE001 - an unusable calendar must never gate an answer
+        return out
+    if close is None or bar >= close.date():
+        return out
+    out["stale"] = True
+    out["age_days"] = (ref.date() - bar).days
+    out["note"] = (
+        f"STALE, {out['age_days']} days old - no quote for this name since "
+        f"{_fmt_day(bar.isoformat())}; the last completed session was "
+        f"{_fmt_day(close.date().isoformat())}. This is NOT a current price."
+    )
+    return out
+
+
 def _research_label(rtype: str) -> str:
     return {"deep_research_local": "deep research", "options_desk": "options desk",
             "ticker_thesis_challenge": "thesis challenge"}.get(rtype, rtype.replace("_", " ") or "research")
@@ -2324,6 +2380,11 @@ def _subject_takeaway(sym: str, price: dict[str, Any], row: Optional[dict[str, A
                       analyst: Optional[dict[str, Any]], research: list[dict[str, Any]]) -> str:
     bits: list[str] = []
     close = price.get("close") if price else None
+    # Said FIRST: every gap below is measured off this close, so if the close is stale the gaps
+    # are stale too. "17.9% below resistance" off an 18-day-old print reads as a live setup.
+    if price and price.get("price_stale"):
+        bits.append(f"the last close on file for {sym} is {price.get('price_age_days')} days old "
+                    f"(STALE), so every level measured against it below is not current")
     if row and close:
         res = row.get("resistance")
         res_lvl = res.get("level") if isinstance(res, dict) else res
@@ -2374,6 +2435,9 @@ def format_subject_brief(symbols: list[str], avail: dict[str, Any]) -> str:
         p = prices.get(sym) or {}
         if p.get("close") is not None:
             line = f"Price {_fmt_price(p['close'])} (close {_fmt_day(p.get('price_date'))})"
+            if p.get("price_stale_note"):
+                # Never a bare close when the market has moved past it.
+                line += f" - {p['price_stale_note']}"
             if p.get("change_30d_pct") is not None:
                 line += (f" · 30-day {p['change_30d_pct']:+.1f}% from {_fmt_price(p.get('start_close'))} "
                          f"on {_fmt_day(p.get('start_date'))}")
@@ -2437,6 +2501,11 @@ def _subject_required_tokens(symbols: list[str], avail: dict[str, Any]) -> list[
         p = (avail.get("subject_price") or {}).get(sym) or {}
         if p.get("close") is not None:
             req.append(_fmt_price(p["close"]))
+            # A summary that keeps the price but drops its age is the bug, so the marker is a
+            # required token: the Flash rewrite is rejected without it and the deterministic
+            # brief -- which always carries it -- is what gets sent.
+            if p.get("price_stale"):
+                req += ["STALE", f"{p.get('price_age_days')} days old"]
         a = analysts.get(sym)
         if a and a.get("target_mean") is not None:
             req += [_fmt_price(a["target_mean"]), _fmt_day(a.get("as_of"))]
