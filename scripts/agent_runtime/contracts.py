@@ -239,10 +239,19 @@ class Review:
     findings: tuple[str, ...]
     artifact_hash: str
     created_at: str = field(default_factory=utc_now)
+    #: The agent that scored this artifact, when one is known. Appended last so every
+    #: existing positional caller is unaffected. The mirror of Score.reviewer_agent_id:
+    #: reviewer != scorer was enforceable only from the scoring side, so the contract
+    #: answered the same question differently depending on which record was built.
+    scorer_agent_id: str | None = None
 
     def validate(self) -> None:
         if self.producer_agent_id == self.reviewer_agent_id:
             raise ValueError("an agent may not review its own artifact")
+        if self.scorer_agent_id is not None:
+            assert_independent_roles(
+                self.producer_agent_id, self.reviewer_agent_id, self.scorer_agent_id
+            )
         if not re.fullmatch(r"[0-9a-f]{64}", self.artifact_hash):
             raise ValueError("artifact_hash must be sha256")
 

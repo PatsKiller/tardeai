@@ -15,12 +15,18 @@
 #
 # Updated 2026-09-04 for comms-gateway bypass migration (shadow publish sites
 # now call send_telegram via the chokepoint; counts re-baselined, not newly untested).
+#
+# Updated 2026-09-22 (P6): ten entries REMOVED because they are now tested, not
+# because they were absorbed. agent_watchlist_engine, auto_research,
+# credential_monitor, cron_self_heal, hermes_score_alerts, overnight_batch,
+# run_alex_daily, stop_health_check, telegram_smart_alerts and
+# youtube_backfill_manager are each driven to the transport by
+# tests/test_alarm_fires_batch6_20260922.py. Nothing was added to this file.
 # transport=send_telegram  total_sites=169  covered=15  uncovered=154
 
 scripts/advisory_telegram_brief.py 1
 scripts/aegis_overnight.py 3
 scripts/agent_event_router.py 1
-scripts/agent_watchlist_engine.py 1
 scripts/alert_daily_digest.py 1
 scripts/alert_dispatcher.py 1
 scripts/alerting.py 1
@@ -30,15 +36,12 @@ scripts/api_v2.py 3
 scripts/atm_auto_approver.py 1
 scripts/audit_enrichment_coverage.py 1
 scripts/audit_position_basis.py 1
-scripts/auto_research.py 1
 scripts/brokers/approval_service.py 1
 scripts/cio_event_brief.py 1
 scripts/claude_escalation_handler.py 1
 scripts/cloud_consensus_verdict.py 1
 scripts/continuous_runner.py 1
 scripts/crawl_v3_dashboard.py 1
-scripts/credential_monitor.py 1
-scripts/cron_self_heal.py 1
 scripts/defense_engine_gap_checker.py 1
 scripts/defense_execution.py 1
 scripts/defense_weekly_paid_review.py 2
@@ -53,7 +56,6 @@ scripts/generate_weekly_docx.py 1
 scripts/health_agent.py 1
 scripts/hermes_backlog_drain.py 1
 scripts/hermes_discovery_ingestors.py 1
-scripts/hermes_score_alerts.py 1
 scripts/incubator_llm_screener.py 1
 scripts/incubator_proposal_promoter.py 2
 scripts/inference_telegram.py 1
@@ -69,7 +71,6 @@ scripts/morning_digest.py 1
 scripts/nightly_integrity_sweep.py 1
 scripts/oauth_lane_keepalive.py 1
 scripts/options_lifecycle_alerts.py 1
-scripts/overnight_batch.py 1
 scripts/overnight_digest_telegram.py 1
 scripts/oversight_weekly_digest.py 1
 scripts/paper_performance_governance.py 1
@@ -103,7 +104,6 @@ scripts/research_intelligence_queue.py 1
 scripts/research_lane_health.py 1
 scripts/rotation_autopilot.py 1
 scripts/rotation_rebalance_digest.py 1
-scripts/run_alex_daily.py 1
 scripts/run_paper_canary_chain.py 1
 scripts/run_proactive_quote_refresh.py 1
 scripts/scalp_critic_agent.py 1
@@ -124,7 +124,6 @@ scripts/siem_critical_notify.py 1
 scripts/social_scalp_scanner.py 2
 scripts/stop_decision_brief.py 1
 scripts/stop_drift_alert.py 1
-scripts/stop_health_check.py 1
 scripts/stop_over_consensus_monitor.py 1
 scripts/strategy_weekly_review.py 2
 scripts/system_freshness_monitor.py 1
@@ -134,7 +133,6 @@ scripts/system_rollup_snapshot.py 1
 scripts/technicals_gap_backfill.py 1
 scripts/telegram_cio_summary.py 1
 scripts/telegram_reply_processor.py 1
-scripts/telegram_smart_alerts.py 1
 scripts/trade_ai_news_monitor.py 1
 scripts/trade_ai_orchestrator.py 1
 scripts/verify_fib_proposals.py 1
@@ -146,6 +144,5 @@ scripts/watch_directives_service.py 1
 scripts/watchlist_entry_planner.py 1
 scripts/weekly_learning_digest_delivery.py 1
 scripts/weekly_summary_local.py 1
-scripts/youtube_backfill_manager.py 1
 scripts/youtube_cookie_health_check.py 1
 scripts/youtube_transcript_ingest.py 1

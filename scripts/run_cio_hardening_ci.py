@@ -2124,6 +2124,53 @@ GATES = [
             "tests/test_archive_manifest_proposal_p10.py",
         ],
     ),
+    (
+        # 2026-09-22 P6 — two gates that were green for the wrong reason.
+        #
+        # reviewer != scorer was enforced from the SCORING side only, and only in
+        # one insertion order: record_score asked the durable agent_reviews rows
+        # whether the scorer had already reviewed, while nothing asked agent_scores
+        # whether the reviewer had already scored. Score-then-review by one agent
+        # was accepted; review-then-score by the same agent was refused. Review
+        # also carried no scorer_agent_id, so the contract answered the same
+        # question differently depending on which record the caller built. Both
+        # sides and both orders are pinned now.
+        #
+        # The alarm batch is the other half: ten send_telegram sites that were
+        # lines in config/alarm_firing_baseline.txt — named, counted, unproven —
+        # are now driven to the transport and REMOVED from that file. The ratchet
+        # number moved because the alarms were tested, not because the baseline
+        # absorbed them, which is the only direction that file may move.
+        "gate_honesty_p6_20260922",
+        [
+            "tests/test_independence_reviewer_scorer_20260922.py",
+            "tests/test_alarm_fires_batch6_20260922.py",
+        ],
+    ),
+    (
+        # 2026-09-22 P6 — ten suites promoted out of UNLISTED_BASELINE.
+        #
+        # Measured before this entry: 1,461 test files, 506 run by CI (34.6%), with
+        # 949 files sitting in check_test_coverage.UNLISTED_BASELINE as inherited
+        # debt. That baseline makes the gap visible and may only shrink; these ten
+        # shrink it. Each was run on 2026-09-22 and passes hermetically in under a
+        # second with no database, network or broker — chosen for that reason, so
+        # registering them adds real coverage without adding a flaky gate that
+        # someone would later disable.
+        "agent_runtime_suites_promoted_20260922",
+        [
+            "tests/test_agent_context_envelope.py",
+            "tests/test_agent_decision_payload.py",
+            "tests/test_agent_replay_harness.py",
+            "tests/test_agent_run_trace.py",
+            "tests/test_agent_runtime_critics.py",
+            "tests/test_agent_runtime_deadlines.py",
+            "tests/test_agent_runtime_instrumentation.py",
+            "tests/test_agent_runtime_knowledge.py",
+            "tests/test_agent_runtime_migration_contract.py",
+            "tests/test_agent_runtime_missing_modules.py",
+        ],
+    ),
 ]
 
 
