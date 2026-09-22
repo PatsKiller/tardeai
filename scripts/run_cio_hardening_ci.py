@@ -1046,6 +1046,17 @@ GATES = [
             "tests/test_finviz_cookie_classification.py",
         ],
     ),
+    # A function-local import that shadows a module-level one makes the name
+    # local for the WHOLE function -> UnboundLocalError on every earlier use.
+    # claude_escalation_handler:295 did exactly that from 2026-08-08, which broke
+    # _verify_remediation for six weeks: no escalation could ever be marked
+    # cleared, so 13 components paged "AUTO-RETRY PAUSED" at 78/hour forever.
+    (
+        "import_shadowing",
+        [
+            "tests/test_no_shadowed_module_imports_20260921.py",
+        ],
+    ),
     (
         "lane_registry",
         [
