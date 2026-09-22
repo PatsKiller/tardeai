@@ -1089,6 +1089,19 @@ GATES = [
             "tests/test_market_quotes_downsample_20260921.py",
         ],
     ),
+    # Nothing removes a queued escalation whose condition has resolved:
+    # enqueue_escalations only appends, and removal happens solely on successful
+    # verify, which is unreachable without a retry_cmd. Measured 2026-09-22: 18
+    # queued items, 0 fixable, 0 with retry_cmd -> ~1,870 pages/day forever.
+    # The reaper deletes durable state, so its gate pins dry-run-by-default,
+    # archive-before-write, and FAIL-CLOSED on a broken probe (an empty live-set
+    # would otherwise make every entry look resolved).
+    (
+        "escalation_queue_reaper",
+        [
+            "tests/test_escalation_queue_reaper_20260922.py",
+        ],
+    ),
     (
         "lane_registry",
         [
