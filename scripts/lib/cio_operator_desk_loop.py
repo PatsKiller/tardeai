@@ -1892,6 +1892,28 @@ def _gather_tradeai_evidence_core(intent: dict[str, Any]) -> dict[str, Any]:
             available["subject_levels_as_of"] = lv_as_of
             if lv_path:
                 sources.append(str(lv_path))
+        # Phase 2A (2026-09-22): subject brief with only analyst_view never loaded
+        # hermes, so soft gaps stayed empty, DeepSeek reworded a hollow house card,
+        # and nothing opened a pending for Hermes follow-up. Soft (non-blocking)
+        # missing_research when research was not already requested as a need.
+        if "research" not in needs and not available.get("hermes_research"):
+            items = subject_research(
+                subject_syms,
+                include_operational=bool(_STOP_QUESTION.search(str(intent.get("text") or ""))),
+            )
+            if items:
+                available["hermes_research"] = {
+                    "items": items,
+                    "symbols": sorted({i["symbol"] for i in items if i.get("symbol")}),
+                }
+            else:
+                gaps.append({
+                    "domain": "hermes_research",
+                    "symbol": subject_syms[0],
+                    "field": "research",
+                    "reason": f"no promoted research for {', '.join(subject_syms)}",
+                    "gap_type": "missing_research",
+                })
 
     # Blocking gaps
     blocking: list[dict[str, Any]] = []
@@ -2379,6 +2401,20 @@ def format_subject_brief(symbols: list[str], avail: dict[str, Any]) -> str:
             if p.get("change_30d_pct") is not None:
                 line += (f" · 30-day {p['change_30d_pct']:+.1f}% from {_fmt_price(p.get('start_close'))} "
                          f"on {_fmt_day(p.get('start_date'))}")
+            # Surface multi-day staleness so a Sep-04 close cannot read as "today".
+            age_h = p.get("age_hours")
+            if age_h is None and p.get("price_date"):
+                try:
+                    pd = str(p.get("price_date"))[:10]
+                    age_h = (datetime.now(timezone.utc).date()
+                             - datetime.fromisoformat(pd).date()).days * 24.0
+                except Exception:
+                    age_h = None
+            try:
+                if age_h is not None and float(age_h) > 26.0:
+                    line += f" · STALE ({float(age_h):.0f}h old)"
+            except (TypeError, ValueError):
+                pass
             lines.append(line)
         else:
             lines.append("Price: no daily close on file.")
@@ -3974,11 +4010,36 @@ def handle_operator_desk_question(
             elif queued:
                 note = _gap_queue_note(reg)
             else:
-                note = "not refreshed automatically; say 'research <ticker>' to queue it."
-            text_out = (
-                text_out.rstrip()
-                + f"\n_Note: partial level gaps on {', '.join(soft_syms[:6])} — {note}_"
-            )
+                note = "not refreshed automatically; house research stays thin until queued."
+            # Phase 1/2A: soft enqueue without a PENDING_PATH row was fire-and-forget —
+            # try_fulfill_pending_replies could never deliver Hermes. Mirror freeform.
+            opened_pending = False
+            if enq and (enq.get("ok") or enq.get("emitted") or enq.get("deduped")):
+                _append_jsonl(PENDING_PATH, {
+                    "pending_id": pending_id,
+                    "status": "open",
+                    "ts": _now(),
+                    "chat_id": str(chat_id),
+                    "message_id": str(message_id),
+                    "channel": channel,
+                    "operator_text": (text or "")[:1000],
+                    "intent": intent,
+                    "blocking_gaps": researchish[:10] if researchish else soft[:10],
+                    "authority": AUTHORITY,
+                    "kind": "soft_research_queue",
+                })
+                result["pending_id"] = pending_id
+                opened_pending = True
+            if opened_pending and f"`{pending_id}`" not in text_out:
+                text_out = _insert_before_authority_tail(
+                    text_out,
+                    f"_{note} · Pending `{pending_id}`_",
+                )
+            else:
+                text_out = _insert_before_authority_tail(
+                    text_out,
+                    f"_Note: partial level gaps on {', '.join(soft_syms[:6])} — {note}_",
+                )
 
     result.update({
         "kind": "answered",

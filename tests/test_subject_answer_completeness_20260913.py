@@ -124,6 +124,7 @@ def test_brief_has_price_levels_analysts_research_and_meaning():
     assert "3.7% below resistance $384.06" in meaning and "2.8% above the stop $360.21" in meaning
     assert "mean target $417.90 is 12.8% above the last close, but that view is 16 days old" in meaning
     # Auto-enqueue owns the operator ack; takeaway no longer prompts "say 'research V'".
+    assert "Next: say 'research V'" not in meaning
     assert "House research for V is thin or missing." in meaning
 
 
