@@ -1,12 +1,13 @@
 # LIVE-cio-stance-governance — 24/7 universal CIO stance maturity
 
 ```
-Status: ACTIVE · OBSERVED_LIVE
-as_of: 2026-09-21T01:42:00-04:00
-Measured at: report_organic_stance_hold.py organic=4 observed=true; latest LSTA
-  source=check_investment_send held_reason=cio_stance_conflict caller=screener_go_alerts
+Status: ACTIVE · UNATTENDED_ORGANIC_OBSERVED
+as_of: 2026-09-22T02:38:00-04:00
+Measured at: report_organic_stance_hold.py organic=1780 observed=true exit=0;
+  latest DFAU as_of=2026-09-21T20:58:08Z source=check_investment_send
+  held_reason=cio_stance_conflict caller=send_telegram_proposal_alert
 Canonical repo path: docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md
-Authority: operator-directed maturity definition revision (supersedes weekday equity-only bar)
+Authority: Tue early observe 2026-09-22 ~06:35 ET; AGENTS.md §8 (unattended ≠ FORCE-mechanical)
 Supersedes gap id: PARTIAL-telegram-CIO-stance
 See also: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md; #1082 stance hard-gate
 ```
@@ -40,17 +41,34 @@ on a **served production release pin**, without human intervention.
 - **`MBI_BEHAVIOR = 0`** — cognition/memory never sizes, orders, stops, or writes broker fields.
 - Non-authoritative memory remains cognitive-only (no cash/positions/ledger prices).
 
-## Measurement `[VERIFIED]` 2026-09-21T01:42:03Z
+## Measurement `[VERIFIED]` 2026-09-22T06:36:16Z (Tue early observe)
 
 ```text
-observed=true organic=4 non_organic=2 total=6
-latest: as_of=2026-09-21T00:09:53Z symbol=LSTA caller=screener_go_alerts
+EXIT=0
+observed=true organic=1780 non_organic=2 total=1782
+latest: as_of=2026-09-21T20:58:08Z symbol=DFAU caller=send_telegram_proposal_alert
         source=check_investment_send held_reason=cio_stance_conflict
 path: ~/.local/state/tradeai/cio_telegram_stance_holds.jsonl
+mtime: 2026-09-21T16:58:08-04:00
 ```
 
-Also recorded same window: `AEMD` (same caller/source/reason). Prior rows remain
-non-organic probes/canaries (`maturity_agent_local_probe`, `controlled_canary_current_tip`).
+### Unattended Mon 2026-09-21 (after Mon 06:00 ET)
+
+| class | count |
+|---|---|
+| NEW organic (`source=check_investment_send` + ORGANIC_HOLD_CALLERS) | **1776** |
+| `send_telegram_proposal_alert` | 1748 |
+| `screener_go_alerts` | 28 |
+| Pre–Mon-06:00 ET organic (FORCE-mechanical AEMD/LSTA set) | 4 |
+
+First NEW ~2026-09-21T13:36:05Z (09:36 ET); last ~2026-09-21T20:58:08Z (16:58 ET).
+Mon host observe timers still saw organic=4 (early 06:35 / main 09:05) — NEW traffic began ~30m after 09:05.
+
+### Prior measurement (historical)
+
+`[VERIFIED]` 2026-09-21T01:42:03Z organic=4 latest LSTA — those four rows were
+OPERATOR_FORCED_GO_LIVE / Sun hand-replay of Fri session, **not** unattended schedule
+proof. Retained as history; not deleted.
 
 ## Why the old bar was wrong
 

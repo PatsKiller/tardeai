@@ -632,3 +632,25 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
   2026-09-21T00:09:53Z.
 - State: **CLOSED · OBSERVED_LIVE** (not left PARTIAL — criteria already met).
 - MBI_BEHAVIOR=0 / non-authoritative memory reaffirmed — stance gates advisory only.
+
+## 2026-09-22T02:38 ET — UNATTENDED_ORGANIC_OBSERVED (Tue early ~06:35 slot)
+
+- Goal remains **CLOSED** (prior OPERATOR_FORCED_GO_LIVE / OBSERVED_LIVE claim). **No reopen.**
+- Honesty upgrade only: Mon market-hours producers wrote durable organic holds.
+- `[VERIFIED]` `report_organic_stance_hold.py --json` as_of=2026-09-22T06:36:16Z:
+  EXIT=**0** organic=**1780** non_organic=2 total=1782 observed=true;
+  latest DFAU `as_of=2026-09-21T20:58:08Z` caller=`send_telegram_proposal_alert`
+  held_reason=`cio_stance_conflict`.
+- NEW since Mon 2026-09-21 06:00 ET (`as_of` ≥ 2026-09-21T10:00:00Z):
+  **1776** rows `source=check_investment_send` + ORGANIC_HOLD_CALLERS
+  (`send_telegram_proposal_alert`=1748, `screener_go_alerts`=28).
+  Window first≈13:36:05Z / last≈20:58:08Z; holds mtime 2026-09-21T16:58:08-04:00.
+- Host timers `[VERIFIED]`:
+  - early LastTrigger=**Mon 2026-09-21 06:35:11 EDT** (journal organic=4);
+    Next=Tue 06:35:10 EDT (this agent slot; wall ~02:36 ET).
+  - main LastTrigger=**Mon 2026-09-21 09:05:43 EDT** (journal organic=4);
+    Next=Tue 09:05:09 EDT.
+- Remasure `[VERIFIED]`: M1–M5 all **OBSERVED** exit 0 pin `58dac0884-main-exact-phase2-20260922-000413`
+  as_of=2026-09-22T06:38:11Z; soft_unsupported_share=**0.098** (160/1636) PASS ≤0.15.
+- Ledger row → **CLOSED · UNATTENDED_ORGANIC_OBSERVED**. Prior organic=4 retained as
+  FORCE-mechanical history (not deleted). §17 parks unchanged. MBI/broker untouched.
