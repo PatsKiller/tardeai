@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `db8b7517df93a060ce5a9ce869c3dcf9895dfb94b480cf875dc590ea1d03998c`
+**Tree fingerprint:** `78ff24ba487239d7781ef391ea1262236e198df9d36d042ada48f3289fd91e8e`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -671,8 +671,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan | review_required | OK | `2224490a6526` |
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census | review_required | OK | `a5073ae48b02` |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche | review_required | OK | `3669faccf7ff` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `a464a3e1a876` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `ee57933d06ee` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `ef9eca47318b` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `7fdd502cf84e` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |
@@ -1679,7 +1679,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 | review_required | OK | `cd49b9ce53e7` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `f88b31c995fa` |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention | review_required | OK | `b54b463e120a` |
-| `docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md` | LIVE-cio-stance-governance — 24/7 universal CIO stance maturity | review_required | OK | `cd4ea4d547b0` |
+| `docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md` | LIVE-cio-stance-governance — 24/7 universal CIO stance maturity | review_required | OK | `c5cab3d1d002` |
 | `docs/ops/LLM_OFFPEAK_ROUTING.md` | LLM Off-Peak Routing — operator guide | review_required | MISSING HEADER | `f87f06023478` |
 | `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` | How LLMs, Hermes, SearXNG, and ticker data actually work | review_required | OK | `3b36a08165b8` |
 | `docs/ops/M2_DARK_READ_PARITY_2026-08-24.md` | M2 dark-read parity | review_required | OK | `ebee0b2213fc` |
