@@ -2356,7 +2356,9 @@ def _subject_takeaway(sym: str, price: dict[str, Any], row: Optional[dict[str, A
     text = "; ".join(bits)
     text = text[0].upper() + text[1:] + "."
     if not substantive or not analyst or (analyst and analyst.get("stale")):
-        text += f" Next: say 'research {sym}' to queue a fresh review."
+        # Auto-enqueue path (enqueue_research_gap) owns the operator ack; do not
+        # prompt "say 'research X'" — that left single-letter names like S unqueued.
+        text += f" House research for {sym} is thin or missing."
     return text
 
 
@@ -2909,6 +2911,58 @@ def _enqueue_hermes_research(
     except Exception as exc:
         out["error"] = f"{type(exc).__name__}:{exc}"
     return out
+
+
+#: Per-process dedupe so one turn cannot enqueue the same symbol twice.
+_RESEARCH_GAP_ENQUEUED: set[str] = set()
+
+
+def enqueue_research_gap(
+    *,
+    symbols: list[str],
+    chat_id: str = "",
+    pending_id: str = "",
+    operator_text: str = "",
+) -> dict[str, Any]:
+    """Auto-queue Hermes research for named symbols missing house research/levels.
+
+    Enqueues each symbol at most once per process (and once per pending_id+symbol).
+    Prefer this over telling the operator to type ``research S``.
+    """
+    syms = []
+    for raw in symbols or []:
+        u = str(raw or "").strip().lstrip("$").upper()
+        if u and u.isalpha() and 1 <= len(u) <= 5 and u not in syms:
+            syms.append(u)
+    if not syms:
+        return {"ok": False, "emitted": 0, "error": "no_symbols", "ack": ""}
+    fresh: list[str] = []
+    for sym in syms:
+        key = f"{pending_id or '_'}:{sym}"
+        if key in _RESEARCH_GAP_ENQUEUED:
+            continue
+        _RESEARCH_GAP_ENQUEUED.add(key)
+        fresh.append(sym)
+    if not fresh:
+        return {
+            "ok": True,
+            "emitted": 0,
+            "symbols": syms,
+            "deduped": True,
+            "ack": "",
+        }
+    result = _enqueue_hermes_research(
+        symbols=fresh,
+        chat_id=chat_id,
+        pending_id=pending_id or f"gap_{uuid.uuid4().hex[:10]}",
+        operator_text=operator_text or f"research gap auto-queue for {', '.join(fresh)}",
+    )
+    labels = ", ".join(fresh[:6])
+    result["symbols"] = fresh
+    result["ack"] = (
+        f"House research for {labels} is queued; fetching fresh quotes and levels."
+    )
+    return result
 
 
 # ── Hermes join-back ─────────────────────────────────────────────────────────
@@ -3735,7 +3789,7 @@ def handle_operator_desk_question(
         if blocking:
             if resolver_summary is None and any(g.get("domain") == "hermes_research" for g in blocking):
                 # Pre-Phase-7 path (resolver disabled): Hermes when research blocks.
-                _enqueue_hermes_research(
+                enqueue_research_gap(
                     symbols=[str(s).upper() for s in (intent.get("symbols") or [])],
                     chat_id=str(chat_id),
                     pending_id=pending_id,
@@ -3833,12 +3887,12 @@ def handle_operator_desk_question(
         )
         research_gaps = [
             g for g in soft
-            if g.get("gap_type") == "research" and g.get("symbol")
+            if g.get("symbol") and g.get("gap_type") in ("research", "missing_research")
         ]
         if queue_on and research_gaps:
             _register_gaps(research_gaps[:10], chat_id=str(chat_id), pending_id=pending_id)
             syms = sorted({str(g.get("symbol")) for g in research_gaps if g.get("symbol")})
-            _enqueue_hermes_research(
+            enq = enqueue_research_gap(
                 symbols=syms,
                 chat_id=str(chat_id),
                 pending_id=pending_id,
@@ -3860,13 +3914,17 @@ def handle_operator_desk_question(
                 "authority": AUTHORITY,
                 "kind": "freeform_soft_queue",
             })
+            ack = enq.get("ack") or (
+                f"House research for {', '.join(syms[:6])} is queued; "
+                "fetching fresh quotes and levels."
+            )
             if f"`{pending_id}`" not in text_out:
                 text_out = (
                     text_out.rstrip()
-                    + f"\n_Queued Trade-AI research for {', '.join(syms[:6])} · "
-                    f"Pending `{pending_id}`_"
+                    + f"\n_{ack} · Pending `{pending_id}`_"
                 )
             result["pending_id"] = pending_id
+            result["research_queued"] = bool(enq.get("ok") or enq.get("emitted"))
         # A follow-up promise stands only on a pending row that EXISTS for this
         # chat -- read back from the ledger, not assumed from the branch taken.
         text_out = _drop_unbacked_follow_up(text_out, _open_pending_row(pending_id, str(chat_id)))
@@ -3887,11 +3945,39 @@ def handle_operator_desk_question(
             # the note said "queued for Trade-AI refresh" regardless.
             reg = _register_gaps(soft[:10], chat_id=str(chat_id), pending_id=pending_id) or {}
             result["gap_registry"] = reg
-            queued = int(reg.get("registered") or 0) > 0
+            # 2026-09-22: missing house research / levels for a named symbol must
+            # auto-enqueue — do not leave the operator typing "research S".
+            researchish = [
+                g for g in soft
+                if g.get("symbol") and (
+                    g.get("gap_type") in ("research", "missing_research", "missing_market_data")
+                    or g.get("domain") in ("hermes_research", "symbol_thesis", "quote_price",
+                                           "reentry_decision_desk")
+                )
+            ]
+            enq = None
+            if researchish:
+                enq = enqueue_research_gap(
+                    symbols=sorted({str(g["symbol"]) for g in researchish if g.get("symbol")}),
+                    chat_id=str(chat_id),
+                    pending_id=pending_id,
+                    operator_text=text or "",
+                )
+                result["research_queued"] = bool(enq.get("ok") or enq.get("emitted"))
+                if enq.get("ack"):
+                    result.setdefault("went_outside", []).append(
+                        f"hermes_research queue — {enq['ack']}"
+                    )
+            queued = int(reg.get("registered") or 0) > 0 or bool((enq or {}).get("emitted"))
+            if enq and enq.get("ack"):
+                note = enq["ack"]
+            elif queued:
+                note = _gap_queue_note(reg)
+            else:
+                note = "not refreshed automatically; say 'research <ticker>' to queue it."
             text_out = (
                 text_out.rstrip()
-                + f"\n_Note: partial level gaps on {', '.join(soft_syms[:6])} — "
-                + (_gap_queue_note(reg) if queued else "not refreshed automatically; say 'research <ticker>' to queue it._")
+                + f"\n_Note: partial level gaps on {', '.join(soft_syms[:6])} — {note}_"
             )
 
     result.update({

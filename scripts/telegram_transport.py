@@ -259,6 +259,7 @@ def deliver_text(
     reply_to_message_id: Any = None,
     post: Optional[Callable] = None,
     link_preview_options: dict | None = None,
+    primary_symbols: list[str] | None = None,
 ) -> dict:
     """Every operator message passes the Communications Editor, then the raw send.
 
@@ -270,6 +271,9 @@ def deliver_text(
     products, and CIO stance disagreements (reported as ``suppressed``, never as
     a failure). The editor can never block a send by raising: any editor error
     sends the original.
+
+    ``primary_symbols`` scopes footer chrome to the active turn (no residual
+    ticker bleed from prior-turn text still present in the body).
     """
     if _interdicted():
         return _interdicted_result()
@@ -277,7 +281,10 @@ def deliver_text(
     decision = None
     if ce is not None and ce.mode() != "off":
         try:
-            decision = ce.edit(text, chat_id=chat_id, parse_mode=parse_mode, db_query=ce.default_db_query)
+            decision = ce.edit(
+                text, chat_id=chat_id, parse_mode=parse_mode, db_query=ce.default_db_query,
+                primary_symbols=primary_symbols,
+            )
         except Exception as exc:  # noqa: BLE001
             _log.warning("comms editor failed, sending original: %s", exc)
             decision = None
