@@ -1,0 +1,76 @@
+{
+  "schema": "SLOTargets@v1",
+  "as_of": "2026-09-22",
+  "status": "PROPOSED",
+  "authority": "READ_ONLY_ADVISORY — the reporter measures and prints. Arming any alert on these budgets is an operator decision (AGENTS.md §17).",
+  "period_days": 30,
+  "notes": [
+    "Targets live here, not in code: scripts/lib/slo_burn_rate.py holds no number an operator would want to change.",
+    "Every feed below was verified against information_schema on 2026-09-22 before being written down. No column is assumed.",
+    "The four tiers are the Google SRE Workbook multiwindow table. Each long window is exactly 12x its short window, and the same threshold applies to both halves; scripts/lib/slo_burn_rate.py rejects a pair that is not ~12:1.",
+    "min_events suppresses a tier whose windows carry too little traffic to make a ratio meaningful. It is per-SLO because a bursty event feed and a fixed-cadence freshness feed have very different sample rates."
+  ],
+  "tier_table": "1h/5m @14.4 PAGE (2% of budget), 6h/30m @6 PAGE (5%), 24h/2h @3 TICKET (10%), 72h/6h @1 TICKET (10%)",
+  "slos": [
+    {
+      "name": "alert_delivery",
+      "description": "An alert is delivered when the row carries a provider message id. SLI = alert_events with telegram_message_id NOT NULL / all alert_events in window.",
+      "slo_target": 0.99,
+      "period_days": 30,
+      "min_events": 10,
+      "feed": {
+        "kind": "ratio_of_rows",
+        "table": "alert_events",
+        "timestamp_column": "created_at",
+        "good_predicate": "telegram_message_id IS NOT NULL",
+        "verified_on": "2026-09-22",
+        "verified_note": "information_schema: alert_events has 26 columns; telegram_message_id (text, nullable) and created_at (timestamptz) both exist. 8,191 rows in 30d, 865 in 24h.",
+        "honesty": "This measures whether delivery is PROVABLE, not whether a message reached Telegram. Measured 2026-09-22: 11 of 865 rows in 24h carried an id (1.3%). attach_telegram_message_id exists (gate alert_delivery_id, 2026-09-21) but only system_health and data_integrity alerts call it, so the deficit is missing PROVENANCE at the other call sites, not 98.7% dropped messages. Stated as a gap rather than dressed up as delivery failure.",
+        "corroborating_feed": "communication_events tells the same story independently: 53,038 UNSETTLED vs 79 SETTLED outbound in 30d. Not used as a second SLO because it would restate one finding twice."
+      }
+    },
+    {
+      "name": "card_freshness",
+      "description": "A strategy card is fresh when it was rewritten inside the staleness budget. SLI = 1-minute buckets in the window whose newest watchlist_strategy_cards.updated_at was younger than the budget.",
+      "slo_target": 0.99,
+      "period_days": 30,
+      "min_events": 5,
+      "feed": {
+        "kind": "freshness_buckets",
+        "table": "watchlist_strategy_cards",
+        "timestamp_column": "updated_at",
+        "bucket_seconds": 60,
+        "staleness_budget_seconds": 129600,
+        "verified_on": "2026-09-22",
+        "verified_note": "information_schema: watchlist_strategy_cards has 22 columns; updated_at (timestamptz, nullable) exists. 5,892 rows; newest 2026-09-22 07:00.",
+        "budget_rationale": "36h. A card carrying entry, stop and target older than a day and a half is not something a desk should size a position from.",
+        "honesty": "Measured 2026-09-22: the producer does not run daily. Distinct update bursts in the last 21 days were 09-22 07:00 (5,430 cards), 09-15 12:00 (13), 09-11 16:00 (72), 09-04 (18) — i.e. roughly weekly. Against a 36h budget this SLO burns hard by construction, which is the finding, not a mis-set target. Raising the budget to hide it would make the number meaningless."
+      }
+    },
+    {
+      "name": "quote_freshness",
+      "description": "Quotes are fresh when a fetch landed inside the staleness budget. SLI = 1-minute buckets in the window whose newest market_quotes.fetched_at was younger than the budget.",
+      "slo_target": 0.99,
+      "period_days": 30,
+      "min_events": 5,
+      "feed": {
+        "kind": "freshness_buckets",
+        "table": "market_quotes",
+        "timestamp_column": "fetched_at",
+        "bucket_seconds": 60,
+        "staleness_budget_seconds": 57600,
+        "verified_on": "2026-09-22",
+        "verified_note": "information_schema: market_quotes has 18 columns; fetched_at (timestamptz, nullable) exists. 777,589 rows over 5,662 symbols after the 2026-09-21 downsample.",
+        "budget_rationale": "16h, sized to clear the observed overnight gap (last fetch 09-21 17:00, next 09-22 07:00 = 14.5h) without also clearing a genuine outage.",
+        "honesty": "No market-hours calendar is applied. The 72h/6h tier therefore spans weekends, when no fetch is expected and none occurs (measured gap 09-19 08:35 -> 09-21 07:00), so that tier reads as burn that an operator would not act on. Tightening the budget requires a session calendar the SLI does not yet have.",
+        "downsample_caveat": "market_quotes was downsampled 2026-09-21 to 7 days of full intraday plus one close per symbol-day beyond that. Windows longer than 7 days would measure the retention policy rather than the feed; the longest window here is 72h, inside the full-resolution range."
+      }
+    }
+  ],
+  "tiers": [
+    {"label": "fast_page", "long_window_seconds": 3600, "short_window_seconds": 300, "threshold": 14.4, "severity": "PAGE"},
+    {"label": "slow_page", "long_window_seconds": 21600, "short_window_seconds": 1800, "threshold": 6.0, "severity": "PAGE"},
+    {"label": "fast_ticket", "long_window_seconds": 86400, "short_window_seconds": 7200, "threshold": 3.0, "severity": "TICKET"},
+    {"label": "slow_ticket", "long_window_seconds": 259200, "short_window_seconds": 21600, "threshold": 1.0, "severity": "TICKET"}
+  ]
+}
