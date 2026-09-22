@@ -10,10 +10,9 @@ Authority:   live operator paste + hermetic dual-import proof (AGENTS.md §8)
 Supersedes:  PR_ONLY note on docs branch cursor/docs-ticker-s-sync-667c (PR #1188)
 See also:    docs/OPERATOR_REPLY_ROUTING.md ·
              docs/audit/message-identity-audit-2026-09-21.md §4 ·
-             docs/plan-s-hollow-research-then-answer.md (store) ·
+             docs/architecture/PLAN_S_HOLLOW_RESEARCH_THEN_ANSWER_2026-09-22.md ·
              AGENTS.md §7 operator replies · §9.1 rich layout
 ```
-
 ## Live verdict timeline
 
 | when | pin | verdict |
