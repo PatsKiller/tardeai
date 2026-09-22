@@ -366,19 +366,30 @@ def test_control_the_capture_is_empty_until_a_site_fires(doc_alarm, report_file,
     assert len(doc_alarm.documents) == 1
 
 
-def test_nothing_leaves_the_host(doc_alarm, monkeypatch, report_file, tmp_path):
-    """The harness must not be proven by a send that actually went out.
+def test_nothing_leaves_the_host(doc_alarm, report_file, tmp_path):
+    """The captured send was the fake, not a message that actually went out.
 
-    `alarm_capture` patches telegram_alert's bound names; this fails the test if
-    the real telegram_transport.send_document is ever reached instead.
+    Checked through telegram_alert's bound name rather than by importing
+    telegram_transport and booby-trapping it. That was the first version, and
+    scripts/check_telegram_chokepoint.py correctly called it a NEW bypass:
+    `transport_import` flags any file importing something from the transport that
+    can SEND, and it scans tests/ deliberately — a blanket tests/ exclusion would
+    let a real producer hide in a test path. There is an APPROVED list for tests
+    that must name the transport to prove it is interdicted, and adding this file
+    to it would have been legitimate; it is not done here because the property is
+    provable without touching a governance surface at all.
+
+    `send_telegram_document` calls the `send_document` bound into telegram_alert,
+    so that name IS the only route to the network from these sites. Asserting it
+    is the fixture's stub says exactly what the booby trap said: whatever the
+    document alarms reached, it was not the wire.
     """
-    import telegram_transport as TT
+    import telegram_alert as TA
 
-    def _leak(*a, **k):
-        raise AssertionError("the real transport was called — the harness leaked")
-
-    monkeypatch.setattr(TT, "send_document", _leak, raising=True)
-    monkeypatch.setattr(TT, "send_message", _leak, raising=True)
+    assert TA.send_document.__name__ == "_fake_send_document", (
+        "the transport boundary is not stubbed; a document send from this test "
+        "could reach the real Telegram API"
+    )
 
     _drive("portfolio_weekly_report", "_send_telegram_doc", doc=report_file,
            caption="C1 probe: must not leak", root=tmp_path)
