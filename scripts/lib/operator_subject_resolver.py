@@ -87,6 +87,12 @@ _CASHTAG = re.compile(r"\$([A-Za-z]{1,5})\b")
 #: A ticker spelled letter by letter, as voice dictation writes it: "a x t i",
 #: "A.X.T.I", "a-x-t-i". Three to five single letters, one separator between.
 _SPELLED = re.compile(r"(?<![A-Za-z0-9])((?:[A-Za-z][ .\-]){2,4}[A-Za-z])\.?(?![A-Za-z0-9])")
+# A lone capital followed by a period and another capitalised word is an
+# INITIAL ("T. Rowe Price", "J. P. Morgan"), not a ticker. 19 of the 26 single
+# letters are real symbols in the registry, so suppressing single letters
+# wholesale would silence "how is S for entry" -- the operator's actual
+# question. The period is what separates the two.
+_INITIAL = re.compile(r"[A-Z]\.\s+[A-Z]")
 
 #: Sector vocabulary -> the name the CIO snapshot `sectors` domain uses.
 #: A vocabulary, not a symbol map: no issuer is named here.
@@ -271,6 +277,23 @@ def _tickers(text: str, book: frozenset[str], doc: Mapping[str, Any]) -> list[di
         #     Transfer while "13:02 ET" does not.
         if _is_template_chrome(tok) and tok not in book:
             continue
+        # 2026-09-22 -- "T. Rowe Price" bound T (AT&T) at 0.9, and the same loop
+        # turned "J. P. Morgan" into J and P, "A. O. Smith" into O, and
+        # "E. W. Scripps" into E and W. `_UPPER_TOKEN` is [A-Z]{1,5}, so a lone
+        # initial is indistinguishable from a lone ticker by shape alone.
+        #
+        # Suppressing single letters wholesale is NOT available: the registry
+        # holds 19 of the 26 as real symbols, and "how is S for entry on cyber"
+        # is the question that started this tranche. The period is the signal.
+        #
+        # Same fail-open rule as the chrome guard above: a letter the operator
+        # actually HOLDS still binds, and "$T" never reaches here. The residue is
+        # honest -- "I own T. The yield is good" reads as an initial and is
+        # suppressed unless T is in the book. A sentence-final ticker before a
+        # capitalised word cannot be told from an initial without parsing, and
+        # "$T" always works.
+        if len(tok) == 1 and tok not in book and _INITIAL.match(text, m.start(1)):
+            continue
         add(tok, tok, "uppercase")
     if book:
         for m in _ANYCASE_TOKEN.finditer(text):
@@ -306,6 +329,24 @@ def _companies(text: str, taken: set[str], doc: Mapping[str, Any]) -> list[dict[
         if up in taken or up in _STOP or up in _PSEUDO:
             continue                     # already a ticker ("SCHD", "ADBE"), or not a name
         if T._is_generic_term(name):     # "Research" must never bind REFR
+            continue
+        # 2026-09-22 -- "What is the Price of the stock right now" bound TROW at
+        # 0.85 confidence, matched_on="exact". `_tickers` consults the ONE shared
+        # chrome list (`_is_template_chrome`); this sibling resolver did not, and
+        # `GENERIC_NAME_TERMS` does not hold "price". Same shape as the ALERT tag
+        # the day before: a chokepoint guarded, its sibling left open.
+        #
+        # Measured on the live company index: "Price" -> TROW and "Data" -> DAIO,
+        # while "T. Rowe Price" (3 words) and "Energy Transfer" -> ET are NOT
+        # chrome and keep binding. So the guard is scoped to a LONE word -- a
+        # multi-word issuer is evidence of intent, one chrome word is not.
+        #
+        # No book escape hatch here, deliberately. In `_tickers` the token IS the
+        # symbol, so "the operator holds ET" justifies binding. Here the word is
+        # "Price" and the symbol is TROW: holding TROW still does not make "the
+        # price of the stock" a question about T. Rowe Price. "$TROW" and the full
+        # name both still resolve.
+        if len(words) == 1 and _is_template_chrome(up):
             continue
         hit = None
         try:

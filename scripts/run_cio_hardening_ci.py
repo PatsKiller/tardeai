@@ -2323,9 +2323,30 @@ GATES = [
     # red rather than passing on an empty registry. DY, BAX, an explicit
     # $cashtag, and a chrome word in the operator's own book must all still
     # bind — a guard that suppresses everything is not a fix.
-    (
         "alert_chrome_outbound_tag_20260922",
         [
+            "tests/test_alert_chrome_outbound_tag_20260922.py",
+        ],
+    ),
+    (
+        # 2026-09-22 -- the operator asked about S and the reply carried Command
+        # Center / Finviz / Yahoo links for TROW, because the word "Price" appeared
+        # in the prose. S itself resolved correctly; TROW arrived from nowhere he
+        # had named.
+        #
+        # `resolve_subjects` has two resolvers. `_tickers` was routed through the
+        # shared chrome list the day before; `_companies` was not, and its only
+        # guard (GENERIC_NAME_TERMS, 67 entries) holds "research" and "growth" but
+        # not "price". One chokepoint guarded, its sibling left open -- the third
+        # instance of that shape in two days.
+        #
+        # Scoped to a LONE word, measured against the live index: "Price" -> TROW
+        # and "Data" -> DAIO stop, while "T. Rowe Price" and "Energy Transfer" ->
+        # ET keep binding. That scoping is what lets Energy Transfer still resolve
+        # from its name while bare "ET" -- 2,586 false tags in 7 days -- does not.
+        "company_name_chrome_bleed_20260922",
+        [
+            "tests/test_company_name_chrome_bleed_20260922.py",
             "tests/test_alert_chrome_outbound_tag_20260922.py",
         ],
     ),
