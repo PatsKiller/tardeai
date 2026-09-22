@@ -22,7 +22,24 @@
 # run_alex_daily, stop_health_check, telegram_smart_alerts and
 # youtube_backfill_manager are each driven to the transport by
 # tests/test_alarm_fires_batch6_20260922.py. Nothing was added to this file.
-# transport=send_telegram  total_sites=169  covered=15  uncovered=154
+# Updated 2026-09-22 (documents): the four `send_telegram_document` sites became
+# COUNTED when send_telegram_document entered alarm_firing_coverage.TRANSPORT, and
+# not one of them had ever been observed firing. All four are now driven to the
+# transport by tests/test_alarm_fires_documents_20260922.py.
+#   portfolio_monthly_report, portfolio_report_ms, portfolio_weekly_report
+#     REMOVED: every transport site in each file is driven, documents and text.
+#   portfolio_alerts  2 -> 1
+#     LOWERED, not removed. Its document site is covered (COVERS pins
+#     scripts/portfolio_alerts.py:512); its TEXT site stays debt because it is the
+#     one site here that consults the router, and the router gives it nowhere to
+#     go: measured 2026-09-22, an earnings, dividend, analyst, probe or even a
+#     "CRITICAL"-prefixed message all classify P1_DIGEST and are suppressed to the
+#     digest queue. That site reaches no transport to be observed at. It was not
+#     forced green by stubbing the router -- that would record a delivery the
+#     operator does not get.
+# Nothing was added to this file.
+# transport=(send_telegram, send_telegram_with_id, send_telegram_document)
+# total_sites=192  covered=52  uncovered=140
 
 scripts/advisory_telegram_brief.py 1
 scripts/aegis_overnight.py 3
@@ -80,14 +97,12 @@ scripts/pipeline_alert.py 1
 scripts/pipeline_freshness_slo.py 1
 scripts/pipeline_health_monitor.py 1
 scripts/pipeline_watchdog.py 2
-scripts/portfolio_alerts.py 2
+scripts/portfolio_alerts.py 1
 scripts/portfolio_level_qa.py 2
 scripts/portfolio_live_monitor.py 1
-scripts/portfolio_monthly_report.py 2
 scripts/portfolio_monthly_synthesis.py 1
 scripts/portfolio_orchestrator.py 1
 scripts/portfolio_technical.py 1
-scripts/portfolio_weekly_report.py 2
 scripts/premarket_watcher.py 1
 scripts/previously_traded_watchlist.py 1
 scripts/pro_analyst_monitor.py 1
@@ -146,4 +161,3 @@ scripts/weekly_learning_digest_delivery.py 1
 scripts/weekly_summary_local.py 1
 scripts/youtube_cookie_health_check.py 1
 scripts/youtube_transcript_ingest.py 1
-scripts/portfolio_report_ms.py 1

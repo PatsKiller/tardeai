@@ -2184,6 +2184,29 @@ GATES = [
             "tests/test_agent_runtime_missing_modules.py",
         ],
     ),
+    (
+        # 2026-09-22 — the four `send_telegram_document` alarms, observed firing.
+        #
+        # send_telegram_document entered alarm_firing_coverage.TRANSPORT earlier
+        # the same day by operator decision (sites_total 188 -> 192). That made
+        # four alarm call sites COUNTED for the first time on any branch — and all
+        # four were untested, so they became four lines of named debt in
+        # config/alarm_firing_baseline.txt. This gate is the receipt for paying
+        # them: all four files are REMOVED from that file because every transport
+        # site in each of them is now driven to the transport, documents included.
+        #
+        # test_alarm_coverage.py rides with it deliberately. The firing test and
+        # the ratchet that reads its COVERS list must move together: the COVERS
+        # list is parsed with `ast` and accepts only literal strings, so a
+        # comprehension there reads as ZERO coverage while the firing test stays
+        # green. Running both in one gate means the baseline and the tests cannot
+        # disagree without something going red.
+        "alarm_document_sites_20260922",
+        [
+            "tests/test_alarm_fires_documents_20260922.py",
+            "tests/test_alarm_coverage.py",
+        ],
+    ),
 ]
 
 
