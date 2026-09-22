@@ -55,13 +55,46 @@ def _safe_write_queue(path, items):
         except Exception:
             pass
 
+def _log_handlers() -> list:
+    """Stream always; file only when LOG_DIR is actually writable.
+
+    2026-09-22: importing this module RAISED on any host where PROJECT_ROOT does
+    not exist, because logging.FileHandler opens its file eagerly and cannot
+    create a missing parent directory:
+
+        FileNotFoundError: '/home/johnclaw/trade-ai-v12-rebuild/.../logs/claude_escalation.log'
+
+    PROJECT_ROOT comes from get_live_project_root(), whose three branches are the
+    CURRENT symlink, RuntimeAwareness, and a HARDCODED dev path -- all absolute,
+    all specific to this host. On a CI runner none resolve, so every test that
+    loads this module by path errored at SETUP (25 of 25 in one gate), while the
+    same suite passed locally for a reason unrelated to what it asserts: this
+    machine happens to have that directory.
+
+    A logging side-effect must not be able to abort import. The file handler is
+    now best-effort; losing it costs a log line, not the module.
+
+    NOT fixed here, and worth its own change: seven other modules construct
+    logging.FileHandler on a PROJECT_ROOT path at module level the same way
+    (alpaca_paper_adapter, coder_dispatch, inference_ensemble_worker,
+    inference_layer_engine, pattern_extractor, pipeline_health_monitor,
+    pipeline_watchdog), and lib/live_project_root.py has no TRADEAI_PROJECT_ROOT
+    env override or checkout-relative fallback -- unlike cio_prompt_loader and
+    three siblings, which all layer env -> hardcoded -> __file__ -> cwd.
+    """
+    handlers: list = [logging.StreamHandler()]
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(LOG_DIR / "claude_escalation.log"))
+    except Exception:
+        pass
+    return handlers
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [claude-escalation] %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(LOG_DIR / "claude_escalation.log"),
-    ]
+    handlers=_log_handlers(),
 )
 log = logging.getLogger("claude-escalation")
 
