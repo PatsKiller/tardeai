@@ -1067,6 +1067,17 @@ GATES = [
             "tests/test_alert_delivery_id_attach_20260921.py"
         ],
     ),
+    # pipeline_freshness_monitor._age_days_table returned None for an ABSENT
+    # table, a RAISED query, and a table that EXISTS BUT IS EMPTY. check()
+    # rendered all three as "no output / table/file absent" and the escalation
+    # handler paged on it: seven missing_* components, ~126 pages each per day,
+    # against tables that all exist with fresh rows.
+    (
+        "freshness_reason",
+        [
+            "tests/test_freshness_reason_is_not_conflated_20260921.py",
+        ],
+    ),
     # market_quotes is 34.2M rows / 5.67 GB, of which 97.7% is intraday
     # resolution nobody queries: both consumers read one row per symbol per day.
     # The downsampler deletes, so its gate pins dry-run-by-default, DELETE

@@ -50,14 +50,64 @@ REGISTRY = [
 
 
 def _age_days_table(table, tscol, where):
+    """Age in days, or None. See _age_days_table_reason for WHY it was None.
+
+    Kept returning a bare float|None so every existing caller is unaffected.
+    """
+    age, _reason = _age_days_table_reason(table, tscol, where)
+    return age
+
+
+def _age_days_table_reason(table, tscol, where):
+    """(age_days, reason) — four outcomes that were previously one.
+
+    The original returned None for an ABSENT table, a RAISED query, and a table
+    that EXISTS BUT IS EMPTY. check() rendered all three as "no output /
+    table/file absent" and claude_escalation_handler escalated on it. Measured
+    2026-09-21: seven missing_* components paged ~126x each against tables that
+    all exist with fresh rows.
+
+    Two wrong fixes were tried and discarded before this one:
+
+    1. Returning 0.0 on error. check() reads `elif age > thr` and otherwise falls
+       through to `ok`, so 0.0 means PERFECTLY FRESH — an absent table would be
+       reported healthy. That trades a false-positive storm for silent
+       blindness, which is strictly worse for a freshness monitor.
+    2. Catching the exception here. db_adapter._execute swallows every error
+       itself (`print(...); return None`), so the except block is dead code and
+       returns None for a SQL error, an empty result, AND a dead connection
+       alike. The cause is unrecoverable at that layer.
+
+    So the cause is established BEFORE the aggregate runs, with to_regclass and
+    information_schema — both verified against the live database.
+    """
     from db_adapter import _execute
+
+    reg = _execute("SELECT to_regclass(%s) AS reg", (table,), fetch="all")
+    if reg is None:
+        return None, "db_unreachable"
+    if dict(reg[0]).get("reg") is None:
+        return None, "absent_table"
+
+    col = _execute(
+        "SELECT count(*) AS n FROM information_schema.columns "
+        "WHERE table_name=%s AND column_name=%s",
+        (table, tscol), fetch="all",
+    )
+    if col is None or int(dict(col[0]).get("n") or 0) == 0:
+        return None, "absent_column"
+
     w = f" WHERE {where}" if where else ""
-    try:
-        r = _execute(f"SELECT EXTRACT(EPOCH FROM (NOW()-max({tscol})))/86400 AS d FROM {table}{w}", fetch="all")
-        d = dict(r[0]).get("d") if r else None
-        return float(d) if d is not None else None
-    except Exception:
-        return None  # missing table / col → treat as unknown (reported separately)
+    r = _execute(
+        f"SELECT EXTRACT(EPOCH FROM (NOW()-max({tscol})))/86400 AS d FROM {table}{w}",
+        fetch="all",
+    )
+    if r is None:
+        return None, "query_failed"
+    d = dict(r[0]).get("d")
+    if d is None:
+        return None, "empty_table"
+    return float(d), "ok"
 
 
 def _age_days_file(relpath):
@@ -85,14 +135,37 @@ def _market_closure_grace_days():
         return 0
 
 
+#: Human-readable cause per reason code. Deliberately distinct sentences: the
+#: old single string made seven false "missing" findings indistinguishable from
+#: a genuine outage.
+_REASON_DETAIL = {
+    "absent_table": "table does not exist",
+    "absent_column": "table exists but the timestamp column does not",
+    "empty_table": "table exists but has no rows yet",
+    "query_failed": "the freshness query failed — NOT evidence of absence",
+    "db_unreachable": "database unreachable — NOT evidence of absence",
+    "absent_file": "file does not exist at the declared path",
+}
+
+
 def check():
     stale, missing, ok = [], [], []
     grace = _market_closure_grace_days()
     for name, kind, spec, default_thr, surfaced in REGISTRY:
         thr = float(os.getenv(f"PIPELINE_FRESHNESS_{name.upper()}_DAYS", str(default_thr))) + grace
-        age = _age_days_table(*spec) if kind == "table" else _age_days_file(spec)
+        if kind == "table":
+            age, why = _age_days_table_reason(*spec)
+        else:
+            age = _age_days_file(spec)
+            # A file spec has its own causes. Reusing the table codes here would
+            # report "table does not exist" about a JSONL path.
+            why = "ok" if age is not None else "absent_file"
         if age is None:
-            missing.append({"name": name, "surfaced": surfaced, "reason": "no output / table/file absent"})
+            # `reason` is now the CAUSE, not a catch-all sentence. An escalation
+            # consumer can tell "the table is gone" from "the query broke" from
+            # "it exists and is simply empty" -- three very different actions.
+            missing.append({"name": name, "surfaced": surfaced, "reason": why,
+                            "detail": _REASON_DETAIL.get(why, why)})
         elif age > thr:
             stale.append({"name": name, "age_days": round(age, 1), "threshold_days": thr, "surfaced": surfaced,
                           **({"grace_days": grace} if grace else {})})
