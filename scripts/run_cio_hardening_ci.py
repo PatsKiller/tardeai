@@ -1145,6 +1145,19 @@ GATES = [
             "tests/test_escalation_queue_reaper_20260922.py",
         ],
     ),
+    # The last three storming conditions, measured 2026-09-22 11:07 EDT. Each
+    # exhausted at max attempts, logged "Skipping ...: retries exhausted", never
+    # ran its retry_cmd again and re-armed every 1800s forever. Root causes, in
+    # order: a verify predicate stricter than the detector it verifies; a
+    # detector reading the frozen served copy of a log the cron writes in the DEV
+    # tree; and a review-only item that escaped the shed because its component
+    # was in neither hard-coded namespace. This gate holds all three.
+    (
+        "escalation_storm_last3",
+        [
+            "tests/test_escalation_storm_last3_20260922.py",
+        ],
+    ),
     # The queue also GROWS on its own. hermes_health_inspector._escalate builds
     # every item with the same constant component and used to append it
     # unconditionally, so each run re-queued an already-queued condition --

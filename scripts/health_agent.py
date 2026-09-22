@@ -182,6 +182,52 @@ def _file_age_h(path: Path):
     return round((datetime.now() - datetime.fromtimestamp(path.stat().st_mtime)).total_seconds() / 3600, 1)
 
 
+def _freshest_log_path(name: str) -> Path | None:
+    """Newest existing copy of logs/<name> across the served release and the DEV tree.
+
+    WHY THIS EXISTS — measured 2026-09-22 11:07 EDT
+    -----------------------------------------------
+    health_agent runs with PROJECT_ROOT = the live release, whose logs/ resolves to
+    persistent-state/logs.  The cron that PRODUCES the evidence runs from the DEV
+    tree (`cd $PROJ && ... >> logs/schwab_ingest.log`, crontab
+    `3,18,33,48 9-16 * * 1-5`).  Those are two different files:
+
+        <release>/logs/schwab_ingest.log     54 KB   mtime 2026-09-09 15:18  (frozen)
+        <dev>/logs/schwab_ingest.log        3.5 MB   mtime 2026-09-22 11:03  (ticking)
+
+    Reading only LOG_DIR therefore reported "282.2h old" for an ingest that had run
+    12 minutes earlier.  health:data_quality:schwab_journal_ingest_stale re-armed
+    every 1800s on a condition that was FALSE, and no retry could ever clear it:
+    the remediation writes neither copy's mtime.
+
+    Freshest-of-copies is the honest read — either tree ticking is evidence that
+    the producer ran.  Returns None when no copy exists (genuinely never ran).
+    """
+    newest: Path | None = None
+    newest_mtime = -1.0
+    for root in (LOG_DIR, DEV_ROOT / "logs"):
+        candidate = root / name
+        try:
+            if candidate.is_file():
+                mtime = candidate.stat().st_mtime
+                if mtime > newest_mtime:
+                    newest, newest_mtime = candidate, mtime
+        except OSError:
+            continue
+    return newest
+
+
+def _freshest_log_age_h(name: str):
+    """Age in hours of the freshest copy of logs/<name>; None when no copy exists."""
+    path = _freshest_log_path(name)
+    if path is None:
+        return None
+    try:
+        return round((datetime.now() - datetime.fromtimestamp(path.stat().st_mtime)).total_seconds() / 3600, 2)
+    except OSError:
+        return None
+
+
 def _is_portfolio_market_hours() -> bool:
     try:
         from zoneinfo import ZoneInfo
@@ -2371,9 +2417,10 @@ def collect_trade_in_view_health() -> list[dict]:
     try:
         # Schwab journal ingest — must tick every ~15m during market hours
         if _is_portfolio_market_hours():
-            ingest_log = LOG_DIR / "schwab_ingest.log"
-            if ingest_log.exists():
-                age_h = round((datetime.now() - datetime.fromtimestamp(ingest_log.stat().st_mtime)).total_seconds() / 3600, 2)
+            # Freshest of the served + DEV copies: the cron writes the DEV tree,
+            # health runs from the release. See _freshest_log_path.
+            age_h = _freshest_log_age_h("schwab_ingest.log")
+            if age_h is not None:
                 max_h = float(cfg.get("schwab_ingest_stale_hours", 0.5))
                 if age_h > max_h:
                     out.append(_f("data_quality", "schwab_journal_ingest_stale", "warning",
@@ -3267,8 +3314,8 @@ def collect_broker_token_health() -> list[dict]:
             err = str(rows[0].get("last_error") or "degraded flag set")
             log_sig = None
             try:
-                p = LOG_DIR / "schwab_ingest.log"
-                if p.exists():
+                p = _freshest_log_path("schwab_ingest.log")
+                if p is not None:
                     tail = "\n".join(p.read_text(errors="ignore").splitlines()[-int(cfg.get("tail_lines", 200)):])
                     for sig in ("invalid_grant", "no Schwab login token", "Refresh token is invalid", "OAuthError"):
                         if sig in tail:
