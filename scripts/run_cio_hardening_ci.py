@@ -1155,6 +1155,19 @@ GATES = [
             "tests/test_hermes_escalation_dedupe_20260922.py",
         ],
     ),
+    # Training trades must never page the operator. open_trade_monitor sent
+    # "EXTENDED PROFIT: BAX +$170.04" 12 times in 36 minutes for a position the
+    # operator does not own -- every paper_trades row is ALPACA_PAPER, TOS_PAPER
+    # or the tradeai_automated sandbox, and schwab_positions_live holds none of
+    # those symbols. Also pins the stop_decisions.decided_at column whose wrong
+    # name aborted the transaction each cycle, rolling back the dedupe row while
+    # the Telegram had already gone out.
+    (
+        "paper_trades_never_page",
+        [
+            "tests/test_paper_trades_never_page_20260922.py",
+        ],
+    ),
     # Measured 2026-09-22: grep for error_budget|slo_target|burn_rate across
     # scripts/ and config/ returned NOTHING. Every alarm in the tree is a
     # threshold on a CAUSE, which is how one AUTO-RETRY alert became 57% of the
