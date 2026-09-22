@@ -2286,6 +2286,20 @@ GATES = [
             "tests/test_market_aware_freshness_20260913.py",
         ],
     ),
+    (
+        # 2026-09-22: the desk answered "Research on file: none about S ... say
+        # 'research S'" and stopped, making the operator issue a second command
+        # to start work the desk had already decided was needed. Measured in
+        # cio_operator_gap_requests.jsonl 17:03:00Z: registered 0,
+        # not_registered 1, and the gap resolver never ran at all because the
+        # gap was not BLOCKING. These pin the closed loop -- raise, say wait, go
+        # find out on free vectors only, and record so the same question is
+        # never empty twice -- each with a negative control.
+        "desk_research_gap_loop_20260922",
+        [
+            "tests/test_desk_research_gap_loop_20260922.py",
+        ],
+    ),
 ]
 
 
