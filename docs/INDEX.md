@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `578e881d5e8e6ebe2a4890ddbd96d93e2acd9f42ea83cf7a1d0b298c50bfd563`
+**Tree fingerprint:** `3a8910887e9ef8b6ff595123014cb7bf543d5c4b207f070ec27914120c7ee8ae`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -101,7 +101,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | Momentum Scalp — Stop & Trailing-Stop Policy | review_required | OK | `354954d22052` |
 | `docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md` | Stop Monitoring & Adjustment Protocol | review_required | OK | `8196359bfabe` |
 | `docs/MONDAY_BURNIN_CHECKLIST.md` | Monday ATM Burn-In Checklist | review_required | OK | `362afe5ab3ac` |
-| `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | OK | `042b59e1df9f` |
+| `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | OK | `09cbfcec79ff` |
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator Runbook — LLM Fleet v4.1 Final Execution Pack | active_keep | OK | `22e1f1116a74` |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options & Broker Execution Flows | review_required | OK | `8b8b79559aae` |
 | `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `629259dafb19` |
@@ -837,7 +837,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/CIO_NOTIFICATION_REPLAY_ACCEPTANCE.md` | CIO Notification Replay Acceptance | review_required | OK | `76573f672e2d` |
 | `docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md` | CIO Notification Runtime Topology | review_required | OK | `ab46eaffc931` |
 | `docs/cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md` | CIO Telegram converse — operator runbook | review_required | OK | `01ee6726efe4` |
-| `docs/cio/CIO_TELEGRAM_PRODUCT_STANDARD.md` | CIO Telegram Product Standard | review_required | OK | `50f162d383ed` |
+| `docs/cio/CIO_TELEGRAM_PRODUCT_STANDARD.md` | CIO Telegram Product Standard | review_required | OK | `d22ceec24059` |
 | `docs/cio/CIO_WHATSAPP_CONVERSE_RUNBOOK.md` | CIO WhatsApp converse — operator runbook (P4) | review_required | OK | `241130c46382` |
 | `docs/cio/CLOSED_LOOP_ARCHITECTURE.md` | CIO Desk Closed-Loop Intelligence Architecture | review_required | OK | `5e11dd3570d3` |
 | `docs/cio/DESK_NOTE.md` | Desk note product (synthesis v1.3 — institutional book memo) | review_required | OK | `87c85d794cc6` |
