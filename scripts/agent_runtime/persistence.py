@@ -470,6 +470,22 @@ class _PersistenceBase:
             producer = artifact["producer_agent_id"]
             if producer == review.reviewer_agent_id:
                 raise PersistenceError("self-review is prohibited (persisted producer == reviewer)")
+            # The mirror of the reviewer!=scorer check in record_score. That one asked the
+            # durable rows whether the incoming SCORER had already reviewed; nothing asked
+            # whether the incoming REVIEWER had already scored. So the ORDER of insertion
+            # decided the verdict: review-then-score was refused and score-then-review was
+            # accepted, for the same agent holding both roles on the same artifact. An
+            # independence rule whose answer depends on insertion order is not a rule.
+            scorers = {
+                str(row.get("scorer_agent_id") or "")
+                for row in uow.rows_for_run("agent_scores", run_id)
+                if row.get("artifact_id") == review.artifact_id
+            }
+            if review.reviewer_agent_id in scorers:
+                raise PersistenceError(
+                    "reviewer and scorer must be different agents "
+                    f"(persisted scorer == reviewer: {review.reviewer_agent_id})"
+                )
             if review.artifact_hash != artifact["payload_hash"]:
                 raise PersistenceError("review artifact_hash does not match the persisted artifact")
             control = self._require_run(uow, run_id, lock=True)
