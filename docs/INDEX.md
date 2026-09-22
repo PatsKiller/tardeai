@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `6f9c23bf5d8e8c182a232039f0adccae5a97b1365337fcd6168d0213bba63c5d`
+**Tree fingerprint:** `9bca037bd2be22f83424365e6e465f6140c1fd38f1c999cf172781b6ad02fad0`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,9 +12,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2601 |
-| Markdown (excl. this INDEX) | 2175 |
-| **MISSING HEADER** | **73** |
+| Files under `docs/` (excl. this INDEX) | 2602 |
+| Markdown (excl. this INDEX) | 2176 |
+| **MISSING HEADER** | **74** |
 | Header OK | 2102 |
 | Duplicate groups | 2 |
 
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2230 |
+| review_required | 2231 |
 
 ## Markdown tree
 
@@ -352,6 +352,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/MATURITY_PLAN_4_TO_8.5_2026-09-21.md` | Getting from 4 to 8.5 — the plan, with the arithmetic shown | review_required | MISSING HEADER | `9d0f384de05a` |
 | `docs/architecture/MATURITY_PLAN_4_TO_8.5_2026-09-21_ENHANCED.md` | Enhanced six-phase maturity plan — 4.75 → 8.6 | review_required | MISSING HEADER | `fbd06caa95c5` |
 | `docs/architecture/MATURITY_STATUS_2026-09-21-2205.md` | Where we are: 4.75 / 10 — and what moves it to 8.5 | review_required | MISSING HEADER | `833bdb36740f` |
+| `docs/architecture/MATURITY_STATUS_2026-09-22.md` | Maturity status — 2026-09-22 | review_required | MISSING HEADER | `2ece953c003f` |
 | `docs/architecture/MENTIONS_SCHEDULING_AND_RETENTION.md` | Mentions: scheduling, retention, and who decides relevance | review_required | OK | `44f38a74e254` |
 | `docs/architecture/OPENCLAW_HERMES_UPGRADE_ROLLBACK_PLAN_2026-07-23.md` | OpenClaw and Hermes Shadow Upgrade / Rollback Plan — 2026-07-23 | review_required | OK | `9fd429af3119` |
 | `docs/architecture/PHASE199A_PREFLIGHT_RUNTIME_CONTROL_PLANE_AUDIT.md` | Phase 199A — Preflight: Runtime Control Plane Audit (2026-06-04) | review_required | OK | `22f3223c1a13` |
