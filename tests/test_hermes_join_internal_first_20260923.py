@@ -254,11 +254,30 @@ def test_sentinel_one_spaced_and_lowercase_bind_guid(tmp_path, monkeypatch):
     assert resolve_name("sentinel one")["symbol"] == "S"
 
     # Seed registry so tag_inbound can stamp subject_guid for S.
+    # Shape matches tests/test_inbound_identity_tagger.py REG stub.
     reg = {
-        "S": {"subject_guid": "84601d7d-ae35-5dc7-b664-1b77ad8ea57e", "status": "CONFIRMED"},
+        "entities": {
+            "s-s": {
+                "ticker_alias": "S",
+                "aliases": ["S"],
+                "subject_guid": "84601d7d-ae35-5dc7-b664-1b77ad8ea57e",
+                "security_guid": "84601d7d-ae35-5dc7-b664-1b77ad8ea57e",
+                "issuer_guid": "8960debf-9720-5fba-b2ea-01f72abf84ec",
+                "identity_status": "CONFIRMED",
+            },
+            "s-catx": {
+                "ticker_alias": "CATX",
+                "aliases": ["CATX"],
+                "subject_guid": "catx-guid",
+                "security_guid": "catx-guid",
+                "issuer_guid": "catx-issuer",
+                "identity_status": "CONFIRMED",
+            },
+        },
+        "by_symbol": {"S": "s-s", "CATX": "s-catx"},
     }
     tag = tag_inbound("give me perspective on sentinel one", registry=reg)
-    assert any(r["symbol"] == "S" and r.get("subject_guid") for r in tag["resolved"])
+    assert any(r["symbol"] == "S" and r.get("subject_guid") for r in tag["resolved"]), tag
     # Must not also bind Perspective Therapeutics (CATX) from the word "perspective"
     assert not any(r["symbol"] == "CATX" for r in tag["resolved"])
     cni.refresh()
