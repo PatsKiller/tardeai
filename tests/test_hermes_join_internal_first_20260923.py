@@ -211,13 +211,54 @@ def test_maria_api_surface_exports_are_stable():
         assert hasattr(oif, name), name
 
 
-def test_sentinel_one_spaced_and_lowercase_bind_guid():
+def test_sentinel_one_spaced_and_lowercase_bind_guid(tmp_path, monkeypatch):
+    """Turn-393 class: spoken 'Sentinel One' must compact-match feed SENTINELONE.
+
+    Hermetic — does not depend on the live Schwab instruments sweep (absent in CI).
+    """
+    import json
+
+    from scripts.lib import company_name_index as cni
     from scripts.lib.company_name_index import resolve_name
     from scripts.lib.inbound_identity_tagger import tag_inbound
+    from scripts.lib.schwab_instrument_evidence import SCHEMA
 
-    assert resolve_name("Sentinel One")["symbol"] == "S"
-    assert resolve_name("Sentinel One")["matched_on"] == "compacted"
-    tag = tag_inbound("give me perspective on sentinel one")
-    assert any(r["symbol"] == "S" and r["subject_guid"] for r in tag["resolved"])
+    inst = tmp_path / "instruments.json"
+    inst.write_text(
+        json.dumps(
+            {
+                "schema": SCHEMA,
+                "instruments": {
+                    "S": {
+                        "description": "SENTINELONE INC A",
+                        "identifiers": {"cusip": "T-S1"},
+                    },
+                    "CATX": {
+                        "description": "PERSPECTIVE THERAPEUTICS INC",
+                        "identifiers": {"cusip": "T-CATX"},
+                    },
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("TRADEAI_SCHWAB_INSTRUMENT_EVIDENCE", str(inst))
+    monkeypatch.setenv("TRADEAI_HOUSE_NAMES_DB", "0")
+    monkeypatch.delenv("TRADEAI_IPO_LOCKUPS", raising=False)
+    cni.refresh()
+
+    hit = resolve_name("Sentinel One")
+    assert hit is not None, "compacted brand must resolve"
+    assert hit["symbol"] == "S"
+    assert hit["matched_on"] == "compacted"
+    assert resolve_name("sentinel one")["symbol"] == "S"
+
+    # Seed registry so tag_inbound can stamp subject_guid for S.
+    reg = {
+        "S": {"subject_guid": "84601d7d-ae35-5dc7-b664-1b77ad8ea57e", "status": "CONFIRMED"},
+    }
+    tag = tag_inbound("give me perspective on sentinel one", registry=reg)
+    assert any(r["symbol"] == "S" and r.get("subject_guid") for r in tag["resolved"])
     # Must not also bind Perspective Therapeutics (CATX) from the word "perspective"
     assert not any(r["symbol"] == "CATX" for r in tag["resolved"])
+    cni.refresh()
