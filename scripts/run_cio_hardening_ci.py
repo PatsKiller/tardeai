@@ -794,6 +794,8 @@ GATES = [
             "tests/test_operator_reply_routing_sources_20260913.py",
             # Stage 1+3 parity: shared Hermes join + internal-first finalize (desk + Maria).
             "tests/test_hermes_join_internal_first_20260923.py",
+            # Stage 2 parity: ban pseudo Iris/Alex/CIO attribution (desk + Maria).
+            "tests/test_specialist_attribution_stage2_20260923.py",
             # Evidence coverage contract per intent: house facts first, false-empty claims rejected.
             "tests/test_operator_evidence_contract_20260913.py",
             # Subject resolution: registry-first tickers, company names incl. house-held names.
