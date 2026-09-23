@@ -300,7 +300,7 @@ def _companies(text: str, taken: set[str], doc: Mapping[str, Any]) -> list[dict[
             if sym in taken:
                 continue
             taken.add(sym)
-            conf = 0.85 if hit.get("matched_on") == "exact" else 0.7
+            conf = 0.85 if hit.get("matched_on") in ("exact", "compacted") else 0.7
             kind = "etf" if _kind_for(sym, hit.get("description")) == "etf" else "company"
             out.append(_subject(kind, sym, name, conf, "company_name_index", _identity(doc, sym),
                                 description=hit.get("description"), matched_on=hit.get("matched_on")))
@@ -313,6 +313,35 @@ def _companies(text: str, taken: set[str], doc: Mapping[str, Any]) -> list[dict[
             continue
         out.append(_subject("company", None, name, 0.3, "unresolved_name",
                             reason="name_not_in_instrument_feed_or_ambiguous"))
+
+    # Any-case brands Title-Case extraction missed ("sentinel one"). Multi-word
+    # only; exact/compacted only — never name_prefix, never single-token English.
+    try:
+        prose_stop = getattr(T, "_ANYCASE_PROSE_STOP", frozenset())
+        for m in T._ANYCASE_NAME_RUN.finditer(text or ""):
+            phrase = m.group(1).strip()
+            words = phrase.split()
+            if len(words) < 2 or T._is_generic_term(phrase):
+                continue
+            if words[0].casefold() in prose_stop:
+                continue
+            try:
+                hit = C.resolve_name(phrase)
+            except Exception:
+                hit = None
+            if not hit or not hit.get("symbol"):
+                continue
+            if str(hit.get("matched_on") or "") not in ("exact", "compacted"):
+                continue
+            sym = str(hit["symbol"]).upper()
+            if sym in taken or sym in _STOP or sym in _PSEUDO:
+                continue
+            taken.add(sym)
+            kind = "etf" if _kind_for(sym, hit.get("description")) == "etf" else "company"
+            out.append(_subject(kind, sym, phrase, 0.85, "company_name_index", _identity(doc, sym),
+                                description=hit.get("description"), matched_on=hit.get("matched_on")))
+    except Exception:
+        pass
     return out
 
 

@@ -303,6 +303,19 @@ def resolve_name(name: Any) -> Optional[dict[str, Any]]:
                 # ambiguous, so stop rather than keep shrinking into a guess.
                 return None
 
+    # COMPACTED BRAND. The feed often glues a spoken two-word name into one
+    # token: "SENTINELONE INC A" for "Sentinel One". Progressive prefix cannot
+    # see that — "SENTINEL" is not a prefix of "SENTINELONE" under the
+    # space-bounded rule above. Compacting spaces is not fuzzy matching: it is
+    # the exact normalised form the feed already stores. Ambiguity still refuses.
+    # Turn-393 class: "Sentinel One" / "sentinel one" → S (84601d7d…).
+    if not hits:
+        compact = norm.replace(" ", "")
+        if compact != norm and len(compact) >= 3:
+            compact_hits = exact.get(compact)
+            if compact_hits and len(set(compact_hits)) == 1:
+                hits, matched_on = compact_hits, "compacted"
+
     if not hits or len(set(hits)) != 1:
         return None                      # unknown, or ambiguous — never guess
 

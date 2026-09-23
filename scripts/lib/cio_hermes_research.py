@@ -365,6 +365,9 @@ def _project_new_request(proj: dict[str, Any], req: dict[str, Any]) -> None:
         "created_ts": req.get("created_ts"),
         "thesis_version": req.get("thesis_version"),
         "situation_type": req.get("situation_type"),
+        "subject_guid": req.get("subject_guid"),
+        "issuer_guid": req.get("issuer_guid"),
+        "identity_status": req.get("identity_status"),
         "catalyst_event_ids": list(req.get("known_catalyst_event_ids") or [])[:40],
         # Full request body for worker claim (no re-scan of JSONL required)
         "request": req,
@@ -551,6 +554,26 @@ def enqueue_research_request(
             "provenance": {"operator_forced": bool(operator_forced), "actor_id": actor_id},
         }
         if symbol and symbol != "BOOK":
+            # Stamp registry identity on REQUESTED rows (parity Stage 1/3).
+            # Lineage later carried subject_guid while the request jsonl was null —
+            # join and Maria surfaces could not bind opr_/res_ to the issuer.
+            try:
+                try:
+                    from scripts.lib import research_identity as RI  # noqa: PLC0415
+                except ImportError:  # pragma: no cover
+                    from lib import research_identity as RI  # type: ignore  # noqa: PLC0415
+                id_tag = RI.resolve(RI.load_registry(), symbol)
+                if id_tag and id_tag.get("subject_guid"):
+                    request["subject_guid"] = id_tag["subject_guid"]
+                    request["issuer_guid"] = id_tag.get("issuer_guid")
+                    request["identity_status"] = id_tag.get("identity_status")
+                    subj = dict(request.get("subject") or {})
+                    subj["subject_guid"] = id_tag["subject_guid"]
+                    subj["issuer_guid"] = id_tag.get("issuer_guid")
+                    subj["identity_status"] = id_tag.get("identity_status")
+                    request["subject"] = subj
+            except Exception:  # noqa: BLE001
+                pass
             try:
                 from scripts.lib.research_prompt_context import build_research_prompt_context
                 prompt_context = build_research_prompt_context(
