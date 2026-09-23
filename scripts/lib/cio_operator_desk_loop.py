@@ -38,7 +38,8 @@ _BUY_PERSPECTIVE_RE = re.compile(
     r"thinking\s+of\s+buying|considering\s+(?:a\s+)?buy|want\s+to\s+buy|"
     r"should\s+i\s+buy|worth\s+buying|give\s+me\s+(?:the\s+)?perspective|"
     r"(?:your|the)\s+perspective|buy\s+perspective|"
-    r"is\s+(?:it|this|\$?[A-Za-z]{1,5})\s+a\s+(?:good\s+)?(?:buy|investment)|"
+    # Deliberately NOT "is it a buy" — that is the analyst-target litmus
+    # ("is it a buy and what's the target") and must stay needs=['analyst_view'].
     r"good\s+investment|investment\s+perspective"
     r")\b"
 )
@@ -3951,9 +3952,10 @@ def handle_operator_desk_question(
                 return result
 
         if blocking:
+            buy_first = buy_perspective_needs_research_first(intent, evidence)
             if resolver_summary is None and (
                 any(g.get("domain") == "hermes_research" for g in blocking)
-                or is_buy_perspective_ask(text or "")
+                or buy_first
             ):
                 # Pre-Phase-7 path (resolver disabled): Hermes when research blocks
                 # or when a buy/perspective ask must wait for house coverage.
@@ -3970,9 +3972,16 @@ def handle_operator_desk_question(
             for g in blocking[:6]:
                 sym = g.get("symbol") or "book"
                 gap_bits.append(f"{sym}:{g.get('field') or g.get('reason')}")
-            soft_eta_seconds = int(eta_seconds) if eta_seconds else 1800
-            soft_eta_text = eta_text or f"≈ {max(1, int(round(soft_eta_seconds / 60.0)))} min"
-            _append_jsonl(PENDING_PATH, {
+            # Buy/perspective research-first is the one blocking path that may
+            # promise an ETA without a resolver queue (Hermes CIO default 1800s).
+            # All other pre-Phase-7 / resolver-off paths must NOT invent ≈ —
+            # test_gap_resolver negative controls pin that.
+            buy_eta_seconds = 1800 if buy_first and not eta_seconds else None
+            effective_eta = eta_seconds if eta_seconds is not None else buy_eta_seconds
+            effective_eta_text = eta_text
+            if effective_eta_text is None and buy_eta_seconds is not None:
+                effective_eta_text = f"≈ {max(1, int(round(buy_eta_seconds / 60.0)))} min"
+            pending_row: dict[str, Any] = {
                 "pending_id": pending_id,
                 "status": "open",
                 "ts": _now(),
@@ -3984,21 +3993,23 @@ def handle_operator_desk_question(
                 "blocking_gaps": blocking,
                 "authority": AUTHORITY,
                 "kind": (
-                    "buy_perspective_research_first"
-                    if is_buy_perspective_ask(text or "")
-                    else "blocking_gap"
+                    "buy_perspective_research_first" if buy_first else "blocking_gap"
                 ),
-                "eta_seconds": soft_eta_seconds,
-                **({"resolver": resolver_summary.get("receipt")}
-                   if resolver_summary is not None else {}),
-            })
+            }
+            if effective_eta is not None:
+                pending_row["eta_seconds"] = int(effective_eta)
+            if resolver_summary is not None:
+                pending_row["resolver"] = resolver_summary.get("receipt")
+            _append_jsonl(PENDING_PATH, pending_row)
             queued_line = (
-                f"Queued into the controlled gap pipeline — {soft_eta_text} until it lands. "
+                f"Queued into the controlled gap pipeline — {effective_eta_text} until it lands. "
+                if effective_eta_text else
+                "Queued into the controlled gap pipeline. "
             )
             research_only = all(g.get("domain") == "hermes_research" for g in blocking)
             # Buy/perspective with thin/stale house facts: NEVER lead with a hollow
             # DeepSeek essay (live 2026-09-22 operator paste). Lead with pending.
-            if buy_perspective_needs_research_first(intent, evidence):
+            if buy_first:
                 syms = [str(s).upper() for s in (intent.get("symbols") or [])][:3]
                 sym_label = ", ".join(syms) if syms else "that name"
                 stale_bits = [
@@ -4015,7 +4026,7 @@ def handle_operator_desk_question(
                 result.update({
                     "kind": "deferred",
                     "pending_id": pending_id,
-                    "eta_seconds": soft_eta_seconds,
+                    "eta_seconds": effective_eta,
                     "research_queued": True,
                     "text": (
                         "🧠 *Alex · Research first — no hollow perspective*\n"
@@ -4043,13 +4054,13 @@ def handle_operator_desk_question(
                 curated_now = _curate_from_evidence(text, evidence)
                 queued_now = (
                     "🟣 AI model (DeepSeek) · Deeper research queued: Hermes reads Trade-AI evidence — "
-                    + (f"{soft_eta_text} until it lands" if soft_eta_text else "it lands when the worker runs")
+                    + (f"{effective_eta_text} until it lands" if effective_eta_text else "it lands when the worker runs")
                     + f". Its answer follows here as a reply. Pending: `{pending_id}`"
                 )
                 result.update({
                     "kind": "answered",
                     "pending_id": pending_id,
-                    "eta_seconds": soft_eta_seconds,
+                    "eta_seconds": effective_eta,
                     "text": _with_sources_footer(
                         _insert_before_authority_tail(curated_now.get("text") or "", queued_now),
                         evidence, curated_now,
@@ -4063,7 +4074,7 @@ def handle_operator_desk_question(
             result.update({
                 "kind": "deferred",
                 "pending_id": pending_id,
-                "eta_seconds": soft_eta_seconds,
+                "eta_seconds": effective_eta,
                 "text": (
                     "🧠 *Alex · Trade-AI pull queued*\n"
                     f"I analyzed your ask (`{intent.get('intent')}`). "
