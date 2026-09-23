@@ -169,8 +169,13 @@ The contract above is unchanged; these change what the desk rows put in front of
 - **Research answers come back.** A pending opened for missing research is joined to its Hermes result by pending id
   (`cio_operator_gap_requests.jsonl` → `hermes_research_projection.json` → `hermes_research_results.jsonl`) in
   `try_fulfill_pending_replies`; the follow-up quotes the question and carries Hermes' answer, findings (by severity),
-  open questions and limits, every line `🟣 AI model:`. A failed Hermes run closes the pending at once with the
-  reason. Monitor rule `RESEARCH_LANDED_UNSENT` flags research that landed > 10 min ago without a follow-up.
+  open questions and limits, every line `🟣 AI model:`. A failed Hermes run used to close the pending at once with the
+  raw guard text. As of 2026-09-23 (MCD, `opr_40a1c8f0876c`): a sufficiency diagnostic is not an order; if the model
+  still says buy or sell after one rewrite, that field is withheld and the request finishes; if the request still
+  fails and house price or analyst data is already in hand, the follow-up answers from those stores and says promoted
+  research did not land. The close says "name the ticker" only when the intent has no symbol. A known symbol such as
+  MCD is retried by name. The raw guard string is not pasted into Telegram, so an uppercase token inside it (RAG) is
+  not linked as a ticker. Monitor rule `RESEARCH_LANDED_UNSENT` flags research that landed > 10 min ago without a follow-up.
 - **Answer now.** A research-only ask replies immediately with the house facts plus "Deeper research queued: Hermes
   … Pending `opr_…`" (`CIO_OPERATOR_RESEARCH_ANSWER_NOW`, default on); the follow-up omits the dossier.
 - **Hermes is asked the operator's question**, split to its 220-character limit, plus the thesis check.
@@ -227,6 +232,7 @@ the audit above once this lands.
 Also: `tests/test_operator_answers_use_house_facts_20260913.py`, `tests/test_operator_evidence_contract_20260913.py`,
 `tests/test_operator_intent_resolution_20260913.py`, `tests/test_subject_answer_completeness_20260913.py`,
 `tests/test_subject_memory_recall_20260913.py`, `tests/test_pending_close_wording_20260913.py`,
+`tests/test_hermes_mcd_close_20260923.py`,
 `tests/test_desk_gap_queue_reconnect_20260913.py`, `tests/test_operator_answer_quality_20260913.py`.
 
 `tests/test_operator_reply_routing_sources_20260913.py` — offline: injected send, replaced event bus

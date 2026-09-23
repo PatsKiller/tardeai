@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `a76b40ee88c025df8e84e14d5f87e3f7ae1e8ae1bf42aed947d6bb8779c631a9`
+**Tree fingerprint:** `9dcb3f1d741e5c34caa7cf962560e8d6931e34c6876e14a9db99a567f27d873b`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -101,7 +101,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | Momentum Scalp — Stop & Trailing-Stop Policy | review_required | OK | `354954d22052` |
 | `docs/MOMENTUM_SCALP_STOP_MONITORING_PROTOCOL.md` | Stop Monitoring & Adjustment Protocol | review_required | OK | `8196359bfabe` |
 | `docs/MONDAY_BURNIN_CHECKLIST.md` | Monday ATM Burn-In Checklist | review_required | OK | `362afe5ab3ac` |
-| `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | OK | `4089b52d53c4` |
+| `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | OK | `927fb91f6b5e` |
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator Runbook — LLM Fleet v4.1 Final Execution Pack | active_keep | OK | `22e1f1116a74` |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options & Broker Execution Flows | review_required | OK | `8b8b79559aae` |
 | `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `629259dafb19` |

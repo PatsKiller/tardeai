@@ -635,6 +635,9 @@ GATES = [
             # 2026-09-14 HPE: Hermes completed in 4 minutes and the answer never
             # reached the operator (pending waited on a store Hermes does not write).
             "tests/test_research_joinback_20260914.py",
+            # 2026-09-23 MCD: sufficiency diagnostic is not an order; house facts
+            # still answer when the research run does not land.
+            "tests/test_hermes_mcd_close_20260923.py",
             "tests/test_answer_quality_research_landed_20260914.py",
             # 2026-09-14 Research Escalation Circle phase 1: question GUID, free-channel
             # laps, the grounded Context Analyzer, automatic check-ins.
