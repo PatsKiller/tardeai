@@ -532,6 +532,9 @@ def process_operator_message(
 
     # Trade-AI desk loop: Flash analyzes intent → pull vetted facts → answer or defer
     # Natural language understanding is Flash's job; numbers only from Trade-AI.
+    # Stage 1+3: Maria skill calls scripts.lib.operator_internal_first.answer_internal_first
+    # (same finalize + Hermes join). Desk stays on this path so _prepare_reply remains
+    # THE Telegram/WA chokepoint; join honesty is applied below before finalize.
     desk = handle_operator_desk_question(
         text,
         chat_id=chat_id,
@@ -550,6 +553,21 @@ def process_operator_message(
             "try `/cio reentry` or `/cio portfolio`.\n"
             "No orders/stops from chat · READ_ONLY_ADVISORY"
         )
+    # Shared Hermes join (Stage 3): never let "0 findings" stand beside a desk res_*.
+    try:
+        from scripts.lib.hermes_subject_join import (  # noqa: PLC0415
+            claim_contradicts_join,
+            join_subject_hermes,
+        )
+        _syms = [str(s).upper() for s in ((desk.get("intent") or {}).get("symbols") or []) if s]
+        if _syms:
+            _join = join_subject_hermes(_syms[0])
+            if _join.sources:
+                desk_prov.stores_read = list(desk_prov.stores_read or []) + list(_join.sources)
+            if claim_contradicts_join(reply, _join):
+                reply = _join.honesty_line + "\n\n" + reply
+    except Exception:  # noqa: BLE001
+        pass
     final_reply = _prepare_reply(reply, desk_prov)
 
     # Scope comms-editor footer links to this turn's primary symbols only
