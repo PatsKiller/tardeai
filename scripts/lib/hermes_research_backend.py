@@ -128,18 +128,67 @@ def _mask_rag_diagnostics(text: str) -> str:
     return _RAG_DIAGNOSTIC_RE.sub(" [diagnostic] ", text)
 
 
+def _execution_hit(text: str):
+    if not text:
+        return None
+    return _EXEC_RE.search(_mask_rag_diagnostics(_mask_third_party_labels(text)))
+
+
+_WITHHELD_SENTENCE = (
+    "Draft withheld. The model used disallowed order language, so that sentence was not kept."
+)
+
+
 def assert_no_execution_language(*texts: str) -> None:
     for t in texts:
-        if not t:
-            continue
-        masked = _mask_rag_diagnostics(_mask_third_party_labels(t))
-        hit = _EXEC_RE.search(masked)
+        hit = _execution_hit(t)
         if hit:
             raise HermesBackendError(
                 "execution language not allowed in research output: "
                 f"matched {hit.group(1)!r}",
                 retryable=False,
             )
+
+
+def withhold_execution_language(body: dict[str, Any]) -> dict[str, Any]:
+    """Replace guarded fields that still read as orders. The research run can finish.
+
+    A second model rewrite that still says buy or sell used to fail the whole request.
+    The paid draft was discarded and the operator was told the question could not be
+    answered. The offending field is withheld. Advice is not shipped in its place.
+    """
+    out = dict(body or {})
+    answers = []
+    for answer in out.get("answers") or []:
+        if not isinstance(answer, dict):
+            answers.append(answer)
+            continue
+        item = dict(answer)
+        if _execution_hit(str(item.get("summary") or "")) or _execution_hit(str(item.get("detail") or "")):
+            item["summary"] = _WITHHELD_SENTENCE
+            item["detail"] = ""
+            item["status"] = "unanswered"
+        answers.append(item)
+    out["answers"] = answers
+    findings = []
+    for finding in out.get("findings") or []:
+        if not isinstance(finding, dict):
+            findings.append(finding)
+            continue
+        item = dict(finding)
+        if _execution_hit(str(item.get("text") or "")):
+            item["text"] = _WITHHELD_SENTENCE
+        findings.append(item)
+    out["findings"] = findings
+    desk = out.get("desk_implications")
+    if isinstance(desk, dict) and _execution_hit(str(desk.get("notes") or "")):
+        desk = dict(desk)
+        desk["notes"] = _WITHHELD_SENTENCE
+        out["desk_implications"] = desk
+    limits = list(out.get("limitations") or [])
+    limits.append("order language withheld after the read-only guard; the draft was not shipped")
+    out["limitations"] = limits
+    return out
 
 
 def empty_answer(qid: str, *, reason: str) -> dict[str, Any]:

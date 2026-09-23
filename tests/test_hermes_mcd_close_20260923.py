@@ -17,7 +17,11 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import lib.cio_operator_desk_loop as desk  # noqa: E402
-from lib.hermes_research_backend import HermesBackendError, assert_no_execution_language  # noqa: E402
+from lib.hermes_research_backend import (  # noqa: E402
+    HermesBackendError,
+    assert_no_execution_language,
+    withhold_execution_language,
+)
 
 MCD_Q = "is mcdonalds a good investment on this pullback give perpective"
 MCD_INTENT = {
@@ -40,6 +44,34 @@ OPERATOR_CHAT = "6993102664"  # hardcode-ok: routing fixture, not a credential
 
 def test_sufficiency_diagnostic_is_not_execution_language():
     assert_no_execution_language(DIAGNOSTIC)
+
+
+def test_buy_after_the_diagnostic_is_withheld_instead_of_failing_the_run():
+    """The MCD draft started with the sufficiency line. The buy/sell hit was later in the same field."""
+    body = {
+        "answers": [{
+            "question_id": "q1",
+            "status": "answered",
+            "summary": DIAGNOSTIC + " The name is a buy on this pullback.",
+            "detail": "sell the position into strength",
+            "confidence": 0.4,
+        }],
+        "findings": [{"id": "f1", "text": "place stop under the last swing"}],
+        "desk_implications": {"notes": "buy now"},
+        "limitations": [],
+    }
+    with pytest.raises(HermesBackendError):
+        assert_no_execution_language(body["answers"][0]["summary"])
+    cleaned = withhold_execution_language(body)
+    assert_no_execution_language(
+        cleaned["answers"][0]["summary"],
+        cleaned["answers"][0]["detail"],
+        cleaned["findings"][0]["text"],
+        cleaned["desk_implications"]["notes"],
+    )
+    assert cleaned["answers"][0]["status"] == "unanswered"
+    assert "buy" not in cleaned["answers"][0]["summary"].lower()
+    assert "order language withheld" in cleaned["limitations"][-1]
 
 
 def test_buy_now_still_refuses_and_names_the_match():
