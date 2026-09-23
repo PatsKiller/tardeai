@@ -211,6 +211,122 @@ def test_maria_api_surface_exports_are_stable():
         assert hasattr(oif, name), name
 
 
+def test_dry_run_does_not_enqueue_gap_or_hermes(monkeypatch, tmp_path):
+    """dry_run=True must not write gap/Hermes rows (live remasure residual 2026-09-23)."""
+    calls: list[tuple[str, dict]] = []
+
+    monkeypatch.setattr(oif, "join_subject_hermes", lambda *a, **k: hj.HermesJoinResult(
+        symbol="S",
+        status=hj.STATUS_ANALYZED_THIN,
+        research_ids=["res_c3a661c21740"],
+        result_ids=["rr_x"],
+        honesty_line="Hermes desk research on S completed as analyzed-thin.",
+        sources=["hermes_research_results · rr_x"],
+        latest_result=THIN_RESULT,
+    ))
+    monkeypatch.setattr(oif, "_resolve_primary", lambda _t: {
+        "symbol": "S", "kind": "ticker", "guid": "84601d7d-ae35-5dc7-b664-1b77ad8ea57e",
+    })
+
+    def _fake_desk(text, **kwargs):
+        calls.append(("desk", dict(kwargs)))
+        assert kwargs.get("dry_run") is True
+        return {
+            "kind": "answered",
+            "text": "House facts only.",
+            "sources": ["fixture"],
+            "intent": {"symbols": ["S"], "text": text},
+            "model": None,
+            "research_queued": False,
+            "dry_run": True,
+        }
+
+    import scripts.lib.cio_operator_desk_loop as desk  # noqa: PLC0415
+
+    def _boom_enqueue(*a, **k):
+        raise AssertionError("enqueue_research_gap must not run under dry_run")
+
+    def _boom_register(*a, **k):
+        raise AssertionError("_register_gaps must not run under dry_run")
+
+    monkeypatch.setattr(desk, "handle_operator_desk_question", _fake_desk)
+    monkeypatch.setattr(desk, "enqueue_research_gap", _boom_enqueue)
+    monkeypatch.setattr(desk, "_register_gaps", _boom_register)
+
+    gap_path = tmp_path / "cio_operator_gap_requests.jsonl"
+    gap_path.write_text("", encoding="utf-8")
+    before = gap_path.read_bytes()
+
+    result = oif.answer_internal_first(
+        "perspective on S",
+        surface="desk",
+        use_desk=True,
+        dry_run=True,
+    )
+    assert calls and calls[0][1].get("dry_run") is True
+    assert result.desk and result.desk.get("research_queued") is False
+    assert result.desk.get("dry_run") is True
+    assert gap_path.read_bytes() == before
+    assert "Sources:" in result.text
+
+
+def test_desk_dry_run_skips_enqueue_research_gap(monkeypatch, tmp_path):
+    """Positive control: handle_operator_desk_question(dry_run=True) never enqueues."""
+    import scripts.lib.cio_operator_desk_loop as desk  # noqa: PLC0415
+
+    enqueues: list[dict] = []
+    registers: list[dict] = []
+
+    monkeypatch.setattr(desk, "analyze_operator_intent", lambda text: {
+        "intent": "research",
+        "symbols": ["S"],
+        "text": text,
+        "answerable": True,
+        "needs": ["research"],
+    })
+    monkeypatch.setattr(desk, "gather_tradeai_evidence", lambda intent: {
+        "complete": False,
+        "gaps": [{"domain": "hermes_research", "symbol": "S", "gap_type": "missing_research"}],
+        "blocking_gaps": [
+            {"domain": "hermes_research", "symbol": "S", "gap_type": "missing_research"}
+        ],
+        "sources": ["fixture"],
+        "available": {},
+    })
+    monkeypatch.setattr(desk, "is_answerable", lambda intent: (True, None))
+    monkeypatch.setattr(desk, "_gap_resolver_enabled", lambda: False)
+    monkeypatch.setattr(
+        desk,
+        "buy_perspective_needs_research_first",
+        lambda intent, evidence: True,
+    )
+    monkeypatch.setattr(
+        desk,
+        "enqueue_research_gap",
+        lambda **kw: enqueues.append(kw) or {"ok": True, "emitted": True, "ack": "queued"},
+    )
+    monkeypatch.setattr(
+        desk,
+        "_register_gaps",
+        lambda gaps, **kw: registers.append({"gaps": gaps, **kw}) or {"registered": 1},
+    )
+    appended: list[tuple] = []
+    monkeypatch.setattr(desk, "_append_jsonl", lambda path, row: appended.append((path, row)))
+    monkeypatch.setattr(desk, "_emit_telegram_desk_payload", lambda *a, **k: None)
+
+    out = desk.handle_operator_desk_question(
+        "buy perspective on S",
+        chat_id="test",
+        dry_run=True,
+    )
+    assert enqueues == []
+    assert registers == []
+    assert appended == []
+    assert out.get("dry_run") is True
+    assert out.get("research_queued") is False
+    assert out.get("pending_id") is None
+
+
 def test_sentinel_one_spaced_and_lowercase_bind_guid(tmp_path, monkeypatch):
     """Turn-393 class: spoken 'Sentinel One' must compact-match feed SENTINELONE.
 

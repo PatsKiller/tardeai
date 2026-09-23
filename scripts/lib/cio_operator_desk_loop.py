@@ -3867,8 +3867,13 @@ def handle_operator_desk_question(
     chat_id: str = "",
     message_id: str = "",
     channel: str = "telegram",
+    dry_run: bool = False,
 ) -> dict[str, Any]:
-    """Full loop: analyze → Trade-AI pull → answer or defer with pending reply."""
+    """Full loop: analyze → Trade-AI pull → answer or defer with pending reply.
+
+    dry_run=True gathers house facts and builds a reply, but must not enqueue
+    gap-registry or Hermes research rows and must not open a pending ledger row.
+    """
     intent = analyze_operator_intent(text)
     if str(intent.get("intent") or "") == "attention":
         from scripts.lib.cio_operator_attention import answer_attention_query
@@ -3936,7 +3941,10 @@ def handle_operator_desk_question(
 
     blocking = evidence.get("blocking_gaps") or []
     if blocking:
-        result["gap_registry"] = _register_gaps(blocking, chat_id=str(chat_id), pending_id=pending_id)
+        if dry_run:
+            result["gap_registry"] = {"registered": 0, "dry_run": True}
+        else:
+            result["gap_registry"] = _register_gaps(blocking, chat_id=str(chat_id), pending_id=pending_id)
         # Hermes when research is the blocker
         # Do not promise a reply about something that can never be answered.
         # "What's the outlook for SpaceX, what are options closing, what are
@@ -3968,7 +3976,7 @@ def handle_operator_desk_question(
         eta_seconds: Optional[int] = None
         eta_text: Optional[str] = None
         resolver_summary: Optional[dict[str, Any]] = None
-        if _gap_resolver_enabled():
+        if (not dry_run) and _gap_resolver_enabled():
             resolver_summary = _resolve_blocking_gaps(
                 blocking, intent=intent, text=text or "", chat_id=str(chat_id), pending_id=pending_id,
             )
@@ -4020,7 +4028,7 @@ def handle_operator_desk_question(
 
         if blocking:
             buy_first = buy_perspective_needs_research_first(intent, evidence)
-            if resolver_summary is None and (
+            if (not dry_run) and resolver_summary is None and (
                 any(g.get("domain") == "hermes_research" for g in blocking)
                 or buy_first
             ):
@@ -4034,6 +4042,12 @@ def handle_operator_desk_question(
                 )
                 result.setdefault("went_outside", []).append(
                     "hermes_research queue — no house research on the subject; research requested"
+                )
+            elif dry_run and (
+                any(g.get("domain") == "hermes_research" for g in blocking) or buy_first
+            ):
+                result.setdefault("went_outside", []).append(
+                    "dry_run — would enqueue hermes_research; no durable queue write"
                 )
             gap_bits = []
             for g in blocking[:6]:
@@ -4067,6 +4081,24 @@ def handle_operator_desk_question(
                 pending_row["eta_seconds"] = int(effective_eta)
             if resolver_summary is not None:
                 pending_row["resolver"] = resolver_summary.get("receipt")
+            if dry_run:
+                result.update({
+                    "kind": "deferred",
+                    "pending_id": None,
+                    "dry_run": True,
+                    "research_queued": False,
+                    "text": (
+                        "dry_run — would open a pending and enqueue Hermes/gap "
+                        f"for `{pending_id}`; no durable queue write."
+                    ),
+                    "reply_preview": (
+                        "dry_run — would open a pending and enqueue Hermes/gap; "
+                        "no durable queue write."
+                    ),
+                    "reply_source": "dry_run_no_enqueue",
+                    "model": None,
+                })
+                return result
             _append_jsonl(PENDING_PATH, pending_row)
             queued_line = (
                 f"Queued into the controlled gap pipeline — {effective_eta_text} until it lands. "
@@ -4171,7 +4203,7 @@ def handle_operator_desk_question(
 
     # Freeform: answer now; optionally soft-queue research gaps for named symbols
     if intent_name == "freeform":
-        queue_on = _env("CIO_OPERATOR_FREEFORM_QUEUE", "1").lower() not in (
+        queue_on = (not dry_run) and _env("CIO_OPERATOR_FREEFORM_QUEUE", "1").lower() not in (
             "0", "false", "off", "no",
         )
         research_gaps = [
@@ -4228,7 +4260,12 @@ def handle_operator_desk_question(
 
     if soft and "DATA_UNAVAILABLE" not in text_out and intent_name != "meta_system":
         soft_syms = sorted({g.get("symbol") for g in soft if g.get("symbol")})
-        if soft_syms:
+        if soft_syms and dry_run:
+            result["gap_registry"] = {"registered": 0, "dry_run": True}
+            result["research_queued"] = False
+            note = "dry_run — would soft-queue research/gaps; no durable queue write"
+            text_out = text_out.rstrip() + f"\n_{note}_"
+        elif soft_syms:
             # Claim "queued" only when the registry accepted the gaps. _register_gaps
             # returned registered=0 on every call (its bridge module is absent), and
             # the note said "queued for Trade-AI refresh" regardless.

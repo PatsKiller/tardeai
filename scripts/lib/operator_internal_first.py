@@ -136,6 +136,9 @@ def answer_internal_first(
         thin skill probes).
     hub_finder:
         Optional ``callable(symbol) -> int`` Hub count probe.
+    dry_run:
+        When True, desk still gathers house facts but must not enqueue gap or
+        Hermes research rows (no durable queue writes).
     """
     primary = _resolve_primary(text)
     symbol = str(primary.get("symbol") or "").upper() or None
@@ -192,6 +195,7 @@ def answer_internal_first(
             chat_id=chat_id,
             message_id=message_id,
             channel=channel if channel != "skill" else "telegram",
+            dry_run=dry_run,
         )
         out.desk = desk_result if isinstance(desk_result, dict) else None
         # Prefer desk-resolved identity when the desk bound a symbol.
@@ -301,7 +305,8 @@ def answer_internal_first(
     out.sources = list(receipt.stores_read or [])
     out.went_outside = list(receipt.went_outside or [])
     out.kind = str((desk_result or {}).get("kind") or "internal_first")
-    _ = dry_run  # reserved: callers may skip enqueue via desk flags later
+    if dry_run and isinstance(out.desk, dict):
+        out.desk = {**out.desk, "dry_run": True, "research_queued": False}
     return out
 
 
