@@ -3861,15 +3861,187 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     return out
 
 
+#: Parent-alert titles that carry the subject when the operator replies with
+#: deixis ("research this", "has a thesis") and no ticker in the reply body.
+_REPLY_ALERT_SYMBOL_RE = re.compile(
+    r"(?is)\b(?:READY|NEAR|ENTRY|GO|A\+)\b[^A-Za-z0-9]{0,24}"
+    r"(?:ENTRY\s+ALERT|ALERT)?[^A-Za-z0-9]{0,12}"
+    r"(?:—|-|–|:)?\s*\$?([A-Z]{1,5})\b"
+)
+_REPLY_TITLE_SYMBOL_RE = re.compile(
+    r"(?is)\b(?:ENTRY\s+ALERT|GO\s+ALERT|MATERIAL\s+CHANGE)[^A-Za-z0-9]{0,24}"
+    r"(?:—|-|–|:)?\s*\$?([A-Z]{1,5})\b"
+)
+
+
+def symbols_from_reply_context(
+    reply_to_text: Optional[str] = None,
+    *,
+    explicit: Optional[list[str]] = None,
+) -> list[str]:
+    """Tickers named by the message being replied to (entry/GO alerts).
+
+    Measured 2026-09-23: reply "research this see is has a thesis" on
+    READY ENTRY ALERT — ABNB bound subject BOOK because the reply body has no
+    ticker and converse never forwarded the parent alert text into the desk.
+    """
+    out: list[str] = []
+    for raw in explicit or []:
+        sym = str(raw or "").strip().upper()
+        if sym and sym != "BOOK" and sym not in out:
+            out.append(sym)
+    text = str(reply_to_text or "")
+    if text:
+        for rx in (_REPLY_ALERT_SYMBOL_RE, _REPLY_TITLE_SYMBOL_RE):
+            for m in rx.finditer(text):
+                sym = str(m.group(1) or "").upper()
+                if sym and sym not in _SYMBOL_STOP and sym != "BOOK" and sym not in out:
+                    out.append(sym)
+        if not out:
+            # RichMessage title form: "READY ENTRY ALERT — ABNB (advisory)"
+            m = re.search(
+                r"(?is)ENTRY\s+ALERT\s*[—\-–:]\s*\$?([A-Z]{1,5})\b",
+                text,
+            )
+            if m:
+                sym = m.group(1).upper()
+                if sym not in _SYMBOL_STOP and sym != "BOOK":
+                    out.append(sym)
+    return out[:6]
+
+
+def _apply_reply_context_symbols(
+    intent: dict[str, Any],
+    *,
+    reply_to_text: Optional[str] = None,
+    reply_context_symbols: Optional[list[str]] = None,
+) -> None:
+    """Merge parent-alert tickers into intent when the reply named none."""
+    if intent.get("symbols"):
+        return
+    inherited = symbols_from_reply_context(
+        reply_to_text, explicit=reply_context_symbols,
+    )
+    if not inherited:
+        return
+    intent["symbols"] = inherited
+    intent["reply_context_symbols"] = inherited
+    subjects = list(intent.get("subjects") or [])
+    have = {
+        str(s.get("symbol") or "").upper()
+        for s in subjects if isinstance(s, dict)
+    }
+    for sym in inherited:
+        if sym in have:
+            continue
+        subjects.append({
+            "symbol": sym,
+            "kind": "ticker",
+            "matched": sym,
+            "matched_via": "reply_context",
+            "identity_status": "CANDIDATE",
+        })
+        have.add(sym)
+    intent["subjects"] = subjects
+    ok, why = is_answerable(intent)
+    intent["answerable"] = ok
+    intent["unanswerable_reason"] = why or None
+
+
+def _seconds_until_utc_midnight(now: Optional[datetime] = None) -> int:
+    n = now or datetime.now(timezone.utc)
+    if n.tzinfo is None:
+        n = n.replace(tzinfo=timezone.utc)
+    nxt = (n + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(60, int((nxt - n).total_seconds()))
+
+
+def _denied_all_budget(summary: dict[str, Any]) -> bool:
+    """True when every denial attempt was budget_denied (not empty/error)."""
+    denied = summary.get("denied") or []
+    if not denied:
+        return False
+    for row in denied:
+        attempts = row.get("attempts") or []
+        if not attempts:
+            return False
+        if any(a.get("outcome") != "budget_denied" for a in attempts):
+            return False
+    return True
+
+
+def _should_queue_despite_budget(summary: dict[str, Any], intent: dict[str, Any]) -> bool:
+    """Registry ``say_so_queue_only_if_producer_exists``: producer exists → queue.
+
+    Blanket no_coverage with "No pending opened" is wrong when the only reason
+    every vector failed is the day cap and Hermes/writer still exists for the
+    research domain. Queue honestly for the next UTC-day budget window.
+    """
+    if not _denied_all_budget(summary):
+        return False
+    behs = [
+        str(r.get("no_coverage_behaviour") or "")
+        for r in (summary.get("denied") or [])
+    ]
+    if not any("queue_only_if_producer" in b for b in behs):
+        # Research intents still deserve an honest queue when Hermes is the
+        # declared producer, even if the behaviour string was not carried.
+        needs = set(intent.get("needs") or [])
+        if "research" not in needs and str(intent.get("intent") or "") != "research":
+            return False
+    return True
+
+
+def _format_budget_deferred_queue(
+    summary: dict[str, Any],
+    *,
+    intent: dict[str, Any],
+    pending_id: str,
+    eta_seconds: int,
+) -> str:
+    syms = [str(s).upper() for s in (intent.get("symbols") or []) if str(s).strip()]
+    subject = syms[0] if syms else "BOOK"
+    eta_h = max(1, int(round(eta_seconds / 3600.0)))
+    lines = [
+        "🧠 *Alex · research queued for the next budget window*",
+        f"• *{subject}* research thesis — every declared source hit today's "
+        f"spend cap; Hermes (declared producer) is still queued.",
+    ]
+    for r in summary.get("denied") or []:
+        tried = ", ".join(
+            f"{a.get('vector')}={a.get('outcome')}" for a in (r.get("attempts") or [])
+        ) or "no vectors"
+        lines.append(f"  tried {tried}")
+    lines.append(
+        f"Pending `{pending_id}` — ≈ {eta_h} h (UTC day reset). "
+        "I will follow up here when it lands."
+    )
+    lines.append(f"No orders/stops · {AUTHORITY}")
+    return "\n".join(lines)
+
+
 def handle_operator_desk_question(
     text: str,
     *,
     chat_id: str = "",
     message_id: str = "",
     channel: str = "telegram",
+    reply_to_text: Optional[str] = None,
+    reply_context_symbols: Optional[list[str]] = None,
 ) -> dict[str, Any]:
-    """Full loop: analyze → Trade-AI pull → answer or defer with pending reply."""
+    """Full loop: analyze → Trade-AI pull → answer or defer with pending reply.
+
+    reply_to_text / reply_context_symbols: when the operator replies to an alert
+    ("research this / has a thesis" on READY ENTRY ALERT — ABNB) the reply body
+    often names no ticker. Inherit the parent alert's symbol so the gap resolver
+    researches ABNB, not BOOK.
+    """
     intent = analyze_operator_intent(text)
+    _apply_reply_context_symbols(
+        intent,
+        reply_to_text=reply_to_text,
+        reply_context_symbols=reply_context_symbols,
+    )
     if str(intent.get("intent") or "") == "attention":
         from scripts.lib.cio_operator_attention import answer_attention_query
         ans = answer_attention_query(text)
@@ -4006,6 +4178,61 @@ def handle_operator_desk_question(
                 # pre-Phase-7 path (pending + Hermes) rather than tell the
                 # operator "no coverage" on the strength of a traceback.
                 resolver_summary = None
+            elif _should_queue_despite_budget(resolver_summary, intent):
+                # say_so_queue_only_if_producer_exists: day caps spent, but
+                # Hermes/writer still exists. Queue honestly for UTC reset
+                # instead of "No pending opened — nothing declared can answer".
+                eta_seconds = _seconds_until_utc_midnight()
+                eta_text = f"≈ {max(1, int(round(eta_seconds / 3600.0)))} h"
+                enqueue_research_gap(
+                    symbols=[str(s).upper() for s in (intent.get("symbols") or [])],
+                    chat_id=str(chat_id),
+                    pending_id=pending_id,
+                    operator_text=text or "",
+                )
+                pending_row = {
+                    "pending_id": pending_id,
+                    "status": "open",
+                    "ts": _now(),
+                    "chat_id": str(chat_id),
+                    "message_id": str(message_id),
+                    "channel": channel,
+                    "operator_text": (text or "")[:1000],
+                    "intent": intent,
+                    "blocking_gaps": blocking,
+                    "authority": AUTHORITY,
+                    "kind": "budget_deferred_queue",
+                    "eta_seconds": int(eta_seconds),
+                    "resolver": resolver_summary.get("receipt"),
+                }
+                _append_jsonl(PENDING_PATH, pending_row)
+                result.update({
+                    "kind": "deferred",
+                    "pending_id": pending_id,
+                    "eta_seconds": eta_seconds,
+                    "research_queued": True,
+                    "text": _format_budget_deferred_queue(
+                        resolver_summary,
+                        intent=intent,
+                        pending_id=pending_id,
+                        eta_seconds=eta_seconds,
+                    ),
+                    "reply_source": "gap_resolver:budget_deferred_queue",
+                    "gap_resolution": {
+                        **(resolver_summary.get("receipt") or {}),
+                        "queued": [
+                            f"research_thesis:"
+                            f"{(intent.get('symbols') or ['BOOK'])[0]}:hermes_research"
+                        ],
+                        "budget_deferred": True,
+                        "eta_seconds": eta_seconds,
+                    },
+                })
+                result.setdefault("went_outside", []).append(
+                    "hermes_research queue — day budget spent; deferred to next UTC window"
+                )
+                _emit_telegram_desk_payload(intent, result)
+                return result
             else:
                 # Every declared vector was denied, exhausted or empty. A
                 # pending here would be the silent promise this exists to end.

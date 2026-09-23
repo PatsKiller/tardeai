@@ -558,6 +558,7 @@ def process_operator_message(
         chat_id=chat_id,
         message_id=message_id_s,
         channel=channel,
+        reply_to_text=reply_to_text,
     )
     # The unanswerable branch carries its refusal in `reply_preview`, not `text`;
     # reading only `text` replaced "I can't answer that from Trade-AI" with a
