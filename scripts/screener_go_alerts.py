@@ -24,7 +24,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
 import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -141,12 +140,12 @@ def _send_go(send_telegram: Callable[..., Any], item: dict,
     gate = _cio_go_gate(sym, text, db_query=db_query)
     if not gate.get("allow", False):
         return False, str(gate.get("held_reason") or "cio_stance_conflict")
-    note = str(gate.get("annotation_text") or "").strip()
-    if note:
-        if gate.get("effective_action") == "WATCH":
-            text = re.sub(rf"\bGO\b(?=[^\n]{{0,40}}\b{re.escape(sym)}\b)", "WATCH", text, count=1, flags=re.I)
-        if note not in text:
-            text = text.rstrip() + "\n" + note
+    if str(gate.get("annotation_text") or "").strip():
+        try:
+            from lib.cio_telegram_stance_gate import StanceGateVerdict, apply_stance_rewrite  # noqa: PLC0415
+        except ImportError:
+            from scripts.lib.cio_telegram_stance_gate import StanceGateVerdict, apply_stance_rewrite  # type: ignore
+        text = apply_stance_rewrite(text, sym, StanceGateVerdict(**gate))
     extra = ({"reply_markup": rich["reply_markup"], "link_preview_options": rich["link_preview_options"]}
              if rich else {})
     ok = bool(send_telegram(text, bypass_router=True, message_class="operator_alert", **extra))

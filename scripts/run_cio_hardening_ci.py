@@ -624,6 +624,8 @@ GATES = [
             "tests/test_comms_editor_mode_file_20260914.py",
             # 2026-09-18: investment-shaped Telegram held on CIO Avoid / missing decision.
             "tests/test_cio_telegram_stance_gate_20260918.py",
+            # 2026-09-23 M5: AVOID/SELL hard hold, soft stances GO→WATCH, hold-ledger dedupe.
+            "tests/test_cio_telegram_stance_gate_m5_20260923.py",
             # 2026-09-16 B-phase curation: STOP HEALTH per-symbol repeats collapse to one
             # batched card; GO + entry alerts carry a HELD / NOT HELD triage pill.
             "tests/test_stop_health_batch_20260916.py",
