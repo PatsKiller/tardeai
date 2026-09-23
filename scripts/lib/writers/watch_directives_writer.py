@@ -150,6 +150,31 @@ class WriteReceipt:
         return None
 
     @property
+    def subject_identity(self) -> Dict[str, Any]:
+        """subject_guid + identity fields from details (insert) or reused.
+
+        The table has no identity column — the GUID travels here only. Prefer a
+        bag that carries subject_guid / identity_source so callers can stamp
+        API honesty without re-resolving.
+        """
+        for bag in list(self.details) + list(self.reused):
+            if not isinstance(bag, dict):
+                continue
+            if any(k in bag for k in (
+                "subject_guid", "identity_source", "identity_reason",
+                "identity_lookup_failed", "symbol",
+            )):
+                return {
+                    "subject_guid": bag.get("subject_guid"),
+                    "identity_source": bag.get("identity_source"),
+                    "identity_status": bag.get("identity_status"),
+                    "identity_reason": bag.get("identity_reason"),
+                    "identity_lookup_failed": bag.get("identity_lookup_failed"),
+                    "symbol": bag.get("symbol"),
+                }
+        return {"subject_guid": None, "identity_source": None, "symbol": None}
+
+    @property
     def ok(self) -> bool:
         return not self.rows_rejected
 

@@ -42,7 +42,7 @@ Graphviz flow diagrams in the CIO architecture folder on Google Drive; the markd
 |----------|---------|
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | **Canonical** operator card + `should_be_stale` / RTH 4h TTL / shadow-batch freshness / material technical hash |
 | `docs/COMMAND_CENTER_V3_WATCHLIST.md` | Watchlist hub — operator band states + link to architecture |
-| `docs/CHANGELOG.md` | 2026-07-21 entry · commit `b2fbcd90` |
+| `docs/CHANGELOG.md` | 2026-09-23 entry · `/api/v2/watchlist` serves active ticker directives; legacy watchlist_items writers retired |
 
 ## Analyst Prospectus RC1 — Full Coverage, Card Links, Urgent Cadence (2026-06-24)
 | Document | Purpose |

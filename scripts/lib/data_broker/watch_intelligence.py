@@ -1440,3 +1440,31 @@ def get_watch_intelligence() -> dict[str, Any]:
     if generated_at and not projection.get("last_assessed_at"):
         projection["last_assessed_at"] = generated_at
     return projection
+
+
+def active_ticker_directives() -> list[dict[str, Any]]:
+    """Active ticker watch directives, newest per symbol, for the hub's /api/v2/watchlist.
+
+    The symbol lives in spec->>'symbol'. Read here (the watch_directives projection
+    owner) so hub handlers do not grow direct reads of the store. Fail-soft: no DB or
+    a query error yields [] — the caller still serves its manual list.
+    """
+    try:
+        from db_adapter import _execute
+
+        rows = _execute(
+            """
+            SELECT DISTINCT ON (UPPER(TRIM(spec->>'symbol')))
+                   UPPER(TRIM(spec->>'symbol')) AS symbol, id, label, rationale,
+                   trade_ai_enabled, hermes_enabled, created_at, updated_at
+              FROM watch_directives
+             WHERE status = 'active' AND kind = 'ticker' AND COALESCE(TRIM(spec->>'symbol'), '') <> ''
+             ORDER BY UPPER(TRIM(spec->>'symbol')), created_at DESC, id DESC
+            """,
+            fetch="all",
+        )
+    except Exception:
+        return []
+    out = [dict(r) for r in rows or []]
+    out.sort(key=lambda r: r["created_at"], reverse=True)
+    return out
