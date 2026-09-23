@@ -3058,9 +3058,7 @@ def _enqueue_hermes_research(
         out["emitted"] = 0 if isinstance(emit, dict) and emit.get("skipped") else 1
         out["plan_id"] = plan_id
         out["emit"] = emit if isinstance(emit, dict) else {"raw": str(emit)[:200]}
-        _append_jsonl(
-            OPERATOR_GAP_REQUESTS_PATH,
-            {
+        _gap_row = {
                 "ts": _now(),
                 "pending_id": pending_id,
                 "chat_id": chat_id,
@@ -3071,8 +3069,18 @@ def _enqueue_hermes_research(
                 "research_id": (emit or {}).get("research_id") if isinstance(emit, dict) else None,
                 "symbols": symbols,
                 "authority": AUTHORITY,
-            },
-        )
+            }
+        try:
+            from scripts.lib import research_identity as _RI  # noqa: PLC0415
+            _sym0 = (symbols[:1] or [None])[0]
+            if _sym0:
+                _tag = _RI.resolve(_RI.load_registry(), _sym0)
+                if _tag and _tag.get("subject_guid"):
+                    _gap_row["subject_guid"] = _tag["subject_guid"]
+                    _gap_row["issuer_guid"] = _tag.get("issuer_guid")
+        except Exception:  # noqa: BLE001
+            pass
+        _append_jsonl(OPERATOR_GAP_REQUESTS_PATH, _gap_row)
     except Exception as exc:
         out["error"] = f"{type(exc).__name__}:{exc}"
     return out
