@@ -27971,8 +27971,25 @@ def _research_intelligence_stage_promote(body=None):
             code, payload = res if isinstance(res, tuple) else (200, res)
             if code != 200 or not (payload or {}).get("ok"):
                 return {"ok": False, "error": (payload or {}).get("error") or "directive create failed"}
-            extra["directive"] = {k: payload.get(k) for k in ("directive_id", "reused") if k in payload}
-            new_status = "watchlisted" if target == "watchlist" else "directive_created"
+            extra["directive"] = {
+                k: payload.get(k)
+                for k in (
+                    "directive_id",
+                    "reused",
+                    "on_ranked_watchlist",
+                    "membership",
+                    "subject_guid",
+                    "honesty",
+                )
+                if k in payload
+            }
+            # Stage 5: target=watchlist must not claim ranked membership unless probed true.
+            if target == "watchlist" and payload.get("on_ranked_watchlist") is True:
+                new_status = "watchlisted"
+            elif target == "watchlist":
+                new_status = "directive_created_not_ranked"
+            else:
+                new_status = "directive_created"
 
         else:  # paper_proposal — PENDING row in the normal review chain
             qrow = _db_query(
@@ -36826,6 +36843,8 @@ def _watch_directive_create(body):
                 }
         except Exception:
             pass
+    _ident: dict = {}
+    _wd_receipt = None
     if did is None:
         import sys as _s1
 
@@ -36858,6 +36877,17 @@ def _watch_directive_create(body):
         did = _rc.directive_id
         if _rc.reused:
             reused = True
+        _wd_receipt = _rc
+        _ident = dict(getattr(_rc, "subject_identity", None) or {})
+    elif kind == "ticker":
+        # Pre-existing ticker reuse path never called the writer — resolve GUID
+        # via the same helpers so the response still stamps subject_guid.
+        try:
+            from lib.writers.watch_directives_writer import resolve_directive_subject as _rds
+
+            _ident = dict(_rds(kind, spec) or {})
+        except Exception:
+            _ident = {}
     # ── SERVICE-AT-CREATION (operator caught 2026-06-12: CIFR added 22:47, servicer cron is
     # market-hours-only → ticker sat invisible until 09:00). Ticker directives now run through the
     # SAME real evaluation engine (directive_promotion.promote_directive_lead) synchronously, so the
@@ -36920,7 +36950,36 @@ def _watch_directive_create(body):
             research_topic = {"topic_id": tid, "planning": planning}
         except Exception as e:
             research_topic = {"error": str(e)[:120]}
-    return 200, {
+    # Stage 5 honesty: directive id ≠ ranked /api/v2/watchlist membership unless probed true.
+    _sym = (spec.get("symbol") or "").upper().strip() if kind == "ticker" else None
+    _ranked = {"on_ranked": False, "via": None}
+    if kind == "ticker" and _sym:
+        try:
+            from lib.watchlist_membership_honesty import symbol_on_ranked_watchlist as _rank_probe
+
+            _ranked = _rank_probe(
+                _sym,
+                db_query=_db_query,
+                state_dir=STATE_DIR if "STATE_DIR" in globals() else (PROJECT_ROOT / "data" / "portfolios" / "state"),
+            )
+        except Exception as _rank_err:
+            _ranked = {"on_ranked": False, "via": None, "probe_error": type(_rank_err).__name__}
+    from lib.watchlist_membership_honesty import build_directive_add_honesty as _build_honesty
+
+    _honesty = _build_honesty(
+        directive_id=did,
+        kind=kind,
+        label=label,
+        symbol=_sym,
+        subject_guid=_ident.get("subject_guid"),
+        identity_source=_ident.get("identity_source"),
+        identity_status=_ident.get("identity_status"),
+        reused=reused,
+        serviced=serviced,
+        on_ranked_watchlist=bool(_ranked.get("on_ranked")) if kind == "ticker" else False,
+        ranked_via=_ranked.get("via"),
+    )
+    out = {
         "ok": True,
         "directive_id": did,
         "kind": kind,
@@ -36928,7 +36987,20 @@ def _watch_directive_create(body):
         "serviced": serviced,
         "research_topic": research_topic,
         "reused": reused,
+        # Stage 5 contract fields (also nested under honesty for consumers that prefer one bag)
+        "subject_guid": _honesty.get("subject_guid"),
+        "identity_source": _honesty.get("identity_source"),
+        "on_ranked_watchlist": _honesty.get("on_ranked_watchlist"),
+        "membership": _honesty.get("membership"),
+        "ranked_watchlist_path": _honesty.get("ranked_watchlist_path"),
+        "directives_path": _honesty.get("directives_path"),
+        "honesty": _honesty.get("honesty"),
+        "policy": _honesty.get("policy"),
+        "watchlist_honesty": _honesty,
     }
+    if _wd_receipt is not None:
+        out["writer_rows_written"] = int(getattr(_wd_receipt, "rows_written", 0) or 0)
+    return 200, out
 
 
 def _watch_directive_promote(body):

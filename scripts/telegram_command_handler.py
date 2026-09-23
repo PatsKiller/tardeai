@@ -849,8 +849,37 @@ def _handle_watch(args: str) -> str:
         conn.commit()
         if _rc.reused:
             _dup_warn += f"\n(existing {kind} directive #{did} reused — no duplicate created)"
+        _ident = dict(getattr(_rc, "subject_identity", None) or {})
+        _honesty_line = ""
+        if kind == "ticker":
+            try:
+                from lib.watchlist_membership_honesty import (
+                    build_directive_add_honesty,
+                    format_operator_copy,
+                )
+                _sym = str((spec or {}).get("symbol") or "").upper()
+                # Telegram watch path does not promote synchronously — never claim ranked.
+                _h = build_directive_add_honesty(
+                    directive_id=did,
+                    kind=kind,
+                    label=label,
+                    symbol=_sym,
+                    subject_guid=_ident.get("subject_guid"),
+                    identity_source=_ident.get("identity_source"),
+                    reused=bool(_rc.reused),
+                    on_ranked_watchlist=False,
+                )
+                _honesty_line = "\n" + format_operator_copy(_h)
+                if _ident.get("subject_guid"):
+                    _honesty_line += f"\nsubject_guid={_ident['subject_guid']}"
+            except Exception:
+                _honesty_line = (
+                    f"\n✓ Directive #{did} recorded on watch_directives — not claimed as "
+                    f"ranked /api/v2/watchlist membership from this path."
+                )
         msg = (f"✓ Watch directive #{did}: {kind} — {label}" + _dup_warn
                + (f"\nthesis: {rationale}" if rationale else "")
+               + _honesty_line
                + "\nTrade AI + Hermes will honor it (Hermes proposes via staging only).")
         _notify_both(f"📌 New watch directive #{did}: {kind} — {label}")
         return msg
