@@ -101,7 +101,21 @@ def test_operator_pick_resolves_divergence(tmp_path: Path) -> None:
     assert json.loads((tmp_path / "jobs.json").read_text())["jobs"][0]["id"] == "B"
 
 
-def test_already_present_is_noop(tmp_path: Path) -> None:
+def test_recover_accepts_migrated_dot_n(tmp_path: Path) -> None:
+    """Doctor archives as jobs.json.migrated.2 — must be a recovery candidate."""
+    src = tmp_path / "jobs.json.migrated.2"
+    src.write_text(
+        json.dumps({"version": 1, "jobs": [{"id": "from-migrated-2"}]}),
+        encoding="utf-8",
+    )
+    report = gcm.recover_jobs_json_if_missing(
+        cron_dir=tmp_path,
+        operator_pick=str(src),
+    )
+    assert report.ok is True
+    assert report.action == "recovered"
+    assert json.loads((tmp_path / "jobs.json").read_text())["jobs"][0]["id"] == "from-migrated-2"
+
     (tmp_path / "jobs.json").write_text(
         json.dumps({"version": 1, "jobs": []}),
         encoding="utf-8",

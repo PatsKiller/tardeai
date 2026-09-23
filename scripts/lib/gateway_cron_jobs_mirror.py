@@ -52,7 +52,7 @@ def primary_path(cron_dir: Optional[Path] = None) -> Path:
 
 
 def list_recovery_candidates(cron_dir: Optional[Path] = None) -> list[Path]:
-    """Prefer ``.migrated``, then newest ``.bak*`` by mtime. Never invent content."""
+    """Prefer ``.migrated`` / ``.migrated.*``, then newest ``.bak*`` by mtime."""
     d = resolve_cron_dir(cron_dir)
     if not d.is_dir():
         return []
@@ -60,6 +60,14 @@ def list_recovery_candidates(cron_dir: Optional[Path] = None) -> list[Path]:
     migrated = d / f"{PRIMARY_NAME}.migrated"
     if migrated.is_file():
         out.append(migrated)
+    # Doctor may archive as jobs.json.migrated.2, .3, …
+    out.extend(
+        sorted(
+            (p for p in d.glob(f"{PRIMARY_NAME}.migrated.*") if p.is_file()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+    )
     baks = sorted(
         (p for p in d.glob(f"{PRIMARY_NAME}.bak*") if p.is_file()),
         key=lambda p: p.stat().st_mtime,
