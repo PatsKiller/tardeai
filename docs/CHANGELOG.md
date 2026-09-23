@@ -4,6 +4,13 @@ Status:      ACTIVE
 as_of:       2026-09-23T10:00:00-04:00
 Measured at: 88eddef0e (origin/main = release CURRENT = dev tree) + fix/watchlist-directive-union
 
+## 2026-09-23 — Day P/L and cost basis now follow today's trades (MCD read -$2,714 vs Schwab +$289)
+
+- **Measured.** MCD (rollover IRA) was bought today, 100 @ 235.01 and 100 @ 236.36, while it fell 5.4%. Schwab: P/L Day = P/L Open = +$289. Command Center: day change **-$2,713.66** (`(price - prev_close) * shares` treats all 200 shares as held since yesterday) and cost basis **$23,501** (the first lot) on 200 shares. The same two defects hit every position traded today: WMT (+300, basis still 100 sh), XLB (+6.3), DIV (411 of 415.65 sold, basis still 413 sh → ~$8k phantom loss). Portfolio TODAY was off by ~$2.8k.
+- **Day change** (`portfolio_repricer`): today's Buy/Sell fills from `trade_transactions` (account-keyed; `schwab_roth_ira`→`schwab_roth`) split the position — shares held at the open earn `price - prev_close`, a bought share `price - fill`, a sold share `fill - prev_close` (broker convention). Rows so computed carry `day_change_basis: "intraday_fills"`; no fills, a DB error, or fills that do not reconcile with shares fall back to the old formula. `day_change_pct` stays the security's move.
+- **Cost basis** (`schwab_position_sync`): a trade-sized share change on an existing row (`share_drift_status: auto_applied`) rebases `cost_basis` on the broker average price × new shares (previously set only for brand-new rows), and recomputes `gain_loss`. The SSOT basis shield no longer restores a stored basis when the share count changed — it still guards an unchanged share count (tax-grade `csv_lot` basis untouched).
+- **Not done.** A position fully sold today leaves holdings, so its realized day P/L is not in TODAY. The Schwab transport's `currentDayProfitLoss` is not captured (broker-subsystem code, not edited); it would be the authoritative cross-check.
+
 ## 2026-09-23 — A watched ticker the watchlist API could not see: directives join /api/v2/watchlist
 
 MATURITY_IMPACT: the gateway and the primary watchlist endpoint now agree on what is watched; a dead legacy writer family stops failing silently.

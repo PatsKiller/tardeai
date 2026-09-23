@@ -1245,6 +1245,8 @@ GATES = [
         [
             "tests/test_lane_registry.py",
             "tests/test_lane_portfolio_repricer.py",
+            # Day P/L for shares traded today (fills) + basis rebase on trade-sized share change.
+            "tests/test_intraday_day_pl_and_basis_20260923.py",
         ],
     ),
     (

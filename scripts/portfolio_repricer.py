@@ -412,14 +412,69 @@ def _update_quote_cache(
     return updated_count
 
 
+# ── Intraday fills (day P/L for shares traded today) ─────────────────────────
+# (price - prev_close) * shares treats every share as held since yesterday's close. A
+# position bought today then shows the whole day's move as its P/L: 2026-09-23 MCD, 200 sh
+# bought at 235.01/236.36 while MCD fell 5.4%, read -$2,714 against Schwab's +$289.
+# Broker convention: shares held at the open earn (price - prev_close); a share bought today
+# earns (price - fill); a share sold today earned (fill - prev_close).
+_FILL_ACCOUNT_ALIASES = {"schwab_roth_ira": "schwab_roth"}   # transactions label -> holdings label
+
+
+def _load_intraday_fills(trade_date: Optional[str] = None) -> Dict[tuple, Dict[str, list]]:
+    """Today's Buy/Sell fills keyed (holdings account, SYMBOL). Fail-soft: {} on any error."""
+    try:
+        from db_adapter import _execute  # type: ignore
+    except Exception:
+        return {}
+    try:
+        rows = _execute(
+            """SELECT account, UPPER(symbol) AS symbol, action, quantity, price
+                 FROM trade_transactions
+                WHERE trade_date = COALESCE(%s::date, (now() AT TIME ZONE 'America/New_York')::date)
+                  AND action IN ('Buy', 'Sell') AND quantity > 0 AND price > 0""",
+            (trade_date,),
+            fetch="all",
+        ) or []
+    except Exception:
+        return {}
+    out: Dict[tuple, Dict[str, list]] = {}
+    for r in rows:
+        acct = _FILL_ACCOUNT_ALIASES.get(r["account"], r["account"])
+        side = "buys" if r["action"] == "Buy" else "sells"
+        out.setdefault((acct, r["symbol"]), {"buys": [], "sells": []})[side].append(
+            (float(r["quantity"]), float(r["price"]))
+        )
+    return out
+
+
+def _intraday_day_change(
+    shares: float, price: float, prev_close: float, fills: Optional[Dict[str, list]]
+) -> Optional[float]:
+    """Fill-aware day P/L, or None when there are no fills or they do not reconcile."""
+    if not fills:
+        return None
+    bought = sum(q for q, _ in fills.get("buys", []))
+    sold = sum(q for q, _ in fills.get("sells", []))
+    held_at_open = shares - bought + sold
+    if held_at_open < -1e-6:
+        return None   # fills do not reconcile with shares — keep the plain formula
+    dc = (price - prev_close) * max(held_at_open, 0.0)
+    dc += sum((price - px) * q for q, px in fills.get("buys", []))
+    dc += sum((px - prev_close) * q for q, px in fills.get("sells", []))
+    return round(dc, 2)
+
+
 # ── Apply prices to holdings ───────────────────────────────────────────────────
 def _apply_to_holdings(
     holdings: List[Dict],
     live_prices: Dict[str, Dict],
     fidelity_prices: Dict[str, float],
+    intraday_fills: Optional[Dict[tuple, Dict[str, list]]] = None,
 ) -> int:
     """Update price/market_value/day_change fields in holdings list. Returns update count."""
     updated = 0
+    intraday_fills = intraday_fills or {}
     for h in holdings:
         if h.get("is_loan") or h.get("is_cash"):
             continue
@@ -477,6 +532,12 @@ def _apply_to_holdings(
                 h["analytical_unrealized_pl_usd"] = round(h["analytical_market_value"] - float(cost), 2)
             # Day change is an analytical display field, not a broker fact.
             h["day_change"]     = round((new_price - prev_close) * shares, 2)
+            _fill_dc = _intraday_day_change(shares, new_price, prev_close, intraday_fills.get((acct, sym.upper())))
+            if _fill_dc is not None:
+                h["day_change"] = _fill_dc
+                h["day_change_basis"] = "intraday_fills"
+            else:
+                h.pop("day_change_basis", None)
             h["day_change_pct"] = round(chg_pct, 4)
             h["price_source"]   = src
             updated += 1
@@ -789,7 +850,7 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
             print(f"  [repricer] Yahoo fallback: {len(yahoo_prices)} symbols "
                   f"({', '.join(yahoo_prices.keys())})")
 
-    n_holdings = _apply_to_holdings(portfolio.get("holdings", []), live_prices, fidelity_prices)
+    n_holdings = _apply_to_holdings(portfolio.get("holdings", []), live_prices, fidelity_prices, _load_intraday_fills())
     print(f"  [repricer] Holdings updated: {n_holdings}")
 
     # ── 4. Recalculate totals ─────────────────────────────────────────────────
