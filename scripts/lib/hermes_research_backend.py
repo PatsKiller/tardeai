@@ -114,11 +114,30 @@ def _mask_third_party_labels(text: str) -> str:
     return _THIRD_PARTY_LABEL_RE.sub(" [label] ", text)
 
 
+# Research-quality diagnostics. They describe evidence coverage, not an order.
+# A buy/sell token inside one of these spans is not execution language.
+_RAG_DIAGNOSTIC_RE = re.compile(
+    r"RAG retrieval is split\b.*?sufficient_for_synthesis"
+    r"|approved primary sources"
+    r"|sufficiency\.sufficient_for_synthesis",
+    re.I | re.S,
+)
+
+
+def _mask_rag_diagnostics(text: str) -> str:
+    return _RAG_DIAGNOSTIC_RE.sub(" [diagnostic] ", text)
+
+
 def assert_no_execution_language(*texts: str) -> None:
     for t in texts:
-        if t and _EXEC_RE.search(_mask_third_party_labels(t)):
+        if not t:
+            continue
+        masked = _mask_rag_diagnostics(_mask_third_party_labels(t))
+        hit = _EXEC_RE.search(masked)
+        if hit:
             raise HermesBackendError(
-                f"execution language not allowed in research output: {t[:120]}",
+                "execution language not allowed in research output: "
+                f"matched {hit.group(1)!r}",
                 retryable=False,
             )
 

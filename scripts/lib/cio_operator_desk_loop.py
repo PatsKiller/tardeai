@@ -3241,6 +3241,64 @@ def hermes_result_for_pending(pending_id: str) -> Optional[dict[str, Any]]:
     return None
 
 
+def plain_research_failure(error: str, symbols: list[str]) -> str:
+    """Operator-facing reason. Never paste the guard exception into Telegram."""
+    names = ", ".join(s for s in symbols[:4] if s) or "the subject"
+    low = (error or "").lower()
+    if any(p in low for p in (
+        "approved primary sources",
+        "sufficient_for_synthesis",
+        "rag retrieval is split",
+    )):
+        return (
+            f"promoted research did not land for {names}: the evidence was split "
+            "between supporting and contradictory items and had no approved primary source"
+        )
+    if "execution language" in low:
+        return (
+            f"promoted research did not land for {names}: the research draft was refused "
+            "by the read-only guard"
+        )
+    return f"promoted research did not land for {names}"
+
+
+def _has_house_facts(avail: dict[str, Any], symbols: list[str]) -> bool:
+    prices = avail.get("subject_price") or {}
+    if any(isinstance(prices.get(s), dict) and prices[s].get("close") is not None for s in symbols):
+        return True
+    if (avail.get("analyst_view") or {}).get("items"):
+        return True
+    if avail.get("subject_levels") or avail.get("subject_memory"):
+        return True
+    if avail.get("news") or avail.get("news_articles") or avail.get("catalyst_events"):
+        return True
+    return False
+
+
+def house_evidence_after_research_failure(
+    evidence: dict[str, Any], symbols: list[str], error: str,
+) -> Optional[dict[str, Any]]:
+    """Drop the research block when house facts can still answer.
+
+    A failed Hermes run must not throw away a price, an analyst row, or levels
+    that were already gathered. Returns None when those stores are empty.
+    """
+    avail = dict((evidence or {}).get("available") or {})
+    if not symbols or not _has_house_facts(avail, symbols):
+        return None
+    note = plain_research_failure(error, symbols)
+    avail["research_failure_note"] = note
+    blocking = [
+        g for g in ((evidence or {}).get("blocking_gaps") or [])
+        if isinstance(g, dict) and g.get("domain") not in ("hermes_research", "quote_price")
+    ]
+    ev = dict(evidence or {})
+    ev["available"] = avail
+    ev["blocking_gaps"] = blocking
+    ev["complete"] = not blocking and bool(avail)
+    return ev
+
+
 def hermes_failure_for_pending(pending_id: str) -> Optional[str]:
     """Why Hermes failed this pending's research, when every request it caused failed."""
     metas = _hermes_requests_for_pending(pending_id)
@@ -4403,9 +4461,13 @@ def _retry_advice(row: dict[str, Any], intent: dict[str, Any]) -> str:
     if new:
         return (f"Ask again: this question now resolves to {', '.join(new[:4])}, "
                 "so I can answer it from house data.")
-    if now_syms:
-        return (f"Ask again to retry {', '.join(now_syms[:4])}. If the same data is still missing, "
-                "I will say so straight away instead of promising a follow-up.")
+    known = list(dict.fromkeys(now_syms + [s for s in before if s not in now_syms]))
+    if known:
+        # The raw sentence may not contain the ticker ("mcdonalds" is not "MCD").
+        # Symbols already on the intent are known. Never tell the operator to name one.
+        return (f"Ask again to retry {', '.join(known[:4])}. The ticker is already known. "
+                "If the same data is still missing, I will say so straight away "
+                "instead of promising a follow-up.")
     return ("Asking again the same way won't help, because no ticker resolves from it. "
             "Name the ticker and I will answer from house data.")
 
@@ -4486,34 +4548,43 @@ def try_fulfill_pending_replies(
                 answerable, why = is_answerable(intent)
                 hermes_failed = hermes_failure_for_pending(pending_key) if answerable else None
                 if hermes_failed:
-                    answerable, why = False, f"the Hermes research run failed ({hermes_failed})"
-                limit_h = _pending_expiry_hours(row)
-                if answerable and (age_h is None or age_h < limit_h):
-                    continue
-                closing_text, reason = _closing_message(
-                    row, intent, age_h=age_h, limit_h=limit_h, why=why,
-                )
-                chat_id = str(row.get("chat_id") or "")
-                if chat_id:
-                    body, _prov = _finalize_operator_reply(
-                        closing_text,
-                        _pending_reply_provenance("pending_expired", row, evidence),
+                    symbols = [str(s).upper() for s in (intent.get("symbols") or []) if str(s).strip()]
+                    released = house_evidence_after_research_failure(evidence, symbols, hermes_failed)
+                    if released is not None and released.get("complete"):
+                        evidence = released
+                    else:
+                        answerable, why = False, plain_research_failure(hermes_failed, symbols)
+                if not evidence.get("complete"):
+                    limit_h = _pending_expiry_hours(row)
+                    if answerable and (age_h is None or age_h < limit_h):
+                        continue
+                    closing_text, reason = _closing_message(
+                        row, intent, age_h=age_h, limit_h=limit_h, why=why,
                     )
-                    send_fn(chat_id, body, row.get("message_id"))
-                _append_jsonl(PENDING_PATH, {
-                    **{k: row.get(k) for k in (
-                        "pending_id", "chat_id", "message_id", "channel", "operator_text",
-                    )},
-                    "status": "expired",
-                    "expired_ts": _now(),
-                    "expiry_reason": reason,
-                    "age_hours": round(age_h, 2) if age_h is not None else None,
-                    "authority": AUTHORITY,
-                })
-                expired += 1
-                continue
+                    chat_id = str(row.get("chat_id") or "")
+                    if chat_id:
+                        body, _prov = _finalize_operator_reply(
+                            closing_text,
+                            _pending_reply_provenance("pending_expired", row, evidence),
+                        )
+                        send_fn(chat_id, body, row.get("message_id"))
+                    _append_jsonl(PENDING_PATH, {
+                        **{k: row.get(k) for k in (
+                            "pending_id", "chat_id", "message_id", "channel", "operator_text",
+                        )},
+                        "status": "expired",
+                        "expired_ts": _now(),
+                        "expiry_reason": reason,
+                        "age_hours": round(age_h, 2) if age_h is not None else None,
+                        "authority": AUTHORITY,
+                    })
+                    expired += 1
+                    continue
             curated = _curate_from_evidence(str(row.get("operator_text") or ""), evidence)
             answer_text = curated.get("text") or ""
+            note = str((evidence.get("available") or {}).get("research_failure_note") or "").strip()
+            if note:
+                answer_text = _insert_before_authority_tail(answer_text, note[0].upper() + note[1:] + ".")
             if hermes_result:
                 answer_text = _insert_before_authority_tail(answer_text, format_hermes_section(hermes_result))
             landed = "Hermes research landed" if hermes_result else "Trade-AI data landed"
