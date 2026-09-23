@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import uuid
@@ -196,6 +197,20 @@ DEFAULT_ON_GAP: list[dict[str, Any]] = [
 #: ONE bucket among themselves -- the historic single slot -- rather than
 #: competing with goal-scoped work for it, which would simply move the defect.
 PER_GOAL_BUDGET_VECTORS = frozenset({"operator_ask"})
+
+#: Budget pools keep live operator questions from being starved by background
+#: cron (`data_gap_resolver`) or lab remasure/dryrun traffic that also stamps
+#: `operator:*` requesters. Measured 2026-09-23: ABNB "research this / thesis"
+#: on a READY ENTRY alert got blanket `budget_denied` (hermes 6/6, governed
+#: 20/8) while the live operator had only spent 2 hermes slots — the rest were
+#: dryruns/remeasures + cron. Same `max_per_day`, separate counters per pool.
+BUDGET_POOL_LIVE = "live_operator"
+BUDGET_POOL_BACKGROUND = "background"
+BUDGET_POOL_LAB = "lab"
+_LIVE_OPERATOR_REQUESTER_RE = re.compile(r"^operator:\d+$")
+_LAB_OPERATOR_REQUESTER_RE = re.compile(
+    r"^operator:(dryrun|remeasure|test[_-]|_test)", re.IGNORECASE,
+)
 
 #: Desk evidence-domain names → registry domains. The desk speaks in needs
 #: ("analyst_view"); the registry speaks in domains ("analyst_opinion").
@@ -478,9 +493,27 @@ def read_receipts(path: Optional[Path] = None) -> list[dict[str, Any]]:
     return rows
 
 
+def budget_pool(requester: Optional[str]) -> str:
+    """Which day-cap counter a requester spends against.
+
+    Live Telegram/WA chat ids (`operator:8797974247`) must not share a counter
+    with `data_gap_resolver` cron or with lab remasure/dryrun stamps that also
+    look like `operator:*`. Without this split, background traffic burns the
+    desk's hermes/search slots and the operator hears blanket `budget_denied`
+    with no pending — measured on ABNB 2026-09-23.
+    """
+    r = str(requester or "").strip()
+    if _LIVE_OPERATOR_REQUESTER_RE.match(r):
+        return BUDGET_POOL_LIVE
+    if _LAB_OPERATOR_REQUESTER_RE.match(r):
+        return BUDGET_POOL_LAB
+    return BUDGET_POOL_BACKGROUND
+
+
 def attempts_today(vector: str, *, path: Optional[Path] = None, now: Optional[datetime] = None,
                    rows: Optional[list[dict[str, Any]]] = None,
-                   goal_id: Optional[str] = None) -> int:
+                   goal_id: Optional[str] = None,
+                   pool: Optional[str] = None) -> int:
     """Attempts that consumed budget today: everything except refusals.
 
     `goal_id` scopes the count to one goal's own attempts. Passing None counts
@@ -488,6 +521,11 @@ def attempts_today(vector: str, *, path: Optional[Path] = None, now: Optional[da
     `""` counts the attempts that name NO goal -- including every receipt
     written before this field existed, which is what keeps the ungoaled bucket
     honest rather than starting it back at zero.
+
+    `pool` scopes by :func:`budget_pool` of the receipt's requester. Passing
+    None keeps the historic global count (tests + callers that do not yet
+    declare a requester). When set, only same-pool receipts count — so a live
+    operator question is not denied because cron already spent the vector.
     """
     day = (now or _now()).date().isoformat()
     n = 0
@@ -499,6 +537,8 @@ def attempts_today(vector: str, *, path: Optional[Path] = None, now: Optional[da
         if r.get("outcome") in ("budget_denied", "retired_skipped"):
             continue
         if goal_id is not None and str(r.get("goal_id") or "") != str(goal_id):
+            continue
+        if pool is not None and budget_pool(r.get("requester")) != pool:
             continue
         n += 1
     return n
@@ -921,11 +961,20 @@ def resolve(
         # An empty goal_id is a bucket in its own right, NOT a fall-back to the
         # global count: counting globally here would let goal-scoped work starve
         # the ungoaled slot, which is the same defect wearing a different hat.
+        # Pool: live operator / background cron / lab remasure each keep their
+        # own counter (see budget_pool). Without that, data_gap_resolver and
+        # dryrun stamps deny a real Telegram research ask.
         scope = gap.goal_id if vector in PER_GOAL_BUDGET_VECTORS else None
-        used = attempts_today(vector, now=started, rows=receipts_rows, goal_id=scope)
+        pool = budget_pool(gap.requester)
+        used = attempts_today(
+            vector, now=started, rows=receipts_rows, goal_id=scope, pool=pool,
+        )
         if used >= int(entry.get("max_per_day") or 0):
             attempt.outcome = "budget_denied"
-            attempt.detail = f"{used}/{entry.get('max_per_day')} attempts today"
+            attempt.detail = (
+                f"{used}/{entry.get('max_per_day')} attempts today"
+                f" (pool={pool})"
+            )
             _finish(attempt, ctx, res, receipts_rows, gap)
             continue
 
@@ -1156,6 +1205,7 @@ __all__ = [
     "AUTHORITY", "SCHEMA", "RECEIPT_SCHEMA", "RECEIPTS_PATH", "FLAG_LIVE", "FLAG_PAID", "paid_authorized",
     "VECTORS", "COST_CLASSES", "OUTCOMES", "WHYS", "DEFAULT_ON_GAP", "DESK_DOMAIN_MAP",
     "PER_GOAL_BUDGET_VECTORS",
+    "BUDGET_POOL_LIVE", "BUDGET_POOL_BACKGROUND", "BUDGET_POOL_LAB", "budget_pool",
     "DataGap", "Resolution", "VectorResult", "Context", "Attempt",
     "resolve", "load_on_gap", "normalise_chain", "registry_domain", "canonical_domain",
     "read_receipts", "attempts_today", "live_armed", "BACKUP_FETCHERS", "DEFAULT_VECTORS",

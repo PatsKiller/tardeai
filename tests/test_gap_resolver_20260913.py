@@ -20,6 +20,7 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -255,9 +256,11 @@ def gr_is_retired(p: str) -> bool:
 
 
 def test_budget_exhaustion_yields_budget_denied_and_the_chain_moves_on(ctx, gap):
-    # One attempt already spent today on refresh_producer.
+    # One attempt already spent today on refresh_producer — same budget pool as
+    # the gap (live operator), so the day cap applies.
     gr._append_receipt(ctx.receipts, {"vector": "refresh_producer", "outcome": "no_answer",
-                                      "started": NOW.isoformat(), "gap_id": "earlier"})
+                                      "started": NOW.isoformat(), "gap_id": "earlier",
+                                      "requester": gap.requester})
     fakes = _all_fakes(backup_provider=_Fake("answered", answer={"rating": "buy"}, as_of=NOW.isoformat(),
                                              provider="yfinance_on_demand"))
     chain = [{"vector": "refresh_producer", "cost_class": "free", "max_per_day": 1},
@@ -266,6 +269,7 @@ def test_budget_exhaustion_yields_budget_denied_and_the_chain_moves_on(ctx, gap)
     receipts = _rows(ctx.receipts)[1:]
     assert receipts[0]["vector"] == "refresh_producer" and receipts[0]["outcome"] == "budget_denied"
     assert "1/1" in receipts[0]["detail"]
+    assert "pool=live_operator" in receipts[0]["detail"]
     assert fakes["refresh_producer"].calls == 0
     assert receipts[1]["vector"] == "backup_provider" and receipts[1]["outcome"] == "answered"
     assert res.answered and res.vector == "backup_provider"
@@ -280,6 +284,61 @@ def test_refusals_do_not_consume_budget(ctx):
 def test_budget_is_per_utc_day(ctx):
     rows = [{"vector": "v", "outcome": "no_answer", "started": "2026-09-12T23:59:00+00:00"}]
     assert gr.attempts_today("v", now=NOW, rows=rows) == 0
+
+
+def test_budget_pool_classifies_live_lab_and_background():
+    assert gr.budget_pool("operator:8797974247") == gr.BUDGET_POOL_LIVE
+    assert gr.budget_pool("operator:1") == gr.BUDGET_POOL_LIVE
+    assert gr.budget_pool("operator:dryrun_s_wt_20260922") == gr.BUDGET_POOL_LAB
+    assert gr.budget_pool("operator:remeasure_desk") == gr.BUDGET_POOL_LAB
+    assert gr.budget_pool("data_gap_resolver") == gr.BUDGET_POOL_BACKGROUND
+    assert gr.budget_pool("desk") == gr.BUDGET_POOL_BACKGROUND
+
+
+def test_live_operator_budget_ignores_cron_and_lab_spend(ctx, gap):
+    """ABNB 2026-09-23: cron + remasure burned global hermes; live ask must still run."""
+    prior = [
+        {"vector": "hermes_research", "outcome": "queued", "started": NOW.isoformat(),
+         "requester": "data_gap_resolver"},
+        {"vector": "hermes_research", "outcome": "queued", "started": NOW.isoformat(),
+         "requester": "operator:dryrun_s_wt_20260922"},
+        {"vector": "hermes_research", "outcome": "queued", "started": NOW.isoformat(),
+         "requester": "operator:remeasure_desk"},
+        {"vector": "governed_search", "outcome": "partial", "started": NOW.isoformat(),
+         "requester": "data_gap_resolver"},
+    ]
+    for row in prior:
+        gr._append_receipt(ctx.receipts, row)
+    assert gr.attempts_today(
+        "hermes_research", now=NOW, rows=_rows(ctx.receipts), pool=gr.BUDGET_POOL_LIVE,
+    ) == 0
+    fakes = _all_fakes(hermes_research=_Fake("queued", provider="hermes", eta_seconds=1800))
+    chain = [
+        {"vector": "hermes_research", "cost_class": "metered", "max_per_day": 1},
+        {"vector": "operator_ask", "cost_class": "free", "max_per_day": 1},
+    ]
+    res = gr.resolve(gap, chain=chain, vectors=fakes, ctx=ctx)
+    assert res.outcome == "queued"
+    assert res.vector == "hermes_research"
+    assert fakes["hermes_research"].calls == 1
+    hermes_receipt = [r for r in _rows(ctx.receipts) if r.get("vector") == "hermes_research"
+                      and r.get("requester") == gap.requester][-1]
+    assert hermes_receipt["outcome"] == "queued"
+
+
+def test_live_operator_still_denied_when_its_own_pool_is_spent(ctx, gap):
+    gr._append_receipt(ctx.receipts, {
+        "vector": "hermes_research", "outcome": "queued", "started": NOW.isoformat(),
+        "requester": gap.requester,
+    })
+    fakes = _all_fakes(hermes_research=_Fake("queued", provider="hermes", eta_seconds=1800))
+    chain = [{"vector": "hermes_research", "cost_class": "metered", "max_per_day": 1}]
+    res = gr.resolve(gap, chain=chain, vectors=fakes, ctx=ctx)
+    assert res.outcome == "no_coverage"
+    denied = [r for r in _rows(ctx.receipts) if r.get("outcome") == "budget_denied"]
+    assert denied and denied[0]["vector"] == "hermes_research"
+    assert "pool=live_operator" in denied[0]["detail"]
+    assert fakes["hermes_research"].calls == 0
 
 
 # ── a fast answer stops the chain; a slow one carries an ETA ──────────────────
@@ -591,6 +650,133 @@ def test_desk_hands_its_own_hermes_enqueue_to_the_resolver(desk_offline, monkeyp
     res = desk.handle_operator_desk_question(WMT_INTENT["text"], chat_id=OPERATOR_CHAT, message_id="7")
     assert calls and calls[0]["symbols"] == ["WMT"] and calls[0]["chat_id"] == OPERATOR_CHAT
     assert res["kind"] == "deferred" and "≈ 30 min" in res["text"]
+
+
+def test_symbols_from_reply_context_reads_ready_entry_alert():
+    alert = "🟢 READY ENTRY ALERT — ABNB (advisory)\nSetup pullback · now $128.40"
+    assert desk.symbols_from_reply_context(alert) == ["ABNB"]
+    assert desk.symbols_from_reply_context(
+        "GO ABNB — momentum scalp setup",
+    ) == ["ABNB"]
+
+
+def test_desk_inherits_abnb_from_entry_alert_reply(desk_offline, monkeypatch):
+    """Reply 'research this' on READY ENTRY ALERT — ABNB must not bind BOOK."""
+    seen: dict[str, Any] = {}
+
+    def fake_analyze(text):
+        return {
+            "intent": "research",
+            "symbols": [],
+            "needs": ["research"],
+            "text": text,
+            "answerable": True,
+            "ok": True,
+            "source": "heuristic",
+        }
+
+    def fake_gather(intent):
+        seen["symbols"] = list(intent.get("symbols") or [])
+        return {
+            "complete": True,
+            "gaps": [],
+            "blocking_gaps": [],
+            "sources": ["portfolio"],
+            "available": {},
+        }
+
+    monkeypatch.setattr(desk, "analyze_operator_intent", fake_analyze)
+    monkeypatch.setattr(desk, "gather_tradeai_evidence", fake_gather)
+    monkeypatch.setattr(
+        desk, "_curate_from_evidence",
+        lambda text, ev: {
+            "ok": True,
+            "text": "ABNB brief\nREAD_ONLY_ADVISORY",
+            "source": "tradeai_deterministic",
+            "model": None,
+        },
+    )
+    _wire(monkeypatch, _all_fakes())
+    res = desk.handle_operator_desk_question(
+        "research this see is has a thesis",
+        chat_id=OPERATOR_CHAT,
+        message_id="9",
+        reply_to_text="🟢 READY ENTRY ALERT — ABNB (advisory)\nSetup pullback · now $128.40",
+    )
+    assert seen["symbols"] == ["ABNB"]
+    assert res["intent"]["symbols"] == ["ABNB"]
+    assert res["intent"].get("reply_context_symbols") == ["ABNB"]
+
+
+def test_desk_queues_when_every_vector_is_budget_denied_but_producer_exists(
+    desk_offline, monkeypatch,
+):
+    """ABNB 2026-09-23: say_so_queue_only_if_producer_exists must open a pending."""
+    research_gap = {
+        "complete": False,
+        "gaps": [{
+            "domain": "hermes_research", "symbol": "ABNB", "field": "research",
+            "reason": "no house research", "gap_type": "missing_research",
+        }],
+        "blocking_gaps": [{
+            "domain": "hermes_research", "symbol": "ABNB", "field": "research",
+            "reason": "no house research", "gap_type": "missing_research",
+        }],
+        "sources": [],
+    }
+    intent = {
+        "intent": "research",
+        "symbols": ["ABNB"],
+        "needs": ["research"],
+        "text": "research this see is has a thesis",
+        "answerable": True,
+        "ok": True,
+        "source": "heuristic",
+    }
+    monkeypatch.setattr(desk, "analyze_operator_intent", lambda text: dict(intent))
+    monkeypatch.setattr(
+        desk, "gather_tradeai_evidence",
+        lambda intent: json.loads(json.dumps(research_gap)),
+    )
+    enqueued: list[dict] = []
+    monkeypatch.setattr(
+        desk, "enqueue_research_gap",
+        lambda **kw: enqueued.append(kw) or {"ok": True, "emitted": 1},
+    )
+
+    # Exhaust every vector for this live operator so resolve() only yields
+    # budget_denied attempts (pool-scoped).
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%dT12:00:00+00:00")
+    for v in gr.VECTORS:
+        for _ in range(30):
+            gr._append_receipt(gr.RECEIPTS_PATH, {
+                "vector": v,
+                "outcome": "queued" if v != "refresh_producer" else "no_answer",
+                "started": today,
+                "requester": f"operator:{OPERATOR_CHAT}",
+            })
+
+    # Carry the registry behaviour string on the denied resolution.
+    real_resolve = gr.resolve
+
+    def resolve_with_beh(gap, *a, **kw):
+        res = real_resolve(gap, *a, **kw)
+        res.no_coverage_behaviour = "say_so_queue_only_if_producer_exists"
+        return res
+
+    monkeypatch.setattr(gr, "resolve", resolve_with_beh)
+    _wire(monkeypatch, _all_fakes())
+    res = desk.handle_operator_desk_question(
+        intent["text"], chat_id=OPERATOR_CHAT, message_id="11",
+    )
+    assert res["kind"] == "deferred"
+    assert res["pending_id"]
+    assert res["reply_source"] == "gap_resolver:budget_deferred_queue"
+    assert "next budget window" in res["text"]
+    assert enqueued and enqueued[0]["symbols"] == ["ABNB"]
+    rows = _rows(desk.PENDING_PATH)
+    assert rows and rows[-1]["kind"] == "budget_deferred_queue"
+    assert rows[-1]["status"] == "open"
 
 
 # ── the projection hook only enqueues ─────────────────────────────────────────
