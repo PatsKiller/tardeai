@@ -4,6 +4,14 @@ Status:      ACTIVE
 as_of:       2026-09-23T10:00:00-04:00
 Measured at: 88eddef0e (origin/main = release CURRENT = dev tree) + fix/watchlist-directive-union
 
+## 2026-09-23 (later) — Day P/L: FIFO lots, positions closed today, and a Schwab cross-check
+
+- **Correction to the same-day fix.** The first fill-aware formula valued every share held at the open at the current price AND counted each sold share at its fill: a partial sell was double-counted (DIV: 415.65 held at the open, 411 sold). Replaced by FIFO lot matching — a sell consumes shares held at the open (basis prev close) first, then today's buys in time order; what is still held is marked at the price. This also makes a same-day round trip realize sell − buy.
+- **Positions fully sold today** leave holdings, so their realized day P/L was missing from TODAY. The repricer now computes it from today's fills (fetching prev close for those symbols) and adds it to the account's `day_change` (`closed_today`, `closed_today_day_change` on the account summary; recomputed every run).
+- **Schwab cross-check.** Operator-approved read-only change to `schwab_transport.normalize_positions`: it now carries Schwab's `currentDayProfitLoss` (`day_pl`). `schwab_position_sync` stores it on the row with the mark it was computed at; the repricer recomputes our figure at that SAME mark and writes `day_change_broker_check` {broker, ours_at_broker_mark, diff, ok}. Tolerance: max($1, 1% of the broker figure, 5 bps of the gross shares' value).
+- **Validated live** (2026-09-23 15:46 ET, all Schwab accounts, same marks): Schwab **−$2,461.42** vs ours **−$2,452.36**. MCD exact ($369.00 = $369.00). The three largest per-row gaps are explained: XLB and V carry pending DRIP shares (~2 sh each not yet approved), DIV is a half-cent prev-close source difference on 415 shares.
+- **Not covered.** Schwab gives no per-position figure for a position that has closed, so closed-today rows are ours alone; Fidelity/Alpaca/Moomoo rows have no broker day figure.
+
 ## 2026-09-23 — Day P/L and cost basis now follow today's trades (MCD read -$2,714 vs Schwab +$289)
 
 - **Measured.** MCD (rollover IRA) was bought today, 100 @ 235.01 and 100 @ 236.36, while it fell 5.4%. Schwab: P/L Day = P/L Open = +$289. Command Center: day change **-$2,713.66** (`(price - prev_close) * shares` treats all 200 shares as held since yesterday) and cost basis **$23,501** (the first lot) on 200 shares. The same two defects hit every position traded today: WMT (+300, basis still 100 sh), XLB (+6.3), DIV (411 of 415.65 sold, basis still 413 sh → ~$8k phantom loss). Portfolio TODAY was off by ~$2.8k.

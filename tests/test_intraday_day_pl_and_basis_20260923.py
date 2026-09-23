@@ -38,11 +38,25 @@ def test_add_to_existing_position_splits_open_shares_and_new_lot():
     assert pr._intraday_day_change(400.0, 110.27, 109.96, fills) == pytest.approx(100 * 0.31 + 300 * -0.15)
 
 
-def test_partial_sell_counts_the_sold_shares_move_until_the_fill():
+def test_partial_sell_realizes_sold_shares_and_marks_only_what_is_left():
     fills = {"buys": [], "sells": [(411.0, 19.135)]}
     got = pr._intraday_day_change(4.6535, 19.17, 19.30, fills)
-    # 415.6535 held at the open earn the day's move; the 411 sold earned (fill - prev_close)
-    assert got == pytest.approx(round(415.6535 * (19.17 - 19.30) + 411 * (19.135 - 19.30), 2))
+    # 415.6535 held at the open: 411 sold realize (19.135-19.30); the 4.6535 kept mark (19.17-19.30).
+    # (The first version valued all 415.65 at the current price AND counted the 411 sold.)
+    assert got == pytest.approx(round(411 * (19.135 - 19.30) + 4.6535 * (19.17 - 19.30), 2))
+
+
+def test_same_day_round_trip_realizes_sell_minus_buy():
+    # held 0 at the open; buy 100 @ 10 then sell 100 @ 11 -> realized +100, nothing left to mark
+    fills = {"events": [("buy", 100.0, 10.0), ("sell", 100.0, 11.0)]}
+    assert pr._intraday_day_change(0.0, 12.0, 9.0, fills) == pytest.approx(100.0)
+
+
+def test_sell_consumes_open_shares_before_todays_buys():
+    # 100 held at the open (prev 50); buy 100 @ 52; sell 100 @ 53 -> sells the open lot first
+    fills = {"events": [("buy", 100.0, 52.0), ("sell", 100.0, 53.0)]}
+    got = pr._intraday_day_change(100.0, 54.0, 50.0, fills)
+    assert got == pytest.approx(100 * (53 - 50) + 100 * (54 - 52))
 
 
 def test_no_fills_or_unreconcilable_fills_fall_back():
@@ -90,8 +104,12 @@ def test_load_intraday_fills_maps_roth_label_and_sides(monkeypatch):
     ]
     monkeypatch.setattr(db_adapter, "_execute", lambda sql, params=None, fetch=None: rows)
     got = pr._load_intraday_fills()
-    assert got[("schwab_roth", "SCHD")] == {"buys": [(10.0, 27.5)], "sells": []}
-    assert got[("schwab_taxable", "DIV")] == {"buys": [], "sells": [(411.0, 19.135)]}
+    assert got[("schwab_roth", "SCHD")] == {"events": [("buy", 10.0, 27.5)], "buys": [(10.0, 27.5)], "sells": []}
+    assert got[("schwab_taxable", "DIV")] == {
+        "events": [("sell", 411.0, 19.135)],
+        "buys": [],
+        "sells": [(411.0, 19.135)],
+    }
 
 
 def test_load_intraday_fills_is_fail_soft(monkeypatch):
@@ -180,3 +198,98 @@ def test_shield_lets_a_trade_change_the_basis_but_guards_unchanged_shares(tmp_pa
     out = {r["symbol"]: r for r in json.loads(path.read_text(encoding="utf-8"))["holdings"]}
     assert out["MCD"]["cost_basis"] == pytest.approx(47137.0)
     assert out["SCHD"]["cost_basis"] == pytest.approx(2500.0)
+
+
+# ── positions fully sold today ───────────────────────────────────────────────
+
+
+def test_closed_today_position_counts_its_realized_day_pl():
+    holdings = [{"symbol": "MCD", "account": "schwab_rollover_ira", "shares": 200.0}]
+    fills = {("schwab_taxable", "DIV"): {"events": [("sell", 415.6535, 19.135)], "buys": [],
+                                         "sells": [(415.6535, 19.135)]}}
+    out = pr._closed_today_day_change(holdings, fills, {"DIV": 19.30})
+    (row,) = out["schwab_taxable"]
+    assert row["symbol"] == "DIV"
+    assert row["day_change"] == pytest.approx(round(415.6535 * (19.135 - 19.30), 2))
+
+
+def test_closed_today_skips_held_symbols_and_reports_missing_prev_close():
+    holdings = [{"symbol": "MCD", "account": "schwab_rollover_ira", "shares": 200.0}]
+    fills = {
+        ("schwab_rollover_ira", "MCD"): {"events": [("sell", 10.0, 240.0)], "buys": [], "sells": [(10.0, 240.0)]},
+        ("schwab_taxable", "XYZ"): {"events": [("sell", 5.0, 10.0)], "buys": [], "sells": [(5.0, 10.0)]},
+    }
+    out = pr._closed_today_day_change(holdings, fills, {})
+    assert "schwab_rollover_ira" not in out
+    assert out["schwab_taxable"] == [{"symbol": "XYZ", "day_change": None, "reason": "no_prev_close"}]
+
+
+def test_account_total_includes_closed_today_and_clears_it_next_run():
+    portfolio = {
+        "holdings": [{"symbol": "MCD", "account": "schwab_taxable", "shares": 10.0, "market_value": 2400.0,
+                      "day_change": 50.0, "cost_basis": 2300.0, "gain_loss": 100.0}],
+        "account_summaries": {"schwab_taxable": {"source": "schwab"}},
+        "closed_today": {"schwab_taxable": [{"symbol": "DIV", "day_change": -68.58}]},
+    }
+    pr._recalc_totals(portfolio)
+    acct = portfolio["account_summaries"]["schwab_taxable"]
+    assert acct["day_change"] == pytest.approx(50.0 - 68.58)
+    assert acct["closed_today_day_change"] == pytest.approx(-68.58)
+    portfolio["closed_today"] = {}
+    pr._recalc_totals(portfolio)
+    assert acct["day_change"] == pytest.approx(50.0)
+    assert "closed_today" not in acct
+
+
+# ── cross-check against Schwab's own P/L Day ─────────────────────────────────
+
+
+def _today_utc_iso():
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
+def test_broker_check_matches_schwab_at_its_mark():
+    # Live 2026-09-23: Schwab MCD day_pl 369.0 at 237.53 — ours at that mark is identical.
+    h = {"broker_day_pl": 369.0, "broker_day_pl_price": 237.53, "broker_day_pl_at": _today_utc_iso()}
+    chk = pr._broker_day_pl_check(h, 200.0, 250.35, MCD_FILLS)
+    assert chk["ours_at_broker_mark"] == pytest.approx(369.0)
+    assert chk["ok"] is True
+
+
+def test_broker_check_tolerates_prev_close_rounding():
+    # Live 2026-09-23 DIV: Schwab -76.98 vs ours -74.79 — half a cent of prev close on 415 shares.
+    h = {"broker_day_pl": -76.98, "broker_day_pl_price": 19.1146, "broker_day_pl_at": _today_utc_iso()}
+    fills = {"events": [("sell", 411.0, 19.135)], "buys": [], "sells": [(411.0, 19.135)]}
+    chk = pr._broker_day_pl_check(h, 4.6535, 19.315, fills)
+    assert chk["ok"] is True and abs(chk["diff"]) > 1.0
+
+
+def test_broker_check_flags_a_disagreement_and_ignores_stale_figures():
+    h = {"broker_day_pl": 369.0, "broker_day_pl_price": 237.53, "broker_day_pl_at": _today_utc_iso()}
+    chk = pr._broker_day_pl_check(h, 200.0, 250.35, None)  # plain formula: -2,564
+    assert chk["ok"] is False and chk["diff"] < -2000
+    stale = dict(h, broker_day_pl_at="2026-09-01T15:00:00+00:00")
+    assert pr._broker_day_pl_check(stale, 200.0, 250.35, MCD_FILLS) is None
+
+
+def test_transport_normalizer_carries_schwab_day_pl():
+    import schwab_transport
+
+    raw = {"securitiesAccount": {"positions": [{
+        "instrument": {"symbol": "MCD"}, "longQuantity": 200, "averagePrice": 235.685,
+        "marketValue": 47506.0, "longOpenProfitLoss": 369.0,
+        "currentDayProfitLoss": 369.0, "currentDayProfitLossPercentage": 0.78}]}}
+    (p,) = schwab_transport.normalize_positions(raw)
+    assert p["day_pl"] == 369.0 and p["day_pl_pct"] == 0.78
+
+
+def test_position_sync_stores_broker_day_pl_with_its_mark(no_side_effects):
+    live = [{"symbol": "MCD", "qty": 200, "current_price": 237.53, "market_value": 47506.0,
+             "avg_entry_price": 235.685, "day_pl": 369.0}]
+    rows, _ = sps._build_account_rows("schwab_rollover_ira", live, {})
+    (row,) = rows
+    assert row["broker_day_pl"] == 369.0
+    assert row["broker_day_pl_price"] == pytest.approx(237.53)
+    assert row["broker_day_pl_at"]
