@@ -29,8 +29,8 @@ Live apply:  blocked without `bin/guard grant openclaw …`
   `python3 ~/.openclaw/skills/tradeai-parity/scripts/specialist_honesty_hook.py --a2a off --text-file -`
   (use `--a2a on` only when A2A actually succeeded and pass `--evidence-json`).
 - Prefer the shared Trade-AI internal-first entry
-  (`scripts.lib.maria_parity_hook.try_shared_perspective_entry` /
-  `operator_internal_first.build_perspective_reply` when present) over Grok
+  (`scripts.lib.maria_parity_hook.try_shared_perspective_entry` →
+  `operator_internal_first.answer_internal_first` when present) over Grok
   `ask` / web_search as the primary perspective path.
 ```
 

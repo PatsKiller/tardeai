@@ -34,9 +34,10 @@ python3 scripts/openclaw_maria_hooks/specialist_honesty_hook.py --a2a on \
 
 ## Stages 1+3 (sibling)
 
-When `scripts.lib.operator_internal_first.build_perspective_reply` lands, Maria
-must call that shared entry (via Trade-AI PYTHONPATH) for perspective intents —
-this skill must **not** invent a second LEGEND/Sources footer.
+When `scripts.lib.operator_internal_first.answer_internal_first` is importable,
+Maria must call it via `scripts.lib.maria_parity_hook.try_shared_perspective_entry`
+for perspective intents — this skill must **not** invent a second LEGEND/Sources
+footer.
 
 ## Install (openclaw grant)
 
