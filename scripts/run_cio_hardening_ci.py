@@ -807,6 +807,8 @@ GATES = [
             "tests/test_sot_phase9_quotes_prices_writers.py",
             "tests/test_sot_p9_news_articles_writer.py",
             "tests/test_watch_directives_writer_phase9.py",
+            # Stage 5 honesty fields on directive create (subject_guid + membership via).
+            "tests/test_watchlist_membership_honesty_20260923.py",
             # /api/v2/watchlist serves every ACTIVE ticker directive (S / 1278 surface-split).
             "tests/test_watchlist_api_reconciliation.py",
             # Legacy watchlist_items helpers: read fixed to the real schema, writers retired loudly.
