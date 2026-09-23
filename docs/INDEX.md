@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `f7024d9aad4dd148514a32bcbc7b3149ac778a6a715da974f1b1cbfde791eca0`
+**Tree fingerprint:** `20f87194b06e73a9e2e228fe02a7e8c5d5352479c19eb008bae461aa0e8a3b95`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -46,7 +46,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/BROKER_TRADE_PLAN_GATE.md` | Broker Trade Plan Gate — No Gambling on Generic 2×R | review_required | OK | `e73e70a22a5c` |
 | `docs/CC_V3_ACTIONABILITY_SPRINT_20260702.md` | CC v3 Actionability Sprint — Layered Document | review_required | OK | `26d05fe916e7` |
 | `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | OK | `401363e962e2` |
-| `docs/CHANGELOG.md` | Changelog | review_required | OK | `0c8e4f611dbc` |
+| `docs/CHANGELOG.md` | Changelog | review_required | OK | `932c88d69abe` |
 | `docs/CHEAT_SHEET.md` | Trade AI v12 -- Operator Cheat Sheet | active_keep | OK | `5fbf6fb2ebe7` |
 | `docs/CIO_AS_IS_2026-09-19-1352.md` | CIO / AEC AS-IS — 2026-09-19 13:52 ET | review_required | OK | `ede8abe935f8` |
 | `docs/CIO_AS_IS_2026-09-20-0604.md` | CIO / AEC AS-IS — 2026-09-20 06:04 ET | review_required | OK | `0d40294364bc` |
