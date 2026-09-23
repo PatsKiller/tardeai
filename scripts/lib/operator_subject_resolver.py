@@ -88,6 +88,19 @@ _CASHTAG = re.compile(r"\$([A-Za-z]{1,5})\b")
 #: "A.X.T.I", "a-x-t-i". Three to five single letters, one separator between.
 _SPELLED = re.compile(r"(?<![A-Za-z0-9])((?:[A-Za-z][ .\-]){2,4}[A-Za-z])\.?(?![A-Za-z0-9])")
 
+#: Single-letter listed tickers. Bare lowercase letters never bind (grammatical);
+#: uppercase / $cashtag bind only when book or registry vouches (or cashtag).
+try:
+    from scripts.lib.telegram_rich import SINGLE_LETTER_TICKERS as _SINGLE_LETTER  # noqa: PLC0415
+except ImportError:  # pragma: no cover
+    try:
+        from lib.telegram_rich import SINGLE_LETTER_TICKERS as _SINGLE_LETTER  # type: ignore  # noqa: PLC0415
+    except ImportError:  # pragma: no cover
+        _SINGLE_LETTER = frozenset({
+            "B", "C", "D", "F", "H", "K", "L", "M", "O", "R", "S", "T", "U", "V", "W", "X", "Y", "Z",
+        })
+SINGLE_LETTER_TICKERS = _SINGLE_LETTER
+
 #: Sector vocabulary -> the name the CIO snapshot `sectors` domain uses.
 #: A vocabulary, not a symbol map: no issuer is named here.
 _SECTOR_WORDS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -190,6 +203,13 @@ def _tickers(text: str, book: frozenset[str], doc: Mapping[str, Any]) -> list[di
             return
         ident = _identity(doc, sym)
         in_book = sym in book
+        # Single-letter: $cashtag always; otherwise only when book/registry
+        # vouches. Unknown bare "U"/"O" must not bind from prose.
+        if len(sym) == 1:
+            if how != "cashtag" and not in_book and not ident:
+                return
+            if how != "cashtag" and sym not in SINGLE_LETTER_TICKERS and not in_book:
+                return
         if how == "cashtag":
             conf = 0.95
         elif in_book:
@@ -388,5 +408,5 @@ def name_spans(subjects: Iterable[Mapping[str, Any]]) -> list[str]:
     return [str(s["matched"]) for s in subjects if s.get("kind") in ("company", "etf") and s.get("matched")]
 
 
-__all__ = ["SCHEMA", "AUTHORITY", "KINDS", "resolve_subjects", "ticker_candidates", "verify_added_symbol",
-           "symbols_of", "name_spans"]
+__all__ = ["SCHEMA", "AUTHORITY", "KINDS", "SINGLE_LETTER_TICKERS", "resolve_subjects",
+           "ticker_candidates", "verify_added_symbol", "symbols_of", "name_spans"]

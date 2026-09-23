@@ -124,6 +124,9 @@ One layout for GO alerts, entry alerts, material-change notices and desk answers
 - **Provenance on desk answers** is one plain footer line plus an expandable source list. *Cause: a raw provenance tail read as "Gibberish".*
 - **A refused HTML send is retried once as plain text with the tags stripped** (`html_to_plain`), keeping link addresses.
 - **`TELEGRAM_RICH_ALERTS=0`** reverts GO, entry and material-change alerts to their plain text without a deploy.
+- **Outbound link chrome** is scoped to turn `primary_symbols` (shared process
+  bucket — survives cron dual-import of `lib` vs `scripts.lib`). Residual
+  TROW/HODO bleed after #1187 promote: `docs/audits/SINGLE_LETTER_TICKER_S_FIX_2026-09-22.md`.
 
 ## Action-button discipline
 

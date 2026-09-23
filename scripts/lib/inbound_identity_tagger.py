@@ -178,10 +178,25 @@ def extract_name_mentions(text: str) -> list[str]:
 #: PRIMARY subject as OPEN (Opendoor) while SWK, BAX, BWA and WDAY appeared
 #: nowhere. _STOPWORDS already curates this class (UP and RSI are members); these
 #: are the members it was missing.
+#:
+#: Extended 2026-09-22, before wiring this tagger into the publish chokepoint.
+#: Measured on 5,000 random live outbound bodies: of the engineering words this
+#: system's own alerts use, these are the ones the registry answers with a real
+#: entity, i.e. the ones that WOULD bind an issuer once every producer is tagged
+#: rather than only telegram_alert -- "*Approval requested* ... PR #1183" bound
+#: PR, and "SMA50 distance" / "API" / "CI" each resolve too.
+#:
+#: MA, NET and MAX are deliberately NOT here. They are household issuers
+#: (Mastercard, Cloudflare, Warner Bros. Discovery) that an operator really does
+#: ask about, and in machine text they are protected instead by order: the
+#: chokepoint stamps only the FIRST resolved symbol, and a technicals alert
+#: names its symbol before it says "50-day MA".
 _TEMPLATE_CHROME = frozenset({
     "EOD", "OPEN", "DOWN", "TRADE", "REPORT", "MARKET", "TOTAL", "ET",
     "AFTER", "PRICE", "QUOTE", "LIVE", "ALERT", "MOVE", "DATA", "CHECK",
     "GAP", "WENT", "NONE", "AUTO", "RETRY", "PAUSED", "TAB", "DB",
+    "PR", "CI", "CD", "API", "RAM", "MD", "RUN", "JOB", "TASK", "FIX",
+    "MAIN", "DTE", "OI", "SMA", "EMA", "CASH",
 })
 
 #: A one-character bare token is never worth its false-positive rate in a machine

@@ -76,3 +76,33 @@ def test_positive_control_declared_covers_is_read(tmp_path):
     t.mkdir()
     (t / "test_probe.py").write_text('COVERS = ["scripts/probe.py"]\n')
     assert declared_covers(t) == {"scripts/probe.py"}
+
+
+def test_the_analyser_counts_the_id_returning_entrypoint(tmp_path):
+    """REGRESSION GUARD: a transport rename must not shrink the denominator.
+
+    Measured 2026-09-22. Six alarm sites were rewritten from send_telegram(...)
+    to send_telegram_with_id(...) to capture the provider message id. The
+    analyser matched only the bare name, so sites_total fell 188 -> 182 and five
+    UNCOVERED sites silently left the ratchet -- coverage "improved" because the
+    measured thing went invisible, while nothing had been tested.
+
+    send_telegram_with_id is the same transport (telegram_alert.py:636), so it
+    must count. This test fails if TRANSPORT is narrowed back to one name.
+    """
+    d = tmp_path / "scripts"
+    d.mkdir()
+    (d / "probe.py").write_text(
+        "from telegram_alert import send_telegram_with_id\n"
+        "send_telegram_with_id('x')\n",
+        encoding="utf-8",
+    )
+    assert len(call_sites(d)) == 1, "the id-returning entrypoint is not counted"
+
+
+def test_the_detector_still_discriminates(tmp_path):
+    """POSITIVE CONTROL: widening TRANSPORT must not make it match everything."""
+    d = tmp_path / "scripts"
+    d.mkdir()
+    (d / "probe.py").write_text("send_email('x')\nnotify_slack('y')\n", encoding="utf-8")
+    assert len(call_sites(d)) == 0, "the detector now matches non-transport calls"

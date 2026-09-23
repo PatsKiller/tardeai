@@ -156,10 +156,23 @@ class TestMigrationSafety:
         # kwargs were added 2026-09-04/05 and this stub was never updated, so the
         # test raised TypeError from inside production code and reported a failure
         # that had nothing to do with what it was asserting.
+        #
+        # 2026-09-22: repointed from _raw_send_telegram to _raw_send_telegram_result.
+        # _legacy_send now calls the RESULT variant, because only that one populates
+        # _LAST_MESSAGE_IDS -- without it every LEGACY_DELIVERED message reached
+        # Telegram with its provider id discarded one frame later (measured: 121 of
+        # 121 id-less deliveries in 24h). Stubbing the bool wrapper left the real
+        # function on the call path, which tried the network and returned ok=False,
+        # so this test failed on `delivered` for a reason unrelated to its subject.
+        # That is the SECOND time this stub broke by mirroring an internal call
+        # path -- see the note above. The assertion below is unchanged.
         monkeypatch.setattr(
-            ta, "_raw_send_telegram",
+            ta, "_raw_send_telegram_result",
             lambda m, chat_ids=None, *, reply_markup=None, thread_id=None,
-            link_preview_options=None: sent.append(m) or True)
+            link_preview_options=None: (
+                sent.append(m),
+                {"ok": True, "message_ids": ["1"], "chat_ids": ["1"]},
+            )[1])
         monkeypatch.setattr(ta, "_token", lambda: "t")
         monkeypatch.setattr(ta, "_chat_ids", lambda: ["1"])
 

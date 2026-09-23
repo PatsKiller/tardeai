@@ -80,8 +80,6 @@ scripts/secrets/render_env.py 1
 scripts/secrets/rotation_daemon.py 1
 scripts/secrets_admin.py 1
 scripts/send_alert_digest.py 1
-scripts/stop_drift_alert.py 1
-scripts/stop_over_consensus_monitor.py 1
 scripts/system_health_agent.py 5
 scripts/system_rollup_snapshot.py 1
 scripts/telegram_alert.py 1

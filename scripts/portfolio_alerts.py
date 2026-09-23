@@ -46,9 +46,22 @@ def _load_env_from_file(project_root: Path) -> None:
 
 # ── Telegram sender ───────────────────────────────────────────────────────────
 
+# Set by _send_telegram: the provider id of the message it just sent, or None.
+# Deliberately None on the bundle branch — a bundled section is DEFERRED to the
+# morning digest, so no message has been sent, there is nothing for the operator
+# to acknowledge, and nothing to link an alert_events row to. That branch returns
+# True (the work was accepted), which is exactly why the bool alone cannot be
+# used to decide whether an id exists.
+_LAST_TELEGRAM_MESSAGE_ID: Optional[str] = None
+
+
 def _send_telegram(message: str, project_root: Path,
                    bundle: Optional[Dict[str, str]] = None, bundle_key: Optional[str] = None) -> bool:
     """Send via central Telegram chokepoint, or defer to morning command bundle."""
+    global _LAST_TELEGRAM_MESSAGE_ID
+    # Clear FIRST, before any branch that can return without sending, so a stale
+    # id from the previous alert can never be stapled to this one.
+    _LAST_TELEGRAM_MESSAGE_ID = None
     if not message:
         return False
     if bundle is not None and bundle_key:
@@ -60,8 +73,10 @@ def _send_telegram(message: str, project_root: Path,
         return True
     _load_env_from_file(project_root)
     try:
-        from telegram_alert import send_telegram
-        return send_telegram(message)
+        from telegram_alert import send_telegram_with_id
+        res = send_telegram_with_id(message)
+        _LAST_TELEGRAM_MESSAGE_ID = res.get("message_id")
+        return bool(res.get("accepted"))
     except Exception as e:
         print(f"  [alerts] Telegram send error: {e}")
         return False
@@ -399,6 +414,7 @@ def run_portfolio_alerts(portfolio: Dict, analysis: Dict,
         if strategic:
             msg = format_strategic_message(strategic, portfolio)
             # DB first
+            alert_event_ids: List = []
             try:
                 from alert_event_writer import save_alert_event
                 for sa in strategic:
@@ -409,7 +425,7 @@ def run_portfolio_alerts(portfolio: Dict, analysis: Dict,
                     if sym_match:
                         sym = sym_match.group(1)
                     sev = "warning" if sa.get("severity") == "HIGH" else "info"
-                    save_alert_event(
+                    alert_event_ids.append(save_alert_event(
                         alert_type="strategic_alert",
                         raw_text=sa.get("msg", "")[:2000],
                         symbol=sym,
@@ -417,10 +433,22 @@ def run_portfolio_alerts(portfolio: Dict, analysis: Dict,
                         source_script="portfolio_alerts.py",
                         parsed_payload={"alert_subtype": sa.get("type")},
                         requires_agent_review=sa.get("severity") == "HIGH" and sym is not None,
-                    )
+                    ))
             except Exception as e:
                 print(f"  [alerts] Alert DB write failed (non-fatal): {e}")
             if msg and _send_telegram(msg, project_root, bundle=bundle, bundle_key="portfolio"):
+                # Telegram second. format_strategic_message folds every strategic
+                # alert into ONE message, so these rows legitimately share the id
+                # that carried them. None when the send was bundled into the
+                # morning digest — nothing was sent, so nothing is linked.
+                if _LAST_TELEGRAM_MESSAGE_ID:
+                    try:
+                        from alert_event_writer import attach_telegram_message_id
+                        for aid in alert_event_ids:
+                            if aid:
+                                attach_telegram_message_id(aid, _LAST_TELEGRAM_MESSAGE_ID)
+                    except Exception as e:
+                        print(f"  [alerts] id attach failed (non-fatal): {e}")
                 sent["strategic"] = len(strategic)
                 print(f"  [alerts] ✅ Strategic: {len(strategic)} alerts {'bundled' if bundle else 'sent'}")
 

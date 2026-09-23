@@ -136,6 +136,7 @@ class CommunicationEvent:
             self.thread_id = f"thr_{self.subject_key}"
         if self.correlation_id is None:
             self.correlation_id = self.thread_id
+        self._default_lineage()
         if not self.curation_kind:
             from scripts.lib.campaign_interfaces_b import map_curation_mode_to_kind
 
@@ -149,6 +150,58 @@ class CommunicationEvent:
 
             self.source_sha = resolve_source_sha()
         return self
+
+    def _default_lineage(self) -> None:
+        """Default ``causation_id`` / ``parent_event_id`` — the Phase 4 memory join.
+
+        Measured 2026-09-22: both columns were NULL on all 54,928 ledger rows.
+        They have existed since the 2026-09-05 ledger migration; nothing ever
+        wrote them, so no event could be traced to the one that caused it.
+
+        Precedence runs strongest real link first. A producer-supplied value is
+        NEVER overwritten, and a link is never fabricated from a non-event
+        identifier — ``run_id``, ``incident_id`` and ``wake_id`` are not event
+        ids and must not be laundered into an event-id column.
+
+        ``parent_event_id`` — the event this one is a direct CHILD of:
+            reply_to_event_id -> parent_id (only when parent_kind names a comm
+            event) -> supersedes_event_id -> NULL.
+
+          The NULL tail is deliberate and load-bearing. A root event has no
+          parent; writing its own id here would be a false statement AND would
+          make any recursive walk of the lineage tree loop forever. So this
+          column stays sparse until real reply/supersede lineage exists. That
+          is an honest measurement of the lineage the system actually has, not
+          a column we failed to fill.
+
+        ``causation_id`` — the event that CAUSED this one:
+            reply_to_event_id -> parent_event_id -> supersedes_event_id
+            -> own event_id.
+
+          The self-referencing tail is the standard event-sourcing encoding for
+          a ROOT message, and it is a marker rather than an invented ancestor:
+          a cron-scheduled alert is caused by a schedule, not by another ledger
+          event. ``causation_id = event_id`` means exactly "nothing in this
+          ledger caused this", and ``causation_id <> event_id`` is the precise
+          predicate for "has an upstream cause" (see ``is_root_event``).
+          Leaving it NULL would instead keep the column unjoinable and
+          indistinguishable from the 54,928 unwired rows this change fixes.
+        """
+        parent_kind = (self.parent_kind or "").strip().lower()
+        if self.parent_event_id is None:
+            self.parent_event_id = (
+                self.reply_to_event_id
+                or (self.parent_id if parent_kind == "comm_event" else None)
+                or self.supersedes_event_id
+                or None
+            )
+        if self.causation_id is None:
+            self.causation_id = (
+                self.reply_to_event_id
+                or self.parent_event_id
+                or self.supersedes_event_id
+                or self.event_id
+            )
 
     def to_row(self) -> dict[str, Any]:
         self.mint_identity()
@@ -192,6 +245,16 @@ class CommunicationEvent:
         if gateway_mode:
             self.gateway_mode_at_dispatch = gateway_mode
         return self
+
+
+def is_root_event(event: CommunicationEvent) -> bool:
+    """True when nothing in this ledger caused the event.
+
+    The exact predicate behind the ``causation_id`` default: a root event
+    points at itself, a caused event points at its cause. Consumers must use
+    this rather than testing for NULL, which now means "never minted".
+    """
+    return bool(event.event_id) and event.causation_id == event.event_id
 
 
 def required_missing(event: CommunicationEvent) -> list[str]:

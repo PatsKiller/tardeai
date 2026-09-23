@@ -729,6 +729,14 @@ class AlpacaPaperAdapter:
             _prot_status = "PROTECTED_TRACKED" if stop_broker_id else (
                 "PROTECTED_UNRECORDED" if _stop_status in ("STOP_SUBMITTED_UNCONFIRMED", "STOP_BRACKET_CHILD") else "NAKED")
             _prot_defect = None if stop_broker_id else _stop_status
+            # entry_time (2026-09-22): this INSERT set filled_at and submitted_at but
+            # NEVER entry_time, so every canonical broker-fill row was born with
+            # entry_time NULL while status='open'. The OTHER insert path in this file
+            # (:241) does set it, which is why only fill-created rows were affected.
+            # Measured: all 6 open paper trades -- SLB, STLD, BAX, SWK, AES, WDAY --
+            # had entry_time NULL, and open_trade_monitor computes age_hours and the
+            # R-multiple from it, so it was emitting "EXTENDED PROFIT +$170" against
+            # rows that were never entered. ZERO open rows had a valid entry_time.
             # ── ROOT-CAUSE DEDUP (2026-06-18): a proposal first creates a 'pending' placeholder row
             # (paper_trade_logger.approve_proposal). This broker fill is the single canonical row, so
             # supersede that placeholder instead of letting it become a duplicate $0/breakeven closed
@@ -747,7 +755,7 @@ class AlpacaPaperAdapter:
                     market_regime, vix_at_entry,
                     status, opened_via, logged_by, risk_gate_result,
                     risk_params_at_fill, lifecycle_state,
-                    filled_at, submitted_at,
+                    entry_time, filled_at, submitted_at,
                     revalidation_verdict, revalidation_score, revalidation_flags,
                     price_at_approval, staleness_at_submit_min,
                     stop_order_id, stop_verified_at, stop_verified_source, broker_stop_status,
@@ -759,7 +767,7 @@ class AlpacaPaperAdapter:
                     %s, %s,
                     %s, 'alpaca_adapter', 'alpaca_adapter', 'APPROVED',
                     %s, %s,
-                    NOW(), NOW(),
+                    NOW(), NOW(), NOW(),
                     %s, %s, %s,
                     %s, %s,
                     %s, %s, %s, %s,

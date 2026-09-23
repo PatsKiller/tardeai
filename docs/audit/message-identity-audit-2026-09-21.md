@@ -185,6 +185,14 @@ over-match is inside `operator_subject_resolver.resolve_subjects`. This is a
 correctness bug in exactly the field you asked to validate: **the message is
 tagged with another security's identity.**
 
+**Follow-up `[VERIFIED]` 2026-09-22.** PR #1187/#1191 promoted to
+`857931d41…170257` scoped chrome via ContextVar — then live S ask (~17:49 ET)
+still showed `S:… TROW:… HODO:…` because `lib.comms_editor` ≠
+`scripts.lib.comms_editor` under cron `sys.path`. Residual fix: shared
+process bucket + buy/perspective research-first deferred. Full note:
+`docs/audits/SINGLE_LETTER_TICKER_S_FIX_2026-09-22.md`. §4 stays open until
+re-observed from CURRENT after that promote.
+
 ## 5. Recommendations, in dependency order
 
 1. **Move tagging into `publish_communication`.** One change closes all 43 direct

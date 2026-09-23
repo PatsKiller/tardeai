@@ -66,15 +66,23 @@ def _load_env_file(root: Path) -> None:
                 k, v = line.split("=", 1)
                 os.environ.setdefault(k.strip(), v.strip().strip("\"'"))
 
-def _send_telegram(message: str, root: Path) -> bool:
+def _send_telegram(message: str, root: Path):
+    """Send via the central chokepoint. Returns the provider message id, or None.
+
+    None whenever no message reached Telegram — suppressed by the router,
+    digested, or a transport error. An absent id is information (nothing for the
+    operator to acknowledge), not a failure. The two summary call sites ignore
+    the return; the alert loop uses it to link the row it just wrote to the
+    message that actually carried it.
+    """
     try:
         _load_env_file(root)
         sys.path.insert(0, str(root / "scripts"))
-        from telegram_alert import send_telegram
-        return send_telegram(message)
+        from telegram_alert import send_telegram_with_id
+        return send_telegram_with_id(message).get("message_id")
     except Exception as e:
         print(f"  [monitor] Telegram error: {e}")
-        return False
+        return None
 
 def _et_now() -> datetime:
     try:
@@ -486,6 +494,7 @@ def main() -> None:
                 print(f"  🔔 ALERT: {sym} — {trig}")
 
                 # DB first
+                alert_event_id = None
                 try:
                     from alert_event_writer import save_alert_event
                     type_map = {
@@ -500,7 +509,7 @@ def main() -> None:
                         "SMA200_CROSS": "warning", "RSI_HIGH": "warning", "DOWN_3PCT": "warning",
                         "CONCENTRATION": "warning", "DRAWDOWN": "warning",
                     }
-                    save_alert_event(
+                    alert_event_id = save_alert_event(
                         alert_type=type_map.get(trig, "technical_signal"),
                         raw_text=msg[:2000],
                         symbol=sym,
@@ -511,7 +520,16 @@ def main() -> None:
                 except Exception as e:
                     print(f"  [monitor] Alert DB write failed (non-fatal): {e}")
 
-                _send_telegram(msg, root)
+                telegram_message_id = _send_telegram(msg, root)
+                # Telegram second, per this module's contract — the id exists only
+                # now, so it is stamped onto the row already written rather than
+                # reordering the write (a DB outage must never block the send).
+                if alert_event_id and telegram_message_id:
+                    try:
+                        from alert_event_writer import attach_telegram_message_id
+                        attach_telegram_message_id(alert_event_id, telegram_message_id)
+                    except Exception as e:
+                        print(f"  [monitor] id attach failed (non-fatal): {e}")
                 alerts_fired_today.append(f"{_hhmm(now)} — {sym} {trig}")
 
             if not triggered:

@@ -73,6 +73,37 @@ CRITICAL_NEWS_KEYWORDS = [
     'sec investigation', 'fraud', 'class action', 'delisted',
 ]
 
+#: Accounts in paper_trades that are TRAINING/SIMULATION only. Measured
+#: 2026-09-22: every row in this table belongs to one of these -- ALPACA_PAPER
+#: (6 open, 82 closed), tradeai_automated (2,506, the SANDBOX_ACCOUNT named at
+#: validation_submitter.py:20) and TOS_PAPER (6). NOT ONE row is a real-money
+#: account; the real accounts are schwab_taxable / schwab_rollover_ira /
+#: schwab_roth_ira and they live in schwab_positions_live, never here.
+#:
+#: OPERATOR DECISION 2026-09-22: "Anything being traded in the alpaca paper
+#: account is just for training purposes. We don't need to be alerted on it...
+#: I only want to care about being alerted about what I should be trading real
+#: money with." So these produce DB rows (the training metadata is kept in full)
+#: and send NOTHING to Telegram.
+#:
+#: This gates on the ACCOUNT, not on the script, deliberately: if a real-money
+#: row ever appears in paper_trades it still alerts, instead of being silently
+#: swallowed by a blanket mute.
+PAPER_ONLY_ACCOUNTS = {"ALPACA_PAPER", "TOS_PAPER", "tradeai_automated"}
+
+
+def is_paper_only(trade) -> bool:
+    """True when this trade is simulation/training and must never page anyone."""
+    try:
+        acct = str((trade or {}).get("account") or "").strip()
+        broker = str((trade or {}).get("broker") or "").strip().lower()
+    except Exception:
+        return False
+    if acct in PAPER_ONLY_ACCOUNTS:
+        return True
+    return broker in {"alpaca_paper", "tos_paper"}
+
+
 DEDUP_MINUTES = 30
 
 
@@ -163,16 +194,30 @@ def _stop_warning_notify_decision(conn, trade_id, symbol, pct_consumed):
     Returns (should_notify, reason).
     """
     # 1. Operator acknowledgements -- the same queries portfolio_stops.py uses.
+    #
+    # SAVEPOINT (2026-09-22): the except below logs loudly and says the monitor
+    # must not stop -- but a failed statement ABORTS THE WHOLE POSTGRES
+    # TRANSACTION, so every later statement raised "current transaction is
+    # aborted" and conn.commit() at the end of run_monitor persisted NOTHING.
+    # Measured today: stop_decisions has no created_at column (it is decided_at),
+    # so this block raised on every cycle; BAX's EXTENDED_PROFIT dedupe row was
+    # rolled back while its Telegram had already been sent, and the same alert
+    # re-fired every 3 minutes -- 12 times between 10:45 and 11:21. SLB, SWK,
+    # WDAY and AES were never monitored at all. The savepoint makes the stated
+    # intent true: one unreadable lookup can no longer poison the cycle.
     try:
         cur = conn.cursor()
+        cur.execute("SAVEPOINT ack_lookup")
         cur.execute("SELECT 1 FROM stop_snooze WHERE symbol = %s AND snoozed_until > NOW() LIMIT 1",
                     [symbol])
         if cur.fetchone():
+            cur.execute("RELEASE SAVEPOINT ack_lookup")
             return False, "operator snoozed this symbol"
+        # decided_at, NOT created_at -- stop_decisions has no created_at column.
         cur.execute("""
             SELECT 1 FROM stop_decisions
             WHERE symbol = %s AND decision = 'HOLD_OVERRIDE'
-              AND created_at > NOW() - INTERVAL '96 hours' LIMIT 1
+              AND decided_at > NOW() - INTERVAL '96 hours' LIMIT 1
         """, [symbol])
         if cur.fetchone():
             return False, "operator chose HOLD_OVERRIDE"
@@ -182,8 +227,15 @@ def _stop_warning_notify_decision(conn, trade_id, symbol, pct_consumed):
               AND acknowledged IS TRUE LIMIT 1
         """, [trade_id])
         if cur.fetchone():
+            cur.execute("RELEASE SAVEPOINT ack_lookup")
             return False, "operator acknowledged this warning"
+        cur.execute("RELEASE SAVEPOINT ack_lookup")
     except Exception as e:
+        # Undo ONLY this lookup, so the surrounding transaction survives.
+        try:
+            conn.cursor().execute("ROLLBACK TO SAVEPOINT ack_lookup")
+        except Exception:
+            pass
         # Loud, not swallowed: an acknowledgement we cannot read must not be
         # silently treated as absent, but it must also not stop the monitor.
         log.error("stop-warning acknowledgement lookup failed for %s: %s", symbol, e)
@@ -460,6 +512,12 @@ def _update_stop_on_alpaca(conn, trade, new_stop):
 
 def monitor_trade(conn, trade, dry_run=False, no_telegram=False):
     """Monitor a single open trade. Returns list of alerts generated."""
+    # Training trades never page the operator. The DB rows below are still
+    # written in full -- this suppresses the Telegram leg only, so the
+    # training metadata stays inspectable while the phone stays quiet.
+    if is_paper_only(trade):
+        no_telegram = True
+
     alerts = []
     tid = trade['id']
     symbol = trade['symbol']

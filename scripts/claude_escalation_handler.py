@@ -55,13 +55,46 @@ def _safe_write_queue(path, items):
         except Exception:
             pass
 
+def _log_handlers() -> list:
+    """Stream always; file only when LOG_DIR is actually writable.
+
+    2026-09-22: importing this module RAISED on any host where PROJECT_ROOT does
+    not exist, because logging.FileHandler opens its file eagerly and cannot
+    create a missing parent directory:
+
+        FileNotFoundError: '/home/johnclaw/trade-ai-v12-rebuild/.../logs/claude_escalation.log'
+
+    PROJECT_ROOT comes from get_live_project_root(), whose three branches are the
+    CURRENT symlink, RuntimeAwareness, and a HARDCODED dev path -- all absolute,
+    all specific to this host. On a CI runner none resolve, so every test that
+    loads this module by path errored at SETUP (25 of 25 in one gate), while the
+    same suite passed locally for a reason unrelated to what it asserts: this
+    machine happens to have that directory.
+
+    A logging side-effect must not be able to abort import. The file handler is
+    now best-effort; losing it costs a log line, not the module.
+
+    NOT fixed here, and worth its own change: seven other modules construct
+    logging.FileHandler on a PROJECT_ROOT path at module level the same way
+    (alpaca_paper_adapter, coder_dispatch, inference_ensemble_worker,
+    inference_layer_engine, pattern_extractor, pipeline_health_monitor,
+    pipeline_watchdog), and lib/live_project_root.py has no TRADEAI_PROJECT_ROOT
+    env override or checkout-relative fallback -- unlike cio_prompt_loader and
+    three siblings, which all layer env -> hardcoded -> __file__ -> cwd.
+    """
+    handlers: list = [logging.StreamHandler()]
+    try:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        handlers.append(logging.FileHandler(LOG_DIR / "claude_escalation.log"))
+    except Exception:
+        pass
+    return handlers
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [claude-escalation] %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(LOG_DIR / "claude_escalation.log"),
-    ]
+    handlers=_log_handlers(),
 )
 log = logging.getLogger("claude-escalation")
 
@@ -180,6 +213,108 @@ def _finding_type_from_component(component: str) -> str:
     return parts[2] if len(parts) >= 3 else ""
 
 
+def _health_policy_file() -> Path:
+    """The policy that ships with THIS copy of the handler, then DEV, then live.
+
+    Own tree first is deliberate.  Code and policy must come from the same
+    commit: a handler deciding what is still retryable from a policy belonging
+    to a different checkout is the served-copy split wearing another hat (it is
+    what made the first run of this gate assert against the deployed tree
+    instead of the tree under test).  In production the handler runs from the
+    DEV tree, so this resolves to the same file it always did.
+    """
+    here = Path(__file__).resolve().parents[1] / "config" / "health_agent_policy.json"
+    if here.is_file():
+        return here
+    try:
+        from lib.live_project_root import DEV_ROOT
+        dev = DEV_ROOT / "config" / "health_agent_policy.json"
+        if dev.is_file():
+            return dev
+    except Exception:
+        pass
+    return PROJECT_ROOT / "config" / "health_agent_policy.json"
+
+
+def _load_health_policy() -> dict:
+    try:
+        return json.loads(_health_policy_file().read_text())
+    except Exception:
+        return {}
+
+
+def load_remediation_types() -> set[str] | None:
+    """Finding types the health policy STILL maps to a retry command.
+
+    Returns None when the policy cannot be read.  None means "do not shed
+    anything": an unreadable policy would otherwise make every retryable item
+    look de-mapped and drain the whole autonomous queue.  Fail closed.
+    """
+    rmap = _load_health_policy().get("remediation_map")
+    if not isinstance(rmap, dict) or not rmap:
+        return None
+    return {k for k in rmap if not str(k).startswith("_")}
+
+
+def is_review_only(item: dict, remediation_types: set[str] | None = None) -> bool:
+    """True when an item cannot be auto-fixed and must not burn retries.
+
+    TWO POPULATIONS, BOTH MEASURED ON THE LIVE QUEUE 2026-09-22
+    -----------------------------------------------------------
+    1. NO ACTION AT ALL.  The old rule shed these only when the component began
+       with "health:" or matched _OPERATOR_COMPONENTS.  The namespace was never
+       the point — carrying no retry_cmd is.  `hermes_health_inspector:
+       staleness_escalation` (fixable=False, no retry_cmd) matched neither list,
+       so it survived every cycle, incremented its attempt counter forever and
+       re-logged "exhausted after 68 attempts — will re-arm in 1800s" with a
+       Telegram page each time.  Its producer is not scheduled anywhere (no cron
+       line among 992, no systemd unit), and its 6 queued rows are frozen
+       2026-08-07 dry-run artifacts whose root_cause string no longer exists in
+       the code, so nothing could ever clear them.
+
+    2. DE-MAPPED REMEDIATION.  A queued retry_cmd is a SNAPSHOT taken when
+       health_agent enqueued the item; `remediation_map` in the health policy is
+       the CURRENT truth.  When a type is removed from the map because its retry
+       can never clear the finding (schwab_journal_ingest_stale, 2026-09-22), the
+       already-queued copy kept its stale command and went on exhausting and
+       re-arming forever.  The policy, not the queue snapshot, decides what is
+       retryable.  Scoped to source="health_agent" because that producer builds
+       retry_cmd strictly from the map; data_source_stale is exempt because its
+       command can also come from `data_source_remediation` keyed by source.
+
+    needs_code_fix items are never shed — coder_dispatch owns them.
+    """
+    if item.get("needs_code_fix"):
+        return False
+    if not item.get("fixable") and not item.get("retry_cmd"):
+        return True
+    if remediation_types and item.get("source") == "health_agent":
+        ftype = _finding_type_from_component(str(item.get("component") or ""))
+        if ftype and ftype != "data_source_stale" and ftype not in remediation_types:
+            return True
+    return False
+
+
+def should_page_exhausted(item: dict) -> bool:
+    """Page for THIS exhaustion once, not once every 10-minute cycle.
+
+    Measured 2026-09-22: one component sat at attempts=68 and re-emitted the
+    "AUTO-RETRY PAUSED" warning + Telegram on every single handler run.  The
+    re-arm path (which needs fixable AND retry_cmd) can never reach an item that
+    has neither, so the page repeated forever.  Re-arming clears the flag, so a
+    genuinely NEW exhaustion after a re-arm still pages.
+
+    Caveat, stated honestly: the flag only survives cycles in which the queue is
+    rewritten (the tier1-only path rewrites it when something resolved).  It is
+    a second line of defence — the first is that the three storm items no longer
+    reach this branch at all.
+    """
+    if item.get("_exhaust_notified"):
+        return False
+    item["_exhaust_notified"] = True
+    return True
+
+
 # Must match health_agent / lib.watchlist_priority (decision-feeding SLA types).
 _TIME_SENSITIVE_REQUEST_TYPES = (
     "proposal_review", "full_analysis", "research_gap", "event", "go_signal_review",
@@ -226,16 +361,39 @@ def _verify_remediation(item) -> tuple[bool, str]:
     if not ftype:
         return True, "no_verify_unknown_component"
 
-    # Paper stuck: zero APPROVED_FOR_PAPER_TEST rows remaining
+    # Paper stuck: the DETECTOR's predicate, not "zero rows in the lane".
+    #
+    # MEASURED 2026-09-22.  health_agent.py:2731 counts a proposal as STUCK only
+    # when it is old, mid-validation or needs revalidation.  This verify counted
+    # EVERY APPROVED_FOR_PAPER_TEST row, including healthy EXECUTED/ELIGIBLE ones
+    # that the lane creates continuously (16 rows live, of which exactly 2 were
+    # stuck).  So the retry ran, the sweep did its work, and verify still reported
+    # `paper_stuck_still_9` — the queue item was never marked resolved, its attempt
+    # counter climbed to 20, and it re-armed every 1800s forever.  A verify that
+    # can never pass while the lane is healthy is not a verify.
     if ftype == "approved_paper_test_stuck":
+        pol = (_load_health_policy().get("proposal_pipeline") or {})
+        try:
+            stuck_h = int(pol.get("approved_paper_stuck_hours", 2))
+        except (TypeError, ValueError):
+            stuck_h = 2
+        try:
+            warn = int(pol.get("approved_paper_stuck_warn", 1))
+        except (TypeError, ValueError):
+            warn = 1
         ok, n, note = _db_verify(
-            "SELECT COUNT(*) FROM paper_trade_proposals WHERE status = 'APPROVED_FOR_PAPER_TEST'"
+            "SELECT COUNT(*) FROM paper_trade_proposals "
+            "WHERE status = 'APPROVED_FOR_PAPER_TEST' "
+            "  AND (updated_at < NOW() - make_interval(hours => %s) "
+            "       OR paper_submit_state IN ('VALIDATING', 'NOT_SUBMITTED') "
+            "       OR execution_eligibility_status = 'NEEDS_REVALIDATION')",
+            (stuck_h,),
         )
         if not ok:
             return False, note
         n = int(n or 0)
-        if n == 0:
-            return True, "paper_stuck_cleared"
+        if n < max(1, warn):
+            return True, f"paper_stuck_cleared_{n}"
         return False, f"paper_stuck_still_{n}"
 
     # Backups: newest full dump < 26h and ≥ 500MB
@@ -665,15 +823,13 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         "release_manifest", "proposal_link_rate", "catalyst_type_quality",
         "agent::test_", "agent_staleness",  # no retry_cmd, never auto-fixable
     )
+    remediation_types = load_remediation_types()
     cleaned = []
     for item in actionable:
         comp = str(item.get("component") or "")
-        if not item.get("fixable") and not item.get("retry_cmd") and not item.get("needs_code_fix"):
-            if any(k in comp for k in _OPERATOR_COMPONENTS) or comp.startswith("health:"):
-                # Keep code_fix; drop review-only noise from autonomous queue
-                if not item.get("needs_code_fix"):
-                    log.info(f"  🗑 Drop operator/review-only from queue: {comp}")
-                    continue
+        if is_review_only(item, remediation_types):
+            log.info(f"  🗑 Drop operator/review-only from queue: {comp}")
+            continue
         cleaned.append(item)
     actionable = cleaned
 
@@ -703,6 +859,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
             if last_at and (now_ts - float(last_at)) >= EXHAUST_RESET_SEC:
                 log.info(f"  ♻️ Re-arm exhausted {comp} after {EXHAUST_RESET_SEC:.0f}s")
                 item.pop("_exhausted", None)
+                item.pop("_exhaust_notified", None)
                 item["_attempts"] = 0
                 attempts = 0
                 cmd = item.get("retry_cmd") or ""
@@ -718,6 +875,8 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
 
         if attempts >= MAX_RETRIES:
             item["_exhausted"] = True
+            if not should_page_exhausted(item):
+                continue
             log.warning(f"{item.get('component')}: exhausted after {attempts} attempts — will re-arm in {EXHAUST_RESET_SEC:.0f}s")
             try:
                 _notify(

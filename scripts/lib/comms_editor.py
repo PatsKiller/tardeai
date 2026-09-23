@@ -60,16 +60,18 @@ Never places, sizes or cancels anything. MBI_BEHAVIOR = 0.
 """
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import html
 import json
 import os
 import re
+import sys
 import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Iterable, Optional
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
@@ -81,6 +83,35 @@ DEFAULT_LEDGER = PROJECT_ROOT / "data" / "runtime" / "comms_editor_ledger.json"
 DEFAULT_RECEIPTS = PROJECT_ROOT / "data" / "runtime" / "comms_editor_receipts.jsonl"
 DEFAULT_CC_HOST = "ms01-openclaw.tail163d14.ts.net"
 MSG_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_URL, "tradeai:operator-message")
+
+#: Active-turn primary symbols for footer links. Set by the desk before send so
+#: residual names in the body (prior-turn memory) do not bleed into chrome tags.
+_PRIMARY_SYMBOLS_CV: contextvars.ContextVar[Optional[tuple[str, ...]]] = contextvars.ContextVar(
+    "comms_editor_primary_symbols", default=None,
+)
+
+#: Process-global primary-symbol store. Cron puts ``scripts/`` on ``sys.path``, so
+#: ``lib.comms_editor`` and ``scripts.lib.comms_editor`` load as *two* module
+#: objects with *two* ContextVars. Live 2026-09-22: converse set primary on
+#: ``scripts.lib`` while ``deliver_text`` read ``lib`` — S ask footer still had
+#: ``S:… TROW:… HODO:…``. One ``sys.modules`` bucket is shared by every import.
+_PRIMARY_BUCKET_KEY = "_tradeai_comms_editor_primary_symbols"
+
+
+def _primary_bucket() -> dict[str, Any]:
+    return sys.modules.setdefault(  # type: ignore[return-value]
+        _PRIMARY_BUCKET_KEY,
+        {"stack": [], "value": None},
+    )
+
+
+class _PrimarySymbolsToken:
+    """Opaque token that resets the shared bucket (and same-module ContextVar)."""
+
+    __slots__ = ("cv_token",)
+
+    def __init__(self, cv_token: Optional[contextvars.Token] = None) -> None:
+        self.cv_token = cv_token
 
 PILL_HOUSE = "🟢 Trade-AI"
 PILL_OUTSIDE = "🔵 Outside"
@@ -288,6 +319,68 @@ def subjects(text: str, *, resolve: Optional[Callable[[str], list[dict]]] = None
     return out[:6]
 
 
+def set_primary_symbols(symbols: Optional[Iterable[str]]) -> _PrimarySymbolsToken:
+    """Bind turn-scoped primary tickers for the next ``edit`` / deliver_text call.
+
+    Writes the shared process bucket *and* this module's ContextVar so dual
+    imports of the file (``lib`` vs ``scripts.lib``) still agree.
+    """
+    try:
+        from scripts.lib.telegram_rich import scope_primary_symbols  # noqa: PLC0415
+    except ImportError:  # pragma: no cover
+        from lib.telegram_rich import scope_primary_symbols  # type: ignore  # noqa: PLC0415
+    scoped: Optional[tuple[str, ...]]
+    if symbols is None:
+        scoped = None
+    else:
+        scoped = tuple(scope_primary_symbols(symbols))
+    bucket = _primary_bucket()
+    stack = bucket.setdefault("stack", [])
+    stack.append(bucket.get("value"))
+    bucket["value"] = scoped
+    cv_token = _PRIMARY_SYMBOLS_CV.set(scoped)
+    return _PrimarySymbolsToken(cv_token)
+
+
+def reset_primary_symbols(token: Any) -> None:
+    """Reset primary symbols after send. Accepts shared or legacy ContextVar tokens."""
+    bucket = _primary_bucket()
+    stack = bucket.get("stack") or []
+    if stack:
+        bucket["value"] = stack.pop()
+    else:
+        bucket["value"] = None
+    cv_token = getattr(token, "cv_token", None)
+    if cv_token is not None:
+        try:
+            _PRIMARY_SYMBOLS_CV.reset(cv_token)
+        except Exception:  # noqa: BLE001
+            pass
+    elif isinstance(token, contextvars.Token):
+        try:
+            _PRIMARY_SYMBOLS_CV.reset(token)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _resolve_primary_symbols(explicit: Optional[Iterable[str]]) -> Optional[list[str]]:
+    try:
+        from scripts.lib.telegram_rich import scope_primary_symbols  # noqa: PLC0415
+    except ImportError:  # pragma: no cover
+        from lib.telegram_rich import scope_primary_symbols  # type: ignore  # noqa: PLC0415
+    if explicit is not None:
+        return scope_primary_symbols(explicit)
+    # Shared bucket first — survives dual import of this module under cron.
+    bucket = _primary_bucket()
+    shared = bucket.get("value")
+    if shared is not None:
+        return scope_primary_symbols(shared)
+    cv = _PRIMARY_SYMBOLS_CV.get()
+    if cv is None:
+        return None
+    return scope_primary_symbols(cv)
+
+
 def cio_views(symbols: list[str], db_query: Optional[Callable[..., list[dict]]]) -> dict[str, dict[str, Any]]:
     """The CIO's latest decision per symbol in the last 3 days."""
     if not symbols or db_query is None:
@@ -491,10 +584,24 @@ def cc_base() -> str:
 
 def symbol_links(symbol: str) -> str:
     # Canonical dossier deep-link (same as telegram_rich.cc_symbol_url) — not portfolio.
-    s = quote(symbol.upper())
-    return (f'<a href="{cc_base()}/v3/watch/intelligence/{s}">{html.escape(symbol.upper())} in Command Center</a>'
-            f' · <a href="https://finviz.com/quote.ashx?t={s}">Finviz</a>'
-            f' · <a href="https://finance.yahoo.com/quote/{s}">Yahoo</a>')
+    try:
+        from scripts.lib.telegram_rich import symbol_links as _rich_links  # noqa: PLC0415
+        return _rich_links(symbol, surface="intelligence")
+    except ImportError:  # pragma: no cover
+        s = quote(symbol.upper())
+        return (f'<a href="{cc_base()}/v3/watch/intelligence/{s}">{html.escape(symbol.upper())} in Command Center</a>'
+                f' · <a href="https://finviz.com/quote.ashx?t={s}">Finviz</a>'
+                f' · <a href="https://finance.yahoo.com/quote/{s}">Yahoo</a>')
+
+
+def build_outbound_links(symbols: Optional[Iterable[str]]) -> str:
+    """Footer chrome for the active turn's primary symbols only."""
+    try:
+        from scripts.lib.telegram_rich import build_outbound_links as _build  # noqa: PLC0415
+        return _build(symbols, surface="intelligence")
+    except ImportError:  # pragma: no cover
+        from scripts.lib.telegram_rich import scope_primary_symbols  # noqa: PLC0415
+        return " · ".join(symbol_links(s) for s in scope_primary_symbols(symbols)[:3])
 
 
 def pills_for(text: str) -> list[str]:
@@ -560,8 +667,14 @@ class EditorDecision:
 
 def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Optional[datetime] = None,
          ledger: Optional[DuplicateLedger] = None, db_query: Optional[Callable[..., list[dict]]] = None,
-         resolve: Optional[Callable[[str], list[dict]]] = None, editor_mode: Optional[str] = None) -> EditorDecision:
-    """Decide what one message becomes. Pure apart from reads; ``commit`` records it."""
+         resolve: Optional[Callable[[str], list[dict]]] = None, editor_mode: Optional[str] = None,
+         primary_symbols: Optional[Iterable[str]] = None) -> EditorDecision:
+    """Decide what one message becomes. Pure apart from reads; ``commit`` records it.
+
+    ``primary_symbols`` scopes footer links to the active turn only. When set
+    (or via ``set_primary_symbols``), residual tickers in the body — e.g. TROW
+    from prior-turn memory — do not get secondary Finviz/Yahoo chrome.
+    """
     now = now or datetime.now(timezone.utc)
     ledger = ledger or DuplicateLedger()
     m = editor_mode or mode()
@@ -570,8 +683,21 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
     body = text or ""
     was_html = parse_mode == "HTML" or looks_like_html(body)
 
+    primary = _resolve_primary_symbols(primary_symbols)
     subs = subjects(body, resolve=resolve)
-    syms = [s["symbol"] for s in subs]
+    if primary is not None:
+        allow = set(primary)
+        # Keep GUID rows for primary only; never invent links for body bleed.
+        by_sym = {s["symbol"]: s for s in subs}
+        scoped: list[dict[str, str]] = []
+        for sym in primary:
+            if sym in by_sym:
+                scoped.append(by_sym[sym])
+            else:
+                scoped.append({"symbol": sym, "guid": ""})
+        subs = scoped
+        changes.append("primary_symbols_scoped")
+    syms = [s["symbol"] for s in subs if s.get("symbol")]
     views = cio_views(syms, db_query)
     disagree = cio_disagreements(body, views)
     missing = cio_missing_decisions(body, syms, views)
@@ -602,9 +728,11 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
     prior = ledger.check(chat_id, fp, now)
 
     footer: list[str] = []
-    if subs and len(html_body) < MAX_BODY_FOR_FOOTER:
-        footer.append(" · ".join(symbol_links(s["symbol"]) for s in subs[:3]))
-        changes.append("links")
+    if syms and len(html_body) < MAX_BODY_FOR_FOOTER:
+        link_line = build_outbound_links(syms[:3] if primary is None else primary)
+        if link_line:
+            footer.append(link_line)
+            changes.append("links")
     for d in disagree:
         footer.append(f"⚠️ <b>CIO disagrees on {html.escape(d['symbol'])}</b>: message reads {d['message']}, "
                       f"CIO decision is {html.escape(d['cio_action'] or 'UNKNOWN')} ({html.escape(d['cio_as_of'])})"
@@ -626,13 +754,13 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
         changes.append("publish_packet")
 
     if len(html_body) < MAX_BODY_FOR_FOOTER:
-        ids = " ".join(f"{s['symbol']}:{s['guid'][:8]}" for s in subs[:4])
+        ids = " ".join(f"{s['symbol']}:{s['guid'][:8]}" for s in subs[:4] if s.get("guid"))
         footer.append(f"<i>{' · '.join(pills_for(body))} · 🆔 {guid[:8]}{(' · ' + ids) if ids else ''}</i>")
         changes.append("guid_footer")
     final = html_body.rstrip() + ("\n\n" + "\n".join(footer) if footer else "")
-    return EditorDecision(mode=m, chat=_chat_key(chat_id), guid=guid, fingerprint=fp, text=final,
+    return EditorDecision(mode=m, chat=str(_chat_key(chat_id)), guid=guid, fingerprint=fp, text=final,
                           parse_mode="HTML", duplicate_of=(prior or {}).get("guid"), held_reason=held,
-                          subjects=subs, cio_disagreements=disagree, changes=changes)
+                          subjects=[s for s in subs if s.get("guid")], cio_disagreements=disagree, changes=changes)
 
 
 def commit(decision: EditorDecision, *, chat_id: Any, now: Optional[datetime] = None,
@@ -650,7 +778,8 @@ def commit(decision: EditorDecision, *, chat_id: Any, now: Optional[datetime] = 
         pass
 
 
-__all__ = ["DuplicateLedger", "EditorDecision", "PILL_HOUSE", "PILL_MODEL", "PILL_OUTSIDE", "cc_base",
-           "cio_disagreements", "cio_missing_decisions", "commit", "default_db_query", "edit", "fingerprint",
-           "markdown_to_html", "message_guid", "mode", "rewrite_bullish_to_watch", "soft_block_rewrite_symbols",
-           "subjects", "symbol_links"]
+__all__ = ["DuplicateLedger", "EditorDecision", "PILL_HOUSE", "PILL_MODEL", "PILL_OUTSIDE", "build_outbound_links",
+           "cc_base", "cio_disagreements", "cio_missing_decisions", "commit", "default_db_query", "edit",
+           "fingerprint", "markdown_to_html", "message_guid", "mode", "reset_primary_symbols",
+           "rewrite_bullish_to_watch", "set_primary_symbols", "soft_block_rewrite_symbols", "subjects",
+           "symbol_links"]

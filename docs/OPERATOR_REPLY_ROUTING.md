@@ -2,8 +2,10 @@
 
 ```
 Status:      ACTIVE
-as_of:       2026-09-13T23:59:00-04:00
-Measured at: 034ff2c90 (file:line references in the map) · a8a62217e (section "What PRs #1000 and #1001 added")
+as_of:       2026-09-22T18:20:00-04:00
+Measured at: 034ff2c90 (file:line references in the map) · a8a62217e (section "What PRs #1000 and #1001 added") ·
+             2026-09-22 single-letter S: #1187+#1191 promoted (857931d41) then residual dual-import bleed +
+             hollow buy-perspective — see section below
 ```
 
 `READ_ONLY_ADVISORY` · MBI_BEHAVIOR = 0 · written 2026-09-13 · branch `feat/route-a-every-reply-cites-sources` (merged in PR #998)
@@ -177,6 +179,32 @@ The contract above is unchanged; these change what the desk rows put in front of
   defined once in `reply_provenance` (`PILL_HOUSE`, `PILL_OUTSIDE`, `PILL_MODEL`, `LEGEND`).
 - First live delivery: HPE research, asked 09:12 ET, delivered automatically 10:36 ET.
 
+## Single-letter ticker `S` / chrome / buy-perspective research-first
+
+**Lifecycle `[VERIFIED]` 2026-09-22:**
+
+| wave | what | pin |
+|---|---|---|
+| #1187 + #1191 | primary_symbols + soft Hermes pending + STALE label | promoted `857931d41-main-exact-phase2-20260922-170257` |
+| residual live (~17:49 ET) | footer still `S:… TROW:… HODO:…`; hollow DeepSeek essay on Sep-04 STALE for buy/perspective | same pin — telegram cwd matched tip |
+| residual fix | process-global primary bucket (dual-import); buy/perspective → deferred research-first | this PR (`f08425299`) |
+
+**Why chrome still bled after #1187:** cron puts `scripts/` on `sys.path`, so
+`lib.comms_editor` and `scripts.lib.comms_editor` are two modules with two
+ContextVars. Converse set primary on one; `deliver_text` read the other.
+
+**Buy/perspective policy (Option B):** "thinking of buying / give me the
+perspective / good investment" with thin house research or stale quotes must
+**not** lead with a hollow DeepSeek essay — lead with queued/pending status
+(`kind=deferred`, `reply_source=buy_perspective_research_first`). Non-buy
+analyst asks may still answer-now + soft pending.
+
+Canonical write-up: `docs/audits/SINGLE_LETTER_TICKER_S_FIX_2026-09-22.md`.
+Tests: `tests/test_single_letter_tickers.py` (dual-import + buy-perspective).
+
+Docs PR #1188 recorded the morning **PR_ONLY** snapshot and is superseded by
+the audit above once this lands.
+
 ## Known limits — named, not closed
 
 - **Attention scans an empty office on the converse path** (R1, R5a). The Sources line now says so, but
@@ -192,6 +220,7 @@ The contract above is unchanged; these change what the desk rows put in front of
 - **The answer-quality monitor does not know about ETAs.** `check_operator_answer_quality.py`
   `pending_never_closed` flags any pending still open after `PENDING_OPEN_HOURS` (2 h), while the desk keeps a
   pending with an ETA open to ETA + grace. A long-ETA pending is reported before it is due.
+- **OBSERVED_LIVE for the residual fix** still requires a Telegram re-ask on the served pin after promote.
 
 ## Tests
 
