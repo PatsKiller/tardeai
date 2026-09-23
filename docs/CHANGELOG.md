@@ -11,6 +11,12 @@ Measured at: 88eddef0e (origin/main = release CURRENT = dev tree) + fix/watchlis
 - **Cost basis** (`schwab_position_sync`): a trade-sized share change on an existing row (`share_drift_status: auto_applied`) rebases `cost_basis` on the broker average price × new shares (previously set only for brand-new rows), and recomputes `gain_loss`. The SSOT basis shield no longer restores a stored basis when the share count changed — it still guards an unchanged share count (tax-grade `csv_lot` basis untouched).
 - **Not done.** A position fully sold today leaves holdings, so its realized day P/L is not in TODAY. The Schwab transport's `currentDayProfitLoss` is not captured (broker-subsystem code, not edited); it would be the authoritative cross-check.
 
+## 2026-09-23 — Docs sync no longer trashes release-ephemeral page captures
+
+- **Measured.** A 09:50 ad-hoc page walk wrote 228 Command Center captures into the live release dir (`docs/command-center-pages`, untracked); its Drive folder is the mirror's own subfolder. Each promote builds a release without them, and `sync-docs-to-drive.sh` cleanup then trashed the Drive copies as "no longer exists locally" — 40 were trashed on 2026-09-23 before this fix.
+- **Shipped.** `is_preserved_capture` (docs/command-center-pages/*): a missing local copy keeps its Drive file and manifest line; a present one syncs normally; everything else cleans up as before. Test: `tests/test_drive_sync_preserved_captures_20260923.py` executes the real cleanup block with `gog` stubbed.
+- **Recovered.** The 40 were re-uploaded from `~/ops-evidence/command-center-pages-20260923` (byte-identical local copy); all 228 present on Drive, no duplicate names.
+
 ## 2026-09-23 — A watched ticker the watchlist API could not see: directives join /api/v2/watchlist
 
 MATURITY_IMPACT: the gateway and the primary watchlist endpoint now agree on what is watched; a dead legacy writer family stops failing silently.

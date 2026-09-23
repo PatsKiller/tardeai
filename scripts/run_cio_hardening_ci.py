@@ -250,6 +250,8 @@ GATES = [
             # Maturity-gap remaining: Flash CIO soak observer, self-repair dry harness.
             "tests/test_observe_flash_cio_soak.py",
             "tests/test_gog_drive_safe_parse_id.py",
+            # Docs sync keeps Drive copies of release-ephemeral captures (command-center-pages).
+            "tests/test_drive_sync_preserved_captures_20260923.py",
             "tests/test_run_self_repair_loop_dry.py",
             # Holding-drawer LLM curation (feat/holding-llm-curation-cio-flash):
             # freshness classes, CIO Flash 4.1 triple-consensus reconcile,
