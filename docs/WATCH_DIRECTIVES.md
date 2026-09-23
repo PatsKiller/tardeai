@@ -61,6 +61,14 @@ Reconciled to route ALL promotion through the D-1 engine (was a flat watchlist-a
   (one-tap, auto=True) · `GET /api/v2/watchpool` (unified list) · `GET /api/v2/watch-directives`
   (directives + hits + staging + **health**) · `GET /api/v2/watch/sectors` (Finviz sector list +
   DISTINCT constituent counts + sample, for the Add-Watch sector dropdown/preview).
+- `GET /api/v2/watchlist` (`api_v2.watchlist_combined`) serves **every ACTIVE ticker directive** (2026-09-23).
+  Before, it read only `state/watchlist.json` (13 names), so a directive-added ticker (e.g. `S`, directive
+  1278) was "watched" at the gateway but absent here. Directives are read through the `watch_intelligence`
+  projection (`lib/data_broker/watch_intelligence.active_ticker_directives`, symbol = `spec->>'symbol'`,
+  newest per symbol). A symbol already listed is annotated in place; an unlisted one is appended with
+  `source: "directive"`. Every item carries `is_watched`, plus `directive_id`, `directive_label`,
+  `trade_ai_enabled`, `hermes_enabled`, `last_updated` when a directive exists; the envelope adds
+  `total_count` and `active_directives_count`. No response cache — a new directive shows on the next request.
 - **Two operator UI surfaces (same provenance pill row):**
   - **`/v3/watchlist`** (`WatchlistHub.tsx`) — the primary page. **"+ Add Watch" full-circle modal**
     (Ticker/Sector/Trend; sector dropdown with live constituent-count + first-10 preview; trend
