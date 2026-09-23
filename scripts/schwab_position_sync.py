@@ -497,6 +497,14 @@ def _build_account_rows(account_key, live, existing_by_key):
                     # read a 18-day-old stamp on same-day data. The broker sync is the
                     # only writer that knows the real confirmation time; it stamps it.
                     "broker_position_as_of": as_of})
+        # Schwab's own P/L Day, with the mark it was computed at, so the repricer can check its
+        # fill-aware day change against the broker at the SAME price (a later mark differs).
+        _bdp = _f(p.get("day_pl"))
+        if _bdp is not None:
+            row.update({"broker_day_pl": round(_bdp, 2), "broker_day_pl_price": price, "broker_day_pl_at": now})
+        else:
+            for _k in ("broker_day_pl", "broker_day_pl_price", "broker_day_pl_at"):
+                row.pop(_k, None)
         # Share drift policy (approval-based for DRIP-like increases)
         try:
             from share_reconciliation import stamp_broker_qty
