@@ -3259,7 +3259,8 @@ def plain_research_failure(error: str, symbols: list[str]) -> str:
             f"promoted research did not land for {names}: the research draft was refused "
             "by the read-only guard"
         )
-    return f"promoted research did not land for {names}"
+    short = " ".join(str(error or "research run failed").split())[:140]
+    return f"promoted research did not land for {names}: {short}"
 
 
 def _has_house_facts(avail: dict[str, Any], symbols: list[str]) -> bool:
