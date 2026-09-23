@@ -2,12 +2,13 @@
 
 ```
 Status: ACTIVE · UNATTENDED_ORGANIC_OBSERVED
-as_of: 2026-09-22T02:38:00-04:00
-Measured at: report_organic_stance_hold.py organic=1780 observed=true exit=0;
-  latest DFAU as_of=2026-09-21T20:58:08Z source=check_investment_send
-  held_reason=cio_stance_conflict caller=send_telegram_proposal_alert
+as_of: 2026-09-23T02:37:00-04:00
+Measured at: report_organic_stance_hold.py organic=3276 observed=true exit=0;
+  latest J as_of=2026-09-22T20:58:07Z source=check_investment_send
+  caller=send_telegram_proposal_alert held_reason=cio_decision_missing;
+  conflict proof DUHP as_of=2026-09-22T20:50:14Z held_reason=cio_stance_conflict
 Canonical repo path: docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md
-Authority: Tue early observe 2026-09-22 ~06:35 ET; AGENTS.md §8 (unattended ≠ FORCE-mechanical)
+Authority: Wed early observe 2026-09-23 ~06:35 ET; AGENTS.md §8 (unattended ≠ FORCE-mechanical)
 Supersedes gap id: PARTIAL-telegram-CIO-stance
 See also: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md; #1082 stance hard-gate
 ```
@@ -41,34 +42,36 @@ on a **served production release pin**, without human intervention.
 - **`MBI_BEHAVIOR = 0`** — cognition/memory never sizes, orders, stops, or writes broker fields.
 - Non-authoritative memory remains cognitive-only (no cash/positions/ledger prices).
 
-## Measurement `[VERIFIED]` 2026-09-22T06:36:16Z (Tue early observe)
+## Measurement `[VERIFIED]` 2026-09-23T06:36:17Z (Wed early observe)
 
 ```text
 EXIT=0
-observed=true organic=1780 non_organic=2 total=1782
-latest: as_of=2026-09-21T20:58:08Z symbol=DFAU caller=send_telegram_proposal_alert
+observed=true organic=3276 non_organic=2 total=3278
+latest: as_of=2026-09-22T20:58:07Z symbol=J caller=send_telegram_proposal_alert
+        source=check_investment_send held_reason=cio_decision_missing
+conflict: as_of=2026-09-22T20:50:14Z symbol=DUHP caller=send_telegram_proposal_alert
         source=check_investment_send held_reason=cio_stance_conflict
 path: ~/.local/state/tradeai/cio_telegram_stance_holds.jsonl
-mtime: 2026-09-21T16:58:08-04:00
 ```
 
-### Unattended Mon 2026-09-21 (after Mon 06:00 ET)
+### Unattended Tue 2026-09-22 (after Tue 06:00 ET)
 
 | class | count |
 |---|---|
-| NEW organic (`source=check_investment_send` + ORGANIC_HOLD_CALLERS) | **1776** |
-| `send_telegram_proposal_alert` | 1748 |
-| `screener_go_alerts` | 28 |
-| Pre–Mon-06:00 ET organic (FORCE-mechanical AEMD/LSTA set) | 4 |
+| NEW organic (`source=check_investment_send` + ORGANIC_HOLD_CALLERS) | **1496** |
+| `send_telegram_proposal_alert` | 1494 |
+| `screener_go_alerts` | 2 |
+| `held_reason=cio_stance_conflict` (NEW) | 861 |
+| `held_reason=cio_decision_missing` (NEW) | 635 |
 
-First NEW ~2026-09-21T13:36:05Z (09:36 ET); last ~2026-09-21T20:58:08Z (16:58 ET).
-Mon host observe timers still saw organic=4 (early 06:35 / main 09:05) — NEW traffic began ~30m after 09:05.
+First NEW ~2026-09-22T13:15:01Z (GDC / screener); last ~2026-09-22T20:58:07Z (J / proposal).
+Tue host timers saw organic=1780 at early 06:35 and main 09:05 — NEW Tue traffic began ~09:15 ET.
 
-### Prior measurement (historical)
+### Prior measurement (Tue early / Mon history)
 
-`[VERIFIED]` 2026-09-21T01:42:03Z organic=4 latest LSTA — those four rows were
-OPERATOR_FORCED_GO_LIVE / Sun hand-replay of Fri session, **not** unattended schedule
-proof. Retained as history; not deleted.
+`[VERIFIED]` 2026-09-22T06:36:16Z organic=1780 (Mon NEW=1776 after Mon 06:00 ET).
+`[VERIFIED]` 2026-09-21T01:42:03Z organic=4 latest LSTA — FORCE-mechanical / Sun hand-replay,
+**not** unattended. Retained as history; not deleted.
 
 ## Why the old bar was wrong
 

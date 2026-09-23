@@ -654,3 +654,31 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
   as_of=2026-09-22T06:38:11Z; soft_unsupported_share=**0.098** (160/1636) PASS ≤0.15.
 - Ledger row → **CLOSED · UNATTENDED_ORGANIC_OBSERVED**. Prior organic=4 retained as
   FORCE-mechanical history (not deleted). §17 parks unchanged. MBI/broker untouched.
+
+## 2026-09-23T02:37 ET — Wed early observe refresh (organic=3276)
+
+- Stance ledger remains **CLOSED · UNATTENDED_ORGANIC_OBSERVED** (no reopen; no invent).
+- `[VERIFIED]` `python3 scripts/report_organic_stance_hold.py` EXIT=**0**:
+  `LIVE-cio-stance-governance: OBSERVED organic=3276 non_organic=2 total=3278`
+  path=`/home/johnclaw/.local/state/tradeai/cio_telegram_stance_holds.jsonl`
+  latest: as_of=2026-09-22T20:58:07Z symbol=J caller=send_telegram_proposal_alert
+  reason=cio_decision_missing; observe receipt as_of=2026-09-23T06:36:17Z.
+- Proof stamps: all organic rows `source=check_investment_send` + ORGANIC_HOLD_CALLERS;
+  same-window conflict receipt DUHP as_of=2026-09-22T20:50:14Z held_reason=`cio_stance_conflict`.
+- NEW since Tue 2026-09-22 06:00 ET: **1496**
+  (`send_telegram_proposal_alert`=1494, `screener_go_alerts`=2;
+  conflict=861 / decision_missing=635). First≈13:15:01Z GDC; last≈20:58:07Z J.
+- Host timers `[VERIFIED]`:
+  - early LastTrigger=**Tue 2026-09-22 06:35:11 EDT** (journal organic=1780);
+    Next=Wed 06:35:17 EDT (this agent slot; wall ~02:37 ET).
+  - main LastTrigger=**Tue 2026-09-22 09:05:33 EDT** (journal organic=1780);
+    Next=Wed 09:05:16 EDT.
+- Remasure `[VERIFIED]` pin `88eddef0e-main-exact-phase2-20260922-222556`:
+  - M1–M5 all **OBSERVED** exit 0 as_of=2026-09-23T06:37:08Z.
+  - soft_unsupported_share=**0.157** (251/1600) **FAIL** ≤0.15
+    (`report_agent_number_grounding.py --check-slo` exit 1). Soft regression noted;
+    PARTIAL-soft-share-live-SLO not reopened this turn (stance observe only).
+- Goal audit: organic **OBSERVED**; §17 parks still DEFERRED ×3 (bitemporal / hermes /
+  relationship). Goal **NOT COMPLETE** — never mark complete on weak evidence;
+  soft FAIL alone does not reopen stance.
+- MBI_BEHAVIOR=0 / broker untouched.

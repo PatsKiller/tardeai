@@ -2,9 +2,9 @@
 
 ```
 Status: ACTIVE
-as_of: 2026-09-22T02:38:00-04:00
-Measured at: LIVE-cio-stance-governance UNATTENDED_ORGANIC_OBSERVED (organic=1780; +1776 since Mon 06:00 ET); M1–M5 OBSERVED; soft_share=0.098; §17 DEFERRED parks unchanged
-Authority: Tue early observe 2026-09-22 ~06:35 ET slot; AGENTS.md §8 honesty (forced/mechanical ≠ unattended)
+as_of: 2026-09-23T02:37:00-04:00
+Measured at: LIVE-cio-stance-governance UNATTENDED_ORGANIC_OBSERVED (organic=3276; +1496 since Tue 06:00 ET); M1–M5 OBSERVED; soft_share=0.157 FAIL ≤0.15; §17 DEFERRED ×3 unchanged
+Authority: Wed early observe 2026-09-23 ~06:35 ET slot; AGENTS.md §8 honesty (forced/mechanical ≠ unattended)
 Canonical: docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md
 See also: docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md
 ```
@@ -22,7 +22,7 @@ See also: docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md
 | DARK-hermes_advisory_event_enqueue | §17 **DEFERRED** · PROPOSED RETIRE available | AGENTS research table; automatic writer is librarian backlog loop; no caller | Operator **DEFER** 2026-09-20 on docs/ops/PROPOSED_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE_2026-09-19.md | later APPROVE_RETIRE_* or WIRE |
 | DARK-KNOWN_DARK-cio_identity_resolver | CLOSED | aec_agent_bus.resolve_payload_agent_refs [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
 | DARK-KNOWN_DARK-cio_disposition_identity | CLOSED | aec_command_center_cycle decision_key [CODE] 850b9fda9 | — | removed from KNOWN_DARK; wiring tests PASS |
-| LIVE-cio-stance-governance (was PARTIAL-telegram-CIO-stance) | **CLOSED · UNATTENDED_ORGANIC_OBSERVED** | Goal stays closed (no reopen). Honesty upgrade: Mon 2026-09-21 market-hours producers wrote **1776 NEW** hold rows after Mon 06:00 ET (`source=check_investment_send`; callers `send_telegram_proposal_alert`=1748 + `screener_go_alerts`=28). `[VERIFIED]` Tue early observe 2026-09-22T06:36:16Z: organic=**1780** non_organic=2 total=1782 exit=0; latest DFAU `as_of=2026-09-21T20:58:08Z` caller=`send_telegram_proposal_alert` held_reason=`cio_stance_conflict`; holds mtime 2026-09-21T16:58:08-04:00. Prior organic=4 (AEMD/LSTA) were FORCE-mechanical / Sun hand-replay — not unattended. Host timers: early LastTrigger=Mon 06:35:11; main LastTrigger=Mon 09:05:43 (both still organic=4); Tue early Next=06:35:10 (this agent slot). Remasure: M1–M5 all OBSERVED exit 0 pin `58dac0884-…000413`; soft_unsupported_share=**0.098** (160/1636) PASS ≤0.15. | docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md; report_organic_stance_hold.py | keep observing; MBI_BEHAVIOR=0 inviolable |
+| LIVE-cio-stance-governance (was PARTIAL-telegram-CIO-stance) | **CLOSED · UNATTENDED_ORGANIC_OBSERVED** | Remains CLOSED (no reopen). Wed early refresh `[VERIFIED]` 2026-09-23T06:36:17Z: `report_organic_stance_hold.py` EXIT=**0** organic=**3276** non_organic=2 total=3278; latest J `as_of=2026-09-22T20:58:07Z` caller=`send_telegram_proposal_alert` `source=check_investment_send` held_reason=`cio_decision_missing`; conflict proof same window DUHP `as_of=2026-09-22T20:50:14Z` held_reason=`cio_stance_conflict`. NEW since Tue 2026-09-22 06:00 ET: **1496** (`proposal_alert`=1494, `screener_go_alerts`=2; conflict=861 / missing=635). Host timers: early Last=Tue 06:35:11 (journal organic=1780); main Last=Tue 09:05:33 (organic=1780); Wed early Next=06:35:17 (this agent slot ~02:37 ET). Remasure pin `88eddef0e-…222556`: M1–M5 all **OBSERVED** exit 0; soft_unsupported_share=**0.157** (251/1600) **FAIL** ≤0.15 (--check-slo exit 1) — soft SLO regression noted, stance row not reopened. Prior Tue organic=1780 / Mon FORCE=4 retained as history. | docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md; report_organic_stance_hold.py | keep observing; MBI_BEHAVIOR=0 inviolable |
 | PARTIAL-bridge-pin-soak | CLOSED | [VERIFIED] soak_ready=YES streak=5 @ 2026-09-20T04:44:54Z post-#1110 promote; pins_match | — | soak_ready=YES |
 | PARTIAL-quality-escalate-organic | **OBSERVED (unattended)** | [VERIFIED] Sun 08:00 ET weekly cron: ARKQ+NEE `requester=data_gap_resolver` `vector=quality_escalate` `provider=searxng` `outcome=partial` started 2026-09-20T12:00:07Z/12:00:11Z; weekly.log Chain resolve 2/2. Hand proof at 10:30Z was precursor. | — | unattended same stamps |
 | PARTIAL-soft-share-live-SLO | CLOSED | [VERIFIED] soft_unsupported 3/998≈0.003; #1087 report filter | — | share≤0.15 |
