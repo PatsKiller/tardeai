@@ -8,6 +8,7 @@ Fail closed when:
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -124,14 +125,61 @@ def test_maria_parity_hook_scrub_matches_surface_rules():
     assert decision.surface == "maria"
 
 
-def test_try_shared_perspective_entry_none_until_sibling_lands():
-    """Sibling Stages 1+3 library not present → stub returns None."""
+def test_try_shared_perspective_entry_none_when_join_module_absent():
+    """This Stage 2 tree alone (no operator_internal_first) → None."""
+    # Ensure a stale successful import from another worktree cannot leak in.
+    sys.modules.pop("scripts.lib.operator_internal_first", None)
+    sys.modules.pop("scripts.lib.hermes_subject_join", None)
+    # Re-import hook after clearing; if module still importable from this tree,
+    # skip the None assertion (combined tree).
+    if importlib.util.find_spec("scripts.lib.operator_internal_first") is not None:
+        pytest.skip("join library present in this tree — see call-path test")
     assert (
         mph.try_shared_perspective_entry(
             question="perspective on S", symbol="S", a2a_enabled=False
         )
         is None
     )
+
+
+def test_try_shared_perspective_entry_calls_answer_internal_first(monkeypatch):
+    """When join API is importable, hook calls answer_internal_first + scrubs."""
+    import types
+
+    calls: list[dict] = []
+
+    class _FakeResult:
+        def to_dict(self):
+            return {
+                "text": "Iris found a catalyst.\nHouse notes thin.\n",
+                "kind": "internal_first",
+                "hermes_join": {"status": "HUB_PROMOTED_0"},
+                "schema": "OperatorInternalFirst@v1",
+            }
+
+    def _fake_answer(text, **kw):
+        calls.append({"text": text, **kw})
+        return _FakeResult()
+
+    fake_mod = types.ModuleType("scripts.lib.operator_internal_first")
+    fake_mod.answer_internal_first = _fake_answer  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "scripts.lib.operator_internal_first", fake_mod)
+
+    out = mph.try_shared_perspective_entry(
+        question="perspective on SentinelOne",
+        a2a_enabled=False,
+        chat_id="8797974247",
+        use_desk=False,
+    )
+    assert out is not None
+    assert calls and calls[0]["text"] == "perspective on SentinelOne"
+    assert calls[0]["surface"] == "maria"
+    assert calls[0]["use_desk"] is False
+    assert calls[0]["channel"] == "skill"
+    assert "iris found" not in out["text"].lower()
+    assert sa.A2A_DENY_NOTICE in out["text"]
+    assert out["maria_parity_hook"] == mph.SCHEMA
+    assert out["hermes_join"]["status"] == "HUB_PROMOTED_0"
 
 
 def test_cli_hook_scrubs_stdin(tmp_path):
