@@ -30,7 +30,9 @@ DECLARE
   -- nullif('') matters: RESET on a custom GUC yields an empty string, not NULL,
   -- so a bare coalesce() would collapse the allowlist to [''] and refuse the
   -- shadow's own rebuild.
-  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow');
+  -- m2_shadow_test is the pytest database (tests/conftest.py routes every
+  -- shadow DSN there so tests never touch the live m2_shadow).
+  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow,m2_shadow_test');
   v_isolated  boolean := current_database() = ANY (string_to_array(v_allowed, ','));
   v_opted_in  boolean := coalesce(current_setting('m2.allow_destructive_reset', true), 'off') = 'on';
   v_exists    boolean := EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'memory_r10_m2');

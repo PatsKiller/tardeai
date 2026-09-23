@@ -43,13 +43,14 @@ def _fmt_abs(n: float) -> str:
 def get_open_trades() -> list:
     conn = get_connection()
     if not conn:
-        return []
+        return [], {}
     try:
         cur = conn.cursor()
         cur.execute("""
             SELECT symbol, strategy_id, shares,
                    entry_price, current_price, stop_loss, target_1,
-                   unrealized_pnl, r_multiple, created_at::date
+                   unrealized_pnl, r_multiple, created_at::date,
+                   account, execution_account, broker
             FROM paper_trades WHERE status = 'open'
             ORDER BY created_at DESC
         """)
@@ -157,6 +158,18 @@ def format_message(rows, trail_map) -> str:
 
 def send_eod_alert():
     rows, trail_map = get_open_trades()
+    # OPERATOR DECISION 2026-09-22: paper/training trades never page. This
+    # report sent "Alpaca paper mode | Simulated positions" on 09-22 and 09-23
+    # after that decision. Drop paper rows; with no real-money rows left there
+    # is nothing to report, so send nothing.
+    from lib.paper_account_policy import is_paper_only
+    real = [r for r in rows if not is_paper_only(r)]
+    if len(real) != len(rows):
+        log.info(f"[paper-mute] eod_open_trade_alert: dropped {len(rows) - len(real)} paper trade(s)")
+    if not real:
+        log.info("  Not sent: no real-money open trades (paper accounts never page)")
+        return False
+    rows = real
     message = format_message(rows, trail_map)
     log.info(f"Sending EOD alert: {len(rows)} open trades")
 

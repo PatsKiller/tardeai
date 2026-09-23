@@ -375,9 +375,19 @@ def summarize_stance_holds(path: Optional[Path] = None) -> dict[str, Any]:
 
 
 def write_organic_observe_receipt(summary: dict[str, Any]) -> list[str]:
-    """Persist the latest observe summary for lane/timer evidence (not a hold)."""
-    import json
+    """Persist the latest observe summary for lane/timer evidence (not a hold).
 
+    Never under pytest: test_report_organic_stance_hold_cli_exit_codes runs the
+    CLI on a tmp fixture, and its summary overwrote the PRODUCTION receipt
+    (path=/tmp/pytest-of-…/organic.jsonl, organic=1) -- the LIVE observe
+    evidence was test data (M5 audit 2026-09-23). PYTEST_CURRENT_TEST is
+    inherited by that subprocess, so the guard holds there too.
+    """
+    import json
+    import os
+
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return []
     payload = dict(summary)
     payload["schema"] = "CioTelegramStanceObserveReceipt@v1"
     body = json.dumps(payload, sort_keys=True, indent=2) + "\n"

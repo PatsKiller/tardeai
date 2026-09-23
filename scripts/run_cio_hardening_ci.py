@@ -1197,6 +1197,10 @@ GATES = [
         "paper_trades_never_page",
         [
             "tests/test_paper_trades_never_page_20260922.py",
+            # M5 guardrails 2026-09-23: the same rule for the four senders the
+            # 09-22 fix missed, pytest kept off the live M2 shadow, and the
+            # stance observe receipt kept out of reach of test fixtures.
+            "tests/test_m5_guardrails_20260923.py",
         ],
     ),
     # A DELIVERED message must not discard its provider id. _legacy_send called

@@ -7,7 +7,37 @@ CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-DROP SCHEMA IF EXISTS tradeai_memory_shadow CASCADE;
+-- Destructive reset is OPT-IN (2026-09-23), with the same two signals as
+-- r10_m2_isolated_benchmark.sql: the session sets m2.allow_destructive_reset=on
+-- AND current_database() is on the isolated allowlist. This line used to DROP
+-- unconditionally, so any re-apply -- including every pytest run against the
+-- default DSN -- wiped the live shadow projection (M5 audit 2026-09-23).
+-- The client (memory_shadow_projector.apply_schema) never opts in for the live
+-- shadow database unless TRADEAI_M2_ALLOW_LIVE_SHADOW_RESET=1 outside pytest.
+DO $reset$
+DECLARE
+  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow,m2_shadow_test');
+  v_isolated  boolean := current_database() = ANY (string_to_array(v_allowed, ','));
+  v_opted_in  boolean := coalesce(current_setting('m2.allow_destructive_reset', true), 'off') = 'on';
+  v_exists    boolean := EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'tradeai_memory_shadow');
+BEGIN
+  IF v_opted_in AND NOT v_isolated THEN
+    RAISE EXCEPTION
+      'M2_DESTRUCTIVE_RESET_REFUSED_NON_ISOLATED_DB: database % is not in the '
+      'isolated allowlist (%). Refusing DROP SCHEMA tradeai_memory_shadow CASCADE.',
+      current_database(), v_allowed;
+  ELSIF v_opted_in AND v_isolated THEN
+    DROP SCHEMA IF EXISTS tradeai_memory_shadow CASCADE;
+  ELSIF v_exists THEN
+    RAISE EXCEPTION
+      'M2_DESTRUCTIVE_RESET_REFUSED: schema tradeai_memory_shadow already exists in '
+      'database %. Re-running this file would DROP ... CASCADE it. Set '
+      'm2.allow_destructive_reset=on to reset an ISOLATED shadow only.',
+      current_database();
+  END IF;
+END
+$reset$;
+
 CREATE SCHEMA tradeai_memory_shadow;
 
 DO $$

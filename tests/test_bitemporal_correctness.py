@@ -448,7 +448,11 @@ def test_suite3_rls_isolation_as_agent(m2_conn, case_id):
     try:
         agent = psycopg2.connect(AGENT_DSN)
     except Exception:
-        agent = psycopg2.connect("postgresql://m2_agent@127.0.0.1:55432/m2_shadow")
+        from scripts.lib.m2_live_shadow_guard import shadow_test_database, with_database
+
+        agent = psycopg2.connect(
+            with_database("postgresql://m2_agent@127.0.0.1:55432/m2_shadow", shadow_test_database())
+        )
     agent.autocommit = True
     try:
         with agent.cursor() as cur:
@@ -797,8 +801,9 @@ def test_isolated_allowlist_default_survives_reset(m2_conn):
     with m2_conn.cursor() as cur:
         cur.execute("RESET m2.isolated_databases")
         cur.execute(
-            "SELECT coalesce(nullif(current_setting('m2.isolated_databases', true), ''), "
-            "'m2_shadow') = current_database()"
+            "SELECT current_database() = ANY (string_to_array(coalesce(nullif("
+            "current_setting('m2.isolated_databases', true), ''), "
+            "'m2_shadow,m2_shadow_test'), ','))"
         )
         assert cur.fetchone()[0] is True
 
