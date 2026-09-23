@@ -4923,6 +4923,8 @@ def watchlist_combined():
             }
         )
 
+    # Legacy sources: no watchlist_items rows carry analyst_curated/ai_generated today (the
+    # writers were retired 2026-09-23), so this loop yields nothing; kept for the read contract.
     try:
         from db_adapter import load_watchlist_items
 
@@ -4948,6 +4950,59 @@ def watchlist_combined():
                 )
     except Exception:
         pass
+
+    # ── Active ticker DIRECTIVES are watched symbols too (operator 2026-09-23: directive 1278 `S` was
+    # ACTIVE with linked watchlist_items rows, yet this endpoint served only the watchlist.json names —
+    # a surface-split where the gateway said "watched" and /api/v2/watchlist said missing). Union them
+    # in: a symbol already listed gets its directive fields; an unlisted one is appended as
+    # source="directive". Newest active directive wins per symbol; read via the watch_intelligence
+    # projection (data_source_authority: hub handlers must not add direct watch_directives reads).
+    try:
+        from lib.data_broker.watch_intelligence import active_ticker_directives
+
+        directive_rows = active_ticker_directives()
+    except Exception:
+        directive_rows = []
+    by_symbol = {}
+    for it in items:
+        it["is_watched"] = True
+        by_symbol.setdefault(it["symbol"], it)
+    for d in directive_rows:
+        sym = d["symbol"]
+        fields = {
+            "is_watched": True,
+            "directive_id": d["id"],
+            "directive_label": d.get("label"),
+            "trade_ai_enabled": bool(d.get("trade_ai_enabled")),
+            "hermes_enabled": bool(d.get("hermes_enabled")),
+            "last_updated": (d.get("updated_at") or d["created_at"]).isoformat(),
+        }
+        if sym in by_symbol:
+            by_symbol[sym].update(fields)
+            continue
+        enriched = _enrich(sym)
+        item = {
+            "symbol": sym,
+            "source": "directive",
+            "status": "active",
+            "company": enriched["company"],
+            "name": enriched["company"],
+            "sector": enriched["sector"],
+            "rsi": enriched["rsi"],
+            "rsi_signal": enriched.get("rsi_signal"),
+            "perf_week_pct": enriched["perf_week_pct"],
+            "perf_month_pct": enriched.get("perf_month_pct"),
+            "beta": enriched["beta"],
+            "market_cap_b": enriched["market_cap_b"],
+            "current_price": enriched.get("current_price"),
+            "sma200_pct": enriched.get("sma200_pct"),
+            "pct_from_52wk_high": enriched.get("pct_from_52wk_high"),
+            "thesis": d.get("rationale"),
+            "added": d["created_at"].isoformat(),
+            **fields,
+        }
+        items.append(item)
+        by_symbol[sym] = item
 
     # ── Enrich all watchlist items with LLM intelligence + social + news ──
     all_syms = [i["symbol"] for i in items]
@@ -5110,7 +5165,12 @@ def watchlist_combined():
     except Exception:
         pass
 
-    return {"count": len(items), "items": items}
+    return {
+        "count": len(items),
+        "total_count": len(items),
+        "active_directives_count": len(directive_rows),
+        "items": items,
+    }
 
 
 def notifications_recent():

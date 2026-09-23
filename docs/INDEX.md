@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `175116b849f16df5bd0db88b8f4d06cae5402f136391d9e433cda8f9e351db49`
+**Tree fingerprint:** `69687395eb6c5b406c8e7d4b27e175ec9d7ab9b84d426b13328e29b708b458aa`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -46,7 +46,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/BROKER_TRADE_PLAN_GATE.md` | Broker Trade Plan Gate — No Gambling on Generic 2×R | review_required | OK | `e73e70a22a5c` |
 | `docs/CC_V3_ACTIONABILITY_SPRINT_20260702.md` | CC v3 Actionability Sprint — Layered Document | review_required | OK | `26d05fe916e7` |
 | `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | OK | `401363e962e2` |
-| `docs/CHANGELOG.md` | Changelog | review_required | OK | `1c3ab9ad3ee8` |
+| `docs/CHANGELOG.md` | Changelog | review_required | OK | `340575180e2a` |
 | `docs/CHEAT_SHEET.md` | Trade AI v12 -- Operator Cheat Sheet | active_keep | OK | `5fbf6fb2ebe7` |
 | `docs/CIO_AS_IS_2026-09-19-1352.md` | CIO / AEC AS-IS — 2026-09-19 13:52 ET | review_required | OK | `ede8abe935f8` |
 | `docs/CIO_AS_IS_2026-09-20-0604.md` | CIO / AEC AS-IS — 2026-09-20 06:04 ET | review_required | OK | `0d40294364bc` |
@@ -132,7 +132,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/WARRIOR_ROSS_TRADEAI_ALIGNMENT.md` | Warrior / Ross ↔ TradeAI Alignment | review_required | OK | `7508cc21c3a2` |
 | `docs/WATCHLIST_ITEMS_PERF.md` | Watchlist Items — Latency Fix & Loading State (2026-07-01) | review_required | OK | `a90ab076c8cd` |
 | `docs/WATCHLIST_PROPOSAL_BRIDGE.md` | Watchlist → Broker Proposals Bridge | review_required | OK | `80ccd91d5cdf` |
-| `docs/WATCH_DIRECTIVES.md` | Watch Directives + Hermes→Trade AI Promotion (canonical) | review_required | OK | `ce70528a7e79` |
+| `docs/WATCH_DIRECTIVES.md` | Watch Directives + Hermes→Trade AI Promotion (canonical) | review_required | OK | `4984285589dc` |
 | `docs/WATCH_DIRECTIVE_CLEANUP.md` | Watch-Directive Clutter Cleanup (2026-07-01) | review_required | OK | `4e210bcba587` |
 | `docs/_audit/drift_report.md` | Documentation Drift Report | review_required | OK | `aba96a8bed94` |
 | `docs/_audit/summary.md` | Docs Audit Summary | review_required | OK | `b0ccb4dcd31d` |
@@ -1984,7 +1984,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/project/PROFIT_CAPTURE_EVIDENCE_FLOOR_CEILING_20260606.md` | Profit-Capture — Evidence-Floor Ceiling Determination (2026-06-06) | current_phase_keep | OK | `accb7e33d8e8` |
 | `docs/project/PROFIT_CAPTURE_INTRABAR_PREMATURE_EXIT_20260606.md` | Profit-Capture — Intrabar Path Ingestion + Path-Measured Premature-Exit (Phase 206c, 2026-06-06) | current_phase_keep | OK | `080663aeae4d` |
 | `docs/project/PROFIT_CAPTURE_RULE_BACKTEST_HARDENING_20260606.md` | Profit-Capture Rule Backtest — Hardening (Phase 206b, 2026-06-06) | current_phase_keep | OK | `5895cb719065` |
-| `docs/project/PROJECT_DOC_INDEX.md` | PROJECT_DOC_INDEX.md | active_keep | OK | `46f6df334fd3` |
+| `docs/project/PROJECT_DOC_INDEX.md` | PROJECT_DOC_INDEX.md | active_keep | OK | `6f5786455e6b` |
 | `docs/project/PROTECTIVE_STOP_SUBMIT_UI_FIX_2026-06-21.md` | Protective-Stop Submit — Confirm Response Handling Fix (2026-06-21) | current_phase_keep | OK | `fdbc12f84836` |
 | `docs/project/RECOMMENDATION_INTELLIGENCE.md` | Recommendation Intelligence Engine | current_phase_keep | OK | `86fc73d96ca3` |
 | `docs/project/RELEASE_MANIFEST_LATEST.md` | Release Manifest (auto-generated) | current_phase_keep | OK | `5934ec9f5240` |

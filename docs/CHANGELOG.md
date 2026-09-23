@@ -1,8 +1,17 @@
 # Changelog
 
 Status:      ACTIVE
-as_of:       2026-09-16T08:46:00-04:00
-Measured at: a91d7b3ba (origin/main = release CURRENT = dev tree, PR #1045 merge)
+as_of:       2026-09-23T10:00:00-04:00
+Measured at: 88eddef0e (origin/main = release CURRENT = dev tree) + fix/watchlist-directive-union
+
+## 2026-09-23 — A watched ticker the watchlist API could not see: directives join /api/v2/watchlist
+
+MATURITY_IMPACT: the gateway and the primary watchlist endpoint now agree on what is watched; a dead legacy writer family stops failing silently.
+
+- **Measured first.** Directive 1278 (`S`) was `active`, and both `watchlist_items` rows for `S` carried `directive_id=1278`, yet `GET /api/v2/watchlist` returned 13 symbols — exactly `state/watchlist.json`. `watchlist_combined()` never read `watch_directives`; **105 active ticker directives were invisible** on it. Its only other source, `db_adapter.load_watchlist_items`, selected `source_type/thesis/target_intent/added_date` — columns `watchlist_items` does not have — so it raised into `except: pass` on every request. The same dead schema sat under `save_watchlist_item`/`remove_watchlist_item` and the orchestrator's "AI-Generated Watchlist Candidates" step: **3,183** `column "source_type" does not exist` lines in the logs, zero rows written.
+- **What shipped.** `watchlist_combined` unions active ticker directives via the `watch_intelligence` projection (new `active_ticker_directives()`, keeping the hub's direct `watch_directives` reads at the baseline 11). Listed symbols are annotated in place; unlisted ones are appended as `source: "directive"`; items gain `is_watched`/`directive_id`/`trade_ai_enabled`/`hermes_enabled`/`last_updated`, the envelope `total_count`/`active_directives_count`. `load_watchlist_items` reads the real columns (`source AS source_type`, thesis/notes from `origin_detail`). The two legacy writers are **retired with a tripwire** (a loud `RETIRED` line, no SQL), and the orchestrator step is skipped with one `[ai-watchlist] RETIRED` line — operator decision: do not revive auto-adds to the active watchlist.
+- **Validated** against the production DB and state before merge: 118 items (13 manual + 105 directive), `S` present as SentinelOne Inc / directive 1278, no duplicate symbols; `load_watchlist_items(source_type="ai_discovered")` returns 86 rows with no SQL error. Tests: `tests/test_watchlist_api_reconciliation.py`, `tests/test_watchlist_items_legacy_20260923.py` (both in cio-hardening).
+- **Not done.** `/api/watchlist` (portfolio_server) manual add/remove still writes `watchlist.json` only — its Postgres mirror was already dead and is now explicitly retired, not ported. The `analyst_curated`/`ai_generated` sources have no rows and no producer.
 
 ## 2026-09-16 — The refusal that went nowhere: free search now answers a caller-cap denial
 
