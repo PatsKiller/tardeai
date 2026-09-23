@@ -1,0 +1,9 @@
+{
+  "name": "tradeai-maria-gate",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Trade-AI house gate on Maria's outbound messages (message_sending → maria_outbound_gate.py bridge).",
+  "openclaw": {
+    "extensions": ["./index.js"]
+  }
+}
