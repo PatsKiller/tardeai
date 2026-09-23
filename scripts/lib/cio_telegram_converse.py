@@ -1414,7 +1414,7 @@ def _best_effort_capture_turn(text: str, *, role: str, chat_id: str,
             thread_root,
         )
 
-        tag = tag_inbound(text)
+        tag = tag_inbound(text, operator_text=(role == "operator"))
         conn = psycopg2.connect(
             host=os.environ.get("DB_HOST", "localhost"),
             dbname=os.environ.get("DB_NAME", "trade_ai"),

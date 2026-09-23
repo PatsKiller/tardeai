@@ -1129,6 +1129,18 @@ GATES = [
             "tests/test_publish_chokepoint_identity_20260922.py",
         ],
     ),
+    # Operator turns bound nothing: 114 of 114 in the seven days to 2026-09-23
+    # stored a NULL subject_guid ("how is sentinel one doing", "is mcdonalds a
+    # good investment", "is S a good investment"), and research/gap rows carried
+    # a GUID on REQUESTED only. Gated with the chrome-leak negatives so the
+    # any-case windows cannot reopen "Price" -> TROW or "Data" -> DAIO.
+    (
+        "operator_turn_identity_binding",
+        [
+            "tests/test_identity_anycase_windows_20260923.py",
+            "tests/test_identity_stamp_rows_20260923.py",
+        ],
+    ),
     # The memory join was open at both ends. Measured 2026-09-22: causation_id
     # and parent_event_id were NULL on all 54,928 communication_events, so no
     # reply resolved to the event that caused it; and subject_guid was NULL on

@@ -163,8 +163,9 @@ def process_update_atomically(
 
     # 3) Identity tag (deterministic; no model).
     text = _inbound_text(update, event)
-    tag_fn = steps["tag"] if steps and "tag" in steps else tag_inbound
-    tag = tag_fn(text)
+    # The atomic path persists role="operator" turns only (see
+    # _persist_turn_for_update), so the operator-text readings apply.
+    tag = steps["tag"](text) if steps and "tag" in steps else tag_inbound(text, operator_text=True)
 
     # 4) Durable operator turn.
     turn_fn = steps["turn"] if steps and "turn" in steps else _persist_turn_for_update
