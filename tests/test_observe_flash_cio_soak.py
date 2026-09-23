@@ -146,6 +146,10 @@ def test_cli_json_in(tmp_path: Path):
             "--min-n",
             "5",
             "--held-only",
+            # Freeze as-of so the 14-day window edge does not drift past fixture
+            # timestamps (calendar flake on 2026-09-23+: AAPL/MSFT fell out).
+            "--as-of",
+            "2026-09-10T06:00:00Z",
             "--out",
             str(out),
         ]

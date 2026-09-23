@@ -206,6 +206,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json-in", type=Path, default=None, help="Hermetic fixture JSON (no live DB)")
     ap.add_argument("--out", type=Path, default=None, help="Optional output path")
     ap.add_argument("--root", type=Path, default=REPO, help="Repo root for holdings.json (held-only)")
+    ap.add_argument(
+        "--as-of",
+        type=str,
+        default=None,
+        help="UTC ISO timestamp for window edge (hermetic CLI tests); default=now",
+    )
     args = ap.parse_args(argv)
 
     held_symbols: set[str] | None = None
@@ -220,12 +226,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.held_only:
             held_symbols = _load_held_symbols(Path(args.root))
 
+    now = _parse_ts(args.as_of) if args.as_of else None
     report = observe_flash_cio_soak(
         rows,
         window_days=int(args.window_days),
         min_n=int(args.min_n),
         held_only=bool(args.held_only),
         held_symbols=held_symbols,
+        now=now,
     )
     text = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.out:
