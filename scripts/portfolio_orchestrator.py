@@ -539,8 +539,16 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     except Exception as _yte:
         print(f"  [yahoo-targets] Failed (pipeline continues): {_yte}")
 
-    # ── AI-Generated Watchlist Candidates ────────────────────────────────────
+    # ── AI-Generated Watchlist Candidates — RETIRED 2026-09-23 ───────────────
+    # Every query here targets watchlist_items.source_type/thesis/target_intent, columns the
+    # table no longer has, so this step wrote nothing and logged a SQL error on every run.
+    # Operator decision 2026-09-23: keep the producer dead (no auto-adds to the active
+    # watchlist); skip it loudly instead of issuing failing SQL. Code kept for reference.
+    class _AiWatchlistRetired(Exception):
+        pass
+
     try:
+        raise _AiWatchlistRetired
         from db_adapter import save_watchlist_item, _execute as _ai_wl_exec
         from datetime import timedelta as _td_wl
 
@@ -640,6 +648,8 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
 
         if _ai_added:
             print(f"  [ai-watchlist] ✅ {_ai_added} AI-generated watchlist candidates added")
+    except _AiWatchlistRetired:
+        print("  [ai-watchlist] RETIRED 2026-09-23: legacy watchlist_items schema (no source_type) — skipped")
     except Exception as _awle:
         print(f"  [ai-watchlist] Generation failed (pipeline continues): {_awle}")
 

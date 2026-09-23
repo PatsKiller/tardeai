@@ -1,13 +1,18 @@
 """Watchlist vs watch_directives membership honesty (OpenClaw parity Stage 5).
 
-A ticker directive add (POST /api/v2/watch/directives) is NOT the same thing as
-membership on the ranked combined watchlist (GET /api/v2/watchlist). Consumers
-(Maria skill, desk, Command Center) historically treated ``ok`` + ``directive_id``
-as "added to watchlist" — which is how directive #1278 / S was claimed as
-ranked while `/api/v2/watchlist` omitted it.
+Consumers historically treated ``ok`` + ``directive_id`` as "added to watchlist"
+while GET /api/v2/watchlist omitted the symbol (directive #1278 / S).
 
-Policy for this package: **honest split copy** — report both truths; do not
-pretend promote-into-ranked succeeded unless a membership probe confirms it.
+As of PR #1196, GET /api/v2/watchlist **unions** ACTIVE ticker directives into the
+combined list (``source=directive``). Honesty therefore reports:
+
+* whether the symbol is on ``/api/v2/watchlist`` (union surface), and **via** which arm
+* whether it is also on the legacy ``watchlist_items`` table (promote/service path)
+* ``subject_guid`` from the writer receipt (table still has no identity column)
+
+Policy: **honest_via** — never invent membership; stamp the via arm. Do not equate
+a staged promote failure with absence from the union watchlist when an active
+directive exists.
 
 MBI_BEHAVIOR = 0. No broker. Read-only probes only.
 """
@@ -63,21 +68,32 @@ def symbol_on_ranked_watchlist(
     db_query: Optional[Callable[..., Any]] = None,
     watchlist_json: Optional[Mapping[str, Any]] = None,
     state_dir: Optional[Path] = None,
+    active_directive_id: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """Probe whether ``symbol`` is on the ranked/combined watchlist surface.
+    """Probe whether ``symbol`` appears on GET /api/v2/watchlist (union surface).
 
-    Ranked membership is true if ANY of:
+    Membership is true if ANY of:
       1. ``watchlist_items`` has a non-removed row for the symbol
-      2. ``data/portfolios/state/watchlist.json`` (or provided map) keys the symbol
+      2. ``watchlist.json`` keys the symbol
+      3. an ACTIVE ticker directive exists (PR #1196 union) — pass
+         ``active_directive_id`` after create, or probe via ``db_query`` /
+         ``active_ticker_directives``
 
-    Returns ``{on_ranked: bool, via: str|None, checked: [...]}``. Fail-closed:
-    an unreadable store is a miss for that arm, never a silent True.
+    Returns ``{on_ranked, via, on_watchlist_items, checked, ...}``. Fail-closed.
     """
     sym = str(symbol or "").strip().upper()
     checked: list[str] = []
     if not sym:
-        return {"on_ranked": False, "via": None, "checked": checked, "symbol": None}
+        return {
+            "on_ranked": False,
+            "via": None,
+            "on_watchlist_items": False,
+            "checked": checked,
+            "symbol": None,
+        }
 
+    on_items = False
+    via_items = None
     if db_query is not None:
         checked.append("watchlist_items")
         try:
@@ -89,14 +105,8 @@ def symbol_on_ranked_watchlist(
                 fetch="one",
             )
             if row:
-                return {
-                    "on_ranked": True,
-                    "via": "watchlist_items",
-                    "checked": checked,
-                    "symbol": sym,
-                    "item_status": row.get("status") if isinstance(row, Mapping) else None,
-                    "item_source": row.get("source") if isinstance(row, Mapping) else None,
-                }
+                on_items = True
+                via_items = "watchlist_items"
         except Exception as e:  # noqa: BLE001 — probe must never break create
             checked.append(f"watchlist_items_error:{type(e).__name__}")
 
@@ -115,17 +125,64 @@ def symbol_on_ranked_watchlist(
     elif wl_map is not None:
         checked.append("watchlist.json")
 
+    on_json = False
     if isinstance(wl_map, Mapping):
         keys = {str(k).strip().upper() for k in wl_map.keys()}
         if sym in keys:
-            return {
-                "on_ranked": True,
-                "via": "watchlist.json",
-                "checked": checked,
-                "symbol": sym,
-            }
+            on_json = True
 
-    return {"on_ranked": False, "via": None, "checked": checked, "symbol": sym}
+    on_directive = False
+    directive_id = None
+    if active_directive_id is not None:
+        checked.append("active_ticker_directive")
+        on_directive = True
+        directive_id = int(active_directive_id)
+    else:
+        checked.append("active_ticker_directive")
+        try:
+            from lib.data_broker.watch_intelligence import active_ticker_directives
+            for d in active_ticker_directives() or []:
+                if str(d.get("symbol") or "").strip().upper() == sym:
+                    on_directive = True
+                    directive_id = d.get("id")
+                    break
+        except Exception as e:  # noqa: BLE001
+            checked.append(f"active_ticker_directive_error:{type(e).__name__}")
+            if db_query is not None:
+                try:
+                    row = db_query(
+                        """SELECT id FROM watch_directives
+                           WHERE kind='ticker' AND status='active'
+                             AND UPPER(spec->>'symbol')=%s
+                           ORDER BY id DESC LIMIT 1""",
+                        (sym,),
+                        fetch="one",
+                    )
+                    if row:
+                        on_directive = True
+                        directive_id = row.get("id") if isinstance(row, Mapping) else None
+                except Exception as e2:  # noqa: BLE001
+                    checked.append(f"directive_sql_error:{type(e2).__name__}")
+
+    if on_items:
+        via = via_items
+    elif on_json:
+        via = "watchlist.json"
+    elif on_directive:
+        via = "active_ticker_directive"
+    else:
+        via = None
+
+    return {
+        "on_ranked": bool(on_items or on_json or on_directive),
+        "via": via,
+        "on_watchlist_items": on_items,
+        "on_watchlist_json": on_json,
+        "on_active_directive": on_directive,
+        "directive_id": directive_id,
+        "checked": checked,
+        "symbol": sym,
+    }
 
 
 def build_directive_add_honesty(
@@ -141,56 +198,73 @@ def build_directive_add_honesty(
     serviced: Optional[Mapping[str, Any]] = None,
     on_ranked_watchlist: Optional[bool] = None,
     ranked_via: Optional[str] = None,
+    on_watchlist_items: Optional[bool] = None,
 ) -> Dict[str, Any]:
-    """Contract fields every directive-create response must carry for Stage 5.
-
-    ``on_ranked_watchlist`` must be an observed bool (or None when not applicable
-    for non-ticker kinds). Never default True.
-    """
+    """Contract fields every directive-create response must carry for Stage 5."""
     kind_l = str(kind or "").strip().lower()
     sym = str(symbol or "").strip().upper() or None
     serviced = dict(serviced or {}) if serviced else None
-    promo_status = None
-    if serviced:
-        promo_status = serviced.get("status")
+    promo_status = serviced.get("status") if serviced else None
 
     if kind_l != "ticker":
         membership = "directive_only" if directive_id is not None else "none"
         on_ranked: Optional[bool] = False if directive_id is not None else None
         honesty = (
             f"Created {kind_l} directive #{directive_id} — sector/trend directives "
-            f"are discovery rules, not ranked `/api/v2/watchlist` membership."
+            f"are discovery rules, not ranked `{RANKED_WATCHLIST_PATH}` membership."
             if directive_id is not None
             else "No directive id — nothing was added."
         )
-    else:
-        if on_ranked_watchlist is True:
-            membership = "ranked_watchlist"
-            on_ranked = True
-            honesty = (
-                f"Directive #{directive_id} for {sym}: also present on ranked "
-                f"{RANKED_WATCHLIST_PATH}"
-                + (f" (via {ranked_via})" if ranked_via else "")
+        return {
+            "directive_id": directive_id,
+            "kind": kind_l,
+            "label": label,
+            "symbol": sym,
+            "subject_guid": subject_guid,
+            "identity_source": identity_source,
+            "identity_status": identity_status,
+            "reused": bool(reused),
+            "serviced": serviced,
+            "on_ranked_watchlist": on_ranked,
+            "on_watchlist_items": False,
+            "ranked_via": None,
+            "ranked_watchlist_path": RANKED_WATCHLIST_PATH,
+            "watchlist_items_path": WATCHLIST_ITEMS_PATH,
+            "directives_path": DIRECTIVES_PATH,
+            "membership": membership,
+            "honesty": honesty,
+            "policy": "honest_via",
+        }
+
+    if on_ranked_watchlist is True:
+        membership = "ranked_watchlist"
+        on_ranked = True
+        via_bit = f" (via {ranked_via})" if ranked_via else ""
+        honesty = (
+            f"Directive #{directive_id} for {sym}: on {RANKED_WATCHLIST_PATH}{via_bit}."
+        )
+        if on_watchlist_items is False:
+            honesty += (
+                f" Not yet on {WATCHLIST_ITEMS_PATH}"
+                + (f" (service={promo_status})" if promo_status else "")
                 + "."
             )
-        elif on_ranked_watchlist is False:
-            membership = "directive_only"
-            on_ranked = False
-            honesty = (
-                f"Directive #{directive_id} for {sym} is on {DIRECTIVES_PATH} only — "
-                f"NOT on ranked {RANKED_WATCHLIST_PATH}. Do not claim watchlist "
-                f"membership until promote lands or the ranked list includes {sym}."
-            )
-            if promo_status and promo_status not in _REGISTERED_STATUSES:
-                honesty += f" Service status={promo_status}."
-        else:
-            # Unknown / probe skipped — fail closed: never claim ranked.
-            membership = "directive_only" if directive_id is not None else "none"
-            on_ranked = False
-            honesty = (
-                f"Directive #{directive_id} for {sym} recorded; ranked membership "
-                f"was not verified — treat as directives-only until confirmed."
-            )
+    elif on_ranked_watchlist is False:
+        membership = "directive_only"
+        on_ranked = False
+        honesty = (
+            f"Directive #{directive_id} for {sym} is on {DIRECTIVES_PATH} only — "
+            f"NOT on {RANKED_WATCHLIST_PATH}."
+        )
+        if promo_status and promo_status not in _REGISTERED_STATUSES:
+            honesty += f" Service status={promo_status}."
+    else:
+        membership = "directive_only" if directive_id is not None else "none"
+        on_ranked = False
+        honesty = (
+            f"Directive #{directive_id} for {sym} recorded; ranked membership "
+            f"was not verified — treat as directives-only until confirmed."
+        )
 
     if reused and directive_id is not None:
         honesty = f"Reused existing directive #{directive_id}. " + honesty
@@ -206,29 +280,31 @@ def build_directive_add_honesty(
         "reused": bool(reused),
         "serviced": serviced,
         "on_ranked_watchlist": on_ranked,
+        "on_watchlist_items": bool(on_watchlist_items) if on_watchlist_items is not None else None,
         "ranked_via": ranked_via if on_ranked else None,
         "ranked_watchlist_path": RANKED_WATCHLIST_PATH,
         "watchlist_items_path": WATCHLIST_ITEMS_PATH,
         "directives_path": DIRECTIVES_PATH,
         "membership": membership,
         "honesty": honesty,
-        "policy": "honest_split",  # not auto-promote-into-ranked
+        "policy": "honest_via",
     }
 
 
 def format_operator_copy(honesty: Mapping[str, Any]) -> str:
-    """One-line operator / skill copy that never claims ranked unless true."""
+    """One-line operator / skill copy that names the via arm."""
     did = honesty.get("directive_id")
     sym = honesty.get("symbol") or honesty.get("label") or "?"
     if honesty.get("on_ranked_watchlist") is True:
+        via = honesty.get("ranked_via") or "union"
         return (
-            f"✓ Directive #{did} ({sym}): on directives AND ranked "
-            f"{honesty.get('ranked_watchlist_path')}."
+            f"✓ Directive #{did} ({sym}): on {honesty.get('ranked_watchlist_path')} "
+            f"(via {via})."
         )
     if did is not None:
         return (
             f"✓ Directive #{did} ({sym}): directives-only "
-            f"({honesty.get('directives_path')}) — NOT on ranked "
+            f"({honesty.get('directives_path')}) — NOT on "
             f"{honesty.get('ranked_watchlist_path')}."
         )
     return str(honesty.get("honesty") or "No directive created.")

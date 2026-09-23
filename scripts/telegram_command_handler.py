@@ -858,7 +858,7 @@ def _handle_watch(args: str) -> str:
                     format_operator_copy,
                 )
                 _sym = str((spec or {}).get("symbol") or "").upper()
-                # Telegram watch path does not promote synchronously — never claim ranked.
+                # Post-#1196: active ticker directives are on /api/v2/watchlist (union).
                 _h = build_directive_add_honesty(
                     directive_id=did,
                     kind=kind,
@@ -867,15 +867,17 @@ def _handle_watch(args: str) -> str:
                     subject_guid=_ident.get("subject_guid"),
                     identity_source=_ident.get("identity_source"),
                     reused=bool(_rc.reused),
-                    on_ranked_watchlist=False,
+                    on_ranked_watchlist=True,
+                    ranked_via="active_ticker_directive",
+                    on_watchlist_items=False,
                 )
                 _honesty_line = "\n" + format_operator_copy(_h)
                 if _ident.get("subject_guid"):
                     _honesty_line += f"\nsubject_guid={_ident['subject_guid']}"
             except Exception:
                 _honesty_line = (
-                    f"\n✓ Directive #{did} recorded on watch_directives — not claimed as "
-                    f"ranked /api/v2/watchlist membership from this path."
+                    f"\n✓ Directive #{did} recorded — on /api/v2/watchlist via active "
+                    f"ticker directive (union); items-table membership not probed here."
                 )
         msg = (f"✓ Watch directive #{did}: {kind} — {label}" + _dup_warn
                + (f"\nthesis: {rationale}" if rationale else "")

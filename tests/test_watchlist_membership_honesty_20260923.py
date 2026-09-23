@@ -1,8 +1,9 @@
-"""Stage 5 contract: directive add ≠ ranked /api/v2/watchlist membership.
+"""Stage 5 contract: directive create stamps honesty + subject_guid.
 
-Positive control: a create response shaped like Maria's S / directive #1278 failure
-must carry on_ranked_watchlist=False and membership=directive_only when the ranked
-probe misses — never claim watchlist membership from directive_id alone.
+Post PR #1196, GET /api/v2/watchlist unions ACTIVE ticker directives, so a new
+ticker directive is on the ranked surface via ``active_ticker_directive`` even
+when ``watchlist_items`` still lacks a row. Honesty must name the via arm and
+still distinguish items-table presence.
 
 MBI_BEHAVIOR = 0. Offline / hermetic.
 """
@@ -39,8 +40,8 @@ REQUIRED_HONESTY_KEYS = (
 )
 
 
-def test_directive_only_s_shaped_response_never_claims_ranked():
-    """S / id=1278 class: directive real, ranked list omits symbol."""
+def test_directive_union_via_arm_named():
+    """S / id=1278 after #1196: on /api/v2/watchlist via active directive, not items."""
     h = build_directive_add_honesty(
         directive_id=1278,
         kind="ticker",
@@ -50,23 +51,23 @@ def test_directive_only_s_shaped_response_never_claims_ranked():
         identity_source="registry",
         reused=False,
         serviced={"status": "STAGED_FOR_REVIEW"},
-        on_ranked_watchlist=False,
+        on_ranked_watchlist=True,
+        ranked_via="active_ticker_directive",
+        on_watchlist_items=False,
     )
     for k in REQUIRED_HONESTY_KEYS:
         assert k in h, k
-    assert h["on_ranked_watchlist"] is False
-    assert h["membership"] == "directive_only"
-    assert h["ranked_watchlist_path"] == RANKED_WATCHLIST_PATH
-    assert h["directives_path"] == DIRECTIVES_PATH
-    assert h["policy"] == "honest_split"
-    assert "NOT on ranked" in h["honesty"]
+    assert h["on_ranked_watchlist"] is True
+    assert h["membership"] == "ranked_watchlist"
+    assert h["ranked_via"] == "active_ticker_directive"
+    assert h["on_watchlist_items"] is False
+    assert "Not yet on" in h["honesty"]
     assert "1278" in h["honesty"]
     copy = format_operator_copy(h)
-    assert "NOT on ranked" in copy
-    assert "Added to watchlist" not in copy
+    assert "active_ticker_directive" in copy
 
 
-def test_ranked_true_only_when_probed_true():
+def test_items_arm_still_reports_ranked():
     h = build_directive_add_honesty(
         directive_id=99,
         kind="ticker",
@@ -74,14 +75,14 @@ def test_ranked_true_only_when_probed_true():
         symbol="NVDA",
         on_ranked_watchlist=True,
         ranked_via="watchlist_items",
+        on_watchlist_items=True,
     )
     assert h["membership"] == "ranked_watchlist"
     assert h["on_ranked_watchlist"] is True
-    assert "also present on ranked" in h["honesty"]
+    assert "via watchlist_items" in h["honesty"]
 
 
 def test_unknown_ranked_defaults_fail_closed_not_true():
-    """on_ranked_watchlist=None must not become True."""
     h = build_directive_add_honesty(
         directive_id=1,
         kind="ticker",
@@ -93,14 +94,22 @@ def test_unknown_ranked_defaults_fail_closed_not_true():
     assert h["membership"] == "directive_only"
 
 
+def test_symbol_on_ranked_via_active_directive_id():
+    r = symbol_on_ranked_watchlist("S", active_directive_id=1278)
+    assert r["on_ranked"] is True
+    assert r["via"] == "active_ticker_directive"
+    assert r["on_watchlist_items"] is False
+
+
 def test_symbol_on_ranked_watchlist_items_arm():
     def dbq(sql, params=None, fetch=None):
-        assert "watchlist_items" in sql
-        assert params == ("S",)
-        return {"symbol": "S", "status": "active", "source": "operator_directive"}
+        if "watchlist_items" in sql:
+            return {"symbol": "S", "status": "active", "source": "operator_directive"}
+        return None
 
     r = symbol_on_ranked_watchlist("S", db_query=dbq)
     assert r["on_ranked"] is True and r["via"] == "watchlist_items"
+    assert r["on_watchlist_items"] is True
 
 
 def test_symbol_on_ranked_watchlist_json_arm():
@@ -108,7 +117,12 @@ def test_symbol_on_ranked_watchlist_json_arm():
     assert r["on_ranked"] is True and r["via"] == "watchlist.json"
 
 
-def test_symbol_missing_from_both_is_not_ranked():
+def test_symbol_missing_from_all_arms_is_not_ranked(monkeypatch):
+    """Hermetic: stub live active_ticker_directives so env data cannot flip the probe."""
+    import lib.data_broker.watch_intelligence as wi
+
+    monkeypatch.setattr(wi, "active_ticker_directives", lambda: [], raising=True)
+
     def dbq(sql, params=None, fetch=None):
         return None
 
@@ -117,7 +131,6 @@ def test_symbol_missing_from_both_is_not_ranked():
 
 
 def test_write_receipt_subject_identity_property(tmp_path, monkeypatch):
-    """Writer stamps subject_guid onto receipt; API honesty reads it from there."""
     monkeypatch.setenv("TRADEAI_IDENTITY_REGISTRY", str(tmp_path / "_iso.json"))
     from scripts.lib import identity_registry as ir
 
@@ -151,7 +164,6 @@ def test_write_receipt_subject_identity_property(tmp_path, monkeypatch):
     assert rc.directive_id == 901
     ident = rc.subject_identity
     assert "subject_guid" in ident
-    # Either registry/spine resolved a GUID, or honest None — never invent one.
     if ident["subject_guid"] is not None:
         assert isinstance(ident["subject_guid"], str) and len(ident["subject_guid"]) >= 8
         assert ident["identity_source"] in ("registry", "spine")
@@ -159,8 +171,8 @@ def test_write_receipt_subject_identity_property(tmp_path, monkeypatch):
     assert from_helper.get("subject_guid") == ident.get("subject_guid")
 
 
-def test_api_create_response_contract_directive_only(monkeypatch):
-    """_watch_directive_create must expose Stage 5 fields; S-shaped miss stays directive_only."""
+def test_api_create_response_union_via_directive(monkeypatch):
+    """After create, S is on /api/v2/watchlist via active directive even if items miss."""
     import api_v2
 
     class Cur:
@@ -177,7 +189,7 @@ def test_api_create_response_contract_directive_only(monkeypatch):
                 self._n += 1
                 return {"id": self._n}
             if "FROM watchlist_items" in sql:
-                return None  # ranked miss — the S failure shape
+                return None
             if "SELECT id FROM watch_directives" in sql:
                 return None
             return None
@@ -196,7 +208,6 @@ def test_api_create_response_contract_directive_only(monkeypatch):
         return cur.fetchall()
 
     monkeypatch.setattr(api_v2, "_db_query", ex, raising=True)
-
     import directive_promotion as dp
 
     monkeypatch.setattr(
@@ -205,7 +216,6 @@ def test_api_create_response_contract_directive_only(monkeypatch):
         lambda *a, **k: {"status": "STAGED_FOR_REVIEW", "registered": False},
         raising=False,
     )
-
     monkeypatch.setattr(
         w,
         "resolve_directive_subject",
@@ -228,16 +238,15 @@ def test_api_create_response_contract_directive_only(monkeypatch):
     )
     assert code == 200 and out["ok"] is True
     assert out["directive_id"] == 1278
-    assert out["on_ranked_watchlist"] is False
-    assert out["membership"] == "directive_only"
-    assert out["ranked_watchlist_path"] == "/api/v2/watchlist"
+    assert out["on_ranked_watchlist"] is True
+    assert out["ranked_via"] == "active_ticker_directive"
+    assert out["on_watchlist_items"] is False
+    assert out["membership"] == "ranked_watchlist"
     assert out["subject_guid"] == "84601d7d-test-sentinelone"
-    assert "NOT on ranked" in out["honesty"]
-    assert out["watchlist_honesty"]["policy"] == "honest_split"
-    assert "Added to watchlist" not in (out.get("honesty") or "")
+    assert out["watchlist_honesty"]["policy"] == "honest_via"
 
 
-def test_api_create_claims_ranked_only_when_items_row_exists(monkeypatch):
+def test_api_create_claims_items_via_when_row_exists(monkeypatch):
     import api_v2
 
     class Cur:
@@ -302,5 +311,6 @@ def test_api_create_claims_ranked_only_when_items_row_exists(monkeypatch):
     )
     assert code == 200
     assert out["on_ranked_watchlist"] is True
-    assert out["membership"] == "ranked_watchlist"
+    assert out["ranked_via"] == "watchlist_items"
+    assert out["on_watchlist_items"] is True
     assert out["subject_guid"] == "guid-nvda"

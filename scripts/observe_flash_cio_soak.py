@@ -207,10 +207,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", type=Path, default=None, help="Optional output path")
     ap.add_argument("--root", type=Path, default=REPO, help="Repo root for holdings.json (held-only)")
     ap.add_argument(
-        "--as-of",
-        type=str,
+        "--now",
+        type=datetime.fromisoformat,
         default=None,
-        help="UTC ISO timestamp for window edge (hermetic CLI tests); default=now",
+        help="ISO-8601 clock for the window cutoff (default: current UTC); pins hermetic fixtures",
     )
     args = ap.parse_args(argv)
 
@@ -226,14 +226,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.held_only:
             held_symbols = _load_held_symbols(Path(args.root))
 
-    now = _parse_ts(args.as_of) if args.as_of else None
     report = observe_flash_cio_soak(
         rows,
         window_days=int(args.window_days),
         min_n=int(args.min_n),
         held_only=bool(args.held_only),
         held_symbols=held_symbols,
-        now=now,
+        now=args.now,
     )
     text = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.out:
