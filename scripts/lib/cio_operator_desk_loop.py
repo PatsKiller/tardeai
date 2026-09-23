@@ -30,6 +30,22 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PENDING_PATH = PROJECT_ROOT / "data" / "cio" / "cio_operator_pending_replies.jsonl"
 AUTHORITY = "READ_ONLY_ADVISORY"
 
+#: Buy / perspective asks must not lead with a hollow DeepSeek reword of thin
+#: house facts (live 2026-09-22: "im thinking of buying S give me the perspective"
+#: → Sep-04 STALE price essay + queue footnote). Research-then-ack instead.
+_BUY_PERSPECTIVE_RE = re.compile(
+    r"(?is)\b("
+    r"thinking\s+of\s+buying|considering\s+(?:a\s+)?buy|want\s+to\s+buy|"
+    r"should\s+i\s+buy|worth\s+buying|give\s+me\s+(?:the\s+)?perspective|"
+    r"(?:your|the)\s+perspective|buy\s+perspective|"
+    # Deliberately NOT "is it a buy" — that is the analyst-target litmus
+    # ("is it a buy and what's the target") and must stay needs=['analyst_view'].
+    r"good\s+investment|investment\s+perspective"
+    r")\b"
+)
+#: technicals.stale_after_hours in data_source_authority (26h).
+_QUOTE_STALE_HOURS = 26.0
+
 SendFn = Callable[..., dict[str, Any]]
 
 # Desk-trading needs that pull market/book evidence
@@ -246,6 +262,61 @@ def _extract_symbols(text: str) -> list[str]:
         t = text or ""
         return [tok for tok in dict.fromkeys(re.findall(r"\b([A-Z]{1,5})\b", t))
                 if tok not in _SYMBOL_STOP][:12]
+
+
+def is_buy_perspective_ask(text: str) -> bool:
+    """True when the operator wants a buy / investment perspective, not a price ping."""
+    return bool(_BUY_PERSPECTIVE_RE.search(text or ""))
+
+
+def _price_age_hours(price: dict[str, Any]) -> Optional[float]:
+    """Hours since the stored close date; None when unknown."""
+    if not isinstance(price, dict):
+        return None
+    age = price.get("age_hours")
+    if age is not None:
+        try:
+            return float(age)
+        except (TypeError, ValueError):
+            pass
+    pd = str(price.get("price_date") or "")[:10]
+    if not pd:
+        return None
+    try:
+        return (datetime.now(timezone.utc).date() - datetime.fromisoformat(pd).date()).days * 24.0
+    except Exception:
+        return None
+
+
+def subject_price_is_stale(price: Optional[dict[str, Any]], *, stale_hours: float = _QUOTE_STALE_HOURS) -> bool:
+    """True when a subject quote is missing, flagged stale, or older than the technicals window."""
+    if not price or price.get("close") is None:
+        return True
+    if price.get("stale"):
+        return True
+    age = _price_age_hours(price)
+    return age is not None and age > stale_hours
+
+
+def house_research_thin(evidence: dict[str, Any]) -> bool:
+    """True when no promoted Hermes rows are available for this turn's subject."""
+    items = ((evidence.get("available") or {}).get("hermes_research") or {}).get("items") or []
+    return not bool(items)
+
+
+def buy_perspective_needs_research_first(intent: dict[str, Any], evidence: dict[str, Any]) -> bool:
+    """Buy/perspective with thin research and/or stale quotes must not lead with a hollow essay."""
+    if not is_buy_perspective_ask(str(intent.get("text") or "")):
+        return False
+    if not (intent.get("symbols") or []):
+        return False
+    if house_research_thin(evidence):
+        return True
+    prices = (evidence.get("available") or {}).get("subject_price") or {}
+    syms = [str(s).upper() for s in (intent.get("symbols") or [])]
+    if not prices:
+        return True
+    return any(subject_price_is_stale(prices.get(s)) for s in syms if s)
 
 
 def _held_positions_map() -> dict[str, dict[str, Any]]:
@@ -466,9 +537,23 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
             needs.append("analyst_view")
             if out["intent"] in ("unclear", "freeform"):
                 out["intent"] = "analyst_view"
+        # Buy / investment perspective: need analyst + research, never a hollow
+        # price-only essay while Hermes is empty (plan Option B, live 2026-09-22).
+        if out["symbols"] and is_buy_perspective_ask(scan):
+            for n in ("analyst_view", "research"):
+                if n not in needs:
+                    needs.append(n)
+            if out["intent"] in ("unclear", "freeform", "general"):
+                out["intent"] = "analyst_view"
 
         # Explainer/comparison language → freeform (soft desk hints OK, no reentry)
-        if _looks_like_freeform(scan) and out["intent"] not in ("reentry", "meta_system"):
+        # Buy/perspective stays on the subject brief path — freeform would drop
+        # research from needs and re-open the hollow-essay failure.
+        if (
+            _looks_like_freeform(scan)
+            and out["intent"] not in ("reentry", "meta_system")
+            and not is_buy_perspective_ask(scan)
+        ):
             soft = [n for n in needs if n in ("portfolio", "cash", "risk", "research")]
             out["intent"] = "freeform"
             out["needs"] = list(dict.fromkeys(soft))
@@ -1914,6 +1999,26 @@ def _gather_tradeai_evidence_core(intent: dict[str, Any]) -> dict[str, Any]:
                     "reason": f"no promoted research for {', '.join(subject_syms)}",
                     "gap_type": "missing_research",
                 })
+        # Phase 3: stale / missing quotes on a named subject are gaps (resolver
+        # can refresh_producer / yfinance backup). Buy-perspective treats them
+        # as blocking below so we refuse hollow price narration.
+        for sym in subject_syms:
+            p = (available.get("subject_price") or {}).get(sym)
+            if subject_price_is_stale(p):
+                age = _price_age_hours(p) if p else None
+                reason = (
+                    f"no daily close on file for {sym}"
+                    if not p or p.get("close") is None
+                    else f"quote for {sym} is STALE"
+                         + (f" ({age:.0f}h old, last {p.get('price_date')})" if age is not None else "")
+                )
+                gaps.append({
+                    "domain": "quote_price",
+                    "symbol": sym,
+                    "field": "price",
+                    "reason": reason,
+                    "gap_type": "missing_market_data",
+                })
 
     # Blocking gaps
     blocking: list[dict[str, Any]] = []
@@ -1927,6 +2032,19 @@ def _gather_tradeai_evidence_core(intent: dict[str, Any]) -> dict[str, Any]:
     # Research-only ask with no hermes → blocking so we enqueue
     if "research" in needs and not available.get("hermes_research") and not available.get("reentry_card"):
         blocking.extend(g for g in gaps if g.get("domain") == "hermes_research")
+    # Buy/perspective Option B: thin house research OR stale quotes block the
+    # hollow answer-now path — operator gets research-first status instead.
+    if symbols and is_buy_perspective_ask(str(intent.get("text") or "")):
+        if not available.get("hermes_research"):
+            blocking.extend(
+                g for g in gaps
+                if g.get("domain") == "hermes_research" and g not in blocking
+            )
+        blocking.extend(
+            g for g in gaps
+            if g.get("domain") == "quote_price" and g.get("gap_type") == "missing_market_data"
+            and g not in blocking
+        )
 
     evidence = {
         "ok": True,
@@ -2285,11 +2403,22 @@ def subject_price_facts(symbols: list[str], *, days: int = 45) -> dict[str, dict
         change = None
         if start is not last and start.get("close"):
             change = round((float(last["close"]) - float(start["close"])) / float(start["close"]) * 100.0, 1)
+        price_date = str(last["price_date"])[:10]
+        age_hours = None
+        try:
+            age_hours = (datetime.now(timezone.utc).date()
+                         - datetime.fromisoformat(price_date).date()).days * 24.0
+        except Exception:
+            age_hours = None
+        stale_flag = bool(res.get("stale")) or (
+            age_hours is not None and age_hours > _QUOTE_STALE_HOURS
+        )
         out[sym] = {
-            "close": float(last["close"]), "price_date": str(last["price_date"])[:10],
+            "close": float(last["close"]), "price_date": price_date,
             "start_close": float(start["close"]) if start is not last else None,
             "start_date": str(start["price_date"])[:10] if start is not last else None,
-            "change_30d_pct": change, "stale": res.get("stale"),
+            "change_30d_pct": change, "stale": stale_flag,
+            "age_hours": age_hours,
             "bars": [[str(b["price_date"])[:10], float(b["close"])] for b in bars],
         }
     return out
@@ -3823,8 +3952,13 @@ def handle_operator_desk_question(
                 return result
 
         if blocking:
-            if resolver_summary is None and any(g.get("domain") == "hermes_research" for g in blocking):
-                # Pre-Phase-7 path (resolver disabled): Hermes when research blocks.
+            buy_first = buy_perspective_needs_research_first(intent, evidence)
+            if resolver_summary is None and (
+                any(g.get("domain") == "hermes_research" for g in blocking)
+                or buy_first
+            ):
+                # Pre-Phase-7 path (resolver disabled): Hermes when research blocks
+                # or when a buy/perspective ask must wait for house coverage.
                 enqueue_research_gap(
                     symbols=[str(s).upper() for s in (intent.get("symbols") or [])],
                     chat_id=str(chat_id),
@@ -3838,7 +3972,16 @@ def handle_operator_desk_question(
             for g in blocking[:6]:
                 sym = g.get("symbol") or "book"
                 gap_bits.append(f"{sym}:{g.get('field') or g.get('reason')}")
-            _append_jsonl(PENDING_PATH, {
+            # Buy/perspective research-first is the one blocking path that may
+            # promise an ETA without a resolver queue (Hermes CIO default 1800s).
+            # All other pre-Phase-7 / resolver-off paths must NOT invent ≈ —
+            # test_gap_resolver negative controls pin that.
+            buy_eta_seconds = 1800 if buy_first and not eta_seconds else None
+            effective_eta = eta_seconds if eta_seconds is not None else buy_eta_seconds
+            effective_eta_text = eta_text
+            if effective_eta_text is None and buy_eta_seconds is not None:
+                effective_eta_text = f"≈ {max(1, int(round(buy_eta_seconds / 60.0)))} min"
+            pending_row: dict[str, Any] = {
                 "pending_id": pending_id,
                 "status": "open",
                 "ts": _now(),
@@ -3849,15 +3992,58 @@ def handle_operator_desk_question(
                 "intent": intent,
                 "blocking_gaps": blocking,
                 "authority": AUTHORITY,
-                **({"eta_seconds": eta_seconds, "resolver": resolver_summary.get("receipt")}
-                   if resolver_summary is not None else {}),
-            })
+                "kind": (
+                    "buy_perspective_research_first" if buy_first else "blocking_gap"
+                ),
+            }
+            if effective_eta is not None:
+                pending_row["eta_seconds"] = int(effective_eta)
+            if resolver_summary is not None:
+                pending_row["resolver"] = resolver_summary.get("receipt")
+            _append_jsonl(PENDING_PATH, pending_row)
             queued_line = (
-                f"Queued into the controlled gap pipeline — {eta_text} until it lands. "
-                if eta_text else
+                f"Queued into the controlled gap pipeline — {effective_eta_text} until it lands. "
+                if effective_eta_text else
                 "Queued into the controlled gap pipeline. "
             )
             research_only = all(g.get("domain") == "hermes_research" for g in blocking)
+            # Buy/perspective with thin/stale house facts: NEVER lead with a hollow
+            # DeepSeek essay (live 2026-09-22 operator paste). Lead with pending.
+            if buy_first:
+                syms = [str(s).upper() for s in (intent.get("symbols") or [])][:3]
+                sym_label = ", ".join(syms) if syms else "that name"
+                stale_bits = [
+                    g.get("reason") for g in blocking
+                    if g.get("domain") == "quote_price"
+                ][:2]
+                thin = house_research_thin(evidence)
+                why_bits = []
+                if thin:
+                    why_bits.append("house research is thin / empty")
+                if stale_bits:
+                    why_bits.append("; ".join(str(b) for b in stale_bits if b))
+                why = " and ".join(why_bits) if why_bits else "required facts are not ready"
+                result.update({
+                    "kind": "deferred",
+                    "pending_id": pending_id,
+                    "eta_seconds": effective_eta,
+                    "research_queued": True,
+                    "text": (
+                        "🧠 *Alex · Research first — no hollow perspective*\n"
+                        f"You're asking for a buy / investment perspective on `{sym_label}`. "
+                        f"I will not invent one from thin or stale house facts ({why}).\n\n"
+                        f"Queued: Hermes research"
+                        + (" + quote refresh" if stale_bits else "")
+                        + f"\n{queued_line}"
+                        f"I'll reply here when useful coverage lands.\n"
+                        f"Pending: `{pending_id}`\n"
+                        "No orders/stops · READ_ONLY_ADVISORY"
+                    ),
+                    "reply_source": "buy_perspective_research_first",
+                    "model": None,
+                })
+                _emit_telegram_desk_payload(intent, result)
+                return result
             if research_only and _env("CIO_OPERATOR_RESEARCH_ANSWER_NOW", "1").lower() not in (
                 "0", "false", "off", "no",
             ):
@@ -3868,13 +4054,13 @@ def handle_operator_desk_question(
                 curated_now = _curate_from_evidence(text, evidence)
                 queued_now = (
                     "🟣 AI model (DeepSeek) · Deeper research queued: Hermes reads Trade-AI evidence — "
-                    + (f"{eta_text} until it lands" if eta_text else "it lands when the worker runs")
+                    + (f"{effective_eta_text} until it lands" if effective_eta_text else "it lands when the worker runs")
                     + f". Its answer follows here as a reply. Pending: `{pending_id}`"
                 )
                 result.update({
                     "kind": "answered",
                     "pending_id": pending_id,
-                    "eta_seconds": eta_seconds,
+                    "eta_seconds": effective_eta,
                     "text": _with_sources_footer(
                         _insert_before_authority_tail(curated_now.get("text") or "", queued_now),
                         evidence, curated_now,
@@ -3888,7 +4074,7 @@ def handle_operator_desk_question(
             result.update({
                 "kind": "deferred",
                 "pending_id": pending_id,
-                "eta_seconds": eta_seconds,
+                "eta_seconds": effective_eta,
                 "text": (
                     "🧠 *Alex · Trade-AI pull queued*\n"
                     f"I analyzed your ask (`{intent.get('intent')}`). "

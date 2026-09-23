@@ -474,6 +474,7 @@ def send_message(
     idempotency_key: str | None = None,
     reply_to_message_id: Any = None,
     link_preview_options: dict | None = None,
+    primary_symbols: list[str] | None = None,
 ) -> dict:
     # C4: the interdict now lives in deliver_text, the lowest common layer, so it
     # cannot be bypassed by calling that directly. Kept here as an early return
@@ -494,6 +495,7 @@ def send_message(
                 parse_mode=parse_mode, idempotency_key=None,
                 reply_to_message_id=reply_to_message_id if i == 0 else None,
                 link_preview_options=link_preview_options if i == 0 else None,
+                primary_symbols=primary_symbols,
             )
             results.append(res)
             if not res.get("ok"):
@@ -517,6 +519,7 @@ def send_message(
         idempotency_key=idempotency_key,
         reply_to_message_id=reply_to_message_id,
         link_preview_options=link_preview_options,
+        primary_symbols=primary_symbols,
     )
 
 

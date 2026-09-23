@@ -72,6 +72,66 @@ def test_single_letter_link_builder_isolation(tmp_path, monkeypatch):
     assert "primary_symbols_scoped" in d.changes
 
 
+def test_primary_symbols_survive_dual_import(tmp_path):
+    """Cron dual-import: set via scripts.lib, edit via lib — no TROW/HODO bleed.
+
+    Live 2026-09-22 pin 857931d41: converse set primary on scripts.lib.comms_editor
+    while deliver_text loaded lib.comms_editor — ContextVars diverged and the
+    footer still showed ``S:… TROW:… HODO:…``.
+    """
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    scripts_dir = str(root / "scripts")
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+    # Re-import lib.* as a second module object (cron path). Keep scripts.lib.
+    sys.modules.pop("lib.comms_editor", None)
+    sys.modules.pop(ce._PRIMARY_BUCKET_KEY, None)
+
+    import lib.comms_editor as lib_ce  # type: ignore  # noqa: PLC0415
+    scripts_ce = ce
+
+    assert lib_ce is not scripts_ce, "precondition: dual import must produce two modules"
+
+    HODO_GUID = "dc347eda-aaaa-bbbb-cccc-dddddddddddd"
+
+    def resolve(text: str):
+        out = []
+        for sym, guid in (("S", S_GUID), ("TROW", TROW_GUID), ("HODO", HODO_GUID)):
+            if sym in text:
+                out.append({"symbol": sym, "guid": guid})
+        return out
+
+    body = (
+        "*S*\nPrice $19.84 close Sep 04 STALE\n"
+        "Earlier you also looked at TROW and HODO.\n"
+        "READ_ONLY_ADVISORY"
+    )
+    tok = scripts_ce.set_primary_symbols(["S"])
+    try:
+        d = lib_ce.edit(
+            body,
+            chat_id="1",
+            now=NOW,
+            ledger=lib_ce.DuplicateLedger(tmp_path / "ledger_dual.json"),
+            resolve=resolve,
+            editor_mode="live",
+            primary_symbols=None,  # must read shared bucket
+        )
+    finally:
+        scripts_ce.reset_primary_symbols(tok)
+        sys.modules.pop(ce._PRIMARY_BUCKET_KEY, None)
+
+    footer = d.text.split("\n\n")[-1]
+    assert "TROW" not in footer
+    assert "HODO" not in footer
+    assert "intelligence/TROW" not in d.text
+    assert "quote.ashx?t=TROW" not in d.text
+    assert "primary_symbols_scoped" in d.changes
+
+
 def test_single_letter_symbol_extraction(monkeypatch):
     """'is S a good investment' → primary_symbols=['S']; grammar does not bleed."""
     reg = _registry("S", "TROW", "C", "F", "IS")
@@ -165,11 +225,10 @@ def test_dossier_does_not_prompt_say_research():
 
 
 def test_hollow_s_subject_brief_opens_pending_followup(tmp_path, monkeypatch):
-    """Analyst/subject ask with no house research → answer-now + PENDING_PATH for Hermes.
+    """Non-buy analyst ask with no house research → answer-now + PENDING_PATH.
 
-    Reproduces the hollow DeepSeek path for ticker S: thin house facts still
-    complete the turn; research must be auto-queued with a pending the fulfill
-    loop can join — not 'say research S'.
+    Soft path still queues Hermes with a pending the fulfill loop can join.
+    Buy/perspective asks are covered by test_buy_perspective_leads_with_pending.
     """
     monkeypatch.setenv("CIO_OPERATOR_INTENT_FLASH", "0")
     monkeypatch.setenv("CIO_SUBJECT_FLASH", "0")
@@ -209,6 +268,7 @@ def test_hollow_s_subject_brief_opens_pending_followup(tmp_path, monkeypatch):
             "start_close": 22.25,
             "start_date": "2026-08-05",
             "age_hours": 432.0,
+            "stale": True,
         }
     })
     monkeypatch.setattr(desk, "_subject_levels", lambda syms: ({}, None, None))
@@ -220,7 +280,7 @@ def test_hollow_s_subject_brief_opens_pending_followup(tmp_path, monkeypatch):
     })
 
     out = desk.handle_operator_desk_question(
-        "is S a good investment?",
+        "what is the analyst target on S?",
         chat_id="42",
         message_id="9",
     )
@@ -230,7 +290,6 @@ def test_hollow_s_subject_brief_opens_pending_followup(tmp_path, monkeypatch):
     assert out.get("research_queued") is True
     assert out.get("pending_id")
     assert "say 'research S'" not in text
-    assert "say 'research <ticker>'" not in text
     assert f"Pending `{out['pending_id']}`" in text or f"Pending: `{out['pending_id']}`" in text
     assert "≈" in text, "pending ack must show an ETA the operator can see"
     assert "House research for S is queued" in text or "queued" in text.lower()
@@ -251,6 +310,98 @@ def test_hollow_s_subject_brief_opens_pending_followup(tmp_path, monkeypatch):
     assert rows[-1].get("eta_seconds") == 1800
 
 
+def test_buy_perspective_leads_with_pending_not_hollow_essay(tmp_path, monkeypatch):
+    """Operator paste shape: buy/perspective + thin/stale house → research-first.
+
+    BEFORE (live 857931d41): DeepSeek reword of Sep-04 $19.84 STALE + dossier +
+    queue footnote. AFTER: deferred pending-first, no hollow essay, no price narration.
+    """
+    monkeypatch.setenv("CIO_OPERATOR_INTENT_FLASH", "0")
+    monkeypatch.setenv("CIO_SUBJECT_FLASH", "0")
+    monkeypatch.setenv("CIO_OPERATOR_FREEFORM_FLASH", "0")
+    monkeypatch.setenv("CIO_SUBJECT_DOSSIER", "0")
+    monkeypatch.setenv("CIO_OPERATOR_RESEARCH_ANSWER_NOW", "1")
+    monkeypatch.setattr(desk, "PENDING_PATH", tmp_path / "pending.jsonl")
+    monkeypatch.setattr(desk, "OPERATOR_GAP_REQUESTS_PATH", tmp_path / "gap_requests.jsonl")
+    desk._RESEARCH_GAP_ENQUEUED.clear()
+
+    enq_calls: list[dict] = []
+
+    def fake_enqueue(**kwargs):
+        enq_calls.append(kwargs)
+        return {"ok": True, "emitted": 1, "plan_id": "plan_s_buy", "ack": "House research for S is queued"}
+
+    monkeypatch.setattr(desk, "_enqueue_hermes_research", fake_enqueue)
+    monkeypatch.setattr(desk, "_register_gaps", lambda *a, **k: {"registered": 1})
+    monkeypatch.setattr(desk, "_emit_telegram_desk_payload", lambda *a, **k: None)
+    monkeypatch.setattr(desk, "_gap_resolver_enabled", lambda: False)
+    monkeypatch.setattr(desk, "subject_research", lambda *a, **k: [])
+    monkeypatch.setattr(desk, "subject_analyst_view", lambda syms: [])
+    monkeypatch.setattr(desk, "subject_price_facts", lambda syms: {
+        "S": {
+            "close": 19.84,
+            "price_date": "2026-09-04",
+            "change_30d_pct": -10.8,
+            "start_close": 22.25,
+            "start_date": "2026-08-05",
+            "age_hours": 432.0,
+            "stale": True,
+        }
+    })
+    monkeypatch.setattr(desk, "_subject_levels", lambda syms: ({}, None, None))
+    ask = "im thinking of buying S give me the perspective"
+    monkeypatch.setattr(desk, "analyze_operator_intent", lambda text: {
+        "intent": "analyst_view",
+        "needs": ["analyst_view", "research"],
+        "symbols": ["S"],
+        "text": text,
+        "answerable": True,
+    })
+
+    out = desk.handle_operator_desk_question(ask, chat_id="42", message_id="17")
+    text = out.get("text") or ""
+
+    assert out["kind"] == "deferred"
+    assert out.get("research_queued") is True
+    assert out.get("pending_id")
+    assert out.get("reply_source") == "buy_perspective_research_first"
+    assert "Research first" in text
+    assert "hollow" in text.lower() or "will not invent" in text.lower()
+    assert "Pending:" in text and out["pending_id"] in text
+    assert "≈" in text or "min" in text
+    # Must NOT lead with hollow price essay / DeepSeek reword
+    assert "19.84" not in text
+    assert "DeepSeek" not in text
+    assert "say 'research S'" not in text
+    assert enq_calls and enq_calls[0]["symbols"] == ["S"]
+
+    rows = [
+        __import__("json").loads(line)
+        for line in desk.PENDING_PATH.read_text().splitlines()
+        if line.strip()
+    ]
+    assert rows[-1].get("kind") == "buy_perspective_research_first"
+    assert rows[-1].get("eta_seconds") == 1800
+
+
+def test_buy_perspective_intent_adds_research_need(monkeypatch):
+    monkeypatch.setenv("CIO_OPERATOR_INTENT_FLASH", "0")
+    monkeypatch.setattr(desk, "_known_symbols", lambda ttl_s=0: frozenset())
+    reg = _registry("S")
+    monkeypatch.setattr(osr, "_registry_doc", lambda registry=None: reg if registry is None else registry)
+    monkeypatch.setattr(osr, "_identity", lambda doc, sym: {
+        "guid": f"guid-{sym}", "issuer_guid": f"issuer-{sym}", "identity_status": "CONFIRMED",
+    } if sym in (doc.get("by_symbol") or {}) else {})
+
+    intent = desk.analyze_operator_intent("im thinking of buying S give me the perspective")
+    assert intent["symbols"] == ["S"]
+    assert "research" in intent["needs"]
+    assert "analyst_view" in intent["needs"]
+    assert desk.is_buy_perspective_ask(intent["text"] if "text" in intent else
+                                       "im thinking of buying S give me the perspective")
+
+
+
 def test_subject_gather_emits_soft_missing_research_without_blocking(monkeypatch):
     """analyst_view-only subject brief gets a soft hermes gap, not a blocking one."""
     monkeypatch.setattr(desk, "subject_research", lambda *a, **k: [])
@@ -259,7 +410,8 @@ def test_subject_gather_emits_soft_missing_research_without_blocking(monkeypatch
         "age_days": 52, "stale": True, "n_analysts": 1, "target_low": 18, "target_high": 28,
     }])
     monkeypatch.setattr(desk, "subject_price_facts", lambda syms: {
-        "S": {"close": 19.84, "price_date": "2026-09-04"},
+        # Fresh-enough close so quote staleness does not become a blocking gap.
+        "S": {"close": 19.84, "price_date": "2026-09-22", "age_hours": 2.0, "stale": False},
     })
     monkeypatch.setattr(desk, "_subject_levels", lambda syms: ({}, None, None))
     monkeypatch.setattr(desk, "_attach_contract_findings", lambda *a, **k: None)
@@ -268,7 +420,8 @@ def test_subject_gather_emits_soft_missing_research_without_blocking(monkeypatch
         "intent": "analyst_view",
         "needs": ["analyst_view"],
         "symbols": ["S"],
-        "text": "is S a good investment?",
+        # Non-buy wording — buy/perspective makes hermes+stale blocking (Option B).
+        "text": "what is the analyst target on S?",
     }
     ev = desk._gather_tradeai_evidence_core(intent)
     soft = [g for g in (ev.get("gaps") or []) if g.get("domain") == "hermes_research"]
