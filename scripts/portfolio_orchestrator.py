@@ -539,109 +539,117 @@ def run_portfolio_pipeline(project_root, run_label="manual", generate_report=Tru
     except Exception as _yte:
         print(f"  [yahoo-targets] Failed (pipeline continues): {_yte}")
 
-    # ── AI-Generated Watchlist Candidates ────────────────────────────────────
-    try:
-        from db_adapter import save_watchlist_item, _execute as _ai_wl_exec
-        from datetime import timedelta as _td_wl
+    # ── AI-Generated Watchlist Candidates — RETIRED 2026-09-23 ─────────────────
+    # Every query here targets watchlist_items.source_type/thesis/target_intent, columns the
+    # table no longer has, so this step wrote nothing and logged a SQL error on every run.
+    # Operator decision 2026-09-23: keep the producer dead (do not revive auto-adds to the
+    # active watchlist); skip it loudly instead of issuing failing SQL. Code kept for reference.
+    _AI_WATCHLIST_RETIRED = True
+    if _AI_WATCHLIST_RETIRED:
+        print("  [ai-watchlist] RETIRED 2026-09-23: legacy watchlist_items schema (no source_type) — skipped")
+    else:
+        try:
+            from db_adapter import save_watchlist_item, _execute as _ai_wl_exec
+            from datetime import timedelta as _td_wl
 
-        # Get current held + active watchlist symbols to exclude
-        _held_syms = set(
-            (h.get("symbol") or "").upper()
-            for h in portfolio.get("holdings", [])
-            if (h.get("market_value") or 0) > 100
-        )
-        _active_wl = _ai_wl_exec(
-            "SELECT symbol FROM watchlist_items WHERE status='active'", fetch="all"
-        ) or []
-        _exclude = _held_syms | set(r["symbol"] for r in _active_wl)
-        # Cap total AI-generated active items at 5
-        _current_ai_count = len([r for r in _active_wl if True])  # all active already counted
-        _ai_active = _ai_wl_exec(
-            "SELECT COUNT(*) AS cnt FROM watchlist_items WHERE source_type='ai_generated' AND status='active'", fetch="one"
-        )
-        _ai_active_count = (_ai_active or {}).get("cnt", 0)
-        # Expire AI items past their expires_at date
-        from db_adapter import expire_stale_ai_watchlist
-        _expired_by_date = expire_stale_ai_watchlist()
-        if _expired_by_date:
-            _exp_syms = [r["symbol"] for r in _expired_by_date]
-            print(f"  [ai-watchlist] Date-expired {len(_expired_by_date)} AI items: {', '.join(_exp_syms)}")
-            _ai_active_count -= len(_expired_by_date)
-        # Reconcile: if over cap, expire lowest-confidence excess items
-        if _ai_active_count > 5:
-            _ai_wl_exec(
-                """UPDATE watchlist_items SET status = 'expired', updated_at = now()
-                   WHERE id IN (
-                       SELECT id FROM watchlist_items
-                       WHERE source_type = 'ai_generated' AND status = 'active'
-                       ORDER BY confidence ASC, created_at ASC
-                       LIMIT %s
-                   )""",
-                (_ai_active_count - 5,)
+            # Get current held + active watchlist symbols to exclude
+            _held_syms = set(
+                (h.get("symbol") or "").upper()
+                for h in portfolio.get("holdings", [])
+                if (h.get("market_value") or 0) > 100
             )
-            _expired_n = _ai_active_count - 5
-            _ai_active_count = 5
-            print(f"  [ai-watchlist] Reconciled: expired {_expired_n} lowest-confidence AI items (cap=5)")
-        _ai_slots = max(0, 5 - _ai_active_count)  # cap total AI items at 5
+            _active_wl = _ai_wl_exec(
+                "SELECT symbol FROM watchlist_items WHERE status='active'", fetch="all"
+            ) or []
+            _exclude = _held_syms | set(r["symbol"] for r in _active_wl)
+            # Cap total AI-generated active items at 5
+            _current_ai_count = len([r for r in _active_wl if True])  # all active already counted
+            _ai_active = _ai_wl_exec(
+                "SELECT COUNT(*) AS cnt FROM watchlist_items WHERE source_type='ai_generated' AND status='active'", fetch="one"
+            )
+            _ai_active_count = (_ai_active or {}).get("cnt", 0)
+            # Expire AI items past their expires_at date
+            from db_adapter import expire_stale_ai_watchlist
+            _expired_by_date = expire_stale_ai_watchlist()
+            if _expired_by_date:
+                _exp_syms = [r["symbol"] for r in _expired_by_date]
+                print(f"  [ai-watchlist] Date-expired {len(_expired_by_date)} AI items: {', '.join(_exp_syms)}")
+                _ai_active_count -= len(_expired_by_date)
+            # Reconcile: if over cap, expire lowest-confidence excess items
+            if _ai_active_count > 5:
+                _ai_wl_exec(
+                    """UPDATE watchlist_items SET status = 'expired', updated_at = now()
+                       WHERE id IN (
+                           SELECT id FROM watchlist_items
+                           WHERE source_type = 'ai_generated' AND status = 'active'
+                           ORDER BY confidence ASC, created_at ASC
+                           LIMIT %s
+                       )""",
+                    (_ai_active_count - 5,)
+                )
+                _expired_n = _ai_active_count - 5
+                _ai_active_count = 5
+                print(f"  [ai-watchlist] Reconciled: expired {_expired_n} lowest-confidence AI items (cap=5)")
+            _ai_slots = max(0, 5 - _ai_active_count)  # cap total AI items at 5
 
-        # Find candidates: high upside, buy/strong_buy, 3+ analysts, not excluded
-        _candidates = _ai_wl_exec(
-            """SELECT y.symbol, y.current_price, y.target_mean_price,
-                      round((y.target_mean_price - y.current_price) / y.current_price * 100, 1) AS upside_pct,
-                      y.recommendation_key, y.number_of_analyst_opinions
-               FROM yahoo_analyst_targets_history y
-               WHERE y.snapshot_date = (SELECT MAX(snapshot_date) FROM yahoo_analyst_targets_history)
-                 AND y.target_mean_price > 0 AND y.current_price > 0
-                 AND (y.target_mean_price - y.current_price) / y.current_price > 0.25
-                 AND y.number_of_analyst_opinions >= 3
-                 AND y.recommendation_key IN ('strong_buy', 'buy')
-               ORDER BY (y.target_mean_price - y.current_price) / y.current_price DESC
-               LIMIT 10""",
-            fetch="all"
-        ) or []
+            # Find candidates: high upside, buy/strong_buy, 3+ analysts, not excluded
+            _candidates = _ai_wl_exec(
+                """SELECT y.symbol, y.current_price, y.target_mean_price,
+                          round((y.target_mean_price - y.current_price) / y.current_price * 100, 1) AS upside_pct,
+                          y.recommendation_key, y.number_of_analyst_opinions
+                   FROM yahoo_analyst_targets_history y
+                   WHERE y.snapshot_date = (SELECT MAX(snapshot_date) FROM yahoo_analyst_targets_history)
+                     AND y.target_mean_price > 0 AND y.current_price > 0
+                     AND (y.target_mean_price - y.current_price) / y.current_price > 0.25
+                     AND y.number_of_analyst_opinions >= 3
+                     AND y.recommendation_key IN ('strong_buy', 'buy')
+                   ORDER BY (y.target_mean_price - y.current_price) / y.current_price DESC
+                   LIMIT 10""",
+                fetch="all"
+            ) or []
 
-        _ai_added = 0
-        _exp_date = (datetime.now() + _td_wl(days=30)).strftime("%Y-%m-%d")
-        _max_new = min(3, _ai_slots)  # at most 3 new per run, capped by total limit
-        for _c in _candidates:
-            if _c["symbol"] in _exclude:
-                continue
-            if _ai_added >= _max_new:
-                break
-            _upside = float(_c["upside_pct"])
-            _conf = min(0.90, 0.60 + (_c["number_of_analyst_opinions"] / 50))
-            save_watchlist_item({
-                "symbol": _c["symbol"],
-                "source_type": "ai_generated",
-                "thesis": (
-                    f"Analyst consensus: {_c['recommendation_key']} with "
-                    f"{_c['number_of_analyst_opinions']} opinions. "
-                    f"Mean target ${float(_c['target_mean_price']):.0f} "
-                    f"({_upside:.0f}% upside from ${float(_c['current_price']):.2f})."
-                ),
-                "target_intent": "growth" if _upside > 100 else "speculative",
-                "added_date": date_str,
-                "added_by": "portfolio_agent",
-                "confidence": round(_conf, 2),
-                "status": "active",
-                "notes": f"Auto-generated {date_str}. Expires {_exp_date}.",
-                "data": {
-                    "current_price": float(_c["current_price"]),
-                    "target_mean_price": float(_c["target_mean_price"]),
-                    "upside_pct": float(_upside),
-                    "recommendation_key": _c["recommendation_key"],
-                    "analyst_count": _c["number_of_analyst_opinions"],
-                    "expires_at": _exp_date,
-                    "generation_rule": "yahoo_high_upside_buy",
-                },
-            })
-            _exclude.add(_c["symbol"])
-            _ai_added += 1
+            _ai_added = 0
+            _exp_date = (datetime.now() + _td_wl(days=30)).strftime("%Y-%m-%d")
+            _max_new = min(3, _ai_slots)  # at most 3 new per run, capped by total limit
+            for _c in _candidates:
+                if _c["symbol"] in _exclude:
+                    continue
+                if _ai_added >= _max_new:
+                    break
+                _upside = float(_c["upside_pct"])
+                _conf = min(0.90, 0.60 + (_c["number_of_analyst_opinions"] / 50))
+                save_watchlist_item({
+                    "symbol": _c["symbol"],
+                    "source_type": "ai_generated",
+                    "thesis": (
+                        f"Analyst consensus: {_c['recommendation_key']} with "
+                        f"{_c['number_of_analyst_opinions']} opinions. "
+                        f"Mean target ${float(_c['target_mean_price']):.0f} "
+                        f"({_upside:.0f}% upside from ${float(_c['current_price']):.2f})."
+                    ),
+                    "target_intent": "growth" if _upside > 100 else "speculative",
+                    "added_date": date_str,
+                    "added_by": "portfolio_agent",
+                    "confidence": round(_conf, 2),
+                    "status": "active",
+                    "notes": f"Auto-generated {date_str}. Expires {_exp_date}.",
+                    "data": {
+                        "current_price": float(_c["current_price"]),
+                        "target_mean_price": float(_c["target_mean_price"]),
+                        "upside_pct": float(_upside),
+                        "recommendation_key": _c["recommendation_key"],
+                        "analyst_count": _c["number_of_analyst_opinions"],
+                        "expires_at": _exp_date,
+                        "generation_rule": "yahoo_high_upside_buy",
+                    },
+                })
+                _exclude.add(_c["symbol"])
+                _ai_added += 1
 
-        if _ai_added:
-            print(f"  [ai-watchlist] ✅ {_ai_added} AI-generated watchlist candidates added")
-    except Exception as _awle:
-        print(f"  [ai-watchlist] Generation failed (pipeline continues): {_awle}")
+            if _ai_added:
+                print(f"  [ai-watchlist] ✅ {_ai_added} AI-generated watchlist candidates added")
+        except Exception as _awle:
+            print(f"  [ai-watchlist] Generation failed (pipeline continues): {_awle}")
 
     tech_chart_paths = {}
     try:

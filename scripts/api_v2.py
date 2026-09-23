@@ -4923,6 +4923,8 @@ def watchlist_combined():
             }
         )
 
+    # Legacy sources: no watchlist_items rows carry analyst_curated/ai_generated today (the
+    # writers were retired 2026-09-23), so this loop yields nothing; kept for the read contract.
     try:
         from db_adapter import load_watchlist_items
 
@@ -4953,25 +4955,19 @@ def watchlist_combined():
     # ACTIVE with linked watchlist_items rows, yet this endpoint served only the watchlist.json names —
     # a surface-split where the gateway said "watched" and /api/v2/watchlist said missing). Union them
     # in: a symbol already listed gets its directive fields; an unlisted one is appended as
-    # source="directive". Newest active directive wins per symbol. The symbol lives in spec->>'symbol'.
-    directive_rows = (
-        _db_query(
-            """
-        SELECT DISTINCT ON (UPPER(TRIM(spec->>'symbol')))
-               UPPER(TRIM(spec->>'symbol')) AS symbol, id, label, rationale,
-               trade_ai_enabled, hermes_enabled, created_at, updated_at
-        FROM watch_directives
-        WHERE status = 'active' AND kind = 'ticker' AND COALESCE(TRIM(spec->>'symbol'), '') <> ''
-        ORDER BY UPPER(TRIM(spec->>'symbol')), created_at DESC, id DESC
-    """
-        )
-        or []
-    )
+    # source="directive". Newest active directive wins per symbol; read via the watch_intelligence
+    # projection (data_source_authority: hub handlers must not add direct watch_directives reads).
+    try:
+        from lib.data_broker.watch_intelligence import active_ticker_directives
+
+        directive_rows = active_ticker_directives()
+    except Exception:
+        directive_rows = []
     by_symbol = {}
     for it in items:
         it["is_watched"] = True
         by_symbol.setdefault(it["symbol"], it)
-    for d in sorted(directive_rows, key=lambda r: r["created_at"], reverse=True):
+    for d in directive_rows:
         sym = d["symbol"]
         fields = {
             "is_watched": True,
