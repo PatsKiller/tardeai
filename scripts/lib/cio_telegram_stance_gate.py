@@ -6,10 +6,14 @@ a kill switch, not stance approval.
 
 This module is the minimum hard gate:
 
-* Investment-shaped message stance (Buy / Accumulate / GO / …) for a symbol
-  must align with the latest CIO action for that symbol.
-* Missing CIO row, unreadable store, or non-aligned action → hold
-  (``allow=False`` + ``held_reason``). Never annotate-and-send from here.
+* A bullish send against CIO ``AVOID`` or ``SELL`` is a hard hold
+  (``allow=False``, ``held_reason=cio_stance_conflict``).
+* ``HOLD`` and epistemic gaps (``RESEARCH_MORE``, ``HUMAN_REVIEW``,
+  ``ADD_REVIEW``, ``NEUTRAL``, ``UNSTATED``) rewrite ``GO``/``BUY``/``ACCUMULATE``
+  to ``WATCH`` and allow the send, with a stance footer. Missing CIO row stays
+  fail-closed (``cio_decision_missing``).
+* Other bearish CIO actions (``TRIM``, ``EXIT``, ``REDUCE``) still hold a
+  bullish send. They are not the named interdict pair and not a soft gap.
 * Every hold appends one durable receipt line
   (``cio_telegram_stance_holds.jsonl``) so ``LIVE-cio-stance-governance``
   (24/7 multi-workflow) can be observed from the served release — not only as a
@@ -71,6 +75,14 @@ _INVESTMENT_BEAR = re.compile(
 
 HELD_DISAGREEMENT = "cio_stance_conflict"
 HELD_MISSING = "cio_decision_missing"
+
+# Active policy interdicts. A bullish proposal against these is a hard block.
+HARD_BLOCK_STANCES = frozenset({"AVOID", "SELL"})
+# HOLD plus epistemic gaps: GO/BUY/ACCUMULATE rewrite to WATCH and still send.
+SOFT_REWRITE_STANCES = frozenset({
+    "HOLD", "RESEARCH_MORE", "HUMAN_REVIEW", "ADD_REVIEW", "NEUTRAL", "UNSTATED",
+})
+_BULLISH_PROPOSALS = frozenset({"GO", "BUY", "ACCUMULATE"})
 
 
 def hold_receipts_path() -> Optional[Path]:
@@ -184,11 +196,94 @@ class StanceGateVerdict:
     message_stance: Optional[str] = None
     cio_action: Optional[str] = None
     cio_side: Optional[str] = None
+    effective_action: Optional[str] = None
+    annotation_text: str = ""
     schema: str = SCHEMA
     authority: str = AUTHORITY
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+def evaluate_cio_stance_gate(
+    proposal_symbol: str,
+    proposal_action: str,
+    cio_stance: Optional[str],
+) -> tuple[bool, str, str, str]:
+    """Bullish proposal versus one CIO stance.
+
+    Returns ``(allow_send, effective_action, held_reason, annotation_text)``.
+
+    ``AVOID`` and ``SELL`` hard-block a bullish proposal. ``HOLD`` and the
+    epistemic gaps rewrite ``GO``/``BUY``/``ACCUMULATE`` to ``WATCH`` and allow
+    the send. A matching bullish CIO action passes unchanged. ``proposal_symbol``
+    is part of the call contract for receipts; the decision itself is stance-only.
+    """
+    del proposal_symbol  # stance comparison does not depend on the ticker
+    norm_proposal = (proposal_action or "").upper().strip()
+    norm_cio = (cio_stance or "").upper().strip() if cio_stance else "UNSTATED"
+
+    if norm_cio in HARD_BLOCK_STANCES and norm_proposal in _BULLISH_PROPOSALS:
+        return (
+            False,
+            norm_proposal,
+            HELD_DISAGREEMENT,
+            f"🚫 [BLOCKED] Proposal '{norm_proposal}' conflicts with active CIO Interdict: {norm_cio}",
+        )
+
+    if norm_cio in SOFT_REWRITE_STANCES:
+        # None and blank already normalized to UNSTATED.
+        effective = "WATCH" if norm_proposal in _BULLISH_PROPOSALS else norm_proposal
+        if effective == "WATCH" and norm_proposal in _BULLISH_PROPOSALS:
+            annotation = f"[CIO Stance: {norm_cio} — Action rewritten to WATCH]"
+        else:
+            annotation = f"[CIO Stance: {norm_cio} — Action: {effective}]"
+        return (True, effective, "", annotation)
+
+    return (True, norm_proposal, "", "")
+
+
+def _proposal_verb(message_text: str, said: str) -> str:
+    """Map a bullish or bearish message onto the verb the stance table uses."""
+    plain = message_text or ""
+    if re.search(r"\bACCUMULATE\b", plain, re.I):
+        return "ACCUMULATE"
+    if re.search(r"\bBUY\b", plain, re.I):
+        return "BUY"
+    if re.search(r"\bGO\b", plain, re.I):
+        return "GO"
+    if said == "bullish":
+        return "GO"
+    if said == "bearish":
+        return "SELL"
+    return (said or "").upper()
+
+
+def apply_stance_rewrite(text: str, symbol: str, verdict: "StanceGateVerdict") -> str:
+    """Append the stance footer and demote a bullish verb to WATCH when required."""
+    note = (verdict.annotation_text or "").strip()
+    if not note:
+        return text or ""
+    out = text or ""
+    if verdict.effective_action == "WATCH" and symbol:
+        sym = re.escape(symbol.upper())
+        out = re.sub(
+            rf"\b(STRONG\s+BUY|ACCUMULATE|BUY|GO)\b(?=[^\n]{{0,40}}\b{sym}\b)",
+            "WATCH",
+            out,
+            count=1,
+            flags=re.I,
+        )
+        out = re.sub(
+            rf"(\b{sym}\b[^\n]{{0,40}})\b(STRONG\s+BUY|ACCUMULATE|BUY|GO)\b",
+            r"\1WATCH",
+            out,
+            count=1,
+            flags=re.I,
+        )
+    if note not in out:
+        out = out.rstrip() + "\n" + note
+    return out
 
 
 def cio_side(action: Optional[str]) -> str:
@@ -288,6 +383,55 @@ def check_investment_send(
 
     action = str(view.get("action") or "").upper()
     side = cio_side(action)
+    if said == "bullish":
+        proposal = _proposal_verb(message_text, said)
+        cio_stance = action or "UNSTATED"
+        allow_send, effective, reason, annotation = evaluate_cio_stance_gate(
+            sym, proposal, cio_stance,
+        )
+        if not allow_send:
+            verdict = StanceGateVerdict(
+                allow=False,
+                held_reason=reason or HELD_DISAGREEMENT,
+                symbol=sym,
+                message_stance=said,
+                cio_action=action or None,
+                cio_side=side,
+                effective_action=effective,
+                annotation_text=annotation,
+            )
+            record_hold(verdict, source=source)
+            return verdict
+        if effective == "WATCH":
+            return StanceGateVerdict(
+                allow=True,
+                symbol=sym,
+                message_stance=said,
+                cio_action=action or None,
+                cio_side=side,
+                effective_action=effective,
+                annotation_text=annotation,
+            )
+        if action in _CIO_BEAR:
+            verdict = StanceGateVerdict(
+                allow=False,
+                held_reason=HELD_DISAGREEMENT,
+                symbol=sym,
+                message_stance=said,
+                cio_action=action or None,
+                cio_side=side,
+            )
+            record_hold(verdict, source=source)
+            return verdict
+        return StanceGateVerdict(
+            allow=True,
+            symbol=sym,
+            message_stance=said,
+            cio_action=action or None,
+            cio_side=side,
+            effective_action=effective,
+            annotation_text=annotation,
+        )
     if said != side:
         verdict = StanceGateVerdict(
             allow=False,
@@ -427,8 +571,12 @@ __all__ = [
     "SCHEMA",
     "SUMMARY_SCHEMA",
     "StanceGateVerdict",
+    "HARD_BLOCK_STANCES",
+    "SOFT_REWRITE_STANCES",
+    "apply_stance_rewrite",
     "check_investment_send",
     "cio_side",
+    "evaluate_cio_stance_gate",
     "hold_receipts_path",
     "infer_message_stance",
     "is_organic_hold_row",
