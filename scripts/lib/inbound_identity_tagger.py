@@ -94,6 +94,25 @@ _NAME_STOPWORDS = frozenset({
 #: split into two unresolvable single words.
 _NAME_RUN = re.compile(r"\b([A-Z][A-Za-z.&\-]{1,15}(?:\s+[A-Z][A-Za-z.&\-]{1,15}){0,3})\b")
 
+#: Any-case sibling for the turn-393 class ("sentinel one"). Only consumed when
+#: resolve_name confirms a unique instrument — never as a free-text guess.
+_ANYCASE_NAME_RUN = re.compile(
+    r"\b([A-Za-z][A-Za-z0-9.&\-]{2,24}(?:\s+[A-Za-z][A-Za-z0-9.&\-]{1,24}){0,3})\b"
+)
+
+#: Prose that resolve_name can still hit as a progressive-prefix exact (e.g. "can"
+#: → CAN-FITE / CANF). The any-case pass must never bind these alone.
+_ANYCASE_PROSE_STOP = frozenset({
+    "can", "give", "me", "my", "your", "our", "the", "a", "an", "to", "for",
+    "on", "in", "of", "is", "are", "was", "be", "do", "did", "does", "how",
+    "what", "when", "where", "why", "who", "which", "about", "into", "from",
+    "with", "this", "that", "these", "those", "take", "tell", "show", "please",
+    "thanks", "hey", "hi", "yes", "no", "ok", "now", "today", "buy", "sell",
+    "hold", "watch", "add", "get", "got", "see", "look", "need", "want",
+    "should", "would", "could", "will", "just", "also", "still", "back",
+    "good", "time", "ready", "entry", "perspective",  # CATX = Perspective Therapeutics
+})
+
 
 #: Ordinary English words that are ALSO real tickers. Capitalised at the start of
 #: a sentence they look exactly like a company mention, and the agent's own
@@ -348,6 +367,49 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
                     "matched_via": via, "matched_text": name})
         elif name not in unresolved:
             unresolved.append(name)
+
+    # ANY-CASE brand windows the Title-Case extractor missed. extract_name_mentions
+    # only yields capitalised runs, so "perspective on sentinel one" bound nothing
+    # while "SentinelOne" worked — turn 393 / parity class. resolve_name is still
+    # the authority (compacted SENTINELONE → S); we never invent a mapping here.
+    # Only accept a hit; ambiguity / unknown stay unresolved.
+    if resolve_name is not None:
+        seen_phrases = {str(r.get("matched_text") or "") for r in resolved}
+        seen_phrases.update(unresolved)
+        for m in _ANYCASE_NAME_RUN.finditer(text or ""):
+            phrase = m.group(1).strip()
+            if not phrase or phrase in seen_phrases:
+                continue
+            if _is_generic_term(phrase):
+                continue
+            words = phrase.split()
+            # Multi-word only. Single tokens are either Title-Case (handled above)
+            # or lowercase English that progressive-prefix to false issuers
+            # ("can" → CANF). Long CamelCase brands ("SentinelOne") already hit
+            # extract_name_mentions when capitalised.
+            if len(words) < 2:
+                continue
+            if words[0].casefold() in _ANYCASE_PROSE_STOP:
+                continue
+            hit = resolve_name(phrase)
+            if not hit or not hit.get("symbol"):
+                continue
+            if str(hit.get("matched_on") or "") not in ("exact", "compacted"):
+                continue
+            tag = RI.resolve(doc, hit["symbol"])
+            if tag is None:
+                continue
+            if any(r["subject_guid"] == tag["subject_guid"] for r in resolved):
+                continue
+            resolved.append({
+                "symbol": tag["symbol"],
+                "subject_guid": tag["subject_guid"],
+                "issuer_guid": tag["issuer_guid"],
+                "identity_status": tag["identity_status"],
+                "matched_via": "company_name",
+                "matched_text": phrase,
+            })
+            seen_phrases.add(phrase)
 
     return {
         "schema": SCHEMA,
