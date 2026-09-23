@@ -148,6 +148,10 @@ def test_cli_json_in(tmp_path: Path):
             "--held-only",
             "--out",
             str(out),
+            # Pin the clock: the fixture rows are dated 2026-09-0x, so an unpinned
+            # 14-day window aged them out on 2026-09-23 and the gate failed on main.
+            "--now",
+            _NOW.isoformat(),
         ]
     )
     assert rc == 0
