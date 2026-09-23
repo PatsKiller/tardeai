@@ -45,6 +45,10 @@ from scripts.lib.reply_provenance import (
     finalize_operator_reply,
     provenance_for_desk,
 )
+from scripts.lib.specialist_attribution import (
+    evidence_from_dicts,
+    scrub_operator_specialist_claims,
+)
 
 
 SendFn = Callable[..., dict[str, Any]]
@@ -374,7 +378,21 @@ def process_operator_message(
         """THE chokepoint for operator replies. Nothing reaches `_send` on an
         operator-reply branch without passing here: Sources line, Went outside
         line when anything left the Command Center, authority tail last. The
-        receipt lands on the result as `reply_provenance`."""
+        receipt lands on the result as `reply_provenance`.
+
+        Stage 2: scrub pseudo Iris/Alex/CIO attribution unless
+        ``out['specialist_evidence']`` carries a real desk agent-job /
+        synthesis id. Desk product voice (``Alex · …``) is preserved.
+        """
+        evidence = evidence_from_dicts(out.get("specialist_evidence"))
+        body, attr = scrub_operator_specialist_claims(
+            body,
+            surface="desk",
+            a2a_enabled=False,
+            evidence=evidence,
+            inject_a2a_notice=False,
+        )
+        out["specialist_attribution"] = attr.to_dict()
         final, prov = finalize_operator_reply(body, prov)
         if channel == "whatsapp":
             final = _wa_plain(final)
