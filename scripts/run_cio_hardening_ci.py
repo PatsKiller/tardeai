@@ -799,6 +799,8 @@ GATES = [
             "tests/test_operator_reply_routing_sources_20260913.py",
             # Stage 1+3 parity: shared Hermes join + internal-first finalize (desk + Maria).
             "tests/test_hermes_join_internal_first_20260923.py",
+            # Stage 4 residual: atomic jobs.json mirror + bak/migrated recovery.
+            "tests/test_gateway_cron_jobs_mirror_20260923.py",
             # Stage 2 parity: ban pseudo Iris/Alex/CIO attribution (desk + Maria).
             "tests/test_specialist_attribution_stage2_20260923.py",
             # Evidence coverage contract per intent: house facts first, false-empty claims rejected.
