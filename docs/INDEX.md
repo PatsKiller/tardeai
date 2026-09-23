@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `8f4efc048403f6ee9c954a384104380ecb3d0bfc58f5a18f6323edd164f617e2`
+**Tree fingerprint:** `1243bd50179dd1789001197e5d9ae447ca99a0bc02b6e7bf6c8717df45beac26`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2603 |
-| Markdown (excl. this INDEX) | 2177 |
+| Files under `docs/` (excl. this INDEX) | 2604 |
+| Markdown (excl. this INDEX) | 2178 |
 | **MISSING HEADER** | **74** |
-| Header OK | 2103 |
+| Header OK | 2104 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2232 |
+| review_required | 2233 |
 
 ## Markdown tree
 
@@ -428,6 +428,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/PHASE210A_LOOKTHROUGH_CADENCE_PREFLIGHT_CLASSIFY_HARDEN.md` | Phase 210A — Lookthrough Cadence: Preflight + Classify + Harden + Dry-Run — 2026-06-07 | review_required | OK | `a658e122a9e2` |
 | `docs/architecture/PHASE210B_LOOKTHROUGH_APPLY_DIFF_SCHEDULE.md` | Phase 210B — Lookthrough Apply + Diff + Schedule — 2026-06-07 | review_required | OK | `8f9f70d8d735` |
 | `docs/architecture/PHASE210C_CADENCE_TIMER_SCHEDULE_VERIFICATION.md` | Phase 210C — Cadence Timer Schedule Verification — 2026-06-07 | review_required | OK | `1d9cdac8c715` |
+| `docs/architecture/PLAN_S_HOLLOW_RESEARCH_THEN_ANSWER_2026-09-22.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | review_required | OK | `5e9e634f7fa6` |
 | `docs/architecture/PRE_DEPLOY_STATE_GUARD.md` | Pre-Deploy State Guard (canonical) | review_required | OK | `fe30cc8699b6` |
 | `docs/architecture/PROJECT_THE_DESK_V2.md` | PROJECT · THE DESK — an autonomous CIO, built as extensions to the existing spec | review_required | OK | `2af6860a863f` |
 | `docs/architecture/QUOTE_PIPELINE_UNIFICATION_SCOPING_2026-08-27.md` | Quote Pipeline Unification — Scoping (Audit Finding H4) | review_required | OK | `d3580a82544b` |
@@ -696,7 +697,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/REPLAY_INTEGRITY_2026-07-15.md` | Replay chart integrity audit — 2026-07-15 | review_required | OK | `ffa7ae34ab5f` |
 | `docs/audits/REPLAY_INTEGRITY_LATEST.md` | Replay chart integrity audit — 2026-07-15 | review_required | OK | `eda2fd4b85bb` |
 | `docs/audits/REPLAY_SCALE_FIX_2026-06-27.md` | Replay price-scale fix — 2026-06-27 | review_required | OK | `47f67ee8a8ab` |
-| `docs/audits/SINGLE_LETTER_TICKER_S_FIX_2026-09-22.md` | Single-letter ticker `S` — link bleed / research-first / stale quotes | review_required | OK | `596b210f7287` |
+| `docs/audits/SINGLE_LETTER_TICKER_S_FIX_2026-09-22.md` | Single-letter ticker `S` — link bleed / research-first / stale quotes | review_required | OK | `cf0d049ff044` |
 | `docs/audits/STALE_DATA_RCA_AND_REMEDIATION_PLAN_2026-09-01.md` | STALE_DATA_RCA_AND_REMEDIATION_PLAN_2026-09-01 | review_required | OK | `f243325fcec6` |
 | `docs/audits/STOP_MGMT_DISCOVERY_2026-05-23.md` | Stop Management System Discovery — 2026-05-23 | review_required | OK | `05cb7b189dc7` |
 | `docs/audits/STORAGE_SAFEGUARDS_AUDIT_2026-08-11.md` | Storage Safeguards Audit — 2026-08-11 | review_required | OK | `cdedb00b3ff6` |
