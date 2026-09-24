@@ -2080,6 +2080,341 @@ def proposal_filter_facets(proposals: List[dict]) -> dict:
     }
 
 
+def _looks_optionable_symbol(sym: str) -> bool:
+    """Ticker-shaped symbols only — CUSIP/all-digit rows are not optionable equities."""
+    s = (sym or "").upper().strip()
+    if not s or s.isdigit() or len(s) > 10:
+        return False
+    return bool(re.match(r"^[A-Z][A-Z0-9.\-]{0,9}$", s))
+
+
+def evaluate_covered_call_status(
+    h: dict,
+    tech_map: dict,
+    intent_cfg: dict,
+    aegis_map: Optional[dict] = None,
+    *,
+    resolve_chain: bool = True,
+) -> dict:
+    """Named drop reason for one holding row — mirrors generate_covered_call_proposals gates.
+
+    Does not widen gates. Returns status in:
+      NEED_100_SHARES | MV_BELOW | PRICE_ZERO | NOT_OPTIONABLE | LOAN_RESTRICTED |
+      NO_CHAIN | IV_BELOW_FLOOR | EDGE_BELOW | POP_BELOW | AEGIS_REJECT |
+      INTENT_BYPASS | CC_ELIGIBLE
+    INTENT_BYPASS means the name is on covered_call_candidate and cleared IV via intent
+    (still subject to edge/POP); CC_ELIGIBLE means it would pass quality screens.
+    """
+    aegis_map = aegis_map or {}
+    sym = (h.get("symbol") or "").upper()
+    shares = _f(h.get("shares"))
+    price = _f(h.get("price"))
+    mv = _f(h.get("market_value"))
+    acct = h.get("account") or ""
+    base = {
+        "symbol": sym,
+        "account": acct,
+        "shares": round(shares, 4),
+        "market_value": round(mv, 2),
+        "price": round(price, 4) if price else 0.0,
+        "strategy": "covered_call",
+    }
+    if h.get("is_cash") or not sym:
+        return {**base, "status": "SKIP_CASH", "detail": "cash / empty symbol"}
+    if not _looks_optionable_symbol(sym):
+        return {**base, "status": "NOT_OPTIONABLE", "detail": "CUSIP or non-ticker symbol"}
+    if h.get("is_loan"):
+        return {**base, "status": "LOAN_RESTRICTED", "detail": "loan / restricted shares"}
+    if price <= 0:
+        return {**base, "status": "PRICE_ZERO", "detail": "no usable mark"}
+    if shares < MIN_HOLDING_SHARES_CC:
+        return {
+            **base,
+            "status": "NEED_100_SHARES",
+            "detail": f"{shares:.2f} shares — need ≥{MIN_HOLDING_SHARES_CC} to cover 1 call",
+        }
+    if mv < MIN_POSITION_MV:
+        return {
+            **base,
+            "status": "MV_BELOW",
+            "detail": f"MV ${mv:,.0f} below ${MIN_POSITION_MV:,.0f} floor",
+        }
+
+    cc_syms = set(s.upper() for s in (intent_cfg.get("covered_call_candidate") or []))
+    settings = intent_cfg.get("covered_call_settings") or {}
+    default_dte = int(settings.get("default_dte_days", 30))
+    default_otm = _f(settings.get("default_otm_pct", 0.06))
+    min_iv = _f(settings.get("iv_rank_minimum", MIN_IV_RANK))
+    in_intent = sym in cc_syms
+    gates = _holding_quality_gates(h)
+    min_iv_h = gates["min_iv"] if gates["manual"] else min_iv
+    tech = tech_map.get(sym) or {}
+
+    target_strike = price * (1 + default_otm)
+    if price < 50:
+        target_strike = round(target_strike / 0.5) * 0.5
+    elif price < 200:
+        target_strike = round(target_strike / 2.5) * 2.5
+    else:
+        target_strike = round(target_strike / 5.0) * 5.0
+
+    contract = None
+    data_source = ""
+    if resolve_chain:
+        contract, data_source = _resolve_option_contract(
+            sym, price, tech, "call", target_strike, default_dte,
+        )
+        if not contract:
+            return {
+                **base,
+                "status": "NO_CHAIN",
+                "detail": "no Schwab/BS contract resolved at target strike/DTE",
+                "intent_sleeve": in_intent,
+            }
+
+    iv = (contract or {}).get("iv") or 0.25
+    iv_rank = _iv_rank_proxy(sym, tech, chain_iv=iv if contract else None)
+    base["iv_rank"] = round(iv_rank, 1)
+    base["intent_sleeve"] = in_intent
+    if contract:
+        base["data_source"] = data_source
+        base["strike"] = contract.get("strike")
+        base["dte"] = contract.get("dte")
+
+    if iv_rank < min_iv_h and not in_intent:
+        return {
+            **base,
+            "status": "IV_BELOW_FLOOR",
+            "detail": f"IV rank proxy {iv_rank:.0f} < floor {min_iv_h:.0f} (not on covered_call_candidate)",
+        }
+
+    und = price
+    strike = _f((contract or {}).get("strike"), target_strike)
+    dte = int((contract or {}).get("dte") or default_dte)
+    premium = _f((contract or {}).get("mid"), 0.5)
+    contracts = int(shares // 100)
+    pop = _pop_otm_call(und, strike, max(0.05, float(iv)), dte)
+    collateral = round(und * shares, 2)
+    rr = (premium * 100 * contracts) / max(collateral * (dte / 365.0), 1.0)
+    aegis = aegis_map.get(sym) or {}
+    edge = _edge_score(
+        pop,
+        iv_rank,
+        rr,
+        catalyst_boost=12.0 if in_intent else (8.0 if gates["manual"] else 3.0),
+        conviction=_f(aegis.get("confidence"), 0.6),
+    )
+    if in_intent and pop >= MIN_POP_PCT:
+        edge = max(edge, pop * 0.55 + 18.0)
+    if gates["manual"]:
+        edge = round(edge + gates["edge_boost"], 1)
+    min_edge = gates["min_edge"] if (in_intent or gates["manual"]) else MIN_EDGE_SCORE
+    base["edge_score"] = round(edge, 1)
+    base["pop_pct"] = round(pop, 1)
+    base["min_edge"] = min_edge
+
+    if pop < MIN_POP_PCT:
+        return {
+            **base,
+            "status": "POP_BELOW",
+            "detail": f"POP {pop:.0f}% < {MIN_POP_PCT}%",
+        }
+    if edge < min_edge:
+        status = "INTENT_BYPASS" if in_intent else "EDGE_BELOW"
+        # Intent cleared IV but still failed edge — still EDGE_BELOW with intent flag
+        if in_intent and edge < min_edge:
+            status = "EDGE_BELOW"
+        return {
+            **base,
+            "status": status,
+            "detail": f"edge {edge:.0f} < min {min_edge:.0f}"
+            + (" (intent sleeve)" if in_intent else ""),
+        }
+
+    aegis_ok = (aegis.get("verdict") or "").lower() in ("candidate", "write", "ok", "")
+    if aegis and not aegis_ok and (aegis.get("verdict") or "").lower() in ("reject", "avoid", "wait"):
+        return {
+            **base,
+            "status": "AEGIS_REJECT",
+            "detail": f"Aegis verdict={aegis.get('verdict')}",
+        }
+
+    if in_intent and iv_rank < min_iv_h:
+        return {
+            **base,
+            "status": "INTENT_BYPASS",
+            "detail": f"intent sleeve cleared IV floor ({iv_rank:.0f} < {min_iv_h:.0f}); quality gates pass",
+        }
+    return {
+        **base,
+        "status": "CC_ELIGIBLE",
+        "detail": "passes share/IV/edge/POP screens — expect a covered-call card when slots allow",
+    }
+
+
+def evaluate_protective_put_status(
+    h: dict,
+    tech_map: dict,
+    *,
+    resolve_chain: bool = True,
+) -> dict:
+    """Named drop reason for protective-put path on one holding (no gate widening)."""
+    sym = (h.get("symbol") or "").upper()
+    shares = _f(h.get("shares"))
+    price = _f(h.get("price"))
+    mv = _f(h.get("market_value"))
+    acct = h.get("account") or ""
+    base = {
+        "symbol": sym,
+        "account": acct,
+        "shares": round(shares, 4),
+        "market_value": round(mv, 2),
+        "price": round(price, 4) if price else 0.0,
+        "strategy": "protective_put",
+    }
+    if h.get("is_cash") or not sym:
+        return {**base, "status": "SKIP_CASH", "detail": "cash / empty symbol"}
+    if not _looks_optionable_symbol(sym):
+        return {**base, "status": "NOT_OPTIONABLE", "detail": "CUSIP or non-ticker symbol"}
+    if price <= 0:
+        return {**base, "status": "PRICE_ZERO", "detail": "no usable mark"}
+    if shares < 50:
+        return {**base, "status": "NEED_50_SHARES", "detail": f"{shares:.2f} shares — protective put wants ≥50"}
+    if mv < MIN_PROTECTIVE_MV:
+        return {
+            **base,
+            "status": "MV_BELOW",
+            "detail": f"MV ${mv:,.0f} below ${MIN_PROTECTIVE_MV:,.0f} protective floor",
+        }
+    gates = _holding_quality_gates(h)
+    tech = tech_map.get(sym) or {}
+    iv_rank = _iv_rank_proxy(sym, tech)
+    base["iv_rank"] = round(iv_rank, 1)
+    if iv_rank < gates["min_iv"]:
+        return {
+            **base,
+            "status": "IV_BELOW_FLOOR",
+            "detail": f"IV rank proxy {iv_rank:.0f} < floor {gates['min_iv']:.0f}",
+        }
+    if not resolve_chain:
+        return {**base, "status": "PUT_ELIGIBLE_PENDING_CHAIN", "detail": "size/IV ok — chain not resolved"}
+    target_strike = round(price * 0.95 / 2.5) * 2.5 if price > 50 else round(price * 0.95, 1)
+    contract, data_source = _resolve_option_contract(sym, price, tech, "put", target_strike, 45)
+    if not contract:
+        return {**base, "status": "NO_CHAIN", "detail": "no put contract resolved"}
+    premium = _f(contract.get("mid"))
+    if premium <= 0:
+        return {**base, "status": "NO_CHAIN", "detail": "put mid ≤ 0"}
+    und = price
+    strike, dte, iv = contract["strike"], contract["dte"], contract.get("iv") or 0.3
+    pop = 100.0 - _pop_otm_put(und, strike, max(0.05, iv), dte)
+    contracts = max(1, int(shares // 100))
+    cost = round(premium * 100 * contracts, 2)
+    hedge_ratio = mv / max(cost, 1.0)
+    edge = _edge_score_debit(
+        pop=pop, iv_rank=iv_rank, hedge_ratio=min(3.0, hedge_ratio / 10.0),
+        conviction=0.55, dte=dte,
+    )
+    if gates["manual"]:
+        edge = round(edge + gates["edge_boost"] * 0.35, 1)
+    min_edge = MIN_EDGE_CC_INTENT if gates["manual"] else (MIN_EDGE_SCORE - 8)
+    base["edge_score"] = round(edge, 1)
+    base["pop_pct"] = round(pop, 1)
+    base["data_source"] = data_source
+    if edge < min_edge:
+        return {
+            **base,
+            "status": "EDGE_BELOW",
+            "detail": f"edge {edge:.0f} < min {min_edge:.0f}",
+        }
+    return {
+        **base,
+        "status": "PUT_ELIGIBLE",
+        "detail": "passes protective-put screens",
+    }
+
+
+def build_holdings_funnel(
+    *,
+    holdings: Optional[List[dict]] = None,
+    tech_map: Optional[dict] = None,
+    intent_cfg: Optional[dict] = None,
+    aegis_map: Optional[dict] = None,
+    resolve_chain: bool = True,
+) -> dict:
+    """Read-only owned-book funnel: why each holding is or is not a CC / protective-put idea.
+
+    Does not change quality gates. resolve_chain=False skips live/BS contract resolution
+    (deterministic share/IV-only pass — used in hermetic tests).
+    """
+    if holdings is None:
+        holdings, _meta = _load_holdings()
+    else:
+        holdings = [_normalize_holding(x) for x in holdings]
+    tech_map = tech_map if tech_map is not None else _load_technicals()
+    intent_cfg = intent_cfg if intent_cfg is not None else _load_intent_cfg()
+    aegis_map = aegis_map or {}
+
+    rows: List[dict] = []
+    for h in holdings:
+        if h.get("is_cash"):
+            continue
+        sym = (h.get("symbol") or "").upper()
+        if not sym:
+            continue
+        cc = evaluate_covered_call_status(
+            h, tech_map, intent_cfg, aegis_map, resolve_chain=resolve_chain,
+        )
+        put = evaluate_protective_put_status(
+            h, tech_map, resolve_chain=resolve_chain,
+        )
+        rows.append({
+            "symbol": sym,
+            "account": h.get("account") or "",
+            "shares": cc.get("shares"),
+            "market_value": cc.get("market_value"),
+            "cc": cc,
+            "protective_put": put,
+        })
+
+    def _count(path: str, status: str) -> int:
+        n = 0
+        for r in rows:
+            node = r.get(path) or {}
+            if node.get("status") == status:
+                n += 1
+        return n
+
+    cc_statuses = sorted({(r.get("cc") or {}).get("status") for r in rows if (r.get("cc") or {}).get("status")})
+    summary = {
+        "holdings_scanned": len(rows),
+        "cc_by_status": {s: _count("cc", s) for s in cc_statuses if s},
+        "cc_eligible": _count("cc", "CC_ELIGIBLE") + _count("cc", "INTENT_BYPASS"),
+        "cc_need_100_shares": _count("cc", "NEED_100_SHARES"),
+        "cc_iv_below": _count("cc", "IV_BELOW_FLOOR"),
+        "cc_edge_below": _count("cc", "EDGE_BELOW"),
+        "cc_no_chain": _count("cc", "NO_CHAIN"),
+        "put_eligible": _count("protective_put", "PUT_ELIGIBLE"),
+        "put_mv_below": _count("protective_put", "MV_BELOW"),
+        "put_iv_below": _count("protective_put", "IV_BELOW_FLOOR"),
+        "min_shares_cc": MIN_HOLDING_SHARES_CC,
+        "min_iv_rank": MIN_IV_RANK,
+        "min_edge": MIN_EDGE_SCORE,
+        "intent_cc": list(intent_cfg.get("covered_call_candidate") or []),
+        "resolve_chain": resolve_chain,
+        "note": (
+            "Portfolio sleeve counts only covered_call + protective_put ideas that cleared "
+            "quality gates. This funnel names every owned row's drop reason without changing gates."
+        ),
+    }
+    return {
+        "ok": True,
+        "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "summary": summary,
+        "rows": rows,
+    }
+
+
 def filter_positions(
     positions: List[dict],
     *,

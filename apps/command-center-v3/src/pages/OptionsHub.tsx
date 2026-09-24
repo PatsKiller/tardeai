@@ -127,9 +127,17 @@ export default function OptionsHub({ onDrill }: Props) {
   const { data: execStatus } = useApi<any>('/api/v2/options/execution/status', 120_000)
   // Stage B: advisory paper-validation gate progress (deep_itm_call) — header strip
   const { data: validation } = useApi<any>('/api/v2/options/validation', 300_000)
+  // Stage 1 holdings funnel — why owned names are / aren't CC ideas (no gate widening)
+  const { data: holdingsFunnel } = useApi<any>('/api/v2/options/holdings-funnel?resolve_chain=0', 300_000)
   const validationRows: any[] = Array.isArray(validation?.strategies)
     ? validation.strategies.filter((s: any) => s?.ok)
     : []
+  const funnelSummary = holdingsFunnel?.summary || holdingsFunnel?.data?.summary || null
+  const funnelRows: any[] = Array.isArray(holdingsFunnel?.rows)
+    ? holdingsFunnel.rows
+    : Array.isArray(holdingsFunnel?.data?.rows)
+      ? holdingsFunnel.data.rows
+      : []
 
   const propList: Proposal[] = Array.isArray(proposals?.proposals) ? proposals.proposals : []
   const proposalSymbols = useMemo(
@@ -580,10 +588,47 @@ export default function OptionsHub({ onDrill }: Props) {
             </div>
           )}
 
+          {funnelSummary && (
+            <div title="Owned-book funnel: named drop reasons for covered calls / protective puts. Does not widen IV or intent gates." style={{ ...panel, marginBottom: 12, borderLeft: '4px solid #60a5fa', fontSize: 11, color: 'var(--text2)', cursor: 'help' }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#60a5fa', marginBottom: 6 }}>Holdings options funnel ⓘ</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
+                <span>Scanned <b style={{ color: 'var(--text0)' }}>{funnelSummary.holdings_scanned ?? '—'}</b></span>
+                <span>CC eligible <b style={{ color: '#22c55e' }}>{funnelSummary.cc_eligible ?? 0}</b></span>
+                <span>Need ≥100 sh <b style={{ color: '#f59e0b' }}>{funnelSummary.cc_need_100_shares ?? 0}</b></span>
+                <span>IV below floor <b style={{ color: '#ef4444' }}>{funnelSummary.cc_iv_below ?? 0}</b></span>
+                <span>Edge below <b style={{ color: '#ef4444' }}>{funnelSummary.cc_edge_below ?? 0}</b></span>
+                <span>No chain <b style={{ color: 'var(--text3)' }}>{funnelSummary.cc_no_chain ?? 0}</b></span>
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text3)', lineHeight: 1.45 }}>
+                Portfolio sleeve counts only covered_call + protective_put ideas that cleared gates.
+                Intent CC: {(funnelSummary.intent_cc || []).join(', ') || '—'}.
+                Unprotected chips on Trading are stop gaps — not “no covered call.”
+                {posList.length > 0 ? ` · ${posList.length} open leg(s) — use Open Options / Lifecycle for sell vs hold + P&L.` : ''}
+              </div>
+              {funnelRows.filter((r: any) => ['IV_BELOW_FLOOR', 'EDGE_BELOW', 'NO_CHAIN', 'NEED_100_SHARES'].includes(r?.cc?.status)).slice(0, 8).length > 0 && (
+                <div style={{ marginTop: 8, fontSize: 10, color: 'var(--text2)' }}>
+                  {funnelRows
+                    .filter((r: any) => ['IV_BELOW_FLOOR', 'EDGE_BELOW', 'NO_CHAIN', 'NEED_100_SHARES'].includes(r?.cc?.status))
+                    .slice(0, 8)
+                    .map((r: any) => (
+                      <div key={`${r.symbol}-${r.account}`}>
+                        <b style={{ color: '#60a5fa' }}>{r.symbol}</b> · {r.cc?.status}
+                        {r.cc?.detail ? ` — ${r.cc.detail}` : ''}
+                      </div>
+                    ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {propList.length === 0 && !propLoading && !propError && (
             <div style={panel}>
               <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-                No proposals passed quality gates (edge ≥62, POP ≥52%, IV rank). Use Force scan — fallback tier surfaces income-sleeve CCs when chain is thin.
+                No proposals passed quality gates (edge ≥62, POP ≥52%, IV rank).
+                {funnelSummary
+                  ? ` Holdings funnel: ${funnelSummary.cc_need_100_shares ?? 0} need ≥100 shares, ${funnelSummary.cc_iv_below ?? 0} IV below floor, ${funnelSummary.cc_eligible ?? 0} CC-eligible — not a dead desk.`
+                  : ' Use Force scan — fallback tier surfaces income-sleeve CCs when chain is thin.'}
+                {' '}View Chain on any card still hits live Schwab; Sell actions require ARMED + per-order 2FA.
               </div>
             </div>
           )}
