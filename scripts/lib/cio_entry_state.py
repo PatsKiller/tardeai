@@ -168,11 +168,11 @@ def render_operator(result: dict, ev: dict) -> str:
         lines.append(f"CIO view: {result['cio_action'].replace('_', ' ').title()}")
     if result.get("held"):
         lines.append("Already held — this would be an add.")
-    # Stage 1D — capital-efficient options alt beside equity (cache only; honest NONE).
+    # Stage 1D — institutional equity + options packet (BUY_READY and ENTRY_NEAR).
     if result.get("state") in ("BUY_READY", "ENTRY_NEAR"):
-        alt_line = _options_alt_line(result)
-        if alt_line:
-            lines.append(alt_line)
+        packet_block = _institutional_packet_block(result, ev, for_cio=False)
+        if packet_block:
+            lines.extend(packet_block.split("\n"))
     lines.append("Advisory only: review and decide; nothing is placed automatically.")
     return "\n".join(lines)
 
@@ -190,8 +190,40 @@ def render_digest(results: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def _options_alt_line(result: dict) -> str:
-    """Append Stage 1D options alternative; degrade silently if fluency module absent."""
+def _institutional_packet_block(result: dict, ev: dict, *, for_cio: bool) -> str:
+    """Stage 1D institutional packet; degrade to legacy alt line if module absent."""
+    try:
+        from scripts.lib.cio_options_fluency import (  # noqa: PLC0415
+            format_buy_ready_packet_lines,
+            build_buy_ready_packet,
+        )
+    except ImportError:
+        try:
+            from lib.cio_options_fluency import (  # type: ignore[no-redef]  # noqa: PLC0415
+                format_buy_ready_packet_lines,
+                build_buy_ready_packet,
+            )
+        except ImportError:
+            return _options_alt_line_legacy(result)
+    merged = {
+        **(ev or {}),
+        "symbol": result.get("symbol"),
+        "plan_source": result.get("plan_source") or (ev or {}).get("plan_source"),
+        "catalyst": result.get("catalyst") or (ev or {}).get("catalyst"),
+        "held": result.get("held") if result.get("held") is not None else (ev or {}).get("held"),
+        "atr": (ev or {}).get("atr"),
+    }
+    packet = build_buy_ready_packet(result, merged)
+    lines = format_buy_ready_packet_lines(packet, for_cio=for_cio)
+    if for_cio:
+        lines.append(
+            "Confirm or refute the equity entry and options alternative (Approve/Reject/Modify) for the operator."
+        )
+    return "\n".join(lines)
+
+
+def _options_alt_line_legacy(result: dict) -> str:
+    """Fallback single-line alt when full packet module cannot import."""
     try:
         from scripts.lib.cio_options_fluency import (  # noqa: PLC0415
             format_entry_options_alternative_block,
@@ -218,24 +250,22 @@ def _options_alt_line(result: dict) -> str:
 def render_cio(result: dict, ev: dict) -> str:
     state = "BUY_READY" if result["state"] == "BUY_READY" else "ENTRY_NEAR"
     cap = _cap_text(ev)
-    text = (
-        f"Entry state {state} for {result['symbol']}{' (' + cap + ')' if cap else ''}: price "
-        f"{_money(result['price'])}, zone {_money(result['entry_low'])}–{_money(result['entry_high'])}, "
-        f"stop {_money(result['stop'])}, target {_money(result['target'])}, R:R {result['rr']}. "
-        f"Plan source {result.get('plan_source') or 'unknown'}."
+    head = (
+        f"Entry state {state} for {result['symbol']}{' (' + cap + ')' if cap else ''}."
     )
     if result.get("state") in ("BUY_READY", "ENTRY_NEAR"):
-        alt_line = _options_alt_line(result)
-        if alt_line:
-            text = f"{text} {alt_line}"
-        else:
-            text = f"{text} Confirm or refute the entry for the operator."
-    else:
-        text = f"{text} Confirm or refute the entry for the operator."
-    # When an options alt is present it already asks confirm/refute alongside equity.
-    if "Confirm or refute" not in text:
-        text = f"{text} Confirm or refute the equity entry (and options alternative if shown) for the operator."
-    return text
+        packet_block = _institutional_packet_block(result, ev, for_cio=True)
+        if packet_block:
+            # for_cio packet already opens with Entry state line — avoid double head when present
+            if packet_block.startswith("Entry state"):
+                return packet_block
+            return f"{head}\n{packet_block}"
+    return (
+        f"{head} price {_money(result['price'])}, zone {_money(result['entry_low'])}–"
+        f"{_money(result['entry_high'])}, stop {_money(result['stop'])}, target "
+        f"{_money(result['target'])}, R:R {result['rr']}. Plan source "
+        f"{result.get('plan_source') or 'unknown'}. Confirm or refute the entry for the operator."
+    )
 
 
 def transition_key(result: dict, day: date | None = None) -> str:

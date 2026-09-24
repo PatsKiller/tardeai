@@ -146,6 +146,21 @@ def gather(cur) -> dict[str, dict]:
             e.setdefault("earnings_date", ((pk.get("event_state") or {}).get("earnings") or {}).get("date"))
         e["market_cap_label"] = cap_label(
             None if (b := enrichment_market_cap_billions(enrichment.get(sym) or {})) is None else b * 1000.0)
+        # P8 thesis/structure inputs from house enrichment (never invent).
+        enr = enrichment.get(sym) or {}
+        if isinstance(enr, dict):
+            if e.get("pe") is None and enr.get("pe") is not None:
+                e["pe"] = enr.get("pe")
+            if e.get("forward_pe") is None and enr.get("forward_pe") is not None:
+                e["forward_pe"] = enr.get("forward_pe")
+            if e.get("peg") is None and enr.get("peg") is not None:
+                e["peg"] = enr.get("peg")
+            if e.get("atr") is None and enr.get("atr") is not None:
+                e["atr"] = enr.get("atr")
+            if not e.get("sector") and enr.get("sector"):
+                e["sector"] = enr.get("sector")
+            if not e.get("industry") and enr.get("industry"):
+                e["industry"] = enr.get("industry")
     return ev
 
 
@@ -160,13 +175,33 @@ def alerted_today(cur, keys: list[str]) -> set[str]:
     return {row[0] for row in cur.fetchall()}
 
 
-def operator_send(text: str) -> dict:
-    """The one operator send path (alert and digest). Routes IMMEDIATE as cio_entry_state."""
+def operator_send(text: str, *, primary_symbols: list[str] | None = None) -> dict:
+    """The one operator send path (alert and digest). Routes IMMEDIATE as cio_entry_state.
+
+    ``primary_symbols`` scopes Communications Editor footer chrome to the active
+    symbol(s) so residual tickers (e.g. MAA GUID bleed on an AXTI alert) never
+    appear in Finviz/Yahoo/CC links.
+    """
+    token = None
+    reset_primary_symbols = None
     try:
+        if primary_symbols:
+            try:
+                from scripts.lib.comms_editor import set_primary_symbols, reset_primary_symbols as _reset
+            except ImportError:
+                from lib.comms_editor import set_primary_symbols, reset_primary_symbols as _reset  # type: ignore
+            reset_primary_symbols = _reset
+            token = set_primary_symbols(primary_symbols)
         from telegram_alert import send_telegram
         return {"operator": bool(send_telegram(text, message_class="operator_alert"))}
     except Exception as exc:
         return {"operator": False, "operator_error": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    finally:
+        if token is not None and reset_primary_symbols is not None:
+            try:
+                reset_primary_symbols(token)
+            except Exception:
+                pass
 
 
 def starred_symbols(cur) -> set[str]:
@@ -214,7 +249,11 @@ def alert_worthy(actionable: list[dict], prior: dict, done: set,
 
 def send_alerts(result: dict, evidence: dict) -> dict:
     out = {"cio_desk": False, "cio_bus": False}
-    out.update(operator_send(ces.render_operator(result, evidence)))
+    sym = str(result.get("symbol") or "").upper()
+    out.update(operator_send(
+        ces.render_operator(result, evidence),
+        primary_symbols=[sym] if sym else None,
+    ))
     try:
         from scripts.lib.cio_telegram_transport import send_cio_message
         r = send_cio_message(ces.render_cio(result, evidence), subject=f"Entry state {result['symbol']}",
@@ -302,7 +341,13 @@ def main() -> int:
         for r in to_alert:
             sent.append({"symbol": r["symbol"], "state": r["state"], **send_alerts(r, evidence[r["symbol"]])})
         if digest:
-            sent.append({"digest": [r["symbol"] for r in digest], **operator_send(ces.render_digest(digest))})
+            sent.append({
+                "digest": [r["symbol"] for r in digest],
+                **operator_send(
+                    ces.render_digest(digest),
+                    primary_symbols=[str(r["symbol"]).upper() for r in digest if r.get("symbol")],
+                ),
+            })
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps({"as_of": datetime.now(timezone.utc).isoformat(), "counts": counts,
                                        "alerts": sent}, indent=2, default=str))

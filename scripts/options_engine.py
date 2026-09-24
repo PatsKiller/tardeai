@@ -436,10 +436,55 @@ def _normalize_holding(h: dict) -> dict:
 
 
 def _load_holdings() -> Tuple[List[dict], dict]:
-    h = _load_json(STATE_DIR / "holdings.json") or {}
+    """Latest holdings of record — prefer served/persistent state over checkout-local.
+
+    Stage 1 / holdings-backfill addendum (2026-09-24): CC/protective-put generation
+    and the holdings funnel must refresh from what we currently own, not a stale
+    worktree sleeve. Does not widen IV/intent gates.
+    """
+    candidates: List[Path] = []
+    try:
+        from scripts.lib.persistent_state_root import portfolio_state_write_targets
+        for d in portfolio_state_write_targets(PROJECT_ROOT):
+            candidates.append(Path(d) / "holdings.json")
+    except Exception:
+        try:
+            from lib.persistent_state_root import portfolio_state_write_targets  # type: ignore
+            for d in portfolio_state_write_targets(PROJECT_ROOT):
+                candidates.append(Path(d) / "holdings.json")
+        except Exception:
+            pass
+    candidates.append(STATE_DIR / "holdings.json")
+    # Prefer newest readable copy among unique realpaths.
+    best: Optional[Path] = None
+    best_mtime = -1.0
+    seen: set[str] = set()
+    for p in candidates:
+        try:
+            key = str(p.resolve())
+        except OSError:
+            key = str(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        if not p.is_file():
+            continue
+        try:
+            mtime = p.stat().st_mtime
+        except OSError:
+            continue
+        if mtime >= best_mtime:
+            best_mtime = mtime
+            best = p
+    h = _load_json(best) if best is not None else {}
+    if not isinstance(h, dict):
+        h = {}
     raw = h.get("holdings") or []
     normalized = [_normalize_holding(x) for x in raw if (x.get("symbol") or "").upper()]
-    return normalized, h
+    meta = dict(h) if isinstance(h, dict) else {}
+    meta["_holdings_path"] = str(best) if best is not None else None
+    meta["_holdings_mtime"] = best_mtime if best is not None else None
+    return normalized, meta
 
 
 def _cash_by_account(holdings: List[dict]) -> Dict[str, float]:
@@ -2426,8 +2471,12 @@ def build_holdings_funnel(
     """
     if holdings is None:
         holdings, _meta = _load_holdings()
+        holdings_path = (_meta or {}).get("_holdings_path")
+        holdings_mtime = (_meta or {}).get("_holdings_mtime")
     else:
         holdings = [_normalize_holding(x) for x in holdings]
+        holdings_path = "caller_supplied"
+        holdings_mtime = None
     tech_map = tech_map if tech_map is not None else _load_technicals()
     intent_cfg = intent_cfg if intent_cfg is not None else _load_intent_cfg()
     aegis_map = aegis_map or {}
@@ -2465,6 +2514,8 @@ def build_holdings_funnel(
     cc_statuses = sorted({(r.get("cc") or {}).get("status") for r in rows if (r.get("cc") or {}).get("status")})
     summary = {
         "holdings_scanned": len(rows),
+        "holdings_source": holdings_path,
+        "holdings_mtime": holdings_mtime,
         "cc_by_status": {s: _count("cc", s) for s in cc_statuses if s},
         "cc_eligible": _count("cc", "CC_ELIGIBLE") + _count("cc", "INTENT_BYPASS"),
         "cc_need_100_shares": _count("cc", "NEED_100_SHARES"),
@@ -2480,8 +2531,9 @@ def build_holdings_funnel(
         "intent_cc": list(intent_cfg.get("covered_call_candidate") or []),
         "resolve_chain": resolve_chain,
         "note": (
-            "Portfolio sleeve counts only covered_call + protective_put ideas that cleared "
-            "quality gates. This funnel names every owned row's drop reason without changing gates."
+            "Backfill from latest holdings of record. Propose CC/protective puts only when "
+            "gates + edge/IV/size clear — not every owned name. Named drop reasons for every "
+            "row; silent omit is a defect. IV/intent floors are not widened here."
         ),
     }
     return {
