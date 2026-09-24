@@ -179,6 +179,7 @@ def _empty_memory(provider: Optional[str]) -> dict[str, Any]:
         "conflicts": [],
         "retrieval_status": RETRIEVAL_NOT_CONFIGURED if not provider else RETRIEVAL_EMPTY,
         "provider": provider,
+        "dropped_for_budget": [],
     }
 
 
@@ -279,6 +280,21 @@ def build_context_envelope(
     episodic_memory = dict(episodic_memory or {})
     episodic_merged = _empty_memory(memory_provider)
     episodic_merged.update(episodic_memory)
+    if episodic_merged.get("records"):
+        # Records arrive in retrieval-rank order; keep the prefix that fits the
+        # MRU token budget and name what was dropped (M5 Module 2.3).
+        try:
+            from scripts.lib.memory_retrieval_unit import enforce_token_budget  # noqa: PLC0415
+        except ImportError:  # imported as lib.agent_context_envelope (scripts/ on sys.path)
+            from lib.memory_retrieval_unit import enforce_token_budget  # noqa: PLC0415
+
+        bounded = enforce_token_budget(list(episodic_merged["records"]))
+        episodic_merged["records"] = bounded["units"]
+        episodic_merged["dropped_for_budget"] = list(episodic_merged.get("dropped_for_budget") or []) + bounded[
+            "dropped_for_budget"
+        ]
+        episodic_merged["token_budget"] = bounded["token_budget"]
+        episodic_merged["token_estimate"] = bounded["token_estimate"]
 
     research_memory = dict(research_memory or {})
     research_merged = _empty_research()
