@@ -1349,12 +1349,14 @@
       "lane_id": "material-change-digest",
       "owner": "cio",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "15 16 * * * notify_material_change.py --digest --apply",
+        "match": "notify_material_change.py --digest"
       },
       "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-09-24",
-      "state_reason": "Built 2026-09-24 (operator-approved material-alert redesign: page only held names / fresh CIO BUY_READY; everything else in ONE daily digest). Install at deploy from the dev tree as '15 16 * * * cd $PROJ && MATERIAL_CHANGE_GATEWAY_NOTICE=1 COMMS_GATEWAY_MODE=CANARY COMMS_GATEWAY_CANARY_CLASSES=ops $PY scripts/notify_material_change.py --digest --apply >> logs/material_change_digest.log 2>&1' (the same gateway env the 15-min notifier line carries), then flip this row to kind=cron, state=ACTIVE.",
+      "state_reason": "Installed 2026-09-24 at the M5 tranche-3 deploy (operator: 'do the post-merge steps'): daily 16:15 from the dev tree, flock /tmp/material_change_digest.lock, same gateway env as the 15-min notifier, logs/material_change_digest.log.",
       "output_signal": {
         "kind": "db_max",
         "table": "material_changes",
