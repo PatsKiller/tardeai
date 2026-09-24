@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `df2fe8af52b519d00276af4e4bf727a46c22fec0b15fa07a501ed6717f06693b`
+**Tree fingerprint:** `2378617c1e8d34f551ba334dd8ff0cdcc45eaef375d6de0371042a4203092da3`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -1803,7 +1803,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/paper_trading/PHASE186K_STOP_TO_TRAILING_CONVERSION_AUDIT.md` | Phase 186K: Hard-Stop to Trailing-Stop Conversion Audit | review_required | OK | `7910d9e429be` |
 | `docs/paper_trading/PHASE186L_TRAILING_STOP_ALGORITHM_SPECIFICATION.md` | Phase 186L: Trailing Stop Algorithm Specification | review_required | OK | `4b3ba04029af` |
 | `docs/patches/2026-06-15_stage2b_intent_persistence_fix.md` | Stage 2b Schwab Pilot Hotfix — Intent Persistence Before Approval | review_required | OK | `0f35a94b1ef8` |
-| `docs/plan-options-desk-holdings-strategies-20260924.md` | Plan: Options Desk — holdings strategies · open legs · CIO fluency · goals · BUY_READY institutional packet | review_required | OK | `2a2876fd489d` |
+| `docs/plan-options-desk-holdings-strategies-20260924.md` | Plan: Options Desk — holdings strategies · open legs · CIO fluency · goals · BUY_READY institutional packet | review_required | OK | `38f365c22cd1` |
 | `docs/project/CI_EVIDENCE_LATEST.md` | CI Evidence — Release Readiness Proof | current_phase_keep | MISSING HEADER | `c681fe6477dd` |
 | `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_20260606.md` | Closed-Loop All-Trades Abstraction (2026-06-06) | current_phase_keep | OK | `82b9d6a350f7` |
 | `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_DUE_DILIGENCE_20260606.md` | Closed-Loop All-Trades Abstraction — Due Diligence (2026-06-06) | current_phase_keep | OK | `06306949c580` |

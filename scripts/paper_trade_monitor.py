@@ -167,10 +167,16 @@ def _fix_integrity_issues(conn, alpaca_symbols):
           AND COALESCE(broker_order_id, '') = ''
           AND filled_at IS NULL
           AND created_at < NOW() - INTERVAL '15 minutes'
-        RETURNING id, symbol, proposal_id
+        RETURNING id, symbol, proposal_id, account, execution_account, broker
     """)
     for r in cur.fetchall():
         log.warning(f"[integrity] CANCELLED never-submitted: {r[1]} id={r[0]} proposal={r[2]}")
+        # OPERATOR DECISION 2026-09-22: paper/training accounts never page.
+        from lib.paper_account_policy import suppress_paper_alert
+        if suppress_paper_alert("paper_trade_monitor.never_submitted",
+                                {"account": r[3], "execution_account": r[4], "broker": r[5]}, r[1]):
+            fixed += 1
+            continue
         try:
             from telegram_alert import send_telegram
             send_telegram(

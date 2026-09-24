@@ -311,8 +311,12 @@ def convert_to_oco(env, symbol, qty, stop_price, take_profit_price, old_stop_id,
             conn.rollback()
     res.update({"status": "OCO_ACTIVE", "oco_group_id": group_id, "stop_order_id": stop_id, "take_profit_order_id": tp_id})
     _audit(symbol, "CONVERT_TO_OCO", f"stop ${sp} + take-profit ${tp} qty {qty} group {group_id}")
-    # Operator notification (audit parity): paper auto-applies notify; they don't gate on 2FA (paper only).
+    # Operator notification: paper/training accounts never page (OPERATOR DECISION 2026-09-22). The
+    # audit row above and the APPLIED proposal remain the record.
     try:
+        from lib.paper_account_policy import ALPACA_PAPER_ACCOUNT, suppress_paper_alert
+        if suppress_paper_alert("alpaca_stop_manager.convert_to_oco", {"account": ALPACA_PAPER_ACCOUNT}, symbol):
+            return res
         from telegram_alert import send_telegram
         send_telegram(f"🟢 ATM auto (paper) · {symbol}: converted to OCO bracket — stop ${sp} + take-profit "
                       f"${tp} ({qty} sh). Now in proposals as APPLIED. No 2FA (paper); real accounts stay 2FA.")
@@ -449,11 +453,14 @@ def repair_oco_replacing(apply: bool = False) -> dict:
                     _audit(sym, "REPAIR_NAKED_FAILED", str(e)[:120])
             else:
                 entry["resolution"] = "NAKED → would re-place standalone stop (run --apply)"
-            try:   # naked is critical — alert regardless of apply
-                from telegram_alert import send_telegram
-                send_telegram(f"🛑 NAKED paper position {sym}: OCO convert interrupted (OCO_REPLACING) and NO stop "
-                              f"exists at the broker. " + (f"Re-placed stop ${stop_px}." if (apply and stop_px and qty > 0)
-                                                           else "Run alpaca_stop_manager.py --repair-oco --apply to re-place."))
+            try:   # naked is critical for REAL money; paper/training never pages (OPERATOR DECISION 2026-09-22)
+                from lib.paper_account_policy import ALPACA_PAPER_ACCOUNT, suppress_paper_alert
+                if not suppress_paper_alert("alpaca_stop_manager.repair_oco_replacing",
+                                            {"account": ALPACA_PAPER_ACCOUNT}, f"NAKED {sym}"):
+                    from telegram_alert import send_telegram
+                    send_telegram(f"🛑 NAKED paper position {sym}: OCO convert interrupted (OCO_REPLACING) and NO stop "
+                                  f"exists at the broker. " + (f"Re-placed stop ${stop_px}." if (apply and stop_px and qty > 0)
+                                                               else "Run alpaca_stop_manager.py --repair-oco --apply to re-place."))
             except Exception:
                 pass
         report["repaired"].append(entry)

@@ -73,35 +73,10 @@ CRITICAL_NEWS_KEYWORDS = [
     'sec investigation', 'fraud', 'class action', 'delisted',
 ]
 
-#: Accounts in paper_trades that are TRAINING/SIMULATION only. Measured
-#: 2026-09-22: every row in this table belongs to one of these -- ALPACA_PAPER
-#: (6 open, 82 closed), tradeai_automated (2,506, the SANDBOX_ACCOUNT named at
-#: validation_submitter.py:20) and TOS_PAPER (6). NOT ONE row is a real-money
-#: account; the real accounts are schwab_taxable / schwab_rollover_ira /
-#: schwab_roth_ira and they live in schwab_positions_live, never here.
-#:
-#: OPERATOR DECISION 2026-09-22: "Anything being traded in the alpaca paper
-#: account is just for training purposes. We don't need to be alerted on it...
-#: I only want to care about being alerted about what I should be trading real
-#: money with." So these produce DB rows (the training metadata is kept in full)
-#: and send NOTHING to Telegram.
-#:
-#: This gates on the ACCOUNT, not on the script, deliberately: if a real-money
-#: row ever appears in paper_trades it still alerts, instead of being silently
-#: swallowed by a blanket mute.
-PAPER_ONLY_ACCOUNTS = {"ALPACA_PAPER", "TOS_PAPER", "tradeai_automated"}
-
-
-def is_paper_only(trade) -> bool:
-    """True when this trade is simulation/training and must never page anyone."""
-    try:
-        acct = str((trade or {}).get("account") or "").strip()
-        broker = str((trade or {}).get("broker") or "").strip().lower()
-    except Exception:
-        return False
-    if acct in PAPER_ONLY_ACCOUNTS:
-        return True
-    return broker in {"alpaca_paper", "tos_paper"}
+#: OPERATOR DECISION 2026-09-22: paper/training accounts never page. The policy
+#: (account set + matcher) lives in lib/paper_account_policy.py so every sender
+#: shares one definition; re-exported here for existing callers and tests.
+from lib.paper_account_policy import PAPER_ONLY_ACCOUNTS, is_paper_only  # noqa: E402,F401
 
 
 DEDUP_MINUTES = 30

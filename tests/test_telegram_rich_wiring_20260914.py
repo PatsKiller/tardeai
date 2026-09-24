@@ -203,6 +203,19 @@ def test_go_alert_falls_back_to_plain_text_when_rich_is_off(monkeypatch):
 def test_entry_alert_is_rich_and_keeps_the_entry_alert_words(monkeypatch, rich):
     monkeypatch.delenv("TELEGRAM_RICH_ALERTS", raising=False)
     wep = _load("watchlist_entry_planner", "scripts/watchlist_entry_planner.py")
+    # The entry alert now passes the CIO stance gate (M5 step 6). Give the gate a
+    # fake CIO store with a BUY_READY stance so the real gate logic runs without a
+    # live database (CI has no psycopg2; locally this read the live store).
+    import lib.publisher_stance_gate as psg
+
+    def _fake_cio_store(sql, params=None):
+        if "SELECT 1" in sql:
+            return [{"ok": 1}]
+        return [{"symbol": "AXTI", "action": "BUY_READY", "status": "proposed",
+                 "created_at": "2026-09-23T12:00:00+00:00"}]
+
+    monkeypatch.setattr(psg, "default_db_query", lambda: _fake_cio_store)
+    monkeypatch.setenv("CIO_STANCE_HOLD_RECEIPTS", "")
 
     calls = []
     fake = types.ModuleType("telegram_alert")

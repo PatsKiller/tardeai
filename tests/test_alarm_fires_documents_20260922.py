@@ -90,7 +90,7 @@ TEXT_SITES = [(m, fn) for m, fn, kind in SITES if kind == "text"]
 WHOLE_FILE = ("portfolio_monthly_report", "portfolio_report_ms", "portfolio_weekly_report")
 #: portfolio_alerts is claimed at ONE line: its document send. Its text site stays
 #: debt because the router gives it nowhere to go (module docstring).
-PINNED = ("scripts/portfolio_alerts.py:512",)
+PINNED = ("scripts/portfolio_alerts.py:522",)
 
 #: LITERAL strings, deliberately not derived from the constants above.
 #: alarm_firing_coverage.declared_covers parses this with `ast` and accepts ONLY
@@ -102,7 +102,7 @@ PINNED = ("scripts/portfolio_alerts.py:512",)
 #: `test_covers_matches_the_sites_these_tests_drive` keeps the literal and the
 #: parametrised lists from drifting apart.
 COVERS = [
-    "scripts/portfolio_alerts.py:512",
+    "scripts/portfolio_alerts.py:522",
     "scripts/portfolio_monthly_report.py",
     "scripts/portfolio_report_ms.py",
     "scripts/portfolio_weekly_report.py",

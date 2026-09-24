@@ -30,7 +30,9 @@ DECLARE
   -- nullif('') matters: RESET on a custom GUC yields an empty string, not NULL,
   -- so a bare coalesce() would collapse the allowlist to [''] and refuse the
   -- shadow's own rebuild.
-  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow');
+  -- m2_shadow_test is the pytest database (tests/conftest.py routes every
+  -- shadow DSN there so tests never touch the live m2_shadow).
+  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow,m2_shadow_test');
   v_isolated  boolean := current_database() = ANY (string_to_array(v_allowed, ','));
   v_opted_in  boolean := coalesce(current_setting('m2.allow_destructive_reset', true), 'off') = 'on';
   v_exists    boolean := EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'memory_r10_m2');
@@ -276,7 +278,15 @@ END$$;
 
 REVOKE ALL ON FUNCTION memory_r10_m2.write_fact_version(text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION memory_r10_m2.write_fact_version(text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector) TO m2_agent;
-GRANT EXECUTE ON FUNCTION memory_r10_m2.write_fact_version(text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector) TO m2;
+-- Role `m2` exists only on the isolated shadow container; grant only where it exists.
+DO $grant_m2_write$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'm2') THEN
+        EXECUTE 'GRANT EXECUTE ON FUNCTION memory_r10_m2.write_fact_version('
+             || 'text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector) TO m2';
+    END IF;
+END
+$grant_m2_write$;
 
 -- Block direct INSERT that authors tx_period from agent role; owner may still seed.
 CREATE OR REPLACE FUNCTION memory_r10_m2.forbid_client_tx_authoring()

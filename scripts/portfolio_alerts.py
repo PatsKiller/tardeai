@@ -370,7 +370,17 @@ def format_analyst_message(ratings: List[Dict]) -> str:
         h    = r.get("hold",0)
         emoji = "🟢" if "BUY" in cons else "🔴" if "SELL" in cons else "🟡"
         lines.append(f"  {emoji} <b>{sym}</b>: {cons} — Buy:{sb} Hold:{h} Sell:{ss}")
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    # Third-party analyst consensus, not a house call: never held. Flag only where
+    # the CIO says AVOID/SELL on a BUY-rated holding (M5 audit 2026-09-23, 4d).
+    bullish = [r.get("symbol", "") for r in ratings[:8] if "BUY" in str(r.get("consensus", ""))]
+    if bullish:
+        try:
+            from lib.publisher_stance_gate import stamp_symbols
+            text = stamp_symbols(text, bullish, note="analyst consensus is third-party", only_conflicts=True)
+        except Exception:
+            pass
+    return text
 
 
 def format_strategic_message(alerts: List[Dict], portfolio: Dict) -> str:

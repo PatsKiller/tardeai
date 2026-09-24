@@ -69,16 +69,19 @@ def test_go_held_when_cio_decision_missing_fail_closed():
     assert v.held_reason == HELD_MISSING
 
 
-def test_hold_and_neutral_cio_conflict_with_bullish_message():
-    for action in ("HOLD", "RESEARCH_MORE", "NEUTRAL"):
+def test_hold_and_neutral_cio_rewrite_bullish_to_watch():
+    """HOLD and epistemic gaps pass, with GO/BUY rewritten to WATCH."""
+    for action in ("HOLD", "RESEARCH_MORE", "NEUTRAL", "HUMAN_REVIEW", "ADD_REVIEW"):
         v = check_investment_send(
             symbol="AXTI",
             message_text="Strong Buy AXTI",
             asserted_stance="bullish",
             cio_view={"symbol": "AXTI", "action": action},
         )
-        assert v.allow is False, action
-        assert v.held_reason == HELD_DISAGREEMENT
+        assert v.allow is True, action
+        assert v.held_reason is None
+        assert v.effective_action == "WATCH"
+        assert f"[CIO Stance: {action} — Action rewritten to WATCH]" in v.annotation_text
 
 
 def test_editor_buy_vs_avoid_is_held_not_annotate_only(tmp_path):

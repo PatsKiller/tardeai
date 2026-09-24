@@ -6,12 +6,20 @@ a kill switch, not stance approval.
 
 This module is the minimum hard gate:
 
-* Investment-shaped message stance (Buy / Accumulate / GO / …) for a symbol
-  must align with the latest CIO action for that symbol.
-* Missing CIO row, unreadable store, or non-aligned action → hold
-  (``allow=False`` + ``held_reason``). Never annotate-and-send from here.
-* Every hold appends one durable receipt line
-  (``cio_telegram_stance_holds.jsonl``) so ``LIVE-cio-stance-governance``
+* A bullish send against CIO ``AVOID`` or ``SELL`` is a hard hold
+  (``allow=False``, ``held_reason=cio_stance_conflict``).
+* ``HOLD`` and epistemic gaps (``RESEARCH_MORE``, ``HUMAN_REVIEW``,
+  ``ADD_REVIEW``, ``NEUTRAL``, ``UNSTATED``) rewrite ``GO``/``BUY``/``ACCUMULATE``
+  to ``WATCH`` and allow the send, with a stance footer. Missing CIO row stays
+  fail-closed (``cio_decision_missing``).
+* Every other non-bullish CIO action (``TRIM``, ``EXIT``, ``REDUCE``, ``WAIT``,
+  ``NO_GO``, unknown) still holds a bullish send. Those are neither the named
+  interdict pair nor a listed soft gap, so they keep the pre-M5 fail-closed hold.
+* Every hold appends a durable receipt line
+  (``cio_telegram_stance_holds.jsonl``), at most once per identical hold per
+  ``CIO_STANCE_HOLD_DEDUPE_SECONDS`` window (publishers re-run every few
+  minutes; the hold is enforced every run, only the repeat ledger row is
+  skipped), so ``LIVE-cio-stance-governance``
   (24/7 multi-workflow) can be observed from the served release — not only as a
   log line. Formerly ``PARTIAL-telegram-CIO-stance`` (weekday equity-only bar).
 
@@ -72,6 +80,14 @@ _INVESTMENT_BEAR = re.compile(
 HELD_DISAGREEMENT = "cio_stance_conflict"
 HELD_MISSING = "cio_decision_missing"
 
+# Active policy interdicts. A bullish proposal against these is a hard block.
+HARD_BLOCK_STANCES = frozenset({"AVOID", "SELL"})
+# HOLD plus epistemic gaps: GO/BUY/ACCUMULATE rewrite to WATCH and still send.
+SOFT_REWRITE_STANCES = frozenset({
+    "HOLD", "RESEARCH_MORE", "HUMAN_REVIEW", "ADD_REVIEW", "NEUTRAL", "UNSTATED",
+})
+_BULLISH_PROPOSALS = frozenset({"GO", "BUY", "ACCUMULATE"})
+
 
 def hold_receipts_path() -> Optional[Path]:
     """Durable hold receipt path.
@@ -88,6 +104,80 @@ def hold_receipts_path() -> Optional[Path]:
     # Prefer local primary so measurement works without release-write.
     # Dual-write in record_hold still mirrors to persistent-state when present.
     return Path.home() / ".local/state/tradeai/cio_telegram_stance_holds.jsonl"
+
+
+#: Default repeat-suppression window for identical hold receipts. Override with
+#: ``CIO_STANCE_HOLD_DEDUPE_SECONDS`` (``0`` disables dedupe).
+DEFAULT_HOLD_DEDUPE_SECONDS = 3600
+
+
+def hold_dedupe_seconds() -> int:
+    raw = str(os.environ.get("CIO_STANCE_HOLD_DEDUPE_SECONDS") or "").strip()
+    if not raw:
+        return DEFAULT_HOLD_DEDUPE_SECONDS
+    try:
+        return max(0, int(float(raw)))
+    except ValueError:
+        return DEFAULT_HOLD_DEDUPE_SECONDS
+
+
+def _hold_dedupe_key(verdict: "StanceGateVerdict", gate_source: str, caller: Optional[str]) -> str:
+    """Same hold = same producer, symbol, proposal, CIO decision and reason."""
+    return "|".join(
+        str(x or "")
+        for x in (
+            gate_source,
+            caller,
+            verdict.symbol,
+            verdict.effective_action or verdict.message_stance,
+            verdict.cio_action,
+            verdict.cio_as_of,
+            verdict.held_reason,
+        )
+    )
+
+
+def _dedupe_state_path(primary: Path) -> Path:
+    return primary.with_name(primary.stem + ".dedupe.json")
+
+
+def _claim_hold_slot(primary: Path, key: str, now: datetime) -> tuple[bool, int]:
+    """Return ``(write_row, repeats_skipped_since_last_row)``.
+
+    Best-effort: unreadable state writes the row (never loses a first hold).
+    """
+    window = hold_dedupe_seconds()
+    if window <= 0:
+        return True, 0
+    state_path = _dedupe_state_path(primary)
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+        if not isinstance(state, dict):
+            state = {}
+    except (OSError, ValueError):
+        state = {}
+    now_ts = now.timestamp()
+    entry = state.get(key) if isinstance(state.get(key), dict) else None
+    if entry and now_ts - float(entry.get("last_row_ts") or 0) < window:
+        entry["repeats"] = int(entry.get("repeats") or 0) + 1
+        write, repeats = False, 0
+    else:
+        repeats = int(entry.get("repeats") or 0) if entry else 0
+        state[key] = {"last_row_ts": now_ts, "repeats": 0}
+        write = True
+    # Prune keys idle past the window so the state file stays small.
+    state = {
+        k: v for k, v in state.items()
+        if isinstance(v, dict) and now_ts - float(v.get("last_row_ts") or 0) < window
+    }
+    try:
+        state_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = state_path.with_suffix(state_path.suffix + f".{os.getpid()}.tmp")
+        tmp.write_text(json.dumps(state, sort_keys=True), encoding="utf-8")
+        tmp.replace(state_path)
+    except OSError:
+        pass
+    return write, repeats
 
 
 def _hold_write_targets(primary: Path) -> list[Path]:
@@ -140,6 +230,7 @@ def record_hold(
     verdict: "StanceGateVerdict",
     *,
     source: str = "check_investment_send",
+    extra: Optional[dict[str, Any]] = None,
 ) -> Optional[Path]:
     """Append one hold receipt. No-op when allowed or persistence disabled."""
     if verdict.allow or not _should_persist_hold():
@@ -148,10 +239,14 @@ def record_hold(
     if path is None:
         return None
     gate_source, caller = _normalize_hold_source(source)
+    now = datetime.now(timezone.utc)
+    write, repeats = _claim_hold_slot(path, _hold_dedupe_key(verdict, gate_source, caller), now)
+    if not write:
+        return None
     row: dict[str, Any] = {
         "schema": HOLD_RECEIPT_SCHEMA,
         "authority": AUTHORITY,
-        "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "as_of": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source": gate_source,
         "symbol": verdict.symbol,
         "held_reason": verdict.held_reason,
@@ -162,6 +257,12 @@ def record_hold(
     }
     if caller:
         row["caller"] = caller
+    if verdict.cio_as_of:
+        row["cio_as_of"] = verdict.cio_as_of
+    if repeats:
+        row["repeats_since_last_row"] = repeats
+    if extra:
+        row.update({k: v for k, v in extra.items() if k not in row})
     wrote: Optional[Path] = None
     line = json.dumps(row, sort_keys=True) + "\n"
     for target in _hold_write_targets(path):
@@ -176,6 +277,19 @@ def record_hold(
     return wrote
 
 
+def request_missing_stance_review(symbol: str, *, source: str) -> dict[str, Any]:
+    """Queue a CIO review for a bullish send held for a missing stance. Never raises."""
+    try:
+        from scripts.lib.cio_stance_review_request import request_cio_review
+    except Exception:  # noqa: BLE001
+        try:
+            from lib.cio_stance_review_request import request_cio_review  # type: ignore
+        except Exception as exc:  # noqa: BLE001
+            return {"review_requested": False, "review_status": f"import_error:{type(exc).__name__}"}
+    gate_source, caller = _normalize_hold_source(source)
+    return request_cio_review(symbol, source=gate_source, caller=caller)
+
+
 @dataclass(frozen=True)
 class StanceGateVerdict:
     allow: bool
@@ -184,12 +298,112 @@ class StanceGateVerdict:
     message_stance: Optional[str] = None
     cio_action: Optional[str] = None
     cio_side: Optional[str] = None
+    effective_action: Optional[str] = None
+    annotation_text: str = ""
+    cio_as_of: Optional[str] = None
     schema: str = SCHEMA
     authority: str = AUTHORITY
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
 
+
+def evaluate_cio_stance_gate(
+    proposal_symbol: str,
+    proposal_action: str,
+    cio_stance: Optional[str],
+) -> tuple[bool, str, str, str]:
+    """Bullish proposal versus one CIO stance.
+
+    Returns ``(allow_send, effective_action, held_reason, annotation_text)``.
+
+    ``AVOID`` and ``SELL`` hard-block a bullish proposal. ``HOLD`` and the
+    epistemic gaps rewrite ``GO``/``BUY``/``ACCUMULATE`` to ``WATCH`` and allow
+    the send. A matching bullish CIO action passes unchanged. ``proposal_symbol``
+    is part of the call contract for receipts; the decision itself is stance-only.
+    """
+    del proposal_symbol  # stance comparison does not depend on the ticker
+    norm_proposal = (proposal_action or "").upper().strip()
+    norm_cio = (cio_stance or "").upper().strip() if cio_stance else "UNSTATED"
+
+    if norm_cio in HARD_BLOCK_STANCES and norm_proposal in _BULLISH_PROPOSALS:
+        return (
+            False,
+            norm_proposal,
+            HELD_DISAGREEMENT,
+            f"🚫 [BLOCKED] Proposal '{norm_proposal}' conflicts with active CIO Interdict: {norm_cio}",
+        )
+
+    if norm_cio in SOFT_REWRITE_STANCES:
+        # None and blank already normalized to UNSTATED.
+        effective = "WATCH" if norm_proposal in _BULLISH_PROPOSALS else norm_proposal
+        if effective == "WATCH" and norm_proposal in _BULLISH_PROPOSALS:
+            annotation = f"[CIO Stance: {norm_cio} — Action rewritten to WATCH]"
+        else:
+            annotation = f"[CIO Stance: {norm_cio} — Action: {effective}]"
+        return (True, effective, "", annotation)
+
+    return (True, norm_proposal, "", "")
+
+
+def _proposal_verb(message_text: str, said: str) -> str:
+    """Map a bullish or bearish message onto the verb the stance table uses."""
+    plain = message_text or ""
+    if re.search(r"\bACCUMULATE\b", plain, re.I):
+        return "ACCUMULATE"
+    if re.search(r"\bBUY\b", plain, re.I):
+        return "BUY"
+    if re.search(r"\bGO\b", plain, re.I):
+        return "GO"
+    if said == "bullish":
+        return "GO"
+    if said == "bearish":
+        return "SELL"
+    return (said or "").upper()
+
+
+#: Labelled verdict lines in single-symbol publisher cards ("Decision: GO").
+_LABELLED_BULL_LINE = re.compile(
+    r"^(\s*(?:Decision|Action|Signal|Verdict|Rating|Recommendation)\s*:\s*)"
+    r"(STRONG\s+BUY|ACCUMULATE|BUY|GO|A\+)\b",
+    re.I | re.M,
+)
+
+
+def _demote_bullish(text: str, symbol: str) -> str:
+    """Demote bullish verbs for one symbol to WATCH.
+
+    Reuses the transport editor's C2 vocabulary so publisher and transport
+    agree, then covers the two single-symbol card shapes it does not:
+    an ``A+`` tier headline and a labelled ``Decision: GO`` line.
+    """
+    try:
+        from lib.comms_editor import rewrite_bullish_to_watch  # noqa: PLC0415
+    except ImportError:
+        from scripts.lib.comms_editor import rewrite_bullish_to_watch  # type: ignore  # noqa: PLC0415
+    out, _ = rewrite_bullish_to_watch(text, [symbol])
+    sym = re.escape(symbol.upper())
+    out = re.sub(rf"(?<![\w+])A\+(\s+\*?{sym}\b)", r"WATCH\1", out)
+    return _LABELLED_BULL_LINE.sub(r"\1WATCH", out)
+
+
+def apply_stance_rewrite(text: str, symbol: str, verdict: "StanceGateVerdict") -> str:
+    """Demote a bullish verb to WATCH when required and append the stance footer.
+
+    The footer only claims a rewrite that actually happened in the text.
+    """
+    note = (verdict.annotation_text or "").strip()
+    if not note:
+        return text or ""
+    out = text or ""
+    if verdict.effective_action == "WATCH" and symbol:
+        demoted = _demote_bullish(out, symbol)
+        if demoted == out:
+            note = f"[CIO Stance: {verdict.cio_action or 'UNSTATED'}]"
+        out = demoted
+    if note not in out:
+        out = out.rstrip() + "\n" + note
+    return out
 
 def cio_side(action: Optional[str]) -> str:
     a = str(action or "").upper().strip()
@@ -258,6 +472,7 @@ def check_investment_send(
     db_query: Optional[Callable[..., list[dict]]] = None,
     cio_view: Optional[dict[str, Any]] = None,
     source: str = "check_investment_send",
+    request_review: bool = True,
 ) -> StanceGateVerdict:
     """Allow or hold an investment-shaped Telegram send for one symbol.
 
@@ -283,30 +498,54 @@ def check_investment_send(
             symbol=sym,
             message_stance=said,
         )
-        record_hold(verdict, source=source)
+        # OPERATOR DECISION 2026-09-23: a GO/BUY with no CIO stance stays held
+        # AND forces a CIO review, so the next send has a stance to check.
+        review: Optional[dict[str, Any]] = None
+        if said == "bullish" and request_review:
+            review = request_missing_stance_review(sym, source=source)
+        elif said == "bullish":
+            # Observe-only callers (Maria gate in observe mode) must not spend.
+            review = {"review_requested": False, "review_status": "skipped_observe_only"}
+        record_hold(verdict, source=source, extra=review)
         return verdict
 
     action = str(view.get("action") or "").upper()
     side = cio_side(action)
-    if said != side:
+    as_of = view.get("created_at") or view.get("as_of")
+    base = {
+        "symbol": sym,
+        "message_stance": said,
+        "cio_action": action or None,
+        "cio_side": side,
+        "cio_as_of": str(as_of) if as_of else None,
+    }
+    if said == "bullish":
+        proposal = _proposal_verb(message_text, said)
+        allow_send, effective, reason, annotation = evaluate_cio_stance_gate(
+            sym, proposal, action or "UNSTATED",
+        )
+        if allow_send and effective == "WATCH":
+            return StanceGateVerdict(
+                allow=True, effective_action=effective, annotation_text=annotation, **base,
+            )
+        if allow_send and side == "bullish":
+            return StanceGateVerdict(allow=True, effective_action=effective, **base)
+        # Hard interdict (AVOID/SELL), or a non-bullish CIO action that is not a
+        # listed soft gap (TRIM, EXIT, WAIT, NO_GO, unknown): keep the hold.
         verdict = StanceGateVerdict(
             allow=False,
-            held_reason=HELD_DISAGREEMENT,
-            symbol=sym,
-            message_stance=said,
-            cio_action=action or None,
-            cio_side=side,
+            held_reason=reason or HELD_DISAGREEMENT,
+            effective_action=effective,
+            annotation_text=annotation,
+            **base,
         )
         record_hold(verdict, source=source)
         return verdict
-    return StanceGateVerdict(
-        allow=True,
-        symbol=sym,
-        message_stance=said,
-        cio_action=action or None,
-        cio_side=side,
-    )
-
+    if said != side:
+        verdict = StanceGateVerdict(allow=False, held_reason=HELD_DISAGREEMENT, **base)
+        record_hold(verdict, source=source)
+        return verdict
+    return StanceGateVerdict(allow=True, **base)
 
 def is_organic_hold_row(row: dict[str, Any]) -> bool:
     """True when a hold receipt proves a live producer (ledger close condition).
@@ -375,9 +614,19 @@ def summarize_stance_holds(path: Optional[Path] = None) -> dict[str, Any]:
 
 
 def write_organic_observe_receipt(summary: dict[str, Any]) -> list[str]:
-    """Persist the latest observe summary for lane/timer evidence (not a hold)."""
-    import json
+    """Persist the latest observe summary for lane/timer evidence (not a hold).
 
+    Never under pytest: test_report_organic_stance_hold_cli_exit_codes runs the
+    CLI on a tmp fixture, and its summary overwrote the PRODUCTION receipt
+    (path=/tmp/pytest-of-…/organic.jsonl, organic=1) -- the LIVE observe
+    evidence was test data (M5 audit 2026-09-23). PYTEST_CURRENT_TEST is
+    inherited by that subprocess, so the guard holds there too.
+    """
+    import json
+    import os
+
+    if os.environ.get("PYTEST_CURRENT_TEST"):
+        return []
     payload = dict(summary)
     payload["schema"] = "CioTelegramStanceObserveReceipt@v1"
     body = json.dumps(payload, sort_keys=True, indent=2) + "\n"
@@ -417,8 +666,12 @@ __all__ = [
     "SCHEMA",
     "SUMMARY_SCHEMA",
     "StanceGateVerdict",
+    "HARD_BLOCK_STANCES",
+    "SOFT_REWRITE_STANCES",
+    "apply_stance_rewrite",
     "check_investment_send",
     "cio_side",
+    "evaluate_cio_stance_gate",
     "hold_receipts_path",
     "infer_message_stance",
     "is_organic_hold_row",

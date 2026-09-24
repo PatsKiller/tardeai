@@ -566,6 +566,25 @@
       "reason_evidence": "Cron comment 'DISABLED 2026-08-08' with no reason; four alex lines share that exact date and tag; the successor timer is verified running."
     },
     {
+      "lane_id": "cio-stance-classification-drain",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 7,19 * * 1-5 drain_cio_stance_classification.py --apply",
+        "match": "drain_cio_stance_classification.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "state_since": "2026-09-24",
+      "state_reason": "Installed 2026-09-24 at the M5 tranche-2 deploy (operator: 'do the post-merge steps'): weekday cron 07:20 and 19:20 from the dev tree, flock /tmp/cio_stance_classify.lock, logs/cio_stance_classification_drain.log. Deterministic Phase-1 classification only; no LLM.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/.local/state/tradeai/cio_stance_classification_receipts.jsonl"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/drain_cio_stance_classification.py docstring; the CIO engine inner-joins an active ticker_strategy_classifications row with strategy_rule_evaluations, and strategy_rule_engine.py has been unscheduled since 2026-09-06."
+    },
+    {
       "lane_id": "cio-decision-engine",
       "owner": "platform",
       "scheduler": {
