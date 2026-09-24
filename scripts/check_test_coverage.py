@@ -616,6 +616,7 @@ UNLISTED_BASELINE: frozenset = frozenset([
     "tests/test_options_hard_risk_blocks.py",
     "tests/test_options_hard_risk_blocks_matrix.py",
     "tests/test_options_holdings_funnel.py",
+    "tests/test_options_directional_hub_1e_20260924.py",
     "tests/test_options_iv_rank.py",
     "tests/test_options_lifecycle_migration.py",
     "tests/test_options_lifecycle_policy.py",

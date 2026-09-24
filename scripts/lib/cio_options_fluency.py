@@ -365,6 +365,35 @@ def build_thesis_indicators(
     }
 
 
+#: ATR ≥ this fraction of (price − stop) → prefer defined-risk options vs full equity (P8).
+#: Shared by structure indicators and Hub Stage 1E entry_state conviction — do not fork.
+ATR_VS_STOP_ELEVATED = 0.40
+
+
+def atr_volatility_elevated(
+    *,
+    price: Any = None,
+    stop: Any = None,
+    atr: Any = None,
+) -> tuple[bool, float | None, float | None]:
+    """Pure ATR/stop preference rule used by P8 structure + Stage 1E Hub Ideas.
+
+    Returns (volatility_elevated, atr_vs_distance_to_stop, distance_to_stop).
+    """
+    px = _f(price)
+    st = _f(stop)
+    atr_v = _f(atr)
+    dist_stop = None
+    if px is not None and st is not None and px > st:
+        dist_stop = px - st
+    atr_vs_stop = None
+    vol_elevated = False
+    if atr_v is not None and dist_stop is not None and dist_stop > 0:
+        atr_vs_stop = round(atr_v / dist_stop, 2)
+        vol_elevated = atr_vs_stop >= ATR_VS_STOP_ELEVATED
+    return vol_elevated, atr_vs_stop, dist_stop
+
+
 def build_structure_indicators(
     proposal: Optional[dict[str, Any]],
     *,
@@ -390,15 +419,9 @@ def build_structure_indicators(
     oi = p.get("oi") or p.get("open_interest")
     volume = p.get("volume")
     dte = p.get("dte")
-    dist_stop = None
-    if px is not None and st is not None and px > st:
-        dist_stop = px - st
-    atr_vs_stop = None
-    vol_elevated = False
-    if atr_v is not None and dist_stop is not None and dist_stop > 0:
-        atr_vs_stop = round(atr_v / dist_stop, 2)
-        # ATR ≥ ~40% of distance-to-stop → equity overnight risk is large vs edge to stop
-        vol_elevated = atr_vs_stop >= 0.40
+    vol_elevated, atr_vs_stop, dist_stop = atr_volatility_elevated(
+        price=px, stop=st, atr=atr_v,
+    )
     dist_target = None
     if px is not None and tg is not None and tg > px:
         dist_target = tg - px
@@ -934,12 +957,14 @@ def format_packet_for_render(result: dict[str, Any], ev: Optional[dict[str, Any]
 
 
 __all__ = [
+    "ATR_VS_STOP_ELEVATED",
     "CIO_VERDICT_APPROVE",
     "CIO_VERDICT_MODIFY",
     "CIO_VERDICT_REJECT",
     "DESK_STRATEGY_CATALOG",
     "ENTRY_ALT_PREFERRED",
     "PATH_B_CHROME",
+    "atr_volatility_elevated",
     "build_buy_ready_packet",
     "build_structure_indicators",
     "build_thesis_indicators",
