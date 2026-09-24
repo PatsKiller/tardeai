@@ -190,7 +190,7 @@ def rows_from_commitment_outcomes(rows: Iterable[dict[str, Any]], *,
             skipped["commitment_no_record"] += 1
             continue
         rec = _sym(r.get("stance") or r.get("recommendation") or "COMMITMENT")
-        out.append(_settled(str(r.get("outcome_id") or r.get("commitment_id") or ""), state == "CONFIRMED",
+        out.append(_settled(str(r.get("outcome_id") or r.get("idempotency_key") or r.get("commitment_id") or ""), state == "CONFIRMED",
                             population=POP_COMMITMENT, horizon=str(r.get("horizon") or ""),
                             subject_key=skey, recommendation=rec,
                             produced_at=str(r.get("evaluated_at") or r.get("produced_at") or ""),

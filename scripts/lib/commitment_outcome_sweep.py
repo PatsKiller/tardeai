@@ -175,6 +175,11 @@ def build_lesson_candidate(
         "rejected_at": None,
         "produced_at": _iso(when),
         "changes_production_behaviour": False,
+        # Read by outcome_to_lesson.project_lesson_provenance: this lesson exists
+        # because a settled outcome (CONFIRMED / REFUTED) was observed, not
+        # because research suggested it. Was unset before 2026-09-24.
+        "lesson_provenance": "OUTCOME_DERIVED",
+        "supporting_outcome_ids": [str(oid)] if (oid := (outcome.get("outcome_id") or outcome.get("idempotency_key"))) else [],
     }
 
 

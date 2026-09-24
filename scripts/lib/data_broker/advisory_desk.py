@@ -3849,7 +3849,8 @@ def enrich_advisory_with_opinions(
                 for L in (mem.get("lessons") or []):
                     lid = str(L.get("id") or "")
                     if lid:
-                        record_application(lid, symbol=str(sym), hit=None, cited_in_rationale=False)
+                        record_application(lid, symbol=str(sym), hit=None, cited_in_rationale=False,
+                                           source_row_id=str(row.get("advisory_row_hash") or row.get("id") or ""))
             except Exception:
                 pass
             opinion = {
@@ -3925,6 +3926,7 @@ def enrich_advisory_with_opinions(
                         symbol=str(row.get("symbol") or ""),
                         hit=None,
                         cited_in_rationale=cited,
+                        source_row_id=str(row.get("advisory_row_hash") or row.get("id") or ""),
                     )
                 if cited_ids:
                     opinion["lessons_cited"] = cited_ids

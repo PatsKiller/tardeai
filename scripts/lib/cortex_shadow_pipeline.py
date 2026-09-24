@@ -148,6 +148,7 @@ def run_cortex_shadow(
     evaluated_commitment: dict[str, Any] | None = None,
     dry_run: bool = True,
     env: Mapping[str, str] | None = None,
+    author_stance: str | None = None,
 ) -> CortexShadowResult:
     """Run one shadow pass. Flag OFF ⇒ no-op. dry_run ⇒ no durable writes."""
     env_map = dict(env if env is not None else os.environ)
@@ -223,6 +224,11 @@ def run_cortex_shadow(
             created_at=now,
             frozen_at=now,
         )
+        if author_stance:
+            # The L3 author's own stance (BULLISH / BEARISH / ...), kept beside
+            # the AgentView posture so the outcome sweep can read a direction
+            # (commitment_price_observation.direction_of). Additive; 2026-09-24.
+            commitment_row["author_stance"] = str(author_stance).upper()
         cpath = root / "commitments.jsonl"
         paths["commitments"] = str(cpath)
         if not dry_run:

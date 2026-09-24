@@ -122,3 +122,24 @@ an audit can distinguish "tagged" from "actually upgraded".
 `tests/test_narrative_subject_identity.py` (15) · `test_sector_move_subject.py` (5)
 · `test_narrative_lane_wiring.py` (8) · `test_wake_memory_carryforward.py` (7).
 Registered in `run_cio_hardening_ci.py` GATES.
+
+## Entity policy (settled 2026-09-24, agentic-memory tranche 1)
+
+The independent agentic-memory audit of 2026-09-24 (D1/D2) re-opened "are industries,
+themes, sectors and options entities?" as gaps. They are not gaps; this table is the
+decision, so agents stop rebuilding "missing" entities (AGENTS.md §13.5).
+
+| Subject | GUID source | Record kind or tag | Producer today | Policy |
+|---|---|---|---|---|
+| Security | `security_identity.security_guid` via the identity registry (CUSIP-backed) | `HELD:` / `EXIT:` / `WATCH:` InstrumentRecord | `cio_migrate_instrument_records.py`, watch admit, wake cognition writers | Record. Beliefs from settled outcomes live here (`beliefs[]`, `InstrumentBelief@v1`). |
+| Sector | `ticker_knowledge_graph.entity_guid("sector", …)` | `SECTOR:` is mintable (`is_mintable`) — **no job mints one** | none (`hermes_subject_enhance` writes `SECTOR:` strings into `hermes_external_research`, not records) | **Mintable, unproduced.** Restated from D1's "mostly closed". No new producer proposed. |
+| Industry | `entity_guid("industry", …)` → `industry_guid` on the security profile | tag only; `is_mintable` → `tags_only_by_policy:INDUSTRY` | ticker knowledge graph, narrative links | **Tags-only, formalized.** Per §13.4: registered prefix, no producer, do not mint until a scheduled consumer exists. |
+| Theme | `entity_guid("theme", …)` → `theme_guids[]` | tag only; `is_mintable` → `tags_only_by_policy:THEME` | ticker knowledge graph, narrative links | **Tags-only, formalized.** Same rule. |
+| Option contract | `security_identity.security_guid(issuer=<underlying issuer>, share_class="option", instrument="C|P:strike:expiry[:venue]")` (`options_identity.contract_guid`) | not a record kind; a security of the underlying's issuer, carried as `contract_guid` on proposals, `proposal_outcome_chain`, `options_paper_outcomes.meta` | options engine (`_stamp_execution`), feedback loop | Entity in the security namespace. `expiration_guid` / `strike_guid` deliberately not minted (attributes of the contract key). Outcome → belief join for options is tranche 2. |
+| Option strategy instance | `entity_guid("strategy", "<strategy>|<UND>|<sorted leg contract_guids>|<account>")` (`options_identity.option_strategy_guid`) | graph entity, account-scoped | options engine | Entity. No legs → no GUID (equity rows stay NULL). |
+
+Rules that follow: a link table row never mints an InstrumentRecord and never gives a
+sector, industry or theme a cadence; a checkpoint or belief joins a record by `subject_key`
+(`HELD|EXIT|WATCH:SYM`), never by a tag GUID; `is_mintable` is the one place that states
+the refusal reason, and a caller that reads `tags_only_by_policy:*` has found policy, not
+a defect.

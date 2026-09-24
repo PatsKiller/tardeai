@@ -38,6 +38,10 @@ DEFAULT_PATH = Path("data/cio/cio_instrument_records.jsonl")
 
 CASH_SLEEVE = "SLEEVE:CASH"
 KINDS = ("HELD", "EXIT", "WATCH", "SECTOR", "SLEEVE")
+# Registered subject prefixes that are deliberately NOT record kinds: they are
+# GUID tags on securities (ticker_knowledge_graph.entity_guid) and narrative
+# subjects, never wakeable InstrumentRecords. is_mintable names the policy.
+TAGS_ONLY_KINDS = ("INDUSTRY", "THEME")
 
 # The four cognition fields. A persist must move at least one of these, or the
 # lesson did nothing and calling it "applied" would be a lie.
@@ -85,6 +89,13 @@ def is_mintable(kind: str, name: str, *, market_value: Optional[float] = None) -
     """Return (ok, reason). Refusals are explicit so a caller can log them."""
     k = str(kind or "").strip().upper()
     n = str(name or "").strip().upper()
+    if k in TAGS_ONLY_KINDS:
+        # Not a gap. AGENTS.md §13.4 registers INDUSTRY:/THEME: as prefixes
+        # with no producer and no scheduled consumer; narrative links carry
+        # them as tags on securities ("tags, not records"). Settled 2026-09-24
+        # (agentic-memory tranche 1): tags-only, formalized — see
+        # docs/architecture/narrative-subject-identity.md, "Entity policy".
+        return (False, f"tags_only_by_policy:{k}")
     if k not in KINDS:
         return (False, f"unknown_kind:{k}")
     if k == "SLEEVE":
