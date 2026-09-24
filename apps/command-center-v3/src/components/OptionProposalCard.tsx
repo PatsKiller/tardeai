@@ -161,6 +161,9 @@ export type OptionProposal = {
   short_strike?: number
   long_strike?: number
   desk_tier?: string
+  // Slice A — first-class options identity (stable UUIDv5)
+  option_strategy_guid?: string
+  contract_guid?: string
   enterprise?: { live_eligible?: boolean; blocks?: string[]; tier?: string }
   // ── Stage B (2026-07-05): paper-model lane (deep_itm_call) data wiring ──
   educational_paper_model?: boolean
@@ -477,6 +480,16 @@ export default function OptionProposalCard({
           {(p.sector || p.industry) && (
             <span>{[p.sector, p.industry, p.instrument_type].filter(Boolean).join(' · ')}</span>
           )}
+        </div>
+      )}
+
+      {(p.option_strategy_guid || p.contract_guid) && (
+        <div
+          title="Stable options identity (UUIDv5) — attribution only; not PnL"
+          style={{ fontSize: 10, color: MUTED, marginTop: 6, fontFamily: 'ui-monospace, monospace', lineHeight: 1.4 }}
+        >
+          {p.option_strategy_guid && <span>strategy {p.option_strategy_guid.slice(0, 8)}… </span>}
+          {p.contract_guid && <span>contract {p.contract_guid.slice(0, 8)}…</span>}
         </div>
       )}
 
