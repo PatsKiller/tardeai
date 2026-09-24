@@ -145,6 +145,18 @@
         {"fact": "available.office_state.watch_counts", "domain": "watch_intelligence", "domain_field": "counts"},
         {"fact": "available.office_state.recent_closed_trades", "domain": "transactions", "domain_field": "closed_trades_total"}
       ]
+    },
+    "options_strategy": {
+      "routes_when": "intent == 'options_strategy' or needs contains options_strategy (covered call / CSP / protective put / spreads / LEAP / options play)",
+      "snapshot_domains": ["holdings_detail", "portfolio"],
+      "broker_projections": [],
+      "state_files": ["data/runtime/options_desk_latest.json", "data/portfolios/state/holdings.json"],
+      "read_path_today": "cio_options_fluency.gather_options_house_facts() from options_desk_latest cache + catalog; NEVER live option_chain at Telegram time (chain stays Options Hub / Path B)",
+      "facts_required": [
+        {"fact": "available.options_strategy_card", "domain": "portfolio", "domain_field": "holdings_count",
+         "note": "card is assembled from the options desk cache; empty cache still yields an honest catalog + ABSENT goal lineage"}
+      ],
+      "checker_note": "Live Schwab option_chain remains never_needed for Telegram; house strategy facts are a different read."
     }
   },
   "never_needed": {
@@ -153,7 +165,7 @@
     },
     "broker_projections": {
       "watch_decision_desk": "catalog status 'legacy'; watch_intelligence supersedes it and is claimed by reentry/attention.",
-      "option_chain": "options questions belong to the Options desk (2FA-gated lifecycle), not the operator Telegram desk; live_external provider calls at read time.",
+      "option_chain": "LIVE Schwab chain pulls stay on the Options Hub (2FA-gated Path B). CIO Telegram options_strategy intent reads options_desk_latest house facts only — never this projection at reply time.",
       "watch_discovery": "registry class dead_feed (declared_gap_no_producer); reading it would render a dead desk as today's activity."
     }
   }

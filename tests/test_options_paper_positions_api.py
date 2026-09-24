@@ -37,10 +37,15 @@ def test_serialize_monitored_row_includes_semantics():
     }
     card = api.serialize_monitored_row(row, snap)
     assert card["position_source"] == "monitored"
-    assert card["execution_route_kind"] == "alpaca_paper"
+    assert card["execution_route_kind"] == "paper_model"
     assert card["safety_status_badge"]["label"] == "NO LIVE PATH"
     assert card["recommended_action"] == "Consider close (paper advisory)"
     assert card["mfe"] == 1100.0
+    # Stage 1B honesty on paper path (was missing before Hub open-positions fix)
+    assert "CONSIDER_CLOSE_PAPER" in (card.get("action_criterion") or "")
+    assert card["margin_status"] == "MARGIN_UNKNOWN"
+    assert card["margin_usd"] is None
+    assert card["pnl_status"] == "OK"
 
 
 def test_build_unified_dedupes_occ():
@@ -49,6 +54,63 @@ def test_build_unified_dedupes_occ():
     unified = api.build_unified_open_positions(broker, monitored)
     assert len(unified) == 1
     assert unified[0]["position_source"] == "broker"
+    assert unified[0]["margin_status"] == "MARGIN_UNKNOWN"
+    assert unified[0].get("action_criterion")
+
+
+def test_unified_monitored_leg_stamps_stage_1b_when_missing():
+    """RTX paper leg path: Criterion + Margin chips require these fields on unified cards."""
+    monitored = [{
+        "position_id": 9,
+        "occ_symbol": "RTX260918C00160000",
+        "underlying": "RTX",
+        "strategy": "deep_itm_call",
+        "side": "buy",
+        "option_type": "call",
+        "avg_entry": 36.9,
+        "mark": None,
+        "unrealized_pnl": -3690.0,
+        "advice_label": "DATA_STALE",
+        "advice_reason": "contract not found on schwab chain",
+        "recommended_action": "Refresh chain quote",
+        "position_source": "monitored",
+        "paper_only": True,
+    }]
+    unified = api.build_unified_open_positions([], monitored)
+    assert len(unified) == 1
+    card = unified[0]
+    assert card["action_criterion"].startswith("Paper monitor: DATA_STALE")
+    assert "contract not found" in card["action_criterion"]
+    assert card["margin_status"] == "MARGIN_UNKNOWN"
+    assert card["margin_usd"] is None
+    assert card["pnl_status"] == "OK"  # unrealized already present
+
+
+def test_stamp_preserves_existing_schwab_monitor_fields():
+    broker = [{
+        "id": "b1",
+        "occ_symbol": "V  251017C00380000",
+        "underlying": "V",
+        "account_key": "schwab_roth",
+        "action_criterion": "Short call OTM with POP OTM ≥ 60%",
+        "margin_status": "OK",
+        "margin_usd": -500.0,
+        "pnl_status": "OK",
+    }]
+    unified = api.build_unified_open_positions(broker, [])
+    assert unified[0]["action_criterion"] == "Short call OTM with POP OTM ≥ 60%"
+    assert unified[0]["margin_status"] == "OK"
+    assert unified[0]["margin_usd"] == -500.0
+
+
+def test_margin_ok_only_when_feed_field_present():
+    stamp = api._margin_stamp_never_invent({"buying_power_effect": -1200.5})
+    assert stamp["margin_status"] == "OK"
+    assert stamp["margin_usd"] == -1200.5
+    assert stamp["margin_field"] == "buying_power_effect"
+    unknown = api._margin_stamp_never_invent({"underlying": "RTX"})
+    assert unknown["margin_status"] == "MARGIN_UNKNOWN"
+    assert unknown["margin_usd"] is None
 
 
 def test_filter_positions_by_route():

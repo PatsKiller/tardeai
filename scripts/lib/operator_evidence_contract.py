@@ -97,6 +97,8 @@ def kinds_for_intent(intent: dict[str, Any]) -> list[str]:
         kinds.append("research")
     if name == "analyst_view" or "analyst_view" in needs:
         kinds.append("analyst")
+    if name == "options_strategy" or "options_strategy" in needs:
+        kinds.append("options_strategy")
     return kinds
 
 

@@ -450,6 +450,9 @@ class CIOGoalStore:
         due_ts: Optional[str] = None,
         actor_id: str = "cio_goals",
         goal_id: Optional[str] = None,
+        linked_sector: Optional[str] = None,
+        linked_industry: Optional[str] = None,
+        strategy_id: Optional[str] = None,
     ) -> dict[str, Any]:
         owner = owner_agent.strip().lower()
         if owner not in VALID_OWNERS:
@@ -478,6 +481,10 @@ class CIOGoalStore:
             "wake_count": 0,
             "last_outcome": None,
             "thesis_history": [],
+            # Stage 1C additive lineage (2026-09-24) — optional; never auto-minted.
+            "linked_sector": (linked_sector or None),
+            "linked_industry": (linked_industry or None),
+            "strategy_id": (strategy_id or None),
         }
         self._append_event("GOAL_CREATED", gid, payload, actor_id=actor_id)
         _register_goal_on_spine(gid, payload["linked_symbols"])
@@ -495,6 +502,7 @@ class CIOGoalStore:
         allowed = {
             "title", "description", "priority", "success_criteria", "due_ts",
             "linked_event_types", "linked_symbols", "linked_action_ids", "owner_agent",
+            "linked_sector", "linked_industry", "strategy_id", "thesis_summary",
         }
         patch = {k: v for k, v in fields.items() if k in allowed and v is not None}
         if "owner_agent" in patch:

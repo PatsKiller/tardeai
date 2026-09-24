@@ -1767,6 +1767,63 @@ def format_reentry_symbol_reply(
     why = row.get("why") if isinstance(row.get("why"), list) else []
     for w in why[:3]:
         lines.append(f"  – {w}")
+    # Stage 1D — institutional equity vs options packet when inside/near zone.
+    try:
+        price_f = float(price) if price is not None else None
+        lo_f = float(lo) if lo is not None else None
+        hi_f = float(hi) if hi is not None else None
+    except (TypeError, ValueError):
+        price_f = lo_f = hi_f = None
+    inside = (
+        price_f is not None and lo_f is not None and hi_f is not None
+        and lo_f <= price_f <= hi_f
+    )
+    near = False
+    if price_f is not None and hi_f is not None and hi_f > 0 and price_f > hi_f:
+        near = ((price_f - hi_f) / hi_f * 100.0) <= 8.0  # reentry "getting close" band
+    if inside or near:
+        try:
+            from scripts.lib.cio_options_fluency import (  # noqa: PLC0415
+                build_buy_ready_packet,
+                format_buy_ready_packet_lines,
+            )
+        except ImportError:
+            try:
+                from lib.cio_options_fluency import (  # type: ignore  # noqa: PLC0415
+                    build_buy_ready_packet,
+                    format_buy_ready_packet_lines,
+                )
+            except ImportError:
+                build_buy_ready_packet = None  # type: ignore
+        if build_buy_ready_packet is not None:
+            state = "BUY_READY" if inside else "ENTRY_NEAR"
+            result = {
+                "symbol": sym,
+                "state": state,
+                "price": price,
+                "entry_low": lo,
+                "entry_high": hi,
+                "stop": lv.get("stop"),
+                "target": lv.get("target"),
+                "rr": row.get("rr"),
+                "plan_source": "reentry_desk",
+                "distance_pct": None,
+                "catalyst": None,
+                "held": bool(holding) or bool(row.get("held")),
+            }
+            ev = {
+                "symbol": sym,
+                "plan_source": "reentry_desk",
+                "held": bool(holding) or bool(row.get("held")),
+                "formerly_held": not (holding or row.get("held")),
+                "reentry": True,
+                "atr": row.get("atr"),
+                "shares": (holding or {}).get("shares") if holding else None,
+            }
+            packet = build_buy_ready_packet(result, ev)
+            lines.append("")
+            lines.append("*Stock vs options (institutional packet)*")
+            lines.extend(format_buy_ready_packet_lines(packet, for_cio=False))
     tail = "CC: `/v3/portfolio/re-entry`"
     if computed_at:
         tail += f" · desk computed {str(computed_at)[:16].replace('T', ' ')}"

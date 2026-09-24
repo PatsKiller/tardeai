@@ -228,7 +228,24 @@ def strategy_economics(s: dict, quotes: dict[int, dict]) -> dict:
             "pct_max_profit_captured": pct_captured,
             "extrinsic_value": round(extrinsic_total, 2) if mark_ok and und_px else None,
             "short_distance_pct": short_distance_pct, "short_delta": short_delta,
-            "itm_short": (short_distance_pct is not None and short_distance_pct < 0)}
+            "itm_short": (short_distance_pct is not None and short_distance_pct < 0),
+            # Margin/BP: only when a Schwab field was already on the strategy/leg payload.
+            # Never invent Reg-T. Absent → honest UNKNOWN for the Lifecycle UI.
+            "margin_status": "OK" if any(
+                s.get(k) is not None for k in (
+                    "margin_requirement", "maintenance_requirement", "initial_requirement",
+                    "buying_power_effect", "bp_effect", "option_margin",
+                )
+            ) else "MARGIN_UNKNOWN",
+            "margin_note": (
+                "Schwab field present on strategy payload"
+                if any(s.get(k) is not None for k in (
+                    "margin_requirement", "maintenance_requirement", "initial_requirement",
+                    "buying_power_effect", "bp_effect", "option_margin",
+                ))
+                else "not on Schwab feed used here"
+            ),
+            }
 
 
 def persist_snapshot(cur, conn, s: dict, eco: dict) -> tuple[int, dict]:

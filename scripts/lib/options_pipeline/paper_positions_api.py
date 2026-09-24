@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any, Callable, Optional
 
 from lib.options_pipeline.card_semantics import (
@@ -106,6 +106,89 @@ def enrich_position_semantics(card: dict[str, Any]) -> dict[str, Any]:
     return card
 
 
+def _margin_stamp_never_invent(pos: dict[str, Any]) -> dict[str, Any]:
+    """Stamp margin/BP only when the feed already supplied a field — never invent dollars.
+
+    Mirrors options_engine._schwab_margin_stamp so the unified open-positions path
+    (paper monitored legs) gets Stage 1B margin honesty without a live chain call.
+    """
+    as_of = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    for key in (
+        "margin_requirement",
+        "maintenance_requirement",
+        "initial_requirement",
+        "buying_power_effect",
+        "bp_effect",
+        "option_margin",
+    ):
+        if pos.get(key) is not None:
+            try:
+                val = float(pos.get(key))
+            except (TypeError, ValueError):
+                continue
+            return {
+                "margin_status": "OK",
+                "margin_usd": round(val, 2),
+                "margin_field": key,
+                "margin_note": f"feed field `{key}`",
+                "margin_as_of": as_of,
+            }
+    return {
+        "margin_status": "MARGIN_UNKNOWN",
+        "margin_usd": None,
+        "margin_field": None,
+        "margin_note": "not on feed used here",
+        "margin_as_of": as_of,
+    }
+
+
+def _derive_action_criterion(card: dict[str, Any]) -> str:
+    """Criterion string for Open Options chips when Schwab _monitor_position did not run."""
+    advice = str(card.get("advice_label") or "").strip()
+    reason = str(card.get("advice_reason") or card.get("rationale") or "").strip()
+    action = str(card.get("recommended_action") or "").strip()
+    if advice:
+        base = f"Paper monitor: {advice}"
+        if reason:
+            return f"{base} — {reason}"
+        if action:
+            return f"{base} — {action}"
+        return base
+    if action:
+        return f"Recommended: {action}"
+    return "Default hold — no harvest/defend rule fired"
+
+
+def stamp_open_leg_honesty(card: dict[str, Any]) -> dict[str, Any]:
+    """Fill Stage 1B fields on unified open legs without widening gates or hitting chain.
+
+    Broker legs from options_engine._monitor_position already carry these; paper
+    monitored legs via serialize_monitored_row historically omitted them, so the
+    Open Options Criterion / Margin strip stayed blank. Only fills missing keys.
+    """
+    if not card.get("action_criterion"):
+        card["action_criterion"] = _derive_action_criterion(card)
+
+    if not card.get("margin_status"):
+        card.update(_margin_stamp_never_invent(card))
+
+    if not card.get("pnl_status"):
+        entry = _f(card.get("avg_entry") or card.get("entry_fill_price"))
+        mark = card.get("mark")
+        unrealized = card.get("unrealized_pnl")
+        if unrealized is not None:
+            card["pnl_status"] = "OK"
+        elif not entry or entry <= 0:
+            card["pnl_status"] = "PNL_UNKNOWN"
+            card.setdefault("pnl_unknown_reason", "missing avg_entry / fill basis")
+        elif mark is None or _f(mark) <= 0:
+            card["pnl_status"] = "PNL_UNKNOWN"
+            card.setdefault("pnl_unknown_reason", "no chain mark")
+        else:
+            card["pnl_status"] = "OK"
+    return card
+
+
 def serialize_monitored_row(row: dict, snap: dict | None = None) -> dict[str, Any]:
     """Map DB position + optional latest snapshot to API card."""
     meta = _parse_meta(row.get("meta_json"))
@@ -174,7 +257,7 @@ def serialize_monitored_row(row: dict, snap: dict | None = None) -> dict[str, An
         "alpaca_paper_enabled": out["execution_route"] == "tradeai_automated",
     })
     out["route_badge"] = route
-    return enrich_position_semantics(out)
+    return stamp_open_leg_honesty(enrich_position_semantics(out))
 
 
 def _latest_snapshot(position_id: int, executor: Executor) -> dict:
@@ -343,7 +426,7 @@ def build_unified_open_positions(
         if not card.get("execution_route_kind"):
             card["execution_route_kind"] = "schwab_live" if p.get("account_key", "").startswith("schwab") else "review_only"
             card["execution_route_badge"] = "Schwab live path · 2FA required" if card["execution_route_kind"] == "schwab_live" else "Review only"
-        unified.append(card)
+        unified.append(stamp_open_leg_honesty(card))
         if occ:
             seen_occ.add(occ)
     for m in monitored_positions:
@@ -352,5 +435,5 @@ def build_unified_open_positions(
             continue
         card = dict(m)
         card["unified_id"] = f"monitored:{card.get('position_id')}"
-        unified.append(card)
+        unified.append(stamp_open_leg_honesty(card))
     return unified
