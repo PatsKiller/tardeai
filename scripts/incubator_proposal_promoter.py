@@ -923,8 +923,16 @@ def run(dry_run=True, limit=10, force_symbol=None, max_per_symbol=1):
             }
             _pkt = build_proposal_alert_packet(_alert_pr)
             _msg = format_telegram_message(_pkt)
-            from telegram_alert import send_telegram
-            send_telegram(_msg)
+            # CIO stance gate (M5 audit 2026-09-23, Module 4d): same rule as
+            # send_telegram_proposal_alert -- held when the CIO says AVOID/SELL or
+            # has no stance; soft stances shown as WATCH with the stance footer.
+            from lib.publisher_stance_gate import gate_card
+            _g = gate_card(_msg, symbol, source="incubator_proposal_promoter")
+            if not _g.send:
+                log.info(f"[alert] #{new_id} {symbol}: proposal alert held ({_g.held_reason})")
+            else:
+                from telegram_alert import send_telegram
+                send_telegram(_g.text)
         except Exception as _ae:
             log.warning(f"[alert] Telegram alert failed for #{new_id}: {_ae}")
         results.append(f"PROMOTED: {symbol} ({strategy_key}, score={score}, {screener_name})")

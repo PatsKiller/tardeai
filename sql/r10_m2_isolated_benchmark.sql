@@ -278,7 +278,15 @@ END$$;
 
 REVOKE ALL ON FUNCTION memory_r10_m2.write_fact_version(text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION memory_r10_m2.write_fact_version(text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector) TO m2_agent;
-GRANT EXECUTE ON FUNCTION memory_r10_m2.write_fact_version(text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector) TO m2;
+-- Role `m2` exists only on the isolated shadow container; grant only where it exists.
+DO $grant_m2_write$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'm2') THEN
+        EXECUTE 'GRANT EXECUTE ON FUNCTION memory_r10_m2.write_fact_version('
+             || 'text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector) TO m2';
+    END IF;
+END
+$grant_m2_write$;
 
 -- Block direct INSERT that authors tx_period from agent role; owner may still seed.
 CREATE OR REPLACE FUNCTION memory_r10_m2.forbid_client_tx_authoring()

@@ -577,15 +577,26 @@ def process_operator_message(
     try:
         from scripts.lib.hermes_subject_join import (  # noqa: PLC0415
             claim_contradicts_join,
+            house_db_query,
+            hub_promoted_count_finder,
             join_subject_hermes,
         )
         _syms = [str(s).upper() for s in ((desk.get("intent") or {}).get("symbols") or []) if s]
         if _syms:
-            _join = join_subject_hermes(_syms[0])
+            # GUID-keyed (resolved from the registry), plus the desk's opr_ rows in
+            # Postgres and the per-ticker Hub promoted count; either DB read
+            # failing degrades to the JSONL stores.
+            _join_db = house_db_query()
+            _join = join_subject_hermes(
+                _syms[0],
+                db_query=_join_db,
+                hub_finder=hub_promoted_count_finder(_join_db) if _join_db else None,
+            )
             if _join.sources:
                 desk_prov.stores_read = list(desk_prov.stores_read or []) + list(_join.sources)
             if claim_contradicts_join(reply, _join):
                 reply = _join.honesty_line + "\n\n" + reply
+            desk_prov.citations = list(desk_prov.citations or []) + _join.citations()
     except Exception:  # noqa: BLE001
         pass
     final_reply = _prepare_reply(reply, desk_prov)

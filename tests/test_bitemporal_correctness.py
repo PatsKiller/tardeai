@@ -659,7 +659,13 @@ def test_suite5_guid_spine_traversal(m2_conn, case_id):
 
 
 def test_explain_bitemporal_pit_uses_index(m2_conn):
+    # The question is whether the PIT predicate CAN use the GiST index. On a
+    # near-empty freshly created test table a Seq Scan is the planner's correct
+    # cheapest choice, which made this test flake under load (M5 09-23: three
+    # acceptance runs). Disable seq scans for this one statement so the plan
+    # proves index usability independent of table size.
     with m2_conn.cursor() as cur:
+        cur.execute("SET enable_seqscan = off")
         cur.execute(
             """
             EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON)
@@ -671,6 +677,7 @@ def test_explain_bitemporal_pit_uses_index(m2_conn):
             """
         )
         plan = cur.fetchone()[0]
+        cur.execute("RESET enable_seqscan")
     blob = json.dumps(plan)
     assert "Index Scan" in blob or "Bitmap Index Scan" in blob
     assert "Seq Scan" not in blob or "Index" in blob

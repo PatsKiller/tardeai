@@ -622,10 +622,15 @@ GATES = [
             "tests/test_screener_go_alerts_20260914.py",
             "tests/test_screener_go_alerts_delivery_20260914.py",
             "tests/test_comms_editor_mode_file_20260914.py",
+            # 2026-09-23 M5 4d: every scheduled recommendation sender passes the stance
+            # gate; document captions pass the editor; editor fail mode is a switch.
+            "tests/test_m5_gate_coverage_20260923.py",
             # 2026-09-18: investment-shaped Telegram held on CIO Avoid / missing decision.
             "tests/test_cio_telegram_stance_gate_20260918.py",
             # 2026-09-23 M5: AVOID/SELL hard hold, soft stances GO→WATCH, hold-ledger dedupe.
             "tests/test_cio_telegram_stance_gate_m5_20260923.py",
+            "tests/test_cio_stance_review_request_20260923.py",
+            "tests/test_cio_stance_classification_drain_20260923.py",
             # 2026-09-16 B-phase curation: STOP HEALTH per-symbol repeats collapse to one
             # batched card; GO + entry alerts carry a HELD / NOT HELD triage pill.
             "tests/test_stop_health_batch_20260916.py",
@@ -801,6 +806,8 @@ GATES = [
             "tests/test_operator_reply_routing_sources_20260913.py",
             # Stage 1+3 parity: shared Hermes join + internal-first finalize (desk + Maria).
             "tests/test_hermes_join_internal_first_20260923.py",
+            # M5 step 5: join keyed by subject_guid + DB opr_ leg; LEGEND in finalize; [n] citations.
+            "tests/test_join_format_m5_20260923.py",
             # Stage 4 residual: atomic jobs.json mirror + bak/migrated recovery.
             "tests/test_gateway_cron_jobs_mirror_20260923.py",
             # Stage 2 parity: ban pseudo Iris/Alex/CIO attribution (desk + Maria).
@@ -1148,11 +1155,16 @@ GATES = [
     # table and on the dataclass but was missing from the INSERT. Both were
     # wiring, not design. This gate pins the defaults (a root event points at
     # itself; a root has NO parent, because self-parenting loops a recursive
-    # walk) and pins subject_guid into the receipt write.
+    # walk) and pins subject_guid into the receipt write. M5 (2026-09-23): the
+    # ids now travel the whole question -- turn -> gap / Hermes request ->
+    # completion -> outbound -- through one lineage scope, the reply to a
+    # multi-message send ("53968,53969") binds from the ledger, and watch rows
+    # get subject_guid behind a column probe (additive migration).
     (
         "comms_lineage_join",
         [
             "tests/test_phase4_lineage_join_20260922.py",
+            "tests/test_event_lineage_20260924.py",
         ],
     ),
     # market_quotes is 34.2M rows / 5.67 GB, of which 97.7% is intraday
@@ -1682,6 +1694,8 @@ GATES = [
             "tests/test_aec_agent_bus_memory_20260919.py",
             "tests/test_aec_narrator_20260919.py",
             "tests/test_bitemporal_correctness.py",
+            # M5 Module 2: SINGLE_VALUED supersession, atomic receipts, MRU token budget.
+            "tests/test_m5_memory_substrate_20260923.py",
             "tests/test_record_bridge_pin_soak.py",
             "tests/test_agent_number_grounding_slo_20260918.py",
             "tests/test_research_quality_escalate_20260918.py",

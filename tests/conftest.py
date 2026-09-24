@@ -21,6 +21,8 @@ os.environ["TRADEAI_AUDIT_LEDGER_DIR"] = _tempfile.mkdtemp(prefix="tradeai_audit
 # sends: in live mode deliver_text holds the message, and test_plaintext_fallback_actually_unescapes_on_the_wire
 # failed on every host where the file says live. A test that exercises the editor sets its own mode.
 os.environ.setdefault("COMMS_EDITOR_MODE_FILE", os.path.join(_tempfile.mkdtemp(prefix="tradeai_comms_mode_tests_"), "absent"))
+# The host editor-failure policy file must not steer tests either (M5 4d, 2026-09-23).
+os.environ.setdefault("COMMS_EDITOR_FAIL_MODE_FILE", os.path.join(_tempfile.mkdtemp(prefix="tradeai_comms_fail_mode_tests_"), "absent"))
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
@@ -42,6 +44,12 @@ from scripts.lib.m2_live_shadow_guard import (  # noqa: E402
 _route_m2_tests()
 if os.environ.get("M2_SKIP_DOCKER") != "1":
     _ensure_m2_test_db()
+
+# The Hermes subject join reads live Postgres (desk opr_ gap rows, Hub promoted
+# counts) and the live identity registry in production. Unit runs stay hermetic:
+# both legs are off unless a test turns them on (M5 step 5, 2026-09-23).
+os.environ.setdefault("TRADEAI_HERMES_JOIN_DB", "0")
+os.environ.setdefault("TRADEAI_HERMES_JOIN_RESOLVE_GUID", "0")
 
 # CI does not install python-dotenv, so any alarm module importing it raised
 # ModuleNotFoundError during collection and the C1 firing gate did not run at all.
