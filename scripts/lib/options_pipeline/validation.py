@@ -116,6 +116,32 @@ def record_outcome(
             return {"ok": False, "error": f"outcome 'loss' contradicts pnl {p:.2f}"}
 
     ex = executor or _default_executor()
+    # Slice A — preserve/stamp identity GUIDs into meta without inventing PnL.
+    meta_out = dict(meta or {})
+    if not meta_out.get("option_strategy_guid") or not meta_out.get("contract_guid"):
+        try:
+            from scripts.lib.options_identity import outcome_attribution_keys
+        except ImportError:
+            try:
+                from lib.options_identity import outcome_attribution_keys  # type: ignore
+            except ImportError:
+                outcome_attribution_keys = None  # type: ignore
+        if outcome_attribution_keys is not None:
+            keys = outcome_attribution_keys({
+                "symbol": symbol,
+                "strategy_id": strategy_id,
+                "strategy": strategy_id,
+                "option_type": meta_out.get("option_type") or meta_out.get("right"),
+                "strike": meta_out.get("strike"),
+                "expiration": meta_out.get("expiration"),
+                "account": meta_out.get("account"),
+                "broker": meta_out.get("broker") or meta_out.get("venue"),
+                "underlying": meta_out.get("underlying") or symbol,
+                "legs": meta_out.get("legs"),
+            })
+            for k in ("option_strategy_guid", "contract_guid"):
+                if keys.get(k) and not meta_out.get(k):
+                    meta_out[k] = keys[k]
     res = ex(
         """INSERT INTO options_paper_outcomes
              (proposal_id, strategy_id, symbol, opened_at, closed_at,
@@ -140,7 +166,7 @@ def record_outcome(
             opened_at, closed_at or _now().isoformat(),
             entry_debit, exit_value, pnl, pnl_r, oc,
             (exit_reason or "")[:80] or None, (notes or "")[:500] or None,
-            json.dumps(meta or {}, default=str),
+            json.dumps(meta_out, default=str),
         ),
     )
     if res is None:

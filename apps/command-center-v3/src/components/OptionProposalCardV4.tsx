@@ -1199,6 +1199,22 @@ export default function OptionProposalCardV4({
           </div>
         )}
 
+        {(p.option_strategy_guid || p.contract_guid) && (
+          <div
+            title="Stable options identity (UUIDv5) — attribution only; not PnL"
+            style={{
+              fontSize: 10,
+              color: terminalUi ? BB.text3 : WL.text.dim,
+              marginTop: 6,
+              fontFamily: 'ui-monospace, monospace',
+              lineHeight: 1.4,
+            }}
+          >
+            {p.option_strategy_guid && <span>strategy {p.option_strategy_guid.slice(0, 8)}… </span>}
+            {p.contract_guid && <span>contract {p.contract_guid.slice(0, 8)}…</span>}
+          </div>
+        )}
+
         {/* ⑤ Footer — execution path + manual log */}
         {(p.execution_note || showManualLog) && (
           <div onClick={e => e.stopPropagation()} style={{

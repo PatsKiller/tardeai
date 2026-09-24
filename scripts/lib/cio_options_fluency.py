@@ -267,8 +267,15 @@ def gather_options_house_facts(
     *,
     desk: Optional[dict[str, Any]] = None,
     goals: Optional[list[dict[str, Any]]] = None,
+    memory_outcomes: Optional[list[dict[str, Any]]] = None,
+    memory_notes: Optional[list[dict[str, Any]]] = None,
+    memory_flags: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """House facts for CIO replies — cache only, no live chain."""
+    """House facts for CIO replies — cache only, no live chain.
+
+    When MEMORY_BEHAVIOR_INFLUENCE_OPTIONS=1, attaches a bounded memory
+    envelope for the first symbol (Slice B). Fail-closed if empty.
+    """
     desk = desk if desk is not None else load_options_desk_summary()
     by_sym = desk.get("by_symbol") if isinstance(desk.get("by_symbol"), dict) else {}
     syms = [str(s).upper() for s in (symbols or []) if str(s).strip()]
@@ -282,7 +289,7 @@ def gather_options_house_facts(
                 sym, (rows[0].get("strategy") if rows else ""), goals=goals,
             ),
         }
-    return {
+    out: dict[str, Any] = {
         "as_of": desk.get("generated_at"),
         "proposal_count": desk.get("proposal_count"),
         "strategy_counts": desk.get("strategy_counts") or {},
@@ -291,9 +298,30 @@ def gather_options_house_facts(
         "source": "options_desk_latest_cache",
         "live_chain": False,
     }
+    # Slice B — scoped options memory (does not flip global MBI).
+    if syms:
+        try:
+            from scripts.lib.options_memory_envelope import build_options_memory_envelope
+        except ImportError:
+            from lib.options_memory_envelope import build_options_memory_envelope  # type: ignore
+        env = build_options_memory_envelope(
+            syms[0],
+            flags=memory_flags,
+            outcomes=memory_outcomes,
+            learning_notes=memory_notes,
+        )
+        out["memory_envelope"] = env
+        if env.get("applied"):
+            out["memory_sources"] = list(env.get("sources") or [])
+    return out
 
 
-def format_cio_options_opinion(facts: dict[str, Any], *, symbols: Optional[list[str]] = None) -> str:
+def format_cio_options_opinion(
+    facts: dict[str, Any],
+    *,
+    symbols: Optional[list[str]] = None,
+    memory_envelope: Optional[dict[str, Any]] = None,
+) -> str:
     """Plain CIO prose for finalize_operator_reply — not a specialist persona."""
     lines = [
         "Options desk (house facts — cached proposals, not a live Schwab pull):",
@@ -316,6 +344,24 @@ def format_cio_options_opinion(facts: dict[str, Any], *, symbols: Optional[list[
         lines.append(
             f"  Goal lineage: {lineage.get('status')} — {lineage.get('note') or ''}"
         )
+        # Surface first-class GUIDs when stamped on cached proposals (Slice A).
+        props = block.get("proposals") or []
+        if props:
+            first = props[0] if isinstance(props[0], dict) else {}
+            sg = first.get("option_strategy_guid")
+            cg = first.get("contract_guid")
+            if sg or cg:
+                lines.append(
+                    "  Identity: "
+                    + (f"strategy_guid={sg[:8]}…" if sg else "strategy_guid=—")
+                    + " · "
+                    + (f"contract_guid={cg[:8]}…" if cg else "contract_guid=—")
+                )
+    # Slice B — scoped memory envelope (flag-gated; fail-closed if empty).
+    env = memory_envelope if isinstance(memory_envelope, dict) else facts.get("memory_envelope")
+    if isinstance(env, dict) and env.get("applied") and env.get("prose"):
+        lines.append("")
+        lines.append(str(env["prose"]))
     lines.append(PATH_B_CHROME)
     return "\n".join(lines)
 

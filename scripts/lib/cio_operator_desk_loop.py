@@ -1998,8 +1998,13 @@ def _gather_tradeai_evidence_core(intent: dict[str, Any]) -> dict[str, Any]:
         available["options_strategy"] = facts
         available["options_strategy_card"] = format_cio_options_opinion(
             facts, symbols=symbols or [],
+            memory_envelope=facts.get("memory_envelope"),
         )
         sources.append("options_desk_latest")
+        # Slice B — Sources chrome when scoped memory actually applied.
+        for mem_src in (facts.get("memory_sources") or []):
+            if mem_src and mem_src not in sources:
+                sources.append(mem_src)
 
     # How is the named stock doing: last close, 30-day change, its desk levels.
     # 2026-09-13 "How is Visa doing ... analyst recommendations": the reply had no
