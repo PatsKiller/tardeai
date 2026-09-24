@@ -436,10 +436,55 @@ def _normalize_holding(h: dict) -> dict:
 
 
 def _load_holdings() -> Tuple[List[dict], dict]:
-    h = _load_json(STATE_DIR / "holdings.json") or {}
+    """Latest holdings of record — prefer served/persistent state over checkout-local.
+
+    Stage 1 / holdings-backfill addendum (2026-09-24): CC/protective-put generation
+    and the holdings funnel must refresh from what we currently own, not a stale
+    worktree sleeve. Does not widen IV/intent gates.
+    """
+    candidates: List[Path] = []
+    try:
+        from scripts.lib.persistent_state_root import portfolio_state_write_targets
+        for d in portfolio_state_write_targets(PROJECT_ROOT):
+            candidates.append(Path(d) / "holdings.json")
+    except Exception:
+        try:
+            from lib.persistent_state_root import portfolio_state_write_targets  # type: ignore
+            for d in portfolio_state_write_targets(PROJECT_ROOT):
+                candidates.append(Path(d) / "holdings.json")
+        except Exception:
+            pass
+    candidates.append(STATE_DIR / "holdings.json")
+    # Prefer newest readable copy among unique realpaths.
+    best: Optional[Path] = None
+    best_mtime = -1.0
+    seen: set[str] = set()
+    for p in candidates:
+        try:
+            key = str(p.resolve())
+        except OSError:
+            key = str(p)
+        if key in seen:
+            continue
+        seen.add(key)
+        if not p.is_file():
+            continue
+        try:
+            mtime = p.stat().st_mtime
+        except OSError:
+            continue
+        if mtime >= best_mtime:
+            best_mtime = mtime
+            best = p
+    h = _load_json(best) if best is not None else {}
+    if not isinstance(h, dict):
+        h = {}
     raw = h.get("holdings") or []
     normalized = [_normalize_holding(x) for x in raw if (x.get("symbol") or "").upper()]
-    return normalized, h
+    meta = dict(h) if isinstance(h, dict) else {}
+    meta["_holdings_path"] = str(best) if best is not None else None
+    meta["_holdings_mtime"] = best_mtime if best is not None else None
+    return normalized, meta
 
 
 def _cash_by_account(holdings: List[dict]) -> Dict[str, float]:
@@ -1470,7 +1515,10 @@ def _fetch_schwab_option_positions() -> List[dict]:
                     if qty <= 0:
                         continue
                     side = "short" if _f(p.get("qty")) < 0 else "long"
-                    positions.append({
+                    # Pass through any Schwab-supplied margin/BP fields verbatim —
+                    # never invent Reg-T. normalize_positions today does not emit these;
+                    # if a future normalizer adds them, the monitor will stamp them.
+                    row = {
                         "account_key": acct,
                         "occ_symbol": sym,
                         "qty": qty,
@@ -1478,10 +1526,52 @@ def _fetch_schwab_option_positions() -> List[dict]:
                         "avg_entry": _f(p.get("avg_entry_price")),
                         "market_value": _f(p.get("market_value")),
                         **parsed,
-                    })
+                    }
+                    for _mk in (
+                        "margin_requirement",
+                        "maintenance_requirement",
+                        "initial_requirement",
+                        "buying_power_effect",
+                        "bp_effect",
+                        "option_margin",
+                    ):
+                        if p.get(_mk) is not None:
+                            row[_mk] = p.get(_mk)
+                    positions.append(row)
     except Exception:
         pass
     return positions
+
+
+def _schwab_margin_stamp(pos: dict) -> dict:
+    """Stamp margin/BP only when Schwab already supplied a field — never invent dollars."""
+    for key in (
+        "margin_requirement",
+        "maintenance_requirement",
+        "initial_requirement",
+        "buying_power_effect",
+        "bp_effect",
+        "option_margin",
+    ):
+        if pos.get(key) is not None:
+            try:
+                val = float(pos.get(key))
+            except (TypeError, ValueError):
+                continue
+            return {
+                "margin_status": "OK",
+                "margin_usd": round(val, 2),
+                "margin_field": key,
+                "margin_note": f"Schwab field `{key}`",
+                "margin_as_of": _iso(),
+            }
+    return {
+        "margin_status": "MARGIN_UNKNOWN",
+        "margin_usd": None,
+        "margin_field": None,
+        "margin_note": "not on Schwab feed used here",
+        "margin_as_of": _iso(),
+    }
 
 
 def _monitor_position(pos: dict, tech_map: dict) -> dict:
@@ -1504,7 +1594,9 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
         strike,
         dte if dte > 0 else 21,
     )
-    mark = contract["mid"] if contract else 0.0
+    mark = None
+    if contract and contract.get("mid") is not None:
+        mark = _f(contract.get("mid"))
     iv = (contract.get("iv") if contract else 0.25) or 0.25
     delta = contract.get("delta") if contract else None
 
@@ -1523,7 +1615,15 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
 
     pnl_unrealized = None
     entry = _f(pos.get("avg_entry"))
-    if entry and mark:
+    pnl_status = "OK"
+    pnl_unknown_reason = None
+    if not entry or entry <= 0:
+        pnl_status = "PNL_UNKNOWN"
+        pnl_unknown_reason = "missing avg_entry / fill basis"
+    elif mark is None or mark <= 0:
+        pnl_status = "PNL_UNKNOWN"
+        pnl_unknown_reason = "no chain mark"
+    else:
         mult = 100 * _f(pos.get("qty"), 1)
         if is_short:
             pnl_unrealized = round((entry - mark) * mult, 2)
@@ -1533,42 +1633,53 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
     working = True
     action = "hold"
     action_label = "Hold"
+    action_criterion = "Default hold — no harvest/defend rule fired"
     rationale_parts = []
 
     if is_short and opt_type == "call":
         if itm and dte <= 7:
             action, action_label = "roll", "Roll to Next Expiration"
+            action_criterion = "Short call ITM and DTE ≤ 7"
             rationale_parts.append("Short call ITM with ≤7 DTE — assignment risk elevated")
             working = False
         elif pop_otm >= 75 and pnl_unrealized and pnl_unrealized > 0:
             action, action_label = "close_profit", "Close for Profit"
+            action_criterion = "POP OTM ≥ 75% and unrealized P&L > 0"
             rationale_parts.append(f"{pop_otm:.0f}% chance OTM — capture {pnl_unrealized:.0f} unrealized")
         elif not itm and pop_otm >= 60:
             action, action_label = "hold", "Hold"
+            action_criterion = "Short call OTM with POP OTM ≥ 60%"
             rationale_parts.append(f"Position working: {pop_otm:.0f}% POP OTM, {dte} DTE left")
         elif itm:
             action, action_label = "close", "Close / Roll"
+            action_criterion = "Short call ITM (assignment risk)"
             rationale_parts.append("ITM short call — consider rolling or closing to avoid assignment")
             working = False
     elif is_short and opt_type == "put":
         if itm and dte <= 10:
             action, action_label = "close", "Close Position"
+            action_criterion = "Short put ITM and DTE ≤ 10"
             rationale_parts.append("Short put ITM — assignment risk on underlying")
             working = False
         elif pop_otm >= 70 and pnl_unrealized and pnl_unrealized > 0:
             action, action_label = "close_profit", "Close for Profit"
+            action_criterion = "POP OTM ≥ 70% and unrealized P&L > 0"
             rationale_parts.append(f"Capture premium — {pop_otm:.0f}% still OTM")
         else:
+            action_criterion = "Short put monitoring — no close/roll threshold met"
             rationale_parts.append(f"CSP monitoring: {moneyness}, POP OTM {pop_otm:.0f}%")
     else:
-        if pnl_unrealized and pnl_unrealized < -0.5 * entry * 100:
+        if entry and pnl_unrealized and pnl_unrealized < -0.5 * entry * 100:
             action, action_label = "close", "Cut Loss"
+            action_criterion = "Long option unrealized loss > 50% of entry premium"
             rationale_parts.append("Long option down >50% — edge deteriorated")
             working = False
         elif pop_itm >= 65 and pnl_unrealized and pnl_unrealized > 0:
             action, action_label = "close_profit", "Take Profit"
+            action_criterion = "Finish-ITM probability ≥ 65% and unrealized P&L > 0"
             rationale_parts.append(f"In-the-money with {pop_itm:.0f}% finish ITM probability")
         else:
+            action_criterion = f"Long {opt_type} — no cut/take-profit threshold met"
             rationale_parts.append(f"Long {opt_type}: {moneyness}, {dte} DTE")
 
     iv_rank = _iv_rank_proxy(und_sym, tech, chain_iv=iv)
@@ -1577,6 +1688,10 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
     qty = _f(pos.get("qty"), 1)
     mult = 100.0 * qty
     max_profit_at_open = round(entry * mult, 2) if entry else None
+    # Credit (short) is +entry premium; debit (long) is −entry premium — economics label only.
+    entry_credit_debit = None
+    if entry and entry > 0:
+        entry_credit_debit = round(entry * mult, 2) if is_short else round(-entry * mult, 2)
     max_loss_at_open = None
     if entry and strike:
         if is_short and opt_type == "put":
@@ -1587,7 +1702,7 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
             max_loss_at_open = round(entry * mult, 2)
 
     profit_captured_pct = None
-    if is_short and entry > 0 and mark >= 0:
+    if is_short and entry > 0 and mark is not None and mark >= 0:
         profit_captured_pct = round(100.0 * max(0.0, entry - mark) / entry, 1)
 
     risk_reward = None
@@ -1635,6 +1750,8 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
         else:
             maturity_note = f"Long {opt_type}: {moneyness}, {dte} DTE — watch mark vs entry."
 
+    margin = _schwab_margin_stamp(pos)
+
     return {
         "id": pos.get("occ_symbol") or f"{und_sym}_{strike}_{opt_type}",
         "occ_symbol": pos.get("occ_symbol"),
@@ -1649,8 +1766,11 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
         "qty": _f(pos.get("qty"), 1),
         "underlying_price": round(spot, 2),
         "mark": mark,
-        "avg_entry": entry,
+        "avg_entry": entry if entry else None,
+        "entry_credit_debit": entry_credit_debit,
         "unrealized_pnl": pnl_unrealized,
+        "pnl_status": pnl_status,
+        "pnl_unknown_reason": pnl_unknown_reason,
         "moneyness": moneyness,
         "itm": itm,
         "pop_otm_pct": pop_otm,
@@ -1667,6 +1787,7 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
         "still_working": working,
         "recommended_action": action_label,
         "action": action,
+        "action_criterion": action_criterion,
         "action_buttons": [
             {"action": action, "label": action_label},
             {"action": "roll", "label": "Roll to Next Week"},
@@ -1676,6 +1797,7 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
         "rationale": " · ".join(rationale_parts) or f"{moneyness} — monitor",
         "severity": "warning" if not working else ("positive" if (pnl_unrealized or 0) > 0 else "info"),
         "monitored_at": _iso(),
+        **margin,
     }
 
 
@@ -2077,6 +2199,348 @@ def proposal_filter_facets(proposals: List[dict]) -> dict:
         "spread_pairs": spread_pairs,
         "single_leg": len(proposals) - spread_pairs,
         "live_eligible": live_eligible,
+    }
+
+
+def _looks_optionable_symbol(sym: str) -> bool:
+    """Ticker-shaped symbols only — CUSIP/all-digit rows are not optionable equities."""
+    s = (sym or "").upper().strip()
+    if not s or s.isdigit() or len(s) > 10:
+        return False
+    return bool(re.match(r"^[A-Z][A-Z0-9.\-]{0,9}$", s))
+
+
+def evaluate_covered_call_status(
+    h: dict,
+    tech_map: dict,
+    intent_cfg: dict,
+    aegis_map: Optional[dict] = None,
+    *,
+    resolve_chain: bool = True,
+) -> dict:
+    """Named drop reason for one holding row — mirrors generate_covered_call_proposals gates.
+
+    Does not widen gates. Returns status in:
+      NEED_100_SHARES | MV_BELOW | PRICE_ZERO | NOT_OPTIONABLE | LOAN_RESTRICTED |
+      NO_CHAIN | IV_BELOW_FLOOR | EDGE_BELOW | POP_BELOW | AEGIS_REJECT |
+      INTENT_BYPASS | CC_ELIGIBLE
+    INTENT_BYPASS means the name is on covered_call_candidate and cleared IV via intent
+    (still subject to edge/POP); CC_ELIGIBLE means it would pass quality screens.
+    """
+    aegis_map = aegis_map or {}
+    sym = (h.get("symbol") or "").upper()
+    shares = _f(h.get("shares"))
+    price = _f(h.get("price"))
+    mv = _f(h.get("market_value"))
+    acct = h.get("account") or ""
+    base = {
+        "symbol": sym,
+        "account": acct,
+        "shares": round(shares, 4),
+        "market_value": round(mv, 2),
+        "price": round(price, 4) if price else 0.0,
+        "strategy": "covered_call",
+    }
+    if h.get("is_cash") or not sym:
+        return {**base, "status": "SKIP_CASH", "detail": "cash / empty symbol"}
+    if not _looks_optionable_symbol(sym):
+        return {**base, "status": "NOT_OPTIONABLE", "detail": "CUSIP or non-ticker symbol"}
+    if h.get("is_loan"):
+        return {**base, "status": "LOAN_RESTRICTED", "detail": "loan / restricted shares"}
+    if price <= 0:
+        return {**base, "status": "PRICE_ZERO", "detail": "no usable mark"}
+    if shares < MIN_HOLDING_SHARES_CC:
+        return {
+            **base,
+            "status": "NEED_100_SHARES",
+            "detail": f"{shares:.2f} shares — need ≥{MIN_HOLDING_SHARES_CC} to cover 1 call",
+        }
+    if mv < MIN_POSITION_MV:
+        return {
+            **base,
+            "status": "MV_BELOW",
+            "detail": f"MV ${mv:,.0f} below ${MIN_POSITION_MV:,.0f} floor",
+        }
+
+    cc_syms = set(s.upper() for s in (intent_cfg.get("covered_call_candidate") or []))
+    settings = intent_cfg.get("covered_call_settings") or {}
+    default_dte = int(settings.get("default_dte_days", 30))
+    default_otm = _f(settings.get("default_otm_pct", 0.06))
+    min_iv = _f(settings.get("iv_rank_minimum", MIN_IV_RANK))
+    in_intent = sym in cc_syms
+    gates = _holding_quality_gates(h)
+    min_iv_h = gates["min_iv"] if gates["manual"] else min_iv
+    tech = tech_map.get(sym) or {}
+
+    target_strike = price * (1 + default_otm)
+    if price < 50:
+        target_strike = round(target_strike / 0.5) * 0.5
+    elif price < 200:
+        target_strike = round(target_strike / 2.5) * 2.5
+    else:
+        target_strike = round(target_strike / 5.0) * 5.0
+
+    contract = None
+    data_source = ""
+    if resolve_chain:
+        contract, data_source = _resolve_option_contract(
+            sym, price, tech, "call", target_strike, default_dte,
+        )
+        if not contract:
+            return {
+                **base,
+                "status": "NO_CHAIN",
+                "detail": "no Schwab/BS contract resolved at target strike/DTE",
+                "intent_sleeve": in_intent,
+            }
+
+    iv = (contract or {}).get("iv") or 0.25
+    iv_rank = _iv_rank_proxy(sym, tech, chain_iv=iv if contract else None)
+    base["iv_rank"] = round(iv_rank, 1)
+    base["intent_sleeve"] = in_intent
+    if contract:
+        base["data_source"] = data_source
+        base["strike"] = contract.get("strike")
+        base["dte"] = contract.get("dte")
+
+    if iv_rank < min_iv_h and not in_intent:
+        return {
+            **base,
+            "status": "IV_BELOW_FLOOR",
+            "detail": f"IV rank proxy {iv_rank:.0f} < floor {min_iv_h:.0f} (not on covered_call_candidate)",
+        }
+
+    und = price
+    strike = _f((contract or {}).get("strike"), target_strike)
+    dte = int((contract or {}).get("dte") or default_dte)
+    premium = _f((contract or {}).get("mid"), 0.5)
+    contracts = int(shares // 100)
+    pop = _pop_otm_call(und, strike, max(0.05, float(iv)), dte)
+    collateral = round(und * shares, 2)
+    rr = (premium * 100 * contracts) / max(collateral * (dte / 365.0), 1.0)
+    aegis = aegis_map.get(sym) or {}
+    edge = _edge_score(
+        pop,
+        iv_rank,
+        rr,
+        catalyst_boost=12.0 if in_intent else (8.0 if gates["manual"] else 3.0),
+        conviction=_f(aegis.get("confidence"), 0.6),
+    )
+    if in_intent and pop >= MIN_POP_PCT:
+        edge = max(edge, pop * 0.55 + 18.0)
+    if gates["manual"]:
+        edge = round(edge + gates["edge_boost"], 1)
+    min_edge = gates["min_edge"] if (in_intent or gates["manual"]) else MIN_EDGE_SCORE
+    base["edge_score"] = round(edge, 1)
+    base["pop_pct"] = round(pop, 1)
+    base["min_edge"] = min_edge
+
+    if pop < MIN_POP_PCT:
+        return {
+            **base,
+            "status": "POP_BELOW",
+            "detail": f"POP {pop:.0f}% < {MIN_POP_PCT}%",
+        }
+    if edge < min_edge:
+        status = "INTENT_BYPASS" if in_intent else "EDGE_BELOW"
+        # Intent cleared IV but still failed edge — still EDGE_BELOW with intent flag
+        if in_intent and edge < min_edge:
+            status = "EDGE_BELOW"
+        return {
+            **base,
+            "status": status,
+            "detail": f"edge {edge:.0f} < min {min_edge:.0f}"
+            + (" (intent sleeve)" if in_intent else ""),
+        }
+
+    aegis_ok = (aegis.get("verdict") or "").lower() in ("candidate", "write", "ok", "")
+    if aegis and not aegis_ok and (aegis.get("verdict") or "").lower() in ("reject", "avoid", "wait"):
+        return {
+            **base,
+            "status": "AEGIS_REJECT",
+            "detail": f"Aegis verdict={aegis.get('verdict')}",
+        }
+
+    if in_intent and iv_rank < min_iv_h:
+        return {
+            **base,
+            "status": "INTENT_BYPASS",
+            "detail": f"intent sleeve cleared IV floor ({iv_rank:.0f} < {min_iv_h:.0f}); quality gates pass",
+        }
+    return {
+        **base,
+        "status": "CC_ELIGIBLE",
+        "detail": "passes share/IV/edge/POP screens — expect a covered-call card when slots allow",
+    }
+
+
+def evaluate_protective_put_status(
+    h: dict,
+    tech_map: dict,
+    *,
+    resolve_chain: bool = True,
+) -> dict:
+    """Named drop reason for protective-put path on one holding (no gate widening)."""
+    sym = (h.get("symbol") or "").upper()
+    shares = _f(h.get("shares"))
+    price = _f(h.get("price"))
+    mv = _f(h.get("market_value"))
+    acct = h.get("account") or ""
+    base = {
+        "symbol": sym,
+        "account": acct,
+        "shares": round(shares, 4),
+        "market_value": round(mv, 2),
+        "price": round(price, 4) if price else 0.0,
+        "strategy": "protective_put",
+    }
+    if h.get("is_cash") or not sym:
+        return {**base, "status": "SKIP_CASH", "detail": "cash / empty symbol"}
+    if not _looks_optionable_symbol(sym):
+        return {**base, "status": "NOT_OPTIONABLE", "detail": "CUSIP or non-ticker symbol"}
+    if price <= 0:
+        return {**base, "status": "PRICE_ZERO", "detail": "no usable mark"}
+    if shares < 50:
+        return {**base, "status": "NEED_50_SHARES", "detail": f"{shares:.2f} shares — protective put wants ≥50"}
+    if mv < MIN_PROTECTIVE_MV:
+        return {
+            **base,
+            "status": "MV_BELOW",
+            "detail": f"MV ${mv:,.0f} below ${MIN_PROTECTIVE_MV:,.0f} protective floor",
+        }
+    gates = _holding_quality_gates(h)
+    tech = tech_map.get(sym) or {}
+    iv_rank = _iv_rank_proxy(sym, tech)
+    base["iv_rank"] = round(iv_rank, 1)
+    if iv_rank < gates["min_iv"]:
+        return {
+            **base,
+            "status": "IV_BELOW_FLOOR",
+            "detail": f"IV rank proxy {iv_rank:.0f} < floor {gates['min_iv']:.0f}",
+        }
+    if not resolve_chain:
+        return {**base, "status": "PUT_ELIGIBLE_PENDING_CHAIN", "detail": "size/IV ok — chain not resolved"}
+    target_strike = round(price * 0.95 / 2.5) * 2.5 if price > 50 else round(price * 0.95, 1)
+    contract, data_source = _resolve_option_contract(sym, price, tech, "put", target_strike, 45)
+    if not contract:
+        return {**base, "status": "NO_CHAIN", "detail": "no put contract resolved"}
+    premium = _f(contract.get("mid"))
+    if premium <= 0:
+        return {**base, "status": "NO_CHAIN", "detail": "put mid ≤ 0"}
+    und = price
+    strike, dte, iv = contract["strike"], contract["dte"], contract.get("iv") or 0.3
+    pop = 100.0 - _pop_otm_put(und, strike, max(0.05, iv), dte)
+    contracts = max(1, int(shares // 100))
+    cost = round(premium * 100 * contracts, 2)
+    hedge_ratio = mv / max(cost, 1.0)
+    edge = _edge_score_debit(
+        pop=pop, iv_rank=iv_rank, hedge_ratio=min(3.0, hedge_ratio / 10.0),
+        conviction=0.55, dte=dte,
+    )
+    if gates["manual"]:
+        edge = round(edge + gates["edge_boost"] * 0.35, 1)
+    min_edge = MIN_EDGE_CC_INTENT if gates["manual"] else (MIN_EDGE_SCORE - 8)
+    base["edge_score"] = round(edge, 1)
+    base["pop_pct"] = round(pop, 1)
+    base["data_source"] = data_source
+    if edge < min_edge:
+        return {
+            **base,
+            "status": "EDGE_BELOW",
+            "detail": f"edge {edge:.0f} < min {min_edge:.0f}",
+        }
+    return {
+        **base,
+        "status": "PUT_ELIGIBLE",
+        "detail": "passes protective-put screens",
+    }
+
+
+def build_holdings_funnel(
+    *,
+    holdings: Optional[List[dict]] = None,
+    tech_map: Optional[dict] = None,
+    intent_cfg: Optional[dict] = None,
+    aegis_map: Optional[dict] = None,
+    resolve_chain: bool = True,
+) -> dict:
+    """Read-only owned-book funnel: why each holding is or is not a CC / protective-put idea.
+
+    Does not change quality gates. resolve_chain=False skips live/BS contract resolution
+    (deterministic share/IV-only pass — used in hermetic tests).
+    """
+    if holdings is None:
+        holdings, _meta = _load_holdings()
+        holdings_path = (_meta or {}).get("_holdings_path")
+        holdings_mtime = (_meta or {}).get("_holdings_mtime")
+    else:
+        holdings = [_normalize_holding(x) for x in holdings]
+        holdings_path = "caller_supplied"
+        holdings_mtime = None
+    tech_map = tech_map if tech_map is not None else _load_technicals()
+    intent_cfg = intent_cfg if intent_cfg is not None else _load_intent_cfg()
+    aegis_map = aegis_map or {}
+
+    rows: List[dict] = []
+    for h in holdings:
+        if h.get("is_cash"):
+            continue
+        sym = (h.get("symbol") or "").upper()
+        if not sym:
+            continue
+        cc = evaluate_covered_call_status(
+            h, tech_map, intent_cfg, aegis_map, resolve_chain=resolve_chain,
+        )
+        put = evaluate_protective_put_status(
+            h, tech_map, resolve_chain=resolve_chain,
+        )
+        rows.append({
+            "symbol": sym,
+            "account": h.get("account") or "",
+            "shares": cc.get("shares"),
+            "market_value": cc.get("market_value"),
+            "cc": cc,
+            "protective_put": put,
+        })
+
+    def _count(path: str, status: str) -> int:
+        n = 0
+        for r in rows:
+            node = r.get(path) or {}
+            if node.get("status") == status:
+                n += 1
+        return n
+
+    cc_statuses = sorted({(r.get("cc") or {}).get("status") for r in rows if (r.get("cc") or {}).get("status")})
+    summary = {
+        "holdings_scanned": len(rows),
+        "holdings_source": holdings_path,
+        "holdings_mtime": holdings_mtime,
+        "cc_by_status": {s: _count("cc", s) for s in cc_statuses if s},
+        "cc_eligible": _count("cc", "CC_ELIGIBLE") + _count("cc", "INTENT_BYPASS"),
+        "cc_need_100_shares": _count("cc", "NEED_100_SHARES"),
+        "cc_iv_below": _count("cc", "IV_BELOW_FLOOR"),
+        "cc_edge_below": _count("cc", "EDGE_BELOW"),
+        "cc_no_chain": _count("cc", "NO_CHAIN"),
+        "put_eligible": _count("protective_put", "PUT_ELIGIBLE"),
+        "put_mv_below": _count("protective_put", "MV_BELOW"),
+        "put_iv_below": _count("protective_put", "IV_BELOW_FLOOR"),
+        "min_shares_cc": MIN_HOLDING_SHARES_CC,
+        "min_iv_rank": MIN_IV_RANK,
+        "min_edge": MIN_EDGE_SCORE,
+        "intent_cc": list(intent_cfg.get("covered_call_candidate") or []),
+        "resolve_chain": resolve_chain,
+        "note": (
+            "Backfill from latest holdings of record. Propose CC/protective puts only when "
+            "gates + edge/IV/size clear — not every owned name. Named drop reasons for every "
+            "row; silent omit is a defect. IV/intent floors are not widened here."
+        ),
+    }
+    return {
+        "ok": True,
+        "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "summary": summary,
+        "rows": rows,
     }
 
 
