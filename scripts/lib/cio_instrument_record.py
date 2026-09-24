@@ -384,6 +384,12 @@ def apply_cognition(
 
     `strict` raises CognitionNoOp when nothing moved. Callers that legitimately
     expect a no-op (a probe, a dry run) pass strict=False and check the list.
+
+    ``outcome`` is the research-gate ROUTE the last cycle took (``flash`` /
+    ``pro`` / ``reuse`` — ``cio_rehydrate.apply_after_cycle`` writes
+    ``decision["decision"]`` here) and it feeds ``gate_input_from_record`` as
+    ``prior_outcome``. It is NOT a market outcome. Settled market outcomes live
+    in the record's ``beliefs`` block (``apply_belief``), never here.
     """
     if forbidden:
         bad = sorted(k for k in forbidden if k in BEHAVIOR_FIELDS) or sorted(forbidden)
@@ -462,17 +468,48 @@ def hash_changed(record: dict[str, Any], name: str, value: Any) -> bool:
 
 
 def _store_for_root(root: Path | str | None = None) -> InstrumentRecordStore:
+    """The record store for a state root; ``None`` means the registered store.
+
+    2026-09-24 (agentic-memory tranche 1, R6): ``resolve_store`` returns a
+    ``dict`` (``{"ok", "path", ...}``), and the previous body did
+    ``Path(getattr(loc, "path", None) or loc)`` on it, which raised
+    ``TypeError`` and fell through to the cwd-relative ``DEFAULT_PATH`` on every
+    call. In production the two coincide only because the release's ``data/cio``
+    is a symlink into persistent-state; from a worktree, a health probe or a test
+    they are two different files. Resolve the registry path properly and record
+    which file was read (``store_path``) so the consult evidence can prove it.
+    """
     if root is None:
         try:
             from scripts.lib.canonical_store_registry import resolve_store
 
             loc = resolve_store(STORE_ID)
-            path = Path(getattr(loc, "path", None) or loc)
-            return InstrumentRecordStore(path)
+            path = loc.get("path") if isinstance(loc, dict) else getattr(loc, "path", None)
+            if path:
+                return InstrumentRecordStore(Path(path))
         except Exception:  # noqa: BLE001
-            return InstrumentRecordStore(DEFAULT_PATH)
+            pass
+        return InstrumentRecordStore(DEFAULT_PATH)
     root_p = Path(root)
     return InstrumentRecordStore(root_p / DEFAULT_PATH)
+
+
+def subject_key_for_symbol(symbol: Any, *, store: InstrumentRecordStore | None = None,
+                           root: Path | str | None = None) -> Optional[str]:
+    """The subject_key an existing record holds for a bare symbol, or None.
+
+    Probes HELD, then EXIT, then WATCH, then SECTOR — the same order the wake
+    loader uses — and returns the first key with a record. Lookup only: a
+    symbol with no record yields None; nothing is minted here.
+    """
+    raw = str(symbol or "").strip()
+    if not raw:
+        return None
+    st = store or _store_for_root(root)
+    for key in _candidate_keys(raw):
+        if st.load(key):
+            return key
+    return None
 
 
 def _candidate_keys(subject: Any) -> list[str]:

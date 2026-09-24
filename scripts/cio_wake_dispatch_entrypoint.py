@@ -327,12 +327,22 @@ def main(argv: list[str] | None = None):
         # while disposition honor is real at the enqueue gate.
         _ie = result.get("instrument_enqueue") or {}
         _ie_skipped = int(_ie.get("skipped_cadence_count") or 0)
+        # Which record file this run actually read (R6, 2026-09-24): the
+        # dispatcher's InstrumentRecordStore() is cwd-relative and coincides with
+        # persistent-state only through the release's data/cio symlink. Naming
+        # the path here lets the evidence prove the two are one file.
+        try:
+            from scripts.lib.cio_instrument_record import _store_for_root as _sfr
+            _store_path = str(_sfr(None).path.resolve())
+        except Exception:  # noqa: BLE001
+            _store_path = None
         _payload = {
             "schema": "WakeRecordConsult@v1",
             "authority": "READ_ONLY_ADVISORY",
             "as_of": _dt.now(_tz.utc).replace(microsecond=0).isoformat(),
             "unattended": True,
             "entrypoint": "cron: */5 * * * * cio_wake_dispatch_entrypoint.py",
+            "store_path": _store_path,
             **consult,
             "instrument_enqueue": {
                 "enqueued": len(_ie.get("enqueued") or []),

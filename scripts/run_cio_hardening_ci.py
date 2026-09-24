@@ -2323,6 +2323,19 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-24 — agentic-memory tranche 1 (docs/agentic-memory-gap D2).
+        # Slice 1: outcome checkpoints bind a registry subject + subject_key and a
+        # real due_at at mint; legacy null-due event-relative rows project to
+        # created_at+30d; one InstrumentRecord store path. Slice 2 adds the
+        # belief block + mutation test to this same gate.
+        "instrument_belief_20260925",
+        [
+            "tests/test_checkpoint_subject_binding_20260925.py",
+            "tests/test_outcome_resolution.py",
+            "tests/test_cio_instrument_record.py",
+        ],
+    ),
+    (
         # 2026-09-24 — agentic-memory acceleration Slice A+B.
         # option_strategy_guid + contract_guid on desk proposals; scoped
         # MEMORY_BEHAVIOR_INFLUENCE_OPTIONS envelope (global MBI stays 0).
