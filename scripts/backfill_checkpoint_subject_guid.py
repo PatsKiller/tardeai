@@ -59,6 +59,14 @@ from scripts.lib.cio_institutional_learning import (  # noqa: E402
 
 SCHEMA = "CheckpointSubjectBackfill@v1"
 AMENDMENT_REASON = "subject_guid_backfill_20260924"
+# One-shot operator-run backfill (dry-run default, --apply is a §17 action on
+# production evidence). Its report is read by the operator, not by a scheduled
+# consumer, by design: after the historical rows are bound, new checkpoints are
+# bound at mint (r17_checkpoint_binding.canonical_checkpoint_subject).
+NO_CONSUMER_REASON = (
+    "one-shot operator backfill of historical UNRESOLVED checkpoints; new rows "
+    "bind at mint, so no scheduled consumer exists by design"
+)
 
 
 def _now_iso() -> str:

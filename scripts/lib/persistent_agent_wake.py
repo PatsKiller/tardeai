@@ -85,6 +85,75 @@ def _normalize_selection(selection: Any) -> dict[str, Any] | None:
     return out
 
 
+def _load_instrument_record_for_selection(selection_meta: dict[str, Any] | None,
+                                          subject_guid: str | None) -> dict[str, Any]:
+    """Load the InstrumentRecord a wake is about (fail-soft; never raises).
+
+    ``instrument_record_due`` selections carry the subject_key as source_id;
+    other selections probe HELD|EXIT|WATCH by the subject's symbol when the
+    selection names one. The store path is the registered one (Slice 1, R6).
+    """
+    try:
+        from scripts.lib.cio_instrument_record import (
+            _store_for_root,
+            load_instrument_record_for_wake,
+        )
+
+        hint = None
+        symbol = None
+        if isinstance(selection_meta, dict):
+            if str(selection_meta.get("source") or "") == "instrument_record_due":
+                hint = selection_meta.get("source_id")
+            symbol = selection_meta.get("symbol")
+        if not hint and not symbol:
+            return {"status": "NO_SUBJECT", "record": None, "subject_key": None}
+        out = load_instrument_record_for_wake(subject_key_hint=hint, symbol=symbol)
+        try:
+            out["store_path"] = str(_store_for_root(None).path)
+        except Exception:  # noqa: BLE001
+            out["store_path"] = None
+        return out
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "IR_ERROR", "record": None, "subject_key": None,
+                "error": f"{type(exc).__name__}: {exc}"[:200]}
+
+
+def instrument_record_context_sentence(record: dict[str, Any] | None,
+                                       belief: dict[str, Any] | None) -> str:
+    """What the record already knows, as plain sentences for the L3 author.
+
+    Thesis reference, the standing narrative, and the settled-outcome belief.
+    Empty string when there is nothing on record. Numbers and refs only — no
+    instruction, no target, no size.
+    """
+    parts: list[str] = []
+    if isinstance(record, dict):
+        thesis = record.get("thesis_ref")
+        if thesis:
+            parts.append(f"Standing thesis ref: {thesis}.")
+        narr = record.get("cc_narrative") or {}
+        if isinstance(narr, dict):
+            what = str(narr.get("what") or "").strip()
+            fit = str(narr.get("thesis_fit") or "").strip()
+            if what:
+                parts.append(f"Record narrative: {what[:300]}")
+            if fit:
+                parts.append(f"Thesis fit on record: {fit[:200]}")
+        prev_q = str(record.get("next_research_question") or "").strip()
+        if prev_q:
+            parts.append(f"Open question on record: {prev_q[:200]}")
+    if belief:
+        try:
+            from scripts.lib.cio_instrument_record import belief_sentence
+
+            sent = belief_sentence(belief)
+            if sent:
+                parts.append(sent)
+        except Exception:  # noqa: BLE001
+            pass
+    return (" ".join(parts) + " ") if parts else ""
+
+
 def _selection_primary_kind(selection: dict[str, Any] | None) -> str | None:
     if not selection:
         return None
@@ -838,6 +907,25 @@ class WakeEngine:
             "selection": selection_meta,
         }
 
+        # 1c) The InstrumentRecord and its beliefs (agentic-memory tranche 1,
+        # Slice 2). Before this the IR wake's judgment was authored from the
+        # subject-key string alone — thesis, narrative, lessons and settled
+        # outcomes never reached L3 — and 64/64 cached authors answered
+        # INSUFFICIENT. Cognition context only; MBI_BEHAVIOR stays 0.
+        ir_load = _load_instrument_record_for_selection(selection_meta, subject_guid)
+        context["instrument_record"] = ir_load.get("record")
+        try:
+            from scripts.lib.cio_instrument_record import latest_belief as _latest_belief
+            context["instrument_belief"] = _latest_belief(ir_load.get("record"))
+        except Exception:  # noqa: BLE001
+            context["instrument_belief"] = None
+        wake["provenance"]["instrument_record"] = {
+            "status": ir_load.get("status"),
+            "subject_key": ir_load.get("subject_key"),
+            "belief_key": (context["instrument_belief"] or {}).get("belief_key"),
+            "store_path": ir_load.get("store_path"),
+        }
+
         # 1b) AEC four-spine memory (Strategic / Operational / Relationship /
         # Learning). Additive context only — fail-soft so a missing spine file
         # never refuses a wake the InstrumentRecord path already loaded.
@@ -1228,11 +1316,17 @@ class WakeEngine:
         """
         if not l3_judgment_enabled(env):
             return None
-        if not snap.facts:
+        belief = context.get("instrument_belief") if isinstance(context, dict) else None
+        record = context.get("instrument_record") if isinstance(context, dict) else None
+        if not snap.facts and not belief:
             # No grounding -> no model, and no spend. Recorded so the absence of
             # a judgment is never mistaken for a judgment that said nothing.
+            # A belief (settled outcomes on the record) is grounding: its
+            # outcome ids are evidence the author can be held to.
             wake["provenance"]["policy_decisions"].append("l3_skipped_ungrounded")
             return None
+        if not snap.facts and belief:
+            wake["provenance"]["policy_decisions"].append("l3_grounded_by_belief")
 
         question = None
         if isinstance(selection_meta, dict):
@@ -1256,7 +1350,8 @@ class WakeEngine:
                     "present": True,
                     "question_text": (
                         f"The InstrumentRecord for {sid} is due for review. "
-                        f"What should the next research question be, and what "
+                        + instrument_record_context_sentence(record, belief)
+                        + "What should the next research question be, and what "
                         f"would falsify the standing thesis?"
                     ),
                     "why_unresolved_by_research": (
@@ -1288,9 +1383,13 @@ class WakeEngine:
                 sel_backend, policy=load_decay_policy(), include_fact_text=True
             )
             selection = selector.select(wake["subject_guid"], now=now)
+            evidence_ids = list(wake.get("research_object_ids") or [])
+            if belief:
+                # Settled outcome ids are evidence the author can be held to.
+                evidence_ids += [str(x) for x in (belief.get("outcome_ids") or [])[:25]]
             gin = build_grounded_judgment_input(
                 selection,
-                research_object_ids=list(wake.get("research_object_ids") or []),
+                research_object_ids=evidence_ids,
                 free_first_exhausted=True,
                 effect_kind="changed_question",
                 material_residual_question=question,
@@ -1541,6 +1640,38 @@ def default_decide(context: dict) -> dict:
         }
 
     selection = context.get("selection")
+
+    # Settled outcomes on the record (agentic-memory tranche 1, Slice 2). A
+    # belief fingerprints into the claim exactly as memory does above, so a
+    # changed belief => a changed commitment, and an unchanged one dedupes.
+    # Source provenance stays the selection's own (the belief is context, not a
+    # source kind). MBI_BEHAVIOR = 0: this names what the record shows, and
+    # nothing about size, order, stop, weight or the broker.
+    belief = context.get("instrument_belief")
+    if isinstance(belief, dict) and isinstance(selection, dict):
+        primary_kind = _selection_primary_kind(selection)
+        source_id = selection.get("source_id")
+        if primary_kind and source_id and belief.get("belief_key"):
+            claim = (
+                f"belief:{belief.get('belief_key')}@rev{belief.get('revision')} "
+                f"success_rate={belief.get('success_rate')} n={belief.get('sample_size')} "
+                f"warrants review of {source_id}"
+            )
+            return {
+                "act": True,
+                "allow_empty_memory": True,
+                "effect_kind": "changed_question",
+                "commitment": {
+                    "commitment_kind": "BELIEF_REVIEW",
+                    "claim": claim,
+                    "normalized_claim": _normalize_claim(claim),
+                    "belief_proposal_id": belief.get("belief_proposal_id"),
+                },
+                "primary_source_kind": primary_kind,
+                "primary_source_id": str(source_id),
+                "reason": "organic_from_belief",
+            }
+
     if isinstance(selection, dict):
         primary_kind = _selection_primary_kind(selection)
         source_id = selection.get("source_id")

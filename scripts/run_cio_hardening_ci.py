@@ -2333,6 +2333,12 @@ GATES = [
             "tests/test_checkpoint_subject_binding_20260925.py",
             "tests/test_outcome_resolution.py",
             "tests/test_cio_instrument_record.py",
+            # Slice 2: beliefs on the record (rail + writer) and the mutation
+            # test: with vs without a belief, the gate route / next question and
+            # the wake commitment differ; no behaviour key anywhere in either.
+            "tests/test_instrument_belief_mutation_20260925.py",
+            "tests/test_wake_subject_selector.py",
+            "tests/test_decide_consults_wake_hits.py",
         ],
     ),
     (

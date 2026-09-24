@@ -343,11 +343,46 @@ def decide(inp: dict[str, Any], *, now: Optional[datetime] = None) -> dict[str, 
                              prior_artifact_ids=prior_ids,
                              prior_outcome="VALID")
 
+    # --- belief-aware escalation (agentic-memory tranche 1, Slice 2) ------
+    # Settled outcomes on the record say the desk's own prior calls on this
+    # subject were mostly wrong (>= BELIEF_MIN_SAMPLES, success rate below
+    # BELIEF_WEAK_SUCCESS_RATE). A first-pass flash would restate the same
+    # reasoning; route to pro and ask what changed. Cognition only: the route
+    # and the question move, nothing about size/order/stop/weight.
+    weak = _weak_prior_belief(inp)
+    if weak is not None:
+        n = int(weak.get("sample_size") or 0)
+        k = int(weak.get("successful") or 0)
+        return _decision("pro", "prior_belief_weak_escalates", **base,
+                         free_sources_tried=tried,
+                         prior_artifact_ids=prior_ids,
+                         prior_outcome=prior_outcome,
+                         belief_key=weak.get("belief_key"),
+                         belief_proposal_id=weak.get("belief_proposal_id"),
+                         belief_question=(
+                             f"Prior {weak.get('recommendation')} calls on {symbol or 'this subject'} "
+                             f"were wrong {n - k} of {n} times over {weak.get('horizon')}; "
+                             f"what changed, and what would falsify the standing thesis?"),
+                         next_eligible_at=(now + timedelta(hours=ttl_h or 168)).isoformat())
+
     return _decision("flash", "free_sources_exhausted_first_pass", **base,
                      free_sources_tried=tried,
                      prior_artifact_ids=prior_ids,
                      prior_outcome=prior_outcome,
                      next_eligible_at=(now + timedelta(hours=ttl_h or 168)).isoformat())
+
+
+def _weak_prior_belief(inp: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """The weakest qualifying belief on the record, or None. Pure."""
+    beliefs = inp.get("belief")
+    if not beliefs:
+        return None
+    try:
+        from scripts.lib.cio_instrument_record import weak_beliefs
+    except Exception:  # noqa: BLE001
+        return None
+    rows = weak_beliefs({"beliefs": list(beliefs) if isinstance(beliefs, list) else [beliefs]})
+    return rows[0] if rows else None
 
 
 def collapse_same_day_duplicates(

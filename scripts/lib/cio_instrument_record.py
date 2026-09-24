@@ -447,6 +447,145 @@ def apply_cognition(
     return rec, changed
 
 
+# ── beliefs: settled outcomes on the record ─────────────────────────────────
+#
+# Agentic-memory tranche 1, Slice 2 (2026-09-24). A belief is what settled
+# outcomes say about the desk's own prior calls on this subject: for one
+# (subject_key, recommendation, horizon) it carries sample_size / successful /
+# success_rate and the outcome ids that produced them. It is written ONLY by
+# the belief writer from settled rows (advisory_outcomes, resolved checkpoints,
+# CONFIRMED/REFUTED commitments) and ratified lessons; wake decide() reads it
+# before authoring. MBI_BEHAVIOR=0 applies unchanged: a belief may move the
+# next question, the research route and the narrative — never size, order,
+# stop, weight or execution, and apply_belief refuses those keys anywhere in
+# the block. `live_mutation` is always False: the record holds the belief, it
+# does not act on it.
+
+BELIEF_SCHEMA = "InstrumentBelief@v1"
+BELIEF_REQUIRED = (
+    "belief_key", "population", "horizon", "recommendation", "sample_size",
+    "successful", "success_rate", "outcome_ids", "belief_proposal_id",
+    "revision", "as_of",
+)
+# A prior call is "weak" when at least this many settled outcomes exist and
+# fewer than this share went the way the desk said. Mirrors
+# settle_agent_commitments.MIN_SAMPLES for the sample floor.
+BELIEF_MIN_SAMPLES = 5
+BELIEF_WEAK_SUCCESS_RATE = 0.4
+
+
+def _walk_keys(obj: Any, out: Optional[set[str]] = None) -> set[str]:
+    out = set() if out is None else out
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            out.add(str(k))
+            _walk_keys(v, out)
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            _walk_keys(v, out)
+    return out
+
+
+def apply_belief(
+    record: dict[str, Any],
+    *,
+    belief: dict[str, Any],
+    strict: bool = True,
+) -> tuple[dict[str, Any], list[str]]:
+    """Return (updated_record, changed_fields) with ``beliefs`` moved, or raise.
+
+    The rail: any BEHAVIOR_FIELDS key anywhere inside the block raises
+    BehaviorWriteRefused (a belief is about what happened, never what to do);
+    ``live_mutation`` other than False raises the same. A block whose
+    ``belief_proposal_id`` equals the stored one for its belief_key moved
+    nothing and is a CognitionNoOp under ``strict`` — a re-write that changes
+    no belief is not learning.
+    """
+    if not isinstance(belief, dict):
+        raise ValueError("belief must be a dict")
+    bad = sorted(k for k in _walk_keys(belief) if k in BEHAVIOR_FIELDS)
+    if bad:
+        raise BehaviorWriteRefused(f"MBI_BEHAVIOR=0: a belief may not carry {bad}")
+    if belief.get("live_mutation") not in (False, None):
+        raise BehaviorWriteRefused("MBI_BEHAVIOR=0: a belief may not request live_mutation")
+    missing = [k for k in BELIEF_REQUIRED if k not in belief]
+    if missing:
+        raise ValueError(f"belief is missing {missing}")
+
+    blk = dict(belief)
+    blk["schema"] = BELIEF_SCHEMA
+    blk["live_mutation"] = False
+    blk["memory_behavior_influence"] = MBI_BEHAVIOR
+    blk["authority"] = AUTHORITY
+
+    rec = dict(record)
+    beliefs = [dict(b) for b in (rec.get("beliefs") or []) if isinstance(b, dict)]
+    idx = next((i for i, b in enumerate(beliefs) if b.get("belief_key") == blk["belief_key"]), None)
+    if idx is not None and beliefs[idx].get("belief_proposal_id") == blk["belief_proposal_id"]:
+        if strict:
+            raise CognitionNoOp(
+                f"{rec.get('subject_key')}: belief {blk['belief_key']} unchanged "
+                f"({blk['belief_proposal_id']}) — a re-write that moves no belief is not persisted")
+        return rec, []
+    if idx is None:
+        beliefs.append(blk)
+    else:
+        beliefs[idx] = blk
+    rec["beliefs"] = beliefs
+    rec["updated_ts"] = _now()
+    return rec, ["beliefs"]
+
+
+def latest_belief(record: Optional[dict[str, Any]], *,
+                  recommendation: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """The most recently written belief on a record (optionally for one recommendation)."""
+    if not record:
+        return None
+    rows = [b for b in (record.get("beliefs") or []) if isinstance(b, dict)]
+    if recommendation:
+        want = str(recommendation).upper()
+        rows = [b for b in rows if str(b.get("recommendation") or "").upper() == want]
+    if not rows:
+        return None
+    return max(rows, key=lambda b: (str(b.get("as_of") or ""), int(b.get("revision") or 0)))
+
+
+def weak_beliefs(record: Optional[dict[str, Any]], *,
+                 min_samples: int = BELIEF_MIN_SAMPLES,
+                 threshold: float = BELIEF_WEAK_SUCCESS_RATE) -> list[dict[str, Any]]:
+    """Beliefs with enough settled outcomes and a success rate below threshold."""
+    if not record:
+        return []
+    out = []
+    for b in record.get("beliefs") or []:
+        if not isinstance(b, dict):
+            continue
+        try:
+            n = int(b.get("sample_size") or 0)
+            rate = float(b.get("success_rate"))
+        except (TypeError, ValueError):
+            continue
+        if n >= min_samples and rate < threshold:
+            out.append(b)
+    return sorted(out, key=lambda b: float(b.get("success_rate") or 0.0))
+
+
+def belief_sentence(belief: Optional[dict[str, Any]]) -> str:
+    """One plain sentence a model can be shown. Numbers, no instructions."""
+    if not belief:
+        return ""
+    try:
+        n = int(belief.get("sample_size") or 0)
+        k = int(belief.get("successful") or 0)
+        rate = float(belief.get("success_rate") or 0.0)
+    except (TypeError, ValueError):
+        return ""
+    return (f"Settled outcomes on record: prior {belief.get('recommendation')} calls on this "
+            f"subject were right {k} of {n} times over {belief.get('horizon')} "
+            f"(success rate {rate:.2f}, population {belief.get('population')}, "
+            f"belief {belief.get('belief_key')} rev {belief.get('revision')}).")
+
+
 def hash_changed(record: dict[str, Any], name: str, value: Any) -> bool:
     """True when an observable (price/weight/earnings/analyst) actually MOVED.
 
