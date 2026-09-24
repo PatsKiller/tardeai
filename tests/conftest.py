@@ -21,6 +21,8 @@ os.environ["TRADEAI_AUDIT_LEDGER_DIR"] = _tempfile.mkdtemp(prefix="tradeai_audit
 # sends: in live mode deliver_text holds the message, and test_plaintext_fallback_actually_unescapes_on_the_wire
 # failed on every host where the file says live. A test that exercises the editor sets its own mode.
 os.environ.setdefault("COMMS_EDITOR_MODE_FILE", os.path.join(_tempfile.mkdtemp(prefix="tradeai_comms_mode_tests_"), "absent"))
+# The host editor-failure policy file must not steer tests either (M5 4d, 2026-09-23).
+os.environ.setdefault("COMMS_EDITOR_FAIL_MODE_FILE", os.path.join(_tempfile.mkdtemp(prefix="tradeai_comms_fail_mode_tests_"), "absent"))
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))

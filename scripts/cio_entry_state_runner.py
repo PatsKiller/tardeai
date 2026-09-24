@@ -212,9 +212,29 @@ def alert_worthy(actionable: list[dict], prior: dict, done: set,
     return out
 
 
+def stamp_cio_stance(text: str, symbols: list[str], only_conflicts: bool = False) -> str:
+    """CIO stance footer, never a hold (M5 audit 2026-09-23, Module 4d).
+
+    This page IS a CIO decision: the runner writes its own ``cio-entry-*`` row to
+    cio_decisions just before paging, so gating it on the latest cio_decisions
+    row would read that row back and always allow -- circular. Instead the
+    footer shows the CIO's independent stance (the daily decision, excluding
+    ``cio-entry-*`` rows) and flags an AVOID/SELL conflict.
+    """
+    try:
+        from lib.publisher_stance_gate import stamp_symbols
+    except ImportError:
+        from scripts.lib.publisher_stance_gate import stamp_symbols  # type: ignore
+    try:
+        return stamp_symbols(text, symbols, exclude_decision_prefix="cio-entry-",
+                             note="entry page is CIO-authored, not gated", only_conflicts=only_conflicts)
+    except Exception:  # noqa: BLE001 -- a footer must never cost the page
+        return text
+
+
 def send_alerts(result: dict, evidence: dict) -> dict:
     out = {"cio_desk": False, "cio_bus": False}
-    out.update(operator_send(ces.render_operator(result, evidence)))
+    out.update(operator_send(stamp_cio_stance(ces.render_operator(result, evidence), [result["symbol"]])))
     try:
         from scripts.lib.cio_telegram_transport import send_cio_message
         r = send_cio_message(ces.render_cio(result, evidence), subject=f"Entry state {result['symbol']}",
@@ -302,7 +322,9 @@ def main() -> int:
         for r in to_alert:
             sent.append({"symbol": r["symbol"], "state": r["state"], **send_alerts(r, evidence[r["symbol"]])})
         if digest:
-            sent.append({"digest": [r["symbol"] for r in digest], **operator_send(ces.render_digest(digest))})
+            sent.append({"digest": [r["symbol"] for r in digest], **operator_send(stamp_cio_stance(ces.render_digest(digest),
+                                                                                        [r["symbol"] for r in digest],
+                                                                                        only_conflicts=True))})
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps({"as_of": datetime.now(timezone.utc).isoformat(), "counts": counts,
                                        "alerts": sent}, indent=2, default=str))
@@ -314,7 +336,8 @@ def main() -> int:
               "sent": sent,
               "blocked_reasons": _top_reasons(results.values())}
     if not a.apply and to_alert:
-        report["sample_operator_message"] = ces.render_operator(to_alert[0], evidence[to_alert[0]["symbol"]])
+        report["sample_operator_message"] = stamp_cio_stance(
+            ces.render_operator(to_alert[0], evidence[to_alert[0]["symbol"]]), [to_alert[0]["symbol"]])
     print(json.dumps(report, indent=2, default=str))
     return 0
 

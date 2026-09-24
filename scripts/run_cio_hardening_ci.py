@@ -622,6 +622,9 @@ GATES = [
             "tests/test_screener_go_alerts_20260914.py",
             "tests/test_screener_go_alerts_delivery_20260914.py",
             "tests/test_comms_editor_mode_file_20260914.py",
+            # 2026-09-23 M5 4d: every scheduled recommendation sender passes the stance
+            # gate; document captions pass the editor; editor fail mode is a switch.
+            "tests/test_m5_gate_coverage_20260923.py",
             # 2026-09-18: investment-shaped Telegram held on CIO Avoid / missing decision.
             "tests/test_cio_telegram_stance_gate_20260918.py",
             # 2026-09-23 M5: AVOID/SELL hard hold, soft stances GO→WATCH, hold-ledger dedupe.

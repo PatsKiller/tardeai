@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `f1763c66732ef8650a83c3299da16caf98ef1efe39b295575f01bd7affca9002`
+**Tree fingerprint:** `84653d426f2af16b8dab96fd97bbb208323f09f846d9fa8f12daaa297141bea0`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
