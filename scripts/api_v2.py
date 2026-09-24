@@ -40143,6 +40143,23 @@ def _options_validation(query=None):
         return {"ok": False, "error": str(e)[:200]}
 
 
+def _options_holdings_funnel(query=None):
+    """GET /api/v2/options/holdings-funnel — read-only owned-book drop reasons (CC + protective put).
+
+    Names why each holding is or is not an options idea. Does not widen IV/intent gates.
+    Optional ?resolve_chain=0 for share/IV-only (no live Schwab contract resolve).
+    """
+    q = query or {}
+    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
+    resolve_raw = str(g("resolve_chain", "1")).lower()
+    resolve_chain = resolve_raw not in ("0", "false", "no")
+    oe = _get_options_engine()
+    try:
+        return _json_clean(oe.build_holdings_funnel(resolve_chain=resolve_chain))
+    except Exception as e:
+        return {"ok": False, "error": str(e)[:240]}
+
+
 def _options_proposals(query=None):
     """GET /api/v2/options/proposals — high-quality options proposals (covered calls + defined risk)."""
     q = query or {}
@@ -46974,6 +46991,7 @@ ROUTES = {
     "/api/v2/schwab/market-hours": _schwab_market_hours,
     "/api/v2/schwab/option-chain": _schwab_option_chain,
     "/api/v2/options/proposals": _options_proposals,
+    "/api/v2/options/holdings-funnel": _options_holdings_funnel,
     "/api/v2/options/validation": _options_validation,
     "/api/v2/options/positions": _options_positions,
     "/api/v2/options/monitor": _options_monitor,
