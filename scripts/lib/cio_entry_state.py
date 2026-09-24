@@ -214,7 +214,8 @@ def _institutional_packet_block(result: dict, ev: dict, *, for_cio: bool) -> str
         "atr": (ev or {}).get("atr"),
     }
     packet = build_buy_ready_packet(result, merged)
-    lines = format_buy_ready_packet_lines(packet, for_cio=for_cio)
+    cap = _cap_text(ev) if for_cio else ""
+    lines = format_buy_ready_packet_lines(packet, for_cio=for_cio, cap_label=cap or None)
     if for_cio:
         lines.append(
             "Confirm or refute the equity entry and options alternative (Approve/Reject/Modify) for the operator."

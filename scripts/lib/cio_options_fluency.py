@@ -801,7 +801,12 @@ def build_buy_ready_packet(
     return packet
 
 
-def format_buy_ready_packet_lines(packet: dict[str, Any], *, for_cio: bool = False) -> list[str]:
+def format_buy_ready_packet_lines(
+    packet: dict[str, Any],
+    *,
+    for_cio: bool = False,
+    cap_label: Optional[str] = None,
+) -> list[str]:
     """Multi-line institutional packet for Telegram / CIO desk."""
     eq = packet.get("equity") or {}
     alt = packet.get("options_alt") or {}
@@ -815,8 +820,9 @@ def format_buy_ready_packet_lines(packet: dict[str, Any], *, for_cio: bool = Fal
 
     lines: list[str] = []
     if for_cio:
+        cap_bit = f" ({cap_label})" if cap_label else ""
         lines.append(
-            f"Entry state {state} for {sym}: price {_money(eq.get('price'))}, "
+            f"Entry state {state} for {sym}{cap_bit}: price {_money(eq.get('price'))}, "
             f"zone {_money(eq.get('entry_low'))}–{_money(eq.get('entry_high'))}, "
             f"stop {_money(eq.get('stop'))}, target {_money(eq.get('target'))}, "
             f"R:R {eq.get('rr')}. Plan source {eq.get('plan_source') or 'unknown'}."
