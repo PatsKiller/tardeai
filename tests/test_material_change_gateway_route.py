@@ -56,7 +56,8 @@ def test_the_legacy_alarm_actually_reaches_the_transport(alarm_capture, monkeypa
     accepted, report = nmc.deliver_notice(
         "MATERIAL CHANGE — AAPL news_burst x3.2 (advisory only)",
         subject_key="test-subject")
-    assert report == {"attempted": False}, "gateway must not be attempted when the flag is off"
+    assert report["attempted"] is False, "gateway must not be attempted when the flag is off"
+    assert report["held"] == [], "nothing was held by the editor"
     alarm_capture.assert_fired(contains="MATERIAL CHANGE")
     assert accepted is True
 
@@ -140,18 +141,29 @@ def test_a_gateway_failure_does_not_silently_become_a_legacy_success():
 
 
 def test_rows_are_not_consumed_when_delivery_fails():
-    """`notified_at` may only be stamped when acceptance is true.
+    """`notified_at` may only be stamped when delivery is true.
 
     The file's own history records why: on the first live run the send was
     ACCEPTED, the router suppressed it into the 8pm digest, and three changes
     were marked notified while the operator received nothing. Consumed-and-silent
-    is the worst outcome available here.
+    is the worst outcome available here. Re-anchored 2026-09-24: the stamp lives
+    in `_mark`, and every call to it must sit under an `if accepted:` guard.
     """
+    import ast
+
     src = (ROOT / "scripts" / "notify_material_change.py").read_text()
-    update_pos = src.find("SET notified_at = now()")
-    guard_pos = src.rfind("if accepted:", 0, update_pos)
-    assert guard_pos != -1 and update_pos != -1
-    assert guard_pos < update_pos, "notified_at must be stamped only under `if accepted`"
+    tree = ast.parse(src)
+    guarded = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.If) and isinstance(node.test, ast.Name) and node.test.id == "accepted":
+            for b in node.body:
+                guarded.update(id(n) for n in ast.walk(b))
+    calls = [n for n in ast.walk(tree) if isinstance(n, ast.Call)
+             and isinstance(n.func, ast.Name) and n.func.id == "_mark"]
+    assert calls, "the notified_at stamp must go through _mark"
+    assert all(id(c) in guarded for c in calls), "_mark called outside an `if accepted:` guard"
+    mark_src = src.split("def _mark(", 1)[1].split("\ndef ", 1)[0]
+    assert "SET notified_at = now()" in mark_src and "notified_at IS NULL" in mark_src
 
 
 def _producer_message_class() -> str:
@@ -331,7 +343,7 @@ def test_bookkeeping_failure_never_fails_the_alert():
     runs. A raise here would turn a successful send into a crashed run — which
     is exactly how the 15:30Z deadlock left an advisory queued to re-send."""
     src = (ROOT / "scripts" / "notify_material_change.py").read_text()
-    body = src.split("result[\"rows_produced\"] = cur.rowcount", 1)[1][:800]
+    body = src.split('sent_rows += _mark(cur, guids, "SENT")', 1)[1][:800]
     assert "capture_agent_turns" in body
     assert "except Exception" in body and "[outbound-tag]" in body
     assert body.index("conn.commit()") < body.index("capture_agent_turns"), (

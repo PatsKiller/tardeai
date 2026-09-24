@@ -250,6 +250,10 @@ def _provider_send_telegram(
             "adapter_version": ADAPTER_VERSIONS["telegram"],
             "message_ids": mids,
             "chat_ids": list(result.get("chat_ids") or targets or []),
+            # Chunks the comms editor held instead of sending (additive). A caller
+            # that must not consume work on a hold reads this; ``delivered`` is
+            # unchanged for everyone else.
+            "held": list(result.get("held") or []),
         },
     }
 

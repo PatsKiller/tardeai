@@ -1822,6 +1822,9 @@ GATES = [
             # 2026-09-21 operator: "plan is stale" was emitted for a plan 93% of the way
             # to its target AND for one 31% through its stop — abs() erased the sign.
             "tests/test_plan_state_not_stale_20260921.py",
+            # 2026-09-24 maturity review: page only held names / fresh CIO BUY_READY, one daily
+            # digest, one reconciled CIO verdict, editor holds are not deliveries.
+            "tests/test_material_change_alert_v2_20260924.py",
             "tests/test_material_change_sql_placeholders_20260915.py",
             "tests/test_maturity_runtime_evidence_per_agent_20260915.py",
             "tests/test_material_change_notice_position_20260915.py",
