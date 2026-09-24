@@ -121,6 +121,25 @@ def _ollama_narrative(prompt: str, timeout: int = 90) -> str:
         return ""
 
 
+def _gate_go(go_tickers: List[Dict]) -> tuple:
+    """CIO stance gate for the GO list (M5 audit 2026-09-23, Module 4d).
+
+    Held symbols leave the GO list and are counted on one line; soft CIO stances
+    move to Watch. One held symbol never silences the digest.
+    Returns ``(go_allowed, go_as_watch, held_line)``.
+    """
+    if not go_tickers:
+        return go_tickers, [], ""
+    try:
+        from lib.publisher_stance_gate import gate_bullish_symbols
+    except ImportError:
+        from scripts.lib.publisher_stance_gate import gate_bullish_symbols  # type: ignore
+    g = gate_bullish_symbols([t.get("symbol") for t in go_tickers], source="morning_digest")
+    allowed = [t for t in go_tickers if str(t.get("symbol") or "").upper() in g.allowed]
+    watch = [t for t in go_tickers if str(t.get("symbol") or "").upper() in g.watch]
+    return allowed, watch, g.held_line()
+
+
 def build_premarket_digest(project_root: Path = PROJECT_ROOT) -> str:
     """Build the 6:55AM pre-market digest message."""
     run_data = _load_latest_run(project_root)
@@ -139,6 +158,8 @@ def build_premarket_digest(project_root: Path = PROJECT_ROOT) -> str:
 
     go_tickers = [t for t in scored if t.get("decision") == "GO"]
     wait_tickers = [t for t in scored if t.get("decision") == "WAIT"]
+    go_tickers, go_as_watch, go_held_line = _gate_go(go_tickers)
+    wait_tickers = wait_tickers + go_as_watch
 
     # Memory analysis
     trap_warnings = []
@@ -187,6 +208,9 @@ def build_premarket_digest(project_root: Path = PROJECT_ROOT) -> str:
         sections.append(f"🔥 <b>GO:</b> {go_lines}")
     else:
         sections.append("⏳ <b>GO:</b> No GO tickers yet")
+
+    if go_held_line:
+        sections.append(go_held_line)
 
     # Building momentum
     if building_momentum:
@@ -250,8 +274,15 @@ def build_preopen_brief(project_root: Path = PROJECT_ROOT) -> str:
         market = run_data.get("market_snapshot", {})
 
     go_tickers = [t for t in scored if t.get("decision") == "GO"]
+    go_tickers, go_as_watch, go_held_line = _gate_go(go_tickers)
     spy_chg = market.get("spy_change_pct", 0) or 0
     vix = market.get("vix", 0) or 0
+    gate_tail = "\n".join(
+        x for x in (
+            ("👀 Watch (CIO stance): " + ", ".join(t["symbol"] for t in go_as_watch[:5])) if go_as_watch else "",
+            go_held_line,
+        ) if x
+    )
 
     if go_tickers:
         go_detail = "\n".join(
@@ -269,12 +300,14 @@ Be specific and actionable. Max 20 words."""
             f"⚡ <b>Pre-Open Brief — {time_str}</b>\n\n"
             f"🔥 <b>{len(go_tickers)} GO tickers:</b>\n{go_detail}\n\n"
             f"💬 {narrative}"
+            + (f"\n\n{gate_tail}" if gate_tail else "")
         )
     else:
         return (
             f"⚡ <b>Pre-Open Brief — {time_str}</b>\n\n"
             f"No GO tickers. SPY {spy_chg:+.2f}% | VIX {vix:.1f}\n"
             f"Stay patient. Wait for strong setups."
+            + (f"\n\n{gate_tail}" if gate_tail else "")
         )
 
 
@@ -290,7 +323,7 @@ def send_digest(digest_type: str = "premarket",
 
     print(f"\n{message}\n")
     _send_telegram(message, project_root)
-    print(f"[morning-digest] Done.")
+    print("[morning-digest] Done.")
 
 
 if __name__ == "__main__":

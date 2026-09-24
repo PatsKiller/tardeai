@@ -27,6 +27,7 @@ except ImportError:
     pass
 
 from db_adapter import get_connection
+from lib.paper_account_policy import all_paper_only, suppress_paper_alert
 
 log = logging.getLogger("atm")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s")
@@ -415,13 +416,17 @@ def _run_cycle_locked():
         total_pnl_pct += pnl_pct
         if pnl_pct <= -thresholds["per_account"]:
             log.warning(f"Per-account kill switch: {acct} at {pnl_pct:.1f}%")
-            _telegram_both(f"ATM KILL SWITCH: {acct} daily P&L {pnl_pct:.1f}% — account paused")
+            if not suppress_paper_alert("atm_auto_approver.kill_switch", {"account": acct}):
+                _telegram_both(f"ATM KILL SWITCH: {acct} daily P&L {pnl_pct:.1f}% — account paused")
 
     if total_pnl_pct <= -thresholds["aggregate"]:
         log.critical(f"Aggregate kill switch: {total_pnl_pct:.1f}% — pausing ATM")
         _set_atm_mode(conn, "paused", "kill_switch",
                       f"aggregate_daily_pnl_{total_pnl_pct:.1f}pct")
-        _telegram_both(f"ATM KILL SWITCH FIRED: aggregate daily P&L {total_pnl_pct:.1f}% — ATM PAUSED")
+        if all_paper_only(enabled_accounts):
+            log.info("[paper-mute] atm_auto_approver.aggregate_kill_switch: every enabled account is paper")
+        else:
+            _telegram_both(f"ATM KILL SWITCH FIRED: aggregate daily P&L {total_pnl_pct:.1f}% — ATM PAUSED")
         return
 
     # ── Load pending proposals (exclude already-expired) ──
@@ -589,7 +594,11 @@ def _run_cycle_locked():
                           "rejected",
                           [{"gate": expiry_gate, "detail": expiry_message}],
                           0, 0, 0, 0, 0, 0, 0, False, config_hash, mode)
-            expired_this_cycle.append(f"{sym} ({expiry_code})")
+            # Paper/training accounts never page (OPERATOR DECISION 2026-09-22): the
+            # expiry is still decided and logged; only the Telegram line is dropped.
+            if not suppress_paper_alert("atm_auto_approver.expiry",
+                                        {"account": target, "broker": acct.get("broker")}, sym):
+                expired_this_cycle.append(f"{sym} ({expiry_code})")
             log.info(f"  {sym}: EXPIRED — {expiry_code}")
             continue
 
@@ -898,11 +907,13 @@ def _run_cycle_locked():
             entry = result.get("entry", p.get("proposed_entry", 0))
             log.info(f"  {sym}: APPROVED — trade #{trade_id}, broker={broker_status}")
 
-            _telegram_both(
-                f"ATM auto-approved: {sym} ({sid.replace('_', ' ')}) "
-                f"qty={shares} entry=${entry:.2f} -> {target} "
-                f"({acct_broker}/{acct_mode}) broker={broker_status}"
-            )
+            if not suppress_paper_alert("atm_auto_approver.approved",
+                                        {"account": target, "broker": acct_broker}, sym):
+                _telegram_both(
+                    f"ATM auto-approved: {sym} ({sid.replace('_', ' ')}) "
+                    f"qty={shares} entry=${entry:.2f} -> {target} "
+                    f"({acct_broker}/{acct_mode}) broker={broker_status}"
+                )
 
         except Exception as e:
             log.error(f"  {sym}: approval error: {e}")

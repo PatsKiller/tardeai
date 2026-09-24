@@ -724,6 +724,8 @@ def send_scalp_alert(symbol: str, score: int, grade: str, decision: str,
             logger.info("%s — GO alert held by CIO stance gate: %s (cio=%s)",
                         symbol, gate.held_reason, gate.cio_action)
             return
+        from lib.cio_telegram_stance_gate import apply_stance_rewrite
+        msg = apply_stance_rewrite(msg, str(symbol), gate)
     except Exception as exc:  # noqa: BLE001 — fail closed on gate errors
         logger.warning("%s — GO alert held: CIO stance gate error (%s)", symbol, type(exc).__name__)
         return

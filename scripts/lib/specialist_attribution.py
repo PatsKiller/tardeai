@@ -32,9 +32,11 @@ ALLOWED_SOURCES = frozenset(
 )
 
 #: One-shot notice when A2A is off (Maria). Say once; do not invent specialists after.
+#: M5 Module 3 governance notice, verbatim (operator spec 2026-09-23). The
+#: former wording ("agentToAgent is off — …") stays recognised as honest text.
 A2A_DENY_NOTICE = (
-    "agentToAgent is off — no Iris/Alex (or other specialist) session ran. "
-    "House + Hermes join only; specialist labels withheld."
+    "🔒 Direct agent-to-agent delegation is currently restricted by policy. "
+    "Current assessment rendered from stored CIO decisions."
 )
 
 #: Desk / Maria refuse line when a label was requested without evidence.
@@ -59,6 +61,16 @@ _LINE_CLAIM_RE = re.compile(
     r")"
 )
 
+#: Section-header attribution: a line that is only a (bold / emoji-prefixed)
+#: specialist name followed by a dash or colon label, e.g.
+#: "**🔍 Iris — research / catalyst**" or "🎯 Alex: CIO / fit vs your book"
+#: (Maria 2026-09-23 12:26Z S reply). The desk product voice uses "Alex ·",
+#: which this does not match.
+_HEADER_CLAIM_RE = re.compile(
+    r"(?im)^\s*[-*•]?\s*(?:\*\*|__)?\s*(?:[^\w\s*_]{1,3}\s*)?"
+    r"(?P<agent>iris|alex|aegis|steph)\s*[—–\-:|]"
+)
+
 #: Inline roleplay phrases that must not survive without evidence.
 _INLINE_CLAIM_RE = re.compile(
     r"\b(?P<agent>iris|alex|aegis|steph)\s+"
@@ -76,7 +88,8 @@ _DESK_PRODUCT_VOICE_RE = re.compile(
 #: Honesty language that mentions specialists without attributing a take.
 _HONEST_NO_SPECIALIST_RE = re.compile(
     r"(?i)\bno specialist\b|\bspecialist agent has (?:not )?reviewed\b|"
-    r"specialist labels? withheld|agentToAgent is off"
+    r"specialist labels? withheld|agentToAgent is off|"
+    r"agent-to-agent delegation is currently restricted"
 )
 
 
@@ -244,11 +257,12 @@ def scrub_operator_specialist_claims(
             out_lines.append(line)
             continue
 
-        m = _LINE_CLAIM_RE.match(line)
+        m = _LINE_CLAIM_RE.match(line) or _HEADER_CLAIM_RE.match(line)
         if m:
-            agent = (m.group("agent") or "").lower() or None
-            is_cio = bool(m.group("cio"))
-            is_pair = bool(m.group("pair"))
+            groups = m.groupdict()
+            agent = (groups.get("agent") or "").lower() or None
+            is_cio = bool(groups.get("cio"))
+            is_pair = bool(groups.get("pair"))
             if _claim_authorized(
                 agent=agent,
                 is_cio_take=is_cio,

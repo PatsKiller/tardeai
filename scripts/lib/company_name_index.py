@@ -263,6 +263,22 @@ def refresh() -> None:
     _build.cache_clear()
 
 
+def is_exact_name(name: Any) -> bool:
+    """True when `name` normalises to a STORED name that maps to exactly one symbol.
+
+    resolve_name reports matched_on="exact" for a query whose every token is a
+    leading prefix of one unique stored name ("NORTHROP" -> "NORTHROP GRUMMAN").
+    That is right for a capitalised mention, but lowercase prose windows need the
+    stricter claim: the words ARE the stored name, not merely its opening words.
+    """
+    norm = normalize_name(name)
+    if len(norm) < 3:
+        return False
+    exact, _first = _build()
+    hits = exact.get(norm) or []
+    return len(set(hits)) == 1
+
+
 def resolve_name(name: Any) -> Optional[dict[str, Any]]:
     """Company name -> {symbol, description, cusip}, or None.
 

@@ -16,6 +16,7 @@ from typing import Any
 
 from scripts.lib.hermes_curation_summary import KIND_BASELINE, KIND_MATERIAL, load_latest
 from scripts.lib.hermes_research_context import build_context
+from scripts.lib.memory_retrieval_unit import enforce_token_budget
 from scripts.lib.research_gap import build_gap, upsert_gap
 from scripts.lib.security_identity import (
     attach_identity_v2,
@@ -647,18 +648,23 @@ def build_cio_context_v2(
     sections.setdefault("RELEVANT_FEEDBACK", _unavailable("cio_operator_ticker_feedback", authority=AUTH_OPERATOR))
     sections.setdefault("MATURE_OUTCOMES", _unavailable("cio_outcome_store", authority=AUTH_HISTORICAL))
     sections.setdefault("LESSONS", _unavailable("advisory_lessons", authority=AUTH_HISTORICAL))
-    sections.setdefault(
-        "MEMORY_RETRIEVAL_UNITS",
-        _section(
-            pack.get("receipts") or [],
+    if "MEMORY_RETRIEVAL_UNITS" not in sections:
+        # Receipts arrive in rank order (build_cio_cognition sorts by portfolio
+        # role), so the budget drops the lowest-ranked units first.
+        bounded = enforce_token_budget(list(pack.get("receipts") or []))
+        mru = _section(
+            bounded["units"],
             authority=AUTH_RESEARCH,
             source="ContextUseReceipt@v1",
             version="v1",
             as_of=pack.get("as_of"),
             security_guid=None,
             freshness="BOUNDED",
-        ),
-    )
+        )
+        mru["token_budget"] = bounded["token_budget"]
+        mru["token_estimate"] = bounded["token_estimate"]
+        mru["dropped_for_budget"] = bounded["dropped_for_budget"]
+        sections["MEMORY_RETRIEVAL_UNITS"] = mru
     for name in V2_SECTIONS:
         sections.setdefault(name, _unavailable(name))
     return {

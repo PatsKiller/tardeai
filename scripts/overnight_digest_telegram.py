@@ -69,8 +69,22 @@ def compose_message(d: dict) -> str:
     if rv:
         reenter = [r["symbol"] for r in rv if r.get("reentry_signal", "").upper() in ("RE_ENTER", "BUY", "REENTER")]
         watch = [r["symbol"] for r in rv if r.get("verdict", "").upper() in ("NEEDS_MORE_DATA", "WAIT_FOR_CATALYST", "HOLD")]
+        held_line = ""
+        if reenter:
+            # CIO stance gate (M5 audit 2026-09-23, Module 4d): held names leave the
+            # re-enter list and are counted; soft CIO stances move to Watch.
+            try:
+                from lib.publisher_stance_gate import gate_bullish_symbols
+            except ImportError:
+                from scripts.lib.publisher_stance_gate import gate_bullish_symbols  # type: ignore
+            g = gate_bullish_symbols(reenter, source="overnight_digest_telegram", proposal_verb="BUY")
+            reenter = [s for s in reenter if s.upper() in g.allowed]
+            watch = [s for s in reenter_watch_first(g.watch, watch)]
+            held_line = g.held_line()
         if reenter:
             lines.append(f"🔄 Re-enter signals: {', '.join(reenter)}")
+        if held_line:
+            lines.append(held_line)
         if watch:
             lines.append(f"👀 Watch: {', '.join(watch[:5])}")
         lines.append(f"Recovery: {len(rv)} symbols reviewed")
@@ -116,9 +130,16 @@ def compose_message(d: dict) -> str:
             lines.append("")
 
     # Link
-    lines.append(f"Full: https://ms01-openclaw.tail163d14.ts.net/v3/intelligence")
+    lines.append("Full: https://ms01-openclaw.tail163d14.ts.net/v3/intelligence")
 
     return "\n".join(lines)
+
+
+def reenter_watch_first(gated_watch: list, watch: list) -> list:
+    """Re-enter names the CIO rates HOLD/RESEARCH_MORE lead the Watch line."""
+    out = list(gated_watch)
+    out += [s for s in watch if s not in out]
+    return out
 
 
 def send(message: str, dry_run: bool = False):

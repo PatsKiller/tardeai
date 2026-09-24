@@ -927,7 +927,7 @@ def format_structured_reply(
     lines.append("")
     lines.append(f"Reply to continue · `/cio ack {plan_id or '<id>'}` or `ack`")
     if pin:
-        lines.append(f"Thesis: `/cio thesis`")
+        lines.append("Thesis: `/cio thesis`")
     lines.append("No orders/stops from chat · READ_ONLY_ADVISORY")
     return "\n".join(lines)
 
@@ -1391,7 +1391,8 @@ def send_cio_message(chat_id: str, text: str, *, reply_to: Optional[str] = None)
 
 def _best_effort_capture_turn(text: str, *, role: str, chat_id: str,
                               message_id: Any = None,
-                              reply_to_message_id: Any = None) -> None:
+                              reply_to_message_id: Any = None,
+                              lineage: Optional[dict[str, Any]] = None) -> None:
     """Store ONE conversation turn — operator or agent — with identity tags.
 
     BOTH halves are captured. A question without its answer loses what the agent
@@ -1414,7 +1415,7 @@ def _best_effort_capture_turn(text: str, *, role: str, chat_id: str,
             thread_root,
         )
 
-        tag = tag_inbound(text)
+        tag = tag_inbound(text, operator_text=(role == "operator"))
         conn = psycopg2.connect(
             host=os.environ.get("DB_HOST", "localhost"),
             dbname=os.environ.get("DB_NAME", "trade_ai"),
@@ -1437,7 +1438,7 @@ def _best_effort_capture_turn(text: str, *, role: str, chat_id: str,
         persist_turn(tag, conn=conn, text=text, role=role,
                      chat_id=chat_id, message_id=message_id,
                      thread_id=root, reply_to_message_id=reply_to_message_id,
-                     channel="telegram")
+                     channel="telegram", **(lineage or {}))
     except Exception as exc:  # noqa: BLE001 — bookkeeping must not break the reply
         # No module logger here; stderr is what the systemd unit captures.
         try:
@@ -1499,11 +1500,47 @@ def process_telegram_message(
     # Allowlist-gated, because storing arbitrary inbound text is not something to
     # do by accident, and BEST-EFFORT: a tagging failure must never cost the
     # operator their answer. The reply is the product; the tag is bookkeeping.
+    # Lineage: the operator's message is an INBOUND ledger event (written by the
+    # inbound poller before this runs). Everything this turn causes -- the
+    # agent's reply turn, gap and Hermes requests, any alert it sends -- is
+    # written inside a scope naming that event, so turn -> gap -> research ->
+    # outbound joins by event id instead of by ticker. Best-effort: an unknown
+    # event leaves lineage empty and changes nothing else.
+    inbound_event = _inbound_event_for(chat_id, message_id, dry_run=dry_run)
     if text and chat_id in (allowlist_chat_ids() or set()):
         _best_effort_capture_turn(
             text, role="operator", chat_id=chat_id, message_id=message_id,
-            reply_to_message_id=reply_to.get("message_id"))
+            reply_to_message_id=reply_to.get("message_id"),
+            lineage=inbound_event)
 
+    from scripts.lib.event_lineage import lineage_scope
+
+    with lineage_scope(parent_event_id=(inbound_event or {}).get("event_id")):
+        return _process_operator_message_in_scope(
+            process_operator_message, chat_id=chat_id, message_id=message_id,
+            text=text, reply_to=reply_to, from_user=from_user,
+            dedup_path=dedup_path, msg_map_path=msg_map_path, rate_path=rate_path,
+            dry_run=dry_run, send_fn=_send)
+
+
+def _inbound_event_for(chat_id: str, message_id: Any, *, dry_run: bool = False) -> Optional[dict[str, Any]]:
+    """{event_id, causation_id, parent_event_id} of the inbound message, or None. Never raises."""
+    if dry_run or not chat_id or message_id in (None, ""):
+        return None
+    try:
+        from scripts.lib.event_lineage import resolve_inbound_event
+
+        ev = resolve_inbound_event(chat_id, message_id)
+    except Exception:  # noqa: BLE001
+        return None
+    if not ev or not ev.get("event_id"):
+        return None
+    return {k: ev.get(k) for k in ("event_id", "causation_id", "parent_event_id") if ev.get(k)}
+
+
+def _process_operator_message_in_scope(process_operator_message, *, chat_id, message_id, text,
+                                       reply_to, from_user, dedup_path, msg_map_path, rate_path,
+                                       dry_run, send_fn):
     return process_operator_message(
         channel="telegram",
         chat_id=chat_id,
@@ -1519,7 +1556,7 @@ def process_telegram_message(
         msg_map_path=msg_map_path,
         rate_path=rate_path,
         dry_run=dry_run,
-        send_fn=None if dry_run else _send,
+        send_fn=None if dry_run else send_fn,
         wakes_limit=wakes_per_hour(),
         actor_id="cio_telegram_bot",
     )

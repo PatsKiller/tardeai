@@ -163,8 +163,9 @@ def process_update_atomically(
 
     # 3) Identity tag (deterministic; no model).
     text = _inbound_text(update, event)
-    tag_fn = steps["tag"] if steps and "tag" in steps else tag_inbound
-    tag = tag_fn(text)
+    # The atomic path persists role="operator" turns only (see
+    # _persist_turn_for_update), so the operator-text readings apply.
+    tag = steps["tag"](text) if steps and "tag" in steps else tag_inbound(text, operator_text=True)
 
     # 4) Durable operator turn.
     turn_fn = steps["turn"] if steps and "turn" in steps else _persist_turn_for_update
@@ -290,7 +291,22 @@ def _persist_turn_for_update(update: dict[str, Any], tag: dict[str, Any], text: 
         message_id=message_id,
         thread_id=message_id,
         reply_to_message_id=reply_to,
+        **_event_lineage(event),
     )
+
+
+def _event_lineage(event: Any) -> dict[str, Any]:
+    """The inbound event's own ids for the turn row (event_id / causation / parent)."""
+    def _get(k: str) -> Any:
+        if isinstance(event, dict):
+            return event.get(k)
+        return getattr(event, k, None)
+
+    return {
+        "event_id": _get("event_id"),
+        "causation_id": _get("causation_id"),
+        "parent_event_id": _get("parent_event_id"),
+    }
 
 
 def _emit_receipt_for_event(

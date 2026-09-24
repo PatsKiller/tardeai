@@ -59,7 +59,22 @@ SELECT
   EXISTS (
     SELECT 1 FROM pg_constraint
     WHERE conname = 'fact_single_valued_current_excl'
-  ) AS excl_ok
+  ) AS excl_ok,
+  EXISTS (
+    SELECT 1 FROM pg_proc p
+    JOIN pg_namespace n ON n.oid = p.pronamespace
+    WHERE n.nspname = 'memory_r10_m2'
+      AND p.proname = 'supersede_single_valued_fact'
+  ) AS supersede_fn_ok,
+  EXISTS (
+    SELECT 1 FROM pg_attribute a
+    JOIN pg_class c ON c.oid = a.attrelid
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE n.nspname = 'memory_r10_m2'
+      AND c.relname = 'MemoryFactVersion@v2'
+      AND a.attname = 'row_kind'
+      AND NOT a.attisdropped
+  ) AS view_row_kind_ok
 """
 
 

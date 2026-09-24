@@ -37,7 +37,11 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "M2SubstrateBenchmark@v1"
 PGMNEMO_TARGET = "0.20.0"  # official current stable as of 2026-08-20 (pgxn/github)
 FORBIDDEN_PORTS = {"5432"}
-DEFAULT_DSN = "postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow"
+from scripts.lib.m2_live_shadow_guard import (  # noqa: E402
+    SHADOW_ADMIN_DSN as DEFAULT_DSN,
+    destructive_reset_permitted,
+    refuse_live_shadow_under_pytest,
+)
 
 # Production cognitive-memory access is refused unless the operator sets this to
 # exactly "1". It is the single opt-in for the whole M2 substrate: unset, every
@@ -129,6 +133,7 @@ def connect(dsn: str | None = None):
     import psycopg2
 
     dsn = _assert_isolated_dsn(dsn or os.getenv("M2_DSN") or DEFAULT_DSN)
+    refuse_live_shadow_under_pytest(dsn)
     conn = psycopg2.connect(dsn)
     conn.autocommit = True
     return conn
@@ -143,7 +148,9 @@ def apply_schema(conn) -> None:
         # production memory is later authorized: re-applying must refuse rather
         # than wipe live memory. The SQL file enforces the same rule independently
         # via its isolated-database allowlist; this is the client-side half.
-        if not conn_targets_production(conn):
+        # The LIVE shadow (hourly AEC memory since 09-20) is refused too unless
+        # explicitly opted in -- pytest wiped it on every run (M5 audit 09-23).
+        if destructive_reset_permitted(conn, is_production=conn_targets_production(conn)):
             cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(sql)
     # r10 rebuild strips v2 packaging (PR #1158). Re-heal aliases/views/trigger.

@@ -17,7 +17,11 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-COVERS = ["scripts/alpaca_stop_manager.py:454"]
+# Line moved 454 -> 461 (M5 guardrails 2026-09-23): the site is now behind the
+# paper-account mute, since alpaca_stop_manager only manages ALPACA_PAPER and the
+# operator's 09-22 decision is that paper never pages. The classification pinned
+# below still holds for any real-money reuse of this message.
+COVERS = ["scripts/alpaca_stop_manager.py:461"]
 
 NAKED = ("🛑 NAKED paper position ABCD: OCO convert interrupted (OCO_REPLACING) and NO stop "
          "exists at the broker. Run alpaca_stop_manager.py --repair-oco --apply to re-place.")

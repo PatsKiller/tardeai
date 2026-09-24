@@ -40,6 +40,21 @@ SINGLE_VALUED_PREDICATES = frozenset({
 })
 
 
+SUPERSEDE_POLICY = "latest_assertion_supersedes_overlap"
+SUPERSEDE_POLICY_VERSION = "v2"
+
+
+def _source_sha() -> str | None:
+    """Code SHA of the running release (SOURCE_COMMIT/BUILD_SHA), when stamped."""
+    for name in ("SOURCE_COMMIT", "BUILD_SHA"):
+        p = ROOT / name
+        if p.is_file():
+            parts = p.read_text(encoding="utf-8").strip().split()
+            if parts:
+                return parts[0]
+    return None
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -76,8 +91,12 @@ def apply_bitemporal_schema_v2(conn) -> dict[str, Any]:
     with conn.cursor() as cur:
         # Opt in to the base file's destructive reset — never for production,
         # even once production memory is authorized. Belt and braces with the
-        # SQL file's own isolated-database allowlist.
-        if not conn_targets_production(conn):
+        # SQL file's own isolated-database allowlist. The LIVE shadow is refused
+        # too unless explicitly opted in: pytest reached this through the
+        # m2_conn fixture and dropped live memory on every run (M5 audit 09-23).
+        from scripts.lib.m2_live_shadow_guard import destructive_reset_permitted  # noqa: PLC0415
+
+        if destructive_reset_permitted(conn, is_production=conn_targets_production(conn)):
             cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(base)
         cur.execute(delta)
@@ -128,18 +147,33 @@ class CIOEnvelopeIntegrator:
         import psycopg2
 
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg2.connect(self.dsn)
+            from scripts.lib.m2_live_shadow_guard import refuse_live_shadow_under_pytest  # noqa: PLC0415
+
+            self._conn = psycopg2.connect(refuse_live_shadow_under_pytest(self.dsn))
             self._conn.autocommit = True
+            self._heal_packaging(self._conn)
         return self._conn
+
+    @staticmethod
+    def _heal_packaging(conn) -> None:
+        """Bring v2 packaging (incl. supersede_single_valued_fact) up to date.
+
+        Additive and idempotent; refused for production, where the cutover is
+        an operator step and a missing writer must surface as an error."""
+        if conn_targets_production(conn):
+            return
+        from scripts.lib.bitemporal_schema_heal import ensure_bitemporal_packaging_v2  # noqa: PLC0415
+
+        ensure_bitemporal_packaging_v2(conn)
 
     def close(self) -> None:
         if self._conn is not None and not self._conn.closed:
             self._conn.close()
         self._conn = None
 
-    def _set_tenant(self, conn) -> None:
+    def _set_tenant(self, conn, *, local: bool = False) -> None:
         with conn.cursor() as cur:
-            cur.execute("SELECT set_config('app.tenant_id', %s, false)", (self.tenant_id,))
+            cur.execute("SELECT set_config('app.tenant_id', %s, %s)", (self.tenant_id, local))
 
     def _resolve_subject(self, envelope: dict[str, Any]) -> dict[str, str | None]:
         symbol = envelope.get("symbol") or envelope.get("ticker")
@@ -163,13 +197,19 @@ class CIOEnvelopeIntegrator:
         identity_guid: str,
         predicate: str,
         valid_period: str,
-    ) -> list[str]:
+        obj: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """CURRENT single-valued versions overlapping ``valid_period``, oldest first.
+
+        Each row says whether it already asserts ``obj`` over the whole of
+        ``valid_period`` (``same_and_covers``) — a re-assertion, not a change."""
         if predicate not in SINGLE_VALUED_PREDICATES:
             return []
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT memory_version_id::text
+                SELECT memory_version_id::text,
+                       (object_value = %s::jsonb AND valid_period @> %s::tstzrange) AS same_and_covers
                   FROM memory_r10_m2.memory_fact_version
                  WHERE tenant_id = %s
                    AND identity_guid = %s::uuid
@@ -177,10 +217,45 @@ class CIOEnvelopeIntegrator:
                    AND upper_inf(tx_period)
                    AND temporal_policy = 'SINGLE_VALUED_CURRENT'
                    AND valid_period && %s::tstzrange
+                 ORDER BY version_seq
+                 FOR UPDATE
                 """,
-                (self.tenant_id, identity_guid, predicate, valid_period),
+                (json.dumps(obj or {}), valid_period, self.tenant_id, identity_guid, predicate, valid_period),
             )
-            return [r[0] for r in cur.fetchall()]
+            return [{"memory_version_id": r[0], "same_and_covers": bool(r[1])} for r in cur.fetchall()]
+
+    def _insert_adjudication(self, conn, adj: dict[str, Any]) -> None:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO memory_r10_m2.adjudication_receipt (
+                  adjudication_id, tenant_id, subject_guid, predicate, conflict_id,
+                  candidate_fact_ids, selected_fact_id, rejected_fact_ids,
+                  deterministic_policy, policy_version, provider, model, prompt_version,
+                  evidence_refs, trace_id, source_sha, chain_of_thought
+                ) VALUES (
+                  %s::uuid,%s,%s,%s,%s,%s::uuid[],%s::uuid,%s::uuid[],%s,%s,%s,%s,%s,%s,%s,%s,false
+                )
+                """,
+                (
+                    adj["adjudication_id"],
+                    adj["tenant_id"],
+                    adj["subject_guid"],
+                    adj["predicate"],
+                    adj["conflict_id"],
+                    adj["candidate_fact_ids"],
+                    adj["selected_fact_id"],
+                    adj["rejected_fact_ids"],
+                    adj["policy"],
+                    adj["policy_version"],
+                    adj.get("provider"),
+                    adj.get("model"),
+                    adj.get("prompt_version"),
+                    adj["evidence_refs"],
+                    adj.get("trace_id"),
+                    adj.get("source_sha"),
+                ),
+            )
 
     def integrate_envelope(
         self,
@@ -252,7 +327,39 @@ class CIOEnvelopeIntegrator:
             return receipt
 
         conn = self.connect()
-        self._set_tenant(conn)
+        # One transaction: identity, adjudication receipt and fact version land
+        # together or not at all, and the receipt is written BEFORE the memory
+        # state it decides (M5 Module 2.2). The connection is autocommit for
+        # everything else; switch it off only for this unit of work.
+        conn.autocommit = False
+        try:
+            receipt = self._apply_in_transaction(
+                conn, envelope, receipt, obj=obj, claim=claim, subject_guid=subject_guid,
+                ids=ids, predicate=predicate, temporal_policy=temporal_policy, valid_period=valid_period,
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.autocommit = True
+        return receipt
+
+    def _apply_in_transaction(
+        self,
+        conn,
+        envelope: dict[str, Any],
+        receipt: dict[str, Any],
+        *,
+        obj: dict[str, Any],
+        claim: str,
+        subject_guid: str,
+        ids: dict[str, str | None],
+        predicate: str,
+        temporal_policy: str,
+        valid_period: str,
+    ) -> dict[str, Any]:
+        self._set_tenant(conn, local=True)
         ident = str(
             uuid.uuid5(
                 uuid.NAMESPACE_URL,
@@ -291,79 +398,84 @@ class CIOEnvelopeIntegrator:
             row = cur.fetchone()
             identity_guid = str(row[0] if row else ident)
 
+        status = str(envelope.get("status") or "CANDIDATE")
+        source_id = str(envelope.get("wake_job_id") or envelope.get("source_id") or "wake")
+        summary = (claim or str(obj))[:240]
+        trace_id = str(envelope.get("wake_job_id") or envelope.get("trace_id") or "")
+
+        if temporal_policy != "SINGLE_VALUED_CURRENT":
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT memory_r10_m2.save_bitemporal_fact_version(
+                        %s, %s::uuid, %s, %s, %s::jsonb, %s::tstzrange, %s, %s,
+                        'cio_envelope', %s, %s, NULL::vector
+                    )
+                    """,
+                    (
+                        self.tenant_id, identity_guid, subject_guid, predicate, json.dumps(obj),
+                        valid_period, status, temporal_policy, source_id, summary,
+                    ),
+                )
+                receipt["memory_version_id"] = str(cur.fetchone()[0])
+            return receipt
+
         conflicts = self._scan_conflicts(
             conn,
             identity_guid=identity_guid,
             predicate=predicate,
             valid_period=valid_period,
+            obj=obj,
         )
-        if conflicts and temporal_policy == "SINGLE_VALUED_CURRENT":
+        same = next((c for c in conflicts if c["same_and_covers"]), None)
+        if same is not None:
+            # The current belief already says exactly this for the whole period.
+            # Nothing to adjudicate and no new version (the hourly cycle would
+            # otherwise mint an identical version every run).
+            receipt["memory_version_id"] = same["memory_version_id"]
+            receipt["reason"] = "IDENTICAL_REASSERTION_NOOP"
+            return receipt
+
+        prior_ids = [c["memory_version_id"] for c in conflicts]
+        new_id = str(uuid.uuid4())
+        if prior_ids:
+            # Deterministic, no LLM: the newer assertion wins for the overlap and
+            # the priors keep their non-overlapping valid time as current
+            # remnants. provider/model/prompt_version stay null because nothing
+            # non-deterministic decided this.
             adj = build_receipt(
                 tenant_id=self.tenant_id,
                 subject_guid=subject_guid,
                 predicate=predicate,
-                candidate_fact_ids=conflicts + ["pending_new"],
-                selected_fact_id=conflicts[0],
-                rejected_fact_ids=["pending_new"],
-                policy="exclusive_current_short_circuit",
+                candidate_fact_ids=prior_ids + [new_id],
+                selected_fact_id=new_id,
+                rejected_fact_ids=prior_ids,
+                policy=SUPERSEDE_POLICY,
+                policy_version=SUPERSEDE_POLICY_VERSION,
                 conflict_id=f"overlap:{identity_guid}:{predicate}",
-                evidence_refs=conflicts,
-                trace_id=str(envelope.get("wake_job_id") or envelope.get("trace_id") or ""),
+                evidence_refs=prior_ids,
+                trace_id=trace_id,
+                source_sha=_source_sha(),
             )
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    INSERT INTO memory_r10_m2.adjudication_receipt (
-                      adjudication_id, tenant_id, subject_guid, predicate, conflict_id,
-                      candidate_fact_ids, selected_fact_id, rejected_fact_ids,
-                      deterministic_policy, policy_version, evidence_refs, trace_id,
-                      chain_of_thought
-                    ) VALUES (
-                      %s::uuid,%s,%s,%s,%s,%s::uuid[],%s::uuid,%s::uuid[],%s,%s,%s,%s,false
-                    )
-                    """,
-                    (
-                        adj["adjudication_id"],
-                        self.tenant_id,
-                        subject_guid,
-                        predicate,
-                        adj["conflict_id"],
-                        conflicts,
-                        conflicts[0],
-                        [],
-                        adj["policy"],
-                        adj["policy_version"],
-                        conflicts,
-                        adj.get("trace_id"),
-                    ),
-                )
+            self._insert_adjudication(conn, adj)
             receipt["adjudication"] = adj
-            receipt["suppressed"] = True
-            receipt["reason"] = "SINGLE_VALUED_OVERLAP_ADJUDICATED"
-            return receipt
-
+            receipt["superseded"] = prior_ids
+            receipt["reason"] = "SINGLE_VALUED_SUPERSEDED"
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT memory_r10_m2.save_bitemporal_fact_version(
-                    %s, %s::uuid, %s, %s, %s::jsonb, %s::tstzrange, %s, %s,
-                    'cio_envelope', %s, %s, NULL::vector
+                SELECT memory_r10_m2.supersede_single_valued_fact(
+                    %s, %s::uuid, %s, %s, %s::jsonb, %s::tstzrange, %s,
+                    'cio_envelope', %s, %s, %s::uuid
                 )
                 """,
                 (
-                    self.tenant_id,
-                    identity_guid,
-                    subject_guid,
-                    predicate,
-                    json.dumps(obj),
-                    valid_period,
-                    str(envelope.get("status") or "CANDIDATE"),
-                    temporal_policy,
-                    str(envelope.get("wake_job_id") or envelope.get("source_id") or "wake"),
-                    (claim or str(obj))[:240],
+                    self.tenant_id, identity_guid, subject_guid, predicate, json.dumps(obj),
+                    valid_period, status, source_id, summary, new_id,
                 ),
             )
             receipt["memory_version_id"] = str(cur.fetchone()[0])
+        receipt["writer"] = "supersede_single_valued_fact"
         return receipt
 
 

@@ -1,0 +1,25 @@
+Done on all three. Here's the rundown:
+
+**✅ Watchlist**
+```
+✅ Added to watchlist under "Watchlist": S — now tracked + queued for research.
+```
+
+**🔍 Iris — research / catalyst**
+One caveat: cross-agent routing is locked down right now (`agentToAgent` disabled), so I can't hand this to the Iris session directly — I pulled the live Hermes state myself and here's the read:
+
+- **Hermes intel on S: 0 recent findings** (backlog is 500 deep, so it's queued, not analyzed). No internal catalyst thesis yet — it'll surface as the research loop chews through it.
+- External catalysts to watch:
+  - **Next earnings ~Dec 8, 2026** — the "show-me" event. Street wants ~20% growth and proof the FCF turn is real.
+  - **Purple AI** traction (their GenAI assistant) is the up-sell narrative; any attach-rate / ARR commentary moves the stock.
+  - **MSSP channel** — 60%+ ACV growth across top-20 partners, 75% top-10. That's the distribution breakout story beyond pure endpoint.
+  - **CrowdStrike** remains the benchmark — any CRWD stumble is a catalyst *for* S, and vice versa.
+
+**🎯 Alex — CIO / fit vs your book**
+Live regime: **risk_on_trend**, heat **0.07%**, risk **$896**, **11 positions**, 4 unprotected (AMANX, V, SPCX, XLB).
+
+- **Capacity: yes.** Heat is essentially nil, so there's room to add risk without stressing the book.
+- **Fit: it's a style change, not a fill-in.** Your book is defense/gov-tech + income heavy (BAH, NOC, LDOS, XAR, DIV, SCHD, BND). S is a high-multiple, *still-not-GAAP-profitable* software name — the opposite end of the risk spectrum from what you own. The only overlap is thematic (BAH is gov cyber services, but S is enterprise endpoint — different business).
+- **Net:** it would diversify you *away* from defense/income concentration and into secular software growth — but it's a 5th unprotected name and a multiple-sensitive one. If it clears your bar, small starter size, and let the research loop + the Dec earnings give you the data before scaling.
+
+Want me to set a reminder ahead of that Dec 8 earnings, or pull the full `ticker S` profile once research starts landing?

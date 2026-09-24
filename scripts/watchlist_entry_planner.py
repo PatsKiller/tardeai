@@ -608,8 +608,21 @@ def _alert(sym, p, urg, price) -> bool:
             print(f"  rich entry layout unavailable ({type(exc).__name__}); sending plain text")
     extra = ({"reply_markup": rich["reply_markup"], "link_preview_options": rich["link_preview_options"]}
              if rich else {})
+    body = rich["text"] if rich else text
+    # CIO stance gate (M5 audit 2026-09-23, Module 4d): an entry alert is a buy
+    # recommendation. AVOID/SELL or no CIO stance -> held (not sent, so alerted_at
+    # stays unset); HOLD / RESEARCH_MORE etc. -> shown as WATCH with the stance footer.
     try:
-        return bool(send_telegram(rich["text"] if rich else text, **extra))
+        from lib.publisher_stance_gate import gate_card
+        g = gate_card(body, sym, source="watchlist_entry_planner")
+    except Exception as exc:  # noqa: BLE001 -- the gate itself failing must not page unreviewed
+        print(f"  CIO stance gate unavailable for {sym} ({type(exc).__name__}); not sent")
+        return False
+    if not g.send:
+        print(f"  {sym}: entry alert held ({g.held_reason})")
+        return False
+    try:
+        return bool(send_telegram(g.text, **extra))
     except Exception:
         return False
 
