@@ -164,3 +164,26 @@ all untouched by rollback.
   losing CC said "premium is being earned" → state-aware language;
   float/Decimal crash → coercion; NaN peak in strip → numeric guards;
   16-strike chain window too narrow for far legs → 48-strike lifecycle fetch.
+
+## Options identity (2026-09-24, PR #1224 repaired)
+
+A listed option **contract** is a `security_guid` of the underlying's issuer:
+`security_identity.security_guid(issuer=<issuer_guid>, share_class="option",
+instrument="<C|P>:<strike:.4f>:<YYYY-MM-DD>[:<venue>]")`. It lives in the existing
+`tradeai:security:` namespace — there is no options-specific id prefix. An option
+**strategy instance** is `ticker_knowledge_graph.entity_guid("strategy",
+"<strategy>|<UND>|<sorted leg contract_guids>|<account>")`. Both are minted by
+`scripts/lib/options_identity.py` and stamped on desk proposals
+(`options_engine._stamp_execution`), the Hub cards, `proposal_outcome_chain`
+(additive columns, `migrations/2026_09_24_proposal_outcome_chain_options_guids.sql`)
+and `options_paper_outcomes.meta`.
+
+Rules: the issuer comes from the identity registry (lookup only — an unregistered
+ticker mints nothing); a row with no strike/expiration is not an options position and
+gets no GUIDs (equity scalps in the outcome chain stay NULL); the broker/account a
+proposal routes through is **not** a venue, so one listed contract has one GUID
+whatever account holds it, while the strategy instance is account-scoped.
+
+`expiration_guid` and `strike_guid` are deliberately **not** minted: strike and
+expiration are attributes of the contract key, not entities. This is the D2 (agentic
+memory gap, 2026-09-24) "explicitly reject" answer for those two.
