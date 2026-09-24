@@ -206,7 +206,15 @@ class CIOEnvelopeIntegrator:
         """CURRENT single-valued versions overlapping ``valid_period``, oldest first.
 
         Each row says whether it already asserts ``obj`` over the whole of
-        ``valid_period`` (``same_and_covers``) — a re-assertion, not a change."""
+        ``valid_period`` (``same_and_covers``) — a re-assertion, not a change.
+
+        No ``FOR UPDATE``: that needs UPDATE privilege, and the production writer
+        role (m2_agent) has SELECT only on memory_fact_version by design — every
+        write goes through the SECURITY DEFINER functions. The 2026-09-24 16:00
+        production cycle failed on exactly that (InsufficientPrivilege).
+        Concurrent writers for the same (tenant, identity, predicate) are
+        serialized instead by ``_lock_identity_predicate`` (a transaction-scoped
+        advisory lock taken before this read)."""
         if predicate not in SINGLE_VALUED_PREDICATES:
             return []
         with conn.cursor() as cur:
@@ -222,11 +230,24 @@ class CIOEnvelopeIntegrator:
                    AND temporal_policy = 'SINGLE_VALUED_CURRENT'
                    AND valid_period && %s::tstzrange
                  ORDER BY version_seq
-                 FOR UPDATE
                 """,
                 (json.dumps(obj or {}), valid_period, self.tenant_id, identity_guid, predicate, valid_period),
             )
             return [{"memory_version_id": r[0], "same_and_covers": bool(r[1])} for r in cur.fetchall()]
+
+    def _lock_identity_predicate(self, conn, *, subject_guid: str, predicate: str) -> None:
+        """Serialize writers for one (tenant, subject, predicate) until commit.
+
+        ``pg_advisory_xact_lock`` needs no table privilege and releases at the
+        end of the transaction, so it replaces the old ``SELECT … FOR UPDATE``
+        row lock without widening m2_agent's grants. The key is the same
+        canonical key the identity row uses, so every path that writes this
+        belief takes the same lock."""
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+                (f"m2:{self.tenant_id}:{subject_guid}|{predicate}",),
+            )
 
     def _insert_adjudication(self, conn, adj: dict[str, Any]) -> None:
         with conn.cursor() as cur:
@@ -364,6 +385,7 @@ class CIOEnvelopeIntegrator:
         valid_period: str,
     ) -> dict[str, Any]:
         self._set_tenant(conn, local=True)
+        self._lock_identity_predicate(conn, subject_guid=subject_guid, predicate=predicate)
         ident = str(
             uuid.uuid5(
                 uuid.NAMESPACE_URL,
