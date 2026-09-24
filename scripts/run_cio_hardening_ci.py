@@ -2322,6 +2322,16 @@ GATES = [
             "tests/test_alarm_coverage.py",
         ],
     ),
+    (
+        # 2026-09-24 — agentic-memory acceleration Slice A+B.
+        # option_strategy_guid + contract_guid on desk proposals; scoped
+        # MEMORY_BEHAVIOR_INFLUENCE_OPTIONS envelope (global MBI stays 0).
+        "options_identity_memory_20260924",
+        [
+            "tests/test_options_identity_memory_20260924.py",
+            "tests/test_agent_feature_flags.py",
+        ],
+    ),
 ]
 
 

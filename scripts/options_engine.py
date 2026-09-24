@@ -325,6 +325,16 @@ def _stamp_execution(p: dict, account: str = "", holdings: Optional[List[dict]] 
     p["execution_mode"] = prof["execution_mode"]
     p["execution_label"] = prof["execution_label"]
     p["auto_eligible"] = prof["auto_eligible"]
+    # Slice A — first-class options identity GUIDs (stable across rescans).
+    try:
+        from scripts.lib.options_identity import stamp_proposal_identity
+        stamp_proposal_identity(p)
+    except Exception:
+        try:
+            from lib.options_identity import stamp_proposal_identity  # type: ignore
+            stamp_proposal_identity(p)
+        except Exception:
+            pass
     return p
 
 
@@ -2851,6 +2861,8 @@ def build_options_desk_summary(props: Optional[dict] = None) -> dict:
             "premium_total": p.get("premium_total"),
             "account": p.get("account"),
             "recommended_action": p.get("recommended_action"),
+            "option_strategy_guid": p.get("option_strategy_guid"),
+            "contract_guid": p.get("contract_guid"),
         })
     for sym in by_sym:
         by_sym[sym].sort(key=lambda x: -_f(x.get("edge_score")))
@@ -2880,6 +2892,8 @@ def build_options_desk_summary(props: Optional[dict] = None) -> dict:
                 "edge_score": p.get("edge_score"),
                 "pop_pct": p.get("pop_pct"),
                 "recommended_action": p.get("recommended_action"),
+                "option_strategy_guid": p.get("option_strategy_guid"),
+                "contract_guid": p.get("contract_guid"),
             }
             for p in top
         ],
