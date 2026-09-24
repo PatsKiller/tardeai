@@ -98,6 +98,15 @@ def _env(k: str, default: str = "") -> str:
 
 
 def _append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    # Rows written while a hop is open carry its event lineage (event_lineage):
+    # a gap / pending row written during an operator turn names that turn's
+    # inbound event, so the follow-up and the research join back by event id.
+    try:
+        from scripts.lib.event_lineage import stamp_row  # noqa: PLC0415
+
+        stamp_row(row)
+    except Exception:  # noqa: BLE001 — lineage never breaks a write
+        pass
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
@@ -4835,7 +4844,13 @@ def try_fulfill_pending_replies(
     fulfilled = 0
     failed = 0
     expired = 0
+    # Each follow-up is sent inside the lineage of the turn that asked (the
+    # pending row carries it), so the reply joins back to that turn.
+    from scripts.lib.event_lineage import enter_row_scope  # noqa: PLC0415
+
+    _lin_token = None
     for row in open_rows:
+        _lin_token = enter_row_scope(row, _lin_token)
         try:
             intent = row.get("intent") or analyze_operator_intent(row.get("operator_text") or "")
             evidence = gather_tradeai_evidence(intent)
@@ -4929,6 +4944,7 @@ def try_fulfill_pending_replies(
             fulfilled += 1
         except Exception:
             failed += 1
+    enter_row_scope(None, _lin_token)
     return {
         "ok": True,
         "checked": len(open_rows),

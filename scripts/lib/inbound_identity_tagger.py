@@ -584,7 +584,9 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
 def persist_turn(tag: dict[str, Any], *, conn, text: str, role: str,
                  chat_id: Any = None, message_id: Any = None,
                  thread_id: Any = None, reply_to_message_id: Any = None,
-                 turn_index: Any = None, channel: str = "telegram") -> int:
+                 turn_index: Any = None, channel: str = "telegram",
+                 event_id: Any = None, causation_id: Any = None,
+                 parent_event_id: Any = None) -> int:
     """Write ONE conversation turn — operator or agent — with its identity tags.
 
     Both halves are stored. A question without its answer loses what the agent
@@ -605,15 +607,19 @@ def persist_turn(tag: dict[str, Any], *, conn, text: str, role: str,
 
     rows = (tag.get("resolved") or [None])
     cur = conn.cursor()
+    lineage = _turn_lineage(cur, event_id=event_id, causation_id=causation_id,
+                            parent_event_id=parent_event_id)
+    lin_cols = "".join(f", {k}" for k in lineage)
+    lin_ph = ",%s" * len(lineage)
     written = 0
     for r in rows:
         cur.execute(
-            """INSERT INTO operator_conversation_turns
+            f"""INSERT INTO operator_conversation_turns
                  (role, channel, chat_id, message_id, thread_id,
                   reply_to_message_id, turn_index, text,
                   symbol, subject_guid, issuer_guid, identity_status,
-                  matched_via, matched_text, topics, unresolved_mentions)
-               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                  matched_via, matched_text, topics, unresolved_mentions{lin_cols})
+               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s{lin_ph})""",
             (role, channel,
              str(chat_id) if chat_id is not None else None,
              int(message_id) if message_id is not None else None,
@@ -629,10 +635,46 @@ def persist_turn(tag: dict[str, Any], *, conn, text: str, role: str,
              (r or {}).get("matched_via"),
              (r or {}).get("matched_text"),
              list(tag.get("topics") or []),
-             list(tag.get("unresolved_mentions") or [])))
+             list(tag.get("unresolved_mentions") or []),
+             *lineage.values()))
         written += 1
     conn.commit()
     return written
+
+
+#: Lineage columns on operator_conversation_turns (migrations/2026_09_24_event_lineage_columns.sql).
+TURN_LINEAGE_COLUMNS = ("event_id", "causation_id", "parent_event_id")
+
+
+def _turn_lineage(cur, *, event_id: Any, causation_id: Any,
+                  parent_event_id: Any) -> dict[str, str]:
+    """Lineage values for one turn, restricted to columns that exist.
+
+    Explicit values win; otherwise the open lineage scope (event_lineage) names
+    the event this turn answers. The columns arrive by migration, after the
+    code ships, so each one is probed: writing an absent column would abort the
+    transaction and lose the turn. Never raises.
+    """
+    try:
+        from scripts.lib import event_lineage as EL  # noqa: PLC0415
+
+        vals = {
+            "event_id": str(event_id).strip() if event_id else None,
+            "causation_id": str(causation_id).strip() if causation_id else None,
+            "parent_event_id": str(parent_event_id).strip() if parent_event_id else None,
+        }
+        if not (vals["causation_id"] or vals["parent_event_id"]):
+            lin = EL.current()
+            if lin:
+                vals["causation_id"] = lin.causation_id
+                vals["parent_event_id"] = lin.parent_event_id
+        vals = {k: v for k, v in vals.items() if v}
+        if not vals:
+            return {}
+        return {k: v for k, v in vals.items()
+                if EL.table_has_column(cur, "operator_conversation_turns", k)}
+    except Exception:  # noqa: BLE001 — lineage never breaks a turn write
+        return {}
 
 
 #: The subject of a reply is inferred from POSITION, never typed by the operator.

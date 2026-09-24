@@ -48,6 +48,22 @@ StubResearchBackend = StubHermesResearchBackend
 CatalystFirstBackend = CatalystFirstHermesBackend
 
 
+def _completion_lineage_scope(request: dict[str, Any], result: dict[str, Any]):
+    """Lineage scope for a completion callback; a no-op scope when unknown."""
+    import contextlib
+
+    try:
+        try:
+            from scripts.lib.event_lineage import lineage_fields, lineage_scope
+        except ImportError:  # pragma: no cover -- hub import path
+            from lib.event_lineage import lineage_fields, lineage_scope  # type: ignore
+        fields = lineage_fields(result if isinstance(result, dict) else None) or lineage_fields(
+            request if isinstance(request, dict) else None)
+        return lineage_scope(**fields)
+    except Exception:  # noqa: BLE001 — lineage never breaks a completion
+        return contextlib.nullcontext()
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -213,7 +229,11 @@ class HermesWorker:
 
             if self.on_completed:
                 try:
-                    self.on_completed(request, result)
+                    # Anything the completion callback sends is caused by the
+                    # event that asked for this research (carried on the request
+                    # and result rows), so its ledger events name that event.
+                    with _completion_lineage_scope(request, result):
+                        self.on_completed(request, result)
                 except Exception as cb_err:
                     _log_job(
                         research_id=rid,

@@ -1155,11 +1155,16 @@ GATES = [
     # table and on the dataclass but was missing from the INSERT. Both were
     # wiring, not design. This gate pins the defaults (a root event points at
     # itself; a root has NO parent, because self-parenting loops a recursive
-    # walk) and pins subject_guid into the receipt write.
+    # walk) and pins subject_guid into the receipt write. M5 (2026-09-23): the
+    # ids now travel the whole question -- turn -> gap / Hermes request ->
+    # completion -> outbound -- through one lineage scope, the reply to a
+    # multi-message send ("53968,53969") binds from the ledger, and watch rows
+    # get subject_guid behind a column probe (additive migration).
     (
         "comms_lineage_join",
         [
             "tests/test_phase4_lineage_join_20260922.py",
+            "tests/test_event_lineage_20260924.py",
         ],
     ),
     # market_quotes is 34.2M rows / 5.67 GB, of which 97.7% is intraday
