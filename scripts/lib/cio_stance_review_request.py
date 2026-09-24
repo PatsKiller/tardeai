@@ -27,6 +27,15 @@ So this module queues the CIO research pull that a stance needs. It does NOT by
 itself write a ``cio_decisions`` row; the name stays held until a stance exists.
 Every request is recorded in ``cio_stance_review_requests.jsonl``.
 
+Classification follow-up (OPERATOR 2026-09-23 "add the classification queue
+follow-up"): the same ledger row carries ``classification_requested``. The
+engine only covers symbols with an ACTIVE ``ticker_strategy_classifications``
+row plus a ``strategy_rule_evaluations`` row, and the rule-evaluation producer
+has been unscheduled since 2026-09-06. ``scripts/drain_cio_stance_classification.py``
+reads these ledger rows, classifies the symbol deterministically (no LLM) and
+writes its rule evaluation, so the next ``cio_decision_engine`` run writes a
+real stance. Disable with ``CIO_STANCE_CLASSIFY_DISABLE=1``.
+
 Never raises into the send path. Deduped per symbol per
 ``CIO_STANCE_REVIEW_DEDUPE_SECONDS``. Pytest writes nothing unless
 ``CIO_STANCE_REVIEW_REQUESTS`` points at a test path.
@@ -106,6 +115,10 @@ def _enabled() -> bool:
     if os.environ.get("PYTEST_CURRENT_TEST") and not str(os.environ.get("CIO_STANCE_REVIEW_REQUESTS") or "").strip():
         return False
     return requests_path() is not None
+
+
+def classification_enabled() -> bool:
+    return str(os.environ.get("CIO_STANCE_CLASSIFY_DISABLE") or "").strip().lower() not in {"1", "true", "yes", "on"}
 
 
 def review_questions(symbol: str) -> list[dict[str, str]]:
@@ -237,6 +250,7 @@ def request_cio_review(
                 "review_status": "deduped",
                 "review_request_id": prior.get("research_id"),
                 "review_requested_at": prior.get("as_of"),
+                "classification_requested": bool(prior.get("classification_requested")),
             }
         emit = (emitter or _emit_via_desk_research)(sym, src)
         ok = bool(emit.get("ok", False))
@@ -255,6 +269,8 @@ def request_cio_review(
             "plan_id": emit.get("plan_id"),
             "priority": review_priority(),
             "mbi_behavior": 0,
+            # Deterministic, no spend: requested even when the research emit failed.
+            "classification_requested": classification_enabled(),
             **_identity(sym),
         }
         try:
@@ -263,7 +279,12 @@ def request_cio_review(
                 fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
         except OSError:
             pass
-        entry: dict[str, Any] = {"ts": when.timestamp(), "as_of": as_of, "research_id": research_id}
+        entry: dict[str, Any] = {
+            "ts": when.timestamp(),
+            "as_of": as_of,
+            "research_id": research_id,
+            "classification_requested": row["classification_requested"],
+        }
         if not ok:
             entry["failed"] = True
         state[sym] = entry
@@ -280,6 +301,7 @@ def request_cio_review(
             "review_status": status[:80],
             "review_request_id": research_id,
             "review_requested_at": as_of,
+            "classification_requested": row["classification_requested"],
         }
     except Exception as exc:  # noqa: BLE001 -- the send path must never see this
         return {"review_requested": False, "review_status": f"error:{type(exc).__name__}"}
@@ -291,6 +313,7 @@ __all__ = [
     "DEFAULT_RETRY_SECONDS",
     "REVIEW_SOURCES",
     "SCHEMA",
+    "classification_enabled",
     "dedupe_seconds",
     "request_cio_review",
     "requests_path",
