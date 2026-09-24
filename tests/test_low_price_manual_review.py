@@ -29,6 +29,16 @@ def main():
     risk = classify_ticker_risk("HCWB", {"price": 1.03, "change_pct": 205, "rvol": 12, "float_m": 5.1})
     ok &= check("classify low_price_manual", risk["action"] == "low_price_manual")
 
+    # Momentum Scalp GO must not be eaten by the LOW_PRICE awareness lane
+    # (scoring used to apply low_price_manual unconditionally — HCTI score 46 → MANUAL_REVIEW).
+    go_row = {
+        "symbol": "HCTI", "decision": "GO", "score": 46,
+        "price": 1.23, "change_pct": 42, "rvol": 123, "float_m": 14.85,
+        "catalyst_verified": True,
+    }
+    ok &= check("GO does not qualify for low_price upgrade", not qualifies_low_price_manual(go_row))
+    ok &= check("GO decision still GO before apply", go_row["decision"] == "GO")
+
     if not ok:
         sys.exit(1)
     print("All low_price_manual_review checks passed.")
