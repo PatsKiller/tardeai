@@ -486,7 +486,7 @@ export default function OptionProposalCard({
       {(p.option_strategy_guid || p.contract_guid) && (
         <div
           title="Stable options identity (UUIDv5) — attribution only; not PnL"
-          style={{ fontSize: 9, color: MUTED, marginTop: 6, fontFamily: 'ui-monospace, monospace', lineHeight: 1.4 }}
+          style={{ fontSize: 10, color: MUTED, marginTop: 6, fontFamily: 'ui-monospace, monospace', lineHeight: 1.4 }}
         >
           {p.option_strategy_guid && <span>strategy {p.option_strategy_guid.slice(0, 8)}… </span>}
           {p.contract_guid && <span>contract {p.contract_guid.slice(0, 8)}…</span>}
