@@ -45,7 +45,12 @@ from typing import Any, Callable, Optional
 
 from scripts.lib import comms_editor as CE
 from scripts.lib import cio_telegram_stance_gate as SG
-from scripts.lib.hermes_subject_join import claim_contradicts_join, join_subject_hermes
+from scripts.lib.hermes_subject_join import (
+    claim_contradicts_join,
+    house_db_query,
+    hub_promoted_count_finder,
+    join_subject_hermes,
+)
 from scripts.lib.maria_parity_hook import scrub_maria_outbound
 from scripts.lib.reply_provenance import (
     LEGEND,
@@ -162,7 +167,14 @@ def _correct_zero_claims(
         for subj in _resolve(line, resolve):
             sym = subj["symbol"]
             if sym not in joins:
-                joins[sym] = join_subject_hermes(sym, subject_guid=subj.get("guid"), cio_dir=cio_dir)
+                join_db = house_db_query()
+                joins[sym] = join_subject_hermes(
+                    sym,
+                    subject_guid=subj.get("guid"),
+                    cio_dir=cio_dir,
+                    db_query=join_db,
+                    hub_finder=hub_promoted_count_finder(join_db) if join_db else None,
+                )
             join = joins[sym]
             if not claim_contradicts_join(line, join):
                 continue
@@ -181,6 +193,7 @@ def _correct_zero_claims(
                     "replaced": line.strip()[:300],
                     "result_ids": join.result_ids,
                     "research_ids": research[:5],
+                    "citations": join.citations(),
                 }
             )
             lines[i] = fix
@@ -373,6 +386,8 @@ def gate(
         stores_read=sorted(set(stores)),
         model=model_label(),
         model_role=ROLE_GENERAL_KNOWLEDGE,
+        # A correction names the desk's res_/rr_ ids; cite them where they appear.
+        citations=[c for hc in out.honesty_corrections for c in hc.get("citations") or []],
     )
     final, prov = finalize_operator_reply(body, prov)
     out.provenance = prov.to_dict()

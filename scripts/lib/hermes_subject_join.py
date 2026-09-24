@@ -5,7 +5,10 @@ Hub ``hermes_research_intelligence`` / symbol-journey alone is NEVER enough to
 say "0 findings" or "queued".
 
 Join order (mandatory):
-  1. cio_operator_gap_requests / pending ledger (opr_*)
+  1. cio_operator_gap_requests / pending ledger (opr_*), plus the Postgres
+     ``data_gap_registry`` rows the desk files for each opr_ when a
+     ``db_query`` is supplied (optional -- JSONL stays a source; no driver
+     needed)
   2. hermes research projection / requests (res_*)
   3. hermes_research_results.jsonl completed rows
   4. Hub intelligence only after the three above (caller-supplied probe)
@@ -18,6 +21,12 @@ Vocabulary — do not collapse these:
   NONE            nothing on desk or Hub for this subject
 
 Never report Hub backlog ``total: 500`` (api LIMIT page) as FIFO queue depth.
+
+Keying (M5 2026-09-23): rows are matched on ``subject_guid`` when both the
+subject and the row carry one (the identity registry resolves the GUID when the
+caller passes only a symbol); a single-subject row whose GUID differs is a
+different security even when the ticker string matches. Legacy rows without a
+GUID fall back to the symbol.
 
 AUTHORITY: READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0. No broker writes.
 """
@@ -91,6 +100,141 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return out
 
 
+_OPR_ID = re.compile(r"\bopr_[0-9a-f]{6,}\b")
+#: data_gap_registry statuses that mean the desk's opr_ request is still in flight.
+_DB_OPEN_STATUSES = frozenset({"open", "dispatched", "in_progress", "queued", "retrying"})
+_DEFAULT_DB_GAP_LIMIT = 20
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return max(0, int(str(os.environ.get(name) or "").strip() or default))
+    except ValueError:
+        return default
+
+
+def _row_guids(row: dict[str, Any]) -> set[str]:
+    """Every subject_guid a ledger row carries: top level, its request, its gaps."""
+    out: set[str] = set()
+    for src in (row, row.get("request"), row.get("intent")):
+        if isinstance(src, dict) and src.get("subject_guid"):
+            out.add(str(src["subject_guid"]).lower())
+    for g in row.get("gaps") or []:
+        if isinstance(g, dict) and g.get("subject_guid"):
+            out.add(str(g["subject_guid"]).lower())
+    return out
+
+
+def _row_symbols(row: dict[str, Any]) -> set[str]:
+    syms = {str(row.get("symbol") or "").upper()} - {""}
+    for s in row.get("symbols") or []:
+        if s:
+            syms.add(str(s).upper())
+    return syms
+
+
+def _subject_match(row: dict[str, Any], symbol: str, guid: Optional[str]) -> bool:
+    """GUID-keyed match with a symbol fallback for legacy (GUID-less) rows.
+
+    A row naming ONE subject whose GUID differs from ours is another security
+    that happens to share the ticker string, so it does not match. A
+    multi-subject row may carry only some GUIDs, so there the symbol still counts.
+    """
+    g = str(guid or "").lower()
+    guids = _row_guids(row)
+    if g and g in guids:
+        return True
+    if not _sym_match(row, symbol):
+        return False
+    if g and guids and len(_row_symbols(row)) <= 1:
+        return False
+    return True
+
+
+def resolve_subject_guid(symbol: str) -> Optional[str]:
+    """Registry subject_guid for ``symbol``, or None -- never raises.
+
+    Disabled with ``TRADEAI_HERMES_JOIN_RESOLVE_GUID=0``.
+    """
+    if str(os.environ.get("TRADEAI_HERMES_JOIN_RESOLVE_GUID", "1")).strip() == "0":
+        return None
+    try:
+        try:
+            from scripts.lib import cio_hermes_research as hr  # noqa: PLC0415
+        except ImportError:  # pragma: no cover
+            from lib import cio_hermes_research as hr  # type: ignore  # noqa: PLC0415
+        ident = hr._subject_identity(symbol) or {}
+    except Exception:  # noqa: BLE001
+        return None
+    return str(ident.get("subject_guid") or "") or None
+
+
+def house_db_query() -> Optional[Callable[..., list[dict]]]:
+    """The read-only house DB reader for the join, or None when disabled.
+
+    ``TRADEAI_HERMES_JOIN_DB=0`` turns the Postgres legs off (tests set it so a
+    unit run never reads live gap rows or Hub counts). Import failure -> None.
+    """
+    if str(os.environ.get("TRADEAI_HERMES_JOIN_DB", "1")).strip() == "0":
+        return None
+    try:
+        try:
+            from scripts.lib.comms_editor import default_db_query  # noqa: PLC0415
+        except ImportError:  # pragma: no cover
+            from lib.comms_editor import default_db_query  # type: ignore  # noqa: PLC0415
+    except Exception:  # noqa: BLE001
+        return None
+    return default_db_query
+
+
+_HUB_PROMOTED_SQL = (
+    "SELECT count(*) AS n FROM hermes_research_intelligence "
+    "WHERE upper(symbol) = %s AND status = 'promoted'"
+)
+
+
+def hub_promoted_count_finder(db_query: Callable[..., list[dict]]) -> Callable[[str], int]:
+    """``hub_finder`` over the Hub table: PROMOTED rows for one symbol.
+
+    Per-ticker and exact -- never the api_v2 page total (500 is a LIMIT).
+    Raises on DB failure; ``join_subject_hermes`` then leaves ``hub_count`` None.
+    """
+
+    def _finder(symbol: str) -> int:
+        rows = db_query(_HUB_PROMOTED_SQL, (str(symbol or "").upper(),))
+        return int((rows[0] or {}).get("n") or 0) if rows else 0
+
+    return _finder
+
+
+_DB_GAP_SQL = (
+    "SELECT id, symbol, gap_type, gap_detail, status, detected_at, resolution_data "
+    "FROM data_gap_registry WHERE detected_by = 'cio_operator_desk' AND upper(symbol) = %s "
+    "ORDER BY detected_at DESC LIMIT %s"
+)
+
+
+def _db_gap_requests(sym: str, db_query: Callable[..., list[dict]]) -> list[dict[str, Any]]:
+    """The desk's opr_ gap requests as filed in Postgres (data_gap_registry)."""
+    limit = _env_int("TRADEAI_HERMES_JOIN_DB_GAP_LIMIT", _DEFAULT_DB_GAP_LIMIT)
+    out: list[dict[str, Any]] = []
+    for r in db_query(_DB_GAP_SQL, (sym, limit)) or []:
+        m = _OPR_ID.search(str(r.get("gap_detail") or ""))
+        if not m:
+            continue
+        res = r.get("resolution_data") if isinstance(r.get("resolution_data"), dict) else {}
+        out.append({
+            "pending_id": m.group(0),
+            "gap_registry_id": r.get("id"),
+            "gap_type": r.get("gap_type"),
+            "status": str(r.get("status") or "").lower(),
+            "detected_at": str(r.get("detected_at") or ""),
+            "job_id": res.get("job_id"),
+            "result_ref": res.get("result_id"),
+        })
+    return out
+
+
 def _sym_match(row: dict[str, Any], symbol: str) -> bool:
     up = symbol.upper()
     if str(row.get("symbol") or "").upper() == up:
@@ -147,9 +291,26 @@ class HermesJoinResult:
     hub_count: Optional[int] = None
     honesty_line: str = ""
     sources: list[str] = field(default_factory=list)
+    db_gap_requests: list[dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    def citations(self) -> list[dict[str, str]]:
+        """Citable evidence ids from this join, newest desk product first.
+
+        Each entry is ``{"id", "label"}``; a reply renders ``[n]`` only where the
+        id itself appears in its text (``reply_provenance``), so nothing here can
+        become a citation the reply does not actually show.
+        """
+        out: list[dict[str, str]] = []
+        for rid in reversed(self.result_ids):
+            out.append({"id": rid, "label": f"hermes_research_results · {rid}"})
+        for rid in self.research_ids:
+            out.append({"id": rid, "label": f"hermes research · {rid}"})
+        for pid in self.pending_ids:
+            out.append({"id": pid, "label": f"operator gap request · {pid}"})
+        return out
 
     @property
     def has_desk_completion(self) -> bool:
@@ -210,15 +371,21 @@ def join_subject_hermes(
     subject_guid: Optional[str] = None,
     hub_finder: Optional[Callable[[str], int]] = None,
     cio_dir: Optional[Path] = None,
+    db_query: Optional[Callable[..., list[dict]]] = None,
 ) -> HermesJoinResult:
     """Join desk Hermes for ``symbol``; optionally consult Hub last.
 
     ``hub_finder(symbol) -> int`` returns Hub promoted row count when the caller
-    has a Hub probe. Absence of a finder leaves ``hub_count`` None (unknown),
-    never silently 0.
+    has a Hub probe (``hub_promoted_count_finder(db_query)`` is the house one).
+    Absence of a finder leaves ``hub_count`` None (unknown), never silently 0.
+
+    ``subject_guid`` keys the join; when omitted it is resolved from the
+    identity registry. ``db_query`` (optional) adds the desk's opr_ rows from
+    Postgres ``data_gap_registry``; any DB failure degrades to the JSONL stores.
     """
     sym = str(symbol or "").strip().upper()
-    out = HermesJoinResult(symbol=sym, subject_guid=subject_guid)
+    guid = subject_guid or (resolve_subject_guid(sym) if sym else None)
+    out = HermesJoinResult(symbol=sym, subject_guid=guid)
     if not sym:
         out.honesty_line = honesty_line_for(STATUS_NONE, symbol="?")
         return out
@@ -230,7 +397,7 @@ def join_subject_hermes(
 
     # 1) gap requests / pending (opr_*)
     for row in _read_jsonl(gap_path):
-        if not _sym_match(row, sym):
+        if not _subject_match(row, sym, guid):
             continue
         out.gap_requests.append(row)
         pid = str(row.get("pending_id") or "")
@@ -246,12 +413,25 @@ def join_subject_hermes(
             continue
         intent = row.get("intent") if isinstance(row.get("intent"), dict) else {}
         symbols = list(intent.get("symbols") or [])
-        if sym not in {str(s).upper() for s in symbols} and not _sym_match(row, sym):
+        if sym not in {str(s).upper() for s in symbols} and not _subject_match(row, sym, guid):
             continue
         pid = str(row.get("pending_id") or "")
         if pid.startswith("opr_") and pid not in out.pending_ids:
             out.pending_ids.append(pid)
             out.sources.append(f"cio_operator_pending_replies · {pid}")
+
+    # 1b) the same opr_ requests as filed in Postgres (optional)
+    if db_query is not None:
+        try:
+            db_rows = _db_gap_requests(sym, db_query)
+        except Exception:  # noqa: BLE001 -- no driver / DB down: JSONL stands alone
+            db_rows = []
+        for r in db_rows:
+            out.db_gap_requests.append(r)
+            pid = r["pending_id"]
+            if r["status"] in _DB_OPEN_STATUSES and pid not in out.pending_ids:
+                out.pending_ids.append(pid)
+            out.sources.append(f"data_gap_registry · {pid} ({r['status'] or '?'})")
 
     # 2) projection (res_*)
     try:
@@ -265,7 +445,7 @@ def join_subject_hermes(
             if not isinstance(meta, dict):
                 continue
             req = meta.get("request") if isinstance(meta.get("request"), dict) else {}
-            if not _sym_match(meta, sym) and not _sym_match(req, sym):
+            if not _subject_match(meta, sym, guid) and not _subject_match(req, sym, guid):
                 continue
             out.projection_metas.append(dict(meta, research_id=rid))
             rid_s = str(rid)
@@ -276,7 +456,7 @@ def join_subject_hermes(
         pass
 
     # 3) results jsonl (newest last)
-    results = [r for r in _read_jsonl(result_path) if _sym_match(r, sym)]
+    results = [r for r in _read_jsonl(result_path) if _subject_match(r, sym, guid)]
     completed = [
         r for r in results
         if str(r.get("status") or "").lower() in ("completed", "complete", "")
@@ -338,5 +518,8 @@ __all__ = [
     "HermesJoinResult",
     "claim_contradicts_join",
     "honesty_line_for",
+    "house_db_query",
+    "hub_promoted_count_finder",
     "join_subject_hermes",
+    "resolve_subject_guid",
 ]

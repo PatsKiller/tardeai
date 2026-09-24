@@ -43,6 +43,12 @@ _route_m2_tests()
 if os.environ.get("M2_SKIP_DOCKER") != "1":
     _ensure_m2_test_db()
 
+# The Hermes subject join reads live Postgres (desk opr_ gap rows, Hub promoted
+# counts) and the live identity registry in production. Unit runs stay hermetic:
+# both legs are off unless a test turns them on (M5 step 5, 2026-09-23).
+os.environ.setdefault("TRADEAI_HERMES_JOIN_DB", "0")
+os.environ.setdefault("TRADEAI_HERMES_JOIN_RESOLVE_GUID", "0")
+
 # CI does not install python-dotenv, so any alarm module importing it raised
 # ModuleNotFoundError during collection and the C1 firing gate did not run at all.
 # A gate that silently does not execute is the exact defect this suite exists to

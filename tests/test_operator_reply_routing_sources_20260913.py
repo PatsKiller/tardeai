@@ -503,14 +503,15 @@ def test_finalize_keeps_an_existing_desk_sources_line_and_does_not_duplicate_it(
     body = "Answer.\nSources: re-entry desk · computed 2026-09-13 22:52 | re-entry desk\nREAD_ONLY_ADVISORY"
     final, prov = rp.finalize_operator_reply(body, rp.ReplyProvenance(kind="t", stores_read=["re-entry desk"]))
     lines = final.split("\n")
-    assert lines == ["Answer.", rp.origin_line(["re-entry desk"], [], None),
+    # M5 step 5: the pill key opens every finalized reply.
+    assert lines == [rp.LEGEND, "Answer.", rp.origin_line(["re-entry desk"], [], None),
                      "Sources: re-entry desk · computed 2026-09-13 22:52", "READ_ONLY_ADVISORY"]
     assert prov.stores_read == ["re-entry desk · computed 2026-09-13 22:52"]
 
 
 def test_finalize_adds_the_default_tail_and_says_none_when_nothing_was_read():
     final, prov = rp.finalize_operator_reply("Hello", rp.ReplyProvenance(kind="t"))
-    assert final.split("\n") == ["Hello", rp.origin_line([], [], None),
+    assert final.split("\n") == [rp.LEGEND, "Hello", rp.origin_line([], [], None),
                                  "Sources: none — no Command Center store was read for this reply",
                                  rp.DEFAULT_TAIL]
     assert prov.sources_line_present and prov.authority_tail_present and prov.went_outside == []
@@ -519,7 +520,8 @@ def test_finalize_adds_the_default_tail_and_says_none_when_nothing_was_read():
 def test_finalize_leaves_a_body_line_that_merely_mentions_the_authority():
     body = "• Authority: **READ_ONLY_ADVISORY** — no orders / stops / 2FA from chat\nREAD_ONLY_ADVISORY"
     final, _ = rp.finalize_operator_reply(body, rp.ReplyProvenance(kind="t", stores_read=["x"]))
-    assert final.split("\n")[0].startswith("• Authority:") and final.endswith("\nREAD_ONLY_ADVISORY")
+    assert final.split("\n")[0] == rp.LEGEND
+    assert final.split("\n")[1].startswith("• Authority:") and final.endswith("\nREAD_ONLY_ADVISORY")
 
 
 def test_desk_loop_still_exports_the_footer_under_its_old_name():

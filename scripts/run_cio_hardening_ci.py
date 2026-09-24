@@ -803,6 +803,8 @@ GATES = [
             "tests/test_operator_reply_routing_sources_20260913.py",
             # Stage 1+3 parity: shared Hermes join + internal-first finalize (desk + Maria).
             "tests/test_hermes_join_internal_first_20260923.py",
+            # M5 step 5: join keyed by subject_guid + DB opr_ leg; LEGEND in finalize; [n] citations.
+            "tests/test_join_format_m5_20260923.py",
             # Stage 4 residual: atomic jobs.json mirror + bak/migrated recovery.
             "tests/test_gateway_cron_jobs_mirror_20260923.py",
             # Stage 2 parity: ban pseudo Iris/Alex/CIO attribution (desk + Maria).

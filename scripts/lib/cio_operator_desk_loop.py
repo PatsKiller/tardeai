@@ -3394,6 +3394,30 @@ def format_hermes_section(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def hermes_result_citations(result: dict[str, Any]) -> list[dict[str, str]]:
+    """Citations for the answer lines ``format_hermes_section`` renders.
+
+    Each Hermes answer carries ``citations[]`` -- the Trade-AI evidence ids it
+    read (``ticker_enrichment_cache:S:…``). They are cited at the end of that
+    answer's rendered line (anchored on its rendered text, so a line the section
+    truncated or dropped is never cited), plus the result's own ``result_id``
+    when a reply names it. Nothing is cited that the result does not carry.
+    """
+    out: list[dict[str, str]] = []
+    if not isinstance(result, dict):
+        return out
+    for a in (result.get("answers") or [])[:4]:
+        if not (isinstance(a, dict) and a.get("summary")):
+            continue
+        anchor = _plain(a["summary"], 420)[:60]
+        for cid in [str(c) for c in (a.get("citations") or []) if c]:
+            out.append({"id": cid, "anchor": anchor, "place": "line_end", "label": f"Hermes evidence · {cid}"})
+    rid = str(result.get("result_id") or "")
+    if rid:
+        out.append({"id": rid, "label": f"hermes_research_results · {rid}"})
+    return out
+
+
 def _insert_before_authority_tail(text: str, block: str) -> str:
     """Put a block above the trailing authority line, which must stay last."""
     if not block:
@@ -4691,7 +4715,14 @@ def _pending_reply_provenance(kind: str, row: dict[str, Any], evidence: dict[str
         # read Trade-AI evidence, so it is named on the 🟣 model role, once.
         model = str(hermes.get("model") or "deepseek-flash")
         role = f"Hermes research over Trade-AI evidence; {_ROLE_GENERAL_KNOWLEDGE}"
-    return _ReplyProvenance(kind=kind, stores_read=stores, went_outside=outside, model=model, model_role=role)
+    citations: list[dict[str, str]] = []
+    pid = str(row.get("pending_id") or "")
+    if pid.startswith("opr_"):
+        citations.append({"id": pid, "label": "operator gap request"})
+    if isinstance(hermes, dict):
+        citations += hermes_result_citations(hermes)
+    return _ReplyProvenance(kind=kind, stores_read=stores, went_outside=outside, model=model, model_role=role,
+                            citations=citations)
 
 
 def _open_for_text(age_h: Optional[float]) -> str:
