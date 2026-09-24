@@ -168,7 +168,7 @@ def test_try_shared_perspective_entry_calls_answer_internal_first(monkeypatch):
     out = mph.try_shared_perspective_entry(
         question="perspective on SentinelOne",
         a2a_enabled=False,
-        chat_id="8797974247",
+        chat_id="8797974247",  # hardcode-ok: fixture asserts Maria-chat routing
         use_desk=False,
     )
     assert out is not None

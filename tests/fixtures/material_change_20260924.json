@@ -1,0 +1,56 @@
+{
+  "_source": "Operator-pasted material-change notice, 2026-09-24 (ROL, LTRN, KLXE, RCL, EXPE) plus a held control name (MDT). Quote ages for ROL/RCL/EXPE were not in the paste and are set fresh (15m); LTRN/KLXE ages are the ones the notice itself printed.",
+  "changes": [
+    {"change_guid": "11111111-0000-0000-0000-000000000001", "symbol": "ROL", "kind": "price_excursion",
+     "magnitude": 3.1, "observed_value": 7.7, "universe_reason": "watchlist", "precedence": 40,
+     "subject_guid": null, "evidence_json": {"move_pct_signed": -4.2}, "notify_outcome": null},
+    {"change_guid": "11111111-0000-0000-0000-000000000002", "symbol": "LTRN", "kind": "price_excursion",
+     "magnitude": 4.0, "observed_value": 16.0, "universe_reason": "watchlist", "precedence": 40,
+     "subject_guid": null, "evidence_json": {"move_pct_signed": -16.0}, "notify_outcome": null},
+    {"change_guid": "11111111-0000-0000-0000-000000000003", "symbol": "KLXE", "kind": "price_excursion",
+     "magnitude": 3.0, "observed_value": 11.0, "universe_reason": "watchlist", "precedence": 40,
+     "subject_guid": null, "evidence_json": {"move_pct_signed": 11.0}, "notify_outcome": null},
+    {"change_guid": "11111111-0000-0000-0000-000000000004", "symbol": "RCL", "kind": "price_excursion",
+     "magnitude": 3.0, "observed_value": 5.0, "universe_reason": "watchlist", "precedence": 40,
+     "subject_guid": null, "evidence_json": {"move_pct_signed": -5.0}, "notify_outcome": null},
+    {"change_guid": "11111111-0000-0000-0000-000000000005", "symbol": "EXPE", "kind": "price_excursion",
+     "magnitude": 3.0, "observed_value": 7.0, "universe_reason": "watchlist", "precedence": 40,
+     "subject_guid": null, "evidence_json": {"move_pct_signed": -7.0}, "notify_outcome": null},
+    {"change_guid": "11111111-0000-0000-0000-000000000006", "symbol": "MDT", "kind": "price_excursion",
+     "magnitude": 3.4, "observed_value": 6.1, "universe_reason": "held", "precedence": 80,
+     "subject_guid": null, "evidence_json": {"move_pct_signed": -6.1}, "notify_outcome": null}
+  ],
+  "ctx": {
+    "11111111-0000-0000-0000-000000000001": {
+      "price": 30.24, "quote_age_h": 0.25, "strategy": "dividend_growth_compounder", "strategy_inactive": true,
+      "plan": {"entry": 32.76, "stop": 31.57, "target": 37.43, "source": "strategy_card"},
+      "last_research": null},
+    "11111111-0000-0000-0000-000000000002": {
+      "price": 1.25, "quote_age_h": 30.7, "strategy": "recovery_watch", "strategy_inactive": true,
+      "entry_state": {"state": "BLOCKED", "date": "2026-09-24", "reasons": ["quote is 30.7h old", "no entry zone in the plan"]},
+      "last_research": "2026-09-22"},
+    "11111111-0000-0000-0000-000000000003": {
+      "price": 1.67, "quote_age_h": 112.6, "strategy": null, "strategy_inactive": true,
+      "plan": {"entry": 1.49, "stop": 1.40, "target": 1.58, "source": "strategy_card"},
+      "entry_state": {"state": "BLOCKED", "date": "2026-09-24", "reasons": ["quote is 112.6h old", "plan R:R 1.7 is below 2.0"]},
+      "last_research": null},
+    "11111111-0000-0000-0000-000000000004": {
+      "price": 233.72, "quote_age_h": 0.25, "strategy": "dividend_growth_compounder", "strategy_inactive": true,
+      "plan": {"entry": 248.23, "stop": 238.08, "target": 298.21, "source": "strategy_card"},
+      "entry_state": {"state": "BLOCKED", "date": "2026-09-24", "reasons": ["price is at or below the plan stop"]},
+      "cio": {"action": "BUY_READY", "date": "2026-09-22"},
+      "last_research": "2026-09-21"},
+    "11111111-0000-0000-0000-000000000005": {
+      "price": 258.13, "quote_age_h": 0.25, "strategy": "dividend_growth_compounder", "strategy_inactive": true,
+      "plan": {"entry": 275.32, "stop": 260.84, "target": 344.73, "source": "strategy_card"},
+      "entry_state": {"state": "BLOCKED", "date": "2026-09-24", "reasons": ["price is at or below the plan stop"]},
+      "cio": {"action": "BUY_READY", "date": "2026-09-22"},
+      "last_research": "2026-09-23"},
+    "11111111-0000-0000-0000-000000000006": {
+      "price": 78.10, "quote_age_h": 0.05, "strategy": "dividend_growth_compounder", "strategy_inactive": false,
+      "plan": {"entry": 83.20, "stop": 78.50, "target": 95.00, "source": "entry_plan"},
+      "cio": {"action": "TRIM_REVIEW", "date": "2026-09-23"},
+      "holding": {"shares": 120.0, "accounts": ["Taxable"]},
+      "last_research": "2026-09-20"}
+  }
+}

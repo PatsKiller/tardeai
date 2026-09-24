@@ -1,7 +1,7 @@
 """Maria outbound gate — the OpenClaw gateway's ``message_sending`` bridge.
 
 Operator decision 2026-09-23: "hook Maria through the gateway". Maria (OpenClaw,
-chat 8797974247) never called the shared reply chokepoint — SOUL.md prose asked
+Maria's Telegram chat) never called the shared reply chokepoint — SOUL.md prose asked
 her to, and her session logs show zero calls. The 12:26Z S reply told the
 operator "0 recent findings" beside a completed desk result, invented
 "🔍 Iris" / "🎯 Alex" sections with agentToAgent forbidden, and carried no

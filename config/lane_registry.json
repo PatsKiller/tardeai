@@ -1346,6 +1346,25 @@
       "note": "Stage 2 notifier, gateway CANARY mode. Keyed on notified_at rather than communication_events so the signal proves THIS lane advanced a row, not that some other producer wrote an event."
     },
     {
+      "lane_id": "material-change-digest",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-09-24",
+      "state_reason": "Built 2026-09-24 (operator-approved material-alert redesign: page only held names / fresh CIO BUY_READY; everything else in ONE daily digest). Install at deploy from the dev tree as '15 16 * * * cd $PROJ && MATERIAL_CHANGE_GATEWAY_NOTICE=1 COMMS_GATEWAY_MODE=CANARY COMMS_GATEWAY_CANARY_CLASSES=ops $PY scripts/notify_material_change.py --digest --apply >> logs/material_change_digest.log 2>&1' (the same gateway env the 15-min notifier line carries), then flip this row to kind=cron, state=ACTIVE.",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "material_changes",
+        "column": "notified_at"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/notify_material_change.py --digest (run_digest); operator decisions 2026-09-24 in the plan transient-gliding-waffle.md; the cron line is installed at deploy, not by the build.",
+      "note": "Daily digest of material changes that did not page (plan invalidated, non-actionable moves, held news) plus a one-line list of Command-Center-only names. Rows it announces are marked notify_outcome=DIGEST_SENT."
+    },
+    {
       "lane_id": "due-diligence-questions",
       "owner": "cio",
       "scheduler": {

@@ -26,14 +26,50 @@ import directive_promotion as dp  # the real evaluation engine (governor → cla
 from research_critique_pipeline import is_removal_flagged, load_critique_snapshot
 
 
+#: Session guards for this job's own connection (M5 2026-09-24). The service held
+#: watch_directives / watchlist_items locks "idle in transaction" for ~1 min while
+#: promotes did network enrichment, blocking migrations and backfills. Reads are now
+#: committed before every promote; these caps make any regression fail fast.
+DEFAULT_LOCK_TIMEOUT_MS = 5000
+#: One curation-drain row is claimed (FOR UPDATE SKIP LOCKED) across its promote(s),
+#: so the idle cap must cover a single promote's network enrichment — never a run.
+DEFAULT_IDLE_TXN_TIMEOUT_MS = 45000
+
+
+def _env_ms(name, default):
+    try:
+        return max(0, int(os.environ.get(name, "").strip() or default))
+    except ValueError:
+        return default
+
+
+def _session_guard_sql():
+    """[(setting, value)] applied to this service's connection at open."""
+    return [
+        ("lock_timeout", f"{_env_ms('WATCH_DIRECTIVES_LOCK_TIMEOUT_MS', DEFAULT_LOCK_TIMEOUT_MS)}ms"),
+        ("idle_in_transaction_session_timeout",
+         f"{_env_ms('WATCH_DIRECTIVES_IDLE_TXN_TIMEOUT_MS', DEFAULT_IDLE_TXN_TIMEOUT_MS)}ms"),
+    ]
+
+
+def _apply_session_guards(conn):
+    cur = conn.cursor()
+    for name, value in _session_guard_sql():
+        cur.execute("SELECT set_config(%s, %s, false)", (name, value))
+    conn.commit()
+
+
 def _db():
     # Lazy: the source-only CI runner has no psycopg2, and the golden tests import
     # this module with a fake cursor. Same pattern as data_plausibility_monitor.
     import psycopg2
     import psycopg2.extras
-    return psycopg2.connect(host=os.getenv("DB_HOST", "localhost"), port=os.getenv("DB_PORT", "5432"),
+    conn = psycopg2.connect(host=os.getenv("DB_HOST", "localhost"), port=os.getenv("DB_PORT", "5432"),
                             dbname=os.getenv("DB_NAME", "trade_ai"), user=os.getenv("DB_USER", "trade_ai"),
-                            password=os.getenv("DB_PASSWORD"), cursor_factory=psycopg2.extras.RealDictCursor)
+                            password=os.getenv("DB_PASSWORD"), cursor_factory=psycopg2.extras.RealDictCursor,
+                            application_name="watch_directives_service.py")
+    _apply_session_guards(conn)
+    return conn
 
 
 def _pills():
@@ -137,6 +173,10 @@ def pause_cold_trends(c, cur, dry, report):
         if cold_days >= COLD_PAUSE_DAYS:
             if not dry:
                 _wd.set_watch_directive_status(cur, did, "paused", source="watch_directives_service")
+                # Commit the pause BEFORE the Telegram send: no network I/O inside an
+                # open transaction (M5 2026-09-24). c is None in the golden tests.
+                if c is not None:
+                    c.commit()
                 _notify(f"⏸ Watch directive auto-PAUSED (cold): '{d['label']}' — no credible new hits in {int(cold_days)}d. "
                         f"Advisory only; the mandate is preserved. Operator un-pause when ready.")
             report.setdefault("paused_cold", 0)
@@ -209,6 +249,9 @@ def _drain_curation_sources(c, cur, dry, report, evaluate, resolve_fn):
     drain_curation_sources(
         cur, dry, report, evaluate, resolve_fn,
         drain_limit=limit,
+        # One claimed row per transaction: commit after each row so a batch never
+        # holds staging-row claims (and whatever the row minted) across N promotes.
+        commit_each=None if dry else c.commit,
         auto_apply=_auto_apply if os.environ.get("CURATION_AUTO_APPLY_GATE", "1").strip()
         not in ("0", "false", "no") else None,
     )
@@ -247,15 +290,25 @@ def main():
                        AND surfaced_at > now()-interval '12 hours' LIMIT 1""", (did, sym, by))
         return cur.fetchone() is not None
 
-    def evaluate(sym, did, reason, source_system, auto):
+    def evaluate_in_claim(sym, did, reason, source_system, auto):
         # RECONCILED: route through the REAL evaluation engine instead of a flat watchlist add.
         # promote_directive_lead = governor (tier+divergence) → register provenance → enrich-on-demand
         # → classify (Bucket 2/3 ONLY; momentum_scalp/gap_and_go/SAME_DAY excluded) → watchpool. It
         # records the watch_directive_hit itself and runs under its own app-role connection.
+        # Used as-is by the curation drain, whose row claim must span the promote.
         try:
             return dp.promote_directive_lead(sym, did, reason, source_system, auto=auto)
         except Exception as e:
             return {"status": "ERROR", "error": str(e)[:140]}
+
+    def evaluate(sym, did, reason, source_system, auto):
+        # Main loop: nothing here is claim-locked, so end this connection's transaction
+        # (reads + the previous unit's staging UPDATE) BEFORE the promote does network
+        # I/O on its own connection. Holding it open here is what kept watch_directives
+        # locked "idle in transaction" for ~1 min (M5 2026-09-24).
+        if not dry:
+            c.commit()
+        return evaluate_in_claim(sym, did, reason, source_system, auto)
 
     for d in directives:
         did = d["id"]
@@ -321,7 +374,9 @@ def main():
             # timeout".
             c.commit()
     # ── Two-way curation drain (CIO/advisory/defense → watchlist, forward edge) ──
-    _drain_curation_sources(c, cur, dry, report, evaluate, _resolve)
+    if not dry:
+        c.commit()
+    _drain_curation_sources(c, cur, dry, report, evaluate_in_claim, _resolve)
     # Trend cold-detector (advisory): reconfirm / start-clock / auto-pause-on-cold
     pause_cold_trends(c, cur, dry, report)
     if not dry:
