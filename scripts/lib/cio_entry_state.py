@@ -168,6 +168,11 @@ def render_operator(result: dict, ev: dict) -> str:
         lines.append(f"CIO view: {result['cio_action'].replace('_', ' ').title()}")
     if result.get("held"):
         lines.append("Already held — this would be an add.")
+    # Stage 1D — capital-efficient options alt beside equity (cache only; honest NONE).
+    if result.get("state") in ("BUY_READY", "ENTRY_NEAR"):
+        alt_line = _options_alt_line(result)
+        if alt_line:
+            lines.append(alt_line)
     lines.append("Advisory only: review and decide; nothing is placed automatically.")
     return "\n".join(lines)
 
@@ -185,13 +190,52 @@ def render_digest(results: list[dict]) -> str:
     return "\n".join(lines)
 
 
+def _options_alt_line(result: dict) -> str:
+    """Append Stage 1D options alternative; degrade silently if fluency module absent."""
+    try:
+        from scripts.lib.cio_options_fluency import (  # noqa: PLC0415
+            format_entry_options_alternative_block,
+            select_entry_options_alternative,
+        )
+    except ImportError:
+        try:
+            from lib.cio_options_fluency import (  # type: ignore[no-redef]  # noqa: PLC0415
+                format_entry_options_alternative_block,
+                select_entry_options_alternative,
+            )
+        except ImportError:
+            return ""
+    alt = select_entry_options_alternative(
+        str(result.get("symbol") or ""),
+        entry_low=result.get("entry_low"),
+        entry_high=result.get("entry_high"),
+        stop=result.get("stop"),
+        target=result.get("target"),
+    )
+    return format_entry_options_alternative_block(alt)
+
+
 def render_cio(result: dict, ev: dict) -> str:
     state = "BUY_READY" if result["state"] == "BUY_READY" else "ENTRY_NEAR"
     cap = _cap_text(ev)
-    return (f"Entry state {state} for {result['symbol']}{' (' + cap + ')' if cap else ''}: price "
-            f"{_money(result['price'])}, zone {_money(result['entry_low'])}–{_money(result['entry_high'])}, "
-            f"stop {_money(result['stop'])}, target {_money(result['target'])}, R:R {result['rr']}. "
-            f"Plan source {result.get('plan_source') or 'unknown'}. Confirm or refute the entry for the operator.")
+    text = (
+        f"Entry state {state} for {result['symbol']}{' (' + cap + ')' if cap else ''}: price "
+        f"{_money(result['price'])}, zone {_money(result['entry_low'])}–{_money(result['entry_high'])}, "
+        f"stop {_money(result['stop'])}, target {_money(result['target'])}, R:R {result['rr']}. "
+        f"Plan source {result.get('plan_source') or 'unknown'}."
+    )
+    if result.get("state") in ("BUY_READY", "ENTRY_NEAR"):
+        alt_line = _options_alt_line(result)
+        if alt_line:
+            text = f"{text} {alt_line}"
+        else:
+            text = f"{text} Confirm or refute the entry for the operator."
+    else:
+        text = f"{text} Confirm or refute the entry for the operator."
+    # When an options alt is present it already asks confirm/refute alongside equity.
+    if "Confirm or refute" not in text:
+        text = f"{text} Confirm or refute the equity entry (and options alternative if shown) for the operator."
+    return text
 
 
 def transition_key(result: dict, day: date | None = None) -> str:

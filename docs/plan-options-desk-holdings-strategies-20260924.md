@@ -288,8 +288,8 @@ rg -n "options|long_call|OPTIONS_ALT" scripts/lib/cio_entry_state.py
 | This SoT (all asks P1–P7) | **Yes — this revision** |
 | Stage 1 funnel | **CLOSED** PR #1215 |
 | Stage 1B open-leg honesty | **Code on branch** — push, green CI, merge |
-| Stage 1C CIO fluency + goal lineage stamps | **High-confidence develop** (no auto goals) |
-| Stage 1D BUY_READY options alt | **High-confidence develop** (cache attach + honest none) |
+| Stage 1C CIO fluency + goal lineage stamps | **Wired locally** — needs push |
+| Stage 1D BUY_READY options alt | **Wired locally** — needs push |
 | Stage 2 / 2G / 3 | **Operator** |
 | Widen gates / invent margin / new strategies | **No** |
 
@@ -323,9 +323,9 @@ If gog cannot see the folder from this host, run the same lines on the keyboard 
 | Stage | Status | Evidence |
 |---|---|---|
 | Stage 1 holdings funnel | **CLOSED** | https://github.com/PatsKiller/tardeai/pull/1215 · head `ab2653724` · funnel API + Hub + tests |
-| Stage 1B open-leg honesty | **CODE COMPLETE / PUSH PENDING** | `_monitor_position` pnl/criterion/margin · cards · `test_options_open_leg_honesty.py` |
-| Stage 1C CIO fluency + goals | **PLANNED** (wire next) | Diagnosis: 0 options goals; demoted options_desk; templates + house facts + finalize_operator_reply |
-| Stage 1D BUY_READY options alt | **PLANNED** (wire next) | Diagnosis: render_cio equity-only; V cache=CC wrong class for capital-efficient entry |
+| Stage 1B open-leg honesty | **CLOSED** (pushed) | PR #1215 · head `7e02f36eb` · `_monitor_position` pnl/criterion/margin · OptionPositionCardV4 · `tests/test_options_open_leg_honesty.py` · design-token funnel fix |
+| Stage 1C CIO fluency + goals | **WIRED (local)** | `scripts/lib/cio_options_fluency.py` · `options_strategy` intent + house-facts card · goal_lineage LINKED/ABSENT · evidence contract · tests `test_cio_options_fluency_20260924.py` — push pending grant |
+| Stage 1D BUY_READY options alt | **WIRED (local)** | `render_cio` / `render_operator` append options alt from desk cache; WRONG_STRATEGY_CLASS when only CC; Path B pointer — push pending grant |
 | Stage 2 intent map | **OPEN — operator** | Propose list; do not auto-apply |
 | Stage 2G options goals mint | **OPEN — operator** | After 1C templates |
 | Promote | **PENDING** | After CI green + merge — exact SHA; `release-write` if needed |

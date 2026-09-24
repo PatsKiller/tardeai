@@ -60,6 +60,8 @@ _DESK_NEEDS = frozenset({
     # from research rows gave the operator three stop-curation reviews on
     # 2026-09-13. The data was already on file and nothing read it.
     "analyst_view",
+    # Stage 1C — CIO options fluency from options_desk_latest cache (no live chain).
+    "options_strategy",
 })
 _RUNTIME_NEEDS = frozenset({"runtime_llm", "runtime_status"})
 _META_HEURISTIC = re.compile(
@@ -537,6 +539,17 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
             needs.append("analyst_view")
             if out["intent"] in ("unclear", "freeform"):
                 out["intent"] = "analyst_view"
+        # Options strategy fluency (Stage 1C) — house facts from options desk cache,
+        # not live Schwab chain. Must beat freeform fall-through for CC/CSP/spread asks.
+        if re.search(
+            r"(?is)\b(option\s*strateg|covered\s*call|cash[\s-]?secured\s*put|\bCSP\b|"
+            r"protective\s*put|credit\s*spread|debit\s*spread|long\s*call|LEAP|"
+            r"options?\s*play|defined[\s-]?risk\s*call|stock[\s-]?replacement)\b",
+            scan,
+        ):
+            needs.append("options_strategy")
+            if out["intent"] in ("unclear", "freeform", "general"):
+                out["intent"] = "options_strategy"
         # Buy / investment perspective: need analyst + research, never a hollow
         # price-only essay while Hermes is empty (plan Option B, live 2026-09-22).
         if out["symbols"] and is_buy_perspective_ask(scan):
@@ -549,9 +562,10 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         # Explainer/comparison language → freeform (soft desk hints OK, no reentry)
         # Buy/perspective stays on the subject brief path — freeform would drop
         # research from needs and re-open the hollow-essay failure.
+        # Options strategy asks stay on options_strategy (Stage 1C).
         if (
             _looks_like_freeform(scan)
-            and out["intent"] not in ("reentry", "meta_system")
+            and out["intent"] not in ("reentry", "meta_system", "options_strategy")
             and not is_buy_perspective_ask(scan)
         ):
             soft = [n for n in needs if n in ("portfolio", "cash", "risk", "research")]
@@ -632,7 +646,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         out["intent"] = "meta_system"
                         out["needs"] = flash_needs or ["runtime_llm", "runtime_status"]
                     elif flash_intent in (
-                        "reentry", "portfolio", "cash", "risk", "research", "analyst_view",
+                        "reentry", "portfolio", "cash", "risk", "research", "analyst_view", "options_strategy",
                         "desk_question", "freeform", "unclear", "other",
                     ):
                         if flash_intent in ("other", "unclear", "desk_question"):
@@ -653,7 +667,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         out["needs"] = flash_needs or heuristic_needs
                     # Heuristic freeform stays freeform unless Flash picked a desk intent
                     if heuristic_intent == "freeform" and out["intent"] not in (
-                        "meta_system", "reentry", "portfolio", "cash", "risk", "research", "analyst_view",
+                        "meta_system", "reentry", "portfolio", "cash", "risk", "research", "analyst_view", "options_strategy",
                     ):
                         out["intent"] = "freeform"
                         out["needs"] = [
@@ -1959,6 +1973,24 @@ def _gather_tradeai_evidence_core(intent: dict[str, Any]) -> dict[str, Any]:
                 "reason": f"no analyst coverage on file for {', '.join(symbols)}",
                 "gap_type": "missing_analyst_coverage",
             })
+
+    if "options_strategy" in needs:
+        try:
+            from scripts.lib.cio_options_fluency import (  # noqa: PLC0415
+                format_cio_options_opinion,
+                gather_options_house_facts,
+            )
+        except ImportError:
+            from lib.cio_options_fluency import (  # type: ignore[no-redef]  # noqa: PLC0415
+                format_cio_options_opinion,
+                gather_options_house_facts,
+            )
+        facts = gather_options_house_facts(symbols or [])
+        available["options_strategy"] = facts
+        available["options_strategy_card"] = format_cio_options_opinion(
+            facts, symbols=symbols or [],
+        )
+        sources.append("options_desk_latest")
 
     # How is the named stock doing: last close, 30-day change, its desk levels.
     # 2026-09-13 "How is Visa doing ... analyst recommendations": the reply had no
@@ -3422,6 +3454,15 @@ def _curate_from_evidence_core(operator_text: str, evidence: dict[str, Any]) -> 
             "ok": True,
             "text": avail["meta_card"],
             "source": "runtime_meta",
+            "model": None,
+        }
+    if avail.get("options_strategy_card"):
+        # Stage 1C — deterministic CIO options fluency from desk cache; no Flash
+        # specialist roleplay. finalize_operator_reply adds Sources downstream.
+        return {
+            "ok": True,
+            "text": avail["options_strategy_card"],
+            "source": "options_strategy_house_facts",
             "model": None,
         }
     if avail.get("freeform_context") is not None:
