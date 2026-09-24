@@ -1470,7 +1470,10 @@ def _fetch_schwab_option_positions() -> List[dict]:
                     if qty <= 0:
                         continue
                     side = "short" if _f(p.get("qty")) < 0 else "long"
-                    positions.append({
+                    # Pass through any Schwab-supplied margin/BP fields verbatim —
+                    # never invent Reg-T. normalize_positions today does not emit these;
+                    # if a future normalizer adds them, the monitor will stamp them.
+                    row = {
                         "account_key": acct,
                         "occ_symbol": sym,
                         "qty": qty,
@@ -1478,10 +1481,52 @@ def _fetch_schwab_option_positions() -> List[dict]:
                         "avg_entry": _f(p.get("avg_entry_price")),
                         "market_value": _f(p.get("market_value")),
                         **parsed,
-                    })
+                    }
+                    for _mk in (
+                        "margin_requirement",
+                        "maintenance_requirement",
+                        "initial_requirement",
+                        "buying_power_effect",
+                        "bp_effect",
+                        "option_margin",
+                    ):
+                        if p.get(_mk) is not None:
+                            row[_mk] = p.get(_mk)
+                    positions.append(row)
     except Exception:
         pass
     return positions
+
+
+def _schwab_margin_stamp(pos: dict) -> dict:
+    """Stamp margin/BP only when Schwab already supplied a field — never invent dollars."""
+    for key in (
+        "margin_requirement",
+        "maintenance_requirement",
+        "initial_requirement",
+        "buying_power_effect",
+        "bp_effect",
+        "option_margin",
+    ):
+        if pos.get(key) is not None:
+            try:
+                val = float(pos.get(key))
+            except (TypeError, ValueError):
+                continue
+            return {
+                "margin_status": "OK",
+                "margin_usd": round(val, 2),
+                "margin_field": key,
+                "margin_note": f"Schwab field `{key}`",
+                "margin_as_of": _iso(),
+            }
+    return {
+        "margin_status": "MARGIN_UNKNOWN",
+        "margin_usd": None,
+        "margin_field": None,
+        "margin_note": "not on Schwab feed used here",
+        "margin_as_of": _iso(),
+    }
 
 
 def _monitor_position(pos: dict, tech_map: dict) -> dict:
@@ -1504,7 +1549,9 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
         strike,
         dte if dte > 0 else 21,
     )
-    mark = contract["mid"] if contract else 0.0
+    mark = None
+    if contract and contract.get("mid") is not None:
+        mark = _f(contract.get("mid"))
     iv = (contract.get("iv") if contract else 0.25) or 0.25
     delta = contract.get("delta") if contract else None
 
@@ -1523,7 +1570,15 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
 
     pnl_unrealized = None
     entry = _f(pos.get("avg_entry"))
-    if entry and mark:
+    pnl_status = "OK"
+    pnl_unknown_reason = None
+    if not entry or entry <= 0:
+        pnl_status = "PNL_UNKNOWN"
+        pnl_unknown_reason = "missing avg_entry / fill basis"
+    elif mark is None or mark <= 0:
+        pnl_status = "PNL_UNKNOWN"
+        pnl_unknown_reason = "no chain mark"
+    else:
         mult = 100 * _f(pos.get("qty"), 1)
         if is_short:
             pnl_unrealized = round((entry - mark) * mult, 2)
@@ -1533,42 +1588,53 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
     working = True
     action = "hold"
     action_label = "Hold"
+    action_criterion = "Default hold — no harvest/defend rule fired"
     rationale_parts = []
 
     if is_short and opt_type == "call":
         if itm and dte <= 7:
             action, action_label = "roll", "Roll to Next Expiration"
+            action_criterion = "Short call ITM and DTE ≤ 7"
             rationale_parts.append("Short call ITM with ≤7 DTE — assignment risk elevated")
             working = False
         elif pop_otm >= 75 and pnl_unrealized and pnl_unrealized > 0:
             action, action_label = "close_profit", "Close for Profit"
+            action_criterion = "POP OTM ≥ 75% and unrealized P&L > 0"
             rationale_parts.append(f"{pop_otm:.0f}% chance OTM — capture {pnl_unrealized:.0f} unrealized")
         elif not itm and pop_otm >= 60:
             action, action_label = "hold", "Hold"
+            action_criterion = "Short call OTM with POP OTM ≥ 60%"
             rationale_parts.append(f"Position working: {pop_otm:.0f}% POP OTM, {dte} DTE left")
         elif itm:
             action, action_label = "close", "Close / Roll"
+            action_criterion = "Short call ITM (assignment risk)"
             rationale_parts.append("ITM short call — consider rolling or closing to avoid assignment")
             working = False
     elif is_short and opt_type == "put":
         if itm and dte <= 10:
             action, action_label = "close", "Close Position"
+            action_criterion = "Short put ITM and DTE ≤ 10"
             rationale_parts.append("Short put ITM — assignment risk on underlying")
             working = False
         elif pop_otm >= 70 and pnl_unrealized and pnl_unrealized > 0:
             action, action_label = "close_profit", "Close for Profit"
+            action_criterion = "POP OTM ≥ 70% and unrealized P&L > 0"
             rationale_parts.append(f"Capture premium — {pop_otm:.0f}% still OTM")
         else:
+            action_criterion = "Short put monitoring — no close/roll threshold met"
             rationale_parts.append(f"CSP monitoring: {moneyness}, POP OTM {pop_otm:.0f}%")
     else:
-        if pnl_unrealized and pnl_unrealized < -0.5 * entry * 100:
+        if entry and pnl_unrealized and pnl_unrealized < -0.5 * entry * 100:
             action, action_label = "close", "Cut Loss"
+            action_criterion = "Long option unrealized loss > 50% of entry premium"
             rationale_parts.append("Long option down >50% — edge deteriorated")
             working = False
         elif pop_itm >= 65 and pnl_unrealized and pnl_unrealized > 0:
             action, action_label = "close_profit", "Take Profit"
+            action_criterion = "Finish-ITM probability ≥ 65% and unrealized P&L > 0"
             rationale_parts.append(f"In-the-money with {pop_itm:.0f}% finish ITM probability")
         else:
+            action_criterion = f"Long {opt_type} — no cut/take-profit threshold met"
             rationale_parts.append(f"Long {opt_type}: {moneyness}, {dte} DTE")
 
     iv_rank = _iv_rank_proxy(und_sym, tech, chain_iv=iv)
@@ -1577,6 +1643,10 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
     qty = _f(pos.get("qty"), 1)
     mult = 100.0 * qty
     max_profit_at_open = round(entry * mult, 2) if entry else None
+    # Credit (short) is +entry premium; debit (long) is −entry premium — economics label only.
+    entry_credit_debit = None
+    if entry and entry > 0:
+        entry_credit_debit = round(entry * mult, 2) if is_short else round(-entry * mult, 2)
     max_loss_at_open = None
     if entry and strike:
         if is_short and opt_type == "put":
@@ -1587,7 +1657,7 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
             max_loss_at_open = round(entry * mult, 2)
 
     profit_captured_pct = None
-    if is_short and entry > 0 and mark >= 0:
+    if is_short and entry > 0 and mark is not None and mark >= 0:
         profit_captured_pct = round(100.0 * max(0.0, entry - mark) / entry, 1)
 
     risk_reward = None
@@ -1635,6 +1705,8 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
         else:
             maturity_note = f"Long {opt_type}: {moneyness}, {dte} DTE — watch mark vs entry."
 
+    margin = _schwab_margin_stamp(pos)
+
     return {
         "id": pos.get("occ_symbol") or f"{und_sym}_{strike}_{opt_type}",
         "occ_symbol": pos.get("occ_symbol"),
@@ -1649,8 +1721,11 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
         "qty": _f(pos.get("qty"), 1),
         "underlying_price": round(spot, 2),
         "mark": mark,
-        "avg_entry": entry,
+        "avg_entry": entry if entry else None,
+        "entry_credit_debit": entry_credit_debit,
         "unrealized_pnl": pnl_unrealized,
+        "pnl_status": pnl_status,
+        "pnl_unknown_reason": pnl_unknown_reason,
         "moneyness": moneyness,
         "itm": itm,
         "pop_otm_pct": pop_otm,
@@ -1667,6 +1742,7 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
         "still_working": working,
         "recommended_action": action_label,
         "action": action,
+        "action_criterion": action_criterion,
         "action_buttons": [
             {"action": action, "label": action_label},
             {"action": "roll", "label": "Roll to Next Week"},
@@ -1676,6 +1752,7 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
         "rationale": " · ".join(rationale_parts) or f"{moneyness} — monitor",
         "severity": "warning" if not working else ("positive" if (pnl_unrealized or 0) > 0 else "info"),
         "monitored_at": _iso(),
+        **margin,
     }
 
 

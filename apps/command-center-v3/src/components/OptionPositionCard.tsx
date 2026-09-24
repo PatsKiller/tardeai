@@ -53,6 +53,13 @@ export type OptionPosition = {
   pop_otm_pct?: number
   pop_itm_pct?: number
   unrealized_pnl?: number
+  pnl_status?: string
+  pnl_unknown_reason?: string
+  entry_credit_debit?: number
+  action_criterion?: string
+  margin_status?: string
+  margin_usd?: number | null
+  margin_note?: string
   edge_score?: number
   still_working?: boolean
   recommended_action?: string

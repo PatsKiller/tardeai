@@ -619,6 +619,7 @@ UNLISTED_BASELINE: frozenset = frozenset([
     "tests/test_options_iv_rank.py",
     "tests/test_options_lifecycle_migration.py",
     "tests/test_options_lifecycle_policy.py",
+    "tests/test_options_open_leg_honesty.py",
     "tests/test_options_paper_monitor_ops.py",
     "tests/test_options_paper_position_monitor.py",
     "tests/test_options_paper_positions_api.py",
