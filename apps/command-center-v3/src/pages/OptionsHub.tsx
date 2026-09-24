@@ -128,8 +128,9 @@ export default function OptionsHub({ onDrill }: Props) {
   const { data: execStatus } = useApi<any>('/api/v2/options/execution/status', 120_000)
   // Stage B: advisory paper-validation gate progress (deep_itm_call) — header strip
   const { data: validation } = useApi<any>('/api/v2/options/validation', 300_000)
-  // Stage 1 holdings funnel — why owned names are / aren't CC ideas (no gate widening)
-  const { data: holdingsFunnel } = useApi<any>('/api/v2/options/holdings-funnel?resolve_chain=0', 300_000)
+  // Stage 1 holdings funnel — resolve_chain=1 so CC eligible matches Intent (INTENT_BYPASS)
+  // and Ideas; resolve_chain=0 understates (e.g. V EDGE_BELOW vs INTENT_BYPASS). No IV widen.
+  const { data: holdingsFunnel } = useApi<any>('/api/v2/options/holdings-funnel?resolve_chain=1', 300_000)
   const validationRows: any[] = Array.isArray(validation?.strategies)
     ? validation.strategies.filter((s: any) => s?.ok)
     : []
