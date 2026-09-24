@@ -94,10 +94,14 @@ def apply_bitemporal_schema_v2(conn) -> dict[str, Any]:
         # SQL file's own isolated-database allowlist. The LIVE shadow is refused
         # too unless explicitly opted in: pytest reached this through the
         # m2_conn fixture and dropped live memory on every run (M5 audit 09-23).
-        from scripts.lib.m2_live_shadow_guard import destructive_reset_permitted  # noqa: PLC0415
+        from scripts.lib.m2_live_shadow_guard import (  # noqa: PLC0415
+            destructive_reset_permitted,
+            set_isolated_agent_password,
+        )
 
         if destructive_reset_permitted(conn, is_production=conn_targets_production(conn)):
             cur.execute("SET m2.allow_destructive_reset = 'on'")
+        set_isolated_agent_password(cur, is_production=conn_targets_production(conn))
         cur.execute(base)
         cur.execute(delta)
         # Was hardcoded to m2_shadow, so it silently granted nothing useful on
