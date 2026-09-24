@@ -2224,6 +2224,21 @@ def _register_gap_ids_on_spine(conn: Any, gap_ids: list[int]) -> dict[str, Any]:
         return {"written": 0, "error": f"{type(exc).__name__}:{exc}"[:160]}
 
 
+def _gap_identity(symbol: Any) -> dict[str, Any]:
+    """{subject_guid, issuer_guid} for a gap's symbol, or {} -- never raises."""
+    sym = str(symbol or "").strip().upper()
+    if not sym or sym == "BOOK":
+        return {}
+    try:
+        from scripts.lib import research_identity as _RI  # noqa: PLC0415
+        tag = _RI.resolve(_RI.load_registry(), sym)
+    except Exception:  # noqa: BLE001
+        return {}
+    if not tag or not tag.get("subject_guid"):
+        return {}
+    return {"subject_guid": tag["subject_guid"], "issuer_guid": tag.get("issuer_guid")}
+
+
 def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str) -> dict[str, Any]:
     """Queue the gaps the resolver can act on into data_gap_registry.
 
@@ -2292,13 +2307,23 @@ def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str)
         except Exception:  # noqa: BLE001
             nxt = None
         out["resolver_next_run"] = nxt.isoformat() if nxt else None
+    # Stamp identity on each gap and on the row, so a subject_guid join over the
+    # gap log finds these rows too; before this only hermes_operator_forced rows
+    # carried a GUID. Resolution failure stamps nothing and never blocks the write.
+    stamped_gaps = [{**g, **_gap_identity(g.get("symbol"))} if isinstance(g, dict) else g
+                    for g in (gaps or [])]
+    row_identity = next((
+        {"subject_guid": g["subject_guid"], "issuer_guid": g.get("issuer_guid")}
+        for g in stamped_gaps if isinstance(g, dict) and g.get("subject_guid")), {})
     _append_jsonl(
         PROJECT_ROOT / "data" / "cio" / "cio_operator_gap_requests.jsonl",
         {
             "ts": _now(),
             "pending_id": pending_id,
             "chat_id": chat_id,
-            "gaps": gaps,
+            "subject_guid": row_identity.get("subject_guid"),
+            "issuer_guid": row_identity.get("issuer_guid"),
+            "gaps": stamped_gaps,
             "registered": out["registered"],
             "gap_ids": out["gap_ids"],
             "not_registered": skipped,
@@ -3070,16 +3095,7 @@ def _enqueue_hermes_research(
                 "symbols": symbols,
                 "authority": AUTHORITY,
             }
-        try:
-            from scripts.lib import research_identity as _RI  # noqa: PLC0415
-            _sym0 = (symbols[:1] or [None])[0]
-            if _sym0:
-                _tag = _RI.resolve(_RI.load_registry(), _sym0)
-                if _tag and _tag.get("subject_guid"):
-                    _gap_row["subject_guid"] = _tag["subject_guid"]
-                    _gap_row["issuer_guid"] = _tag.get("issuer_guid")
-        except Exception:  # noqa: BLE001
-            pass
+        _gap_row.update(_gap_identity((symbols[:1] or [None])[0]))
         _append_jsonl(OPERATOR_GAP_REQUESTS_PATH, _gap_row)
     except Exception as exc:
         out["error"] = f"{type(exc).__name__}:{exc}"

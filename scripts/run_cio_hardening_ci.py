@@ -624,6 +624,8 @@ GATES = [
             "tests/test_comms_editor_mode_file_20260914.py",
             # 2026-09-18: investment-shaped Telegram held on CIO Avoid / missing decision.
             "tests/test_cio_telegram_stance_gate_20260918.py",
+            # 2026-09-23 M5: AVOID/SELL hard hold, soft stances GO→WATCH, hold-ledger dedupe.
+            "tests/test_cio_telegram_stance_gate_m5_20260923.py",
             # 2026-09-16 B-phase curation: STOP HEALTH per-symbol repeats collapse to one
             # batched card; GO + entry alerts carry a HELD / NOT HELD triage pill.
             "tests/test_stop_health_batch_20260916.py",
@@ -803,6 +805,8 @@ GATES = [
             "tests/test_gateway_cron_jobs_mirror_20260923.py",
             # Stage 2 parity: ban pseudo Iris/Alex/CIO attribution (desk + Maria).
             "tests/test_specialist_attribution_stage2_20260923.py",
+            # M5 Module 3: Maria outbound gate (OpenClaw message_sending bridge).
+            "tests/test_maria_outbound_gate_20260923.py",
             # Evidence coverage contract per intent: house facts first, false-empty claims rejected.
             "tests/test_operator_evidence_contract_20260913.py",
             # Subject resolution: registry-first tickers, company names incl. house-held names.
@@ -1125,6 +1129,18 @@ GATES = [
             "tests/test_publish_chokepoint_identity_20260922.py",
         ],
     ),
+    # Operator turns bound nothing: 114 of 114 in the seven days to 2026-09-23
+    # stored a NULL subject_guid ("how is sentinel one doing", "is mcdonalds a
+    # good investment", "is S a good investment"), and research/gap rows carried
+    # a GUID on REQUESTED only. Gated with the chrome-leak negatives so the
+    # any-case windows cannot reopen "Price" -> TROW or "Data" -> DAIO.
+    (
+        "operator_turn_identity_binding",
+        [
+            "tests/test_identity_anycase_windows_20260923.py",
+            "tests/test_identity_stamp_rows_20260923.py",
+        ],
+    ),
     # The memory join was open at both ends. Measured 2026-09-22: causation_id
     # and parent_event_id were NULL on all 54,928 communication_events, so no
     # reply resolved to the event that caused it; and subject_guid was NULL on
@@ -1197,6 +1213,10 @@ GATES = [
         "paper_trades_never_page",
         [
             "tests/test_paper_trades_never_page_20260922.py",
+            # M5 guardrails 2026-09-23: the same rule for the four senders the
+            # 09-22 fix missed, pytest kept off the live M2 shadow, and the
+            # stance observe receipt kept out of reach of test fixtures.
+            "tests/test_m5_guardrails_20260923.py",
         ],
     ),
     # A DELIVERED message must not discard its provider id. _legacy_send called
