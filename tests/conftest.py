@@ -25,6 +25,24 @@ os.environ.setdefault("COMMS_EDITOR_MODE_FILE", os.path.join(_tempfile.mkdtemp(p
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+# The bitemporal shadow m2_shadow (:55432) holds LIVE cognitive memory -- the hourly
+# AEC cycle writes there since 2026-09-20 -- and the M2 fixtures defaulted to it with
+# the destructive reset opted in, so every pytest run dropped memory_r10_m2 (M5 audit
+# 2026-09-23). Route every shadow DSN env var to a dedicated test database on the same
+# container BEFORE any test module imports (memory_m2_v2.AGENT_DSN is read at import),
+# and create it when the container is reachable. The libraries also refuse to connect
+# to the live shadow under pytest, so an explicit override cannot reintroduce it.
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from scripts.lib.m2_live_shadow_guard import (  # noqa: E402
+    ensure_test_database as _ensure_m2_test_db,
+    route_tests_off_live_shadow as _route_m2_tests,
+)
+
+_route_m2_tests()
+if os.environ.get("M2_SKIP_DOCKER") != "1":
+    _ensure_m2_test_db()
+
 # CI does not install python-dotenv, so any alarm module importing it raised
 # ModuleNotFoundError during collection and the C1 firing gate did not run at all.
 # A gate that silently does not execute is the exact defect this suite exists to

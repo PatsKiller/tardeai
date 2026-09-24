@@ -184,15 +184,37 @@ def test_no_result_yet_leaves_the_pending_open(ledgers, monkeypatch):
     assert _statuses(ledgers) == ["open"]
 
 
-def test_failed_hermes_run_closes_the_pending_now_with_the_reason(ledgers, monkeypatch):
+def test_failed_hermes_run_with_a_house_price_answers_and_states_the_reason(ledgers, monkeypatch):
+    """2026-09-23: a price already on file is not discarded when Hermes fails."""
     _open_pending(ledgers, age_min=5)
     fake = _FakeHermes(ledgers, {"res_test1": {"plan_id": "plan_test1", "status": "failed",
                                                "error": "bridge timeout"}}, [])
     monkeypatch.setattr(desk, "_hermes_store", lambda: fake)
     send = _Sender()
     out = desk.try_fulfill_pending_replies(send)
+    assert out["fulfilled"] == 1 and out["expired"] == 0
+    body = send.sent[0][1]
+    assert "promoted research did not land" in body.lower()
+    assert "bridge timeout" in body
+    assert "HPE" in body
+    assert "no ticker resolves" not in body
+
+
+def test_failed_hermes_run_without_house_facts_closes_with_the_reason(ledgers, monkeypatch):
+    _open_pending(ledgers, age_min=5)
+    fake = _FakeHermes(ledgers, {"res_test1": {"plan_id": "plan_test1", "status": "failed",
+                                               "error": "bridge timeout"}}, [])
+    monkeypatch.setattr(desk, "_hermes_store", lambda: fake)
+    monkeypatch.setattr(desk, "gather_tradeai_evidence", lambda intent: {
+        "ok": True, "complete": False, "available": {},
+        "gaps": [RESEARCH_GAP], "blocking_gaps": [RESEARCH_GAP], "sources": [],
+    })
+    send = _Sender()
+    out = desk.try_fulfill_pending_replies(send)
     assert out["expired"] == 1 and _statuses(ledgers) == ["open", "expired"]
-    assert "Hermes research run failed (bridge timeout)" in send.sent[0][1]
+    assert "promoted research did not land" in send.sent[0][1]
+    assert "bridge timeout" in send.sent[0][1]
+    assert "no ticker resolves" not in send.sent[0][1]
 
 
 def test_join_removes_only_the_research_gap():

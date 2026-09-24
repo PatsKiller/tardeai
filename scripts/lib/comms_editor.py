@@ -134,7 +134,8 @@ _CIO_BULL = {
 _CIO_BEAR = {"AVOID", "SELL", "EXIT", "TRIM", "REDUCE", "HOLD_REDUCE"}
 # Soft non-bull CIO actions: allow GO/BUY → WATCH rewrite then re-check (C2).
 _CIO_SOFT_BLOCK = frozenset({
-    "RESEARCH_MORE", "HUMAN_REVIEW", "HOLD", "WAIT", "NEUTRAL", "NO_GO", "NOGO", "WATCH",
+    "RESEARCH_MORE", "HUMAN_REVIEW", "ADD_REVIEW", "HOLD", "WAIT", "NEUTRAL",
+    "UNSTATED", "NO_GO", "NOGO", "WATCH",
 })
 # Broad market / macro symbols: regime words near these are not investment recs.
 _STANCE_EXCLUDE_SYMBOLS = frozenset({
@@ -704,11 +705,20 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
 
     # C2: soft-block GO/BUY → WATCH rewrite, then re-check stance.
     rewrite_syms = soft_block_rewrite_symbols(disagree)
+    stance_notes: list[str] = []
     if rewrite_syms:
         new_body, rw_changes = rewrite_bullish_to_watch(body, rewrite_syms)
         if rw_changes and new_body != body:
             body = new_body
             changes.extend(rw_changes)
+            for sym in rewrite_syms:
+                if f"rewrote:go_to_watch:{sym}" not in rw_changes:
+                    continue
+                action = str((views.get(sym) or {}).get("action") or "UNSTATED").upper()
+                stance_notes.append(
+                    f"[CIO Stance: {action} — Action rewritten to WATCH]"
+                )
+                changes.append(f"cio_stance_annotation:{sym}")
             # Subjects may still resolve; refresh disagreements on demoted text.
             disagree = cio_disagreements(body, views)
             missing = cio_missing_decisions(body, syms, views)
@@ -733,6 +743,8 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
         if link_line:
             footer.append(link_line)
             changes.append("links")
+    for note in stance_notes:
+        footer.append(html.escape(note))
     for d in disagree:
         footer.append(f"⚠️ <b>CIO disagrees on {html.escape(d['symbol'])}</b>: message reads {d['message']}, "
                       f"CIO decision is {html.escape(d['cio_action'] or 'UNKNOWN')} ({html.escape(d['cio_as_of'])})"

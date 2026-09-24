@@ -7,14 +7,14 @@ from pathlib import Path
 
 from scripts.observe_flash_cio_soak import observe_flash_cio_soak, main
 
-_NOW = datetime(2026, 9, 10, 6, 0, tzinfo=timezone.utc)
+_NOW = datetime(2026, 9, 23, 6, 0, tzinfo=timezone.utc)
 
 FIXTURE = {
     "held_symbols": ["AAPL", "MSFT", "NVDA", "AMZN", "META"],
     "rows": [
         {
             "symbol": "AAPL",
-            "updated_at": "2026-09-09T12:00:00Z",
+            "updated_at": "2026-09-22T12:00:00Z",
             "dual_consensus_json": {
                 "deepseek_status": "VOTED",
                 "participating_lanes": ["grok", "chatgpt", "deepseek-flash"],
@@ -22,7 +22,7 @@ FIXTURE = {
         },
         {
             "symbol": "MSFT",
-            "updated_at": "2026-09-09T13:00:00Z",
+            "updated_at": "2026-09-22T13:00:00Z",
             "dual_consensus_json": {
                 "deepseek_status": "VOTED",
                 "participating_lanes": ["grok", "deepseek-flash"],
@@ -30,7 +30,7 @@ FIXTURE = {
         },
         {
             "symbol": "NVDA",
-            "updated_at": "2026-09-09T14:00:00Z",
+            "updated_at": "2026-09-22T14:00:00Z",
             "dual_consensus_json": {
                 "deepseek_status": "VOTED",
                 "participating_lanes": ["chatgpt", "deepseek-flash"],
@@ -38,7 +38,7 @@ FIXTURE = {
         },
         {
             "symbol": "AMZN",
-            "updated_at": "2026-09-09T15:00:00Z",
+            "updated_at": "2026-09-22T15:00:00Z",
             "dual_consensus_json": {
                 "deepseek_status": "VOTED",
                 "participating_lanes": ["deepseek-flash"],
@@ -46,7 +46,7 @@ FIXTURE = {
         },
         {
             "symbol": "META",
-            "updated_at": "2026-09-09T16:00:00Z",
+            "updated_at": "2026-09-22T16:00:00Z",
             "dual_consensus_json": {
                 "deepseek_status": "VOTED",
                 "participating_lanes": ["grok", "chatgpt", "deepseek-flash"],
@@ -54,7 +54,7 @@ FIXTURE = {
         },
         {
             "symbol": "TSLA",
-            "updated_at": "2026-09-09T17:00:00Z",
+            "updated_at": "2026-09-22T17:00:00Z",
             "dual_consensus_json": {
                 "deepseek_status": "VOTED",
                 "participating_lanes": ["grok", "chatgpt", "deepseek-flash"],
@@ -71,7 +71,7 @@ FIXTURE = {
         },
         {
             "symbol": "SKIP",
-            "updated_at": "2026-09-09T18:00:00Z",
+            "updated_at": "2026-09-22T18:00:00Z",
             "dual_consensus_json": {
                 "deepseek_status": "SKIPPED_PEAK",
                 "participating_lanes": ["grok", "chatgpt"],
@@ -79,7 +79,7 @@ FIXTURE = {
         },
         {
             "symbol": "FALLBACK",
-            "updated_at": "2026-09-09T19:00:00Z",
+            "updated_at": "2026-09-22T19:00:00Z",
             "dual_consensus_json": {
                 "deepseek_status": "FALLBACK_SYNTH",
                 "participating_lanes": ["deepseek-flash"],
@@ -148,6 +148,10 @@ def test_cli_json_in(tmp_path: Path):
             "--held-only",
             "--out",
             str(out),
+            # Pin the clock: the fixture rows are dated 2026-09-0x, so an unpinned
+            # 14-day window aged them out on 2026-09-23 and the gate failed on main.
+            "--now",
+            _NOW.isoformat(),
         ]
     )
     assert rc == 0

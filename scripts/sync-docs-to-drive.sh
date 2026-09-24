@@ -211,6 +211,20 @@ is_runtime_dump_excluded() {
   return 1
 }
 
+# ── Preserved captures ──
+# Some docs are written INTO a release dir by ad-hoc tools and are not git-tracked, e.g.
+# the Command Center page walk (docs/command-center-pages). The next promote builds a new
+# release without them, and the cleanup pass then trashed their Drive copies (20 on
+# 2026-09-23). A missing local copy of these is NOT a deletion: keep the Drive file and
+# its manifest line. A present local copy still syncs normally.
+is_preserved_capture() {
+  local rel="$1"
+  case "$rel" in
+    docs/command-center-pages/*) return 0 ;;
+  esac
+  return 1
+}
+
 # ── Folder resolution: get or create a Drive folder for a path ──
 # Uses file-based cache: each line is "path|drive_id"
 resolve_folder() {
@@ -487,6 +501,7 @@ write_result done "$UPLOADED" "$SKIPPED" "$FAILED" "$SRC"
 
 # ── Cleanup: remove Drive files whose local source was deleted ──
 DELETED=0
+PRESERVED=0
 if [ -s "$MANIFEST" ]; then
   CLEANUP_MANIFEST=$(mktemp)
   cp "$MANIFEST" "$CLEANUP_MANIFEST"
@@ -496,6 +511,10 @@ if [ -s "$MANIFEST" ]; then
     # Remove from Drive if the local source was deleted OR it is now an excluded runtime dump
     # (excluded dumps may still exist locally — they just must not mirror to Drive).
     if [ ! -f "$local_file" ]; then
+      if is_preserved_capture "$relpath"; then
+        PRESERVED=$((PRESERVED + 1))
+        continue
+      fi
       log "CLEANUP: $relpath no longer exists locally"
     elif is_runtime_dump_excluded "$relpath"; then
       log "CLEANUP excluded runtime dump: $relpath"
@@ -543,4 +562,7 @@ except: print('')
 fi
 if [ "$DELETED" -gt 0 ]; then
   log "cleanup done: $DELETED files removed from Drive"
+fi
+if [ "$PRESERVED" -gt 0 ]; then
+  log "cleanup kept $PRESERVED preserved capture(s) absent from this release"
 fi

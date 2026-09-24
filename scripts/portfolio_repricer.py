@@ -412,14 +412,161 @@ def _update_quote_cache(
     return updated_count
 
 
+# ── Intraday fills (day P/L for shares traded today) ─────────────────────────
+# (price - prev_close) * shares treats every share as held since yesterday's close. A
+# position bought today then shows the whole day's move as its P/L: 2026-09-23 MCD, 200 sh
+# bought at 235.01/236.36 while MCD fell 5.4%, read -$2,714 against Schwab's +$289.
+# Broker convention: shares held at the open earn (price - prev_close); a share bought today
+# earns (price - fill); a share sold today earned (fill - prev_close).
+_FILL_ACCOUNT_ALIASES = {"schwab_roth_ira": "schwab_roth"}   # transactions label -> holdings label
+
+
+def _load_intraday_fills(trade_date: Optional[str] = None) -> Dict[tuple, Dict[str, list]]:
+    """Today's Buy/Sell fills keyed (holdings account, SYMBOL), in time order. Fail-soft: {}.
+
+    Each value: {"events": [(side, qty, price), ...] chronological, "buys": [...], "sells": [...]}.
+    """
+    try:
+        from db_adapter import _execute  # type: ignore
+    except Exception:
+        return {}
+    try:
+        rows = _execute(
+            """SELECT account, UPPER(symbol) AS symbol, action, quantity, price
+                 FROM trade_transactions
+                WHERE trade_date = COALESCE(%s::date, (now() AT TIME ZONE 'America/New_York')::date)
+                  AND action IN ('Buy', 'Sell') AND quantity > 0 AND price > 0
+                ORDER BY trade_time NULLS LAST, id""",
+            (trade_date,),
+            fetch="all",
+        ) or []
+    except Exception:
+        return {}
+    out: Dict[tuple, Dict[str, list]] = {}
+    for r in rows:
+        acct = _FILL_ACCOUNT_ALIASES.get(r["account"], r["account"])
+        side = "buy" if r["action"] == "Buy" else "sell"
+        q, px = float(r["quantity"]), float(r["price"])
+        rec = out.setdefault((acct, r["symbol"]), {"events": [], "buys": [], "sells": []})
+        rec["events"].append((side, q, px))
+        rec["buys" if side == "buy" else "sells"].append((q, px))
+    return out
+
+
+def _intraday_day_change(
+    shares: float, price: Optional[float], prev_close: float, fills: Optional[Dict[str, list]]
+) -> Optional[float]:
+    """Fill-aware day P/L by FIFO lot matching, or None when fills do not reconcile.
+
+    Lots: shares held at the open (basis prev_close), then each buy today (basis its fill).
+    A sell consumes the oldest lots first and realizes (fill - lot basis); what is still
+    held is marked at `price`. A position fully closed today needs no price (all consumed).
+    """
+    if not fills:
+        return None
+    events = fills.get("events") or (
+        [("buy", q, px) for q, px in fills.get("buys", [])] + [("sell", q, px) for q, px in fills.get("sells", [])]
+    )
+    bought = sum(q for side, q, _ in events if side == "buy")
+    sold = sum(q for side, q, _ in events if side == "sell")
+    held_at_open = shares - bought + sold
+    if held_at_open < -1e-6:
+        return None   # fills do not reconcile with shares — keep the plain formula
+    lots = [[held_at_open, prev_close]] if held_at_open > 1e-9 else []
+    realized = 0.0
+    for side, q, px in events:
+        if side == "buy":
+            lots.append([q, px])
+            continue
+        left = q
+        while left > 1e-9:
+            if not lots:
+                return None   # sold more than was held — fills out of order or incomplete
+            take = min(left, lots[0][0])
+            realized += (px - lots[0][1]) * take
+            lots[0][0] -= take
+            left -= take
+            if lots[0][0] <= 1e-9:
+                lots.pop(0)
+    held = [(q, basis) for q, basis in lots if q > 1e-9]
+    if held and price is None:
+        return None
+    unrealized = sum(((price or 0.0) - basis) * q for q, basis in held)
+    return round(realized + unrealized, 2)
+
+
+def _broker_day_pl_check(
+    h: Dict[str, Any], shares: float, prev_close: float, fills: Optional[Dict[str, list]]
+) -> Optional[Dict[str, Any]]:
+    """Compare our day change with Schwab's P/L Day at the SAME mark Schwab used.
+
+    Only today's broker figure counts (ET date of `broker_day_pl_at`). Tolerance: the largest of
+    $1, 1% of the broker figure, or 5 bps of the position value — a prev-close source that differs
+    by half a cent on 415 shares is ~$2 (DIV, 2026-09-23); a wrong formula is thousands (MCD).
+    """
+    bdp, bpx, at = h.get("broker_day_pl"), h.get("broker_day_pl_price"), h.get("broker_day_pl_at")
+    if bdp is None or not bpx or not at:
+        return None
+    try:
+        from zoneinfo import ZoneInfo
+
+        at_et = datetime.fromisoformat(str(at).replace("Z", "+00:00")).astimezone(ZoneInfo("America/New_York"))
+    except Exception:
+        return None
+    if at_et.date() != _et_now().date():
+        return None
+    ours = _intraday_day_change(shares, float(bpx), prev_close, fills)
+    if ours is None:
+        ours = round((float(bpx) - prev_close) * shares, 2)
+    diff = round(ours - float(bdp), 2)
+    # Scale by the shares the day's P/L was earned on: held at the open plus bought today.
+    _sold = sum(q for q, _ in (fills or {}).get("sells", []))
+    gross_shares = shares + _sold
+    return {
+        "broker": round(float(bdp), 2),
+        "ours_at_broker_mark": ours,
+        "broker_mark": round(float(bpx), 4),
+        "diff": diff,
+        "ok": abs(diff) <= max(1.0, 0.01 * abs(float(bdp)), 0.0005 * abs(gross_shares * float(bpx))),
+        "at": at,
+    }
+
+
+def _closed_today_day_change(
+    holdings: List[Dict], fills: Dict[tuple, Dict[str, list]], prev_closes: Dict[str, float]
+) -> Dict[str, List[Dict[str, Any]]]:
+    """Realized day P/L of positions fully sold today (absent from holdings), per account.
+
+    A position closed today leaves holdings, so the per-row sum missed it entirely.
+    """
+    held = {(str(h.get("account") or ""), str(h.get("symbol") or "").upper()) for h in holdings}
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    for (acct, sym), f in fills.items():
+        if (acct, sym) in held or not f.get("sells"):
+            continue
+        prev = prev_closes.get(sym)
+        if not prev:
+            out.setdefault(acct, []).append({"symbol": sym, "day_change": None, "reason": "no_prev_close"})
+            continue
+        dc = _intraday_day_change(0.0, None, float(prev), f)
+        out.setdefault(acct, []).append(
+            {"symbol": sym, "day_change": dc, "prev_close": round(float(prev), 4),
+             "sold_qty": round(sum(q for q, _ in f["sells"]), 6)}
+            if dc is not None else {"symbol": sym, "day_change": None, "reason": "fills_do_not_reconcile"}
+        )
+    return out
+
+
 # ── Apply prices to holdings ───────────────────────────────────────────────────
 def _apply_to_holdings(
     holdings: List[Dict],
     live_prices: Dict[str, Dict],
     fidelity_prices: Dict[str, float],
+    intraday_fills: Optional[Dict[tuple, Dict[str, list]]] = None,
 ) -> int:
     """Update price/market_value/day_change fields in holdings list. Returns update count."""
     updated = 0
+    intraday_fills = intraday_fills or {}
     for h in holdings:
         if h.get("is_loan") or h.get("is_cash"):
             continue
@@ -477,6 +624,17 @@ def _apply_to_holdings(
                 h["analytical_unrealized_pl_usd"] = round(h["analytical_market_value"] - float(cost), 2)
             # Day change is an analytical display field, not a broker fact.
             h["day_change"]     = round((new_price - prev_close) * shares, 2)
+            _fill_dc = _intraday_day_change(shares, new_price, prev_close, intraday_fills.get((acct, sym.upper())))
+            if _fill_dc is not None:
+                h["day_change"] = _fill_dc
+                h["day_change_basis"] = "intraday_fills"
+            else:
+                h.pop("day_change_basis", None)
+            _chk = _broker_day_pl_check(h, shares, prev_close, intraday_fills.get((acct, sym.upper())))
+            if _chk is not None:
+                h["day_change_broker_check"] = _chk
+            else:
+                h.pop("day_change_broker_check", None)
             h["day_change_pct"] = round(chg_pct, 4)
             h["price_source"]   = src
             updated += 1
@@ -621,6 +779,16 @@ def _recalc_totals(portfolio: Dict) -> None:
 
         acct["total_value"] = round(acct_total, 2)
         acct["day_change"]  = round(sum(h.get("day_change") or 0 for h in ah), 2)
+        # Positions fully sold today are no longer in `ah`; their realized day P/L still counts.
+        _closed = (portfolio.get("closed_today") or {}).get(acct_key) or []
+        _closed_dc = round(sum(c.get("day_change") or 0 for c in _closed), 2)
+        if _closed:
+            acct["closed_today"] = _closed
+            acct["closed_today_day_change"] = _closed_dc
+            acct["day_change"] = round(acct["day_change"] + _closed_dc, 2)
+        else:
+            acct.pop("closed_today", None)
+            acct.pop("closed_today_day_change", None)
         acct_prev = (acct["total_value"] - acct["day_change"])
         acct["day_change_pct"] = round((acct["day_change"] / acct_prev * 100) if acct_prev else 0, 4)
         cost = sum(h.get("cost_basis") or 0 for h in ah)
@@ -789,8 +957,25 @@ def reprice_portfolio(portfolio: Dict[str, Any], state_dir: Path) -> Dict[str, A
             print(f"  [repricer] Yahoo fallback: {len(yahoo_prices)} symbols "
                   f"({', '.join(yahoo_prices.keys())})")
 
-    n_holdings = _apply_to_holdings(portfolio.get("holdings", []), live_prices, fidelity_prices)
+    intraday_fills = _load_intraday_fills()
+    n_holdings = _apply_to_holdings(portfolio.get("holdings", []), live_prices, fidelity_prices, intraday_fills)
     print(f"  [repricer] Holdings updated: {n_holdings}")
+
+    # ── 3c. Positions fully sold today (realized day P/L; they left holdings) ──
+    _held_keys = {(str(h.get("account") or ""), str(h.get("symbol") or "").upper())
+                  for h in portfolio.get("holdings", [])}
+    _closed_syms = sorted({s for (a, s), f in intraday_fills.items() if (a, s) not in _held_keys and f.get("sells")})
+    _need = [s for s in _closed_syms if s not in live_prices]
+    if _need:
+        try:
+            live_prices.update(_fetch_finviz(_need, root))
+        except Exception as e:  # noqa: BLE001 — a missing prev_close is reported per symbol
+            print(f"  [repricer] closed-today prev_close fetch failed: {e}")
+    _prev = {s: (live_prices.get(s) or {}).get("prev_close") for s in _closed_syms}
+    portfolio["closed_today"] = _closed_today_day_change(portfolio.get("holdings", []), intraday_fills, _prev)
+    if portfolio["closed_today"]:
+        print("  [repricer] Closed today: " + "; ".join(
+            f"{a}:{c['symbol']} {c.get('day_change')}" for a, cs in portfolio["closed_today"].items() for c in cs))
 
     # ── 4. Recalculate totals ─────────────────────────────────────────────────
     _recalc_totals(portfolio)

@@ -274,10 +274,12 @@ def test_bridge_backend_rewrites_a_refused_draft_once(monkeypatch):
     assert any("rewritten once" in x for x in body.get("limitations") or [])
 
 
-def test_bridge_backend_fails_when_the_rewrite_still_carries_advice(monkeypatch):
-    from scripts.lib import hermes_bridge_backend as bb
-    be = bb.BridgeHermesResearchBackend()
+def test_bridge_backend_withholds_advice_when_the_rewrite_still_says_buy(monkeypatch):
+    """2026-09-23 MCD: a second buy/sell draft must not fail the research request."""
+    from scripts.lib.hermes_bridge_backend import BridgeHermesResearchBackend
+    be = BridgeHermesResearchBackend()
     monkeypatch.setattr(be, "_chat_completions", lambda messages: _body("a cautious buy near support"))
-    # The backend imports `lib.hermes_research_backend` first, so catch the class it actually raises.
-    with pytest.raises(bb.HermesBackendError):
-        be.run(_request())
+    body = be.run(_request())
+    assert "buy" not in body["answers"][0]["summary"].lower()
+    assert body["answers"][0]["status"] == "unanswered"
+    assert any("order language withheld" in x for x in body.get("limitations") or [])

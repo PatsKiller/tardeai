@@ -598,6 +598,10 @@ def normalize_positions(raw):
                     "current_price": str(p.get("marketValue", 0) / max(lq, 1)),
                     "market_value": str(p.get("marketValue", 0)),
                     "unrealized_pl": str(p.get("longOpenProfitLoss", 0)),
+                    # Schwab's own P/L Day for the position (read-only; None when absent).
+                    # Used to cross-check the repricer's fill-aware day change.
+                    "day_pl": p.get("currentDayProfitLoss"),
+                    "day_pl_pct": p.get("currentDayProfitLossPercentage"),
                     "side": "long" if lq > 0 else "short"})
     return out
 

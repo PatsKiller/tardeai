@@ -206,6 +206,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--json-in", type=Path, default=None, help="Hermetic fixture JSON (no live DB)")
     ap.add_argument("--out", type=Path, default=None, help="Optional output path")
     ap.add_argument("--root", type=Path, default=REPO, help="Repo root for holdings.json (held-only)")
+    ap.add_argument(
+        "--now",
+        type=datetime.fromisoformat,
+        default=None,
+        help="ISO-8601 clock for the window cutoff (default: current UTC); pins hermetic fixtures",
+    )
     args = ap.parse_args(argv)
 
     held_symbols: set[str] | None = None
@@ -226,6 +232,7 @@ def main(argv: list[str] | None = None) -> int:
         min_n=int(args.min_n),
         held_only=bool(args.held_only),
         held_symbols=held_symbols,
+        now=args.now,
     )
     text = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.out:

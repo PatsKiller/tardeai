@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from functools import lru_cache
 from typing import Any, Optional
 
 SCHEMA = "InboundIdentityTag@v1"
@@ -93,6 +94,36 @@ _NAME_STOPWORDS = frozenset({
 #: "JPMorgan Chase". Runs are matched longest-first so a two-word company is not
 #: split into two unresolvable single words.
 _NAME_RUN = re.compile(r"\b([A-Z][A-Za-z.&\-]{1,15}(?:\s+[A-Z][A-Za-z.&\-]{1,15}){0,3})\b")
+
+#: One any-case word. The any-case pass slides windows over these tokens rather
+#: than taking greedy regex runs: a greedy run is cut from the LEFT, so turn 393
+#: ("...against AI how is sentinel one doing...") produced the single window
+#: "how is sentinel one", which opened with a prose stop word and was skipped
+#: whole -- "sentinel one" was never tried. Sliding every window, longest first,
+#: tries it. Only consumed when resolve_name confirms a unique instrument.
+_ANYCASE_WORD = re.compile(r"[A-Za-z][A-Za-z0-9.&'\-]*")
+
+#: Longest any-case window tried. Four words covers "JPMorgan Chase and Co"-style
+#: names; the index normalises legal suffixes away before matching.
+_ANYCASE_MAX_WORDS = 4
+
+#: A LONE lowercase word binds an issuer only in operator text, only when it IS a
+#: stored name (is_exact_name), and only at this length or longer. Short lone
+#: words are overwhelmingly prose. Override: TRADEAI_IDENTITY_SINGLE_NAME_MIN_LEN.
+_SINGLE_NAME_MIN_LEN_DEFAULT = 5
+
+#: Prose that resolve_name can still hit as a progressive-prefix exact (e.g. "can"
+#: → CAN-FITE / CANF). The any-case pass must never bind these alone.
+_ANYCASE_PROSE_STOP = frozenset({
+    "can", "give", "me", "my", "your", "our", "the", "a", "an", "to", "for",
+    "on", "in", "of", "is", "are", "was", "be", "do", "did", "does", "how",
+    "what", "when", "where", "why", "who", "which", "about", "into", "from",
+    "with", "this", "that", "these", "those", "take", "tell", "show", "please",
+    "thanks", "hey", "hi", "yes", "no", "ok", "now", "today", "buy", "sell",
+    "hold", "watch", "add", "get", "got", "see", "look", "need", "want",
+    "should", "would", "could", "will", "just", "also", "still", "back",
+    "good", "time", "ready", "entry", "perspective",  # CATX = Perspective Therapeutics
+})
 
 
 #: Ordinary English words that are ALSO real tickers. Capitalised at the start of
@@ -247,13 +278,161 @@ def _is_generic_term(name: str) -> bool:
     return (name or "").strip().casefold() in GENERIC_NAME_TERMS
 
 
+def _anycase_refused_single(word: str) -> bool:
+    """Every list that says a lone word is prose, chrome or not a company."""
+    cf = word.casefold()
+    up = word.upper()
+    return (cf in _ANYCASE_PROSE_STOP or _is_generic_term(word)
+            or up in _TEMPLATE_CHROME or up in _STOPWORDS
+            or word.capitalize() in _SENTENCE_STARTERS
+            or word.capitalize() in _NAME_STOPWORDS)
+
+
+#: System word list used to refuse lone ORDINARY words. Dictionaries list common
+#: words in lowercase and proper nouns capitalised, so "perfect" (Perfect Corp,
+#: PERF) is refused while "walmart" and "mcdonalds" are not. Missing list =>
+#: the lone-word path is disabled (fail closed), never guessed.
+_WORDLIST_ENV = "TRADEAI_IDENTITY_WORDLIST"
+_WORDLIST_DEFAULT = "/usr/share/dict/words"
+
+
+@lru_cache(maxsize=1)
+def _common_words() -> Optional[frozenset]:
+    import os  # noqa: PLC0415
+
+    path = os.environ.get(_WORDLIST_ENV) or _WORDLIST_DEFAULT
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as fh:
+            return frozenset(w.strip() for w in fh
+                             if w.strip() and w.strip()[:1].islower())
+    except OSError:
+        return None
+
+
+def _lone_name_allowed(word: str, min_len: int) -> bool:
+    """The strict gate for a single lowercase word binding an issuer."""
+    if len(word) < min_len or _anycase_refused_single(word):
+        return False
+    common = _common_words()
+    if common is None:
+        return False
+    cf = word.casefold()
+    return cf not in common and cf.rstrip("s") not in common
+
+
+def _anycase_windows(text: str, *, doc, resolve_name, is_exact_name,
+                     normalize_name, resolved: list, unresolved: list,
+                     operator_text: bool) -> None:
+    """Slide word windows (longest first) and bind only confirmed unique names.
+
+    A window must not open or close on a prose stop word and must hit the index
+    as an exact stored name or a compacted brand. A window that NORMALISES to a
+    single word -- "mcdonalds", or "data Company", which loses its legal suffix
+    and becomes "DATA" (Data I/O, the 09-22 chrome leak) -- is judged as a lone
+    word: operator text only, and never an ordinary dictionary word.
+
+    In operator text, a multi-word window whose every word opens exactly one
+    stored name without being that name ("cyber security") is recorded as an
+    unresolved mention: the operator plausibly named something the spine could
+    not confirm.
+    """
+    from lib import research_identity as RI  # noqa: PLC0415
+
+    words = [m.group(0).strip(".'-&") for m in _ANYCASE_WORD.finditer(text)]
+    words = [w for w in words if w]
+    taken = [False] * len(words)
+    seen = {str(r.get("matched_text") or "").casefold() for r in resolved}
+    seen.update(u.casefold() for u in unresolved if isinstance(u, str))
+    min_single = _single_name_min_len()
+
+    for n in range(min(_ANYCASE_MAX_WORDS, len(words)), 0, -1):
+        for i in range(0, len(words) - n + 1):
+            if any(taken[i:i + n]):
+                continue
+            toks = words[i:i + n]
+            phrase = " ".join(toks)
+            if phrase.casefold() in seen or _is_generic_term(phrase):
+                continue
+            if (toks[0].casefold() in _ANYCASE_PROSE_STOP
+                    or toks[-1].casefold() in _ANYCASE_PROSE_STOP):
+                continue
+            norm = normalize_name(phrase).split()
+            if len(norm) <= 1:
+                if not operator_text or not norm:
+                    continue
+                # Title-Case and ALL-CAPS lone words were already judged by the
+                # capitalised extractor; a second opinion here would let a word
+                # it refused (sentence-initial, chrome) back in.
+                if n == 1 and toks[0][:1].isupper():
+                    continue
+                if not _lone_name_allowed(norm[0].lower(), min_single):
+                    continue
+            hit = resolve_name(phrase)
+            if not hit or not hit.get("symbol"):
+                continue
+            via = str(hit.get("matched_on") or "")
+            confirmed = via == "compacted" or (via == "exact" and is_exact_name(phrase))
+            if not confirmed:
+                if operator_text and via == "exact" and len(norm) > 1:
+                    unresolved.append(phrase)
+                    seen.add(phrase.casefold())
+                continue
+            tag = RI.resolve(doc, hit["symbol"])
+            if tag is None:
+                if operator_text and phrase not in unresolved:
+                    unresolved.append(phrase)
+                continue
+            for k in range(i, i + n):
+                taken[k] = True
+            seen.add(phrase.casefold())
+            if any(r["subject_guid"] == tag["subject_guid"] for r in resolved):
+                continue
+            resolved.append({
+                "symbol": tag["symbol"],
+                "subject_guid": tag["subject_guid"],
+                "issuer_guid": tag["issuer_guid"],
+                "identity_status": tag["identity_status"],
+                "matched_via": "company_name",
+                "matched_text": phrase,
+            })
+
+
+def _single_name_min_len() -> int:
+    import os  # noqa: PLC0415
+
+    raw = os.environ.get("TRADEAI_IDENTITY_SINGLE_NAME_MIN_LEN", "")
+    try:
+        return max(3, int(raw)) if raw.strip() else _SINGLE_NAME_MIN_LEN_DEFAULT
+    except ValueError:
+        return _SINGLE_NAME_MIN_LEN_DEFAULT
+
+
+def _is_lone_letter_mention(text: str, start: int, end: int) -> bool:
+    """A single uppercase letter standing alone as a word: "is S a buy".
+
+    "P&L", "S&P", "U.S." and "A/B" are punctuation-joined and never qualify --
+    the joined punctuation is the signal (see the 09-22 chrome-leak audit:
+    single letters cannot be suppressed wholesale, 19 of 26 are real symbols).
+    """
+    before = text[start - 1] if start > 0 else " "
+    after = text[end] if end < len(text) else " "
+    return before in " \t\n(\"'" and after in " \t\n)\"',?!:;"
+
+
 def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
-                now: Optional[datetime] = None) -> dict[str, Any]:
+                now: Optional[datetime] = None,
+                operator_text: bool = False) -> dict[str, Any]:
     """Resolve an inbound message to identity tags. Writes nothing.
 
     Returns resolved tags AND unresolved mentions — the second is the honest
     measurement of what the spine cannot reach, and dropping it would make
     coverage look better than it is.
+
+    `operator_text=True` marks a message the operator typed. Two readings are
+    enabled ONLY there, because machine and agent text is full of the shapes they
+    accept: a lone single-letter ticker ("is S a good investment") and a lone
+    lowercase company name ("is mcdonalds a buy"). Outbound tagging keeps the
+    strict default.
     """
     from lib import research_identity as RI  # noqa: PLC0415
 
@@ -279,6 +458,30 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
             "matched_via": "ticker",
             "matched_text": cand,
         })
+
+    # A lone single-letter ticker the operator typed. extract_candidates drops
+    # every one-character token (right for "P&L" in machine templates), which
+    # left five operator questions about S in one week unbound. Operator text
+    # only, standalone letters only, _STOPWORDS still apply ("I", "A").
+    if operator_text:
+        for m in _BARE.finditer(text or ""):
+            letter = m.group(1)
+            if len(letter) != 1 or letter in _STOPWORDS:
+                continue
+            if not _is_lone_letter_mention(text, m.start(1), m.end(1)):
+                continue
+            tag = RI.resolve(doc, letter)
+            if tag is None:
+                if letter not in unresolved:
+                    unresolved.append(letter)
+                continue
+            if any(r["subject_guid"] == tag["subject_guid"] for r in resolved):
+                continue
+            resolved.append({
+                "symbol": tag["symbol"], "subject_guid": tag["subject_guid"],
+                "issuer_guid": tag["issuer_guid"],
+                "identity_status": tag["identity_status"],
+                "matched_via": "ticker", "matched_text": letter})
 
     # Company names, resolved through the BROKER FEED — the same authoritative
     # record that supplies the CUSIP. Nothing here invents a mapping: if Schwab
@@ -348,6 +551,22 @@ def tag_inbound(text: str, *, registry: Optional[dict[str, Any]] = None,
                     "matched_via": via, "matched_text": name})
         elif name not in unresolved:
             unresolved.append(name)
+
+    # ANY-CASE brand windows the Title-Case extractor missed. extract_name_mentions
+    # only yields capitalised runs, so "perspective on sentinel one" bound nothing
+    # while "SentinelOne" worked — turn 393 / parity class. resolve_name is still
+    # the authority (compacted SENTINELONE → S); we never invent a mapping here.
+    if resolve_name is not None:
+        try:
+            from lib.company_name_index import is_exact_name, normalize_name  # noqa: PLC0415
+        except Exception:
+            is_exact_name = normalize_name = None            # type: ignore
+        if is_exact_name is not None:
+            _anycase_windows(
+                text or "", doc=doc, resolve_name=resolve_name,
+                is_exact_name=is_exact_name, normalize_name=normalize_name,
+                resolved=resolved, unresolved=unresolved,
+                operator_text=operator_text)
 
     return {
         "schema": SCHEMA,

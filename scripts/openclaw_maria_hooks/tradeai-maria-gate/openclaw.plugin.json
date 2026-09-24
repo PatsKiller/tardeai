@@ -1,0 +1,22 @@
+{
+  "id": "tradeai-maria-gate",
+  "name": "Trade-AI Maria Gate",
+  "description": "Runs every Maria outbound message through the Trade-AI house gate (specialist scrub, Hermes join honesty, CIO stance gate, LEGEND/Sources/🆔). observe = receipt only; live = rewrite.",
+  "activation": { "onStartup": true },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "mode": { "type": "string", "enum": ["off", "observe", "live"] },
+      "modeFile": { "type": "string" },
+      "pythonBin": { "type": "string" },
+      "releaseRoot": { "type": "string" },
+      "bridgeRelPath": { "type": "string" },
+      "timeoutMs": { "type": "integer", "minimum": 500, "maximum": 60000 },
+      "channels": { "type": "array", "items": { "type": "string" } },
+      "chatIds": { "type": "array", "items": { "type": "string" } },
+      "sessionKeyPrefix": { "type": "string" },
+      "logPath": { "type": "string" }
+    }
+  }
+}

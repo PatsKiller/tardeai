@@ -194,6 +194,48 @@ def _append_jsonl(path: Path, row: dict[str, Any]) -> None:
         fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
 
 
+def _subject_identity(symbol: Any) -> dict[str, Any]:
+    """Registry identity for a research subject, or {} -- never raises.
+
+    Every row a join reads by subject must carry the GUID, not only REQUESTED:
+    ENQUEUE, CLAIMED and COMPLETED rows were written with the symbol alone, so a
+    subject_guid join over the request log found the question but never its
+    outcome. A failed resolution stamps nothing and the write proceeds.
+    """
+    sym = str(symbol or "").strip().upper()
+    if not sym or sym == "BOOK":
+        return {}
+    try:
+        try:
+            from scripts.lib import research_identity as RI  # noqa: PLC0415
+        except ImportError:  # pragma: no cover
+            from lib import research_identity as RI  # type: ignore  # noqa: PLC0415
+        tag = RI.resolve(RI.load_registry(), sym)
+    except Exception:  # noqa: BLE001
+        return {}
+    if not tag or not tag.get("subject_guid"):
+        return {}
+    return {"subject_guid": tag["subject_guid"],
+            "issuer_guid": tag.get("issuer_guid"),
+            "identity_status": tag.get("identity_status")}
+
+
+def _identity_for_research(research_id: Any, meta: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Identity already projected for a research id, else resolved from its symbol."""
+    rec = meta
+    if rec is None:
+        try:
+            rec = (_load_projection().get("by_research_id") or {}).get(str(research_id or ""))
+        except Exception:  # noqa: BLE001
+            rec = None
+    rec = rec or {}
+    if rec.get("subject_guid"):
+        return {"subject_guid": rec.get("subject_guid"),
+                "issuer_guid": rec.get("issuer_guid"),
+                "identity_status": rec.get("identity_status")}
+    return _subject_identity(rec.get("symbol"))
+
+
 def _empty_projection() -> dict[str, Any]:
     return {
         "by_research_id": {},
@@ -365,6 +407,9 @@ def _project_new_request(proj: dict[str, Any], req: dict[str, Any]) -> None:
         "created_ts": req.get("created_ts"),
         "thesis_version": req.get("thesis_version"),
         "situation_type": req.get("situation_type"),
+        "subject_guid": req.get("subject_guid"),
+        "issuer_guid": req.get("issuer_guid"),
+        "identity_status": req.get("identity_status"),
         "catalyst_event_ids": list(req.get("known_catalyst_event_ids") or [])[:40],
         # Full request body for worker claim (no re-scan of JSONL required)
         "request": req,
@@ -395,6 +440,8 @@ def _save_new_request(req: dict[str, Any]) -> None:
         "plan_id": pid,
         "priority": pri,
         "reuse_miss_reason": req.get("reuse_miss_reason"),
+        "subject_guid": req.get("subject_guid"),
+        "issuer_guid": req.get("issuer_guid"),
     })
     proj = _load_projection()
     _project_new_request(proj, req)
@@ -431,6 +478,10 @@ def _log_enqueue(result: EnqueueResult, plan_id: str, priority: str) -> None:
         evt.setdefault("age_seconds", result.age_seconds)
     if result.ttl_seconds is not None:
         evt.setdefault("ttl_seconds", result.ttl_seconds)
+    if not evt.get("subject_guid") and result.research_id:
+        ident = _identity_for_research(result.research_id)
+        evt.setdefault("subject_guid", ident.get("subject_guid"))
+        evt.setdefault("issuer_guid", ident.get("issuer_guid"))
     _append_jsonl(REQUEST_PATH, evt)
 
 
@@ -551,6 +602,13 @@ def enqueue_research_request(
             "provenance": {"operator_forced": bool(operator_forced), "actor_id": actor_id},
         }
         if symbol and symbol != "BOOK":
+            # Stamp registry identity on REQUESTED rows (parity Stage 1/3).
+            # Lineage later carried subject_guid while the request jsonl was null —
+            # join and Maria surfaces could not bind opr_/res_ to the issuer.
+            id_tag = _subject_identity(symbol)
+            if id_tag:
+                request.update(id_tag)
+                request["subject"] = {**dict(request.get("subject") or {}), **id_tag}
             try:
                 from scripts.lib.research_prompt_context import build_research_prompt_context
                 prompt_context = build_research_prompt_context(
@@ -810,6 +868,7 @@ def claim_next(*, worker_id: str, limit: int = 1) -> list[dict[str, Any]]:
             "plan_id": rec.get("plan_id"),
             "status": "running",
             "updated_ts": now,
+            "subject_guid": _identity_for_research(rid, rec).get("subject_guid"),
         })
     proj["by_research_id"] = by_rid
     if claimed:
@@ -913,6 +972,10 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
         result.setdefault("authority", AUTHORITY)
         result["completed_ts"] = completed_ts
         result["as_of"] = as_of
+        ident = _identity_for_research(research_id, req_meta)
+        for key, val in ident.items():
+            if val is not None:
+                result.setdefault(key, val)
 
         _append_jsonl(RESULT_PATH, {"event": "HERMES_RESEARCH_COMPLETED", **result})
 
@@ -965,6 +1028,8 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
             "fingerprint": fp,
             "status": "completed",
             "updated_ts": as_of,
+            "subject_guid": result.get("subject_guid"),
+            "issuer_guid": result.get("issuer_guid"),
         })
         lineage_id = None
         try:

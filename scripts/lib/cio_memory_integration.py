@@ -76,8 +76,12 @@ def apply_bitemporal_schema_v2(conn) -> dict[str, Any]:
     with conn.cursor() as cur:
         # Opt in to the base file's destructive reset — never for production,
         # even once production memory is authorized. Belt and braces with the
-        # SQL file's own isolated-database allowlist.
-        if not conn_targets_production(conn):
+        # SQL file's own isolated-database allowlist. The LIVE shadow is refused
+        # too unless explicitly opted in: pytest reached this through the
+        # m2_conn fixture and dropped live memory on every run (M5 audit 09-23).
+        from scripts.lib.m2_live_shadow_guard import destructive_reset_permitted  # noqa: PLC0415
+
+        if destructive_reset_permitted(conn, is_production=conn_targets_production(conn)):
             cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(base)
         cur.execute(delta)
@@ -128,7 +132,9 @@ class CIOEnvelopeIntegrator:
         import psycopg2
 
         if self._conn is None or self._conn.closed:
-            self._conn = psycopg2.connect(self.dsn)
+            from scripts.lib.m2_live_shadow_guard import refuse_live_shadow_under_pytest  # noqa: PLC0415
+
+            self._conn = psycopg2.connect(refuse_live_shadow_under_pytest(self.dsn))
             self._conn.autocommit = True
         return self._conn
 

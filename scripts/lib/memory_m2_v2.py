@@ -31,13 +31,20 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 # Isolated shadow agent role. Overridable so a non-shadow deployment supplies
 # its own credential from env rather than inheriting the shadow literal — the
 # fallback below is a well-known throwaway for the local container only.
-AGENT_DSN = os.getenv("M2_AGENT_DSN") or "postgresql://m2_agent:m2agent@127.0.0.1:55432/m2_shadow"
+from scripts.lib.m2_live_shadow_guard import (  # noqa: E402
+    SHADOW_AGENT_DSN,
+    destructive_reset_permitted,
+    refuse_live_shadow_under_pytest,
+)
+
+AGENT_DSN = os.getenv("M2_AGENT_DSN") or SHADOW_AGENT_DSN
 
 
 def connect(dsn: str | None = None):
     import psycopg2
 
-    dsn = _assert_isolated_dsn(dsn or DEFAULT_DSN)
+    dsn = _assert_isolated_dsn(dsn or os.getenv("M2_DSN") or DEFAULT_DSN)
+    refuse_live_shadow_under_pytest(dsn)
     conn = psycopg2.connect(dsn)
     conn.autocommit = True
     return conn
@@ -67,8 +74,9 @@ def apply_schema(conn) -> None:
     with conn.cursor() as cur:
         # Opt in to the base file's destructive reset — never for production,
         # even once production memory is authorized. The SQL file enforces the
-        # same rule independently via its isolated-database allowlist.
-        if not conn_targets_production(conn):
+        # same rule independently via its isolated-database allowlist. The live
+        # shadow is refused as well unless explicitly opted in (M5 audit 09-23).
+        if destructive_reset_permitted(conn, is_production=conn_targets_production(conn)):
             cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(sql)
         _grant_connect_current_db(cur)

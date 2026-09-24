@@ -247,6 +247,10 @@ def main():
                 if not _gate.allow:
                     _cio_ok = False
                     result["held_reason"] = _gate.held_reason
+                elif _gate.annotation_text:
+                    from lib.cio_telegram_stance_gate import apply_stance_rewrite
+                    message = apply_stance_rewrite(message, str(pr.get("symbol") or ""), _gate)
+                    result["message_preview"] = message[:300]
         except Exception as _cio_exc:  # noqa: BLE001 — fail closed
             _cio_ok = False
             result["held_reason"] = "cio_decision_missing"

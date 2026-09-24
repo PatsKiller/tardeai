@@ -1,8 +1,38 @@
 # Changelog
 
 Status:      ACTIVE
-as_of:       2026-09-16T08:46:00-04:00
-Measured at: a91d7b3ba (origin/main = release CURRENT = dev tree, PR #1045 merge)
+as_of:       2026-09-23T10:00:00-04:00
+Measured at: 88eddef0e (origin/main = release CURRENT = dev tree) + fix/watchlist-directive-union
+
+## 2026-09-23 (later) — Day P/L: FIFO lots, positions closed today, and a Schwab cross-check
+
+- **Correction to the same-day fix.** The first fill-aware formula valued every share held at the open at the current price AND counted each sold share at its fill: a partial sell was double-counted (DIV: 415.65 held at the open, 411 sold). Replaced by FIFO lot matching — a sell consumes shares held at the open (basis prev close) first, then today's buys in time order; what is still held is marked at the price. This also makes a same-day round trip realize sell − buy.
+- **Positions fully sold today** leave holdings, so their realized day P/L was missing from TODAY. The repricer now computes it from today's fills (fetching prev close for those symbols) and adds it to the account's `day_change` (`closed_today`, `closed_today_day_change` on the account summary; recomputed every run).
+- **Schwab cross-check.** Operator-approved read-only change to `schwab_transport.normalize_positions`: it now carries Schwab's `currentDayProfitLoss` (`day_pl`). `schwab_position_sync` stores it on the row with the mark it was computed at; the repricer recomputes our figure at that SAME mark and writes `day_change_broker_check` {broker, ours_at_broker_mark, diff, ok}. Tolerance: max($1, 1% of the broker figure, 5 bps of the gross shares' value).
+- **Validated live** (2026-09-23 15:46 ET, all Schwab accounts, same marks): Schwab **−$2,461.42** vs ours **−$2,452.36**. MCD exact ($369.00 = $369.00). The three largest per-row gaps are explained: XLB and V carry pending DRIP shares (~2 sh each not yet approved), DIV is a half-cent prev-close source difference on 415 shares.
+- **Not covered.** Schwab gives no per-position figure for a position that has closed, so closed-today rows are ours alone; Fidelity/Alpaca/Moomoo rows have no broker day figure.
+
+## 2026-09-23 — Day P/L and cost basis now follow today's trades (MCD read -$2,714 vs Schwab +$289)
+
+- **Measured.** MCD (rollover IRA) was bought today, 100 @ 235.01 and 100 @ 236.36, while it fell 5.4%. Schwab: P/L Day = P/L Open = +$289. Command Center: day change **-$2,713.66** (`(price - prev_close) * shares` treats all 200 shares as held since yesterday) and cost basis **$23,501** (the first lot) on 200 shares. The same two defects hit every position traded today: WMT (+300, basis still 100 sh), XLB (+6.3), DIV (411 of 415.65 sold, basis still 413 sh → ~$8k phantom loss). Portfolio TODAY was off by ~$2.8k.
+- **Day change** (`portfolio_repricer`): today's Buy/Sell fills from `trade_transactions` (account-keyed; `schwab_roth_ira`→`schwab_roth`) split the position — shares held at the open earn `price - prev_close`, a bought share `price - fill`, a sold share `fill - prev_close` (broker convention). Rows so computed carry `day_change_basis: "intraday_fills"`; no fills, a DB error, or fills that do not reconcile with shares fall back to the old formula. `day_change_pct` stays the security's move.
+- **Cost basis** (`schwab_position_sync`): a trade-sized share change on an existing row (`share_drift_status: auto_applied`) rebases `cost_basis` on the broker average price × new shares (previously set only for brand-new rows), and recomputes `gain_loss`. The SSOT basis shield no longer restores a stored basis when the share count changed — it still guards an unchanged share count (tax-grade `csv_lot` basis untouched).
+- **Not done.** A position fully sold today leaves holdings, so its realized day P/L is not in TODAY. The Schwab transport's `currentDayProfitLoss` is not captured (broker-subsystem code, not edited); it would be the authoritative cross-check.
+
+## 2026-09-23 — Docs sync no longer trashes release-ephemeral page captures
+
+- **Measured.** A 09:50 ad-hoc page walk wrote 228 Command Center captures into the live release dir (`docs/command-center-pages`, untracked); its Drive folder is the mirror's own subfolder. Each promote builds a release without them, and `sync-docs-to-drive.sh` cleanup then trashed the Drive copies as "no longer exists locally" — 40 were trashed on 2026-09-23 before this fix.
+- **Shipped.** `is_preserved_capture` (docs/command-center-pages/*): a missing local copy keeps its Drive file and manifest line; a present one syncs normally; everything else cleans up as before. Test: `tests/test_drive_sync_preserved_captures_20260923.py` executes the real cleanup block with `gog` stubbed.
+- **Recovered.** The 40 were re-uploaded from `~/ops-evidence/command-center-pages-20260923` (byte-identical local copy); all 228 present on Drive, no duplicate names.
+
+## 2026-09-23 — A watched ticker the watchlist API could not see: directives join /api/v2/watchlist
+
+MATURITY_IMPACT: the gateway and the primary watchlist endpoint now agree on what is watched; a dead legacy writer family stops failing silently.
+
+- **Measured first.** Directive 1278 (`S`) was `active`, and both `watchlist_items` rows for `S` carried `directive_id=1278`, yet `GET /api/v2/watchlist` returned 13 symbols — exactly `state/watchlist.json`. `watchlist_combined()` never read `watch_directives`; **105 active ticker directives were invisible** on it. Its only other source, `db_adapter.load_watchlist_items`, selected `source_type/thesis/target_intent/added_date` — columns `watchlist_items` does not have — so it raised into `except: pass` on every request. The same dead schema sat under `save_watchlist_item`/`remove_watchlist_item` and the orchestrator's "AI-Generated Watchlist Candidates" step: **3,183** `column "source_type" does not exist` lines in the logs, zero rows written.
+- **What shipped.** `watchlist_combined` unions active ticker directives via the `watch_intelligence` projection (new `active_ticker_directives()`, keeping the hub's direct `watch_directives` reads at the baseline 11). Listed symbols are annotated in place; unlisted ones are appended as `source: "directive"`; items gain `is_watched`/`directive_id`/`trade_ai_enabled`/`hermes_enabled`/`last_updated`, the envelope `total_count`/`active_directives_count`. `load_watchlist_items` reads the real columns (`source AS source_type`, thesis/notes from `origin_detail`). The two legacy writers are **retired with a tripwire** (a loud `RETIRED` line, no SQL), and the orchestrator step is skipped with one `[ai-watchlist] RETIRED` line — operator decision: do not revive auto-adds to the active watchlist.
+- **Validated** against the production DB and state before merge: 118 items (13 manual + 105 directive), `S` present as SentinelOne Inc / directive 1278, no duplicate symbols; `load_watchlist_items(source_type="ai_discovered")` returns 86 rows with no SQL error. Tests: `tests/test_watchlist_api_reconciliation.py`, `tests/test_watchlist_items_legacy_20260923.py` (both in cio-hardening).
+- **Not done.** `/api/watchlist` (portfolio_server) manual add/remove still writes `watchlist.json` only — its Postgres mirror was already dead and is now explicitly retired, not ported. The `analyst_curated`/`ai_generated` sources have no rows and no producer.
 
 ## 2026-09-16 — The refusal that went nowhere: free search now answers a caller-cap denial
 

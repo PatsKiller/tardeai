@@ -263,6 +263,22 @@ def refresh() -> None:
     _build.cache_clear()
 
 
+def is_exact_name(name: Any) -> bool:
+    """True when `name` normalises to a STORED name that maps to exactly one symbol.
+
+    resolve_name reports matched_on="exact" for a query whose every token is a
+    leading prefix of one unique stored name ("NORTHROP" -> "NORTHROP GRUMMAN").
+    That is right for a capitalised mention, but lowercase prose windows need the
+    stricter claim: the words ARE the stored name, not merely its opening words.
+    """
+    norm = normalize_name(name)
+    if len(norm) < 3:
+        return False
+    exact, _first = _build()
+    hits = exact.get(norm) or []
+    return len(set(hits)) == 1
+
+
 def resolve_name(name: Any) -> Optional[dict[str, Any]]:
     """Company name -> {symbol, description, cusip}, or None.
 
@@ -302,6 +318,19 @@ def resolve_name(name: Any) -> Optional[dict[str, Any]]:
                 # Ambiguous at this width; a SHORTER prefix can only be more
                 # ambiguous, so stop rather than keep shrinking into a guess.
                 return None
+
+    # COMPACTED BRAND. The feed often glues a spoken two-word name into one
+    # token: "SENTINELONE INC A" for "Sentinel One". Progressive prefix cannot
+    # see that — "SENTINEL" is not a prefix of "SENTINELONE" under the
+    # space-bounded rule above. Compacting spaces is not fuzzy matching: it is
+    # the exact normalised form the feed already stores. Ambiguity still refuses.
+    # Turn-393 class: "Sentinel One" / "sentinel one" → S (84601d7d…).
+    if not hits:
+        compact = norm.replace(" ", "")
+        if compact != norm and len(compact) >= 3:
+            compact_hits = exact.get(compact)
+            if compact_hits and len(set(compact_hits)) == 1:
+                hits, matched_on = compact_hits, "compacted"
 
     if not hits or len(set(hits)) != 1:
         return None                      # unknown, or ambiguous — never guess

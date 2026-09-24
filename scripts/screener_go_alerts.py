@@ -140,6 +140,12 @@ def _send_go(send_telegram: Callable[..., Any], item: dict,
     gate = _cio_go_gate(sym, text, db_query=db_query)
     if not gate.get("allow", False):
         return False, str(gate.get("held_reason") or "cio_stance_conflict")
+    if str(gate.get("annotation_text") or "").strip():
+        try:
+            from lib.cio_telegram_stance_gate import StanceGateVerdict, apply_stance_rewrite  # noqa: PLC0415
+        except ImportError:
+            from scripts.lib.cio_telegram_stance_gate import StanceGateVerdict, apply_stance_rewrite  # type: ignore
+        text = apply_stance_rewrite(text, sym, StanceGateVerdict(**gate))
     extra = ({"reply_markup": rich["reply_markup"], "link_preview_options": rich["link_preview_options"]}
              if rich else {})
     ok = bool(send_telegram(text, bypass_router=True, message_class="operator_alert", **extra))

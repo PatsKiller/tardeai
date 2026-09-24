@@ -1055,50 +1055,48 @@ def save_analyst_consensus_history(snapshot_date: str, enrichment_cache: dict, q
             print(f"  [db_adapter] Analyst consensus history save failed: {e}")
 
 
-def save_watchlist_item(item: dict) -> None:
-    """Upsert a single watchlist item by (symbol, source_type)."""
-    if not USE_DB:
-        return
-    _execute(
-        """INSERT INTO watchlist_items
-           (symbol, source_type, thesis, target_intent, added_date, added_by,
-            confidence, status, notes, data, updated_at)
-           VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, now())
-           ON CONFLICT (symbol, source_type)
-           DO UPDATE SET thesis = EXCLUDED.thesis,
-                         target_intent = EXCLUDED.target_intent,
-                         status = EXCLUDED.status,
-                         notes = EXCLUDED.notes,
-                         data = EXCLUDED.data,
-                         updated_at = now()""",
-        (item["symbol"], item.get("source_type", "user"),
-         item.get("thesis"), item.get("target_intent"),
-         item.get("added_date"), item.get("added_by", "user"),
-         item.get("confidence"), item.get("status", "active"),
-         item.get("notes"), json.dumps(item.get("data", {}), default=str))
+def _legacy_watchlist_writer_retired(op: str, symbol: str, source_type: str) -> None:
+    """Tripwire for the retired (symbol, source_type) watchlist_items writers.
+
+    RETIRED 2026-09-23: watchlist_items has no source_type/thesis/target_intent/added_date
+    columns (current key is symbol+source+bucket), so these writers raised a SQL error on
+    every call and wrote nothing. Operator decision: do not port them (that would revive the
+    orchestrator's auto-adds to the active watchlist) — say so loudly instead.
+    """
+    print(
+        f"  [db_adapter] RETIRED watchlist_items legacy writer ({op}) — schema has no source_type; "
+        f"symbol={symbol} source_type={source_type} not written"
     )
+
+
+def save_watchlist_item(item: dict) -> None:
+    """RETIRED — see _legacy_watchlist_writer_retired. Never writes."""
+    _legacy_watchlist_writer_retired("save", item.get("symbol"), item.get("source_type", "user"))
 
 
 def remove_watchlist_item(symbol: str, source_type: str = "user") -> None:
-    """Mark a watchlist item as removed."""
-    if not USE_DB:
-        return
-    _execute(
-        "UPDATE watchlist_items SET status = 'removed', updated_at = now() WHERE symbol = %s AND source_type = %s",
-        (symbol, source_type)
-    )
+    """RETIRED — see _legacy_watchlist_writer_retired. Never writes."""
+    _legacy_watchlist_writer_retired("remove", symbol, source_type)
 
 
 def load_watchlist_items(source_type: str = None, status: str = "active") -> list:
-    """Load watchlist items from Postgres."""
+    """Load watchlist items from Postgres, filtered by status and (optionally) source.
+
+    `source_type` is the legacy name for the `source` column and is kept in the returned
+    dicts so existing callers keep working. thesis/notes come from origin_detail when set.
+    """
     if not USE_DB:
         return []
-    sql = "SELECT symbol, source_type, thesis, target_intent, added_date, status, notes FROM watchlist_items WHERE status = %s"
+    sql = (
+        "SELECT symbol, source AS source_type, status, origin_detail->>'thesis' AS thesis, "
+        "origin_detail->>'notes' AS notes, source_payload, first_seen_at, updated_at "
+        "FROM watchlist_items WHERE status = %s"
+    )
     params = [status]
     if source_type:
-        sql += " AND source_type = %s"
+        sql += " AND source = %s"
         params.append(source_type)
-    sql += " ORDER BY added_date DESC"
+    sql += " ORDER BY first_seen_at DESC NULLS LAST"
     result = _execute(sql, params, fetch="all")
     return [dict(r) for r in result] if result else []
 

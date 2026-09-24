@@ -254,14 +254,22 @@ def protected_holdings_write(new_holdings, source="schwab_sync", account_key="sc
         try:
             _cur_rows = _positions_of(json.loads(HP.read_text()))
             _protected = {((p.get("symbol") or "").upper(), p.get("account") or ""):
-                          (p.get("cost_basis"), p.get("cost_basis_source"))
+                          (p.get("cost_basis"), p.get("cost_basis_source"), p.get("shares"))
                           for p in _cur_rows
                           if p.get("cost_basis_source") in ("csv_lot", "broker_api", "txn_history") and p.get("cost_basis")}
             _shielded = []
             for p in _positions_of(new_holdings):
                 k = ((p.get("symbol") or "").upper(), p.get("account") or "")
                 if k in _protected:
-                    keep_cb, keep_src = _protected[k]
+                    keep_cb, keep_src, keep_sh = _protected[k]
+                    # A buy/sell changes the basis legitimately; the shield guards a basis
+                    # for an UNCHANGED share count (2026-09-23: MCD 100->200 sh kept the
+                    # 100-share basis, DIV 413->4.65 sh kept its 413-share basis).
+                    try:
+                        if keep_sh is not None and abs(float(p.get("shares") or 0) - float(keep_sh)) > 1e-6:
+                            continue
+                    except (TypeError, ValueError):
+                        pass
                     new_cb = p.get("cost_basis")
                     if new_cb is None or abs(float(new_cb) - float(keep_cb)) > max(1.0, 0.001 * float(keep_cb)):
                         p["cost_basis"] = keep_cb
@@ -489,6 +497,14 @@ def _build_account_rows(account_key, live, existing_by_key):
                     # read a 18-day-old stamp on same-day data. The broker sync is the
                     # only writer that knows the real confirmation time; it stamps it.
                     "broker_position_as_of": as_of})
+        # Schwab's own P/L Day, with the mark it was computed at, so the repricer can check its
+        # fill-aware day change against the broker at the SAME price (a later mark differs).
+        _bdp = _f(p.get("day_pl"))
+        if _bdp is not None:
+            row.update({"broker_day_pl": round(_bdp, 2), "broker_day_pl_price": price, "broker_day_pl_at": now})
+        else:
+            for _k in ("broker_day_pl", "broker_day_pl_price", "broker_day_pl_at"):
+                row.pop(_k, None)
         # Share drift policy (approval-based for DRIP-like increases)
         try:
             from share_reconciliation import stamp_broker_qty
@@ -508,15 +524,20 @@ def _build_account_rows(account_key, live, existing_by_key):
             row["system_shares"] = qty
             row["broker_actual_shares"] = qty
             print(f"  [share-recon] stamp failed {sym}: {str(_se)[:80]}")
+        # A trade-sized share change on an existing row (auto_applied) makes the stored basis
+        # describe the OLD share count; rebase it on the broker's average price for the new count.
+        if not is_new and avg and row.get("share_drift_status") == "auto_applied":
+            row["cost_basis"] = round(avg * float(row.get("shares") or qty), 2)
+            row["cost_basis_source"] = "broker_api"
         if is_new:
             row.setdefault("name", sym)
             row.setdefault("bucket", "US Equity")
             if avg and qty:
                 row.setdefault("cost_basis", round(avg * float(row.get("shares") or qty), 2))
                 row.setdefault("cost_basis_source", "broker_api")
-            if row.get("cost_basis"):
-                row["gain_loss"] = round(float(row.get("market_value") or mv) - float(row["cost_basis"]), 2)
-                row["gain_loss_pct"] = round((float(row.get("market_value") or mv) - float(row["cost_basis"])) / float(row["cost_basis"]) * 100, 4) if float(row["cost_basis"]) else None
+        if row.get("cost_basis") and (is_new or row.get("share_drift_status") == "auto_applied"):
+            row["gain_loss"] = round(float(row.get("market_value") or mv) - float(row["cost_basis"]), 2)
+            row["gain_loss_pct"] = round((float(row.get("market_value") or mv) - float(row["cost_basis"])) / float(row["cost_basis"]) * 100, 4) if float(row["cost_basis"]) else None
         rows.append(_mark_delisted(row, sym))   # auto-flag delisted (CUSIP-only) positions; self-clearing
     return rows, drift_events
 

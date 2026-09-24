@@ -21,9 +21,17 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 PROJECTION_VERSION = "MemoryShadow@v1"
 SCHEMA_NAME = "tradeai_memory_shadow"
 FORBIDDEN_PORTS = {"5432"}
-DEFAULT_DSN = "postgresql://m2:m2shadow@127.0.0.1:55432/m2_shadow"
-WRITER_DSN = "postgresql://tradeai_memory_shadow_writer:shadowwriter@127.0.0.1:55432/m2_shadow"
-READER_DSN = "postgresql://tradeai_memory_shadow_reader:shadowreader@127.0.0.1:55432/m2_shadow"
+from scripts.lib.m2_live_shadow_guard import (  # noqa: E402
+    SHADOW_ADMIN_DSN,
+    SHADOW_READER_DSN,
+    SHADOW_WRITER_DSN,
+    destructive_reset_permitted,
+    refuse_live_shadow_under_pytest,
+)
+
+DEFAULT_DSN = os.getenv("MEMORY_SHADOW_DSN") or SHADOW_ADMIN_DSN
+WRITER_DSN = os.getenv("MEMORY_SHADOW_WRITER_DSN") or SHADOW_WRITER_DSN
+READER_DSN = os.getenv("MEMORY_SHADOW_READER_DSN") or SHADOW_READER_DSN
 SQL_PATH = Path(__file__).resolve().parents[2] / "sql" / "r10_tradeai_memory_shadow_isolated.sql"
 PREDICATES = ("ticker_research_state", "hermes_curation", "symbol_thesis", "research_gap")
 
@@ -58,6 +66,7 @@ def connect(dsn: str | None = None):
     import psycopg2
 
     dsn = _assert_isolated(dsn or DEFAULT_DSN)
+    refuse_live_shadow_under_pytest(dsn)
     conn = psycopg2.connect(dsn)
     conn.autocommit = True
     return conn
@@ -66,10 +75,17 @@ def connect(dsn: str | None = None):
 def apply_schema(conn) -> None:
     sql = SQL_PATH.read_text(encoding="utf-8")
     with conn.cursor() as cur:
+        # The SQL file refuses to DROP an existing tradeai_memory_shadow unless
+        # this is set AND the database is isolated. The live shadow is never
+        # opted in by default (M5 audit 09-23: pytest reset it every run).
+        if destructive_reset_permitted(conn, is_production=False):
+            cur.execute("SET m2.allow_destructive_reset = 'on'")
         cur.execute(sql)
+        cur.execute("SELECT current_database()")
+        dbname = cur.fetchone()[0]
         for role in ("tradeai_memory_shadow_writer", "tradeai_memory_shadow_reader"):
             try:
-                cur.execute(f"GRANT CONNECT ON DATABASE m2_shadow TO {role}")
+                cur.execute(f'GRANT CONNECT ON DATABASE "{dbname}" TO {role}')
             except Exception:
                 conn.rollback()
                 conn.autocommit = True

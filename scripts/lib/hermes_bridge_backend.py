@@ -20,6 +20,7 @@ try:
         normalize_desk_bias,
         questions_from_request,
         utc_now_iso,
+        withhold_execution_language,
     )
     from lib.hermes_research_schema import (
         coerce_as_of,
@@ -35,6 +36,7 @@ except ImportError:  # pragma: no cover
         normalize_desk_bias,
         questions_from_request,
         utc_now_iso,
+        withhold_execution_language,
     )
     from scripts.lib.hermes_research_schema import (  # type: ignore
         coerce_as_of,
@@ -118,9 +120,9 @@ class BridgeHermesResearchBackend:
             assert_no_execution_language(*self._guarded_texts(body))
         except HermesBackendError as refusal:
             # One rewrite, still guarded. Measured 2026-09-07..14: 63 of 136 failed requests
-            # were refused here and never retried (the refusal is non-retryable by design), so
-            # the research was paid for and thrown away. The guard is unchanged: a rewrite that
-            # still carries advice or stance language fails exactly as before.
+            # were refused here and never retried, so the research was paid for and thrown away.
+            # If the rewrite still says buy or sell, those fields are withheld and the request
+            # finishes. The advice is not shipped.
             body = self._rewrite_without_execution_language(messages, raw_text, str(refusal), request, qs)
 
         if not body.get("as_of"):
@@ -153,7 +155,13 @@ class BridgeHermesResearchBackend:
         except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError):
             raise HermesBackendError(refusal, retryable=False)
         body = self._normalize_body(self._parse_json_content(raw), request, qs)
-        assert_no_execution_language(*self._guarded_texts(body))
+        try:
+            assert_no_execution_language(*self._guarded_texts(body))
+        except HermesBackendError:
+            # The rewrite still said buy or sell. Withhold those fields and finish
+            # the request. Failing it here is what closed opr_40a1c8f0876c.
+            body = withhold_execution_language(body)
+            assert_no_execution_language(*self._guarded_texts(body))
         limitations = body.setdefault("limitations", [])
         if isinstance(limitations, list):
             limitations.append("rewritten once after the READ_ONLY execution-language guard refused the first draft")

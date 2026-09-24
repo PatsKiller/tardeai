@@ -250,6 +250,8 @@ GATES = [
             # Maturity-gap remaining: Flash CIO soak observer, self-repair dry harness.
             "tests/test_observe_flash_cio_soak.py",
             "tests/test_gog_drive_safe_parse_id.py",
+            # Docs sync keeps Drive copies of release-ephemeral captures (command-center-pages).
+            "tests/test_drive_sync_preserved_captures_20260923.py",
             "tests/test_run_self_repair_loop_dry.py",
             # Holding-drawer LLM curation (feat/holding-llm-curation-cio-flash):
             # freshness classes, CIO Flash 4.1 triple-consensus reconcile,
@@ -622,6 +624,8 @@ GATES = [
             "tests/test_comms_editor_mode_file_20260914.py",
             # 2026-09-18: investment-shaped Telegram held on CIO Avoid / missing decision.
             "tests/test_cio_telegram_stance_gate_20260918.py",
+            # 2026-09-23 M5: AVOID/SELL hard hold, soft stances GO→WATCH, hold-ledger dedupe.
+            "tests/test_cio_telegram_stance_gate_m5_20260923.py",
             # 2026-09-16 B-phase curation: STOP HEALTH per-symbol repeats collapse to one
             # batched card; GO + entry alerts carry a HELD / NOT HELD triage pill.
             "tests/test_stop_health_batch_20260916.py",
@@ -635,6 +639,9 @@ GATES = [
             # 2026-09-14 HPE: Hermes completed in 4 minutes and the answer never
             # reached the operator (pending waited on a store Hermes does not write).
             "tests/test_research_joinback_20260914.py",
+            # 2026-09-23 MCD: sufficiency diagnostic is not an order; house facts
+            # still answer when the research run does not land.
+            "tests/test_hermes_mcd_close_20260923.py",
             "tests/test_answer_quality_research_landed_20260914.py",
             # 2026-09-14 Research Escalation Circle phase 1: question GUID, free-channel
             # laps, the grounded Context Analyzer, automatic check-ins.
@@ -792,6 +799,14 @@ GATES = [
             "tests/test_operator_answer_quality_20260913.py",
             # Every operator reply path goes through one chokepoint: Sources + Went outside + authority tail.
             "tests/test_operator_reply_routing_sources_20260913.py",
+            # Stage 1+3 parity: shared Hermes join + internal-first finalize (desk + Maria).
+            "tests/test_hermes_join_internal_first_20260923.py",
+            # Stage 4 residual: atomic jobs.json mirror + bak/migrated recovery.
+            "tests/test_gateway_cron_jobs_mirror_20260923.py",
+            # Stage 2 parity: ban pseudo Iris/Alex/CIO attribution (desk + Maria).
+            "tests/test_specialist_attribution_stage2_20260923.py",
+            # M5 Module 3: Maria outbound gate (OpenClaw message_sending bridge).
+            "tests/test_maria_outbound_gate_20260923.py",
             # Evidence coverage contract per intent: house facts first, false-empty claims rejected.
             "tests/test_operator_evidence_contract_20260913.py",
             # Subject resolution: registry-first tickers, company names incl. house-held names.
@@ -803,6 +818,12 @@ GATES = [
             "tests/test_sot_phase9_quotes_prices_writers.py",
             "tests/test_sot_p9_news_articles_writer.py",
             "tests/test_watch_directives_writer_phase9.py",
+            # Stage 5 honesty fields on directive create (subject_guid + membership via).
+            "tests/test_watchlist_membership_honesty_20260923.py",
+            # /api/v2/watchlist serves every ACTIVE ticker directive (S / 1278 surface-split).
+            "tests/test_watchlist_api_reconciliation.py",
+            # Legacy watchlist_items helpers: read fixed to the real schema, writers retired loudly.
+            "tests/test_watchlist_items_legacy_20260923.py",
             "tests/test_sot_p9_hermes_research_writer.py",
             # Off UNLISTED_BASELINE at last. The ONLY coverage of
             # cio_run_worker._check_health, and its fakes are what hid CL-61.
@@ -1108,6 +1129,18 @@ GATES = [
             "tests/test_publish_chokepoint_identity_20260922.py",
         ],
     ),
+    # Operator turns bound nothing: 114 of 114 in the seven days to 2026-09-23
+    # stored a NULL subject_guid ("how is sentinel one doing", "is mcdonalds a
+    # good investment", "is S a good investment"), and research/gap rows carried
+    # a GUID on REQUESTED only. Gated with the chrome-leak negatives so the
+    # any-case windows cannot reopen "Price" -> TROW or "Data" -> DAIO.
+    (
+        "operator_turn_identity_binding",
+        [
+            "tests/test_identity_anycase_windows_20260923.py",
+            "tests/test_identity_stamp_rows_20260923.py",
+        ],
+    ),
     # The memory join was open at both ends. Measured 2026-09-22: causation_id
     # and parent_event_id were NULL on all 54,928 communication_events, so no
     # reply resolved to the event that caused it; and subject_guid was NULL on
@@ -1180,6 +1213,10 @@ GATES = [
         "paper_trades_never_page",
         [
             "tests/test_paper_trades_never_page_20260922.py",
+            # M5 guardrails 2026-09-23: the same rule for the four senders the
+            # 09-22 fix missed, pytest kept off the live M2 shadow, and the
+            # stance observe receipt kept out of reach of test fixtures.
+            "tests/test_m5_guardrails_20260923.py",
         ],
     ),
     # A DELIVERED message must not discard its provider id. _legacy_send called
@@ -1232,6 +1269,8 @@ GATES = [
         [
             "tests/test_lane_registry.py",
             "tests/test_lane_portfolio_repricer.py",
+            # Day P/L for shares traded today (fills) + basis rebase on trade-sized share change.
+            "tests/test_intraday_day_pl_and_basis_20260923.py",
         ],
     ),
     (

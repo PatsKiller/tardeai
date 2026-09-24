@@ -2224,6 +2224,21 @@ def _register_gap_ids_on_spine(conn: Any, gap_ids: list[int]) -> dict[str, Any]:
         return {"written": 0, "error": f"{type(exc).__name__}:{exc}"[:160]}
 
 
+def _gap_identity(symbol: Any) -> dict[str, Any]:
+    """{subject_guid, issuer_guid} for a gap's symbol, or {} -- never raises."""
+    sym = str(symbol or "").strip().upper()
+    if not sym or sym == "BOOK":
+        return {}
+    try:
+        from scripts.lib import research_identity as _RI  # noqa: PLC0415
+        tag = _RI.resolve(_RI.load_registry(), sym)
+    except Exception:  # noqa: BLE001
+        return {}
+    if not tag or not tag.get("subject_guid"):
+        return {}
+    return {"subject_guid": tag["subject_guid"], "issuer_guid": tag.get("issuer_guid")}
+
+
 def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str) -> dict[str, Any]:
     """Queue the gaps the resolver can act on into data_gap_registry.
 
@@ -2292,13 +2307,23 @@ def _register_gaps(gaps: list[dict[str, Any]], *, chat_id: str, pending_id: str)
         except Exception:  # noqa: BLE001
             nxt = None
         out["resolver_next_run"] = nxt.isoformat() if nxt else None
+    # Stamp identity on each gap and on the row, so a subject_guid join over the
+    # gap log finds these rows too; before this only hermes_operator_forced rows
+    # carried a GUID. Resolution failure stamps nothing and never blocks the write.
+    stamped_gaps = [{**g, **_gap_identity(g.get("symbol"))} if isinstance(g, dict) else g
+                    for g in (gaps or [])]
+    row_identity = next((
+        {"subject_guid": g["subject_guid"], "issuer_guid": g.get("issuer_guid")}
+        for g in stamped_gaps if isinstance(g, dict) and g.get("subject_guid")), {})
     _append_jsonl(
         PROJECT_ROOT / "data" / "cio" / "cio_operator_gap_requests.jsonl",
         {
             "ts": _now(),
             "pending_id": pending_id,
             "chat_id": chat_id,
-            "gaps": gaps,
+            "subject_guid": row_identity.get("subject_guid"),
+            "issuer_guid": row_identity.get("issuer_guid"),
+            "gaps": stamped_gaps,
             "registered": out["registered"],
             "gap_ids": out["gap_ids"],
             "not_registered": skipped,
@@ -3058,9 +3083,7 @@ def _enqueue_hermes_research(
         out["emitted"] = 0 if isinstance(emit, dict) and emit.get("skipped") else 1
         out["plan_id"] = plan_id
         out["emit"] = emit if isinstance(emit, dict) else {"raw": str(emit)[:200]}
-        _append_jsonl(
-            OPERATOR_GAP_REQUESTS_PATH,
-            {
+        _gap_row = {
                 "ts": _now(),
                 "pending_id": pending_id,
                 "chat_id": chat_id,
@@ -3071,8 +3094,9 @@ def _enqueue_hermes_research(
                 "research_id": (emit or {}).get("research_id") if isinstance(emit, dict) else None,
                 "symbols": symbols,
                 "authority": AUTHORITY,
-            },
-        )
+            }
+        _gap_row.update(_gap_identity((symbols[:1] or [None])[0]))
+        _append_jsonl(OPERATOR_GAP_REQUESTS_PATH, _gap_row)
     except Exception as exc:
         out["error"] = f"{type(exc).__name__}:{exc}"
     return out
@@ -3231,6 +3255,65 @@ def hermes_result_for_pending(pending_id: str) -> Optional[dict[str, Any]]:
             if res:
                 return res
     return None
+
+
+def plain_research_failure(error: str, symbols: list[str]) -> str:
+    """Operator-facing reason. Never paste the guard exception into Telegram."""
+    names = ", ".join(s for s in symbols[:4] if s) or "the subject"
+    low = (error or "").lower()
+    if any(p in low for p in (
+        "approved primary sources",
+        "sufficient_for_synthesis",
+        "rag retrieval is split",
+    )):
+        return (
+            f"promoted research did not land for {names}: the evidence was split "
+            "between supporting and contradictory items and had no approved primary source"
+        )
+    if "execution language" in low:
+        return (
+            f"promoted research did not land for {names}: the research draft was refused "
+            "by the read-only guard"
+        )
+    short = " ".join(str(error or "research run failed").split())[:140]
+    return f"promoted research did not land for {names}: {short}"
+
+
+def _has_house_facts(avail: dict[str, Any], symbols: list[str]) -> bool:
+    prices = avail.get("subject_price") or {}
+    if any(isinstance(prices.get(s), dict) and prices[s].get("close") is not None for s in symbols):
+        return True
+    if (avail.get("analyst_view") or {}).get("items"):
+        return True
+    if avail.get("subject_levels") or avail.get("subject_memory"):
+        return True
+    if avail.get("news") or avail.get("news_articles") or avail.get("catalyst_events"):
+        return True
+    return False
+
+
+def house_evidence_after_research_failure(
+    evidence: dict[str, Any], symbols: list[str], error: str,
+) -> Optional[dict[str, Any]]:
+    """Drop the research block when house facts can still answer.
+
+    A failed Hermes run must not throw away a price, an analyst row, or levels
+    that were already gathered. Returns None when those stores are empty.
+    """
+    avail = dict((evidence or {}).get("available") or {})
+    if not symbols or not _has_house_facts(avail, symbols):
+        return None
+    note = plain_research_failure(error, symbols)
+    avail["research_failure_note"] = note
+    blocking = [
+        g for g in ((evidence or {}).get("blocking_gaps") or [])
+        if isinstance(g, dict) and g.get("domain") not in ("hermes_research", "quote_price")
+    ]
+    ev = dict(evidence or {})
+    ev["available"] = avail
+    ev["blocking_gaps"] = blocking
+    ev["complete"] = not blocking and bool(avail)
+    return ev
 
 
 def hermes_failure_for_pending(pending_id: str) -> Optional[str]:
@@ -3794,15 +3877,191 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     return out
 
 
+#: Parent-alert titles that carry the subject when the operator replies with
+#: deixis ("research this", "has a thesis") and no ticker in the reply body.
+_REPLY_ALERT_SYMBOL_RE = re.compile(
+    r"(?is)\b(?:READY|NEAR|ENTRY|GO|A\+)\b[^A-Za-z0-9]{0,24}"
+    r"(?:ENTRY\s+ALERT|ALERT)?[^A-Za-z0-9]{0,12}"
+    r"(?:—|-|–|:)?\s*\$?([A-Z]{1,5})\b"
+)
+_REPLY_TITLE_SYMBOL_RE = re.compile(
+    r"(?is)\b(?:ENTRY\s+ALERT|GO\s+ALERT|MATERIAL\s+CHANGE)[^A-Za-z0-9]{0,24}"
+    r"(?:—|-|–|:)?\s*\$?([A-Z]{1,5})\b"
+)
+
+
+def symbols_from_reply_context(
+    reply_to_text: Optional[str] = None,
+    *,
+    explicit: Optional[list[str]] = None,
+) -> list[str]:
+    """Tickers named by the message being replied to (entry/GO alerts).
+
+    Measured 2026-09-23: reply "research this see is has a thesis" on
+    READY ENTRY ALERT — ABNB bound subject BOOK because the reply body has no
+    ticker and converse never forwarded the parent alert text into the desk.
+    """
+    out: list[str] = []
+    for raw in explicit or []:
+        sym = str(raw or "").strip().upper()
+        if sym and sym != "BOOK" and sym not in out:
+            out.append(sym)
+    text = str(reply_to_text or "")
+    if text:
+        for rx in (_REPLY_ALERT_SYMBOL_RE, _REPLY_TITLE_SYMBOL_RE):
+            for m in rx.finditer(text):
+                sym = str(m.group(1) or "").upper()
+                if sym and sym not in _SYMBOL_STOP and sym != "BOOK" and sym not in out:
+                    out.append(sym)
+        if not out:
+            # RichMessage title form: "READY ENTRY ALERT — ABNB (advisory)"
+            m = re.search(
+                r"(?is)ENTRY\s+ALERT\s*[—\-–:]\s*\$?([A-Z]{1,5})\b",
+                text,
+            )
+            if m:
+                sym = m.group(1).upper()
+                if sym not in _SYMBOL_STOP and sym != "BOOK":
+                    out.append(sym)
+    return out[:6]
+
+
+def _apply_reply_context_symbols(
+    intent: dict[str, Any],
+    *,
+    reply_to_text: Optional[str] = None,
+    reply_context_symbols: Optional[list[str]] = None,
+) -> None:
+    """Merge parent-alert tickers into intent when the reply named none."""
+    if intent.get("symbols"):
+        return
+    inherited = symbols_from_reply_context(
+        reply_to_text, explicit=reply_context_symbols,
+    )
+    if not inherited:
+        return
+    intent["symbols"] = inherited
+    intent["reply_context_symbols"] = inherited
+    subjects = list(intent.get("subjects") or [])
+    have = {
+        str(s.get("symbol") or "").upper()
+        for s in subjects if isinstance(s, dict)
+    }
+    for sym in inherited:
+        if sym in have:
+            continue
+        subjects.append({
+            "symbol": sym,
+            "kind": "ticker",
+            "matched": sym,
+            "matched_via": "reply_context",
+            "identity_status": "CANDIDATE",
+        })
+        have.add(sym)
+    intent["subjects"] = subjects
+    ok, why = is_answerable(intent)
+    intent["answerable"] = ok
+    intent["unanswerable_reason"] = why or None
+
+
+def _seconds_until_utc_midnight(now: Optional[datetime] = None) -> int:
+    n = now or datetime.now(timezone.utc)
+    if n.tzinfo is None:
+        n = n.replace(tzinfo=timezone.utc)
+    nxt = (n + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
+    return max(60, int((nxt - n).total_seconds()))
+
+
+def _denied_all_budget(summary: dict[str, Any]) -> bool:
+    """True when every denial attempt was budget_denied (not empty/error)."""
+    denied = summary.get("denied") or []
+    if not denied:
+        return False
+    for row in denied:
+        attempts = row.get("attempts") or []
+        if not attempts:
+            return False
+        if any(a.get("outcome") != "budget_denied" for a in attempts):
+            return False
+    return True
+
+
+def _should_queue_despite_budget(summary: dict[str, Any], intent: dict[str, Any]) -> bool:
+    """Registry ``say_so_queue_only_if_producer_exists``: producer exists → queue.
+
+    Blanket no_coverage with "No pending opened" is wrong when the only reason
+    every vector failed is the day cap and Hermes/writer still exists for the
+    research domain. Queue honestly for the next UTC-day budget window.
+    """
+    if not _denied_all_budget(summary):
+        return False
+    behs = [
+        str(r.get("no_coverage_behaviour") or "")
+        for r in (summary.get("denied") or [])
+    ]
+    if not any("queue_only_if_producer" in b for b in behs):
+        # Research intents still deserve an honest queue when Hermes is the
+        # declared producer, even if the behaviour string was not carried.
+        needs = set(intent.get("needs") or [])
+        if "research" not in needs and str(intent.get("intent") or "") != "research":
+            return False
+    return True
+
+
+def _format_budget_deferred_queue(
+    summary: dict[str, Any],
+    *,
+    intent: dict[str, Any],
+    pending_id: str,
+    eta_seconds: int,
+) -> str:
+    syms = [str(s).upper() for s in (intent.get("symbols") or []) if str(s).strip()]
+    subject = syms[0] if syms else "BOOK"
+    eta_h = max(1, int(round(eta_seconds / 3600.0)))
+    lines = [
+        "🧠 *Alex · research queued for the next budget window*",
+        f"• *{subject}* research thesis — every declared source hit today's "
+        f"spend cap; Hermes (declared producer) is still queued.",
+    ]
+    for r in summary.get("denied") or []:
+        tried = ", ".join(
+            f"{a.get('vector')}={a.get('outcome')}" for a in (r.get("attempts") or [])
+        ) or "no vectors"
+        lines.append(f"  tried {tried}")
+    lines.append(
+        f"Pending `{pending_id}` — ≈ {eta_h} h (UTC day reset). "
+        "I will follow up here when it lands."
+    )
+    lines.append(f"No orders/stops · {AUTHORITY}")
+    return "\n".join(lines)
+
+
 def handle_operator_desk_question(
     text: str,
     *,
     chat_id: str = "",
     message_id: str = "",
     channel: str = "telegram",
+    dry_run: bool = False,
+    reply_to_text: Optional[str] = None,
+    reply_context_symbols: Optional[list[str]] = None,
 ) -> dict[str, Any]:
-    """Full loop: analyze → Trade-AI pull → answer or defer with pending reply."""
+    """Full loop: analyze → Trade-AI pull → answer or defer with pending reply.
+
+    dry_run=True gathers house facts and builds a reply, but must not enqueue
+    gap-registry or Hermes research rows and must not open a pending ledger row.
+
+    reply_to_text / reply_context_symbols: when the operator replies to an alert
+    ("research this / has a thesis" on READY ENTRY ALERT — ABNB) the reply body
+    often names no ticker. Inherit the parent alert's symbol so the gap resolver
+    researches ABNB, not BOOK.
+    """
     intent = analyze_operator_intent(text)
+    _apply_reply_context_symbols(
+        intent,
+        reply_to_text=reply_to_text,
+        reply_context_symbols=reply_context_symbols,
+    )
     if str(intent.get("intent") or "") == "attention":
         from scripts.lib.cio_operator_attention import answer_attention_query
         ans = answer_attention_query(text)
@@ -3869,7 +4128,10 @@ def handle_operator_desk_question(
 
     blocking = evidence.get("blocking_gaps") or []
     if blocking:
-        result["gap_registry"] = _register_gaps(blocking, chat_id=str(chat_id), pending_id=pending_id)
+        if dry_run:
+            result["gap_registry"] = {"registered": 0, "dry_run": True}
+        else:
+            result["gap_registry"] = _register_gaps(blocking, chat_id=str(chat_id), pending_id=pending_id)
         # Hermes when research is the blocker
         # Do not promise a reply about something that can never be answered.
         # "What's the outlook for SpaceX, what are options closing, what are
@@ -3901,7 +4163,7 @@ def handle_operator_desk_question(
         eta_seconds: Optional[int] = None
         eta_text: Optional[str] = None
         resolver_summary: Optional[dict[str, Any]] = None
-        if _gap_resolver_enabled():
+        if (not dry_run) and _gap_resolver_enabled():
             resolver_summary = _resolve_blocking_gaps(
                 blocking, intent=intent, text=text or "", chat_id=str(chat_id), pending_id=pending_id,
             )
@@ -3939,6 +4201,61 @@ def handle_operator_desk_question(
                 # pre-Phase-7 path (pending + Hermes) rather than tell the
                 # operator "no coverage" on the strength of a traceback.
                 resolver_summary = None
+            elif _should_queue_despite_budget(resolver_summary, intent):
+                # say_so_queue_only_if_producer_exists: day caps spent, but
+                # Hermes/writer still exists. Queue honestly for UTC reset
+                # instead of "No pending opened — nothing declared can answer".
+                eta_seconds = _seconds_until_utc_midnight()
+                eta_text = f"≈ {max(1, int(round(eta_seconds / 3600.0)))} h"
+                enqueue_research_gap(
+                    symbols=[str(s).upper() for s in (intent.get("symbols") or [])],
+                    chat_id=str(chat_id),
+                    pending_id=pending_id,
+                    operator_text=text or "",
+                )
+                pending_row = {
+                    "pending_id": pending_id,
+                    "status": "open",
+                    "ts": _now(),
+                    "chat_id": str(chat_id),
+                    "message_id": str(message_id),
+                    "channel": channel,
+                    "operator_text": (text or "")[:1000],
+                    "intent": intent,
+                    "blocking_gaps": blocking,
+                    "authority": AUTHORITY,
+                    "kind": "budget_deferred_queue",
+                    "eta_seconds": int(eta_seconds),
+                    "resolver": resolver_summary.get("receipt"),
+                }
+                _append_jsonl(PENDING_PATH, pending_row)
+                result.update({
+                    "kind": "deferred",
+                    "pending_id": pending_id,
+                    "eta_seconds": eta_seconds,
+                    "research_queued": True,
+                    "text": _format_budget_deferred_queue(
+                        resolver_summary,
+                        intent=intent,
+                        pending_id=pending_id,
+                        eta_seconds=eta_seconds,
+                    ),
+                    "reply_source": "gap_resolver:budget_deferred_queue",
+                    "gap_resolution": {
+                        **(resolver_summary.get("receipt") or {}),
+                        "queued": [
+                            f"research_thesis:"
+                            f"{(intent.get('symbols') or ['BOOK'])[0]}:hermes_research"
+                        ],
+                        "budget_deferred": True,
+                        "eta_seconds": eta_seconds,
+                    },
+                })
+                result.setdefault("went_outside", []).append(
+                    "hermes_research queue — day budget spent; deferred to next UTC window"
+                )
+                _emit_telegram_desk_payload(intent, result)
+                return result
             else:
                 # Every declared vector was denied, exhausted or empty. A
                 # pending here would be the silent promise this exists to end.
@@ -3953,7 +4270,7 @@ def handle_operator_desk_question(
 
         if blocking:
             buy_first = buy_perspective_needs_research_first(intent, evidence)
-            if resolver_summary is None and (
+            if (not dry_run) and resolver_summary is None and (
                 any(g.get("domain") == "hermes_research" for g in blocking)
                 or buy_first
             ):
@@ -3967,6 +4284,12 @@ def handle_operator_desk_question(
                 )
                 result.setdefault("went_outside", []).append(
                     "hermes_research queue — no house research on the subject; research requested"
+                )
+            elif dry_run and (
+                any(g.get("domain") == "hermes_research" for g in blocking) or buy_first
+            ):
+                result.setdefault("went_outside", []).append(
+                    "dry_run — would enqueue hermes_research; no durable queue write"
                 )
             gap_bits = []
             for g in blocking[:6]:
@@ -4000,6 +4323,24 @@ def handle_operator_desk_question(
                 pending_row["eta_seconds"] = int(effective_eta)
             if resolver_summary is not None:
                 pending_row["resolver"] = resolver_summary.get("receipt")
+            if dry_run:
+                result.update({
+                    "kind": "deferred",
+                    "pending_id": None,
+                    "dry_run": True,
+                    "research_queued": False,
+                    "text": (
+                        "dry_run — would open a pending and enqueue Hermes/gap "
+                        f"for `{pending_id}`; no durable queue write."
+                    ),
+                    "reply_preview": (
+                        "dry_run — would open a pending and enqueue Hermes/gap; "
+                        "no durable queue write."
+                    ),
+                    "reply_source": "dry_run_no_enqueue",
+                    "model": None,
+                })
+                return result
             _append_jsonl(PENDING_PATH, pending_row)
             queued_line = (
                 f"Queued into the controlled gap pipeline — {effective_eta_text} until it lands. "
@@ -4104,7 +4445,7 @@ def handle_operator_desk_question(
 
     # Freeform: answer now; optionally soft-queue research gaps for named symbols
     if intent_name == "freeform":
-        queue_on = _env("CIO_OPERATOR_FREEFORM_QUEUE", "1").lower() not in (
+        queue_on = (not dry_run) and _env("CIO_OPERATOR_FREEFORM_QUEUE", "1").lower() not in (
             "0", "false", "off", "no",
         )
         research_gaps = [
@@ -4161,7 +4502,12 @@ def handle_operator_desk_question(
 
     if soft and "DATA_UNAVAILABLE" not in text_out and intent_name != "meta_system":
         soft_syms = sorted({g.get("symbol") for g in soft if g.get("symbol")})
-        if soft_syms:
+        if soft_syms and dry_run:
+            result["gap_registry"] = {"registered": 0, "dry_run": True}
+            result["research_queued"] = False
+            note = "dry_run — would soft-queue research/gaps; no durable queue write"
+            text_out = text_out.rstrip() + f"\n_{note}_"
+        elif soft_syms:
             # Claim "queued" only when the registry accepted the gaps. _register_gaps
             # returned registered=0 on every call (its bridge module is absent), and
             # the note said "queued for Trade-AI refresh" regardless.
@@ -4395,9 +4741,13 @@ def _retry_advice(row: dict[str, Any], intent: dict[str, Any]) -> str:
     if new:
         return (f"Ask again: this question now resolves to {', '.join(new[:4])}, "
                 "so I can answer it from house data.")
-    if now_syms:
-        return (f"Ask again to retry {', '.join(now_syms[:4])}. If the same data is still missing, "
-                "I will say so straight away instead of promising a follow-up.")
+    known = list(dict.fromkeys(now_syms + [s for s in before if s not in now_syms]))
+    if known:
+        # The raw sentence may not contain the ticker ("mcdonalds" is not "MCD").
+        # Symbols already on the intent are known. Never tell the operator to name one.
+        return (f"Ask again to retry {', '.join(known[:4])}. The ticker is already known. "
+                "If the same data is still missing, I will say so straight away "
+                "instead of promising a follow-up.")
     return ("Asking again the same way won't help, because no ticker resolves from it. "
             "Name the ticker and I will answer from house data.")
 
@@ -4478,34 +4828,43 @@ def try_fulfill_pending_replies(
                 answerable, why = is_answerable(intent)
                 hermes_failed = hermes_failure_for_pending(pending_key) if answerable else None
                 if hermes_failed:
-                    answerable, why = False, f"the Hermes research run failed ({hermes_failed})"
-                limit_h = _pending_expiry_hours(row)
-                if answerable and (age_h is None or age_h < limit_h):
-                    continue
-                closing_text, reason = _closing_message(
-                    row, intent, age_h=age_h, limit_h=limit_h, why=why,
-                )
-                chat_id = str(row.get("chat_id") or "")
-                if chat_id:
-                    body, _prov = _finalize_operator_reply(
-                        closing_text,
-                        _pending_reply_provenance("pending_expired", row, evidence),
+                    symbols = [str(s).upper() for s in (intent.get("symbols") or []) if str(s).strip()]
+                    released = house_evidence_after_research_failure(evidence, symbols, hermes_failed)
+                    if released is not None and released.get("complete"):
+                        evidence = released
+                    else:
+                        answerable, why = False, plain_research_failure(hermes_failed, symbols)
+                if not evidence.get("complete"):
+                    limit_h = _pending_expiry_hours(row)
+                    if answerable and (age_h is None or age_h < limit_h):
+                        continue
+                    closing_text, reason = _closing_message(
+                        row, intent, age_h=age_h, limit_h=limit_h, why=why,
                     )
-                    send_fn(chat_id, body, row.get("message_id"))
-                _append_jsonl(PENDING_PATH, {
-                    **{k: row.get(k) for k in (
-                        "pending_id", "chat_id", "message_id", "channel", "operator_text",
-                    )},
-                    "status": "expired",
-                    "expired_ts": _now(),
-                    "expiry_reason": reason,
-                    "age_hours": round(age_h, 2) if age_h is not None else None,
-                    "authority": AUTHORITY,
-                })
-                expired += 1
-                continue
+                    chat_id = str(row.get("chat_id") or "")
+                    if chat_id:
+                        body, _prov = _finalize_operator_reply(
+                            closing_text,
+                            _pending_reply_provenance("pending_expired", row, evidence),
+                        )
+                        send_fn(chat_id, body, row.get("message_id"))
+                    _append_jsonl(PENDING_PATH, {
+                        **{k: row.get(k) for k in (
+                            "pending_id", "chat_id", "message_id", "channel", "operator_text",
+                        )},
+                        "status": "expired",
+                        "expired_ts": _now(),
+                        "expiry_reason": reason,
+                        "age_hours": round(age_h, 2) if age_h is not None else None,
+                        "authority": AUTHORITY,
+                    })
+                    expired += 1
+                    continue
             curated = _curate_from_evidence(str(row.get("operator_text") or ""), evidence)
             answer_text = curated.get("text") or ""
+            note = str((evidence.get("available") or {}).get("research_failure_note") or "").strip()
+            if note:
+                answer_text = _insert_before_authority_tail(answer_text, note[0].upper() + note[1:] + ".")
             if hermes_result:
                 answer_text = _insert_before_authority_tail(answer_text, format_hermes_section(hermes_result))
             landed = "Hermes research landed" if hermes_result else "Trade-AI data landed"
