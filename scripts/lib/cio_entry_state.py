@@ -103,6 +103,7 @@ def evaluate(ev: dict, *, today: date | None = None) -> dict:
     return {
         "symbol": sym, "state": state, "reasons": blocked, "distance_pct": distance_pct, "rr": rr,
         "price": price, "entry_low": lo, "entry_high": hi, "stop": stop, "target": target,
+        "atr": atr,
         "quality_state": ev.get("quality_state"), "cio_action": cio_action or None,
         "market_cap_label": (ev.get("market_cap_label") or {}).get("code"),
         "catalyst": ev.get("catalyst"), "plan_source": ev.get("plan_source"), "held": bool(ev.get("held")),

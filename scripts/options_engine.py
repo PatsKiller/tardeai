@@ -50,6 +50,10 @@ STRATEGY_SLOTS = {
     "credit_spread": int(os.getenv("OPTIONS_SLOT_CREDIT_SPREAD", "2")),
 }
 
+# Stage 1E — reserve Hub Ideas slots for BUY_READY / ENTRY_NEAR long_call expressions.
+ENTRY_STATE_CONVICTION_RESERVE = int(os.getenv("OPTIONS_ENTRY_STATE_RESERVE", "8"))
+ENTRY_STATE_MAX_AGE_HOURS = int(os.getenv("OPTIONS_ENTRY_STATE_MAX_AGE_H", "36"))
+
 DEBIT_STRATEGIES = frozenset({"protective_put", "long_call"})
 
 OCC_RE = re.compile(
@@ -511,8 +515,107 @@ def _load_intent_cfg() -> dict:
         return {}
 
 
+def _entry_state_conviction_symbols(limit: int = 15) -> List[dict]:
+    """Stage 1E — BUY_READY / ENTRY_NEAR → Hub conviction universe (advisory long_call).
+
+    Latest-per-symbol from cio_entry_states within ENTRY_STATE_MAX_AGE_HOURS.
+    ATR preference reuses cio_options_fluency.atr_volatility_elevated (0.40 rule) — no fork.
+    Falls back to empty on DB miss. Does not widen IV/intent or auto-trade.
+    """
+    out: List[dict] = []
+    try:
+        from db_adapter import _execute, USE_DB
+        if not USE_DB:
+            return out
+        rows = _execute(
+            """SELECT DISTINCT ON (upper(symbol))
+                      upper(symbol) AS symbol, state, evaluated_at, details
+                 FROM cio_entry_states
+                WHERE state IN ('BUY_READY', 'ENTRY_NEAR')
+                  AND evaluated_at > NOW() - (%s * INTERVAL '1 hour')
+                ORDER BY upper(symbol), evaluated_at DESC
+                LIMIT %s""",
+            (int(ENTRY_STATE_MAX_AGE_HOURS), int(limit)),
+            fetch="all",
+        ) or []
+    except Exception:
+        return out
+
+    desk_atr: Dict[str, float] = {}
+    try:
+        desk = _load_json(PROJECT_ROOT / "data" / "runtime" / "reentry_decision_desk_latest.json") or {}
+        for r in desk.get("rows") or []:
+            sym = (r.get("symbol") or "").upper()
+            atr_v = _f(r.get("atr"))
+            if sym and atr_v > 0:
+                desk_atr[sym] = atr_v
+    except Exception:
+        pass
+
+    try:
+        from lib.cio_options_fluency import atr_volatility_elevated
+    except Exception:
+        try:
+            from scripts.lib.cio_options_fluency import atr_volatility_elevated  # type: ignore
+        except Exception:
+            atr_volatility_elevated = None  # type: ignore
+
+    for r in rows:
+        sym = (r.get("symbol") or "").upper()
+        state = str(r.get("state") or "")
+        if not sym or state not in ("BUY_READY", "ENTRY_NEAR"):
+            continue
+        details = r.get("details") or {}
+        if isinstance(details, str):
+            try:
+                details = json.loads(details)
+            except Exception:
+                details = {}
+        if not isinstance(details, dict):
+            details = {}
+        price = _f(details.get("price"))
+        entry_low = _f(details.get("entry_low"))
+        entry_high = _f(details.get("entry_high"))
+        stop = _f(details.get("stop"))
+        target = _f(details.get("target"))
+        atr = _f(details.get("atr"))
+        if atr <= 0:
+            atr = desk_atr.get(sym, 0.0)
+        vol_elevated = False
+        atr_vs = None
+        if atr_volatility_elevated is not None:
+            vol_elevated, atr_vs, _ = atr_volatility_elevated(
+                price=price or entry_high or entry_low, stop=stop, atr=atr if atr > 0 else None,
+            )
+        atr_note = ""
+        if atr_vs is not None:
+            atr_note = f" ATR/stop={atr_vs:.2f}" + (" elevated" if vol_elevated else "")
+        zone = ""
+        if entry_low > 0 or entry_high > 0:
+            zone = f" zone ${entry_low:.2f}–${entry_high:.2f}" if entry_low and entry_high else ""
+        out.append({
+            "symbol": sym,
+            "source": "entry_state",
+            "confidence": 0.62,
+            "bias": "bullish",
+            "direction": "bullish",
+            "entry_state": state,
+            "entry_low": entry_low or None,
+            "entry_high": entry_high or None,
+            "stop": stop or None,
+            "target": target or None,
+            "atr": atr if atr > 0 else None,
+            "price": price or None,
+            "volatility_elevated": bool(vol_elevated),
+            "atr_vs_distance_to_stop": atr_vs,
+            "summary": f"{state} entry{zone}{atr_note}".strip(),
+            "evaluated_at": str(r.get("evaluated_at") or ""),
+        })
+    return out[:limit]
+
+
 def _high_conviction_symbols(limit: int = 25) -> List[dict]:
-    """Layer 4 + fused signals + Aegis CC candidates."""
+    """Layer 4 + fused signals + Aegis CC candidates + Stage 1E entry_state."""
     out: Dict[str, dict] = {}
     try:
         from db_adapter import _execute, USE_DB
@@ -575,6 +678,24 @@ def _high_conviction_symbols(limit: int = 25) -> List[dict]:
                 }
     except Exception:
         pass
+
+    # Stage 1E — BUY_READY / ENTRY_NEAR win over weaker sources; reserve slots so V/AXTI
+    # are not truncated by layer4 noise.
+    entry_rows = _entry_state_conviction_symbols(limit=ENTRY_STATE_CONVICTION_RESERVE)
+    for er in entry_rows:
+        sym = er["symbol"]
+        prior = out.get(sym)
+        if prior:
+            sources = list({prior.get("source"), "entry_state"} - {None})
+            er = {
+                **prior,
+                **er,
+                "sources": sources,
+                "source": "entry_state",
+                "confidence": max(_f(prior.get("confidence"), 0.0), _f(er.get("confidence"), 0.62)),
+            }
+        out[sym] = er
+
     if len(out) < 5:
         wl = _load_json(STATE_DIR / "action_signals.json") or {}
         for s in (wl.get("signals") or [])[:20]:
@@ -596,7 +717,11 @@ def _high_conviction_symbols(limit: int = 25) -> List[dict]:
                     "confidence": min(0.85, _f(t.get("score"), 70) / 100.0),
                     "summary": f"Trade AI {t.get('decision') or 'GO'} score {_f(t.get('score')):.0f}",
                 }
-    return list(out.values())[:limit]
+
+    entry_first = [v for v in out.values() if v.get("source") == "entry_state"]
+    others = [v for v in out.values() if v.get("source") != "entry_state"]
+    merged = entry_first[:ENTRY_STATE_CONVICTION_RESERVE] + others
+    return merged[:limit]
 
 
 def _aegis_cc_map() -> Dict[str, dict]:
@@ -680,6 +805,11 @@ def _edge_score(
 
 def _conviction_bias(c: dict) -> str:
     """Return bullish | bearish | neutral for defined-risk routing."""
+    bias = (c.get("bias") or "").lower()
+    if bias in ("bullish", "long", "buy", "up"):
+        return "bullish"
+    if bias in ("bearish", "short", "sell", "down"):
+        return "bearish"
     direction = (c.get("direction") or "").lower()
     if direction in ("bullish", "long", "buy", "up"):
         return "bullish"
@@ -794,7 +924,13 @@ def _allocate_strategy_slots(proposals: List[dict]) -> List[dict]:
         strat = p.get("strategy") or "other"
         by_strat.setdefault(strat, []).append(p)
     for strat in by_strat:
-        by_strat[strat].sort(key=lambda x: -_f(x.get("edge_score")))
+        # Stage 1E: prefer entry_state long_calls inside the small long_call slot cap.
+        by_strat[strat].sort(
+            key=lambda x: (
+                0 if (strat == "long_call" and x.get("conviction_source") == "entry_state") else 1,
+                -_f(x.get("edge_score")),
+            )
+        )
     picked: List[dict] = []
     seen = set()
     for strat, cap in STRATEGY_SLOTS.items():
@@ -1203,7 +1339,8 @@ def _append_long_call_proposal(
     account: str = "",
     holdings: Optional[List[dict]] = None,
     cash_map: Optional[Dict[str, float]] = None,
-) -> None:
+) -> Optional[str]:
+    """Append a long_call proposal. Returns None on success, else a named drop reason."""
     premium = contract["mid"]
     strike, dte, iv = contract["strike"], contract["dte"], contract.get("iv") or 0.3
     pop = 100.0 - _pop_otm_call(und, strike, max(0.05, iv), dte)
@@ -1213,9 +1350,21 @@ def _append_long_call_proposal(
     edge = _edge_score_debit(pop=pop, iv_rank=iv_rank, hedge_ratio=0.5, conviction=conf, dte=dte)
     min_edge = MIN_EDGE_CONVICTION - 8 if conf >= 0.65 else MIN_EDGE_CONVICTION - 3
     if edge < min_edge:
-        return
+        return "EDGE_BELOW"
     acct = account or _auto_select_account(sym, holdings or [], strategy="long_call", cash_map=cash_map)
-    proposals.append(_stamp_execution({
+    from_entry = c.get("source") == "entry_state"
+    vol_elevated = bool(c.get("volatility_elevated"))
+    entry_state = c.get("entry_state")
+    tech_note = f"Conviction {conf:.0%}"
+    if from_entry and entry_state:
+        tech_note = (
+            f"{entry_state} defined-risk expression (stock-replacement / capital-efficient add)"
+        )
+        if vol_elevated:
+            tech_note += (
+                " · elevated ATR vs distance-to-stop prefers options vs full equity"
+            )
+    row = _stamp_execution({
         "id": _proposal_id("long_call", sym, acct, strike, contract.get("exp") or ""),
         "strategy": "long_call",
         "symbol": sym,
@@ -1249,13 +1398,28 @@ def _append_long_call_proposal(
         "reasoning": _build_reasoning("Long call", sym, {
             "iv_rank": iv_rank,
             "layer4": c.get("summary") or "",
-            "technical": f"Conviction {conf:.0%}",
+            "technical": tech_note,
         }),
         "quality_pass": True,
         "data_source": data_source,
         "execution_note": _execution_note(),
         "generated_at": _iso(),
-    }, acct, holdings))
+    }, acct, holdings)
+    if from_entry:
+        row["conviction_source"] = "entry_state"
+        row["entry_state"] = entry_state
+        row["entry_zone"] = {
+            "low": c.get("entry_low"),
+            "high": c.get("entry_high"),
+        }
+        row["atr"] = c.get("atr")
+        row["volatility_elevated"] = vol_elevated
+        if c.get("atr_vs_distance_to_stop") is not None:
+            row["atr_vs_distance_to_stop"] = c.get("atr_vs_distance_to_stop")
+        row["stop"] = c.get("stop")
+        row["target"] = c.get("target")
+    proposals.append(row)
+    return None
 
 
 def _append_csp_proposal(
@@ -1337,38 +1501,85 @@ def generate_defined_risk_proposals(
     owned: set,
     holdings: Optional[List[dict]] = None,
     cash_map: Optional[Dict[str, float]] = None,
+    out_entry_drops: Optional[List[dict]] = None,
 ) -> List[dict]:
-    """Cash-secured puts + long calls on high-conviction names (not already full CC from same sleeve)."""
+    """Cash-secured puts + long calls on high-conviction names (not already full CC from same sleeve).
+
+    Stage 1E: entry_state sources are exempt from the owned≥100 skip for long_call only
+    (stock-replacement / held-add). Owned entry_state never opens a CSP on this path.
+    Named drops for entry symbols (IV_BELOW / EDGE_BELOW / NO_CONTRACT / PRICE_ZERO).
+    """
     proposals: List[dict] = []
+    drops = out_entry_drops if out_entry_drops is not None else []
+
+    def _drop_entry(c: dict, reason: str, **extra: Any) -> None:
+        if c.get("source") != "entry_state":
+            return
+        drops.append({
+            "symbol": c.get("symbol"),
+            "entry_state": c.get("entry_state"),
+            "reason": reason,
+            **extra,
+        })
+
     for c in convictions:
         sym = c["symbol"]
-        if sym in owned:
+        from_entry = c.get("source") == "entry_state"
+        # Owned ≥100 hard-skip — except entry_state long_call (V litmus).
+        if sym in owned and not from_entry:
             continue
         tech = tech_map.get(sym) or {}
         price = _f(tech.get("price") or tech.get("last"))
         if price <= 0:
             price = _resolve_symbol_price(sym, tech_map, holdings or [])
+        if price <= 0 and from_entry:
+            price = _f(c.get("price") or c.get("entry_high") or c.get("entry_low"))
         if price <= 0:
+            _drop_entry(c, "PRICE_ZERO")
             continue
         conf = _f(c.get("confidence"), 0.5)
+        # Recompute ATR preference with tech atr when entry row lacked it.
+        if from_entry and not c.get("volatility_elevated"):
+            atr_v = _f(c.get("atr") or tech.get("atr"))
+            stop_v = _f(c.get("stop"))
+            try:
+                from lib.cio_options_fluency import atr_volatility_elevated
+                vol_e, atr_vs, _ = atr_volatility_elevated(
+                    price=price, stop=stop_v if stop_v > 0 else None,
+                    atr=atr_v if atr_v > 0 else None,
+                )
+                c = dict(c)
+                c["volatility_elevated"] = bool(vol_e)
+                c["atr_vs_distance_to_stop"] = atr_vs
+                if atr_v > 0:
+                    c["atr"] = atr_v
+            except Exception:
+                pass
         iv_rank = _iv_rank_proxy(sym, tech)
         min_iv = MIN_IV_CONVICTION if conf >= 0.6 else MIN_IV_RANK
         if iv_rank < min_iv:
+            _drop_entry(c, "IV_BELOW", iv_rank=iv_rank, min_iv=min_iv)
             continue
 
         und = price
         bias = _conviction_bias(c)
+        owned_entry = from_entry and sym in owned
 
         if bias == "bullish" and conf >= 0.6:
             target_strike = round(und * 1.04 / 2.5) * 2.5 if und > 50 else round(und * 1.05, 1)
             contract, data_source = _resolve_option_contract(sym, und, tech, "call", target_strike, 35)
-            if contract:
-                _append_long_call_proposal(
-                    proposals, sym=sym, und=und, conf=conf, iv_rank=iv_rank,
-                    c=c, contract=contract, data_source=data_source,
-                    holdings=holdings, cash_map=cash_map,
-                )
-        elif conf >= 0.55:
+            if not contract:
+                _drop_entry(c, "NO_CONTRACT")
+                continue
+            drop = _append_long_call_proposal(
+                proposals, sym=sym, und=und, conf=conf, iv_rank=iv_rank,
+                c=c, contract=contract, data_source=data_source,
+                holdings=holdings, cash_map=cash_map,
+            )
+            if drop:
+                _drop_entry(c, drop, edge_attempted=True)
+        elif conf >= 0.55 and not owned_entry:
+            # entry_state + owned → long_call only; never CSP on a name already held ≥100.
             target_strike = round(und * 0.92 / 2.5) * 2.5 if und > 50 else round(und * 0.93, 1)
             contract, data_source = _resolve_option_contract(sym, und, tech, "put", target_strike, 30)
             if contract:
@@ -1377,6 +1588,8 @@ def generate_defined_risk_proposals(
                     c=c, contract=contract, data_source=data_source,
                     holdings=holdings, cash_map=cash_map,
                 )
+        elif from_entry:
+            _drop_entry(c, "NOT_ACTIONABLE", bias=bias, confidence=conf)
     proposals.sort(key=lambda x: -x["edge_score"])
     return proposals[:12]
 
@@ -1845,6 +2058,15 @@ def generate_proposals(force: bool = False) -> dict:
     aegis_map = _aegis_cc_map()
     owned = {h.get("symbol", "").upper() for h in holdings if _f(h.get("shares")) >= 100}
     convictions = _high_conviction_symbols()
+    entry_scanned = [
+        {
+            "symbol": c.get("symbol"),
+            "entry_state": c.get("entry_state"),
+            "volatility_elevated": bool(c.get("volatility_elevated")),
+        }
+        for c in convictions if c.get("source") == "entry_state"
+    ]
+    entry_drops: List[dict] = []
     conv_syms = [c["symbol"] for c in convictions if c.get("symbol")]
     hold_syms = [(h.get("symbol") or "").upper() for h in holdings if not h.get("is_cash")]
     tech_map = _enrich_tech_map(conv_syms + hold_syms, tech_map, holdings)
@@ -1852,7 +2074,9 @@ def generate_proposals(force: bool = False) -> dict:
     cc = generate_covered_call_proposals(holdings, tech_map, intent_cfg, aegis_map)
     cash_map = _cash_by_account(holdings)
     puts = generate_holdings_put_proposals(holdings, tech_map, cash_map, aegis_map)
-    dr = generate_defined_risk_proposals(convictions, tech_map, owned, holdings, cash_map)
+    dr = generate_defined_risk_proposals(
+        convictions, tech_map, owned, holdings, cash_map, out_entry_drops=entry_drops,
+    )
     spreads = generate_credit_spread_proposals(convictions, tech_map, holdings, cash_map)
     pool = cc + puts + dr + spreads
     cc_syms = set(s.upper() for s in (intent_cfg.get("covered_call_candidate") or []))
@@ -1925,6 +2149,8 @@ def generate_proposals(force: bool = False) -> dict:
             "min_iv_rank": MIN_IV_RANK,
             "relaxed_edge_floor": MIN_EDGE_CC_INTENT,
         },
+        "entry_directional_scanned": entry_scanned,
+        "entry_directional_dropped": entry_drops,
         "proposals": all_p,
         "desk_level": "enterprise",
         "enterprise": enterprise_summary,
