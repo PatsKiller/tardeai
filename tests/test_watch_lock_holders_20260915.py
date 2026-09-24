@@ -29,7 +29,7 @@ def test_subject_enhance_connection_is_autocommit():
 def test_directive_service_commits_each_directive_not_once_per_run():
     body = _fn_src(ROOT / "scripts" / "watch_directives_service.py", "main")
     loop_start = body.index("for d in directives:")
-    loop_end = body.index("_drain_curation_sources(c, cur, dry, report, evaluate, _resolve)")
+    loop_end = body.index("_drain_curation_sources(c, cur, dry, report, evaluate_in_claim, _resolve)")
     loop = body[loop_start:loop_end]
     touch = loop.index("_wd.touch_watch_directive_serviced(cur, did")
     assert "c.commit()" in loop[touch:], "commit must follow the per-directive serviced touch"

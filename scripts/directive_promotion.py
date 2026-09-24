@@ -19,6 +19,7 @@ Matched to real Phase-0 signatures:
 """
 from __future__ import annotations
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -36,6 +37,42 @@ _PILLS_JSON = PROJECT_ROOT / "data" / "runtime" / "pro_analyst_pills_latest.json
 def _conn():
     from db_adapter import _get_conn
     return _get_conn()
+
+
+#: Session guards for a connection promote_directive_lead OWNS (M5 2026-09-24).
+#: watch_directives_service promotes held watchlist_items row locks "idle in
+#: transaction" for ~1 min while the Finviz enrichment ran inside the open
+#: transaction; that blocked the 1c migration and the GUID backfill 11 times.
+#: The network fetch now runs outside any transaction, and these caps make a
+#: regression fail fast instead of blocking every other writer.
+DEFAULT_PROMOTE_LOCK_TIMEOUT_MS = 5000
+DEFAULT_PROMOTE_IDLE_TXN_TIMEOUT_MS = 10000
+
+
+def _env_ms(name, default):
+    try:
+        return max(0, int(os.environ.get(name, "").strip() or default))
+    except ValueError:
+        return default
+
+
+def _apply_session_guards(conn):
+    """lock_timeout + idle_in_transaction_session_timeout on an owned connection.
+
+    Best-effort: a connection that cannot take SET (fake cursors in tests, an
+    adapter without cursor()) is left as-is. Ends with commit so the SETs do not
+    themselves leave a transaction open.
+    """
+    lock_ms = _env_ms("PROMOTE_LOCK_TIMEOUT_MS", DEFAULT_PROMOTE_LOCK_TIMEOUT_MS)
+    idle_ms = _env_ms("PROMOTE_IDLE_TXN_TIMEOUT_MS", DEFAULT_PROMOTE_IDLE_TXN_TIMEOUT_MS)
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT set_config('lock_timeout', %s, false)", (f"{lock_ms}ms",))
+        cur.execute("SELECT set_config('idle_in_transaction_session_timeout', %s, false)",
+                    (f"{idle_ms}ms",))
+        conn.commit()
+    except Exception:
+        pass
 
 
 # ── tier + divergence reads (advisory read-models; fail-closed) ──────────────────
@@ -310,6 +347,8 @@ def promote_directive_lead(symbol, directive_id, reason, source_system, conn=Non
     """
     own = conn is None
     conn = conn or _conn()
+    if own:
+        _apply_session_guards(conn)
     should_commit = own if commit is None else commit
     symbol = symbol.upper().strip()
     tier = get_source_tier(source_system, conn)
@@ -330,14 +369,23 @@ def promote_directive_lead(symbol, directive_id, reason, source_system, conn=Non
             return {"status": "STAGED_FOR_REVIEW", "tier": tier, "divergence": divergence,
                     "registered": False, "evaluated": False, "actor": actor}
 
-        # 1. Register provenance on the curated master (base table).
+        # 1. Fetch technicals ON DEMAND (not a screener export) BEFORE any write.
+        #    The Finviz fetch is network I/O (several views per symbol); it used to run
+        #    after the watchlist_items UPDATE below, so the row lock sat "idle in
+        #    transaction" for up to a minute (M5 2026-09-24). Only reads have happened so
+        #    far; when this function owns the connection, end that read transaction too,
+        #    so nothing is held across the fetch. A caller-owned connection keeps its
+        #    transaction boundary (the caller decides).
+        if own:
+            conn.rollback()
+        tech = enrich_symbol_on_demand(symbol, conn=conn)
+
+        # 2. Register provenance on the curated master (base table). Same write as before.
         _upsert_watchlist_master(conn, symbol, origin_system=source_system,
                                  origin_detail={"directive_id": directive_id, "thesis": reason},
                                  directive_id=directive_id, source_tier=tier,
                                  provenance_reason=reason)
 
-        # 2. Inject as candidate: fetch technicals ON DEMAND (not a screener export).
-        tech = enrich_symbol_on_demand(symbol, conn=conn)
         if not tech or _tech_price(tech) is None:
             # fail-closed: keep monitored, flag, no fabricated data, NO proposal.
             _record_hit(conn, directive_id, symbol, surfaced_by=source_system, tier=tier,

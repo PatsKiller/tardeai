@@ -1765,6 +1765,7 @@ GATES = [
         "watch_lock_holders",
         [
             "tests/test_watch_lock_holders_20260915.py",
+            "tests/test_watch_idle_txn_20260924.py",
         ],
     ),
     (

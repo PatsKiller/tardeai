@@ -633,7 +633,8 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
                            resolve_fn: Callable[..., List[str]],
                            *,
                            drain_limit: int = DEFAULT_DRAIN_LIMIT,
-                           auto_apply: Optional[Callable[..., Dict[str, Any]]] = None) -> None:
+                           auto_apply: Optional[Callable[..., Dict[str, Any]]] = None,
+                           commit_each: Optional[Callable[[], None]] = None) -> None:
     """Drain CIO/advisory/defense curation feedback (forward edge) via a cursor.
 
     Self-contained (no psycopg2 / .env at import) so it is dry-testable with a fake
@@ -659,13 +660,35 @@ def drain_curation_sources(cur, dry: bool, report: Dict[str, Any],
         # the same staging row (which was the source of row-lock contention on the shared
         # watchlist_items / watch_directive_hits hot rows). The claim is released at the
         # caller's single commit/rollback — no worker blocks on a peer's in-flight row.
-        cur.execute(
-            f"SELECT * FROM {tbl} WHERE drained=false ORDER BY proposed_at "
-            f"LIMIT %s FOR UPDATE SKIP LOCKED",
-            (limit,),
-        )
-        rows = cur.fetchall() or []
-        for h in rows:
+        # commit_each (M5 2026-09-24): claim ONE row per transaction and commit after
+        # it, so a batch never holds staging claims (and anything a row minted) across
+        # N network-bound promotes. Rows already seen this run are excluded, so a row
+        # left undrained for retry is not re-claimed in the same run. Without
+        # commit_each the batch claim is unchanged (the caller commits once).
+        def _claims(tbl=tbl):
+            if commit_each is None:
+                cur.execute(
+                    f"SELECT * FROM {tbl} WHERE drained=false ORDER BY proposed_at "
+                    f"LIMIT %s FOR UPDATE SKIP LOCKED",
+                    (limit,),
+                )
+                yield from (cur.fetchall() or [])
+                return
+            seen: List[str] = []
+            for _ in range(limit):
+                cur.execute(
+                    f"SELECT * FROM {tbl} WHERE drained=false AND NOT (id::text = ANY(%s::text[])) "
+                    f"ORDER BY proposed_at LIMIT 1 FOR UPDATE SKIP LOCKED",
+                    (seen,),
+                )
+                row = cur.fetchone()
+                if not row:
+                    return
+                seen.append(str(row["id"]))
+                yield row
+                commit_each()
+
+        for h in _claims():
             hid = h["id"]
             detail = h.get("source_detail") if isinstance(h.get("source_detail"), dict) \
                 else json.loads(h.get("source_detail") or "{}")
