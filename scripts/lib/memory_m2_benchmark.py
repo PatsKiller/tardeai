@@ -41,6 +41,7 @@ from scripts.lib.m2_live_shadow_guard import (  # noqa: E402
     SHADOW_ADMIN_DSN as DEFAULT_DSN,
     destructive_reset_permitted,
     refuse_live_shadow_under_pytest,
+    set_isolated_agent_password,
 )
 
 # Production cognitive-memory access is refused unless the operator sets this to
@@ -152,6 +153,7 @@ def apply_schema(conn) -> None:
         # explicitly opted in -- pytest wiped it on every run (M5 audit 09-23).
         if destructive_reset_permitted(conn, is_production=conn_targets_production(conn)):
             cur.execute("SET m2.allow_destructive_reset = 'on'")
+        set_isolated_agent_password(cur, is_production=conn_targets_production(conn))
         cur.execute(sql)
     # r10 rebuild strips v2 packaging (PR #1158). Re-heal aliases/views/trigger.
     if not conn_targets_production(conn):

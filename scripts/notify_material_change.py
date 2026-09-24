@@ -25,16 +25,44 @@ one had been suppressed by the router. So the outcome is recorded as what was
 actually observed, and a change is only marked notified when the send was accepted —
 a suppressed alert stays pending rather than being silently consumed.
 
-    python3 scripts/notify_material_change.py            # dry run, prints the message
+PAGE, DIGEST OR COMMAND CENTER (operator decisions 2026-09-24)
+--------------------------------------------------------------
+The 2026-09-24 maturity review of a live notice (ROL / LTRN / KLXE / RCL / EXPE)
+found it paged five names none of which the operator held or could act on, two on
+quotes 30.7h and 112.6h old, with "CIO stance: don't buy" beside "CIO decision: Buy
+Ready" for the same name. Each change is now ROUTED on its own facts:
+
+  PAGE            a HELD name whose stop or target is hit, or that made a material
+                  price move; or a watchlist name the CIO rates BUY_READY on a fresh
+                  quote. One message per name, the point in the first line.
+  DIGEST          everything else with a fresh quote — including a watchlist name
+                  through its plan stop, which is "PLAN INVALIDATED — re-plan or
+                  drop", never "STOP BREACHED" (that reads as an exit order for a
+                  position the operator does not have). Sent once a day (--digest).
+  COMMAND_CENTER  a stale quote (older than cio_entry_state.MAX_QUOTE_AGE_H), or an
+                  inactive strategy with no plan. Not sent; listed by name in the
+                  digest's "not shown" line and visible in the Command Center.
+
+Delivery is verified per message: a notice the comms editor HELD is not delivered,
+so its rows stay pending (telegram_alert.last_held_chunks). The router check runs on
+each page's own text, never on a batch where one name's thesis prose ("paper
+proposal") could suppress all the others (179 suppressed runs, 2026-09-22..24).
+
+    python3 scripts/notify_material_change.py                  # dry run: pages
     python3 scripts/notify_material_change.py --apply
+    python3 scripts/notify_material_change.py --digest          # dry run: daily digest
+    python3 scripts/notify_material_change.py --digest --apply
 """
+
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import os
 import sys
+import uuid
 from datetime import datetime, time, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -43,7 +71,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-SCHEMA = "MaterialChangeNotice@v1"
+SCHEMA = "MaterialChangeNotice@v2"
 AUTHORITY = "READ_ONLY_ADVISORY"
 
 #: ALWAYS. Operator decision 2026-09-07, overriding the market-hours default set the
@@ -65,6 +93,8 @@ MARKET_CLOSE = time(16, 0)
 
 #: Never announce a change older than this. A stale alert is noise, and after a
 #: weekend or an outage the backlog would otherwise arrive as a wall of text.
+#: Measured from when the detector RECORDED the change (created_at): price rows carry
+#: a date-only observed_at (midnight), which silently shortened their window.
 MAX_AGE_HOURS = int(os.getenv("MATERIAL_CHANGE_MAX_AGE_HOURS", "72"))
 
 #: Route this notice through the comms gateway instead of the legacy chokepoint.
@@ -77,10 +107,26 @@ GATEWAY_NOTICE_FLAG = "MATERIAL_CHANGE_GATEWAY_NOTICE"
 def gateway_notice_enabled(env: dict | None = None) -> bool:
     e = env if env is not None else os.environ
     return str(e.get(GATEWAY_NOTICE_FLAG, "")).strip().lower() in {"1", "true", "yes", "on"}
-#: Ceiling per run, so one thrashing name cannot dominate the channel.
-MAX_PER_RUN = int(os.getenv("MATERIAL_CHANGE_MAX_PER_RUN", "8"))
 
-#: MaterialChangeNotice@v1 is a send receipt. Its consumer is the operator, who is
+
+#: Ceiling on PAGES per run, so one thrashing session cannot flood the channel.
+MAX_PER_RUN = int(os.getenv("MATERIAL_CHANGE_MAX_PER_RUN", "8"))
+#: Rows read per run to route (pages + digest + command-center). Routing is cheap;
+#: reading only MAX_PER_RUN rows ordered by magnitude starved held names.
+MAX_SCAN = int(os.getenv("MATERIAL_CHANGE_MAX_SCAN", "200"))
+#: A held name pages on a price move of at least this many times its normal daily
+#: move. Defaults to the detector's own K, so every held price excursion pages.
+PAGE_MIN_MAGNITUDE = float(os.getenv("MATERIAL_CHANGE_PAGE_MIN_MAGNITUDE", os.getenv("MATERIAL_CHANGE_K", "3.0")))
+#: Page and digest chunks stay under the comms editor's footer threshold.
+MAX_MESSAGE_CHARS = int(os.getenv("MATERIAL_CHANGE_MAX_MESSAGE_CHARS", "3500"))
+#: An editor-held page is retried at most this many times before it falls to the digest.
+MAX_HOLD_RETRIES = int(os.getenv("MATERIAL_CHANGE_MAX_HOLD_RETRIES", "3"))
+
+ROUTE_PAGE = "PAGE"
+ROUTE_DIGEST = "DIGEST"
+ROUTE_CC = "COMMAND_CENTER"
+
+#: MaterialChangeNotice@v2 is a send receipt. Its consumer is the operator, who is
 #: not a code path — the durable record of what was announced lives on
 #: material_changes.notified_at / notify_outcome, which IS read (by this script, to
 #: avoid re-announcing). Declared rather than left dark: an undeclared contract is
@@ -110,8 +156,12 @@ def _db():
             k, _, v = line.partition("=")
             os.environ.setdefault(k.strip(), v.strip())
     return psycopg2.connect(
-        host=os.getenv("DB_HOST"), port=os.getenv("DB_PORT"), dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"), password=os.getenv("DB_PASSWORD"))
+        host=os.getenv("DB_HOST"),
+        port=os.getenv("DB_PORT"),
+        dbname=os.getenv("DB_NAME"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+    )
 
 
 def in_window(now: datetime | None = None) -> bool:
@@ -129,19 +179,41 @@ def in_window(now: datetime | None = None) -> bool:
     return MARKET_OPEN <= n.time() <= MARKET_CLOSE
 
 
+PENDING_COLS = [
+    "change_guid",
+    "symbol",
+    "kind",
+    "magnitude",
+    "baseline",
+    "observed_value",
+    "observed_at",
+    "universe_reason",
+    "subject_guid",
+    "evidence_json",
+    "precedence",
+    "notify_outcome",
+]
+
+
 def pending(cur, *, limit: int) -> list[dict]:
+    """Unannounced changes, strongest claim on the operator first.
+
+    precedence (operator 100 > held 80 > reentry 70 > preferred 60 > watchlist 40,
+    material_change_detector) was never selected, so the precedence sort in
+    dedupe_by_symbol ran on None and held names waited behind bigger watchlist moves.
+    """
     cur.execute(
         """SELECT change_guid, symbol, kind, magnitude, baseline, observed_value,
-                  observed_at, universe_reason, subject_guid, evidence_json
+                  observed_at, universe_reason, subject_guid, evidence_json, precedence,
+                  notify_outcome
              FROM material_changes
             WHERE notified_at IS NULL
-              AND observed_at > now() - (%s || ' hours')::interval
-            ORDER BY magnitude DESC NULLS LAST
-            LIMIT %s""", (MAX_AGE_HOURS, limit))
-    cols = ["change_guid", "symbol", "kind", "magnitude", "baseline",
-            "observed_value", "observed_at", "universe_reason", "subject_guid",
-            "evidence_json"]
-    return [dict(zip(cols, r)) for r in cur.fetchall()]
+              AND COALESCE(created_at, observed_at) > now() - (%s || ' hours')::interval
+            ORDER BY precedence DESC NULLS LAST, magnitude DESC NULLS LAST
+            LIMIT %s""",
+        (MAX_AGE_HOURS, limit),
+    )
+    return [dict(zip(PENDING_COLS, r)) for r in cur.fetchall()]
 
 
 def context(cur, change: dict) -> dict:
@@ -162,17 +234,21 @@ def context(cur, change: dict) -> dict:
     sg = change.get("subject_guid")
     out: dict = {}
 
-    cur.execute("""SELECT sentences FROM subject_state_narratives
+    cur.execute(
+        """SELECT sentences FROM subject_state_narratives
                     WHERE change_guid = %s ORDER BY created_at DESC LIMIT 1""",
-                (change["change_guid"],))
+        (change["change_guid"],),
+    )
     row = cur.fetchone()
     if row and row[0]:
         payload = row[0] if isinstance(row[0], list) else json.loads(row[0])
         out["narrative"] = [n.get("sentence") for n in payload if n.get("sentence")]
 
-    cur.execute("""SELECT question FROM due_diligence_questions
+    cur.execute(
+        """SELECT question FROM due_diligence_questions
                     WHERE change_guid = %s ORDER BY created_at LIMIT 2""",
-                (change["change_guid"],))
+        (change["change_guid"],),
+    )
     out["questions"] = [r[0] for r in cur.fetchall()]
 
     # The raw trigger, for when curation has not run yet.
@@ -184,11 +260,13 @@ def context(cur, change: dict) -> dict:
             ev = {}
     rng = ev.get("id_range")
     if not out.get("narrative") and rng:
-        cur.execute("""SELECT headline, catalyst_type FROM catalyst_events
+        cur.execute(
+            """SELECT headline, catalyst_type FROM catalyst_events
                         WHERE id BETWEEN %s AND %s AND symbol = %s
                           AND headline IS NOT NULL
                         ORDER BY published_at DESC LIMIT 10""",
-                    (rng[0], rng[1], change["symbol"]))
+            (rng[0], rng[1], change["symbol"]),
+        )
         picked = pick_headline([(r[0], r[1]) for r in cur.fetchall()])
         if picked:
             out["headline"], out["headline_kind"] = picked
@@ -200,8 +278,11 @@ def context(cur, change: dict) -> dict:
     _safe(cur, lambda: _watch_context(cur, change, out))
 
     if sg:
-        cur.execute("""SELECT max(created_at)::date FROM hermes_external_research
-                        WHERE subject_guid = %s""", (sg,))
+        cur.execute(
+            """SELECT max(created_at)::date FROM hermes_external_research
+                        WHERE subject_guid = %s""",
+            (sg,),
+        )
         r = cur.fetchone()
         out["last_research"] = str(r[0]) if r and r[0] else None
     return out
@@ -211,12 +292,17 @@ def context(cur, change: dict) -> dict:
 NOT_NEWS = re.compile(
     r"(?i)(stock price|price today|price and chart|stock quote|quote & history|competitors|should i buy|"
     r"stocks? to watch|trending stocks|stocks moving|top gainers|top losers|premarket movers|"
-    r"stock forecast|tradingview|stock analysis|lead sub-\$1)")
-UNTYPED = {"other", "news_momentum", "neutral", "technical", "stock_price_movement", "stock_price_increase", "bullish", "bearish"}
-SOURCE_LABELS = {
-    "ai_discovered": "AI discovery", "finviz_screener": "the Finviz screener", "paper_proposal": "a proposal",
-    "operator": "you", "hermes": "Hermes research", "portfolio": "your portfolio", "pullback_macd": "the pullback screener",
-    "small_cap_rotation": "small-cap rotation", "trade_ai": "Trade-AI",
+    r"stock forecast|tradingview|stock analysis|lead sub-\$1)"
+)
+UNTYPED = {
+    "other",
+    "news_momentum",
+    "neutral",
+    "technical",
+    "stock_price_movement",
+    "stock_price_increase",
+    "bullish",
+    "bearish",
 }
 _ENRICHMENT: dict | None = None
 
@@ -243,82 +329,132 @@ def _safe(cur, fn) -> None:
 
 
 def _catalyst_near_move(cur, change: dict, out: dict) -> None:
-    cur.execute("""SELECT headline, catalyst_type FROM catalyst_events
+    cur.execute(
+        """SELECT headline, catalyst_type FROM catalyst_events
                     WHERE upper(symbol) = upper(%s) AND headline IS NOT NULL
                       AND COALESCE(published_at, created_at)
                           BETWEEN %s::timestamptz - interval '3 days' AND %s::timestamptz + interval '1 day'
                     ORDER BY COALESCE(published_at, created_at) DESC LIMIT 25""",
-                (change["symbol"], change.get("observed_at"), change.get("observed_at")))
+        (change["symbol"], change.get("observed_at"), change.get("observed_at")),
+    )
     picked = pick_headline([(r[0], r[1]) for r in cur.fetchall()])
     if picked:
         out["headline"], out["headline_kind"] = picked
 
 
+def _f(v) -> float | None:
+    try:
+        return None if v is None else float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _watch_context(cur, change: dict, out: dict) -> None:
+    """The facts routing needs, read from the SAME sources the CIO entry runner uses.
+
+    2026-09-24: the notice read its plan from watchlist_strategy_cards while the CIO
+    evaluated watchlist_entry_plans, and read the latest cio_decisions row of ANY class
+    — including the runner's own old BUY_READY rows (action_class='entry') — so a name
+    could read "don't buy — blocked" and "CIO decision: Buy Ready" in one breath.
+    Plan precedence and the decision filter now match cio_entry_state_runner.gather.
+    """
     sym = str(change["symbol"]).upper()
-    cur.execute("""SELECT source, provenance_reason, first_seen_at::date FROM watchlist_items
-                    WHERE upper(symbol) = %s AND status <> 'removed'
-                    ORDER BY CASE WHEN source = 'portfolio' THEN 0
-                                  WHEN source IN ('operator', 'manual', 'telegram', 'directive') THEN 1 ELSE 2 END,
-                             first_seen_at ASC LIMIT 1""", (sym,))
+    cur.execute(
+        """SELECT price, change_pct, EXTRACT(EPOCH FROM (now() - last_enriched_at)) / 3600.0
+                     FROM watchlist_items WHERE upper(symbol) = %s AND price IS NOT NULL
+                    ORDER BY last_enriched_at DESC NULLS LAST LIMIT 1""",
+        (sym,),
+    )
     r = cur.fetchone()
     if r:
-        out["watch"] = {"source": r[0], "reason": r[1], "since": str(r[2]) if r[2] else None}
-    cur.execute("""SELECT price, change_pct FROM watchlist_items WHERE upper(symbol) = %s AND price IS NOT NULL
-                    ORDER BY last_enriched_at DESC NULLS LAST LIMIT 1""", (sym,))
+        out["price"] = _f(r[0])
+        out["change_pct"] = _f(r[1])
+        out["quote_age_h"] = _f(r[2])
+    cur.execute("""SELECT count(*) FROM watchlist_items WHERE upper(symbol) = %s AND status = 'active'""", (sym,))
     r = cur.fetchone()
-    if r:
-        out["price"] = float(r[0]) if r[0] is not None else None
-        out["change_pct"] = float(r[1]) if r[1] is not None else None
-    cur.execute("""SELECT strategy_type, active FROM ticker_strategy_classifications WHERE upper(symbol) = %s
-                    ORDER BY active DESC NULLS LAST LIMIT 1""", (sym,))
+    out["on_watchlist"] = bool(r and r[0])
+    cur.execute(
+        """SELECT strategy_type, active FROM ticker_strategy_classifications WHERE upper(symbol) = %s
+                    ORDER BY active DESC NULLS LAST LIMIT 1""",
+        (sym,),
+    )
     r = cur.fetchone()
     out["strategy"] = r[0] if r else None
-    out["strategy_inactive"] = bool(r and r[1] is False)
-    cur.execute("SELECT sector, industry FROM symbol_profiles WHERE upper(symbol) = %s LIMIT 1", (sym,))
-    r = cur.fetchone()
-    if r and (r[0] or r[1]):
-        out["sector"] = {"sector": r[0], "industry": r[1]}
+    out["strategy_inactive"] = bool(r is None or r[1] is False)
     try:
-        cur.execute("""SELECT state, details FROM cio_entry_states WHERE symbol = %s
-                        ORDER BY evaluated_at DESC LIMIT 1""", (sym,))
+        cur.execute(
+            """SELECT state, details, evaluated_at::date,
+                              EXTRACT(EPOCH FROM (now() - evaluated_at)) / 3600.0
+                         FROM cio_entry_states WHERE symbol = %s
+                        ORDER BY evaluated_at DESC LIMIT 1""",
+            (sym,),
+        )
         r = cur.fetchone()
         if r:
             d = r[1] if isinstance(r[1], dict) else json.loads(r[1] or "{}")
-            out["entry_state"] = {"state": r[0], **{k: d.get(k) for k in (
-                "entry_low", "entry_high", "stop", "target", "rr", "distance_pct", "reasons", "price")}}
+            out["entry_state"] = {
+                "state": r[0],
+                "date": str(r[2]) if r[2] else None,
+                "age_h": _f(r[3]),
+                **{
+                    k: d.get(k)
+                    for k in ("entry_low", "entry_high", "stop", "target", "rr", "distance_pct", "reasons", "price")
+                },
+            }
     except Exception:  # noqa: BLE001 — table absent before the entry-state lane first runs
         cur.connection.rollback()
     held = holding_for(sym)
     if held:
         out["holding"] = held
-    try:
-        try:
-            from lib.symbol_thesis_attach import thesis_fields_for_symbol
-        except ImportError:
-            from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
-        t = thesis_fields_for_symbol(sym) or {}
-        if t.get("has_current_symbol_thesis") or t.get("thesis_summary"):
-            out["thesis"] = {"state": t.get("thesis_state"), "summary": clean_thesis(sym, t.get("thesis_summary")),
-                             "last_reviewed": t.get("last_reviewed")}
-    except Exception:  # noqa: BLE001 — thesis is context, never a reason to drop the notice
-        pass
-    cur.execute("""SELECT ideal_entry, stop_loss, target_price FROM watchlist_strategy_cards
-                    WHERE upper(symbol) = %s ORDER BY updated_at DESC NULLS LAST LIMIT 1""", (sym,))
+    plan = None
+    cur.execute(
+        """SELECT entry_zone_low, entry_zone_high, stop_price, target_price FROM watchlist_entry_plans
+                    WHERE upper(symbol) = %s AND created_at > now() - interval '7 days'
+                    ORDER BY created_at DESC LIMIT 1""",
+        (sym,),
+    )
     r = cur.fetchone()
-    if r and r[0] is not None:
-        out["plan"] = {"entry": float(r[0]), "stop": float(r[1]) if r[1] is not None else None,
-                       "target": float(r[2]) if r[2] is not None else None}
-    cur.execute("""SELECT action, created_at::date FROM cio_decisions WHERE upper(symbol) = %s
-                    ORDER BY created_at DESC LIMIT 1""", (sym,))
+    if r and (r[0] is not None or r[1] is not None):
+        lo, hi = _f(r[0]), _f(r[1])
+        plan = {
+            "entry": lo if lo is not None else hi,
+            "entry_high": hi,
+            "stop": _f(r[2]),
+            "target": _f(r[3]),
+            "source": "entry_plan",
+        }
+    if plan is None:
+        cur.execute(
+            """SELECT ideal_entry, stop_loss, target_price FROM watchlist_strategy_cards
+                        WHERE upper(symbol) = %s ORDER BY updated_at DESC NULLS LAST LIMIT 1""",
+            (sym,),
+        )
+        r = cur.fetchone()
+        if r and r[0] is not None:
+            plan = {"entry": float(r[0]), "stop": _f(r[1]), "target": _f(r[2]), "source": "strategy_card"}
+    if plan:
+        out["plan"] = plan
+    cur.execute(
+        """SELECT action, created_at::date FROM cio_decisions
+                    WHERE upper(symbol) = %s AND action_class IS DISTINCT FROM 'entry'
+                    ORDER BY created_at DESC LIMIT 1""",
+        (sym,),
+    )
     r = cur.fetchone()
     if r:
         out["cio"] = {"action": r[0], "date": str(r[1])}
     global _ENRICHMENT
     if _ENRICHMENT is None:
         try:
-            _ENRICHMENT = json.loads((Path(__file__).resolve().parent.parent / "data" / "portfolios" / "state"
-                                      / "ticker_enrichment_cache.json").read_text())
+            _ENRICHMENT = json.loads(
+                (
+                    Path(__file__).resolve().parent.parent
+                    / "data"
+                    / "portfolios"
+                    / "state"
+                    / "ticker_enrichment_cache.json"
+                ).read_text()
+            )
         except Exception:  # noqa: BLE001
             _ENRICHMENT = {}
     try:
@@ -355,8 +491,11 @@ def holding_for(symbol: str, holdings: dict | None = None) -> dict | None:
             except Exception:  # noqa: BLE001
                 _HOLDINGS = {}
         holdings = _HOLDINGS
-    rows = [h for h in (holdings.get("holdings") or [])
-            if str(h.get("symbol") or "").upper() == symbol.upper() and not h.get("is_cash")]
+    rows = [
+        h
+        for h in (holdings.get("holdings") or [])
+        if str(h.get("symbol") or "").upper() == symbol.upper() and not h.get("is_cash")
+    ]
     if not rows:
         return None
     shares = sum(float(h.get("shares") or 0) for h in rows)
@@ -364,8 +503,12 @@ def holding_for(symbol: str, holdings: dict | None = None) -> dict | None:
     value = sum(float(h.get("market_value") or 0) for h in rows)
     if shares <= 0:
         return None
-    out = {"shares": shares, "accounts": sorted({_account_label(h.get("account")) for h in rows}),
-           "cost_basis": cost or None, "market_value": value or None}
+    out = {
+        "shares": shares,
+        "accounts": sorted({_account_label(h.get("account")) for h in rows}),
+        "cost_basis": cost or None,
+        "market_value": value or None,
+    }
     if cost > 0 and value > 0:
         out["avg_cost"] = cost / shares
         out["price"] = value / shares
@@ -374,39 +517,33 @@ def holding_for(symbol: str, holdings: dict | None = None) -> dict | None:
     return out
 
 
-def clean_thesis(symbol: str, summary: str | None, limit: int = 140) -> str | None:
-    """One readable sentence: drop the leading "SYM 1." numbering and trailing guid= tokens."""
-    import re as _re
-    text = str(summary or "").strip()
-    if not text:
-        return None
-    text = _re.sub(rf"^{_re.escape(symbol)}\s+\d+\.\s*", "", text, flags=_re.I)
-    text = _re.sub(r"\s*guid=\S+", "", text).strip()
-    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
-
-
 def dedupe_by_symbol(changes: list[dict]) -> list[dict]:
-    """One line per SYMBOL, strongest signal wins.
+    """One entry per SYMBOL, strongest signal wins; `guids` keeps every row it stands for.
 
     The 2026-09-07 queue listed AOUT twice (two news bursts hours apart) and SPCX
     twice. A name appearing repeatedly in one alert is not more informative — it is
-    harder to read, and it crowds out the other names.
+    harder to read, and it crowds out the other names. Every collapsed row is still
+    marked when the name is delivered, so no duplicate re-appears next run.
     """
     best: dict[str, dict] = {}
     for c in changes:
         sym = c["symbol"]
         cur = best.get(sym)
+        guids = (cur or {}).get("guids", []) + [str(c.get("change_guid"))]
         if cur is None or (c.get("magnitude") or 0) > (cur.get("magnitude") or 0):
             c = dict(c)
             c["also"] = (cur or {}).get("also", 0) + (1 if cur else 0)
+            c["guids"] = guids
             best[sym] = c
         else:
             cur["also"] = cur.get("also", 0) + 1
-    return sorted(best.values(),
-                  key=lambda x: (-(x.get("precedence") or 0), -(x.get("magnitude") or 0)))
+            cur["guids"] = guids
+    return sorted(best.values(), key=lambda x: (-(x.get("precedence") or 0), -(x.get("magnitude") or 0)))
 
 
-#: What the magnitude means, in words. "x1.2 vs usual" is noise dressed as signal.
+# ── facts ────────────────────────────────────────────────────────────────────
+
+
 def _signed_move(c: dict, info: dict | None = None) -> float | None:
     ev = c.get("evidence_json") or c.get("evidence") or {}
     if isinstance(ev, str):
@@ -422,217 +559,357 @@ def _signed_move(c: dict, info: dict | None = None) -> float | None:
     return None
 
 
-def _headline_line(c: dict, info: dict | None = None) -> str:
-    sym, kind = c["symbol"], c["kind"]
-    mag = float(c["magnitude"] or 0)
-    info = info or {}
-    if kind == "price_excursion":
-        signed = _signed_move(c, info)
-        size = abs(float(c["observed_value"]))
-        verb = "moved" if signed is None else ("up" if signed >= 0 else "down")
-        tail = "".join(f" · {x}" for x in (
-            f"${info['price']:,.2f}" if info.get("price") is not None else "", info.get("size") or "") if x)
-        return f"{sym} — {verb} {size:.0f}%, {mag:.0f}x its normal daily range{tail}"
-    if kind == "news_burst":
-        return f"{sym} — unusual news volume, {mag:.0f}x normal"
-    if kind == "sector_move":
-        return f"{sym} — sector-wide move"
-    ev = c.get("evidence") or {}
-    ctype = str(ev.get("catalyst_type") or "").replace("_", " ")
-    return f"{sym} — {ctype or 'new catalyst'}"
+def max_quote_age_h() -> float:
+    """The CIO entry check's own freshness bar — one definition of 'fresh'."""
+    try:
+        from lib.cio_entry_state import MAX_QUOTE_AGE_H
+    except ImportError:  # imported as scripts.notify_material_change
+        from scripts.lib.cio_entry_state import MAX_QUOTE_AGE_H
+    return float(MAX_QUOTE_AGE_H)
 
 
-def render(changes: list[dict], ctx: dict[str, dict]) -> str:
-    changes = dedupe_by_symbol(changes)
-    lines = [f"Material change — {len(changes)} name(s) worth a look"]
-    for c in changes:
-        info = ctx.get(str(c["change_guid"]), {})
-        lines.append("\n" + _headline_line(c, info))
-
-        # WHAT HAPPENED. The narrative if we have one, else a real catalyst, else say there is none.
-        if info.get("narrative"):
-            for sentence in info["narrative"][:2]:
-                lines.append(f"  {sentence}")
-        elif info:
-            lines.append(f"  {_what_line(info)}")
-
-        # WHY IT IS IN FRONT OF YOU, WHAT IT BELONGS TO, WHAT THE CIO SAYS, WHAT IS OPEN. Never advice.
-        for d in _detail_lines(c, info):
-            lines.append(f"  · {d}")
-    lines.append("\nAdvisory only. No position action taken or implied.")
-    return "\n".join(lines)
+def quote_is_fresh(info: dict) -> bool:
+    age = info.get("quote_age_h")
+    return info.get("price") is not None and age is not None and float(age) <= max_quote_age_h()
 
 
-def _what_line(info: dict) -> str | None:
-    if info.get("narrative"):
-        return None
-    if info.get("headline"):
-        prefix = "Catalyst: " if info.get("headline_kind") == "catalyst" else "News around the move (not confirmed as the cause): "
-        return prefix + info["headline"][:150]
-    return "No news found that explains this move."
+def _age_text(hours: float | None) -> str:
+    if hours is None:
+        return "age unknown"
+    h = float(hours)
+    if h < 1:
+        return f"{max(1, round(h * 60))}m"
+    if h < 48:
+        return f"{h:.1f}h" if h < 10 else f"{h:.0f}h"
+    return f"{h / 24:.1f}d"
 
 
-def _provenance_line(c: dict, info: dict) -> str:
-    base = _why_line(c)
-    w = info.get("watch")
-    if not w:
-        return base
-    who = SOURCE_LABELS.get(str(w.get("source") or ""), str(w.get("source") or "unknown source").replace("_", " "))
-    since = f" since {w['since']}" if w.get("since") else ""
-    reason = str(w.get("reason") or "").split(":", 2)[-1].strip() if w.get("reason") else ""
-    reason = f" ({reason[:80]})" if reason else ""
-    if info.get("holding") or str(w.get("source") or "") == "portfolio":
-        return f"you hold this — on your watchlist{since} ({who})"
-    if base == "you asked about this" and str(w.get("source") or "") not in ("operator", "manual", "telegram", "directive"):
-        base = "on your watchlist"
-    return f"{base}{since} — found by {who}{reason}"
+def plan_levels(plan: dict | None, price: float | None) -> dict:
+    """Where price sits inside the plan's own levels: hit_stop / hit_target / progress.
 
-
-def _strategy_line(info: dict) -> str | None:
-    if "strategy" not in info and "plan" not in info:
-        return None
-    strat = str(info.get("strategy") or "").replace("_", " ")
-    if strat and info.get("strategy_inactive"):
-        head = f"Strategy: {strat} (classification inactive)"
-    else:
-        head = f"Strategy: {strat}" if strat else "Strategy: none assigned"
-    plan, price = info.get("plan"), info.get("price")
-    if not plan:
-        return head + " · no entry plan"
-    levels = f"plan entry ${plan['entry']:,.2f}" + (f" / stop ${plan['stop']:,.2f}" if plan.get("stop") else "") + (
-        f" / target ${plan['target']:,.2f}" if plan.get("target") else "")
-    if price and plan["entry"]:
-        return f"{head} · {levels} · {_plan_state(plan, price)}"
-    return f"{head} · {levels}"
-
-
-def _plan_state(plan: dict, price: float) -> str:
-    """Where price sits INSIDE the plan's own levels — not merely how far from entry.
-
-    The previous line read `abs(dist) > 25 -> "plan is stale"`, which described two
-    opposite outcomes identically. Operator-reported 2026-09-21 on HPE: entry $44.47,
-    stop $40.28, target $63.32, price $61.95 — 92.7% of the way to target, and the alert
-    called the plan stale. The same branch emits the same words for price $28.00, which
-    is 31% THROUGH the stop. A won plan and a blown plan cannot share a sentence.
-
-    `abs()` erased the sign, and `target`/`stop` were already in the dict, unused. Entry
-    being unreachable is a real and separate fact, so it is reported as "entry missed"
-    alongside what the plan is actually doing, never instead of it.
+    Direction comes from the plan's own geometry (target below entry = short), so a
+    won plan and a blown plan can never share a sentence (2026-09-21 HPE).
     """
+    out = {"hit_stop": False, "hit_target": False, "dist_pct": None}
+    if not plan or price is None or not plan.get("entry"):
+        return out
     entry = float(plan["entry"])
     if entry <= 0:
-        return "plan has no usable entry"
-    target = plan.get("target")
-    stop = plan.get("stop")
-    target = float(target) if target else None
-    stop = float(stop) if stop else None
-    dist = (price - entry) / entry * 100.0
-    # Direction comes from the plan's own geometry, so shorts read correctly too.
+        return out
+    target, stop = _f(plan.get("target")), _f(plan.get("stop"))
     short = target is not None and target < entry
-    hit_stop = stop is not None and (price >= stop if short else price <= stop)
-    hit_target = target is not None and (price <= target if short else price >= target)
-    if hit_stop:
-        return f"STOP BREACHED — price {dist:+.1f}% from entry, at or through the ${stop:,.2f} stop"
-    if hit_target:
-        return f"TARGET REACHED — price {dist:+.1f}% from entry, at or through the ${target:,.2f} target"
-    if target is not None and target != entry:
-        progress = (price - entry) / (target - entry) * 100.0
-        if progress >= 0:
-            missed = " — entry no longer available" if abs(dist) > 25 else ""
-            return (f"working — {progress:.0f}% of the way from entry to target "
-                    f"({dist:+.1f}% from entry){missed}")
-        return f"below entry — price {dist:+.1f}% from entry, still above the stop"
-    # No target to judge against: distance from entry is all we have, so say only that.
-    if abs(dist) > 25:
-        return f"entry is stale — price is {dist:+.1f}% from it, and the plan has no target"
-    return f"price is {dist:+.1f}% from the entry"
+    out["hit_stop"] = stop is not None and (price >= stop if short else price <= stop)
+    out["hit_target"] = target is not None and (price <= target if short else price >= target)
+    out["dist_pct"] = (price - entry) / entry * 100.0
+    return out
 
 
-def _cio_line(info: dict) -> str | None:
-    if "watch" not in info and "cio" not in info:
-        return None
-    cio = info.get("cio")
-    if not cio:
-        return "CIO: no view yet"
-    return f"CIO: {str(cio['action']).replace('_', ' ').title()} ({cio['date']})"
+#: Most conservative first. A verdict lower in this order wins a disagreement.
+_CONSERVATISM = [
+    ({"AVOID", "SELL", "EXIT", "TRIM", "TRIM_REVIEW", "REDUCE", "HOLD_REDUCE"}, 0),
+    ({"BLOCKED"}, 1),
+    ({"HOLD", "WAIT", "RESEARCH_MORE", "HUMAN_REVIEW", "ADD_REVIEW", "NEUTRAL", "WATCH", "NO_GO"}, 2),
+    ({"ENTRY_NEAR"}, 3),
+    ({"BUY_READY", "BUY", "ADD", "ACCUMULATE", "ADD_ON_PULLBACK", "INITIATE", "GO"}, 4),
+]
 
 
-def _position_line(info: dict) -> str | None:
+def _rank(action: str | None) -> int:
+    a = str(action or "").upper()
+    for names, rank in _CONSERVATISM:
+        if a in names:
+            return rank
+    return 2
+
+
+def _pretty(action: str | None) -> str:
+    return str(action or "").replace("_", " ").upper()
+
+
+def cio_verdict(info: dict) -> dict:
+    """ONE CIO verdict: today's entry check reconciled with the latest CIO decision.
+
+    The more conservative of the two is shown; when they disagree the other is named
+    as superseded, with its date. Never both raw, side by side.
+    """
+    es, dec = info.get("entry_state") or {}, info.get("cio") or {}
+    es_state, dec_action = es.get("state"), dec.get("action")
+    if not es_state and not dec_action:
+        return {"state": None, "text": "no stance on file", "rank": 2}
+    if es_state == "BLOCKED":
+        reasons = [str(x) for x in (es.get("reasons") or []) if x]
+        es_text = "HOLD-OFF" + (f" ({reasons[0]})" if reasons else "")
+    elif es_state == "BUY_READY":
+        lo, hi = _f(es.get("entry_low")), _f(es.get("entry_high"))
+        zone = (
+            (f" (zone ${lo:,.2f}" + (f"–${hi:,.2f}" if hi is not None and hi != lo else "") + ")")
+            if lo is not None
+            else ""
+        )
+        es_text = "BUY READY" + zone
+    elif es_state == "ENTRY_NEAR":
+        d = _f(es.get("distance_pct"))
+        es_text = "NEAR ENTRY" + (f" ({abs(d):.1f}% away)" if d is not None else "")
+    elif es_state:
+        es_text = _pretty(es_state)
+    else:
+        es_text = None
+    # An entry state older than the freshness bar is shown WITH its age: on 2026-09-24
+    # the digest paired a 32m quote with "HOLD-OFF (quote is 16.7h old)". The runner
+    # writes a row only when the state CHANGES, so the age is how long the state has
+    # stood — "state set", not "checked".
+    es_age = _f(es.get("age_h"))
+    if es_text and es_age is not None and es_age > max_quote_age_h():
+        es_text += f" [state set {_age_text(es_age)} ago]"
+    dec_text = f"{_pretty(dec_action)} ({dec.get('date')})" if dec_action else None
+    if es_text and dec_text:
+        if _rank(es_state) <= _rank(dec_action):
+            same = _rank(es_state) == _rank(dec_action)
+            note = "" if same else f" · decision {dec_text} superseded by the entry check"
+            return {"state": es_state, "text": es_text + note, "rank": _rank(es_state)}
+        return {
+            "state": dec_action,
+            "text": f"{_pretty(dec_action)} ({dec.get('date')}) · entry check {es_text} overridden",
+            "rank": _rank(dec_action),
+        }
+    if es_text:
+        return {"state": es_state, "text": es_text, "rank": _rank(es_state)}
+    return {"state": dec_action, "text": dec_text, "rank": _rank(dec_action)}
+
+
+def classify(c: dict, info: dict) -> dict:
+    """Route one change to PAGE, DIGEST or COMMAND_CENTER on its structured facts.
+
+    Operator decisions 2026-09-24: page only a HELD name (stop / target hit, or a
+    material price move) or a watchlist name the CIO rates BUY_READY on a fresh quote.
+    A watchlist name through its plan stop is PLAN INVALIDATED in the digest. Stale
+    quotes, and inactive strategies with no plan, go to the Command Center only.
+    """
+    held = bool(info.get("holding"))
+    fresh = quote_is_fresh(info)
+    price = info.get("price")
+    lv = plan_levels(info.get("plan"), price if fresh else None)
+    verdict = cio_verdict(info)
+    kind = c.get("kind")
+    out = {"held": held, "fresh": fresh, "levels": lv, "verdict": verdict}
+    if not fresh:
+        out.update(
+            route=ROUTE_CC if not held else ROUTE_DIGEST,
+            state="STALE_QUOTE",
+            why=f"quote {_age_text(info.get('quote_age_h'))} old",
+        )
+        return out
+    if held:
+        if lv["hit_stop"]:
+            return {**out, "route": ROUTE_PAGE, "state": "STOP_HIT"}
+        if lv["hit_target"]:
+            return {**out, "route": ROUTE_PAGE, "state": "TARGET_HIT"}
+        if kind == "price_excursion" and float(c.get("magnitude") or 0) >= PAGE_MIN_MAGNITUDE:
+            return {**out, "route": ROUTE_PAGE, "state": "BIG_MOVE"}
+        return {**out, "route": ROUTE_DIGEST, "state": "HELD_NEWS"}
+    if lv["hit_stop"]:
+        return {**out, "route": ROUTE_DIGEST, "state": "PLAN_INVALIDATED"}
+    if verdict["state"] == "BUY_READY":
+        return {**out, "route": ROUTE_PAGE, "state": "BUY_READY"}
+    if info.get("strategy_inactive") and not info.get("plan"):
+        return {**out, "route": ROUTE_CC, "state": "NO_PLAN", "why": "inactive strategy, no plan"}
+    if lv["hit_target"]:
+        return {**out, "route": ROUTE_DIGEST, "state": "TARGET_PASSED"}
+    return {**out, "route": ROUTE_DIGEST, "state": "MOVE"}
+
+
+# ── wording ──────────────────────────────────────────────────────────────────
+
+#: Every notice carries "Material change" — the marker operator_alert_policy_v2 routes
+#: IMMEDIATE and telegram_alert_router exempts from the daily send budget. Without it a
+#: page reads as generic text and falls to the digest.
+PAGE_FOOTER = "Material change · Advisory only. No position action taken or implied."
+
+_PAGE_HEAD = {
+    "STOP_HIT": ("🚨", "STOP HIT"),
+    "TARGET_HIT": ("🎯", "TARGET HIT"),
+    "BIG_MOVE": ("⚡", "BIG MOVE"),
+    "BUY_READY": ("🟢", "BUY READY"),
+}
+_ACTION = {
+    "STOP_HIT": "review exit — price is through your plan stop",
+    "TARGET_HIT": "review taking profit — price is at or through your plan target",
+    "BIG_MOVE": "review the position",
+    "BUY_READY": "review entry — the CIO entry check is green on a fresh quote",
+    "PLAN_INVALIDATED": "re-plan or drop",
+}
+
+
+def _money(v: float | None) -> str:
+    return f"${float(v):,.2f}" if v is not None else "—"
+
+
+def _move_text(c: dict, info: dict) -> str | None:
+    """'−6.1% today (3.4× its normal daily move)' — or the news equivalent."""
+    kind = c.get("kind")
+    mag = _f(c.get("magnitude")) or 0.0
+    if kind == "price_excursion":
+        signed = _signed_move(c, info)
+        size = abs(float(c.get("observed_value") or 0))
+        move = f"{signed:+.1f}%" if signed is not None else f"{size:.1f}% move"
+        return f"{move} ({mag:.1f}× its normal daily move)"
+    if kind == "news_burst":
+        return f"unusual news volume ({mag:.0f}× normal)"
+    if kind == "sector_move":
+        return "sector-wide move"
+    ev = c.get("evidence") or c.get("evidence_json") or {}
+    if isinstance(ev, str):
+        try:
+            ev = json.loads(ev)
+        except Exception:  # noqa: BLE001
+            ev = {}
+    ctype = str((ev or {}).get("catalyst_type") or "").replace("_", " ")
+    return ctype or "new catalyst"
+
+
+def _what_text(info: dict) -> str:
+    if info.get("narrative"):
+        return str(info["narrative"][0])[:160]
+    if info.get("headline"):
+        prefix = "catalyst: " if info.get("headline_kind") == "catalyst" else "news near the move (cause unconfirmed): "
+        return prefix + str(info["headline"])[:140]
+    return "no news explains the move"
+
+
+def _position_text(info: dict) -> str | None:
     h = info.get("holding")
     if not h:
         return None
     shares = f"{h['shares']:,.0f}" if float(h["shares"]).is_integer() else f"{h['shares']:,.3f}"
-    where = " / ".join(h.get("accounts") or [])
-    head = f"You own {shares} sh" + (f" ({where})" if where else "")
-    if h.get("pl_usd") is None:
-        return head
-    sign = "+" if h["pl_usd"] >= 0 else "-"
-    return (f"{head} · cost ${h['avg_cost']:,.2f} · now ${h['price']:,.2f} · "
-            f"{sign}${abs(h['pl_usd']):,.0f} ({h['pl_pct']:+.1f}%)")
+    return f"held, {shares} sh"
 
 
-def _stance_line(info: dict) -> str | None:
-    """What to do with it, as the CIO's advisory stance — never a size or an order."""
-    es, cio, held = info.get("entry_state"), info.get("cio"), bool(info.get("holding"))
-    cio_part = f" · CIO decision: {str(cio['action']).replace('_', ' ').title()} ({cio['date']})" if cio else ""
-    if not es:
-        if not info.get("watch") and not cio and not held:
-            return None
-        return ("CIO stance: no entry plan yet — hold, nothing to add until one exists" if held
-                else "CIO stance: no entry plan yet") + cio_part
-    state = str(es.get("state") or "")
-    lo, hi = es.get("entry_low"), es.get("entry_high")
-    zone = (f"${lo:,.2f}" if lo == hi else f"${lo:,.2f}–${hi:,.2f}") if lo is not None and hi is not None else "the plan zone"
-    rr = f" · R:R {es['rr']:.1f}" if es.get("rr") is not None else ""
-    dist = es.get("distance_pct")
-    if state == "BUY_READY":
-        text = ("add more: price is inside the entry zone " if held else "buy-ready: price is inside the entry zone ") + zone + rr
-    elif state == "ENTRY_NEAR":
-        text = f"getting close: price is {dist:.1f}% from the entry {zone} — wait for the zone{rr}" if dist is not None \
-            else f"getting close to the entry {zone}{rr}"
-    elif state == "BLOCKED":
-        reasons = "; ".join(str(x) for x in (es.get("reasons") or [])[:2]) or "a plan check failed"
-        text = f"don't {'add' if held else 'buy'} — blocked: {reasons}"
-    else:
-        where = f"price is {dist:.1f}% above the entry {zone}" if dist is not None else f"price is away from the entry {zone}"
-        text = (f"hold, don't add yet — {where}{rr}" if held else f"wait — {where}{rr}")
-    return f"CIO stance: {text}{cio_part}"
-
-
-def _sector_thesis_line(info: dict) -> str | None:
-    parts = []
-    sec = info.get("sector") or {}
-    if sec.get("sector") or sec.get("industry"):
-        parts.append("Sector: " + " · ".join(x for x in (sec.get("sector"), sec.get("industry")) if x))
-    t = info.get("thesis") or {}
-    if t.get("summary"):
-        parts.append(f"Thesis ({str(t.get('state') or 'on file').lower()}): {t['summary']}")
-    return " · ".join(parts) or None
-
-
-def _detail_lines(c: dict, info: dict) -> list[str]:
-    lines = [_provenance_line(c, info)]
-    for extra in (_position_line(info), _stance_line(info), _strategy_line(info), _sector_thesis_line(info)):
-        if extra:
-            lines.append(extra)
-    lines.append(_next_line(info))
+def page_lines(c: dict, info: dict, route: dict) -> list[str]:
+    """A PAGE: the point in line 1 (phone preview), at most three more lines, one action."""
+    sym = str(c["symbol"]).upper()
+    icon, verb = _PAGE_HEAD[route["state"]]
+    who = _position_text(info) or "watchlist, not held"
+    lines = [f"{icon} {verb} — {sym} ({who})"]
+    price_bits = [f"{_money(info.get('price'))} · quote {_age_text(info.get('quote_age_h'))}"]
+    move = _move_text(c, info)
+    if move:
+        price_bits.append(move)
+    h = info.get("holding") or {}
+    if h.get("pl_usd") is not None:
+        sign = "+" if h["pl_usd"] >= 0 else "-"
+        price_bits.append(f"position {sign}${abs(h['pl_usd']):,.0f} ({h['pl_pct']:+.1f}%)")
+    lines.append(" · ".join(price_bits))
+    plan = info.get("plan") or {}
+    lv = route.get("levels") or {}
+    if route["state"] == "STOP_HIT" and plan.get("stop") is not None:
+        lines[-1] += f" · stop {_money(plan['stop'])}"
+    elif route["state"] == "TARGET_HIT" and plan.get("target") is not None:
+        lines[-1] += f" · target {_money(plan['target'])}"
+    elif plan.get("stop") is not None and lv.get("dist_pct") is not None:
+        lines[-1] += f" · stop {_money(plan['stop'])}"
+    lines.append(f"CIO: {route['verdict']['text']} · {_what_text(info)}")
+    lines.append(f"▶ Action: {_ACTION[route['state']]}")
     return lines
 
 
-def _why_line(c: dict) -> str:
-    tier = c.get("universe_reason", "") or ""
-    if "operator" in tier:
-        return "you asked about this"
-    return ("you hold this" if "held" in tier else
-            "re-entry candidate" if "reentry" in tier else "on your watchlist")
+def digest_line(c: dict, info: dict, route: dict) -> str:
+    """One compact line per name in the daily digest."""
+    sym = str(c["symbol"]).upper()
+    bits = [f"{sym} {_money(info.get('price'))} ({_age_text(info.get('quote_age_h'))})"]
+    move = _move_text(c, info)
+    if move:
+        bits.append(move)
+    plan = info.get("plan") or {}
+    if route["state"] == "PLAN_INVALIDATED" and plan.get("stop") is not None:
+        bits.append(f"stop {_money(plan['stop'])}")
+    if route["state"] == "TARGET_PASSED" and plan.get("target") is not None:
+        bits.append(f"target {_money(plan['target'])} passed")
+    if route.get("held"):
+        bits.append(_position_text(info) or "held")
+    bits.append(f"CIO: {route['verdict']['text']}")
+    return "  " + " · ".join(bits)
 
 
-def _next_line(info: dict) -> str:
-    if info.get("questions"):
-        return f"open question: {info['questions'][0]}"
-    if not info.get("last_research"):
-        return "never researched — questions are being generated now"
-    return f"last researched {info['last_research']}"
+_DIGEST_SECTIONS = [
+    ("PLAN_INVALIDATED", "⛔ PLAN INVALIDATED (watchlist, not held) — re-plan or drop"),
+    ("HELD_NEWS", "📌 Held — news / catalysts (no stop or target hit)"),
+    ("STALE_QUOTE", "⏳ Held — quote too old to judge"),
+    ("TARGET_PASSED", "🎯 Watchlist — already through the plan target (not held)"),
+    ("MOVE", "📈 Other moves on your watchlist"),
+]
+
+
+def digest_blocks(entries: list[tuple[dict, dict, dict]], *, now: datetime | None = None) -> list[dict]:
+    """The daily digest as ticker-boundary blocks: [{"text", "guids"}].
+
+    A block is a header or one name; chunking (split_digest) never cuts inside one.
+    COMMAND_CENTER entries are named in one "not shown" line, never detailed.
+    """
+    now = (now or datetime.now(timezone.utc)).astimezone(MARKET_TZ)
+    blocks: list[dict] = [{"text": f"📋 Material change — daily digest · {now:%a %d %b · %H:%M} ET", "guids": []}]
+    for state, title in _DIGEST_SECTIONS:
+        rows = [(c, i, r) for c, i, r in entries if r["route"] == ROUTE_DIGEST and r["state"] == state]
+        if not rows:
+            continue
+        blocks.append({"text": "\n" + title, "guids": []})
+        for c, info, route in rows:
+            blocks.append({"text": digest_line(c, info, route), "guids": list(c.get("guids") or [c["change_guid"]])})
+    hidden = [(c, i, r) for c, i, r in entries if r["route"] == ROUTE_CC]
+    if hidden:
+        names = ", ".join(f"{str(c['symbol']).upper()} ({r.get('why') or r['state'].lower()})" for c, _i, r in hidden)
+        blocks.append(
+            {
+                "text": f"\n🔕 Not shown: {names} → Command Center",
+                "guids": [g for c, _i, _r in hidden for g in (c.get("guids") or [c["change_guid"]])],
+            }
+        )
+    return blocks
+
+
+def split_digest(blocks: list[dict], *, limit: int | None = None) -> list[dict]:
+    """Chunks of whole blocks under `limit` chars, each carrying the guids it announces."""
+    limit = limit or MAX_MESSAGE_CHARS
+    footer = _digest_footer()
+    chunks: list[dict] = []
+    cur_text, cur_guids = "", []
+    for b in blocks:
+        piece = b["text"] if not cur_text else "\n" + b["text"]
+        if cur_text and len(cur_text) + len(piece) + len(footer) + 1 > limit:
+            chunks.append({"text": cur_text + "\n" + footer, "guids": cur_guids})
+            cur_text, cur_guids = b["text"].lstrip("\n"), list(b["guids"])
+            continue
+        cur_text += piece
+        cur_guids += list(b["guids"])
+    if cur_text:
+        chunks.append({"text": cur_text + "\n" + footer, "guids": cur_guids})
+    return chunks
+
+
+def _cc_watch_url() -> str:
+    try:
+        from scripts.lib import telegram_rich as tr
+    except ImportError:  # pragma: no cover - scripts/ on path
+        from lib import telegram_rich as tr  # type: ignore
+    return f"{tr.cc_base()}/v3/watch/intelligence"
+
+
+def _digest_footer() -> str:
+    return f"Details → Command Center {_cc_watch_url()} · Advisory only."
+
+
+def render(changes: list[dict], ctx: dict[str, dict]) -> str:
+    """Plain text of the PAGE(s) for `changes` — what the router check and the outbound
+    turn capture read. Names that do not route to a page render nothing here."""
+    parts: list[str] = []
+    for c in dedupe_by_symbol(changes):
+        info = ctx.get(str(c["change_guid"]), {})
+        route = classify(c, info)
+        if route["route"] != ROUTE_PAGE:
+            continue
+        parts.append("\n".join(page_lines(c, info, route)))
+    if not parts:
+        return ""
+    return "\n\n".join(parts) + "\n" + PAGE_FOOTER
 
 
 def rich_enabled(env: dict | None = None) -> bool:
@@ -641,42 +918,41 @@ def rich_enabled(env: dict | None = None) -> bool:
 
 
 def render_rich(changes: list[dict], ctx: dict[str, dict]) -> dict:
-    """The same notice as `render`, in Telegram HTML with buttons.
+    """The same PAGE in Telegram HTML: bold first line, one Command Center link, one footer.
 
-    Operator 2026-09-14: "no emphasis in links on everything that can go back to the command center or
-    to the source". Each ticker is bold and opens its Command Center page; Finviz and Yahoo sit under
-    it; what happened is quoted; one name gets its chart above the text. `render` stays the plain text
-    the router check and the outbound-turn capture read.
+    Operator 2026-09-24 review: per-ticker Finviz / Yahoo links, provenance, sector and
+    thesis competed with the one thing that mattered. They live in the Command Center.
     """
     try:
         from scripts.lib import telegram_rich as tr
     except ImportError:  # pragma: no cover - scripts/ on path
         from lib import telegram_rich as tr  # type: ignore
-    changes = dedupe_by_symbol(changes)
-    out = [f"⚡ <b>Material change — {len(changes)} name(s) worth a look</b>"]
+    out: list[str] = []
     symbols: list[str] = []
-    for c in changes:
+    for c in dedupe_by_symbol(changes):
+        info = ctx.get(str(c["change_guid"]), {})
+        route = classify(c, info)
+        if route["route"] != ROUTE_PAGE:
+            continue
         sym = str(c["symbol"]).upper()
         symbols.append(sym)
-        info = ctx.get(str(c["change_guid"]), {})
-        head = _headline_line(c, info)
-        rest = head[len(str(c["symbol"])):] if head.startswith(str(c["symbol"])) else f" — {head}"
-        out.append("")
-        out.append(f"<b>{tr.link(sym, tr.cc_symbol_url(sym))}</b>{tr.esc(rest)}")
-        said = info.get("narrative")[:2] if info.get("narrative") else ([_what_line(info)] if info else [])
-        if said:
-            out.append("<blockquote>" + "\n".join(tr.esc(x) for x in said) + "</blockquote>")
-        for d in _detail_lines(c, info):
-            out.append(f"· {tr.esc(d)}")
-        out.append(f"{tr.link('Finviz', tr.finviz_url(sym))} · {tr.link('Yahoo', tr.yahoo_url(sym))}")
-    out.append("")
-    out.append("<i>Advisory only. No position action taken or implied.</i>")
-    buttons = [{"text": f"📊 {s} in Command Center", "url": tr.cc_symbol_url(s)} for s in symbols[:3]]
+        lines = page_lines(c, info, route)
+        if out:
+            out.append("")
+        out.append(f"<b>{tr.esc(lines[0])}</b>")
+        out.extend(tr.esc(x) for x in lines[1:])
+        out.append(f"Details → {tr.link('Command Center', tr.cc_symbol_url(sym))}")
+    if not out:
+        return {"text": "", "reply_markup": None, "link_preview_options": {"is_disabled": True}}
+    out.append(f"<i>{PAGE_FOOTER}</i>")
     return {
         "text": "\n".join(out),
-        "reply_markup": {"inline_keyboard": [[b] for b in buttons]} if buttons else None,
-        "link_preview_options": ({"url": tr.chart_image_url(symbols[0]), "prefer_large_media": True,
-                                  "show_above_text": True} if len(symbols) == 1 else {"is_disabled": True}),
+        "reply_markup": None,
+        "link_preview_options": (
+            {"url": tr.chart_image_url(symbols[0]), "prefer_large_media": True, "show_above_text": False}
+            if len(symbols) == 1
+            else {"is_disabled": True}
+        ),
     }
 
 
@@ -691,6 +967,10 @@ def route_check(message: str) -> str:
     this text, so there is nothing to mis-attribute. A router that cannot be imported
     is treated as "will send" — that is the legacy path's own behaviour, and assuming
     suppression there would silence every alert on a partial install.
+
+    Asked PER PAGE (one name), on text that carries no thesis prose: on 2026-09-22..24
+    one name's thesis ("RCL paper proposal for …") matched a dashboard-only rule and
+    held an eight-name batch for 179 runs.
     """
     try:
         from telegram_alert_router import should_send_telegram
@@ -741,14 +1021,17 @@ def capture_agent_turns(conn, *, message: str, rows: list[dict], gw: dict) -> in
         return 0
 
     resolved = [
-        {"symbol": r.get("symbol"),
-         "subject_guid": str(r["subject_guid"]) if r.get("subject_guid") else None,
-         "issuer_guid": None,
-         # The subject is carried by the alert itself, not inferred from prose.
-         "identity_status": "CONFIRMED" if r.get("subject_guid") else None,
-         "matched_via": "material_change",
-         "matched_text": r.get("symbol")}
-        for r in rows if r.get("subject_guid")
+        {
+            "symbol": r.get("symbol"),
+            "subject_guid": str(r["subject_guid"]) if r.get("subject_guid") else None,
+            "issuer_guid": None,
+            # The subject is carried by the alert itself, not inferred from prose.
+            "identity_status": "CONFIRMED" if r.get("subject_guid") else None,
+            "matched_via": "material_change",
+            "matched_text": r.get("symbol"),
+        }
+        for r in rows
+        if r.get("subject_guid")
     ]
     if not resolved:
         return 0
@@ -762,13 +1045,41 @@ def capture_agent_turns(conn, *, message: str, rows: list[dict], gw: dict) -> in
         chat = chats[i] if i < len(chats) else (chats[0] if chats else None)
         written += persist_turn(
             {"resolved": resolved, "topics": [], "unresolved_mentions": []},
-            conn=conn, text=message, role="agent",
-            chat_id=chat, message_id=mid, thread_id=mid, channel="telegram")
+            conn=conn,
+            text=message,
+            role="agent",
+            chat_id=chat,
+            message_id=mid,
+            thread_id=mid,
+            channel="telegram",
+        )
     return written
 
 
+def notice_key(guids: list[str]) -> str:
+    """Idempotency subject for ONE notice: the exact set of changes it announces.
+
+    It used to be the first row's subject_guid, so an unrelated later batch that
+    happened to lead with the same name reused a 09-14 event id and the ledger
+    counted 16 notices for 28 real batches.
+    """
+    joined = ",".join(sorted(str(g) for g in guids))
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, "material_change_notice:" + hashlib.sha256(joined.encode()).hexdigest()))
+
+
+def _held_chunks() -> list[dict]:
+    try:
+        from telegram_alert import last_held_chunks
+    except ImportError:  # pragma: no cover - scripts/ not on path
+        try:
+            from scripts.telegram_alert import last_held_chunks  # type: ignore
+        except ImportError:
+            return []
+    return list(last_held_chunks() or [])
+
+
 def deliver_notice(message: str, *, subject_key: str, rich: dict | None = None) -> tuple[bool, dict]:
-    """Send one operator notice. Returns (accepted, gateway_report).
+    """Send one operator notice. Returns (delivered, report).
 
     Extracted from main() so the alarm can be FIRED by a test. An alarm that has
     never been observed firing is indistinguishable from no alarm, and this
@@ -786,9 +1097,10 @@ def deliver_notice(message: str, *, subject_key: str, rich: dict | None = None) 
     closed before any provider I/O. Fixed by passing `ops`, the canonical class
     `agent:cio` already uses.
 
-    This is still a real organic producer: the notice is assembled from
-    material_changes the detector actually found, not from an event invented to
-    move a counter.
+    HELD IS NOT DELIVERED (2026-09-24). The comms editor can hold a message (a stance
+    disagreement, a duplicate) and the transport still reports ok. On 09-24 12:22 the
+    MDT/PSQL/VVX/ROL chunk was held and all eight rows were marked SENT anyway. A notice
+    with any held chunk is reported NOT delivered, so its rows stay pending.
     """
     # `rich` (render_rich) replaces the body and adds buttons + chart; `message` is the plain fallback.
     extra: dict = {}
@@ -798,7 +1110,10 @@ def deliver_notice(message: str, *, subject_key: str, rich: dict | None = None) 
     if not gateway_notice_enabled():
         from telegram_alert import send_telegram
 
-        return bool(send_telegram(message, message_class="operator_alert", **extra)), {"attempted": False}
+        accepted = bool(send_telegram(message, message_class="operator_alert", **extra))
+        held = _held_chunks() if accepted else []
+        report = {"attempted": False, "held": held}
+        return accepted and not held, report
 
     from scripts.lib.comms.channel_adapters import send_via_gateway
 
@@ -826,7 +1141,8 @@ def deliver_notice(message: str, *, subject_key: str, rich: dict | None = None) 
     # SENT IS NOT SETTLED. `delivered` means the gateway owned the send and the
     # provider acknowledged it; `ok` can be true for a publish merely recorded,
     # and a reservation is not a delivery.
-    accepted = bool(gw.get("delivered"))
+    held = list(((gw.get("provider_coordinates") or {}).get("held")) or [])
+    accepted = bool(gw.get("delivered")) and not held
     report = {
         "attempted": True,
         "delivered": accepted,
@@ -834,22 +1150,150 @@ def deliver_notice(message: str, *, subject_key: str, rich: dict | None = None) 
         "gateway_mode": gw.get("gateway_mode"),
         "event_id": gw.get("event_id"),
         "delivery_id": gw.get("delivery_id"),
+        "provider_coordinates": gw.get("provider_coordinates"),
+        "provider_message_id": gw.get("provider_message_id"),
+        "held": held,
         "errors": gw.get("errors") or ([gw["error"]] if gw.get("error") else []),
     }
     if not accepted:
         # Do NOT silently fall back to legacy. A gateway failure that quietly
         # succeeded as legacy would report SENT, consume the rows, and leave the
         # gateway counter at zero with nothing to explain why.
-        print(f"gateway did not deliver ({report['errors']}) — "
-              "changes left pending, no legacy fallback", file=sys.stderr)
+        print(
+            f"notice not delivered (held={held}, errors={report['errors']}) — changes left pending, no legacy fallback",
+            file=sys.stderr,
+        )
     return accepted, report
+
+
+def _hold_count(outcome: str | None) -> int:
+    m = re.match(r"^HELD_BY_EDITOR:(\d+)", str(outcome or ""))
+    return int(m.group(1)) if m else 0
+
+
+def _mark(cur, guids: list[str], outcome: str) -> int:
+    cur.execute(
+        """UPDATE material_changes
+                      SET notified_at = now(), notify_outcome = %s
+                    WHERE change_guid = ANY(%s::uuid[]) AND notified_at IS NULL""",
+        (outcome, [str(g) for g in guids]),
+    )
+    return cur.rowcount
+
+
+def _note(cur, guids: list[str], outcome: str) -> None:
+    """Record where a still-pending change stands, without consuming it."""
+    cur.execute(
+        """UPDATE material_changes SET notify_outcome = %s
+                    WHERE change_guid = ANY(%s::uuid[]) AND notified_at IS NULL
+                      AND notify_outcome IS DISTINCT FROM %s""",
+        (outcome, [str(g) for g in guids], outcome),
+    )
+
+
+def route_all(cur, rows: list[dict]) -> list[tuple[dict, dict, dict]]:
+    """(change, info, route) per SYMBOL, strongest claim first."""
+    ctx = {str(r["change_guid"]): context(cur, r) for r in rows}
+    out = []
+    for c in dedupe_by_symbol(rows):
+        info = ctx.get(str(c["change_guid"]), {})
+        route = classify(c, info)
+        if route["route"] == ROUTE_PAGE and _hold_count(c.get("notify_outcome")) >= MAX_HOLD_RETRIES:
+            # A page the editor keeps holding falls to the digest rather than retrying forever.
+            route = {
+                **route,
+                "route": ROUTE_DIGEST,
+                "state": "HELD_NEWS" if route["held"] else "MOVE",
+                "why": "page held by the comms editor",
+            }
+        out.append((c, info, route))
+    return out
+
+
+def run_pages(cur, conn, entries: list[tuple[dict, dict, dict]], *, apply: bool, result: dict) -> None:
+    pages = [e for e in entries if e[2]["route"] == ROUTE_PAGE][:MAX_PER_RUN]
+    result["pages"] = len(pages)
+    result["page_outcomes"] = {}
+    sent_rows = 0
+    for c, info, route in pages:
+        sym = str(c["symbol"]).upper()
+        guids = list(c.get("guids") or [c["change_guid"]])
+        one = {str(c["change_guid"]): info}
+        message = render([c], one)
+        print(message)
+        if not apply:
+            continue
+        if route_check(message) == "WOULD_SUPPRESS":
+            # Do not send into a suppression, and above all do not consume the change.
+            # On the first live run the send was ACCEPTED, the router suppressed it into
+            # the 8pm digest, and three changes were marked notified while the operator
+            # received nothing. Consumed-and-silent is the worst outcome available here.
+            result["page_outcomes"][sym] = "WOULD_SUPPRESS"
+            _note(cur, guids, "WOULD_SUPPRESS")
+            conn.commit()
+            continue
+        rich = None
+        if rich_enabled():
+            try:
+                rich = render_rich([c], one)
+            except Exception as exc:  # noqa: BLE001 -- formatting must never cost the notice
+                print(f"[rich] layout unavailable ({type(exc).__name__}: {exc}); sending plain text", file=sys.stderr)
+        accepted, gw_result = deliver_notice(message, subject_key=notice_key(guids), rich=rich)
+        if accepted:
+            sent_rows += _mark(cur, guids, "SENT")
+            conn.commit()
+            result["page_outcomes"][sym] = "SENT"
+            try:
+                result.setdefault("agent_turns", 0)
+                result["agent_turns"] += capture_agent_turns(conn, message=message, rows=[c], gw=gw_result)
+            except Exception as exc:  # noqa: BLE001
+                print(f"[outbound-tag] {type(exc).__name__}: {str(exc)[:160]}", file=sys.stderr)
+        else:
+            held = gw_result.get("held") or []
+            outcome = (
+                (
+                    f"HELD_BY_EDITOR:{_hold_count(c.get('notify_outcome')) + 1}:"
+                    f"{(held[0] or {}).get('reason') if held else ''}"
+                )
+                if held
+                else "NOT_ACCEPTED"
+            )
+            _note(cur, guids, outcome[:200])
+            conn.commit()
+            result["page_outcomes"][sym] = outcome
+    result["rows_produced"] = sent_rows if apply else None
+
+
+def run_digest(cur, conn, entries: list[tuple[dict, dict, dict]], *, apply: bool, result: dict) -> None:
+    listed = [e for e in entries if e[2]["route"] in (ROUTE_DIGEST, ROUTE_CC)]
+    result["digest_names"] = len(listed)
+    if not listed:
+        result["rows_produced"] = 0 if apply else None
+        print(f"{SCHEMA}: nothing for the digest")
+        return
+    chunks = split_digest(digest_blocks(listed))
+    sent_rows = 0
+    result["digest_chunks"] = len(chunks)
+    for i, ch in enumerate(chunks):
+        print(ch["text"])
+        if not apply:
+            continue
+        accepted, _gw = deliver_notice(ch["text"], subject_key=notice_key(ch["guids"] or [f"digest-header-{i}"]))
+        if accepted:
+            sent_rows += _mark(cur, ch["guids"], "DIGEST_SENT")
+        else:
+            _note(cur, ch["guids"], "DIGEST_NOT_DELIVERED")
+        conn.commit()
+    result["rows_produced"] = sent_rows if apply else None
 
 
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--ignore-window", action="store_true",
-                    help="operator-run only; scheduled jobs must respect the window")
+    ap.add_argument("--digest", action="store_true", help="send the once-a-day digest of everything that did not page")
+    ap.add_argument(
+        "--ignore-window", action="store_true", help="operator-run only; scheduled jobs must respect the window"
+    )
     args = ap.parse_args()
 
     conn = _db()
@@ -861,17 +1305,24 @@ def main() -> int:
     # ddl_guard: skip ADD COLUMN statements already satisfied, so a scheduled run
     # takes no AccessExclusiveLock on material_changes just to assert a no-op.
     from scripts.lib.ddl_guard import apply_ddl
+
     apply_ddl(cur, DDL)
     conn.commit()
 
-    open_now = args.ignore_window or in_window()
-    rows = pending(cur, limit=MAX_PER_RUN)
-    ctx = {str(r["change_guid"]): context(cur, r) for r in rows}
+    open_now = args.ignore_window or args.digest or in_window()
+    rows = pending(cur, limit=MAX_SCAN)
 
-    result = {"schema": SCHEMA, "authority": AUTHORITY, "model_calls": 0,
-              "pending": len(rows), "in_window": open_now,
-              # None when nothing was attempted; 0 is a measured zero.
-              "rows_produced": None, "outcome": None}
+    result = {
+        "schema": SCHEMA,
+        "authority": AUTHORITY,
+        "model_calls": 0,
+        "mode": "digest" if args.digest else "pages",
+        "pending": len(rows),
+        "in_window": open_now,
+        # None when nothing was attempted; 0 is a measured zero.
+        "rows_produced": None,
+        "outcome": None,
+    }
 
     if not rows:
         result["rows_produced"] = 0 if args.apply else None
@@ -879,76 +1330,23 @@ def main() -> int:
         print("RESULT: " + json.dumps(result))
         return 0
 
-    message = render(rows, ctx)
-    print(message)
+    entries = route_all(cur, rows)
+    conn.commit()
+    result["routes"] = {k: sum(1 for e in entries if e[2]["route"] == k) for k in (ROUTE_PAGE, ROUTE_DIGEST, ROUTE_CC)}
     if not open_now:
         # Held, not dropped. A Friday-evening move must still be announced Monday.
         print(f"\n[held — outside the {NOTIFY_WINDOW} window; stays pending]")
         result["outcome"] = "HELD_OUTSIDE_WINDOW"
         print("RESULT: " + json.dumps(result))
         return 0
+    if args.digest:
+        run_digest(cur, conn, entries, apply=args.apply, result=result)
+    else:
+        run_pages(cur, conn, entries, apply=args.apply, result=result)
     if not args.apply:
         print("\n[dry run — nothing sent, nothing marked]")
-        print("RESULT: " + json.dumps(result))
-        return 0
-
-    routed = route_check(message)
-    if routed == "WOULD_SUPPRESS":
-        # Do not send into a suppression, and above all do not consume the changes.
-        # On the first live run the send was ACCEPTED, the router suppressed it into
-        # the 8pm digest, and three changes were marked notified while the operator
-        # received nothing. Consumed-and-silent is the worst outcome available here:
-        # the row is gone and the silence looks normal.
-        result["outcome"] = "WOULD_SUPPRESS"
-        result["rows_produced"] = 0
-        print("router would suppress this message — left pending, not sent",
-              file=sys.stderr)
-        conn.close()
-        print("RESULT: " + json.dumps(result))
-        return 0
-
-    # Delivery owner: legacy by default, gateway when explicitly enabled.
-    #
-    # Every gateway-SETTLED row that has ever existed (3, all-time) is a staged
-    # proof message asking the operator to reply "OK". Those are controlled
-    # evidence and are excluded from acceptance, so the gateway has never carried
-    # an organic producer. This is that producer — and it is a real one: the
-    # notice below is assembled from material_changes the detector actually
-    # found, not from an event invented to move a counter.
-    #
-    # The flag defaults OFF and rollback needs no deploy: unset it and the very
-    # next 15-minute run goes back down the legacy path.
-    rich = None
-    if rich_enabled():
-        try:
-            rich = render_rich(rows, ctx)
-        except Exception as exc:  # noqa: BLE001 -- formatting must never cost the notice
-            print(f"[rich] layout unavailable ({type(exc).__name__}: {exc}); sending plain text", file=sys.stderr)
-    accepted, gw_result = deliver_notice(message, subject_key=str(
-        rows[0].get("subject_guid") or rows[0]["change_guid"]), rich=rich)
-    result["gateway"] = gw_result
-    result["outcome"] = "SENT" if accepted else "NOT_ACCEPTED"
-    if accepted:
-        cur.execute("""UPDATE material_changes
-                          SET notified_at = now(), notify_outcome = %s
-                        WHERE change_guid = ANY(%s::uuid[])""",
-                    ("SENT", [str(r["change_guid"]) for r in rows]))
-        result["rows_produced"] = cur.rowcount
-        conn.commit()
-        # Record what this alert was about, so a reply to it can find its
-        # subject. Strictly after the send and the consume — an alert must never
-        # fail because bookkeeping did.
-        try:
-            result["agent_turns"] = capture_agent_turns(
-                conn, message=message, rows=rows, gw=gw_result)
-        except Exception as exc:  # noqa: BLE001
-            result["agent_turns"] = 0
-            print(f"[outbound-tag] {type(exc).__name__}: {str(exc)[:160]}",
-                  file=sys.stderr)
-    else:
-        result["rows_produced"] = 0
-        print("send not accepted — changes left pending for the next run",
-              file=sys.stderr)
+        result["rows_produced"] = None
+    result["outcome"] = "DONE" if args.apply else "DRY_RUN"
     conn.close()
     print("RESULT: " + json.dumps(result))
     return 0

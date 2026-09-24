@@ -255,19 +255,20 @@ ROW = {
 }
 
 
+#: A held name on a fresh quote pages (operator decision 2026-09-24); a stale or
+#: unheld name routes to the digest or the Command Center and renders no page.
+HELD_FRESH = {"price": 12.40, "quote_age_h": 0.1, "holding": {"shares": 100.0, "accounts": ["Taxable"]}}
+
+
 def test_material_change_rich_says_the_same_things_with_links(rich):
     mc = _load("notify_material_change", "scripts/notify_material_change.py")
 
-    ctx = {
-        "g-1": {
-            "narrative": ["Shares jumped 14.6% after Q2 sales beat <estimates> & guidance."],
-            "questions": ["What drove the margin move?"],
-        }
-    }
+    ctx = {"g-1": {**HELD_FRESH,
+                   "narrative": ["Shares jumped 14.6% after Q2 sales beat <estimates> & guidance."]}}
     plain = mc.render([ROW], ctx)
     rich = mc.render_rich([ROW], ctx)
     text = rich["text"]
-    for phrase in ("15x its normal daily range", "you hold this", "open question: What drove the margin move?"):
+    for phrase in ("BIG MOVE — AOUT (held, 100 sh)", "15.0× its normal daily move", "Action: review the position"):
         assert phrase in plain and phrase in text
     assert "&lt;estimates&gt; &amp; guidance" in text
     assert '<a href="' in text and "/v3/watch/intelligence/AOUT" in text
@@ -283,7 +284,8 @@ def test_material_change_notice_sends_rich_through_the_gateway(monkeypatch, rich
     seen = {}
     monkeypatch.setenv(mc.GATEWAY_NOTICE_FLAG, "1")
     monkeypatch.setattr(ca, "send_via_gateway", lambda ch, **kw: seen.update(kw) or {"delivered": True})
-    rich = mc.render_rich([ROW], {})
+    rich = mc.render_rich([ROW], {"g-1": HELD_FRESH})
+    assert rich["text"], "a held name on a fresh quote must render a page"
     accepted, _ = mc.deliver_notice("plain", subject_key="s", rich=rich)
     assert accepted and seen["body"] == rich["text"]
     assert seen["reply_markup"] == rich["reply_markup"] and seen["link_preview_options"]

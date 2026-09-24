@@ -287,7 +287,7 @@ def test_budget_is_per_utc_day(ctx):
 
 
 def test_budget_pool_classifies_live_lab_and_background():
-    assert gr.budget_pool("operator:8797974247") == gr.BUDGET_POOL_LIVE
+    assert gr.budget_pool("operator:8797974247") == gr.BUDGET_POOL_LIVE  # hardcode-ok: fixture asserts Maria-chat routing
     assert gr.budget_pool("operator:1") == gr.BUDGET_POOL_LIVE
     assert gr.budget_pool("operator:dryrun_s_wt_20260922") == gr.BUDGET_POOL_LAB
     assert gr.budget_pool("operator:remeasure_desk") == gr.BUDGET_POOL_LAB

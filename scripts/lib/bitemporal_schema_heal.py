@@ -78,6 +78,12 @@ SELECT
 """
 
 
+#: Public name for the packaging health query. The production cutover
+#: (scripts/lib/memory_prod_cutover.py) asserts the same signals before commit,
+#: so the heal and the cutover cannot drift apart on what "healthy" means.
+PACKAGING_HEALTH_SQL = _HEALTH_SQL
+
+
 def _assert_isolated_conn(conn) -> None:
     try:
         conn.get_dsn_parameters()

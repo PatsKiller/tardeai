@@ -74,7 +74,7 @@ def test_provider_ids_split():
 
 
 def test_db_lookups_refuse_under_pytest_without_conn():
-    assert EL.resolve_inbound_event("8797974247", 53970) is None
+    assert EL.resolve_inbound_event("8797974247", 53970) is None  # hardcode-ok: fixture asserts Maria-chat routing
     assert EL.resolve_event_by_provider_message_id("53969") is None
 
 
@@ -122,7 +122,7 @@ def test_reply_to_a_multi_message_send_binds_from_memory(monkeypatch):
         client, "memory_store_snapshot", lambda: {SENT: {"event_id": SENT, "provider_message_id": "53968,53969"}}
     )
     monkeypatch.setattr("scripts.lib.comms.delivery.find_delivery_by_provider_message_id", lambda pmid: None)
-    got = inbound.resolve_event_by_provider_message_id("53969", chat_id="8797974247")
+    got = inbound.resolve_event_by_provider_message_id("53969", chat_id="8797974247")  # hardcode-ok: fixture asserts Maria-chat routing
     assert got and got["event_id"] == SENT
 
 
@@ -138,8 +138,8 @@ def test_reply_to_another_process_send_binds_from_the_ledger(monkeypatch):
         return {"event_id": SENT, "provider_message_id": "53968,53969"} if pmid == "53969" else None
 
     monkeypatch.setattr(EL, "resolve_event_by_provider_message_id", fake)
-    got = inbound.resolve_event_by_provider_message_id("53969", chat_id="8797974247")
-    assert got["event_id"] == SENT and seen["args"] == ("53969", "8797974247")
+    got = inbound.resolve_event_by_provider_message_id("53969", chat_id="8797974247")  # hardcode-ok: fixture asserts Maria-chat routing
+    assert got["event_id"] == SENT and seen["args"] == ("53969", "8797974247")  # hardcode-ok: fixture asserts Maria-chat routing
 
 
 def test_list_aware_sql_matches_joined_ids():
@@ -199,7 +199,7 @@ def test_operator_turn_records_its_inbound_event():
         conn=TurnConn(cur),
         text="research this",
         role="operator",
-        chat_id="8797974247",
+        chat_id="8797974247",  # hardcode-ok: fixture asserts Maria-chat routing
         message_id=53970,
         reply_to_message_id=53969,
         event_id=INBOUND,
@@ -217,7 +217,7 @@ def test_agent_turn_inherits_the_open_scope():
     cur = TurnCursor(columns_present=True)
     with EL.lineage_scope(parent_event_id=INBOUND):
         persist_turn(
-            {"resolved": []}, conn=TurnConn(cur), text="answer", role="agent", chat_id="8797974247", message_id=53971
+            {"resolved": []}, conn=TurnConn(cur), text="answer", role="agent", chat_id="8797974247", message_id=53971  # hardcode-ok: fixture asserts Maria-chat routing
         )
     ((sql, params),) = _inserts(cur)
     assert "causation_id, parent_event_id" in sql and "event_id," not in sql.split("unresolved_mentions")[1]
@@ -251,7 +251,7 @@ def test_desk_opens_the_inbound_scope_for_everything_the_turn_causes(monkeypatch
         "resolve_inbound_event",
         lambda chat, mid, conn=None: {"event_id": INBOUND, "causation_id": SENT, "parent_event_id": SENT},
     )
-    monkeypatch.setattr(conv, "allowlist_chat_ids", lambda: {"8797974247"})
+    monkeypatch.setattr(conv, "allowlist_chat_ids", lambda: {"8797974247"})  # hardcode-ok: fixture asserts Maria-chat routing
     monkeypatch.setattr(
         conv, "_best_effort_capture_turn", lambda text, **kw: captured.setdefault("operator_lineage", kw.get("lineage"))
     )
@@ -263,7 +263,7 @@ def test_desk_opens_the_inbound_scope_for_everything_the_turn_causes(monkeypatch
     monkeypatch.setattr(core, "process_operator_message", fake_process)
     conv.process_telegram_message(
         {
-            "chat": {"id": 8797974247},
+            "chat": {"id": 8797974247},  # hardcode-ok: fixture asserts Maria-chat routing
             "message_id": 53970,
             "text": "research this",
             "reply_to_message": {"message_id": 53969},
