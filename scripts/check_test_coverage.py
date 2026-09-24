@@ -864,6 +864,7 @@ UNLISTED_BASELINE: frozenset = frozenset([
     "tests/test_schwab_protective_stop_2fa.py",
     "tests/test_schwab_token_refresh_http.py",
     "tests/test_scoring_empty_universe.py",
+    "tests/test_scoring_warrior_go_preserve.py",
     "tests/test_screener_arch1_full_coverage.py",
     "tests/test_screener_arch2_full_ingestion_catalog.py",
     "tests/test_screener_arch2b_cap_overrides.py",
