@@ -242,7 +242,7 @@ def test_maria_observe_mode_never_queues_a_review(tmp_path, monkeypatch):
     for mode, expected in (("observe", []), ("live", ["STLD"])):
         calls.clear()
         mg.handle(
-            {"content": "STLD is a BUY here.", "to": "8797974247", "mode": mode},
+            {"content": "STLD is a BUY here.", "to": "8797974247", "mode": mode},  # hardcode-ok: fixture asserts Maria-chat routing
             db_query=no_row,
             resolve=resolve,
             cio_dir=tmp_path,

@@ -95,7 +95,7 @@ def cio_dir(tmp_path, monkeypatch):
 
 def test_real_s_reply_is_scrubbed_corrected_and_footed(cio_dir):
     raw = FIXTURE.read_text(encoding="utf-8")
-    res = mg.gate(raw, session_key="agent:maria:telegram:direct:8797974247", to="8797974247",
+    res = mg.gate(raw, session_key="agent:maria:telegram:direct:8797974247", to="8797974247",  # hardcode-ok: fixture asserts Maria-chat routing
                   db_query=_db({}), resolve=_resolve, cio_dir=cio_dir)
     out = res.content
     # specialist roleplay stripped, exact policy notice once
