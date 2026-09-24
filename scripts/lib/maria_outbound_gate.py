@@ -215,6 +215,7 @@ def _apply_stance(
     db_query: Optional[Callable[..., list[dict]]],
     out: GateResult,
     stores: list[str],
+    request_review: bool = True,
 ) -> tuple[str, list[str]]:
     """Gate each subject's window. Returns (text, stamp lines)."""
     width = stance_window()
@@ -246,6 +247,7 @@ def _apply_stance(
             asserted_stance=said,
             db_query=db_query,
             source=STANCE_SOURCE,
+            request_review=request_review,
         )
         row = {"symbol": sym, **verdict.as_dict()}
         if verdict.allow and getattr(verdict, "effective_action", None) == "WATCH":
@@ -309,8 +311,13 @@ def gate(
     db_query: Optional[Callable[..., list[dict]]] = None,
     resolve: Optional[Callable[[str], list[dict]]] = None,
     cio_dir: Optional[Path] = None,
+    request_review: bool = True,
 ) -> GateResult:
-    """Decide what one Maria outbound message becomes."""
+    """Decide what one Maria outbound message becomes.
+
+    ``request_review=False`` (observe mode) keeps the gate side-effect free: a
+    missing-stance hold is computed but no paid CIO review is queued.
+    """
     now = now or datetime.now(timezone.utc)
     raw = content or ""
     out = GateResult(content=raw)
@@ -334,7 +341,9 @@ def gate(
     out.subjects = subjects
     stamps: list[str] = []
     try:
-        text, stamps = _apply_stance(text, subjects, db_query=db_query, out=out, stores=stores)
+        text, stamps = _apply_stance(
+            text, subjects, db_query=db_query, out=out, stores=stores, request_review=request_review
+        )
     except Exception as exc:  # noqa: BLE001
         out.errors.append(f"stance_gate:{type(exc).__name__}")
 
@@ -413,7 +422,14 @@ def handle(
     if mode not in (MODE_OBSERVE, MODE_LIVE):
         mode = MODE_OBSERVE
     result = gate(
-        content, session_key=session_key, channel=channel, to=to, db_query=db_query, resolve=resolve, cio_dir=cio_dir
+        content,
+        session_key=session_key,
+        channel=channel,
+        to=to,
+        db_query=db_query,
+        resolve=resolve,
+        cio_dir=cio_dir,
+        request_review=mode == MODE_LIVE,
     )
     write_receipt(result, mode=mode, session_key=session_key, channel=channel, to=to)
     return {
