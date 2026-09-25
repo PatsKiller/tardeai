@@ -1,6 +1,6 @@
 === CONTROL7 LOCAL EQUIVALENT (reproducible; Layer 1) ===
 schema=SopControl7LocalEquivalent@v1
-control_surface_digest=96a5f4f9bd5fb8f14afa5c750800272edae25dc00f7f0884b7f034aa993f0041
+control_surface_digest=fddc1038901756d6c10f6833cea1bd9dc00a1e69ae42dc93e29d36ad3a8cb2e8
 note=Command specification with expected successful exits. Does not embed containing commit SHA.
 historical_failure_artifact=SUPERSEDED — prior ModuleNotFoundError/EXIT_quality=1 capture is non-authoritative.
 
