@@ -42122,6 +42122,11 @@ def _options_alpaca_record_outcome(body=None):
         return 400, {"ok": False, "reason": "exit_premium (per-contract price) required"}
     if not (0 <= exit_px < 10000):
         return 400, {"ok": False, "reason": f"exit_premium {exit_px} out of sane range"}
+    # Optional operator context (2026-09-25): an expiry / exercise close has a real
+    # close date and a reason that is not "manual". Both are echoed, never invented.
+    exit_reason = str(b.get("exit_reason") or "manual").strip()[:80] or "manual"
+    closed_at_override = str(b.get("closed_at") or "").strip() or None
+    notes = str(b.get("notes") or "operator-entered exit premium via desk UI").strip()[:500]
     row = ap.get_queue_row(pid)
     if not row:
         return 404, {"ok": False, "reason": f"proposal {pid!r} not in queue"}
@@ -42146,7 +42151,7 @@ def _options_alpaca_record_outcome(body=None):
                 **aj,
                 "close": {
                     "exit_price": exit_px,
-                    "closed_at": _dtnow_iso(),
+                    "closed_at": closed_at_override or _dtnow_iso(),
                     "pnl": pnl,
                     "entry_debit": entry_debit,
                     "exit_value": exit_value,
@@ -42167,12 +42172,24 @@ def _options_alpaca_record_outcome(body=None):
             exit_value=close.get("exit_value"),
             opened_at=(aj.get("fill") or {}).get("filled_at"),
             closed_at=close.get("closed_at"),
-            exit_reason="manual",
-            notes="operator-entered exit premium via desk UI",
+            exit_reason=exit_reason,
+            notes=notes,
             meta={
                 "alpaca_order_id": (aj.get("response") or {}).get("id"),
                 "lane": "tradeai_automated",
                 "source": "operator_manual_ui",
+                # The OCC symbol is what record_outcome derives the contract
+                # identity from (contract_guid / option_strategy_guid, strike,
+                # expiration, type). The reconcile caller always passed it; this
+                # operator path did not, so the first manually recorded outcome
+                # (RTX 160C 2026-09-18, recorded 2026-09-25) landed with no
+                # identity and had to be re-stamped by hand. Same derivation as
+                # reconcile_fills: the request symbol, or the comma-joined legs.
+                "occ_symbol": (
+                    str((aj.get("request") or {}).get("symbol") or "")
+                    or ",".join(str(l.get("symbol") or "") for l in ((aj.get("request") or {}).get("legs") or []))
+                ),
+                "contracts": (aj.get("request") or {}).get("qty"),
             },
         )
         if not rec.get("ok"):
