@@ -17,6 +17,7 @@ AUTHORITY: READ_ONLY_ADVISORY.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -32,9 +33,54 @@ DEFAULT_MAX_NOTES = 3
 # Conservative default — must stay 0 unless an operator pin sets the env.
 DEFAULT_MEMORY_BEHAVIOR_INFLUENCE_OPTIONS = 0
 
-LEARNING_CANDIDATES = (
-    Path("data/cio/cio_operator_learning.jsonl"),
-)
+# Resolved against the persistent-state root and the repo root, not the cwd
+# (a cwd-relative path read nothing from a worktree or a probe; 2026-09-25).
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def learning_candidate_paths() -> tuple[Path, ...]:
+    rel = Path("data/cio/cio_operator_learning.jsonl")
+    out: list[Path] = []
+    try:
+        from scripts.lib.canonical_store_registry import production_state_root
+
+        out.append(Path(production_state_root()) / rel)
+    except Exception:  # noqa: BLE001
+        pass
+    out.append(_REPO_ROOT / rel)
+    out.append(rel)
+    seen: set[str] = set()
+    uniq = [p for p in out if not (str(p) in seen or seen.add(str(p)))]
+    return tuple(uniq)
+
+
+LEARNING_CANDIDATES = learning_candidate_paths()
+
+# Tranche 2 Slice 6 (2026-09-25): the live path never passed outcomes, so the
+# envelope only ever saw two August learning notes. With no rows injected the
+# loader reads settled paper options outcomes (options_paper_outcomes joined to
+# the approval queue) through validation.fetch_symbol_outcomes. "0" disables the
+# DB read — tests/conftest.py sets it so hermetic tests never touch the database;
+# a test that wants rows injects ``rows=``/``outcomes=`` or ``loader=``.
+OUTCOME_LOADER_ENV = "TRADEAI_OPTIONS_OUTCOME_LOADER"
+SOURCE_PAPER_OUTCOMES = "options_paper_outcomes"
+
+
+def default_outcome_loader(symbol: str, limit: int) -> list[dict[str, Any]]:
+    """Settled paper options outcomes for the symbol from the DB; [] on any failure."""
+    if os.environ.get(OUTCOME_LOADER_ENV, "1") == "0":
+        return []
+    try:
+        from scripts.lib.options_pipeline.validation import fetch_symbol_outcomes
+    except ImportError:
+        try:
+            from lib.options_pipeline.validation import fetch_symbol_outcomes  # type: ignore
+        except ImportError:
+            return []
+    try:
+        return list(fetch_symbol_outcomes(symbol, limit=max(int(limit), 1) * 4) or [])
+    except Exception:  # noqa: BLE001
+        return []
 
 
 def options_behavior_influence_active(
@@ -115,13 +161,21 @@ def load_options_outcomes_for_symbol(
     *,
     rows: Optional[list[dict[str, Any]]] = None,
     limit: int = DEFAULT_MAX_OUTCOMES,
+    loader: Optional[Any] = None,
 ) -> list[dict[str, Any]]:
     """Bounded prior options outcomes for an issuer.
 
-    Hermetic path: pass ``rows`` (no DB). Live path may inject closed
-    options_paper_outcomes / proposal_outcome_chain projections — this module
-    never opens a database itself.
+    ``rows`` given (even ``[]``): hermetic, filtered as-is. ``rows is None``:
+    the ``loader`` (default ``default_outcome_loader`` → options_paper_outcomes)
+    supplies settled outcomes; it returns [] when the DB is unavailable or the
+    loader is disabled. Settled rows only — this never reads open positions.
     """
+    if rows is None:
+        fn = loader or default_outcome_loader
+        try:
+            rows = list(fn(symbol, limit) or [])
+        except Exception:  # noqa: BLE001
+            rows = []
     if not rows:
         return []
     matched = [r for r in rows if isinstance(r, dict) and _symbol_match(r, symbol)]
@@ -215,6 +269,8 @@ def build_options_memory_envelope(
     lines = [f"What we learned (options memory — {sym}):"]
     if prior_outcomes:
         sources.append("options_prior_outcomes")
+        if any(str(r.get("source") or "") == SOURCE_PAPER_OUTCOMES for r in prior_outcomes):
+            sources.append(SOURCE_PAPER_OUTCOMES)
         lines.append("Prior options outcomes:")
         for row in prior_outcomes:
             lines.append(f"  · {_format_outcome_line(row)}")

@@ -6,7 +6,8 @@
     .venv/bin/python scripts/write_instrument_beliefs.py --apply --json
 
 Reads settled rows only (advisory_outcomes, resolved checkpoints with a price
-change, CONFIRMED/REFUTED commitment outcomes) plus ratified lessons, and
+change, CONFIRMED/REFUTED commitment outcomes, win/loss paper options closes from
+options_paper_outcomes) plus ratified lessons, and
 persists through cio_instrument_record.apply_belief. Output signal:
 data/cio/instrument_belief_latest.json (json_key written_beliefs).
 """

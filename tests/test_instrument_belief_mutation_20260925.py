@@ -328,7 +328,7 @@ def test_writer_scores_checkpoints_only_with_a_direction_and_commitments_only_wh
     out = bw.update_beliefs_from_settled(root, wake_root=wake_root, apply=True,
                                          subject_key_for_guid=lambda g: "HELD:MCD" if g == "guid-mcd" else None,
                                          now="2026-09-25T18:50:00+00:00")
-    assert out["settled_rows"] == {"advisory": 0, "checkpoint": 6, "governed_commitment": 5}
+    assert out["settled_rows"] == {"advisory": 0, "checkpoint": 6, "governed_commitment": 5, "options_paper": 0}
     assert out["skipped"]["checkpoint_no_direction"] == 2
     assert out["skipped"]["commitment_not_settled"] == 2
     assert out["written_beliefs"] == 2
@@ -336,3 +336,31 @@ def test_writer_scores_checkpoints_only_with_a_direction_and_commitments_only_wh
     keys = {b["belief_key"]: b for b in rec["beliefs"]}
     assert keys["HELD:MCD|TRIM|5_sessions|checkpoint"]["successful"] == 4
     assert keys["HELD:MCD|BEARISH|7d|governed_commitment"]["success_rate"] == 0.4
+
+
+# ── Tranche 2, Slice 6: settled paper options outcomes become beliefs on the underlying ──
+
+def test_writer_folds_win_loss_options_outcomes_onto_the_underlyings_record(tmp_path):
+    root = tmp_path / "state"
+    store = InstrumentRecordStore(root / DEFAULT_PATH)
+    store.upsert(new_record("HELD", "V", symbols=["V"]))
+    opts = [{"proposal_id": f"p{i}", "underlying": "V", "symbol": "V", "strategy_id": "long_call",
+             "outcome": "win" if i < 2 else "loss", "pnl": 10.0 if i < 2 else -5.0, "closed_at": f"2026-09-{10+i:02d}",
+             "contract_guid": f"cg{i}", "source": "options_paper_outcomes"} for i in range(6)]
+    opts.append({"proposal_id": "ps", "underlying": "V", "strategy_id": "long_call", "outcome": "scratch", "pnl": 0.0})
+    opts.append({"proposal_id": "pz", "underlying": "ZZZZ", "strategy_id": "long_call", "outcome": "win", "pnl": 1.0})
+    out = bw.update_beliefs_from_settled(root, wake_root=None, apply=True, options_outcomes=opts,
+                                         now="2026-09-25T18:50:00+00:00")
+    assert out["settled_rows"]["options_paper"] == 6
+    assert out["skipped"]["options_not_directional"] == 1 and out["skipped"]["options_no_record"] == 1
+    assert out["written_beliefs"] == 1
+    b = latest_belief(InstrumentRecordStore(root / DEFAULT_PATH).load("HELD:V"))
+    assert b["belief_key"] == "HELD:V|LONG_CALL|settled|options_paper"
+    assert b["sample_size"] == 6 and b["successful"] == 2
+    assert all(o.startswith("opt:p") for o in b["outcome_ids"])
+    assert any(":cg0" in o for o in b["outcome_ids"])  # contract identity rides in the provenance
+
+
+def test_writer_options_loader_is_off_under_pytest(monkeypatch):
+    monkeypatch.setenv(bw.OPTIONS_LOADER_ENV, "0")
+    assert bw.default_options_outcomes() == []

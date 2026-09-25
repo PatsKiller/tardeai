@@ -10,6 +10,10 @@ The one writer of ``InstrumentRecord.beliefs``. It reads ONLY settled rows:
   ``checkpoint``.
 * ``<wake_root>/commitment_outcomes.jsonl`` — CONFIRMED / REFUTED governed
   commitment outcomes from the sweep. Population ``governed_commitment``.
+* ``options_paper_outcomes`` (DB, via ``validation.fetch_recent_outcomes``) —
+  settled paper options closes, win/loss only, joined to the underlying's
+  record; the outcome id carries the contract_guid. Population ``options_paper``.
+  ``TRADEAI_OPTIONS_OUTCOME_LOADER=0`` disables the DB read (tests).
 
 and attaches ratified lessons (``advisory_kb_lessons.jsonl`` status ratified;
 CIO ``lesson_candidates.jsonl`` promotion_stage OPERATOR_APPROVED / PROMOTED)
@@ -67,6 +71,12 @@ LATEST_REL = "data/cio/instrument_belief_latest.json"
 POP_ADVISORY = "advisory_verdict"
 POP_CHECKPOINT = "checkpoint"
 POP_COMMITMENT = "governed_commitment"
+# Tranche 2 Slice 6: settled paper options outcomes (options_paper_outcomes,
+# win/loss; scratch is not a direction). Joined to the UNDERLYING's record —
+# options are not a record kind (entity policy 2026-09-24); the contract and
+# strategy GUIDs ride in the outcome id provenance.
+POP_OPTIONS = "options_paper"
+OPTIONS_LOADER_ENV = "TRADEAI_OPTIONS_OUTCOME_LOADER"
 RATIFIED_CIO_STAGES = frozenset({"OPERATOR_APPROVED", "PROMOTED"})
 
 
@@ -198,6 +208,52 @@ def rows_from_commitment_outcomes(rows: Iterable[dict[str, Any]], *,
     return out, dict(skipped)
 
 
+def rows_from_options_outcomes(rows: Iterable[dict[str, Any]], *,
+                               subject_key_for: Callable[[str], Optional[str]]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """options_paper_outcomes projections (validation.fetch_recent_outcomes) → settled rows.
+
+    win → SUCCESSFUL, loss → UNSUCCESSFUL, scratch → skipped (no direction).
+    The subject is the underlying's HELD/EXIT/WATCH record; the outcome id carries
+    the contract_guid so the belief's provenance joins the options identity spine.
+    """
+    out: list[dict[str, Any]] = []
+    skipped = defaultdict(int)
+    for r in rows:
+        oc = _sym(r.get("outcome"))
+        if oc not in ("WIN", "LOSS"):
+            skipped["options_not_directional"] += 1
+            continue
+        und = _sym(r.get("underlying") or r.get("symbol"))
+        skey = subject_key_for(und) if und else None
+        if not skey:
+            skipped["options_no_record"] += 1
+            continue
+        pid = str(r.get("proposal_id") or "")
+        if not pid:
+            skipped["options_no_proposal_id"] += 1
+            continue
+        cg = str(r.get("contract_guid") or "")
+        oid = f"opt:{pid}" + (f":{cg[:8]}" if cg else "")
+        out.append(_settled(oid, oc == "WIN", population=POP_OPTIONS, horizon="settled",
+                            subject_key=skey, recommendation=_sym(r.get("strategy_id") or "OPTIONS"),
+                            produced_at=str(r.get("closed_at") or ""), source_id=pid))
+    return out, dict(skipped)
+
+
+def default_options_outcomes() -> list[dict[str, Any]]:
+    """Settled paper options outcomes from the DB; [] when disabled or unavailable."""
+    import os
+
+    if os.environ.get(OPTIONS_LOADER_ENV, "1") == "0":
+        return []
+    try:
+        from scripts.lib.options_pipeline.validation import fetch_recent_outcomes
+
+        return list(fetch_recent_outcomes() or [])
+    except Exception:  # noqa: BLE001
+        return []
+
+
 # ── ratified lessons ───────────────────────────────────────────────────────
 
 def ratified_lesson_ids(kb_rows: Iterable[dict[str, Any]], cio_rows: Iterable[dict[str, Any]],
@@ -282,6 +338,7 @@ def update_beliefs_from_settled(root: Path | str, *, wake_root: Path | str | Non
                                 apply: bool = True, now: Optional[str] = None,
                                 store: InstrumentRecordStore | None = None,
                                 subject_key_for_guid: Callable[[str], Optional[str]] | None = None,
+                                options_outcomes: Optional[list[dict[str, Any]]] = None,
                                 write_latest: bool = True) -> dict[str, Any]:
     """Read settled rows under ``root``, write beliefs to the record store."""
     root_p = Path(root)
@@ -308,7 +365,9 @@ def update_beliefs_from_settled(root: Path | str, *, wake_root: Path | str | Non
     obs, sk2 = rows_from_observations(_jsonl(root_p / OBSERVATIONS_REL), subject_key_for=_skey)
     com_rows = _jsonl(Path(wake_root) / COMMITMENT_OUTCOMES_NAME) if wake_root else []
     com, sk3 = rows_from_commitment_outcomes(com_rows, subject_key_for_guid=_skey_guid)
-    settled = adv + obs + com
+    opt_rows = options_outcomes if options_outcomes is not None else default_options_outcomes()
+    opt, sk4 = rows_from_options_outcomes(opt_rows, subject_key_for=_skey)
+    settled = adv + obs + com + opt
 
     kb = _jsonl(root_p / KB_LESSONS_REL)
     cio = _jsonl(root_p / CIO_LESSONS_REL)
@@ -342,8 +401,9 @@ def update_beliefs_from_settled(root: Path | str, *, wake_root: Path | str | Non
         "schema": SCHEMA,
         "as_of": now,
         "applied": bool(apply),
-        "settled_rows": {"advisory": len(adv), "checkpoint": len(obs), "governed_commitment": len(com)},
-        "skipped": {**sk1, **sk2, **sk3},
+        "settled_rows": {"advisory": len(adv), "checkpoint": len(obs), "governed_commitment": len(com),
+                         "options_paper": len(opt)},
+        "skipped": {**sk1, **sk2, **sk3, **sk4},
         "groups": stats,
         "subjects_with_records": len(records),
         "written_beliefs": sum(len(w["belief_keys"]) for w in written if not w.get("dry_run")),

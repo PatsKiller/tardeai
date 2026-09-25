@@ -340,3 +340,109 @@ def test_fluency_opinion_no_memory_when_flag_off():
         facts, symbols=["V"], memory_envelope=facts["memory_envelope"],
     )
     assert "What we learned" not in card
+
+
+# ── Tranche 2, Slice 6 — options outcomes join the identity spine ─────────────
+
+class _FakeExecutor:
+    def __init__(self, rows=None, fail=False):
+        self.rows = rows or []
+        self.fail = fail
+        self.calls = []
+
+    def __call__(self, sql, params=None, fetch=None):
+        self.calls.append({"sql": sql, "params": params, "fetch": fetch})
+        if self.fail:
+            return None
+        if fetch == "all":
+            return self.rows
+        return True
+
+
+def test_record_outcome_mints_contract_identity_from_an_unpadded_occ_symbol():
+    """Both live callers pass only occ_symbol in meta (Alpaca: RTX260918C00160000)."""
+    from scripts.lib.options_pipeline import validation as val
+
+    ex = _FakeExecutor()
+    res = val.record_outcome("opt_x1", outcome="win", strategy_id="deep_itm_call", symbol="V", pnl=85.5,
+                             meta={"alpaca_order_id": "o1", "occ_symbol": "V     261017C00385000", "lane": "tradeai_automated"},
+                             executor=ex)
+    assert res["ok"] is True
+    insert = next(c for c in ex.calls if "INSERT INTO options_paper_outcomes" in c["sql"])
+    meta = __import__("json").loads(insert["params"][-1])
+    assert meta["contract_guid"] == oid.contract_guid("V", "call", 385, "2026-10-17")
+    assert meta["option_strategy_guid"]
+    assert meta["strike"] == 385.0 and meta["expiration"] == "2026-10-17" and meta["option_type"] == "call"
+    # unpadded root parses the same way
+    assert val.contract_fields_from_occ("V261017C00385000") == {
+        "underlying": "V", "expiration": "2026-10-17", "option_type": "call", "strike": 385.0}
+    assert val.contract_fields_from_occ("not-an-occ") is None
+
+
+def test_record_outcome_leaves_guids_absent_for_an_unregistered_underlying():
+    from scripts.lib.options_pipeline import validation as val
+
+    ex = _FakeExecutor()
+    val.record_outcome("opt_x2", outcome="loss", strategy_id="deep_itm_call", symbol="ZZZZ", pnl=-10,
+                       meta={"occ_symbol": "ZZZZ261017C00010000"}, executor=ex)
+    meta = __import__("json").loads(next(c for c in ex.calls if "INSERT" in c["sql"])["params"][-1])
+    assert "contract_guid" not in meta and "option_strategy_guid" not in meta
+
+
+def test_multi_leg_occ_becomes_legs_and_a_strategy_guid():
+    from scripts.lib.options_pipeline import validation as val
+
+    fields = val.contract_fields_from_meta({"occ_symbol": "V261017C00385000,V261017C00400000"}, symbol="V")
+    assert len(fields["legs"]) == 2 and fields["underlying"] == "V"
+    ex = _FakeExecutor()
+    val.record_outcome("opt_x3", outcome="win", strategy_id="deep_itm_call", symbol="V", pnl=1.0,
+                       meta={"occ_symbol": "V261017C00385000,V261017C00400000"}, executor=ex)
+    meta = __import__("json").loads(next(c for c in ex.calls if "INSERT" in c["sql"])["params"][-1])
+    assert meta["option_strategy_guid"] and "contract_guid" not in meta  # two legs: strategy identity, no single contract
+
+
+def test_fetch_symbol_outcomes_lifts_or_mints_guids_and_shapes_envelope_rows():
+    from scripts.lib.options_pipeline import validation as val
+
+    pj = {"strategy": "long_call", "symbol": "V", "option_type": "call", "strike": 370, "expiration": "2026-11-21", "account": "paper"}
+    rows = [
+        {"proposal_id": "p1", "strategy_id": "long_call", "symbol": "V", "outcome": "win", "pnl": "85.5",
+         "closed_at": "2026-09-20", "meta": {"contract_guid": "cg-from-meta", "option_strategy_guid": "sg-from-meta"}, "proposal_json": None},
+        {"proposal_id": "p2", "strategy_id": "long_call", "symbol": "V", "outcome": "loss", "pnl": -20.0,
+         "closed_at": "2026-09-21", "meta": "{}", "proposal_json": __import__("json").dumps(pj)},
+    ]
+    ex = _FakeExecutor(rows=rows)
+    out = val.fetch_symbol_outcomes("v", executor=ex)
+    assert ex.calls[0]["params"] == ("V", 25) and "options_approval_queue" in ex.calls[0]["sql"]
+    assert out[0]["contract_guid"] == "cg-from-meta" and out[0]["pnl"] == 85.5 and out[0]["source"] == "options_paper_outcomes"
+    assert out[1]["contract_guid"] == oid.contract_guid("V", "call", 370, "2026-11-21")
+    assert out[1]["option_strategy_guid"] and out[1]["outcome"] == "loss"
+    assert val.fetch_symbol_outcomes("V", executor=_FakeExecutor(fail=True)) == []
+    assert val.fetch_recent_outcomes(executor=_FakeExecutor(rows=rows))[1]["proposal_id"] == "p2"
+
+
+def test_envelope_uses_the_settled_outcome_loader_when_no_rows_are_injected(monkeypatch):
+    calls = []
+
+    def loader(symbol, limit):
+        calls.append((symbol, limit))
+        return [{"symbol": "V", "strategy_id": "long_call", "outcome": "win", "pnl": 85.5,
+                 "contract_guid": "11111111-aaaa", "source": "options_paper_outcomes"}]
+
+    rows = ome.load_options_outcomes_for_symbol("V", rows=None, loader=loader)
+    assert calls == [("V", ome.DEFAULT_MAX_OUTCOMES)] and len(rows) == 1
+    # rows=[] is hermetic and never calls a loader
+    assert ome.load_options_outcomes_for_symbol("V", rows=[], loader=loader) == [] and len(calls) == 1
+    # env off -> the default loader answers [] without touching a DB
+    monkeypatch.setenv(ome.OUTCOME_LOADER_ENV, "0")
+    assert ome.default_outcome_loader("V", 5) == []
+    # a loaded row is cited with its own source name when the flag is on
+    env = ome.build_options_memory_envelope("V", flags={"MEMORY_BEHAVIOR_INFLUENCE_OPTIONS": 1},
+                                            outcomes=loader("V", 5), learning_notes=[])
+    assert env["applied"] is True and ome.SOURCE_PAPER_OUTCOMES in env["sources"]
+    assert "contract_guid=11111111" in env["prose"]
+
+
+def test_learning_candidate_paths_are_not_cwd_relative_only():
+    paths = ome.learning_candidate_paths()
+    assert any(p.is_absolute() for p in paths)

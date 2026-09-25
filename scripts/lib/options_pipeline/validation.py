@@ -27,12 +27,66 @@ Metric definitions (documented so the gate math is auditable):
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional
 
 STRATEGY_ID = "deep_itm_call"
 SUPPORTED_STRATEGIES = (STRATEGY_ID,)
 VALID_OUTCOMES = ("win", "loss", "scratch")
+
+# OCC option symbol, root padded (options_lifecycle_model.occ_symbol) or not
+# (Alpaca: RTX260918C00160000). Tranche 2 Slice 6 (2026-09-25): both live
+# record_outcome callers pass only occ_symbol in meta, so the contract identity
+# has to be read from it — never guessed.
+_OCC_RE = re.compile(r"^([A-Z]{1,6})\s*(\d{6})([CP])(\d{8})$")
+
+
+def contract_fields_from_occ(occ: Any) -> Optional[dict]:
+    """underlying / expiration (YYYY-MM-DD) / option_type / strike from one OCC
+    symbol, or None when it does not parse. Never a guess."""
+    raw = str(occ or "").strip().upper()
+    m = _OCC_RE.match(raw)
+    if not m:
+        return None
+    root, ymd, cp, strike8 = m.groups()
+    try:
+        yy, mm, dd = int(ymd[0:2]), int(ymd[2:4]), int(ymd[4:6])
+        strike = int(strike8) / 1000.0
+    except ValueError:
+        return None
+    return {"underlying": root.strip(), "expiration": f"20{yy:02d}-{mm:02d}-{dd:02d}",
+            "option_type": "call" if cp == "C" else "put", "strike": strike}
+
+
+def contract_fields_from_meta(meta: Optional[dict], *, symbol: str = "") -> dict:
+    """The fields outcome_attribution_keys needs, from explicit meta first and
+    from ``occ_symbol`` (single leg, or comma-joined legs) otherwise."""
+    m = dict(meta or {})
+    out: dict = {
+        "option_type": m.get("option_type") or m.get("right"),
+        "strike": m.get("strike"),
+        "expiration": m.get("expiration"),
+        "underlying": m.get("underlying") or symbol,
+        "legs": m.get("legs"),
+    }
+    if out["option_type"] and out["strike"] is not None and out["expiration"]:
+        return out
+    occ = str(m.get("occ_symbol") or "")
+    parts = [x for x in (o.strip() for o in occ.split(",")) if x]
+    parsed = [f for f in (contract_fields_from_occ(x) for x in parts) if f]
+    if not parsed:
+        return out
+    if len(parsed) == 1:
+        f = parsed[0]
+        out.update({"option_type": out["option_type"] or f["option_type"],
+                    "strike": out["strike"] if out["strike"] is not None else f["strike"],
+                    "expiration": out["expiration"] or f["expiration"],
+                    "underlying": out["underlying"] or f["underlying"]})
+    else:
+        out["legs"] = out["legs"] or [dict(f) for f in parsed]
+        out["underlying"] = out["underlying"] or parsed[0]["underlying"]
+    return out
 AVG_MONTH_DAYS = 30.44
 
 # Default gate — overridden by the strategy YAML's validation_gate when present.
@@ -127,21 +181,23 @@ def record_outcome(
             except ImportError:
                 outcome_attribution_keys = None  # type: ignore
         if outcome_attribution_keys is not None:
+            fields = contract_fields_from_meta(meta_out, symbol=symbol)
             keys = outcome_attribution_keys({
                 "symbol": symbol,
                 "strategy_id": strategy_id,
                 "strategy": strategy_id,
-                "option_type": meta_out.get("option_type") or meta_out.get("right"),
-                "strike": meta_out.get("strike"),
-                "expiration": meta_out.get("expiration"),
                 "account": meta_out.get("account"),
-                "broker": meta_out.get("broker") or meta_out.get("venue"),
-                "underlying": meta_out.get("underlying") or symbol,
-                "legs": meta_out.get("legs"),
+                "venue": meta_out.get("venue") or "",
+                **fields,
             })
             for k in ("option_strategy_guid", "contract_guid"):
                 if keys.get(k) and not meta_out.get(k):
                     meta_out[k] = keys[k]
+            # Keep the parsed contract fields beside the GUIDs so a reader never
+            # has to re-parse the OCC symbol (still never a guess: parsed or absent).
+            for k in ("option_type", "strike", "expiration", "underlying"):
+                if fields.get(k) is not None and meta_out.get(k) is None:
+                    meta_out[k] = fields[k]
     res = ex(
         """INSERT INTO options_paper_outcomes
              (proposal_id, strategy_id, symbol, opened_at, closed_at,
@@ -356,6 +412,99 @@ def backfill_options_edge_universe(*, executor: Optional[Executor] = None,
         "ok": True, "candidates": len(rows), "folded": folded,
         "skipped": skipped, "errors": errors, "samples": samples,
     }
+
+
+def _as_dict(v: Any) -> dict:
+    if isinstance(v, dict):
+        return v
+    if isinstance(v, (str, bytes)) and v:
+        try:
+            out = json.loads(v)
+            return out if isinstance(out, dict) else {}
+        except ValueError:
+            return {}
+    return {}
+
+
+def _project_outcome_row(r: dict) -> dict:
+    """options_paper_outcomes (+ queue proposal_json) → the envelope's row shape.
+
+    GUIDs come from meta first, then from the queue's proposal_json (options_engine
+    stamps them there), then are minted from proposal_json strike/expiration/type
+    through outcome_attribution_keys (registry issuer required). Never invents PnL.
+    """
+    meta = _as_dict(r.get("meta"))
+    pj = _as_dict(r.get("proposal_json"))
+    row = {
+        "proposal_id": r.get("proposal_id"),
+        "symbol": (r.get("symbol") or pj.get("symbol") or "").upper() or None,
+        "underlying": (meta.get("underlying") or pj.get("underlying") or r.get("symbol") or "").upper() or None,
+        "strategy_id": r.get("strategy_id") or pj.get("strategy"),
+        "outcome": r.get("outcome"),
+        "pnl": _f(r["pnl"]) if r.get("pnl") is not None else None,
+        "pnl_r": _f(r["pnl_r"]) if r.get("pnl_r") is not None else None,
+        "opened_at": str(r["opened_at"]) if r.get("opened_at") else None,
+        "closed_at": str(r["closed_at"]) if r.get("closed_at") else None,
+        "exit_reason": r.get("exit_reason"),
+        "option_strategy_guid": meta.get("option_strategy_guid") or pj.get("option_strategy_guid"),
+        "contract_guid": meta.get("contract_guid") or pj.get("contract_guid"),
+        "source": "options_paper_outcomes",
+    }
+    if not row["contract_guid"] or not row["option_strategy_guid"]:
+        try:
+            from scripts.lib.options_identity import outcome_attribution_keys
+        except ImportError:
+            try:
+                from lib.options_identity import outcome_attribution_keys  # type: ignore
+            except ImportError:
+                outcome_attribution_keys = None  # type: ignore
+        if outcome_attribution_keys is not None:
+            fields = contract_fields_from_meta({**pj, **meta}, symbol=row["symbol"] or "")
+            keys = outcome_attribution_keys({"symbol": row["symbol"], "strategy_id": row["strategy_id"],
+                                             "strategy": row["strategy_id"], "account": pj.get("account"),
+                                             **fields})
+            for k in ("option_strategy_guid", "contract_guid"):
+                if keys.get(k) and not row.get(k):
+                    row[k] = keys[k]
+    return row
+
+
+def fetch_symbol_outcomes(symbol: str, *, executor: Optional[Executor] = None,
+                          limit: int = 25) -> List[dict]:
+    """Settled paper options outcomes for one underlying, oldest → newest,
+    joined to the approval queue for the proposal's contract fields. [] when
+    the DB is unavailable. Read-only."""
+    sym = (symbol or "").strip().upper()
+    if not sym:
+        return []
+    ex = executor or _default_executor()
+    rows = ex(
+        """SELECT o.proposal_id, o.strategy_id, o.symbol, o.opened_at, o.closed_at,
+                  o.pnl, o.pnl_r, o.outcome, o.exit_reason, o.meta, q.proposal_json
+           FROM options_paper_outcomes o
+           LEFT JOIN options_approval_queue q ON q.proposal_id = o.proposal_id
+           WHERE UPPER(o.symbol) = %s
+           ORDER BY o.closed_at NULLS LAST, o.recorded_at
+           LIMIT %s""",
+        (sym, int(limit)), fetch="all",
+    )
+    return [_project_outcome_row(dict(r)) for r in rows] if rows else []
+
+
+def fetch_recent_outcomes(*, executor: Optional[Executor] = None, limit: int = 5000) -> List[dict]:
+    """All settled paper options outcomes (any symbol), oldest → newest. [] when
+    the DB is unavailable. Read-only; used by the belief writer."""
+    ex = executor or _default_executor()
+    rows = ex(
+        """SELECT o.proposal_id, o.strategy_id, o.symbol, o.opened_at, o.closed_at,
+                  o.pnl, o.pnl_r, o.outcome, o.exit_reason, o.meta, q.proposal_json
+           FROM options_paper_outcomes o
+           LEFT JOIN options_approval_queue q ON q.proposal_id = o.proposal_id
+           ORDER BY o.closed_at NULLS LAST, o.recorded_at
+           LIMIT %s""",
+        (int(limit),), fetch="all",
+    )
+    return [_project_outcome_row(dict(r)) for r in rows] if rows else []
 
 
 def fetch_outcomes(strategy_id: str = STRATEGY_ID,

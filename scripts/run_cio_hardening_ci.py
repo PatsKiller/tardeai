@@ -2324,6 +2324,23 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-25 — agentic-memory tranche 2 (D2 Slices 4 + 6). Slice 4: the
+        # daily memory shadow measure gains cross_agent_memory_agreement — do
+        # CIO / Hermes / Advisory read the same durable memory ids for one
+        # subject in one window (G8), reported honestly incl. UNAVAILABLE.
+        # Slice 6: options outcomes join the identity spine (contract identity
+        # from the OCC symbol at record time; settled paper outcomes feed the
+        # scoped options envelope and the belief writer). The two shadow-measure
+        # suites leave UNLISTED_BASELINE and run here.
+        "agentic_memory_tranche2_20260925",
+        [
+            "tests/test_cross_agent_memory_agreement_20260925.py",
+            "tests/test_agent_memory_shadow_measure.py",
+            "tests/test_memory_shadow_measure_honesty.py",
+            "tests/test_options_pipeline_validation.py",
+        ],
+    ),
+    (
         # 2026-09-24 — agentic-memory tranche 1 (docs/agentic-memory-gap D2).
         # Slice 1: outcome checkpoints bind a registry subject + subject_key and a
         # real due_at at mint; legacy null-due event-relative rows project to
