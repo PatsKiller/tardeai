@@ -586,6 +586,19 @@ def score_pending_outcomes(
             _append_jsonl(OUTCOMES_PATH, entry)
             existing.add(key)
             written += 1
+            # 3c (2026-09-24): the verdict settled at this horizon, so every KB
+            # lesson shown for this row is now right or wrong — score it.
+            # The join key is the row's advisory_row_hash (stable per row; the
+            # history row_id carries a write timestamp the desk never sees).
+            if sc["correct"] is not None:
+                try:
+                    from lib.advisory.kb_lessons import applications_for_row, record_hit
+                    app_key = str(e.get("advisory_row_hash") or row_id)
+                    for app in applications_for_row(app_key):
+                        record_hit(str(app.get("lesson_id") or ""), hit=bool(sc["correct"]),
+                                   source_row_id=app_key, horizon_d=int(h), symbol=sym)
+                except Exception:
+                    pass
             if sc["correct"] is True:
                 scored_ok += 1
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -112,3 +113,88 @@ class TestNotificationBroker(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestLessonScoringIsSeparateFromDisplay(unittest.TestCase):
+    """3c (2026-09-24): hit_rate is hits / SCORED. Showing a lesson 20 times with
+    no settled verdict must not retire it; 20 scored applications with 5 hits must."""
+
+    def _kb(self, td_path):
+        from lib.advisory import kb_lessons as kb
+        return kb, [
+            patch.object(kb, "RUNTIME", td_path),
+            patch.object(kb, "LESSONS_PATH", td_path / "lessons.jsonl"),
+            patch.object(kb, "CANDIDATES_PATH", td_path / "cands.jsonl"),
+            patch.object(kb, "APPLICATIONS_PATH", td_path / "apps.jsonl"),
+            patch.object(kb, "LESSONS_INDEX", td_path / "index.json"),
+        ]
+
+    def test_unscored_applications_never_retire_a_lesson(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            kb, patches = self._kb(Path(td))
+            with patches[0], patches[1], patches[2], patches[3], patches[4]:
+                c = kb.propose_lesson(title="Unscored", body="b", symbols=["MCD"], verdict_types=["TRIM"],
+                                      source="reflection_ips")
+                kb.ratify_lesson(c["id"], by="iris_test")
+                for i in range(25):
+                    kb.record_application(c["id"], symbol="MCD", hit=None, cited_in_rationale=False,
+                                          source_row_id=f"row{i}")
+                lesson = {l["id"]: l for l in kb.list_lessons(status=None)}[c["id"]]
+                self.assertEqual(lesson["applications"], 25)
+                self.assertEqual(lesson["scored"], 0)
+                self.assertIsNone(lesson["hit_rate"])
+                self.assertEqual(lesson["status"], "ratified")
+                self.assertEqual(kb.auto_retire_sweep(), [])
+
+    def test_scored_hits_from_settled_verdicts_drive_retirement(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            kb, patches = self._kb(Path(td))
+            with patches[0], patches[1], patches[2], patches[3], patches[4]:
+                c = kb.propose_lesson(title="Scored", body="b", symbols=["MCD"], verdict_types=["TRIM"],
+                                      source="reflection_ips")
+                kb.ratify_lesson(c["id"], by="iris_test")
+                for i in range(20):
+                    kb.record_application(c["id"], symbol="MCD", source_row_id=f"row{i}")
+                self.assertEqual(len(kb.applications_for_row("row3")), 1)
+                for i in range(20):
+                    counted = kb.record_hit(c["id"], hit=(i < 5), source_row_id=f"row{i}", horizon_d=30)
+                    self.assertTrue(counted)
+                # idempotent per (lesson, row, horizon)
+                self.assertFalse(kb.record_hit(c["id"], hit=True, source_row_id="row0", horizon_d=30))
+                lesson = {l["id"]: l for l in kb.list_lessons(status=None)}[c["id"]]
+                self.assertEqual(lesson["scored"], 20)
+                self.assertEqual(lesson["hits"], 5)
+                self.assertAlmostEqual(lesson["hit_rate"], 0.25)
+                self.assertEqual(lesson["status"], "retired")
+
+    def test_the_outcome_scorer_scores_the_lessons_shown_for_the_row(self) -> None:
+        from lib.advisory import advisory_memory as am
+        with tempfile.TemporaryDirectory() as td:
+            td_path = Path(td)
+            kb, patches = self._kb(td_path)
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patch.object(
+                am, "RUNTIME", td_path
+            ), patch.object(am, "ROWS_PATH", td_path / "rows.jsonl"), patch.object(
+                am, "OUTCOMES_PATH", td_path / "outcomes.jsonl"
+            ), patch.object(am, "CALIBRATION_PATH", td_path / "cal.json"):
+                c = kb.propose_lesson(title="Row lesson", body="b", symbols=["MCD"], verdict_types=["TRIM"],
+                                      source="reflection_ips")
+                kb.ratify_lesson(c["id"], by="iris_test")
+                # The desk records the application under the row's advisory_row_hash.
+                kb.record_application(c["id"], symbol="MCD", source_row_id="rh-mcd-1")
+                # A history row 40 days old with a TRIM verdict; price fell 20 after day 30.
+                now = datetime.now(timezone.utc)
+                ts = (now - timedelta(days=40)).isoformat()
+                am._append_jsonl(am.ROWS_PATH, {"row_id": "MCD:ira|2026|abc", "advisory_row_hash": "rh-mcd-1",
+                                                "symbol": "MCD", "verdict": "TRIM", "conviction": 70, "ts": ts})
+                series = {(now - timedelta(days=d)).date().isoformat(): (300.0 if d > 30 else 280.0)
+                          for d in range(0, 45)}
+                with patch.object(am, "_load_price_series", lambda sym: series):
+                    out = am.score_pending_outcomes(max_new=10)
+                self.assertGreaterEqual(out.get("written", 0), 1)
+                lesson = {l["id"]: l for l in kb.list_lessons(status=None)}[c["id"]]
+                self.assertGreaterEqual(lesson["scored"], 1)
+                self.assertGreaterEqual(lesson["hits"], 1)  # TRIM before a fall was right
+                hits = [r for r in kb._read_jsonl(kb.APPLICATIONS_PATH) if r.get("kind") == "hit"]
+                self.assertEqual(len(hits), lesson["scored"])
+                self.assertEqual(hits[0]["source_row_id"], "rh-mcd-1")

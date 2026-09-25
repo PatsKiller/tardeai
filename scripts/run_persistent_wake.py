@@ -203,6 +203,25 @@ def _missed_slots(contract: ScheduleContract, when: datetime, completed: set[str
     return missed
 
 
+# AgentView@v1 posture from an L3 author stance + critic verdict (3a, 2026-09-24).
+# The author speaks in market terms (BULLISH / BEARISH / INSUFFICIENT / ...); the
+# view speaks in posture terms (RECOMMEND | ABSTAIN | DISPUTE). A critic reject
+# or abstain, or an author who could not form a view, is ABSTAIN — a view, not a
+# prediction. The raw author stance travels separately (author_stance).
+_ABSTAIN_STANCES = frozenset({"", "INSUFFICIENT", "ABSTAIN", "NEUTRAL", "UNKNOWN", "NONE"})
+
+
+def _agent_view_posture(author_stance: str, critic_verdict: str) -> str:
+    if str(critic_verdict or "").strip().lower() in {"reject", "abstain"}:
+        return "ABSTAIN"
+    st = str(author_stance or "").strip().upper()
+    if st in _ABSTAIN_STANCES:
+        return "ABSTAIN"
+    if st == "DISPUTE":
+        return "DISPUTE"
+    return "RECOMMEND"
+
+
 def _maybe_cortex_shadow_after_wake(
     *,
     state_root: Path,
@@ -243,26 +262,41 @@ def _maybe_cortex_shadow_after_wake(
         claim = str(author.get("claim") or "").strip()
         falsifier = str(author.get("falsifier") or "").strip()
 
+        reason = None
         if claim and falsifier:
             # Fail-closed on the judgment path. If a future change routes the
             # template back through here, this raises instead of quietly
             # minting another unscoreable prediction -- which is exactly how
-            # the store accumulated 99 of them. The legacy no-judgment path
-            # below is deliberately NOT guarded: it writes an observation, not
-            # a prediction, and breaking the wake over it would trade one
-            # honest record for no record at all.
+            # the store accumulated 99 of them.
+            #
+            # 2026-09-24 (tranche 1, R3): the author's stance is the L3
+            # vocabulary (BULLISH / BEARISH / INSUFFICIENT / ...); AgentView@v1
+            # accepts RECOMMEND | ABSTAIN | DISPUTE. Passing the raw stance made
+            # critic_pass refuse every judged view, so no judged wake ever
+            # minted a commitment — the 876 FROZEN rows were all template rows
+            # from the branch below. Map it as l3_agent_view_synthesis does.
+            # An ABSTAIN judgment (INSUFFICIENT, or critic reject/abstain) is a
+            # view, not a prediction: persist it, mint no commitment.
+            critique = ((judgment or {}).get("critique")) or {}
+            raw_stance = str(author.get("stance") or "").strip().upper()
+            mapped = _agent_view_posture(raw_stance, str(critique.get("verdict") or ""))
             kwargs = {
                 "summary": claim,
                 "falsifier": refuse_vacuous_falsifier(falsifier),
                 "confidence": float(author.get("confidence") or 0.6),
                 "horizon": str(author.get("horizon") or "7d"),
-                "stance": author.get("stance"),
+                "stance": mapped,
+                "author_stance": raw_stance or None,
             }
+            if mapped == "ABSTAIN":
+                shadow_env["GOVERNED_COMMITMENT_ENABLED"] = "0"
+                reason = "abstain_view_no_prediction"
         else:
-            # No judgment in this slot. Say what this record is rather than
-            # dressing an observation up as a prediction: the summary already
-            # says "advisory observation only", and the sweep classifies it as
-            # not-a-prediction on the absence of a real falsifier.
+            # No judgment in this slot. An observation is persisted as a VIEW
+            # only. It is NOT a prediction, so no governed commitment mints:
+            # before 2026-09-24 this branch minted one per wake with the
+            # module's default falsifier ("observation contradicts claim within
+            # horizon") — 876 of 876 FROZEN commitments, none scoreable.
             kwargs = {
                 "summary": (
                     f"Scheduled persistent wake reviewed subject {subject_guid}; "
@@ -270,6 +304,8 @@ def _maybe_cortex_shadow_after_wake(
                 ),
                 "confidence": 0.6,
             }
+            shadow_env["GOVERNED_COMMITMENT_ENABLED"] = "0"
+            reason = "no_judgment_no_prediction"
 
         result = run_cortex_shadow(
             subject=str(subject_guid),
@@ -279,7 +315,11 @@ def _maybe_cortex_shadow_after_wake(
             env=shadow_env,
             **kwargs,
         )
-        return result.to_dict()
+        out = result.to_dict()
+        if reason:
+            out["commitment"] = None
+            out["reason"] = reason
+        return out
     except Exception:
         return None
 

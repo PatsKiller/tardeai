@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -21,6 +22,8 @@ from scripts.lib.memory_consolidator import lesson_from_outcomes
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
+# identity_safe_subject registry fallback switch ("0" disables). See the function.
+REGISTRY_LOOKUP_ENV = "TRADEAI_CHECKPOINT_REGISTRY_LOOKUP"
 SCHEMA_OUTCOME = "OutcomeObservation@v1"
 SCHEMA_LESSON = "LessonCandidate@v2"
 SCHEMA_HYP = "HypothesisCandidate@v1"
@@ -574,12 +577,43 @@ def _append(path: Path, row: dict[str, Any]) -> None:
         handle.write(json.dumps(row, sort_keys=True, default=str) + "\n")
 
 
-def identity_safe_subject(row: dict[str, Any]) -> str | None:
-    """Never mint a security_guid from ticker text."""
+def identity_safe_subject(row: dict[str, Any], *,
+                          registry: Any = None) -> str | None:
+    """The row's durable subject GUID, or None. Never MINTS from ticker text.
+
+    2026-09-24 (agentic-memory tranche 1, R5): 171 of 174 RESOLVED outcome
+    checkpoints carried ``entity_type: UNRESOLVED`` because this function only
+    echoed a GUID already present on the decision dict — and material-scan
+    decisions carry a symbol, not a GUID. Looking the symbol up in the identity
+    registry is not minting: the registry row was minted by
+    ``mint_identity_registry.py`` from a CUSIP-backed instrument, and we return
+    its ``security_guid`` (or ``issuer_guid``) only when that row exists and is
+    not UNRESOLVED. A ticker the registry does not know still yields None.
+    ``registry`` lets tests inject a document; production reads the cached one.
+    """
     guid = row.get("security_guid") or row.get("subject_guid")
     if guid:
         return str(guid)
-    return None
+    sym = str(row.get("symbol") or row.get("ticker") or "").strip().upper()
+    if not sym:
+        return None
+    # Hermetic tests must never consult the production registry by accident:
+    # tests/conftest.py sets this to "0", and a test that wants the lookup
+    # injects ``registry=`` (an explicit document always wins). Production
+    # leaves it unset (= on).
+    if registry is None and os.environ.get(REGISTRY_LOOKUP_ENV, "1") == "0":
+        return None
+    try:
+        from scripts.lib import identity_registry as reg
+
+        doc = registry if registry is not None else reg.load_cached()
+        ent = reg.lookup_symbol(doc, sym) or {}
+    except Exception:  # noqa: BLE001 — registry unavailable is "unknown", not an error
+        return None
+    if str(ent.get("identity_status") or "").upper() == "UNRESOLVED":
+        return None
+    found = ent.get("security_guid") or ent.get("issuer_guid")
+    return str(found) if found else None
 
 
 def schedule_outcome_checkpoint(decision_id: str, horizon: str,

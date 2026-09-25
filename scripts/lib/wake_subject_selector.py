@@ -332,6 +332,20 @@ def select_subjects(
     )
 
     ordered = research_candidates + ir_candidates + material_candidates
+    # R1 (agentic-memory tranche 1, 2026-09-24): with research first and
+    # limit=3, the last 200 hourly wakes were 200/200 unconsumed_research and
+    # 0 instrument_record_due while 37 of 52 HELD/WATCH/EXIT records were due.
+    # When research alone would fill every slot and a record is due, one slot
+    # is reserved for the first due record so the cadence path is never
+    # starved. Ordering inside each source is unchanged (deterministic).
+    if ir_candidates and len(research_candidates) >= limit and limit > 1:
+        ordered = (
+            research_candidates[: limit - 1]
+            + ir_candidates[:1]
+            + research_candidates[limit - 1:]
+            + ir_candidates[1:]
+            + material_candidates
+        )
     return ordered[:limit]
 
 

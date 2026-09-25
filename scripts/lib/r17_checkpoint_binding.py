@@ -35,6 +35,13 @@ HORIZON_OFFSET = {
     "20_sessions": timedelta(days=20),
     "quarterly": timedelta(days=90),
 }
+# 2026-09-24 (agentic-memory tranche 1, R5): "event-relative" had no offset, so
+# every such checkpoint was minted with due_at=null and could never be selected
+# (~12,000 rows). The due date is the decision's own event date when it names
+# one; otherwise a stated fallback, stamped as due_at_basis so a reader can tell
+# a real event date from the fallback. Mirrors outcome_resolution.LEGACY_EVENT_RELATIVE_DAYS.
+EVENT_RELATIVE_FALLBACK_DAYS = 30
+_EVENT_DATE_KEYS = ("event_date", "event_at", "catalyst_date", "earnings_date", "next_event_at")
 
 
 def _now() -> datetime:
@@ -88,7 +95,7 @@ def canonical_checkpoint_subject(decision: dict[str, Any]) -> dict[str, Any]:
         }
     guid = identity_safe_subject(decision)
     lineage = decision_lineage_id(decision)
-    return {
+    out = {
         "entity_type": "SECURITY" if guid else "UNRESOLVED",
         "subject_id": guid or f"UNRESOLVED:{lineage}",
         "subject_guid": guid,
@@ -96,6 +103,16 @@ def canonical_checkpoint_subject(decision: dict[str, Any]) -> dict[str, Any]:
         "lineage_id": lineage,
         "never_minted_security_guid": True,
     }
+    # The InstrumentRecord subject this decision belongs to (HELD:/EXIT:/WATCH:),
+    # so an outcome can reach the record's beliefs without a second lookup.
+    # Lookup only — a symbol with no record leaves it None.
+    try:
+        from scripts.lib.cio_instrument_record import subject_key_for_symbol
+
+        out["subject_key"] = subject_key_for_symbol(decision.get("symbol"))
+    except Exception:  # noqa: BLE001
+        out["subject_key"] = None
+    return out
 
 
 def checkpoint_material_generation(decision: dict[str, Any]) -> str:
@@ -134,12 +151,33 @@ def semantic_checkpoint_key(decision: dict[str, Any], horizon: str) -> str:
     return _sha(payload)[:24]
 
 
-def due_at_for(horizon: str, *, now: datetime | None = None) -> str | None:
+def due_at_with_basis(horizon: str, *, now: datetime | None = None,
+                      decision: dict[str, Any] | None = None) -> tuple[str | None, str | None]:
+    """(due_at, due_at_basis) for a horizon. Never None for a known horizon."""
     now = now or _now()
     delta = HORIZON_OFFSET.get(horizon)
-    if not delta:
-        return None
-    return _iso(now + delta)
+    if delta:
+        return _iso(now + delta), "horizon_offset"
+    if horizon == "event-relative":
+        for key in _EVENT_DATE_KEYS:
+            raw = (decision or {}).get(key)
+            if not raw:
+                continue
+            try:
+                ev = datetime.fromisoformat(str(raw).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if ev.tzinfo is None:
+                ev = ev.replace(tzinfo=timezone.utc)
+            if ev > now:
+                return _iso(ev), f"decision_{key}"
+        return _iso(now + timedelta(days=EVENT_RELATIVE_FALLBACK_DAYS)), "fallback_30d"
+    return None, None
+
+
+def due_at_for(horizon: str, *, now: datetime | None = None,
+               decision: dict[str, Any] | None = None) -> str | None:
+    return due_at_with_basis(horizon, now=now, decision=decision)[0]
 
 
 def enrich_checkpoint(
@@ -155,14 +193,17 @@ def enrich_checkpoint(
     semantic = semantic_checkpoint_key(decision, horizon)
     subject = canonical_checkpoint_subject(decision)
     material_gen = checkpoint_material_generation(decision)
+    due_at, due_basis = due_at_with_basis(horizon, now=now, decision=decision)
     ck.update({
         "subject_guid": subject.get("subject_guid"),
         "entity_type": subject.get("entity_type"),
         "subject_id": subject.get("subject_id"),
+        "subject_key": subject.get("subject_key"),
         "lineage_id": subject.get("lineage_id"),
         "decision_generation": material_gen,
         "semantic_key": semantic,
-        "due_at": due_at_for(horizon, now=now),
+        "due_at": due_at,
+        "due_at_basis": due_basis,
         "runtime_source_sha": source_sha,
         "context_receipt": {
             "symbol": decision.get("symbol"),

@@ -250,3 +250,70 @@ def test_a_prediction_needs_both_a_due_date_and_a_horizon():
     assert is_prediction({"due_at": "2026-09-19T00:00:00Z"}) is False
     assert is_prediction({"horizon": "7d"}) is False
     assert is_prediction({"due_at": "2026-09-19T00:00:00Z", "horizon": "7d"}) is True
+
+
+# ── price-based observation provider (tranche 1, 3b, 2026-09-24) ──────────
+
+def _prices(table):
+    """symbol -> {date: close}; returns the latest close on or before the date."""
+    def lookup(symbol, on_or_before):
+        series = table.get(symbol) or {}
+        dates = sorted(d for d in series if d <= on_or_before)
+        if not dates:
+            return None
+        return series[dates[-1]], dates[-1]
+    return lookup
+
+
+def _provider(table, **kw):
+    from scripts.lib.commitment_price_observation import make_price_observation_provider
+    return make_price_observation_provider(price_lookup=_prices(table),
+                                           symbol_for_guid=lambda g: "ADBE", now=NOW, **kw)
+
+
+def test_a_bearish_commitment_confirms_on_a_down_move_and_proposes_an_outcome_derived_lesson():
+    start = (NOW - timedelta(days=8)).date().isoformat()
+    end = (NOW - timedelta(days=1)).date().isoformat()
+    prov = _provider({"ADBE": {start: 100.0, end: 95.0}})
+    c = dict(_commitment(), stance="BEARISH")
+    obs = prov(c)
+    assert obs["observed"] is True and obs["direction"] == "DOWN"
+    assert obs["change_pct"] == -5.0 and obs["confirmed"] is True
+    res = sweep_due_commitments([c], observation_provider=prov, now=NOW)
+    assert res.by_outcome.get("CONFIRMED") == 1
+    lesson = res.lessons[0]
+    assert lesson["lesson_provenance"] == "OUTCOME_DERIVED"
+    assert lesson["status"] == "PROPOSED"
+    assert lesson["supporting_outcome_ids"] == [res.outcomes[0]["idempotency_key"]]
+
+
+def test_a_bullish_commitment_is_refuted_on_a_down_move():
+    start = (NOW - timedelta(days=8)).date().isoformat()
+    end = (NOW - timedelta(days=1)).date().isoformat()
+    prov = _provider({"ADBE": {start: 100.0, end: 95.0}})
+    res = sweep_due_commitments([dict(_commitment(), stance="BULLISH")], observation_provider=prov, now=NOW)
+    assert res.by_outcome.get("REFUTED") == 1
+
+
+def test_an_insufficient_or_abstain_stance_is_never_scored():
+    start = (NOW - timedelta(days=8)).date().isoformat()
+    end = (NOW - timedelta(days=1)).date().isoformat()
+    prov = _provider({"ADBE": {start: 100.0, end: 95.0}})
+    for stance in ("INSUFFICIENT", "ABSTAIN", "HOLD", "NEUTRAL"):
+        assert prov(dict(_commitment(), stance=stance)) == {}
+    res = sweep_due_commitments([dict(_commitment(), stance="INSUFFICIENT")], observation_provider=prov, now=NOW)
+    assert res.by_outcome.get("CONFIRMED") is None and res.by_outcome.get("REFUTED") is None
+
+
+def test_missing_prices_yield_no_observation_never_an_invented_one():
+    prov = _provider({})
+    assert prov(dict(_commitment(), stance="BEARISH")) == {}
+    res = sweep_due_commitments([dict(_commitment(), stance="BEARISH")], observation_provider=prov, now=NOW)
+    assert res.by_outcome.get("CONFIRMED") is None
+
+
+def test_a_directional_word_in_the_claim_is_read_when_no_stance_is_recorded():
+    from scripts.lib.commitment_price_observation import direction_of
+    assert direction_of({"claim": "TRIM before the print; multiple is stretched."}) == "DOWN"
+    assert direction_of({"claim": "ADBE margin expansion persists."}) is None
+    assert direction_of({"stance": "INSUFFICIENT", "claim": "TRIM now"}) is None

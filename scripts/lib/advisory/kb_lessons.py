@@ -217,29 +217,66 @@ def retire_lesson(lesson_id: str, *, reason: str = "manual") -> dict[str, Any]:
     return retired
 
 
+# 2026-09-24 (agentic-memory tranche 1, 3c). Every production caller passed
+# hit=None, so hit_rate was hits/applications = 0/apps = 0.0 and a ratified
+# lesson auto-retired at its 20th use for being "wrong" when it had never been
+# scored. Scoring is now its own act: `record_application` records that a
+# lesson was shown for a row (source_row_id), and `record_hit` — called by the
+# advisory outcome scorer once that row's verdict settles at a horizon — marks
+# it right or wrong. hit_rate is hits / scored, and only SCORED applications
+# count toward auto-retire.
+
+
+def _lesson_counts(lesson: dict[str, Any]) -> tuple[int, int, int, int]:
+    apps = int(lesson.get("applications") or 0)
+    hits = int(lesson.get("hits") or 0)
+    scored = int(lesson.get("scored") or 0)
+    citations = int(lesson.get("citations") or 0)
+    return apps, hits, scored, citations
+
+
+def _hit_rate(hits: int, scored: int) -> float | None:
+    return (hits / scored) if scored else None
+
+
+def _maybe_auto_retire(lesson_id: str, updated: dict[str, Any]) -> None:
+    scored = int(updated.get("scored") or 0)
+    hit_rate = updated.get("hit_rate")
+    if (
+        updated.get("status") == "ratified"
+        and scored >= RETIRE_MIN_APPS
+        and hit_rate is not None
+        and float(hit_rate) < RETIRE_HIT_RATE
+    ):
+        retire_lesson(lesson_id, reason=f"auto_hit_rate_{float(hit_rate):.2f}_scored{scored}")
+
+
 def record_application(
     lesson_id: str,
     *,
     symbol: str = "",
     hit: bool | None = None,
     cited_in_rationale: bool = False,
+    source_row_id: str = "",
 ) -> None:
-    apps = 0
-    hits = 0
-    citations = 0
-    # update latest snapshot
+    """The lesson was shown for a row. ``hit`` may be given when already known;
+    normally it is None here and arrives later through ``record_hit``."""
     lessons = {l["id"]: l for l in list_lessons(status=None)}
     lesson = lessons.get(lesson_id)
     if not lesson:
         return
-    apps = int(lesson.get("applications") or 0) + 1
-    hits = int(lesson.get("hits") or 0) + (1 if hit else 0)
-    citations = int(lesson.get("citations") or 0) + (1 if cited_in_rationale else 0)
-    hit_rate = (hits / apps) if apps else None
+    apps, hits, scored, citations = _lesson_counts(lesson)
+    apps += 1
+    citations += 1 if cited_in_rationale else 0
+    if hit is not None:
+        scored += 1
+        hits += 1 if hit else 0
+    hit_rate = _hit_rate(hits, scored)
     updated = dict(lesson)
     updated.update({
         "applications": apps,
         "hits": hits,
+        "scored": scored,
         "hit_rate": hit_rate,
         "citations": citations,
         "ts": _now_iso(),
@@ -248,28 +285,74 @@ def record_application(
     _append_jsonl(LESSONS_PATH, updated)
     _append_jsonl(APPLICATIONS_PATH, {
         "ts": _now_iso(),
+        "kind": "application",
         "lesson_id": lesson_id,
         "symbol": symbol,
+        "source_row_id": str(source_row_id or ""),
         "hit": hit,
         "cited": cited_in_rationale,
     })
-    # auto-retire
-    if (
-        updated.get("status") == "ratified"
-        and apps >= RETIRE_MIN_APPS
-        and hit_rate is not None
-        and hit_rate < RETIRE_HIT_RATE
-    ):
-        retire_lesson(lesson_id, reason=f"auto_hit_rate_{hit_rate:.2f}_n{apps}")
+    _maybe_auto_retire(lesson_id, updated)
+
+
+def applications_for_row(source_row_id: str) -> list[dict[str, Any]]:
+    """Application rows recorded for one advisory row (by source_row_id)."""
+    sid = str(source_row_id or "")
+    if not sid:
+        return []
+    return [r for r in _read_jsonl(APPLICATIONS_PATH)
+            if r.get("kind", "application") == "application" and str(r.get("source_row_id") or "") == sid]
+
+
+def record_hit(lesson_id: str, *, hit: bool, source_row_id: str, horizon_d: int | None = None,
+               symbol: str = "") -> bool:
+    """Score one earlier application once its row's verdict settled. Idempotent
+    per (lesson, source_row_id, horizon_d); returns True when it counted."""
+    sid = str(source_row_id or "")
+    if not sid:
+        return False
+    for r in _read_jsonl(APPLICATIONS_PATH):
+        if (r.get("kind") == "hit" and r.get("lesson_id") == lesson_id
+                and str(r.get("source_row_id") or "") == sid and r.get("horizon_d") == horizon_d):
+            return False
+    lessons = {l["id"]: l for l in list_lessons(status=None)}
+    lesson = lessons.get(lesson_id)
+    if not lesson:
+        return False
+    apps, hits, scored, citations = _lesson_counts(lesson)
+    scored += 1
+    hits += 1 if hit else 0
+    updated = dict(lesson)
+    updated.update({
+        "applications": apps,
+        "hits": hits,
+        "scored": scored,
+        "hit_rate": _hit_rate(hits, scored),
+        "citations": citations,
+        "ts": _now_iso(),
+        "status": lesson.get("status") or "ratified",
+    })
+    _append_jsonl(LESSONS_PATH, updated)
+    _append_jsonl(APPLICATIONS_PATH, {
+        "ts": _now_iso(),
+        "kind": "hit",
+        "lesson_id": lesson_id,
+        "symbol": symbol,
+        "source_row_id": sid,
+        "horizon_d": horizon_d,
+        "hit": bool(hit),
+    })
+    _maybe_auto_retire(lesson_id, updated)
+    return True
 
 
 def auto_retire_sweep() -> list[dict[str, Any]]:
     retired = []
     for l in list_lessons(status="ratified"):
-        apps = int(l.get("applications") or 0)
+        scored = int(l.get("scored") or 0)
         hr = l.get("hit_rate")
-        if apps >= RETIRE_MIN_APPS and hr is not None and float(hr) < RETIRE_HIT_RATE:
-            retired.append(retire_lesson(l["id"], reason=f"auto_hit_rate_{hr:.2f}_n{apps}"))
+        if scored >= RETIRE_MIN_APPS and hr is not None and float(hr) < RETIRE_HIT_RATE:
+            retired.append(retire_lesson(l["id"], reason=f"auto_hit_rate_{float(hr):.2f}_scored{scored}"))
     return retired
 
 

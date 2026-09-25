@@ -80,7 +80,10 @@ def test_helper_flag_on_writes_agent_views_without_commitment_when_flag_off(tmp_
     assert not (tmp_path / "commitments.jsonl").exists()
 
 
-def test_helper_flag_on_mints_governed_commitment_when_enabled(tmp_path, monkeypatch):
+def test_helper_without_a_judgment_writes_a_view_and_no_commitment(tmp_path, monkeypatch):
+    """2026-09-24 (tranche 1, 3a): a wake with no L3 judgment is an observation.
+    It used to mint a GovernedCommitment with the module's default falsifier —
+    876 of 876 FROZEN rows in production were that template, none scoreable."""
     monkeypatch.setenv(CORTEX_SHADOW_FLAG, "1")
     monkeypatch.setenv(COMMITMENT_FLAG, "1")
     env = {CORTEX_SHADOW_FLAG: "1", COMMITMENT_FLAG: "1"}
@@ -92,14 +95,62 @@ def test_helper_flag_on_mints_governed_commitment_when_enabled(tmp_path, monkeyp
     )
     assert out is not None
     assert out["ok"] is True
+    assert out["commitment"] is None
+    assert out["reason"] == "no_judgment_no_prediction"
     assert (tmp_path / "agent_views.jsonl").exists()
+    assert not (tmp_path / "commitments.jsonl").exists()
+
+
+def _judgment(stance="BEARISH", claim="ADBE gross margin compresses next print.",
+              falsifier="Next 10-Q shows gross margin at or above the prior quarter.",
+              critic_verdict="accept"):
+    return {
+        "author": {"claim": claim, "falsifier": falsifier, "stance": stance,
+                   "confidence": 0.7, "horizon": "14d"},
+        "critique": {"verdict": critic_verdict},
+    }
+
+
+def test_helper_with_a_directional_judgment_mints_the_authors_prediction(tmp_path, monkeypatch):
+    monkeypatch.setenv(CORTEX_SHADOW_FLAG, "1")
+    monkeypatch.setenv(COMMITMENT_FLAG, "1")
+    env = {CORTEX_SHADOW_FLAG: "1", COMMITMENT_FLAG: "1"}
+    out = _maybe_cortex_shadow_after_wake(
+        state_root=tmp_path, subject_guid=SG, wake_id="wake-abc", env=env,
+        judgment=_judgment(stance="BEARISH"),
+    )
+    assert out is not None, out
+    assert out["ok"] is True, (out.get("outcome"), (out.get("view") or {}).get("critic_notes"), out.get("reason"))
+    assert (out.get("view") or {}).get("stance") == "RECOMMEND"  # posture, not direction
     cpath = tmp_path / "commitments.jsonl"
     assert cpath.exists()
     crow = json.loads(cpath.read_text(encoding="utf-8").strip().splitlines()[-1])
     assert crow.get("schema_version") == "GovernedCommitment@v1"
+    assert crow.get("author_stance") == "BEARISH"  # the sweep reads its direction from this
     assert crow.get("source_identity") == "cortex_shadow_pipeline"
+    assert crow["falsifier"] == "Next 10-Q shows gross margin at or above the prior quarter."
+    assert crow["claim"].startswith("ADBE gross margin compresses")
     assert int(crow.get("mbi_behavior", 0)) == 0
     assert crow.get("is_policy_or_order") is not True
+
+
+def test_helper_maps_l3_stance_and_an_insufficient_judgment_is_a_view_not_a_prediction(tmp_path, monkeypatch):
+    """64/64 cached L3 authors said INSUFFICIENT; that stance is outside
+    AgentView@v1, so the critic refused every judged view and nothing minted.
+    Mapped (INSUFFICIENT -> ABSTAIN) the view persists; no commitment mints."""
+    monkeypatch.setenv(CORTEX_SHADOW_FLAG, "1")
+    monkeypatch.setenv(COMMITMENT_FLAG, "1")
+    env = {CORTEX_SHADOW_FLAG: "1", COMMITMENT_FLAG: "1"}
+    out = _maybe_cortex_shadow_after_wake(
+        state_root=tmp_path, subject_guid=SG, wake_id="wake-abc", env=env,
+        judgment=_judgment(stance="INSUFFICIENT"),
+    )
+    assert out is not None, out
+    assert out["ok"] is True, (out.get("outcome"), (out.get("view") or {}).get("critic_notes"))
+    assert out["commitment"] is None and out["reason"] == "abstain_view_no_prediction"
+    views = (tmp_path / "agent_views.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    assert json.loads(views[-1])["stance"] == "ABSTAIN"
+    assert not (tmp_path / "commitments.jsonl").exists()
 
 
 def test_run_once_flag_off_no_agent_views(tmp_path, monkeypatch):
@@ -119,7 +170,7 @@ def test_run_once_flag_off_no_agent_views(tmp_path, monkeypatch):
     assert not (state / "agent_views.jsonl").exists()
 
 
-def test_run_once_flag_on_writes_agent_views_and_governed_commitment(tmp_path, monkeypatch):
+def test_run_once_flag_on_writes_agent_views_and_no_template_commitment(tmp_path, monkeypatch):
     monkeypatch.setenv(AGENT_VIEW_FLAG, "1")
     monkeypatch.setenv(COMMITMENT_FLAG, "1")
     state = tmp_path / "s"
@@ -141,15 +192,12 @@ def test_run_once_flag_on_writes_agent_views_and_governed_commitment(tmp_path, m
     assert row["schema_version"] == "AgentView@v1"
     assert row["mbi_behavior"] == 0
     assert any(str(c).startswith("wake:") for c in row["citations"])
+    # No L3 judgment ran in this hermetic wake, so no GovernedCommitment may
+    # mint from it (3a, 2026-09-24): the thin wake commitment is the only row.
     cpath = state / "commitments.jsonl"
-    assert cpath.exists()
-    found = False
-    for line in cpath.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        crow = json.loads(line)
-        if crow.get("schema_version") == "GovernedCommitment@v1":
-            found = True
-            assert crow.get("source_identity") == "cortex_shadow_pipeline"
-            assert int(crow.get("mbi_behavior", 0)) == 0
-    assert found
+    governed = []
+    if cpath.exists():
+        for line in cpath.read_text(encoding="utf-8").splitlines():
+            if line.strip() and json.loads(line).get("schema_version") == "GovernedCommitment@v1":
+                governed.append(json.loads(line))
+    assert governed == []

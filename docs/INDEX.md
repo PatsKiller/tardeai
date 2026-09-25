@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `025382d3d5a6a6774e071dcb347e2ca55f7a9e0610b8573496efb6ffa56a78a7`
+**Tree fingerprint:** `e8c2a1c137b6cbb1d165a294e89919a3624c54ae96b723bd11766928261530a8`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -565,7 +565,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_reconciliation_20260917/CIO_AS_IS_2026-09-17-rev8.md` | CIO / goal-loop AS-IS — Revision 8 (2026-09-17) | review_required | OK | `dcfca094e363` |
 | `docs/architecture/maturity_reconciliation_20260917/HONEST_MATURITY_ASSESSMENT_2026-09-17-rev8.md` | Honest maturity assessment — Revision 8 (2026-09-17) | review_required | OK | `ede40d194307` |
 | `docs/architecture/maturity_reconciliation_20260917/REVISION_LEDGER_2026-09-17-rev8.md` | Revision ledger — which revision is canonical, and what is still published | review_required | OK | `2abe45079289` |
-| `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `e6f73da9013d` |
+| `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `3ee93de9443e` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `1cbdf5ccdf27` |
 | `docs/atm/PHASE180A_ATM_CURRENT_CONFIGURATION_AUDIT.md` | Phase 180A: ATM Current Configuration Audit | review_required | OK | `2d3ef26142a3` |

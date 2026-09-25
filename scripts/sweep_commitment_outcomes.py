@@ -36,9 +36,10 @@ from scripts.lib.commitment_outcome_sweep import (  # noqa: E402
 # -- 224 durable commitments carry zero outcomes. Declared rather than installed:
 # a new cron or systemd entry is operator-only (AGENTS.md §17).
 SCHEDULED_ENTRYPOINT = (
-    "PROPOSAL ONLY -- not installed. Proposed: daily 18:20 after the outcome "
-    "checkpoints resolve. A new cron/systemd entry is operator-only (§17); "
-    "run by hand until the operator approves a schedule."
+    "PROPOSAL ONLY -- not installed. Lane commitment-outcome-sweep in "
+    "config/lane_registry.json (state NEVER_SCHEDULED, 2026-09-24) carries the exact "
+    "proposed line: 20 18 * * * ... scripts/sweep_commitment_outcomes.py --apply. "
+    "A new cron/systemd entry is operator-only (§17); run by hand until then."
 )
 
 DEFAULT_STATE_ROOT = Path("/home/johnclaw/trade-ai-state/persistent_wake/state")
@@ -75,7 +76,16 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    res = sweep_due_commitments(commitments, ledger=ledger, now=datetime.now(timezone.utc))
+    # 2026-09-24 (tranche 1, 3b): the default provider returned {} and settled
+    # everything EXPIRED. Prices come from the resolver's own ticker_prices
+    # lookup; when the DB is unreachable the factory yields a None-lookup and the
+    # provider answers {} — INSUFFICIENT_EVIDENCE, never an invented result.
+    from scripts.lib.commitment_price_observation import make_price_observation_provider
+    from scripts.resolve_due_checkpoints import _price_lookup_factory
+
+    provider = make_price_observation_provider(price_lookup=_price_lookup_factory())
+    res = sweep_due_commitments(commitments, ledger=ledger, now=datetime.now(timezone.utc),
+                                observation_provider=provider)
     report = res.to_dict()
     report["state_root"] = str(root)
     report["applied"] = bool(args.apply)

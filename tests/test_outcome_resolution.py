@@ -165,3 +165,35 @@ def test_resolution_stays_observational():
     assert row["observational_only"] is True
     assert row["trading"] is False
     assert row["memory_behavior_influence"] == 0
+
+
+# ── legacy event-relative rows with due_at null (tranche 1, R5, 2026-09-24) ──
+
+def test_a_legacy_event_relative_row_31_days_old_is_due():
+    """~12,000 event-relative checkpoints were minted with due_at null. They are
+    read as due created_at + 30d — never as "now" — and the projected row says so."""
+    created = (NOW - timedelta(days=31)).isoformat()
+    cp = _cp(checkpoint_id="legacy1", horizon="event-relative", due_at=None, created_at=created)
+    due = due_checkpoints([cp], now=NOW)
+    assert [c["checkpoint_id"] for c in due] == ["legacy1"]
+    assert due[0]["due_at_basis"] == "legacy_null_projected_created_plus_30d"
+    assert due[0]["due_at"] is not None
+
+
+def test_a_legacy_event_relative_row_10_days_old_is_not_yet_due():
+    created = (NOW - timedelta(days=10)).isoformat()
+    cp = _cp(checkpoint_id="legacy2", horizon="event-relative", due_at=None, created_at=created)
+    assert due_checkpoints([cp], now=NOW) == []
+
+
+def test_a_null_due_on_any_other_horizon_stays_unscheduled():
+    cp = _cp(checkpoint_id="other", horizon="5_sessions", due_at=None,
+             created_at=(NOW - timedelta(days=90)).isoformat())
+    assert due_checkpoints([cp], now=NOW) == []
+
+
+def test_legacy_projection_never_touches_the_stored_row():
+    created = (NOW - timedelta(days=45)).isoformat()
+    cp = _cp(checkpoint_id="legacy3", horizon="event-relative", due_at=None, created_at=created)
+    due_checkpoints([cp], now=NOW)
+    assert cp["due_at"] is None and "due_at_basis" not in cp
