@@ -2,9 +2,16 @@
 
 Two evidence layers (do not conflate):
 
-1. **In-repository reproducible evidence** binds to a deterministic
-   ``control_surface_digest`` over a sorted manifest of governance sources.
-   It must **not** embed the SHA of the commit that contains it.
+1. **In-repository reproducible evidence** states the control-surface facts
+   that only change when the control surface does (the governance workflow's
+   blob hash, line count and steps; the pinned toolchain; recorded exit
+   semantics). It must **not** embed the SHA of the commit that contains it,
+   and since 2026-09-25 it must **not** embed the ``control_surface_digest``
+   either: the digest covers ``scripts/run_cio_hardening_ci.py``, which nearly
+   every PR edits to register a test, so a committed digest was rewritten by a
+   ``sed`` on every PR (nothing was re-run) and made every pair of concurrent
+   PRs conflict by construction. The digest is computed at HEAD instead and
+   recorded in layer 2 (and printed by the validator).
 
 2. **Runtime exact-head attestation** is generated *after* checkout/commit by
    local verification or CI. It names ``git rev-parse HEAD`` / ``GITHUB_SHA``
@@ -76,6 +83,22 @@ _SELF_HEAD_CLAIM_RE = re.compile(
     r"(?im)^(?:source_head|final_head|immutable_head|this_commit|containing_commit)\s*="
     r"\s*[0-9a-f]{40}\s*$"
 )
+#: The evidence files the old regenerate step rewrote on every PR (a ``sed`` of the
+#: previous digest). They must not carry a concrete digest again. Other evidence
+#: files may quote a HISTORICAL digest (e.g. AUTHORITY_NON_REGRESSION.txt records
+#: the digest a past review ran against); that text never changes, so it is fine.
+DIGEST_FREE_EVIDENCE = frozenset(
+    {
+        "FULL_TEST_MATRIX.txt",
+        "RUFF_SHELLCHECK.txt",
+        "CONTROL7_WORKFLOW_PROOF.txt",
+        "CONTROL7_LOCAL_EQUIVALENT.txt",
+    }
+)
+
+#: A concrete 64-hex control-surface digest embedded in a committed evidence file.
+_VOLATILE_DIGEST_RE = re.compile(r"(?m)^control_surface_digest=[0-9a-f]{64}\s*$")
+
 _EXIT_RE = re.compile(r"(?im)^(?P<key>EXIT_[A-Za-z0-9_]+)\s*=\s*(?P<val>-?\d+)\b")
 _SHA40_RE = re.compile(r"\b[0-9a-f]{40}\b", re.I)
 
@@ -167,7 +190,9 @@ def validate_in_repo_evidence(root: Path | None = None) -> list[str]:
     except Exception as exc:  # noqa: BLE001
         return [f"CONTROL_SURFACE_DIGEST_UNAVAILABLE:{exc}"]
 
-    digest = digest_facts["digest"]
+    # The digest must be computable (every manifest path present), but it is not
+    # compared with committed text any more; see the module docstring.
+    del digest_facts
     wf = workflow_facts(root)
 
     # Manifest / workflow hygiene
@@ -211,12 +236,18 @@ def validate_in_repo_evidence(root: Path | None = None) -> list[str]:
         if len(raw.strip()) == 0:
             errors.append(f"SUPERSEDED_EMPTY:{name}")
 
+    # No committed evidence file may embed a concrete control-surface digest: it
+    # would have to be rewritten on every PR that touches the control surface
+    # (see module docstring). The digest at HEAD lives in the runtime attestation.
+    for name in sorted(DIGEST_FREE_EVIDENCE):
+        p = _evidence_path(name, root)
+        if p.is_file() and _VOLATILE_DIGEST_RE.search(p.read_text(encoding="utf-8")):
+            errors.append(f"EVIDENCE_EMBEDS_VOLATILE_DIGEST:{name}")
+
     # FULL_TEST_MATRIX bindings
     matrix = _evidence_path("FULL_TEST_MATRIX.txt", root)
     if matrix.is_file():
         mt = matrix.read_text(encoding="utf-8")
-        if f"control_surface_digest={digest}" not in mt:
-            errors.append("MATRIX_DIGEST_MISMATCH")
         if f"PYTEST_CORE={EXPECTED_CORE_TESTS}" not in mt and f"expected_pytest_core={EXPECTED_CORE_TESTS}" not in mt:
             errors.append("MATRIX_TEST_TOTAL_MISMATCH")
         exits = {m.group("key"): int(m.group("val")) for m in _EXIT_RE.finditer(mt)}
@@ -255,8 +286,6 @@ def validate_in_repo_evidence(root: Path | None = None) -> list[str]:
             errors.append("SHELLCHECK_EXIT_SEMANTICS")
         if "EXIT_missing_ruff_negative=2" not in rt:
             errors.append("MISSING_RUFF_NEGATIVE_SEMANTICS")
-        if f"control_surface_digest={digest}" not in rt:
-            errors.append("RUFF_EVIDENCE_DIGEST_MISMATCH")
 
     # CONTROL7 workflow proof
     c7 = _evidence_path("CONTROL7_WORKFLOW_PROOF.txt", root)
@@ -266,8 +295,6 @@ def validate_in_repo_evidence(root: Path | None = None) -> list[str]:
             errors.append("WORKFLOW_BLOB_HASH_MISMATCH")
         if f"workflow_lines={wf['lines']}" not in c7t:
             errors.append("WORKFLOW_LINE_COUNT_MISMATCH")
-        if f"control_surface_digest={digest}" not in c7t:
-            errors.append("WORKFLOW_PROOF_DIGEST_MISMATCH")
         if "path_filters=absent" not in c7t and "path_filters=none" not in c7t:
             errors.append("WORKFLOW_PROOF_PATH_FILTERS_UNSTATED")
 
@@ -280,8 +307,6 @@ def validate_in_repo_evidence(root: Path | None = None) -> list[str]:
             errors.append("LOCAL_EQUIVALENT_RECORDS_FAILURE")
         if re.search(r"(?m)^STATUS:\s*SUPERSEDED_NON_AUTHORITATIVE\b", lt):
             errors.append("LOCAL_EQUIVALENT_MARKED_SUPERSEDED_BUT_CURRENT")
-        if f"control_surface_digest={digest}" not in lt:
-            errors.append("LOCAL_EQUIVALENT_DIGEST_MISMATCH")
         if not re.search(r"(?m)^EXIT_quality=0\b", lt):
             errors.append("LOCAL_EQUIVALENT_QUALITY_EXIT_MISSING")
 
@@ -300,10 +325,8 @@ def validate_in_repo_evidence(root: Path | None = None) -> list[str]:
         st = score.read_text(encoding="utf-8")
         if "CONTROL7_LOCAL_EQUIVALENT" in st and "LOCAL_EQUIVALENT_RECORDS_FAILURE" in "".join(errors):
             errors.append("SCORECARD_CITES_FAILING_LOCAL_EQUIVALENT")
-        if f"control_surface_digest={digest}" not in st and f"`{digest[:12]}`" not in st:
-            # allow short prefix citation
-            if "control_surface_digest" not in st:
-                errors.append("SCORECARD_DIGEST_UNBOUND")
+        if "control_surface_digest" not in st:
+            errors.append("SCORECARD_DIGEST_UNBOUND")
 
     # Forbid committed runtime attestations under docs/
     for p in (root / EVIDENCE_DIR_REL).glob("*runtime*attestation*"):

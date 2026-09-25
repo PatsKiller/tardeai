@@ -1,7 +1,7 @@
 # SOP 1.2.0 · Evidence architecture
 
 **Status:** authoritative for this tranche
-**control_surface_digest binding:** see CURRENT evidence files (recomputed by validator)
+**control_surface_digest:** computed at HEAD by the validator and recorded in Layer 2 (not committed since 2026-09-25)
 
 ## Why exact-head must not live inside the commit it attests
 
@@ -16,7 +16,20 @@ Therefore this tranche uses **two layers**:
 
 - Declares a sorted **control-surface manifest**
   (`config/sop_120_control_surface.manifest.json`).
-- Binds to a deterministic **control_surface_digest** over that manifest.
+- The deterministic **control_surface_digest** over that manifest is computed at
+  HEAD by the validator (it fails closed if any manifest path is missing) and is
+  recorded in Layer 2. **It is not embedded in the tracked evidence files** since
+  2026-09-25: the manifest includes `scripts/run_cio_hardening_ci.py`, which
+  almost every PR edits to register a test, so a committed digest was rewritten
+  (by `sed`, with nothing re-run) on every PR and made every pair of concurrent
+  PRs conflict. The four files that used to carry it
+  (`FULL_TEST_MATRIX.txt`, `RUFF_SHELLCHECK.txt`, `CONTROL7_WORKFLOW_PROOF.txt`,
+  `CONTROL7_LOCAL_EQUIVALENT.txt`) now say `control_surface_digest=AT_HEAD`, and the
+  validator refuses a concrete digest there (`EVIDENCE_EMBEDS_VOLATILE_DIGEST`).
+- What still binds tracked evidence to the control surface, and so changes only
+  when the surface does: the governance workflow's blob hash, line count, triggers,
+  absence of path filters and pinned Ruff install (`CONTROL7_WORKFLOW_PROOF.txt`,
+  checked against the live file), and the recorded exit semantics.
 - Excludes volatile evidence outputs and `docs/INDEX.md` from the digest.
 - Records commands, required tool versions, expected exit semantics, and the
   expected **120** core pytest total.

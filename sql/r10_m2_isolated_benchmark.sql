@@ -33,7 +33,9 @@ DECLARE
   -- m2_shadow_test is the pytest database (tests/conftest.py routes every
   -- shadow DSN there so tests never touch the live m2_shadow).
   v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow,m2_shadow_test');
-  v_isolated  boolean := current_database() = ANY (string_to_array(v_allowed, ','));
+  v_isolated  boolean := current_database() = ANY (string_to_array(v_allowed, ','))
+                          -- per-worktree pytest databases (2026-09-25): m2_shadow_test_<suffix> only
+                          OR current_database() ~ '^m2_shadow_test_[a-z0-9_]{1,40}$';
   v_opted_in  boolean := coalesce(current_setting('m2.allow_destructive_reset', true), 'off') = 'on';
   v_exists    boolean := EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'memory_r10_m2');
 BEGIN
@@ -67,7 +69,9 @@ CREATE SCHEMA IF NOT EXISTS memory_r10_m2;
 DO $ensure_m2_agent$
 DECLARE
   v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow,m2_shadow_test');
-  v_isolated  boolean := current_database() = ANY (string_to_array(v_allowed, ','));
+  v_isolated  boolean := current_database() = ANY (string_to_array(v_allowed, ','))
+                          -- per-worktree pytest databases (2026-09-25): m2_shadow_test_<suffix> only
+                          OR current_database() ~ '^m2_shadow_test_[a-z0-9_]{1,40}$';
   v_pw        text := nullif(current_setting('m2.agent_password', true), '');
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'm2_agent') THEN
