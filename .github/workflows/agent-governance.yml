@@ -88,6 +88,11 @@ jobs:
           python scripts/validate_sop_evidence_integrity.py
       - name: Policy hooks (existing)
         run: pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
+      # A PR may carry PROPOSED; on main a version that rides a prior
+      # ratification must read ACTIVE with its merge date, and one version has
+      # one history row (governance truth repair 2026-09-25).
+      - name: AGENTS.md policy state (branch vs main)
+        run: python scripts/check_agents_policy_state.py
       - name: Registry validate via quality command
         run: python scripts/agent_changed_file_quality.py --paths config/agent_clients.yaml config/agent_clients.schema.json scripts/agent_changed_file_quality.py
       - name: new-worktree SOP constraints
