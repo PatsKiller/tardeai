@@ -521,75 +521,69 @@ def comparative_equity_vs_options(
     entry_high: Any = None,
     stop: Any = None,
     target: Any = None,
-    shares_hint: Any = None,
+    shares_hint: Any = None,  # accepted for old callers; ignored — never sized (MBI_BEHAVIOR=0)
     proposal: Optional[dict[str, Any]] = None,
+    alternatives: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Stock vs options capital / max loss / best-case / breakeven — house numbers only."""
+    """Stock vs options PER UNIT (per share / per contract) — never a position size.
+
+    M5 09-24: this used to print "Equity capital hint (illustrative_100_shares): $36,675",
+    a dollar size the MBI_BEHAVIOR=0 rail forbids. Rows are now per unit only.
+    """
+    del shares_hint
     px = _f(price)
-    lo = _f(entry_low)
-    hi = _f(entry_high)
     st = _f(stop)
     tg = _f(target)
-    zone_mid = None
-    if lo is not None and hi is not None:
-        zone_mid = (lo + hi) / 2.0
-    refill = zone_mid if zone_mid is not None else px
-    sh = _f(shares_hint)
-    if sh is None or sh <= 0:
-        sh = 100.0  # illustrative round lot — labeled as hint, not an order
-        size_basis = "illustrative_100_shares"
-    else:
-        size_basis = "shares_hint"
-    equity_capital = (refill * sh) if refill is not None else None
-    equity_max_loss = None
-    if refill is not None and st is not None and refill > st:
-        equity_max_loss = (refill - st) * sh
-    equity_best = None
-    if refill is not None and tg is not None and tg > refill:
-        equity_best = (tg - refill) * sh
-    equity_breakeven = refill
-
-    p = proposal or {}
-    prem = _f(p.get("premium_total") if p.get("premium_total") is not None else p.get("premium"))
-    strike = _f(p.get("strike"))
-    contracts = max(1, int(sh // 100)) if sh else 1
-    # Debit structures: max loss ≈ premium; credit: premium is credit received
-    strat = str(p.get("strategy") or "").lower()
-    is_credit = strat in ("credit_spread", "cash_secured_put", "covered_call")
-    if prem is not None:
-        options_capital = prem if is_credit else prem
-        options_max_loss = prem  # honest floor when full risk graph absent
-    else:
-        options_capital = None
-        options_max_loss = None
-    options_best = None
-    if not is_credit and strike is not None and tg is not None and prem is not None:
-        # Long call / debit: upside to target on 100-share multiplier per contract
-        options_best = max(0.0, (tg - strike) * 100 * contracts - prem)
-    options_breakeven = None
-    if strike is not None and prem is not None and not is_credit:
-        options_breakeven = strike + (prem / (100 * contracts))
-
+    lo = _f(entry_low)
+    hi = _f(entry_high)
+    stock = None
+    if px is not None and st is not None and tg is not None and px > st:
+        risk = px - st
+        worst = hi if hi is not None and hi > st else px
+        stock = {
+            "unit": "per share",
+            "capital": round(px, 2),
+            "max_loss_to_plan_stop": round(risk, 2),
+            "breakeven": round(px, 2),
+            "value_at_target": round(tg - px, 2),
+            "return_at_target_pct": round(100.0 * (tg - px) / px, 2),
+            "return_at_plan_stop_pct": round(-100.0 * risk / px, 2),
+            "reward_risk_at_quote": round((tg - px) / risk, 2),
+            "reward_risk_worst_in_zone": round((tg - worst) / (worst - st), 2) if worst > st else None,
+            "zone": [lo, hi],
+        }
+    options_rows: list[dict[str, Any]] = []
+    for a in ((alternatives or {}).get("alternatives") or [])[:4]:
+        pc = a.get("per_contract") or {}
+        options_rows.append({
+            "unit": "per contract",
+            "rank": a.get("rank"),
+            "strategy": a.get("strategy"),
+            "qualified": a.get("qualified"),
+            "strikes": [leg.get("strike") for leg in a.get("legs") or []],
+            "expiry": ((a.get("legs") or [{}])[0]).get("exp"),
+            "capital": pc.get("capital"),
+            "max_loss": pc.get("max_loss"),
+            "breakeven": pc.get("breakeven"),
+            "return_at_target_pct": pc.get("return_at_target_pct"),
+            "return_at_plan_stop_pct": pc.get("return_at_plan_stop_pct"),
+            "reward_risk": pc.get("reward_risk"),
+        })
+    if not options_rows and proposal:
+        p = proposal
+        prem = _f(p.get("premium_total") if p.get("premium_total") is not None else p.get("premium"))
+        options_rows.append({
+            "unit": "per contract (desk cache)",
+            "strategy": str(p.get("strategy") or "").lower() or None,
+            "strikes": [_f(p.get("strike"))],
+            "capital": prem, "max_loss": prem, "breakeven": None,
+            "numbers_incomplete": True,
+        })
     return {
-        "size_basis": size_basis,
-        "shares_hint": sh,
-        "equity": {
-            "capital_at_risk": round(equity_capital, 2) if equity_capital is not None else None,
-            "max_loss_to_stop": round(equity_max_loss, 2) if equity_max_loss is not None else None,
-            "best_case_to_target": round(equity_best, 2) if equity_best is not None else None,
-            "breakeven": round(equity_breakeven, 2) if equity_breakeven is not None else None,
-        },
-        "options": {
-            "strategy": strat or None,
-            "capital_at_risk": round(options_capital, 2) if options_capital is not None else None,
-            "max_loss": round(options_max_loss, 2) if options_max_loss is not None else None,
-            "best_case": round(options_best, 2) if options_best is not None else None,
-            "breakeven": round(options_breakeven, 2) if options_breakeven is not None else None,
-            "strike": strike,
-            "premium_total": prem,
-            "contracts_hint": contracts,
-            "numbers_incomplete": prem is None,
-        },
+        "basis": "per_unit",
+        "stock_per_share": stock,
+        "options_per_contract": options_rows,
+        "note": "Per-unit economics only; the operator decides any quantity.",
     }
 
 
@@ -643,8 +637,10 @@ def select_entry_options_alternative(
         sym, preferred[0].get("strategy") if preferred else "",
         goals=goals, sector=sector, industry=industry,
     )
+    # Never borrow a wrong-class proposal's IV rank / DTE / greeks for the entry's
+    # structure (M5 09-24: V showed the Roth covered call's IV rank 24.5 and DTE).
     struct = structure or build_structure_indicators(
-        preferred[0] if preferred else (wrong[0] if wrong else None),
+        preferred[0] if preferred else None,
         price=entry_high or entry_low, stop=stop, target=target, atr=atr,
     )
     vol_pref = bool(struct.get("volatility_elevated"))
@@ -725,7 +721,7 @@ def select_entry_options_alternative(
     }
 
 
-def default_cio_verdict(packet: dict[str, Any]) -> dict[str, Any]:
+def _default_cio_verdict_core(packet: dict[str, Any]) -> dict[str, Any]:
     """Deterministic CIO chrome: APPROVE | REJECT | MODIFY_* — no specialist persona.
 
     Interactive Modify still goes through the real desk / finalize_operator_reply.
@@ -793,6 +789,82 @@ def default_cio_verdict(packet: dict[str, Any]) -> dict[str, Any]:
     return {"verdict": token, "token": token.split("_")[0], "rationale": rationale}
 
 
+def default_cio_verdict(packet: dict[str, Any]) -> dict[str, Any]:
+    """Deterministic verdict + portfolio flags (facts only, never a size)."""
+    v = dict(_default_cio_verdict_core(packet))
+    port = packet.get("portfolio_risk") or {}
+    flags = [f for f in (port.get("flags") or []) if f != "ADD_TO_EXISTING_POSITION"]
+    if port.get("held"):
+        bits = []
+        if port.get("pct_of_total_book") is not None:
+            bits.append(f"{port['pct_of_total_book']:.1f}% of book")
+        if port.get("pct_of_invested_capital") is not None:
+            bits.append(f"{port['pct_of_invested_capital']:.1f}% of invested")
+        lim = (port.get("ips_limits") or {}).get("max_single_position_pct")
+        if lim is not None:
+            bits.append(f"IPS single-name limit {lim:g}%")
+        v["rationale"] = (v.get("rationale") or "") + "; ADD to an existing position (" + ", ".join(bits) + ")"
+        if flags:
+            v["rationale"] += " — flags: " + ", ".join(flags)
+    v["portfolio_flags"] = port.get("flags") or []
+    return v
+
+
+def _options_alt_from_alternatives(sym: str, alts: dict[str, Any], struct: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Map chain-ranked alternatives onto the options_alt slot (None → fall back to desk cache)."""
+    status = alts.get("status")
+    ranked = alts.get("alternatives") or []
+    if status in (None, "NO_CHAIN", "DISABLED") and not ranked:
+        return None
+    vol_pref = bool(struct.get("volatility_elevated"))
+    top = next((x for x in ranked if x.get("qualified")), None)
+    if top:
+        legs = top.get("legs") or []
+        pc = top.get("per_contract") or {}
+        return {
+            "status": "OPTIONS_ALT_OK",
+            "source": "chain",
+            "symbol": sym,
+            "strategy": top.get("strategy"),
+            "proposal": None,
+            "top": top,
+            "maps_to_plan": {"strikes": [leg.get("strike") for leg in legs],
+                             "expiry": legs[0].get("exp") if legs else None,
+                             "capital_per_contract": pc.get("capital"), "breakeven": pc.get("breakeven"),
+                             "pop_estimate": top.get("pop_estimate")},
+            "volatility_prefers_options": vol_pref,
+            "reason": None,
+            "path_b": PATH_B_CHROME,
+            "preference_note": (
+                "Elevated ATR/HV vs distance-to-stop — defined-risk options are the "
+                "preferred capital-efficient expression of this thesis." if vol_pref else None
+            ),
+        }
+    reasons = sorted({r for x in ranked for r in (x.get("disqualified_by") or [])})
+    return {
+        "status": "OPTIONS_ALT_NONE",
+        "source": "chain",
+        "symbol": sym,
+        "strategy": None,
+        "proposal": None,
+        "volatility_prefers_options": vol_pref,
+        "reason": "NONE_QUALIFIED" if ranked else "NONE_IN_BANDS",
+        "detail": "; ".join(reasons)[:240] if reasons else "no contract inside the delta/DTE bands",
+        "path_b": PATH_B_CHROME,
+    }
+
+
+def _load_portfolio_facts(sym: str) -> dict[str, Any]:
+    try:
+        try:
+            from scripts.lib.buy_ready_portfolio_facts import build_portfolio_facts  # noqa: PLC0415
+        except ImportError:
+            from lib.buy_ready_portfolio_facts import build_portfolio_facts  # type: ignore  # noqa: PLC0415
+        return build_portfolio_facts(sym)
+    except Exception as exc:  # noqa: BLE001 — a missing fact is reported, never invented
+        return {"status": "UNAVAILABLE", "error": type(exc).__name__, "flags": [], "unknowns": ["portfolio facts"]}
+
+
 def build_buy_ready_packet(
     result: dict[str, Any],
     ev: Optional[dict[str, Any]] = None,
@@ -800,47 +872,85 @@ def build_buy_ready_packet(
     desk: Optional[dict[str, Any]] = None,
     goals: Optional[list[dict[str, Any]]] = None,
     enrichment: Optional[dict[str, Any]] = None,
+    alternatives: Optional[dict[str, Any]] = None,
+    portfolio: Optional[dict[str, Any]] = None,
+    cio_review: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    """Institutional BUY_READY / ENTRY_NEAR packet (P6 + P8)."""
+    """Institutional BUY_READY / ENTRY_NEAR packet (P6 + P8 + M5 09-24).
+
+    ``alternatives`` (buy_ready_options_alternatives), ``portfolio``
+    (buy_ready_portfolio_facts) and ``cio_review`` (buy_ready_cio_review) may be
+    passed directly or on ``ev`` under options_alternatives / portfolio_facts /
+    cio_review. Per-unit only; never a size (MBI_BEHAVIOR=0).
+    """
     ev = ev or {}
     sym = str(result.get("symbol") or ev.get("symbol") or "").upper()
     enr = enrichment if enrichment is not None else load_enrichment_row(sym)
     thesis = build_thesis_indicators(sym, ev=ev, enrichment=enr)
     atr = result.get("atr") if result.get("atr") is not None else ev.get("atr") or enr.get("atr")
-    alt = select_entry_options_alternative(
-        sym,
-        entry_low=result.get("entry_low"),
-        entry_high=result.get("entry_high"),
-        stop=result.get("stop"),
-        target=result.get("target"),
-        atr=atr,
-        desk=desk,
-        goals=goals,
-        sector=thesis.get("sector") or ev.get("sector"),
-        industry=thesis.get("industry") or ev.get("industry"),
+    alts = alternatives if alternatives is not None else ev.get("options_alternatives")
+    struct = build_structure_indicators(
+        None, price=result.get("price"), stop=result.get("stop"), target=result.get("target"),
+        atr=atr, enrichment=enr,
     )
-    struct = alt.get("structure_indicators") or build_structure_indicators(
-        alt.get("proposal"),
-        price=result.get("price"),
-        stop=result.get("stop"),
-        target=result.get("target"),
-        atr=atr,
-        enrichment=enr,
-    )
+    alt = _options_alt_from_alternatives(sym, alts, struct) if isinstance(alts, dict) else None
+    if alt is None:
+        alt = select_entry_options_alternative(
+            sym,
+            entry_low=result.get("entry_low"),
+            entry_high=result.get("entry_high"),
+            stop=result.get("stop"),
+            target=result.get("target"),
+            atr=atr,
+            desk=desk,
+            goals=goals,
+            sector=thesis.get("sector") or ev.get("sector"),
+            industry=thesis.get("industry") or ev.get("industry"),
+        )
+        struct = alt.get("structure_indicators") or struct
+    else:
+        alt["goal_lineage"] = goal_lineage_for(sym, alt.get("strategy") or "", goals=goals,
+                                               sector=thesis.get("sector"), industry=thesis.get("industry"))
+        top = alt.get("top") or {}
+        g = top.get("greeks_per_share") or {}
+        legs = top.get("legs") or [{}]
+        struct = dict(struct)
+        struct.update({"delta": g.get("delta"), "gamma": g.get("gamma"), "theta": g.get("theta_per_day"),
+                       "vega": g.get("vega_per_vol_pt"), "oi": legs[0].get("oi"), "volume": legs[0].get("volume"),
+                       "dte": legs[0].get("dte")})
+    ivc = (alts or {}).get("iv_context") if isinstance(alts, dict) else None
+    struct = dict(struct)
+    if ivc:
+        struct["iv_rank"] = ivc.get("iv_rank")
+        struct["iv_rank_source"] = ivc.get("iv_rank_source")
+        struct["iv_percentile"] = ivc.get("iv_percentile")
+        struct["iv_history_rows"] = ivc.get("history_rows")
+        struct["drivers"] = [d for d in (struct.get("drivers") or []) if not str(d).startswith("IV rank")]
+        if ivc.get("iv_rank") is not None:
+            label = "" if ivc.get("iv_rank_source") == "history" else " (PROXY — thin IV history)"
+            struct["drivers"].insert(0, f"IV rank {ivc['iv_rank']:.1f}{label}")
+        else:
+            struct["drivers"].insert(0, f"IV rank UNAVAILABLE ({ivc.get('history_rows', 0)} history rows)")
+        if ivc.get("iv_percentile") is not None:
+            struct["drivers"].insert(1, f"IV percentile {ivc['iv_percentile']:.1f}")
+    else:
+        struct.setdefault("iv_rank_source", "engine cache (history or proxy — not labelled upstream)"
+                          if struct.get("iv_rank") is not None else "unavailable")
     compare = comparative_equity_vs_options(
         price=result.get("price"),
         entry_low=result.get("entry_low"),
         entry_high=result.get("entry_high"),
         stop=result.get("stop"),
         target=result.get("target"),
-        shares_hint=ev.get("shares") or ev.get("shares_hint"),
         proposal=alt.get("proposal"),
+        alternatives=alts if isinstance(alts, dict) else None,
     )
     former = former_holding_context(ev)
     equity = {
         "symbol": sym,
         "state": result.get("state"),
         "price": result.get("price"),
+        "quote_age_h": result.get("quote_age_h") if result.get("quote_age_h") is not None else ev.get("quote_age_h"),
         "entry_low": result.get("entry_low"),
         "entry_high": result.get("entry_high"),
         "stop": result.get("stop"),
@@ -850,21 +960,23 @@ def build_buy_ready_packet(
         "distance_pct": result.get("distance_pct"),
         "catalyst": result.get("catalyst") or ev.get("catalyst"),
     }
+    port = portfolio if portfolio is not None else ev.get("portfolio_facts")
+    if port is None:
+        port = _load_portfolio_facts(sym)
     packet = {
-        "schema": "BuyReadyInstitutionalPacket@v1",
+        "schema": "BuyReadyInstitutionalPacket@v2",
         "symbol": sym,
         "equity": equity,
         "options_alt": alt,
+        "options_alternatives": alts if isinstance(alts, dict) else None,
         "comparative": compare,
         "thesis_indicators": thesis,
         "structure_indicators": struct,
         "former_holding": former,
-        "portfolio_risk": {
-            "status": "ATTACH_WHEN_AVAILABLE",
-            "note": "Use desk risk/heat gatherers — never invent margin $",
-        },
+        "portfolio_risk": port,
         "path_b": PATH_B_CHROME,
         "cio_verdict": None,  # filled below
+        "cio_review": cio_review if cio_review is not None else ev.get("cio_review"),
     }
     packet["cio_verdict"] = default_cio_verdict(packet)
     return packet
@@ -912,16 +1024,39 @@ def format_buy_ready_packet_lines(
         + (f" · catalyst {str(thesis.get('catalyst'))[:80]}" if thesis.get("catalyst") else "")
     )
 
-    # Options alt
+    # Options alternatives (chain-ranked, per contract) or the desk-cache fallback
     status = alt.get("status") or "OPTIONS_ALT_NONE"
-    if status in ("OPTIONS_ALT_OK", "OPTIONS_ALT_PAPER_ONLY"):
+    ranked = ((packet.get("options_alternatives") or {}).get("alternatives") or []) if alt.get("source") == "chain" else []
+    if status == "OPTIONS_ALT_OK" and ranked:
+        lines.append("Options alternatives (per contract, ranked):")
+        for a in ranked[:3]:
+            legs = a.get("legs") or []
+            pc = a.get("per_contract") or {}
+            strikes = "/".join(f"{leg.get('strike'):g}" for leg in legs if leg.get("strike") is not None)
+            exp = legs[0].get("exp") if legs else None
+            dte = legs[0].get("dte") if legs else None
+            pop = a.get("pop_estimate")
+            ret = pc.get("return_at_target_pct")
+            flag = "" if a.get("qualified") else " ✗ " + "; ".join(a.get("disqualified_by") or [])[:80]
+            lines.append(
+                f"  {a.get('rank')}. {str(a.get('strategy')).replace('_', ' ')} {strikes} {exp} ({dte} DTE) · "
+                f"{_money(pc.get('capital'))} · max loss {_money(pc.get('max_loss'))} · BE {_money(pc.get('breakeven'))}"
+                + (f" · at target {ret:+.0f}%" if ret is not None else "")
+                + (f" · POP≈{100 * pop:.0f}%" if pop is not None else "") + flag
+            )
+        top = ranked[0]
+        if top.get("why_this_strike"):
+            lines.append(f"  why #1: {str(top['why_this_strike'])[:150]}")
+        if alt.get("preference_note"):
+            lines.append(alt["preference_note"])
+    elif status in ("OPTIONS_ALT_OK", "OPTIONS_ALT_PAPER_ONLY"):
         p = alt.get("proposal") or {}
         paper = " (paper/educational)" if status == "OPTIONS_ALT_PAPER_ONLY" else ""
         pop = p.get("pop_pct")
         pop_bit = f" · POP {pop}%" if pop is not None else ""
         lines.append(
             f"Options alt{paper}: {alt.get('strategy')} strike {_money(p.get('strike'))}"
-            f" · debit/credit {_money(p.get('premium_total'))}{pop_bit}"
+            f" · debit/credit {_money(p.get('premium_total'))}{pop_bit} (desk cache)"
         )
         if alt.get("preference_note"):
             lines.append(alt["preference_note"])
@@ -935,27 +1070,58 @@ def format_buy_ready_packet_lines(
     if struct.get("drivers"):
         lines.append("Structure: " + "; ".join(struct["drivers"][:5]))
 
-    # Comparative
-    eq_c = cmp_.get("equity") or {}
-    op_c = cmp_.get("options") or {}
-    if status in ("OPTIONS_ALT_OK", "OPTIONS_ALT_PAPER_ONLY") and not op_c.get("numbers_incomplete"):
+    # Per-unit comparison (never a size)
+    st_c = cmp_.get("stock_per_share") or {}
+    op_rows = cmp_.get("options_per_contract") or []
+    if st_c:
+        worst = st_c.get("reward_risk_worst_in_zone")
         lines.append(
-            f"Compare ({cmp_.get('size_basis')}): stock capital {_money(eq_c.get('capital_at_risk'))} "
-            f"/ max-loss-to-stop {_money(eq_c.get('max_loss_to_stop'))} / best {_money(eq_c.get('best_case_to_target'))} "
-            f"vs options capital {_money(op_c.get('capital_at_risk'))} / max loss {_money(op_c.get('max_loss'))} "
-            f"/ BE {_money(op_c.get('breakeven'))}"
+            f"Per unit — stock: {_money(st_c.get('capital'))}/share · risk to stop {_money(st_c.get('max_loss_to_plan_stop'))}"
+            f" · at target {st_c.get('return_at_target_pct'):+.1f}% · R:R {st_c.get('reward_risk_at_quote')} at quote"
+            + (f" ({worst} worst in zone)" if worst is not None else "")
         )
-    elif eq_c.get("capital_at_risk") is not None:
+    if op_rows and op_rows[0].get("capital") is not None and not op_rows[0].get("numbers_incomplete"):
+        o = op_rows[0]
+        ret = o.get("return_at_target_pct")
         lines.append(
-            f"Equity capital hint ({cmp_.get('size_basis')}): {_money(eq_c.get('capital_at_risk'))} "
-            f"· max-loss-to-stop {_money(eq_c.get('max_loss_to_stop'))}"
+            f"  vs #{o.get('rank') or 1} {str(o.get('strategy')).replace('_', ' ')}: {_money(o.get('capital'))}/contract · "
+            f"max loss {_money(o.get('max_loss'))} · BE {_money(o.get('breakeven'))}"
+            + (f" · at target {ret:+.0f}%" if ret is not None else "")
         )
+
+    # Portfolio facts (flags only)
+    port = packet.get("portfolio_risk") or {}
+    if port.get("status") == "OK":
+        if port.get("held"):
+            lim = (port.get("ips_limits") or {}).get("max_single_position_pct")
+            lines.append(
+                f"Book: already held ({port.get('held_units_total'):g} units) · {port.get('pct_of_total_book')}% of book"
+                f" · {port.get('pct_of_invested_capital')}% of invested"
+                + (f" · IPS single-name limit {lim:g}%" if lim is not None else "")
+                + (" · flags " + ", ".join(f for f in port.get("flags") or [] if f != "ADD_TO_EXISTING_POSITION")
+                   if [f for f in port.get("flags") or [] if f != "ADD_TO_EXISTING_POSITION"] else "")
+            )
+        else:
+            lines.append("Book: not held — this would be a new position")
+        ob = port.get("options_book") or {}
+        if ob.get("leg_count") is not None:
+            lines.append(f"  options book: {ob.get('leg_count')} open legs · net delta {ob.get('net_delta_shares')} sh-equiv"
+                         f" · cash {str(port.get('cash_state') or '').split(' ')[0]}")
+    else:
+        lines.append("Book: portfolio facts unavailable")
 
     if former.get("note") and former.get("note") != "no former-holding flag on evidence":
         lines.append(f"Book context: {former['note']}")
 
+    review = packet.get("cio_review")
+    if review is not None:
+        try:
+            from scripts.lib.buy_ready_cio_review import format_review_lines  # noqa: PLC0415
+        except ImportError:
+            from lib.buy_ready_cio_review import format_review_lines  # type: ignore  # noqa: PLC0415
+        lines.extend(format_review_lines(review))
     lines.append(
-        f"CIO verdict: {verdict.get('verdict') or '—'} — {verdict.get('rationale') or ''}"
+        f"House-rule verdict: {verdict.get('verdict') or '—'} — {verdict.get('rationale') or ''}"
     )
     lines.append(packet.get("path_b") or PATH_B_CHROME)
     return lines

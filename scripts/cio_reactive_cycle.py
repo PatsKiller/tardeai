@@ -101,6 +101,19 @@ def _known_agents() -> frozenset[str]:
 KNOWN_AGENTS = _known_agents()
 
 
+def wake_symbols(payload: Any) -> list[str]:
+    """Subject symbols for a wake: ``symbols`` (list), else a single ``symbol``.
+
+    M5 09-24: cio_entry_state_runner sent only ``symbol`` and this read only
+    ``symbols``, so the V BUY_READY wake reached the CIO subject-less.
+    """
+    p = payload if isinstance(payload, dict) else {}
+    syms = [str(s) for s in (p.get("symbols") or []) if s]
+    if not syms and p.get("symbol"):
+        syms = [str(p.get("symbol"))]
+    return syms
+
+
 def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
     """Enqueue reactive and goal wakes. Does NOT claim them by default.
 
