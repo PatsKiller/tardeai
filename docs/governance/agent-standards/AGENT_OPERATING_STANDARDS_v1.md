@@ -112,8 +112,8 @@ PR/head SHA, environment, expiry, maximum uses, reason, approver and audit id. I
   warns when the grant's reason names neither the branch nor the head SHA, and refuses under
   `TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=1` (`tests/test_guard_push_scope_20260925.py`). Refusing by
   default is an operator decision.
-- **Merge is not separately enforced.** `main` needs 0 approving reviews, and code-owner review and
-  `enforce_admins` are off. **UNENFORCED** until an administrator acts
+- **Merge is not separately enforced.** `main` needs 0 approving reviews and code-owner review is off
+  (`enforce_admins` is on and `agent-governance` is required since 2026-09-25). **UNENFORCED** until an administrator acts
   (`REPOSITORY_PROTECTION_ADMIN_ACTIONS.md`).
 - The shell classifier (`.cursor/hooks/guard-lib.sh`) matches command text and paths
   heuristically. It is not a sandbox, and it does not govern Python entry points, web APIs, IDE

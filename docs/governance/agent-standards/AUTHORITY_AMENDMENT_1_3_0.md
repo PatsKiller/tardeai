@@ -62,8 +62,9 @@ relationship under 1.3.0:
   decision.
 - A push grant never authorizes merge, deploy, configuration, secret access or broker action
   (AI_WORK_POLICY §27).
-- **Merge is not a separately enforced grant today:** `main` requires 0 approving reviews,
-  code-owner review is off and `enforce_admins` is off. See
+- **Merge is not a separately enforced grant today:** `main` requires 0 approving reviews and
+  code-owner review is off (`agent-governance` + `cio-hardening` are required and `enforce_admins`
+  is on since 2026-09-25). See
   `REPOSITORY_PROTECTION_ADMIN_ACTIONS.md` for the administrator actions that would make it one.
 
 **`bin/guard` is not an enforcement boundary for every agent.** Its hooks are wired for Cursor only

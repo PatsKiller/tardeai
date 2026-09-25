@@ -100,9 +100,9 @@ Legend for "Enforced by":
 | Push only with `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` + explicit operator intent (`AI_WORK_POLICY.md`); budget 1 (max 2) pushes per tranche | HOOK `.githooks/pre-push`. **Gap:** `.githooks/pre-push:19-35` + `scripts/lib/guard_push_auth.py:30-48` treat **any** active `git-push` guard grant as authorization **and** a budget override, without checking that its reason names this branch. While any git-push grant is active, the budget and branch scope are **not enforced** |
 | Relationship between `bin/guard` and `AI_WORK_POLICY.md` | `AI_WORK_POLICY.md` never mentions `bin/guard`. The policy's authority is `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` + operator intent; the hook additionally accepts a guard grant as a substitute (gap above) |
 | Force-push, history rewrite | user-level `~/.claude/settings.json` (Claude Code only) + GitHub `allow_force_pushes: false`. **Not** `bin/guard` |
-| `cio-hardening` must pass before merge | GitHub branch protection (the **only** required check today) |
-| `agent-governance` must pass before merge | **UNENFORCED** (the job runs on every PR but isn't required) |
-| Only the operator merges; independent review of sensitive paths | **UNENFORCED**: 0 required reviews, `enforce_admins: false`, no CODEOWNERS, and `gh pr merge` isn't classified by any hook |
+| `cio-hardening` must pass before merge | GitHub branch protection (required; `enforce_admins: true` since 2026-09-25) |
+| `agent-governance` must pass before merge | GitHub branch protection: **required since 2026-09-25** (operator decision), strict, admins included |
+| Only the operator merges; independent review of sensitive paths | **UNENFORCED**: 0 required reviews, code-owner review off (CODEOWNERS added but not required), and `gh pr merge` isn't classified by any hook. Required reviews are deferred until a second reviewer account or bot exists |
 | Deploy = `prepare` then `promote`; verify live SHA and process `cwd` independently | `scripts/cio_phase2_exact_main_deploy.sh` (refuses a hybrid SHA; auto-rollback on failed health). `release-write` grant is **advisory** (the promote command isn't classified by the Cursor hook) |
 
 ## 9a. Hidden mutations in the standard tools (know before you run them)

@@ -3589,7 +3589,7 @@ They bind coding/governance agents only. They are **not** trading authorization.
 | File/state leases | `scripts/lib/agent_file_lease.py` — atomic flock leases; no overlapping claims |
 | Safe worktree | `scripts/new-worktree.sh` — no default `.env` link; never instruct `git add -A` |
 | Changed-file quality | `scripts/agent_changed_file_quality.py` |
-| Dedicated CI | `.github/workflows/agent-governance.yml` (job name `agent-governance`) — enable as required context by operator |
+| Dedicated CI | `.github/workflows/agent-governance.yml` (job name `agent-governance`) — **required context since 2026-09-25** (operator decision; `enforce_admins` on) |
 | Evidence | `docs/implementation/maturity-program/sop-1.2.0-20260902/` |
 | Verifier runbook | `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` — independent verifiers **must** use the governed launcher with `--verifier --expected-worktree --expected-head` |
 
