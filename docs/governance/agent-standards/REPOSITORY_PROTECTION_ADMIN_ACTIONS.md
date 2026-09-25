@@ -31,6 +31,9 @@ template) that do nothing until an administrator turns the matching settings on.
 1. Add **`agent-governance`** to the required status checks (keeps `cio-hardening`).
 2. Set **required approving reviews ≥ 1** and **require code-owner reviews**, so the sensitive
    paths in `.github/CODEOWNERS` need a reviewer who is not the author.
+   **Constraint:** PRs here are authored by the operator's own account, and GitHub never counts an
+   author's approval. So independent review needs a **separate reviewer account or a review bot**.
+   Decide which before turning this on, or every PR will be unmergeable.
 3. Turn on **enforce admins**, or record in writing why administrator bypass stays open.
 4. Require **last-push approval**, so a review can't be satisfied by a push made after it.
 5. Consider **required conversation resolution** for authority PRs.
