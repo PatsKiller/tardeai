@@ -3640,6 +3640,12 @@ safer reading.
 It is built and tested but **not wired** into any broker call site, because §0 rule 2 still forbids
 that until ratification.
 
+**Guard is not a universal boundary.** Its hooks are wired for Cursor only and are advisory for
+Claude Code. Any active `git-push` grant authorized pushes to any branch (the scope check added
+here warns by default). Merge is not separately enforced (0 required reviews). Enforcement belongs
+at the resource that mutates: branch protection for merge, the release script for deploy, the
+session-grant verifier for broker orders.
+
 **Stage 14 keeps its own start.** The controlled live canary needs a separate operator instruction
 tied to the reviewed SHA, the accounts, the risk envelope (every `OPERATOR_DECISION_REQUIRED` limit
 set by the operator), readiness evidence, and operator presence.

@@ -990,6 +990,8 @@ GATES = [
         "guard_push_auth",
         [
             "tests/test_guard_push_auth.py",
+            # A push grant must name the branch or head SHA it covers (1.3.0 PROPOSED).
+            "tests/test_guard_push_scope_20260925.py",
         ],
     ),
     (

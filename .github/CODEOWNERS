@@ -12,6 +12,8 @@
 /docs/governance/                            @PatsKiller
 /bin/guard                                   @PatsKiller
 /scripts/lib/guard_remote_approval.py        @PatsKiller
+/scripts/lib/guard_push_auth.py              @PatsKiller
+/.githooks/                                  @PatsKiller
 /scripts/check_no_secrets.py                 @PatsKiller
 
 # Broker boundary and session authority

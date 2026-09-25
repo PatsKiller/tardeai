@@ -36,7 +36,10 @@ template) that do nothing until an administrator turns the matching settings on.
 5. Consider **required conversation resolution** for authority PRs.
 6. Decide whether path-conditional jobs (e.g. `active-trader-policy-ci`, `bitemporal-memory-correctness-ci`)
    should become required for the paths they cover (a ruleset can scope this).
-7. Turn on GitHub **secret scanning push protection**, as a server-side layer behind
+7. Decide whether merge is a separate grant. **Today it isn't enforced:** with 0 required reviews,
+   anyone with write access, or any agent holding a push grant whose reason happens to mention
+   merging, can merge a green PR. Items 2–4 are what would make merge authority real.
+8. Turn on GitHub **secret scanning push protection**, as a server-side layer behind
    `scripts/check_no_secrets.py`.
 
 After each change, re-run the measurement above and record the new values here. The setting is

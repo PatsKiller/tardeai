@@ -48,6 +48,31 @@ Highest first. A lower document can narrow a higher one; it can never widen it.
 | 5 | **Implementation program** (`docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_2.md`) | stage order, deliverables, checkpoints | override ranks 2–4; its push, Drive and mail steps run only as ranks 1–3 allow |
 | 6 | Tool adapters (`CLAUDE.md`, `.cursor/rules/`, `.github/copilot-instructions.md`) | pointers only | contain rules |
 
+**Push authorization and guard grants (recorded as they are, measured 2026-09-25).**
+`AI_WORK_POLICY.md` §16 authorizes a push with `TRADEAI_REMOTE_PUSH_AUTHORIZED=1` **plus explicit
+operator intent**; it never mentions `bin/guard`. The pre-push hook (`.githooks/pre-push`) *also*
+treats **any** active guard `git-push` grant as push authorization **and** a push-budget override
+(`scripts/lib/guard_push_auth.py`), whatever branch the grant was issued for. The recorded
+relationship under 1.3.0:
+
+- A guard `git-push` grant is one form of recorded operator intent (rank 1). It counts for a push
+  **only when its reason names the branch or head SHA being pushed**.
+- This PR adds that check. By default it only warns, so sessions aren't broken mid-flight;
+  `TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=1` makes it refuse. Making refusal the default is an operator
+  decision.
+- A push grant never authorizes merge, deploy, configuration, secret access or broker action
+  (AI_WORK_POLICY §27).
+- **Merge is not a separately enforced grant today:** `main` requires 0 approving reviews,
+  code-owner review is off and `enforce_admins` is off. See
+  `REPOSITORY_PROTECTION_ADMIN_ACTIONS.md` for the administrator actions that would make it one.
+
+**`bin/guard` is not an enforcement boundary for every agent.** Its hooks are wired for Cursor only
+(`.cursor/hooks.json`). For Claude Code, whose sessions have no repository hooks, guard is
+**advisory**. Under Cursor, `promote` classifies as `none` and `gh pr merge` is not classified at
+all. So the requirement for anything consequential is **enforcement at the resource that mutates**.
+For broker mutations that is exactly what `TradingSessionGrant@v1` verification provides; for
+merge it is branch protection; for deploy it is the release script's own grant check.
+
 **Conflict rule (unchanged):** where two sources at different ranks conflict, the higher rank wins;
 where they are at the same rank or the conflict is ambiguous, the safer or more restrictive reading
 wins, and the conflict is reported.

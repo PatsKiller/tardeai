@@ -42,6 +42,13 @@ try:  # repo-root imports (tests) and scripts/ on sys.path (runtime)
 except ImportError:  # pragma: no cover
     from active_trader import session_control as SC  # type: ignore
 
+# Declared for scripts/check_dark_contracts.py: no consumer by design until ratification.
+NO_CONSUMER_REASON = (
+    "PROPOSED with AGENTS.md 1.3.0: pure broker-boundary verifier, deliberately not wired into "
+    "any broker call site while the ACTIVE AGENTS.md §0 rule 2 forbids broker edits; consumer is "
+    "brokers/execution_guard.require after ratification (TRADING_SESSION_GRANT_CONTRACT.md §3)"
+)
+
 CONTRACT = "TradingSessionGrant@v1"
 REQUEST_CONTRACT = "TradingMutationRequest@v1"
 DECISION_CONTRACT = "TradingAuthorizationDecision@v1"

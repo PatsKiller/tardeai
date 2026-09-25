@@ -59,7 +59,7 @@ via [`docs/architecture/ARCHITECTURE_INDEX.md`](../../architecture/ARCHITECTURE_
 | A PR states base and head SHAs, owned files/stores, authority class, contract changes, migrations, negative tests, proof artifacts, rollback, and the served-release verification plan. | PARTIAL — `.github/pull_request_template.md` (added here); a mechanical check is a follow-up |
 | Exact-head CI must pass after the final amendment; a PR whose base moved is re-verified, not assumed. | PARTIAL — `main` requires `cio-hardening` with `strict: true`; other jobs are not required (see admin actions) |
 | Sensitive paths need an independent reviewer who is not the author. | **NOT ENFORCED** — `.github/CODEOWNERS` added here, but `require_code_owner_reviews` is false and `required_approving_review_count` is 0 (measured 2026-09-25) |
-| Push, merge, deploy and broker authority are separate grants (AI_WORK_POLICY §16, §21, §27; amendment §3). | PARTIAL — pre-push hook + guard ledger for push/release; merge/deploy by operator |
+| Push, merge, deploy and broker authority are separate grants (AI_WORK_POLICY §16, §21, §27; amendment §3). | PARTIAL — push: pre-push hook (+ guard grant scope check, warn by default). **Merge: UNENFORCED** (0 required reviews). Deploy: release script grant check. Broker: `TradingSessionGrant@v1` (not wired until ratified) |
 | Force-pushing a pushed PR branch is refused; restack with merge commits. | ENFORCED — tool permission deny (observed 2026-09-24) |
 | GitHub is never a shared working directory; checkpoints are local commits (AGENTS.md §0 rule 4). | ENFORCED — pre-push hook + push budget counter |
 
@@ -104,6 +104,17 @@ A guard grant names the principal, role, worktree/session, action class, resourc
 PR/head SHA, environment, expiry, maximum uses, reason, approver and audit id. It is
 **bounded permission for one operation class**. Recorded facts, measured 2026-09-25:
 
+- `bin/guard`'s hooks are wired for **Cursor only** (`.cursor/hooks.json`). For Claude Code, whose
+  sessions have no repository hooks, guard is **ADVISORY**. Under Cursor, `promote` classifies as
+  `none` and `gh pr merge` is unclassified. Guard is not an enforcement boundary for every agent.
+- Any active `git-push` grant used to authorize **and** budget-override a push to any branch
+  (`.githooks/pre-push`, `scripts/lib/guard_push_auth.py`). **PARTIAL fix in this PR:** the hook now
+  warns when the grant's reason names neither the branch nor the head SHA, and refuses under
+  `TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=1` (`tests/test_guard_push_scope_20260925.py`). Refusing by
+  default is an operator decision.
+- **Merge is not separately enforced.** `main` needs 0 approving reviews, and code-owner review and
+  `enforce_admins` are off. **UNENFORCED** until an administrator acts
+  (`REPOSITORY_PROTECTION_ADMIN_ACTIONS.md`).
 - The shell classifier (`.cursor/hooks/guard-lib.sh`) matches command text and paths
   heuristically. It is not a sandbox, and it does not govern Python entry points, web APIs, IDE
   edits, other hosts or the production service.
