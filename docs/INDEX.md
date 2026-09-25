@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `a16c923d4d205917b6defd9892e59dddbd79fdd1df3758a036fad24e0d81a216`
+**Tree fingerprint:** `e8c2a1c137b6cbb1d165a294e89919a3624c54ae96b723bd11766928261530a8`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -104,7 +104,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | OK | `927fb91f6b5e` |
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator Runbook — LLM Fleet v4.1 Final Execution Pack | active_keep | OK | `22e1f1116a74` |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options & Broker Execution Flows | review_required | OK | `8b8b79559aae` |
-| `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `629259dafb19` |
+| `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `fc2991403d1b` |
 | `docs/OPTIONS_STRATEGY_PIPELINE.md` | Options Strategy Pipeline (paper-only lane) | review_required | OK | `035f6891f1c7` |
 | `docs/PEER_REVIEW_PACKET_COMMAND_CENTER_PAGES.md` | Peer-Review Packet — Command Center v3 Intelligence Pages | review_required | OK | `3a0a0500f287` |
 | `docs/PHANTOM_ELIMINATION_BROKER_CONFIRMATION_DESIGN.md` | Phantom Elimination — Broker-Confirmation Gate (DESIGN, vendor-neutral) | review_required | OK | `0458a3ad1d4d` |
