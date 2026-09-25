@@ -217,6 +217,8 @@ def lane_close_goal(args: argparse.Namespace) -> dict[str, Any]:
         evidence = goal.get("evidence") or goal.get("evidence_refs") or []
         if not done:
             continue
+        predicate = goal.get("predicate") if isinstance(goal.get("predicate"), dict) else {}
+        falsifier = goal.get("falsifier") or predicate.get("falsifier")
         proposals.append({
             "goal_id": goal.get("goal_id"),
             "title": goal.get("title"),
@@ -224,25 +226,41 @@ def lane_close_goal(args: argparse.Namespace) -> dict[str, Any]:
             "proposed_status": "achieved",
             "evidence_refs": list(evidence),
             "has_evidence": bool(evidence),
+            # close_goal(status="achieved") requires a non-vacuous falsifier
+            # and binds a checkpoint; a goal that names none is reported, not
+            # closed (2026-09-25: the call below omitted `evidence=` entirely
+            # and would have raised TypeError on its first --apply).
+            "falsifier": falsifier,
+            "closable": bool(evidence) and bool(falsifier),
         })
 
     closed: list[str] = []
+    refused: list[dict[str, Any]] = []
     if args.apply:
         for proposal in proposals:
-            if not proposal["has_evidence"]:
+            if not proposal["closable"]:
+                refused.append({"goal_id": proposal["goal_id"],
+                                "reason": "no_evidence" if not proposal["has_evidence"] else "no_falsifier"})
                 continue        # never close a goal that cannot say why
-            store.close_goal(
-                proposal["goal_id"],
-                status="achieved",
-                reason="closed by run_dormant_lane_consumers --apply with recorded evidence",
-                actor_id="cio_dormant_lane_consumer",
-            )
-            closed.append(proposal["goal_id"])
+            try:
+                store.close_goal(
+                    proposal["goal_id"],
+                    status="achieved",
+                    evidence=proposal["evidence_refs"],
+                    falsifier=proposal["falsifier"],
+                    checkpoint_root=root,
+                    reason="closed by run_dormant_lane_consumers --apply with recorded evidence",
+                    actor_id="cio_dormant_lane_consumer",
+                )
+                closed.append(proposal["goal_id"])
+            except (ValueError, KeyError) as exc:
+                refused.append({"goal_id": proposal["goal_id"], "reason": f"{type(exc).__name__}: {exc}"})
 
     return _ok(
         "close_goal",
         "scripts.lib.cio_goals.CIOGoalStore.close_goal",
         open_goals=len(open_goals),
+        refused=refused,
         closable_proposals=len(proposals),
         proposals_without_evidence=sum(1 for p in proposals if not p["has_evidence"]),
         closed=closed,

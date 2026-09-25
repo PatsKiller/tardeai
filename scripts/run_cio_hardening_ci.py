@@ -2370,6 +2370,25 @@ GATES = [
             "tests/test_agent_feature_flags.py",
         ],
     ),
+    (
+        # 2026-09-25 — CIO cognition tranche 3: prompt event-driven cognition on
+        # the existing bus/wake-store/dispatcher lane (cursor lands on the
+        # newest handled event, singular `symbol` subjects, priority-FIFO
+        # dispatch, dead-letter after 3 lease recoveries, stale IN_FLIGHT
+        # expiry, legacy action-ledger rows), the research→advice→feedback→
+        # outcome→belief→judgment joins (record tips not history, goal binding
+        # and due advance, honest goal close, judgment-aware decide, consumer
+        # memory receipts), and the M1–M5 verifier gated on the served SHA.
+        "cio_cognition_t3_20260925",
+        [
+            "tests/test_cio_event_path_t3_20260925.py",
+            "tests/test_cio_cognition_chain_t3_20260925.py",
+            "tests/test_report_maturity_bar_m1_m5_20260919.py",
+            "tests/test_cio_goals_and_dispatcher.py",
+            "tests/test_cio_goals_and_reactive.py",
+            "tests/test_cio_action_ledger.py",
+        ],
+    ),
 ]
 
 

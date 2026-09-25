@@ -82,6 +82,13 @@ def _normalize_selection(selection: Any) -> dict[str, Any] | None:
     out: dict[str, Any] = {"source": str(src), "source_id": str(sid)}
     if observed is not None:
         out["observed_at"] = str(observed)
+    # 2026-09-25: the symbol was dropped here, so the InstrumentRecord (and
+    # its beliefs) loaded only for `instrument_record_due` selections, whose
+    # source_id is the subject_key. A research/material-change selection that
+    # names a symbol now reaches the record by symbol as well.
+    symbol = getattr(selection, "symbol", None) if not isinstance(selection, dict) else selection.get("symbol")
+    if symbol:
+        out["symbol"] = str(symbol).upper()
     return out
 
 
@@ -881,6 +888,15 @@ class WakeEngine:
         # 2) Load prior communications / operator turns via Lane B port
         comm_events = self.comms.prior_comm_events(subject_guid)
         op_turns = self.comms.prior_operator_turns(subject_guid)
+        # 2026-09-25: a turn the desk already ANSWERED (a prior wake minted an
+        # OPERATOR_QUESTION commitment from it) is history, not a new ask. One
+        # stale turn (115) was replayed as the primary decision on 308 ADBE
+        # wakes. Mark consumed turns; decide() skips them.
+        consumed_turns = self._consumed_operator_turn_ids()
+        op_turns = [
+            {**t, "already_consumed": str(t.get("turn_id") or t.get("id")) in consumed_turns}
+            for t in op_turns
+        ]
         # Exclude irrelevant history (wrong subject already filtered by port)
         wake["prior_comm_event_ids"] = [str(e.get("event_id") or e.get("id")) for e in comm_events]
         wake["prior_operator_turn_ids"] = [str(t.get("turn_id") or t.get("id")) for t in op_turns]
@@ -915,10 +931,11 @@ class WakeEngine:
         ir_load = _load_instrument_record_for_selection(selection_meta, subject_guid)
         context["instrument_record"] = ir_load.get("record")
         try:
-            from scripts.lib.cio_instrument_record import latest_belief as _latest_belief
-            context["instrument_belief"] = _latest_belief(ir_load.get("record"))
+            from scripts.lib.cio_instrument_record import salient_belief as _salient_belief
+            context["instrument_belief"] = _salient_belief(ir_load.get("record"))
         except Exception:  # noqa: BLE001
             context["instrument_belief"] = None
+        context["instrument_record_as_of"] = (ir_load.get("record") or {}).get("as_of")
         wake["provenance"]["instrument_record"] = {
             "status": ir_load.get("status"),
             "subject_key": ir_load.get("subject_key"),
@@ -1303,6 +1320,18 @@ class WakeEngine:
             "judgment": judgment,
         }
 
+    def _consumed_operator_turn_ids(self) -> set[str]:
+        """Turn ids already consumed with a behavioural effect by a prior wake."""
+        out: set[str] = set()
+        try:
+            for rec in self.store.iter("receipts"):
+                if (str(rec.get("source_kind")) == "operator_turn"
+                        and str(rec.get("effect_kind") or "none") != "none"):
+                    out.add(str(rec.get("source_id")))
+        except Exception:  # noqa: BLE001 — a missing receipts file is not a wake failure
+            return out
+        return out
+
     def _maybe_judge(self, wake, snap, selection_meta, context, now, env=None):
         """Run the L3 judgment pipeline, or decline and say why.
 
@@ -1352,7 +1381,7 @@ class WakeEngine:
                         f"The InstrumentRecord for {sid} is due for review. "
                         + instrument_record_context_sentence(record, belief)
                         + "What should the next research question be, and what "
-                        f"would falsify the standing thesis?"
+                        "would falsify the standing thesis?"
                     ),
                     "why_unresolved_by_research": (
                         "instrument_record next_eligible_at is due; critique may "
@@ -1579,6 +1608,60 @@ def _judgment_state_root(store) -> Path | None:
         return None
 
 
+NON_DIRECTIONAL_STANCES = frozenset({"INSUFFICIENT", "ABSTAIN", "NEUTRAL", ""})
+
+
+def _decide_from_judgment(judgment: Any, selection: Any, belief: Any) -> dict | None:
+    """A commitment authored by the L3 judgment, or None when it cannot be held to one."""
+    if not isinstance(judgment, dict):
+        return None
+    body = judgment.get("output") if isinstance(judgment.get("output"), dict) else judgment
+    stance = str(body.get("stance") or "").upper()
+    claim = str(body.get("claim") or body.get("thesis") or "").strip()
+    falsifier = body.get("falsifier") or body.get("falsifier_text")
+    if stance in NON_DIRECTIONAL_STANCES or not claim:
+        return None
+    try:
+        from scripts.lib.cortex_shadow_pipeline import refuse_vacuous_falsifier
+        falsifier = refuse_vacuous_falsifier(falsifier)
+    except Exception:  # noqa: BLE001 — vacuous or absent: no prediction
+        return None
+    if isinstance(selection, dict) and selection.get("source_id"):
+        primary_kind = _selection_primary_kind(selection) or "research_object"
+        primary_id = str(selection.get("source_id"))
+    else:
+        primary_kind, primary_id = "judgment", str(body.get("judgment_id") or "")
+        if not primary_id:
+            return None
+    full = f"judgment {stance}: {claim}"
+    return {
+        "act": True,
+        "allow_empty_memory": True,
+        "effect_kind": "changed_commitment",
+        "commitment": {
+            "commitment_kind": "L3_JUDGMENT",
+            "claim": full,
+            "normalized_claim": _normalize_claim(full),
+            "falsifier": falsifier,
+            "stance": stance,
+            # Horizon travels for traceability; no due_at is set here, so the
+            # sweep's is_prediction() keeps treating this thin wake row as an
+            # observation. The FROZEN GovernedCommitment minted from the same
+            # judgment by the cortex-shadow hook is the scoreable prediction.
+            "horizon": body.get("horizon"),
+            "judgment_id": body.get("judgment_id"),
+            "critique_id": (judgment.get("critique") or {}).get("critique_id")
+            if isinstance(judgment.get("critique"), dict) else body.get("critique_id"),
+            "evidence_source_ids": list(body.get("evidence_source_ids") or []),
+            "belief_proposal_id": (belief or {}).get("belief_proposal_id")
+            if isinstance(belief, dict) else None,
+        },
+        "primary_source_kind": primary_kind,
+        "primary_source_id": primary_id,
+        "reason": "organic_from_judgment",
+    }
+
+
 def default_decide(context: dict) -> dict:
     """Deterministic decision.
 
@@ -1600,7 +1683,8 @@ def default_decide(context: dict) -> dict:
     # First, because the operator outranks the scheduler. If they asked about
     # this subject, that is the question worth answering, not the one the
     # selection feed happened to surface.
-    turns = context.get("operator_turns") or []
+    turns = [t for t in (context.get("operator_turns") or [])
+             if isinstance(t, dict) and not t.get("already_consumed")]
     if turns:
         newest = turns[0]
         tid = str(newest.get("turn_id") or newest.get("id") or "")
@@ -1621,32 +1705,27 @@ def default_decide(context: dict) -> dict:
                 "reason": "organic_from_operator_turn",
             }
 
-    facts = context.get("memory_facts") or []
-    if facts:
-        # Fingerprint memory into claim so changed memory => changed commitment/output
-        digest = _content_hash([f.get("content") for f in facts])[:16]
-        claim = f"memory_digest:{digest} remains salient"
-        return {
-            "act": True,
-            "effect_kind": "changed_commitment",
-            "commitment": {
-                "commitment_kind": "MEMORY_SALIENCE",
-                "claim": claim,
-                "normalized_claim": _normalize_claim(claim),
-            },
-            "primary_source_kind": "memory_fact",
-            "primary_source_id": facts[0]["fact_id"],
-            "reason": "organic_from_memory",
-        }
-
     selection = context.get("selection")
 
-    # Settled outcomes on the record (agentic-memory tranche 1, Slice 2). A
-    # belief fingerprints into the claim exactly as memory does above, so a
-    # changed belief => a changed commitment, and an unchanged one dedupes.
-    # Source provenance stays the selection's own (the belief is context, not a
-    # source kind). MBI_BEHAVIOR = 0: this names what the record shows, and
-    # nothing about size, order, stop, weight or the broker.
+    # L3 judgment (R4, 2026-09-25). `context["judgment"]` has been set before
+    # decide() since the judge was wired and read by NOTHING here, so a
+    # judgment could never change the commitment; the cortex-shadow hook
+    # rebuilt a template instead. A judgment counts only when it states a
+    # directional stance, a claim and a NON-VACUOUS falsifier; INSUFFICIENT /
+    # ABSTAIN / NEUTRAL judgments fall through to the deterministic paths and
+    # mint a view, not a prediction. MBI_BEHAVIOR = 0: the claim names what
+    # the desk expects to observe, never a size, order, stop or weight.
+    judgment_decision = _decide_from_judgment(context.get("judgment"), selection,
+                                              context.get("instrument_belief"))
+    if judgment_decision is not None:
+        return judgment_decision
+
+    # Settled outcomes on the record (agentic-memory tranche 1, Slice 2;
+    # moved above memory salience 2026-09-25: BELIEF_REVIEW was unreachable
+    # whenever any memory fact existed, which on the live store is always). A
+    # belief fingerprints into the claim exactly as memory does, so a changed
+    # belief => a changed commitment, and an unchanged one dedupes. Source
+    # provenance stays the selection's own. MBI_BEHAVIOR = 0.
     belief = context.get("instrument_belief")
     if isinstance(belief, dict) and isinstance(selection, dict):
         primary_kind = _selection_primary_kind(selection)
@@ -1671,6 +1750,24 @@ def default_decide(context: dict) -> dict:
                 "primary_source_id": str(source_id),
                 "reason": "organic_from_belief",
             }
+
+    facts = context.get("memory_facts") or []
+    if facts:
+        # Fingerprint memory into claim so changed memory => changed commitment/output
+        digest = _content_hash([f.get("content") for f in facts])[:16]
+        claim = f"memory_digest:{digest} remains salient"
+        return {
+            "act": True,
+            "effect_kind": "changed_commitment",
+            "commitment": {
+                "commitment_kind": "MEMORY_SALIENCE",
+                "claim": claim,
+                "normalized_claim": _normalize_claim(claim),
+            },
+            "primary_source_kind": "memory_fact",
+            "primary_source_id": facts[0]["fact_id"],
+            "reason": "organic_from_memory",
+        }
 
     if isinstance(selection, dict):
         primary_kind = _selection_primary_kind(selection)

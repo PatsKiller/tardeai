@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Optional
 
@@ -269,6 +269,26 @@ def run_measure(
         cross_agent = {"schema": "CrossAgentMemoryAgreement@v1", "verdict": "UNAVAILABLE",
                        "error": f"{type(exc).__name__}: {exc}"[:200], "g8_closure": False}
 
+    # Consumer receipts (2026-09-25): THREE_WAY_SHARED above proves co-location
+    # of rows, not that a second agent READ the CIO's memory. This section
+    # counts MemoryConsumptionReceipt@v1 rows per consumer and the memory ids
+    # read by two or more consumers in the window. Zero is reported as zero.
+    try:
+        from scripts.lib.memory_consumption_receipt import read_receipts, summarize
+        _since = (datetime.now(timezone.utc) - timedelta(days=1)).replace(
+            microsecond=0).isoformat().replace("+00:00", "Z")
+        _rows = read_receipts(root=root_p, since=_since)
+        consumer_receipts = summarize(_rows)
+        consumer_receipts["window_since"] = _since
+        consumer_receipts["path"] = str(root_p / "data/cio/memory_consumption_receipts.jsonl")
+        consumer_receipts["independent_consumer_proof"] = (
+            consumer_receipts["memory_ids_read_by_two_or_more_consumers"] >= 1
+        )
+    except Exception as exc:  # noqa: BLE001
+        consumer_receipts = {"schema": "MemoryConsumptionReceipt@v1", "receipts": None,
+                             "error": f"{type(exc).__name__}: {exc}"[:200],
+                             "independent_consumer_proof": False}
+
     report = {
         "schema": "MemoryShadowMeasure@v1",
         "as_of": _now(),
@@ -298,6 +318,7 @@ def run_measure(
             "packets_sample": (shadow.get("packets") or [])[:5],
         },
         "cross_agent_memory_agreement": cross_agent,
+        "consumer_receipts": consumer_receipts,
         "promotion_gate": {
             "verdict": gate.get("verdict"),
             "all_hard_gates": gate.get("all_hard_gates"),

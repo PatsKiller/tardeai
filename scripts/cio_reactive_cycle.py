@@ -163,137 +163,7 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
             out.setdefault("repairs", []).append({"cio_wake_jobs": repair})
     except Exception as exc:
         out["errors"].append(f"wake_store_repair:{exc}")
-    _now_dt = datetime.now(timezone.utc)
-    hour = _now_dt.strftime("%Y%m%d%H")
-    enqueued_n = 0
-    recent_types: list[str] = []
-
-    for agent_id, event_types in AGENT_EVENT_ROUTING.items():
-        try:
-            events = bus.poll(consumer=f"reactive:{agent_id}", event_types=list(event_types))
-        except Exception as exc:
-            out["errors"].append(f"poll:{agent_id}:{exc}")
-            continue
-        if not events:
-            continue
-        last_id = None
-        for ev in events:
-            if enqueued_n >= max_wakes:
-                break
-            et = getattr(ev, "event_type", None) or (ev.get("event_type") if isinstance(ev, dict) else None)
-            eid = getattr(ev, "event_id", None) or (ev.get("event_id") if isinstance(ev, dict) else None)
-            if not et or not eid:
-                continue
-            recent_types.append(str(et))
-
-            # Freshness bound. An unstamped event is allowed through — refusing
-            # it would silently drop live events for a missing field — but a
-            # demonstrably old one is not.
-            _age = _event_age_hours(ev, _now_dt)
-            if _age is not None and _age > EVENT_MAX_AGE_HOURS:
-                out["event_stale"].append({
-                    "event_id": eid, "event_type": str(et),
-                    "age_hours": round(_age, 1),
-                    "max_age_hours": EVENT_MAX_AGE_HOURS,
-                })
-                last_id = eid          # advance past it; do not re-read forever
-                continue
-
-            wake_job_id = f"wake_ev_{agent_id}_{_hash(eid)}_{hour}"
-            # Dedup: if already in store as pending/active, skip
-            try:
-                existing = wake_store.get_wake_job(wake_job_id) if hasattr(wake_store, "get_wake_job") else None
-                if existing and existing.get("current_status") in (
-                    "PENDING", "CLAIMED", "DISPATCHED", "IN_FLIGHT", "ACKNOWLEDGED",
-                ):
-                    out["event_skipped"].append({"wake_job_id": wake_job_id, "reason": "already_active"})
-                    last_id = eid
-                    continue
-            except Exception:
-                pass
-
-            priority = EVENT_PRIORITY.get(str(et), "NORMAL")
-            reason = str(et).upper().replace(".", "_")
-            # Carry the event's own subject onto the wake. Without this the wake
-            # is subject-less and the record consult in the dispatcher has
-            # nothing to load by — which is exactly why `load-by-subject` was
-            # never called: 0 of 1,513 wakes carried a subject.
-            _payload = getattr(ev, "payload", None)
-            if _payload is None and isinstance(ev, dict):
-                _payload = ev.get("payload")
-            _payload = _payload if isinstance(_payload, dict) else {}
-            _symbols = [str(s) for s in (_payload.get("symbols") or []) if s]
-            _situation = _payload.get("situation_type")
-            # `owner_agent` is payload data, and target_agent chooses which agent
-            # handles the wake. Dispatching on whatever the payload says would let
-            # an event pick its own handler — including one that does not exist,
-            # or one that was never meant to receive that class of work. Validate
-            # against the known agent set and fall back to the subscription that
-            # actually matched, recording the rejected value rather than
-            # discarding it silently.
-            _claimed_owner = str(_payload.get("owner_agent") or "").strip() or None
-            if _claimed_owner and _claimed_owner in KNOWN_AGENTS:
-                _owner, _owner_rejected = _claimed_owner, None
-            else:
-                _owner, _owner_rejected = None, _claimed_owner
-            wake_payload = {
-                "wake_job_id": wake_job_id,
-                "trigger_type": "EVENT_BUS",
-                "trigger_ref": eid,
-                "trigger_hash": _hash(f"{agent_id}:{eid}"),
-                "reason_codes": ["EVENT_BUS", reason],
-                "required_domains": ["portfolio"],
-                "wake_intent": "NEW_RUN",
-                "idempotency_key": wake_job_id,
-                "context": {
-                    # The payload names its owner; prefer it over the routing
-                    # key so a morgan-owned situation does not arrive as alex's.
-                    "target_agent": _owner or agent_id,
-                    "routed_via_agent": agent_id,
-                    # Present only when the payload named an agent we do not know.
-                    "owner_agent_rejected": _owner_rejected,
-                    "event_type": et,
-                    "event_id": eid,
-                    "priority": priority,
-                    "authority": "READ_ONLY_ADVISORY",
-                    "symbols": _symbols,
-                    # First symbol is the wake's subject; a multi-symbol
-                    # situation still resolves to one record to consult.
-                    "symbol": _symbols[0] if _symbols else None,
-                    "situation_type": _situation,
-                    "plan_id": _payload.get("plan_id"),
-                    "shadow": _payload.get("shadow"),
-                },
-            }
-            try:
-                wake_store.enqueue(
-                    wake_payload,
-                    actor_id="cio_reactive_cycle",
-                    actor_type="system",
-                    authority="READ_ONLY_ADVISORY",
-                )
-                out["event_enqueued"].append({
-                    "agent_id": agent_id,
-                    "event_type": et,
-                    "event_id": eid,
-                    "wake_job_id": wake_job_id,
-                })
-                enqueued_n += 1
-            except Exception as exc:
-                # treat duplicate as skip
-                msg = str(exc)
-                if "already" in msg.lower() or "duplicate" in msg.lower() or "exists" in msg.lower():
-                    out["event_skipped"].append({"wake_job_id": wake_job_id, "reason": msg[:120]})
-                else:
-                    out["errors"].append(f"enqueue:{wake_job_id}:{msg[:160]}")
-            last_id = eid
-
-        if last_id:
-            try:
-                bus.advance_cursor(f"reactive:{agent_id}", last_id)
-                out["cursor_advanced"].append({"consumer": f"reactive:{agent_id}", "event_id": last_id})
-            except Exception as exc:
-                out["errors"].append(f"cursor:{agent_id}:{exc}")
+    enqueued_n, recent_types = process_event_bus(bus, wake_store, out=out, max_wakes=max_wakes)
 
     # Goal-due / event-linked wakes
     try:
@@ -435,6 +305,243 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
         pass
     return out
 
+
+
+
+def process_event_bus(
+    bus: Any,
+    wake_store: Any,
+    *,
+    out: dict[str, Any],
+    max_wakes: int = 12,
+    now: Optional[datetime] = None,
+    routing: Optional[dict] = None,
+    priority_map: Optional[dict] = None,
+) -> tuple[int, list[str]]:
+    """Turn unconsumed bus events into EVENT_BUS wakes; advance each consumer cursor.
+
+    Extracted from run_once (2026-09-25) so the cursor/subject/priority contract
+    is testable against a temporary bus and store without the detector,
+    curation and dispatcher tails that run_once also drives. Returns
+    (enqueued_count, recent_event_types).
+    """
+    from scripts.lib.cio_event_bus import AGENT_EVENT_ROUTING, EVENT_PRIORITY
+
+    _now_dt = now or datetime.now(timezone.utc)
+    hour = _now_dt.strftime("%Y%m%d%H")
+    enqueued_n = 0
+    recent_types: list[str] = []
+
+    for agent_id, event_types in (routing or AGENT_EVENT_ROUTING).items():
+        try:
+            events = bus.poll(consumer=f"reactive:{agent_id}", event_types=list(event_types))
+        except Exception as exc:
+            out["errors"].append(f"poll:{agent_id}:{exc}")
+            continue
+        if not events:
+            continue
+        # D-CURSOR (2026-09-25): `bus.poll` returns newest-first. Iterating in
+        # that order set the cursor to the OLDEST event of the batch, so every
+        # later cycle re-read the newer ones (hourly duplicate wakes, and the
+        # idempotency skip masking it). Process oldest-first so `last_id` is the
+        # newest event this cycle actually handled.
+        events = sorted(events, key=_event_sort_key)
+        last_id = None
+        for ev in events:
+            if enqueued_n >= max_wakes:
+                break
+            et = getattr(ev, "event_type", None) or (ev.get("event_type") if isinstance(ev, dict) else None)
+            eid = getattr(ev, "event_id", None) or (ev.get("event_id") if isinstance(ev, dict) else None)
+            if not et or not eid:
+                continue
+            recent_types.append(str(et))
+
+            # Freshness bound. An unstamped event is allowed through — refusing
+            # it would silently drop live events for a missing field — but a
+            # demonstrably old one is not.
+            _age = _event_age_hours(ev, _now_dt)
+            if _age is not None and _age > EVENT_MAX_AGE_HOURS:
+                out["event_stale"].append({
+                    "event_id": eid, "event_type": str(et),
+                    "age_hours": round(_age, 1),
+                    "max_age_hours": EVENT_MAX_AGE_HOURS,
+                })
+                last_id = eid          # advance past it; do not re-read forever
+                continue
+
+            wake_job_id = f"wake_ev_{agent_id}_{_hash(eid)}_{hour}"
+            # Dedup: if already in store as pending/active, skip
+            try:
+                existing = wake_store.get_wake_job(wake_job_id) if hasattr(wake_store, "get_wake_job") else None
+                if existing and existing.get("current_status") in (
+                    "PENDING", "CLAIMED", "DISPATCHED", "IN_FLIGHT", "ACKNOWLEDGED",
+                ):
+                    out["event_skipped"].append({"wake_job_id": wake_job_id, "reason": "already_active"})
+                    last_id = eid
+                    continue
+            except Exception:
+                pass
+
+            priority = (priority_map or EVENT_PRIORITY).get(str(et), "NORMAL")
+            reason = str(et).upper().replace(".", "_")
+            # Carry the event's own subject onto the wake. Without this the wake
+            # is subject-less and the record consult in the dispatcher has
+            # nothing to load by — which is exactly why `load-by-subject` was
+            # never called: 0 of 1,513 wakes carried a subject.
+            _payload = getattr(ev, "payload", None)
+            if _payload is None and isinstance(ev, dict):
+                _payload = ev.get("payload")
+            _payload = _payload if isinstance(_payload, dict) else {}
+            _symbols = _payload_symbols(_payload)
+            _situation = _payload.get("situation_type")
+            # `owner_agent` is payload data, and target_agent chooses which agent
+            # handles the wake. Dispatching on whatever the payload says would let
+            # an event pick its own handler — including one that does not exist,
+            # or one that was never meant to receive that class of work. Validate
+            # against the known agent set and fall back to the subscription that
+            # actually matched, recording the rejected value rather than
+            # discarding it silently.
+            _claimed_owner = str(_payload.get("owner_agent") or "").strip() or None
+            if _claimed_owner and _claimed_owner in KNOWN_AGENTS:
+                _owner, _owner_rejected = _claimed_owner, None
+            else:
+                _owner, _owner_rejected = None, _claimed_owner
+            _event_ts = getattr(ev, "timestamp", None) or (ev.get("timestamp") if isinstance(ev, dict) else None)
+            wake_payload = {
+                "wake_job_id": wake_job_id,
+                "trigger_type": "EVENT_BUS",
+                "trigger_ref": eid,
+                # Store-level priority so the dispatcher can order the queue;
+                # `context.priority` alone was invisible to list_wakes.
+                "priority": str(priority).lower(),
+                "trigger_hash": _hash(f"{agent_id}:{eid}"),
+                "reason_codes": ["EVENT_BUS", reason],
+                "required_domains": ["portfolio"],
+                "wake_intent": "NEW_RUN",
+                "idempotency_key": wake_job_id,
+                "context": {
+                    # The payload names its owner; prefer it over the routing
+                    # key so a morgan-owned situation does not arrive as alex's.
+                    "target_agent": _owner or agent_id,
+                    "routed_via_agent": agent_id,
+                    # Present only when the payload named an agent we do not know.
+                    "owner_agent_rejected": _owner_rejected,
+                    "event_type": et,
+                    "event_id": eid,
+                    # Stable correlation id: the originating bus event. Every
+                    # receipt downstream (dispatch, consult, persist) can join
+                    # back to it; event→effect latency is measured from
+                    # `event_ts`, not from the wake's own created_at.
+                    "correlation_id": eid,
+                    "event_ts": _event_ts,
+                    "source_sha": _source_sha(),
+                    "priority": priority,
+                    "authority": "READ_ONLY_ADVISORY",
+                    "symbols": _symbols,
+                    # First symbol is the wake's subject; a multi-symbol
+                    # situation still resolves to one record to consult.
+                    "symbol": _symbols[0] if _symbols else None,
+                    "situation_type": _situation,
+                    "plan_id": _payload.get("plan_id"),
+                    "shadow": _payload.get("shadow"),
+                },
+            }
+            try:
+                wake_store.enqueue(
+                    wake_payload,
+                    actor_id="cio_reactive_cycle",
+                    actor_type="system",
+                    authority="READ_ONLY_ADVISORY",
+                )
+                out["event_enqueued"].append({
+                    "agent_id": agent_id,
+                    "event_type": et,
+                    "event_id": eid,
+                    "wake_job_id": wake_job_id,
+                })
+                enqueued_n += 1
+            except Exception as exc:
+                # treat duplicate as skip
+                msg = str(exc)
+                if "already" in msg.lower() or "duplicate" in msg.lower() or "exists" in msg.lower():
+                    out["event_skipped"].append({"wake_job_id": wake_job_id, "reason": msg[:120]})
+                else:
+                    out["errors"].append(f"enqueue:{wake_job_id}:{msg[:160]}")
+            last_id = eid
+
+        if last_id:
+            try:
+                bus.advance_cursor(f"reactive:{agent_id}", last_id)
+                out["cursor_advanced"].append({"consumer": f"reactive:{agent_id}", "event_id": last_id})
+            except Exception as exc:
+                out["errors"].append(f"cursor:{agent_id}:{exc}")
+
+    return enqueued_n, recent_types
+
+
+def _event_sort_key(ev: Any) -> tuple[str, str]:
+    ts = getattr(ev, "timestamp", None)
+    if ts is None and isinstance(ev, dict):
+        ts = ev.get("timestamp")
+    eid = getattr(ev, "event_id", None)
+    if eid is None and isinstance(ev, dict):
+        eid = ev.get("event_id")
+    return (str(ts or ""), str(eid or ""))
+
+
+def _payload_symbols(payload: dict) -> list[str]:
+    """Subject symbols of an event payload.
+
+    Live shapes (measured 2026-09-25 over 7,768 bus rows): `situation.raised`
+    carries `symbols: [...]`; `thesis.changed` (1,814), `watch.new_signal`
+    (277) and `behavioral.flag_raised` (17) carry a singular `symbol`. Reading
+    only `symbols` left 110/228 event wakes in 24h subject-less, so the record
+    consult had nothing to load by.
+    """
+    out: list[str] = []
+    raw = payload.get("symbols")
+    if isinstance(raw, (list, tuple)):
+        out.extend(str(x).strip().upper() for x in raw if x)
+    elif isinstance(raw, str) and raw.strip():
+        out.append(raw.strip().upper())
+    single = payload.get("symbol")
+    if isinstance(single, str) and single.strip():
+        sym = single.strip().upper()
+        if sym not in out:
+            out.append(sym)
+    return out
+
+
+_SOURCE_SHA_CACHE: dict[str, str | None] = {}
+
+
+def _source_sha() -> str | None:
+    """Code SHA of the tree this cycle runs from (release stamp, else git)."""
+    if "sha" in _SOURCE_SHA_CACHE:
+        return _SOURCE_SHA_CACHE["sha"]
+    sha: str | None = None
+    root = Path(__file__).resolve().parents[1]
+    for name in ("SOURCE_COMMIT", "BUILD_SHA"):
+        p = root / name
+        if p.is_file():
+            try:
+                val = p.read_text(encoding="utf-8").strip()
+            except OSError:
+                val = ""
+            if val:
+                sha = val
+                break
+    if sha is None:
+        try:
+            import subprocess
+            sha = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"],
+                capture_output=True, text=True, timeout=5, check=False,
+            ).stdout.strip() or None
+        except Exception:
+            sha = None
+    _SOURCE_SHA_CACHE["sha"] = sha
+    return sha
 
 def main() -> int:
     # G2: after imports settle — refuse dual lib.X / scripts.lib.X identity

@@ -840,6 +840,18 @@ def join_durable_memory(symbols: list[str]) -> dict[str, Any]:
     supporting = [r for r in (result.get("supporting") or []) if isinstance(r, dict)]
     counter = [r for r in (result.get("counter_memory") or result.get("counter") or []) if isinstance(r, dict)]
     disputed = [r for r in (result.get("conflicts") or []) if isinstance(r, dict)]
+    # Consumer receipt (2026-09-25): prove the desk READ shared memory, not
+    # merely that rows exist beside the CIO's. Fail-soft, ids only.
+    receipt_id = None
+    try:
+        from scripts.lib.memory_consumption_receipt import record_consumption
+        _rec = record_consumption(
+            consumer="advisory_desk_operator", purpose="operator_truth_join",
+            symbols=symbols, result=result, query="advisory desk operator truth",
+        )
+        receipt_id = _rec.get("receipt_id") if _rec else None
+    except Exception:  # noqa: BLE001
+        receipt_id = None
     by: dict[str, dict[str, Any]] = {}
     for rec in supporting + counter:
         rec_syms = rec.get("symbols") or rec.get("symbol") or []
@@ -899,6 +911,7 @@ def join_durable_memory(symbols: list[str]) -> dict[str, Any]:
         "no_match_semantics": "retrieval succeeded; zero relevant memories is not an error",
         "legacy_advisory_memory_separated": True,
         "as_of": as_of,
+        "consumption_receipt_id": receipt_id,
         "by_symbol": by,
     }
 

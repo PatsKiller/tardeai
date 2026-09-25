@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `7792892b4e3a4f59a42ec174f7dcc48934f293545b5246cb1cca000dea5367d2`
+**Tree fingerprint:** `86e5945435c8b2713bfdb9e79da8c9008a3485a10d614fb936e468e70f436471`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2608 |
-| Markdown (excl. this INDEX) | 2182 |
+| Files under `docs/` (excl. this INDEX) | 2609 |
+| Markdown (excl. this INDEX) | 2183 |
 | **MISSING HEADER** | **74** |
-| Header OK | 2108 |
+| Header OK | 2109 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2237 |
+| review_required | 2238 |
 
 ## Markdown tree
 
@@ -474,6 +474,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | review_required | OK | `1b18a9999a79` |
 | `docs/architecture/agent-memory-view-proposal.md` | Command Center — Agent Memory view (proposal) | review_required | OK | `7b90f4d8e3d6` |
 | `docs/architecture/channel-adapters.md` | Gateway Channel Adapters — Phase 10 | review_required | OK | `2457155850f5` |
+| `docs/architecture/cio-cognition-tranche3-20260925.md` | CIO cognition tranche 3 — prompt event-driven cognition and the closed learning chain | review_required | OK | `4593665c031d` |
 | `docs/architecture/cio/ADR_ALEX_AUTHORITY_MANIFEST.md` | ADR: Alex Authority Manifest | review_required | OK | `8bf7e2366689` |
 | `docs/architecture/cio/ADR_CIO_STATE_ARCHITECTURE.md` | ADR: CIO State Architecture | review_required | OK | `78b3c731e31d` |
 | `docs/architecture/cio/ADR_CONTAINMENT_SPECIFICATION.md` | ADR: Containment Specification | review_required | OK | `e090bef207bf` |

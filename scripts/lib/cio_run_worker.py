@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import logging
 import time
 import uuid
@@ -170,6 +171,26 @@ def resolve_run_budget(trigger_type: str) -> dict[str, Any]:
     budget_key = mapping.get(trigger_type, "default")
     return dict(RUN_BUDGETS.get(budget_key, RUN_BUDGETS["default"]))
 
+
+
+_WAKE_GOAL_REF = re.compile(r"^wake_goal_(?P<goal>goal_[0-9a-f]+)_(?P<bucket>\d{8,12})$")
+
+
+def goal_id_from_trigger_ref(trigger_ref: Any) -> Optional[str]:
+    """The goal a run was woken for, from the run's trigger_ref.
+
+    2026-09-25: the dispatcher creates the run with ``trigger_ref=wake_job_id``
+    (``wake_goal_<goal_id>_<hour bucket>``) while this loader accepted only a
+    bare ``goal_...``. So no run ever bound its goal: 11,950 wakes on
+    goal_695a5dbe2401 and zero goal context/touch from a run. Accept both.
+    """
+    ref = str(trigger_ref or "")
+    if ref.startswith("goal_"):
+        return ref
+    m = _WAKE_GOAL_REF.match(ref)
+    if m:
+        return m.group("goal")
+    return None
 
 class CIORunWorker:
     """Executes a single CIO advisory cycle for a specific run_id.
@@ -521,13 +542,7 @@ class CIORunWorker:
             from scripts.lib.cio_goals import CIOGoalStore
             store = CIOGoalStore()
             trigger_ref = run.get("trigger_ref") or ""
-            goal_id = None
-            if str(trigger_ref).startswith("goal_"):
-                goal_id = trigger_ref
-            # Also accept wake_goal_* refs
-            if not goal_id and "goal_" in str(trigger_ref):
-                # wake payload trigger_ref is goal_id for goal wakes
-                goal_id = trigger_ref if str(trigger_ref).startswith("goal_") else None
+            goal_id = goal_id_from_trigger_ref(trigger_ref)
             if goal_id:
                 g = store.get_goal(goal_id)
                 if g:

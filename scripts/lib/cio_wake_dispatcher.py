@@ -153,8 +153,19 @@ class CIOWakeDispatcher:
         )
         if recovered:
             log.info("Recovered %d expired wake leases: %s", len(recovered), recovered)
+        dead_lettered = list(getattr(self.wake_store, "last_dead_lettered", None) or [])
+        if dead_lettered:
+            log.warning("Dead-lettered %d wakes: %s", len(dead_lettered), dead_lettered)
 
-        wakes = self.wake_store.list_wakes(status="PENDING", limit=max_dispatches)
+        # Priority then FIFO (2026-09-25). Over-fetch so a cadence skip or a
+        # RESUME_RUN refusal does not leave a dispatch slot empty while older
+        # eligible wakes wait; still dispatch at most `max_dispatches`.
+        try:
+            wakes = self.wake_store.list_wakes(
+                status="PENDING", limit=max(max_dispatches * 4, 20), order="priority_fifo",
+            )
+        except TypeError:  # store without `order` (older pin)
+            wakes = self.wake_store.list_wakes(status="PENDING", limit=max_dispatches)
 
         dispatched: list[dict[str, str]] = []
         skipped: list[str] = []
@@ -178,6 +189,8 @@ class CIOWakeDispatcher:
             _rec_store = None
 
         for wake in wakes:
+            if len(dispatched) >= max_dispatches:
+                break
             wake_job_id = wake.get("wake_job_id", "")
             # Reset per wake: a stale value here would attach one wake's subject
             # to the next wake's dispatch record.
