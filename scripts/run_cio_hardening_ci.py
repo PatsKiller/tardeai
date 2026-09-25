@@ -806,6 +806,9 @@ GATES = [
             "tests/test_operator_reply_routing_sources_20260913.py",
             # Stage 1+3 parity: shared Hermes join + internal-first finalize (desk + Maria).
             "tests/test_hermes_join_internal_first_20260923.py",
+            # Failed-lane bodies never reach research consumers; the news guard vetoes a
+            # headline whose stated 52-week extreme contradicts ours (PR #255 refresh).
+            "tests/test_research_packet_hygiene_20260925.py",
             # M5 step 5: join keyed by subject_guid + DB opr_ leg; LEGEND in finalize; [n] citations.
             "tests/test_join_format_m5_20260923.py",
             # Stage 4 residual: atomic jobs.json mirror + bak/migrated recovery.

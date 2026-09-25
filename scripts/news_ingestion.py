@@ -392,6 +392,12 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
 
     for sym, strategy_type in symbols:
         company_desc = _company_description(cur, sym)
+        try:
+            from news_symbol_guard import fifty_two_week_reference
+
+            ref_52w = fifty_two_week_reference(cur, sym)
+        except Exception:
+            ref_52w = None
         articles = _fetch_yahoo_rss(sym)
         articles.extend(_fetch_google_news_rss(sym))
         if benzinga_key:
@@ -403,7 +409,7 @@ def _scan_symbols(conn, cur, symbols: list[tuple[str, str]], finnhub_key: str, b
                 from news_symbol_guard import headline_matches_symbol
                 ok_match, _why = headline_matches_symbol(
                     sym, a.get("title", ""), a.get("summary", ""),
-                    company_description=company_desc,
+                    company_description=company_desc, reference_52w=ref_52w,
                 )
                 if not ok_match:
                     skipped_mismatch += 1
