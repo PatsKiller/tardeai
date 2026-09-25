@@ -195,7 +195,10 @@ export default function OptionsHub({ onDrill }: Props) {
 
   const selectTab = (t: typeof TABS[number]) => {
     setTab(t)
-    setSearchParams({ tab: t }, { replace: true })
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', 'Options')
+    next.set('otab', t)
+    setSearchParams(next, { replace: true })
   }
 
   const execActions = new Set(['sell_covered_call', 'sell_put', 'buy_put', 'buy_call', 'sell_credit_spread'])

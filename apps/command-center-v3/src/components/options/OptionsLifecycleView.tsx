@@ -192,12 +192,27 @@ export default function OptionsLifecycleView() {
   const [data, setData] = useState<any>(null)
   const [ticketSpid, setTicketSpid] = useState<number | null>(null)
   const [refreshing, setRefreshing] = useState(false)
+  const [armed, setArmed] = useState<boolean | null>(null)
 
   const load = async () => {
     const r = await fetch('/api/v2/options/lifecycle').then(x => x.json()).catch(() => null)
     setData(r?.data || null)
   }
   useEffect(() => { load() }, [])
+  useEffect(() => {
+    fetch('/api/v2/options/execution/status')
+      .then(r => r.json())
+      .then(j => {
+        const flag = (j?.data || j)?.armed_for_execution
+        setArmed(typeof flag === 'boolean' ? flag : null)
+      })
+      .catch(() => setArmed(null))
+  }, [])
+  const authorityLine = armed === true
+    ? 'Execution status: armed. A ticket still needs preflight and per-order 2FA.'
+    : armed === false
+      ? 'Execution status: not armed. This view does not submit orders.'
+      : 'Execution status: unknown. This view does not submit orders.'
 
   const refresh = async () => {
     setRefreshing(true)
@@ -253,8 +268,7 @@ export default function OptionsLifecycleView() {
 
       {positions.length === 0 && (
         <div style={{ fontSize: DASH.data, color: BB.text3, border: `1px dashed ${BB.borderHair}`, borderRadius: 2, padding: 14 }}>
-          No open option strategies. The desk is armed: broker sync, policy engine, alerts, and hash-bound
-          2FA tickets are live — the first Schwab position appears here with a full lifecycle card.
+          No open option strategies. {authorityLine}
         </div>
       )}
 
@@ -296,8 +310,7 @@ export default function OptionsLifecycleView() {
       </div>
 
       <div style={{ fontSize: DASH.chip, color: BB.text3 }}>
-        advisory desk · tickets are hash-bound and 2FA-armed · Schwab options pilot DISARMED (manual tickets) ·
-        positions close only on broker or operator-recorded evidence · policy v{data?.policy_version || '—'}
+        {authorityLine} Positions close only on broker or operator-recorded evidence · policy v{data?.policy_version || '—'}
       </div>
 
       {ticketSpid != null && <TicketModal spid={ticketSpid} onClose={() => { setTicketSpid(null); load() }} />}

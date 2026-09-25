@@ -135,6 +135,54 @@ def test_a_cheap_spread_does_not_invent_a_stock_side():
     assert cmp["comparison"]["preferred_structure"] == "review_required"
 
 
+def test_desk_pin_is_not_this_proposals_thesis():
+    row = _cc()
+    cmp = build_recommendation_comparison(row, generated_at="2026-09-25T21:00:00Z")
+    assert cmp["thesis"]["thesis_version"] is None
+    assert cmp["comparison"]["preferred_structure"] == "review_required"
+    assert cmp["provenance"]["policy_versions"] == ["policy_version_unpinned"]
+    assert "1.2.7" not in str(cmp["provenance"]["policy_versions"])
+
+
+def test_bare_cio_string_is_not_a_review():
+    row = _cc(cio_disposition="reviewed")
+    cmp = build_recommendation_comparison(row, thesis=_THESIS)
+    assert cmp["oversight"]["review_status"] == "unreviewed"
+    linked = build_recommendation_comparison(
+        _cc(cio_disposition="reviewed", cio_review_id="rev-1"), thesis=_THESIS,
+    )
+    assert linked["oversight"]["review_status"] == "reviewed"
+    assert linked["oversight"]["cio_review_id"] == "rev-1"
+
+
+def test_credit_reward_over_risk_not_loss_over_capital():
+    row = {
+        "symbol": "AMZN",
+        "strategy": "credit_spread",
+        "data_source": "schwab_chain",
+        "underlying_price": 249.38,
+        "max_profit": 73,
+        "max_loss": 1177,
+        "pop_pct": 83.1,
+        "dte": 21,
+        "enterprise": {"live_eligible": True, "blocks": []},
+    }
+    cmp = build_recommendation_comparison(row, thesis=_THESIS)
+    assert cmp["options_play"]["probability_of_success"] == 83.1
+    assert cmp["options_play"]["probability_basis"] == "proposal.pop_pct"
+    assert cmp["options_play"]["expected_return"] is None
+    assert cmp["options_play"]["max_profit"] == 73
+    assert cmp["comparison"]["reward_to_risk"] == round(73 / 1177, 4)
+    assert cmp["comparison"]["risk_reward"] == cmp["comparison"]["reward_to_risk"]
+    assert cmp["comparison"]["risk_to_capital"] != cmp["comparison"]["reward_to_risk"]
+    assert cmp["comparison"]["preferred_structure"] == "neither"
+    assert cmp["comparison"]["opportunity_cost"] is None
+    text = cmp["comparison"]["capital_efficiency"].lower()
+    assert "sell" not in text
+    assert "73" in cmp["comparison"]["capital_efficiency"]
+    assert "1,177" in cmp["comparison"]["capital_efficiency"] or "1177" in cmp["comparison"]["capital_efficiency"]
+
+
 def test_matrix_covers_generated_families_and_refuses_leaps():
     for sid in ("covered_call", "cash_secured_put", "protective_put", "long_call", "debit_spread", "credit_spread"):
         assert known_family(sid)

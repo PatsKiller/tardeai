@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `4510d7b8260935726daa936b15b7bd51f65eda03843b67c5076a985048fc0de1`
+**Tree fingerprint:** `297d153e6efb9ac906f1c48dd1b90c6647fdd6e1465a0f6c0b863c1859fdc2bd`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -682,7 +682,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/OPTIONS_DESK_ARCHITECTURE_MAP_2026-09-25.md` | Options Desk Architecture Map — 2026-09-25 | review_required | OK | `8e58d31110ac` |
 | `docs/audits/OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md` | Options Desk Executive Audit — 2026-09-25 | review_required | OK | `d8f4de5076a7` |
 | `docs/audits/OPTIONS_DESK_GOVERNANCE_MEMORY_AUDIT_2026-09-25.md` | Options Desk Governance and Persistent Intelligence Audit — 2026-09-25 | review_required | OK | `3f07009d473e` |
-| `docs/audits/OPTIONS_DESK_RECOMMENDATION_SPEC_2026-09-25.md` | Options Desk Recommendation Enhancement Specification — 2026-09-25 | review_required | OK | `39bb69b389bd` |
+| `docs/audits/OPTIONS_DESK_RECOMMENDATION_SPEC_2026-09-25.md` | Options Desk Recommendation Enhancement Specification — 2026-09-25 | review_required | OK | `218a52091462` |
 | `docs/audits/P101_RISK_PRODUCER_2026-08-28.md` | P10.1 — `risk_management.json` has a producer. It writes to the wrong tree. | review_required | OK | `ab3ccb5ebae0` |
 | `docs/audits/P85_FRESHNESS_FLIP_HELD_2026-08-28.md` | P8.5 — the freshness flip: **not applied** | review_required | OK | `ae8d52380901` |
 | `docs/audits/P91_WHERE_THE_MODEL_CALL_GOES_2026-08-28.md` | P9.1 — where does the model call go? | review_required | OK | `fe5e6124f0c7` |

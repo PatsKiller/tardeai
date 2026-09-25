@@ -1,6 +1,6 @@
 # Options Desk Recommendation Enhancement Specification — 2026-09-25
 
-**Status:** implemented in `scripts/lib/recommendation_comparison.py` and attached on `GET /api/v2/options/proposals`. Advisory only. Not a CIO disposition and not an order.
+**Status:** served comparison corrected on branch `wt/options-decision-truth-20260925`. `risk_reward` is max profit ÷ max loss (`reward_to_risk`). Loss ÷ capital is `risk_to_capital`. A desk-wide thesis pin is not this proposal's review. Policy 1.2.7 is not stamped. A CIO status requires `cio_review_id`. Advisory only. Not an order.
 **Authority:** advisory-only; no sizing, order, stop, risk-limit, or 2FA authority
 
 ## Canonical recommendation comparison

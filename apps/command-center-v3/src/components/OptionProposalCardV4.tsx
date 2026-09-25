@@ -817,18 +817,24 @@ export default function OptionProposalCardV4({
         const comparison = cmp.comparison || {}
         const oversight = cmp.oversight || {}
         const prov = cmp.provenance || {}
-        const pin = cmp.thesis?.thesis_version || 'unavailable'
-        const money = (n: number | null | undefined) => (n == null ? 'unavailable' : `$${Number(n).toLocaleString()}`)
+        const pin = cmp.thesis?.thesis_version || 'no thesis pin on this proposal'
+        const refuse = comparison.preferred_structure === 'neither'
+        const pop = opt.probability_of_success == null ? null : `${opt.probability_of_success}%`
+        const rr = comparison.reward_to_risk
+        const verdict = refuse && comparison.capital_efficiency
+          ? comparison.capital_efficiency
+          : `Preferred structure: ${String(comparison.preferred_structure || 'review required').replace(/_/g, ' ')}`
+        const fresh = prov.freshness === 'live_chain' ? 'Schwab chain' : (prov.freshness || 'quote not labeled')
         return (
           <div
             title={oversight.cio_commentary || ''}
-            style={{ margin: '8px 12px 0', padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(148,163,184,.45)', fontSize: 11, lineHeight: 1.45, color: 'var(--text2)' }}
+            style={{ margin: '8px 12px 0', padding: '8px 10px', borderRadius: 8, border: `1px solid ${refuse ? BB.red : BB.border}`, fontSize: 12, lineHeight: 1.45, color: BB.text2 }}
           >
-            <div><b style={{ color: 'var(--text0)' }}>Stock play.</b> {stock.action || 'unavailable'} · capital {money(stock.capital_required)} · {stock.maximum_loss_model || 'unavailable'} · horizon {stock.time_horizon || 'unavailable'}</div>
-            <div style={{ marginTop: 4 }}><b style={{ color: 'var(--text0)' }}>Options play.</b> {opt.structure || 'unavailable'} · capital {money(opt.capital_required)} · max risk {money(opt.maximum_risk)} · expected return {money(opt.expected_return)} · POP {opt.probability_of_success == null ? 'unavailable' : `${opt.probability_of_success}% (${opt.probability_basis})`} · liquidity {opt.liquidity_status || 'unavailable'}</div>
-            <div style={{ marginTop: 4 }}><b style={{ color: 'var(--text0)' }}>Preferred structure.</b> {String(comparison.preferred_structure || 'review_required').replace('_', ' ')}</div>
-            <div style={{ marginTop: 4 }}><b style={{ color: 'var(--text0)' }}>CIO.</b> {oversight.review_status || 'unreviewed'} — {oversight.cio_commentary || 'No disposition on file.'}</div>
-            <div style={{ marginTop: 4, color: 'var(--text3)' }}>Provenance {prov.freshness || 'unavailable'} · thesis {pin}</div>
+            <div style={{ color: BB.text1, fontWeight: 700 }}>{p.symbol} {String(opt.structure || p.strategy || 'option').replace(/_/g, ' ')}</div>
+            <div style={{ marginTop: 4, color: refuse ? BB.red : BB.text1, fontWeight: 700 }}>{verdict}{rr != null ? ` Reward/risk ${rr}.` : ''}{pop ? ` POP ${pop}.` : ''}</div>
+            <div style={{ marginTop: 4 }}>{stock.maximum_loss_model}</div>
+            <div style={{ marginTop: 4, color: BB.text1 }}>CIO {oversight.review_status || 'unreviewed'}. A model score is not a CIO decision.</div>
+            <div style={{ marginTop: 4, color: BB.text3 }}>{fresh} · thesis {pin}</div>
           </div>
         )
       })()}
@@ -858,7 +864,10 @@ export default function OptionProposalCardV4({
             valueStyle={{ ...ns, fontSize: terminalUi ? 12 : 13.5, fontWeight: 800, color: terminalUi ? (isCredit ? BB.green : BB.text0) : cfColor }}
           />
           <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
-            {actionButtons.map((b, i) => {
+            {actionButtons.filter(b => {
+              const preferred = (p as any).recommendation_comparison?.comparison?.preferred_structure
+              return !(preferred === 'neither' && EXEC_ACTIONS.has(b.action))
+            }).map((b, i) => {
               const execLocked = EXEC_ACTIONS.has(b.action) && !armed && !manualOnly
               return (
                 <button
