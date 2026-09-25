@@ -1,17 +1,30 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.2.7
+Policy-Version:      1.3.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-09-24T21:10:00-04:00
+Last-Reviewed:       2026-09-25T12:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          1.2.6
+Supersedes:          1.2.7
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**1.3.0 is PROPOSED — MAJOR, and not in force.** It resolves the conflict between this file's
+blanket broker prohibition (§0 rule 2, §1) and architecture v3.3's staged, operator-authorized
+live Active Trader, in the operator's own direction (recorded 2026-09-25): engineering agents may
+build and simulate broker-adjacent code; only the deterministic execution path may place a live
+order, and only inside a verified 2FA session envelope or a per-order authorization; no LLM ever
+originates an order; approving this direction is not a live-session grant. It also records that
+`AI_WORK_POLICY.md`'s push budget outranks the implementation program's per-stage pushes.
+**Until the operator ratifies it (`APPROVE_AGENTS_POLICY_1_3_0 <pr> <sha>`) and it merges, §0,
+§1, §2B and §17 below govern exactly as written.** The replacement text lives in §22 and
+`docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md`, not in the sections it would change.
+
+<!-- SLOT:TRUTH_REPAIR_METADATA — workstream B records here whether 1.2.7 is ACTIVE (merged 2026-09-24, PR #1227) -->
 
 **1.2.7 is PROPOSED, and `Effective-Date` stays `PENDING` until it merges.** A PATCH release: §13.4
 is corrected to what shipped in PRs #1223, #1225 and #1226 (live 2026-09-24 as `7a9dcec26`) — the
@@ -76,6 +89,12 @@ This block carries no commit SHA and no hash of this file. Both would be self-re
 content hash cannot exist until the content commit exists. They live in the external mirror
 manifest, `docs/ops/AGENTS_DRIVE_MIRROR_MANIFEST.json`, which is written after that commit.
 
+> **Before changing any component:** read [`docs/governance/NEW_AGENT_STARTS_HERE.md`](docs/governance/NEW_AGENT_STARTS_HERE.md) (one-page checklist),
+> find the owning registry in [`docs/architecture/ARCHITECTURE_INDEX.md`](docs/architecture/ARCHITECTURE_INDEX.md) (index only, it owns no roster),
+> and check which rules are mechanically enforced in [`docs/governance/ENGINEERING_STANDARD.md`](docs/governance/ENGINEERING_STANDARD.md).
+> Component verification status and registry drift: [`docs/architecture/AGENT_SERVICE_MAP_2026-09-25.md`](docs/architecture/AGENT_SERVICE_MAP_2026-09-25.md).
+> How agents work together (worktrees, PR evidence, secrets, memory, GUI claims): [`docs/governance/agent-standards/AGENT_OPERATING_STANDARDS_v1.md`](docs/governance/agent-standards/AGENT_OPERATING_STANDARDS_v1.md).
+
 **This file is the single source of truth for how agents work in this repository.** Every tool
 adapter — `CLAUDE.md`, `.cursor/rules/`, `.github/copilot-instructions.md` — points here and
 restates nothing except the block immediately below.
@@ -117,6 +136,9 @@ This section is unnumbered on purpose: it governs the document, not the agent.
   guarantee after the change, not by the diff size.
 - **The class is not the author's preference.** If a change could be read as either, it takes the
   higher class — the same safer-or-more-restrictive rule this file applies everywhere else.
+
+> 1.3.0 (PROPOSED, **not in force**) would change rules 1–2 — see §22. Until it is ratified and
+> merged, the ten rules below are the rules, word for word.
 
 ---
 
@@ -329,7 +351,7 @@ operator-only regardless of profile, and `BehaviorWriteRefused` applies to every
 
 **`EXECUTION_ENGINEERING_AGENT` is defined but not granted.** Defining a role is not activating
 it. It stays blocked until an operator-approved reconciliation between this file and
-architecture v3.3 explicitly authorizes it, with a declared file set and a proof that live
+architecture v3.3 explicitly authorizes it (that reconciliation is proposed as 1.3.0, §22 — not in force), with a declared file set and a proof that live
 credentials and endpoints are unreachable from that scope.
 
 ---
@@ -3578,10 +3600,66 @@ Operator activation phrase (after review):
 
 ---
 
+# 22 · Proposed authority amendment 1.3.0 — NOT IN FORCE
+
+**Status: PROPOSED.** Nothing in this section is a rule until the operator ratifies 1.3.0 and it
+merges. Until then §0, §1, §2B and §17 govern as written. The full text, with the exact
+replacement wording for each section, is `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md`.
+
+**Why.** The 2026-09-25 standards review measured two conflicts:
+- AGENTS.md §0/§1 ("the broker subsystem is out of scope") against architecture v3.3 §1.2–§1.4,
+  which specifies a staged live Active Trader;
+- implementation program v1.1 ("push after every stage") against `AI_WORK_POLICY.md` §3–§4.
+
+A blueprint is not a grant, so agents could only propose. The operator has now given the direction
+to resolve both.
+
+**Authority hierarchy (proposed).** Highest first:
+1. a specific, recorded operator grant, bounded by its scope and expiry;
+2. AGENTS.md (ACTIVE version);
+3. AI_WORK_POLICY.md, which is canonical for push, CI and deployment;
+4. architecture v3.3, which is design and never a grant;
+5. the implementation program, which sets sequence and never authority;
+6. tool adapters, which are pointers only.
+
+A lower rank narrows and never widens a higher one. Same-rank or ambiguous conflicts still take the
+safer reading.
+
+**Five authorities, granted separately:**
+- **A1 coding** and **A2 simulation**: broker-adjacent code, mocks, `SIM_BROKER`, replay.
+- **A3 deployment**: needs an exact-SHA operator grant.
+- **A4 live activation**: operator only.
+- **A5 broker order authority**: held by the deterministic execution path only. It needs a valid
+  `TradingSessionGrant@v1` for momentum scalp, or a per-order / immutable composite-order 2FA
+  authorization otherwise.
+
+**No LLM agent ever holds A4 or A5.**
+
+**Where it's enforced:** at the broker mutation boundary, by the pure verifier
+`scripts/lib/trading_session_grant.py` (contract: `docs/governance/agent-standards/TRADING_SESSION_GRANT_CONTRACT.md`).
+It is built and tested but **not wired** into any broker call site, because §0 rule 2 still forbids
+that until ratification.
+
+**Stage 14 keeps its own start.** The controlled live canary needs a separate operator instruction
+tied to the reviewed SHA, the accounts, the risk envelope (every `OPERATOR_DECISION_REQUIRED` limit
+set by the operator), readiness evidence, and operator presence.
+
+**Push precedence.** AI_WORK_POLICY.md outranks the implementation program:
+- a stage checkpoint is a local commit;
+- a night run is one tranche with one push;
+- Drive sync and hash readback happen once, after that push;
+- email needs an operator-granted mail scope.
+
+Updated in `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_2.md` (v1.1 marked
+superseded).
+
+---
+
 # Version history
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.3.0 | 2026-09-25 | PROPOSED (not in force) | MAJOR | §22 added: operator-directed resolution of the §0/§1 broker prohibition vs architecture v3.3 — authority hierarchy, five distinct authorities (coding, simulation, deployment, live activation, broker order authority), LLMs never hold live activation or order authority, `TradingSessionGrant@v1` verified at the broker mutation boundary (pure verifier + 26 negative tests; not wired until ratified), Stage 14 keeps its separate operator start, and AI_WORK_POLICY.md's push budget outranks the implementation program (v1.2). §0/§1/§2B/§17 text unchanged until ratification; replacement text in `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md`. Adds companion `AGENT_OPERATING_STANDARDS_v1.md`, `REPOSITORY_PROTECTION_ADMIN_ACTIONS.md`, `.github/CODEOWNERS` (advisory until code-owner review is required), `.github/pull_request_template.md`. | **PENDING** — `APPROVE_AGENTS_POLICY_1_3_0 <pr> <sha>`; operator direction recorded 2026-09-25 ("Yes, mine, draft it"); independent review required |
 | 1.2.7 | 2026-09-24 | PROPOSED (ACTIVE on merge) | PATCH | §13.4 corrected to what shipped in PRs #1223/#1225/#1226 (live 2026-09-24 as `7a9dcec26`): `InstrumentRecord@v1` gains the shipped `beliefs[]` block (`InstrumentBelief@v1`, written only by `cio_belief_writer` through `apply_belief`, read by the research gate / L3 question / `default_decide`) and retires the `priors` / `scored_lessons[]` SPECIFIED lines; `last_outcome` documented as the research-gate route; subject-key namespace records `INDUSTRY:`/`THEME:` tags-only by policy (`is_mintable` → `tags_only_by_policy`) and `SECTOR:` mintable-with-no-producer; narrative-subject table gains `OPTION_CONTRACT` (a `security_guid`, `share_class="option"`, no options id prefix; `expiration_guid`/`strike_guid` not minted). Lanes `commitment-outcome-sweep` (18:20) and `instrument-belief-writer` (18:50) installed under an operator cron grant and declared ACTIVE. No rule added, nothing weakened; §0/§2/§17 untouched. | Rides `APPROVE_AGENTS_POLICY_1_2_0` (sections outside §0/§2/§17) |
 | 1.2.6 | 2026-09-20 | PROPOSED (ACTIVE on merge) | PATCH | Research lanes + §13.4 dark list: `hermes_advisory_event_enqueue` → **RETIRED** after Operator-Token `APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE` (PR #1151) and follow-on `lane_registry` row `hermes-advisory-event-enqueue` (EXPECTED_SILENT; manual CLI retained; no archive). No change to §0, §2, §17 or role authority. | PATCH documenting operator-settled RETIRE; rides `APPROVE_AGENTS_POLICY_1_2_0`. |
 | 1.2.6 | 2026-09-20 | PROPOSED (ACTIVE on merge) | MINOR | §6: a dry run must not be able to REACH the mutation — `--dry-run` called `claim_due()` and stranded the row it previewed (PR #1143) — and anything that claims work owes a reclaimer. §12: `should_scheduled_skip` superseded by `lib/llm_deferral`; out-of-window paid work is queued in `llm_deferred_requests` and drained by lane `llm-deferred-drain`; three operator-set caller tiers; `LLM_DEFER_OFFPEAK` arming; measured 21% (965/4,590) blast radius of arming globally (PR #1134), and records that the process-boundary wrapper (25 active crontab lines) still DROPS. §9.3: a refused scheduled call is queued not dropped; `llm-deferred-drain` and `llm-provider-health` declared. No change to §0, §2, §17 or role authority. | **Operator-directed** 2026-09-20 ("update documentation agents.md"). MINOR — adds proof obligations, weakens nothing; rides `APPROVE_AGENTS_POLICY_1_2_0`. |

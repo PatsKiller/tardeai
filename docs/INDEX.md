@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `7792892b4e3a4f59a42ec174f7dcc48934f293545b5246cb1cca000dea5367d2`
+**Tree fingerprint:** `cd0e71361d70db44d03781b504fd2ed9606479540497f86b83bedf5f884e29a3`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2608 |
-| Markdown (excl. this INDEX) | 2182 |
-| **MISSING HEADER** | **74** |
-| Header OK | 2108 |
+| Files under `docs/` (excl. this INDEX) | 2613 |
+| Markdown (excl. this INDEX) | 2187 |
+| **MISSING HEADER** | **76** |
+| Header OK | 2111 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2237 |
+| review_required | 2242 |
 
 ## Markdown tree
 
@@ -1004,6 +1004,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/governance/PHASE119C_TONIGHT_GO_LIVE_BOUNDARY_DECISION.md` | Phase 119C — Tonight Go-Live Boundary Decision | review_required | OK | `5d8fe282fca5` |
 | `docs/governance/PHASE182A_LIVE_READINESS_EVIDENCE_STANDARD.md` | Phase 182A: Live-Readiness Evidence Standard | review_required | OK | `b42ed5069903` |
 | `docs/governance/PHASE182B_LIVE_READINESS_SCORING_MODEL.md` | Phase 182B: Live Readiness Scoring Model | review_required | OK | `a4b194f75fab` |
+| `docs/governance/agent-standards/AGENT_OPERATING_STANDARDS_v1.md` | Agent operating standards v1 (companion to AGENTS.md) | review_required | MISSING HEADER | `7aec880ec5b1` |
+| `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md` | AGENTS.md 1.3.0 — authority amendment (PROPOSED, not in force) | review_required | OK | `4ad5220a7fea` |
+| `docs/governance/agent-standards/REPOSITORY_PROTECTION_ADMIN_ACTIONS.md` | Repository protection — actions only a repository administrator can take | review_required | MISSING HEADER | `29264b9d5df0` |
+| `docs/governance/agent-standards/TRADING_SESSION_GRANT_CONTRACT.md` | TradingSessionGrant@v1 — contract and enforcement point | review_required | OK | `98355d33c64d` |
 | `docs/governance/phase9c_scheduled_maturity_board/00_README.md` | Phase 9C — Scheduled Maturity Control Board | current_phase_keep | OK | `514ad61e8c46` |
 | `docs/governance/phase_gov1_scheduled_facts_a1a/00_README.md` | GOV-1 — Scheduled System Facts and A1A Checks | current_phase_keep | OK | `174c5a2c8411` |
 | `docs/health-inspection-system.md` | Trade AI Health Inspection System | review_required | OK | `b124f6cc38ef` |
@@ -2046,7 +2050,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/prompts/ACTIVE_TRADER_ARCHITECT_LITMUS_REVIEW_PROMPT_v1_0.md` | ACTIVE TRADER ARCHITECT LITMUS REVIEW PROMPT v1.0 | review_required | OK | `0807d32556a8` |
 | `docs/prompts/CLAUDE_ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Claude Code Prompt — Active Trader Live Motion UI v1 | review_required | OK | `22ed014b0818` |
 | `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_0.md` | CODEX IMPLEMENTATION PROGRAM v1.0 | review_required | OK | `65d09ab1fdb0` |
-| `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md` | CODEX IMPLEMENTATION PROGRAM v1.1 | review_required | OK | `ceb4364505d5` |
+| `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md` | CODEX IMPLEMENTATION PROGRAM v1.1 | review_required | OK | `af5afc17b32a` |
+| `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_2.md` | CODEX IMPLEMENTATION PROGRAM v1.2 | review_required | OK | `3d648e88c693` |
 | `docs/proposal_quality/phase_promote1_pre_promotion_readiness_gate/00_README.md` | PROMOTE-1 — Pre-Promotion Readiness Gate | current_phase_keep | OK | `4b2142d8b3cc` |
 | `docs/proposal_sandbox/PHASE115B_PROPOSAL_DRAFT_SCORE_RESULTS.md` | Phase 115B — Proposal Draft Score Results | review_required | OK | `039190d4f687` |
 | `docs/remediation-plan.md` | Remediation plan — 5-stage hardening, governance and bitemporal cutover | review_required | OK | `24b9c65c695c` |

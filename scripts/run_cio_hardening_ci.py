@@ -1615,6 +1615,10 @@ GATES = [
             "tests/test_sop_toolchain.py",
             "tests/test_sop_attestation_base.py",
             "tests/test_agents_drive_mirror_policy.py",
+            # AGENTS.md 1.3.0 (PROPOSED): the draft must not act before ratification, and
+            # the broker-boundary verifier must refuse every out-of-envelope mutation.
+            "tests/test_agents_policy_1_3_0_amendment.py",
+            "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
     ),

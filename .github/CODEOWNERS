@@ -1,0 +1,30 @@
+# CODEOWNERS — PROPOSED with AGENTS.md 1.3.0.
+# Advisory until an administrator enables "require code-owner reviews" on main
+# (docs/governance/agent-standards/REPOSITORY_PROTECTION_ADMIN_ACTIONS.md). A file
+# listed here is a sensitive path: its reviewer must not be the PR's author.
+
+# Authority and policy
+/AGENTS.md                                   @PatsKiller
+/AI_WORK_POLICY.md                           @PatsKiller
+/CLAUDE.md                                   @PatsKiller
+/.cursor/                                    @PatsKiller
+/.github/                                    @PatsKiller
+/docs/governance/                            @PatsKiller
+/bin/guard                                   @PatsKiller
+/scripts/lib/guard_remote_approval.py        @PatsKiller
+/scripts/check_no_secrets.py                 @PatsKiller
+
+# Broker boundary and session authority
+/scripts/brokers/                            @PatsKiller
+/scripts/schwab_transport.py                 @PatsKiller
+/scripts/moomoo/                             @PatsKiller
+/scripts/active_trader/                      @PatsKiller
+/scripts/lib/trading_session_grant.py        @PatsKiller
+/scripts/validate_schwab_write_policy.py     @PatsKiller
+
+# Behaviour rail, source authority and memory
+/scripts/lib/cio_instrument_record.py        @PatsKiller
+/config/data_source_authority.json           @PatsKiller
+/scripts/lib/cio_memory_integration.py       @PatsKiller
+/sql/                                        @PatsKiller
+/migrations/                                 @PatsKiller
