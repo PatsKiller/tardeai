@@ -817,18 +817,30 @@ export default function OptionProposalCardV4({
         const comparison = cmp.comparison || {}
         const oversight = cmp.oversight || {}
         const prov = cmp.provenance || {}
-        const pin = cmp.thesis?.thesis_version || 'unavailable'
-        const money = (n: number | null | undefined) => (n == null ? 'unavailable' : `$${Number(n).toLocaleString()}`)
+        const pin = cmp.thesis?.thesis_version || 'no thesis pin'
+        const strikes = p.short_strike != null && p.long_strike != null
+          ? `$${fmtNum(p.short_strike, 2)} / $${fmtNum(p.long_strike, 2)}`
+          : (p.strike != null ? `$${fmtNum(p.strike, 2)}` : '')
+        const spot = p.underlying_price != null ? `spot $${fmtNum(p.underlying_price, 2)}` : ''
+        const acct = (p.account || '').replace(/_/g, ' ')
+        const when = p.expiration ? fmtExpiry(p.expiration) : (stock.time_horizon || '')
+        const structure = String(opt.structure || p.strategy || 'option').replace(/_/g, ' ')
+        const refuse = comparison.preferred_structure === 'neither'
+        const verdict = refuse && comparison.capital_efficiency
+          ? `Do not sell. ${comparison.capital_efficiency}`
+          : (comparison.capital_efficiency || `Preferred structure: ${String(comparison.preferred_structure || 'review required').replace(/_/g, ' ')}`)
+        const fresh = prov.freshness === 'live_chain' ? 'Schwab chain' : (prov.freshness || 'quote missing')
+        const ensembleRunning = /validat|pending|running/i.test(String((p as any).ensemble_status || (p as any).ensemble_state || ''))
         return (
           <div
             title={oversight.cio_commentary || ''}
-            style={{ margin: '8px 12px 0', padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(148,163,184,.45)', fontSize: 11, lineHeight: 1.45, color: 'var(--text2)' }}
+            style={{ margin: '8px 12px 0', padding: '8px 10px', borderRadius: 8, border: `1px solid ${refuse ? 'rgba(239,68,68,.45)' : 'rgba(148,163,184,.45)'}`, fontSize: 12, lineHeight: 1.45, color: 'var(--text1)' }}
           >
-            <div><b style={{ color: 'var(--text0)' }}>Stock play.</b> {stock.action || 'unavailable'} · capital {money(stock.capital_required)} · {stock.maximum_loss_model || 'unavailable'} · horizon {stock.time_horizon || 'unavailable'}</div>
-            <div style={{ marginTop: 4 }}><b style={{ color: 'var(--text0)' }}>Options play.</b> {opt.structure || 'unavailable'} · capital {money(opt.capital_required)} · max risk {money(opt.maximum_risk)} · expected return {money(opt.expected_return)} · POP {opt.probability_of_success == null ? 'unavailable' : `${opt.probability_of_success}% (${opt.probability_basis})`} · liquidity {opt.liquidity_status || 'unavailable'}</div>
-            <div style={{ marginTop: 4 }}><b style={{ color: 'var(--text0)' }}>Preferred structure.</b> {String(comparison.preferred_structure || 'review_required').replace('_', ' ')}</div>
-            <div style={{ marginTop: 4 }}><b style={{ color: 'var(--text0)' }}>CIO.</b> {oversight.review_status || 'unreviewed'} — {oversight.cio_commentary || 'No disposition on file.'}</div>
-            <div style={{ marginTop: 4, color: 'var(--text3)' }}>Provenance {prov.freshness || 'unavailable'} · thesis {pin}</div>
+            <div><b style={{ color: 'var(--text0)' }}>{p.symbol} {structure}</b>{acct ? ` · ${acct}` : ''}{when ? ` · ${when}` : ''}{strikes ? ` · ${strikes}` : ''}{spot ? ` · ${spot}` : ''}</div>
+            <div style={{ marginTop: 4, fontWeight: 700, color: refuse ? '#f87171' : 'var(--text0)' }}>{verdict}</div>
+            <div style={{ marginTop: 4 }}>{stock.maximum_loss_model || 'No share comparison on this row.'}</div>
+            <div style={{ marginTop: 4 }}><b style={{ color: 'var(--text0)' }}>CIO.</b> {oversight.review_status || 'unreviewed'}. {ensembleRunning ? 'Aegis is still running. That is not a CIO decision.' : 'A model score is not a CIO decision.'}</div>
+            <div style={{ marginTop: 4, color: 'var(--text3)' }}>{fresh} · thesis {pin}</div>
           </div>
         )
       })()}
@@ -858,7 +870,14 @@ export default function OptionProposalCardV4({
             valueStyle={{ ...ns, fontSize: terminalUi ? 12 : 13.5, fontWeight: 800, color: terminalUi ? (isCredit ? BB.green : BB.text0) : cfColor }}
           />
           <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
-            {actionButtons.map((b, i) => {
+            {actionButtons.filter(b => {
+              const cmp = (p as any).recommendation_comparison
+              const preferred = cmp?.comparison?.preferred_structure
+              const rr = cmp?.comparison?.risk_reward
+              const credit = String(p.strategy || '').includes('credit')
+              const refuse = preferred === 'neither' || (credit && typeof rr === 'number' && rr < 0.25)
+              return !(refuse && EXEC_ACTIONS.has(b.action))
+            }).map((b, i) => {
               const execLocked = EXEC_ACTIONS.has(b.action) && !armed && !manualOnly
               return (
                 <button

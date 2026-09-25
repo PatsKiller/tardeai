@@ -81,14 +81,19 @@ def _package_max_loss(proposal: dict[str, Any]) -> float | None:
     return None
 
 
+CREDIT_RR_FLOOR = 0.25
+
+
 def _pop(proposal: dict[str, Any]) -> tuple[float | None, str | None]:
     basis = proposal.get("pop_basis") or proposal.get("probability_basis")
     raw = proposal.get("pop_pct")
     if raw is None:
         raw = proposal.get("probability_of_profit")
     n = _f(raw)
-    if n is None or not basis:
+    if n is None:
         return None, None
+    if not basis:
+        basis = "proposal.pop_pct" if proposal.get("pop_pct") is not None else "proposal.probability_of_profit"
     return n, str(basis)
 
 
@@ -141,7 +146,9 @@ def build_recommendation_comparison(
             stock_model = "Shares held to the stop. Premium is income, not the risk."
             stock_action = "hold" if strategy == "covered_call" else "buy"
         else:
-            stock_model = "Price is present and the stop is missing, so share risk is unavailable."
+            stock_model = "No stop on this row, so shares are not compared."
+    elif stop is None:
+        stock_model = "No stop on this row, so shares are not compared."
     if str(thesis.get("verdict") or "").lower() == "avoid":
         stock_action = "avoid"
 
@@ -201,6 +208,18 @@ def build_recommendation_comparison(
             preferred = "review_required"
     if "NEED_100_SHARES" in risk_notes:
         preferred = "review_required"
+    if "credit" in strategy.lower():
+        profit = _f(proposal.get("max_profit"))
+        loss = _package_max_loss(proposal)
+        if profit is not None and loss:
+            ratio = profit / loss
+            risk_reward = round(ratio, 4)
+            if ratio < CREDIT_RR_FLOOR:
+                preferred = "neither"
+                capital_efficiency = (
+                    f"Collect {profit:g}. Can lose {loss:g}. "
+                    f"Ratio {ratio:.2f}. Floor {CREDIT_RR_FLOOR:.2f}."
+                )
 
     out = {
         "underlying": {
