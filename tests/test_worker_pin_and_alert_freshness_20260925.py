@@ -14,11 +14,22 @@ for _p in (str(ROOT), str(ROOT / "scripts")):
 import check_worker_pins as W  # noqa: E402
 
 SERVED = "1c60ecb4264ba4dcc6a38106e76fae0d96a26787"
+_REAL_SERVED_SHA = W.served_sha  # the real reader; _rows() points it at a fixture CURRENT
 DEV = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
 
 
-def _rows(dev_sha):
+def _rows(dev_sha, monkeypatch, tmp_path):
     W._DEV_SHA_CACHE[str(DEV)] = dev_sha
+    # Pin the served release to a fixture instead of the host's live CURRENT symlink: a
+    # "cd …/portfolio-server/CURRENT" cron row resolves through served_sha(), and the real
+    # CURRENT moves on every promote (it broke this test when 35146acba went live).
+    fixture_release = tmp_path / f"{SERVED[:9]}-main-exact-fixture"
+    fixture_release.mkdir(exist_ok=True)
+    (fixture_release / "SOURCE_COMMIT").write_text(SERVED + "\n", encoding="utf-8")
+    fixture_current = tmp_path / "CURRENT"
+    if not fixture_current.is_symlink():
+        fixture_current.symlink_to(fixture_release)
+    monkeypatch.setattr(W, "served_sha", lambda current=None: _REAL_SERVED_SHA(fixture_current))
     cron = (
         "0 10-15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash linux_launchers/reconcile_alpaca_paper_options.sh\n"
         "*/5 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && .venv/bin/python scripts/cio_wake_dispatch_entrypoint.py\n"
@@ -33,8 +44,8 @@ def _rows(dev_sha):
     return units + W.cron_rows(cron)
 
 
-def test_worker_sha_mismatch_detected_for_stale_unit_and_diverged_dev_tree():
-    rep = W.evaluate(served=SERVED, rows=_rows("8a95e30c1000000000000000000000000000000"))
+def test_worker_sha_mismatch_detected_for_stale_unit_and_diverged_dev_tree(monkeypatch, tmp_path):
+    rep = W.evaluate(served=SERVED, rows=_rows("8a95e30c1000000000000000000000000000000", monkeypatch, tmp_path))
     assert rep["ok"] is False
     names = {m["name"]: m["verdict"] for m in rep["mismatches"]}
     assert names["tradeai-cio-telegram.service"] == "MISMATCH"           # bot still on the previous release
@@ -42,13 +53,13 @@ def test_worker_sha_mismatch_detected_for_stale_unit_and_diverged_dev_tree():
     assert "cio_wake_dispatch_entrypoint" not in names                    # CURRENT cron is fine
 
 
-def test_dev_tree_worker_same_sha_passes_with_a_hazard_note():
-    rep = W.evaluate(served=SERVED, rows=_rows(SERVED))
+def test_dev_tree_worker_same_sha_passes_with_a_hazard_note(monkeypatch, tmp_path):
+    rep = W.evaluate(served=SERVED, rows=_rows(SERVED, monkeypatch, tmp_path))
     assert rep["ok"] is False                                              # the bot mismatch still fails
     rows = {r["name"]: r["verdict"] for r in rep["rows"]}
     assert rows["reconcile_alpaca_paper_options"] == "DEV_TREE_SAME_SHA"
     assert "reconcile_alpaca_paper_options" in rep["dev_tree_workers"]
-    rep2 = W.evaluate(served=SERVED, rows=[r for r in _rows(SERVED) if r["name"] != "tradeai-cio-telegram.service"])
+    rep2 = W.evaluate(served=SERVED, rows=[r for r in _rows(SERVED, monkeypatch, tmp_path) if r["name"] != "tradeai-cio-telegram.service"])
     assert rep2["ok"] is True and "diverge" in rep2["note"]
 
 
