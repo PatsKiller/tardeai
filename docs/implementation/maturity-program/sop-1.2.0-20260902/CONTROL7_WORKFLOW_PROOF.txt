@@ -2,8 +2,8 @@
 schema=SopControl7WorkflowProof@v1
 control_surface_digest=03fb2295ae6d5bebf978437d77520036f9b5966a19500bac8d285d37e227e31d
 workflow_path=.github/workflows/agent-governance.yml
-workflow_blob_sha256=c03a4ef8c6f74a40fcb801c5e3e2ec5a2efd476972139677f1029894fb7d72f2
-workflow_lines=125
+workflow_blob_sha256=9eb8ee03cebf76d28fdd10e2b48017b55e5f9fedd7b3527ce3f94a0025847794
+workflow_lines=130
 path_filters=absent
 triggers=pull_request,push[main],workflow_dispatch
 ruff_install=pip install "ruff==0.16.2"
@@ -19,6 +19,7 @@ steps:
   - Changed-file quality gate (Ruff required)
   - Evidence integrity (control-surface digest)
   - Policy hooks (existing)
+  - AGENTS.md policy state (branch vs main)
   - Registry validate via quality command
   - new-worktree SOP constraints
   - Emit runtime exact-head attestation
@@ -115,6 +116,11 @@ jobs:
           python scripts/validate_sop_evidence_integrity.py
       - name: Policy hooks (existing)
         run: pytest tests/test_ai_work_policy_hooks.py tests/test_agents_policy_v1.py -q
+      # A PR may carry PROPOSED; on main a version that rides a prior
+      # ratification must read ACTIVE with its merge date, and one version has
+      # one history row (governance truth repair 2026-09-25).
+      - name: AGENTS.md policy state (branch vs main)
+        run: python scripts/check_agents_policy_state.py
       - name: Registry validate via quality command
         run: python scripts/agent_changed_file_quality.py --paths config/agent_clients.yaml config/agent_clients.schema.json scripts/agent_changed_file_quality.py
       - name: new-worktree SOP constraints
