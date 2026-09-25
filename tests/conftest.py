@@ -55,6 +55,10 @@ os.environ.setdefault("TRADEAI_HERMES_JOIN_RESOLVE_GUID", "0")
 # is PRODUCTION state, so the lookup is off by default here; a test that wants
 # it injects registry=<document> (tests/test_checkpoint_subject_binding_20260925.py).
 os.environ.setdefault("TRADEAI_CHECKPOINT_REGISTRY_LOOKUP", "0")
+# 2026-09-25: the options memory envelope and the belief writer read settled
+# options_paper_outcomes from the DB when no rows are injected. Off under pytest;
+# a test that wants rows injects rows=/outcomes=/loader= or options_outcomes=.
+os.environ.setdefault("TRADEAI_OPTIONS_OUTCOME_LOADER", "0")
 
 # CI does not install python-dotenv, so any alarm module importing it raised
 # ModuleNotFoundError during collection and the C1 firing gate did not run at all.

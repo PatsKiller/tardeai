@@ -97,6 +97,16 @@ def set_tenant(conn, tenant_id: str) -> None:
         cur.execute("SELECT set_config('app.tenant_id', %s, false)", (tenant_id,))
 
 
+# identity_kind is free text in the DDL (no CHECK). The values in use, so a
+# reader knows what to expect (2026-09-25):
+#   security        — a security_guid-keyed subject (default)
+#   cognitive       — a subject with no security_guid (cio_memory_integration)
+#   option_contract — an option contract; its guid IS a security_guid with
+#                     share_class="option" (options_identity.contract_guid), so
+#                     pass it as security_guid and name the kind for readers.
+IDENTITY_KINDS = ("security", "cognitive", "option_contract")
+
+
 def insert_identity(conn, *, tenant_id: str, subject_guid: str, predicate: str, kind: str = "security", security_guid: str | None = None) -> str:
     ident = str(uuid.uuid5(uuid.NAMESPACE_URL, f"m2:{tenant_id}:{subject_guid}:{predicate}"))
     key = f"{subject_guid}|{predicate}"
