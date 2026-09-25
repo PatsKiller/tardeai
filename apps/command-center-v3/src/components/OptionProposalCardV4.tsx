@@ -809,6 +809,30 @@ export default function OptionProposalCardV4({
         )}
       </div>
 
+      {(() => {
+        const cmp = (p as any).recommendation_comparison
+        if (!cmp) return null
+        const stock = cmp.stock_play || {}
+        const opt = cmp.options_play || {}
+        const comparison = cmp.comparison || {}
+        const oversight = cmp.oversight || {}
+        const prov = cmp.provenance || {}
+        const pin = cmp.thesis?.thesis_version || 'unavailable'
+        const money = (n: number | null | undefined) => (n == null ? 'unavailable' : `$${Number(n).toLocaleString()}`)
+        return (
+          <div
+            title={oversight.cio_commentary || ''}
+            style={{ margin: '8px 12px 0', padding: '8px 10px', borderRadius: 8, border: '1px solid rgba(148,163,184,.45)', fontSize: 11, lineHeight: 1.45, color: 'var(--text2)' }}
+          >
+            <div><b style={{ color: 'var(--text0)' }}>Stock play.</b> {stock.action || 'unavailable'} · capital {money(stock.capital_required)} · {stock.maximum_loss_model || 'unavailable'} · horizon {stock.time_horizon || 'unavailable'}</div>
+            <div style={{ marginTop: 4 }}><b style={{ color: 'var(--text0)' }}>Options play.</b> {opt.structure || 'unavailable'} · capital {money(opt.capital_required)} · max risk {money(opt.maximum_risk)} · expected return {money(opt.expected_return)} · POP {opt.probability_of_success == null ? 'unavailable' : `${opt.probability_of_success}% (${opt.probability_basis})`} · liquidity {opt.liquidity_status || 'unavailable'}</div>
+            <div style={{ marginTop: 4 }}><b style={{ color: 'var(--text0)' }}>Preferred structure.</b> {String(comparison.preferred_structure || 'review_required').replace('_', ' ')}</div>
+            <div style={{ marginTop: 4 }}><b style={{ color: 'var(--text0)' }}>CIO.</b> {oversight.review_status || 'unreviewed'} — {oversight.cio_commentary || 'No disposition on file.'}</div>
+            <div style={{ marginTop: 4, color: 'var(--text3)' }}>Provenance {prov.freshness || 'unavailable'} · thesis {pin}</div>
+          </div>
+        )
+      })()}
+
       {/* ② Hero — strategy + reasoning + headline economics + actions */}
       <div
         onClick={e => e.stopPropagation()}
