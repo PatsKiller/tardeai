@@ -57,6 +57,19 @@ def link_proposal_outcomes(conn, dry_run=False):
     """)
     proposals = cur.fetchall()
 
+    # Slice A — optional GUID columns (additive migration). Fail soft if absent.
+    has_guid_cols = False
+    try:
+        cur.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'proposal_outcome_chain'
+              AND column_name = 'option_strategy_guid'
+            LIMIT 1
+        """)
+        has_guid_cols = cur.fetchone() is not None
+    except Exception:
+        has_guid_cols = False
+
     linked = 0
     for p in proposals:
         # Try to find a matching paper trade
@@ -87,22 +100,67 @@ def link_proposal_outcomes(conn, dry_run=False):
         elif p["status"] in ("REJECTED", "EXPIRED", "expired"):
             chain_status = "orphaned"
 
+        # Attribution keys only — never invent PnL. Compose from proposal fields
+        # when present (options desk rows); equity scalp proposals leave NULL.
+        opt_guid = None
+        contract_guid = None
+        if has_guid_cols:
+            try:
+                from scripts.lib.options_identity import outcome_attribution_keys
+                keys = outcome_attribution_keys({
+                    "symbol": p.get("symbol"),
+                    "strategy_id": p.get("strategy_id"),
+                    "strategy": p.get("strategy_id"),
+                })
+                # Without strike/expiration we cannot mint contract/strategy GUIDs;
+                # leave NULL rather than inventing. Keys may still carry symbol.
+                opt_guid = keys.get("option_strategy_guid")
+                contract_guid = keys.get("contract_guid")
+            except Exception:
+                opt_guid = None
+                contract_guid = None
+
         if not dry_run:
-            cur.execute("""
-                INSERT INTO proposal_outcome_chain
-                    (proposal_id, symbol, strategy_id, proposing_agent,
-                     proposal_created, proposal_status, paper_trade_id,
-                     trade_status, trade_pnl, trade_r_multiple, chain_status)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (proposal_id) DO UPDATE SET
-                    trade_status = EXCLUDED.trade_status,
-                    trade_pnl = EXCLUDED.trade_pnl,
-                    trade_r_multiple = EXCLUDED.trade_r_multiple,
-                    chain_status = EXCLUDED.chain_status,
-                    updated_at = NOW()
-            """, (p["id"], p["symbol"], p["strategy_id"], p.get("proposed_by"),
-                  p["created_at"], p["status"], trade_id,
-                  trade_status, trade_pnl, trade_r, chain_status))
+            if has_guid_cols:
+                cur.execute("""
+                    INSERT INTO proposal_outcome_chain
+                        (proposal_id, symbol, strategy_id, proposing_agent,
+                         proposal_created, proposal_status, paper_trade_id,
+                         trade_status, trade_pnl, trade_r_multiple, chain_status,
+                         option_strategy_guid, contract_guid)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (proposal_id) DO UPDATE SET
+                        trade_status = EXCLUDED.trade_status,
+                        trade_pnl = EXCLUDED.trade_pnl,
+                        trade_r_multiple = EXCLUDED.trade_r_multiple,
+                        chain_status = EXCLUDED.chain_status,
+                        option_strategy_guid = COALESCE(
+                            EXCLUDED.option_strategy_guid,
+                            proposal_outcome_chain.option_strategy_guid),
+                        contract_guid = COALESCE(
+                            EXCLUDED.contract_guid,
+                            proposal_outcome_chain.contract_guid),
+                        updated_at = NOW()
+                """, (p["id"], p["symbol"], p["strategy_id"], p.get("proposed_by"),
+                      p["created_at"], p["status"], trade_id,
+                      trade_status, trade_pnl, trade_r, chain_status,
+                      opt_guid, contract_guid))
+            else:
+                cur.execute("""
+                    INSERT INTO proposal_outcome_chain
+                        (proposal_id, symbol, strategy_id, proposing_agent,
+                         proposal_created, proposal_status, paper_trade_id,
+                         trade_status, trade_pnl, trade_r_multiple, chain_status)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (proposal_id) DO UPDATE SET
+                        trade_status = EXCLUDED.trade_status,
+                        trade_pnl = EXCLUDED.trade_pnl,
+                        trade_r_multiple = EXCLUDED.trade_r_multiple,
+                        chain_status = EXCLUDED.chain_status,
+                        updated_at = NOW()
+                """, (p["id"], p["symbol"], p["strategy_id"], p.get("proposed_by"),
+                      p["created_at"], p["status"], trade_id,
+                      trade_status, trade_pnl, trade_r, chain_status))
         linked += 1
 
     if not dry_run:

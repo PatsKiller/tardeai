@@ -27,7 +27,7 @@ AUTHORITY: READ_ONLY_ADVISORY. Observational only; no trading, no authority.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
 SCHEMA = "OutcomeResolution@v1"
@@ -36,6 +36,10 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 
 STATUS_SCHEDULED = "SCHEDULED"
+# Legacy event-relative checkpoints carry due_at=null; they are read as due
+# this many days after creation (see due_checkpoints). Mirrors
+# r17_checkpoint_binding.EVENT_RELATIVE_FALLBACK_DAYS for NEW rows.
+LEGACY_EVENT_RELATIVE_DAYS = 30
 STATUS_RESOLVED = "RESOLVED"
 STATUS_PENDING_DATA = "OUTCOME_PENDING_DATA"
 # Structurally not a price comparison — distinct from "waiting for data", which
@@ -105,6 +109,16 @@ def due_checkpoints(
 
     A checkpoint with no `due_at` is not due — it is unscheduled. Treating a
     missing deadline as "now" would resolve the entire backlog on first run.
+
+    2026-09-24 (agentic-memory tranche 1, R5): ``event-relative`` checkpoints
+    were minted with ``due_at: null`` (``due_at_for`` had no offset for that
+    horizon), so ~12,000 rows could never be selected. New rows now carry a
+    real ``due_at`` (``r17_checkpoint_binding.due_at_for`` — the event date, or
+    ``created_at + LEGACY_EVENT_RELATIVE_DAYS`` with ``due_at_basis``). Legacy
+    rows are read through the same projection here: a null ``due_at`` on an
+    ``event-relative`` row is treated as ``created_at + LEGACY_EVENT_RELATIVE_DAYS``,
+    never as "now", and the projected row says so (``due_at_basis``). History is
+    not rewritten; the projection lives on the row returned, not in the store.
     """
     at = now or _now()
     out = []
@@ -112,6 +126,14 @@ def due_checkpoints(
         if str(cp.get("status") or "") != STATUS_SCHEDULED:
             continue
         due = _parse(cp.get("due_at"))
+        if due is None and str(cp.get("horizon") or "") == "event-relative":
+            created = _parse(cp.get("created_at"))
+            if created is not None:
+                projected = created + timedelta(days=LEGACY_EVENT_RELATIVE_DAYS)
+                if projected <= at:
+                    cp = {**cp, "due_at": projected.isoformat(),
+                          "due_at_basis": "legacy_null_projected_created_plus_30d"}
+                    due = projected
         if due and due <= at:
             out.append(cp)
     return sorted(out, key=lambda c: str(c.get("due_at")))

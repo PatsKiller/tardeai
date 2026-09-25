@@ -41,6 +41,9 @@ def main():
                 "disqualification_reason": "MICRO_FLOAT_RVOL: 0.7M float with 23.6x RVOL", "rvol": 23.6, "float_m": 0.7}]
     ok &= check("attach", attach_micro_float_manual_tags(tickers) == 1)
 
+    go_row = {"symbol": "GO1", "decision": "GO", "score": 44, "rvol": 20.0, "float_m": 0.7, "price": 5.0}
+    ok &= check("GO does not qualify for micro_float upgrade", not qualifies_micro_float_manual(go_row))
+
     if not ok:
         sys.exit(1)
     print("All micro_float_manual_review checks passed.")

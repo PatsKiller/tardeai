@@ -199,7 +199,9 @@ def test_gate_not_met_message_and_progress_label():
     assert report["gate_met"] is False
     assert report["message"].startswith("gate not met")
     assert report["progress_label"] == "paper validation 3/30"
-    assert val.validation_status("covered_call", outcomes=[])["ok"] is False
+    # 2026-09-25: every registry options strategy may record a close; only a
+    # non-options strategy is still refused.
+    assert val.validation_status("momentum_scalp", outcomes=[])["ok"] is False
 
 
 # ── (3) registry maturity — advisory blob only ───────────────────────────────
@@ -320,3 +322,26 @@ def test_migration_matches_record_outcome_columns():
                 "entry_debit", "exit_value", "pnl", "pnl_r", "outcome",
                 "exit_reason", "notes", "meta"):
         assert re.search(rf"^\s+{col}\s", sql, re.M), f"migration missing column {col}"
+
+
+
+# ── every registry strategy may record a paper close (2026-09-25) ────────────
+
+def test_supported_strategies_come_from_the_registry_and_equity_stays_refused():
+    from lib.options_pipeline import validation as val
+
+    assert val.SUPPORTED_STRATEGIES[0] == "deep_itm_call"
+    for sid in ("covered_call", "credit_spread", "cash_secured_put", "protective_put",
+                "atm_call", "earnings_put_credit_spread", "long_call"):
+        assert sid in val.SUPPORTED_STRATEGIES, sid
+    assert "momentum_scalp" not in val.SUPPORTED_STRATEGIES
+    ex = FakeExecutor()
+    ok = val.record_outcome("opt_cc_1", outcome="win", strategy_id="covered_call", symbol="SCHD",
+                            pnl=42.0, meta={"occ_symbol": "SCHD261017C00027000"}, executor=ex)
+    assert ok["ok"] is True and ok["strategy_id"] == "covered_call"
+    refused = val.record_outcome("eq_1", outcome="win", strategy_id="momentum_scalp", symbol="AAPL",
+                                 pnl=1.0, executor=FakeExecutor())
+    assert refused["ok"] is False and "unsupported" in refused["error"]
+    status = val.validation_status("credit_spread", executor=FakeExecutor(rows=[]))
+    assert status["ok"] is True and status["strategy_id"] == "credit_spread"
+    assert status["execution"]["live_allowed"] is False  # read-only echo; recording grants nothing

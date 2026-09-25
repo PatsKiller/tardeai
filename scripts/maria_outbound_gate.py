@@ -5,7 +5,7 @@ Called by the OpenClaw gateway plugin ``tradeai-maria-gate`` on every Maria
 ``message_sending`` event. Input::
 
     {"content": "...", "sessionKey": "agent:maria:…", "channel": "telegram",
-     "to": "8797974247", "mode": "observe" | "live"}
+     "to": "<maria chat id>", "mode": "observe" | "live"}
 
 Output::
 

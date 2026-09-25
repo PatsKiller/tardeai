@@ -110,6 +110,11 @@ def test_missing_document_is_readable_with_no_hit(tmp_path):
 
 # ------------------------------------------------------- decide_after_load ---
 
+# 2026-09-24: load_instrument_record_for_wake used to fall back to the
+# cwd-relative store on a TypeError in _store_for_root (R6), so "the record is
+# silent" was true here by accident. The store now resolves to the registered
+# persistent-state path; each call names the tmp root so the record really is
+# absent, rather than reading production.
 def _spy():
     calls = []
 
@@ -126,7 +131,7 @@ def test_decide_surfaces_the_hit(tmp_path):
     ]))
     fn, _ = _spy()
     out = decide_after_load("EXIT:WLDS", plan={"material": True},
-                            decide_fn=fn, hits_path=p)
+                            decide_fn=fn, hits_path=p, root=tmp_path)
     assert out["last_hit_readable"] is True
     assert out["last_hit_at"] == "2026-09-01T17:35:28+00:00", (
         "decide_after_load must consult hits[]; a blind reader reports None here"
@@ -140,7 +145,7 @@ def test_decide_reports_no_hit_for_an_unrelated_subject(tmp_path):
     ]))
     fn, _ = _spy()
     out = decide_after_load("EXIT:WLDS", plan={"material": True},
-                            decide_fn=fn, hits_path=p)
+                            decide_fn=fn, hits_path=p, root=tmp_path)
     assert out["last_hit_readable"] is True
     assert out["last_hit_at"] is None, "no false attribution across subjects"
 
@@ -158,7 +163,7 @@ def test_decide_is_fail_soft_when_the_document_is_broken(tmp_path):
 
 def test_not_material_still_carries_the_consult_fields(tmp_path):
     p = _write(tmp_path, _doc([_hit("2026-09-01T17:00:00+00:00", ["EXIT:WLDS"], ["flash"])]))
-    out = decide_after_load("EXIT:WLDS", plan={"material": False}, hits_path=p)
+    out = decide_after_load("EXIT:WLDS", plan={"material": False}, hits_path=p, root=tmp_path)
     assert out["decision"] == "skip" and out["reason"] == "not_material"
     assert "last_hit_readable" in out, "every return path carries the consult"
 
@@ -171,7 +176,7 @@ def test_duplicate_research_flagged_when_the_record_is_silent(tmp_path):
     p = _write(tmp_path, _doc([_hit("2026-09-01T17:00:00+00:00", ["EXIT:WLDS"], ["flash"])]))
     fn, _ = _spy()
     out = decide_after_load("EXIT:WLDS", plan={"material": True},
-                            decide_fn=fn, hits_path=p)
+                            decide_fn=fn, hits_path=p, root=tmp_path)
     assert out["duplicate_research_suspected"] is True
 
 
@@ -179,7 +184,7 @@ def test_no_duplicate_flag_without_a_hit(tmp_path):
     p = _write(tmp_path, _doc([]))
     fn, _ = _spy()
     out = decide_after_load("EXIT:WLDS", plan={"material": True},
-                            decide_fn=fn, hits_path=p)
+                            decide_fn=fn, hits_path=p, root=tmp_path)
     assert out["duplicate_research_suspected"] is False
 
 
@@ -189,7 +194,7 @@ def test_no_duplicate_flag_when_the_gate_skips(tmp_path):
     def skip_fn(inp, *, now=None):
         return {"decision": "skip", "reason": "cadence_not_due"}
     out = decide_after_load("EXIT:WLDS", plan={"material": True},
-                            decide_fn=skip_fn, hits_path=p)
+                            decide_fn=skip_fn, hits_path=p, root=tmp_path)
     assert out["duplicate_research_suspected"] is False
 
 

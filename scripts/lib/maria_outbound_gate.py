@@ -1,7 +1,7 @@
 """Maria outbound gate — the OpenClaw gateway's ``message_sending`` bridge.
 
 Operator decision 2026-09-23: "hook Maria through the gateway". Maria (OpenClaw,
-chat 8797974247) never called the shared reply chokepoint — SOUL.md prose asked
+Maria's Telegram chat) never called the shared reply chokepoint — SOUL.md prose asked
 her to, and her session logs show zero calls. The 12:26Z S reply told the
 operator "0 recent findings" beside a completed desk result, invented
 "🔍 Iris" / "🎯 Alex" sections with agentToAgent forbidden, and carried no
@@ -45,7 +45,12 @@ from typing import Any, Callable, Optional
 
 from scripts.lib import comms_editor as CE
 from scripts.lib import cio_telegram_stance_gate as SG
-from scripts.lib.hermes_subject_join import claim_contradicts_join, join_subject_hermes
+from scripts.lib.hermes_subject_join import (
+    claim_contradicts_join,
+    house_db_query,
+    hub_promoted_count_finder,
+    join_subject_hermes,
+)
 from scripts.lib.maria_parity_hook import scrub_maria_outbound
 from scripts.lib.reply_provenance import (
     LEGEND,
@@ -162,7 +167,14 @@ def _correct_zero_claims(
         for subj in _resolve(line, resolve):
             sym = subj["symbol"]
             if sym not in joins:
-                joins[sym] = join_subject_hermes(sym, subject_guid=subj.get("guid"), cio_dir=cio_dir)
+                join_db = house_db_query()
+                joins[sym] = join_subject_hermes(
+                    sym,
+                    subject_guid=subj.get("guid"),
+                    cio_dir=cio_dir,
+                    db_query=join_db,
+                    hub_finder=hub_promoted_count_finder(join_db) if join_db else None,
+                )
             join = joins[sym]
             if not claim_contradicts_join(line, join):
                 continue
@@ -181,6 +193,7 @@ def _correct_zero_claims(
                     "replaced": line.strip()[:300],
                     "result_ids": join.result_ids,
                     "research_ids": research[:5],
+                    "citations": join.citations(),
                 }
             )
             lines[i] = fix
@@ -215,6 +228,7 @@ def _apply_stance(
     db_query: Optional[Callable[..., list[dict]]],
     out: GateResult,
     stores: list[str],
+    request_review: bool = True,
 ) -> tuple[str, list[str]]:
     """Gate each subject's window. Returns (text, stamp lines)."""
     width = stance_window()
@@ -246,6 +260,7 @@ def _apply_stance(
             asserted_stance=said,
             db_query=db_query,
             source=STANCE_SOURCE,
+            request_review=request_review,
         )
         row = {"symbol": sym, **verdict.as_dict()}
         if verdict.allow and getattr(verdict, "effective_action", None) == "WATCH":
@@ -309,8 +324,13 @@ def gate(
     db_query: Optional[Callable[..., list[dict]]] = None,
     resolve: Optional[Callable[[str], list[dict]]] = None,
     cio_dir: Optional[Path] = None,
+    request_review: bool = True,
 ) -> GateResult:
-    """Decide what one Maria outbound message becomes."""
+    """Decide what one Maria outbound message becomes.
+
+    ``request_review=False`` (observe mode) keeps the gate side-effect free: a
+    missing-stance hold is computed but no paid CIO review is queued.
+    """
     now = now or datetime.now(timezone.utc)
     raw = content or ""
     out = GateResult(content=raw)
@@ -334,7 +354,9 @@ def gate(
     out.subjects = subjects
     stamps: list[str] = []
     try:
-        text, stamps = _apply_stance(text, subjects, db_query=db_query, out=out, stores=stores)
+        text, stamps = _apply_stance(
+            text, subjects, db_query=db_query, out=out, stores=stores, request_review=request_review
+        )
     except Exception as exc:  # noqa: BLE001
         out.errors.append(f"stance_gate:{type(exc).__name__}")
 
@@ -364,6 +386,8 @@ def gate(
         stores_read=sorted(set(stores)),
         model=model_label(),
         model_role=ROLE_GENERAL_KNOWLEDGE,
+        # A correction names the desk's res_/rr_ ids; cite them where they appear.
+        citations=[c for hc in out.honesty_corrections for c in hc.get("citations") or []],
     )
     final, prov = finalize_operator_reply(body, prov)
     out.provenance = prov.to_dict()
@@ -413,7 +437,14 @@ def handle(
     if mode not in (MODE_OBSERVE, MODE_LIVE):
         mode = MODE_OBSERVE
     result = gate(
-        content, session_key=session_key, channel=channel, to=to, db_query=db_query, resolve=resolve, cio_dir=cio_dir
+        content,
+        session_key=session_key,
+        channel=channel,
+        to=to,
+        db_query=db_query,
+        resolve=resolve,
+        cio_dir=cio_dir,
+        request_review=mode == MODE_LIVE,
     )
     write_receipt(result, mode=mode, session_key=session_key, channel=channel, to=to)
     return {

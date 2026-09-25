@@ -23,6 +23,11 @@ GRAPH_RELATIONSHIPS = ("LINEAR", "LATERAL", "VERTICAL", "MACRO", "CALENDAR")
 ENTITY_KINDS = (
     "ticker", "issuer", "sector", "industry", "subindustry", "theme",
     "catalyst", "calendar",
+    # Added 2026-09-24 (options identity, PR #1224 repair). A listed option
+    # CONTRACT is a security of the underlying's issuer and is minted through
+    # security_identity.security_guid(share_class="option"); this kind names it
+    # in graph edges / envelopes. An option STRATEGY instance reuses "strategy".
+    "option_contract",
     # Added 2026-09-10 for NarrativeSubjectLink@v1. A strategy and a portfolio
     # are things a narrative is ABOUT (strategy_lesson_rollup is keyed on
     # strategy_id with no symbol at all; risk_synthesis_results is

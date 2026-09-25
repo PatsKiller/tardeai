@@ -128,6 +128,26 @@ def route_tests_off_live_shadow() -> dict[str, str]:
     return routed
 
 
+def set_isolated_agent_password(cur, *, is_production: bool) -> bool:
+    """Hand the base SQL the isolated container's throwaway m2_agent password.
+
+    r10_m2_isolated_benchmark.sql no longer carries a credential: it creates
+    m2_agent only on an isolated database and only with the password in the
+    m2.agent_password GUC. The value is the shadow container's own throwaway,
+    taken from SHADOW_AGENT_DSN -- never from the environment, where
+    M2_AGENT_DSN holds the PRODUCTION credential. Production is never given one;
+    there the role is operator-provisioned (scripts/secrets/ensure_m2_agent_dsn.py).
+    Returns True when the GUC was set.
+    """
+    if is_production:
+        return False
+    password = urlsplit(SHADOW_AGENT_DSN).password or ""
+    if not password:
+        return False
+    cur.execute("SELECT set_config('m2.agent_password', %s, false)", (password,))
+    return True
+
+
 def ensure_test_database(timeout_s: int = 2) -> bool:
     """CREATE the test database on the shadow container if it is missing.
 

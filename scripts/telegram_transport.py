@@ -247,6 +247,62 @@ def _comms_editor():
     return ce
 
 
+#: Editor-failure policy (M5 audit 2026-09-23, Module 4d). ``open`` (default)
+#: sends the original when the editor raises -- the behaviour since 2026-09-14.
+#: ``closed_for_investment`` holds BULLISH investment-shaped text (GO / BUY /
+#: ACCUMULATE ...) instead, so an editor crash cannot page an unreviewed buy;
+#: everything else, including protective SELL / EXIT / stop text, still sends.
+#: Operator decision: flip with COMMS_EDITOR_FAIL_MODE or the host file.
+FAIL_MODE_OPEN = "open"
+FAIL_MODE_CLOSED_FOR_INVESTMENT = "closed_for_investment"
+FAIL_MODE_FILE_DEFAULT = "~/.config/tradeai/comms_editor_fail_mode"
+EDITOR_UNAVAILABLE_HELD = "comms_editor_unavailable"
+
+
+def editor_fail_mode() -> str:
+    """COMMS_EDITOR_FAIL_MODE from the environment, else the host file, else ``open``."""
+    import os  # noqa: PLC0415
+    from pathlib import Path  # noqa: PLC0415
+
+    m = (os.environ.get("COMMS_EDITOR_FAIL_MODE") or "").strip().lower()
+    if not m:
+        path = Path(os.path.expanduser(os.environ.get("COMMS_EDITOR_FAIL_MODE_FILE") or FAIL_MODE_FILE_DEFAULT))
+        try:
+            m = path.read_text(encoding="utf-8").strip().splitlines()[0].strip().lower()
+        except (OSError, IndexError):
+            m = ""
+    return m if m in (FAIL_MODE_OPEN, FAIL_MODE_CLOSED_FOR_INVESTMENT) else FAIL_MODE_OPEN
+
+
+def _is_bullish_investment_text(text: str) -> bool:
+    try:
+        from lib import cio_telegram_stance_gate as sg  # noqa: PLC0415
+    except ImportError:
+        try:
+            from scripts.lib import cio_telegram_stance_gate as sg  # type: ignore  # noqa: PLC0415
+        except ImportError:
+            return True  # cannot classify: under closed_for_investment, hold
+    # The gate's own bullish vocabulary, so transport and publishers agree.
+    return bool(sg._INVESTMENT_BULL.search(_strip_html_for_check(text or "")))
+
+
+def _strip_html_for_check(text: str) -> str:
+    return _re_html.sub(r"<[^>]+>", " ", text)
+
+
+def _editor_failed_hold(text: str, exc: BaseException) -> bool:
+    """True when the editor failure must hold this send (fail mode closed + bullish text)."""
+    if editor_fail_mode() != FAIL_MODE_CLOSED_FOR_INVESTMENT:
+        _log.warning("comms editor failed, sending original: %s", exc)
+        return False
+    if _is_bullish_investment_text(text):
+        _log.warning("comms editor failed; bullish investment text HELD (fail mode %s): %s",
+                     FAIL_MODE_CLOSED_FOR_INVESTMENT, exc)
+        return True
+    _log.warning("comms editor failed, sending original (not bullish investment text): %s", exc)
+    return False
+
+
 def deliver_text(
     *,
     token: str,
@@ -286,7 +342,9 @@ def deliver_text(
                 primary_symbols=primary_symbols,
             )
         except Exception as exc:  # noqa: BLE001
-            _log.warning("comms editor failed, sending original: %s", exc)
+            if _editor_failed_hold(text, exc):
+                return {"ok": True, "status_code": 200, "response": {}, "edited": False, "message_id": None,
+                        "suppressed": EDITOR_UNAVAILABLE_HELD}
             decision = None
     if decision is not None and decision.mode == "live":
         if not decision.send:
@@ -523,6 +581,49 @@ def send_message(
     )
 
 
+#: Caption text for a document whose own caption the editor held.
+CAPTION_HELD_TEXT = "Caption held by the Communications Editor ({reason}); the document is attached unchanged."
+_CAPTION_LIMIT = 1024
+
+
+def _edit_caption(caption: str | None, *, chat_id: str) -> tuple[str | None, str | None, dict | None, Any]:
+    """Captions pass the Communications Editor like ``deliver_text`` bodies.
+
+    M5 audit 2026-09-23 (4d): ``send_document`` checked the interdict but not the
+    editor, so captions were unstamped. Returns ``(caption, parse_mode, receipt,
+    decision)``; the caller commits ``decision`` only after the send succeeds.
+
+    * ``off`` / no caption: unchanged.
+    * ``shadow``: unchanged, receipt written.
+    * ``live``: edited HTML caption. A held caption (duplicate, CIO stance
+      conflict) is replaced by a neutral line -- the document itself (a report,
+      a PDF) still arrives. An edited caption over Telegram's 1,024-character
+      limit falls back to the original rather than cutting HTML mid-tag.
+    * editor error: follows ``editor_fail_mode()``.
+    """
+    if not caption:
+        return caption, None, None, None
+    ce = _comms_editor()
+    if ce is None or ce.mode() == "off":
+        return caption, None, None, None
+    try:
+        decision = ce.edit(caption, chat_id=chat_id, parse_mode=None, db_query=ce.default_db_query)
+    except Exception as exc:  # noqa: BLE001
+        if _editor_failed_hold(caption, exc):
+            return CAPTION_HELD_TEXT.format(reason=EDITOR_UNAVAILABLE_HELD), None, {
+                "held_reason": EDITOR_UNAVAILABLE_HELD}, None
+        return caption, None, None, None
+    receipt = decision.receipt()
+    if decision.mode != "live":
+        return caption, None, receipt, decision
+    if not decision.send:
+        reason = "duplicate" if decision.duplicate_of else (decision.held_reason or "held")
+        return CAPTION_HELD_TEXT.format(reason=reason), None, receipt, decision
+    if len(decision.text or "") > _CAPTION_LIMIT:
+        return caption, None, receipt, decision
+    return decision.text, "HTML", receipt, decision
+
+
 def send_document(
     *,
     token: str,
@@ -547,8 +648,11 @@ def send_document(
         }
     url = TELEGRAM_SEND_DOCUMENT_API.format(token=token)
     data: dict[str, Any] = {"chat_id": chat_id}
+    caption, caption_parse_mode, caption_receipt, caption_decision = _edit_caption(caption, chat_id=chat_id)
     if caption:
         data["caption"] = caption[:1024]
+        if caption_parse_mode:
+            data["parse_mode"] = caption_parse_mode
     if thread_id:
         data["message_thread_id"] = thread_id
     if reply_markup:
@@ -568,12 +672,21 @@ def send_document(
         # Prefer API ok flag when present.
         if isinstance(body, dict) and "ok" in body:
             ok = bool(body.get("ok"))
-        return {
+        out = {
             "ok": ok,
             "status_code": int(getattr(resp, "status_code", 0) or 0),
             "response": body,
             "message_id": _message_id_from(body) if ok else None,
         }
+        if caption_receipt is not None:
+            out["comms_editor"] = caption_receipt
+        if caption_decision is not None and (ok or not caption_decision.send):
+            # Held captions are recorded like held bodies; sent ones only once delivered.
+            try:
+                _comms_editor().commit(caption_decision, chat_id=chat_id)
+            except Exception:  # noqa: BLE001
+                pass
+        return out
     except Exception as e:
         return {
             "ok": False,

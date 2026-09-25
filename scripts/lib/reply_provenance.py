@@ -47,6 +47,7 @@ no broker reach. MBI_BEHAVIOR = 0.
 """
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Optional
@@ -133,6 +134,14 @@ class ReplyProvenance:
     model_role: Optional[str] = None
     sources_line_present: bool = False
     authority_tail_present: bool = False
+    #: Citable evidence for this reply: ``{"id", "label"}`` plus optional
+    #: ``anchor`` (text to cite instead of the id) and ``place`` (``"after_anchor"``
+    #: default, or ``"line_end"``). finalize numbers ONLY those whose anchor
+    #: (or id) actually appears in the body; the rest are dropped, never guessed.
+    citations: list[dict[str, str]] = field(default_factory=list)
+    #: The ``[n] label`` entries finalize rendered on the Sources line.
+    cited: list[str] = field(default_factory=list)
+    legend_present: bool = False
     schema: str = SCHEMA
 
     def to_dict(self) -> dict[str, Any]:
@@ -355,6 +364,73 @@ def went_outside_from_desk(desk: dict[str, Any]) -> list[str]:
 # ── the chokepoint ───────────────────────────────────────────────────────────
 
 
+#: Cap on numbered citations per reply (Telegram 4096 UTF-16 budget).
+DEFAULT_MAX_CITATIONS = 8
+_CITED_ENTRY = re.compile(r"^\[(\d+)\]\s+(.+)$")
+
+
+def max_citations() -> int:
+    try:
+        return max(0, int(str(os.environ.get("TRADEAI_REPLY_MAX_CITATIONS") or "").strip() or DEFAULT_MAX_CITATIONS))
+    except ValueError:
+        return DEFAULT_MAX_CITATIONS
+
+
+def has_legend(lines: list[str]) -> bool:
+    """True when the pill key is already on any body line (dossier, follow-up, Maria)."""
+    key = LEGEND.split(" · ", 1)[0]
+    return any(key in ln for ln in lines)
+
+
+def apply_inline_citations(
+    body: list[str], citations: list[dict[str, str]], already: list[str], *, cap: Optional[int] = None,
+) -> tuple[list[str], list[str]]:
+    """Number citations where their evidence is visible in the body.
+
+    Returns (body_lines, new ``[n] label`` entries). ``already`` holds entries a
+    previous finalize rendered (their ids are not re-cited; numbering continues).
+    A citation whose anchor/id is not in the body gets no number: a ``[n]`` must
+    point at text the reader can see, and every ``[n]`` has a Sources entry.
+    """
+    cap = max_citations() if cap is None else cap
+    used_ids = set()
+    n = 0
+    for entry in already:
+        m = _CITED_ENTRY.match(entry.strip())
+        if m:
+            n = max(n, int(m.group(1)))
+            used_ids.add(m.group(2).rsplit(" · ", 1)[-1].strip())
+    lines = list(body)
+    new: list[str] = []
+    for c in citations or []:
+        if len(new) + len(already) >= cap:
+            break
+        cid = str(c.get("id") or "").strip()
+        if not cid or cid in used_ids:
+            continue
+        anchor = str(c.get("anchor") or cid).strip()
+        if not anchor:
+            continue
+        for i, ln in enumerate(lines):
+            pos = ln.find(anchor)
+            if pos < 0:
+                continue
+            n += 1
+            mark = f" [{n}]"
+            if str(c.get("place") or "") == "line_end":
+                lines[i] = ln.rstrip() + mark
+            else:
+                end = pos + len(anchor)
+                lines[i] = ln[:end] + mark + ln[end:]
+            label = str(c.get("label") or cid).strip()
+            if not label.endswith(cid):
+                label = f"{label} · {cid}"
+            new.append(f"[{n}] {label}")
+            used_ids.add(cid)
+            break
+    return lines, new
+
+
 def _split_provenance_lines(text: str) -> tuple[list[str], Optional[str], Optional[str], Optional[str]]:
     """Body lines with every Sources / Went outside / authority-tail line pulled out.
 
@@ -389,8 +465,16 @@ def _split_provenance_lines(text: str) -> tuple[list[str], Optional[str], Option
     return body, sources_line, outside_line, tail
 
 
-def _parse_sources_line(line: str) -> tuple[list[str], Optional[str]]:
-    """Split an existing Sources line into store labels and a model label."""
+_NO_STORE_LABEL = "none — no Command Center store was read for this reply"
+_NO_STORE_PREFIX = "none — no Command Center store"
+
+
+def _parse_sources_line(line: str, cited: Optional[list[str]] = None) -> tuple[list[str], Optional[str]]:
+    """Split an existing Sources line into store labels and a model label.
+
+    ``[n] label`` citation entries go to ``cited`` (when given), not to stores,
+    so a second finalize neither renumbers them nor counts them as stores.
+    """
     payload = line[len("Sources:"):].strip()
     stores: list[str] = []
     model_label: Optional[str] = None
@@ -398,6 +482,12 @@ def _parse_sources_line(line: str) -> tuple[list[str], Optional[str]]:
         p = part.strip()
         if not p:
             continue
+        if _CITED_ENTRY.match(p):
+            if cited is not None and p not in cited:
+                cited.append(p)
+            continue
+        if p.startswith(_NO_STORE_PREFIX):
+            continue                      # the "none" placeholder is not a store
         if any(m in p for m in _MODEL_LABEL_MARKERS):
             model_label = model_label or p
         else:
@@ -421,10 +511,18 @@ def finalize_operator_reply(text: str, prov: ReplyProvenance) -> tuple[str, Repl
     """
     body, existing_sources, _existing_outside, tail = _split_provenance_lines(text or "")
 
+    # The pill key opens every reply (operator 2026-09-14: "I don't know what the
+    # color bubbles represent"). Paths that already carry it (dossier, pending
+    # follow-up, Maria gate) keep theirs; it is never doubled.
+    if body and not has_legend(body):
+        body = [LEGEND] + body
+    prov.legend_present = has_legend(body)
+
     stores = _dedupe(list(prov.stores_read or []))
     model_label: Optional[str] = None
+    cited: list[str] = []
     if existing_sources:
-        parsed_stores, parsed_model = _parse_sources_line(existing_sources)
+        parsed_stores, parsed_model = _parse_sources_line(existing_sources, cited)
         stores = _dedupe(parsed_stores + stores)
         model_label = parsed_model
     if prov.model and not model_label:
@@ -435,7 +533,12 @@ def finalize_operator_reply(text: str, prov: ReplyProvenance) -> tuple[str, Repl
         prov.model_role = model_label.split(" — ", 1)[1].strip() if " — " in model_label else prov.model_role
     prov.stores_read = stores
 
-    parts = list(stores[:MAX_SOURCE_LABELS]) if stores else ["none — no Command Center store was read for this reply"]
+    body, new_cited = apply_inline_citations(body, list(prov.citations or []), cited)
+    cited = cited + new_cited
+    prov.cited = cited
+
+    parts = list(stores[:MAX_SOURCE_LABELS]) if stores else [_NO_STORE_LABEL]
+    parts.extend(cited)
     if model_label:
         parts.append(model_label)
     sources_line = SOURCES_PREFIX + SEP.join(parts)
@@ -473,7 +576,7 @@ def provenance_for_desk(desk: dict[str, Any], *, kind: str = "operator_desk") ->
 __all__ = [
     "AUTHORITY", "AUTHORITY_TAIL_RE", "DEFAULT_TAIL", "SCHEMA",
     "ROLE_GENERAL_KNOWLEDGE", "ROLE_INTENT_ONLY", "ROLE_WORDING_ONLY",
-    "ReplyProvenance", "finalize_operator_reply", "labels_from_evidence",
+    "ReplyProvenance", "apply_inline_citations", "finalize_operator_reply", "has_legend", "labels_from_evidence",
     "model_role_for", "provenance_for_desk", "store_labels_from_raw",
     "went_outside_from_desk", "with_sources_footer",
 ]

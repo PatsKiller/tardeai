@@ -233,8 +233,10 @@ export default function OptionPositionCardV4({
           >
             {whyLine || '—'}
           </span>
-          <span title="Unrealized P&L on this leg." style={{ ...ns, fontSize: terminalUi ? 12 : 13.5, fontWeight: 800, color: pnlColor, flexShrink: 0, cursor: 'help' }}>
-            {pnl != null ? `${pnl >= 0 ? '+' : ''}${fmt$(pnl)}` : '—'}
+          <span title={p.pnl_status === 'PNL_UNKNOWN' ? (p.pnl_unknown_reason || 'P&L unknown') : 'Unrealized P&L on this leg.'} style={{ ...ns, fontSize: terminalUi ? 12 : 13.5, fontWeight: 800, color: p.pnl_status === 'PNL_UNKNOWN' ? (terminalUi ? BB.amber : WL.signal.amber) : pnlColor, flexShrink: 0, cursor: 'help' }}>
+            {p.pnl_status === 'PNL_UNKNOWN'
+              ? 'PNL_UNKNOWN'
+              : pnl != null ? `${pnl >= 0 ? '+' : ''}${fmt$(pnl)}` : '—'}
           </span>
           <span style={{ display: 'inline-flex', gap: terminalUi ? 4 : 6, flexShrink: 0 }}>
             {(p.action_buttons || []).map((b, i) => (
@@ -346,6 +348,33 @@ export default function OptionPositionCardV4({
           </div>
         )}
 
+        {(p.action_criterion || p.pnl_unknown_reason || p.margin_status) && (
+          <div style={{
+            marginTop: terminalUi ? 6 : 8, padding: terminalUi ? '4px 0' : '6px 9px',
+            borderRadius: terminalUi ? 0 : 6,
+            background: terminalUi ? 'transparent' : 'rgba(96,165,250,.06)',
+            border: terminalUi ? 'none' : '1px solid rgba(96,165,250,.2)',
+            fontSize: terminalUi ? 10 : 11, color: terminalUi ? BB.text2 : WL.text.secondary, lineHeight: 1.45,
+          }}>
+            {p.action_criterion && (
+              <div>
+                <b style={{ color: terminalUi ? BB.text0 : WL.text.primary }}>Criterion:</b> {p.action_criterion}
+              </div>
+            )}
+            {p.pnl_status === 'PNL_UNKNOWN' && p.pnl_unknown_reason && (
+              <div style={{ color: terminalUi ? BB.amber : WL.signal.amber }}>
+                PNL_UNKNOWN — {p.pnl_unknown_reason}
+              </div>
+            )}
+            <div title="Option margin / BP impact — Schwab field only; never invented.">
+              Margin: {p.margin_status === 'OK' && p.margin_usd != null
+                ? fmt$(p.margin_usd)
+                : (p.margin_status || 'MARGIN_UNKNOWN')}
+              {p.margin_note ? ` — ${p.margin_note}` : ''}
+            </div>
+          </div>
+        )}
+
         {/* ③ Economics grid */}
         <div className={gridClass(terminalUi)} style={terminalUi ? undefined : { display: 'grid', gridTemplateColumns: 'repeat(4, minmax(72px, 1fr))', gap: 7, marginTop: 11 }}>
           <div className={gridCellClass(terminalUi)} style={terminalUi ? undefined : { gridColumn: '1 / -1' }}>
@@ -353,6 +382,7 @@ export default function OptionPositionCardV4({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: terminalUi ? 4 : 7 }}>
               <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} tip="Current underlying price." terminal={terminalUi} />
               <Metric label="R:R (live)" value={rrDisplay} tip="Dynamic risk/reward vs max loss at open — updates each monitor refresh." terminal={terminalUi} />
+              <Metric label="Credit/debit" value={p.entry_credit_debit != null ? fmt$(p.entry_credit_debit) : '—'} tip="Entry premium × 100 × qty: positive = credit collected (short), negative = debit paid (long)." terminal={terminalUi} />
               <Metric label="Max profit" value={p.max_profit_at_open != null ? fmt$(p.max_profit_at_open) : '—'} color={terminalUi ? BB.green : WL.price.up} tip="Best case at entry (short = full premium collected)." terminal={terminalUi} />
               <Metric label="Max loss" value={p.max_loss_at_open != null ? fmt$(p.max_loss_at_open) : '—'} color={terminalUi ? BB.amber : WL.signal.amber} tip="Worst-case loss modeled at entry." terminal={terminalUi} />
               <Metric label="% captured" value={p.profit_captured_pct != null ? `${p.profit_captured_pct}%` : '—'} color={terminalUi ? BB.green : WL.price.up} tip="Short premium: % of entry credit already earned as mark decays." terminal={terminalUi} />
@@ -360,6 +390,7 @@ export default function OptionPositionCardV4({
               <Metric label="POP ITM" value={p.pop_itm_pct != null ? `${p.pop_itm_pct.toFixed(0)}%` : '—'} terminal={terminalUi} tip="Chance option finishes in the money." />
               <Metric label="Qty" value={p.qty ?? '—'} tip="Contracts held (negative = short)." terminal={terminalUi} />
               <Metric label="Edge" value={p.edge_score != null ? Math.round(p.edge_score) : '—'} tip="Monitor edge score from POP and IV." terminal={terminalUi} />
+              <Metric label="Margin" value={p.margin_status === 'OK' && p.margin_usd != null ? fmt$(p.margin_usd) : (p.margin_status || 'MARGIN_UNKNOWN')} tip={p.margin_note || 'Schwab margin/BP only when the feed supplies a field — never invented.'} terminal={terminalUi} />
             </div>
           </div>
         </div>

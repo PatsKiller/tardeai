@@ -496,7 +496,7 @@ def read_receipts(path: Optional[Path] = None) -> list[dict[str, Any]]:
 def budget_pool(requester: Optional[str]) -> str:
     """Which day-cap counter a requester spends against.
 
-    Live Telegram/WA chat ids (`operator:8797974247`) must not share a counter
+    Live Telegram/WA chat ids (`operator:<chat id>`) must not share a counter
     with `data_gap_resolver` cron or with lab remasure/dryrun stamps that also
     look like `operator:*`. Without this split, background traffic burns the
     desk's hermes/search slots and the operator hears blanket `budget_denied`

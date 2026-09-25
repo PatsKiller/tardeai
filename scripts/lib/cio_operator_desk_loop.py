@@ -60,6 +60,8 @@ _DESK_NEEDS = frozenset({
     # from research rows gave the operator three stop-curation reviews on
     # 2026-09-13. The data was already on file and nothing read it.
     "analyst_view",
+    # Stage 1C — CIO options fluency from options_desk_latest cache (no live chain).
+    "options_strategy",
 })
 _RUNTIME_NEEDS = frozenset({"runtime_llm", "runtime_status"})
 _META_HEURISTIC = re.compile(
@@ -98,6 +100,15 @@ def _env(k: str, default: str = "") -> str:
 
 
 def _append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    # Rows written while a hop is open carry its event lineage (event_lineage):
+    # a gap / pending row written during an operator turn names that turn's
+    # inbound event, so the follow-up and the research join back by event id.
+    try:
+        from scripts.lib.event_lineage import stamp_row  # noqa: PLC0415
+
+        stamp_row(row)
+    except Exception:  # noqa: BLE001 — lineage never breaks a write
+        pass
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
@@ -537,6 +548,17 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
             needs.append("analyst_view")
             if out["intent"] in ("unclear", "freeform"):
                 out["intent"] = "analyst_view"
+        # Options strategy fluency (Stage 1C) — house facts from options desk cache,
+        # not live Schwab chain. Must beat freeform fall-through for CC/CSP/spread asks.
+        if re.search(
+            r"(?is)\b(option\s*strateg|covered\s*call|cash[\s-]?secured\s*put|\bCSP\b|"
+            r"protective\s*put|credit\s*spread|debit\s*spread|long\s*call|LEAP|"
+            r"options?\s*play|defined[\s-]?risk\s*call|stock[\s-]?replacement)\b",
+            scan,
+        ):
+            needs.append("options_strategy")
+            if out["intent"] in ("unclear", "freeform", "general"):
+                out["intent"] = "options_strategy"
         # Buy / investment perspective: need analyst + research, never a hollow
         # price-only essay while Hermes is empty (plan Option B, live 2026-09-22).
         if out["symbols"] and is_buy_perspective_ask(scan):
@@ -549,9 +571,10 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
         # Explainer/comparison language → freeform (soft desk hints OK, no reentry)
         # Buy/perspective stays on the subject brief path — freeform would drop
         # research from needs and re-open the hollow-essay failure.
+        # Options strategy asks stay on options_strategy (Stage 1C).
         if (
             _looks_like_freeform(scan)
-            and out["intent"] not in ("reentry", "meta_system")
+            and out["intent"] not in ("reentry", "meta_system", "options_strategy")
             and not is_buy_perspective_ask(scan)
         ):
             soft = [n for n in needs if n in ("portfolio", "cash", "risk", "research")]
@@ -632,7 +655,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         out["intent"] = "meta_system"
                         out["needs"] = flash_needs or ["runtime_llm", "runtime_status"]
                     elif flash_intent in (
-                        "reentry", "portfolio", "cash", "risk", "research", "analyst_view",
+                        "reentry", "portfolio", "cash", "risk", "research", "analyst_view", "options_strategy",
                         "desk_question", "freeform", "unclear", "other",
                     ):
                         if flash_intent in ("other", "unclear", "desk_question"):
@@ -653,7 +676,7 @@ def analyze_operator_intent(text: str) -> dict[str, Any]:
                         out["needs"] = flash_needs or heuristic_needs
                     # Heuristic freeform stays freeform unless Flash picked a desk intent
                     if heuristic_intent == "freeform" and out["intent"] not in (
-                        "meta_system", "reentry", "portfolio", "cash", "risk", "research", "analyst_view",
+                        "meta_system", "reentry", "portfolio", "cash", "risk", "research", "analyst_view", "options_strategy",
                     ):
                         out["intent"] = "freeform"
                         out["needs"] = [
@@ -1959,6 +1982,29 @@ def _gather_tradeai_evidence_core(intent: dict[str, Any]) -> dict[str, Any]:
                 "reason": f"no analyst coverage on file for {', '.join(symbols)}",
                 "gap_type": "missing_analyst_coverage",
             })
+
+    if "options_strategy" in needs:
+        try:
+            from scripts.lib.cio_options_fluency import (  # noqa: PLC0415
+                format_cio_options_opinion,
+                gather_options_house_facts,
+            )
+        except ImportError:
+            from lib.cio_options_fluency import (  # type: ignore[no-redef]  # noqa: PLC0415
+                format_cio_options_opinion,
+                gather_options_house_facts,
+            )
+        facts = gather_options_house_facts(symbols or [])
+        available["options_strategy"] = facts
+        available["options_strategy_card"] = format_cio_options_opinion(
+            facts, symbols=symbols or [],
+            memory_envelope=facts.get("memory_envelope"),
+        )
+        sources.append("options_desk_latest")
+        # Slice B — Sources chrome when scoped memory actually applied.
+        for mem_src in (facts.get("memory_sources") or []):
+            if mem_src and mem_src not in sources:
+                sources.append(mem_src)
 
     # How is the named stock doing: last close, 30-day change, its desk levels.
     # 2026-09-13 "How is Visa doing ... analyst recommendations": the reply had no
@@ -3394,6 +3440,30 @@ def format_hermes_section(result: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def hermes_result_citations(result: dict[str, Any]) -> list[dict[str, str]]:
+    """Citations for the answer lines ``format_hermes_section`` renders.
+
+    Each Hermes answer carries ``citations[]`` -- the Trade-AI evidence ids it
+    read (``ticker_enrichment_cache:S:…``). They are cited at the end of that
+    answer's rendered line (anchored on its rendered text, so a line the section
+    truncated or dropped is never cited), plus the result's own ``result_id``
+    when a reply names it. Nothing is cited that the result does not carry.
+    """
+    out: list[dict[str, str]] = []
+    if not isinstance(result, dict):
+        return out
+    for a in (result.get("answers") or [])[:4]:
+        if not (isinstance(a, dict) and a.get("summary")):
+            continue
+        anchor = _plain(a["summary"], 420)[:60]
+        for cid in [str(c) for c in (a.get("citations") or []) if c]:
+            out.append({"id": cid, "anchor": anchor, "place": "line_end", "label": f"Hermes evidence · {cid}"})
+    rid = str(result.get("result_id") or "")
+    if rid:
+        out.append({"id": rid, "label": f"hermes_research_results · {rid}"})
+    return out
+
+
 def _insert_before_authority_tail(text: str, block: str) -> str:
     """Put a block above the trailing authority line, which must stay last."""
     if not block:
@@ -3438,6 +3508,15 @@ def _curate_from_evidence_core(operator_text: str, evidence: dict[str, Any]) -> 
             "ok": True,
             "text": avail["meta_card"],
             "source": "runtime_meta",
+            "model": None,
+        }
+    if avail.get("options_strategy_card"):
+        # Stage 1C — deterministic CIO options fluency from desk cache; no Flash
+        # specialist roleplay. finalize_operator_reply adds Sources downstream.
+        return {
+            "ok": True,
+            "text": avail["options_strategy_card"],
+            "source": "options_strategy_house_facts",
             "model": None,
         }
     if avail.get("freeform_context") is not None:
@@ -4691,7 +4770,14 @@ def _pending_reply_provenance(kind: str, row: dict[str, Any], evidence: dict[str
         # read Trade-AI evidence, so it is named on the 🟣 model role, once.
         model = str(hermes.get("model") or "deepseek-flash")
         role = f"Hermes research over Trade-AI evidence; {_ROLE_GENERAL_KNOWLEDGE}"
-    return _ReplyProvenance(kind=kind, stores_read=stores, went_outside=outside, model=model, model_role=role)
+    citations: list[dict[str, str]] = []
+    pid = str(row.get("pending_id") or "")
+    if pid.startswith("opr_"):
+        citations.append({"id": pid, "label": "operator gap request"})
+    if isinstance(hermes, dict):
+        citations += hermes_result_citations(hermes)
+    return _ReplyProvenance(kind=kind, stores_read=stores, went_outside=outside, model=model, model_role=role,
+                            citations=citations)
 
 
 def _open_for_text(age_h: Optional[float]) -> str:
@@ -4804,7 +4890,13 @@ def try_fulfill_pending_replies(
     fulfilled = 0
     failed = 0
     expired = 0
+    # Each follow-up is sent inside the lineage of the turn that asked (the
+    # pending row carries it), so the reply joins back to that turn.
+    from scripts.lib.event_lineage import enter_row_scope  # noqa: PLC0415
+
+    _lin_token = None
     for row in open_rows:
+        _lin_token = enter_row_scope(row, _lin_token)
         try:
             intent = row.get("intent") or analyze_operator_intent(row.get("operator_text") or "")
             evidence = gather_tradeai_evidence(intent)
@@ -4898,6 +4990,7 @@ def try_fulfill_pending_replies(
             fulfilled += 1
         except Exception:
             failed += 1
+    enter_row_scope(None, _lin_token)
     return {
         "ok": True,
         "checked": len(open_rows),

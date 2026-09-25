@@ -198,3 +198,43 @@ def test_the_store_is_registered_canonically():
     assert entry["schema"] == "InstrumentRecord@v1"
     assert entry["append_only"] is True
     assert entry["id_fields"] == ["subject_key"]
+
+
+# ── one record file (tranche 1, R6, 2026-09-24) ─────────────────────────────
+
+def test_store_for_root_resolves_the_registry_dict(monkeypatch, tmp_path):
+    """resolve_store returns a dict; the old body did Path(dict) -> TypeError ->
+    silent fallback to the cwd-relative default, so callers read two files."""
+    from scripts.lib import cio_instrument_record as cir
+    from scripts.lib import canonical_store_registry as csr
+
+    target = tmp_path / "somewhere" / "cio_instrument_records.jsonl"
+    monkeypatch.setattr(csr, "resolve_store",
+                        lambda store_id, **kw: {"ok": True, "path": str(target)})
+    store = cir._store_for_root(None)
+    assert store.path == target
+    assert store.path != cir.DEFAULT_PATH
+
+
+def test_store_for_root_falls_back_only_when_the_registry_cannot_answer(monkeypatch):
+    from scripts.lib import cio_instrument_record as cir
+    from scripts.lib import canonical_store_registry as csr
+
+    monkeypatch.setattr(csr, "resolve_store", lambda store_id, **kw: {"ok": False})
+    assert cir._store_for_root(None).path == cir.DEFAULT_PATH
+
+
+# ── entity policy: industry / theme are tags, not records (2026-09-24) ──────
+
+@pytest.mark.parametrize("kind", ["INDUSTRY", "industry", "THEME", "theme"])
+def test_industry_and_theme_are_refused_as_policy_not_as_unknown(kind):
+    from scripts.lib.cio_instrument_record import TAGS_ONLY_KINDS, is_mintable
+    ok, reason = is_mintable(kind, "Credit Services")
+    assert ok is False
+    assert reason == f"tags_only_by_policy:{kind.upper()}"
+    assert kind.upper() in TAGS_ONLY_KINDS
+
+
+def test_a_truly_unknown_kind_is_still_unknown():
+    from scripts.lib.cio_instrument_record import is_mintable
+    assert is_mintable("OPTION", "V") == (False, "unknown_kind:OPTION")

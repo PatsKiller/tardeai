@@ -284,3 +284,60 @@ def test_runner_uses_selector_when_subject_omitted(tmp_path, capsys):
     assert wake["subject_guid"] == SG_A
     out = capsys.readouterr().out
     assert "unconsumed_research" in out or "ok" in out
+
+
+# ── R1: research must not starve cadence-due records (tranche 1, 2026-09-24) ──
+
+def _ro_r1(sg: str, rid: str) -> dict:
+    return {"subject_guid": sg, "research_object_id": rid, "published_at": "2026-09-24T12:00:00Z"}
+
+
+def _ir_r1(sym: str) -> dict:
+    return {"subject_key": f"HELD:{sym}", "next_eligible_at": "2026-09-01T00:00:00Z"}
+
+
+def test_a_due_record_gets_one_slot_when_research_would_fill_them_all():
+    """Measured 2026-09-24: 200/200 wakes were unconsumed_research and 0 were
+    instrument_record_due while 37 of 52 HELD/WATCH/EXIT records were due."""
+    cands = select_subjects(
+        "cio", limit=3,
+        research_objects=[_ro_r1("g-a", "r1"), _ro_r1("g-b", "r2"), _ro_r1("g-c", "r3"), _ro_r1("g-d", "r4")],
+        instrument_records=[_ir_r1("MCD"), _ir_r1("V")],
+        guid_for_symbol=lambda s: f"g-{s.lower()}",
+    )
+    assert len(cands) == 3
+    sources = [c.source for c in cands]
+    assert sources.count("instrument_record_due") == 1
+    assert sources.count("unconsumed_research") == 2
+    assert cands[2].source == "instrument_record_due" and cands[2].source_id == "HELD:MCD"
+
+
+def test_research_keeps_every_slot_when_no_record_is_due():
+    cands = select_subjects(
+        "cio", limit=3,
+        research_objects=[_ro_r1("g-a", "r1"), _ro_r1("g-b", "r2"), _ro_r1("g-c", "r3"), _ro_r1("g-d", "r4")],
+        instrument_records=[{"subject_key": "HELD:MCD", "next_eligible_at": "2099-01-01T00:00:00Z"}],
+        guid_for_symbol=lambda s: f"g-{s.lower()}",
+    )
+    assert [c.source for c in cands] == ["unconsumed_research"] * 3
+
+
+def test_records_fill_naturally_when_research_leaves_room():
+    cands = select_subjects(
+        "cio", limit=3,
+        research_objects=[_ro_r1("g-a", "r1")],
+        instrument_records=[_ir_r1("MCD"), _ir_r1("V")],
+        guid_for_symbol=lambda s: f"g-{s.lower()}",
+    )
+    assert [c.source for c in cands] == ["unconsumed_research", "instrument_record_due", "instrument_record_due"]
+
+
+def test_a_subject_already_selected_by_research_is_not_doubled_by_its_record():
+    cands = select_subjects(
+        "cio", limit=3,
+        research_objects=[_ro_r1("g-mcd", "r1"), _ro_r1("g-b", "r2"), _ro_r1("g-c", "r3")],
+        instrument_records=[_ir_r1("MCD")],
+        guid_for_symbol=lambda s: f"g-{s.lower()}",
+    )
+    assert [c.source for c in cands] == ["unconsumed_research"] * 3
+    assert len({c.subject_guid for c in cands}) == 3

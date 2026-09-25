@@ -810,18 +810,28 @@ def score_all(
         scored["ticker_perf_1m"] = sector_ctx.get("ticker_perf_1m")
         scored["sector_perf_1m"] = sector_ctx.get("sector_perf_1m")
         scored["vs_sector_pct"] = sector_ctx.get("vs_sector_pct")
+        # Warrior awareness lanes upgrade WAIT/AVOID → MANUAL_REVIEW for Entry Desk.
+        # They must NOT overwrite a real GO — same contract as qualifies_* / attach_*
+        # (high_rvol only upgrades WAIT; low_price + micro_float preserve GO).
+        # Reverse-split squeeze stays MANUAL_REVIEW always (Ross: never auto-GO).
+        # Cause: scoring applied low_price/micro_float unconditionally and zeroed
+        # Momentum Scalp GOs (e.g. HCTI score 46 → MANUAL_REVIEW) while strategy_signals
+        # still carried momentum_scalp GO for the same symbols.
+        _dec = (scored.get("decision") or "").upper()
         if squeeze_manual:
             apply_squeeze_manual_fields(scored, rs_reason=risk["reverse_split"] or risk["reasons"])
             print(f"  [scoring] SQUEEZE_MANUAL_REVIEW {sym}: {risk['reasons'][:80]}")
-        elif micro_float_manual:
+        elif micro_float_manual and _dec != "GO":
             apply_micro_float_manual_fields(scored, mf_reason=risk["reasons"])
             print(f"  [scoring] MICRO_FLOAT_MANUAL_REVIEW {sym}: {risk['reasons'][:80]}")
-        elif low_price_manual:
+        elif low_price_manual and _dec != "GO":
             apply_low_price_manual_fields(scored, lp_reason=risk["reasons"])
             print(f"  [scoring] LOW_PRICE_MANUAL_REVIEW {sym}: {risk['reasons'][:80]}")
         elif qualifies_high_rvol_manual(scored):
             apply_high_rvol_manual_fields(scored)
             print(f"  [scoring] HIGH_RVOL_MANUAL_REVIEW {sym}: RVOL={scored.get('rvol')}")
+        elif (micro_float_manual or low_price_manual) and _dec == "GO":
+            print(f"  [scoring] GO_PRESERVED {sym}: warrior lane skipped (score={scored.get('score')})")
         results.append(scored)
 
     attach_catalyst_exception_tags(results)

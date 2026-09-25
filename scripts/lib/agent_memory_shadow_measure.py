@@ -249,6 +249,26 @@ def run_measure(
     origins = Counter(str(p.get("decision_origin") or "") for p in live_payloads)
     surfaces = Counter(str(p.get("surface") or "") for p in live_payloads)
 
+    # Tranche 2 Slice 4 (2026-09-25): do CIO / Hermes / Advisory read the same
+    # memory ids for one subject in this window? Read-only over three existing
+    # stores; fail-soft; reports UNAVAILABLE / no-shared-subject honestly.
+    cross_agent: dict[str, Any]
+    try:
+        import os as _os
+
+        from scripts.lib.cross_agent_memory_agreement import measure as _cross_measure
+
+        wake_root = Path(_os.environ.get("TRADEAI_PERSISTENT_WAKE_STATE_ROOT")
+                         or (Path.home() / "trade-ai-state" / "persistent_wake" / "state"))
+        cross_agent = _cross_measure(
+            wakes_path=wake_root / "wakes.jsonl",
+            hermes_requests_path=root_p / "data/cio/hermes_research_requests.jsonl",
+            retrievals_path=root_p / "data/cio/aif_memory_retrievals.jsonl",
+        )
+    except Exception as exc:  # noqa: BLE001
+        cross_agent = {"schema": "CrossAgentMemoryAgreement@v1", "verdict": "UNAVAILABLE",
+                       "error": f"{type(exc).__name__}: {exc}"[:200], "g8_closure": False}
+
     report = {
         "schema": "MemoryShadowMeasure@v1",
         "as_of": _now(),
@@ -277,6 +297,7 @@ def run_measure(
             "evaluation_failures": shadow.get("evaluation_failures"),
             "packets_sample": (shadow.get("packets") or [])[:5],
         },
+        "cross_agent_memory_agreement": cross_agent,
         "promotion_gate": {
             "verdict": gate.get("verdict"),
             "all_hard_gates": gate.get("all_hard_gates"),

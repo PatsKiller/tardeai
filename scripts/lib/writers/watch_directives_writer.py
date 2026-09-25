@@ -18,9 +18,10 @@ three different TTL defaults). This module owns:
     non-negative integer
   * identity: a ticker directive's symbol is resolved through the registry-first
     path (identity_registry.lookup_symbol -> resolve_guid, then the
-    security_identity spine). The table has NO identity column (see the phase-9
-    notes: proposed migration), so the GUID travels in the receipt, never
-    invented, never written to a column that does not exist.
+    security_identity spine). The GUID travels in the receipt, and since
+    migrations/2026_09_24_watch_subject_guid.sql it is also written to the
+    `subject_guid` / `issuer_guid` columns -- but only after a probe finds them,
+    so this module still never writes a column that does not exist.
   * provenance: `created_by` (the only provenance column the table has) is the
     caller's `source` unless the row names one; `source` and `run_id` are
     carried on the receipt. `written_by` / `written_at` columns do not exist —
@@ -91,6 +92,24 @@ _INSERT_SQL = (
     "      trade_ai_enabled, hermes_enabled)\n"
     "   VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s)\n"
     "   RETURNING id"
+)
+_INSERT_IDENTITY_SQL = (
+    "INSERT INTO watch_directives\n"
+    "     (kind, label, spec, rationale, created_by, status, priority, ttl_days,\n"
+    "      trade_ai_enabled, hermes_enabled, subject_guid, issuer_guid)\n"
+    "   VALUES (%s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s, %s::uuid, %s::uuid)\n"
+    "   RETURNING id"
+)
+# Stamp a reused / updated row. Never overwrites a GUID that is already there
+# with NULL, and never touches a row whose GUID already matches.
+_STAMP_IDENTITY_SQL = (
+    "UPDATE watch_directives\n"
+    "   SET subject_guid = %s::uuid, issuer_guid = COALESCE(%s::uuid, issuer_guid)\n"
+    " WHERE id = %s AND subject_guid IS DISTINCT FROM %s::uuid"
+)
+_IDENTITY_PROBE_SQL = (
+    "SELECT count(*) AS n FROM information_schema.columns\n"
+    " WHERE table_name = 'watch_directives' AND column_name IN ('subject_guid', 'issuer_guid')"
 )
 # Exact-label lookup. Legacy fakes in tests/test_two_way_curation.py and
 # tests/test_drain_contention.py key on the prefix "SELECT id FROM watch_directives"
@@ -305,6 +324,8 @@ def resolve_directive_subject(kind: str, spec: Any) -> Dict[str, Any]:
         if ent and ent.get("subject_guid"):
             out["subject_guid"] = ir.resolve_guid(doc, str(ent["subject_guid"]))
             out["identity_source"] = "registry"
+            if ent.get("issuer_guid"):
+                out["issuer_guid"] = str(ent["issuer_guid"])
             return out
         from scripts.lib.security_identity import resolve_identity_spine
         spine = resolve_identity_spine({
@@ -315,9 +336,75 @@ def resolve_directive_subject(kind: str, spec: Any) -> Dict[str, Any]:
         out["subject_guid"] = ir.subject_guid_of(spine, sym)
         out["identity_source"] = "spine"
         out["identity_status"] = spine.get("identity_status")
+        if spine.get("issuer_guid"):
+            out["issuer_guid"] = str(spine["issuer_guid"])
     except Exception as e:  # noqa: BLE001 - see docstring
         out["identity_lookup_failed"] = f"{type(e).__name__}: {e}"
     return out
+
+
+# ── identity columns (additive migration; probed, never assumed) ────────────
+_IDENTITY_PROBE: Dict[str, Any] = {"present": None, "at": 0.0}
+
+
+def _first_value(row: Any) -> Any:
+    if isinstance(row, dict):
+        return next(iter(row.values()), None)
+    if isinstance(row, (list, tuple)):
+        return row[0] if row else None
+    return row
+
+
+def identity_columns_present(target: Any) -> bool:
+    """True when watch_directives has subject_guid + issuer_guid.
+
+    TRADEAI_WATCH_IDENTITY_COLUMNS=on|off|auto (default auto = probe). A present
+    answer is cached for the process; an absent one is re-probed after
+    TRADEAI_WATCH_IDENTITY_PROBE_TTL_S (default 600) so the migration takes
+    effect without a restart. Any probe failure counts as absent.
+    """
+    import os
+    import time
+
+    mode = str(os.environ.get("TRADEAI_WATCH_IDENTITY_COLUMNS") or "auto").strip().lower()
+    if mode == "off":
+        return False
+    if mode == "on":
+        return True
+    now = time.monotonic()
+    try:
+        ttl = float(os.environ.get("TRADEAI_WATCH_IDENTITY_PROBE_TTL_S") or 600)
+    except ValueError:
+        ttl = 600.0
+    if _IDENTITY_PROBE["present"] is True:
+        return True
+    if _IDENTITY_PROBE["present"] is False and now - float(_IDENTITY_PROBE["at"]) < ttl:
+        return False
+    try:
+        t = target if isinstance(target, _Target) else _Target(target)
+        n = _first_value(t.run(_IDENTITY_PROBE_SQL, None, fetch="one"))
+        present = int(n or 0) == 2
+    except Exception:  # noqa: BLE001 - see docstring
+        present = False
+    _IDENTITY_PROBE.update(present=present, at=now)
+    return present
+
+
+def reset_identity_probe() -> None:
+    _IDENTITY_PROBE.update(present=None, at=0.0)
+
+
+def _stamp_identity(t: "_Target", directive_id: Any, ident: Dict[str, Any]) -> bool:
+    """Write subject/issuer GUID onto one existing row. Never raises."""
+    guid = (ident or {}).get("subject_guid")
+    if not guid or directive_id is None or not identity_columns_present(t):
+        return False
+    try:
+        t.run(_STAMP_IDENTITY_SQL, (str(guid), ident.get("issuer_guid"), int(directive_id), str(guid)))
+        return True
+    except Exception as e:  # noqa: BLE001
+        log.warning("watch_directives identity stamp failed for %s: %s", directive_id, e)
+        return False
 
 
 # ── the ONE dedup rule ──────────────────────────────────────────────────────
@@ -503,14 +590,20 @@ def write_watch_directives(target: Any, rows: Iterable[Dict[str, Any]], *, sourc
             found = find_existing_directive(t, clean["kind"], clean["label"], clean["spec"],
                                             include_family=(on_duplicate == "reuse"))
             if found:
-                rec.reused.append({**found, "row_index": i, **ident})
+                stamped = _stamp_identity(t, found.get("id"), ident)
+                rec.reused.append({**found, "row_index": i, **ident,
+                                   **({"identity_stamped": True} if stamped else {})})
                 continue
         params = (
             clean["kind"], clean["label"], json.dumps(clean["spec"], default=str), clean["rationale"],
             clean["created_by"], clean["status"], clean["priority"], clean["ttl_days"],
             clean["trade_ai_enabled"], clean["hermes_enabled"],
         )
-        res = t.run(_INSERT_SQL, params, fetch="one")
+        if ident.get("subject_guid") and identity_columns_present(t):
+            res = t.run(_INSERT_IDENTITY_SQL,
+                        params + (str(ident["subject_guid"]), ident.get("issuer_guid")), fetch="one")
+        else:
+            res = t.run(_INSERT_SQL, params, fetch="one")
         did = _id_of(res)
         if did is None:
             if res is None:
@@ -595,6 +688,12 @@ def update_watch_directive(target: Any, directive_id: Any, *, source: str,
     rc = t_run.rowcount()
     rec.rows_written = rc if rc is not None else len(ids)
     rec.ids = list(ids)
+    # A spec change can change the subject (a ticker directive re-pointed to a
+    # new symbol); re-stamp the GUID for single-row updates that carry one.
+    if "spec" in fields and len(ids) == 1:
+        ident = resolve_directive_subject("ticker", fields["spec"]) if _spec_dict(fields["spec"]).get("symbol") else {}
+        if _stamp_identity(t_run, ids[0], ident):
+            rec.details.append({"ids": list(ids), "identity_stamped": ident.get("subject_guid")})
     rec.details.append({"ids": list(ids), "columns": [c for c in UPDATE_COLUMNS if c in fields]
                         + (["rationale_append"] if rationale_append else [])})
     return rec

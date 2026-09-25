@@ -135,7 +135,15 @@ def check_agent_conflicts(send: bool = False) -> dict:
         alerts = []
         for c in conflicts[:3]:
             recs_str = ", ".join(c["recs"])
-            alerts.append(f"\u26A0\uFE0F *Agent Conflict: {c['symbol']}*\n\nAgents disagree:\n{recs_str}\n\n_Review at /v2/watchlist?symbol={c['symbol']}_")
+            msg = f"\u26A0\uFE0F *Agent Conflict: {c['symbol']}*\n\nAgents disagree:\n{recs_str}\n\n_Review at /v2/watchlist?symbol={c['symbol']}_"
+            # A review prompt, not a house recommendation: stamp the CIO stance so the
+            # operator sees where the CIO stands; never held (M5 audit 2026-09-23, 4d).
+            try:
+                from lib.publisher_stance_gate import stamp_symbols
+                msg = stamp_symbols(msg, [c["symbol"]], note="agents disagree; review prompt, not gated")
+            except Exception:
+                pass
+            alerts.append(msg)
 
         result = {"alert": len(alerts) > 0, "conflicts": len(conflicts)}
         if alerts and send:
@@ -174,7 +182,7 @@ def check_stop_proximity(send: bool = False) -> dict:
                 dist = float(s["distance_pct"])
                 emoji = "\U0001F534" if dist < 1.5 else "\U0001F7E1"
                 lines.append(f"{emoji} *{s['symbol']}*: {dist:.1f}% from stop (${float(s['stop_price']):.2f})")
-            lines.append(f"\n_Review at /v3/risk_")
+            lines.append("\n_Review at /v3/risk_")
             alerts.append("\n".join(lines))
 
         result = {"alert": len(alerts) > 0, "count": len(close_stops)}

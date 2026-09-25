@@ -98,6 +98,29 @@ def reset_last_message_ids() -> None:
     _LAST_MESSAGE_IDS.clear()
 
 
+def _held_bucket() -> dict:
+    """Process-wide record of the chunks the comms editor HELD on the last raw send.
+
+    One ``sys.modules`` bucket, shared by the ``telegram_alert`` and
+    ``scripts.telegram_alert`` imports (the gateway imports one, legacy callers the
+    other), so a caller can ask after the send whether anything was held.
+    """
+    import sys as _sys  # noqa: PLC0415
+
+    return _sys.modules.setdefault("_tradeai_telegram_held_chunks", {"held": []})  # type: ignore[return-value]
+
+
+def last_held_chunks() -> list[dict]:
+    """Chunks of the most recent send that the comms editor held instead of sending.
+
+    ``deliver_text`` reports an editor hold as ok (it is a decision, not a failure),
+    so ``send_telegram`` returns True for a message nobody received. Callers that
+    must not consume work on a hold (notify_material_change) read this. Additive:
+    no existing caller changes behaviour.
+    """
+    return list(_held_bucket().get("held") or [])
+
+
 def last_message_ids() -> list[str]:
     """Provider message ids from the most recent send in this process.
 
@@ -127,8 +150,10 @@ def _raw_send_telegram_result(
     token = _token()
     targets = chat_ids or _chat_ids()
     reset_last_message_ids()
+    held: list[dict] = []
+    _held_bucket()["held"] = held
     if not token or not targets:
-        return {"ok": False, "message_ids": [], "chat_ids": []}
+        return {"ok": False, "message_ids": [], "chat_ids": [], "held": []}
     ok = True
     message_ids: list[str] = []
     try:
@@ -149,6 +174,8 @@ def _raw_send_telegram_result(
                     print(f"[telegram] Error to {cid}: {result.get('status_code')}")
                     ok = False
                     continue
+                if result.get("suppressed"):
+                    held.append({"chat_id": str(cid), "chunk": i, "reason": str(result.get("suppressed"))})
                 mid = result.get("message_id")
                 if mid is not None and str(mid).strip():
                     message_ids.append(str(mid))
@@ -168,6 +195,8 @@ def _raw_send_telegram_result(
         "ok": ok,
         "message_ids": message_ids,
         "chat_ids": [str(c) for c in targets],
+        # Chunks the comms editor held (additive; ``ok`` is unchanged for every caller).
+        "held": list(held),
     }
 
 

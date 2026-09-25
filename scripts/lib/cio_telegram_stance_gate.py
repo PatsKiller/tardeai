@@ -230,6 +230,7 @@ def record_hold(
     verdict: "StanceGateVerdict",
     *,
     source: str = "check_investment_send",
+    extra: Optional[dict[str, Any]] = None,
 ) -> Optional[Path]:
     """Append one hold receipt. No-op when allowed or persistence disabled."""
     if verdict.allow or not _should_persist_hold():
@@ -260,6 +261,8 @@ def record_hold(
         row["cio_as_of"] = verdict.cio_as_of
     if repeats:
         row["repeats_since_last_row"] = repeats
+    if extra:
+        row.update({k: v for k, v in extra.items() if k not in row})
     wrote: Optional[Path] = None
     line = json.dumps(row, sort_keys=True) + "\n"
     for target in _hold_write_targets(path):
@@ -272,6 +275,19 @@ def record_hold(
         except OSError:
             continue
     return wrote
+
+
+def request_missing_stance_review(symbol: str, *, source: str) -> dict[str, Any]:
+    """Queue a CIO review for a bullish send held for a missing stance. Never raises."""
+    try:
+        from scripts.lib.cio_stance_review_request import request_cio_review
+    except Exception:  # noqa: BLE001
+        try:
+            from lib.cio_stance_review_request import request_cio_review  # type: ignore
+        except Exception as exc:  # noqa: BLE001
+            return {"review_requested": False, "review_status": f"import_error:{type(exc).__name__}"}
+    gate_source, caller = _normalize_hold_source(source)
+    return request_cio_review(symbol, source=gate_source, caller=caller)
 
 
 @dataclass(frozen=True)
@@ -456,6 +472,7 @@ def check_investment_send(
     db_query: Optional[Callable[..., list[dict]]] = None,
     cio_view: Optional[dict[str, Any]] = None,
     source: str = "check_investment_send",
+    request_review: bool = True,
 ) -> StanceGateVerdict:
     """Allow or hold an investment-shaped Telegram send for one symbol.
 
@@ -481,7 +498,15 @@ def check_investment_send(
             symbol=sym,
             message_stance=said,
         )
-        record_hold(verdict, source=source)
+        # OPERATOR DECISION 2026-09-23: a GO/BUY with no CIO stance stays held
+        # AND forces a CIO review, so the next send has a stance to check.
+        review: Optional[dict[str, Any]] = None
+        if said == "bullish" and request_review:
+            review = request_missing_stance_review(sym, source=source)
+        elif said == "bullish":
+            # Observe-only callers (Maria gate in observe mode) must not spend.
+            review = {"review_requested": False, "review_status": "skipped_observe_only"}
+        record_hold(verdict, source=source, extra=review)
         return verdict
 
     action = str(view.get("action") or "").upper()

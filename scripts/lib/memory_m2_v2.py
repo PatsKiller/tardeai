@@ -35,6 +35,7 @@ from scripts.lib.m2_live_shadow_guard import (  # noqa: E402
     SHADOW_AGENT_DSN,
     destructive_reset_permitted,
     refuse_live_shadow_under_pytest,
+    set_isolated_agent_password,
 )
 
 AGENT_DSN = os.getenv("M2_AGENT_DSN") or SHADOW_AGENT_DSN
@@ -78,6 +79,7 @@ def apply_schema(conn) -> None:
         # shadow is refused as well unless explicitly opted in (M5 audit 09-23).
         if destructive_reset_permitted(conn, is_production=conn_targets_production(conn)):
             cur.execute("SET m2.allow_destructive_reset = 'on'")
+        set_isolated_agent_password(cur, is_production=conn_targets_production(conn))
         cur.execute(sql)
         _grant_connect_current_db(cur)
     # r10 rebuild strips v2 packaging (PR #1158). Re-heal aliases/views/trigger.
@@ -93,6 +95,16 @@ def set_tenant(conn, tenant_id: str) -> None:
     require_tenant(tenant_id)
     with conn.cursor() as cur:
         cur.execute("SELECT set_config('app.tenant_id', %s, false)", (tenant_id,))
+
+
+# identity_kind is free text in the DDL (no CHECK). The values in use, so a
+# reader knows what to expect (2026-09-25):
+#   security        — a security_guid-keyed subject (default)
+#   cognitive       — a subject with no security_guid (cio_memory_integration)
+#   option_contract — an option contract; its guid IS a security_guid with
+#                     share_class="option" (options_identity.contract_guid), so
+#                     pass it as security_guid and name the kind for readers.
+IDENTITY_KINDS = ("security", "cognitive", "option_contract")
 
 
 def insert_identity(conn, *, tenant_id: str, subject_guid: str, predicate: str, kind: str = "security", security_guid: str | None = None) -> str:

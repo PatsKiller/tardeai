@@ -261,6 +261,19 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
             payload=payload,
         )
 
+    # MaterialChangeNotice renders this marker. Matched BEFORE the research_update
+    # branches, which route to DIGEST and swallowed the first live alert into the 8pm
+    # digest queue — and (2026-09-24) BEFORE the proposal branches: one name's thesis
+    # "RCL paper proposal for …" matched `paper proposal` and held an eight-name
+    # notice for 179 runs. Matched FIRST, before any content rule: a catalyst headline
+    # ("…approved by the FDA") must not re-route the notice either. The markers below
+    # are written only by that notifier.
+    # MaterialChangeNotice@v2 (2026-09-24): pages end "Material change · Advisory only"
+    # and the digest header reads "Material change — daily digest"; the relative-move
+    # phrase is written with "×".
+    if ("material change \u2014" in low or "material change \u00b7" in low
+            or re.search(r"[x\u00d7] its normal daily move", low)):
+        return ev("material_change", "info")
     if re.search(r"\blive (?:order )?2fa\b|2fa required.*live order|live order.*approval required", text, re.I):
         return ev("live_order_2fa_required", "critical", True, "LIVE_ORDER_2FA")
     if re.search(r"\blive session\b.*\b2fa\b|session authorization.*required", text, re.I):
@@ -294,11 +307,6 @@ def classify_legacy_message(message: str, *, source_producer: str = "legacy_send
     # otherwise swallows "entry alert" into COMMAND_CENTER / P2_DASHBOARD_ONLY.
     if re.search(r"\bentry alert\b", text, re.I):
         return ev("cio_entry_state", "info")
-    # MaterialChangeNotice@v1 renders this exact header. Matched BEFORE the
-    # research_update branches, which route to DIGEST and swallowed the first live
-    # alert into the 8pm digest queue instead of sending it.
-    if "material change \u2014" in low or "x its normal daily move" in low:
-        return ev("material_change", "info")
     if re.search(r"research update|holding research|analyst report|catalyst research", text, re.I):
         return ev("research_update", "info")
     if re.search(r"hermes watchlist|rank-only|watchlist alerts", text, re.I):

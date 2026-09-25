@@ -36,6 +36,8 @@ STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 DESK_PATH = PROJECT_ROOT / "data" / "runtime" / "reentry_decision_desk_latest.json"
 RECEIPT = PROJECT_ROOT / "data" / "runtime" / "cio_entry_state_last_run.json"
 MAX_ALERTS_PER_RUN = 8
+PACKET_DIR = PROJECT_ROOT / "data" / "runtime" / "buy_ready_packets"
+REVIEW_PENDING = PROJECT_ROOT / "data" / "runtime" / "cio_entry_review_pending.jsonl"
 
 DDL = """CREATE TABLE IF NOT EXISTS cio_entry_states (
     id bigserial PRIMARY KEY,
@@ -146,6 +148,21 @@ def gather(cur) -> dict[str, dict]:
             e.setdefault("earnings_date", ((pk.get("event_state") or {}).get("earnings") or {}).get("date"))
         e["market_cap_label"] = cap_label(
             None if (b := enrichment_market_cap_billions(enrichment.get(sym) or {})) is None else b * 1000.0)
+        # P8 thesis/structure inputs from house enrichment (never invent).
+        enr = enrichment.get(sym) or {}
+        if isinstance(enr, dict):
+            if e.get("pe") is None and enr.get("pe") is not None:
+                e["pe"] = enr.get("pe")
+            if e.get("forward_pe") is None and enr.get("forward_pe") is not None:
+                e["forward_pe"] = enr.get("forward_pe")
+            if e.get("peg") is None and enr.get("peg") is not None:
+                e["peg"] = enr.get("peg")
+            if e.get("atr") is None and enr.get("atr") is not None:
+                e["atr"] = enr.get("atr")
+            if not e.get("sector") and enr.get("sector"):
+                e["sector"] = enr.get("sector")
+            if not e.get("industry") and enr.get("industry"):
+                e["industry"] = enr.get("industry")
     return ev
 
 
@@ -160,13 +177,33 @@ def alerted_today(cur, keys: list[str]) -> set[str]:
     return {row[0] for row in cur.fetchall()}
 
 
-def operator_send(text: str) -> dict:
-    """The one operator send path (alert and digest). Routes IMMEDIATE as cio_entry_state."""
+def operator_send(text: str, *, primary_symbols: list[str] | None = None) -> dict:
+    """The one operator send path (alert and digest). Routes IMMEDIATE as cio_entry_state.
+
+    ``primary_symbols`` scopes Communications Editor footer chrome to the active
+    symbol(s) so residual tickers (e.g. MAA GUID bleed on an AXTI alert) never
+    appear in Finviz/Yahoo/CC links.
+    """
+    token = None
+    reset_primary_symbols = None
     try:
+        if primary_symbols:
+            try:
+                from scripts.lib.comms_editor import set_primary_symbols, reset_primary_symbols as _reset
+            except ImportError:
+                from lib.comms_editor import set_primary_symbols, reset_primary_symbols as _reset  # type: ignore
+            reset_primary_symbols = _reset
+            token = set_primary_symbols(primary_symbols)
         from telegram_alert import send_telegram
         return {"operator": bool(send_telegram(text, message_class="operator_alert"))}
     except Exception as exc:
         return {"operator": False, "operator_error": f"{type(exc).__name__}: {str(exc)[:120]}"}
+    finally:
+        if token is not None and reset_primary_symbols is not None:
+            try:
+                reset_primary_symbols(token)
+            except Exception:
+                pass
 
 
 def starred_symbols(cur) -> set[str]:
@@ -212,9 +249,134 @@ def alert_worthy(actionable: list[dict], prior: dict, done: set,
     return out
 
 
+def stamp_cio_stance(text: str, symbols: list[str], only_conflicts: bool = False) -> str:
+    """CIO stance footer, never a hold (M5 audit 2026-09-23, Module 4d).
+
+    This page IS a CIO decision: the runner writes its own ``cio-entry-*`` row to
+    cio_decisions just before paging, so gating it on the latest cio_decisions
+    row would read that row back and always allow -- circular. Instead the
+    footer shows the CIO's independent stance (the daily decision, excluding
+    ``cio-entry-*`` rows) and flags an AVOID/SELL conflict.
+    """
+    try:
+        from lib.publisher_stance_gate import stamp_symbols
+    except ImportError:
+        from scripts.lib.publisher_stance_gate import stamp_symbols  # type: ignore
+    try:
+        return stamp_symbols(text, symbols, exclude_decision_prefix="cio-entry-",
+                             note="entry page is CIO-authored, not gated", only_conflicts=only_conflicts)
+    except Exception:  # noqa: BLE001 -- a footer must never cost the page
+        return text
+
+
+def _review_wait_minutes() -> float:
+    import os
+    try:
+        return float(os.environ.get("CIO_ENTRY_REVIEW_WAIT_MIN") or 30)
+    except ValueError:
+        return 30.0
+
+
+def prepare_packet_inputs(result: dict, ev: dict, *, apply: bool) -> dict:
+    """M5 09-24: attach chain-ranked options alternatives, portfolio facts and the CIO
+    review to ``ev`` before rendering. Read-only broker chain; never sizes; a dry run
+    (no --apply) never calls the model. Returns the review result."""
+    from lib.buy_ready_options_alternatives import live_alternatives
+    from lib.buy_ready_portfolio_facts import build_portfolio_facts
+    from lib.buy_ready_cio_review import review_packet
+    from lib.cio_options_fluency import build_buy_ready_packet
+    sym = str(result.get("symbol") or "").upper()
+    try:
+        ev["portfolio_facts"] = build_portfolio_facts(sym)
+    except Exception as exc:  # noqa: BLE001
+        ev["portfolio_facts"] = {"status": "UNAVAILABLE", "error": type(exc).__name__, "flags": []}
+    plan = {k: result.get(k) for k in ("symbol", "price", "entry_low", "entry_high", "stop", "target")}
+    try:
+        ev["options_alternatives"] = live_alternatives(plan, held=bool(result.get("held")),
+                                                       proxy_iv_rank=(ev or {}).get("iv_rank"))
+    except Exception as exc:  # noqa: BLE001
+        ev["options_alternatives"] = {"status": "NO_CHAIN", "alternatives": [], "notes": [type(exc).__name__]}
+    packet = build_buy_ready_packet(result, {**ev, "held": result.get("held"), "plan_source": result.get("plan_source")})
+    review = review_packet(packet, review_mode=None if apply else "dry")
+    ev["cio_review"] = review
+    return review
+
+
+def save_packet(result: dict, ev: dict) -> None:
+    """Latest packet per symbol for the Command Center (read-only consumer: api_v2)."""
+    try:
+        from lib.cio_options_fluency import build_buy_ready_packet
+        packet = build_buy_ready_packet(result, {**ev, "held": result.get("held"), "plan_source": result.get("plan_source")})
+        packet["saved_at"] = datetime.now(timezone.utc).isoformat()
+        PACKET_DIR.mkdir(parents=True, exist_ok=True)
+        (PACKET_DIR / f"{str(result.get('symbol')).upper()}.json").write_text(json.dumps(packet, default=str, indent=1))
+    except Exception:  # noqa: BLE001 — the page must never fail on the cache
+        pass
+
+
+def record_review(cur, review: dict, result: dict) -> None:
+    """Store an OK review as a cio_decisions row (action_class='entry_review'); queue a
+    pending/failed live review for follow-up within CIO_ENTRY_REVIEW_WAIT_MIN."""
+    from lib.buy_ready_cio_review import INSERT_SQL, decision_row
+    row = decision_row(review)
+    if row:
+        cur.execute(INSERT_SQL, row)
+        return
+    if review.get("mode") == "live" and review.get("status") in ("PENDING", "LLM_ERROR", "INVALID"):
+        REVIEW_PENDING.parent.mkdir(parents=True, exist_ok=True)
+        with REVIEW_PENDING.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps({"symbol": result.get("symbol"), "state": result.get("state"),
+                                 "queued_at": datetime.now(timezone.utc).isoformat(),
+                                 "result": result, "status": review.get("status")}, default=str) + "\n")
+
+
+def follow_up_pending_reviews(cur, evidence: dict) -> list[dict]:
+    """Retry queued live reviews inside the wait window; page a follow-up when one lands."""
+    if not REVIEW_PENDING.exists():
+        return []
+    try:
+        rows = [json.loads(x) for x in REVIEW_PENDING.read_text(encoding="utf-8").splitlines() if x.strip()]
+    except (OSError, ValueError):
+        return []
+    from lib.buy_ready_cio_review import format_review_lines
+    now = datetime.now(timezone.utc)
+    keep, out = [], []
+    latest: dict[str, dict] = {}
+    for r in rows:
+        latest[str(r.get("symbol")).upper()] = r
+    for sym, r in latest.items():
+        try:
+            age_min = (now - datetime.fromisoformat(str(r["queued_at"]))).total_seconds() / 60.0
+        except (KeyError, ValueError):
+            continue
+        if age_min > _review_wait_minutes():
+            out.append({"symbol": sym, "follow_up": "expired"})
+            continue
+        ev = dict(evidence.get(sym) or {})
+        review = prepare_packet_inputs(r["result"], ev, apply=True)
+        if review.get("status") == "OK":
+            from lib.buy_ready_cio_review import INSERT_SQL, decision_row
+            row = decision_row(review)
+            if row:
+                cur.execute(INSERT_SQL, row)
+            text = "\n".join([f"CIO review — {sym} ({r.get('state')})"] + format_review_lines(review)
+                              + [ces.ADVISORY_FOOTER])
+            out.append({"symbol": sym, "follow_up": "sent", **operator_send(text, primary_symbols=[sym])})
+            save_packet(r["result"], ev)
+        else:
+            keep.append(r)
+            out.append({"symbol": sym, "follow_up": review.get("status")})
+    REVIEW_PENDING.write_text("".join(json.dumps(x, default=str) + "\n" for x in keep), encoding="utf-8")
+    return out
+
+
 def send_alerts(result: dict, evidence: dict) -> dict:
     out = {"cio_desk": False, "cio_bus": False}
-    out.update(operator_send(ces.render_operator(result, evidence)))
+    sym = str(result.get("symbol") or "").upper()
+    out.update(operator_send(
+        stamp_cio_stance(ces.render_operator(result, evidence), [result["symbol"]]),
+        primary_symbols=[sym] if sym else None,
+    ))
     try:
         from scripts.lib.cio_telegram_transport import send_cio_message
         r = send_cio_message(ces.render_cio(result, evidence), subject=f"Entry state {result['symbol']}",
@@ -229,7 +391,10 @@ def send_alerts(result: dict, evidence: dict) -> dict:
         out["cio_desk_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
     try:
         from scripts.lib.cio_event_bus import CIOEventBus
-        CIOEventBus().emit("watch.new_signal", {"symbol": result["symbol"], "signal": "cio_entry_state",
+        # `symbols` (plural) is what cio_reactive_cycle binds the wake subject from;
+        # sending only `symbol` left the V BUY_READY review subject-less (M5 09-24).
+        CIOEventBus().emit("watch.new_signal", {"symbol": result["symbol"], "symbols": [result["symbol"]],
+                                                "signal": "cio_entry_state",
                                                 "state": result["state"], "entry_low": result["entry_low"],
                                                 "entry_high": result["entry_high"], "price": result["price"],
                                                 "rr": result["rr"], "market_cap_label": result["market_cap_label"]},
@@ -270,6 +435,11 @@ def main() -> int:
     to_alert = pending[: max(0, a.max_alerts)]
     digest = pending[max(0, a.max_alerts):]
     sent = []
+    reviews: dict[str, dict] = {}
+    # M5 09-24: options alternatives + portfolio facts + CIO review before any render
+    # (render_cio is also the cio_decisions rationale written below).
+    for r in (to_alert if a.apply else to_alert[:1]):
+        reviews[r["symbol"]] = prepare_packet_inputs(r, evidence[r["symbol"]], apply=a.apply)
     if a.apply:
         for sym, r in results.items():
             if prior.get(sym) != r["state"]:
@@ -300,9 +470,29 @@ def main() -> int:
                          json.dumps({**r, "transition_key": ces.transition_key(r), "via": "digest"}, default=str)))
         conn.commit()
         for r in to_alert:
+            if r["symbol"] in reviews:
+                record_review(cur, reviews[r["symbol"]], r)
+        conn.commit()
+        for r in to_alert:
             sent.append({"symbol": r["symbol"], "state": r["state"], **send_alerts(r, evidence[r["symbol"]])})
+            save_packet(r, evidence[r["symbol"]])
+        follow_ups = follow_up_pending_reviews(cur, evidence)
+        conn.commit()
+        if follow_ups:
+            sent.append({"review_follow_ups": follow_ups})
         if digest:
-            sent.append({"digest": [r["symbol"] for r in digest], **operator_send(ces.render_digest(digest))})
+            digest_syms = [str(r["symbol"]).upper() for r in digest if r.get("symbol")]
+            sent.append({
+                "digest": digest_syms,
+                **operator_send(
+                    stamp_cio_stance(
+                        ces.render_digest(digest),
+                        [r["symbol"] for r in digest],
+                        only_conflicts=True,
+                    ),
+                    primary_symbols=digest_syms,
+                ),
+            })
         RECEIPT.parent.mkdir(parents=True, exist_ok=True)
         RECEIPT.write_text(json.dumps({"as_of": datetime.now(timezone.utc).isoformat(), "counts": counts,
                                        "alerts": sent}, indent=2, default=str))
@@ -313,8 +503,11 @@ def main() -> int:
               "would_digest": [f"{r['symbol']} {r['state']}" for r in digest],
               "sent": sent,
               "blocked_reasons": _top_reasons(results.values())}
+    if reviews:
+        report["reviews"] = {k: {"status": v.get("status"), "mode": v.get("mode")} for k, v in reviews.items()}
     if not a.apply and to_alert:
-        report["sample_operator_message"] = ces.render_operator(to_alert[0], evidence[to_alert[0]["symbol"]])
+        report["sample_operator_message"] = stamp_cio_stance(
+            ces.render_operator(to_alert[0], evidence[to_alert[0]["symbol"]]), [to_alert[0]["symbol"]])
     print(json.dumps(report, indent=2, default=str))
     return 0
 

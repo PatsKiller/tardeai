@@ -117,6 +117,10 @@ def gate_input_from_record(
         # memory, not the plan
         "next_eligible_at": rec.get("next_eligible_at"),
         "prior_outcome": rec.get("last_outcome"),
+        # Settled outcomes on the desk's own prior calls (Slice 2, 2026-09-24).
+        # The gate reads this before routing; MBI_BEHAVIOR=0 — it may change the
+        # route and the next question, never a behaviour field.
+        "belief": list(rec.get("beliefs") or []),
         "prior_artifact_ids": [rec["last_artifact_id"]] if rec.get("last_artifact_id") else [],
         "content_hash": (rec.get("hashes") or {}).get("price"),
         # an observable that moved overrides the cadence skip
@@ -354,6 +358,12 @@ def apply_after_cycle(
     if decision and not nxt_at:
         nxt_at = decision.get("next_eligible_at")
         outcome = outcome or decision.get("decision")
+
+    # A belief-driven route (cio_research_gate: prior_belief_weak_escalates)
+    # names the question the desk should be asking; it fills the slot only when
+    # no more specific rule above already authored one.
+    if decision and not nxt_q and decision.get("belief_question"):
+        nxt_q = str(decision.get("belief_question"))
 
     # LITMUS_WAKE / FIRST_FIRE defect 2: a decide_after_load cadence write used
     # to move next_eligible_at while leaving cc_narrative.writer as the prior

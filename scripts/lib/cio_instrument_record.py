@@ -38,6 +38,10 @@ DEFAULT_PATH = Path("data/cio/cio_instrument_records.jsonl")
 
 CASH_SLEEVE = "SLEEVE:CASH"
 KINDS = ("HELD", "EXIT", "WATCH", "SECTOR", "SLEEVE")
+# Registered subject prefixes that are deliberately NOT record kinds: they are
+# GUID tags on securities (ticker_knowledge_graph.entity_guid) and narrative
+# subjects, never wakeable InstrumentRecords. is_mintable names the policy.
+TAGS_ONLY_KINDS = ("INDUSTRY", "THEME")
 
 # The four cognition fields. A persist must move at least one of these, or the
 # lesson did nothing and calling it "applied" would be a lie.
@@ -85,6 +89,13 @@ def is_mintable(kind: str, name: str, *, market_value: Optional[float] = None) -
     """Return (ok, reason). Refusals are explicit so a caller can log them."""
     k = str(kind or "").strip().upper()
     n = str(name or "").strip().upper()
+    if k in TAGS_ONLY_KINDS:
+        # Not a gap. AGENTS.md §13.4 registers INDUSTRY:/THEME: as prefixes
+        # with no producer and no scheduled consumer; narrative links carry
+        # them as tags on securities ("tags, not records"). Settled 2026-09-24
+        # (agentic-memory tranche 1): tags-only, formalized — see
+        # docs/architecture/narrative-subject-identity.md, "Entity policy".
+        return (False, f"tags_only_by_policy:{k}")
     if k not in KINDS:
         return (False, f"unknown_kind:{k}")
     if k == "SLEEVE":
@@ -384,6 +395,12 @@ def apply_cognition(
 
     `strict` raises CognitionNoOp when nothing moved. Callers that legitimately
     expect a no-op (a probe, a dry run) pass strict=False and check the list.
+
+    ``outcome`` is the research-gate ROUTE the last cycle took (``flash`` /
+    ``pro`` / ``reuse`` — ``cio_rehydrate.apply_after_cycle`` writes
+    ``decision["decision"]`` here) and it feeds ``gate_input_from_record`` as
+    ``prior_outcome``. It is NOT a market outcome. Settled market outcomes live
+    in the record's ``beliefs`` block (``apply_belief``), never here.
     """
     if forbidden:
         bad = sorted(k for k in forbidden if k in BEHAVIOR_FIELDS) or sorted(forbidden)
@@ -441,6 +458,145 @@ def apply_cognition(
     return rec, changed
 
 
+# ── beliefs: settled outcomes on the record ─────────────────────────────────
+#
+# Agentic-memory tranche 1, Slice 2 (2026-09-24). A belief is what settled
+# outcomes say about the desk's own prior calls on this subject: for one
+# (subject_key, recommendation, horizon) it carries sample_size / successful /
+# success_rate and the outcome ids that produced them. It is written ONLY by
+# the belief writer from settled rows (advisory_outcomes, resolved checkpoints,
+# CONFIRMED/REFUTED commitments) and ratified lessons; wake decide() reads it
+# before authoring. MBI_BEHAVIOR=0 applies unchanged: a belief may move the
+# next question, the research route and the narrative — never size, order,
+# stop, weight or execution, and apply_belief refuses those keys anywhere in
+# the block. `live_mutation` is always False: the record holds the belief, it
+# does not act on it.
+
+BELIEF_SCHEMA = "InstrumentBelief@v1"
+BELIEF_REQUIRED = (
+    "belief_key", "population", "horizon", "recommendation", "sample_size",
+    "successful", "success_rate", "outcome_ids", "belief_proposal_id",
+    "revision", "as_of",
+)
+# A prior call is "weak" when at least this many settled outcomes exist and
+# fewer than this share went the way the desk said. Mirrors
+# settle_agent_commitments.MIN_SAMPLES for the sample floor.
+BELIEF_MIN_SAMPLES = 5
+BELIEF_WEAK_SUCCESS_RATE = 0.4
+
+
+def _walk_keys(obj: Any, out: Optional[set[str]] = None) -> set[str]:
+    out = set() if out is None else out
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            out.add(str(k))
+            _walk_keys(v, out)
+    elif isinstance(obj, (list, tuple)):
+        for v in obj:
+            _walk_keys(v, out)
+    return out
+
+
+def apply_belief(
+    record: dict[str, Any],
+    *,
+    belief: dict[str, Any],
+    strict: bool = True,
+) -> tuple[dict[str, Any], list[str]]:
+    """Return (updated_record, changed_fields) with ``beliefs`` moved, or raise.
+
+    The rail: any BEHAVIOR_FIELDS key anywhere inside the block raises
+    BehaviorWriteRefused (a belief is about what happened, never what to do);
+    ``live_mutation`` other than False raises the same. A block whose
+    ``belief_proposal_id`` equals the stored one for its belief_key moved
+    nothing and is a CognitionNoOp under ``strict`` — a re-write that changes
+    no belief is not learning.
+    """
+    if not isinstance(belief, dict):
+        raise ValueError("belief must be a dict")
+    bad = sorted(k for k in _walk_keys(belief) if k in BEHAVIOR_FIELDS)
+    if bad:
+        raise BehaviorWriteRefused(f"MBI_BEHAVIOR=0: a belief may not carry {bad}")
+    if belief.get("live_mutation") not in (False, None):
+        raise BehaviorWriteRefused("MBI_BEHAVIOR=0: a belief may not request live_mutation")
+    missing = [k for k in BELIEF_REQUIRED if k not in belief]
+    if missing:
+        raise ValueError(f"belief is missing {missing}")
+
+    blk = dict(belief)
+    blk["schema"] = BELIEF_SCHEMA
+    blk["live_mutation"] = False
+    blk["memory_behavior_influence"] = MBI_BEHAVIOR
+    blk["authority"] = AUTHORITY
+
+    rec = dict(record)
+    beliefs = [dict(b) for b in (rec.get("beliefs") or []) if isinstance(b, dict)]
+    idx = next((i for i, b in enumerate(beliefs) if b.get("belief_key") == blk["belief_key"]), None)
+    if idx is not None and beliefs[idx].get("belief_proposal_id") == blk["belief_proposal_id"]:
+        if strict:
+            raise CognitionNoOp(
+                f"{rec.get('subject_key')}: belief {blk['belief_key']} unchanged "
+                f"({blk['belief_proposal_id']}) — a re-write that moves no belief is not persisted")
+        return rec, []
+    if idx is None:
+        beliefs.append(blk)
+    else:
+        beliefs[idx] = blk
+    rec["beliefs"] = beliefs
+    rec["updated_ts"] = _now()
+    return rec, ["beliefs"]
+
+
+def latest_belief(record: Optional[dict[str, Any]], *,
+                  recommendation: Optional[str] = None) -> Optional[dict[str, Any]]:
+    """The most recently written belief on a record (optionally for one recommendation)."""
+    if not record:
+        return None
+    rows = [b for b in (record.get("beliefs") or []) if isinstance(b, dict)]
+    if recommendation:
+        want = str(recommendation).upper()
+        rows = [b for b in rows if str(b.get("recommendation") or "").upper() == want]
+    if not rows:
+        return None
+    return max(rows, key=lambda b: (str(b.get("as_of") or ""), int(b.get("revision") or 0)))
+
+
+def weak_beliefs(record: Optional[dict[str, Any]], *,
+                 min_samples: int = BELIEF_MIN_SAMPLES,
+                 threshold: float = BELIEF_WEAK_SUCCESS_RATE) -> list[dict[str, Any]]:
+    """Beliefs with enough settled outcomes and a success rate below threshold."""
+    if not record:
+        return []
+    out = []
+    for b in record.get("beliefs") or []:
+        if not isinstance(b, dict):
+            continue
+        try:
+            n = int(b.get("sample_size") or 0)
+            rate = float(b.get("success_rate"))
+        except (TypeError, ValueError):
+            continue
+        if n >= min_samples and rate < threshold:
+            out.append(b)
+    return sorted(out, key=lambda b: float(b.get("success_rate") or 0.0))
+
+
+def belief_sentence(belief: Optional[dict[str, Any]]) -> str:
+    """One plain sentence a model can be shown. Numbers, no instructions."""
+    if not belief:
+        return ""
+    try:
+        n = int(belief.get("sample_size") or 0)
+        k = int(belief.get("successful") or 0)
+        rate = float(belief.get("success_rate") or 0.0)
+    except (TypeError, ValueError):
+        return ""
+    return (f"Settled outcomes on record: prior {belief.get('recommendation')} calls on this "
+            f"subject were right {k} of {n} times over {belief.get('horizon')} "
+            f"(success rate {rate:.2f}, population {belief.get('population')}, "
+            f"belief {belief.get('belief_key')} rev {belief.get('revision')}).")
+
+
 def hash_changed(record: dict[str, Any], name: str, value: Any) -> bool:
     """True when an observable (price/weight/earnings/analyst) actually MOVED.
 
@@ -462,17 +618,48 @@ def hash_changed(record: dict[str, Any], name: str, value: Any) -> bool:
 
 
 def _store_for_root(root: Path | str | None = None) -> InstrumentRecordStore:
+    """The record store for a state root; ``None`` means the registered store.
+
+    2026-09-24 (agentic-memory tranche 1, R6): ``resolve_store`` returns a
+    ``dict`` (``{"ok", "path", ...}``), and the previous body did
+    ``Path(getattr(loc, "path", None) or loc)`` on it, which raised
+    ``TypeError`` and fell through to the cwd-relative ``DEFAULT_PATH`` on every
+    call. In production the two coincide only because the release's ``data/cio``
+    is a symlink into persistent-state; from a worktree, a health probe or a test
+    they are two different files. Resolve the registry path properly and record
+    which file was read (``store_path``) so the consult evidence can prove it.
+    """
     if root is None:
         try:
             from scripts.lib.canonical_store_registry import resolve_store
 
             loc = resolve_store(STORE_ID)
-            path = Path(getattr(loc, "path", None) or loc)
-            return InstrumentRecordStore(path)
+            path = loc.get("path") if isinstance(loc, dict) else getattr(loc, "path", None)
+            if path:
+                return InstrumentRecordStore(Path(path))
         except Exception:  # noqa: BLE001
-            return InstrumentRecordStore(DEFAULT_PATH)
+            pass
+        return InstrumentRecordStore(DEFAULT_PATH)
     root_p = Path(root)
     return InstrumentRecordStore(root_p / DEFAULT_PATH)
+
+
+def subject_key_for_symbol(symbol: Any, *, store: InstrumentRecordStore | None = None,
+                           root: Path | str | None = None) -> Optional[str]:
+    """The subject_key an existing record holds for a bare symbol, or None.
+
+    Probes HELD, then EXIT, then WATCH, then SECTOR — the same order the wake
+    loader uses — and returns the first key with a record. Lookup only: a
+    symbol with no record yields None; nothing is minted here.
+    """
+    raw = str(symbol or "").strip()
+    if not raw:
+        return None
+    st = store or _store_for_root(root)
+    for key in _candidate_keys(raw):
+        if st.load(key):
+            return key
+    return None
 
 
 def _candidate_keys(subject: Any) -> list[str]:

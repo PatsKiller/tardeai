@@ -189,6 +189,14 @@ def fingerprint_request(
 
 
 def _append_jsonl(path: Path, row: dict[str, Any]) -> None:
+    # Rows written while a hop is open (an operator turn asking for research)
+    # carry that hop's event lineage; rows that name their own keep them.
+    try:
+        from scripts.lib.event_lineage import stamp_row  # noqa: PLC0415
+
+        stamp_row(row)
+    except Exception:  # noqa: BLE001 — lineage never breaks a write
+        pass
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
@@ -234,6 +242,28 @@ def _identity_for_research(research_id: Any, meta: Optional[dict[str, Any]] = No
                 "issuer_guid": rec.get("issuer_guid"),
                 "identity_status": rec.get("identity_status")}
     return _subject_identity(rec.get("symbol"))
+
+
+def _lineage_for_research(research_id: Any, meta: Optional[dict[str, Any]] = None) -> dict[str, str]:
+    """Event lineage recorded on a research request (causation / parent), or {}.
+
+    A worker completes research in another process, long after the operator
+    turn that asked for it; the request row is the only place the originating
+    event id survives, so CLAIMED and COMPLETED rows copy it from there.
+    """
+    rec = meta
+    if rec is None:
+        try:
+            rec = (_load_projection().get("by_research_id") or {}).get(str(research_id or ""))
+        except Exception:  # noqa: BLE001
+            rec = None
+    rec = rec or {}
+    out: dict[str, str] = {}
+    for src in (rec, rec.get("request") if isinstance(rec.get("request"), dict) else {}):
+        for k in ("causation_id", "parent_event_id"):
+            if not out.get(k) and src.get(k):
+                out[k] = str(src[k])
+    return out
 
 
 def _empty_projection() -> dict[str, Any]:
@@ -410,6 +440,8 @@ def _project_new_request(proj: dict[str, Any], req: dict[str, Any]) -> None:
         "subject_guid": req.get("subject_guid"),
         "issuer_guid": req.get("issuer_guid"),
         "identity_status": req.get("identity_status"),
+        "causation_id": req.get("causation_id"),
+        "parent_event_id": req.get("parent_event_id"),
         "catalyst_event_ids": list(req.get("known_catalyst_event_ids") or [])[:40],
         # Full request body for worker claim (no re-scan of JSONL required)
         "request": req,
@@ -442,6 +474,7 @@ def _save_new_request(req: dict[str, Any]) -> None:
         "reuse_miss_reason": req.get("reuse_miss_reason"),
         "subject_guid": req.get("subject_guid"),
         "issuer_guid": req.get("issuer_guid"),
+        **_lineage_for_research(research_id, {"request": req}),
     })
     proj = _load_projection()
     _project_new_request(proj, req)
@@ -482,6 +515,17 @@ def _log_enqueue(result: EnqueueResult, plan_id: str, priority: str) -> None:
         ident = _identity_for_research(result.research_id)
         evt.setdefault("subject_guid", ident.get("subject_guid"))
         evt.setdefault("issuer_guid", ident.get("issuer_guid"))
+    # A reuse / dedupe is caused by the ask in progress (open scope), not by
+    # whichever turn created the research; fall back to the request's lineage.
+    try:
+        from scripts.lib.event_lineage import stamp_row  # noqa: PLC0415
+
+        stamp_row(evt)
+    except Exception:  # noqa: BLE001
+        pass
+    if result.research_id:
+        for k, v in _lineage_for_research(result.research_id).items():
+            evt.setdefault(k, v)
     _append_jsonl(REQUEST_PATH, evt)
 
 
@@ -601,6 +645,12 @@ def enqueue_research_request(
             },
             "provenance": {"operator_forced": bool(operator_forced), "actor_id": actor_id},
         }
+        try:
+            from scripts.lib.event_lineage import lineage_fields  # noqa: PLC0415
+
+            request.update(lineage_fields(plan))
+        except Exception:  # noqa: BLE001 — lineage never breaks enqueue
+            pass
         if symbol and symbol != "BOOK":
             # Stamp registry identity on REQUESTED rows (parity Stage 1/3).
             # Lineage later carried subject_guid while the request jsonl was null —
@@ -869,6 +919,7 @@ def claim_next(*, worker_id: str, limit: int = 1) -> list[dict[str, Any]]:
             "status": "running",
             "updated_ts": now,
             "subject_guid": _identity_for_research(rid, rec).get("subject_guid"),
+            **_lineage_for_research(rid, rec),
         })
     proj["by_research_id"] = by_rid
     if claimed:
@@ -976,6 +1027,8 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
         for key, val in ident.items():
             if val is not None:
                 result.setdefault(key, val)
+        for key, val in _lineage_for_research(research_id, req_meta).items():
+            result.setdefault(key, val)
 
         _append_jsonl(RESULT_PATH, {"event": "HERMES_RESEARCH_COMPLETED", **result})
 

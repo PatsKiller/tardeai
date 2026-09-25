@@ -622,10 +622,15 @@ GATES = [
             "tests/test_screener_go_alerts_20260914.py",
             "tests/test_screener_go_alerts_delivery_20260914.py",
             "tests/test_comms_editor_mode_file_20260914.py",
+            # 2026-09-23 M5 4d: every scheduled recommendation sender passes the stance
+            # gate; document captions pass the editor; editor fail mode is a switch.
+            "tests/test_m5_gate_coverage_20260923.py",
             # 2026-09-18: investment-shaped Telegram held on CIO Avoid / missing decision.
             "tests/test_cio_telegram_stance_gate_20260918.py",
             # 2026-09-23 M5: AVOID/SELL hard hold, soft stances GO→WATCH, hold-ledger dedupe.
             "tests/test_cio_telegram_stance_gate_m5_20260923.py",
+            "tests/test_cio_stance_review_request_20260923.py",
+            "tests/test_cio_stance_classification_drain_20260923.py",
             # 2026-09-16 B-phase curation: STOP HEALTH per-symbol repeats collapse to one
             # batched card; GO + entry alerts carry a HELD / NOT HELD triage pill.
             "tests/test_stop_health_batch_20260916.py",
@@ -801,6 +806,8 @@ GATES = [
             "tests/test_operator_reply_routing_sources_20260913.py",
             # Stage 1+3 parity: shared Hermes join + internal-first finalize (desk + Maria).
             "tests/test_hermes_join_internal_first_20260923.py",
+            # M5 step 5: join keyed by subject_guid + DB opr_ leg; LEGEND in finalize; [n] citations.
+            "tests/test_join_format_m5_20260923.py",
             # Stage 4 residual: atomic jobs.json mirror + bak/migrated recovery.
             "tests/test_gateway_cron_jobs_mirror_20260923.py",
             # Stage 2 parity: ban pseudo Iris/Alex/CIO attribution (desk + Maria).
@@ -1148,11 +1155,16 @@ GATES = [
     # table and on the dataclass but was missing from the INSERT. Both were
     # wiring, not design. This gate pins the defaults (a root event points at
     # itself; a root has NO parent, because self-parenting loops a recursive
-    # walk) and pins subject_guid into the receipt write.
+    # walk) and pins subject_guid into the receipt write. M5 (2026-09-23): the
+    # ids now travel the whole question -- turn -> gap / Hermes request ->
+    # completion -> outbound -- through one lineage scope, the reply to a
+    # multi-message send ("53968,53969") binds from the ledger, and watch rows
+    # get subject_guid behind a column probe (additive migration).
     (
         "comms_lineage_join",
         [
             "tests/test_phase4_lineage_join_20260922.py",
+            "tests/test_event_lineage_20260924.py",
         ],
     ),
     # market_quotes is 34.2M rows / 5.67 GB, of which 97.7% is intraday
@@ -1682,6 +1694,10 @@ GATES = [
             "tests/test_aec_agent_bus_memory_20260919.py",
             "tests/test_aec_narrator_20260919.py",
             "tests/test_bitemporal_correctness.py",
+            # M5 Module 2: SINGLE_VALUED supersession, atomic receipts, MRU token budget.
+            "tests/test_m5_memory_substrate_20260923.py",
+            "tests/test_memory_agent_least_privilege_20260924.py",
+            "tests/test_memory_prod_cutover_20260924.py",
             "tests/test_record_bridge_pin_soak.py",
             "tests/test_agent_number_grounding_slo_20260918.py",
             "tests/test_research_quality_escalate_20260918.py",
@@ -1751,6 +1767,7 @@ GATES = [
         "watch_lock_holders",
         [
             "tests/test_watch_lock_holders_20260915.py",
+            "tests/test_watch_idle_txn_20260924.py",
         ],
     ),
     (
@@ -1795,6 +1812,9 @@ GATES = [
         [
             "tests/test_cio_entry_state_20260915.py",
             "tests/test_cio_entry_state_alarm_fires_20260915.py",
+            # 2026-09-24 operator "build options": BUY_READY packet = per-unit options
+            # alternatives + portfolio facts + validated CIO review; wake subject bound.
+            "tests/test_buy_ready_options_20260924.py",
         ],
     ),
     (
@@ -1806,6 +1826,9 @@ GATES = [
             # 2026-09-21 operator: "plan is stale" was emitted for a plan 93% of the way
             # to its target AND for one 31% through its stop — abs() erased the sign.
             "tests/test_plan_state_not_stale_20260921.py",
+            # 2026-09-24 maturity review: page only held names / fresh CIO BUY_READY, one daily
+            # digest, one reconciled CIO verdict, editor holds are not deliveries.
+            "tests/test_material_change_alert_v2_20260924.py",
             "tests/test_material_change_sql_placeholders_20260915.py",
             "tests/test_maturity_runtime_evidence_per_agent_20260915.py",
             "tests/test_material_change_notice_position_20260915.py",
@@ -2301,6 +2324,53 @@ GATES = [
         [
             "tests/test_alarm_fires_documents_20260922.py",
             "tests/test_alarm_coverage.py",
+        ],
+    ),
+    (
+        # 2026-09-25 — agentic-memory tranche 2 (D2 Slices 4 + 6). Slice 4: the
+        # daily memory shadow measure gains cross_agent_memory_agreement — do
+        # CIO / Hermes / Advisory read the same durable memory ids for one
+        # subject in one window (G8), reported honestly incl. UNAVAILABLE.
+        # Slice 6: options outcomes join the identity spine (contract identity
+        # from the OCC symbol at record time; settled paper outcomes feed the
+        # scoped options envelope and the belief writer). The two shadow-measure
+        # suites leave UNLISTED_BASELINE and run here.
+        "agentic_memory_tranche2_20260925",
+        [
+            "tests/test_options_manual_close_identity_20260925.py",
+            "tests/test_cross_agent_memory_agreement_20260925.py",
+            "tests/test_agent_memory_shadow_measure.py",
+            "tests/test_memory_shadow_measure_honesty.py",
+            "tests/test_options_pipeline_validation.py",
+        ],
+    ),
+    (
+        # 2026-09-24 — agentic-memory tranche 1 (docs/agentic-memory-gap D2).
+        # Slice 1: outcome checkpoints bind a registry subject + subject_key and a
+        # real due_at at mint; legacy null-due event-relative rows project to
+        # created_at+30d; one InstrumentRecord store path. Slice 2 adds the
+        # belief block + mutation test to this same gate.
+        "instrument_belief_20260925",
+        [
+            "tests/test_checkpoint_subject_binding_20260925.py",
+            "tests/test_outcome_resolution.py",
+            "tests/test_cio_instrument_record.py",
+            # Slice 2: beliefs on the record (rail + writer) and the mutation
+            # test: with vs without a belief, the gate route / next question and
+            # the wake commitment differ; no behaviour key anywhere in either.
+            "tests/test_instrument_belief_mutation_20260925.py",
+            "tests/test_wake_subject_selector.py",
+            "tests/test_decide_consults_wake_hits.py",
+        ],
+    ),
+    (
+        # 2026-09-24 — agentic-memory acceleration Slice A+B.
+        # option_strategy_guid + contract_guid on desk proposals; scoped
+        # MEMORY_BEHAVIOR_INFLUENCE_OPTIONS envelope (global MBI stays 0).
+        "options_identity_memory_20260924",
+        [
+            "tests/test_options_identity_memory_20260924.py",
+            "tests/test_agent_feature_flags.py",
         ],
     ),
 ]

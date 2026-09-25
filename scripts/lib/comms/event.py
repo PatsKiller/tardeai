@@ -188,6 +188,25 @@ class CommunicationEvent:
           indistinguishable from the 54,928 unwired rows this change fixes.
         """
         parent_kind = (self.parent_kind or "").strip().lower()
+        # An open lineage scope (scripts/lib/event_lineage.py) names the event
+        # this send answers -- e.g. the operator's inbound message, or the turn
+        # a Hermes completion was requested from. It applies only when the
+        # event itself names no reply/parent/supersede link, and it never
+        # overrides a producer-supplied value.
+        if (self.parent_event_id is None and self.causation_id is None
+                and str(getattr(self, "direction", "") or "").upper() != "INBOUND"
+                and not self.reply_to_event_id and not self.supersedes_event_id
+                and not (self.parent_id and parent_kind == "comm_event")):
+            try:
+                from scripts.lib.event_lineage import current as _current_lineage
+
+                _lin = _current_lineage()
+            except Exception:  # noqa: BLE001 — lineage never breaks a write
+                _lin = None
+            if _lin and _lin.parent_event_id != self.event_id:
+                self.parent_event_id = _lin.parent_event_id
+                if _lin.causation_id and _lin.causation_id != self.event_id:
+                    self.causation_id = _lin.causation_id
         if self.parent_event_id is None:
             self.parent_event_id = (
                 self.reply_to_event_id

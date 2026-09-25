@@ -210,9 +210,14 @@ def resolve_event_by_provider_message_id(
     try:
         from scripts.lib.comms.client import memory_store_snapshot
 
+        from scripts.lib.event_lineage import provider_ids
+
         snap = memory_store_snapshot()
         for row in snap.values():
-            if str(row.get("provider_message_id") or "") == pmid:
+            # One send that went out as several Telegram messages stores its ids
+            # comma-joined ("53968,53969"); an exact match missed every reply to
+            # any but a single-message send.
+            if pmid in provider_ids(row.get("provider_message_id")):
                 if chat_id:
                     coords = row.get("provider_coordinates") or {}
                     if str(coords.get("chat_id") or "") not in ("", str(chat_id)):
@@ -223,6 +228,21 @@ def resolve_event_by_provider_message_id(
                 if chat_id and str(coords.get("chat_id") or "") not in ("", str(chat_id)):
                     continue
                 return dict(row)
+    except Exception:
+        pass
+
+    # 3) The durable ledger. The memory store is per-process, so a reply to a
+    #    message sent by ANOTHER process (every cron alert) never resolved: the
+    #    2026-09-23 reply to 53969 stayed a root event although the send that
+    #    carried 53969 was on the ledger as "53968,53969".
+    try:
+        from scripts.lib.event_lineage import resolve_event_by_provider_message_id as _by_pmid
+
+        # Never reach a real database from a test on its own (event_lineage refuses too).
+        conn = None if os.environ.get("PYTEST_CURRENT_TEST") else _db_conn()
+        row = _by_pmid(pmid, chat_id=chat_id, conn=conn)
+        if row and row.get("event_id"):
+            return dict(row)
     except Exception:
         pass
     return None

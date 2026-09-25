@@ -203,6 +203,19 @@ def test_go_alert_falls_back_to_plain_text_when_rich_is_off(monkeypatch):
 def test_entry_alert_is_rich_and_keeps_the_entry_alert_words(monkeypatch, rich):
     monkeypatch.delenv("TELEGRAM_RICH_ALERTS", raising=False)
     wep = _load("watchlist_entry_planner", "scripts/watchlist_entry_planner.py")
+    # The entry alert now passes the CIO stance gate (M5 step 6). Give the gate a
+    # fake CIO store with a BUY_READY stance so the real gate logic runs without a
+    # live database (CI has no psycopg2; locally this read the live store).
+    import lib.publisher_stance_gate as psg
+
+    def _fake_cio_store(sql, params=None):
+        if "SELECT 1" in sql:
+            return [{"ok": 1}]
+        return [{"symbol": "AXTI", "action": "BUY_READY", "status": "proposed",
+                 "created_at": "2026-09-23T12:00:00+00:00"}]
+
+    monkeypatch.setattr(psg, "default_db_query", lambda: _fake_cio_store)
+    monkeypatch.setenv("CIO_STANCE_HOLD_RECEIPTS", "")
 
     calls = []
     fake = types.ModuleType("telegram_alert")
@@ -242,19 +255,20 @@ ROW = {
 }
 
 
+#: A held name on a fresh quote pages (operator decision 2026-09-24); a stale or
+#: unheld name routes to the digest or the Command Center and renders no page.
+HELD_FRESH = {"price": 12.40, "quote_age_h": 0.1, "holding": {"shares": 100.0, "accounts": ["Taxable"]}}
+
+
 def test_material_change_rich_says_the_same_things_with_links(rich):
     mc = _load("notify_material_change", "scripts/notify_material_change.py")
 
-    ctx = {
-        "g-1": {
-            "narrative": ["Shares jumped 14.6% after Q2 sales beat <estimates> & guidance."],
-            "questions": ["What drove the margin move?"],
-        }
-    }
+    ctx = {"g-1": {**HELD_FRESH,
+                   "narrative": ["Shares jumped 14.6% after Q2 sales beat <estimates> & guidance."]}}
     plain = mc.render([ROW], ctx)
     rich = mc.render_rich([ROW], ctx)
     text = rich["text"]
-    for phrase in ("15x its normal daily range", "you hold this", "open question: What drove the margin move?"):
+    for phrase in ("BIG MOVE — AOUT (held, 100 sh)", "15.0× its normal daily move", "Action: review the position"):
         assert phrase in plain and phrase in text
     assert "&lt;estimates&gt; &amp; guidance" in text
     assert '<a href="' in text and "/v3/watch/intelligence/AOUT" in text
@@ -270,7 +284,8 @@ def test_material_change_notice_sends_rich_through_the_gateway(monkeypatch, rich
     seen = {}
     monkeypatch.setenv(mc.GATEWAY_NOTICE_FLAG, "1")
     monkeypatch.setattr(ca, "send_via_gateway", lambda ch, **kw: seen.update(kw) or {"delivered": True})
-    rich = mc.render_rich([ROW], {})
+    rich = mc.render_rich([ROW], {"g-1": HELD_FRESH})
+    assert rich["text"], "a held name on a fresh quote must render a page"
     accepted, _ = mc.deliver_notice("plain", subject_key="s", rich=rich)
     assert accepted and seen["body"] == rich["text"]
     assert seen["reply_markup"] == rich["reply_markup"] and seen["link_preview_options"]

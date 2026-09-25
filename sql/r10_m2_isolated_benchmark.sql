@@ -58,12 +58,36 @@ $reset$;
 CREATE SCHEMA IF NOT EXISTS memory_r10_m2;
 
 -- Agent role: not superuser, not BYPASSRLS, not table owner.
-DO $$
+-- No credential lives in this file (M5 2026-09-24). The role is created here
+-- ONLY on an isolated database, with the password the harness passes in the
+-- m2.agent_password GUC (m2_live_shadow_guard.set_isolated_agent_password).
+-- Production never creates or alters the role from repo SQL: it is provisioned
+-- by the operator through scripts/secrets/ensure_m2_agent_dsn.py (superuser SQL,
+-- password generated into Bitwarden SM, never printed).
+DO $ensure_m2_agent$
+DECLARE
+  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow,m2_shadow_test');
+  v_isolated  boolean := current_database() = ANY (string_to_array(v_allowed, ','));
+  v_pw        text := nullif(current_setting('m2.agent_password', true), '');
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'm2_agent') THEN
-    CREATE ROLE m2_agent LOGIN PASSWORD 'm2agent' NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'm2_agent') THEN
+    RETURN;
   END IF;
-END$$;
+  IF NOT v_isolated THEN
+    RAISE EXCEPTION
+      'M2_AGENT_ROLE_MISSING: role m2_agent does not exist in database %. Repo SQL '
+      'never creates it outside an isolated database; provision it with '
+      'scripts/secrets/ensure_m2_agent_dsn.py (operator, superuser).', current_database();
+  END IF;
+  IF v_pw IS NULL THEN
+    RAISE EXCEPTION
+      'M2_AGENT_PASSWORD_REQUIRED: set m2.agent_password before creating m2_agent '
+      'on isolated database %.', current_database();
+  END IF;
+  EXECUTE format(
+    'CREATE ROLE m2_agent LOGIN PASSWORD %L NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE', v_pw);
+END
+$ensure_m2_agent$;
 
 CREATE TABLE memory_r10_m2.predicate_temporal_policy (
     tenant_id       text NOT NULL,
@@ -278,7 +302,15 @@ END$$;
 
 REVOKE ALL ON FUNCTION memory_r10_m2.write_fact_version(text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION memory_r10_m2.write_fact_version(text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector) TO m2_agent;
-GRANT EXECUTE ON FUNCTION memory_r10_m2.write_fact_version(text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector) TO m2;
+-- Role `m2` exists only on the isolated shadow container; grant only where it exists.
+DO $grant_m2_write$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'm2') THEN
+        EXECUTE 'GRANT EXECUTE ON FUNCTION memory_r10_m2.write_fact_version('
+             || 'text,uuid,text,text,jsonb,tstzrange,text,text,text,text,text,vector) TO m2';
+    END IF;
+END
+$grant_m2_write$;
 
 -- Block direct INSERT that authors tx_period from agent role; owner may still seed.
 CREATE OR REPLACE FUNCTION memory_r10_m2.forbid_client_tx_authoring()
