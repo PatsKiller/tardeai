@@ -353,6 +353,15 @@ export default function OptionsHub({ onDrill }: Props) {
             )}
           </div>
         </div>
+        <div style={{ fontSize: 12, lineHeight: 1.45, color: BB.text2, marginTop: 8, maxWidth: 720 }}>
+          {(() => {
+            const rows = propList as any[]
+            const blocked = rows.filter(r => r.options_decision_packet?.state === 'BLOCKED' || isCardBlocked(r)).length
+            const review = rows.filter(r => r.options_decision_packet?.state === 'REVIEW_REQUIRED' || r.recommendation_comparison?.comparison?.preferred_structure === 'neither').length
+            const ready = rows.filter(r => r.options_decision_packet?.state === 'ELIGIBLE_FOR_OPERATOR_REVIEW').length
+            return `Needs a person: ${ready} for operator review, ${review} refused or incomplete, ${blocked} blocked. ${posList.length} open strategies. A model score is not a CIO decision. Outcomes are not validated from this screen.`
+          })()}
+        </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <div className="hub-tabs">
           {TABS.map(t => (

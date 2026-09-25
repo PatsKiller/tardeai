@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BB, DASH, numStyle } from '../../lib/watchTokens'
+import { primaryBucket, subordinateBuckets } from './optionsLifecyclePrimary'
 
 // OPTIONS LIFECYCLE DESK (Phase 7) — first-class open-position management view.
 // Strategies, never loose legs. Every card carries the exact recommendation,
@@ -273,7 +274,7 @@ export default function OptionsLifecycleView() {
       )}
 
       {SECTIONS.map(sec => {
-        const rows = positions.filter(sec.test)
+        const rows = positions.filter((p: any) => primaryBucket(p) === sec.key)
         if (!rows.length) return null
         return (
           <div key={sec.key}>
@@ -281,9 +282,19 @@ export default function OptionsLifecycleView() {
               <span style={{ fontSize: DASH.chip, color: BB.text3, fontWeight: 600, marginLeft: 8 }}>{rows.length}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {rows.map((p: any) => (
-                <StrategyCard key={p.strategy_position_id} p={p} onTicket={setTicketSpid} onAck={ack} />
-              ))}
+              {rows.map((p: any) => {
+                const also = subordinateBuckets(p)
+                return (
+                  <div key={p.strategy_position_id}>
+                    {also.length > 0 && (
+                      <div style={{ fontSize: 11, color: BB.text3, marginBottom: 4 }}>
+                        Also noted: {also.join(', ')}. Listed once under this primary state.
+                      </div>
+                    )}
+                    <StrategyCard p={p} onTicket={setTicketSpid} onAck={ack} />
+                  </div>
+                )
+              })}
             </div>
           </div>
         )

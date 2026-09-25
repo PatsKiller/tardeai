@@ -2348,6 +2348,7 @@ GATES = [
             "tests/test_options_credit_spread_rr_floor_20260925.py",
             # Stock-versus-options comparison contract (2026-09-25).
             "tests/test_recommendation_comparison_20260925.py",
+            "tests/test_options_decision_stages_20260925.py",
         ],
     ),
     (

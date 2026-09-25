@@ -865,8 +865,11 @@ export default function OptionProposalCardV4({
           />
           <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
             {actionButtons.filter(b => {
+              const packet = (p as any).options_decision_packet
               const preferred = (p as any).recommendation_comparison?.comparison?.preferred_structure
-              return !(preferred === 'neither' && EXEC_ACTIONS.has(b.action))
+              const state = packet?.state
+              const hide = preferred === 'neither' || state === 'BLOCKED' || state === 'REVIEW_REQUIRED' || packet?.readiness?.cta === 'none'
+              return !(hide && EXEC_ACTIONS.has(b.action))
             }).map((b, i) => {
               const execLocked = EXEC_ACTIONS.has(b.action) && !armed && !manualOnly
               return (
