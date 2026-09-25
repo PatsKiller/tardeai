@@ -1,6 +1,6 @@
 # Agent and Service Map — traced from code and the served host
 
-Status:      ACTIVE (dated snapshot; re-measure, do not re-date)
+Status:      PROPOSED (dated snapshot; re-measure, do not re-date)
 Owner:       platform
 as_of:       2026-09-25T09:20:00-04:00
 Measured at: base 1c60ecb42 (origin/main) / served 1c60ecb42-main-exact-phase2-20260925-091436
@@ -150,7 +150,7 @@ flowchart LR
 1. `portfolio-server.service` and `cio-governed-bridge.service` run but are **absent from
    `config/expected_services.json`**, so the OFF-detector would not notice if they were disabled.
 2. `openclaw-gateway`, `heartbeat-receiver`, `tradeai-lab-postgres`, `power-watch` run but have
-   **no file under `config/systemd/`**; `tradeai-ops-agent` runs from
+   **no file under `config/systemd/`** (116 files there, 101 unit files); `tradeai-ops-agent` runs from
    `~/.openclaw/skills/tradeai-health-inspect/scripts` (outside the repo release).
 3. `tradeai-active-trader-motion` runs from a pinned deployment (`306f8179…`), not CURRENT. This
    may be deliberate, but no registry records the pin.
@@ -171,6 +171,20 @@ flowchart LR
 9. `apps/command-center-v3/src/pages/AgentsHub.tsx:26` hardcodes `RUNTIME_MODEL='gemma3:12b'`.
    It's reachable as the "Legacy analytics" view of `/v3/agents`
    (`AgentRuntimeHub.tsx:581`).
+
+10. `dividend_calendar.json` (producer `scripts/portfolio_dividend_calendar.py:238`, run by the
+    `portfolio_orchestrator` cron line; served by `scripts/api_v2.py:8105/8206`; shown in
+    `DividendsPanel.tsx:250`) is in **neither** a DSA domain/projection **nor**
+    `operator_surface_stores.json`. Its freshness thresholds are hardcoded in
+    `scripts/health_agent.py:798` and `scripts/check_data_product_freshness.py:130`.
+    The API payload is an untyped dict (`api_v2.py:8194`), with a hand-written TS type.
+11. Grant enforcement is weaker than the grant ledger implies:
+    - `bin/guard` hooks are wired only through `.cursor/hooks.json`, which points at another
+      worktree (`tradeai-wt-cursor-guardrails`). Claude Code has no repo hooks.
+    - Under Cursor, `cio_phase2_exact_main_deploy.sh promote` classifies as none, and
+      `gh pr merge` is unclassified.
+    - Force-push is blocked by user-level `~/.claude/settings.json` and GitHub
+      `allow_force_pushes:false`, not by `bin/guard`.
 
 ## 5. Unknowns
 
