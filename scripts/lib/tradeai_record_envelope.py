@@ -14,6 +14,9 @@ ENTITY_TYPES = (
     "PORTFOLIO", "PORTFOLIO_CASH",
     "SECTOR", "INDUSTRY", "SUBINDUSTRY", "THEME",
     "CATALYST", "CALENDAR_EVENT", "MACRO_EVENT",
+    # Added 2026-09-24: a listed option contract (security_guid with
+    # share_class="option" — see scripts/lib/options_identity.py).
+    "OPTION_CONTRACT",
     # Added 2026-09-10 for NarrativeSubjectLink@v1. strategy_lesson_rollup and
     # profit_protection_shadow_recommendations are keyed on a strategy and carry
     # no symbol at all, so a strategy is a thing a narrative is ABOUT. Without
