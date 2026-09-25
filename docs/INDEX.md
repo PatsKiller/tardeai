@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `7792892b4e3a4f59a42ec174f7dcc48934f293545b5246cb1cca000dea5367d2`
+**Tree fingerprint:** `0906271410d272738bd4edfa8f045cd43af73fb7e56fa2f44bf8a0e7ca2be8db`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2608 |
-| Markdown (excl. this INDEX) | 2182 |
+| Files under `docs/` (excl. this INDEX) | 2612 |
+| Markdown (excl. this INDEX) | 2186 |
 | **MISSING HEADER** | **74** |
-| Header OK | 2108 |
+| Header OK | 2112 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2237 |
+| review_required | 2241 |
 
 ## Markdown tree
 
@@ -277,7 +277,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/AGENTIC_MVL_REMAINING_DELIVERABLES_2026-07-24.md` | Agentic MVL Remaining Deliverables — 2026-07-24 | review_required | OK | `628266ec7e8f` |
 | `docs/architecture/AGENTIC_RUNTIME_BASELINE_2026-07-23.md` | Trade AI Agentic Runtime Baseline — 2026-07-23 | review_required | OK | `26a644a55edf` |
 | `docs/architecture/AGENT_MATURITY_COMMAND_CENTER_IMPLEMENTATION_PLAN_2026-07-25.md` | Agent Maturity and Command Center Implementation Plan — 2026-07-25 | review_required | OK | `4a66cdff27f6` |
+| `docs/architecture/AGENT_SERVICE_MAP_2026-09-25.md` | Agent and Service Map — traced from code and the served host | review_required | OK | `3b81c8ecc596` |
 | `docs/architecture/AGENT_TOOL_PERMISSION_MATRIX_2026-07-23.md` | Trade AI Agent Tool Permission Matrix — 2026-07-23 | review_required | OK | `f40d7f04bd37` |
+| `docs/architecture/ARCHITECTURE_INDEX.md` | Architecture Index — where to look before you change a component | review_required | OK | `922ec7b1c997` |
 | `docs/architecture/ATM_BROKER_ACCOUNT_AUTOMATION_2026_06_05.md` | ATM → Broker/Account Automation Console (Phase 1) — 2026-06-05 | review_required | OK | `4cc7fdd232c2` |
 | `docs/architecture/ATM_BROKER_ACCOUNT_REFACTOR_DUE_DILIGENCE.md` | ATM Controls → Broker/Account Automation — Due Diligence (Phase 1) | review_required | OK | `34549ef247f4` |
 | `docs/architecture/ATM_EXECUTOR_AUTOMATION_MODE_WIRING_2026_06_05.md` | ATM Executor ← automation_mode Wiring (2026-06-05) | review_required | OK | `62abcc4e67d2` |
@@ -994,6 +996,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/financial-senses/SEC_EXISTING_PIPELINE_COMPATIBILITY.md` | SEC existing pipeline compatibility | review_required | OK | `84de4761bed2` |
 | `docs/financial-senses/SEC_FILING_DIFF_INTELLIGENCE.md` | SEC filing diff intelligence | review_required | OK | `54342b36e125` |
 | `docs/financial-senses/TEST_AND_DRY_RUN_PLAN.md` | Test and dry-run plan | review_required | OK | `57920902f3d6` |
+| `docs/governance/ENGINEERING_STANDARD.md` | Trade AI Engineering Standard | review_required | OK | `7d100d2c6b7b` |
+| `docs/governance/NEW_AGENT_STARTS_HERE.md` | New agent starts here (one page) | review_required | OK | `6dbcdc11e51e` |
 | `docs/governance/PHASE111A_AUTHORITY_BOUNDARY_SCORECARD.md` | Phase 111A — Authority Boundary Scorecard | review_required | OK | `c138020b5406` |
 | `docs/governance/PHASE111B_PROGRESSIVE_AUTHORITY_LADDER.md` | Phase 111B — Progressive Hermes Authority Ladder | review_required | OK | `76838566a709` |
 | `docs/governance/PHASE113A_PROPOSAL_AUTHORITY_CONTROL_COMPARISON.md` | Phase 113A — Proposal Authority Control Comparison | review_required | OK | `fe605e2d90c0` |
