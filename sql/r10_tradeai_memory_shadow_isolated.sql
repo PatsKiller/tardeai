@@ -16,10 +16,15 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- shadow database unless TRADEAI_M2_ALLOW_LIVE_SHADOW_RESET=1 outside pytest.
 DO $reset$
 DECLARE
-  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow,m2_shadow_test');
-  v_isolated  boolean := current_database() = ANY (string_to_array(v_allowed, ','))
-                          -- per-worktree pytest databases (2026-09-25): m2_shadow_test_<suffix> only
-                          OR current_database() ~ '^m2_shadow_test_[a-z0-9_]{1,40}$';
+  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow,m2_shadow_test,m2_shadow_test_*');
+  -- The allowlist is authoritative. An entry ending in '_*' matches that prefix plus
+  -- [a-z0-9_]{1,40} (per-worktree pytest databases, 2026-09-25); it is part of the DEFAULT
+  -- list only, so an explicitly narrowed m2.isolated_databases still refuses them.
+  v_isolated  boolean := EXISTS (
+                           SELECT 1 FROM unnest(string_to_array(v_allowed, ',')) AS a(n)
+                           WHERE current_database() = btrim(a.n)
+                              OR (right(btrim(a.n), 2) = '_*'
+                                  AND current_database() ~ ('^' || left(btrim(a.n), length(btrim(a.n)) - 1) || '[a-z0-9_]{1,40}$')));
   v_opted_in  boolean := coalesce(current_setting('m2.allow_destructive_reset', true), 'off') = 'on';
   v_exists    boolean := EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'tradeai_memory_shadow');
 BEGIN
