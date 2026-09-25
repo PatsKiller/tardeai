@@ -58,7 +58,7 @@ scripts/oversight_weekly_digest.py 1
 scripts/paper_performance_governance.py 1
 scripts/paper_trade_monitor.py 2
 scripts/pipeline_freshness_slo.py 1
-scripts/pipeline_watchdog.py 2
+scripts/pipeline_watchdog.py 1
 scripts/portfolio_level_qa.py 1
 scripts/portfolio_orchestrator.py 1
 scripts/portfolio_report_ms.py 1
