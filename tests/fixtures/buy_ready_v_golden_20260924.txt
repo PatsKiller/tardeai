@@ -1,0 +1,48 @@
+=== operator page ===
+🟢 CIO entry — BUY READY: V
+Price $367.53 · price is inside the entry zone
+Zone $364.50–$369.00 · stop $357.50 · target $410.00 · R:R 3.57
+Already held — this would be an add.
+Equity: $367.53 · zone $364.50–$369.00 · stop $357.50 · target $410.00 · R:R 3.57
+Thesis: PE 32.10 · Financial Services
+Options alternatives (per contract, ranked):
+  1. debit call vertical 365/410 D113 (113 DTE) · $1,574.50 · max loss $1,574.50 · BE $380.75 · at target +186% · POP≈40%
+  2. long call 360 D57 (57 DTE) · $1,806.00 · max loss $1,806.00 · BE $378.06 · at target +177% · POP≈38%
+  3. leaps call 325 D484 (484 DTE) · $7,155.50 · max loss $7,155.50 · BE $396.56 · at target +19% · POP≈41%
+  why #1: long 365.00 (delta 0.587, closest to 0.6) / short 410.00 (the liquid strike nearest the plan target 410.00) caps the payoff where the plan expects to 
+Elevated ATR/HV vs distance-to-stop — defined-risk options are the preferred capital-efficient expression of this thesis.
+Structure: IV rank 24.5 (PROXY — thin IV history); ATR 5.20; ATR/distance-to-stop=0.52 (elevated — favors defined-risk options over full equity)
+Per unit — stock: $367.53/share · risk to stop $10.03 · at target +11.6% · R:R 4.23 at quote (3.57 worst in zone)
+  vs #1 debit call vertical: $1,574.50/contract · max loss $1,574.50 · BE $380.75 · at target +186%
+Book: already held (131.065 units) · 3.82% of book · 29.68% of invested · IPS single-name limit 8% · flags ADD_RAISES_CONCENTRATION, ABOVE_IPS_SINGLE_NAME_LIMIT_OF_INVESTED_CAPITAL
+  options book: 0 open legs · net delta 0.0 sh-equiv · cash UNVERIFIED
+Book context: currently held — entry would be an add; plan_source=reentry_desk
+CIO review (alex): MODIFY — Setup valid at 367.53 but this is an ADD to a held name at 29.68% of invested capital.
+  options: Prefer the debit call vertical: capped at the 410 target, lower capital per contract.
+  book: Held 131.07 shares already; 3.82% of book vs the 8% IPS limit, 29.68% of invested.
+  modify: wait for the zone low 364.5; prefer the debit call vertical over stock
+House-rule verdict: APPROVE_OPTIONS_PREFERRED — Equity zone valid; elevated ATR/HV vs stop — prefer defined-risk options alt for capital efficiency; equity remains confirmable; ADD to an existing position (3.8% of book, 29.7% of invested, IPS single-name limit 8%) — flags: ADD_RAISES_CONCENTRATION, ABOVE_IPS_SINGLE_NAME_LIMIT_OF_INVESTED_CAPITAL
+Path B: Options Hub → View Chain → preflight → per-order 2FA when ARMED. Advisory only — nothing is placed from chat.
+Advisory only. No order is created; you choose and execute through your broker (2FA).
+=== CIO desk ===
+Entry state BUY_READY for V: price $367.53, zone $364.50–$369.00, stop $357.50, target $410.00, R:R 3.57. Plan source reentry_desk.
+Thesis: PE 32.10 · Financial Services
+Options alternatives (per contract, ranked):
+  1. debit call vertical 365/410 D113 (113 DTE) · $1,574.50 · max loss $1,574.50 · BE $380.75 · at target +186% · POP≈40%
+  2. long call 360 D57 (57 DTE) · $1,806.00 · max loss $1,806.00 · BE $378.06 · at target +177% · POP≈38%
+  3. leaps call 325 D484 (484 DTE) · $7,155.50 · max loss $7,155.50 · BE $396.56 · at target +19% · POP≈41%
+  why #1: long 365.00 (delta 0.587, closest to 0.6) / short 410.00 (the liquid strike nearest the plan target 410.00) caps the payoff where the plan expects to 
+Elevated ATR/HV vs distance-to-stop — defined-risk options are the preferred capital-efficient expression of this thesis.
+Structure: IV rank 24.5 (PROXY — thin IV history); ATR 5.20; ATR/distance-to-stop=0.52 (elevated — favors defined-risk options over full equity)
+Per unit — stock: $367.53/share · risk to stop $10.03 · at target +11.6% · R:R 4.23 at quote (3.57 worst in zone)
+  vs #1 debit call vertical: $1,574.50/contract · max loss $1,574.50 · BE $380.75 · at target +186%
+Book: already held (131.065 units) · 3.82% of book · 29.68% of invested · IPS single-name limit 8% · flags ADD_RAISES_CONCENTRATION, ABOVE_IPS_SINGLE_NAME_LIMIT_OF_INVESTED_CAPITAL
+  options book: 0 open legs · net delta 0.0 sh-equiv · cash UNVERIFIED
+Book context: currently held — entry would be an add; plan_source=reentry_desk
+CIO review (alex): MODIFY — Setup valid at 367.53 but this is an ADD to a held name at 29.68% of invested capital.
+  options: Prefer the debit call vertical: capped at the 410 target, lower capital per contract.
+  book: Held 131.07 shares already; 3.82% of book vs the 8% IPS limit, 29.68% of invested.
+  modify: wait for the zone low 364.5; prefer the debit call vertical over stock
+House-rule verdict: APPROVE_OPTIONS_PREFERRED — Equity zone valid; elevated ATR/HV vs stop — prefer defined-risk options alt for capital efficiency; equity remains confirmable; ADD to an existing position (3.8% of book, 29.7% of invested, IPS single-name limit 8%) — flags: ADD_RAISES_CONCENTRATION, ABOVE_IPS_SINGLE_NAME_LIMIT_OF_INVESTED_CAPITAL
+Path B: Options Hub → View Chain → preflight → per-order 2FA when ARMED. Advisory only — nothing is placed from chat.
+Confirm or refute the equity entry and options alternative (Approve/Reject/Modify) for the operator.

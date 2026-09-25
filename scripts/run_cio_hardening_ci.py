@@ -1812,6 +1812,9 @@ GATES = [
         [
             "tests/test_cio_entry_state_20260915.py",
             "tests/test_cio_entry_state_alarm_fires_20260915.py",
+            # 2026-09-24 operator "build options": BUY_READY packet = per-unit options
+            # alternatives + portfolio facts + validated CIO review; wake subject bound.
+            "tests/test_buy_ready_options_20260924.py",
         ],
     ),
     (
@@ -2334,6 +2337,7 @@ GATES = [
         # suites leave UNLISTED_BASELINE and run here.
         "agentic_memory_tranche2_20260925",
         [
+            "tests/test_options_manual_close_identity_20260925.py",
             "tests/test_cross_agent_memory_agreement_20260925.py",
             "tests/test_agent_memory_shadow_measure.py",
             "tests/test_memory_shadow_measure_honesty.py",

@@ -14123,6 +14123,22 @@ def _alerts_debug():
     }
 
 
+BUY_READY_PACKET_DIR = PROJECT_ROOT / "data" / "runtime" / "buy_ready_packets"
+
+
+def _buy_ready_packet(symbol: str) -> dict:
+    """GET /api/v2/symbol/<SYM>/buy-ready-packet — latest BUY_READY/ENTRY_NEAR packet
+    saved by cio_entry_state_runner (equity plan, per-unit options alternatives,
+    portfolio facts, CIO review). Read-only; never sizes; NO_PACKET when none saved."""
+    sym = str(symbol or "").upper()
+    path = BUY_READY_PACKET_DIR / f"{sym}.json"
+    try:
+        packet = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"symbol": sym, "status": "NO_PACKET"}
+    return {"symbol": sym, "status": "OK", "saved_at": packet.get("saved_at"), "packet": packet}
+
+
 def _symbol_timeline(symbol: str):
     """GET /api/v2/symbol/{symbol}/timeline — unified symbol timeline."""
     sym = symbol.upper()
@@ -42181,6 +42197,11 @@ def _options_alpaca_record_outcome(body=None):
         return 400, {"ok": False, "reason": "exit_premium (per-contract price) required"}
     if not (0 <= exit_px < 10000):
         return 400, {"ok": False, "reason": f"exit_premium {exit_px} out of sane range"}
+    # Optional operator context (2026-09-25): an expiry / exercise close has a real
+    # close date and a reason that is not "manual". Both are echoed, never invented.
+    exit_reason = str(b.get("exit_reason") or "manual").strip()[:80] or "manual"
+    closed_at_override = str(b.get("closed_at") or "").strip() or None
+    notes = str(b.get("notes") or "operator-entered exit premium via desk UI").strip()[:500]
     row = ap.get_queue_row(pid)
     if not row:
         return 404, {"ok": False, "reason": f"proposal {pid!r} not in queue"}
@@ -42205,7 +42226,7 @@ def _options_alpaca_record_outcome(body=None):
                 **aj,
                 "close": {
                     "exit_price": exit_px,
-                    "closed_at": _dtnow_iso(),
+                    "closed_at": closed_at_override or _dtnow_iso(),
                     "pnl": pnl,
                     "entry_debit": entry_debit,
                     "exit_value": exit_value,
@@ -42226,12 +42247,24 @@ def _options_alpaca_record_outcome(body=None):
             exit_value=close.get("exit_value"),
             opened_at=(aj.get("fill") or {}).get("filled_at"),
             closed_at=close.get("closed_at"),
-            exit_reason="manual",
-            notes="operator-entered exit premium via desk UI",
+            exit_reason=exit_reason,
+            notes=notes,
             meta={
                 "alpaca_order_id": (aj.get("response") or {}).get("id"),
                 "lane": "tradeai_automated",
                 "source": "operator_manual_ui",
+                # The OCC symbol is what record_outcome derives the contract
+                # identity from (contract_guid / option_strategy_guid, strike,
+                # expiration, type). The reconcile caller always passed it; this
+                # operator path did not, so the first manually recorded outcome
+                # (RTX 160C 2026-09-18, recorded 2026-09-25) landed with no
+                # identity and had to be re-stamped by hand. Same derivation as
+                # reconcile_fills: the request symbol, or the comma-joined legs.
+                "occ_symbol": (
+                    str((aj.get("request") or {}).get("symbol") or "")
+                    or ",".join(str(l.get("symbol") or "") for l in ((aj.get("request") or {}).get("legs") or []))
+                ),
+                "contracts": (aj.get("request") or {}).get("qty"),
             },
         )
         if not rec.get("ok"):
@@ -53194,6 +53227,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 400, {"ok": False, "error": "symbol required"}
         try:
             return 200, {"ok": True, "data": _symbol_timeline(symbol)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # BUY_READY institutional packet (M5 09-24): equity plan, chain-ranked options
+    # alternatives (per unit), portfolio facts and the CIO review — read-only.
+    if base_path.startswith("/api/v2/symbol/") and base_path.endswith("/buy-ready-packet"):
+        symbol = base_path[len("/api/v2/symbol/") :].replace("/buy-ready-packet", "").strip("/").upper()
+        if not symbol or not symbol.replace(".", "").replace("-", "").isalnum():
+            return 400, {"ok": False, "error": "symbol required"}
+        try:
+            return 200, {"ok": True, "data": _buy_ready_packet(symbol)}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 

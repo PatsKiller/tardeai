@@ -109,7 +109,9 @@ def test_v_buy_ready_institutional_packet():
     assert "APPROVE" in packet["cio_verdict"]["verdict"] or "MODIFY" in packet["cio_verdict"]["verdict"]
     lines = "\n".join(flu.format_buy_ready_packet_lines(packet))
     assert "Thesis:" in lines and "PE" in lines
-    assert "CIO verdict:" in lines
+    # M5 09-24: the deterministic verdict is labelled "House-rule verdict" so it is
+    # never mistaken for the CIO review (buy_ready_cio_review) that now answers.
+    assert "House-rule verdict:" in lines
     assert "Path B" in lines or "2FA" in lines
 
 
@@ -140,11 +142,13 @@ def test_axti_entry_near_vol_prefers_options():
     assert packet["structure_indicators"]["volatility_elevated"] is True
     assert packet["options_alt"].get("volatility_prefers_options") is True
     assert packet["former_holding"]["formerly_held"] is True
+    # M5 09-24: per-unit comparison only (the dollar "capital hint" violated MBI_BEHAVIOR=0).
     cmp_ = packet["comparative"]
-    assert cmp_["equity"]["capital_at_risk"] is not None
-    assert cmp_["options"]["max_loss"] is not None
+    assert cmp_["basis"] == "per_unit"
+    assert cmp_["stock_per_share"]["max_loss_to_plan_stop"] is not None
+    assert cmp_["options_per_contract"][0]["max_loss"] is not None
     lines = "\n".join(flu.format_buy_ready_packet_lines(packet))
-    assert "Compare" in lines or "capital" in lines.lower()
+    assert "Per unit — stock:" in lines
     assert "OPTIONS_PREFERRED" in packet["cio_verdict"]["verdict"] or "APPROVE" in packet["cio_verdict"]["verdict"]
     assert "formerly" in lines.lower() or "re-entry" in lines.lower() or "Book context" in lines
 
@@ -243,7 +247,7 @@ def test_render_operator_entry_near_gets_packet(monkeypatch):
     text = ces.render_operator(result, ev)
     assert "getting close" in text.lower() or "ENTRY" in text or "CIO entry" in text
     assert "Options alt" in text or "none suitable" in text.lower()
-    assert "CIO verdict" in text
+    assert "House-rule verdict" in text
     assert "MAA" not in text  # chrome bleed must not invent secondary tickers in body
 
 
