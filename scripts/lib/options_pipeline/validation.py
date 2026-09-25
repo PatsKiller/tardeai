@@ -29,11 +29,49 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 STRATEGY_ID = "deep_itm_call"
-SUPPORTED_STRATEGIES = (STRATEGY_ID,)
 VALID_OUTCOMES = ("win", "loss", "scratch")
+
+# Which strategies may have a paper close RECORDED here (2026-09-25, operator
+# decision). Until now only deep_itm_call was accepted, so a closed covered
+# call, credit spread, CSP or protective put failed "unsupported strategy_id",
+# stayed ALPACA_PAPER_CLOSED, and options_paper_outcomes stayed empty — the
+# whole options learning loop had no input. The allow-list is the strategy
+# registry (config/options_strategy_registry.yaml, the per-strategy permission
+# registry the queue already fails closed on) plus the engine's directional
+# vocabulary that the registry does not name yet. Recording an outcome is
+# bookkeeping about a close that already happened: it grants nothing, and
+# execution stays operator-gated per strategy (validation_status echoes the
+# registry's execution block read-only). Equity strategies (momentum_scalp…)
+# are still refused: this table is options-only.
+_REGISTRY_PATH = Path(__file__).resolve().parents[3] / "config" / "options_strategy_registry.yaml"
+ENGINE_STRATEGIES = ("long_call", "long_put")
+
+
+def _registry_strategy_ids() -> tuple:
+    try:
+        import yaml  # CI installs pytest + pyyaml
+
+        doc = yaml.safe_load(_REGISTRY_PATH.read_text(encoding="utf-8")) or {}
+        strategies = doc.get("strategies") or {}
+        return tuple(str(k) for k in strategies.keys()) if isinstance(strategies, dict) else ()
+    except Exception:  # noqa: BLE001 — a missing registry narrows, never widens
+        return ()
+
+
+def supported_strategies() -> tuple:
+    """deep_itm_call first (historic default), then the registry, then the engine vocabulary."""
+    out = [STRATEGY_ID]
+    for sid in (*_registry_strategy_ids(), *ENGINE_STRATEGIES):
+        if sid and sid not in out:
+            out.append(sid)
+    return tuple(out)
+
+
+SUPPORTED_STRATEGIES = supported_strategies()
 
 # OCC option symbol, root padded (options_lifecycle_model.occ_symbol) or not
 # (Alpaca: RTX260918C00160000). Tranche 2 Slice 6 (2026-09-25): both live
