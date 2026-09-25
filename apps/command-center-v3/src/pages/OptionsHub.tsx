@@ -4,7 +4,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { type OptionProposal } from '../components/OptionProposalCard'
 import { type OptionPosition } from '../components/OptionPositionCard'
-import OptionProposalCardV4, { type AlpacaLaneAction, type AlpacaActionResult } from '../components/OptionProposalCardV4'
+import OptionProposalCardV4 from '../components/OptionProposalCardV4'
 import OptionPositionCardV4 from '../components/OptionPositionCardV4'
 import OptionReviewBar from '../components/OptionReviewBar'
 import ManualExecutionModal, { type ManualExecSeed } from '../components/ManualExecutionModal'
@@ -32,18 +32,6 @@ const panel = { background: 'var(--bg1)', border: '1px solid var(--border)', bor
 const SEL: React.CSSProperties = { fontSize: 11, padding: '6px 9px', background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text0)' }
 const PURPLE = '#a855f7'
 
-// Stage 3: Alpaca paper lane status filters (client-side over queue_status —
-// these rows come from options_approval_queue, not the desk generator facets).
-const ALPACA_LANE_FILTERS: { key: string; label: string; statuses: string[] }[] = [
-  { key: 'queued', label: 'Queued', statuses: ['pending', 'approved'] },
-  { key: 'ready', label: 'Ready', statuses: ['READY_FOR_ALPACA_PAPER'] },
-  { key: 'submitted', label: 'Submitted', statuses: ['ALPACA_PAPER_SUBMITTED'] },
-  { key: 'filled', label: 'Filled', statuses: ['ALPACA_PAPER_FILLED'] },
-  { key: 'closed', label: 'Closed', statuses: ['ALPACA_PAPER_CLOSED', 'ALPACA_PAPER_REJECTED'] },
-  { key: 'outcome', label: 'Outcome ✓', statuses: ['OUTCOME_RECORDED'] },
-  { key: 'live_review', label: 'Live review', statuses: ['READY_FOR_LIVE_REVIEW'] },
-]
-
 type Proposal = OptionProposal
 type Position = OptionPosition
 
@@ -68,7 +56,6 @@ export default function OptionsHub({ onDrill }: Props) {
   const [sleeveFilter, setSleeveFilter] = useState('')
   const [legStyleFilter, setLegStyleFilter] = useState('')
   const [tierFilter, setTierFilter] = useState('')
-  const [alpacaLaneFilter, setAlpacaLaneFilter] = useState('')
   const [liveOnly, setLiveOnly] = useState(false)
   // When Live eligible is 0, auto-show Blocked so the desk is not blank (2026-09-25).
   // Operator can still hide via the Blocked chip.
@@ -82,7 +69,6 @@ export default function OptionsHub({ onDrill }: Props) {
   const [posWorkingOnly, setPosWorkingOnly] = useState(false)
   const [posRouteFilter, setPosRouteFilter] = useState('')
   const [posSourceFilter, setPosSourceFilter] = useState('')
-  const [posPaperOnly, setPosPaperOnly] = useState(false)
   const [ensembleBusy, setEnsembleBusy] = useState(false)
   const [ensembleMsg, setEnsembleMsg] = useState<string | null>(null)
   const [pendingIntent, setPendingIntent] = useState<string | null>(null)
@@ -114,12 +100,11 @@ export default function OptionsHub({ onDrill }: Props) {
     if (posTypeFilter) p.set('option_type', posTypeFilter)
     if (posSideFilter) p.set('side', posSideFilter)
     if (posWorkingOnly) p.set('working_only', '1')
-    if (posRouteFilter) p.set('route', posRouteFilter)
-    if (posSourceFilter) p.set('source', posSourceFilter)
-    if (posPaperOnly) p.set('paper_only', '1')
+    if (posRouteFilter && posRouteFilter !== 'alpaca_paper') p.set('route', posRouteFilter)
+    if (posSourceFilter && posSourceFilter !== 'monitored') p.set('source', posSourceFilter)
     const s = p.toString()
     return s ? `?${s}` : ''
-  }, [posSymbolFilter, posTypeFilter, posSideFilter, posWorkingOnly, posRouteFilter, posSourceFilter, posPaperOnly])
+  }, [posSymbolFilter, posTypeFilter, posSideFilter, posWorkingOnly, posRouteFilter, posSourceFilter])
 
   const { data: proposals, loading: propLoading, error: propError, stale: propStale, refetch: refetchProps } =
     useApi<any>(`/api/v2/options/proposals${q}`, 300_000)
@@ -132,11 +117,6 @@ export default function OptionsHub({ onDrill }: Props) {
   // Stage 1 holdings funnel — resolve_chain=1 so CC eligible matches Intent (INTENT_BYPASS)
   // and Ideas; resolve_chain=0 understates (e.g. V EDGE_BELOW vs INTENT_BYPASS). No IV widen.
   const { data: holdingsFunnel } = useApi<any>('/api/v2/options/holdings-funnel?resolve_chain=1', 300_000)
-  const validationRows: any[] = Array.isArray(validation?.paper_lab_strategies)
-    ? validation.paper_lab_strategies.filter((s: any) => s?.ok)
-    : Array.isArray(validation?.strategies)
-      ? validation.strategies.filter((s: any) => s?.ok && s?.lane !== 'desk_path_b')
-      : []
   const deskPathBRows: any[] = Array.isArray(validation?.desk_path_b_strategies)
     ? validation.desk_path_b_strategies.filter((s: any) => s?.ok)
     : Array.isArray(validation?.strategies)
@@ -154,16 +134,7 @@ export default function OptionsHub({ onDrill }: Props) {
     () => [...new Set(propList.map(p => (p.symbol || '').toUpperCase()).filter(Boolean))].sort(),
     [propList],
   )
-  // Stage 3: Alpaca-lane status filter (client-side — lane rows carry queue_status)
-  const laneCounts = useMemo(() => {
-    const counts: Record<string, number> = {}
-    for (const f of ALPACA_LANE_FILTERS) {
-      const n = propList.filter(p => p.educational_paper_model && f.statuses.includes(p.queue_status || '')).length
-      if (n > 0) counts[f.key] = n
-    }
-    return counts
-  }, [propList])
-  // canonical blocked semantics — same predicate the cards themselves render with
+  // Schwab Path B Ideas only — Alpaca / educational paper rows filtered out of the Hub.
   const isBlockedProp = (p: any) => isCardBlocked(p)
   const blockedCount = useMemo(() => propList.filter(isBlockedProp).length, [propList])
   const liveEligibleCount = Number(proposals?.filter_facets?.live_eligible ?? 0)
@@ -175,25 +146,25 @@ export default function OptionsHub({ onDrill }: Props) {
     }
   }, [liveEligibleCount, blockedCount, blockedAutoShown])
   const shownProps = useMemo(() => {
-    let base = propList
+    let base = propList.filter(p =>
+      !p.educational_paper_model
+      && !(p as any).paper_only
+      && String(p.broker || '').toLowerCase() !== 'alpaca'
+    )
     if (!showBlocked) base = base.filter(p => !isBlockedProp(p))
-    if (!alpacaLaneFilter) return base
-    const f = ALPACA_LANE_FILTERS.find(x => x.key === alpacaLaneFilter)
-    if (!f) return base
-    return base.filter(p => p.educational_paper_model && f.statuses.includes(p.queue_status || ''))
-  }, [propList, alpacaLaneFilter, showBlocked])
+    return base
+  }, [propList, showBlocked])
   const propCount = proposals?.filtered_count ?? proposals?.count ?? propList.length
   const propFacets = proposals?.filter_facets ?? {}
   const posList: Position[] = Array.isArray(monitor?.positions) ? monitor.positions : []
   const posFacets = monitor?.filter_facets ?? {}
-  const monitoredCount = monitor?.monitored_count ?? 0
   const alerts = monitor?.alerts ?? []
 
   const clearPropFilters = () => {
     setSymbolFilter(''); setStrategyFilter(''); setGroupFilter('')
     setOptionTypeFilter(''); setSideFilter(''); setSleeveFilter('')
     setLegStyleFilter(''); setTierFilter(''); setLiveOnly(false)
-    setMinPop(0); setMinEdge(0); setAlpacaLaneFilter('')
+    setMinPop(0); setMinEdge(0)
   }
 
   const facetChip = (tip: string, label: string, count: number | undefined, active: boolean, onClick: () => void, color = '#60a5fa') => (
@@ -250,58 +221,6 @@ export default function OptionsHub({ onDrill }: Props) {
       setExecMsg(`2FA requested for ${p.symbol} — approve via Telegram/email or confirm in Broker Orders (intent ${data.intent_id?.slice(0, 8)}…)`)
     } catch (e: any) {
       setExecMsg(String(e?.message || e))
-    }
-  }
-
-  // ── Stage 3: Alpaca paper lane operator actions ────────────────────────────
-  // 'send' is two-step server-side too: operator mark-ready (state machine,
-  // actor operator:ui) then a confirm:true submit — the paper-endpoint hard
-  // lock, LIMIT-only and 1-contract guards all live in the lane module. A
-  // missing ALPACA_PAPER_BASE_URL comes back as an honest 4xx reason.
-  const alpacaPost = async (path: string, body: any) => {
-    const r = await fetch(path, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const j = await r.json().catch(() => ({}))
-    return (j?.data ?? j) as any
-  }
-
-  const handleAlpacaAction = async (
-    action: AlpacaLaneAction, proposalId: string, payload?: { exitPremium?: number },
-  ): Promise<AlpacaActionResult> => {
-    try {
-      if (action === 'send') {
-        const row = propList.find(p => p.id === proposalId) as any
-        const qs = row?.queue_status
-        if (qs === 'pending' || qs === 'approved') {
-          const d1 = await alpacaPost('/api/v2/options/alpaca-paper/mark-ready', { proposal_id: proposalId })
-          if (!d1.ok) return { ok: false, message: d1.reason || d1.error || 'mark-ready refused' }
-        }
-        const d2 = await alpacaPost('/api/v2/options/alpaca-paper/submit', { proposal_id: proposalId, confirm: true })
-        refetchProps()
-        return d2.ok
-          ? { ok: true, message: `Paper LIMIT order submitted${d2.order_id ? ` — order ${d2.order_id}` : ''}` }
-          : { ok: false, message: d2.reason || d2.error || 'submit refused' }
-      }
-      if (action === 'mark_outcome') {
-        const d = await alpacaPost('/api/v2/options/alpaca-paper/record-outcome',
-          { proposal_id: proposalId, exit_premium: payload?.exitPremium })
-        refetchProps()
-        return d.ok
-          ? { ok: true, message: `Outcome recorded — ${d.outcome} (P/L ${fmt$(d.pnl)})` }
-          : { ok: false, message: d.reason || d.error || 'record-outcome refused' }
-      }
-      // promote_live — review mark only; never places an order
-      const d = await alpacaPost('/api/v2/options/alpaca-paper/promote-live-review',
-        { proposal_id: proposalId, confirm: true })
-      refetchProps()
-      return d.ok
-        ? { ok: true, message: 'Marked READY_FOR_LIVE_REVIEW — no order placed; 2FA + broker preview still required.' }
-        : { ok: false, message: d.reason || d.error || 'promotion refused' }
-    } catch (e: any) {
-      return { ok: false, message: String(e?.message || e) }
     }
   }
 
@@ -450,30 +369,7 @@ export default function OptionsHub({ onDrill }: Props) {
         </div>
       </div>
 
-      {/* Paper lab strip — educational/Alpaca strategies only (never paints Path B as PAPER MODEL). */}
-      {validationRows.length > 0 && (
-        <div style={{ ...panel, marginBottom: 12, padding: '8px 14px', borderLeft: '4px solid #f59e0b', display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
-          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: '#f59e0b', textTransform: 'uppercase' }} title="Alpaca / educational paper ledger — does not unlock Schwab Path B">Paper Lab</span>
-          {validationRows.map((s: any) => {
-            const m = s.metrics || {}
-            const wr = m.win_rate != null ? `${(m.win_rate * 100).toFixed(0)}%` : '—'
-            const pf = m.profit_factor != null ? Number(m.profit_factor).toFixed(2) : '—'
-            return (
-              <span key={s.strategy_id} title={s.message} style={{ fontSize: 10.5, color: 'var(--text2)', cursor: 'help' }}>
-                <b style={{ color: 'var(--text0)' }}>{s.display_name || s.strategy_id}</b>
-                {' · '}
-                <span style={{ fontSize: 8.5, fontWeight: 800, padding: '1px 6px', borderRadius: 4, color: '#f59e0b', border: '1px solid rgba(245,158,11,.45)' }}>PAPER MODEL</span>
-                {' '}{s.progress_label ?? '—'} · WR {wr} · PF {pf} · {m.calendar_months ?? 0} mo
-                {' · '}
-                <span style={{ color: s.gate_met ? '#f59e0b' : 'var(--text3)', fontWeight: 700 }}>
-                  {s.gate_met ? 'gate met — operator decision required' : 'gate not met'}
-                </span>
-              </span>
-            )
-          })}
-        </div>
-      )}
-      {/* Desk Path B readiness — liquidity/enterprise, not paper n/30. */}
+      {/* Desk Path B readiness — Schwab Path B only (Alpaca paper lane retired from Hub). */}
       {deskPathBRows.length > 0 && (
         <div style={{ ...panel, marginBottom: 12, padding: '8px 14px', borderLeft: '4px solid #22c55e', display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
           <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: '#22c55e', textTransform: 'uppercase' }} title="Schwab Path B strategies — live eligibility is enterprise liquidity + per-order 2FA">Desk Path B</span>
@@ -601,34 +497,11 @@ export default function OptionsHub({ onDrill }: Props) {
               {facetChip(FILTERS.tierB, 'Tier B', propFacets.by_tier?.B, tierFilter === 'B', () => setTierFilter(t => t === 'B' ? '' : 'B'), '#60a5fa')}
               {facetChip(FILTERS.tierC, 'Tier C', propFacets.by_tier?.C, tierFilter === 'C', () => setTierFilter(t => t === 'C' ? '' : 'C'), 'var(--text3)')}
               {facetChip(FILTERS.liveEligible, 'Live eligible', propFacets.live_eligible, liveOnly, () => setLiveOnly(v => !v), '#22c55e')}
-              {blockedCount > 0 && facetChip('Blocked = enterprise liquidity/spread/OI/BS-estimate (or educational paper). Auto-shown when Live eligible is 0. Click to toggle.', `Blocked`, blockedCount, showBlocked, () => setShowBlocked(v => !v), '#ef4444')}
+              {blockedCount > 0 && facetChip('Blocked = enterprise liquidity/spread/OI/BS-estimate. Schwab Path B only. Auto-shown when Live eligible is 0.', `Blocked`, blockedCount, showBlocked, () => setShowBlocked(v => !v), '#ef4444')}
               <Tip tip={FILTERS.showing} style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
                 Showing {propCount}{propFacets.total != null && propCount !== propFacets.total ? ` of ${propFacets.total}` : ''} ⓘ
               </Tip>
             </div>
-            {/* Stage 3: Alpaca paper lane — filter queue-backed paper-model rows by lane state */}
-            {Object.keys(laneCounts).length > 0 && (
-              <>
-                <div style={{ marginTop: 8 }}>
-                  <TipSection tip="Alpaca PAPER lane states for paper-model proposals: operator mark-ready → confirmed 1-contract LIMIT submit → fill/close → recorded outcome → operator-only live-review mark. Educational lane — never a live order path.">
-                    ALPACA PAPER LANE
-                  </TipSection>
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {ALPACA_LANE_FILTERS.filter(f => laneCounts[f.key] != null).map(f =>
-                    facetChip(
-                      `Show only paper-model rows in the ${f.label} lane state.`,
-                      f.label, laneCounts[f.key], alpacaLaneFilter === f.key,
-                      () => setAlpacaLaneFilter(k => k === f.key ? '' : f.key), '#f59e0b',
-                    ))}
-                  {alpacaLaneFilter && (
-                    <span style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center' }}>
-                      showing {shownProps.length} lane row{shownProps.length === 1 ? '' : 's'}
-                    </span>
-                  )}
-                </div>
-              </>
-            )}
           </div>
 
           {propError && (
@@ -690,7 +563,6 @@ export default function OptionsHub({ onDrill }: Props) {
                 armed={!!execStatus?.armed_for_execution}
 
                 onAction={(a, id) => handleAction(a, id, p)}
-                onAlpacaAction={p.educational_paper_model ? handleAlpacaAction : undefined}
                 onManualLog={() => setManualSeed({ symbol: p.symbol, account: p.account, options_proposal_id: p.id, execution_type: 'option' })}
                 onDrill={() => onDrill({
                   title: `${p.symbol} ${p.strategy.replace(/_/g, ' ')}`,
@@ -715,25 +587,21 @@ export default function OptionsHub({ onDrill }: Props) {
               <input placeholder="Underlying" title={FILTERS.posTicker} value={posSymbolFilter} onChange={e => setPosSymbolFilter(e.target.value)} style={{ ...SEL, width: 80, cursor: 'help' }} />
               <button title={FILTERS.clear} onClick={() => {
                 setPosSymbolFilter(''); setPosTypeFilter(''); setPosSideFilter('')
-                setPosWorkingOnly(false); setPosRouteFilter(''); setPosSourceFilter(''); setPosPaperOnly(false)
+                setPosWorkingOnly(false); setPosRouteFilter(''); setPosSourceFilter('')
               }} style={{ ...SEL, cursor: 'help', color: 'var(--text3)' }}>Clear</button>
               {monLoading && <span style={{ fontSize: 10, color: 'var(--text3)' }}>Loading…</span>}
               <span style={{ fontSize: 10, color: 'var(--text3)' }}>
                 {posList.length}{monitor?.unified_count != null && posList.length !== monitor.unified_count ? ` of ${monitor.unified_count}` : ''} legs
-                {monitoredCount > 0 ? ` · ${monitoredCount} monitored` : ''}
               </span>
             </div>
-            <TipSection tip="Filter by leg type, route (Alpaca paper vs Schwab live), and lifecycle monitor source.">OPEN OPTIONS</TipSection>
+            <TipSection tip="Schwab open option legs only — filter by type, side, and broker route.">OPEN OPTIONS</TipSection>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 6 }}>
               {facetChip(FILTERS.posCalls, 'Calls', posFacets.by_option_type?.call, posTypeFilter === 'call', () => setPosTypeFilter(t => t === 'call' ? '' : 'call'))}
               {facetChip(FILTERS.posPuts, 'Puts', posFacets.by_option_type?.put, posTypeFilter === 'put', () => setPosTypeFilter(t => t === 'put' ? '' : 'put'))}
               {facetChip(FILTERS.posShort, 'Short / Sell', posFacets.by_side?.sell, posSideFilter === 'sell', () => setPosSideFilter(s => s === 'sell' ? '' : 'sell'), '#f59e0b')}
               {facetChip(FILTERS.posLong, 'Long / Buy', posFacets.by_side?.buy, posSideFilter === 'buy', () => setPosSideFilter(s => s === 'buy' ? '' : 'buy'), '#22c55e')}
               {facetChip(FILTERS.posWorking, 'Working', posFacets.working, posWorkingOnly, () => setPosWorkingOnly(w => !w), '#22c55e')}
-              {facetChip('Alpaca paper lifecycle positions from options_monitored_positions.', 'Paper monitored', posFacets.paper_only, posPaperOnly, () => setPosPaperOnly(v => !v), '#f59e0b')}
               {facetChip('Schwab holdings legs from broker sync.', 'Broker', posFacets.by_source?.broker, posSourceFilter === 'broker', () => setPosSourceFilter(s => s === 'broker' ? '' : 'broker'), '#60a5fa')}
-              {facetChip('Lifecycle monitor registry (hybrid ingest).', 'Monitored', posFacets.by_source?.monitored, posSourceFilter === 'monitored', () => setPosSourceFilter(s => s === 'monitored' ? '' : 'monitored'), '#a855f7')}
-              {facetChip('Alpaca paper route only.', 'Alpaca paper', posFacets.by_route?.alpaca_paper, posRouteFilter === 'alpaca_paper', () => setPosRouteFilter(r => r === 'alpaca_paper' ? '' : 'alpaca_paper'), '#f59e0b')}
               {facetChip('Schwab live path (2FA when armed).', 'Schwab live', posFacets.by_route?.schwab_live, posRouteFilter === 'schwab_live', () => setPosRouteFilter(r => r === 'schwab_live' ? '' : 'schwab_live'), '#22c55e')}
             </div>
           </div>
@@ -769,7 +637,7 @@ export default function OptionsHub({ onDrill }: Props) {
           {posList.length === 0 && !monLoading && (
             <div style={panel}>
               <div style={{ fontSize: 12, color: 'var(--text3)' }}>
-                No open options yet. Schwab legs sync from linked accounts; Alpaca paper fills appear here after reconcile via the lifecycle monitor.
+                No open Schwab option legs yet. Linked Schwab accounts sync here; Path B close/roll still requires per-order 2FA when armed.
               </div>
             </div>
           )}

@@ -239,11 +239,14 @@ def _execution_profile(account: str) -> dict:
             "auto_eligible": True,
         }
     if "alpaca" in a:
+        # Options desk is Schwab Path B + 2FA only (operator 2026-09-25).
+        # Alpaca paper accounts are excluded from options generation / Hub.
         return {
             "broker": "alpaca",
-            "execution_mode": "auto",
-            "execution_label": "Auto · Alpaca paper",
-            "auto_eligible": True,
+            "execution_mode": "excluded",
+            "execution_label": "Excluded · Alpaca (options desk is Schwab-only)",
+            "auto_eligible": False,
+            "options_desk_excluded": True,
         }
     return {
         "broker": "other",
@@ -495,10 +498,19 @@ def _load_holdings() -> Tuple[List[dict], dict]:
         h = {}
     raw = h.get("holdings") or []
     normalized = [_normalize_holding(x) for x in raw if (x.get("symbol") or "").upper()]
+    # Options desk / Lifecycle tree: Schwab (+ Fidelity manual) only — drop Alpaca lots.
+    kept, dropped_alpaca = [], 0
+    for row in normalized:
+        prof = _execution_profile(row.get("account") or "")
+        if prof.get("broker") == "alpaca" or prof.get("options_desk_excluded"):
+            dropped_alpaca += 1
+            continue
+        kept.append(row)
     meta = dict(h) if isinstance(h, dict) else {}
     meta["_holdings_path"] = str(best) if best is not None else None
     meta["_holdings_mtime"] = best_mtime if best is not None else None
-    return normalized, meta
+    meta["_alpaca_holdings_excluded"] = dropped_alpaca
+    return kept, meta
 
 
 def _cash_by_account(holdings: List[dict]) -> Dict[str, float]:

@@ -115,3 +115,30 @@ def test_alpaca_submit_refuses_desk_path_b_strategy(monkeypatch):
     with pytest.raises(ap.OperatorActionRequiredError) as ei:
         ap.submit_ready_proposal("p1", confirm=True, dry_run=False, executor=FakeEx())
     assert "Path B" in str(ei.value) or "Schwab" in str(ei.value)
+
+def test_options_engine_excludes_alpaca_holdings_from_desk_book():
+    oe = _load("options_engine_schwab_only", "scripts/options_engine.py")
+    alp = oe._execution_profile("alpaca_paper")
+    assert alp.get("options_desk_excluded") is True
+    assert alp.get("auto_eligible") is False
+    schwab = oe._execution_profile("schwab_taxable")
+    assert schwab.get("broker") == "schwab"
+    assert schwab.get("options_desk_excluded") is not True
+
+
+def test_options_alpaca_mark_ready_refuses_schwab_only_desk():
+    """API handlers return 403 options_desk_schwab_only (Alpaca lane retired)."""
+    import importlib.util
+    # Load only the refuse helpers by evaluating source snippets is brittle;
+    # assert the refuse reason string is present on every alpaca-paper handler.
+    src = (ROOT / "scripts" / "api_v2.py").read_text(encoding="utf-8")
+    for name in (
+        "_options_alpaca_mark_ready",
+        "_options_alpaca_submit",
+        "_options_alpaca_reconcile",
+        "_options_alpaca_record_outcome",
+        "_options_alpaca_promote_live_review",
+    ):
+        assert name in src
+    assert src.count("options_desk_schwab_only") >= 5
+
