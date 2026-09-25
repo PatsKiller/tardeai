@@ -1708,6 +1708,15 @@ def generate_credit_spread_proposals(
         iv = max(0.05, short_c.get("iv") or _resolve_iv_decimal(und, tech, "put"))
         pop = _pop_otm_put(und, short_strike, iv, dte)
         rr = (net_credit * 100) / max(max_loss, 1)
+        # Defined-risk credit spreads must clear the R:R floor before Ideas.
+        # POP-heavy edge alone used to ship $66 credit / $1,184 risk as Tier A.
+        try:
+            import options_desk_enterprise as _ent_rr
+            _rr_floor = float((_ent_rr.load_desk_config() or {}).get("min_credit_spread_rr") or 0.25)
+        except Exception:
+            _rr_floor = 0.25
+        if _rr_floor > 0 and rr < _rr_floor:
+            continue
         edge = _edge_score_wheel(
             pop, iv_rank, net_credit, width - net_credit, conviction=conf, dte=dte,
         )
@@ -2072,6 +2081,63 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
     }
 
 
+def _stamp_cio_hub_strip(proposals: List[dict], convictions: List[dict]) -> List[dict]:
+    """Stamp advisory CIO entry_state onto Hub proposal cards (Stage C/D, 2026-09-25).
+
+    Cards read ``p.cio.entry_state``. Prefer ``source=entry_state`` when a symbol
+    appears on more than one conviction. Never raises into generate_proposals —
+    a missing strip is worse than blank Ideas (NameError shipped once and blanked
+    the live desk behind the single-threaded server).
+    """
+    by_sym: Dict[str, dict] = {}
+    for c in convictions or []:
+        if not isinstance(c, dict):
+            continue
+        sym = (c.get("symbol") or "").upper()
+        if not sym:
+            continue
+        prior = by_sym.get(sym)
+        if prior is None or c.get("source") == "entry_state":
+            by_sym[sym] = c
+    for p in proposals or []:
+        if not isinstance(p, dict):
+            continue
+        sym = (p.get("symbol") or p.get("underlying") or "").upper()
+        c = by_sym.get(sym)
+        if not c:
+            continue
+        entry = c.get("entry_state")
+        if not entry and c.get("source") != "entry_state":
+            continue
+        note_parts: List[str] = []
+        if c.get("volatility_elevated"):
+            note_parts.append(
+                "elevated ATR vs stop — options may be capital-efficient vs full equity"
+            )
+        atr_vs = c.get("atr_vs_distance_to_stop")
+        if atr_vs is not None:
+            try:
+                note_parts.append(f"ATR/stop={float(atr_vs):.2f}")
+            except (TypeError, ValueError):
+                pass
+        hub_note = " · ".join(note_parts) if note_parts else None
+        if entry and not hub_note:
+            hub_note = (
+                f"CIO {entry} (advisory — does not unlock live; "
+                "Path B still needs liquidity + per-order 2FA)"
+            )
+        p["cio"] = {
+            "entry_state": entry or None,
+            "source": c.get("source"),
+            "confidence": c.get("confidence"),
+            "bias": c.get("bias") or c.get("direction"),
+            "summary": c.get("summary"),
+            "volatility_elevated": bool(c.get("volatility_elevated")),
+            "hub_note": hub_note,
+        }
+    return proposals
+
+
 def _apply_enterprise_layer(proposals: List[dict]) -> List[dict]:
     """Attach enterprise desk metadata: earnings blackout, liquidity, vol, tiers."""
     try:
@@ -2165,6 +2231,16 @@ def generate_proposals(force: bool = False) -> dict:
         edge = _f(p.get("edge_score"))
         sym = (p.get("symbol") or "").upper()
         strat = p.get("strategy") or ""
+        # Credit spreads: hard R:R floor (enterprise helper) — never Ideas on 0.06 R:R.
+        if strat == "credit_spread":
+            try:
+                import options_desk_enterprise as _ent_qg
+                if _ent_qg.credit_spread_rr_block(p):
+                    return False
+            except Exception:
+                rr = _f(p.get("risk_reward"))
+                if rr > 0 and rr < 0.25:
+                    return False
         manual = p.get("execution_mode") == "manual" or p.get("broker") == "fidelity"
         # Income-sleeve names (V, SCHD, LMT in portfolio_intent) use relaxed floor — final
         # filter must match per-proposal generation or borderline intent CCs vanish (V ~61 vs 62).
@@ -2185,7 +2261,12 @@ def generate_proposals(force: bool = False) -> dict:
     if not strict and pool:
         relaxed = [
             p for p in pool
-            if p.get("edge_score", 0) >= MIN_EDGE_CC_INTENT and _f(p.get("pop_pct")) >= (MIN_POP_PCT - 5)
+            if p.get("edge_score", 0) >= MIN_EDGE_CC_INTENT
+            and _f(p.get("pop_pct")) >= (MIN_POP_PCT - 5)
+            and (
+                (p.get("strategy") or "") != "credit_spread"
+                or _passes_quality_gate({**p, "quality_pass": True})
+            )
         ]
         for p in relaxed:
             p["fallback_tier"] = True
@@ -2198,7 +2279,11 @@ def generate_proposals(force: bool = False) -> dict:
             _audit("fallback_tier", count=len(strict), symbols=[p.get("symbol") for p in strict])
 
     strict = _apply_enterprise_layer(strict)
-    strict = _stamp_cio_hub_strip(strict, convictions)
+    try:
+        strict = _stamp_cio_hub_strip(strict, convictions)
+    except Exception:
+        # Desk Ideas must still render if CIO strip stamping fails.
+        pass
     all_p = _allocate_strategy_slots(strict)
 
     enterprise_summary = {}
