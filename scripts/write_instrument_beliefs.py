@@ -30,7 +30,7 @@ from scripts.lib.cio_belief_writer import update_beliefs_from_settled  # noqa: E
 #   50 18 * * * cd $CUR && .venv/bin/python scripts/write_instrument_beliefs.py --apply
 # after resolve_due_checkpoints (:20 hourly), the commitment sweep (18:20) and
 # the advisory outcome scorer (18:30) have settled the day's rows.
-SCHEDULED_ENTRYPOINT = "cron: 50 18 * * * -- daily, --apply (lane instrument-belief-writer; proposed 2026-09-24)"
+SCHEDULED_ENTRYPOINT = "cron: 50 18 * * * -- daily, --apply (lane instrument-belief-writer; installed 2026-09-24 under an operator cron grant)"
 
 DEFAULT_WAKE_ROOT = Path.home() / "trade-ai-state" / "persistent_wake" / "state"
 

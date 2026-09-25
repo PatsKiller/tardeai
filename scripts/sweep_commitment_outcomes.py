@@ -36,10 +36,8 @@ from scripts.lib.commitment_outcome_sweep import (  # noqa: E402
 # -- 224 durable commitments carry zero outcomes. Declared rather than installed:
 # a new cron or systemd entry is operator-only (AGENTS.md §17).
 SCHEDULED_ENTRYPOINT = (
-    "PROPOSAL ONLY -- not installed. Lane commitment-outcome-sweep in "
-    "config/lane_registry.json (state NEVER_SCHEDULED, 2026-09-24) carries the exact "
-    "proposed line: 20 18 * * * ... scripts/sweep_commitment_outcomes.py --apply. "
-    "A new cron/systemd entry is operator-only (§17); run by hand until then."
+    "cron: 20 18 * * * -- daily, --apply --state-root ~/trade-ai-state/persistent_wake/state "
+    "(lane commitment-outcome-sweep; installed 2026-09-24 under an operator cron grant)"
 )
 
 DEFAULT_STATE_ROOT = Path("/home/johnclaw/trade-ai-state/persistent_wake/state")

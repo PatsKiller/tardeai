@@ -1,17 +1,27 @@
 # AGENTS.md — Trade AI: the operating standard for every agent
 
 ```
-Policy-Version:      1.2.6
+Policy-Version:      1.2.7
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
 Status:              PROPOSED
 Effective-Date:      PENDING
-Last-Reviewed:       2026-09-20T18:51:00-04:00
+Last-Reviewed:       2026-09-24T21:10:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
-Supersedes:          1.2.5
+Supersedes:          1.2.6
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
+
+**1.2.7 is PROPOSED, and `Effective-Date` stays `PENDING` until it merges.** A PATCH release: §13.4
+is corrected to what shipped in PRs #1223, #1225 and #1226 (live 2026-09-24 as `7a9dcec26`) — the
+`InstrumentRecord@v1` field list gains the shipped `beliefs[]` block (`InstrumentBelief@v1`, written
+only by `cio_belief_writer` through `apply_belief`) and retires the "SPECIFIED — no producer" lines it
+replaces; the subject-key namespace records the settled entity policy (`INDUSTRY:` / `THEME:` are
+tags-only by policy, `SECTOR:` is mintable with no producer); the narrative-subject table gains
+`OPTION_CONTRACT` (a `security_guid` with `share_class="option"`, minted by `options_identity`, no
+options-specific id prefix). It adds no rule and weakens nothing; touches no §0/§2/§17 authority or
+role profile; rides `APPROVE_AGENTS_POLICY_1_2_0`.
 
 **1.2.6 is PROPOSED, and `Effective-Date` stays `PENDING` until it merges** — a version is ACTIVE
 only after approval *and* merge, and an unmerged policy must never render as an affirmative one.
@@ -2662,6 +2672,12 @@ lesson_id       operator_turn_id                instrument_record_id
 ```
 
 All under `GOOD_PERSISTENT_ROOT`. **A new id type requires justification against these eleven.**
+`contract_guid` and `option_strategy_guid` (2026-09-24, PR #1225) are **not** new types: a contract is
+a `security_guid` (`share_class="option"`, `instrument="C|P:strike:expiry[:venue]"`, issuer from the
+registry — never minted from ticker text) and a strategy instance is a `tradeai:entity:strategy:*`
+`entity_guid`. They are listed in `CANONICAL_ID_FIELDS` because `proposal_outcome_chain` and
+`options_paper_outcomes.meta` carry them as join keys. `expiration_guid` / `strike_guid` are
+deliberately not minted (attributes of the contract key).
 
 ### Narrative subject identity — `NarrativeSubjectLink@v1`  `[VERIFIED]` 2026-09-10
 
@@ -2695,6 +2711,7 @@ remain "SPECIFIED, no producer yet" as records.
 | `THEME` | `tradeai:entity:theme:*` | `entity_guid` | yes |
 | `PORTFOLIO` | `tradeai:entity:portfolio:*` | `entity_guid` | yes |
 | `STRATEGY` | `tradeai:entity:strategy:*` | `entity_guid` | yes |
+| `OPTION_CONTRACT` | `tradeai:security:*` (`share_class="option"`) | `options_identity.contract_guid` via `security_identity.security_guid` | **never from ticker text** — issuer looked up in the registry; no legs → no GUID |
 
 **Rules that must hold.**
 
@@ -2748,19 +2765,21 @@ Contract: `docs/architecture/narrative-subject-identity.md`.
 HELD:SYM        a current position
 EXIT:SYM        a former position, in the re-entry book
 WATCH:SYM       watched, not held
-SECTOR:name     a sector as a first-class subject
+SECTOR:name     a sector as a first-class subject — MINTABLE, NO PRODUCER (no job mints one; 2026-09-24)
 SLEEVE:CASH     the cash sleeve
-INDUSTRY:name   Finviz-derived industry — SPECIFIED, no producer yet
-THEME:slug      operator-declared theme — SPECIFIED, no producer yet
+INDUSTRY:name   Finviz-derived industry — TAGS-ONLY BY POLICY (settled 2026-09-24)
+THEME:slug      operator-declared theme — TAGS-ONLY BY POLICY (settled 2026-09-24)
 EVENT:slug      dated watchable event — SPECIFIED, no producer yet
 ```
 
 A subject key names an `InstrumentRecord@v1`. **Records can be woken, hold a thesis, carry operator
 turns, and have a cadence. Tags cannot.** If a thing needs research on a schedule, it is a record.
-`INDUSTRY:` / `THEME:` / `EVENT:` are registered prefixes, not shipped
-records. Do not mint them until Phase 1 of
-`docs/architecture/PROJECT_THE_DESK_V2.md` names a scheduled consumer.
-Do not invent a parallel type for any of them.
+`INDUSTRY:` / `THEME:` are **tags, not records, by decision** (operator, 2026-09-24; contract table in
+`docs/architecture/narrative-subject-identity.md`, "Entity policy"): `is_mintable` returns
+`tags_only_by_policy:INDUSTRY|THEME`, and a caller that reads that reason has found policy, not a gap.
+`EVENT:` stays a registered prefix with no shipped record. `SECTOR:` is mintable but nothing mints one;
+the independent audit's "sector mostly closed" was restated as "mintable, unproduced". Do not invent a
+parallel type for any of them, and do not build a producer for a tag.
 
 ### `InstrumentRecord@v1` — the persistent unit
 
@@ -2773,13 +2792,27 @@ operator_turns[]                   ack / defer / reject / question land HERE
 lessons[]                          cognition only → next question, priority
 analyst · earnings_next
 next_eligible_at · notify_priority
-commitments[]                  SPECIFIED — AgentView staked; no producer
-priors                         SPECIFIED — belief + strength; no producer
-scored_lessons[]               SPECIFIED — outcome-derived only; no producer
+last_outcome                       the research-gate ROUTE of the last cycle (flash|pro|reuse) — NOT a market outcome
+beliefs[]                          SHIPPED 2026-09-24 (PR #1226) — `InstrumentBelief@v1`: per
+                                   (subject_key | recommendation | horizon [| population])
+                                   sample_size · successful · success_rate · outcome_ids ·
+                                   lesson_ids (RATIFIED only) · belief_proposal_id · revision.
+                                   Written ONLY by `cio_belief_writer` from SETTLED rows
+                                   (advisory_outcomes, resolved checkpoints with a price change,
+                                   CONFIRMED/REFUTED commitment outcomes) through `apply_belief`,
+                                   a named rail entry beside `apply_cognition` that refuses any
+                                   BEHAVIOR_FIELDS key anywhere in the block and any live_mutation.
+                                   Read before authoring: the research gate (flash→pro,
+                                   `prior_belief_weak_escalates`), the L3 question, and
+                                   `default_decide` (BELIEF_REVIEW). Supersedes the former
+                                   `priors` / `scored_lessons[]` SPECIFIED lines.
+commitments[]                  SPECIFIED — AgentView staked; no producer ON THE RECORD (governed
+                                   commitments live in the wake store, keyed by subject_guid)
 ```
 
 Loaded by `load-by-subject` on every wake. `plan_id` on every wake. An operator ack or defer writes
-back onto **this** record.
+back onto **this** record. Outcome checkpoints bind to it by `subject_key` (stamped at mint since
+PR #1226) and by registry `subject_guid` — never by a tag GUID.
 
 ### Pipeline stages — extend these; do not build alongside them
 
@@ -3549,6 +3582,7 @@ Operator activation phrase (after review):
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
+| 1.2.7 | 2026-09-24 | PROPOSED (ACTIVE on merge) | PATCH | §13.4 corrected to what shipped in PRs #1223/#1225/#1226 (live 2026-09-24 as `7a9dcec26`): `InstrumentRecord@v1` gains the shipped `beliefs[]` block (`InstrumentBelief@v1`, written only by `cio_belief_writer` through `apply_belief`, read by the research gate / L3 question / `default_decide`) and retires the `priors` / `scored_lessons[]` SPECIFIED lines; `last_outcome` documented as the research-gate route; subject-key namespace records `INDUSTRY:`/`THEME:` tags-only by policy (`is_mintable` → `tags_only_by_policy`) and `SECTOR:` mintable-with-no-producer; narrative-subject table gains `OPTION_CONTRACT` (a `security_guid`, `share_class="option"`, no options id prefix; `expiration_guid`/`strike_guid` not minted). Lanes `commitment-outcome-sweep` (18:20) and `instrument-belief-writer` (18:50) installed under an operator cron grant and declared ACTIVE. No rule added, nothing weakened; §0/§2/§17 untouched. | Rides `APPROVE_AGENTS_POLICY_1_2_0` (sections outside §0/§2/§17) |
 | 1.2.6 | 2026-09-20 | PROPOSED (ACTIVE on merge) | PATCH | Research lanes + §13.4 dark list: `hermes_advisory_event_enqueue` → **RETIRED** after Operator-Token `APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE` (PR #1151) and follow-on `lane_registry` row `hermes-advisory-event-enqueue` (EXPECTED_SILENT; manual CLI retained; no archive). No change to §0, §2, §17 or role authority. | PATCH documenting operator-settled RETIRE; rides `APPROVE_AGENTS_POLICY_1_2_0`. |
 | 1.2.6 | 2026-09-20 | PROPOSED (ACTIVE on merge) | MINOR | §6: a dry run must not be able to REACH the mutation — `--dry-run` called `claim_due()` and stranded the row it previewed (PR #1143) — and anything that claims work owes a reclaimer. §12: `should_scheduled_skip` superseded by `lib/llm_deferral`; out-of-window paid work is queued in `llm_deferred_requests` and drained by lane `llm-deferred-drain`; three operator-set caller tiers; `LLM_DEFER_OFFPEAK` arming; measured 21% (965/4,590) blast radius of arming globally (PR #1134), and records that the process-boundary wrapper (25 active crontab lines) still DROPS. §9.3: a refused scheduled call is queued not dropped; `llm-deferred-drain` and `llm-provider-health` declared. No change to §0, §2, §17 or role authority. | **Operator-directed** 2026-09-20 ("update documentation agents.md"). MINOR — adds proof obligations, weakens nothing; rides `APPROVE_AGENTS_POLICY_1_2_0`. |
 | 1.2.5 | 2026-09-20 | ACTIVE | PATCH | §13.4: dark-contracts list + AgentView/AGENT_COMMITMENT “no producer” prose corrected to match ledger CLOSED (load-by-subject, OUTCOME, AgentView, commitment, librarian index OBSERVED). hermes enqueue remains KNOWN DARK — PROPOSED RETIRE. No change to §0, §2, §17 or role authority. | PATCH stale measurements; rides `APPROVE_AGENTS_POLICY_1_2_0`. |
