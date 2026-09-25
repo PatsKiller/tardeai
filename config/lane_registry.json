@@ -2262,12 +2262,14 @@
       "lane_id": "commitment-outcome-sweep",
       "owner": "cio",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1",
+        "match": "scripts/sweep_commitment_outcomes.py --apply"
       },
       "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-09-24",
-      "state_reason": "Built 2026-09-12 (P10), unscheduled: 1,877 commitments, 426 past due, 0 outcomes measured 2026-09-24. Tranche 1 gives it a price-based observation_provider (commitment_price_observation) so CONFIRMED/REFUTED are possible. Install as '20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1' (after resolve-due-checkpoints :20, before advisory-outcome-scorer 18:30; deterministic, no LLM), then flip this row to kind=cron, state=ACTIVE. A new cron entry is operator-only (AGENTS.md §17).",
+      "state_reason": "Installed 2026-09-24 20:54 ET under an operator cron grant (Telegram /approve), after PR #1226 went live as 7a9dcec26. Previously NEVER_SCHEDULED: Built 2026-09-12 (P10), unscheduled: 1,877 commitments, 426 past due, 0 outcomes measured 2026-09-24. Tranche 1 gives it a price-based observation_provider (commitment_price_observation) so CONFIRMED/REFUTED are possible. Install as '20 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/sweep_commitment_outcomes.py --apply --state-root /home/johnclaw/trade-ai-state/persistent_wake/state >> logs/sweep_commitment_outcomes.log 2>&1' (after resolve-due-checkpoints :20, before advisory-outcome-scorer 18:30; deterministic, no LLM), then flip this row to kind=cron, state=ACTIVE. A new cron entry is operator-only (AGENTS.md §17).",
       "output_signal": {
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-state/persistent_wake/state/commitment_outcomes.jsonl"
@@ -2280,12 +2282,14 @@
       "lane_id": "instrument-belief-writer",
       "owner": "cio",
       "scheduler": {
-        "kind": "none"
+        "kind": "cron",
+        "expression": "50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1",
+        "match": "scripts/write_instrument_beliefs.py --apply"
       },
       "expected_cadence_hours": 24.0,
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-09-24",
-      "state_reason": "Built 2026-09-24 (agentic-memory tranche 1, Slice 2). Writes InstrumentBelief@v1 blocks from settled rows only (advisory_outcomes, resolved checkpoints with a price change, CONFIRMED/REFUTED commitment outcomes) through cio_instrument_record.apply_belief. Install as '50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1' (after the three settlers), then flip this row to kind=cron, state=ACTIVE. A new cron entry is operator-only (AGENTS.md §17).",
+      "state_reason": "Installed 2026-09-24 20:54 ET under an operator cron grant (Telegram /approve), after PR #1226 went live as 7a9dcec26. Previously NEVER_SCHEDULED: Built 2026-09-24 (agentic-memory tranche 1, Slice 2). Writes InstrumentBelief@v1 blocks from settled rows only (advisory_outcomes, resolved checkpoints with a price change, CONFIRMED/REFUTED commitment outcomes) through cio_instrument_record.apply_belief. Install as '50 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/write_instrument_beliefs.py --apply >> logs/write_instrument_beliefs.log 2>&1' (after the three settlers), then flip this row to kind=cron, state=ACTIVE. A new cron entry is operator-only (AGENTS.md §17).",
       "output_signal": {
         "kind": "json_key",
         "path": "data/cio/instrument_belief_latest.json",
