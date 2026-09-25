@@ -466,6 +466,14 @@ CANONICAL_ID_FIELDS = (
     "workflow_id", "event_id", "research_id", "artifact_id", "generation_id",
     "notification_id", "checkpoint_id", "outcome_id", "lesson_id",
     "plan_id", "dedupe_key",
+    # 2026-09-24 options identity (PR #1224 repair). Not a new spine: a
+    # contract_guid IS a security_guid (share_class="option", minted by
+    # security_identity) and an option_strategy_guid IS a knowledge-graph
+    # "strategy" entity_guid. Listed here because proposal_outcome_chain and
+    # options_paper_outcomes.meta carry them as join keys; no JSONL store in
+    # STORES mints them (they are Postgres columns), so stores_minting() is
+    # expected to be empty for both until such a store is registered.
+    "option_strategy_guid", "contract_guid",
 )
 
 
