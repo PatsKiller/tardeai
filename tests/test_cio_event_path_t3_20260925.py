@@ -154,7 +154,11 @@ def test_dispatcher_claims_oldest_pending_first(tmp_path):
     store = CIOWakeJobStore(event_store_path=tmp_path / "wakes.jsonl")
     for i in range(8):
         _enqueue(store, f"w{i}", f"2026-09-25T0{i}:00:00+00:00")
-    disp = CIOWakeDispatcher(wake_store=store, run_store=None)
+    # Hermetic: the dispatcher's idempotency ledger defaults to data/cio in the
+    # working tree; without this the control polluted that file and a second
+    # run read its own ids back as "already dispatched" (D-TEST-POLLUTION).
+    disp = CIOWakeDispatcher(wake_store=store, run_store=None,
+                             dispatch_ledger_path=str(tmp_path / "dispatches.jsonl"))
     disp._goal_store_or_default = lambda: None  # no goal side path in this control
     disp.enqueue_instrument_wakes = lambda max_new=5: {"enqueued": []}
     res = disp.poll_and_dispatch(max_dispatches=3)
