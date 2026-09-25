@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `bb7c9887342840433c4efd0cafa9d60835a977ff77e0ffa23fd6ce48809949ac`
+**Tree fingerprint:** `3866e83b240fb5096a0298d0492004657516e04c4162dcd51d9c5d6bdb5eb362`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2608 |
-| Markdown (excl. this INDEX) | 2182 |
+| Files under `docs/` (excl. this INDEX) | 2612 |
+| Markdown (excl. this INDEX) | 2186 |
 | **MISSING HEADER** | **74** |
-| Header OK | 2108 |
+| Header OK | 2112 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2237 |
+| review_required | 2241 |
 
 ## Markdown tree
 
@@ -679,6 +679,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_v31_2026-07-14.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `5bd54a7f0c60` |
+| `docs/audits/OPTIONS_DESK_ARCHITECTURE_MAP_2026-09-25.md` | Options Desk Architecture Map — 2026-09-25 | review_required | OK | `8e58d31110ac` |
+| `docs/audits/OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md` | Options Desk Executive Audit — 2026-09-25 | review_required | OK | `d8f4de5076a7` |
+| `docs/audits/OPTIONS_DESK_GOVERNANCE_MEMORY_AUDIT_2026-09-25.md` | Options Desk Governance and Persistent Intelligence Audit — 2026-09-25 | review_required | OK | `3f07009d473e` |
+| `docs/audits/OPTIONS_DESK_RECOMMENDATION_SPEC_2026-09-25.md` | Options Desk Recommendation Enhancement Specification — 2026-09-25 | review_required | OK | `39bb69b389bd` |
 | `docs/audits/P101_RISK_PRODUCER_2026-08-28.md` | P10.1 — `risk_management.json` has a producer. It writes to the wrong tree. | review_required | OK | `ab3ccb5ebae0` |
 | `docs/audits/P85_FRESHNESS_FLIP_HELD_2026-08-28.md` | P8.5 — the freshness flip: **not applied** | review_required | OK | `ae8d52380901` |
 | `docs/audits/P91_WHERE_THE_MODEL_CALL_GOES_2026-08-28.md` | P9.1 — where does the model call go? | review_required | OK | `fe5e6124f0c7` |

@@ -40249,6 +40249,23 @@ def _options_proposals(query=None):
         filtered = apply_card_semantics_batch(filtered, schwab_armed=schwab_armed)
     except Exception:
         pass
+    try:
+        from lib.recommendation_comparison import build_recommendation_comparison
+
+        for row in filtered:
+            try:
+                row["recommendation_comparison"] = build_recommendation_comparison(row)
+            except Exception:
+                row["recommendation_comparison"] = {
+                    "comparison": {"preferred_structure": "review_required"},
+                    "oversight": {
+                        "review_status": "unreviewed",
+                        "authority": "READ_ONLY_ADVISORY",
+                        "cio_commentary": "Comparison failed closed. No CIO disposition is on file.",
+                    },
+                }
+    except Exception:
+        pass
     return _json_clean(
         {
             **data,
