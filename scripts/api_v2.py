@@ -40159,12 +40159,8 @@ def _options_validation(query=None):
             {
                 "ok": True,
                 "strategies": strategies,
-                "paper_lab_strategies": [
-                    s for s in strategies if s.get("lane") == "paper_lab"
-                ],
-                "desk_path_b_strategies": [
-                    s for s in strategies if s.get("lane") == "desk_path_b"
-                ],
+                "paper_lab_strategies": [s for s in strategies if s.get("lane") == "paper_lab"],
+                "desk_path_b_strategies": [s for s in strategies if s.get("lane") == "desk_path_b"],
                 "paper_lab_ids": sorted(PAPER_LAB_STRATEGIES),
             }
         )
@@ -40208,7 +40204,8 @@ def _options_proposals(query=None):
     # primary Schwab desk unless paper lab was explicitly requested.
     if not include_paper_lab:
         proposals = [
-            p for p in proposals
+            p
+            for p in proposals
             if not (
                 p.get("educational_paper_model")
                 or p.get("paper_only")
@@ -40409,10 +40406,14 @@ def _options_open_positions(query=None):
     )
     # Drop any residual alpaca / paper-model rows.
     filtered = [
-        p for p in filtered
-        if not (p.get("paper_only") or p.get("is_paper_model_row")
-                or str(p.get("broker") or "").lower() == "alpaca"
-                or str(p.get("execution_route") or "").lower() in ("alpaca_paper", "tradeai_automated"))
+        p
+        for p in filtered
+        if not (
+            p.get("paper_only")
+            or p.get("is_paper_model_row")
+            or str(p.get("broker") or "").lower() == "alpaca"
+            or str(p.get("execution_route") or "").lower() in ("alpaca_paper", "tradeai_automated")
+        )
     ]
     broker_alerts = broker_data.get("alerts") or []
     return _json_clean(

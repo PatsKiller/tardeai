@@ -2342,6 +2342,8 @@ GATES = [
             "tests/test_agent_memory_shadow_measure.py",
             "tests/test_memory_shadow_measure_honesty.py",
             "tests/test_options_pipeline_validation.py",
+            # Live Schwab Options Desk Stage A–E + Alpaca retirement (2026-09-25).
+            "tests/test_live_schwab_options_desk_stage_abc.py",
         ],
     ),
     (
