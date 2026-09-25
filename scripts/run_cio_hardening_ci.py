@@ -2334,6 +2334,7 @@ GATES = [
         # suites leave UNLISTED_BASELINE and run here.
         "agentic_memory_tranche2_20260925",
         [
+            "tests/test_options_manual_close_identity_20260925.py",
             "tests/test_cross_agent_memory_agreement_20260925.py",
             "tests/test_agent_memory_shadow_measure.py",
             "tests/test_memory_shadow_measure_honesty.py",
