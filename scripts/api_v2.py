@@ -40275,6 +40275,12 @@ def _options_proposals(query=None):
                 }
     except Exception:
         pass
+    try:
+        from lib.options_desk_scorecard import build_scorecard
+
+        data["options_desk_scorecard"] = build_scorecard(closed_outcomes=0, open_positions=0)
+    except Exception:
+        data["options_desk_scorecard"] = None
     return _json_clean(
         {
             **data,
