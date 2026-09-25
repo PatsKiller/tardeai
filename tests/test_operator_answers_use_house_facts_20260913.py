@@ -122,11 +122,15 @@ def _rows_fixture(monkeypatch):
 def test_symbol_card_carries_zone_gates_levels_holding_and_verdict():
     card = format_reentry_symbol_reply(SCHG_ROW, holding=HOLDING, computed_at="2026-09-13T22:52:35")
     for needle in ("SCHG — re-entry check", "$35.16", "43h old", "alpaca", "zone $34.55–$34.85", "+0.9% above zone",
-                   "stop $34.35", "target $36.40", "R:R 1.55", "RSI 49.38", "resistance $35.85 (BELOW)",
+                   "stop $34.35", "target $36.40", "RSI 49.38", "resistance $35.85 (BELOW)",
                    "zone ✗ (+0.9% vs zone)", "not_held ✗ (held)", "wash ✓",
-                   "you still hold 0.2294 sh (~$8.07) in schwab_taxable", "Monitor / No Action",
-                   "READ_ONLY_ADVISORY"):
+                   "you hold 0.2294 sh in schwab_taxable", "Monitor / No Action",
+                   "Decision integrity:", "READ_ONLY_ADVISORY"):
         assert needle in card, needle
+    # 2026-09-25 (SCHD): R:R is an actionable mechanic. A held name whose plan is
+    # not VALID_CURRENT shows its levels as historical/conditional and no R:R.
+    assert "R:R" not in card
+    assert "buy-limit in zone" not in card
     assert "ADBE" not in card, "another symbol's row must never leak into this card"
 
 

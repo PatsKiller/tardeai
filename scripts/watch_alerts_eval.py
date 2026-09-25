@@ -46,6 +46,31 @@ def _cfg():
         return {"daily_cap": 12}
 
 
+def _quote_is_current(fetched_at) -> bool:
+    """Market-session-aware freshness via watch_canonical_quote.derive_freshness.
+
+    A row without fetched_at is unknown-age and keeps the prior behaviour; a
+    row WITH a stale fetched_at for its session is skipped."""
+    if not fetched_at:
+        return True
+    try:
+        try:
+            from scripts.lib.watch_canonical_quote import derive_freshness
+        except ImportError:
+            from lib.watch_canonical_quote import derive_freshness  # type: ignore
+    except Exception:
+        return True  # library absent: keep prior behaviour, do not silently drop alerts
+    state, _ = derive_freshness(fetched_at)
+    return state not in ("STALE", "DATA_UNAVAILABLE")
+
+
+def _log(msg: str) -> None:
+    try:
+        print(msg)
+    except Exception:
+        pass
+
+
 def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str], list[int]]:
     lines: list[str] = []
     fired_ids: list[int] = []
@@ -66,10 +91,16 @@ def _evaluate_single_condition_alerts(ex, alerts, today: str) -> tuple[list[str]
         hit, current = False, None
         if condition in ("price_cross_above", "price_cross_below") and symbol and threshold is not None:
             quote = ex(
-                "SELECT price FROM market_quotes WHERE upper(symbol)=%s ORDER BY fetched_at DESC LIMIT 1",
+                "SELECT price, fetched_at FROM market_quotes WHERE upper(symbol)=%s ORDER BY fetched_at DESC LIMIT 1",
                 (symbol,), fetch="one",
             )
             current = float(quote["price"]) if quote and quote.get("price") else None
+            # 2026-09-25: the latest row was used regardless of age. A price
+            # alert must not fire (or stay silent) on a stale print; a STALE
+            # quote is skipped this pass and named in the log.
+            if current is not None and not _quote_is_current(quote.get("fetched_at")):
+                _log(f"skip alert {alert['id']} {symbol}: quote {quote.get('fetched_at')} is stale for its session")
+                continue
             hit = current is not None and (
                 current >= float(threshold) if condition.endswith("above") else current <= float(threshold)
             )

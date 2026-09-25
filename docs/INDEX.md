@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `7792892b4e3a4f59a42ec174f7dcc48934f293545b5246cb1cca000dea5367d2`
+**Tree fingerprint:** `afe343e2ab43ff28d1e0ac49803a135ca24212c0984db99d900feb5bd39e185b`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2608 |
-| Markdown (excl. this INDEX) | 2182 |
+| Files under `docs/` (excl. this INDEX) | 2610 |
+| Markdown (excl. this INDEX) | 2184 |
 | **MISSING HEADER** | **74** |
-| Header OK | 2108 |
+| Header OK | 2110 |
 | Duplicate groups | 2 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 2 |
-| review_required | 2237 |
+| review_required | 2239 |
 
 ## Markdown tree
 
@@ -163,6 +163,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_findings/SCALP_FIRE_INTEGRITY_FIX_2026-07-28.md` | Scalp Fire Integrity — Gate Persistence, Stop Floor, and Canonical Setup Identity | review_required | OK | `96c0a57cc069` |
 | `docs/_findings/SCALP_SETUP_IMPLEMENTATION_CLOSEOUT_2026-07-27.md` | Scalp Multi-Setup Taxonomy — Implementation Closeout (2026-07-27) | review_required | OK | `cf9f9b2ed107` |
 | `docs/_findings/SCALP_SETUP_SOURCE_SYNTHESIS_2026-07-27.md` | Scalp Setup — Source Synthesis (2026-07-27) | review_required | OK | `4cd64ccd98e2` |
+| `docs/_findings/SCHD_DECISION_INTEGRITY_INCIDENT_2026-09-25.md` | SCHD decision-integrity incident — 2026-09-25 10:48 ET | review_required | OK | `60cf6015ae87` |
 | `docs/_findings/alpaca_taxonomy_audit_2026-07-21.md` | FINDINGS: Alpaca Paper/Live Taxonomy & Multi-Account Readiness Audit | review_required | OK | `8212d11b2f89` |
 | `docs/_findings/bitwarden_env_posture_recon_2026-07-21.md` | RECON: Bitwarden + Env Posture Inventory (read-only) | review_required | OK | `a0d867f98a49` |
 | `docs/_findings/brave_search_api_usage_audit_2026-05.md` | Brave Search API Usage Audit — May 2026 | review_required | OK | `943f66776820` |
@@ -471,6 +472,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/WATCH_DESK_V2.md` | Watch Desk v2 — Truth & Directive Governance (P0 workstreams, 2026-07-16) | review_required | OK | `be5f8cd47049` |
 | `docs/architecture/WATCH_DESK_V3.md` | Watch Desk v3 — From Watching to Learning (2026-07-16 evening) | review_required | OK | `ea65c14610d0` |
 | `docs/architecture/WATCH_DESK_V4.md` | Watch Desk v4 — Terminal Grade (2026-07-16, evening) | review_required | OK | `018c8ea82d4c` |
+| `docs/architecture/adr/ADR-005-decision-integrity-validator-and-alert-semantics.md` | ADR-005 — One decision-integrity validator before any actionable surface; alert and wake semantics | review_required | OK | `24682fee658c` |
 | `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | review_required | OK | `1b18a9999a79` |
 | `docs/architecture/agent-memory-view-proposal.md` | Command Center — Agent Memory view (proposal) | review_required | OK | `7b90f4d8e3d6` |
 | `docs/architecture/channel-adapters.md` | Gateway Channel Adapters — Phase 10 | review_required | OK | `2457155850f5` |

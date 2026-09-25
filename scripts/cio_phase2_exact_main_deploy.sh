@@ -487,9 +487,36 @@ run_pin_check() {
   log "pin check OK"
 }
 
+# Release-grant binding (2026-09-25). A release-write grant must NAME this
+# release (PR, SHA or the campaign this run is under); a generic grant of the
+# same tier no longer authorizes it. Fail closed; TRADEAI_RELEASE_GRANT_BINDING=warn
+# degrades visibly during the transition. No credential is read.
+release_grant_preflight() {
+  local action="$1" sha="$2"
+  local pr_arg=()
+  [[ -n "${TRADEAI_RELEASE_PR:-}" ]] && pr_arg=(--pr "${TRADEAI_RELEASE_PR}")
+  if [[ ! -f "${CANONICAL_SOURCE}/scripts/release_grant_preflight.py" ]]; then
+    log "release grant preflight script absent in ${CANONICAL_SOURCE}; skipping (pre-binding tree)"
+    return 0
+  fi
+  if ! "$VENV_PYTHON" "${CANONICAL_SOURCE}/scripts/release_grant_preflight.py" --action "$action" --sha "$sha" "${pr_arg[@]}"; then
+    die "release grant binding refused ${action} of ${sha} (set TRADEAI_RELEASE_PR / obtain a grant naming this PR or SHA)"
+  fi
+}
+
+# Worker pin check (2026-09-25): a promote that leaves a worker on the dev tree
+# (reconcile_alpaca_paper_options ran 8a95e30c1 WIP for days while CURRENT moved)
+# must say so. Visible degradation now (--warn); the receipt records it.
+worker_pin_check() {
+  if [[ -f "${CANONICAL_SOURCE}/scripts/check_worker_pins.py" ]]; then
+    "$VENV_PYTHON" "${CANONICAL_SOURCE}/scripts/check_worker_pins.py" --warn || log "worker pin check reported a mismatch"
+  fi
+}
+
 cmd_prepare() {
   command -v rsync >/dev/null || die "rsync missing"
   require_head_is_origin_main
+  release_grant_preflight prepare "$(git_sha)"
   PREV_RELEASE="$(current_release)"
   [[ -d "$PREV_RELEASE" ]] || die "PREV release missing"
   CONTENT_SHA="$(git_sha)"
@@ -548,6 +575,7 @@ cmd_promote() {
   PREV_RELEASE="$(current_release)"
   NEW_RELEASE="$dir"
   CONTENT_SHA="$sha"
+  release_grant_preflight promote "$sha"
   write_state
   activate_release "$dir" "$sha"
   if ! health_check "promote"; then
@@ -567,6 +595,7 @@ cmd_promote() {
   write_expected_release_pin "$dir"
   write_deploy_receipt true promote ok false "promote_ok"
   log "PROMOTE OK live=$sha"
+  worker_pin_check
   ff_dev_tree_after_promote "$sha"
 }
 

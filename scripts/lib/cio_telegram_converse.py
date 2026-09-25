@@ -1684,21 +1684,70 @@ def _fmt_money(v: Any) -> str:
 
 
 
+def _row_integrity(row: dict[str, Any], *, holding: Optional[dict[str, Any]],
+                   operator_price: Optional[float], now: Any = None) -> dict[str, Any]:
+    """The row's DecisionIntegrity@v1, recomputed here with the operator's quote
+    when the desk artifact predates the validator or an operator price is given."""
+    try:
+        from scripts.lib import decision_integrity as di
+    except ImportError:  # pragma: no cover
+        from lib import decision_integrity as di  # type: ignore
+    positions = list(row.get("positions") or [])
+    if not positions and holding and holding.get("shares"):
+        positions = [{"account": holding.get("account"), "qty": holding.get("shares")}]
+    elif not positions and row.get("held"):
+        positions = [{"account": None, "qty": None}]
+    adv = row.get("advisory") if isinstance(row.get("advisory"), dict) else {}
+    return di.validate(di.Evidence(
+        symbol=str(row.get("symbol") or "?"), price=row.get("price"), price_as_of=row.get("price_as_of"),
+        price_source=row.get("price_source"), operator_quoted_price=operator_price,
+        entry_low=row.get("entry_low"), entry_high=row.get("entry_high"), stop=row.get("stop"),
+        target=row.get("target"), plan_created_at=row.get("plan_as_of"), rsi=row.get("rsi"), atr=row.get("atr"),
+        positions=positions,
+        wash=(row.get("integrity") or {}).get("wash") if isinstance(row.get("integrity"), dict) and row.get("wash_blocked")
+        else ({"kind": "UNVERIFIED", "hold_until": row.get("wash_until"),
+               "label": f"taxable sell in window; house hold to {row.get('wash_until')}; wash-sale status UNVERIFIED"}
+              if row.get("wash_blocked") else None),
+        confirmations_complete=adv.get("confirmations_complete"),
+        confirmation_gaps=list(adv.get("confirmation_gaps") or []),
+        earnings_date=row.get("earnings_date"),
+        alert=row.get("alert") if isinstance(row.get("alert"), dict) else None,
+    ), now=now)
+
+
 def format_reentry_symbol_reply(
     row: dict[str, Any],
     *,
     holding: Optional[dict[str, Any]] = None,
     computed_at: Optional[str] = None,
+    operator_price: Optional[float] = None,
+    now: Any = None,
 ) -> str:
     """One symbol's re-entry answer from its own desk row. READ_ONLY.
 
     2026-09-13 18:50: "get back into SCHG" was answered with the whole book. The row
     had everything: zone, gates, levels, held flag, advisory. This renders exactly
     that -- numbers only from the row; nothing inferred.
+
+    2026-09-25 (SCHD): the card said "Plan: buy-limit in zone · stop $33.55" at a
+    price of $33.12 — below the stop — because the plan line was built from the
+    existence of stop/target alone. Every mechanic now passes through
+    DecisionIntegrity@v1: an invalidated/stale/held/tax-held plan is shown as
+    HISTORICAL with no order language, sizing or R:R; the quote age is exact;
+    an operator-quoted price is reconciled or disclosed; every held account is
+    named; and the alert line states what is armed (nothing, unless it is).
     """
     sym = str(row.get("symbol") or "?").upper()
     price = row.get("price")
     lo, hi = row.get("entry_low"), row.get("entry_high")
+    try:
+        integrity = _row_integrity(row, holding=holding, operator_price=operator_price, now=now)
+    except Exception as _exc:  # noqa: BLE001 — fail CLOSED on mechanics, never open
+        integrity = {"state": "MISSING_EVIDENCE", "actionable_mechanics": False,
+                     "reasons": [{"code": "VALIDATOR_ERROR", "state": "MISSING_EVIDENCE",
+                                  "detail": f"{type(_exc).__name__}"}], "plan": {}, "quote": {},
+                     "alert_state": "ALERT_NOT_ARMED", "next_observation": [], "order_semantics": {}}
+    actionable = bool(integrity.get("actionable_mechanics"))
     # where price sits vs the zone
     zone_txt = "zone —"
     if lo is not None and hi is not None:
@@ -1713,24 +1762,48 @@ def format_reentry_symbol_reply(
                 zone_txt += " → price INSIDE zone"
         except (TypeError, ValueError):
             pass
-    age_h = row.get("price_age_h")
     src = str(row.get("price_source") or "").split(":")[-1] or "desk"
     as_of = str(row.get("price_as_of") or "")[:16].replace("T", " ")
-    age_txt = f" ({float(age_h):.0f}h old)" if isinstance(age_h, (int, float)) else ""
+    q = integrity.get("quote") or {}
+    # Age label: relative to the injected clock when given; otherwise from the
+    # desk's own price_age_h so a rendered snapshot is deterministic. Minutes
+    # under an hour — "0h old" hid an 18-minute print.
+    age_h_row = row.get("price_age_h")
+    if now is None and isinstance(age_h_row, (int, float)):
+        age_txt = f" ({int(round(float(age_h_row) * 60))}m old)" if float(age_h_row) < 1.0 else f" ({float(age_h_row):.0f}h old)"
+    else:
+        age_txt = f" ({q.get('age_label')})" if q.get("age_label") else ""
+    sess = f" · {q['session']}" if q.get("session") else ""
     lv = _row_levels(row)
     res = row.get("resistance") if isinstance(row.get("resistance"), dict) else {}
     lines = [f"🎯 *{sym} — re-entry check* _(READ_ONLY)_"]
-    lines.append(f"Price {_fmt_money(price)} · as of {as_of}{age_txt} · {src}")
+    lines.append(f"Price {_fmt_money(price)} · as of {as_of}{age_txt}{sess} · {src}")
+    if q.get("operator_quoted_price") is not None:
+        lines.append(
+            f"You quoted {_fmt_money(q['operator_quoted_price'])} ({q.get('operator_vs_desk_pct'):+.2f}% vs desk) — "
+            "a different print/time; the desk price above is the one on file, the article's is older or from another source."
+        )
     lines.append(zone_txt)
     plan = []
     if lv.get("stop") is not None:
         plan.append(f"stop {_fmt_money(lv['stop'])}")
     if lv.get("target") is not None:
         plan.append(f"target {_fmt_money(lv['target'])}")
-    if row.get("rr") is not None:
+    if actionable and row.get("rr") is not None:
         plan.append(f"R:R {row['rr']}")
-    if plan:
-        lines.append("Plan: buy-limit in zone · " + " · ".join(plan))
+    ip = integrity.get("plan") or {}
+    plan_stamp = f" (plan {str(ip.get('created_at'))[:10]})" if ip.get("created_at") else " (plan undated)"
+    if plan and actionable:
+        lines.append("Plan: buy-limit in zone · " + " · ".join(plan) + plan_stamp)
+    elif plan:
+        label = "HISTORICAL plan — not current" if ip.get("shown_as") == "historical" else "Conditional plan — not yet actionable"
+        lines.append(f"{label}: " + " · ".join(plan) + plan_stamp)
+    lines.append(f"Decision integrity: *{integrity.get('state')}*" + ("" if actionable else " — no actionable mechanics"))
+    for r in (integrity.get("reasons") or [])[:4]:
+        lines.append(f"  – {r.get('detail')}")
+    sem = integrity.get("order_semantics") or {}
+    if sem.get("buy_limit_in_zone") == "MARKETABLE_IMMEDIATE_FILL":
+        lines.append("Order note: " + str(sem.get("advisory")))
     tech = []
     if lv.get("rsi") is not None:
         tech.append(f"RSI {lv['rsi']}" + (f" ({row.get('rsi_status')})" if row.get("rsi_status") else ""))
@@ -1752,7 +1825,14 @@ def format_reentry_symbol_reply(
             val = f" ({g.get('value')})" if (not g.get("pass") and g.get("value") is not None) else ""
             bits.append(f"{g.get('id') or g.get('label')} {mark}{val}")
         lines.append("Gates: " + " · ".join(bits))
-    if holding and (holding.get("shares") or holding.get("market_value")):
+    held_info = integrity.get("held") or {}
+    if held_info.get("accounts"):
+        parts = [f"{a.get('qty'):g} sh in {a.get('account') or 'an account'}" for a in held_info["accounts"] if a.get("qty")]
+        lines.append(
+            "Note: you hold " + "; ".join(parts) + " — the desk treats it as held"
+            + (" (residual lots; add-to-position policy applies)." if held_info.get("dust_only") else ".")
+        )
+    elif holding and (holding.get("shares") or holding.get("market_value")):
         sh = holding.get("shares")
         mv = holding.get("market_value")
         lines.append(
@@ -1781,7 +1861,9 @@ def format_reentry_symbol_reply(
     near = False
     if price_f is not None and hi_f is not None and hi_f > 0 and price_f > hi_f:
         near = ((price_f - hi_f) / hi_f * 100.0) <= 8.0  # reentry "getting close" band
-    if inside or near:
+    # The institutional packet (BUY_READY/ENTRY_NEAR mechanics) only when the
+    # validator says the plan is current. Zone geometry alone is not validity.
+    if (inside or near) and actionable:
         try:
             from scripts.lib.cio_options_fluency import (  # noqa: PLC0415
                 build_buy_ready_packet,
@@ -1824,6 +1906,13 @@ def format_reentry_symbol_reply(
             lines.append("")
             lines.append("*Stock vs options (institutional packet)*")
             lines.extend(format_buy_ready_packet_lines(packet, for_cio=False))
+    for n in (integrity.get("next_observation") or [])[:2]:
+        lines.append(f"Next: {n}")
+    al = integrity.get("alert_state")
+    lines.append(
+        "Watch alert: none armed — nothing is monitored from this chat; ask to arm a price-cross alert."
+        if al == "ALERT_NOT_ARMED" else f"Watch alert: {al}"
+    )
     tail = "CC: `/v3/portfolio/re-entry`"
     if computed_at:
         tail += f" · desk computed {str(computed_at)[:16].replace('T', ' ')}"
