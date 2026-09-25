@@ -7,13 +7,14 @@ import type { DrillContext } from '../components/DetailDrawer'
 import OperatorInboxPanel from '../components/OperatorInboxPanel'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
+import { agentModelLabel } from '../lib/agentModelLabel'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 // Inbox hidden until v3 resolve is wired (was read-only pointer to v2).
 const TABS = ['Roster', 'Calibration', 'Workflow', 'Weekly Learning'] as const
 
 const G = '#22c55e', R = '#ef4444', A = '#f59e0b', B = '#60a5fa'
-// Ground truth: AGENT_ROSTER.md (validated 2026-06-02). Roles are static identity, not in the API.
+// CONFIGURED identity from AGENT_ROSTER.md (last validated 2026-06-02) — descriptive config, not live activity.
 const ROLES: Record<string, string> = {
   alex: 'CIO / escalation arbiter', cio_engine: 'CIO decision engine',
   maria: 'Research analyst / catalyst', maria_research: 'Deep RAG research',
@@ -22,9 +23,7 @@ const ROLES: Record<string, string> = {
   iris: 'Librarian / RAG coverage', social_scalp: 'Social mention scanner',
   scalp_critic: 'Scalp critic / validation',
 }
-// Real runtime model (roster doc lists qwen3:14b but its header marks that SUPERSEDED/disabled).
-const RUNTIME_MODEL = 'gemma3:12b'
-// RACI summary from agent_raci.yaml / AGENT_ROSTER.md (ground truth — not in the API).
+// CONFIGURED RACI from agent_raci.yaml / AGENT_ROSTER.md — descriptive config, not observed behaviour.
 const RACI: Record<string, string> = {
   alex: 'R: governance, escalation arbiter, retirement/IRMAA', cio_engine: 'R: CIO decisions',
   maria: 'R: daily watchlist batch, CIO analysis', maria_research: 'R: deep RAG research',
@@ -273,12 +272,12 @@ export default function AgentsHub({ onDrill }: Props) {
           {agents.length === 0 ? <div style={{ color: 'var(--text3)', fontSize: 11, padding: 16 }}>No agent data from /agents/summary.</div> : (
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Agent / role', 'Model', 'Actions (all-time)', 'Rec mix', 'Avg conf', 'Last run'].map(h => <th key={h} style={{ textAlign: ['Agent / role', 'Model'].includes(h) ? 'left' : 'right', padding: '7px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
+                {['Agent / role', 'Model (API)', 'Actions (all-time)', 'Rec mix', 'Avg conf', 'Last run'].map(h => <th key={h} style={{ textAlign: ['Agent / role', 'Model (API)'].includes(h) ? 'left' : 'right', padding: '7px 10px', fontSize: 9, fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase' }}>{h}</th>)}
               </tr></thead>
               <tbody>{agents.map((a: any, i: number) => {
                 const win = winByAgent[a.agent]
                 return (
-                  <tr key={i} onClick={() => onDrill({ title: a.agent, subtitle: `${ROLES[a.agent] ?? ''} · ${RUNTIME_MODEL}`, endpoint: '/api/v2/agents/summary', rows: [{ ...a, role: ROLES[a.agent] ?? '—', runtime_model: RUNTIME_MODEL }] })}
+                  <tr key={i} onClick={() => onDrill({ title: a.agent, subtitle: `${ROLES[a.agent] ?? ''} · model: ${agentModelLabel(a)}`, endpoint: '/api/v2/agents/summary', rows: [{ ...a, role: ROLES[a.agent] ?? '—', runtime_model: agentModelLabel(a) }] })}
                     style={{ borderBottom: '1px solid var(--border-subtle)', cursor: 'pointer' }}>
                     <td style={{ padding: '9px 10px' }}>
                       <div style={{ fontWeight: 600, color: 'var(--text0)', fontFamily: 'var(--mono)' }}>
@@ -290,7 +289,7 @@ export default function AgentsHub({ onDrill }: Props) {
                       </div>
                       <div style={{ fontSize: 9, color: 'var(--text3)' }}>{ROLES[a.agent] ?? '—'}</div>
                     </td>
-                    <td style={{ padding: '9px 10px', fontSize: 10 }}><span style={{ fontFamily: 'var(--mono)', color: 'var(--text2)' }}>{RUNTIME_MODEL}</span></td>
+                    <td style={{ padding: '9px 10px', fontSize: 10 }}><span style={{ fontFamily: 'var(--mono)', color: 'var(--text2)' }}>{agentModelLabel(a)}</span></td>
                     {/* P0-5: all-time count from the agent's home table (count_source) — the Home
                         "Agent Health" card shows watchlist-runs (30d) instead, so numbers differ. */}
                     <td style={{ padding: '9px 10px', textAlign: 'right', color: 'var(--text2)' }}
@@ -432,7 +431,7 @@ export default function AgentsHub({ onDrill }: Props) {
                     subtitle: `${ROLES[node.id] ?? 'agent'}${w ? ` · ${(w.sample_size_status || '').replace('_', ' ')}` : ''}`,
                     endpoint: '/api/v2/agent-calibration/windows + /agent-pipeline',
                     rows: [{
-                      agent: node.id, role: ROLES[node.id] ?? '—', runtime_model: RUNTIME_MODEL,
+                      agent: node.id, role: ROLES[node.id] ?? '—', runtime_model: agentModelLabel(null),
                       raci: RACI[node.id] ?? '—',
                       calibration: w ? `${acc01(w.accuracy).toFixed(0)}% acc · ${w.sample_size_status}` : 'no calibration window yet',
                       correct: w?.correct ?? '—', incorrect: w?.incorrect ?? '—', avg_confidence: w?.avg_confidence ?? '—',

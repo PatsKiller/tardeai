@@ -1274,6 +1274,12 @@ GATES = [
         "maturity_gate_restatement",
         [
             "tests/test_maturity_gate_restatement_20260922.py",
+            # Governance truth repair 2026-09-25: gate status is read from the
+            # measurement store at render time (never a count frozen in the
+            # catalog); AGENTS.md policy state on main; the Drive mirror
+            # updates one pinned file id and never creates a duplicate.
+            "tests/test_governance_truth_repair_20260925.py",
+            "tests/test_agents_drive_mirror_20260925.py",
         ],
     ),
     (

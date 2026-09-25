@@ -66,11 +66,11 @@
     },
     "alex": {
       "acceptance_evidence": [
-        "78 heartbeat actions in event-sourced ledger",
-        "53 financial snapshots (13 domains)",
-        "78 Darwin scorecards (independent scorer)",
-        "25 dedup merges \u2014 idempotency proven",
-        "11/12 gates passing (0 not yet measured)"
+        "DOC-CLAIM 2026-08-09 (commit 255469380, not a current measurement): 78 heartbeat actions in event-sourced ledger",
+        "DOC-CLAIM 2026-08-09 (commit 255469380, not a current measurement): 53 financial snapshots (13 domains)",
+        "DOC-CLAIM 2026-08-09 (commit 255469380, not a current measurement): 78 Darwin scorecards (independent scorer)",
+        "DOC-CLAIM 2026-08-09 (commit 255469380, not a current measurement): 25 dedup merges \u2014 idempotency proven",
+        "Gate status is NOT stored in this catalog: read it at render time from data/cio/agent_gate_measurements.json (AgentGateMeasurement@v1, written hourly by scripts/cio_gate_measurement_bridge.py --write-measurements); absent or stale => NOT_YET_MEASURED"
       ],
       "allowed_job_types": [
         "cio_synthesis",
@@ -100,9 +100,9 @@
         "max_tool_calls": 12
       },
       "current_limitations": [
-        "SHADOW \u2014 autonomous heartbeat active (30-min, 13 domains, event-driven, 78 actions)",
-        "Darwin scoring active (78 scorecards, hourly, independent scorer)",
-        "Gate measurement: 11/12 passing, 0 not measured, 1 failing",
+        "DOC-CLAIM 2026-08-09 (commit 255469380, not a current measurement): SHADOW \u2014 autonomous heartbeat active (30-min, 13 domains, event-driven, 78 actions)",
+        "DOC-CLAIM 2026-08-09 (commit 255469380, not a current measurement): Darwin scoring active (78 scorecards, hourly, independent scorer)",
+        "Gate status is NOT stored in this catalog: read it at render time from data/cio/agent_gate_measurements.json (AgentGateMeasurement@v1, written hourly by scripts/cio_gate_measurement_bridge.py --write-measurements); absent or stale => NOT_YET_MEASURED",
         "Provider module: agent_runtime_live_providers.py (governed DeepSeek V4 only; local generation retired)",
         "Gate 10 (operator_usefulness) requires operator rating",
         "Gate 11 (rollback_test_passed) requires formal test authoring (~1 hour)"
