@@ -154,8 +154,23 @@ def test_the_runner_is_advisory_and_scheduled_after_operator_approve() -> None:
     assert "PROPOSAL ONLY" not in runner.SCHEDULED_ENTRYPOINT
 
 
-def test_commitment_sweep_entrypoint_declares_it_is_unscheduled() -> None:
-    """The sweep exists, is tested, and runs on no schedule. Say so."""
+def test_commitment_sweep_entrypoint_declares_its_installed_schedule() -> None:
+    """P10 (2026-09-16) recorded the sweep as PROPOSAL ONLY. On 2026-09-24 the
+    operator approved a cron grant and the 18:20 line was installed (agentic-memory
+    tranche 1, lane commitment-outcome-sweep). The declaration must say so, and the
+    lane row must agree — an installed job that still reads "not installed" is the
+    same honesty defect in the other direction."""
+    import json
+    from pathlib import Path
+
     from scripts import sweep_commitment_outcomes as sweep
 
-    assert "PROPOSAL ONLY" in sweep.SCHEDULED_ENTRYPOINT
+    assert "PROPOSAL ONLY" not in sweep.SCHEDULED_ENTRYPOINT
+    assert "cron: 20 18 * * *" in sweep.SCHEDULED_ENTRYPOINT
+    assert "commitment-outcome-sweep" in sweep.SCHEDULED_ENTRYPOINT
+    reg = json.loads((Path(__file__).resolve().parents[1] / "config" / "lane_registry.json").read_text())
+    row = next(l for l in reg["lanes"] if l["lane_id"] == "commitment-outcome-sweep")
+    assert row["state"] == "ACTIVE"
+    assert row["scheduler"]["kind"] == "cron"
+    assert row["scheduler"]["expression"].startswith("20 18 * * *")
+    assert "scripts/sweep_commitment_outcomes.py --apply" in row["scheduler"]["match"]
