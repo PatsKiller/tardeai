@@ -14123,6 +14123,22 @@ def _alerts_debug():
     }
 
 
+BUY_READY_PACKET_DIR = PROJECT_ROOT / "data" / "runtime" / "buy_ready_packets"
+
+
+def _buy_ready_packet(symbol: str) -> dict:
+    """GET /api/v2/symbol/<SYM>/buy-ready-packet — latest BUY_READY/ENTRY_NEAR packet
+    saved by cio_entry_state_runner (equity plan, per-unit options alternatives,
+    portfolio facts, CIO review). Read-only; never sizes; NO_PACKET when none saved."""
+    sym = str(symbol or "").upper()
+    path = BUY_READY_PACKET_DIR / f"{sym}.json"
+    try:
+        packet = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"symbol": sym, "status": "NO_PACKET"}
+    return {"symbol": sym, "status": "OK", "saved_at": packet.get("saved_at"), "packet": packet}
+
+
 def _symbol_timeline(symbol: str):
     """GET /api/v2/symbol/{symbol}/timeline — unified symbol timeline."""
     sym = symbol.upper()
@@ -53145,6 +53161,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 400, {"ok": False, "error": "symbol required"}
         try:
             return 200, {"ok": True, "data": _symbol_timeline(symbol)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # BUY_READY institutional packet (M5 09-24): equity plan, chain-ranked options
+    # alternatives (per unit), portfolio facts and the CIO review — read-only.
+    if base_path.startswith("/api/v2/symbol/") and base_path.endswith("/buy-ready-packet"):
+        symbol = base_path[len("/api/v2/symbol/") :].replace("/buy-ready-packet", "").strip("/").upper()
+        if not symbol or not symbol.replace(".", "").replace("-", "").isalnum():
+            return 400, {"ok": False, "error": "symbol required"}
+        try:
+            return 200, {"ok": True, "data": _buy_ready_packet(symbol)}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 

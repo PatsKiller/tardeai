@@ -174,8 +174,12 @@ def render_operator(result: dict, ev: dict) -> str:
         packet_block = _institutional_packet_block(result, ev, for_cio=False)
         if packet_block:
             lines.extend(packet_block.split("\n"))
-    lines.append("Advisory only: review and decide; nothing is placed automatically.")
+    lines.append(ADVISORY_FOOTER)
     return "\n".join(lines)
+
+
+#: M5 09-24 plan Part C step 6 — the page never implies an order exists.
+ADVISORY_FOOTER = "Advisory only. No order is created; you choose and execute through your broker (2FA)."
 
 
 def render_digest(results: list[dict]) -> str:

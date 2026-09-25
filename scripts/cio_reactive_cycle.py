@@ -101,6 +101,19 @@ def _known_agents() -> frozenset[str]:
 KNOWN_AGENTS = _known_agents()
 
 
+def wake_symbols(payload: Any) -> list[str]:
+    """Subject symbols for a wake: ``symbols`` (list), else a single ``symbol``.
+
+    M5 09-24: cio_entry_state_runner sent only ``symbol`` and this read only
+    ``symbols``, so the V BUY_READY wake reached the CIO subject-less.
+    """
+    p = payload if isinstance(payload, dict) else {}
+    syms = [str(s) for s in (p.get("symbols") or []) if s]
+    if not syms and p.get("symbol"):
+        syms = [str(p.get("symbol"))]
+    return syms
+
+
 def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
     """Enqueue reactive and goal wakes. Does NOT claim them by default.
 
@@ -222,7 +235,7 @@ def run_once(*, max_wakes: int = 12, dispatch: bool = False) -> dict[str, Any]:
             if _payload is None and isinstance(ev, dict):
                 _payload = ev.get("payload")
             _payload = _payload if isinstance(_payload, dict) else {}
-            _symbols = [str(s) for s in (_payload.get("symbols") or []) if s]
+            _symbols = wake_symbols(_payload)
             _situation = _payload.get("situation_type")
             # `owner_agent` is payload data, and target_agent chooses which agent
             # handles the wake. Dispatching on whatever the payload says would let
