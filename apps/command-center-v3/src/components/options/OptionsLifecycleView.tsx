@@ -254,7 +254,7 @@ export default function OptionsLifecycleView() {
       {positions.length === 0 && (
         <div style={{ fontSize: DASH.data, color: BB.text3, border: `1px dashed ${BB.borderHair}`, borderRadius: 2, padding: 14 }}>
           No open option strategies. The desk is armed: broker sync, policy engine, alerts, and hash-bound
-          2FA tickets are live — the first position (paper or real) appears here with a full lifecycle card.
+          2FA tickets are live — the first Schwab position appears here with a full lifecycle card.
         </div>
       )}
 

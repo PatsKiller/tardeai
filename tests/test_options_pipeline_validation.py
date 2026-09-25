@@ -345,3 +345,41 @@ def test_supported_strategies_come_from_the_registry_and_equity_stays_refused():
     status = val.validation_status("credit_spread", executor=FakeExecutor(rows=[]))
     assert status["ok"] is True and status["strategy_id"] == "credit_spread"
     assert status["execution"]["live_allowed"] is False  # read-only echo; recording grants nothing
+
+# ── desk Path B vs paper lab lanes (2026-09-25 Live Schwab Options Desk Stage A) ──
+
+def test_strategy_lane_splits_desk_path_b_from_paper_lab():
+    from lib.options_pipeline import validation as val
+
+    assert val.strategy_lane("covered_call") == "desk_path_b"
+    assert val.strategy_lane("cash_secured_put") == "desk_path_b"
+    assert val.strategy_lane("protective_put") == "desk_path_b"
+    assert val.strategy_lane("credit_spread") == "desk_path_b"
+    assert val.strategy_lane("long_call") == "desk_path_b"
+    assert val.strategy_lane("deep_itm_call") == "paper_lab"
+    assert val.strategy_lane("atm_call") == "paper_lab"
+
+
+def test_desk_path_b_validation_does_not_paint_paper_model_or_unlock_live():
+    """Covered-call empty paper ledger is desk Path B chrome — not PAPER MODEL gate."""
+    from lib.options_pipeline import validation as val
+
+    report = val.validation_status("covered_call", outcomes=[], now=NOW)
+    assert report["ok"] is True
+    assert report["lane"] == "desk_path_b"
+    assert report["paper_only"] is False
+    assert "desk Path B" in report["progress_label"]
+    assert "does not unlock live" in report["progress_label"]
+    assert "liquidity/enterprise" in report["message"] or "not paper outcomes" in report["message"]
+    # Still advisory: execution echo unchanged; gate math exists but is lab-only.
+    assert report["execution"]["live_allowed"] is False
+    assert report["advisory_only"] is True
+
+
+def test_paper_lab_validation_keeps_paper_progress_label():
+    from lib.options_pipeline import validation as val
+
+    report = val.validation_status("deep_itm_call", outcomes=_outcome_set(2, 1), now=NOW)
+    assert report["lane"] == "paper_lab"
+    assert report["paper_only"] is True
+    assert report["progress_label"] == "paper validation 3/30"

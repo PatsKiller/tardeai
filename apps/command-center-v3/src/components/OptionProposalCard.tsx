@@ -167,6 +167,15 @@ export type OptionProposal = {
   enterprise?: { live_eligible?: boolean; blocks?: string[]; tier?: string }
   // ── Stage B (2026-07-05): paper-model lane (deep_itm_call) data wiring ──
   educational_paper_model?: boolean
+  cio?: {
+    entry_state?: string | null
+    source?: string | null
+    confidence?: number | null
+    bias?: string | null
+    summary?: string | null
+    volatility_elevated?: boolean | null
+    hub_note?: string | null
+  }
   queue_status?: string
   validation_progress?: {
     label?: string

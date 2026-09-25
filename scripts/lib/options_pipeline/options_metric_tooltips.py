@@ -124,10 +124,12 @@ def get_options_metric_tooltip(metric_key: str, context: dict[str, Any] | None =
     if key == "no_live_path":
         blocks = ctx.get("blocks") or []
         more = (
-            f"Blocked from live broker execution — paper testing remains available. Reasons: {'; '.join(blocks)}."
+            f"Blocked from live broker execution. Reasons: {'; '.join(blocks)}. "
+            "Paper lab remains available for educational strategies; Schwab Path B still "
+            "needs enterprise live_eligible + per-order 2FA."
             if blocks
-            else "Blocked from live broker execution — paper testing path remains available. "
-            "No live order path until the validation gate is met."
+            else "Blocked from live broker execution. Desk Path B needs enterprise liquidity "
+            "gates + per-order 2FA — paper validation does not unlock live."
         )
         return {"short": "No live broker execution path exists for this row.", "more": more}
 
@@ -141,15 +143,21 @@ def get_options_metric_tooltip(metric_key: str, context: dict[str, Any] | None =
     if key == "live_eligible_false":
         return {
             "short": "This row is not eligible for live broker execution.",
-            "more": "Paper-model and unvalidated strategies stay off the live path by design. "
-            "You can still review, paper-test, or log manual research.",
+            "more": "Live Path B requires enterprise.live_eligible (spread, open interest, "
+            "volume, not BS-estimate-only) plus per-order 2FA. Educational paper-model "
+            "rows never go live. Paper validation n/30 does not unlock Schwab.",
         }
 
     if key == "paper_validation":
         msg = ctx.get("validation_message")
         return {
-            "short": "Progress toward the paper-outcomes validation gate.",
-            "more": msg or "Paper strategies must accumulate closed outcomes before live consideration.",
+            "short": "Paper-lab outcome ledger (advisory only).",
+            "more": msg
+            or (
+                "Tracks closed Alpaca/educational paper outcomes for lab strategies. "
+                "Paper n/30 does not unlock Schwab Path B — live eligibility is enterprise "
+                "liquidity plus per-order 2FA."
+            ),
         }
 
     if key in ("pop", "ev", "edge", "rr", "dte", "max_loss", "spread_pct", "oi", "volume"):

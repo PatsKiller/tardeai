@@ -307,25 +307,25 @@ const BASE: Record<OptionsMetricKey, (ctx: OptionsMetricContext) => OptionsMetri
   }),
 
   paper_validation: ctx => ({
-    short: 'Progress toward the paper-outcomes validation gate.',
+    short: 'Paper-lab outcome ledger (advisory only).',
     more: ctx.validation_message
       ? ctx.validation_message
-      : 'Paper strategies must accumulate closed outcomes (about 30 trades, profit factor and win-rate thresholds) before live consideration. This chip tracks recorded paper results — no live path until the gate clears.',
-    watch: 'Validation credit applies only after fill, close, and outcome reconciliation.',
+      : 'Tracks closed Alpaca/educational paper outcomes for lab strategies. Paper n/30 does not unlock Schwab Path B — live eligibility is enterprise liquidity (spread/OI/volume) plus per-order 2FA.',
+    watch: 'Lab credit applies only after fill, close, and outcome reconciliation. Desk Path B strategies ignore this as a live gate.',
   }),
 
   live_eligible_false: () => ({
     short: 'This row is not eligible for live broker execution.',
-    more: 'Paper-model and unvalidated strategies stay off the live path by design. You can still review, paper-test, or log manual research — live submit requires passing enterprise gates and operator approval.',
-    watch: 'Do not expect a live submit button on paper-model cards.',
+    more: 'Live Path B requires enterprise.live_eligible (spread, open interest, volume, not BS-estimate-only) plus per-order 2FA. Educational paper-model rows never go live. Paper validation n/30 does not unlock Schwab.',
+    watch: 'Read the block reasons on the card — usually spread, OI, volume, or educational paper.',
   }),
 
   no_live_path: ctx => ({
     short: 'No live broker execution path exists for this row.',
     more: ctx.blocks?.length
-      ? `Blocked from live broker execution — paper testing remains available. Reasons: ${ctx.blocks.join('; ')}.`
-      : 'Blocked from live broker execution — paper testing path remains available. No live order path until the validation gate is met.',
-    watch: 'Use paper lane or manual review only until policy changes.',
+      ? `Blocked from live broker execution. Reasons: ${ctx.blocks.join('; ')}. Paper lab remains available for educational strategies; Schwab Path B still needs enterprise live_eligible + 2FA.`
+      : 'Blocked from live broker execution. Desk Path B needs enterprise liquidity gates + per-order 2FA — paper validation does not unlock live.',
+    watch: 'Use paper lab or manual review for educational rows; Path B stays 2FA-only when live_eligible clears.',
   }),
 
   alpaca_paper_only: () => ({
