@@ -2,7 +2,7 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `75fa944a2d7b1c0795b609f9796378d072e2a1cb62c8c3b74a1f924f0f338930`
+**Tree fingerprint:** `4ac624100d66543ac29115db32bbe469a970fae55a319702e86f6e7f4f201c6c`
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
@@ -12,10 +12,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 
 | Metric | Count |
 |--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2609 |
-| Markdown (excl. this INDEX) | 2183 |
+| Files under `docs/` (excl. this INDEX) | 2612 |
+| Markdown (excl. this INDEX) | 2186 |
 | **MISSING HEADER** | **74** |
-| Header OK | 2109 |
+| Header OK | 2112 |
 | Duplicate groups | 3 |
 
 ### By status_guess
@@ -28,7 +28,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | artifact_raw_sync | 36 |
 | current_phase_keep | 313 |
 | delete_candidate_duplicate | 4 |
-| review_required | 2236 |
+| review_required | 2239 |
 
 ## Markdown tree
 
@@ -104,7 +104,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | OK | `927fb91f6b5e` |
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator Runbook — LLM Fleet v4.1 Final Execution Pack | active_keep | OK | `22e1f1116a74` |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options & Broker Execution Flows | review_required | OK | `8b8b79559aae` |
-| `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `629259dafb19` |
+| `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `fc2991403d1b` |
 | `docs/OPTIONS_STRATEGY_PIPELINE.md` | Options Strategy Pipeline (paper-only lane) | review_required | OK | `035f6891f1c7` |
 | `docs/PEER_REVIEW_PACKET_COMMAND_CENTER_PAGES.md` | Peer-Review Packet — Command Center v3 Intelligence Pages | review_required | OK | `3a0a0500f287` |
 | `docs/PHANTOM_ELIMINATION_BROKER_CONFIRMATION_DESIGN.md` | Phantom Elimination — Broker-Confirmation Gate (DESIGN, vendor-neutral) | review_required | OK | `0458a3ad1d4d` |
@@ -565,7 +565,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/maturity_reconciliation_20260917/CIO_AS_IS_2026-09-17-rev8.md` | CIO / goal-loop AS-IS — Revision 8 (2026-09-17) | review_required | OK | `dcfca094e363` |
 | `docs/architecture/maturity_reconciliation_20260917/HONEST_MATURITY_ASSESSMENT_2026-09-17-rev8.md` | Honest maturity assessment — Revision 8 (2026-09-17) | review_required | OK | `ede40d194307` |
 | `docs/architecture/maturity_reconciliation_20260917/REVISION_LEDGER_2026-09-17-rev8.md` | Revision ledger — which revision is canonical, and what is still published | review_required | OK | `2abe45079289` |
-| `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `e6f73da9013d` |
+| `docs/architecture/narrative-subject-identity.md` | NarrativeSubjectLink@v1 — Architecture | review_required | OK | `3ee93de9443e` |
 | `docs/architecture/retention.md` | Librarian Retention — RetentionDecision@v1 (Phase 6) | review_required | OK | `ca8630975a92` |
 | `docs/architecture/subject-memory.md` | Subject Memory / SubjectThread@v1 — Architecture | review_required | OK | `1cbdf5ccdf27` |
 | `docs/atm/PHASE180A_ATM_CURRENT_CONFIGURATION_AUDIT.md` | Phase 180A: ATM Current Configuration Audit | review_required | OK | `2d3ef26142a3` |
@@ -1657,6 +1657,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_WAVE3D_HOP_2026-08-29.md` | Wave 3D — the one live hop, executed (2026-08-29) | review_required | OK | `02ef350a1efb` |
 | `docs/ops/CIO_WAVE3E_2026-08-29.md` | CIO Wave 3E — notification decisions on the Command Center (2026-08-29) | review_required | OK | `6fd2ce532756` |
 | `docs/ops/CLOSE_OPERATOR_GAPS_TO_100_2026-08-19.md` | Close remaining operator gaps to 100% | review_required | OK | `9f9aada669d7` |
+| `docs/ops/COGNITIVE_MEMORY_PRODUCTION_RUNBOOK.md` | Cognitive memory in production: runbook | review_required | OK | `720ebe9b2fee` |
 | `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) | review_required | MISSING HEADER | `de97ccca2b56` |
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) | review_required | OK | `7ded3894288a` |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 | review_required | OK | `e11d852dddbb` |
@@ -1796,6 +1797,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/telegram_channel_diligence_20260916/05_COMMAND_CENTER_COVERAGE_GAPS.md` | Phase 5 — Command Center Coverage Gap Analysis | review_required | OK | `9eee88c6773b` |
 | `docs/ops/telegram_channel_diligence_20260916/06_IMPLEMENTATION_ROADMAP.md` | Phase 6 — Implementation Roadmap | review_required | OK | `8d2eb858f8d7` |
 | `docs/ops/telegram_channel_diligence_20260916/07_EXECUTION_PLAN.md` | Phase 7 — Execution Plan & Maturity Scorecard | review_required | OK | `c3ec2b72146f` |
+| `docs/options-desk-operator-contract-20260924.md` | Options Desk — operator contract (skim) | review_required | OK | `1414f01c42c5` |
 | `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `c5c94a4d61dc` |
 | `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | Phase 179A: Paper Trade Source Inventory | review_required | OK | `72664d5cf493` |
 | `docs/paper_trading/PHASE179C_CURRENT_PAPER_TRADE_STATISTICS_REPORT.md` | Phase 179C: Current Paper Trade Statistics Report | review_required | OK | `95ccbd19ce31` |
@@ -1805,6 +1807,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/paper_trading/PHASE186L_TRAILING_STOP_ALGORITHM_SPECIFICATION.md` | Phase 186L: Trailing Stop Algorithm Specification | review_required | OK | `4b3ba04029af` |
 | `docs/patches/2026-06-15_stage2b_intent_persistence_fix.md` | Stage 2b Schwab Pilot Hotfix — Intent Persistence Before Approval | review_required | OK | `0f35a94b1ef8` |
 | `docs/plan-openclaw-internal-first-integrity-20260923.md` | Plan: OpenClaw internal-first integrity (Maria → Trade-AI / Hermes before MODEL_GENERAL) | review_required | OK | `cc830e718f80` |
+| `docs/plan-options-desk-holdings-strategies-20260924.md` | Plan: Options Desk — holdings strategies · open legs · CIO fluency · goals · BUY_READY institutional packet | review_required | OK | `38f365c22cd1` |
 | `docs/plan-s-hollow-research-then-answer.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | delete_candidate_duplicate | OK | `5e9e634f7fa6` |
 | `docs/project/CI_EVIDENCE_LATEST.md` | CI Evidence — Release Readiness Proof | current_phase_keep | MISSING HEADER | `c681fe6477dd` |
 | `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_20260606.md` | Closed-Loop All-Trades Abstraction (2026-06-06) | current_phase_keep | OK | `82b9d6a350f7` |
