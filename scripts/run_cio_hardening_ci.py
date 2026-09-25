@@ -1696,6 +1696,7 @@ GATES = [
             "tests/test_bitemporal_correctness.py",
             # M5 Module 2: SINGLE_VALUED supersession, atomic receipts, MRU token budget.
             "tests/test_m5_memory_substrate_20260923.py",
+            "tests/test_memory_agent_least_privilege_20260924.py",
             "tests/test_memory_prod_cutover_20260924.py",
             "tests/test_record_bridge_pin_soak.py",
             "tests/test_agent_number_grounding_slo_20260918.py",
