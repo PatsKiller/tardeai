@@ -2342,6 +2342,10 @@ GATES = [
             "tests/test_agent_memory_shadow_measure.py",
             "tests/test_memory_shadow_measure_honesty.py",
             "tests/test_options_pipeline_validation.py",
+            # Live Schwab Options Desk Stage A–E + Alpaca retirement (2026-09-25).
+            "tests/test_live_schwab_options_desk_stage_abc.py",
+            # Credit-spread R:R floor — refuse $66 vs $1,184 Ideas (2026-09-25).
+            "tests/test_options_credit_spread_rr_floor_20260925.py",
         ],
     ),
     (

@@ -710,7 +710,7 @@ export default function OptionProposalCardV4({
           <div style={{ display: 'flex', gap: terminalUi ? 4 : 5, alignItems: 'center', flexWrap: 'wrap', marginTop: terminalUi ? 4 : 5 }}>
             {paper && (
               <span
-                title="Educational paper model — manual review only, never live-eligible. Outcomes feed the strategy validation gate (30 paper outcomes, PF>1.3, WR>55%) before any live consideration."
+                title="Educational paper / Alpaca lab only — never live-eligible. Paper n/30 is a lab ledger; Schwab Path B live eligibility is enterprise liquidity + per-order 2FA."
                 style={{ ...chip(WL.signal.amber, false, terminalUi), background: 'transparent', cursor: 'help' }}
               >
                 {paperFamily} · PAPER MODEL
@@ -761,6 +761,15 @@ export default function OptionProposalCardV4({
               </span>
             ))}
             {p.intent_sleeve && <span title="Portfolio intent covered-call sleeve (V/SCHD/LMT) — relaxed edge floor 52 vs 62" style={chip(WL.text.secondary, true, terminalUi)}>income sleeve</span>}
+            {!!p.cio?.entry_state && (
+              <span
+                title={p.cio?.summary || p.cio?.hub_note || 'CIO entry stance for this symbol (advisory)'}
+                style={{ ...chip(WL.signal.teal, false, terminalUi), cursor: 'help' }}
+              >
+                CIO {p.cio.entry_state}
+                {p.cio?.bias ? ` · ${p.cio.bias}` : ''}
+              </span>
+            )}
             {p.enterprise?.live_eligible && !paper && <span title={PROPOSAL.liveOk} style={{ ...chip(WL.signal.teal, false, terminalUi), cursor: 'help' }}>live eligible</span>}
             {paper && !p.enterprise?.live_eligible && (
               <MetricChipTooltip
