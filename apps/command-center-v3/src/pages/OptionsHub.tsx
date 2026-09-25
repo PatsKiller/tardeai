@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { isCardBlocked } from '../lib/optionsCardSemantics'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
@@ -70,9 +70,10 @@ export default function OptionsHub({ onDrill }: Props) {
   const [tierFilter, setTierFilter] = useState('')
   const [alpacaLaneFilter, setAlpacaLaneFilter] = useState('')
   const [liveOnly, setLiveOnly] = useState(false)
-  // Hide-blocked default (operator 2026-07-17): blocked cards are one click away, not gone —
-  // fail-closed transparency stays (chip shows the count), the default view shows tradeable ideas.
+  // When Live eligible is 0, auto-show Blocked so the desk is not blank (2026-09-25).
+  // Operator can still hide via the Blocked chip.
   const [showBlocked, setShowBlocked] = useState(false)
+  const [blockedAutoShown, setBlockedAutoShown] = useState(false)
   const [minPop, setMinPop] = useState(0)
   const [minEdge, setMinEdge] = useState(0)
   const [posSymbolFilter, setPosSymbolFilter] = useState('')
@@ -131,9 +132,16 @@ export default function OptionsHub({ onDrill }: Props) {
   // Stage 1 holdings funnel — resolve_chain=1 so CC eligible matches Intent (INTENT_BYPASS)
   // and Ideas; resolve_chain=0 understates (e.g. V EDGE_BELOW vs INTENT_BYPASS). No IV widen.
   const { data: holdingsFunnel } = useApi<any>('/api/v2/options/holdings-funnel?resolve_chain=1', 300_000)
-  const validationRows: any[] = Array.isArray(validation?.strategies)
-    ? validation.strategies.filter((s: any) => s?.ok)
-    : []
+  const validationRows: any[] = Array.isArray(validation?.paper_lab_strategies)
+    ? validation.paper_lab_strategies.filter((s: any) => s?.ok)
+    : Array.isArray(validation?.strategies)
+      ? validation.strategies.filter((s: any) => s?.ok && s?.lane !== 'desk_path_b')
+      : []
+  const deskPathBRows: any[] = Array.isArray(validation?.desk_path_b_strategies)
+    ? validation.desk_path_b_strategies.filter((s: any) => s?.ok)
+    : Array.isArray(validation?.strategies)
+      ? validation.strategies.filter((s: any) => s?.ok && s?.lane === 'desk_path_b')
+      : []
   const funnelSummary = holdingsFunnel?.summary || holdingsFunnel?.data?.summary || null
   const funnelRows: any[] = Array.isArray(holdingsFunnel?.rows)
     ? holdingsFunnel.rows
@@ -158,6 +166,14 @@ export default function OptionsHub({ onDrill }: Props) {
   // canonical blocked semantics — same predicate the cards themselves render with
   const isBlockedProp = (p: any) => isCardBlocked(p)
   const blockedCount = useMemo(() => propList.filter(isBlockedProp).length, [propList])
+  const liveEligibleCount = Number(proposals?.filter_facets?.live_eligible ?? 0)
+  useEffect(() => {
+    if (blockedAutoShown) return
+    if (liveEligibleCount === 0 && blockedCount > 0) {
+      setShowBlocked(true)
+      setBlockedAutoShown(true)
+    }
+  }, [liveEligibleCount, blockedCount, blockedAutoShown])
   const shownProps = useMemo(() => {
     let base = propList
     if (!showBlocked) base = base.filter(p => !isBlockedProp(p))
@@ -434,12 +450,10 @@ export default function OptionsHub({ onDrill }: Props) {
         </div>
       </div>
 
-      {/* Stage B: Strategy Validation strip — advisory paper-gate progress for
-          paper-model strategies (deep_itm_call). Amber only, never green; a met
-          gate still reads "operator decision required" — nothing auto-enables. */}
+      {/* Paper lab strip — educational/Alpaca strategies only (never paints Path B as PAPER MODEL). */}
       {validationRows.length > 0 && (
         <div style={{ ...panel, marginBottom: 12, padding: '8px 14px', borderLeft: '4px solid #f59e0b', display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
-          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: '#f59e0b', textTransform: 'uppercase' }}>Strategy Validation</span>
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: '#f59e0b', textTransform: 'uppercase' }} title="Alpaca / educational paper ledger — does not unlock Schwab Path B">Paper Lab</span>
           {validationRows.map((s: any) => {
             const m = s.metrics || {}
             const wr = m.win_rate != null ? `${(m.win_rate * 100).toFixed(0)}%` : '—'
@@ -457,6 +471,23 @@ export default function OptionsHub({ onDrill }: Props) {
               </span>
             )
           })}
+        </div>
+      )}
+      {/* Desk Path B readiness — liquidity/enterprise, not paper n/30. */}
+      {deskPathBRows.length > 0 && (
+        <div style={{ ...panel, marginBottom: 12, padding: '8px 14px', borderLeft: '4px solid #22c55e', display: 'flex', flexWrap: 'wrap', gap: 14, alignItems: 'center' }}>
+          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '.06em', color: '#22c55e', textTransform: 'uppercase' }} title="Schwab Path B strategies — live eligibility is enterprise liquidity + per-order 2FA">Desk Path B</span>
+          {deskPathBRows.map((s: any) => (
+            <span key={s.strategy_id} title={s.message} style={{ fontSize: 10.5, color: 'var(--text2)', cursor: 'help' }}>
+              <b style={{ color: 'var(--text0)' }}>{s.display_name || s.strategy_id}</b>
+              {' · '}
+              <span style={{ fontSize: 8.5, fontWeight: 800, padding: '1px 6px', borderRadius: 4, color: '#22c55e', border: '1px solid rgba(34,197,94,.45)' }}>SCHWAB / 2FA</span>
+              {' '}{s.progress_label ?? '—'}
+            </span>
+          ))}
+          {execStatus?.armed_for_execution && (
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e' }}>execution ARMED</span>
+          )}
         </div>
       )}
 
@@ -570,7 +601,7 @@ export default function OptionsHub({ onDrill }: Props) {
               {facetChip(FILTERS.tierB, 'Tier B', propFacets.by_tier?.B, tierFilter === 'B', () => setTierFilter(t => t === 'B' ? '' : 'B'), '#60a5fa')}
               {facetChip(FILTERS.tierC, 'Tier C', propFacets.by_tier?.C, tierFilter === 'C', () => setTierFilter(t => t === 'C' ? '' : 'C'), 'var(--text3)')}
               {facetChip(FILTERS.liveEligible, 'Live eligible', propFacets.live_eligible, liveOnly, () => setLiveOnly(v => !v), '#22c55e')}
-              {blockedCount > 0 && facetChip('Blocked proposals are hidden by default (fail-closed gates: liquidity/spread/data). Click to show them — every block reason stays reviewable on the card.', `Blocked`, blockedCount, showBlocked, () => setShowBlocked(v => !v), '#ef4444')}
+              {blockedCount > 0 && facetChip('Blocked = enterprise liquidity/spread/OI/BS-estimate (or educational paper). Auto-shown when Live eligible is 0. Click to toggle.', `Blocked`, blockedCount, showBlocked, () => setShowBlocked(v => !v), '#ef4444')}
               <Tip tip={FILTERS.showing} style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
                 Showing {propCount}{propFacets.total != null && propCount !== propFacets.total ? ` of ${propFacets.total}` : ''} ⓘ
               </Tip>

@@ -40125,18 +40125,31 @@ def _fetch_paper_model_queue_proposals() -> list:
 
 
 def _options_validation(query=None):
-    """GET /api/v2/options/validation — advisory paper-validation gate report (Stage B).
+    """GET /api/v2/options/validation — advisory gate report (paper lab + desk Path B lanes).
 
     Powers the Options tab "Strategy Validation" strip. Advisory only — a met
-    gate is reported as operator-decision-required, never acted on.
+    gate is reported as operator-decision-required, never acted on. Desk Path B
+    strategies carry lane=desk_path_b so the Hub does not paint them PAPER MODEL.
     """
     try:
-        from lib.options_pipeline.validation import SUPPORTED_STRATEGIES, validation_status
+        from lib.options_pipeline.validation import (
+            PAPER_LAB_STRATEGIES,
+            SUPPORTED_STRATEGIES,
+            validation_status,
+        )
 
+        strategies = [validation_status(s) for s in SUPPORTED_STRATEGIES]
         return _json_clean(
             {
                 "ok": True,
-                "strategies": [validation_status(s) for s in SUPPORTED_STRATEGIES],
+                "strategies": strategies,
+                "paper_lab_strategies": [
+                    s for s in strategies if s.get("lane") == "paper_lab"
+                ],
+                "desk_path_b_strategies": [
+                    s for s in strategies if s.get("lane") == "desk_path_b"
+                ],
+                "paper_lab_ids": sorted(PAPER_LAB_STRATEGIES),
             }
         )
     except Exception as e:
@@ -40340,7 +40353,11 @@ def _options_paper_position_alerts(query=None):
 
 
 def _options_open_positions(query=None):
-    """GET /api/v2/options/open-positions — unified broker legs + monitored paper positions."""
+    """GET /api/v2/options/open-positions — unified broker legs + monitored paper positions.
+
+    Default view is Schwab/broker first (paper excluded). Pass paper_only=1 for the
+    Alpaca paper lab lane, or include_paper=1 to show both.
+    """
     from lib.options_pipeline import paper_positions_api as ppa
 
     broker_data = _options_positions(query) or {}
@@ -40355,6 +40372,14 @@ def _options_open_positions(query=None):
         symbol=(g("symbol") or "").upper() or None,
     )
     unified = ppa.build_unified_open_positions(broker_positions, monitored)
+    paper_only_q = str(g("paper_only", "")).lower() in ("1", "true", "yes")
+    include_paper = str(g("include_paper", "")).lower() in ("1", "true", "yes")
+    if paper_only_q:
+        paper_filter = True
+    elif include_paper:
+        paper_filter = None
+    else:
+        paper_filter = False  # Schwab / broker default
     filtered = ppa.filter_positions(
         unified,
         symbol=(g("symbol") or "").upper(),
@@ -40362,7 +40387,7 @@ def _options_open_positions(query=None):
         side=(g("side") or ""),
         route=(g("route") or ""),
         source=(g("source") or ""),
-        paper_only=True if str(g("paper_only", "")).lower() in ("1", "true", "yes") else None,
+        paper_only=paper_filter,
     )
     mon_alerts = ppa.list_position_alerts(unacked_only=True, limit=30)
     broker_alerts = broker_data.get("alerts") or []
