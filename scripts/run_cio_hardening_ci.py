@@ -2458,6 +2458,11 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-26 -- CIO Desk: material actions only, one readable message, once per window.
+        "cio_action_notify_20260926",
+        ["tests/test_cio_action_notify_20260926.py", "tests/test_cio_checkin_only_with_action_20260914.py"],
+    ),
+    (
         # 2026-09-26 -- "everything BLOCKED": income ideas screened before a card is built,
         # Aegis worker heartbeat + stall alarm, Watch refresh workers outside the scheduler cgroup.
         "everything_blocked_20260926",
