@@ -220,7 +220,8 @@ def build_recommendation_comparison(
     out = {
         "underlying": {
             "symbol": symbol or None,
-            "security_guid": proposal.get("security_guid") or proposal.get("issuer_guid"),
+            "security_guid": proposal.get("security_guid") or proposal.get("issuer_guid")
+            or (proposal.get("underlying_identity") or {}).get("issuer_guid"),
             "as_of": generated_at,
         },
         "thesis": {

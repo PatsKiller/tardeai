@@ -2465,6 +2465,15 @@ GATES = [
             "tests/test_everything_blocked_20260926.py",
         ],
     ),
+    (
+        # 2026-09-26 -- options carry the same thesis bar as a stock purchase: pinned symbol
+        # thesis, OptionsThesisRecord by strategy GUID (append-only, hash-chained), queue refusal.
+        "options_thesis_20260926",
+        [
+            "tests/test_options_thesis_20260926.py",
+            "tests/test_options_identity_memory_20260924.py",
+        ],
+    ),
 ]
 
 
