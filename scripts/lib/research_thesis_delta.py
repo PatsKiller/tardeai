@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+import re
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from scripts.lib.cio_question_ids import structured_answers
 from scripts.lib.research_prompt_context import delta_path, latest_delta
 from scripts.lib.thesis_substantiveness import grade_text, join_research_text
 
@@ -17,6 +19,38 @@ CLASSIFICATIONS = frozenset({
     "CONFLICTED", "INSUFFICIENT_DATA",
 })
 MATERIAL_CLASSIFICATIONS = frozenset({"STRENGTHENS", "WEAKENS", "INVALIDATES", "CONFLICTED"})
+ENRICHES = "ENRICHES"
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_INTENT_CONFIG = _REPO_ROOT / "assets/portfolio_intent.yaml"
+# Fallback only; the operator values live in assets/portfolio_intent.yaml
+# options_desk_settings.symbol_thesis_enrich (same pattern as options_thesis_lifecycle).
+ENRICH_DEFAULTS: dict[str, Any] = {
+    "scope": "options_horizon",
+    "cooldown_hours": 24,
+    "invalidation_cap": 8,
+    "catalyst_cap": 8,
+    "evidence_cap": 60,
+    "item_max_chars": 2000,
+    "machine_writers": [
+        "research_thesis_delta", "thesis_mint_from_research", "thesis_mint_dryrun",
+        "symbol_thesis_canary", "symbol_thesis_freshness",
+    ],
+}
+_ISO_DATE = re.compile(r"\b(20\d{2})-(\d{2})-(\d{2})\b")
+
+
+def enrich_settings(override: dict[str, Any] | None = None) -> dict[str, Any]:
+    """ENRICHES thresholds from portfolio_intent.yaml; `override` wins (tests)."""
+    blk: dict[str, Any] = {}
+    try:
+        import yaml
+        cfg = yaml.safe_load(_INTENT_CONFIG.read_text(encoding="utf-8")) or {}
+        blk = ((cfg.get("options_desk_settings") or {}).get("symbol_thesis_enrich") or {})
+    except Exception:
+        blk = {}
+    out = {k: blk.get(k, v) for k, v in ENRICH_DEFAULTS.items()}
+    out.update(override or {})
+    return out
 
 
 def _now() -> str:
@@ -212,6 +246,109 @@ def _read_rows(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _thesis_store(root: Path | str | None):
+    from scripts.lib.cio_theses import CIOThesisStore
+    base = Path(root) if root is not None else _REPO_ROOT
+    return CIOThesisStore(
+        event_path=base / "data/cio/cio_theses.jsonl",
+        projection_path=base / "data/cio/cio_theses_projection.json",
+    )
+
+
+def _field(thesis: dict[str, Any] | None, key: str) -> Any:
+    """A structured field lives top-level on the record, or under legacy `extra`."""
+    thesis = thesis or {}
+    if thesis.get(key) is not None:
+        return thesis.get(key)
+    extra = thesis.get("extra") if isinstance(thesis.get("extra"), dict) else {}
+    return extra.get(key)
+
+
+def _merge_ids(old: Any, new: Any, cap: int) -> list[str]:
+    out: list[str] = []
+    for eid in list(_as_list(old)) + list(_as_list(new)):
+        s = str(eid)
+        if s and s not in out:
+            out.append(s)
+    return out[-cap:] if cap > 0 else out  # newest kept
+
+
+def _merge_texts(old: Any, new: str | None, cap: int, max_chars: int) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for t in list(_as_list(old)) + ([new] if new else []):
+        text = str(t or "").strip()[:max_chars]
+        key = _norm_text(text)
+        if key and key not in seen:
+            seen.add(key)
+            out.append(text)
+    return out[:cap]  # prior (possibly authored) conditions are never evicted by new text
+
+
+def _latest_date(text: str) -> date | None:
+    found = []
+    for y, m, d in _ISO_DATE.findall(text or ""):
+        try:
+            found.append(date(int(y), int(m), int(d)))
+        except ValueError:
+            continue
+    return max(found) if found else None
+
+
+def _merge_catalysts(
+    old: Any, new_text: str | None, *, research_id: str, as_of: Any,
+    cap: int, max_chars: int, today: date,
+) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = [dict(c) for c in _as_list(old) if isinstance(c, dict) and c.get("text")]
+    if new_text:
+        text = new_text.strip()[:max_chars]
+        row: dict[str, Any] = {"text": text, "as_of": as_of, "source_research_id": research_id}
+        when = _latest_date(text)
+        if when:
+            row["event_date"] = when.isoformat()
+        rows.append(row)
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for row in rows:
+        when = _latest_date(str(row.get("event_date") or "")) or _latest_date(str(row.get("text") or ""))
+        if when and when < today:
+            continue  # every date it names is past: the catalyst has happened
+        key = _norm_text(row.get("text"))
+        if key and key not in seen:
+            seen.add(key)
+            out.append(row)
+    return out[:cap]
+
+
+def _machine_summary(thesis: dict[str, Any] | None, cfg: dict[str, Any]) -> bool:
+    """True when the standing summary may be replaced by research text."""
+    if not thesis:
+        return True
+    if str(thesis.get("summary") or "").startswith("RESEARCH_REQUIRED:"):
+        return True
+    writer = (_field(thesis, "write_provenance") or {}).get("writer")
+    if writer:
+        return str(writer) in set(cfg.get("machine_writers") or [])
+    return bool(thesis.get("mint_state"))  # thesis_mint_from_research predates write_provenance
+
+
+def _enrich_cooldown_ok(store: Any, thesis_id: str, cfg: dict[str, Any], now: datetime) -> bool:
+    hours = float(cfg.get("cooldown_hours") or 0)
+    if hours <= 0:
+        return True
+    for row in store.list_versions(thesis_id, limit=200):
+        if (_field(row, "write_provenance") or {}).get("trigger") != ENRICHES:
+            continue
+        try:
+            ts = datetime.fromisoformat(str(row.get("published_ts")).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+        return (now - ts).total_seconds() >= hours * 3600
+    return True
+
+
 def accept_research_result(
     symbol: str,
     result: dict[str, Any],
@@ -224,12 +361,43 @@ def accept_research_result(
     trigger: str = "research_completion",
     run_id: str | None = None,
     source_sha: str | None = None,
+    source_result_id: str | None = None,
+    enrich_config: dict[str, Any] | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Persist one delta, publish only a quality-gated material thesis change."""
+    """Persist one delta, publish only a quality-gated material thesis change.
+
+    Per-question answers (q_thesis_check / q_catalyst_map / q_invalidation /
+    q_bear_case) feed the symbol thesis: invalidation and catalysts are merged
+    into the standing lists, the bear case becomes a contradictory evidence id,
+    and evidence lists are merged old+new. When the existing gates would not
+    publish, the governed ENRICHES rule may still fill EMPTY invalidation /
+    catalyst fields (operator 2026-09-26) without touching stance or summary.
+    """
+    cfg = enrich_settings(enrich_config)
+    now = now or datetime.now(timezone.utc)
+    cap_chars = int(cfg["item_max_chars"])
+    answers = structured_answers(result)
+    from scripts.lib.symbol_thesis_coverage import symbol_thesis_id
+    store = _thesis_store(root)
+    thesis_id = symbol_thesis_id(str(symbol or "").upper().strip())
+    standing = store.get_current(thesis_id)
+
+    # (c) bear case -> contradictory evidence BEFORE the delta, so it gets an ev id.
+    work = dict(result)
+    evidence_text: dict[str, str] = {}
+    bear = answers.get("bear_case")
+    if bear:
+        dissent = str(result.get("dissent") or "").strip()
+        base = list(_as_list(result.get("contradictory_evidence"))) or ([dissent] if dissent else [])
+        row = {"text": bear[:cap_chars], "kind": "bear_case"}
+        work["contradictory_evidence"] = base + [row]
+        evidence_text[_evidence_ids([row], "CONTRADICTION")[0]] = row["text"]
+
     prior = latest_delta(symbol, root=root)
     delta = build_research_thesis_delta(
         symbol,
-        result,
+        work,
         prompt_context=prompt_context,
         research_id=research_id,
         provider=provider,
@@ -251,46 +419,117 @@ def accept_research_result(
     except Exception as exc:
         contradiction_result = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
 
-    if not delta["thesis_publish_eligible"]:
-        return {
-            "ok": True,
-            "duplicate": False,
-            "delta": delta,
-            "version_published": False,
-            "publish_suppressed_reason": (
-                "no_material_change" if delta["classification"] in {"CONFIRMS", "NO_NEW_INFO"}
-                else "evidence_quality_gate"
-            ),
-            "contradiction_candidates": contradiction_result,
-            "authority": AUTHORITY,
-        }
-
-    from scripts.lib.symbol_thesis_review import reconcile_symbol_thesis
-    evidence = {
-        "summary": result.get("recommendation") or result.get("thesis_summary") or result.get("summary"),
-        "stance": result.get("thesis_stance") or result.get("stance"),
-        "evidence_for": list(delta.get("supporting_evidence_ids") or []),
-        "counter_evidence": list(delta.get("contradictory_evidence_ids") or []),
-        "research_gaps": list(delta.get("research_gaps_remaining") or []),
+    # (a)/(b) merged lists: standing entries first, research answers appended.
+    prior_inval = list(_as_list(_field(standing, "invalidation_conditions")))
+    prior_cats = list(_as_list(_field(standing, "catalysts")))
+    merged_inval = _merge_texts(prior_inval, answers.get("invalidation"),
+                                int(cfg["invalidation_cap"]), cap_chars)
+    merged_cats = _merge_catalysts(
+        prior_cats, answers.get("catalysts"), research_id=research_id,
+        as_of=result.get("evidence_as_of") or result.get("as_of") or now.isoformat(),
+        cap=int(cfg["catalyst_cap"]), max_chars=cap_chars, today=now.date(),
+    )
+    merged_text = {**dict(_field(standing, "evidence_text") or {}), **evidence_text}
+    provenance_keys = {
         "research_result_id": research_id,
         "source_research_ids": [research_id],
+        "source_result_id": source_result_id,
         "research_delta": delta,
-        "delta_classification": delta["classification"],
         "delta_id": delta["delta_id"],
         "writer": "research_thesis_delta",
         "writer_version": SCHEMA,
         "run_id": run_id,
         "source_sha": source_sha,
     }
-    review = reconcile_symbol_thesis(
-        symbol,
-        trigger=trigger,
-        evidence=evidence,
-        root=root,
-        publish=True,
-        notify=False,
-        actor_id="research_thesis_delta",
-    )
+    grade = str((delta.get("thesis_quality_grade") or {}).get("grade") or "")
+    enrich_fields: dict[str, Any] = {}
+    if standing and grade == "A" and delta["classification"] != "INSUFFICIENT_DATA":
+        if not prior_inval and merged_inval:
+            enrich_fields["invalidation_conditions"] = merged_inval
+        if not prior_cats and merged_cats:
+            enrich_fields["catalysts"] = merged_cats
+
+    from scripts.lib.symbol_thesis_review import reconcile_symbol_thesis
+    enriched = False
+    if not delta["thesis_publish_eligible"]:
+        suppressed = (
+            "no_material_change" if delta["classification"] in {"CONFIRMS", "NO_NEW_INFO"}
+            else "evidence_quality_gate"
+        )
+        if not enrich_fields:
+            return {
+                "ok": True,
+                "duplicate": False,
+                "delta": delta,
+                "version_published": False,
+                "publish_suppressed_reason": suppressed,
+                "contradiction_candidates": contradiction_result,
+                "authority": AUTHORITY,
+            }
+        if not _enrich_cooldown_ok(store, thesis_id, cfg, now):
+            return {
+                "ok": True,
+                "duplicate": False,
+                "delta": delta,
+                "version_published": False,
+                "publish_suppressed_reason": "enrich_cooldown",
+                "enrich_fields": sorted(enrich_fields),
+                "contradiction_candidates": contradiction_result,
+                "authority": AUTHORITY,
+            }
+        # ENRICHES: only the empty fields; stance, summary, evidence and role inherited.
+        evidence = {
+            **enrich_fields,
+            **provenance_keys,
+            "delta_classification": ENRICHES,
+            "scope": cfg["scope"],
+        }
+        role = _field(standing, "portfolio_role")
+        if role:
+            evidence["portfolio_role"] = role
+        review = reconcile_symbol_thesis(
+            symbol,
+            trigger=ENRICHES,
+            evidence=evidence,
+            root=root,
+            publish=True,
+            notify=False,
+            actor_id="research_thesis_delta",
+        )
+        enriched = bool(review.get("version_published"))
+    else:
+        evidence_cap = int(cfg["evidence_cap"])
+        evidence = {
+            # (d) merged old+new, never new-only
+            "evidence_for": _merge_ids(_field(standing, "evidence_for"),
+                                       delta.get("supporting_evidence_ids"), evidence_cap),
+            "counter_evidence": _merge_ids(_field(standing, "counter_evidence"),
+                                           delta.get("contradictory_evidence_ids"), evidence_cap),
+            "invalidation_conditions": merged_inval,
+            "catalysts": merged_cats,
+            "stance": result.get("thesis_stance") or result.get("stance"),
+            "research_gaps": list(delta.get("research_gaps_remaining") or []),
+            **provenance_keys,
+            "delta_classification": delta["classification"],
+        }
+        evidence["evidence_text"] = {k: v for k, v in merged_text.items()
+                                     if k in set(evidence["counter_evidence"]) | set(evidence["evidence_for"])}
+        # (e) research text replaces only a machine / placeholder summary; an
+        # authored summary is omitted here so reconcile inherits it.
+        if _machine_summary(standing, cfg):
+            evidence["summary"] = (
+                answers.get("thesis") or result.get("recommendation")
+                or result.get("thesis_summary") or result.get("summary")
+            )
+        review = reconcile_symbol_thesis(
+            symbol,
+            trigger=trigger,
+            evidence=evidence,
+            root=root,
+            publish=True,
+            notify=False,
+            actor_id="research_thesis_delta",
+        )
     card = None
     if review.get("version_published"):
         try:
@@ -300,14 +539,17 @@ def accept_research_result(
                 "WEAKENS": "downgraded",
                 "INVALIDATES": "invalidated",
                 "CONFLICTED": "downgraded",
-            }.get(delta["classification"], "revised")
+            }.get(ENRICHES if enriched else delta["classification"], "revised")
             version = int(str(review.get("new_version") or "@v0").rsplit("@v", 1)[-1])
             card = write_thesis_change_card(
                 symbol=str(symbol),
                 thesis_id=str(review.get("thesis_id") or ""),
                 version=version,
                 kind=kind,
-                summary=str(result.get("recommendation") or result.get("summary") or ""),
+                summary=(
+                    f"Filled empty {', '.join(sorted(enrich_fields))} from research {research_id}"
+                    if enriched else str(result.get("recommendation") or result.get("summary") or "")
+                ),
                 grade=str((delta.get("thesis_quality_grade") or {}).get("grade") or ""),
                 root=Path(root) if root is not None else Path(__file__).resolve().parents[2],
                 emit_bus=True,
@@ -320,6 +562,8 @@ def accept_research_result(
         "delta": delta,
         "review": review,
         "version_published": bool(review.get("version_published")),
+        "enriched": enriched,
+        "enrich_fields": sorted(enrich_fields) if enriched else [],
         "thesis_change_card": card,
         "contradiction_candidates": contradiction_result,
         "authority": AUTHORITY,
