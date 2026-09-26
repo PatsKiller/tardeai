@@ -40252,12 +40252,15 @@ def _options_proposals(query=None):
     try:
         from lib.recommendation_comparison import build_recommendation_comparison
         from lib.options_decision_packet import build_options_decision_packet
+        from lib.options_research_memo import build_research_memo
 
+        census = data.get("universe_census") if isinstance(data, dict) else None
         for row in filtered:
             try:
                 cmp = build_recommendation_comparison(row)
                 row["recommendation_comparison"] = cmp
                 row["options_decision_packet"] = build_options_decision_packet(row, comparison=cmp)
+                row["options_research_memo"] = build_research_memo(row, census=census)
             except Exception:
                 row["recommendation_comparison"] = {
                     "comparison": {"preferred_structure": "review_required"},

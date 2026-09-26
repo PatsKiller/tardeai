@@ -49,6 +49,44 @@ def test_fixture_universe_is_not_a_market_search():
     assert census["ranking"].startswith("edge_score")
 
 
+def test_research_memo_answers_or_says_missing():
+    from scripts.lib.options_research_memo import build_research_memo
+    memo = build_research_memo({
+        "symbol": "DXCM",
+        "strategy": "cash_secured_put",
+        "dte": 35,
+        "pop_pct": 73.2,
+        "expected_value": 124.44,
+        "max_profit": 170,
+        "max_loss": 7830,
+        "delta": -0.24,
+        "iv_rank": 12.5,
+        "oi": 0,
+        "volume": 1,
+        "bid": 1.2,
+        "ask": 2.2,
+        "edge_score": 45,
+        "reasoning": "Wheel entry on a conviction name",
+        "enterprise": {"blocks": ["OI 0 < 50"]},
+    })
+    assert memo["market_wide_search"] is False
+    assert memo["cio_approved"] is False
+    assert memo["thesis"]["catalyst"] == "missing"
+    assert memo["thesis"]["position_size"] == "not sized"
+    assert memo["thesis"]["probability_weighted_expected_return"] == 124.44
+    assert memo["contract"]["gamma"] == "missing"
+    assert memo["contract"]["iv_percentile"] == "missing"
+    assert memo["contract"]["spread_cost"] == 1.0
+    names = {row["structure"]: row["status"] for row in memo["structures"]}
+    assert names["cash_secured_put"] == "selected"
+    assert names["calendar_spread"] == "not_available"
+    assert names["diagonal_spread"] == "not_available"
+    assert names["collar"] == "not_available"
+    assert memo["committee"]["cio"]["review_status"] == "unreviewed"
+    assert "OI 0" in memo["committee"]["strongest_opposing_argument"]
+    assert "sell" not in memo["committee"]["strongest_opposing_argument"].lower()
+
+
 def test_watchlist_rows_keep_buy_and_drop_hold(monkeypatch):
     import lib.options_pipeline.universe as uni
     import options_engine as eng
