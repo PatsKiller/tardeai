@@ -14,7 +14,7 @@ config, never from a guess. Advisory only: nothing sizes or orders.
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
 ANSWER_MAP = {
@@ -33,6 +33,10 @@ DEFAULTS = {
     "research_drain_per_tick": 2,
     "research_tick_minutes": 15,
     "review_max_tokens": 2500,
+    "followup_due_hours": 24,
+    "max_followup_rounds": 2,
+    "monitor_recheck_hours": 24,
+    "max_deliverables": 5,
 }
 
 
@@ -50,6 +54,34 @@ def research_questions(p: dict[str, Any]) -> list[dict[str, str]]:
         {"intent": "invalidation", "text": f"What specific evidence would invalidate the {sym} thesis and should trigger exiting the {strat}?"},
         {"intent": "bear_case", "text": f"What is the strongest bear case against {sym} over the next {p.get('dte')} days?"},
     ]
+
+
+def followup_questions(p: dict[str, Any], review: dict[str, Any], limit: int) -> list[dict[str, str]]:
+    """Turn the CIO's unknowns and concerns into named research deliverables."""
+    sym = str(p.get("symbol") or "").upper()
+    items: list[str] = []
+    for key in ("unknowns", "concerns", "assumptions_challenged"):
+        for x in (review or {}).get(key) or []:
+            t = str(x).strip()
+            if t and t not in items:
+                items.append(t)
+    return [{"intent": f"cio_followup_{i + 1}", "text": f"{sym}: {t}"} for i, t in enumerate(items[:limit])]
+
+
+def followup_answers(result: Optional[dict[str, Any]], deliverables: list[dict[str, str]]) -> list[dict[str, Any]]:
+    by_id = {str(a.get("question_id") or ""): a for a in (result or {}).get("answers") or []}
+    out = []
+    for i, q in enumerate(deliverables):
+        a = by_id.get(f"q_cio_followup_{i + 1}") or {}
+        answered = str(a.get("status") or "").lower() != "unanswered" and (a.get("summary") or a.get("detail"))
+        text = " ".join(x for x in (str(a.get("summary") or "").strip(), str(a.get("detail") or "").strip()) if x)
+        out.append({"deliverable": q.get("text"), "answered": bool(answered), "answer": text[:600] if answered else None})
+    return out
+
+
+def _after(a: Optional[dict[str, Any]], b: Optional[dict[str, Any]]) -> bool:
+    """True when event a was recorded after event b (both present)."""
+    return bool(a and b and str(a.get("recorded_at") or "") > str(b.get("recorded_at") or ""))
 
 
 def answers_from_result(result: Optional[dict[str, Any]], research_id: str) -> dict[str, Any]:
@@ -109,11 +141,69 @@ def advance(
         if not guid or not ot.get("pin"):
             continue
         life = store.lifecycle(guid)
-        if life.get("abandoned") or life.get("decision"):
+        if life.get("abandoned"):
             continue
         missing = list(ot.get("missing_required") or [])
         age = _hours_since(life.get("created_at"), now)
         step: dict[str, Any] = {"symbol": p.get("symbol"), "position_guid": guid, "pin": ot.get("pin")}
+        dec = life.get("decision")
+        rereview = False
+        if dec:
+            # 2026-09-26 (operator): "this needs to be a continuous automated process".
+            # A decision is not the end unless it is final: MORE_RESEARCH starts named
+            # follow-up research with a due time and re-reviews; MONITOR_ONLY re-checks.
+            outcome = str(dec.get("outcome") or "")
+            if outcome in ("REJECT", "APPROVE"):
+                continue  # final; APPROVE waits for the operator's confirmation
+            if outcome == "MONITOR_ONLY":
+                if _hours_since(dec.get("recorded_at"), now) < float(s["monitor_recheck_hours"]):
+                    step.update(action="WAIT_MONITOR", recheck_hours=s["monitor_recheck_hours"])
+                    report.append(step)
+                    continue
+                rereview = True
+            elif outcome == "MORE_RESEARCH":
+                fu, fc = life.get("followup"), life.get("followup_complete")
+                rounds = sum(1 for d in life.get("decisions") or [] if d.get("outcome") == "MORE_RESEARCH")
+                if not _after(fu, dec):
+                    if rounds > int(s["max_followup_rounds"]):
+                        step.update(action="ABANDON", reason=f"CIO asked for more research {rounds} times; "
+                                                              "archived rather than looping")
+                        if apply:
+                            store.append_event(guid, "OPTIONS_THESIS_ABANDONED", reason=step["reason"])
+                        report.append(step)
+                        continue
+                    qs = followup_questions(p, dec.get("review") or {}, int(s["max_deliverables"]))
+                    due = (now + timedelta(hours=float(s["followup_due_hours"]))).isoformat()
+                    step.update(action="REQUEST_FOLLOWUP", deliverables=[q["text"] for q in qs], due_at=due,
+                                decision_guid=dec.get("decision_guid"))
+                    if apply:
+                        out = request_research(p, qs)
+                        store.append_event(guid, "OPTIONS_THESIS_FOLLOWUP_REQUESTED",
+                                           research_id=out.get("research_id"), plan_id=out.get("plan_id"),
+                                           deliverables=qs, due_at=due, for_decision=dec.get("decision_guid"))
+                    report.append(step)
+                    continue
+                if not _after(fc, fu):
+                    st = research_status(fu.get("research_id"))
+                    state = str(st.get("status") or "").lower()
+                    if state == "completed":
+                        ans = followup_answers(st.get("result"), fu.get("deliverables") or [])
+                        step.update(action="FOLLOWUP_COMPLETE",
+                                    answered=sum(1 for a in ans if a["answered"]), of=len(ans))
+                        if apply:
+                            store.append_event(guid, "OPTIONS_THESIS_FOLLOWUP_COMPLETE",
+                                               research_id=fu.get("research_id"), answers=ans)
+                    elif _hours_since(fu.get("due_at"), now) > 0 and now.isoformat() > str(fu.get("due_at")):
+                        step.update(action="ABANDON", reason="CIO follow-up research not delivered by its due time")
+                        if apply:
+                            store.append_event(guid, "OPTIONS_THESIS_ABANDONED", reason=step["reason"])
+                    else:
+                        step.update(action="WAIT_FOLLOWUP", status=state or "unknown", due_at=fu.get("due_at"))
+                    report.append(step)
+                    continue
+                rereview = True  # follow-up delivered: the CIO reviews again, new Decision GUID
+            else:
+                continue
         # Research cannot fix liquidity: an idea with a non-thesis enterprise block
         # (OI 0, 185% spread) is not researched or reviewed (2026-09-26 dry test).
         ent_blocks = [b for b in ((p.get("enterprise") or {}).get("blocks") or [])
@@ -122,7 +212,7 @@ def advance(
             step.update(action="SKIP_ENTERPRISE_BLOCK", reason="blocked for liquidity or risk; research cannot clear it")
             report.append(step)
             continue
-        if missing:
+        if missing and not rereview:
             if age >= float(s["abandon_after_hours"]):
                 step.update(action="ABANDON", reason=f"no complete thesis within {s['abandon_after_hours']}h; "
                                                       f"still missing: {', '.join(missing)}")
@@ -179,7 +269,8 @@ def advance(
             r = res["review"]
             store.append_event(guid, "OPTIONS_THESIS_DECISION", decision_guid=res["decision_guid"],
                                outcome=r["outcome"], confidence=r.get("confidence"), review=r,
-                               model=res.get("model"), reviewed_pin=ot.get("pin"))
+                               model=res.get("model"), reviewed_pin=ot.get("pin"),
+                               supersedes=(dec or {}).get("decision_guid"))
             record_decision(res)
             step.update(action="DECISION", outcome=r["outcome"], decision_guid=res["decision_guid"])
         else:

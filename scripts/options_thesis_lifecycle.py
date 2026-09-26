@@ -35,7 +35,7 @@ def _load_env() -> None:
             os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 
 
-def request_research(p: dict) -> dict:
+def request_research(p: dict, questions: list | None = None) -> dict:
     from lib.cio_plans import CIOPlanStore
     from lib.hermes_research_loop import emit_research_for_plan
     from lib.options_thesis_lifecycle import research_questions, settings
@@ -45,7 +45,8 @@ def request_research(p: dict) -> dict:
     plan = CIOPlanStore().create_plan(
         situation_type="S7_WATCH_PROMOTION",
         symbols=[sym],
-        title=f"Options thesis research: {sym} {str(p.get('strategy') or '').replace('_', ' ')}",
+        title=(f"CIO follow-up research: {sym}" if questions else
+               f"Options thesis research: {sym} {str(p.get('strategy') or '').replace('_', ' ')}"),
         summary="Options thesis is missing catalysts, exit criteria or a thesis. Operator rule 2026-09-26: "
                 "an incomplete thesis starts research, it does not sit.",
         options=[{"id": "research", "label": "Fill the thesis gaps", "pros": "Decision possible", "cons": "Research spend"},
@@ -58,7 +59,7 @@ def request_research(p: dict) -> dict:
         return {"ok": False, "error": "no_plan_id"}
     out = emit_research_for_plan({**plan, "hermes_requested": True}, reason="options_thesis_gap",
                                  priority=settings(load_desk_config())["research_priority"],
-                                 questions=research_questions(p), actor_id="options_thesis_lifecycle")
+                                 questions=questions or research_questions(p), actor_id="options_thesis_lifecycle")
     out = dict(out) if isinstance(out, dict) else {}
     out["plan_id"] = plan["plan_id"]
     return out

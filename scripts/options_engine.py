@@ -2552,7 +2552,10 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
         # decision already on file feed this version instead of starting blank.
         guid = p.get("option_strategy_guid")
         life = store.lifecycle(guid) if guid else {}
-        p["research_answers"] = ((life.get("research") or {}).get("answers")) or {}
+        p["research_answers"] = dict(((life.get("research") or {}).get("answers")) or {})
+        fc = life.get("followup_complete") or {}
+        if fc.get("answers"):
+            p["research_answers"]["followup"] = fc["answers"]
         dec = life.get("decision") or {}
         if dec:
             p["cio_decision"] = {"decision_guid": dec.get("decision_guid"), "outcome": dec.get("outcome"),
@@ -2561,9 +2564,21 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
         if life.get("abandoned"):
             p["thesis_abandoned"] = (life["abandoned"].get("reason") or "abandoned")
         req = life.get("research_request") or {}
+        fu = life.get("followup") or {}
         p["lifecycle"] = {
             "stage": life.get("stage"),
             "timeline": life.get("timeline") or [],
+            "followup": ({
+                "deliverables": [q.get("text") for q in (fu.get("deliverables") or [])],
+                "requested_at": fu.get("recorded_at"),
+                "due_at": fu.get("due_at"),
+                "for_decision": fu.get("for_decision"),
+                "delivered": bool(fc) and str(fc.get("recorded_at") or "") > str(fu.get("recorded_at") or ""),
+                "research_queue": (queue_position(_proj, fu.get("research_id"), _life_settings(_desk_cfg()))
+                                   if fu.get("research_id") else None),
+            } if fu else None),
+            "decisions": [{"decision_guid": d.get("decision_guid"), "outcome": d.get("outcome"),
+                           "at": d.get("recorded_at")} for d in (life.get("decisions") or [])],
             "research_queue": (queue_position(_proj, req.get("research_id"), _life_settings(_desk_cfg()))
                                if req.get("research_id") and not life.get("research") else None),
         }

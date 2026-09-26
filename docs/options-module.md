@@ -80,6 +80,16 @@ advances each thesis. Ideas that carry liquidity or enterprise blocks are skippe
 Config: `options_desk_settings.options_thesis_lifecycle` (`abandon_after_hours` 48,
 `research_rerequest_hours` 24, `cio_review_mode: live`, `max_reviews_per_run` 6, `review_max_tokens` 2500 — 1200 truncated the first live reviews).
 
+### After a CIO decision (continuous, 2026-09-26)
+- **MORE_RESEARCH** is an assignment, not an end state: the next lifecycle run requests follow-up
+  research whose questions are the CIO's own unknowns/concerns (up to `max_deliverables` 5), due in
+  `followup_due_hours` (24). When delivered, the CIO reviews again and issues a **new Decision GUID**
+  (`supersedes` links the previous one). Not delivered by the due time, or more than
+  `max_followup_rounds` (2) follow-ups, archives the idea with the reason.
+- **MONITOR_ONLY** re-reviews automatically after `monitor_recheck_hours` (24).
+- **REJECT** is final. **APPROVE** waits for the operator (Validate within 30 min, approve, 2FA).
+- The card shows the deliverables, due time, research-queue position/ETA and the decision history.
+
 ### CIO review
 
 `scripts/lib/options_cio_review.py`: agent `alex` via `llm_router` task `cio_synthesis`
