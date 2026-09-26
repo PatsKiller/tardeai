@@ -73,6 +73,90 @@ def _age_hours(as_of: str | None) -> float | None:
         return None
 
 
+def _age_label(age_h: float | None) -> str:
+    if age_h is None:
+        return "missing"
+    if age_h < 1.0:
+        return f"{int(round(age_h * 60))}m"
+    return f"{age_h:.1f}h"
+
+
+def _held_positions_by_symbol() -> dict[str, list[dict[str, Any]]]:
+    """symbol -> every account row with qty > 0 (holdings.json store of record).
+
+    The card's single-row map collapsed two SCHD accounts to one (last row
+    wins), so the operator saw 0.2508 IRA shares and not the taxable lot.
+    """
+    path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
+    out: dict[str, list[dict[str, Any]]] = {}
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return out
+    rows = doc.get("holdings") or doc.get("positions") or []
+    for r in rows if isinstance(rows, list) else []:
+        if not isinstance(r, dict) or not r.get("symbol"):
+            continue
+        qty = _f(r.get("shares", r.get("quantity")))
+        if qty is None or qty <= 0:
+            continue
+        out.setdefault(str(r["symbol"]).upper(), []).append({
+            "account": r.get("account") or r.get("account_id"),
+            "qty": qty,
+            "market_value": _f(r.get("market_value")),
+            "as_of": r.get("as_of") or r.get("updated_at"),
+        })
+    return out
+
+
+def _wash_evidence(db_query: Callable, symbols: list[str], wash_until: dict[str, str]) -> dict[str, dict[str, Any]]:
+    """Per symbol: FIFO realized gain of the last taxable sell and acquisitions
+    (any account) inside ±WASH_DAYS of it. Read-only; abstains when lots are
+    insufficient."""
+    from scripts.lib.decision_integrity import classify_wash, fifo_realized_gain
+
+    rows = db_query(
+        """SELECT upper(symbol) AS symbol, trade_date, trade_time, action, quantity, price, amount, fees, account
+           FROM trade_transactions
+           WHERE upper(symbol) = ANY(%s)
+           ORDER BY trade_date, trade_time""",
+        (symbols,),
+    ) or []
+    by_sym: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        by_sym.setdefault(str(r.get("symbol") or "").upper(), []).append(dict(r))
+    out: dict[str, dict[str, Any]] = {}
+    for sym in symbols:
+        txs = by_sym.get(sym) or []
+        taxable = [t for t in txs if not any(k in str(t.get("account") or "").lower() for k in ("paper", "roth", "ira"))]
+        sells = [t for t in taxable if str(t.get("action") or "").lower().startswith("sell")]
+        if not sells:
+            continue
+        last_sell = sells[-1]
+        sell_date = str(last_sell.get("trade_date") or "")[:10]
+        gain = fifo_realized_gain(taxable, sell_date=sell_date)
+        try:
+            sd = datetime.fromisoformat(sell_date).date()
+            lo, hi = sd - timedelta(days=WASH_DAYS), sd + timedelta(days=WASH_DAYS)
+            acq = [
+                {"trade_date": str(t.get("trade_date"))[:10], "account": t.get("account"),
+                 "quantity": _f(t.get("quantity")), "price": _f(t.get("price"))}
+                for t in txs
+                if str(t.get("action") or "").lower().startswith("buy")
+                and lo <= datetime.fromisoformat(str(t.get("trade_date"))[:10]).date() <= hi
+            ]
+        except Exception:
+            acq = []
+        out[sym] = classify_wash(
+            last_taxable_sell_date=sell_date,
+            realized_gain=gain.get("realized_gain"),
+            evidence=str(gain.get("evidence") or ""),
+            acquisitions_within_30d=acq,
+        )
+        out[sym]["fifo"] = gain
+    return out
+
+
 def _weekend_fresh_ok(age_h: float | None, *, stale_hours: float = STALE_HOURS) -> bool:
     """True when quote is within stale_hours, or is a Friday RTH print held over Sat/Sun.
 
@@ -625,6 +709,7 @@ def build_decision_desk(
     resistance_pref = _pref_json(db_query, RESISTANCE_KEY)
     resistance_map = resistance_pref.get("symbols") or {}
     held = _held_symbols()
+    held_positions = _held_positions_by_symbol()
 
     if not symbols:
         sym_set = {str(s).upper() for s in resistance_map if s}
@@ -731,6 +816,17 @@ def build_decision_desk(
         except Exception:
             wash_until = {}
 
+    # Tax evidence (2026-09-25): the block above is a HOUSE hold on any taxable
+    # sell. Whether a wash-sale rule applies depends on the realized gain of
+    # that sell and on acquisitions in ANY account (IRA included) inside the
+    # window. Pull the rows once and let decision_integrity classify honestly.
+    wash_evidence: dict[str, dict[str, Any]] = {}
+    if wash_until:
+        try:
+            wash_evidence = _wash_evidence(db_query, list(wash_until), wash_until)
+        except Exception:
+            wash_evidence = {}
+
     today = datetime.now(timezone.utc).date().isoformat()
     rows_out: list[dict[str, Any]] = []
     for sym in symbols:
@@ -815,14 +911,17 @@ def build_decision_desk(
         rsi_ok = rsi is not None and RSI_READY_LOW <= rsi < RSI_READY_HIGH
         fresh_ok = _weekend_fresh_ok(age_h)
         gates = [
-            {"id": "fresh", "pass": fresh_ok, "label": "Fresh quote", "value": f"{age_h:.0f}h" if age_h is not None else "missing"},
+            # Exact age: "0h" hid an 18-minute print and would hide a 59-minute one.
+            {"id": "fresh", "pass": fresh_ok, "label": "Fresh quote", "value": _age_label(age_h)},
             {"id": "zone", "pass": bool(in_zone), "label": "Inside entry zone", "value": (
                 f"${price:.2f} in ${entry_low:.2f}–${entry_high:.2f}" if price and entry_low and entry_high and in_zone
                 else (f"{intel.get('distance_pct'):+.1f}% vs zone" if intel.get("distance_pct") is not None else "no zone")
             )},
             {"id": "rsi", "pass": bool(rsi_ok), "label": f"RSI {RSI_READY_LOW:.0f}–{RSI_READY_HIGH:.0f}", "value": f"{rsi:.1f}" if rsi is not None else "missing"},
             {"id": "not_held", "pass": sym not in held, "label": "Not currently held", "value": "held" if sym in held else "flat"},
-            {"id": "wash", "pass": not wash_blocked, "label": "Wash window clear", "value": wash_until.get(sym) or "clear"},
+            {"id": "wash", "pass": not wash_blocked,
+             "label": "House 30d hold after taxable sell" if wash_blocked else "Wash window clear",
+             "value": wash_until.get(sym) or "clear"},
         ]
         why = []
         if in_zone and price is not None and entry_low is not None and entry_high is not None:
@@ -845,7 +944,17 @@ def build_decision_desk(
         elif res_state == "ABOVE":
             why.append(f"Price has reclaimed resistance; hold {int(res.get('hold_days') or 0)} closed sessions.")
         if wash_blocked:
-            why.append(f"Taxable sell within {WASH_DAYS}d — wash blocked until {wash_until.get(sym)}.")
+            _we = wash_evidence.get(sym) or {}
+            _wk = _we.get("kind")
+            if _wk == "HOUSE_HOLD_NO_LOSS":
+                why.append(f"House {WASH_DAYS}d re-entry hold after a taxable sell at a GAIN "
+                           f"(until {wash_until.get(sym)}); no wash-sale rule applies to a gain.")
+            elif _wk == "WASH_SALE_RISK_LOSS":
+                why.append(f"Taxable LOSS sale within {WASH_DAYS}d — wash-sale risk on any repurchase "
+                           f"(IRA included) until {wash_until.get(sym)}.")
+            else:
+                why.append(f"Taxable sell within {WASH_DAYS}d — house hold until {wash_until.get(sym)}; "
+                           "wash-sale status UNVERIFIED (lot basis not on file).")
         if not why:
             why.append(intel.get("reason") or "Insufficient broker evidence for a re-entry review.")
 
@@ -929,6 +1038,35 @@ def build_decision_desk(
             advisory = {**advisory, "action": _action_label("NEAR ENTRY")}
             chips.append({"tone": "amber", "label": "confirmations incomplete", "detail": gaps})
 
+        # DecisionIntegrity@v1 (2026-09-25): one deterministic validation before
+        # any surface renders this row as actionable. Price at/below the plan
+        # stop, a stale/undated plan, a stale quote, a held lot or a tax hold
+        # all suppress sizing/R:R/order language and relabel the levels.
+        integrity = None
+        try:
+            from scripts.lib import decision_integrity as _di
+            integrity = _di.validate(_di.Evidence(
+                symbol=sym, price=price, price_as_of=quote.get("as_of"), price_source=quote.get("source"),
+                entry_low=entry_low, entry_high=entry_high, stop=stop, target=target,
+                plan_id=plan.get("id"), plan_created_at=plan.get("created_at"),
+                price_at_plan=_f(plan.get("price_at_plan")),
+                plan_invalidation_text=(plan.get("plan") or {}).get("invalidation") if isinstance(plan.get("plan"), dict) else None,
+                rsi=rsi, atr=_f(ind.get("atr")),
+                positions=held_positions.get(sym) or ([{"account": None, "qty": None}] if sym in held else []),
+                wash=wash_evidence.get(sym) if wash_blocked else None,
+                confirmations_complete=advisory.get("confirmations_complete"),
+                confirmation_gaps=list(advisory.get("confirmation_gaps") or []),
+                earnings_date=earnings_map.get(sym),
+            ))
+            advisory = _di.suppress_mechanics(advisory, integrity)
+            if not integrity.get("actionable_mechanics"):
+                rr = None
+        except Exception as _di_err:  # noqa: BLE001 — never lose the row; say what failed
+            integrity = {"schema": "DecisionIntegrity@v1", "state": "MISSING_EVIDENCE",
+                         "actionable_mechanics": False, "reason_codes": ["VALIDATOR_ERROR"],
+                         "reasons": [{"code": "VALIDATOR_ERROR", "state": "MISSING_EVIDENCE",
+                                      "detail": f"{type(_di_err).__name__}: {str(_di_err)[:120]}"}]}
+
         rows_out.append({
             "symbol": sym,
             "price": price,
@@ -969,6 +1107,8 @@ def build_decision_desk(
             "gates": gates,
             "why": why,
             "advisory": advisory,
+            "integrity": integrity,
+            "positions": held_positions.get(sym) or [],
             "intel": {**intel, "chips": chips},
             "research_summary": None,
         })

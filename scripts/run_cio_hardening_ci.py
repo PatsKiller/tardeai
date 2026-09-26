@@ -2399,6 +2399,24 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-25 — SCHD decision integrity. One DecisionIntegrity@v1 result
+        # before an actionable-looking plan reaches Telegram/CIO/Watch/ticket/
+        # alert: price at/below stop suppresses mechanics and relabels the plan
+        # historical; exact quote age; operator-quoted price reconciled; every
+        # held account named; house 30d hold ≠ wash-sale; alert truth. Plus the
+        # release-grant binding (a grant authorizes only the release it names),
+        # the worker pin check, the watch-alert quote-freshness guard and the
+        # case recorder (dry run by default).
+        "schd_decision_integrity_20260925",
+        [
+            "tests/test_decision_integrity_schd_20260925.py",
+            "tests/test_release_grant_binding_20260925.py",
+            "tests/test_worker_pin_and_alert_freshness_20260925.py",
+            "tests/test_cio_entry_state_20260915.py",
+            "tests/test_operator_answers_use_house_facts_20260913.py",
+        ],
+    ),
+    (
         # 2026-09-25 — CIO cognition tranche 3: prompt event-driven cognition on
         # the existing bus/wake-store/dispatcher lane (cursor lands on the
         # newest handled event, singular `symbol` subjects, priority-FIFO
