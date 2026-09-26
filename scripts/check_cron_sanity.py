@@ -11,6 +11,7 @@ standalone checker and imported as a health_agent collector.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -72,6 +73,163 @@ def resolve_script_refs(crontab_text: str, project_root: Path) -> list[tuple[str
     return refs
 
 
+# ── P1 audit linters (2026-09-26) ─────────────────────────────────────────────
+# Findings measured on the live crontab (467 schedule lines) that this checker
+# did not see because it only tested that scripts/*.py files exist:
+#   R-02  three CURRENT crons run a RELATIVE `.venv/bin/python` inside a release
+#         that ships no .venv (rsync excludes it since 2026-09-25) -> `flock:
+#         failed to execute .venv/bin/python`, next failure Sun 09:00 ET.
+#   R-05  alpaca_stop_manager.py scheduled on two lines with different locks
+#         (one with none), colliding at 09:00/10:00 -> concurrent broker stop
+#         mutations possible.
+#   R-10  a line with no `cd` runs a relative scripts/ path from $HOME (fails
+#         32x/day); `python3 -c "..."` one-liners whose inner double quotes end
+#         the shell string (NameError every run).
+# All checks are pure functions of the crontab text plus an injectable
+# `exists` predicate so tests never touch the host.
+
+_CRON_VAR_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)=(.*)$")
+_CD_RE = re.compile(r"\bcd\s+(\S+)")
+_REL_PY_RE = re.compile(r"(?<![\w/.$])(\.venv/bin/python3?|python3?)\s+(scripts/[\w./-]+\.py)")
+_FLOCK_RE = re.compile(r"flock\s+(?:-[a-zA-Z]+\s+)*(\S+)")
+_SCRIPT_RE = re.compile(r"scripts/[\w/-]+\.py")
+_MUTATING_FLAGS = ("--apply", "--repair-oco", "--execute", "--write", "--place")
+_BROKER_TOUCHING = ("stop", "order", "oco", "schwab", "alpaca", "broker", "moomoo", "position_sync")
+
+
+def cron_env(crontab_text: str) -> dict[str, str]:
+    """Variable assignments at the top of a crontab (PROJ=, PY=, ...)."""
+    env: dict[str, str] = {}
+    for line in crontab_text.splitlines():
+        m = _CRON_VAR_RE.match(line.strip())
+        if m and not line.strip().startswith("#"):
+            env[m.group(1)] = m.group(2).strip().strip('"').strip("'")
+    return env
+
+
+def _expand(value: str, env: dict[str, str]) -> str:
+    out = value
+    for k, v in env.items():
+        out = out.replace(f"${{{k}}}", v).replace(f"${k}", v)
+    return os.path.expanduser(out.replace("$HOME", os.path.expanduser("~")))
+
+
+def _schedule_lines(crontab_text: str) -> list[tuple[int, str]]:
+    rows = []
+    for i, line in enumerate(crontab_text.splitlines(), 1):
+        s = line.strip()
+        if not s or s.startswith("#") or _CRON_VAR_RE.match(s):
+            continue
+        rows.append((i, s))
+    return rows
+
+
+def _cd_target(line: str, env: dict[str, str]) -> str | None:
+    m = _CD_RE.search(line)
+    return _expand(m.group(1), env) if m else None
+
+
+def check_relative_interpreters(crontab_text: str, *, exists=os.path.exists) -> list[dict]:
+    """R-02: a relative interpreter (`.venv/bin/python`) must exist under the line's cwd."""
+    env = cron_env(crontab_text)
+    out = []
+    for n, line in _schedule_lines(crontab_text):
+        cwd = _cd_target(line, env)
+        for m in _REL_PY_RE.finditer(line):
+            interp = m.group(1)
+            if not interp.startswith(".venv"):
+                continue
+            base = cwd or os.path.expanduser("~")
+            target = os.path.join(base, interp)
+            if not exists(target):
+                out.append({
+                    "category": "execution_health", "type": "cron_interpreter_missing",
+                    "severity": "warning", "line": n,
+                    "message": (f"cron line {n}: relative interpreter {interp} does not exist under "
+                                f"{base} — use $PY or ship a venv ({line[:100]})"),
+                })
+    return out
+
+
+def check_relative_paths_without_cd(crontab_text: str) -> list[dict]:
+    """R-10: a relative scripts/ path with no `cd` runs from $HOME."""
+    out = []
+    for n, line in _schedule_lines(crontab_text):
+        if _CD_RE.search(line):
+            continue
+        if re.search(r"(?<![\w/])scripts/[\w./-]+\.(?:py|sh)", line) and "$PROJ/scripts" not in line \
+                and "/scripts/" not in line.split("scripts/", 1)[0][-1:] + "x":
+            # relative reference and no absolute prefix immediately before it
+            if re.search(r"(^|\s)scripts/", line):
+                out.append({
+                    "category": "execution_health", "type": "cron_relative_path_no_cd",
+                    "severity": "warning", "line": n,
+                    "message": f"cron line {n}: relative scripts/ path with no `cd` — runs from $HOME ({line[:100]})",
+                })
+    return out
+
+
+def check_shared_script_locks(crontab_text: str, *, mutating_only: bool = True) -> list[dict]:
+    """R-05: one mutating script on several lines must share ONE flock lock."""
+    by_script: dict[str, list[tuple[int, str | None]]] = {}
+    for n, line in _schedule_lines(crontab_text):
+        scripts = set(_SCRIPT_RE.findall(line))
+        if not scripts:
+            continue
+        if mutating_only and not any(f in line for f in _MUTATING_FLAGS):
+            continue
+        m = _FLOCK_RE.search(line)
+        lock = m.group(1) if m else None
+        for sc in scripts:
+            if sc.endswith(("market_day_gate.sh", "safe_flock.sh", "llm_priority_guard.sh")):
+                continue
+            by_script.setdefault(sc, []).append((n, lock))
+    out = []
+    for sc, rows in by_script.items():
+        if len(rows) < 2:
+            continue
+        locks = {lock for _, lock in rows}
+        if len(locks) > 1 or None in locks:
+            # Broker/stop/order-touching scripts overlapping is a safety defect;
+            # other overlaps (digest vs notify, --type fan-out) are reported as info.
+            broker = any(k in sc.lower() for k in _BROKER_TOUCHING)
+            out.append({
+                "category": "execution_health", "type": "cron_shared_script_lock_conflict",
+                "severity": "warning" if broker else "info", "lines": [n for n, _ in rows],
+                "message": (f"{sc} is scheduled on lines {[n for n, _ in rows]} with locks "
+                            f"{sorted(str(lk) for lk in locks)} — mutating runs can overlap; use one lock"),
+            })
+    return out
+
+
+def check_inline_python_quoting(crontab_text: str) -> list[dict]:
+    """R-10: `python3 -c "..."` whose body contains unescaped double quotes."""
+    out = []
+    for n, line in _schedule_lines(crontab_text):
+        m = re.search(r"python3?\s+-c\s+\"(.*)$", line)
+        if not m:
+            continue
+        body = m.group(1)
+        # the closing quote plus any inner unescaped quote means the shell string ended early
+        inner = body.rstrip().rstrip(";")
+        closing = inner.rfind('"')
+        if closing > 0 and '"' in inner[:closing].replace('\\"', ""):
+            out.append({
+                "category": "execution_health", "type": "cron_inline_python_quoting",
+                "severity": "warning", "line": n,
+                "message": f"cron line {n}: python -c body contains unescaped double quotes — the shell string ends early ({line[:100]})",
+            })
+    return out
+
+
+def lint_crontab(crontab_text: str, *, exists=os.path.exists) -> list[dict]:
+    """All P1 linters over one crontab text (pure; used by tests and by check())."""
+    return (check_relative_interpreters(crontab_text, exists=exists)
+            + check_relative_paths_without_cd(crontab_text)
+            + check_shared_script_locks(crontab_text)
+            + check_inline_python_quoting(crontab_text))
+
+
 def check() -> list[dict]:
     """Return findings list (health_agent collector format).  Empty = clean."""
     findings = []
@@ -111,6 +269,7 @@ def check() -> list[dict]:
                            f"({'…' + cron_line[-80:] if len(cron_line) > 80 else cron_line})",
             })
 
+    findings.extend(lint_crontab(proc.stdout))
     return findings
 
 
