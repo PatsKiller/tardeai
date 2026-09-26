@@ -2491,6 +2491,16 @@ GATES = [
          "tests/test_option_spot_freshness_20260926.py",
          "tests/test_iv_history_depth_20260926.py"],
     ),
+    (
+        # 2026-09-26 -- Drive sync: dated top-level docs files no longer purged + re-uploaded
+        # hourly; config/strategies/_archive excluded by rule; redacted options runtime export
+        # (no account names, no dollar amounts) mirrored under runtime/options/ and preserved.
+        "drive_sync_options_export_20260926",
+        [
+            "tests/test_drive_sync_purge_20260926.py",
+            "tests/test_options_runtime_export_20260926.py",
+        ],
+    ),
 ]
 
 
