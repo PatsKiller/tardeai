@@ -20,7 +20,7 @@ Measured at: efcc51365 / not measured
 | Risk Agent | 🛡️ Risk | Risk management / stop coverage / portfolio heat | gemma3:12b (local) | Trade AI LLM | */10-15 via agent job worker | advisory |
 | Tax Agent (Ledger) | 💰 Tax | Tax optimization / Roth conversion / harvest | gemma3:12b (local) | Trade AI LLM + Wave-3 | */10-15 via agent job worker | advisory |
 | Alex | 👔 Alex | Chief Investment Officer | DeepSeek V4 Pro (PRO) / V4 Flash (FAST) | OpenClaw + Trade AI Wave-3 (SHADOW) | 30-min heartbeat + 5-min wake worker + scheduled briefs | READ_ONLY_ADVISORY |
-| Aegis | 🏛️ Aegis | Portfolio surveillance / overnight analysis | gemma3:27b (overnight) | Trade AI LLM + OpenClaw | Overnight 8 PM + surveillance 8 AM + social 11/3 PM + nightly 7 PM + synthesis 9 PM + transcript 9 AM + brief 8:05 AM | advisory |
+| Aegis | 🏛️ Aegis | Portfolio surveillance / overnight analysis; advisory options-card review | Governed cloud (`lib/governed_cloud_generation`); options reviews on `ensemble.options_lanes` (grok, chatgpt, deepseek-flash) — no local lane (verified 2026-09-26) | Trade AI LLM + OpenClaw | Overnight 8 PM (aegis-overnight.timer) + surveillance 8 AM + social 11/3 PM + nightly 7 PM + synthesis 8 PM + transcript 9 AM (8:05 AM brief cron retired 2026-09-14 as a duplicate) | advisory |
 | Iris | 📚 Iris | Intelligence librarian / RAG coverage / taxonomy | gemma3:12b (local) | Trade AI LLM + OpenClaw | Weekly Sun 10 AM + daily gap 7 AM | advisory |
 | Morgan | 🏦 Morgan | Chief Wealth Officer — total financial life planning | Ollama gemma3:12b | Trade AI Wave-3 + OpenClaw | CIO scheduled briefs + material changes + behavioral flags | READ_ONLY_ADVISORY (SHADOW) |
 | Social Scalp | 📡 Social Scalp | Social mention scanner / GO-WAIT-AVOID | gemma3:12b (local) | Trade AI LLM | Part of scalp pipeline | advisory |
@@ -97,7 +97,7 @@ Measured at: efcc51365 / not measured
 - **Tasks:** Overnight surveillance, portfolio briefs, social sentiment, transcript discovery, synthesis
 - **Output tables:** aegis_portfolio_briefs
 - **RACI:** R for overnight surveillance, morning brief delivery
-- **Cron:** aegis_overnight (8 PM), aegis_surveillance (8 AM), aegis_social_sentiment (11/3 PM), aegis_transcript_discovery (9 AM), aegis_synthesis (9 PM), aegis_nightly_ingestion (7 PM), aegis_morning_brief_delivery (8:05 AM)
+- **Cron:** aegis_overnight (8 PM), aegis_surveillance (8 AM), aegis_social_sentiment (11/3 PM), aegis_transcript_discovery (9 AM), aegis_synthesis (8 PM, off-peak DeepSeek wrapper; verified in crontab 2026-09-26), aegis_nightly_ingestion (7 PM); aegis_morning_brief_delivery (8:05 AM) retired 2026-09-14 as a duplicate sender
 - **OpenClaw:** ~/.openclaw/agents/aegis/
 
 ### Iris (Intelligence Librarian)

@@ -109,6 +109,22 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 - **brokers/trading-environments.md** · **alpaca-live-accounts.md** · **tradingview-lanes.md** · **_findings/alpaca_taxonomy_audit_2026-07-21.md** — D1 keys `tradeai_automated` / `alpaca_taxable_live` / `alpaca_ira_live`; audit + TV lanes.
 
 
+### Options Desk (2026-09-26)
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/options-module.md` | **Canonical** — current proposal flow (income screen → enterprise gates → options thesis + lifecycle → CIO review → Schwab Validate → operator approval → per-order 2FA), gates/thresholds with config keys, API routes | Active (canonical, 2026-09-26) |
+| `docs/OPTIONS_LIFECYCLE_DESK.md` | Open-position management (lifecycle desk) | Active |
+| `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Broker routing labels + manual-execution logging; defers to options-module.md for the proposal path | Active |
+| `docs/OPTIONS_STRATEGY_PIPELINE.md` | Alpaca paper strategy lane — **training only** | Active (training only) |
+| `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First-position runbook; Alpaca path is training only, live goes through the desk flow | Active (training-only note 2026-09-26) |
+| `docs/audits/OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md` | Executive audit + **resolution addendum 2026-09-26** | Active |
+| `docs/audits/OPTIONS_DESK_ARCHITECTURE_MAP_2026-09-25.md` · `OPTIONS_DESK_GOVERNANCE_MEMORY_AUDIT_2026-09-25.md` · `OPTIONS_DESK_STAGES_2_5_2026-09-25.md` · `OPTIONS_DESK_RECOMMENDATION_SPEC_2026-09-25.md` | 2026-09-25 audit set (findings unchanged; see addendum) | Active |
+| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Generated risk-block matrix | Generated |
+| `docs/plan-options-desk-holdings-strategies-20260924.md` | 2026-09-24 plan | Historical (superseded 2026-09-26 by options-module.md) |
+| `docs/options-desk-operator-contract-20260924.md` | 2026-09-24 operator contract skim | Historical (superseded 2026-09-26 by options-module.md) |
+| `docs/_findings/OPTIONS_LIFECYCLE_DESK_DIAGNOSIS_2026-07-19.md` | 2026-07-19 lifecycle desk truth audit | Historical (superseded 2026-09-26 by options-module.md) |
+
 ### Security & Safety
 | Document | Purpose | Status |
 |----------|---------|--------|
@@ -166,7 +182,7 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 | `docs/BROKER_PROPOSALS_UI.md` | **Broker Proposals live desk** — thesis validity bar, refresh/recalibrate, account picker, cloud oversight | Active (2026-06-24) |
 | `docs/PRIVATE_COMPANY_PROXY.md` | **Private-company → public-proxy GRAPH** — discover/score/rank public proxies for un-buyable private targets (Anthropic→ZM+graph); advisory, no live path | Active (2026-07-07) |
 | `docs/COMMAND_CENTER_RISK_VISUALIZATIONS.md` | **Risk visualization layer** — Recharts components, hub integration map, library roadmap | Active (2026-06-24) |
-| `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options desk execution labels — same auto vs manual split as equity proposals | Active (2026-06-24) |
+| `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options desk execution labels — same auto vs manual split as equity proposals; proposal path defers to `docs/options-module.md` | Active (updated 2026-09-26) |
 | `docs/design/OCO_ATM_UNIFICATION_DESIGN.md` | **OCO brackets + ATM↔proposals unification** — Alpaca native OCO / Schwab API OCO (2FA) / Fidelity manual; auto-bracket at fill; §11 DD hardening (OCO_REPLACING + read-back + repair supervisor, reconciler `--fix` DB-only vs `--apply-oco-retrofit`, qty fail-closed) | **Partially implemented** — paper P1+P2 live + DD-hardened (2026-06-30); Schwab P3 staged inert (`OCO_BRACKETS_SCHWAB` off); P4/P5 pending |
 | `docs/design/REDEPLOY_DESK_INSTITUTIONAL_DESIGN.md` | **Redeploy Desk v2** — institutional post-sale capital-allocation workbench: exposure decomposition, competing plans A–G, entry staging, scenarios, export trade plan, monitoring; operator policy + implementation-truth matrix (§0); FCNTX #144 fixture | **REOPENED** (2026-07-13) — Phase A–E infrastructure on main; analytics + full-page UI rebuild in progress; NOT complete |
 | `docs/audits/REDEPLOY_FIXTURE_AUDIT_2026-07-13.md` | **P0 fixture-pollution audit** — Phase E test committed synthetic JEPQ fills to production event #144 (false 3% restoration); 8 contaminated locations; guards + quarantine shipped; gated cleanup transaction | **Open** — cleanup awaits operator approval |

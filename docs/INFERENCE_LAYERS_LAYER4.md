@@ -58,8 +58,13 @@ signal, 16 inferences in run #3. `/api/v2/inference/latest` serves them.
 
 ## Multi-LLM ensemble validator (`scripts/inference_ensemble.py`)
 
-A real hybrid ensemble over the **free lanes only** — grok (xAI-OAuth proxy :8645) + chatgpt (codex-OAuth
-proxy :8646) + local gemma, via `llm_lane.py`. **No metered keys, no anthropic/xai/ollama SDKs** (the
+An ensemble over grok (xAI-OAuth proxy :8645) + chatgpt (codex-OAuth proxy :8646), via `llm_lane.py`.
+**Current lanes (2026-09-26):** `config/inference_layers.yaml` `ensemble.lanes: [grok, chatgpt]` (free, general
+use); `ensemble.options_lanes: [grok, chatgpt, deepseek-flash]` for options proposal reviews only, carried on each
+job row — `deepseek-flash` is metered, capped by `config/llm_process_registry.json` `options_ensemble`
+(`daily_cost_cap_usd` 0.5). No local/Gemma lane is configured (the code default `["grok","chatgpt","local"]` in
+`scripts/inference_ensemble.py` applies only when the YAML has no `lanes` key). The 2026-06-21 text below
+describes the original three-lane design. **No metered keys, no anthropic/xai/ollama SDKs** (the
 pasted "ensemble" that used `ANTHROPIC_API_KEY`/`XAI_API_KEY` + uninstalled SDKs was rejected — it violated
 the iron LLM policy).
 

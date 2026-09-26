@@ -101,7 +101,8 @@ def handle_inference(path: str, method: str = "GET", body: dict = None, query: d
                         raw_lanes = [x.strip() for x in raw_lanes.split(",") if x.strip()]
                 if isinstance(raw_lanes, (list, tuple)):
                     picked = [str(ln).strip().lower() for ln in raw_lanes
-                              if str(ln).strip().lower() in ("grok", "chatgpt", "local")]
+                              # OAuth lanes + DeepSeek; no local model (operator 2026-09-26)
+                              if str(ln).strip().lower() in ("grok", "chatgpt", "deepseek-flash")]
                     lanes_json = json.dumps(picked) if picked else None
             row = _db_write(
                 """INSERT INTO inference_ensemble_jobs

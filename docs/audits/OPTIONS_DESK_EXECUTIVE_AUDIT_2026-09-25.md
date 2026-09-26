@@ -83,3 +83,21 @@ The enhancement is ready for implementation sign-off when:
 - [Portfolio re-entry desk](../features/PORTFOLIO_REENTRY_DESK.md)
 - [CIO authority](../cio/AUTHORITY.md)
 
+
+## Resolution addendum 2026-09-26
+
+Findings above are unchanged. This records which code on `main` (as of 2026-09-26) addresses them.
+Current flow and thresholds: [docs/options-module.md](../options-module.md) ("Current flow (2026-09-26)").
+
+| Finding | Status 2026-09-26 | Code |
+|---|---|---|
+| P0 stock-versus-options comparison | Implemented, advisory: attached to each proposal row as `recommendation_comparison` | `scripts/lib/recommendation_comparison.py` (b3a859043), `scripts/api_v2.py` proposals route |
+| P1 strategy validation distributed | Partly: income screen now applies the liquidity gate's thresholds before a card is built (covered calls, CSPs, credit spreads); registry still lists all strategies `live_enabled: false`. A single validation matrix is not built | `scripts/lib/options_income_quality.py` (ee040e721, 910f82b15) |
+| P1 CIO review not distinct from model review | Resolved: CIO review issues APPROVE / REJECT / MORE_RESEARCH / MONITOR_ONLY with a Decision GUID in `cio_decisions` (`action_class` `options_thesis_review`); Aegis ensemble votes are labelled advisory and never count as a CIO decision; approval needs a CIO APPROVE (`awaiting_cio_decision` block) | `scripts/lib/options_cio_review.py`, `scripts/lib/options_thesis.py`, `scripts/lib/options_thesis_lifecycle.py` (9442d2a9f, fd36bed3b) |
+| P1 thesis and memory continuity | Resolved for options: `OptionsThesisRecord@v1` keyed by `option_strategy_guid`, append-only hash-chained `data/cio/options_theses.jsonl`, pinned symbol thesis; ticker CIO view on the card | `scripts/lib/options_thesis.py`, `scripts/lib/ticker_cio_view.py` (fd36bed3b, 9442d2a9f) |
+| P2 freshness/provenance fragmented | Partly: spot is the freshest dated price (max 96h) with the chain's underlying preferred and `price_source` on each proposal; IV history rank needs depth and span; Validate re-quotes from Schwab before approval | `scripts/options_engine.py` (4fb3ab416, 5797ac3bd), `scripts/lib/options_validate.py` (5484bf622) |
+| P2 overlapping state vocabulary | Partly: status pills + STATUS filters, plain-English explainer, "Not approvable" when thesis or enterprise blocks remain; Alpaca paper retired from the desk (training only) | `scripts/lib/options_plain_english.py`, `OptionProposalCardV4.tsx` (6f4c9d381, 9ec0a22df) |
+| Aegis lanes (related) | Options reviews run on `ensemble.options_lanes` (grok, chatgpt, deepseek-flash); no local/Gemma lane; reviews use house facts only | `config/inference_layers.yaml`, `scripts/options_engine.py` (630b0c50d, 9bda3bcc7) |
+
+Still open: a single strategy validation matrix (P1), recommendation-level provenance summary
+beyond price/IV (P2), and the Phase 5 served-release probes.

@@ -142,7 +142,7 @@ Keep reading legacy names during transition; **fail closed** if live URL + paper
 | Concern | paper | alpaca_taxable_live / alpaca_ira_live (future) |
 |---------|-------|-------------------------------------|
 | Equity submit | `alpaca_paper_adapter.py` | New `alpaca_live_adapter.py` (or factory) |
-| Options | `lib/options_pipeline/alpaca_paper.py` | Separate policy + flags; IRA restrictions |
+| Options | `lib/options_pipeline/alpaca_paper.py` — training only (operator rule 2026-09-26: never live, never acceptance, never alerts) | Separate policy + flags; IRA restrictions. Live options today go through the Schwab desk flow (`docs/options-module.md`) |
 | Path A gates | `proposal_paper_submitter.py` | Not reused blindly — new live gates + 2FA |
 | Path B pattern | N/A | Mirror Schwab: approval + audit + caps |
 | Account capabilities | `config/account_capabilities.json` → `alpaca_paper` | New keys + options/margin matrix |

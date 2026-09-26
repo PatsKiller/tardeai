@@ -15,7 +15,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/A1A.md` | A1A Documentation Protocol (Authoritative) | active_keep | OK | `18ef2a6322cf` |
 | `docs/AGENT_AND_HERMES_WORKFLOWS.md` | Agent & Hermes Workflows | review_required | OK | `493f51c193ed` |
 | `docs/AGENT_PAGES_DETAIL.md` | Agent Pages — Detailed Function Matrix | review_required | OK | `c52bb8ece19f` |
-| `docs/AGENT_ROSTER.md` | Trade AI v12 — Agent Roster | review_required | OK | `e1ee476f64f8` |
+| `docs/AGENT_ROSTER.md` | Trade AI v12 — Agent Roster | review_required | OK | `18d7b6acdc41` |
 | `docs/AI_TRADE_CRITIQUE.md` | AI Trade Critique — Persistence & System Integration | review_required | OK | `a36de70f5d2c` |
 | `docs/ALERT_INCIDENT_RESOLUTION.md` | Alert Incident Resolution | review_required | OK | `642fbc9ee5b0` |
 | `docs/APPENDIX_E_SCRIPT_ROUTING_MATRIX.md` | Appendix E — Initial Script Routing Matrix | review_required | OK | `1bf4f69d9156` |
@@ -24,7 +24,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/BROKER_TRADE_PLAN_GATE.md` | Broker Trade Plan Gate — No Gambling on Generic 2×R | review_required | OK | `e73e70a22a5c` |
 | `docs/CC_V3_ACTIONABILITY_SPRINT_20260702.md` | CC v3 Actionability Sprint — Layered Document | review_required | OK | `26d05fe916e7` |
 | `docs/CC_V3_HOME_TRUST_HARDENING_20260726.md` | CC v3 Home Trust Hardening — 2026-07-26 | review_required | OK | `401363e962e2` |
-| `docs/CHANGELOG.md` | Changelog | review_required | OK | `932c88d69abe` |
+| `docs/CHANGELOG.md` | Changelog | review_required | OK | `cf599be19bed` |
 | `docs/CHEAT_SHEET.md` | Trade AI v12 -- Operator Cheat Sheet | active_keep | OK | `5fbf6fb2ebe7` |
 | `docs/CIO_AS_IS_2026-09-19-1352.md` | CIO / AEC AS-IS — 2026-09-19 13:52 ET | review_required | OK | `ede8abe935f8` |
 | `docs/CIO_AS_IS_2026-09-20-0604.md` | CIO / AEC AS-IS — 2026-09-20 06:04 ET | review_required | OK | `0d40294364bc` |
@@ -44,7 +44,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/CURSOR_CLOUD_PLAIN_ENGLISH_STARTER_GUIDE.md` | Cursor Cloud Plain-English Starter Guide | review_required | OK | `c7ab9524a7e1` |
 | `docs/DAILY_OPS_LOG.md` | DAILY_OPS_LOG.md | review_required | OK | `80578251dbf0` |
 | `docs/DASHBOARD_AUDIT_WORKFLOW.md` | Dashboard Visual Audit — Operator Workflow | review_required | OK | `4f878d49e6a9` |
-| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `30de909eec6a` |
+| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `c58887fa762d` |
 | `docs/ENGINEERING_HARD_RULES.md` | Engineering Hard Rules (enforced) | review_required | OK | `c9798da3d1f2` |
 | `docs/ENGINE_ROOM_V1.md` | Engine Room v1 — Plumbing & Intake Hardening (2026-07-16) | review_required | OK | `c13ce7b7e784` |
 | `docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md` | Trade AI v12 — Executive Architecture Overview | review_required | OK | `84fd22510408` |
@@ -67,13 +67,13 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/HERMES_RESEARCH_BUDGET_POLICY.md` | Hermes Research Budget Policy | review_required | OK | `ae9354fd9306` |
 | `docs/HERMES_RESEARCH_LIFECYCLE_AND_SOURCE_RATINGS.md` | Hermes Research Lifecycle — Topics, LLM Engine, Website Cataloging & Ratings | review_required | OK | `fd127859cd19` |
 | `docs/HERMES_RESEARCH_SCOPE_AUDIT.md` | Hermes Research Scope Audit | review_required | OK | `b8e03bc8090d` |
-| `docs/INFERENCE_LAYERS_LAYER4.md` | Layer-4 Inference / Synthesis Engine | review_required | OK | `d10505bb19e7` |
+| `docs/INFERENCE_LAYERS_LAYER4.md` | Layer-4 Inference / Synthesis Engine | review_required | OK | `aad3d404f722` |
 | `docs/INTELLIGENCE_RATING_AND_LLM_STAGES_2026_06_04.md` | Article Quality Rating Framework + LLM Enhancement Stages — 2026-06-04 | review_required | OK | `cd922799d180` |
 | `docs/LIVE_SYSTEM_FACTS.md` | Live System Facts — Authoritative Counts | review_required | OK | `1c3dcee8a3af` |
 | `docs/LLM_DATA_DICTIONARY.md` | LLM Data Dictionary — How Data Flows to Every Model Call | review_required | OK | `1960a201f17b` |
 | `docs/LLM_FLEET_STRATEGY_v4_1_FINAL.md` | LLM Fleet Strategy v4.1 — Final Execution Revision | active_keep | OK | `c0f8815dff83` |
 | `docs/LLM_SPEND.md` | LLM and paid-API spend | review_required | OK | `e521d5cc3153` |
-| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Trade AI v12 -- Master System Documentation | active_keep | OK | `2225bc09d713` |
+| `docs/MASTER_SYSTEM_DOCUMENTATION.md` | Trade AI v12 -- Master System Documentation | active_keep | OK | `082be323d60f` |
 | `docs/MISSION_LOG_2026_07_04_05.md` | Mission Log — 2026-07-04/05 (Due Diligence · Discovery Inbox · Incident Sweep) | review_required | OK | `424f1859cb37` |
 | `docs/MOMENTUM_SCALP_REGIME_DETECTION_ALGORITHM.md` | Momentum Scalp Regime Detection Algorithm | review_required | OK | `32c77f1fbc37` |
 | `docs/MOMENTUM_SCALP_STOP_AND_TRAIL_POLICY.md` | Momentum Scalp — Stop & Trailing-Stop Policy | review_required | OK | `354954d22052` |
@@ -81,9 +81,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/MONDAY_BURNIN_CHECKLIST.md` | Monday ATM Burn-In Checklist | review_required | OK | `362afe5ab3ac` |
 | `docs/OPERATOR_REPLY_ROUTING.md` | Operator reply routing — every path from a free-text message to a sent reply | review_required | OK | `927fb91f6b5e` |
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator Runbook — LLM Fleet v4.1 Final Execution Pack | active_keep | OK | `22e1f1116a74` |
-| `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options & Broker Execution Flows | review_required | OK | `8b8b79559aae` |
-| `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `fc2991403d1b` |
-| `docs/OPTIONS_STRATEGY_PIPELINE.md` | Options Strategy Pipeline (paper-only lane) | review_required | OK | `035f6891f1c7` |
+| `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options & Broker Execution Flows | review_required | OK | `2e6811adec59` |
+| `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `7ad06fa60fcf` |
+| `docs/OPTIONS_STRATEGY_PIPELINE.md` | Options Strategy Pipeline (paper-only lane) | review_required | OK | `df23a95dcefe` |
 | `docs/PEER_REVIEW_PACKET_COMMAND_CENTER_PAGES.md` | Peer-Review Packet — Command Center v3 Intelligence Pages | review_required | OK | `3a0a0500f287` |
 | `docs/PHANTOM_ELIMINATION_BROKER_CONFIRMATION_DESIGN.md` | Phantom Elimination — Broker-Confirmation Gate (DESIGN, vendor-neutral) | review_required | OK | `0458a3ad1d4d` |
 | `docs/PRIVATE_COMPANY_PROXY.md` | Private-Company Proxy Graph | review_required | OK | `371d6bfc0777` |
@@ -134,7 +134,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_findings/INVERSE_HEDGE_TWODAY_PREREGISTRATION_2026-07-19.md` | Inverse-ETF Hedge — Two-Day Entry Rule: PRE-REGISTERED Backtest Specification | review_required | OK | `f723bf63fd7f` |
 | `docs/_findings/M3_S2_5_GATE_CLEARANCE_2026-07-27.md` | GATES CLEAR WITH CORRECTIONS | review_required | OK | `8a46256fad45` |
 | `docs/_findings/M3_S5_5_PROVIDER_ENTITLEMENT_2026-07-27.md` | M3-S5.5 — Provider Entitlement Proof & Observation Fabric (2026-07-27) | review_required | OK | `72265ea4b468` |
-| `docs/_findings/OPTIONS_LIFECYCLE_DESK_DIAGNOSIS_2026-07-19.md` | OPTIONS LIFECYCLE DESK — Phase 0 Read-Only Truth Audit | review_required | OK | `2db0ed3d3e02` |
+| `docs/_findings/OPTIONS_LIFECYCLE_DESK_DIAGNOSIS_2026-07-19.md` | OPTIONS LIFECYCLE DESK — Phase 0 Read-Only Truth Audit | review_required | OK | `024c647826cb` |
 | `docs/_findings/OPTIONS_LIFECYCLE_V1_1_INTEGRATION_AUDIT_2026-07-19.md` | Options Lifecycle v1.1 — Integration Audit (read-only, 2026-07-19) | review_required | OK | `657a3c374454` |
 | `docs/_findings/OPTIONS_V1_2_AND_COSTS_AUDIT_2026-07-19.md` | Options v1.2/v1.2.1 + Costs — Phase 0 Read-Only Truth Audit (2026-07-19) | review_required | OK | `2be7c2d6c3ba` |
 | `docs/_findings/P0_WORKING_TREE_IS_PRODUCTION_2026-07-29.md` | P0 — The working tree is production for ~130 execution paths | review_required | OK | `e7f22512083c` |
@@ -663,11 +663,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_v31_2026-07-14.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `5bd54a7f0c60` |
-| `docs/audits/OPTIONS_DESK_ARCHITECTURE_MAP_2026-09-25.md` | Options Desk Architecture Map — 2026-09-25 | review_required | OK | `8e58d31110ac` |
-| `docs/audits/OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md` | Options Desk Executive Audit — 2026-09-25 | review_required | OK | `d8f4de5076a7` |
-| `docs/audits/OPTIONS_DESK_GOVERNANCE_MEMORY_AUDIT_2026-09-25.md` | Options Desk Governance and Persistent Intelligence Audit — 2026-09-25 | review_required | OK | `3f07009d473e` |
-| `docs/audits/OPTIONS_DESK_RECOMMENDATION_SPEC_2026-09-25.md` | Options Desk Recommendation Enhancement Specification — 2026-09-25 | review_required | OK | `218a52091462` |
-| `docs/audits/OPTIONS_DESK_STAGES_2_5_2026-09-25.md` | Options desk stages 2–5 | review_required | OK | `41ed3a99a3bc` |
+| `docs/audits/OPTIONS_DESK_ARCHITECTURE_MAP_2026-09-25.md` | Options Desk Architecture Map — 2026-09-25 | review_required | OK | `28a27a5663fa` |
+| `docs/audits/OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md` | Options Desk Executive Audit — 2026-09-25 | review_required | OK | `6a53011e0c05` |
+| `docs/audits/OPTIONS_DESK_GOVERNANCE_MEMORY_AUDIT_2026-09-25.md` | Options Desk Governance and Persistent Intelligence Audit — 2026-09-25 | review_required | OK | `22d9d9f462de` |
+| `docs/audits/OPTIONS_DESK_RECOMMENDATION_SPEC_2026-09-25.md` | Options Desk Recommendation Enhancement Specification — 2026-09-25 | review_required | OK | `d9aff9e25f1f` |
+| `docs/audits/OPTIONS_DESK_STAGES_2_5_2026-09-25.md` | Options desk stages 2–5 | review_required | OK | `a894f56616df` |
 | `docs/audits/P101_RISK_PRODUCER_2026-08-28.md` | P10.1 — `risk_management.json` has a producer. It writes to the wrong tree. | review_required | OK | `ab3ccb5ebae0` |
 | `docs/audits/P85_FRESHNESS_FLIP_HELD_2026-08-28.md` | P8.5 — the freshness flip: **not applied** | review_required | OK | `ae8d52380901` |
 | `docs/audits/P91_WHERE_THE_MODEL_CALL_GOES_2026-08-28.md` | P9.1 — where does the model call go? | review_required | OK | `fe5e6124f0c7` |
@@ -797,7 +797,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/brokers/stage2b-write-pilot-spec.md` | Stage 2b — Schwab Write Pilot Spec (operator-approved parameters, 2026-06-12) | review_required | OK | `f2256bf6edd7` |
 | `docs/brokers/stage2c-protective-stops-spec.md` | Stage 2c — Protective Stops on Holdings (spec) | review_required | OK | `4b6c9d93874d` |
 | `docs/brokers/stop-management-architecture.md` | Stop Management Architecture (as-built) | review_required | OK | `f913678db261` |
-| `docs/brokers/trading-environments.md` | Trading Environments — Taxonomy & Configuration | review_required | OK | `1a28c5ad063a` |
+| `docs/brokers/trading-environments.md` | Trading Environments — Taxonomy & Configuration | review_required | OK | `179d88b9b732` |
 | `docs/brokers/tradingview-lanes.md` | TradingView Lanes (Alpaca multi-account era) | review_required | OK | `8b2d65b3e8d2` |
 | `docs/brokers/ui-card-contracts-schwab.md` | Broker Orders — UI Card Contracts (Phase 5) | review_required | OK | `5f78a07dc929` |
 | `docs/campaigns/m2-canary-20260907/LANE_G_OUTBOUND_GATEWAY.md` | Lane G — Outbound CANARY gateway path | review_required | MISSING HEADER | `a1bdaf30afe8` |
@@ -847,7 +847,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/TWO_WAY_CURATION_OPS_STATUS_2026-08-13.md` | Two-Way Watchlist Curation — Ops Status (2026-08-13) | review_required | OK | `cf6dc79d8253` |
 | `docs/cio/TWO_WAY_WATCHLIST_CURATION.md` | Two-Way Watchlist Curation | review_required | OK | `6154bc9debd1` |
 | `docs/cio/WAKE_TRACES_P5.md` | Phase P5 — Lightweight wake traces | review_required | OK | `b17c04bc59ed` |
-| `docs/consumption-monitoring.md` | LLM Consumption Monitoring (Command Center v3) | review_required | OK | `fb39d6b65c28` |
+| `docs/consumption-monitoring.md` | LLM Consumption Monitoring (Command Center v3) | review_required | OK | `b8a71308c99d` |
 | `docs/convergence/COMMAND_CENTER_CUTOVER_PLAN.md` | Command Center cutover plan | review_required | OK | `7d77edf9913d` |
 | `docs/convergence/CONTRACT_CHANGE_LOG.md` | Control-plane contract change log | review_required | OK | `5c2362bce8d1` |
 | `docs/convergence/CONTROL_PLANE_API_V1_1.md` | CONTROL_PLANE_API_V1.1 | review_required | OK | `82a64c09a88f` |
@@ -1499,7 +1499,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/operations/PHASE46C_SCHEDULED_JOB_HEALTH_UI_REPORT.md` | Phase 46C — Scheduled Job Health UI Report | review_required | OK | `c88717c8c453` |
 | `docs/operations/PHASE46D_SCHEDULED_JOB_HEALTH_SAFETY_AUDIT.md` | Phase 46D — Scheduled Job Health Safety Audit | review_required | OK | `b04a97b346bb` |
 | `docs/operations/PROMOTION_GATE_v1.md` | Promotion Gate v1 — Phase 10 (prepare-only) | review_required | OK | `0aa2bd3d8266` |
-| `docs/operations/SCHEDULED_JOBS_REFERENCE.md` | Trade AI v12 — Scheduled Jobs Reference | review_required | OK | `f38105ec0cda` |
+| `docs/operations/SCHEDULED_JOBS_REFERENCE.md` | Trade AI v12 — Scheduled Jobs Reference | review_required | OK | `6b01b69f665d` |
 | `docs/operations/WATCH_QUALITY_GOVERNANCE_2026-07-25.md` | Watch Quality Governance — 2026-07-25 | review_required | OK | `0191c9818079` |
 | `docs/operations/WATCH_QUALITY_PROJECTION_V2_2026-07-25.md` | Watch quality projection v2 — source-unit correction | review_required | OK | `ab142131545c` |
 | `docs/operations/overnight_activity_repair/00_README.md` | Overnight Activity Repair | current_phase_keep | OK | `7e5bcddb3828` |
@@ -1792,8 +1792,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/telegram_channel_diligence_20260916/05_COMMAND_CENTER_COVERAGE_GAPS.md` | Phase 5 — Command Center Coverage Gap Analysis | review_required | OK | `9eee88c6773b` |
 | `docs/ops/telegram_channel_diligence_20260916/06_IMPLEMENTATION_ROADMAP.md` | Phase 6 — Implementation Roadmap | review_required | OK | `8d2eb858f8d7` |
 | `docs/ops/telegram_channel_diligence_20260916/07_EXECUTION_PLAN.md` | Phase 7 — Execution Plan & Maturity Scorecard | review_required | OK | `c3ec2b72146f` |
-| `docs/options-desk-operator-contract-20260924.md` | Options Desk — operator contract (skim) | review_required | OK | `1414f01c42c5` |
-| `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `c5c94a4d61dc` |
+| `docs/options-desk-operator-contract-20260924.md` | Options Desk — operator contract (skim) | review_required | OK | `2b6cf11e6d35` |
+| `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `c189e25a1dab` |
 | `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | Phase 179A: Paper Trade Source Inventory | review_required | OK | `72664d5cf493` |
 | `docs/paper_trading/PHASE179C_CURRENT_PAPER_TRADE_STATISTICS_REPORT.md` | Phase 179C: Current Paper Trade Statistics Report | review_required | OK | `95ccbd19ce31` |
 | `docs/paper_trading/PHASE179D_STATISTICAL_READINESS_THRESHOLDS.md` | Phase 179D: Statistical Readiness Thresholds | review_required | OK | `cebd18783641` |
@@ -1802,7 +1802,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/paper_trading/PHASE186L_TRAILING_STOP_ALGORITHM_SPECIFICATION.md` | Phase 186L: Trailing Stop Algorithm Specification | review_required | OK | `4b3ba04029af` |
 | `docs/patches/2026-06-15_stage2b_intent_persistence_fix.md` | Stage 2b Schwab Pilot Hotfix — Intent Persistence Before Approval | review_required | OK | `0f35a94b1ef8` |
 | `docs/plan-openclaw-internal-first-integrity-20260923.md` | Plan: OpenClaw internal-first integrity (Maria → Trade-AI / Hermes before MODEL_GENERAL) | review_required | OK | `cc830e718f80` |
-| `docs/plan-options-desk-holdings-strategies-20260924.md` | Plan: Options Desk — holdings strategies · open legs · CIO fluency · goals · BUY_READY institutional packet | review_required | OK | `38f365c22cd1` |
+| `docs/plan-options-desk-holdings-strategies-20260924.md` | Plan: Options Desk — holdings strategies · open legs · CIO fluency · goals · BUY_READY institutional packet | review_required | OK | `056e7cde7fb6` |
 | `docs/plan-s-hollow-research-then-answer.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | delete_candidate_duplicate | OK | `5e9e634f7fa6` |
 | `docs/project/CI_EVIDENCE_LATEST.md` | CI Evidence — Release Readiness Proof | current_phase_keep | MISSING HEADER | `c681fe6477dd` |
 | `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_20260606.md` | Closed-Loop All-Trades Abstraction (2026-06-06) | current_phase_keep | OK | `82b9d6a350f7` |
@@ -2066,7 +2066,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/runbooks/DB_HANG_PREVENTION.md` | DB-induced dashboard hang — prevention & recovery | review_required | OK | `078bf2e6e7d1` |
 | `docs/runbooks/FINNHUB_KEY_ROTATION.md` | Finnhub API Key Rotation Runbook | review_required | OK | `b3f47d44596c` |
 | `docs/runbooks/KEY_ROTATION.md` | Key Rotation Runbook (2026-07-18) | review_required | OK | `986b4883e260` |
-| `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First Real Option Position — Acceptance Runbook (v1.1 Phase 10) | review_required | OK | `bb13ee87064a` |
+| `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First Real Option Position — Acceptance Runbook (v1.1 Phase 10) | review_required | OK | `0de9b8a462fb` |
 | `docs/runbooks/PLAYWRIGHT_ARTIFACTS_POLICY.md` | Playwright / visual-review artifact policy | review_required | OK | `fed6d1aae523` |
 | `docs/runbooks/post-sale-redeploy-sync-2026-07-14.md` | Post-Sale Redeploy Sync — 2026-07-14 | review_required | OK | `6fbb9d526d81` |
 | `docs/runbooks/protective-stop-integration-2026-06-30.md` | Protective Stop Integration Runbook — 2026-06-30 | review_required | OK | `5286e6a1ce61` |

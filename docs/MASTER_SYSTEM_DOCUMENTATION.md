@@ -385,7 +385,7 @@ When agents need more data, the system auto-responds:
 | **Maria** | RAG, sentiment, social, fused, peers, playbook, scans | watchlist_agent_results (BUY/HOLD/AVOID + narrative) | Re-analysis on gap-fill; debate on SEC insider buy | gemma3:12b (2-pass: sentiment + fundamentals) |
 | **Steph** | Portfolio state, allocation targets, income projections, sentiment | watchlist_agent_results (ADD/TRIM/HOLD + allocation review) | Escalation queue for concentration risk; INCOME_CRITICAL flag | gemma3:12b |
 | **Alex** | Roth conversion models, IRMAA thresholds, tax brackets, retirement RAG | Research reports, Roth ladder plans, monthly reviews | Auto-queued on SEC insider buy consensus; weekly/monthly research | gemma3:12b + Claude (complex) |
-| **Aegis** | All agent results, portfolio positions, overnight events | Morning briefs, synthesis reports, cross-agent coordination | Morning brief delivery; post-trade synthesis writeback | gemma3:12b |
+| **Aegis** | All agent results, portfolio positions, overnight events | Morning briefs, synthesis reports, cross-agent coordination; advisory options-card reviews | Morning brief delivery; post-trade synthesis writeback | Governed cloud (`lib/governed_cloud_generation`); options reviews on `ensemble.options_lanes` (grok, chatgpt, deepseek-flash), no local lane (2026-09-26) |
 | **Iris** | Content freshness, RAG coverage, duplicate detection, entity staleness | Hygiene proposals, CONTENT_GAP events, taxonomy proposals | CONTENT_GAP → auto-search; hygiene escalations to John | gemma3:12b (classification) |
 | **Scalp Critic** | Incubator candidates, catalyst data, technicals, news/social | llm_screen_grade (A-F), verdict (PROMOTE/HOLD/DROP) | Gates incubator → proposal promotion | gemma3:12b |
 

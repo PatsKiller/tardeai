@@ -13,9 +13,110 @@
 > (`/v3/trading?tab=Options&otab=Lifecycle`).
 
 **Location:** Trading hub → **Options** tab (`/v3/trading?tab=Options`)  
-**Status:** **Enterprise trade desk** — systematic proposals, enterprise risk gates, operator approval queue, position monitor, Hermes/TradeAI research bridge. Live execution is operator-approved (`options_pilot_arm` + desk queue + per-order 2FA).
+**Status:** **Enterprise trade desk** — systematic proposals, income screen, enterprise risk gates, options thesis + CIO review, Schwab validation, operator approval queue, position monitor, Hermes/TradeAI research bridge. Live execution is operator-approved (`options_pilot_arm` + desk queue + per-order 2FA).
 
 **Latest commits:** `5645e068` (audit fixes + Hermes/TradeAI bridge) → `4d7b9c38` (enterprise desk) → `e5d2f9b4` (docs) → `84ccc696` (filters) → `11bb3932` (live R:R + lifecycle) → `606761c5` (UI tooltips).
+
+---
+
+## Current flow (2026-09-26)
+
+This section is canonical for the proposal side. Older sections below are kept for
+reference and corrected where they conflict.
+
+```
+generate_proposals()                     scripts/options_engine.py
+  └─ income screen                       scripts/lib/options_income_quality.py
+  └─ enterprise gates                    scripts/options_desk_enterprise.py
+  └─ options thesis record + blocks      scripts/lib/options_thesis.py
+options thesis lifecycle (cron)          scripts/options_thesis_lifecycle.py → scripts/lib/options_thesis_lifecycle.py
+  CREATED → RESEARCH_QUEUED (Hermes CIO research)
+          → RESEARCH_COMPLETE (catalyst_map / invalidation / bear_case / thesis_check answers)
+          → CIO review → DECISION_ISSUED            scripts/lib/options_cio_review.py
+          or ARCHIVED_ABANDONED after abandon_after_hours (48)
+Validate against Schwab (read-only)      POST /api/v2/options/validate → scripts/lib/options_validate.py
+Operator approval in queue               options_desk_enterprise.resolve_approval()
+Per-order 2FA → Schwab submit            operator only (preflight → confirm)
+```
+
+Nothing in this flow sizes a position or places an order. Sizing and the 2FA order path are
+the operator's. Alpaca paper options are training only: never a live or acceptance path, and
+they never alert.
+
+### Gates and thresholds
+
+All keys are under `assets/portfolio_intent.yaml` → `options_desk_settings` unless noted.
+
+| Gate | Rule | Config key(s) | Code |
+|------|------|---------------|------|
+| Underlying price | no income idea below the floor | `min_underlying_price` (5.0) | `lib/options_income_quality.py` |
+| Listed chain | card only from a Schwab-listed contract; Black-Scholes estimates never become cards | `require_chain_for_live` (true) | `options_income_quality.py`, `options_validate.py` (`NOT_A_LISTED_QUOTE`) |
+| Liquidity | OI ≥ 50, bid-ask ≤ 12% of mid (both legs for credit spreads) | `min_open_interest`, `max_bid_ask_spread_pct`, `min_volume` | `options_income_quality.py`, `options_desk_enterprise.liquidity_gate` |
+| Premium floor | premium ≥ $0.10/sh | `min_premium_per_share` | `options_income_quality.py` |
+| Yield floor | annualized ROC ≥ 6% (credit spreads: ROC on width − credit) | `min_annualized_roc_pct` | `options_income_quality.py` |
+| Strike picker | prefers liquid contracts, targets delta 0.25 | `cc_target_delta`, `csp_target_abs_delta`, `picker_strike_slack_pct` | `options_income_quality.py` |
+| Covered-call edge | premium yield scored via `roc_score`; full credit at 25% annualized | `edge_roc_full_credit_ann_pct` | `options_engine.py`, `options_income_quality.roc_score` |
+| IV | chain ATM IV fallback when technicals lack IV; history rank only with ≥ 60 samples over ≥ 90 days; no IV → `IV_UNKNOWN` (the old 12.5 placeholder is gone) | `iv_history_min_samples`, `iv_history_min_span_days` | `options_engine._chain_atm_iv_pct` |
+| Spot price | freshest dated price (scan vs `market_quotes`), max age 96h; the Schwab chain underlying wins; proposals carry `price_source` | `price_max_age_hours` | `options_engine.py` |
+| Holdings funnel | positions < $250 and < 100 sh are "fractional leftovers"; rows show total shares per account | `funnel_dust_max_market_value` | `GET /api/v2/options/holdings-funnel` |
+| Earnings blackout | blocks short premium through the window | `earnings_blackout_days` (14) | `options_desk_enterprise.py` |
+| Thesis bar | `thesis_required`, `thesis_missing_*`, `awaiting_cio_decision` (needs a CIO APPROVE) | — | `lib/options_thesis.py` |
+| Validate | fresh `VALIDATED` re-quote required to approve | `validation.fresh_minutes` (30), `validation.max_premium_change_pct`, `validation.max_spot_change_pct` | `lib/options_validate.py`, `options_desk_enterprise._validation_refusal` |
+
+Income screening applies to covered calls, cash-secured puts and credit spreads.
+
+### Options thesis record
+
+`scripts/lib/options_thesis.py` stores `OptionsThesisRecord@v1`, keyed by
+`option_strategy_guid`, in the append-only hash-chained `data/cio/options_theses.jsonl`.
+A catalyst may come from the earnings calendar (`calendar_catalyst`, labelled "Calendar", never
+researched judgment). Thesis blocks join the enterprise blocks, so the card reads
+"Not approvable" until both clear.
+
+### Thesis lifecycle
+
+`scripts/options_thesis_lifecycle.py` (dry run by default; cron `7,22,37,52 * * * * … --apply`)
+advances each thesis. Ideas that carry liquidity or enterprise blocks are skipped.
+Config: `options_desk_settings.options_thesis_lifecycle` (`abandon_after_hours` 48,
+`research_rerequest_hours` 24, `cio_review_mode: live`, `max_reviews_per_run` 6, `review_max_tokens` 2500 — 1200 truncated the first live reviews).
+
+### CIO review
+
+`scripts/lib/options_cio_review.py`: agent `alex` via `llm_router` task `cio_synthesis`
+(DeepSeek, governed caps). Outcomes `APPROVE` / `REJECT` / `MORE_RESEARCH` / `MONITOR_ONLY`, each
+with confidence, reasoning, concerns, assumptions challenged and evidence for/against. No sizing;
+numbers must trace to supplied facts. The Decision GUID (`dec_<uuid>`) is stored on the thesis and
+in `cio_decisions` (`action_class` `options_thesis_review`). The operator confirms.
+
+### Validate
+
+`POST /api/v2/options/validate` (`scripts/lib/options_validate.py`) re-quotes the contract from
+the Schwab chain, read-only. Statuses: `VALIDATED`, `CHANGED`, `CONTRACT_NOT_FOUND`, `ILLIQUID`,
+`NO_QUOTE`, `NOT_A_LISTED_QUOTE`, `UNAVAILABLE`. `resolve_approval` refuses approval without a
+`VALIDATED` result inside `validation.fresh_minutes` (30), failing closed.
+
+### Aegis review (advisory)
+
+`enqueue_ensemble_for_proposals()` queues an Aegis review per proposal. Lanes come from
+`config/inference_layers.yaml` `ensemble.options_lanes: [grok, chatgpt, deepseek-flash]` and are
+carried on each job row (`options_engine._options_ensemble_lanes`); general ensemble use stays on
+`ensemble.lanes: [grok, chatgpt]`. There is no local/Gemma lane. Aegis judges the card against
+house facts (thesis, research answers); it fetches no news, earnings or filings. A model vote is
+not research and not a CIO decision. Cost cap: `config/llm_process_registry.json`
+`options_ensemble` (`daily_cost_cap_usd` 0.5).
+
+### Card
+
+The card shows the committee memo, a plain-English explainer (`scripts/lib/options_plain_english.py`),
+the ticker CIO view (`scripts/lib/ticker_cio_view.py`: symbol thesis, latest decision with its source
+— rule engine vs CIO review — change since previous, research on file), status pills with STATUS
+filters, an evidence ladder and a Validate button (`OptionValidateButton.tsx`).
+
+### CIO Desk Telegram
+
+`scripts/lib/cio_action_notify.py` + `config/cio_notification_policy.json`: material actions only,
+one readable message per run, repeats suppressed for 7 days (`repeat_suppress_days`). No run-id
+check-ins.
 
 ---
 
@@ -31,9 +132,10 @@ Cron (10m) ──► run_options_monitor.py
                     ├─► options_engine.monitor_positions() + book greeks
                     └─► options_research_bridge.run() → Hermes + TradeAI runtime
 
-Daily 16:20 ──► options_iv_snapshot.py ──► options_iv_history (52-week IV rank)
+Daily 15:45 ──► options_iv_snapshot.py ──► options_iv_history (52-week IV rank)
 
-Operator ──► approval queue approve/reject ──► preflight ──► 2FA ──► Schwab submit
+Thesis lifecycle ──► CIO review ──► Validate (Schwab) ──► Operator approve ──► preflight ──► 2FA ──► Schwab submit
+(see "Current flow (2026-09-26)" above)
 ```
 
 ---
@@ -67,7 +169,7 @@ Operator ──► approval queue approve/reject ──► preflight ──► 2
 | `monitor_positions()` | Open-leg lifecycle (hold/close/roll) + **book greeks** |
 | `get_overview()` | Desk KPIs + enterprise risk summary |
 | `build_options_desk_summary()` | Compact summary for TradeAI / Hermes |
-| `enqueue_ensemble_for_proposals()` | Multi-LLM quality review (advisory) |
+| `enqueue_ensemble_for_proposals()` | Aegis review on `ensemble.options_lanes` (grok, chatgpt, deepseek-flash; advisory) |
 
 **Two sleeves:**
 
@@ -91,6 +193,8 @@ Operator ──► approval queue approve/reject ──► preflight ──► 2
 - **Credit** (`_edge_score`) — covered calls
 - **Debit** (`_edge_score_debit`) — protective puts, long calls
 - **Wheel** (`_edge_score_wheel`) — CSP, credit spreads (POP + annualized ROC)
+- Covered-call edge also scores premium yield via `roc_score` (full credit at `edge_roc_full_credit_ann_pct` 25%)
+- Covered calls, CSPs and credit spreads all pass the income screen first (`scripts/lib/options_income_quality.py`)
 
 **Quality gates (default):**
 
@@ -165,7 +269,9 @@ Wired into:
 | `GET /api/v2/options/execution/status` | Pilot arm + policy state |
 | `POST /api/v2/options/preflight` | Build intent + 2FA (requires desk approval when enabled) |
 | `POST /api/v2/options/confirm` | Confirm + Schwab submit |
-| `POST /api/v2/options/ensemble/enqueue` | Batch LLM review |
+| `POST /api/v2/options/validate` | Read-only Schwab re-quote of one proposal's contract (required before approval) |
+| `GET /api/v2/options/holdings-funnel` | Owned-book drop reasons (CC + protective put) |
+| `POST /api/v2/options/ensemble/enqueue` | Batch Aegis review (grok, chatgpt, deepseek-flash) |
 | `GET /api/v2/schwab/option-chain` | Chain drill-down |
 
 **Proposal filter query params:** `symbol`, `strategy`, `group` (income\|hedge\|directional\|spread), `option_type` (call\|put), `side` (BUY\|SELL), `sleeve` (portfolio\|conviction), `leg_style` (single\|spread), `desk_tier` (A\|B\|C), `live_eligible` (1\|0), `min_pop`, `min_edge`, `min_dte`, `max_dte`, `force=1`. Response includes `filter_facets` with counts per chip.
@@ -200,9 +306,9 @@ Wired into `TradingHub.tsx` as the **Options** tab.
 
 Cron (`crontab_backup.txt` + `linux_launchers/run_options_monitor.sh`):
 - `35,45,55 9`, `*/10 10-15`, `5 16` weekdays → proposals + monitor + Hermes bridge (`force=True`)
-- `20 16` weekdays → `options_iv_snapshot.py` (52-week IV rank history)
+- `45 15` weekdays → `options_iv_snapshot.py` (52-week IV rank history)
 
-Each symbol gets a live `schwab_transport.get_option_chain()` per proposal (no shared chain cache).
+One live `schwab_transport.get_option_chain()` read per (symbol, width) per generation pass; the IV lookup and contract picker share it (`options_engine._CHAIN_CACHE`).
 
 ---
 
@@ -214,24 +320,27 @@ Each symbol gets a live `schwab_transport.get_option_chain()` per proposal (no s
 | **Protective put** | Holdings ≥$15k MV | ~5% OTM long put; debit edge model |
 | **Cash-secured put** | High-conviction, **not owned** | Wheel entry; ~8% OTM; conviction bias routing |
 | **Long call** | Explicitly bullish + conf ≥60% | Defined risk; debit edge model |
-| **Credit spread** | Bull put vertical | `NET_CREDIT` two-leg; wheel edge model |
+| **Credit spread** | Bull put vertical | `NET_CREDIT` two-leg; wheel edge model; income-screened (both legs liquid, ROC on width − credit) |
 
 **Conviction bias routing** (`_conviction_bias`): uses `direction`, `severity`, `inference_type` from fused signals — empty severity no longer defaults to bullish.
 
-**Chain resolution:** Schwab live chain → Black-Scholes fallback (`_bs_option_premium`) when chain thin or after hours.
+**Chain resolution:** Schwab live chain first. When technicals lack IV, IV comes from the chain ATM (`_chain_atm_iv_pct`). A Black-Scholes estimate (`_bs_option_premium`) never becomes a card; Validate reports it as `NOT_A_LISTED_QUOTE`.
 
 ---
 
 ## Enterprise workflow (operator)
 
 ```
-1. Desk scan generates proposals (cron, ~10m market hours)
+1. Desk scan generates proposals (cron, ~10m market hours) through the income screen
 2. Enterprise layer enriches: blackout, liquidity, vol, tier, live_eligible
-3. Approval queue upserted (options_approval_queue table)
-4. Operator reviews queue → approve or reject
-5. Optional: ensemble LLM review (advisory, non-blocking)
-6. Preflight checks: desk approval + enterprise blocks + policy + pilot arm
-7. Per-order 2FA → Schwab submit
+3. Options thesis record written; thesis blocks join enterprise blocks
+4. Approval queue upserted (options_approval_queue table); blocked rows read "Not approvable"
+5. Thesis lifecycle: Hermes CIO research → CIO review → Decision GUID (or archived after 48h)
+6. Aegis review on grok, chatgpt, deepseek-flash (advisory, non-blocking)
+7. Operator runs Validate (fresh VALIDATED re-quote, 30 min)
+8. Operator approves; resolve_approval refuses with blocks or without a fresh VALIDATED result
+9. Preflight checks: desk approval + enterprise blocks + policy + pilot arm
+10. Per-order 2FA → Schwab submit (operator only)
 ```
 
 Reject or blocked proposals remain visible on the desk with `enterprise.blocks` — advisory review only.
@@ -266,6 +375,8 @@ Book-level (`monitor_positions` → `book_greeks`):
 - Earnings blackout (FMP, configurable days)
 - Liquidity: min OI 50, min vol 5, max spread 12%
 - BS estimates blocked from live path when `require_chain_for_live: true`
+- CIO APPROVE decision on the options thesis (`awaiting_cio_decision` otherwise)
+- Fresh `VALIDATED` Schwab re-quote (`validation.fresh_minutes` 30) before approval
 - Desk approval required before preflight
 
 **Live submit requires (all):**
@@ -296,7 +407,10 @@ CSP copy reminds operator to verify SSDI / income impact before entry.
 | `options_approval_queue` | Desk operator approval queue (migration `2026_06_25_options_desk_enterprise.sql`) |
 | `options_chain_snapshots` | Vol term structure + skew persistence |
 | `hermes_research_intelligence` | `research_type=options_desk` rows from bridge |
-| `inference_ensemble_jobs` | `target_type=options_proposal` ensemble review |
+| `inference_ensemble_jobs` | `target_type=options_proposal` Aegis review; lanes on each row (grok, chatgpt, deepseek-flash) |
+| `cio_decisions` | CIO review decisions (`action_class` `options_thesis_review`) |
+
+File store: `data/cio/options_theses.jsonl` (options thesis records, append-only, hash-chained).
 
 ---
 
@@ -323,7 +437,7 @@ OPTIONS_SNAPSHOT_RETENTION_DAYS=45   # prune options_chain_snapshots older than 
 `options_chain_snapshots` retention runs two ways: a cheap per-symbol prune on each
 `persist_chain_snapshot` insert (active desk names), plus a global sweep
 (`prune_chain_snapshots()`) from the daily IV-snapshot cron (`scripts/options_iv_snapshot.py`,
-`20 16 * * 1-5`) that catches the tails of symbols that have gone quiet.
+`45 15 * * 1-5`) that catches the tails of symbols that have gone quiet.
 
 ---
 
@@ -353,7 +467,7 @@ python scripts/options_pilot_arm.py --approve --confirm "APPROVE OPTIONS EXECUTI
 
 ## Extending
 
-1. **Approval queue UI tab** in OptionsHub (API ready; wire `GET /api/v2/options/approval-queue`)
+1. **Approval queue** — the proposal card shows queue status, approvability and a Validate button (2026-09-26); a dedicated queue tab calling `POST /api/v2/options/approval-queue/resolve` is not wired in OptionsHub (verified 2026-09-26)
 2. **Fidelity option legs** — extend `monitor_positions()` beyond Schwab-only
 3. **Roll automation** — wire monitor `roll` action to preflight with new expiration
 4. **Edge calibration** — log closed proposal outcomes → edge model tuning

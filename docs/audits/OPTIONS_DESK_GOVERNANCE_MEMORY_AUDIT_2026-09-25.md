@@ -1,5 +1,7 @@
 # Options Desk Governance and Persistent Intelligence Audit — 2026-09-25
 
+> **Status 2026-09-26:** see the [resolution addendum](OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md#resolution-addendum-2026-09-26) in the executive audit for which findings are addressed by code on `main`. Findings below are unchanged.
+
 **Authority:** `READ_ONLY_ADVISORY`
 **Boundary:** review and documentation only; no model enqueue, notification, broker, order, 2FA, or state mutation invoked
 
