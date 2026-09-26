@@ -116,26 +116,23 @@ def create_agent_jobs(conn, event: dict, dry_run: bool = False) -> list:
             continue
 
         try:
-            cur.execute("""
-                INSERT INTO watchlist_agent_jobs
-                    (id, symbol, requested_agent, request_type, note, status, priority, submitted_from, payload)
-                VALUES (%s, %s, %s, %s, %s, 'queued', %s, %s, %s)
-                ON CONFLICT (id) DO NOTHING
-                RETURNING id
-            """, (
-                job_id, symbol, agent_db, "research",
-                f"Level 3 event: {event_type}",
-                1 if event.get("priority") == "urgent" else 5,
-                "event_router",
-                json.dumps({"event_id": event_id, "event_type": event_type,
-                            "trigger_data": event.get("trigger_data")}, default=str),
-            ))
-            result = cur.fetchone()
-            if result:
-                job_ids.append(result[0])
+            # The id carries a timestamp, so ON CONFLICT (id) could never fire: repeat Level-3
+            # events on one symbol stacked identical pending research (2026-07-23 queue audit).
+            from lib.agent_job_queue import insert_agent_job_unless_pending
+
+            new_id = insert_agent_job_unless_pending(cur, {
+                "id": job_id, "symbol": symbol, "requested_agent": agent_db,
+                "request_type": "research", "note": f"Level 3 event: {event_type}",
+                "status": "queued", "priority": 1 if event.get("priority") == "urgent" else 5,
+                "submitted_from": "event_router",
+                "payload": json.dumps({"event_id": event_id, "event_type": event_type,
+                                       "trigger_data": event.get("trigger_data")}, default=str),
+            })
+            if new_id:
+                job_ids.append(new_id)
                 _log(f"  Created job: {job_id}")
             else:
-                _log(f"  Job {job_id} already exists — skipped")
+                _log(f"  {agent_db} research for {symbol} already pending — skipped")
         except Exception as e:
             _log(f"  ERROR creating job for {agent_db}: {e}")
             conn.rollback()
@@ -276,13 +273,16 @@ def handle_content_gap(conn, event: dict):
     cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
     job_id = f"gap-fill-{symbol.lower()}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
     try:
-        cur.execute("""INSERT INTO watchlist_agent_jobs
-                       (id, symbol, requested_agent, request_type, note, status, priority, submitted_from)
-                       VALUES (%s, %s, 'maria', 'research', %s, 'queued', 2, 'content_gap_handler')
-                       ON CONFLICT (id) DO NOTHING""",
-                    (job_id, symbol, f"Re-analysis after gap fill: {gap_type} {gap_detail}"))
+        from lib.agent_job_queue import insert_agent_job_unless_pending
+
+        new_id = insert_agent_job_unless_pending(cur, {
+            "id": job_id, "symbol": symbol, "requested_agent": "maria", "request_type": "research",
+            "note": f"Re-analysis after gap fill: {gap_type} {gap_detail}", "status": "queued",
+            "priority": 2, "submitted_from": "content_gap_handler",
+        })
         conn.commit()
-        _log(f"  Re-queued maria research for {symbol}")
+        _log(f"  Re-queued maria research for {symbol}" if new_id
+             else f"  maria research for {symbol} already pending — not re-queued")
     except Exception as e:
         _log(f"  Re-queue failed: {e}")
         conn.rollback()
@@ -374,13 +374,13 @@ def handle_sec_debate(conn, event: dict):
             # Auto-queue for Alex retirement analysis
             cur = conn.cursor()
             job_id = f"event-alex-{symbol.lower()}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
-            cur.execute("""
-                INSERT INTO watchlist_agent_jobs
-                    (id, symbol, requested_agent, request_type, note, status, priority, submitted_from)
-                VALUES (%s, %s, 'alex', 'allocation', %s, 'queued', 1, 'event_router')
-                ON CONFLICT (id) DO NOTHING
-            """, (job_id, symbol,
-                  f"Auto-queued: debate consensus {consensus_score}% ({consensus_rec}) on SEC insider buy"))
+            from lib.agent_job_queue import insert_agent_job_unless_pending
+
+            insert_agent_job_unless_pending(cur, {
+                "id": job_id, "symbol": symbol, "requested_agent": "alex", "request_type": "allocation",
+                "note": f"Auto-queued: debate consensus {consensus_score}% ({consensus_rec}) on SEC insider buy",
+                "status": "queued", "priority": 1, "submitted_from": "event_router",
+            })
             conn.commit()
             _log(f"  Auto-queued Alex analysis for {symbol} (debate {consensus_score}% {consensus_rec})")
     except Exception as e:

@@ -26,6 +26,11 @@
 # regeneration itself is left to the post-merge step, because the digest must be
 # computed over the FULLY merged tree, not over one file mid-merge.
 #
+# 2026-09-25: the four SOP evidence files no longer embed the digest and
+# docs/INDEX.md no longer commits its fingerprint/counts, so these files now change
+# only when their real subject changes; this driver should rarely fire. It is kept
+# for the remaining genuine overlaps (two PRs editing the same doc's index row).
+#
 # NOTE: the digest binding is NOT weakened. The evidence is still bound to the
 # control surface and still verified by tests/test_sop_evidence_integrity.py —
 # this only stops git from producing a hash nobody computed.

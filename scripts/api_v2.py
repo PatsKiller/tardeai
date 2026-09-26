@@ -40249,6 +40249,60 @@ def _options_proposals(query=None):
         filtered = apply_card_semantics_batch(filtered, schwab_armed=schwab_armed)
     except Exception:
         pass
+    try:
+        from lib.recommendation_comparison import build_recommendation_comparison
+        from lib.options_decision_packet import build_options_decision_packet
+        from lib.options_decision_packet_v2 import build_options_decision_packet_v2
+        from lib.options_research_memo import build_research_memo
+
+        census = data.get("universe_census") if isinstance(data, dict) else None
+        for row in filtered:
+            try:
+                cmp = build_recommendation_comparison(row)
+                memo = build_research_memo(
+                    row,
+                    census=census,
+                    share_count=row.get("share_count"),
+                )
+                row["recommendation_comparison"] = cmp
+                row["options_decision_packet"] = build_options_decision_packet(row, comparison=cmp)
+                row["options_decision_packet_v2"] = build_options_decision_packet_v2(
+                    row,
+                    comparison=cmp,
+                    memo=memo,
+                    research=row.get("research_context") or {},
+                    generated_at=data.get("generated_at") if isinstance(data, dict) else None,
+                )
+                row["options_research_memo"] = memo
+            except Exception:
+                row["recommendation_comparison"] = {
+                    "comparison": {"preferred_structure": "review_required"},
+                    "oversight": {
+                        "review_status": "unreviewed",
+                        "authority": "READ_ONLY_ADVISORY",
+                        "cio_commentary": "Comparison failed closed. No CIO disposition is on file.",
+                    },
+                }
+                row["options_decision_packet"] = {
+                    "schema": "OptionsDecisionPacket@v1",
+                    "state": "REVIEW_REQUIRED",
+                    "cio_approved": False,
+                    "readiness": {"cta": "none", "live_submit": False},
+                }
+                row["options_decision_packet_v2"] = {
+                    "schema": "OptionsDecisionPacket@v2",
+                    "state": "REVIEW_REQUIRED",
+                    "cio": {"status": "unreviewed", "cio_review_id": None},
+                    "decision": {"size": {"status": "not_sized", "display": "Not sized"}},
+                }
+    except Exception:
+        pass
+    try:
+        from lib.options_desk_scorecard import build_scorecard
+
+        data["options_desk_scorecard"] = build_scorecard(closed_outcomes=0, open_positions=0)
+    except Exception:
+        data["options_desk_scorecard"] = None
     return _json_clean(
         {
             **data,

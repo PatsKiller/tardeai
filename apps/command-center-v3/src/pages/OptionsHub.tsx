@@ -195,7 +195,10 @@ export default function OptionsHub({ onDrill }: Props) {
 
   const selectTab = (t: typeof TABS[number]) => {
     setTab(t)
-    setSearchParams({ tab: t }, { replace: true })
+    const next = new URLSearchParams(searchParams)
+    next.set('tab', 'Options')
+    next.set('otab', t)
+    setSearchParams(next, { replace: true })
   }
 
   const execActions = new Set(['sell_covered_call', 'sell_put', 'buy_put', 'buy_call', 'sell_credit_spread'])
@@ -330,7 +333,8 @@ export default function OptionsHub({ onDrill }: Props) {
             Options Desk ⓘ
           </Tip>
           <div style={hubSubtitle(terminalUi)}>
-            High-quality proposals only · {propCount} ideas · {posList.length} open legs
+            {(proposals?.universe_census?.banner) || 'This is not a market-wide options search. These cards were scored from holdings, the buy and strong-buy watchlist, and a short signal list.'}
+            {' '}· {propCount} cards from that limited set · {posList.length} open legs
             {proposals?.quality_gate && (
               <Tip tip={HEADER.qualityGate}> · gate {proposals.quality_gate.min_edge_score}+ / sleeve {proposals.quality_gate.relaxed_edge_floor}+ ⓘ</Tip>
             )}
@@ -349,6 +353,15 @@ export default function OptionsHub({ onDrill }: Props) {
               </Tip>
             )}
           </div>
+        </div>
+        <div style={{ fontSize: 12, lineHeight: 1.45, color: BB.text2, marginTop: 8, maxWidth: 720 }}>
+          {(() => {
+            const rows = propList as any[]
+            const blocked = rows.filter(r => r.options_decision_packet?.state === 'BLOCKED' || isCardBlocked(r)).length
+            const review = rows.filter(r => r.options_decision_packet?.state === 'REVIEW_REQUIRED' || r.recommendation_comparison?.comparison?.preferred_structure === 'neither').length
+            const ready = rows.filter(r => r.options_decision_packet?.state === 'ELIGIBLE_FOR_OPERATOR_REVIEW').length
+            return `Needs a person: ${ready} for operator review, ${review} refused or incomplete, ${blocked} blocked. ${posList.length} open strategies. A model score is not a CIO decision. Outcomes are not validated from this screen.`
+          })()}
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <div className="hub-tabs">
