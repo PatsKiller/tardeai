@@ -87,7 +87,10 @@ def income_drop_reason(
     if premium < float(setting(cfg, "min_premium_per_share")):
         return "PREMIUM_BELOW_FLOOR"
     strike = _num(contract.get("strike")) or 0.0
-    capital = (strike - premium) if strategy == "cash_secured_put" else underlying
+    if strategy == "credit_spread":
+        capital = _num(contract.get("spread_capital")) or (strike - premium)
+    else:
+        capital = (strike - premium) if strategy == "cash_secured_put" else underlying
     if annualized_roc_pct(premium, capital, int(contract.get("dte") or 0)) < float(setting(cfg, "min_annualized_roc_pct")):
         return "PREMIUM_BELOW_FLOOR"
     return None

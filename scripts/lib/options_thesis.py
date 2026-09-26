@@ -84,7 +84,10 @@ def calendar_catalyst(p: dict[str, Any]) -> Optional[str]:
     DELL's 2026-11-27 earnings sat on the proposal while the card said "catalysts
     missing").
     """
-    eb = ((p.get("enterprise") or {}).get("earnings_blackout") or {})
+    ent = p.get("enterprise") or {}
+    # The enterprise layer stores the blackout check under "earnings" (2026-09-26: the
+    # first version read "earnings_blackout" and found nothing on every live card).
+    eb = ent.get("earnings") or ent.get("earnings_blackout") or {}
     nxt, exp = eb.get("next_earnings"), p.get("expiration")
     if not nxt or not exp:
         return None

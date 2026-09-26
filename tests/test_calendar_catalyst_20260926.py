@@ -18,7 +18,13 @@ from lib.options_plain_english import committee_memo  # noqa: E402
 
 def _p(nxt, exp="2026-11-20"):
     return {"symbol": "DELL", "strategy": "cash_secured_put", "expiration": exp, "strike": 490,
-            "option_strategy_guid": "g", "enterprise": {"earnings_blackout": {"next_earnings": nxt}}}
+            "option_strategy_guid": "g", "enterprise": {"earnings": {"next_earnings": nxt}}}
+
+
+def test_live_key_is_enterprise_earnings():
+    # The shape the enterprise layer actually writes (options_desk_enterprise: ent["earnings"]).
+    live = {"expiration": "2026-11-20", "enterprise": {"earnings": {"in_blackout": False, "next_earnings": "2026-11-27"}}}
+    assert ot.calendar_catalyst(live).startswith("Calendar: next earnings 2026-11-27")
 
 
 def test_earnings_after_expiry_is_stated_as_a_calendar_fact():
@@ -47,3 +53,13 @@ def test_option_research_counts_as_partial_research():
     p = dict(_p("2026-11-27"), research_answers={"thesis": "AI server demand", "research_id": "res_1"})
     m = committee_memo(p, {"thesis_state": "INSUFFICIENT_DATA"}, {})
     assert m["research_status"] == "PARTIALLY_RESEARCHED" and m["investment_thesis"] == "AI server demand"
+
+
+def test_credit_spread_screen_uses_risk_capital_and_leg_liquidity():
+    from lib.options_income_quality import income_drop_reason
+    cfg = {"min_open_interest": 50, "max_bid_ask_spread_pct": 12.0, "min_underlying_price": 5.0,
+           "min_premium_per_share": 0.10, "min_annualized_roc_pct": 6.0}
+    liquid = {"bid": 0.85, "ask": 0.93, "mid": 0.89, "oi": 400, "strike": 52.5, "dte": 20, "spread_capital": 1.61}
+    assert income_drop_reason("credit_spread", liquid, "schwab_chain", 57.68, cfg) is None
+    eton = dict(liquid, oi=0, bid=0.5, ask=1.28)   # the live ETON short leg: OI 0, ~122% spread
+    assert income_drop_reason("credit_spread", eton, "schwab_chain", 57.68, cfg) == "NO_LIQUID_CONTRACT"
