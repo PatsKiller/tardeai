@@ -312,7 +312,7 @@ export default function WatchIntelligenceUnified() {
           <div data-testid="watch-blocked-by" style={{ border: `1px solid ${BB.border}`, borderRadius: 8, padding: '8px 10px', marginBottom: 10, fontSize: TYPE.sm, color: BB.text2 }}>
             <b style={{ color: BB.text0 }}>{actionable} of {cards.length} on this page can become a proposal.</b>{' '}
             {rows.map(([k, syms]) => (
-              <span key={k} style={{ marginRight: 12, color: SYSTEM.has(k) ? '#f59e0b' : BB.text2 }} title={syms.join(', ')}>
+              <span key={k} style={{ marginRight: 12, color: SYSTEM.has(k) ? BB.amber : BB.text2 }} title={syms.join(', ')}>
                 {syms.length} {k.replace(/_/g, ' ').toLowerCase()}{SYSTEM.has(k) ? ' (system: decision packet not rebuilt)' : ''}
               </span>
             ))}

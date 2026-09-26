@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { requestEnsemble, type EnsembleLane } from '../lib/cloudLlmRun'
 import { useOAuthLanes, laneReady } from '../hooks/useOAuthLanes'
+import { BB } from '../lib/watchTokens'
 
 // Multi-LLM ensemble validation UI (Grok + ChatGPT OAuth + local gemma).
 // Mirrors the real backend shape from scripts/inference_ensemble.ensemble_validate:
@@ -304,7 +305,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
     // Say how long the job has waited; the worker runs weekdays in market hours only.
     const age = job?.requested_at ? Math.max(0, Math.round((Date.now() - Date.parse(job.requested_at)) / 60000)) : null
     const ageText = age == null ? '' : age < 60 ? ` · queued ${age}m` : age < 2880 ? ` · queued ${Math.round(age / 60)}h` : ` · queued ${Math.round(age / 1440)}d`
-    return <div style={{ fontSize: 10, color: age != null && age > 1440 ? '#f59e0b' : 'var(--text3)', marginTop: compact ? 0 : 6 }} title="The ensemble worker runs weekdays during market hours.">⏳ ensemble validating{ageText}</div>
+    return <div style={{ fontSize: 10, color: age != null && age > 1440 ? BB.amber : 'var(--text3)', marginTop: compact ? 0 : 6 }} title="The ensemble worker runs weekdays during market hours.">⏳ ensemble validating{ageText}</div>
   }
   if (state === 'error') {
     return (
@@ -316,7 +317,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
   }
   return (
     <div>
-      {job?.status === 'expired' && <div style={{ fontSize: 10, color: '#f59e0b', marginTop: compact ? 0 : 6 }}>Earlier request expired during the worker outage. Run it again.</div>}
+      {job?.status === 'expired' && <div style={{ fontSize: 10, color: BB.amber, marginTop: compact ? 0 : 6 }}>Earlier request expired during the worker outage. Run it again.</div>}
       <EnsembleRunButtons compact={compact} busy={runBusy} onRun={request} />
     </div>
   )
