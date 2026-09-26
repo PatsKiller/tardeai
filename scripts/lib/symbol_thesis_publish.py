@@ -27,6 +27,8 @@ def publish_symbol_thesis(
     invalidation_conditions: Optional[list[str]] = None,
     research_gaps: Optional[list[str]] = None,
     what_changes_my_mind: Optional[list[str]] = None,
+    catalysts: Optional[list[dict[str, Any]]] = None,
+    evidence_text: Optional[dict[str, str]] = None,
     owner_agent: str = "alex",
     change_note: str = "",
     store: CIOThesisStore | None = None,
@@ -49,6 +51,11 @@ def publish_symbol_thesis(
         "previous_version": (previous or {}).get("thesis_version"),
         "reason_for_change": supplied.get("reason_for_change") or change_note or f"symbol thesis for {symbol.upper()}",
     }
+    # Optional provenance keys: present only when the caller supplied them, so a
+    # version written without them keeps the exact prior shape.
+    for key in ("scope", "source_result_id"):
+        if supplied.get(key):
+            write_provenance[key] = supplied.get(key)
     bullets = []
     if why_owned_or_watched:
         bullets.append(f"Why owned/watched: {why_owned_or_watched}")
@@ -71,6 +78,13 @@ def publish_symbol_thesis(
         "what_changes_my_mind": list(what_changes_my_mind or []),
         "write_provenance": write_provenance,
     }
+    # catalysts: [{text, as_of, source_research_id, event_date?}];
+    # evidence_text: {ev_id: text} for evidence ids minted from answer text.
+    # Stored only when supplied (CIOThesisStore copies extra keys onto the record).
+    if catalysts is not None:
+        extra["catalysts"] = [dict(c) for c in catalysts if isinstance(c, dict)]
+    if evidence_text is not None:
+        extra["evidence_text"] = {str(k): str(v) for k, v in evidence_text.items()}
     return store.publish(
         summary,
         thesis_id=tid,

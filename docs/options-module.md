@@ -80,6 +80,27 @@ advances each thesis. Ideas that carry liquidity or enterprise blocks are skippe
 Config: `options_desk_settings.options_thesis_lifecycle` (`abandon_after_hours` 48,
 `research_rerequest_hours` 24, `cio_review_mode: live`, `max_reviews_per_run` 6, `review_max_tokens` 2500 — 1200 truncated the first live reviews).
 
+### Persistence (2026-09-26)
+- **Agent memory (M2).** `scripts/options_memory_projector.py` (dry run default; `--apply`) tails
+  `data/cio/options_theses.jsonl` and writes through `CIOEnvelopeIntegrator` with
+  `source_type=options_thesis_store`, `source_id=event_hash`. Predicates: `options_thesis` (one
+  current belief per strategy GUID), `options_cio_decision`, `options_followup`,
+  `options_validation`, `options_thesis_outcome` (one identity per event). Payloads are allowlisted:
+  no account, contract count or dollar fields. A superseding decision gets a `SUPERSEDES`
+  provenance edge. The CIO review reads prior facts back as `prior_decisions`
+  (`options_thesis_lifecycle.memory_reads: true`; env `MEMORY_BEHAVIOR_INFLUENCE_OPTIONS` overrides).
+- **Living symbol thesis.** Hermes answers (`q_thesis_check`, `q_catalyst_map`, `q_invalidation`,
+  `q_bear_case`) flow through the one existing writer (`research_thesis_delta` ->
+  `reconcile_symbol_thesis` -> `publish_symbol_thesis`): invalidation and catalysts are merged,
+  the bear case becomes counter-evidence, evidence lists merge rather than replace, and an authored
+  summary is never overwritten. The governed **ENRICHES** rule fills *empty* invalidation or
+  catalyst fields on grade-A, non-INSUFFICIENT_DATA research without touching stance or summary
+  (`options_desk_settings.symbol_thesis_enrich`, 24h cooldown).
+- **Drive.** `scripts/export_options_runtime_snapshot.py` writes a **redacted** snapshot (no
+  account names, no dollar amounts) to `persistent-state/exports/drive/runtime/options/`, which
+  `sync-docs-to-drive.sh` mirrors under `runtime/options/` and preserves. The purge no longer
+  re-uploads dated top-level docs every hour.
+
 ### After a CIO decision (continuous, 2026-09-26)
 - **MORE_RESEARCH** is an assignment, not an end state: the next lifecycle run requests follow-up
   research whose questions are the CIO's own unknowns/concerns (up to `max_deliverables` 5), due in

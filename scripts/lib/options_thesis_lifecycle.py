@@ -17,12 +17,10 @@ import math
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
-ANSWER_MAP = {
-    "q_catalyst_map": "catalysts",
-    "q_invalidation": "invalidation",
-    "q_bear_case": "bear_case",
-    "q_thesis_check": "thesis",
-}
+try:  # one map for the lifecycle and the symbol-thesis bridge
+    from scripts.lib.cio_question_ids import ANSWER_MAP
+except ImportError:  # run as scripts/options_thesis_lifecycle.py (scripts/ on sys.path)
+    from lib.cio_question_ids import ANSWER_MAP  # type: ignore[no-redef]
 
 DEFAULTS = {
     "abandon_after_hours": 48,
@@ -37,7 +35,18 @@ DEFAULTS = {
     "max_followup_rounds": 2,
     "monitor_recheck_hours": 24,
     "max_deliverables": 5,
+    # CIO review reads prior options facts from bitemporal memory (M2). Env
+    # MEMORY_BEHAVIOR_INFLUENCE_OPTIONS, when set, overrides this.
+    "memory_reads": False,
+    "memory_reads_limit": 8,
+    "memory_reads_lookback_days": 180,
 }
+
+
+def memory_settings(s: dict[str, Any]) -> dict[str, Any]:
+    """The ``memory`` argument options_cio_review.review/build_facts takes."""
+    return {"memory_reads": s.get("memory_reads"), "limit": s.get("memory_reads_limit"),
+            "lookback_days": s.get("memory_reads_lookback_days")}
 
 
 def settings(cfg: Optional[dict[str, Any]]) -> dict[str, Any]:
