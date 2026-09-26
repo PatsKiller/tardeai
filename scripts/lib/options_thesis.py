@@ -48,6 +48,16 @@ REQUIRED_FIELDS = (
 )
 OPERATOR_FIELDS = ("position_sizing_rationale", "cio_approval_record")
 
+# Lifecycle (operator 2026-09-26): an incomplete thesis is the start of a process,
+# not a resting state. Event type -> stage shown on the card.
+LIFECYCLE_EVENTS = {
+    "OPTIONS_THESIS_RESEARCH_REQUESTED": "RESEARCH_QUEUED",
+    "OPTIONS_THESIS_RESEARCH_COMPLETE": "RESEARCH_COMPLETE",
+    "OPTIONS_THESIS_CIO_REVIEW_QUEUED": "CIO_REVIEW_QUEUED",
+    "OPTIONS_THESIS_DECISION": "DECISION_ISSUED",
+    "OPTIONS_THESIS_ABANDONED": "ARCHIVED_ABANDONED",
+}
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -72,16 +82,21 @@ def build_record(proposal: dict[str, Any], thesis: dict[str, Any]) -> dict[str, 
     t = thesis or {}
     rc = p.get("research_context") or {}
     ent = p.get("enterprise") or {}
-    catalyst = p.get("catalyst") or rc.get("catalyst")
+    ra = p.get("research_answers") or {}
+    catalyst = p.get("catalyst") or rc.get("catalyst") or ra.get("catalysts")
     pin = t.get("symbol_thesis_version")
     state = str(t.get("thesis_state") or "INSUFFICIENT_DATA").upper()
     summary = (t.get("thesis_summary") or "").strip()
     risk = [str(x) for x in (t.get("counter_evidence") or []) if x]
+    if ra.get("bear_case"):
+        risk.append(str(ra["bear_case"]))
     risk += [str(i) for i in (ent.get("issues") or ent.get("warnings") or []) if i]
     if p.get("max_loss") is not None:
         risk.append(f"Max loss per contract ${p.get('max_loss'):,}" if isinstance(p.get("max_loss"), (int, float))
                     else f"Max loss {p.get('max_loss')}")
     exits = [str(x) for x in (t.get("invalidation_conditions") or []) if x]
+    if ra.get("invalidation"):
+        exits.append(str(ra["invalidation"]))
     if rc.get("invalidated_if"):
         exits.append(str(rc["invalidated_if"]))
     if p.get("expiration"):
@@ -112,8 +127,16 @@ def build_record(proposal: dict[str, Any], thesis: dict[str, Any]) -> dict[str, 
             "stance": t.get("thesis_stance"),
             "summary": summary or None,
             "why_option": p.get("why_option") or None,
-        } if (pin and summary) else None,
-        "supporting_research": research if has_research else None,
+        } if (pin and summary) else ({
+            "symbol_thesis_id": t.get("symbol_thesis_id"),
+            "pin": None,
+            "state": "RESEARCHED_FOR_OPTION",
+            "summary": str(ra["thesis"]),
+            "source": ra.get("research_id"),
+        } if ra.get("thesis") else None),
+        "supporting_research": research if has_research else (
+            {**research, "research_id": ra.get("research_id"), "answers": {k: v for k, v in ra.items()
+             if k in ("thesis", "catalysts", "invalidation", "bear_case")}} if ra.get("research_id") else None),
         "catalysts": [catalyst] if catalyst else [],
         "risk_factors": risk,
         "entry_criteria": {
@@ -144,7 +167,11 @@ def build_record(proposal: dict[str, Any], thesis: dict[str, Any]) -> dict[str, 
     }
     record["missing_required"] = [f for f in REQUIRED_FIELDS if not _nonempty(record.get(f))]
     record["pending_operator"] = list(OPERATOR_FIELDS)
-    record["thesis_gate_state"] = state
+    # An option-specific researched thesis stands in for a missing symbol thesis;
+    # the CIO decision below still has to approve it.
+    record["thesis_gate_state"] = state if pin else ("RESEARCHED_FOR_OPTION" if ra.get("thesis") else state)
+    dec = p.get("cio_decision") or {}
+    record["cio_approval_record"] = {k: dec.get(k) for k in ("decision_guid", "outcome", "confidence", "at")} if dec else None
     return record
 
 
@@ -168,6 +195,12 @@ def thesis_blocks(record: dict[str, Any]) -> list[dict[str, Any]]:
         })
     for field in record.get("missing_required") or []:
         blocks.append({"code": f"thesis_missing_{field}", "reason": f"options thesis record has no {field.replace('_', ' ')}"})
+    # Operator 2026-09-26: the CIO review issues the decision; you confirm it.
+    dec = record.get("cio_approval_record") or {}
+    if not blocks and dec.get("outcome") != "APPROVE":
+        blocks.append({"code": "awaiting_cio_decision",
+                       "reason": ("CIO decision: " + str(dec.get("outcome")).lower().replace("_", " "))
+                       if dec.get("outcome") else "no CIO decision issued yet"})
     return blocks
 
 
@@ -246,6 +279,36 @@ class OptionsThesisStore:
             "note": note,
             "authority": AUTHORITY,
         })
+
+    def append_event(self, position_guid: str, event_type: str, **payload: Any) -> dict[str, Any]:
+        """Lifecycle event (research requested/complete, CIO decision, abandoned)."""
+        return self._append({"event_type": event_type, "position_guid": position_guid,
+                             "authority": AUTHORITY, **payload})
+
+    def lifecycle(self, position_guid: str) -> dict[str, Any]:
+        """Current lifecycle stage and timeline, derived from the append-only events."""
+        events = self.history(position_guid)
+        stage, timeline = None, []
+        for e in events:
+            et = e.get("event_type")
+            if et == "OPTIONS_THESIS_VERSION" and stage is None:
+                stage = "CREATED"
+                timeline.append({"stage": "CREATED", "at": e.get("recorded_at"), "pin": e.get("pin")})
+            elif et in LIFECYCLE_EVENTS:
+                stage = LIFECYCLE_EVENTS[et]
+                timeline.append({"stage": stage, "at": e.get("recorded_at"),
+                                 **{k: e.get(k) for k in ("research_id", "decision_guid", "outcome", "reason")
+                                    if e.get(k) is not None}})
+        last = {}
+        for e in events:
+            if e.get("event_type") in LIFECYCLE_EVENTS:
+                last[e["event_type"]] = e
+        return {"stage": stage, "timeline": timeline,
+                "created_at": timeline[0]["at"] if timeline else None,
+                "research": last.get("OPTIONS_THESIS_RESEARCH_COMPLETE"),
+                "research_request": last.get("OPTIONS_THESIS_RESEARCH_REQUESTED"),
+                "decision": last.get("OPTIONS_THESIS_DECISION"),
+                "abandoned": last.get("OPTIONS_THESIS_ABANDONED")}
 
     def verify_chain(self) -> bool:
         prev = GENESIS

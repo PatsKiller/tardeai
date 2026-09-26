@@ -49,7 +49,10 @@ def test_complete_record_has_no_blocks():
     assert rec["missing_required"] == []
     assert rec["investment_thesis"]["pin"] == "symbol_amzn@v5"
     assert rec["catalysts"] == ["re:Invent 2026-12-01"]
-    assert ot.thesis_blocks(rec) == []
+    # Operator 2026-09-26: a complete thesis still waits for the CIO decision.
+    assert [b["code"] for b in ot.thesis_blocks(rec)] == ["awaiting_cio_decision"]
+    approved = ot.build_record(_proposal(cio_decision={"decision_guid": "dec_1", "outcome": "APPROVE"}), THESIS)
+    assert ot.thesis_blocks(approved) == []
 
 
 def test_no_symbol_thesis_blocks_like_an_equity_buy():
@@ -115,7 +118,8 @@ def test_engine_attaches_pin_catalyst_and_blocks(monkeypatch, tmp_path):
     oe._attach_options_thesis([good, bad])
     assert good["thesis_version_at_decision"] == "symbol_amzn@v5"
     assert good["catalyst"] == "re:Invent 2026-12-01"
-    assert good["thesis_blocks"] == [] and good["options_thesis"]["pin"].endswith("@v1")
+    assert [b["code"] for b in good["thesis_blocks"]] == ["awaiting_cio_decision"]
+    assert good["options_thesis"]["pin"].endswith("@v1")
     assert any(b["code"] == "thesis_required" for b in bad["thesis_blocks"])
     assert (tmp_path / "data" / "cio" / "options_theses.jsonl").is_file()
 

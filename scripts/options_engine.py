@@ -2489,6 +2489,14 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
         return
     store = OptionsThesisStore()
     cache: Dict[str, dict] = {}
+    views: Dict[str, dict] = {}
+    try:
+        from lib.ticker_cio_view import cio_view
+        from lib.options_thesis_lifecycle import queue_position, settings as _life_settings
+        _proj = json.loads((PROJECT_ROOT / "data" / "cio" / "hermes_research_projection.json").read_text(encoding="utf-8"))
+    except Exception:
+        cio_view = None  # type: ignore
+        _proj = {}
     for p in proposals:
         sym = str(p.get("symbol") or "").upper()
         if sym not in cache:
@@ -2497,6 +2505,32 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
             except Exception as e:
                 cache[sym] = {"thesis_state": "INSUFFICIENT_DATA", "thesis_reason": f"lookup_error:{type(e).__name__}"}
         t = cache[sym]
+        # Lifecycle memory first (operator 2026-09-26): research answers and the CIO
+        # decision already on file feed this version instead of starting blank.
+        guid = p.get("option_strategy_guid")
+        life = store.lifecycle(guid) if guid else {}
+        p["research_answers"] = ((life.get("research") or {}).get("answers")) or {}
+        dec = life.get("decision") or {}
+        if dec:
+            p["cio_decision"] = {"decision_guid": dec.get("decision_guid"), "outcome": dec.get("outcome"),
+                                 "confidence": dec.get("confidence"), "at": dec.get("recorded_at"),
+                                 "review": dec.get("review")}
+        if life.get("abandoned"):
+            p["thesis_abandoned"] = (life["abandoned"].get("reason") or "abandoned")
+        req = life.get("research_request") or {}
+        p["lifecycle"] = {
+            "stage": life.get("stage"),
+            "timeline": life.get("timeline") or [],
+            "research_queue": (queue_position(_proj, req.get("research_id"), _life_settings(_desk_cfg()))
+                               if req.get("research_id") and not life.get("research") else None),
+        }
+        if cio_view is not None:
+            if sym not in views:
+                try:
+                    views[sym] = cio_view(sym, t)
+                except Exception:
+                    views[sym] = {"has_view": False, "error": True}
+            p["cio_view"] = views[sym]
         rc = p.get("research_context") or {}
         if not p.get("catalyst") and rc.get("catalyst"):
             p["catalyst"] = rc["catalyst"]  # memo and strategy-fit read the top level
@@ -2742,6 +2776,11 @@ def generate_proposals(force: bool = False) -> dict:
                 "invalidated_if": ctx.get("invalidated_if"),
             }
     _attach_options_thesis(all_p)
+    # A thesis that could not be completed inside the window is archived, not shown.
+    for _p in [x for x in all_p if x.get("thesis_abandoned")]:
+        INCOME_SCREEN_DROPS.append({"symbol": _p.get("symbol"), "strategy": _p.get("strategy"),
+                                    "reason": "THESIS_ABANDONED", "detail": _p["thesis_abandoned"]})
+    all_p = [x for x in all_p if not x.get("thesis_abandoned")]
 
     enterprise_summary = {}
     approval_sync = {}

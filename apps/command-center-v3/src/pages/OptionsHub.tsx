@@ -354,6 +354,7 @@ export default function OptionsHub({ onDrill }: Props) {
                 PRICE_BELOW_FLOOR: 'stock price below floor',
                 NO_CHAIN: 'no listed chain',
                 IV_UNKNOWN: 'IV unknown',
+                THESIS_ABANDONED: 'archived (thesis not completed in time)',
               }
               const parts = Object.entries(reasons).sort((a, b) => b[1].count - a[1].count)
                 .map(([k, v]) => `${v.count} ${LABEL[k] || k.toLowerCase().replace(/_/g, ' ')} (${v.symbols.slice(0, 4).join(', ')}${v.symbols.length > 4 ? '…' : ''})`)
