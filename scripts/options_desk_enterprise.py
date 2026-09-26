@@ -1030,9 +1030,37 @@ def resolve_approval(
             return {"ok": False,
                     "error": f"cannot approve — {len(blocks)} enterprise block(s) remain",
                     "blocks": blocks}
+        # 2026-09-26 (operator): approve only on a fresh live Schwab validation.
+        stale = _validation_refusal(cur, proposal_id)
+        if stale:
+            conn.rollback()
+            return {"ok": False, "error": stale}
     conn.commit()
     _record_thesis_approval(cur, proposal_id, action, reviewer, note)
     return {"ok": True, "proposal_id": proposal_id, "status": new_status, "symbol": row[1], "strategy": row[2]}
+
+
+def _validation_refusal(cur, proposal_id: str) -> Optional[str]:
+    """Reason to refuse approval unless a fresh VALIDATED result exists, else None."""
+    try:
+        cur.execute("SELECT proposal_json->>'option_strategy_guid' FROM options_approval_queue WHERE proposal_id=%s",
+                    (proposal_id,))
+        r = cur.fetchone()
+        guid = r[0] if r else None
+        if not guid:
+            return "no strategy GUID on this proposal; regenerate before approving"
+        try:
+            from scripts.lib.options_thesis import OptionsThesisStore
+            from scripts.lib.options_validate import fresh_validation, settings
+        except ImportError:
+            from lib.options_thesis import OptionsThesisStore  # type: ignore
+            from lib.options_validate import fresh_validation, settings  # type: ignore
+        mins = float(settings(load_desk_config())["fresh_minutes"])
+        if fresh_validation(OptionsThesisStore().history(guid), mins) is None:
+            return f"validate against live Schwab data first (needs a VALIDATED result within {mins:g} min)"
+        return None
+    except Exception as e:  # fail closed: no approval without proof of a fresh quote
+        return f"validation check unavailable ({type(e).__name__}); validate and retry"
 
 
 def _record_thesis_approval(cur, proposal_id: str, action: str, reviewer: str, note: str) -> None:
