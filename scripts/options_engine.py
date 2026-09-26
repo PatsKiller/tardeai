@@ -2022,6 +2022,16 @@ def generate_credit_spread_proposals(
         if net_credit < 0.08:
             continue
         width = short_strike - long_strike
+        # 2026-09-26: ETON built a Tier A spread on OI 0 / 122% spread legs; the income
+        # screen now covers spreads: both legs liquid, credit and return-on-risk floors.
+        from lib.options_income_quality import is_liquid
+        if not is_liquid(long_c, _desk_cfg()):
+            INCOME_SCREEN_DROPS.append({"symbol": sym, "strategy": "credit_spread", "reason": "NO_LIQUID_CONTRACT",
+                                        "strike": long_strike, "oi": long_c.get("oi")})
+            continue
+        if _income_screen("credit_spread", sym, {**short_c, "mid": net_credit, "spread_capital": width - net_credit},
+                          data_source, und):
+            continue
         max_loss = round((width - net_credit) * 100, 2)
         dte = int(short_c.get("dte") or 30)
         iv = max(0.05, short_c.get("iv") or _resolve_iv_decimal(und, tech, "put"))
