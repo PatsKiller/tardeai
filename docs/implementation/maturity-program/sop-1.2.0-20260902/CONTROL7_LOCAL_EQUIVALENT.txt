@@ -1,6 +1,6 @@
 === CONTROL7 LOCAL EQUIVALENT (reproducible; Layer 1) ===
 schema=SopControl7LocalEquivalent@v1
-control_surface_digest=7ba007a15358c4a3168fbe9673da9a760963f387e2ad5e60363a370f44f0a231
+control_surface_digest=AT_HEAD (computed by validate_sop_evidence_integrity.py and recorded in the SopRuntimeAttestation@v1 artifact emitted by agent-governance on every run; not committed since 2026-09-25)
 note=Command specification with expected successful exits. Does not embed containing commit SHA.
 historical_failure_artifact=SUPERSEDED — prior ModuleNotFoundError/EXIT_quality=1 capture is non-authoritative.
 

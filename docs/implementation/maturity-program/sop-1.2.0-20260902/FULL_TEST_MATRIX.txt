@@ -1,6 +1,6 @@
 === FULL TEST MATRIX (reproducible; Layer 1) ===
 schema=SopFullTestMatrix@v1
-control_surface_digest=7ba007a15358c4a3168fbe9673da9a760963f387e2ad5e60363a370f44f0a231
+control_surface_digest=AT_HEAD (computed by validate_sop_evidence_integrity.py and recorded in the SopRuntimeAttestation@v1 artifact emitted by agent-governance on every run; not committed since 2026-09-25)
 manifest=config/sop_120_control_surface.manifest.json
 base_ref=origin/main
 expected_pytest_core=121
