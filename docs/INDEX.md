@@ -2,33 +2,11 @@
 # Docs Index
 
 **Generator:** `python3 scripts/report_docs_inventory.py --write-index`
-**Tree fingerprint:** `5fbcb5fa2833da8fe5cb0633bf2e1ea25ccdf75c122f8da82279acf1aa5083a4`
+**Counts and tree fingerprint:** printed by `python3 scripts/report_docs_inventory.py --check-index` (not committed: they change on every docs PR and made concurrent PRs conflict).
 
 Hand-maintained narrative indexes remain authoritative for *what is current*:
 `docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.
 This file is the regenerable tree listing from `report_docs_inventory.py`.
-
-## Counts
-
-| Metric | Count |
-|--------|------:|
-| Files under `docs/` (excl. this INDEX) | 2618 |
-| Markdown (excl. this INDEX) | 2191 |
-| **MISSING HEADER** | **76** |
-| Header OK | 2115 |
-| Duplicate groups | 2 |
-
-### By status_guess
-
-| Status | Count |
-|--------|------:|
-| active_keep | 8 |
-| archive_superseded | 9 |
-| artifact_code_snapshot | 3 |
-| artifact_raw_sync | 36 |
-| current_phase_keep | 313 |
-| delete_candidate_duplicate | 2 |
-| review_required | 2247 |
 
 ## Markdown tree
 
@@ -163,6 +141,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_findings/SCALP_FIRE_INTEGRITY_FIX_2026-07-28.md` | Scalp Fire Integrity — Gate Persistence, Stop Floor, and Canonical Setup Identity | review_required | OK | `96c0a57cc069` |
 | `docs/_findings/SCALP_SETUP_IMPLEMENTATION_CLOSEOUT_2026-07-27.md` | Scalp Multi-Setup Taxonomy — Implementation Closeout (2026-07-27) | review_required | OK | `cf9f9b2ed107` |
 | `docs/_findings/SCALP_SETUP_SOURCE_SYNTHESIS_2026-07-27.md` | Scalp Setup — Source Synthesis (2026-07-27) | review_required | OK | `4cd64ccd98e2` |
+| `docs/_findings/SCHD_DECISION_INTEGRITY_INCIDENT_2026-09-25.md` | SCHD decision-integrity incident — 2026-09-25 10:48 ET | review_required | OK | `60cf6015ae87` |
 | `docs/_findings/alpaca_taxonomy_audit_2026-07-21.md` | FINDINGS: Alpaca Paper/Live Taxonomy & Multi-Account Readiness Audit | review_required | OK | `8212d11b2f89` |
 | `docs/_findings/bitwarden_env_posture_recon_2026-07-21.md` | RECON: Bitwarden + Env Posture Inventory (read-only) | review_required | OK | `a0d867f98a49` |
 | `docs/_findings/brave_search_api_usage_audit_2026-05.md` | Brave Search API Usage Audit — May 2026 | review_required | OK | `943f66776820` |
@@ -430,7 +409,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/PHASE210A_LOOKTHROUGH_CADENCE_PREFLIGHT_CLASSIFY_HARDEN.md` | Phase 210A — Lookthrough Cadence: Preflight + Classify + Harden + Dry-Run — 2026-06-07 | review_required | OK | `a658e122a9e2` |
 | `docs/architecture/PHASE210B_LOOKTHROUGH_APPLY_DIFF_SCHEDULE.md` | Phase 210B — Lookthrough Apply + Diff + Schedule — 2026-06-07 | review_required | OK | `8f9f70d8d735` |
 | `docs/architecture/PHASE210C_CADENCE_TIMER_SCHEDULE_VERIFICATION.md` | Phase 210C — Cadence Timer Schedule Verification — 2026-06-07 | review_required | OK | `1d9cdac8c715` |
-| `docs/architecture/PLAN_S_HOLLOW_RESEARCH_THEN_ANSWER_2026-09-22.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | review_required | OK | `5e9e634f7fa6` |
+| `docs/architecture/PLAN_S_HOLLOW_RESEARCH_THEN_ANSWER_2026-09-22.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | delete_candidate_duplicate | OK | `5e9e634f7fa6` |
 | `docs/architecture/PRE_DEPLOY_STATE_GUARD.md` | Pre-Deploy State Guard (canonical) | review_required | OK | `fe30cc8699b6` |
 | `docs/architecture/PROJECT_THE_DESK_V2.md` | PROJECT · THE DESK — an autonomous CIO, built as extensions to the existing spec | review_required | OK | `2af6860a863f` |
 | `docs/architecture/QUOTE_PIPELINE_UNIFICATION_SCOPING_2026-08-27.md` | Quote Pipeline Unification — Scoping (Audit Finding H4) | review_required | OK | `d3580a82544b` |
@@ -473,9 +452,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/WATCH_DESK_V2.md` | Watch Desk v2 — Truth & Directive Governance (P0 workstreams, 2026-07-16) | review_required | OK | `be5f8cd47049` |
 | `docs/architecture/WATCH_DESK_V3.md` | Watch Desk v3 — From Watching to Learning (2026-07-16 evening) | review_required | OK | `ea65c14610d0` |
 | `docs/architecture/WATCH_DESK_V4.md` | Watch Desk v4 — Terminal Grade (2026-07-16, evening) | review_required | OK | `018c8ea82d4c` |
+| `docs/architecture/adr/ADR-005-decision-integrity-validator-and-alert-semantics.md` | ADR-005 — One decision-integrity validator before any actionable surface; alert and wake semantics | review_required | OK | `24682fee658c` |
 | `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | review_required | OK | `1b18a9999a79` |
 | `docs/architecture/agent-memory-view-proposal.md` | Command Center — Agent Memory view (proposal) | review_required | OK | `7b90f4d8e3d6` |
 | `docs/architecture/channel-adapters.md` | Gateway Channel Adapters — Phase 10 | review_required | OK | `2457155850f5` |
+| `docs/architecture/cio-cognition-tranche3-20260925.md` | CIO cognition tranche 3 — prompt event-driven cognition and the closed learning chain | review_required | OK | `4593665c031d` |
 | `docs/architecture/cio/ADR_ALEX_AUTHORITY_MANIFEST.md` | ADR: Alex Authority Manifest | review_required | OK | `8bf7e2366689` |
 | `docs/architecture/cio/ADR_CIO_STATE_ARCHITECTURE.md` | ADR: CIO State Architecture | review_required | OK | `78b3c731e31d` |
 | `docs/architecture/cio/ADR_CONTAINMENT_SPECIFICATION.md` | ADR: Containment Specification | review_required | OK | `e090bef207bf` |
@@ -650,6 +631,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/atm_audit_2026_05_26/remediation_plan/P0_REMEDIATION_PLAN.md` | P0 Remediation Plan — ATM Incident 2026-05-26 | review_required | OK | `cc2fd53bac6b` |
 | `docs/atm_audit_2026_05_26/schema_snapshot/SCHEMA_FINDINGS.md` | Schema Findings -- ATM Audit 2026-05-26 | review_required | OK | `c47df933fc27` |
 | `docs/atm_audit_2026_05_26/schema_snapshot/table_schemas.md` | Schema Snapshot -- ATM Audit 2026-05-26 | review_required | OK | `ba858d82d79f` |
+| `docs/audit-s-sentinelone-memory-vs-research-20260923.md` | Audit: SentinelOne (S) — memory vs research, GUIDs, persistence | review_required | OK | `c155de4486ab` |
 | `docs/audit/PROPOSALS_BROKER_VS_REGULAR_AUDIT_20260624.md` | Proposals Audit — Broker vs Regular (Frontend + Backend) | review_required | OK | `c3f78de62d14` |
 | `docs/audit/_evidence/README.md` | Phase 0 evidence snapshots | review_required | MISSING HEADER | `e17f23a439d9` |
 | `docs/audit/current-state.md` | Communications Gateway — Current State | review_required | MISSING HEADER | `5bf7544d0919` |
@@ -675,12 +657,17 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan | review_required | OK | `2224490a6526` |
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census | review_required | OK | `a5073ae48b02` |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche | review_required | OK | `3669faccf7ff` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `a464a3e1a876` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `ee57933d06ee` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `f2a3cbfa0602` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `11de9ad254ac` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_v31_2026-07-14.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `5bd54a7f0c60` |
+| `docs/audits/OPTIONS_DESK_ARCHITECTURE_MAP_2026-09-25.md` | Options Desk Architecture Map — 2026-09-25 | review_required | OK | `8e58d31110ac` |
+| `docs/audits/OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md` | Options Desk Executive Audit — 2026-09-25 | review_required | OK | `d8f4de5076a7` |
+| `docs/audits/OPTIONS_DESK_GOVERNANCE_MEMORY_AUDIT_2026-09-25.md` | Options Desk Governance and Persistent Intelligence Audit — 2026-09-25 | review_required | OK | `3f07009d473e` |
+| `docs/audits/OPTIONS_DESK_RECOMMENDATION_SPEC_2026-09-25.md` | Options Desk Recommendation Enhancement Specification — 2026-09-25 | review_required | OK | `218a52091462` |
+| `docs/audits/OPTIONS_DESK_STAGES_2_5_2026-09-25.md` | Options desk stages 2–5 | review_required | OK | `41ed3a99a3bc` |
 | `docs/audits/P101_RISK_PRODUCER_2026-08-28.md` | P10.1 — `risk_management.json` has a producer. It writes to the wrong tree. | review_required | OK | `ab3ccb5ebae0` |
 | `docs/audits/P85_FRESHNESS_FLIP_HELD_2026-08-28.md` | P8.5 — the freshness flip: **not applied** | review_required | OK | `ae8d52380901` |
 | `docs/audits/P91_WHERE_THE_MODEL_CALL_GOES_2026-08-28.md` | P9.1 — where does the model call go? | review_required | OK | `fe5e6124f0c7` |
@@ -1016,6 +1003,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/governance/phase_gov1_scheduled_facts_a1a/00_README.md` | GOV-1 — Scheduled System Facts and A1A Checks | current_phase_keep | OK | `174c5a2c8411` |
 | `docs/health-inspection-system.md` | Trade AI Health Inspection System | review_required | OK | `b124f6cc38ef` |
 | `docs/health_inspector_build_log.md` | Health Inspector Multi-Layered Remediation System — Build Log | review_required | OK | `f5c9c44604e3` |
+| `docs/hermes-s-backlog-20260923.md` | Hermes backlog vs SentinelOne (S) — 2026-09-23 | review_required | OK | `6d6cac6ade47` |
 | `docs/hermes/EXTERNAL_LLM_USAGE_POLICY_20260607.md` | External LLM Usage Policy & Approval Process (2026-06-07) | review_required | OK | `abf799888c3a` |
 | `docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` | Hermes Adaptive Threshold Learning | review_required | OK | `f4f8db724c12` |
 | `docs/hermes/HERMES_ADVISORY_ACTIONABILITY_STANDARD.md` | Hermes Advisory Actionability Standard | review_required | OK | `c43482aa2943` |
@@ -1335,11 +1323,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_AGENTS_POLICY_RECONCILIATION.md` | Stage 1 · Constitutional cleanup and conflict matrix | review_required | OK | `2d04326c1ac7` |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_01_DRIVE_MIRROR_VERIFICATION.md` | Stage 1.6 · Drive mirror | review_required | OK | `4dd677d4c67b` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/EAC13CFD0_DRIVE_MANIFEST_DISPOSITION.md` | eac13cfd0 Drive-manifest disposition | review_required | OK | `0bef5edf4cc3` |
-| `docs/implementation/maturity-program/sop-1.2.0-20260902/EVIDENCE_ARCHITECTURE.md` | SOP 1.2.0 · Evidence architecture | review_required | OK | `ab78ae35e35f` |
+| `docs/implementation/maturity-program/sop-1.2.0-20260902/EVIDENCE_ARCHITECTURE.md` | SOP 1.2.0 · Evidence architecture | review_required | OK | `36c877822f85` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/MATURITY_SCORECARD.md` | Maturity scorecard — Multi-Agent SOP 1.2.0 | review_required | OK | `75348782374d` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_00_PREFLIGHT.md` | Stage 0 · Fresh-state preflight and constitutional read | review_required | OK | `d565bb67c3fa` |
 | `docs/implementation/maturity-program/sop-1.2.0-20260902/STAGE_01_PR_COLLISION.md` | Stage 1 · Open-PR collision / convergence inventory | review_required | OK | `b072654894ad` |
-| `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `ba4903599982` |
+| `docs/implementation/maturity-program/sop-1.2.0-20260902/VERIFIER_RUNBOOK.md` | SOP 1.2.0 · Independent verifier runbook | review_required | OK | `db4ba680bfb7` |
 | `docs/implementation/sot/DOCS_AUDIT_20260913.md` | One Source of Truth — documentation and governance audit (Phase 8) | review_required | OK | `5da4931f6bd6` |
 | `docs/implementation/sot/phase9_hermes_research_notes.md` | Phase 9 — one write module for `hermes_research_intelligence` | review_required | MISSING HEADER | `089989d1da1b` |
 | `docs/implementation/sot/phase9_news_articles_notes.md` | Phase 9 — `news_articles`: one write module | review_required | OK | `4faa0228c5d1` |
@@ -1662,6 +1650,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CIO_WAVE3D_FLASH_2026-08-29.md` | CIO Wave 3D-flash — **STOPPED at step 1: zero flash-eligible** | review_required | OK | `df9fb2572aae` |
 | `docs/ops/CIO_WAVE3D_HOP_2026-08-29.md` | Wave 3D — the one live hop, executed (2026-08-29) | review_required | OK | `02ef350a1efb` |
 | `docs/ops/CIO_WAVE3E_2026-08-29.md` | CIO Wave 3E — notification decisions on the Command Center (2026-08-29) | review_required | OK | `6fd2ce532756` |
+| `docs/ops/CI_FAST_CORE_20260925.md` | CI fast core, risk tiers and digest-free evidence (2026-09-25) | review_required | MISSING HEADER | `0848756e5ca9` |
 | `docs/ops/CLOSE_OPERATOR_GAPS_TO_100_2026-08-19.md` | Close remaining operator gaps to 100% | review_required | OK | `9f9aada669d7` |
 | `docs/ops/COGNITIVE_MEMORY_PRODUCTION_RUNBOOK.md` | Cognitive memory in production: runbook | review_required | OK | `720ebe9b2fee` |
 | `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) | review_required | MISSING HEADER | `de97ccca2b56` |
@@ -1691,7 +1680,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 | review_required | OK | `cd49b9ce53e7` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `f88b31c995fa` |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention | review_required | OK | `b54b463e120a` |
-| `docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md` | LIVE-cio-stance-governance — 24/7 universal CIO stance maturity | review_required | OK | `cd4ea4d547b0` |
+| `docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md` | LIVE-cio-stance-governance — 24/7 universal CIO stance maturity | review_required | OK | `d80f76060dfc` |
 | `docs/ops/LLM_OFFPEAK_ROUTING.md` | LLM Off-Peak Routing — operator guide | review_required | MISSING HEADER | `f87f06023478` |
 | `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` | How LLMs, Hermes, SearXNG, and ticker data actually work | review_required | OK | `3b36a08165b8` |
 | `docs/ops/M2_DARK_READ_PARITY_2026-08-24.md` | M2 dark-read parity | review_required | OK | `ebee0b2213fc` |
@@ -1812,7 +1801,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/paper_trading/PHASE186K_STOP_TO_TRAILING_CONVERSION_AUDIT.md` | Phase 186K: Hard-Stop to Trailing-Stop Conversion Audit | review_required | OK | `7910d9e429be` |
 | `docs/paper_trading/PHASE186L_TRAILING_STOP_ALGORITHM_SPECIFICATION.md` | Phase 186L: Trailing Stop Algorithm Specification | review_required | OK | `4b3ba04029af` |
 | `docs/patches/2026-06-15_stage2b_intent_persistence_fix.md` | Stage 2b Schwab Pilot Hotfix — Intent Persistence Before Approval | review_required | OK | `0f35a94b1ef8` |
+| `docs/plan-openclaw-internal-first-integrity-20260923.md` | Plan: OpenClaw internal-first integrity (Maria → Trade-AI / Hermes before MODEL_GENERAL) | review_required | OK | `cc830e718f80` |
 | `docs/plan-options-desk-holdings-strategies-20260924.md` | Plan: Options Desk — holdings strategies · open legs · CIO fluency · goals · BUY_READY institutional packet | review_required | OK | `38f365c22cd1` |
+| `docs/plan-s-hollow-research-then-answer.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | delete_candidate_duplicate | OK | `5e9e634f7fa6` |
 | `docs/project/CI_EVIDENCE_LATEST.md` | CI Evidence — Release Readiness Proof | current_phase_keep | MISSING HEADER | `c681fe6477dd` |
 | `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_20260606.md` | Closed-Loop All-Trades Abstraction (2026-06-06) | current_phase_keep | OK | `82b9d6a350f7` |
 | `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_DUE_DILIGENCE_20260606.md` | Closed-Loop All-Trades Abstraction — Due Diligence (2026-06-06) | current_phase_keep | OK | `06306949c580` |
