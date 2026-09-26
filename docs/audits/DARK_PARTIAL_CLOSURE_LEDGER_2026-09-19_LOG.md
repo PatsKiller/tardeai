@@ -632,3 +632,83 @@ confirmed CLOSED on already-merged work; no stage re-implemented.
   2026-09-21T00:09:53Z.
 - State: **CLOSED · OBSERVED_LIVE** (not left PARTIAL — criteria already met).
 - MBI_BEHAVIOR=0 / non-authoritative memory reaffirmed — stance gates advisory only.
+
+## 2026-09-22T02:38 ET — UNATTENDED_ORGANIC_OBSERVED (Tue early ~06:35 slot)
+
+- Goal remains **CLOSED** (prior OPERATOR_FORCED_GO_LIVE / OBSERVED_LIVE claim). **No reopen.**
+- Honesty upgrade only: Mon market-hours producers wrote durable organic holds.
+- `[VERIFIED]` `report_organic_stance_hold.py --json` as_of=2026-09-22T06:36:16Z:
+  EXIT=**0** organic=**1780** non_organic=2 total=1782 observed=true;
+  latest DFAU `as_of=2026-09-21T20:58:08Z` caller=`send_telegram_proposal_alert`
+  held_reason=`cio_stance_conflict`.
+- NEW since Mon 2026-09-21 06:00 ET (`as_of` ≥ 2026-09-21T10:00:00Z):
+  **1776** rows `source=check_investment_send` + ORGANIC_HOLD_CALLERS
+  (`send_telegram_proposal_alert`=1748, `screener_go_alerts`=28).
+  Window first≈13:36:05Z / last≈20:58:08Z; holds mtime 2026-09-21T16:58:08-04:00.
+- Host timers `[VERIFIED]`:
+  - early LastTrigger=**Mon 2026-09-21 06:35:11 EDT** (journal organic=4);
+    Next=Tue 06:35:10 EDT (this agent slot; wall ~02:36 ET).
+  - main LastTrigger=**Mon 2026-09-21 09:05:43 EDT** (journal organic=4);
+    Next=Tue 09:05:09 EDT.
+- Remasure `[VERIFIED]`: M1–M5 all **OBSERVED** exit 0 pin `58dac0884-main-exact-phase2-20260922-000413`
+  as_of=2026-09-22T06:38:11Z; soft_unsupported_share=**0.098** (160/1636) PASS ≤0.15.
+- Ledger row → **CLOSED · UNATTENDED_ORGANIC_OBSERVED**. Prior organic=4 retained as
+  FORCE-mechanical history (not deleted). §17 parks unchanged. MBI/broker untouched.
+
+## 2026-09-23T02:37 ET — Wed early observe refresh (organic=3276)
+
+- Stance ledger remains **CLOSED · UNATTENDED_ORGANIC_OBSERVED** (no reopen; no invent).
+- `[VERIFIED]` `python3 scripts/report_organic_stance_hold.py` EXIT=**0**:
+  `LIVE-cio-stance-governance: OBSERVED organic=3276 non_organic=2 total=3278`
+  path=`/home/johnclaw/.local/state/tradeai/cio_telegram_stance_holds.jsonl`
+  latest: as_of=2026-09-22T20:58:07Z symbol=J caller=send_telegram_proposal_alert
+  reason=cio_decision_missing; observe receipt as_of=2026-09-23T06:36:17Z.
+- Proof stamps: all organic rows `source=check_investment_send` + ORGANIC_HOLD_CALLERS;
+  same-window conflict receipt DUHP as_of=2026-09-22T20:50:14Z held_reason=`cio_stance_conflict`.
+- NEW since Tue 2026-09-22 06:00 ET: **1496**
+  (`send_telegram_proposal_alert`=1494, `screener_go_alerts`=2;
+  conflict=861 / decision_missing=635). First≈13:15:01Z GDC; last≈20:58:07Z J.
+- Host timers `[VERIFIED]`:
+  - early LastTrigger=**Tue 2026-09-22 06:35:11 EDT** (journal organic=1780);
+    Next=Wed 06:35:17 EDT (this agent slot; wall ~02:37 ET).
+  - main LastTrigger=**Tue 2026-09-22 09:05:33 EDT** (journal organic=1780);
+    Next=Wed 09:05:16 EDT.
+- Remasure `[VERIFIED]` pin `88eddef0e-main-exact-phase2-20260922-222556`:
+  - M1–M5 all **OBSERVED** exit 0 as_of=2026-09-23T06:37:08Z.
+  - soft_unsupported_share=**0.157** (251/1600) **FAIL** ≤0.15
+    (`report_agent_number_grounding.py --check-slo` exit 1). Soft regression noted;
+    PARTIAL-soft-share-live-SLO not reopened this turn (stance observe only).
+- Goal audit: organic **OBSERVED**; §17 parks still DEFERRED ×3 (bitemporal / hermes /
+  relationship). Goal **NOT COMPLETE** — never mark complete on weak evidence;
+  soft FAIL alone does not reopen stance.
+- MBI_BEHAVIOR=0 / broker untouched.
+
+## 2026-09-24T02:37 ET — Thu early observe refresh (organic=4780)
+
+- Stance ledger remains **CLOSED · UNATTENDED_ORGANIC_OBSERVED** (no reopen; no invent).
+- `[VERIFIED]` `python3 scripts/report_organic_stance_hold.py` EXIT=**0**:
+  `LIVE-cio-stance-governance: OBSERVED organic=4780 non_organic=2 total=4782`
+  path=`/home/johnclaw/.local/state/tradeai/cio_telegram_stance_holds.jsonl`
+  latest: as_of=2026-09-23T20:58:07Z symbol=GBFH caller=send_telegram_proposal_alert
+  reason=cio_stance_conflict; observe receipt as_of=2026-09-24T06:36:49Z.
+- Proof stamps: `source=check_investment_send` + ORGANIC_HOLD_CALLERS; latest row itself
+  carries `held_reason=cio_stance_conflict` (organic caller).
+- NEW since Wed 2026-09-23 06:00 ET: **1504**
+  (`send_telegram_proposal_alert`=1491, `screener_go_alerts`=13;
+  conflict=728 / decision_missing=776). First≈13:36:04Z ALLE; last≈20:58:07Z GBFH.
+- Host timers `[VERIFIED]`:
+  - early LastTrigger=**Wed 2026-09-23 06:35:17 EDT** (journal organic=3276);
+    Next=Thu 06:35:27 EDT (this agent slot; wall ~02:37 ET).
+  - main LastTrigger=**Wed 2026-09-23 09:05:13 EDT** (journal organic=3276);
+    Next=Thu 09:05:27 EDT.
+- Remasure `[VERIFIED]` pin `82d6266d4-main-exact-phase2-20260923-213846`:
+  - M1–M5 all **OBSERVED** exit 0 as_of=2026-09-24T06:36:49Z.
+  - soft_unsupported_share=**0.192** (277/1440) **FAIL** ≤0.15
+    (`report_agent_number_grounding.py --check-slo` exit 1). Soft still FAIL;
+    PARTIAL-soft-share-live-SLO not reopened this turn (stance observe only).
+- Goal audit: organic **OBSERVED**; §17 parks still unsettled (bitemporal / hermes row /
+  relationship). Goal **NOT COMPLETE** — never mark complete on weak evidence;
+  soft FAIL alone does not reopen stance or close the goal.
+- Prior midday note: organic=3276 push was blocked awaiting `/approve fa9a9a4926ab4ed4`;
+  this turn `bin/guard show` reports **git-push ACTIVE** (overnight maturity campaign grant).
+- MBI_BEHAVIOR=0 / broker untouched.
