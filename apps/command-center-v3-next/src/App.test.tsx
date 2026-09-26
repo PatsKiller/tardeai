@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { App } from './App';
 
@@ -33,7 +33,7 @@ describe('/v3-next read-only workspace', () => {
       'session-strip', 'decision-deck', 'symbol-decision', 'prime-queue', 'tickets', 'pnl-panel',
       'accounts-panel', 'brokers-panel', 'capabilities-panel', 'rejections-panel',
       'notifications-panel', 'journal-panel', 'feature-modal', 'parity-panel',
-      'symbol-selector', 'classic-next-nav',
+      'symbol-selector', 'classic-next-nav', 'observation-gate-panel',
     ]) {
       expect(screen.getByTestId(id)).toBeInTheDocument();
     }
@@ -60,22 +60,22 @@ describe('/v3-next read-only workspace', () => {
   it('classic nav points at untouched /v3, next at /v3-next', () => {
     render(<App />);
     expect(screen.getByTestId('nav-classic')).toHaveAttribute('href', '/v3/');
-    expect(screen.getByTestId('nav-next')).toBeInTheDocument();
+    expect(screen.getByTestId('nav-next')).toHaveAttribute('aria-current', 'page');
   });
 
-  it('shows the three Moomoo blocked badges and NO green/live badge', () => {
+  it('shows the corrected data-only gate badges and no live badge', () => {
     render(<App />);
-    expect(screen.getByTestId('moomoo-OFFLINE_IMPLEMENTED')).toBeInTheDocument();
-    expect(screen.getByTestId('moomoo-CREDENTIAL_GATE_BLOCKED')).toBeInTheDocument();
-    expect(screen.getByTestId('moomoo-LIVE_DATA_UNAVAILABLE')).toBeInTheDocument();
-    expect(screen.queryByText(/LIVE_DATA_AVAILABLE|CONNECTED|GREEN/)).not.toBeInTheDocument();
-    expect(screen.getByTestId('moomoo-broker').textContent).toContain('NOT_INSTALLED');
+    expect(screen.getByTestId('moomoo-DATA_AGREEMENT_CLEARED')).toBeInTheDocument();
+    expect(screen.getByTestId('moomoo-SESSION_1_ARMED')).toBeInTheDocument();
+    expect(screen.getByTestId('moomoo-LIVE_TRADING_BLOCKED')).toBeInTheDocument();
+    expect(screen.queryByText(/LIVE_DATA_AVAILABLE|LIVE TRADING ENABLED|CONNECTED LIVE/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('moomoo-broker').textContent).toContain('DATA_ONLY_READY');
   });
 
   it('renders explicit UNAVAILABLE for marks — never fabricated', () => {
     render(<App />);
     // marks/P&L still explicitly unavailable pre-market-data stage
-    expect(screen.getByTestId('pnl-panel').textContent).toMatch(/UNAVAILABLE|require/i);
+    expect(screen.getByTestId('pnl-panel').textContent).toMatch(/UNAVAILABLE|require|UNVERIFIED/i);
     // TESTB candidate has null rvol/float → Unavailable markers
     const testb = screen.getByTestId('candidate-TESTB');
     expect(testb.querySelectorAll('[data-testid="unavailable"]').length).toBeGreaterThan(0);
@@ -85,19 +85,23 @@ describe('/v3-next read-only workspace', () => {
     render(<App />);
     const actions = screen.getAllByTestId(/^action-/);
     expect(actions.length).toBeGreaterThan(0);
-    for (const a of actions) expect(a).toBeDisabled();
+    for (const action of actions) expect(action).toBeDisabled();
   });
 
-  it('feature modal is read-only (not mutable via UI); production modes OFF', () => {
+  it('feature controls remain read-only and production live modes stay off', () => {
     render(<App />);
-    const fm = screen.getByTestId('feature-modal');
-    expect(fm.textContent).toContain('mutable via this UI: false');
-    expect(fm.textContent).toMatch(/prod OFF/);
+    const controls = screen.getByTestId('feature-modal');
+    expect(controls.textContent).toContain('mutable via this UI: false');
+    expect(controls.textContent).toContain('active_trader_live_canary_enabled');
+    expect(controls.textContent).toMatch(/prod OFF/);
   });
 
-  it('parity claims no UI parity', () => {
+  it('parity is baseline captured but production parity is not claimed', () => {
     render(<App />);
-    expect(screen.getByTestId('parity-panel').textContent).toMatch(/BASELINE_ONLY|no UI parity/);
+    const parity = screen.getByTestId('parity-panel');
+    expect(parity.textContent).toContain('BASELINE_CAPTURED');
+    expect(parity.textContent).toMatch(/live parity is not claimed/i);
+    expect(parity.textContent).toContain('PENDING');
   });
 
   it('symbol selector is populated from the live scan and switches the detail', async () => {
@@ -109,10 +113,25 @@ describe('/v3-next read-only workspace', () => {
     expect(screen.getByTestId('symbol-decision').textContent).toContain('RTX');
   });
 
-  it('masked account ids only (no raw numbers)', () => {
+  it('masked account ids only', () => {
     render(<App />);
     const accounts = screen.getByTestId('accounts-panel').textContent || '';
     expect(accounts).not.toMatch(/\b\d{6,}\b/);
     expect(accounts).toContain('***');
+  });
+
+  it('shows the observation SHA boundary without changing the armed branch', () => {
+    render(<App />);
+    const gate = screen.getByTestId('observation-gate-panel');
+    expect(gate.textContent).toContain('0 of 5');
+    expect(gate.textContent).toContain('70a681bb3867');
+    expect(gate.textContent).toMatch(/does not modify the armed branch/i);
+  });
+
+  it('prime queue selection is reflected in the queue', async () => {
+    render(<App />);
+    await screen.findByTestId('decision-row-EHGO');
+    fireEvent.click(screen.getByTestId('candidate-TESTC'));
+    expect(screen.getByTestId('candidate-TESTC')).toHaveAttribute('aria-selected', 'true');
   });
 });
