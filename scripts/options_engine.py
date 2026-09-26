@@ -209,9 +209,25 @@ def _iv_rank_from_history(sym: str, current_iv_pct: float) -> Optional[float]:
         return None
 
 
-def _iv_rank_proxy(sym: str, tech: dict, chain_iv: Optional[float] = None) -> float:
-    """IV rank: prefer DB history; fallback to chain + Finviz proxy."""
+def _iv_rank_proxy(
+    sym: str,
+    tech: dict,
+    chain_iv: Optional[float] = None,
+    *,
+    chain_lookup: bool = False,
+    price: float = 0.0,
+) -> float:
+    """IV rank: prefer DB history; fallback to chain + Finviz proxy.
+
+    2026-09-26: technical_snapshot.json covers holdings only, so every watchlist
+    name arrived with no IV at all and scored the constant 12.5. With
+    ``chain_lookup`` (generation passes only; tests stay offline) a name with no
+    technical IV reads the at-the-money IV from its Schwab chain.
+    """
     iv_pct = _f(tech.get("iv") or tech.get("volatility"))
+    if chain_lookup and iv_pct <= 0 and not chain_iv:
+        px = price or _f(tech.get("price") or tech.get("last"))
+        chain_iv = _chain_atm_iv_pct(_schwab_chain(sym, strikes=16), px)
     if chain_iv and chain_iv > 0:
         iv_pct = max(iv_pct, chain_iv * 100 if chain_iv < 3 else chain_iv)
     hi = _f(tech.get("high52") or tech.get("week52_high"))
@@ -909,12 +925,43 @@ def _aegis_cc_map() -> Dict[str, dict]:
     return m
 
 
+# One chain read per (symbol, width) per generation pass: the IV lookup and the
+# contract picker share it, so reading IV from the chain costs no extra call.
+_CHAIN_CACHE: Dict[tuple, dict] = {}
+
+
 def _schwab_chain(symbol: str, strikes: int = 12) -> dict:
+    key = (symbol.upper(), int(strikes))
+    if key in _CHAIN_CACHE:
+        return _CHAIN_CACHE[key]
     try:
         import schwab_transport
-        return schwab_transport.get_option_chain(symbol.upper(), strike_count=strikes) or {}
+        out = schwab_transport.get_option_chain(symbol.upper(), strike_count=strikes) or {}
     except Exception as e:
-        return {"status": "error", "error": str(e)[:120]}
+        out = {"status": "error", "error": str(e)[:120]}
+    _CHAIN_CACHE[key] = out
+    return out
+
+
+def _chain_atm_iv_pct(chain: dict, price: float) -> Optional[float]:
+    """Median IV (percent) of the contracts nearest the money, 14-60 DTE."""
+    if not chain or price <= 0:
+        return None
+    vals: List[tuple] = []
+    for exp in chain.get("expirations") or []:
+        dte = int(exp.get("dte") or 0)
+        if dte < 14 or dte > 60:
+            continue
+        for row in exp.get("strikes") or []:
+            iv = _f(row.get("iv"))
+            k = _f(row.get("strike"))
+            if iv > 0 and k > 0:
+                vals.append((abs(k - price) / price, iv if iv > 3 else iv * 100.0))
+    if not vals:
+        return None
+    vals.sort()
+    near = sorted(v for _, v in vals[:6])
+    return round(near[len(near) // 2], 2)
 
 
 def _pick_chain_contract(
@@ -1472,7 +1519,7 @@ def generate_holdings_put_proposals(
         gates = _holding_quality_gates(h)
         tech = tech_map.get(sym) or {}
         und = price
-        iv_rank = _iv_rank_proxy(sym, tech)
+        iv_rank = _iv_rank_proxy(sym, tech, chain_lookup=True, price=price)
         if iv_rank < gates["min_iv"]:
             continue
         # Protective put: ~5% OTM put, 45-60 DTE
@@ -1782,7 +1829,7 @@ def generate_defined_risk_proposals(
                     c["atr"] = atr_v
             except Exception:
                 pass
-        iv_rank = _iv_rank_proxy(sym, tech)
+        iv_rank = _iv_rank_proxy(sym, tech, chain_lookup=True, price=price)
         min_iv = MIN_IV_CONVICTION if conf >= 0.6 else MIN_IV_RANK
         if iv_rank < min_iv:
             _drop_entry(c, "IV_UNKNOWN" if iv_rank <= 0 else "IV_BELOW", iv_rank=iv_rank, min_iv=min_iv)
@@ -1867,7 +1914,7 @@ def generate_credit_spread_proposals(
         conf = _f(c.get("confidence"), 0.5)
         if conf < 0.58:
             continue
-        iv_rank = _iv_rank_proxy(sym, tech)
+        iv_rank = _iv_rank_proxy(sym, tech, chain_lookup=True, price=price)
         min_iv = MIN_IV_CONVICTION if conf >= 0.62 else MIN_IV_RANK
         if iv_rank < min_iv:
             continue
@@ -2460,6 +2507,7 @@ def generate_proposals(force: bool = False) -> dict:
             pass
 
     INCOME_SCREEN_DROPS.clear()
+    _CHAIN_CACHE.clear()
     holdings, _ = _load_holdings()
     tech_map = _load_technicals()
     intent_cfg = _load_intent_cfg()

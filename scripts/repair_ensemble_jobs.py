@@ -85,7 +85,8 @@ def main(argv: list[str] | None = None) -> int:
         "expire_count": len(ids),
         "expire_by_status": by_status,
     }
-    if not a.apply:
+    if not a.apply or (has_lanes and not ids):
+        # Nothing to change: do not write an empty archive on every re-run.
         print(json.dumps(plan, indent=2, default=str))
         return 0
 
