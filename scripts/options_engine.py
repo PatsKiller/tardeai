@@ -1276,7 +1276,8 @@ def _proposal_ensemble_content(p: dict) -> str:
         f"OPTIONS PROPOSAL — {p.get('strategy', '').replace('_', ' ')}",
         f"Symbol: {p.get('symbol')} · Account: {p.get('account') or '—'}",
         f"Strike: ${p.get('strike')} · Expiration: {p.get('expiration')} · DTE: {p.get('dte')}",
-        f"Contracts: {p.get('contracts')} · Premium/contract: ${p.get('premium')} · Total credit: ${p.get('premium_total')}",
+        f"Contracts: {p.get('contracts')} · Premium/contract: ${p.get('premium')} · "
+        f"{'Total debit (you pay)' if p.get('strategy') in DEBIT_STRATEGIES or p.get('strategy') == 'long_put' else 'Total credit (you collect)'}: ${p.get('premium_total')}",
         f"Spot: ${p.get('underlying_price')} · POP: {p.get('pop_pct')}% · Edge: {p.get('edge_score')}",
         f"IV rank: {p.get('iv_rank')}% · R:R: {p.get('risk_reward')} · EV: ${p.get('expected_value')}",
         f"Breakeven: ${p.get('breakeven')} · Max profit: {p.get('max_profit')} · Stock risk: {p.get('stock_downside_risk') or p.get('max_loss')}",

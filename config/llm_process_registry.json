@@ -513,7 +513,15 @@
       "name": "Options Desk Ensemble",
       "category": "Options",
       "lane_policy": "ensemble",
-      "description": "Grok + ChatGPT + Gemma scored review"
+      "description": "Aegis options review: Grok + ChatGPT (OAuth) + DeepSeek flash against house facts. No local model (operator 2026-09-26). READ_ONLY_ADVISORY.",
+      "allowed_lanes": [
+        "grok",
+        "chatgpt",
+        "deepseek-flash"
+      ],
+      "daily_soft_cap": 300,
+      "daily_cost_cap_usd": 0.5,
+      "advisory_only": true
     },
     {
       "id": "paper_trade_advisory",
@@ -914,7 +922,7 @@
         "FAST"
       ],
       "max_input_tokens": 8000,
-      "notes": "2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 60→220 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 220 calls ≈ $0.33/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day §12 cap unchanged).",
+      "notes": "2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 60\u2192220 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 220 calls \u2248 $0.33/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day \u00a712 cap unchanged).",
       "max_output_tokens": 800,
       "daily_soft_cap": 220,
       "daily_cost_cap_usd": 1.0,
@@ -946,7 +954,7 @@
       "fallback_allowed": false,
       "advisory_only": true,
       "output_schema": "cio_synthesis.v1",
-      "notes": "2026-08-20: max_output_tokens 800\u21921600 \u2014 living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 40→180 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 180 calls ≈ $0.27/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day §12 cap unchanged)."
+      "notes": "2026-08-20: max_output_tokens 800\u21921600 \u2014 living-thesis synthesis JSON (11 keys + cited evidence lists) was being truncated mid-object at 800 tokens, causing parse:no_json_object. Cost cap unchanged 1.0. | 2026-09-13: max_input_tokens 4000 to 8000. Prompts had grown to about 4.0-5.4k tokens and every call over 4000 failed INPUT_LIMIT_EXCEEDED before reaching the model, so most maria/steph/risk agent jobs failed from at least 2026-09-06. Peak cost per call at full input about $0.0031 to $0.0043; daily_cost_cap_usd and daily_soft_cap unchanged, so daily spend stays bounded. Operator approved in session. | 2026-09-19: daily_soft_cap 40\u2192180 after PR #1088 gave this pool its own traffic. Measured demand (distinct symbols/day, 7d peak): risk 171 + tax 21, steph 155; settled cost $0.0015/call, so 180 calls \u2248 $0.27/day. daily_cost_cap_usd stays 1.0 and remains the binding guard. Operator approved in session (full demand, $2/day \u00a712 cap unchanged)."
     },
     {
       "id": "cio_operator_reply",

@@ -113,6 +113,14 @@ def advance(
         missing = list(ot.get("missing_required") or [])
         age = _hours_since(life.get("created_at"), now)
         step: dict[str, Any] = {"symbol": p.get("symbol"), "position_guid": guid, "pin": ot.get("pin")}
+        # Research cannot fix liquidity: an idea with a non-thesis enterprise block
+        # (OI 0, 185% spread) is not researched or reviewed (2026-09-26 dry test).
+        ent_blocks = [b for b in ((p.get("enterprise") or {}).get("blocks") or [])
+                      if not str((b or {}).get("code", "") if isinstance(b, dict) else b).startswith(("thesis_", "awaiting_cio"))]
+        if ent_blocks:
+            step.update(action="SKIP_ENTERPRISE_BLOCK", reason="blocked for liquidity or risk; research cannot clear it")
+            report.append(step)
+            continue
         if missing:
             if age >= float(s["abandon_after_hours"]):
                 step.update(action="ABANDON", reason=f"no complete thesis within {s['abandon_after_hours']}h; "
