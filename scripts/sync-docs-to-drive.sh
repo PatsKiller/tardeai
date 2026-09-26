@@ -159,24 +159,31 @@ from pathlib import Path
 cache, manifest = Path(sys.argv[1]), Path(sys.argv[2])
 import re
 year_dir = re.compile(r"20\d{2}")
-def keep(line: str) -> bool:
+def keep(line: str, is_cache: bool) -> bool:
     low = line.replace("\\", "/")
+    parts = low.split("|", 1)[0].split("/")
+    # Only docs/ trees are judged here. config/strategies/_archive/*.yaml is
+    # excluded by is_runtime_dump_excluded, whose cleanup pass needs the line.
+    if parts[0] != "docs":
+        return True
     if any(n in low for n in (
         "/_archive/", "docs/_archive|", "/_trash/", "docs/_trash|",
         "/_findings/", "docs/_findings|", "/ui_review/", "docs/ui_review|",
     )):
         return False
-    # Dated first-level docs dirs are session dumps with dead Drive parents.
-    # Keep docs/ops/SESSION_* (year is in the filename, not the folder).
-    parts = low.split("|", 1)[0].split("/")
-    if len(parts) >= 2 and parts[0] == "docs" and year_dir.search(parts[1] or ""):
+    # Dated first-level docs DIRS are session dumps with dead Drive parents.
+    # A folder-cache line names a directory; a manifest line names a file, so
+    # parts[1] is a directory only when a deeper segment follows it. A dated
+    # top-level FILE (docs/CIO_AS_IS_2026-09-20-0604.md) is synced, not purged
+    # (purging it re-uploaded it every hour). Keep docs/ops/SESSION_* too.
+    if (is_cache or len(parts) >= 3) and len(parts) >= 2 and year_dir.search(parts[1] or ""):
         return False
     return True
-for path in (cache, manifest):
+for path, is_cache in ((cache, True), (manifest, False)):
     if not path.exists():
         continue
     lines = path.read_text(encoding="utf-8").splitlines()
-    out = [ln for ln in lines if keep(ln)]
+    out = [ln for ln in lines if keep(ln, is_cache)]
     if len(out) != len(lines):
         path.write_text("\n".join(out) + ("\n" if out else ""), encoding="utf-8")
         print(f"purged {len(lines)-len(out)} lines from {path}")
@@ -207,8 +214,24 @@ is_runtime_dump_excluded() {
     docs/hermes/*hermes_auto_ticker_challenger_*_payload.json) return 0 ;;  # nested drain payloads
     docs/hermes/*_payload.json)                                return 0 ;;  # any hermes payload json
     docs/hermes/*latest_*_summary.json)                        return 0 ;;  # latest_* snapshot summaries
+    config/strategies/_archive/*) return 0 ;;  # retired strategy yaml (the config find does not prune _archive)
   esac
   return 1
+}
+
+# ── Runtime exports (outside the release tree) ──
+# Redacted runtime snapshots (scripts/export_options_runtime_snapshot.py) live in
+# persistent state, not in git. They mirror to Drive under runtime/options/<name>.
+RUNTIME_EXPORT_ROOT="${TRADEAI_RUNTIME_EXPORT_ROOT:-/home/johnclaw/trade-ai-releases/persistent-state/exports/drive/runtime/options}"
+RUNTIME_EXPORT_REL="runtime/options"
+
+# relpath on Drive for a candidate file ($SRC tree or the runtime export root).
+candidate_relpath() {
+  local filepath="$1"
+  case "$filepath" in
+    "$RUNTIME_EXPORT_ROOT"/*) echo "$RUNTIME_EXPORT_REL/${filepath#"$RUNTIME_EXPORT_ROOT"/}" ;;
+    *) echo "${filepath#$SRC/}" ;;
+  esac
 }
 
 # ── Preserved captures ──
@@ -221,6 +244,7 @@ is_preserved_capture() {
   local rel="$1"
   case "$rel" in
     docs/command-center-pages/*) return 0 ;;
+    runtime/*) return 0 ;;  # redacted runtime exports: a missing export never deletes the Drive copy
   esac
   return 1
 }
@@ -410,13 +434,19 @@ for _gov in AGENTS.md CLAUDE.md AI_WORK_POLICY.md; do
   [ -f "$SRC/$_gov" ] && echo "$SRC/$_gov" >> "$CANDIDATES"
 done
 
+# Redacted runtime exports (options theses / CIO options decisions). Unchanged
+# files are skipped by the manifest hash check like every other candidate.
+if [ -d "$RUNTIME_EXPORT_ROOT" ]; then
+  find "$RUNTIME_EXPORT_ROOT" -maxdepth 1 -type f \( -name "*.md" -o -name "*.jsonl" \) ! -name ".*" >> "$CANDIDATES" 2>/dev/null || true
+fi
+
 TOTAL=$(wc -l < "$CANDIDATES")
 UPLOADED=0
 SKIPPED=0
 FAILED=0
 
 while IFS= read -r filepath; do
-  relpath="${filepath#$SRC/}"
+  relpath="$(candidate_relpath "$filepath")"
 
   # Skip runtime payload/snapshot dumps (not project docs) — checked before hashing
   if is_runtime_dump_excluded "$relpath"; then
@@ -507,7 +537,11 @@ if [ -s "$MANIFEST" ]; then
   cp "$MANIFEST" "$CLEANUP_MANIFEST"
   while IFS='|' read -r relpath hash; do
     [ -z "$relpath" ] && continue
-    local_file="$SRC/$relpath"
+    # Inverse of candidate_relpath: runtime/options/* lives in the runtime export root.
+    case "$relpath" in
+      "${RUNTIME_EXPORT_REL:-runtime/options}"/*) local_file="${RUNTIME_EXPORT_ROOT:-}/${relpath#"${RUNTIME_EXPORT_REL:-runtime/options}"/}" ;;
+      *) local_file="$SRC/$relpath" ;;
+    esac
     # Remove from Drive if the local source was deleted OR it is now an excluded runtime dump
     # (excluded dumps may still exist locally — they just must not mirror to Drive).
     if [ ! -f "$local_file" ]; then
