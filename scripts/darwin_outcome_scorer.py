@@ -30,6 +30,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 SCORECARD_PATH = PROJECT_ROOT / "data" / "cio" / "darwin_scorecards.jsonl"
+SENTINEL_REVIEW_PATH = PROJECT_ROOT / "data" / "cio" / "sentinel_reviews.jsonl"
 ACTION_LEDGER = PROJECT_ROOT / "data" / "cio" / "cio_action_ledger.jsonl"
 
 
@@ -206,6 +207,13 @@ def run_scoring_cycle(max_actions: int = 20) -> dict[str, Any]:
     if max_actions > 0:
         candidates = candidates[:max_actions]
 
+    # 2026-09-25: every scorecard asserted `reviewer: "iris"` although no Iris
+    # review exists for any Alex action. Gate 4 (independent_score_coverage)
+    # tests scorer != reviewer, so the hardcoded name manufactured independence.
+    # The reviewer is now whoever actually reviewed the artifact per
+    # sentinel_reviews.jsonl, or None.
+    reviewer_by_artifact = reviewers_by_artifact(_read_jsonl(SENTINEL_REVIEW_PATH))
+
     scored = 0
     skipped = 0
     for action in candidates:
@@ -219,7 +227,8 @@ def run_scoring_cycle(max_actions: int = 20) -> dict[str, Any]:
             "event_id": str(uuid.uuid4()),
             "timestamp": _now_iso(),
             "scorer": "darwin",
-            "reviewer": "iris",
+            "reviewer": reviewer_by_artifact.get(aid),
+            "reviewer_source": "sentinel_reviews.jsonl" if aid in reviewer_by_artifact else None,
             "payload": scorecard,
         })
         scored += 1
@@ -234,6 +243,19 @@ def run_scoring_cycle(max_actions: int = 20) -> dict[str, Any]:
         "model_calls": 0,
         "cost_usd": 0.0,
     }
+
+
+def reviewers_by_artifact(reviews: list[dict]) -> dict[str, str]:
+    """artifact_id -> reviewer agent id, from review rows that name both."""
+    out: dict[str, str] = {}
+    for r in reviews:
+        if not isinstance(r, dict):
+            continue
+        aid = str(r.get("artifact_id") or r.get("action_id") or "")
+        reviewer = str(r.get("reviewer_agent_id") or r.get("reviewer") or "")
+        if aid and reviewer:
+            out[aid] = reviewer
+    return out
 
 
 def main() -> int:

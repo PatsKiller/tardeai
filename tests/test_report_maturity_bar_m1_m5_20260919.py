@@ -7,6 +7,10 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+# Fixture soak/census rows are dated 2026-09-19/20; pin the clock beside them so
+# the 48h freshness bar (added 2026-09-25) judges the fixture, not today's date.
+from datetime import datetime, timezone  # noqa: E402
+_M4_NOW = datetime(2026, 9, 20, 6, 0, tzinfo=timezone.utc)
 sys.path.insert(0, str(ROOT))
 
 
@@ -37,7 +41,7 @@ def test_m5_observed_when_unattended_consult_honors_disposition():
     }
     v, note = M._m5_from_consult(consult)
     assert v == "OBSERVED"
-    assert "honored a prior disposition" in note
+    assert "recorded disposition changed a decision" in note
 
 
 def test_m5_candidate_when_load_works_but_no_skip_this_cycle():
@@ -118,7 +122,10 @@ def test_m1_observed_via_wake_log_when_hits_omit_field_changes(tmp_path):
     assert "via=wake_dispatcher_log" in note
 
 
-def test_m5_observed_when_instrument_enqueue_honors_cadence():
+def test_m5_cadence_only_cycle_is_candidate_not_observed():
+    """2026-09-25: an instrument-enqueue cadence skip is the record honoring its
+    own `next_eligible_at`, produced by every routine cycle. It is not a
+    days-later disposition changing a decision, so it may not read OBSERVED."""
     M = _load()
     v, note = M._m5_from_consult(
         {
@@ -132,8 +139,29 @@ def test_m5_observed_when_instrument_enqueue_honors_cadence():
             "instrument_enqueue": {"skipped_cadence_count": 12},
         }
     )
-    assert v == "OBSERVED"
-    assert "instrument_enqueue_skipped_cadence=12" in note
+    assert v == "CANDIDATE"
+    assert "cadence honored (routine)" in note
+
+
+def test_m5_own_cadence_skip_is_candidate_too():
+    M = _load()
+    v, _ = M._m5_from_consult(
+        {"unattended": True, "as_of": "2026-09-19T19:55:08+00:00",
+         "subject_resolved": 5, "record_found": 5,
+         "decisions_changed_by_record": 0, "skipped_cadence_not_due": 3}
+    )
+    assert v == "CANDIDATE"
+
+
+def test_m5_wake_log_needs_changed_by_record(tmp_path):
+    M = _load()
+    log = tmp_path / "cio_wake_dispatcher.log"
+    log.write_text(
+        "2026-09-19 16:55:07,746 [x] record_consult: wakes=5 subject_resolved=5 "
+        "record_found=5 changed_by_record=0 skipped_cadence_not_due=5 no_subject=0\n",
+        encoding="utf-8",
+    )
+    assert M._m5_from_wake_log(log_path=log) is None
 
 
 def test_m2_observed_from_applied_writeback(tmp_path):
@@ -256,7 +284,7 @@ def test_m4_observed_when_soak_ready_and_census_warn_free(tmp_path):
         ),
         encoding="utf-8",
     )
-    v, note = M._m4_from_soak(tmp_path, soak_path=soak, census_paths=[census])
+    v, note = M._m4_from_soak(tmp_path, now=_M4_NOW, soak_path=soak, census_paths=[census])
     assert v == "OBSERVED"
     assert "soak_ready=YES" in note
     assert "warn=0" in note
@@ -286,7 +314,7 @@ def test_m4_partial_when_census_has_warns(tmp_path):
         ),
         encoding="utf-8",
     )
-    v, note = M._m4_from_soak(tmp_path, soak_path=soak, census_paths=[census])
+    v, note = M._m4_from_soak(tmp_path, now=_M4_NOW, soak_path=soak, census_paths=[census])
     assert v == "PARTIAL"
     assert "warn=2" in note
 
@@ -298,7 +326,7 @@ def test_m4_partial_when_census_missing(tmp_path):
         json.dumps({"as_of": "2026-09-19T20:00:00Z", "pins_match": True}) + "\n",
         encoding="utf-8",
     )
-    v, note = M._m4_from_soak(tmp_path, soak_path=soak, census_paths=[tmp_path / "missing.json"])
+    v, note = M._m4_from_soak(tmp_path, now=_M4_NOW, soak_path=soak, census_paths=[tmp_path / "missing.json"])
     assert v == "PARTIAL"
     assert "census not run" in note
 
@@ -309,3 +337,83 @@ def test_m4_soak_paths_prefer_local_state():
     assert paths[0].name == "bridge_pin_soak.jsonl"
     assert ".local/state/tradeai" in str(paths[0])
     assert "persistent-state" in str(paths[1])
+
+
+def _soak(tmp_path, as_of_hours, pin="1c60ecb42-main-exact-phase2-20260925-091436", day="2026-09-19"):
+    soak = tmp_path / "soak.jsonl"
+    rows = [{"as_of": f"{day}T{h:02d}:00:00Z", "pins_match": True,
+             "current_resolved": f"/home/x/trade-ai-releases/portfolio-server/{pin}"}
+            for h in as_of_hours]
+    soak.write_text("\n".join(json.dumps(r) for r in rows) + "\n", encoding="utf-8")
+    census = tmp_path / "census.json"
+    census.write_text(json.dumps({"as_of": f"{day}T23:30:00Z", "ok": True, "pass": 10,
+                                  "warn": 0, "fail": 0}), encoding="utf-8")
+    return soak, census
+
+
+def test_m4_stale_soak_is_partial_even_when_streak_ready(tmp_path):
+    """2026-09-25: the live ledger last observed 2026-09-20 on pin 8c12ea757 while
+    1c60ecb42 served, and read OBSERVED. Age alone must downgrade it."""
+    M = _load()
+    soak, census = _soak(tmp_path, (1, 2, 3))
+    late = datetime(2026, 9, 25, 12, 0, tzinfo=timezone.utc)
+    v, note = M._m4_from_soak(tmp_path, soak_path=soak, census_paths=[census], now=late)
+    assert v == "PARTIAL" and "soak stale" in note
+
+
+def test_m4_soak_on_other_pin_is_partial(tmp_path):
+    M = _load()
+    soak, census = _soak(tmp_path, (1, 2, 3), pin="8c12ea757-main-exact-phase2-20260920-012445")
+    v, note = M._m4_from_soak(tmp_path, soak_path=soak, census_paths=[census],
+                              now=_M4_NOW, served_sha="1c60ecb4264ba4dcc6a38106e76fae0d96a26787")
+    assert v == "PARTIAL" and "not the served sha" in note
+
+
+def test_m4_fresh_soak_on_served_pin_observed(tmp_path):
+    M = _load()
+    soak, census = _soak(tmp_path, (1, 2, 3))
+    v, _ = M._m4_from_soak(tmp_path, soak_path=soak, census_paths=[census],
+                           now=_M4_NOW, served_sha="1c60ecb4264ba4dcc6a38106e76fae0d96a26787")
+    assert v == "OBSERVED"
+
+
+def test_served_gate_places_evidence_against_promotion():
+    M = _load()
+    served = {"served_sha": "1c60ecb42", "promoted_at": "2026-09-25T13:15:32Z"}
+    pre = M.served_gate("OBSERVED", "effect as_of=2026-09-24T18:00:00+00:00 subject_key=HELD:NOC", served)
+    assert pre["served_verdict"] == "OBSERVED_PRE_DEPLOY" and pre["on_served_sha"] is False
+    post = M.served_gate("OBSERVED", "writeback as_of=2026-09-25T14:01:09+00:00 subject_key=HELD:NOC", served)
+    assert post["served_verdict"] == "OBSERVED" and post["on_served_sha"] is True
+    undated = M.served_gate("OBSERVED", "no timestamp here", served)
+    assert undated["served_verdict"] == "OBSERVED_UNDATED"
+    cand = M.served_gate("CANDIDATE", "as_of=2026-09-25T14:01:09+00:00", served)
+    assert cand["served_verdict"] == "CANDIDATE" and cand["on_served_sha"] is None
+    ungated = M.served_gate("OBSERVED", "as_of=2026-09-25T14:01:09+00:00", {})
+    assert ungated["served_verdict"] == "OBSERVED_UNGATED"
+
+
+def test_served_runtime_reads_stamp_and_boot(tmp_path):
+    M = _load()
+    rel = tmp_path / "rel"
+    rel.mkdir()
+    (rel / "SOURCE_COMMIT").write_text("1c60ecb4264ba4dcc6a38106e76fae0d96a26787\n", encoding="utf-8")
+    cur = tmp_path / "CURRENT"
+    cur.symlink_to(rel)
+    boot = tmp_path / "boot.json"
+    boot.write_text(json.dumps({"process_started_at": "2026-09-25T09:15:49-04:00",
+                                "loaded_pin_sha": "1c60ecb4264ba4dcc6a38106e76fae0d96a26787"}),
+                    encoding="utf-8")
+    sv = M.served_runtime(current=cur, boot_json=boot)
+    assert sv["served_sha"].startswith("1c60ecb42")
+    assert sv["promoted_at"] and sv["boot_at"] == "2026-09-25T09:15:49-04:00"
+    assert sv["boot_matches_pin"] is True
+
+
+def test_evaluate_report_carries_served_block_and_per_proof_gate(tmp_path, monkeypatch):
+    M = _load()
+    served = {"pin": "/x/1c60ecb42", "served_sha": "1c60ecb42", "promoted_at": "2026-09-25T13:15:32Z"}
+    rep = M.evaluate(tmp_path, served=served)
+    assert rep["served"] == served
+    for proof in rep["proofs"].values():
+        assert {"verdict", "note", "served_verdict", "on_served_sha", "evidence_as_of"} <= set(proof)
+    assert rep["observed_on_served_sha"] == 0

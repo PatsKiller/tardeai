@@ -406,7 +406,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/PHASE210A_LOOKTHROUGH_CADENCE_PREFLIGHT_CLASSIFY_HARDEN.md` | Phase 210A — Lookthrough Cadence: Preflight + Classify + Harden + Dry-Run — 2026-06-07 | review_required | OK | `a658e122a9e2` |
 | `docs/architecture/PHASE210B_LOOKTHROUGH_APPLY_DIFF_SCHEDULE.md` | Phase 210B — Lookthrough Apply + Diff + Schedule — 2026-06-07 | review_required | OK | `8f9f70d8d735` |
 | `docs/architecture/PHASE210C_CADENCE_TIMER_SCHEDULE_VERIFICATION.md` | Phase 210C — Cadence Timer Schedule Verification — 2026-06-07 | review_required | OK | `1d9cdac8c715` |
-| `docs/architecture/PLAN_S_HOLLOW_RESEARCH_THEN_ANSWER_2026-09-22.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | review_required | OK | `5e9e634f7fa6` |
+| `docs/architecture/PLAN_S_HOLLOW_RESEARCH_THEN_ANSWER_2026-09-22.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | delete_candidate_duplicate | OK | `5e9e634f7fa6` |
 | `docs/architecture/PRE_DEPLOY_STATE_GUARD.md` | Pre-Deploy State Guard (canonical) | review_required | OK | `fe30cc8699b6` |
 | `docs/architecture/PROJECT_THE_DESK_V2.md` | PROJECT · THE DESK — an autonomous CIO, built as extensions to the existing spec | review_required | OK | `2af6860a863f` |
 | `docs/architecture/QUOTE_PIPELINE_UNIFICATION_SCOPING_2026-08-27.md` | Quote Pipeline Unification — Scoping (Audit Finding H4) | review_required | OK | `d3580a82544b` |
@@ -452,6 +452,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | review_required | OK | `1b18a9999a79` |
 | `docs/architecture/agent-memory-view-proposal.md` | Command Center — Agent Memory view (proposal) | review_required | OK | `7b90f4d8e3d6` |
 | `docs/architecture/channel-adapters.md` | Gateway Channel Adapters — Phase 10 | review_required | OK | `2457155850f5` |
+| `docs/architecture/cio-cognition-tranche3-20260925.md` | CIO cognition tranche 3 — prompt event-driven cognition and the closed learning chain | review_required | OK | `4593665c031d` |
 | `docs/architecture/cio/ADR_ALEX_AUTHORITY_MANIFEST.md` | ADR: Alex Authority Manifest | review_required | OK | `8bf7e2366689` |
 | `docs/architecture/cio/ADR_CIO_STATE_ARCHITECTURE.md` | ADR: CIO State Architecture | review_required | OK | `78b3c731e31d` |
 | `docs/architecture/cio/ADR_CONTAINMENT_SPECIFICATION.md` | ADR: Containment Specification | review_required | OK | `e090bef207bf` |
@@ -626,6 +627,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/atm_audit_2026_05_26/remediation_plan/P0_REMEDIATION_PLAN.md` | P0 Remediation Plan — ATM Incident 2026-05-26 | review_required | OK | `cc2fd53bac6b` |
 | `docs/atm_audit_2026_05_26/schema_snapshot/SCHEMA_FINDINGS.md` | Schema Findings -- ATM Audit 2026-05-26 | review_required | OK | `c47df933fc27` |
 | `docs/atm_audit_2026_05_26/schema_snapshot/table_schemas.md` | Schema Snapshot -- ATM Audit 2026-05-26 | review_required | OK | `ba858d82d79f` |
+| `docs/audit-s-sentinelone-memory-vs-research-20260923.md` | Audit: SentinelOne (S) — memory vs research, GUIDs, persistence | review_required | OK | `c155de4486ab` |
 | `docs/audit/PROPOSALS_BROKER_VS_REGULAR_AUDIT_20260624.md` | Proposals Audit — Broker vs Regular (Frontend + Backend) | review_required | OK | `c3f78de62d14` |
 | `docs/audit/_evidence/README.md` | Phase 0 evidence snapshots | review_required | MISSING HEADER | `e17f23a439d9` |
 | `docs/audit/current-state.md` | Communications Gateway — Current State | review_required | MISSING HEADER | `5bf7544d0919` |
@@ -651,8 +653,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CIO_PLATFORM_REMEDIATION_2026-08-27.md` | CIO Platform Comprehensive Audit — Phase 2: Remediation Plan | review_required | OK | `2224490a6526` |
 | `docs/audits/CIO_SURFACE_ASOF_2026-09-01.md` | CIO operator surfaces — field-level `as_of` and provenance census | review_required | OK | `a5073ae48b02` |
 | `docs/audits/COMMAND_CENTER_LIVE_TRUTH_TRANCHE_2026-09-03.md` | Command Center Live Truth Tranche | review_required | OK | `3669faccf7ff` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `a464a3e1a876` |
-| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `ee57933d06ee` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19.md` | DARK / PARTIAL / UNWIRED closure ledger | review_required | OK | `f2a3cbfa0602` |
+| `docs/audits/DARK_PARTIAL_CLOSURE_LEDGER_2026-09-19_LOG.md` | DARK / PARTIAL / UNWIRED closure ledger — wave log | review_required | OK | `11de9ad254ac` |
 | `docs/audits/EXECUTION_LINK_2026-06-26.md` | Proposal Execution Link Audit — 2026-06-26 | review_required | OK | `fa7e72d022a2` |
 | `docs/audits/FCNTX_144_ACCEPTANCE_2026-07-14.md` | FCNTX Event #144 — A–G Acceptance Fixture (Part H) | review_required | OK | `212809f92fec` |
 | `docs/audits/FCNTX_144_DECISION_PACKET_LATEST.md` | FCNTX event #144 — operator decision packet (version-bound) | review_required | OK | `94249bee25f1` |
@@ -991,6 +993,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/governance/phase_gov1_scheduled_facts_a1a/00_README.md` | GOV-1 — Scheduled System Facts and A1A Checks | current_phase_keep | OK | `174c5a2c8411` |
 | `docs/health-inspection-system.md` | Trade AI Health Inspection System | review_required | OK | `b124f6cc38ef` |
 | `docs/health_inspector_build_log.md` | Health Inspector Multi-Layered Remediation System — Build Log | review_required | OK | `f5c9c44604e3` |
+| `docs/hermes-s-backlog-20260923.md` | Hermes backlog vs SentinelOne (S) — 2026-09-23 | review_required | OK | `6d6cac6ade47` |
 | `docs/hermes/EXTERNAL_LLM_USAGE_POLICY_20260607.md` | External LLM Usage Policy & Approval Process (2026-06-07) | review_required | OK | `abf799888c3a` |
 | `docs/hermes/HERMES_ADAPTIVE_THRESHOLD_LEARNING.md` | Hermes Adaptive Threshold Learning | review_required | OK | `f4f8db724c12` |
 | `docs/hermes/HERMES_ADVISORY_ACTIONABILITY_STANDARD.md` | Hermes Advisory Actionability Standard | review_required | OK | `c43482aa2943` |
@@ -1667,7 +1670,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 | review_required | OK | `cd49b9ce53e7` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `f88b31c995fa` |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention | review_required | OK | `b54b463e120a` |
-| `docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md` | LIVE-cio-stance-governance — 24/7 universal CIO stance maturity | review_required | OK | `cd4ea4d547b0` |
+| `docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md` | LIVE-cio-stance-governance — 24/7 universal CIO stance maturity | review_required | OK | `d80f76060dfc` |
 | `docs/ops/LLM_OFFPEAK_ROUTING.md` | LLM Off-Peak Routing — operator guide | review_required | MISSING HEADER | `f87f06023478` |
 | `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` | How LLMs, Hermes, SearXNG, and ticker data actually work | review_required | OK | `3b36a08165b8` |
 | `docs/ops/M2_DARK_READ_PARITY_2026-08-24.md` | M2 dark-read parity | review_required | OK | `ebee0b2213fc` |
@@ -1788,7 +1791,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/paper_trading/PHASE186K_STOP_TO_TRAILING_CONVERSION_AUDIT.md` | Phase 186K: Hard-Stop to Trailing-Stop Conversion Audit | review_required | OK | `7910d9e429be` |
 | `docs/paper_trading/PHASE186L_TRAILING_STOP_ALGORITHM_SPECIFICATION.md` | Phase 186L: Trailing Stop Algorithm Specification | review_required | OK | `4b3ba04029af` |
 | `docs/patches/2026-06-15_stage2b_intent_persistence_fix.md` | Stage 2b Schwab Pilot Hotfix — Intent Persistence Before Approval | review_required | OK | `0f35a94b1ef8` |
+| `docs/plan-openclaw-internal-first-integrity-20260923.md` | Plan: OpenClaw internal-first integrity (Maria → Trade-AI / Hermes before MODEL_GENERAL) | review_required | OK | `cc830e718f80` |
 | `docs/plan-options-desk-holdings-strategies-20260924.md` | Plan: Options Desk — holdings strategies · open legs · CIO fluency · goals · BUY_READY institutional packet | review_required | OK | `38f365c22cd1` |
+| `docs/plan-s-hollow-research-then-answer.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | delete_candidate_duplicate | OK | `5e9e634f7fa6` |
 | `docs/project/CI_EVIDENCE_LATEST.md` | CI Evidence — Release Readiness Proof | current_phase_keep | MISSING HEADER | `c681fe6477dd` |
 | `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_20260606.md` | Closed-Loop All-Trades Abstraction (2026-06-06) | current_phase_keep | OK | `82b9d6a350f7` |
 | `docs/project/CLOSED_LOOP_ALL_TRADES_ABSTRACTION_DUE_DILIGENCE_20260606.md` | Closed-Loop All-Trades Abstraction — Due Diligence (2026-06-06) | current_phase_keep | OK | `06306949c580` |
