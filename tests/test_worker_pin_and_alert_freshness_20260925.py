@@ -15,7 +15,8 @@ import check_worker_pins as W  # noqa: E402
 
 SERVED = "1c60ecb4264ba4dcc6a38106e76fae0d96a26787"
 _REAL_SERVED_SHA = W.served_sha  # the real reader; _rows() points it at a fixture CURRENT
-DEV = Path("/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild")
+DEV = W.DEV_TREE
+REL = W.RELEASES  # …/portfolio-server; the host-path ratchet forbids literal live paths
 
 
 def _rows(dev_sha, monkeypatch, tmp_path):
@@ -31,16 +32,16 @@ def _rows(dev_sha, monkeypatch, tmp_path):
         fixture_current.symlink_to(fixture_release)
     monkeypatch.setattr(W, "served_sha", lambda current=None: _REAL_SERVED_SHA(fixture_current))
     cron = (
-        "0 10-15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash linux_launchers/reconcile_alpaca_paper_options.sh\n"
-        "*/5 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && .venv/bin/python scripts/cio_wake_dispatch_entrypoint.py\n"
+        f"0 10-15 * * 1-5 cd {DEV} && bash linux_launchers/reconcile_alpaca_paper_options.sh\n"
+        f"*/5 * * * * cd {REL}/CURRENT && .venv/bin/python scripts/cio_wake_dispatch_entrypoint.py\n"
         "# 20 18 * * * cd CURRENT && python scripts/sweep_commitment_outcomes.py\n"
     )
     units = [{"kind": "unit", "name": "portfolio-server.service", "active": "active",
-              "path": f"/home/johnclaw/trade-ai-releases/portfolio-server/{SERVED[:9]}-main-exact-phase2-20260925-091436",
-              **W.tree_of(f"/home/johnclaw/trade-ai-releases/portfolio-server/{SERVED[:9]}-main-exact-phase2-20260925-091436")},
+              "path": f"{REL}/{SERVED[:9]}-main-exact-phase2-20260925-091436",
+              **W.tree_of(f"{REL}/{SERVED[:9]}-main-exact-phase2-20260925-091436")},
              {"kind": "unit", "name": "tradeai-cio-telegram.service", "active": "active",
-              "path": "/home/johnclaw/trade-ai-releases/portfolio-server/8a9222cc6-main-exact-phase2-20260925-081649",
-              **W.tree_of("/home/johnclaw/trade-ai-releases/portfolio-server/8a9222cc6-main-exact-phase2-20260925-081649")}]
+              "path": f"{REL}/8a9222cc6-main-exact-phase2-20260925-081649",
+              **W.tree_of(f"{REL}/8a9222cc6-main-exact-phase2-20260925-081649")}]
     return units + W.cron_rows(cron)
 
 
