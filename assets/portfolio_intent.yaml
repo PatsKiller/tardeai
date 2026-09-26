@@ -115,6 +115,7 @@ options_desk_settings:
     research_priority: high
     research_drain_per_tick: 2     # hermes CIO worker --max 2
     research_tick_minutes: 15      # tradeai-hermes-cio-worker.timer OnCalendar=*:0/15
+    review_max_tokens: 2500        # CIO review output limit; 1200 truncated the first live reviews
   # Live Schwab validation (operator 2026-09-26): approve only on a fresh re-quote.
   validation:
     max_premium_change_pct: 15.0   # premium move vs the proposal that counts as material

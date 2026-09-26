@@ -237,7 +237,10 @@ def committee_memo(p: dict[str, Any], t: dict[str, Any], record: Optional[dict[s
     not_researched = "Not researched - generated from screening only." if research == "SCREENING_ONLY" else "Not on file."
     rules = (exit_rules or {}).get(strategy) or {}
     exit_plan = {
-        "thesis_invalid_when": _thesis_list(t, "invalidation_conditions") or [not_researched],
+        # Research answers carry invalidation too (2026-09-26: the HOOD review saw "Not on file").
+        "thesis_invalid_when": (_thesis_list(t, "invalidation_conditions")
+                                + ([str(p["research_answers"]["invalidation"])]
+                                   if (p.get("research_answers") or {}).get("invalidation") else [])) or [not_researched],
         "take_profit": rules.get("take_profit"),
         "cut_loss": rules.get("cut_loss"),
         "time_exit": rules.get("time_exit"),
