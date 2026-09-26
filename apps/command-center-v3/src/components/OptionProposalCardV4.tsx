@@ -881,6 +881,14 @@ export default function OptionProposalCardV4({
                     {m.classification_label} · <span style={{ color: cioColor }}>{cioIcon} {m.cio_status_label}</span>
                     {' · '}research {String(m.research_status).toLowerCase().replace(/_/g, ' ')} · confidence {m.confidence}
                   </summary>
+                  <div data-testid="options-evidence-ladder" style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {(m.evidence_ladder || []).map((st: any) => (
+                      <span key={st.key} title={st.detail} style={{ fontSize: 10, fontWeight: 800, color: st.done ? BB.green : BB.text3 }}>
+                        {st.done ? '✅' : '⬜'} {st.label}
+                      </span>
+                    ))}
+                  </div>
+                  {m.cio_status !== 'CIO_APPROVED' && m.cio_status !== 'NOT_APPROVED' && row('CIO.', '🟡 No CIO review completed yet.')}
                   {row('Intended to.', m.intent_answer)}
                   {row('In plain English.', m.plain_summary)}
                   {row('Purpose.', m.purpose)}

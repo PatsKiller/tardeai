@@ -90,3 +90,29 @@ def test_clean_card_is_approvable(monkeypatch):
 def test_exit_rules_are_config():
     text = (ROOT / "assets" / "portfolio_intent.yaml").read_text(encoding="utf-8")
     assert "  options_exit_rules:" in text and "    protective_put:" in text
+
+
+def test_evidence_ladder_separates_idea_research_cio_approval():
+    t = {"symbol_thesis_version": "symbol_spcx@v13", "thesis_state": "CURRENT", "thesis_confidence": 0.8,
+         "evidence_for": ["x"], "thesis_summary": "s"}
+    lad = {s["key"]: s["done"] for s in pe.committee_memo(SPCX, t, {"missing_required": []})["evidence_ladder"]}
+    assert lad == {"AI_IDEA": True, "RESEARCH_COMPLETED": True, "CIO_REVIEWED": False, "APPROVED": False}
+    lad = {s["key"]: s["done"] for s in pe.committee_memo(SPCX, {}, {"missing_required": ["x"]})["evidence_ladder"]}
+    assert lad == {"AI_IDEA": True, "RESEARCH_COMPLETED": False, "CIO_REVIEWED": False, "APPROVED": False}
+
+
+def test_options_review_uses_oauth_and_deepseek_never_local():
+    import json
+    import options_engine as oe
+    lanes = json.loads(oe._options_ensemble_lanes())
+    assert lanes == ["grok", "chatgpt", "deepseek-flash"]
+    assert not any("gemma" in l or "ollama" in l or "local" in l for l in lanes)
+
+
+def test_review_content_carries_house_facts():
+    import options_engine as oe
+    p = dict(SPCX, committee_memo=pe.committee_memo(SPCX, {"thesis_state": "INSUFFICIENT_DATA"}, {"missing_required": []}),
+             plain_english=pe.explain(SPCX), options_thesis={"pin": "opt_x@v1", "missing_required": ["catalysts"]})
+    text = oe._proposal_ensemble_content(p)
+    assert "HOUSE FACTS" in text and "opt_x@v1" in text and "Insurance" in text
+    assert "name any missing fact" in text
