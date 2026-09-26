@@ -1322,6 +1322,17 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
         import requests as _req
 
         def _ollama_analyze(model: str, *, timeout: int, num_predict: int) -> tuple[str, str]:
+            # Reuse the resident runner's num_ctx: any mismatch forces a full reload that
+            # queue-wedges every other Ollama caller (07-23 escalation read timeouts).
+            try:
+                from lib.ollama_ctx import canonical_num_ctx, resident_num_ctx
+            except ImportError:
+                from scripts.lib.ollama_ctx import canonical_num_ctx, resident_num_ctx
+            try:
+                _ps_models = _req.get("http://localhost:11434/api/ps", timeout=5).json().get("models", [])
+            except Exception:
+                _ps_models = []
+            _ctx = resident_num_ctx(model, ps_models=_ps_models) or canonical_num_ctx(model)
             _resp = _req.post("http://localhost:11434/api/chat", json={
                 "model": model,
                 "stream": False,
@@ -1329,7 +1340,7 @@ def process_queue(dry_run=False, tier1_only=False, no_llm=False):
                     {"role": "system", "content": "You are a Trade AI system health analyst. Provide structured root cause analysis."},
                     {"role": "user", "content": analysis_prompt[:12000]},
                 ],
-                "options": {"temperature": 0.2, "num_predict": num_predict, "num_ctx": 4096},
+                "options": {"temperature": 0.2, "num_predict": num_predict, "num_ctx": _ctx},
             }, timeout=timeout)
             if not _resp.ok:
                 return "", f"HTTP {_resp.status_code}"

@@ -239,11 +239,14 @@ def _execution_profile(account: str) -> dict:
             "auto_eligible": True,
         }
     if "alpaca" in a:
+        # Options desk is Schwab Path B + 2FA only (operator 2026-09-25).
+        # Alpaca paper accounts are excluded from options generation / Hub.
         return {
             "broker": "alpaca",
-            "execution_mode": "auto",
-            "execution_label": "Auto · Alpaca paper",
-            "auto_eligible": True,
+            "execution_mode": "excluded",
+            "execution_label": "Excluded · Alpaca (options desk is Schwab-only)",
+            "auto_eligible": False,
+            "options_desk_excluded": True,
         }
     return {
         "broker": "other",
@@ -420,7 +423,7 @@ def _resolve_option_contract(
     side: str,
     target_strike: float,
     target_dte: int,
-    strikes: int = 10,
+    strikes: int = 16,
 ) -> Tuple[Optional[dict], str]:
     """Pick live chain contract or BS estimate."""
     chain = _schwab_chain(sym, strikes=strikes)
@@ -495,10 +498,19 @@ def _load_holdings() -> Tuple[List[dict], dict]:
         h = {}
     raw = h.get("holdings") or []
     normalized = [_normalize_holding(x) for x in raw if (x.get("symbol") or "").upper()]
+    # Options desk / Lifecycle tree: Schwab (+ Fidelity manual) only — drop Alpaca lots.
+    kept, dropped_alpaca = [], 0
+    for row in normalized:
+        prof = _execution_profile(row.get("account") or "")
+        if prof.get("broker") == "alpaca" or prof.get("options_desk_excluded"):
+            dropped_alpaca += 1
+            continue
+        kept.append(row)
     meta = dict(h) if isinstance(h, dict) else {}
     meta["_holdings_path"] = str(best) if best is not None else None
     meta["_holdings_mtime"] = best_mtime if best is not None else None
-    return normalized, meta
+    meta["_alpaca_holdings_excluded"] = dropped_alpaca
+    return kept, meta
 
 
 def _cash_by_account(holdings: List[dict]) -> Dict[str, float]:
@@ -763,10 +775,15 @@ def _schwab_chain(symbol: str, strikes: int = 12) -> dict:
 
 
 def _pick_chain_contract(chain: dict, side: str, target_strike: float, target_dte: int) -> Optional[dict]:
+    """Nearest DTE/strike with a preference for two-sided liquid quotes.
+
+    Stage B (2026-09-25): proximity alone once preferred a zero-bid / 100% spread
+    row and stamped absurd enterprise blocks. Among contracts near the target,
+    prefer real bid/ask and tighter spread — do NOT widen max_spread_pct.
+    """
     if chain.get("status") not in (None, "ok") and "expirations" not in chain:
         return None
-    best = None
-    best_score = 1e9
+    candidates: List[tuple] = []
     for exp in chain.get("expirations") or []:
         dte = int(exp.get("dte") or 0)
         if dte < MIN_DTE or dte > MAX_DTE:
@@ -779,22 +796,38 @@ def _pick_chain_contract(chain: dict, side: str, target_strike: float, target_dt
             mid = (bid + ask) / 2.0 if bid and ask else _f(row.get("last"))
             if mid <= 0:
                 continue
-            score = abs(strike - target_strike) + abs(dte - target_dte) * 0.15
-            if score < best_score:
-                best_score = score
-                best = {
-                    "exp": exp.get("exp"),
-                    "dte": dte,
-                    "strike": strike,
-                    "bid": bid,
-                    "ask": ask,
-                    "mid": round(mid, 2),
-                    "iv": _f(row.get("iv")) / 100.0 if _f(row.get("iv")) > 3 else _f(row.get("iv")),
-                    "delta": _f(row.get("delta")),
-                    "oi": int(_f(row.get("oi"))),
-                    "volume": int(_f(row.get("volume"))),
-                }
-    return best
+            two_sided = bid > 0 and ask > bid
+            spread_pct = (
+                100.0 * (ask - bid) / mid if two_sided and mid > 0 else 999.0
+            )
+            proximity = abs(strike - target_strike) + abs(dte - target_dte) * 0.15
+            oi = int(_f(row.get("oi")))
+            vol = int(_f(row.get("volume")))
+            contract = {
+                "exp": exp.get("exp"),
+                "dte": dte,
+                "strike": strike,
+                "bid": bid,
+                "ask": ask,
+                "mid": round(mid, 2),
+                "iv": _f(row.get("iv")) / 100.0 if _f(row.get("iv")) > 3 else _f(row.get("iv")),
+                "delta": _f(row.get("delta")),
+                "oi": oi,
+                "volume": vol,
+                "bid_ask_spread_pct": round(spread_pct, 2) if spread_pct < 900 else None,
+            }
+            # sort key: proximity, then spread, then prefer higher OI
+            candidates.append((proximity, spread_pct, -oi, contract))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda t: (t[0], t[1], t[2]))
+    best_prox = candidates[0][0]
+    # Within ~2% of underlying (or $1 floor) of the nearest strike, prefer liquidity.
+    strike_slack = max(1.0, abs(target_strike) * 0.02)
+    near = [c for c in candidates if c[0] <= best_prox + strike_slack]
+    liquid = [c for c in near if c[1] < 900.0]
+    pool = liquid if liquid else near
+    return pool[0][3]
 
 
 def _edge_score(
@@ -1222,6 +1255,10 @@ def generate_covered_call_proposals(
             "iv_rank": iv_rank,
             "delta": contract.get("delta") if contract else None,
             "oi": contract.get("oi") if contract else None,
+            "volume": contract.get("volume") if contract else None,
+            "bid": contract.get("bid") if contract else None,
+            "ask": contract.get("ask") if contract else None,
+            "bid_ask_spread_pct": contract.get("bid_ask_spread_pct") if contract else None,
             "severity": "positive" if edge >= 75 else "info",
             "recommended_action": "Sell Covered Call",
             "action_buttons": [
@@ -1315,6 +1352,12 @@ def generate_holdings_put_proposals(
             "expected_value": round(-cost * 0.5, 2),
             "edge_score": edge,
             "iv_rank": iv_rank,
+            "delta": contract.get("delta"),
+            "oi": contract.get("oi"),
+            "volume": contract.get("volume"),
+            "bid": contract.get("bid"),
+            "ask": contract.get("ask"),
+            "bid_ask_spread_pct": contract.get("bid_ask_spread_pct"),
             "severity": "info",
             "recommended_action": "Buy Protective Put",
             "action_buttons": [
@@ -1484,6 +1527,11 @@ def _append_csp_proposal(
         "edge_score": edge,
         "iv_rank": iv_rank,
         "delta": contract.get("delta"),
+        "oi": contract.get("oi"),
+        "volume": contract.get("volume"),
+        "bid": contract.get("bid"),
+        "ask": contract.get("ask"),
+        "bid_ask_spread_pct": contract.get("bid_ask_spread_pct"),
         "severity": "positive" if edge >= 72 else "info",
         "recommended_action": "Sell Cash-Secured Put",
         "action_buttons": [
@@ -1660,6 +1708,15 @@ def generate_credit_spread_proposals(
         iv = max(0.05, short_c.get("iv") or _resolve_iv_decimal(und, tech, "put"))
         pop = _pop_otm_put(und, short_strike, iv, dte)
         rr = (net_credit * 100) / max(max_loss, 1)
+        # Defined-risk credit spreads must clear the R:R floor before Ideas.
+        # POP-heavy edge alone used to ship $66 credit / $1,184 risk as Tier A.
+        try:
+            import options_desk_enterprise as _ent_rr
+            _rr_floor = float((_ent_rr.load_desk_config() or {}).get("min_credit_spread_rr") or 0.25)
+        except Exception:
+            _rr_floor = 0.25
+        if _rr_floor > 0 and rr < _rr_floor:
+            continue
         edge = _edge_score_wheel(
             pop, iv_rank, net_credit, width - net_credit, conviction=conf, dte=dte,
         )
@@ -2024,6 +2081,63 @@ def _monitor_position(pos: dict, tech_map: dict) -> dict:
     }
 
 
+def _stamp_cio_hub_strip(proposals: List[dict], convictions: List[dict]) -> List[dict]:
+    """Stamp advisory CIO entry_state onto Hub proposal cards (Stage C/D, 2026-09-25).
+
+    Cards read ``p.cio.entry_state``. Prefer ``source=entry_state`` when a symbol
+    appears on more than one conviction. Never raises into generate_proposals —
+    a missing strip is worse than blank Ideas (NameError shipped once and blanked
+    the live desk behind the single-threaded server).
+    """
+    by_sym: Dict[str, dict] = {}
+    for c in convictions or []:
+        if not isinstance(c, dict):
+            continue
+        sym = (c.get("symbol") or "").upper()
+        if not sym:
+            continue
+        prior = by_sym.get(sym)
+        if prior is None or c.get("source") == "entry_state":
+            by_sym[sym] = c
+    for p in proposals or []:
+        if not isinstance(p, dict):
+            continue
+        sym = (p.get("symbol") or p.get("underlying") or "").upper()
+        c = by_sym.get(sym)
+        if not c:
+            continue
+        entry = c.get("entry_state")
+        if not entry and c.get("source") != "entry_state":
+            continue
+        note_parts: List[str] = []
+        if c.get("volatility_elevated"):
+            note_parts.append(
+                "elevated ATR vs stop — options may be capital-efficient vs full equity"
+            )
+        atr_vs = c.get("atr_vs_distance_to_stop")
+        if atr_vs is not None:
+            try:
+                note_parts.append(f"ATR/stop={float(atr_vs):.2f}")
+            except (TypeError, ValueError):
+                pass
+        hub_note = " · ".join(note_parts) if note_parts else None
+        if entry and not hub_note:
+            hub_note = (
+                f"CIO {entry} (advisory — does not unlock live; "
+                "Path B still needs liquidity + per-order 2FA)"
+            )
+        p["cio"] = {
+            "entry_state": entry or None,
+            "source": c.get("source"),
+            "confidence": c.get("confidence"),
+            "bias": c.get("bias") or c.get("direction"),
+            "summary": c.get("summary"),
+            "volatility_elevated": bool(c.get("volatility_elevated")),
+            "hub_note": hub_note,
+        }
+    return proposals
+
+
 def _apply_enterprise_layer(proposals: List[dict]) -> List[dict]:
     """Attach enterprise desk metadata: earnings blackout, liquidity, vol, tiers."""
     try:
@@ -2035,12 +2149,32 @@ def _apply_enterprise_layer(proposals: List[dict]) -> List[dict]:
     for p in proposals:
         sym = (p.get("symbol") or "").upper()
         if sym and sym not in chain_cache:
-            chain_cache[sym] = _schwab_chain(sym, strikes=12)
+            # Wider strike window so liquid near-target contracts can win Stage B pick.
+            chain_cache[sym] = _schwab_chain(sym, strikes=16)
         chain = chain_cache.get(sym) or {}
         contract = None
         if p.get("data_source") != "bs_estimate":
-            side = "call" if (p.get("option_type") or "").lower() == "call" else "put"
-            contract = _pick_chain_contract(chain, side, _f(p.get("strike")), int(p.get("dte") or 30))
+            # Prefer quotes stamped on the proposal (same contract as the idea).
+            bid, ask = _f(p.get("bid")), _f(p.get("ask"))
+            mid = _f(p.get("premium")) or _f(p.get("mid"))
+            if mid <= 0 and bid > 0 and ask > 0:
+                mid = (bid + ask) / 2.0
+            if mid > 0 and (bid > 0 or ask > 0 or p.get("oi") is not None):
+                contract = {
+                    "bid": bid,
+                    "ask": ask,
+                    "mid": mid,
+                    "oi": int(_f(p.get("oi"))),
+                    "volume": int(_f(p.get("volume"))),
+                    "strike": _f(p.get("strike")),
+                    "dte": int(p.get("dte") or 0),
+                    "exp": p.get("expiration"),
+                }
+            else:
+                side = "call" if (p.get("option_type") or "").lower() == "call" else "put"
+                contract = _pick_chain_contract(
+                    chain, side, _f(p.get("strike")), int(p.get("dte") or 30),
+                )
         row = ent.enterprise_enrich_proposal(dict(p), contract=contract, chain=chain)
         und = _f(row.get("underlying_price"))
         if sym and und > 0:
@@ -2097,6 +2231,16 @@ def generate_proposals(force: bool = False) -> dict:
         edge = _f(p.get("edge_score"))
         sym = (p.get("symbol") or "").upper()
         strat = p.get("strategy") or ""
+        # Credit spreads: hard R:R floor (enterprise helper) — never Ideas on 0.06 R:R.
+        if strat == "credit_spread":
+            try:
+                import options_desk_enterprise as _ent_qg
+                if _ent_qg.credit_spread_rr_block(p):
+                    return False
+            except Exception:
+                rr = _f(p.get("risk_reward"))
+                if rr > 0 and rr < 0.25:
+                    return False
         manual = p.get("execution_mode") == "manual" or p.get("broker") == "fidelity"
         # Income-sleeve names (V, SCHD, LMT in portfolio_intent) use relaxed floor — final
         # filter must match per-proposal generation or borderline intent CCs vanish (V ~61 vs 62).
@@ -2117,7 +2261,12 @@ def generate_proposals(force: bool = False) -> dict:
     if not strict and pool:
         relaxed = [
             p for p in pool
-            if p.get("edge_score", 0) >= MIN_EDGE_CC_INTENT and _f(p.get("pop_pct")) >= (MIN_POP_PCT - 5)
+            if p.get("edge_score", 0) >= MIN_EDGE_CC_INTENT
+            and _f(p.get("pop_pct")) >= (MIN_POP_PCT - 5)
+            and (
+                (p.get("strategy") or "") != "credit_spread"
+                or _passes_quality_gate({**p, "quality_pass": True})
+            )
         ]
         for p in relaxed:
             p["fallback_tier"] = True
@@ -2130,6 +2279,11 @@ def generate_proposals(force: bool = False) -> dict:
             _audit("fallback_tier", count=len(strict), symbols=[p.get("symbol") for p in strict])
 
     strict = _apply_enterprise_layer(strict)
+    try:
+        strict = _stamp_cio_hub_strip(strict, convictions)
+    except Exception:
+        # Desk Ideas must still render if CIO strip stamping fails.
+        pass
     all_p = _allocate_strategy_slots(strict)
 
     enterprise_summary = {}
@@ -2486,10 +2640,23 @@ def evaluate_covered_call_status(
     if price <= 0:
         return {**base, "status": "PRICE_ZERO", "detail": "no usable mark"}
     if shares < MIN_HOLDING_SHARES_CC:
+        shares_short = round(max(0.0, MIN_HOLDING_SHARES_CC - shares), 4)
         return {
             **base,
             "status": "NEED_100_SHARES",
-            "detail": f"{shares:.2f} shares — need ≥{MIN_HOLDING_SHARES_CC} to cover 1 call",
+            "detail": (
+                f"{shares:.2f} shares — need ≥{MIN_HOLDING_SHARES_CC} to cover 1 call "
+                f"(short {shares_short} shares). Covered call stays refused — never fake cover."
+            ),
+            "shares_short": shares_short,
+            "alternate_hint": {
+                "buy_to_lot": f"Buy ~{shares_short} more shares to cover 1 call",
+                "consider": [
+                    "cash_secured_put if cash + IV clear (income / wheel — not a fake CC)",
+                    "protective_put only when shares ≥50 and MV clears hedge floor",
+                ],
+                "never": "covered_call on sub-100 share lots",
+            },
         }
     if mv < MIN_POSITION_MV:
         return {

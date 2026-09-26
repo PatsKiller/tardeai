@@ -110,7 +110,7 @@ def test_validator_detects_placeholder_and_self_head(tmp_path: Path):
     for name in sei.CURRENT_EVIDENCE:
         if name == "FULL_TEST_MATRIX.txt":
             (ev / name).write_text(
-                f"control_surface_digest={digest}\nexpected_pytest_core={sei.EXPECTED_CORE_TESTS}\n"
+                f"control_surface_digest=AT_HEAD\nexpected_pytest_core={sei.EXPECTED_CORE_TESTS}\n"
                 "EXIT_lease_canonical=0\nEXIT_session=0\nEXIT_identity=0\nEXIT_quality_unit=0\n"
                 "EXIT_clients=0\nEXIT_drive=0\nEXIT_policy=0\nEXIT_quality=0\n"
                 "EXIT_ruff_check=0\nEXIT_ruff_format=0\nEXIT_shellcheck=0\nEXIT_diffcheck=0\n"
@@ -120,7 +120,7 @@ def test_validator_detects_placeholder_and_self_head(tmp_path: Path):
             )
         elif name == "RUFF_SHELLCHECK.txt":
             (ev / name).write_text(
-                f"control_surface_digest={digest}\nruff pinned=0.16.2\n"
+                "control_surface_digest=AT_HEAD\nruff pinned=0.16.2\n"
                 "EXIT_ruff_check=0\nEXIT_ruff_format=0\nEXIT_shellcheck=0\n"
                 "EXIT_missing_ruff_negative=2\n",
                 encoding="utf-8",
@@ -128,13 +128,13 @@ def test_validator_detects_placeholder_and_self_head(tmp_path: Path):
         elif name == "CONTROL7_WORKFLOW_PROOF.txt":
             wf_hash = sei.file_sha256(wf)
             (ev / name).write_text(
-                f"control_surface_digest={digest}\nworkflow_blob_sha256={wf_hash}\n"
+                f"control_surface_digest=AT_HEAD\nworkflow_blob_sha256={wf_hash}\n"
                 f"workflow_lines={len(wf.read_text().splitlines())}\npath_filters=absent\n",
                 encoding="utf-8",
             )
         elif name == "CONTROL7_LOCAL_EQUIVALENT.txt":
             (ev / name).write_text(
-                f"control_surface_digest={digest}\nEXIT_clients=0\nEXIT_quality=0\n",
+                "control_surface_digest=AT_HEAD\nEXIT_clients=0\nEXIT_quality=0\n",
                 encoding="utf-8",
             )
         elif name == "CONTROL6_INDEX_FINGERPRINT.txt":
@@ -144,9 +144,9 @@ def test_validator_detects_placeholder_and_self_head(tmp_path: Path):
                 encoding="utf-8",
             )
         elif name == "MATURITY_SCORECARD.md":
-            (ev / name).write_text(f"control_surface_digest={digest}\n| 7 | PASS |\n", encoding="utf-8")
+            (ev / name).write_text("control_surface_digest=AT_HEAD\n| 7 | PASS |\n", encoding="utf-8")
         else:
-            (ev / name).write_text(f"control_surface_digest={digest}\nok\n", encoding="utf-8")
+            (ev / name).write_text("control_surface_digest=AT_HEAD\nok\n", encoding="utf-8")
 
     assert sei.validate_in_repo_evidence(root) == []
 
@@ -157,7 +157,7 @@ def test_validator_detects_placeholder_and_self_head(tmp_path: Path):
     assert any(e.startswith("PLACEHOLDER:") for e in errs)
     # restore and test self-head
     bad.write_text(
-        f"control_surface_digest={digest}\nexpected_pytest_core=120\nPYTEST_CORE=120\n"
+        "control_surface_digest=AT_HEAD\nexpected_pytest_core=120\nPYTEST_CORE=120\n"
         "EXIT_lease_canonical=0\nEXIT_session=0\nEXIT_identity=0\nEXIT_quality_unit=0\n"
         "EXIT_clients=0\nEXIT_drive=0\nEXIT_policy=0\nEXIT_quality=0\n"
         "EXIT_ruff_check=0\nEXIT_ruff_format=0\nEXIT_shellcheck=0\nEXIT_diffcheck=0\n"
@@ -197,3 +197,35 @@ def test_runtime_attestation_schema_roundtrip():
     assert validate_runtime_attestation(att, root=ROOT) == []
     att["control_surface_digest"] = "0" * 64
     assert "ATTESTATION_DIGEST_MISMATCH" in validate_runtime_attestation(att, root=ROOT)
+
+
+def test_committed_evidence_must_not_embed_a_volatile_digest(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """2026-09-25: the four files the old regenerate step rewrote on every PR
+    must not carry a concrete digest again (that is what made every pair of
+    concurrent PRs conflict). A HISTORICAL digest in other evidence is fine.
+
+    Works on a temp copy (never edits the committed file): the CI runner executes
+    gates concurrently, and another worker may be reading the real evidence."""
+    import re as _re
+
+    from scripts.lib import sop_evidence_integrity as sei
+
+    errs = sei.validate_in_repo_evidence(ROOT)
+    assert not [e for e in errs if e.startswith("EVIDENCE_EMBEDS_VOLATILE_DIGEST")], errs
+
+    real = sei._evidence_path("FULL_TEST_MATRIX.txt", ROOT)
+    fake = tmp_path / "FULL_TEST_MATRIX.txt"
+    fake.write_text(
+        _re.sub(r"(?m)^control_surface_digest=.*$", "control_surface_digest=" + "a" * 64, real.read_text(encoding="utf-8")),
+        encoding="utf-8",
+    )
+    orig = sei._evidence_path
+    monkeypatch.setattr(sei, "_evidence_path", lambda name, root: fake if name == "FULL_TEST_MATRIX.txt" else orig(name, root))
+    errs = sei.validate_in_repo_evidence(ROOT)
+    assert "EVIDENCE_EMBEDS_VOLATILE_DIGEST:FULL_TEST_MATRIX.txt" in errs, errs
+    monkeypatch.setattr(sei, "_evidence_path", orig)
+
+    # AUTHORITY_NON_REGRESSION.txt keeps its historical digest and still passes.
+    anr = sei._evidence_path("AUTHORITY_NON_REGRESSION.txt", ROOT).read_text(encoding="utf-8")
+    assert _re.search(r"(?m)^control_surface_digest=[0-9a-f]{64}", anr)
+    assert "AUTHORITY_NON_REGRESSION.txt" not in "".join(sei.validate_in_repo_evidence(ROOT))
