@@ -43,24 +43,58 @@ def _env(key: str) -> str:
     return val
 
 
+# Universe = strategy-classified symbols PLUS every currently-open position. Open paper trades
+# aren't always in ticker_strategy_classifications (e.g. TMHC, a swing_breakout entry), and without
+# this UNION they'd never get a quote -> no current price on the Open Trades page. Generic: any open
+# position is always quoted, regardless of classification.
+#
+# 'researched' joined 'active' on 2026-09-22 (PR #1189, split out 2026-09-25). The operator asked
+# "how is S for entry" and the desk quoted S's 2026-09-04 close, 17.9 days old: the refresher was
+# healthy (4,975 symbols < 0.2h) but S was outside this universe -- its watchlist rows were
+# 'removed' and 'researched', and the predicate matched neither. ticker_prices is fed from
+# market_quotes, so the exclusion emptied the store the desk reads. 'researched' names are the
+# cohort the desk gets asked about (+659 symbols on 09-22, +634 on 09-25: 4,915 -> 5,549; about
+# +4 Alpaca batch requests); 'removed' stays out.
+UNIVERSE_SQL = """
+    SELECT DISTINCT symbol FROM ticker_strategy_classifications WHERE active=TRUE
+    UNION
+    SELECT DISTINCT symbol FROM paper_trades WHERE status = 'open' AND symbol IS NOT NULL
+    UNION
+    -- names the operator explicitly tracks (directive-watch), active watchlist items, or names the
+    -- house has researched: keep them priced even before promotion, so newly-IPO'd directives
+    -- (e.g. SPCX) and researched names (e.g. S) don't go stale.
+    SELECT DISTINCT symbol FROM watchlist_items
+        WHERE (in_directive_watch = TRUE OR status IN ('active', 'researched'))
+          AND symbol IS NOT NULL
+"""
+
+
+def _dict_cursor(conn):
+    """A dict-row cursor, without making the psycopg2 driver a hard requirement.
+
+    2026-09-22: `_get_symbols` is pure SQL over UNIVERSE_SQL and its test drives
+    it against sqlite with `_get_conn` monkeypatched -- yet it still raised
+    ModuleNotFoundError, because the cursor FACTORY reached for
+    psycopg2.extras. CI installs only `pytest pyyaml`, so five tests that pass
+    on any developer machine failed there and nowhere else.
+
+    In production psycopg2 is always present and the behaviour is unchanged:
+    the same RealDictCursor as before. Absent the driver, the connection's own
+    cursor is used -- which is what a sqlite shim already provides.
+
+    Applied at ALL THREE identical sites, not just the one that went red.
+    """
+    try:
+        import psycopg2.extras  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 - driver absent (CI); caller supplies its own conn
+        return conn.cursor()
+    return conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+
+
 def _get_symbols() -> list:
-    import psycopg2.extras
     conn = _get_conn()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-    # Universe = strategy-classified symbols PLUS every currently-open position. Open paper trades
-    # aren't always in ticker_strategy_classifications (e.g. TMHC, a swing_breakout entry), and without
-    # this UNION they'd never get a quote -> no current price on the Open Trades page. Generic: any open
-    # position is always quoted, regardless of classification.
-    cur.execute("""
-        SELECT DISTINCT symbol FROM ticker_strategy_classifications WHERE active=TRUE
-        UNION
-        SELECT DISTINCT symbol FROM paper_trades WHERE status = 'open' AND symbol IS NOT NULL
-        UNION
-        -- names the operator explicitly tracks (directive-watch) or active watchlist items: keep them
-        -- priced even before promotion, so newly-IPO'd directives (e.g. SPCX) don't go stale.
-        SELECT DISTINCT symbol FROM watchlist_items
-            WHERE (in_directive_watch = TRUE OR status = 'active') AND symbol IS NOT NULL
-    """)
+    cur = _dict_cursor(conn)
+    cur.execute(UNIVERSE_SQL)
     symbols = [r["symbol"] for r in cur.fetchall()]
     conn.close()
     return [s for s in symbols if "-" not in s and len(s) <= 5]
@@ -585,9 +619,8 @@ def ingest_fred() -> dict:
 
 def get_macro_context() -> str:
     """Get macro economic context for agent prompt injection."""
-    import psycopg2.extras
     conn = _get_conn()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = _dict_cursor(conn)
 
     cur.execute("""
         SELECT DISTINCT ON (series_id) series_id, series_name, value, observation_date
@@ -608,9 +641,8 @@ def get_macro_context() -> str:
 
 def get_yfinance_context(symbol: str) -> str:
     """Get latest yfinance quote context for a symbol."""
-    import psycopg2.extras
     conn = _get_conn()
-    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur = _dict_cursor(conn)
     cur.execute("""
         SELECT * FROM market_quotes WHERE symbol=%s ORDER BY fetched_at DESC LIMIT 1
     """, (symbol,))

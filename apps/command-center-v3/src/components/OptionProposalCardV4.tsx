@@ -817,6 +817,7 @@ export default function OptionProposalCardV4({
         const comparison = cmp.comparison || {}
         const oversight = cmp.oversight || {}
         const prov = cmp.provenance || {}
+        const research = (p as any).research_context || (p as any).options_decision_packet_v2?.research || {}
         const pin = cmp.thesis?.thesis_version || 'no thesis pin on this proposal'
         const refuse = comparison.preferred_structure === 'neither'
         const pop = opt.probability_of_success == null ? null : `${opt.probability_of_success}%`
@@ -835,6 +836,34 @@ export default function OptionProposalCardV4({
             <div style={{ marginTop: 4 }}>{stock.maximum_loss_model}</div>
             <div style={{ marginTop: 4, color: BB.text1 }}>CIO {oversight.review_status || 'unreviewed'}. A model score is not a CIO decision.</div>
             <div style={{ marginTop: 4, color: BB.text3 }}>{fresh} · thesis {pin}</div>
+            <div style={{ marginTop: 4, color: BB.text3 }}>
+              Research: {(research.source_lanes || []).join(' · ') || 'research lane unavailable'}
+              {research.reentry_signal ? ` · re-entry ${research.reentry_signal}` : ''}
+              {research.research_as_of || research.as_of ? ` · as of ${String(research.research_as_of || research.as_of).slice(0, 16)}` : ''}
+            </div>
+            {(() => {
+              const memo = (p as any).options_research_memo
+              if (!memo?.thesis) return null
+              const t = memo.thesis
+              const c = memo.committee || {}
+              const line = (label: string, value: unknown) => (
+                <div style={{ marginTop: 4 }}><b style={{ color: BB.text1 }}>{label}</b> {String(value ?? 'missing')}</div>
+              )
+              return (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BB.border}` }}>
+                  {line('Why now.', t.why_now)}
+                  {line('Why an option.', t.why_option_instead_of_stock)}
+                  {line('Catalyst.', t.catalyst)}
+                  {line('Timeframe.', t.timeframe)}
+                  {line('Reward/risk.', t.reward_to_risk)}
+                  {line('Expected value.', t.probability_weighted_expected_return)}
+                  {line('What kills it.', t.invalidation)}
+                  {line('Size.', t.position_size)}
+                  {line('Bear case.', c.cio?.bear_case)}
+                  {line('Opposition.', c.strongest_opposing_argument)}
+                </div>
+              )
+            })()}
           </div>
         )
       })()}
