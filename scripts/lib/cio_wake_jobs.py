@@ -182,6 +182,17 @@ PRIORITY_MAP: dict[str, str] = {
     "OPPORTUNITY_QUEUE": "normal",
 }
 
+PRIORITY_LEVELS: dict[str, int] = {"high": 0, "normal": 1, "low": 2}
+
+# Dead-letter policy (2026-09-25). A wake whose lease expired and was released
+# back to PENDING this many times is EXPIRED with reason `dead_letter:` instead
+# of being re-queued forever. IN_FLIGHT/ACKNOWLEDGED wakes whose worker never
+# reported a terminal run status are EXPIRED as `stale_in_flight` after
+# STALE_IN_FLIGHT_SECONDS. Neither ever retries a run; both leave a durable
+# reason on the stream.
+MAX_LEASE_RECOVERIES = 3
+STALE_IN_FLIGHT_SECONDS = 6 * 3600
+
 GENESIS_PREV_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
 
 ALLOWED_ACTOR_TYPES = frozenset({"agent", "operator", "system"})
@@ -381,6 +392,12 @@ class CIOWakeJobStore:
             raise ValueError(f"Invalid trigger_type: {trigger_type}")
 
         priority = PRIORITY_MAP.get(trigger_type, "normal")
+        # A producer may state the priority explicitly (the reactive cycle
+        # classifies bus events HIGH/NORMAL/LOW). Before 2026-09-25 that value
+        # lived only in `context` and list_wakes could not order by it.
+        _explicit = str(wake_payload.get("priority") or "").strip().lower()
+        if _explicit in PRIORITY_LEVELS:
+            priority = _explicit
         for rc in wake_payload.get("reason_codes", []):
             if rc == "ACTION_DEADLINE_NEAR":
                 priority = "high"
@@ -715,6 +732,7 @@ class CIOWakeJobStore:
         actor_id: str = "cio_detector",
         actor_type: str = "system",
         authority: str = "system",
+        reason: str = "",
     ) -> dict[str, Any]:
         """Release a claimed/dispatched wake job back to PENDING."""
         wake = self.get_wake_job(wake_job_id)
@@ -729,6 +747,7 @@ class CIOWakeJobStore:
         payload: dict[str, Any] = {
             "wake_job_id": wake_job_id,
             "released_at": datetime.now(timezone.utc).isoformat(),
+            "reason": reason,
         }
 
         event = build_event(
@@ -744,29 +763,80 @@ class CIOWakeJobStore:
         self._append_event(event)
         return event
 
-    def recover_expired_leases(self, stale_seconds: int = 300) -> list[str]:
-        """Release expired claims/dispatches back to PENDING.
-        
-        Returns list of wake_job_ids that were recovered.
+    def recover_expired_leases(
+        self,
+        stale_seconds: int = 300,
+        *,
+        max_recoveries: int = MAX_LEASE_RECOVERIES,
+        stale_in_flight_seconds: int = STALE_IN_FLIGHT_SECONDS,
+    ) -> list[str]:
+        """Release expired claims/dispatches back to PENDING, or dead-letter them.
+
+        Returns list of wake_job_ids that were recovered (released). Wakes that
+        were EXPIRED by this pass are recorded in ``self.last_dead_lettered``.
+
+        2026-09-25: the previous version scanned only ``list_wakes()``'s
+        default 50 newest streams, so an older stuck CLAIMED wake was never
+        recovered; it re-released without limit (a wake that crashes its worker
+        every time was re-queued forever); and IN_FLIGHT wakes whose worker
+        never reported a terminal run stayed IN_FLIGHT indefinitely (no
+        transition from IN_FLIGHT to PENDING exists, by design).
         """
         recovered: list[str] = []
+        dead: list[dict[str, Any]] = []
         now = datetime.now(timezone.utc)
-        for wake in self.list_wakes():
+        for wake in self.list_wakes(limit=1_000_000):
             status = wake.get("current_status", "")
+            wid = wake.get("wake_job_id")
+            if not wid:
+                continue
             if status in ("CLAIMED", "DISPATCHED"):
                 lease_at = wake.get("lease_expires_at") or wake.get("dispatched_at", "")
                 if not lease_at:
                     continue
                 try:
                     expiry = datetime.fromisoformat(lease_at)
-                    if now > expiry + timedelta(seconds=stale_seconds):
-                        try:
-                            self.release(wake["wake_job_id"], actor_id="lease_recovery")
-                            recovered.append(wake["wake_job_id"])
-                        except ValueError:
-                            pass
                 except (ValueError, TypeError):
+                    continue
+                if expiry.tzinfo is None:
+                    expiry = expiry.replace(tzinfo=timezone.utc)
+                if now <= expiry + timedelta(seconds=stale_seconds):
+                    continue
+                releases = int(wake.get("release_count") or 0)
+                if releases >= max_recoveries:
+                    reason = f"dead_letter:lease_recovered_{releases}_times"
+                    try:
+                        self.expire(wid, reason=reason, actor_id="lease_recovery")
+                        dead.append({"wake_job_id": wid, "reason": reason})
+                    except ValueError:
+                        pass
+                    continue
+                try:
+                    self.release(wid, actor_id="lease_recovery",
+                                 reason=f"lease_expired:{status.lower()}")
+                    recovered.append(wid)
+                except ValueError:
                     pass
+            elif status in ("IN_FLIGHT", "ACKNOWLEDGED"):
+                started = wake.get("in_flight_at") or wake.get("acknowledged_at") \
+                    or wake.get("dispatched_at") or wake.get("updated_at") or ""
+                if not started:
+                    continue
+                try:
+                    started_dt = datetime.fromisoformat(started)
+                except (ValueError, TypeError):
+                    continue
+                if started_dt.tzinfo is None:
+                    started_dt = started_dt.replace(tzinfo=timezone.utc)
+                if now <= started_dt + timedelta(seconds=stale_in_flight_seconds):
+                    continue
+                reason = f"stale_in_flight:{status.lower()}_over_{stale_in_flight_seconds}s"
+                try:
+                    self.expire(wid, reason=reason, actor_id="lease_recovery")
+                    dead.append({"wake_job_id": wid, "reason": reason})
+                except ValueError:
+                    pass
+        self.last_dead_lettered = dead
         return recovered
 
     # ── Validation helpers ─────────────────────────────────────────────────
@@ -862,6 +932,8 @@ class CIOWakeJobStore:
                     state["in_flight_at"] = payload.get("in_flight_at")
                 elif event_type == "CIO_WAKE_RELEASED":
                     state["released_at"] = payload.get("released_at")
+                    state["release_count"] = int(state.get("release_count") or 0) + 1
+                    state["last_release_reason"] = payload.get("reason") or ""
                 elif event_type == "CIO_WAKE_COMPLETED":
                     state["completed_at"] = payload.get("completed_at")
                     state["completion_details"] = payload.get("completion_details", {})
@@ -879,6 +951,7 @@ class CIOWakeJobStore:
         status: Optional[str] = None,
         priority: Optional[str] = None,
         limit: int = 50,
+        order: str = "newest",
     ) -> list[dict[str, Any]]:
         """List wake jobs, optionally filtered by status and/or priority.
 
@@ -922,7 +995,18 @@ class CIOWakeJobStore:
                 continue
             wakes.append(wake)
 
-        wakes.sort(key=lambda w: str(w.get("created_at", "")), reverse=True)
+        if order == "priority_fifo":
+            # Dispatch order (2026-09-25): high before normal before low, then
+            # OLDEST first. The default newest-first order was LIFO for the
+            # dispatcher: with 5 slots per cycle and a steady stream of new
+            # wakes, older PENDING wakes starved until the 24h expiry (18
+            # event wakes lost per day, measured 2026-09-25).
+            wakes.sort(key=lambda w: (
+                PRIORITY_LEVELS.get(str(w.get("priority") or "normal").lower(), 1),
+                str(w.get("created_at", "")),
+            ))
+        else:
+            wakes.sort(key=lambda w: str(w.get("created_at", "")), reverse=True)
         return wakes[:limit]
 
     # ── Integrity verification ─────────────────────────────────────────────

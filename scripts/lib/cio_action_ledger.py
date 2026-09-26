@@ -213,7 +213,9 @@ class CIOActionLedger:
         last = self._get_last_event()
         if last is None:
             return GENESIS_PREV_HASH
-        return last["event_hash"]
+        # A legacy tail row (pre-stream contract) carries no event_hash; chain
+        # from the genesis hash rather than crash every subsequent write.
+        return str(last.get("event_hash") or GENESIS_PREV_HASH)
 
     def _append_event(self, event: dict[str, Any]) -> None:
         """Append ONE event with exclusive lock, hash-chain continuity, and fsync.
@@ -406,8 +408,15 @@ class CIOActionLedger:
                 stripped = line.strip()
                 if not stripped:
                     continue
-                event = json.loads(stripped)
-                if event["stream_id"] == stream_id:
+                try:
+                    event = json.loads(stripped)
+                except json.JSONDecodeError:
+                    continue
+                # 88 of 108 live rows (2026-09-25) predate the stream contract
+                # and carry no `stream_id`. Indexing it raised KeyError from
+                # every create_action() since 2026-08-27, so no action -- and
+                # no operator notification -- has left the dispatcher path.
+                if isinstance(event, dict) and event.get("stream_id") == stream_id:
                     events.append(event)
         return events
 
@@ -511,9 +520,12 @@ class CIOActionLedger:
                     stripped = line.strip()
                     if not stripped:
                         continue
-                    event = json.loads(stripped)
-                    sid = event["stream_id"]
-                    if sid != "ledger-genesis":
+                    try:
+                        event = json.loads(stripped)
+                    except json.JSONDecodeError:
+                        continue
+                    sid = event.get("stream_id") if isinstance(event, dict) else None
+                    if sid and sid != "ledger-genesis":
                         stream_ids.add(sid)
 
         actions: list[dict[str, Any]] = []

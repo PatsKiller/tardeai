@@ -452,6 +452,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | review_required | OK | `1b18a9999a79` |
 | `docs/architecture/agent-memory-view-proposal.md` | Command Center — Agent Memory view (proposal) | review_required | OK | `7b90f4d8e3d6` |
 | `docs/architecture/channel-adapters.md` | Gateway Channel Adapters — Phase 10 | review_required | OK | `2457155850f5` |
+| `docs/architecture/cio-cognition-tranche3-20260925.md` | CIO cognition tranche 3 — prompt event-driven cognition and the closed learning chain | review_required | OK | `4593665c031d` |
 | `docs/architecture/cio/ADR_ALEX_AUTHORITY_MANIFEST.md` | ADR: Alex Authority Manifest | review_required | OK | `8bf7e2366689` |
 | `docs/architecture/cio/ADR_CIO_STATE_ARCHITECTURE.md` | ADR: CIO State Architecture | review_required | OK | `78b3c731e31d` |
 | `docs/architecture/cio/ADR_CONTAINMENT_SPECIFICATION.md` | ADR: Containment Specification | review_required | OK | `e090bef207bf` |

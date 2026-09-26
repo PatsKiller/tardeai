@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -30,6 +32,116 @@ def _pin() -> str:
         return str((Path.home() / "trade-ai-releases/portfolio-server/CURRENT").resolve())
     except OSError:
         return "UNKNOWN"
+
+
+def _read_stamp(release_dir: Path) -> tuple[str | None, str | None]:
+    """(sha, promoted_at ISO-UTC) from the release's SOURCE_COMMIT/BUILD_SHA stamp."""
+    for name in ("SOURCE_COMMIT", "BUILD_SHA"):
+        f = release_dir / name
+        try:
+            if f.is_file():
+                sha = f.read_text(encoding="utf-8").strip() or None
+                promoted = datetime.fromtimestamp(f.stat().st_mtime, tz=timezone.utc)
+                return sha, promoted.strftime("%Y-%m-%dT%H:%M:%SZ")
+        except OSError:
+            continue
+    return None, None
+
+
+def served_runtime(
+    *,
+    current: Path | None = None,
+    boot_json: Path | None = None,
+) -> dict:
+    """What is actually serving: pin path, its SHA, when it was promoted, when
+    the server process booted on it.
+
+    2026-09-25: M1–M5 verdicts were computed from artifact files with no check
+    that the evidence post-dates the served release. M1/M3 evidence was written
+    on a pre-deploy SHA and M4's soak ledger last observed a 5-day-old pin;
+    all read as OBSERVED. The report now carries this block and every proof
+    states whether its evidence lies on the served SHA.
+    """
+    cur = current or (Path.home() / "trade-ai-releases/portfolio-server/CURRENT")
+    out: dict = {
+        "pin": _pin() if current is None else str(cur.resolve()) if cur.exists() else "UNKNOWN",
+        "served_sha": None,
+        "promoted_at": None,
+        "boot_at": None,
+        "boot_pin_sha": None,
+        "boot_matches_pin": None,
+    }
+    try:
+        if cur.exists():
+            out["served_sha"], out["promoted_at"] = _read_stamp(cur.resolve())
+    except OSError:
+        pass
+    boot = _load_json(boot_json or (Path.home() / ".local/state/tradeai/portfolio_server_boot.json"))
+    if boot:
+        out["boot_at"] = boot.get("process_started_at")
+        out["boot_pin_sha"] = boot.get("loaded_pin_sha") or boot.get("current_pin_sha")
+        if out["served_sha"] and out["boot_pin_sha"]:
+            out["boot_matches_pin"] = str(out["boot_pin_sha"]).startswith(str(out["served_sha"])[:12]) \
+                or str(out["served_sha"]).startswith(str(out["boot_pin_sha"])[:12])
+    return out
+
+
+_AS_OF_RE = re.compile(r"as_of=([0-9]{4}-[0-9]{2}-[0-9]{2}[T ][0-9:.]+(?:Z|[+-][0-9]{2}:?[0-9]{2})?)")
+
+
+def evidence_as_of(note: str) -> str | None:
+    """The evidence timestamp a proof note names (`... as_of=<iso> ...`)."""
+    m = _AS_OF_RE.search(note or "")
+    return m.group(1) if m else None
+
+
+def _parse_iso(ts: str | None) -> datetime | None:
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts).replace("Z", "+00:00").replace(" ", "T"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def served_gate(verdict: str, note: str, served: dict | None) -> dict:
+    """Attach the served-SHA gate to one proof.
+
+    `verdict` is the artifact-level reading (unchanged contract). `served_verdict`
+    is what may be claimed for the deployed release: OBSERVED only when the
+    evidence post-dates the promotion of the served pin. Evidence older than the
+    pin is OBSERVED_PRE_DEPLOY; evidence without a timestamp is
+    OBSERVED_UNDATED. Neither is a default PASS.
+    """
+    as_of = evidence_as_of(note)
+    row = {
+        "verdict": verdict,
+        "note": note,
+        "evidence_as_of": as_of,
+        "on_served_sha": None,
+        "served_verdict": verdict,
+    }
+    if verdict != "OBSERVED":
+        return row
+    promoted = _parse_iso((served or {}).get("promoted_at"))
+    ev = _parse_iso(as_of)
+    if promoted is None:
+        row["served_verdict"] = "OBSERVED_UNGATED"
+        row["gate_note"] = "served pin promoted_at unknown; cannot place evidence on the served SHA"
+        return row
+    if ev is None:
+        row["served_verdict"] = "OBSERVED_UNDATED"
+        row["gate_note"] = "evidence carries no as_of; cannot place it on the served SHA"
+        return row
+    row["on_served_sha"] = ev >= promoted
+    if row["on_served_sha"]:
+        row["gate_note"] = f"evidence {as_of} post-dates promotion {served.get('promoted_at')} of {served.get('served_sha')}"
+    else:
+        row["served_verdict"] = "OBSERVED_PRE_DEPLOY"
+        row["gate_note"] = (f"evidence {as_of} predates promotion {served.get('promoted_at')} "
+                            f"of {served.get('served_sha')}; needs a natural re-observation")
+    return row
 
 
 def _exists_nonempty(p: Path) -> bool:
@@ -238,16 +350,25 @@ def _m5_from_consult(consult: dict | None) -> tuple[str, str]:
         f"changed_by_record={changed} skipped_cadence={skipped} "
         f"instrument_enqueue_skipped_cadence={ie_skipped}"
     )
-    disposition = changed >= 1 or skipped >= 1 or ie_skipped >= 1
-    if unattended and found >= 1 and disposition:
+    # 2026-09-25: a cadence skip (`next_eligible_at` not yet due) is the record
+    # honoring its OWN prior write, which every routine cycle produces. It is
+    # not a days-later operator/critic disposition changing what happens next,
+    # which is what M5 claims. Only `decisions_changed_by_record` counts as a
+    # disposition; cadence-only cycles stay CANDIDATE and say so.
+    if unattended and found >= 1 and changed >= 1:
         return (
             "OBSERVED",
-            f"{base} — load-by-subject ran on schedule and honored a prior disposition",
+            f"{base} — load-by-subject ran on schedule and a recorded disposition changed a decision",
+        )
+    if unattended and found >= 1 and (skipped >= 1 or ie_skipped >= 1):
+        return (
+            "CANDIDATE",
+            f"{base} — cadence honored (routine); no recorded disposition changed a decision yet",
         )
     if unattended and found >= 1 and resolved >= 1:
         return (
             "CANDIDATE",
-            f"{base} — load works; waiting for a cycle that skips on cadence/disposition",
+            f"{base} — load works; waiting for a cycle where a recorded disposition changes a decision",
         )
     return ("NOT_OBSERVED", base)
 
@@ -309,7 +430,7 @@ def _m5_from_wake_log(*, log_path: Path | None = None) -> tuple[str, str] | None
                     found = int(line.split("record_found=", 1)[1].split()[0])
                 except (IndexError, ValueError):
                     continue
-                if found >= 1 and (changed >= 1 or skipped >= 1):
+                if found >= 1 and changed >= 1:
                     ts = line.split(" [", 1)[0].strip() if " [" in line else None
                     last = (
                         "OBSERVED",
@@ -323,7 +444,7 @@ def _m5_from_wake_log(*, log_path: Path | None = None) -> tuple[str, str] | None
     return last
 
 
-def _m5_evaluate(cio: Path) -> tuple[str, str]:
+def _m5_evaluate(cio: Path, *, log_path: Path | None = None) -> tuple[str, str]:
     consult = _load_json(cio / "wake_record_consult.json")
     v, note = _m5_from_consult(consult)
     if v == "OBSERVED":
@@ -331,7 +452,7 @@ def _m5_evaluate(cio: Path) -> tuple[str, str]:
     hist = _m5_from_consult_history(cio / "wake_record_consult.jsonl")
     if hist and hist[0] == "OBSERVED":
         return hist
-    logged = _m5_from_wake_log()
+    logged = _m5_from_wake_log(log_path=log_path)
     if logged and logged[0] == "OBSERVED":
         return logged
     return v, note
@@ -414,11 +535,17 @@ def _m4_soak_paths(root: Path) -> list[Path]:
     ]
 
 
+M4_MAX_AGE_HOURS = float(os.environ.get("TRADEAI_M4_MAX_AGE_HOURS", "48"))
+
+
 def _m4_from_soak(
     root: Path,
     *,
     soak_path: Path | None = None,
     census_paths: list[Path] | None = None,
+    now: datetime | None = None,
+    max_age_hours: float = M4_MAX_AGE_HOURS,
+    served_sha: str | None = None,
 ) -> tuple[str, str]:
     """M4: pin soak + operator-number census (one producer / no FAIL / no WARN).
 
@@ -457,6 +584,27 @@ def _m4_from_soak(
         f"bridge pin soak streak={streak} soak_ready={'YES' if ready else 'NO'} "
         f"last_as_of={(last or {}).get('as_of')}"
     )
+    # Freshness (2026-09-25): the ledger last observed 2026-09-20 on pin
+    # 8c12ea757 while 1c60ecb42 served; a 5-day-old streak on another SHA
+    # read as OBSERVED. A soak row older than max_age_hours, or one whose
+    # observed pin is not the served pin, cannot vouch for the served release.
+    _now = now or datetime.now(timezone.utc)
+    last_dt = _parse_iso((last or {}).get("as_of"))
+    if last_dt is None:
+        return ("PARTIAL", f"{soak_note}; soak row carries no parseable as_of")
+    age_h = (_now - last_dt).total_seconds() / 3600.0
+    if age_h > max_age_hours:
+        return (
+            "PARTIAL",
+            f"{soak_note}; soak stale age_hours={age_h:.1f} > {max_age_hours:g} "
+            f"(observed pin={Path(str((last or {}).get('current_resolved') or '')).name or None})",
+        )
+    observed_pin = Path(str((last or {}).get("current_resolved") or "")).name
+    if served_sha and observed_pin and not observed_pin.startswith(str(served_sha)[:9]):
+        return (
+            "PARTIAL",
+            f"{soak_note}; soak observed pin={observed_pin} is not the served sha={served_sha[:12]}",
+        )
 
     census = None
     census_path = None
@@ -473,6 +621,13 @@ def _m4_from_soak(
             "PARTIAL",
             f"{soak_note}; full operator-number census not run "
             "(run scripts/check_command_center_data_consistency.py)",
+        )
+    census_dt = _parse_iso(census.get("as_of"))
+    if census_dt is not None and (_now - census_dt).total_seconds() / 3600.0 > max_age_hours:
+        return (
+            "PARTIAL",
+            f"{soak_note}; census stale as_of={census.get('as_of')} "
+            f"(> {max_age_hours:g}h) path={census_path}",
         )
     fails = int(census.get("fail") or 0)
     warns = int(census.get("warn") or 0)
@@ -594,38 +749,51 @@ def _m3_from_effects(path: Path) -> tuple[str, str]:
     )
 
 
-def evaluate(root: Path | None = None) -> dict:
+def evaluate(root: Path | None = None, *, served: dict | None = None) -> dict:
+    """Evaluate M1–M5.
+
+    With ``root=None`` the served persistent-state tree is read (operator
+    form). With an explicit ``root`` the evaluation is hermetic to that tree:
+    no home-directory fallback (persistent-state, dispatcher log) is consulted,
+    so a test or an isolated replay cannot pick up production evidence.
+    """
+    hermetic = root is not None
     root = root or ROOT
     cio = root / "data" / "cio"
     persist_cio = Path.home() / "trade-ai-releases/persistent-state/data/cio"
-    if persist_cio.is_dir():
+    if not hermetic and persist_cio.is_dir():
         cio = persist_cio
+    served = served if served is not None else served_runtime()
+    log_path = (root / "logs" / "cio_wake_dispatcher.log") if hermetic else None
 
     wake_effects = cio / "wake_turn_effects.jsonl"
     research_persist = _load_json(cio / "wake_research_persist.json")
-    m1_v, m1_n = _m1_from_persist(research_persist)
+    m1_v, m1_n = _m1_from_persist(research_persist, log_path=log_path)
     m2_v, m2_n = _m2_from_writeback(cio)
     m3_v, m3_n = _m3_from_effects(wake_effects)
-    m5_v, m5_n = _m5_evaluate(cio)
-    m4_v, m4_n = _m4_from_soak(root)
+    m5_v, m5_n = _m5_evaluate(cio, log_path=log_path)
+    m4_v, m4_n = _m4_from_soak(root, served_sha=served.get("served_sha"))
 
     proofs = {
-        "M1_Research": {"verdict": m1_v, "note": m1_n},
-        "M2_Advice": {
-            "verdict": m2_v,
-            "note": m2_n,
-        },
-        "M3_Feedback": {"verdict": m3_v, "note": m3_n},
-        "M4_Consistency": {"verdict": m4_v, "note": m4_n},
-        "M5_Persistence": {"verdict": m5_v, "note": m5_n},
+        "M1_Research": served_gate(m1_v, m1_n, served),
+        "M2_Advice": served_gate(m2_v, m2_n, served),
+        "M3_Feedback": served_gate(m3_v, m3_n, served),
+        "M4_Consistency": served_gate(m4_v, m4_n, served),
+        "M5_Persistence": served_gate(m5_v, m5_n, served),
     }
+    on_served = sum(1 for p in proofs.values() if p.get("served_verdict") == "OBSERVED")
     return {
         "schema": SCHEMA,
         "as_of": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "pin": _pin(),
+        "pin": served.get("pin") or _pin(),
+        "served": served,
         "authority": "READ_ONLY_ADVISORY",
         "proofs": proofs,
-        "rule": "Do not score as a percentage (AGENTS.md §15).",
+        "observed_on_served_sha": on_served,
+        "rule": (
+            "Do not score as a percentage (AGENTS.md §15). `verdict` reads the "
+            "artifact; `served_verdict` is what may be claimed for the deployed SHA."
+        ),
         "no_consumer_reason": NO_CONSUMER_REASON,
     }
 
@@ -638,9 +806,17 @@ def main() -> int:
     if args.json:
         print(json.dumps(rep, indent=2))
     else:
-        print(f"Maturity bar M1–M5 as_of={rep['as_of']} pin={rep['pin']}")
+        sv = rep.get("served") or {}
+        print(
+            f"Maturity bar M1–M5 as_of={rep['as_of']} pin={rep['pin']} "
+            f"served_sha={sv.get('served_sha')} promoted_at={sv.get('promoted_at')} "
+            f"boot_at={sv.get('boot_at')}"
+        )
         for k, v in rep["proofs"].items():
-            print(f"  {k}: {v['verdict']} — {v['note']}")
+            print(f"  {k}: {v['verdict']} [served: {v.get('served_verdict')}] — {v['note']}")
+            if v.get("gate_note"):
+                print(f"      gate: {v['gate_note']}")
+        print(f"  observed_on_served_sha={rep.get('observed_on_served_sha')}/5")
     return 0
 
 
