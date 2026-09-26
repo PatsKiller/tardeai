@@ -38,7 +38,7 @@ def _store(tmp_path, guid="g1"):
 
 def _run(store, props, now, research=None, status=None, review=None, sink=None, apply=True):
     return lc.advance(props, store, CFG,
-                      request_research=research or (lambda p: {"research_id": "res_1", "plan_id": "plan_1"}),
+                      request_research=research or (lambda p, qs=None: {"research_id": "res_1", "plan_id": "plan_1"}),
                       research_status=status or (lambda rid: {"status": "queued"}),
                       review_fn=review or (lambda p, m: {"status": "DRY_RUN"}),
                       record_decision=sink or (lambda r: None), apply=apply, now=now)
@@ -81,7 +81,8 @@ def test_complete_thesis_gets_a_decision_guid(tmp_path):
     assert step == {**step, "action": "DECISION", "outcome": "MORE_RESEARCH", "decision_guid": "dec_abc"}
     life = s.lifecycle("g1")
     assert life["stage"] == "DECISION_ISSUED" and life["decision"]["decision_guid"] == "dec_abc"
-    assert sunk and _run(s, [_p(missing=())], T0 + timedelta(hours=2)) == []   # decided: nothing more to do
+    # MORE_RESEARCH is not a dead end (operator 2026-09-26): the next pass starts follow-up research.
+    assert sunk and _run(s, [_p(missing=())], T0 + timedelta(hours=2))[0]["action"] == "REQUEST_FOLLOWUP"
 
 
 def test_still_incomplete_after_48h_is_archived_with_reason(tmp_path):
@@ -172,3 +173,76 @@ def test_memo_exit_plan_uses_research_invalidation():
     m = committee_memo({"strategy": "cash_secured_put", "symbol": "HOOD",
                         "research_answers": {"invalidation": "Close below the pullback low on volume"}}, {}, {})
     assert m["exit_plan"]["thesis_invalid_when"] == ["Close below the pullback low on volume"]
+
+
+# ── continuous loop after a decision (operator 2026-09-26: "continuous automated process") ──
+def _decide(s, outcome, at, guid="g1", review=None):
+    s._append({"event_type": "OPTIONS_THESIS_DECISION", "position_guid": guid, "decision_guid": f"dec_{outcome}_{at}",
+               "outcome": outcome, "review": review or {"unknowns": ["No authored DELL thesis", "Bear case thin"],
+                                                         "concerns": ["Catalyst after expiry"]},
+               "recorded_at": at})
+
+
+def test_more_research_starts_named_followup_with_a_due_time(tmp_path):
+    s = _store(tmp_path)
+    _decide(s, "MORE_RESEARCH", (T0 + timedelta(hours=1)).isoformat())
+    asked = []
+    step = _run(s, [_p(missing=())], T0 + timedelta(hours=1, minutes=10),
+                research=lambda p, qs=None: asked.append(qs) or {"research_id": "res_fu", "plan_id": "plan_fu"})[0]
+    assert step["action"] == "REQUEST_FOLLOWUP"
+    assert step["deliverables"] == ["DELL: No authored DELL thesis", "DELL: Bear case thin", "DELL: Catalyst after expiry"]
+    assert asked[0][0]["intent"] == "cio_followup_1"
+    fu = s.lifecycle("g1")["followup"]
+    assert fu["research_id"] == "res_fu" and fu["due_at"].startswith("2026-09-27")
+
+
+def test_delivered_followup_triggers_a_new_decision(tmp_path):
+    s = _store(tmp_path)
+    _decide(s, "MORE_RESEARCH", (T0 + timedelta(hours=1)).isoformat())
+    research = lambda p, qs=None: {"research_id": "res_fu"}
+    _run(s, [_p(missing=())], T0 + timedelta(hours=1, minutes=10), research=research)
+    result = {"answers": [{"question_id": "q_cio_followup_1", "status": "answered", "summary": "Thesis: AI servers"},
+                          {"question_id": "q_cio_followup_2", "status": "unanswered", "summary": ""}]}
+    step = _run(s, [_p(missing=())], T0 + timedelta(hours=2), research=research,
+                status=lambda rid: {"status": "completed", "result": result})[0]
+    assert step["action"] == "FOLLOWUP_COMPLETE" and step["answered"] == 1 and step["of"] == 3
+    rev = {"outcome": "APPROVE", "confidence": "MEDIUM", "reasoning": "Thesis now supported"}
+    step = _run(s, [_p(missing=())], T0 + timedelta(hours=2, minutes=15), research=research,
+                review=lambda p, m: {"status": "OK", "review": rev, "decision_guid": "dec_new"})[0]
+    assert step["action"] == "DECISION" and step["outcome"] == "APPROVE" and step["decision_guid"] == "dec_new"
+    life = s.lifecycle("g1")
+    assert [d["outcome"] for d in life["decisions"]] == ["MORE_RESEARCH", "APPROVE"]
+    assert life["decision"]["supersedes"].startswith("dec_MORE_RESEARCH")
+
+
+def test_followup_past_due_is_archived(tmp_path):
+    s = _store(tmp_path)
+    _decide(s, "MORE_RESEARCH", (T0 + timedelta(hours=1)).isoformat())
+    _run(s, [_p(missing=())], T0 + timedelta(hours=1, minutes=10), research=lambda p, qs=None: {"research_id": "r"})
+    step = _run(s, [_p(missing=())], T0 + timedelta(hours=30), status=lambda rid: {"status": "queued"})[0]
+    assert step["action"] == "ABANDON" and "due time" in step["reason"]
+
+
+def test_endless_more_research_is_capped(tmp_path):
+    s = _store(tmp_path)
+    for h in (1, 3, 5):
+        _decide(s, "MORE_RESEARCH", (T0 + timedelta(hours=h)).isoformat())
+    step = _run(s, [_p(missing=())], T0 + timedelta(hours=6))[0]
+    assert step["action"] == "ABANDON" and "3 times" in step["reason"]
+
+
+def test_monitor_only_rechecks_after_the_window(tmp_path):
+    s = _store(tmp_path)
+    _decide(s, "MONITOR_ONLY", (T0 + timedelta(hours=1)).isoformat())
+    assert _run(s, [_p(missing=())], T0 + timedelta(hours=5))[0]["action"] == "WAIT_MONITOR"
+    step = _run(s, [_p(missing=())], T0 + timedelta(hours=26),
+                review=lambda p, m: {"status": "OK", "review": {"outcome": "REJECT", "confidence": "LOW", "reasoning": "r"},
+                                     "decision_guid": "dec_2"})[0]
+    assert step["action"] == "DECISION" and step["outcome"] == "REJECT"
+
+
+def test_reject_and_approve_are_final(tmp_path):
+    for outcome in ("REJECT", "APPROVE"):
+        s = _store(tmp_path / outcome)
+        _decide(s, outcome, (T0 + timedelta(hours=1)).isoformat())
+        assert _run(s, [_p(missing=())], T0 + timedelta(hours=40)) == []

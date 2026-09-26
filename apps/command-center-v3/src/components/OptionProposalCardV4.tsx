@@ -918,6 +918,28 @@ export default function OptionProposalCardV4({
                       {dec.review?.evidence_for?.length > 0 && line('For.', dec.review.evidence_for.join('; '))}
                       {dec.review?.evidence_against?.length > 0 && line('Against.', dec.review.evidence_against.join('; '))}
                       {dec.outcome === 'APPROVE' && <div style={{ marginTop: 3, color: BB.text2 }}>Your confirmation is still required; sizing and 2FA are yours.</div>}
+                      {(() => {
+                        // 2026-09-26 (operator): MORE_RESEARCH is an assignment with deliverables and a deadline.
+                        const fu = life?.followup
+                        if (dec.outcome !== 'MORE_RESEARCH' && dec.outcome !== 'MONITOR_ONLY') return null
+                        if (dec.outcome === 'MONITOR_ONLY') return <div style={{ marginTop: 4, color: BB.amber }}>Monitoring: the CIO re-checks this idea automatically about 24h after the decision.</div>
+                        if (!fu) return <div style={{ marginTop: 4, color: BB.amber }}>Follow-up research is being requested on the next lifecycle run (within 15 min).</div>
+                        const due = fu.due_at ? new Date(fu.due_at) : null
+                        return (
+                          <div data-testid="options-cio-followup" style={{ marginTop: 6, color: BB.text2 }}>
+                            <b style={{ color: BB.amber }}>CIO follow-up research</b>
+                            {fu.delivered ? ' · delivered, re-review on the next run' : fu.research_queue?.position != null ? ` · queue ${fu.research_queue.position} of ${fu.research_queue.of}, about ${fu.research_queue.eta_minutes} min` : ' · in progress'}
+                            {due ? ` · due ${due.toLocaleString()}` : ''}
+                            <ol style={{ margin: '4px 0 0 18px', padding: 0 }}>
+                              {(fu.deliverables || []).map((d: string, i: number) => <li key={i}>{d}</li>)}
+                            </ol>
+                            <div style={{ color: BB.text3 }}>When delivered, the CIO reviews again and issues a new Decision ID. Unanswered by the due time, the idea is archived with the reason.</div>
+                          </div>
+                        )
+                      })()}
+                      {(life?.decisions || []).length > 1 && (
+                        <div style={{ marginTop: 4, color: BB.text3 }}>Decision history: {(life.decisions as any[]).map((d: any) => `${d.outcome} (${String(d.decision_guid || '').slice(0, 12)})`).join(' → ')}</div>
+                      )}
                     </div>
                   ) : (
                     <div style={{ marginTop: 6, color: BB.amber }}>🟡 No CIO decision on this idea yet{life?.stage ? ` (stage: ${String(life.stage).toLowerCase().replace(/_/g, ' ')})` : ''}.</div>
