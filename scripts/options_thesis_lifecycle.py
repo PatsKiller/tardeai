@@ -99,7 +99,7 @@ def main(argv=None) -> int:
     _load_env()
     from lib.options_cio_review import review
     from lib.options_thesis import OptionsThesisStore
-    from lib.options_thesis_lifecycle import advance, settings
+    from lib.options_thesis_lifecycle import advance, memory_settings, settings
     from options_desk_enterprise import load_desk_config
     try:
         proposals = json.loads(Path(a.proposals).read_text(encoding="utf-8")).get("proposals") or []
@@ -109,7 +109,8 @@ def main(argv=None) -> int:
     report = advance(
         proposals, OptionsThesisStore(), load_desk_config(),
         request_research=request_research, research_status=research_status,
-        review_fn=lambda p, mode: review(p, mode=mode, max_tokens=int(settings(load_desk_config())["review_max_tokens"])),
+        review_fn=lambda p, mode: review(p, mode=mode, max_tokens=int(settings(load_desk_config())["review_max_tokens"]),
+                                         memory=memory_settings(settings(load_desk_config()))),
         record_decision=record_decision,
         apply=a.apply,
     )

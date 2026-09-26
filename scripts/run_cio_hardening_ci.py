@@ -2502,6 +2502,18 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-26 -- options history into the CIO's bitemporal memory (M2): thesis
+        # versions, decisions (SUPERSEDES provenance), follow-ups, validations and
+        # abandonments projected by event_hash with a payload allowlist; the CIO
+        # options review reads prior decisions back (config memory_reads).
+        "options_memory_20260926",
+        [
+            "tests/test_options_memory_projection_20260926.py",
+            "tests/test_options_thesis_lifecycle_20260926.py",
+            "tests/test_aec_agent_bus_memory_20260919.py",
+        ],
+    ),
+    (
         # 2026-09-26 -- watchlist names read at-the-money IV from their Schwab chain
         # (technical_snapshot.json is holdings-only); one chain read per pass.
         "chain_iv_fallback_20260926",
@@ -2511,6 +2523,29 @@ GATES = [
          "tests/test_options_validate_20260926.py",
          "tests/test_option_spot_freshness_20260926.py",
          "tests/test_iv_history_depth_20260926.py"],
+    ),
+    (
+        # 2026-09-26 -- options research answers improve the SYMBOL thesis through the one
+        # existing writer path: per-question answers mapped to invalidation / catalysts /
+        # bear-case evidence, merged (never replaced) lists, authored summaries kept, and
+        # the governed ENRICHES rule (fill empty fields only; cooldown in config).
+        "symbol_thesis_enrich_20260926",
+        [
+            "tests/test_symbol_thesis_enrich_20260926.py",
+            "tests/test_research_thesis_delta.py",
+            "tests/test_symbol_thesis_integration.py",
+            "tests/test_cio_product_reassessment.py",
+        ],
+    ),
+    (
+        # 2026-09-26 -- Drive sync: dated top-level docs files no longer purged + re-uploaded
+        # hourly; config/strategies/_archive excluded by rule; redacted options runtime export
+        # (no account names, no dollar amounts) mirrored under runtime/options/ and preserved.
+        "drive_sync_options_export_20260926",
+        [
+            "tests/test_drive_sync_purge_20260926.py",
+            "tests/test_options_runtime_export_20260926.py",
+        ],
     ),
 ]
 

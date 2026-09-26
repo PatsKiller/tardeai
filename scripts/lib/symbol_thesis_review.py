@@ -29,6 +29,9 @@ CLASSIFICATIONS = (
     "NO_MATERIAL_CHANGE",
     "CONFLICTED",
     "INSUFFICIENT_DATA",
+    # Governed ENRICHES rule (operator 2026-09-26): empty invalidation/catalyst
+    # fields filled by grade-A research; stance and summary are inherited.
+    "THESIS_ENRICHED",
 )
 
 # Soft stance ordering for strengthen/weaken classification
@@ -70,9 +73,13 @@ def _content_fingerprint(payload: dict[str, Any]) -> str:
         "summary", "stance", "why_owned_or_watched", "why_exited",
         "what_changed_since_exit", "evidence_for", "counter_evidence",
         "invalidation_conditions", "research_gaps", "what_changes_my_mind",
-        "portfolio_role",
+        "portfolio_role", "catalysts",
     )
     slim = {k: payload.get(k) for k in keys}
+    if not slim.get("catalysts"):
+        # absent == empty: a version written before catalysts existed must not
+        # read as changed against a merged empty list
+        slim.pop("catalysts", None)
     return _digest(json.dumps(slim, sort_keys=True, default=str))
 
 
@@ -85,7 +92,7 @@ def _extract_extra(thesis: Optional[dict[str, Any]]) -> dict[str, Any]:
         "why_owned_or_watched", "why_exited", "what_changed_since_exit",
         "evidence_for", "counter_evidence", "invalidation_conditions",
         "research_gaps", "what_changes_my_mind", "portfolio_role",
-        "universe_memberships",
+        "universe_memberships", "catalysts", "evidence_text",
     ):
         if k in thesis and thesis.get(k) is not None:
             out[k] = thesis.get(k)
@@ -112,7 +119,10 @@ def _classify(
         "NO_NEW_INFO": "NO_MATERIAL_CHANGE",
         "CONFLICTED": "CONFLICTED",
         "INSUFFICIENT_DATA": "INSUFFICIENT_DATA",
+        "ENRICHES": "THESIS_ENRICHED",
     }
+    if delta_classification == "ENRICHES" and old_fp and new_fp == old_fp:
+        return "NO_MATERIAL_CHANGE"  # nothing was actually filled
     if delta_classification in governed_delta:
         return governed_delta[delta_classification]
     if coverage_state == "CONFLICTED":
@@ -227,6 +237,10 @@ def reconcile_symbol_thesis(
             evidence.get("what_changes_my_mind")
             if "what_changes_my_mind" in evidence else (old_extra.get("what_changes_my_mind") or [])
         ),
+        "catalysts": list(
+            evidence.get("catalysts")
+            if "catalysts" in evidence else (old_extra.get("catalysts") or [])
+        ),
         "portfolio_role": (
             evidence.get("portfolio_role")
             or role.get("portfolio_role")
@@ -255,7 +269,7 @@ def reconcile_symbol_thesis(
         **{k: old_extra.get(k) for k in (
             "why_owned_or_watched", "why_exited", "what_changed_since_exit",
             "evidence_for", "counter_evidence", "invalidation_conditions",
-            "research_gaps", "what_changes_my_mind", "portfolio_role",
+            "research_gaps", "what_changes_my_mind", "portfolio_role", "catalysts",
         )},
     }) if old else None
     new_fp = _content_fingerprint(merged)
@@ -266,7 +280,15 @@ def reconcile_symbol_thesis(
         old_fp=old_fp,
         new_stance=stance,
         coverage_state=str(cov.get("coverage_state") or ""),
-        evidence=merged,
+        # `merged` carries no delta_classification, so the governed_delta map is
+        # not consulted for research deltas (pre-existing; left unchanged). The
+        # ENRICHES rule is passed through explicitly so it is always labelled
+        # THESIS_ENRICHED and never re-derived from stance heuristics.
+        evidence=(
+            {**merged, "delta_classification": "ENRICHES"}
+            if str(evidence.get("delta_classification") or "").upper() == "ENRICHES"
+            else merged
+        ),
     )
 
     published = None
@@ -291,6 +313,11 @@ def reconcile_symbol_thesis(
             invalidation_conditions=list(merged["invalidation_conditions"] or []),
             research_gaps=list(merged["research_gaps"] or []),
             what_changes_my_mind=list(merged["what_changes_my_mind"] or []),
+            catalysts=list(merged["catalysts"] or []) or None,  # absent, not [], when none
+            evidence_text=(
+                dict(evidence.get("evidence_text") or {})
+                if "evidence_text" in evidence else old_extra.get("evidence_text")
+            ),
             owner_agent="alex",
             change_note=change_note,
             store=store,
@@ -306,6 +333,8 @@ def reconcile_symbol_thesis(
                 "source_sha": evidence.get("source_sha"),
                 "previous_version": (old or {}).get("thesis_version"),
                 "reason_for_change": change_note,
+                "scope": evidence.get("scope"),
+                "source_result_id": evidence.get("source_result_id"),
             },
         )
         # stash context on published extra via a follow-up is not needed —
@@ -356,6 +385,7 @@ def daily_thesis_changes(
     cutoff = datetime.now(timezone.utc).timestamp() - (since_hours * 3600)
     buckets: dict[str, list[dict[str, Any]]] = {
         "NEW": [],
+        "ENRICHED": [],
         "STRENGTHENED": [],
         "WEAKENED": [],
         "BROKEN": [],
@@ -388,7 +418,11 @@ def daily_thesis_changes(
             "change_note": cur.get("change_note"),
             "published_ts": ts,
         }
-        if "THESIS_BROKEN" in note or stance in {"avoid", "do_not_reenter"}:
+        if "THESIS_ENRICHED" in note:
+            # Filled empty fields only; the stance did not move, so it is not
+            # BROKEN/WEAKENED even when the standing stance is avoid/trim.
+            buckets["ENRICHED"].append(row)
+        elif "THESIS_BROKEN" in note or stance in {"avoid", "do_not_reenter"}:
             buckets["BROKEN"].append(row)
         elif "THESIS_WEAKENED" in note or stance == "trim":
             buckets["WEAKENED"].append(row)
