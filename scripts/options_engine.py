@@ -364,13 +364,12 @@ def _stamp_execution(p: dict, account: str = "", holdings: Optional[List[dict]] 
     # Slice A — first-class options identity GUIDs (stable across rescans).
     try:
         from scripts.lib.options_identity import stamp_proposal_identity
-        stamp_proposal_identity(p)
     except Exception:
-        try:
-            from lib.options_identity import stamp_proposal_identity  # type: ignore
-            stamp_proposal_identity(p)
-        except Exception:
-            pass
+        from lib.options_identity import stamp_proposal_identity  # type: ignore
+    try:
+        stamp_proposal_identity(p)
+    except Exception as e:  # a missing GUID must be visible, not swallowed (48% coverage 09-24..26)
+        p["identity_error"] = f"{type(e).__name__}: {str(e)[:120]}"
     return p
 
 
@@ -2364,6 +2363,53 @@ def _apply_enterprise_layer(proposals: List[dict]) -> List[dict]:
     return enriched
 
 
+def _attach_options_thesis(proposals: List[dict]) -> None:
+    """Same thesis bar as an equity purchase (2026-09-26).
+
+    Before this, nothing in the options path read the symbol thesis store, so every
+    card said "no thesis pin" and the approval queue accepted ideas with no thesis.
+    Stamps the pin, catalyst and an OptionsThesisRecord (stored append-only by
+    strategy GUID); an incomplete record becomes ``thesis_blocks`` that
+    sync_approval_queue turns into a refusal.
+    """
+    try:
+        from lib.symbol_thesis_attach import thesis_fields_for_symbol
+        from lib.options_thesis import OptionsThesisStore, build_record, thesis_blocks
+    except Exception as e:  # never silently: the card must say why there is no thesis
+        for p in proposals:
+            p["thesis_blocks"] = [{"code": "thesis_unavailable", "reason": f"thesis store unavailable: {type(e).__name__}"}]
+        return
+    store = OptionsThesisStore()
+    cache: Dict[str, dict] = {}
+    for p in proposals:
+        sym = str(p.get("symbol") or "").upper()
+        if sym not in cache:
+            try:
+                cache[sym] = thesis_fields_for_symbol(sym)
+            except Exception as e:
+                cache[sym] = {"thesis_state": "INSUFFICIENT_DATA", "thesis_reason": f"lookup_error:{type(e).__name__}"}
+        t = cache[sym]
+        rc = p.get("research_context") or {}
+        if not p.get("catalyst") and rc.get("catalyst"):
+            p["catalyst"] = rc["catalyst"]  # memo and strategy-fit read the top level
+        p["symbol_thesis_id"] = t.get("symbol_thesis_id")
+        p["thesis_version_at_decision"] = t.get("symbol_thesis_version")
+        p["thesis_state"] = t.get("thesis_state")
+        record = build_record(p, t)
+        try:
+            stored = store.publish(record)
+        except Exception as e:
+            stored = dict(record, pin=None, store_error=type(e).__name__)
+        p["options_thesis"] = {
+            "pin": stored.get("pin"),
+            "version": stored.get("version"),
+            "missing_required": record["missing_required"],
+            "pending_operator": record["pending_operator"],
+            "thesis_gate_state": record["thesis_gate_state"],
+        }
+        p["thesis_blocks"] = thesis_blocks(record)
+
+
 def _income_screen_summary() -> dict:
     """Reason -> count and names for income ideas the screen refused to build."""
     by: Dict[str, dict] = {}
@@ -2524,6 +2570,7 @@ def generate_proposals(force: bool = False) -> dict:
                 "reentry_trigger": ctx.get("reentry_trigger"),
                 "invalidated_if": ctx.get("invalidated_if"),
             }
+    _attach_options_thesis(all_p)
 
     enterprise_summary = {}
     approval_sync = {}

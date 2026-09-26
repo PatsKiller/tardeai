@@ -843,6 +843,20 @@ export default function OptionProposalCardV4({
             <div style={{ marginTop: 4 }}>{stock.maximum_loss_model}</div>
             <div style={{ marginTop: 4, color: BB.text1 }}>CIO {oversight.review_status || 'unreviewed'}. {ensembleRunning ? 'Aegis is still running. That is not a CIO decision.' : 'A model score is not a CIO decision.'}</div>
             <div style={{ marginTop: 4, color: BB.text3 }}>{fresh} · thesis {pin}</div>
+            {(() => {
+              // 2026-09-26: options carry the same thesis bar as a stock purchase.
+              const ot = (p as any).options_thesis
+              const blocks = ((p as any).thesis_blocks || []) as { code: string; reason: string }[]
+              if (!ot && !blocks.length) return null
+              const missing = (ot?.missing_required || []).map((f: string) => f.replace(/_/g, ' '))
+              return (
+                <div data-testid="options-thesis-line" style={{ marginTop: 4, color: blocks.length ? BB.amber : BB.text2 }}>
+                  Options thesis {ot?.pin || 'not stored'} · state {String(ot?.thesis_gate_state || 'unknown').toLowerCase().replace(/_/g, ' ')}
+                  {missing.length ? ` · missing: ${missing.join(', ')}` : ' · complete'}
+                  {' · sizing and CIO approval are yours'}
+                </div>
+              )
+            })()}
             <div style={{ marginTop: 4, color: BB.text3 }}>
               Research: {(research.source_lanes || []).join(' · ') || 'research lane unavailable'}
               {research.reentry_signal ? ` · re-entry ${research.reentry_signal}` : ''}
