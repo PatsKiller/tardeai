@@ -866,6 +866,61 @@ export default function OptionProposalCardV4({
               </div>
             )}
             {(() => {
+              // 2026-09-26 (operator): the living CIO view of this ticker, then this idea's lifecycle.
+              const v = (p as any).cio_view
+              const life = (p as any).lifecycle
+              const dec = (p as any).cio_decision
+              const ago = (iso?: string | null) => {
+                if (!iso) return 'never'
+                const h = Math.max(0, Math.round((Date.now() - Date.parse(String(iso))) / 3600000))
+                return h < 1 ? 'under an hour ago' : h < 48 ? `${h}h ago` : `${Math.round(h / 24)}d ago`
+              }
+              const line = (label: string, val: any) => <div style={{ marginTop: 3 }}><b style={{ color: BB.text1 }}>{label}</b> {String(val ?? '—')}</div>
+              return (
+                <div data-testid="options-cio-view" style={{ marginTop: 8, borderTop: `1px solid ${BB.border}`, paddingTop: 6 }}>
+                  {v?.has_view ? (
+                    <>
+                      <div style={{ fontWeight: 900, color: BB.text1 }}>CIO view on file · {v.symbol}</div>
+                      {v.thesis && line('Thesis.', `${v.thesis.pin} · ${String(v.thesis.stance || v.thesis.state || '').toLowerCase()} · last reviewed ${ago(v.thesis.last_reviewed)}${v.thesis.next_review_at ? ` · next ${String(v.thesis.next_review_at).slice(0, 16)}` : ''}`)}
+                      {v.thesis?.summary && line('Summary.', v.thesis.summary)}
+                      {v.latest_decision && line('Latest decision.', `${v.latest_decision.recommendation} · ${v.latest_decision.source} · ${ago(v.latest_decision.at)} · ${v.latest_decision.decision_id}`)}
+                      {v.change_since_previous && line('Changed.', `${v.change_since_previous.previous} → ${v.change_since_previous.current}`)}
+                      {line('Research on file.', `${v.research?.count ?? 0} runs · last completed ${ago(v.research?.last_completed)}`)}
+                    </>
+                  ) : v?.genuinely_new ? (
+                    <div style={{ color: BB.amber, fontWeight: 800 }}>New to the house: no thesis, decision or research on file for {p.symbol}. Research starts automatically.</div>
+                  ) : null}
+                  {life?.stage && (
+                    <div data-testid="options-lifecycle" style={{ marginTop: 6 }}>
+                      <b style={{ color: BB.text1 }}>This idea.</b>{' '}
+                      {(life.timeline || []).map((t: any, i: number) => (
+                        <span key={i} style={{ marginRight: 8, color: BB.text2 }}>{i ? '→ ' : ''}{String(t.stage).toLowerCase().replace(/_/g, ' ')} {t.at ? `(${ago(t.at)})` : ''}</span>
+                      ))}
+                      {life.research_queue?.position != null && (
+                        <span style={{ color: BB.amber }}> · research queue {life.research_queue.position} of {life.research_queue.of}, about {life.research_queue.eta_minutes} min</span>
+                      )}
+                    </div>
+                  )}
+                  {dec?.outcome ? (
+                    <div data-testid="options-cio-decision" style={{ marginTop: 6 }}>
+                      <b style={{ color: dec.outcome === 'APPROVE' ? BB.green : dec.outcome === 'REJECT' ? BB.red : BB.amber }}>
+                        CIO decision: {String(dec.outcome).replace(/_/g, ' ')} · {String(dec.confidence || '').toLowerCase()} confidence
+                      </b>
+                      <span style={{ color: BB.text3 }}> · {dec.decision_guid} · {ago(dec.at)}</span>
+                      {dec.review?.reasoning && line('Reasoning.', dec.review.reasoning)}
+                      {dec.review?.concerns?.length > 0 && line('Concerns.', dec.review.concerns.join('; '))}
+                      {dec.review?.assumptions_challenged?.length > 0 && line('Challenged.', dec.review.assumptions_challenged.join('; '))}
+                      {dec.review?.evidence_for?.length > 0 && line('For.', dec.review.evidence_for.join('; '))}
+                      {dec.review?.evidence_against?.length > 0 && line('Against.', dec.review.evidence_against.join('; '))}
+                      {dec.outcome === 'APPROVE' && <div style={{ marginTop: 3, color: BB.text2 }}>Your confirmation is still required; sizing and 2FA are yours.</div>}
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 6, color: BB.amber }}>🟡 No CIO decision on this idea yet{life?.stage ? ` (stage: ${String(life.stage).toLowerCase().replace(/_/g, ' ')})` : ''}.</div>
+                  )}
+                </div>
+              )
+            })()}
+            {(() => {
               // 2026-09-26 (operator): investment-committee memo. Classify first; a section
               // with no research behind it says so rather than inventing text.
               const m = (p as any).committee_memo

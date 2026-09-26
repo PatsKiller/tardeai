@@ -215,10 +215,19 @@ def committee_memo(p: dict[str, Any], t: dict[str, Any], record: Optional[dict[s
     else:
         research, conf = "SCREENING_ONLY", "Low"
     missing = (record or {}).get("missing_required") or []
+    dec = p.get("cio_decision") or {}
+    view = p.get("cio_view") or {}
+    latest = view.get("latest_decision") or {}
     if queue_status == "approved":
         cio = ("CIO_APPROVED", "CIO approved")
     elif queue_status == "rejected":
         cio = ("NOT_APPROVED", "Not approved")
+    elif dec.get("outcome"):
+        o = str(dec["outcome"])
+        cio = ({"APPROVE": "CIO_APPROVED", "REJECT": "NOT_APPROVED"}.get(o, "CIO_" + o),
+               f"CIO review: {o.lower().replace('_', ' ')} ({str(dec.get('confidence') or '').lower()} confidence)")
+    elif latest:
+        cio = ("CIO_VIEW_ON_FILE", f"CIO view on file: {latest.get('recommendation')} ({latest.get('source')})")
     elif missing or research != "FULLY_RESEARCHED":
         cio = ("RESEARCH_PENDING", "Research pending")
     else:
@@ -259,9 +268,11 @@ def committee_memo(p: dict[str, Any], t: dict[str, Any], record: Optional[dict[s
              "detail": "The engine built this from screens and scores. It is a starting point, not a recommendation."},
             {"key": "RESEARCH_COMPLETED", "label": "Research completed", "done": research == "FULLY_RESEARCHED",
              "detail": f"Research status: {research.lower().replace('_', ' ')}."},
-            {"key": "CIO_REVIEWED", "label": "CIO-reviewed thesis", "done": queue_status in ("approved", "rejected"),
-             "detail": "A CIO decision is recorded in the approval queue, not inferred from a model score."},
-            {"key": "APPROVED", "label": "Approved recommendation", "done": queue_status == "approved",
+            {"key": "CIO_REVIEWED", "label": "CIO-reviewed thesis",
+             "done": queue_status in ("approved", "rejected") or bool(dec.get("outcome")),
+             "detail": "A CIO decision with its own Decision ID, not inferred from a model score."},
+            {"key": "APPROVED", "label": "Approved recommendation",
+             "done": queue_status == "approved" or dec.get("outcome") == "APPROVE",
              "detail": "Approved in the queue. Sizing and the per-order 2FA remain yours."},
         ],
         "intent_answer": {"INCOME": "Generate income", "HEDGE": "Act as insurance",

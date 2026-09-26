@@ -104,6 +104,16 @@ options_desk_settings:
   iv_history_min_samples: 60           # IV rank from history needs at least this many readings
   iv_history_min_span_days: 90         # ...spanning at least this many days; else the chain/Finviz proxy
   # Advisory exit plan shown on each options card (operator 2026-09-26). Text, not orders.
+  # Options thesis lifecycle (operator 2026-09-26): research -> CIO review -> decision,
+  # or archived as abandoned. Read by scripts/lib/options_thesis_lifecycle.py.
+  options_thesis_lifecycle:
+    abandon_after_hours: 48        # operator choice 2026-09-26
+    research_rerequest_hours: 24
+    cio_review_mode: live          # operator choice 2026-09-26: LLM CIO review, operator confirms
+    max_reviews_per_run: 6
+    research_priority: high
+    research_drain_per_tick: 2     # hermes CIO worker --max 2
+    research_tick_minutes: 15      # tradeai-hermes-cio-worker.timer OnCalendar=*:0/15
   options_exit_rules:
     cash_secured_put:
       take_profit: "Buy back when 50% of the credit is earned"

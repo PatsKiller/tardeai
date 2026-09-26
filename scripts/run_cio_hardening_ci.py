@@ -2476,6 +2476,7 @@ GATES = [
         "options_thesis_20260926",
         [
             "tests/test_options_thesis_20260926.py",
+            "tests/test_options_thesis_lifecycle_20260926.py",
             "tests/test_options_identity_memory_20260924.py",
         ],
     ),
