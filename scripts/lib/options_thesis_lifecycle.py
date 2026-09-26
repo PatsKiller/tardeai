@@ -32,6 +32,7 @@ DEFAULTS = {
     "research_priority": "high",
     "research_drain_per_tick": 2,
     "research_tick_minutes": 15,
+    "review_max_tokens": 2500,
 }
 
 

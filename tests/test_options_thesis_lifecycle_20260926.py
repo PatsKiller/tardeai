@@ -136,3 +136,39 @@ def test_live_mode_is_the_operator_choice_in_config():
     import yaml
     blk = yaml.safe_load((ROOT / "assets" / "portfolio_intent.yaml").read_text())["options_desk_settings"]["options_thesis_lifecycle"]
     assert blk["cio_review_mode"] == "live" and blk["abandon_after_hours"] == 48
+
+
+def test_truncated_review_is_named_not_unparseable():
+    cut = '{"outcome": "MORE_RESEARCH", "confidence": "MEDIUM", "reasoning": "long text that never ends'
+    r = ocr.review({"symbol": "DELL", "option_strategy_guid": "g"}, mode="live", llm_fn=lambda p: {"response": cut})
+    assert r["status"] == "TRUNCATED" and "unclosed" in r["errors"][0]
+
+
+def test_complete_review_is_ok_and_limit_is_config():
+    good = '{"outcome": "MORE_RESEARCH", "confidence": "MEDIUM", "reasoning": "No authored thesis yet"}'
+    r = ocr.review({"symbol": "DELL", "option_strategy_guid": "g"}, mode="live", llm_fn=lambda p: {"response": good})
+    assert r["status"] == "OK" and r["review"]["outcome"] == "MORE_RESEARCH" and r["decision_guid"].startswith("dec_")
+    import yaml
+    blk = yaml.safe_load((ROOT / "assets" / "portfolio_intent.yaml").read_text())["options_desk_settings"]["options_thesis_lifecycle"]
+    assert blk["review_max_tokens"] >= 2000
+
+
+def test_review_facts_carry_derived_figures_and_uncut_answers():
+    p = {"symbol": "DELL", "strategy": "cash_secured_put", "underlying_price": 562.89, "strike": 490.0,
+         "premium": 21.57, "dte": 55, "breakeven": 468.43,
+         "research_answers": {"research_id": "r", "invalidation": "x" * 2000, "bear_case": "b"},
+         "committee_memo": {"investment_thesis": "t" * 5000}}
+    f = ocr.build_facts(p)
+    assert f["derived"]["breakeven_vs_spot_pct"] == -16.8 and f["derived"]["strike_vs_spot_pct"] == -12.9
+    assert f["derived"]["desk_floor_min_pop_pct"] == 52
+    assert len(f["thesis"]) <= 1201 and f["research_answers"]["bear_case"] == "b"
+    ok, errs = ocr.validate({"outcome": "MONITOR_ONLY", "confidence": "LOW",
+                             "reasoning": "Breakeven sits 16.8% below spot; POP clears the 52 floor"}, f)
+    assert ok, errs
+
+
+def test_memo_exit_plan_uses_research_invalidation():
+    from lib.options_plain_english import committee_memo
+    m = committee_memo({"strategy": "cash_secured_put", "symbol": "HOOD",
+                        "research_answers": {"invalidation": "Close below the pullback low on volume"}}, {}, {})
+    assert m["exit_plan"]["thesis_invalid_when"] == ["Close below the pullback low on volume"]
