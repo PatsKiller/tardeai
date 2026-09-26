@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom';
+import { fetchScanner, type ScannerData } from './fixtures/readApi';
 import {
-  SessionStrip, MoomooBadge, PrimeQueue, SymbolWorkspace, TicketPanels, PnlPanel,
+  SessionStrip, MoomooBadge, PrimeQueue, DecisionDeck, SymbolDecision, TicketPanels, PnlPanel,
   AccountsPanel, BrokersPanel, CapabilitiesPanel, RejectionsPanel, NotificationsPanel,
   JournalPanel, FeatureModal, ParityPanel, ObservationGatePanel,
 } from './panels/panels';
@@ -18,9 +19,18 @@ function ClassicNextNav() {
 }
 
 function Workspace() {
-  const candidates = fixtures.candidates().data.items;
-  const [symbol, setSymbol] = useState(candidates[0]?.symbol ?? 'TESTA');
   const session = fixtures.session().data;
+  const [scanner, setScanner] = useState<ScannerData | null | undefined>(undefined);
+  const [symbol, setSymbol] = useState<string>('');
+  useEffect(() => {
+    fetchScanner().then((s) => {
+      setScanner(s);
+      const act = (s?.tickers ?? []).filter((t) => /^(GO|WAIT)/i.test(String(t.decision)));
+      const first = act.find((t) => String(t.decision).toUpperCase() === 'GO') ?? act[0];
+      if (first) setSymbol(first.symbol);
+    });
+  }, []);
+  const actionable = (scanner?.tickers ?? []).filter((t) => /^(GO|WAIT)/i.test(String(t.decision)));
   return (
     <div data-testid="v3next-workspace" className="at-shell">
       <div className="at-topbar">
@@ -35,20 +45,21 @@ function Workspace() {
       <div className="at-toolbar" data-testid="symbol-selector">
         <label htmlFor="at-symbol-select">Selected symbol</label>
         <select id="at-symbol-select" value={symbol} onChange={(event) => setSymbol(event.target.value)} data-testid="symbol-select" className="at-select">
-          {candidates.map(candidate => <option value={candidate.symbol} key={candidate.symbol}>{candidate.symbol} · {candidate.state}</option>)}
+          {actionable.length === 0 && <option value="">—</option>}
+          {actionable.map((t) => <option key={t.symbol} value={t.symbol}>{t.symbol} · {t.decision}</option>)}
         </select>
         <span className="at-chip at-chip--blue">{MOOMOO_STATUS.connector_state.replace(/_/g, ' ')}</span>
-        <span className="at-chip at-chip--amber">SESSION 1 ARMED</span>
-        <span className="at-toolbar__hint">Select a queue row or symbol. All ticket and management controls remain disabled.</span>
+        <span className="at-toolbar__hint">Actionable rows come from the TradeAI scanner. All ticket and management controls remain disabled.</span>
       </div>
 
       <main className="at-workspace">
         <div className="at-primary-grid">
-          <PrimeQueue selectedSymbol={symbol} onSelect={setSymbol} />
-          <SymbolWorkspace symbol={symbol} />
+          <DecisionDeck scanner={scanner} />
+          <SymbolDecision scanner={scanner} symbol={symbol} />
           <div className="at-stack"><TicketPanels symbol={symbol} /><PnlPanel /></div>
         </div>
         <div className="at-secondary-grid">
+          <PrimeQueue selectedSymbol={symbol} onSelect={setSymbol} />
           <ObservationGatePanel />
           <ParityPanel />
           <JournalPanel />

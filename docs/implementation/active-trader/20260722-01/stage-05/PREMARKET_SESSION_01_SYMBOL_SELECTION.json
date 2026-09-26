@@ -1,0 +1,9 @@
+{
+  "baseline": "US.AAPL",
+  "representative": "US.AAPL",
+  "representative_available": false,
+  "selection_outcome": "NO_QUALIFYING_CANDIDATE_OR_RANK_UNAVAILABLE (baseline-only)",
+  "symbols": [
+    "US.AAPL"
+  ]
+}

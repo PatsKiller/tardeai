@@ -44,3 +44,8 @@ Condition (2) remains: `completed_sessions: 0 of 5`, `verdict: PENDING`. Neither
 US RTH sessions; the observation launcher itself is not yet checked in — see
 `STAGE5_RESUME_REQUIREMENTS.md`). `DATA_FOUNDATION_VALIDATED` is still explicitly NOT claimed.
 Stage 9 acceptance remains BLOCKED until five RTH sessions PASS.
+
+
+---
+## Session 1 result (2026-07-27, autonomous closeout)
+transport=PASS · rth=PASS · suitability=INSUFFICIENT_EVIDENCE · COUNTED=YES · completed_sessions=1 of 5

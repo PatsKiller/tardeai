@@ -1,0 +1,10 @@
+{
+  "book_top_vs_quote": "INSUFFICIENT_EVIDENCE",
+  "continuity_across_0930": "MATCH",
+  "k1m_premarket_timestamps": "MATCH",
+  "market_state_post_open": "NORMAL",
+  "market_state_pre_open": "NORMAL",
+  "market_state_transition_at_0930": false,
+  "ticker_premarket_timestamps": "MATCH",
+  "ticker_vs_book_spread": "MATCH"
+}

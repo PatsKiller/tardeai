@@ -1,0 +1,4 @@
+{
+  "note": "deterministic evaluate over captured events is byte-identical on replay",
+  "replay_equal": true
+}

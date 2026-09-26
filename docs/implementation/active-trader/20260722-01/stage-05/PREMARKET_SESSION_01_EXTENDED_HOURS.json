@@ -1,0 +1,5 @@
+{
+  "config": "K_1M/TICKER extended_time=True session=ALL; ORDER_BOOK detailed; QUOTE normal",
+  "k1m_premarket": "MATCH",
+  "ticker_premarket": "MATCH"
+}
