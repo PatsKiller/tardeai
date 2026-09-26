@@ -380,13 +380,23 @@ class TestWorkerDisabled(unittest.TestCase):
         """Without --allow-execute, workers never call providers (even if enabled)."""
         import subprocess
 
-        r = subprocess.run(
-            [sys.executable, str(ROOT / "scripts/run_watch_review_workers.py"), "--mode", "execute"],
-            cwd=str(ROOT),
-            capture_output=True,
-            text=True,
-            env={**dict(**{k: v for k, v in __import__("os").environ.items()}), "PYTHONPATH": str(ROOT / "scripts")},
-        )
+        import tempfile
+
+        # Hermetic: point the ledger at an empty runtime root. Otherwise the result depends on
+        # whether this host has /home/johnclaw/.../data/runtime with a policy (local: refuses with
+        # CONTAINMENT_REQUIRED) or not (CI: refuses with MISSING_POLICY) — both are refusals.
+        with tempfile.TemporaryDirectory() as runtime_root:
+            r = subprocess.run(
+                [sys.executable, str(ROOT / "scripts/run_watch_review_workers.py"), "--mode", "execute"],
+                cwd=str(ROOT),
+                capture_output=True,
+                text=True,
+                env={
+                    **dict(__import__("os").environ),
+                    "PYTHONPATH": str(ROOT / "scripts"),
+                    "TRADEAI_RUNTIME_ROOT": runtime_root,
+                },
+            )
         self.assertNotEqual(r.returncode, 0)
         body = json.loads(r.stdout or "{}")
         self.assertEqual(body.get("provider_calls"), 0)
@@ -397,7 +407,8 @@ class TestWorkerDisabled(unittest.TestCase):
         self.assertTrue(
             err in ("execute_blocked", "containment_required", "")
             or err.startswith("CONTAINMENT_REQUIRED")
-            or pv.startswith("CONTAINMENT_REQUIRED"),
+            or pv.startswith("CONTAINMENT_REQUIRED")
+            or "MISSING_POLICY" in (err, pv),
             (err, pv),
         )
 
