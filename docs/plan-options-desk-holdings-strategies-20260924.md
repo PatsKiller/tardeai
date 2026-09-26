@@ -1,7 +1,9 @@
 # Plan: Options Desk — holdings strategies · open legs · CIO fluency · goals · BUY_READY institutional packet
 
+> **Status: HISTORICAL (superseded 2026-09-26 by docs/options-module.md).** Kept for the record; do not treat as current. Current proposal flow: `docs/options-module.md` ("Current flow (2026-09-26)").
+
 ```
-Status: ACTIVE
+Status: HISTORICAL (superseded 2026-09-26 by docs/options-module.md)
 as_of: 2026-09-24T12:25:00-04:00
 Measured at: hub holdings · options_desk_latest V=CC · PR #1215 head 7e02f36eb (1B remote) · local packet+P8+holdings-resolve implement · tests 16 pass · implement + addenda 12:08/12:16/12:17 ET
 Canonical store path (parent / SoT):

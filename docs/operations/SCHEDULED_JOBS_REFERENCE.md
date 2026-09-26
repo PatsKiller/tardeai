@@ -249,11 +249,11 @@ still shows `inactive`. `Failed: 0` on that page remains the real fault signal.
 | 20:00 | M-F | `overnight_batch.py --telegram` | Overnight batch — portfolio reconciliation, agent scoring | overnight results, Telegram | market_day_gate |
 | 20:00 | M-F | `sec_data_ingest.py --all` | SEC filings ingestion (Form 4, etc.) | sec_form4 | — |
 | 20:00 | M-F | `run_scheduled_atp2_research_cycle.sh --cycle evening` | Evening research cycle | proposal enrichment | — |
-| 20:00 | daily | `aegis_overnight.py` | Aegis overnight synthesis | agent results | — |
+| 20:00 | daily | `aegis_overnight.py` | Aegis overnight synthesis — runs from `aegis-overnight.timer` (user systemd); duplicate cron retired 2026-09-14 | agent results | — |
+| 20:00 | daily | `aegis_synthesis.py` (via `run_with_deepseek_offpeak.sh`) | Aegis synthesis — cross-source intelligence fusion (retargeted from 21:00 on 2026-08-21; verified 2026-09-26) | synthesis_results | — |
 | 20:30 | M-F | `feedback_loop_processor.py` | Feedback loop — agent recommendation accuracy tracking | feedback_loop_results | `/tmp/feedback_loop.lock` |
 | 20:30 | M-F | `health_agent_llm_review.py` | Health agent LLM review — deep analysis of system health | health_review_results | — |
 | 21:00 | M-F | `auto_research.py --check` | Auto-research check + Telegram notification | research_topics, Telegram | — |
-| 21:00 | daily | `aegis_synthesis.py` | Aegis synthesis — cross-source intelligence fusion | synthesis_results | — |
 | 21:30 | M-F | `gemma3_calibration_scorer.py` | Gemma3 calibration scoring — LLM accuracy tracking | confidence_calibration_history | — |
 | 23:00 | daily | `run_deep_overnight_llm_window.sh --enable-hybrid-rag` | Daily deep overnight LLM window (100+ jobs) | llm results, agent results | lock |
 
@@ -291,6 +291,23 @@ still shows `inactive`. `Failed: 0` on that page remains the real fault signal.
 | 6:00 M-F | `backup_verify.py` | Monthly backup verification |
 | 8:00 Mon | `external_market_data_ingest.py --fundamentals` | Monday fundamentals update |
 | 9:00 | `run_alex_daily.py --monthly` | Alex monthly research |
+
+---
+
+## Options desk jobs (verified from `crontab -l`, 2026-09-26)
+
+Canonical flow: `docs/options-module.md` ("Current flow (2026-09-26)"). Weekdays unless noted.
+
+| Schedule | Script | What It Does | Lock |
+|----------|--------|--------------|------|
+| `7,22,37,52 * * * *` (daily) | `options_thesis_lifecycle.py --apply` | Options thesis lifecycle: queue Hermes CIO research → CIO review → Decision GUID, or archive after 48h. Runs after each Hermes CIO drain | `/tmp/options_thesis_lifecycle.lock` |
+| `*/10 12-15`, `5 16` | `linux_launchers/run_options_monitor.sh` → `run_options_monitor.py` | Proposals + position monitor + Hermes bridge (morning 9:35–9:55 slots moved off on 2026-07-17) | — |
+| `*/20 9-16`; digest `5 8` | `options_lifecycle_run.py`; `options_lifecycle_digest.py` | Options Lifecycle Desk: open-position intake, policy, alerts; morning digest | `/tmp/options_lifecycle.lock`, `/tmp/options_lc_digest.lock` |
+| `0 10`, `35 17` | `options_chain_snapshot.py` | Read-only chain snapshots | `/tmp/chain_snapshot.lock` |
+| `45 15` | `options_iv_snapshot.py --run --symbols-from-universe` | Daily ATM IV history (IV rank); global `options_chain_snapshots` prune | `/tmp/tradeai_options_iv.lock` |
+| `50 15` | `run_scheduled_two_way_curation.sh options-edge` | Options edge reverse fold after IV snapshot | `/tmp/two_way_options_edge.lock` |
+| `*/3 9-16` | `linux_launchers/run_ensemble_worker.sh` | Ensemble worker: drains `inference_ensemble_jobs`, including Aegis options reviews on the lanes stored on each row (grok, chatgpt, deepseek-flash) | — |
+| `0 10-15`; `10 17` | `reconcile_alpaca_paper_options.sh`; `run_options_paper_position_monitor.sh` | Alpaca paper options reconcile + paper monitor. Training only: never live, never alerts | — |
 
 ---
 

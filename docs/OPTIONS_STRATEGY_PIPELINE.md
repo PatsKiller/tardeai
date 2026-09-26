@@ -1,5 +1,13 @@
 # Options Strategy Pipeline (paper-only lane)
 
+> **Status note (2026-09-26): training only.** Operator rule: Alpaca paper options are training
+> only — never a live path, never acceptance evidence for a live strategy, and never an operator
+> alert. A live options position goes through the desk flow in `docs/options-module.md`
+> (options thesis → CIO review → Schwab Validate → operator approval → per-order 2FA). Registry
+> check 2026-09-26: `config/options_strategy_registry.yaml` lists 9 strategies, all
+> `live_enabled: false`. Text below that describes paper outcomes as a route to "live review" is
+> historical design intent, not a live path.
+
 **Status:** Stage B (2026-07-05) · first strategy: `deep_itm_call` (Deep ITM Call, stock replacement)
 **Lineage:** Hermes discovery candidate **#339** (`hermes_discovery_candidates`, status `APPROVED_RESEARCH_ONLY`)
 **Law of the lane:** model → paper → validate → operator decision. No live path exists in code; a met
@@ -168,7 +176,7 @@ each queued paper card carries a `paper validation n/30` chip.
 
 **Universe (config/options_universe.yaml)**: 7 tiers, precedence-deduped — holdings > watchlist_buy_strong_buy > liquid_options_core (30 static liquid names) > sector_etfs (13) > discovery_missing_exposure (open GAP_CANDIDATE tickers, validated) > strategy_specific > operator_added. Scanner: `--universe holdings_watchlist|liquid_core|discovery|all`, per-tier stats, tier strategy-allowlists enforced.
 
-**Strategy registry (config/options_strategy_registry.yaml)**: deep_itm_call TESTING_PAPER (alpaca_paper_enabled), covered_call/cash_secured_put/protective_put MODELED (paper only), credit_spread RESEARCH_ONLY. ALL strategies: `live_enabled: false` enforced at config load (`LivePolicyViolation` unless the never-set `TRADE_AI_OPTIONS_LIVE_POLICY=explicit`); caps: 1 contract, $5,000 premium.
+**Strategy registry (config/options_strategy_registry.yaml)** (2026-09-26: 9 strategies — deep_itm_call, atm_call, atm_put, earnings_put_debit_spread, earnings_put_credit_spread, covered_call, cash_secured_put, protective_put, credit_spread — all `live_enabled: false`; original 2026-07 text follows): deep_itm_call TESTING_PAPER (alpaca_paper_enabled), covered_call/cash_secured_put/protective_put MODELED (paper only), credit_spread RESEARCH_ONLY. ALL strategies: `live_enabled: false` enforced at config load (`LivePolicyViolation` unless the never-set `TRADE_AI_OPTIONS_LIVE_POLICY=explicit`); caps: 1 contract, $5,000 premium.
 
 **Executor (scripts/alpaca_paper_options_executor.py)**: HARD-LOCKED to `paper-api.alpaca.markets` (exact-host check; live URLs, spoof hosts, LIVE-named env vars all refuse). Limit orders only, qty clamped to 1, buy-to-open only. Submit requires explicit operator action (CLI `--proposal-id --confirm`, or the desk UI two-step confirm). Full request + response + read-back persisted to `options_approval_queue.meta.alpaca_json`. `--reconcile` polls fills → outcomes → `options_paper_outcomes` (the 0/30 validation ledger). Requires `ALPACA_PAPER_BASE_URL` env — absent by default; submits refuse until the operator arms it.
 
@@ -198,7 +206,7 @@ each queued paper card carries a `paper validation n/30` chip.
 - Schwab chain preferred for quotes; `DATA_STALE` when quotes fail or exceed `quote_stale_seconds`.
 - Strategy rules for all desk strategies (`deep_itm_call`, ATM, income, protective, default).
 - Advisory labels: profit target, max loss, DTE roll watch, theta/IV crush warnings.
-- Alerts: UI + Telegram on by default (`paper_position_alerts.py`; dedupe via `config/operator_alert_policy.yaml`).
+- Alerts: UI + Telegram on by default (`paper_position_alerts.py`; dedupe via `config/operator_alert_policy.yaml`). **2026-09-26:** operator rule is that paper options never alert; `config/options_paper_monitor.yaml` still sets `alert_telegram_enabled: true` (code/config not changed by this doc update — flagged for follow-up).
 
 **Pipeline hook**: `scripts/run_options_monitor.py` calls `paper_monitor_ops.run_pipeline_hook()` on each options-desk cron tick so lifecycle marks run inside the existing monitor schedule (not a separate competing loop).
 

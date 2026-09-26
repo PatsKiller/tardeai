@@ -1316,7 +1316,7 @@ def _proposal_ensemble_content(p: dict) -> str:
         f"Upside cap: {p.get('upside_cap') or '—'} · Data: {p.get('data_source') or '—'}",
     ]
     if p.get("aegis_note"):
-        lines.append(f"Aegis screening (local): {p['aegis_note']}")
+        lines.append(f"Aegis screening: {p['aegis_note']}")
     if p.get("reasoning"):
         lines.append(f"Engine notes: {p['reasoning']}")
     memo = p.get("committee_memo") or {}

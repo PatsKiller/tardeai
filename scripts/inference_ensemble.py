@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""inference_ensemble.py — multi-LLM ensemble validator over the FREE lanes only.
+"""inference_ensemble.py — multi-LLM ensemble validator.
 
-A real hybrid ensemble (cloud reasoning + local speed) that aggregates votes from grok (xAI-OAuth proxy
-:8645), chatgpt (codex-OAuth proxy :8646) and local gemma — via llm_lane.py. NO metered API keys, no
-anthropic/xai/ollama SDKs (per the repo's iron LLM policy). Graceful: unavailable/failed lanes are skipped;
+Aggregates votes from the lanes named in config/inference_layers.yaml `ensemble.lanes` (2026-09-26:
+grok via xAI-OAuth proxy :8645 and chatgpt via codex-OAuth proxy :8646) — via llm_lane.py. A job row may
+carry its own lanes: options proposal reviews use `ensemble.options_lanes` (grok, chatgpt, deepseek-flash;
+deepseek-flash is metered and capped by the `options_ensemble` process). No anthropic/xai/ollama SDKs
+(per the repo's iron LLM policy). Graceful: unavailable/failed lanes are skipped;
 if every lane is down it returns a safe block verdict rather than guessing.
 
 Use cases: topic_curator content rating (opt-in), inference-result quality checks, finance-specific scoring
@@ -28,7 +30,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 log = logging.getLogger("inference_ensemble")
 
 _DEFAULTS = {
-    "lanes": ["grok", "chatgpt", "local"],   # free lanes only (llm_lane)
+    "lanes": ["grok", "chatgpt", "local"],   # fallback only when the YAML has no ensemble.lanes (it does: grok, chatgpt)
     "consensus_threshold": 0.66,             # fraction of approve votes for consensus
     "min_score": 6.0,                        # avg score (0-10) that also grants consensus
     "timeout": 60,

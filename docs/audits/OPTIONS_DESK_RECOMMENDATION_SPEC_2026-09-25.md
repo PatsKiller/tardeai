@@ -1,5 +1,7 @@
 # Options Desk Recommendation Enhancement Specification — 2026-09-25
 
+> **Status 2026-09-26:** see the [resolution addendum](OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md#resolution-addendum-2026-09-26) in the executive audit for which findings are addressed by code on `main`. Findings below are unchanged. Implemented: the comparison object is `scripts/lib/recommendation_comparison.py` (its `review_status` dispositions are reviewed / challenged / deferred); the options CIO review outcomes enum is APPROVE / REJECT / MORE_RESEARCH / MONITOR_ONLY (`scripts/lib/options_cio_review.py` `OUTCOMES`).
+
 **Status:** served comparison corrected on branch `wt/options-decision-truth-20260925`. `risk_reward` is max profit ÷ max loss (`reward_to_risk`). Loss ÷ capital is `risk_to_capital`. A desk-wide thesis pin is not this proposal's review. Policy 1.2.7 is not stamped. A CIO status requires `cio_review_id`. Advisory only. Not an order.
 **Authority:** advisory-only; no sizing, order, stop, risk-limit, or 2FA authority
 

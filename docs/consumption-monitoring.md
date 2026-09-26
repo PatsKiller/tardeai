@@ -124,18 +124,20 @@ UI: **Journal → Analytics** — **Ask your journal** — **▶ Grok / ▶ Chat
 Ensemble validation (`cloud_review` / `options_ensemble`, Manual cloud lanes):
 
 ```bash
-# Single cloud lane (faster; local Gemma omitted)
+# Single cloud lane
 curl -X POST http://127.0.0.1:7777/api/v2/inference/ensemble/request \
   -H 'Content-Type: application/json' \
   -d '{"target_type":"inference","target_id":"42","content":"...","lanes":["grok"]}'
 
-# Full ensemble (default: grok + chatgpt + local Gemma)
+# Full ensemble (no lanes given → config ensemble.lanes: grok + chatgpt)
 curl -X POST http://127.0.0.1:7777/api/v2/inference/ensemble/request \
   -H 'Content-Type: application/json' \
   -d '{"target_type":"proposal","target_id":"99","content":"...","task":"options_proposal"}'
 ```
 
-UI: **EnsembleValidationInline** on broker/watchlist/options/inference cards — **▶ Grok**, **▶ ChatGPT**, or **⚖ All (Grok+ChatGPT+Gemma)**.
+UI: **EnsembleValidationInline** on broker/watchlist/options/inference cards — **▶ Grok**, **▶ ChatGPT**, or **⚖ All (Grok+ChatGPT)**.
+
+Lanes (verified 2026-09-26): `config/inference_layers.yaml` `ensemble.lanes: [grok, chatgpt]` for general use; options proposal reviews queued by `options_engine.enqueue_ensemble_for_proposals()` carry `ensemble.options_lanes: [grok, chatgpt, deepseek-flash]` on the job row. `deepseek-flash` is metered and capped by `config/llm_process_registry.json` `options_ensemble` (`daily_cost_cap_usd` 0.5). No local/Gemma lane is configured. The manual request route (`scripts/inference_api.py`) accepts only `grok`, `chatgpt` or `local` in `lanes`.
 
 Optional cron (weekdays, stays Manual in DB):
 

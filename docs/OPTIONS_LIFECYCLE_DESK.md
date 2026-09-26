@@ -4,6 +4,12 @@ Status:      ACTIVE
 as_of:       2026-07-19T18:08:28-04:00
 Measured at: efcc51365 / not measured
 
+> **Note (2026-09-26):** This desk manages OPEN positions. Proposal-side gates (income screen,
+> enterprise gates, options thesis, CIO review, Schwab Validate, operator approval) live in
+> `docs/options-module.md` ("Current flow (2026-09-26)"). Alpaca paper positions are training
+> only (operator rule): they never count as operational verification for the live book and
+> never alert.
+
 ## Status (the three-level language, applied honestly)
 
 - **STRUCTURALLY COMPLETE** — all 11 phases built: canonical strategy model,
@@ -18,7 +24,8 @@ Measured at: efcc51365 / not measured
   submitted**. Demo rows were deleted after evidence; the intake reconciler
   additionally proved its VANISHED transition by closing the demo legs the
   broker didn't hold. Full operational verification requires the first real
-  (paper) position flowing through intake→policy→alert→ticket→broker-evidence.
+  position flowing through intake→policy→alert→ticket→broker-evidence (2026-09-26:
+  a live Schwab position; an Alpaca paper position is training only).
 - **OUTCOME VALIDATED: NO** — the outcome ledger has zero rows and received
   zero test fixtures. No outcome claims are possible until real closed
   positions accumulate (tuning gate: n≥20/strategy, ±20% bound, never
@@ -29,7 +36,7 @@ Measured at: efcc51365 / not measured
 ```
 brokers (canonical truth)                    config/options_lifecycle_policy.json (v1.0.0)
   Schwab positions API ─┐                                     │
-  Alpaca paper API ─────┤                                     ▼
+  Alpaca paper (train) ─┤                                     ▼
   Fidelity: operator ───┘                        ┌── options_lifecycle_engine.py
         │                                        │   quotes (wide chain, per-leg,
         ▼                                        │   source+ts+spread persisted)

@@ -37,7 +37,8 @@
 
 ## Model Strategy
 - Default: rule-based analysis using available portfolio/technical/market data
-- Escalation: can invoke local models (ollama) for enrichment where already configured
+- Escalation: governed cloud generation (`scripts/lib/governed_cloud_generation.py`, used by `scripts/aegis_synthesis.py`). No `scripts/aegis_*.py` calls a local model (ollama/Gemma) — verified 2026-09-26.
+- Options reviews (advisory): `options_engine.enqueue_ensemble_for_proposals()` queues one review per proposal on `config/inference_layers.yaml` `ensemble.options_lanes` (grok, chatgpt, deepseek-flash), carried on each `inference_ensemble_jobs` row; cost cap `config/llm_process_registry.json` `options_ensemble`. Aegis judges the card against house facts (thesis, research answers) only and fetches no news, earnings or filings. A vote is not research and not a CIO decision; the options CIO review is `scripts/lib/options_cio_review.py`.
 - External API: uses existing Finviz/Yahoo/Finnhub paths, does not add new external dependencies
 
 ## No-Autonomy Guardrails

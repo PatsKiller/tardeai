@@ -4,11 +4,18 @@ Status:      ACTIVE
 as_of:       2026-07-19T10:39:52-04:00
 Measured at: efcc51365 / not measured
 
+> **Status note (2026-09-26): the Alpaca paper path below is training only.** Operator rule:
+> Alpaca paper options are never a live path, never acceptance evidence for a live position,
+> and never alert. The first LIVE option position goes through the desk flow in
+> `docs/options-module.md`: options thesis → CIO review (APPROVE) → Schwab Validate
+> (`POST /api/v2/options/validate`) → operator approval → per-order 2FA by the operator.
+> The Schwab read-only intake/monitoring verification below still applies after a live fill.
+
 **No fixtures.** The first GENUINE Alpaca paper option position runs the whole
 chain; the first real Schwab option gets READ-ONLY intake + monitoring
 verification before any lifecycle action.
 
-## Alpaca paper path (the intended first run)
+## Alpaca paper path (training only; historical "intended first run")
 
 1. **Origin** — approve an options proposal in the desk queue (or operator
    manual), mark it ready: `alpaca_paper_options_executor.py --mark-ready <id>`.

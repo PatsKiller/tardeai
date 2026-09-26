@@ -1,5 +1,7 @@
 # Options desk stages 2–5
 
+> **Status 2026-09-26:** see the [resolution addendum](OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md#resolution-addendum-2026-09-26) in the executive audit for which findings are addressed by code on `main`. Findings below are unchanged.
+
 **Status:** code on branch `wt/options-decision-truth-20260925`. Not served. Not a CIO approval. Not an outcome study.
 
 **Authority:** READ_ONLY_ADVISORY

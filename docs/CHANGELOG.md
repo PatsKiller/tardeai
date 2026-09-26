@@ -4,6 +4,15 @@ Status:      ACTIVE
 as_of:       2026-09-23T10:00:00-04:00
 Measured at: 88eddef0e (origin/main = release CURRENT = dev tree) + fix/watchlist-directive-union
 
+## 2026-09-26 — Options desk: thesis bar, CIO review, Schwab Validate, income screen, truthful cards, Aegis lanes
+
+- **Flow now on `main`:** generation → income screen → enterprise gates → options thesis + lifecycle → CIO review decision → Validate against Schwab → operator approval → per-order 2FA (operator). Canonical: `docs/options-module.md` ("Current flow (2026-09-26)").
+- **Income screen** (`scripts/lib/options_income_quality.py`): underlying ≥ $5, listed chain, OI ≥ 50, spread ≤ 12%, premium ≥ $0.10/sh, annualized ROC ≥ 6%; covers covered calls, CSPs and credit spreads (both legs liquid). Thresholds in `assets/portfolio_intent.yaml` `options_desk_settings`.
+- **Thesis bar** (`scripts/lib/options_thesis.py`): `OptionsThesisRecord@v1` per `option_strategy_guid` in append-only `data/cio/options_theses.jsonl`; blocks `thesis_required`, `thesis_missing_*`, `awaiting_cio_decision`. **Lifecycle** (`scripts/options_thesis_lifecycle.py`, cron `7,22,37,52 * * * *`): Hermes CIO research → CIO review, or archived after 48h.
+- **CIO review** (`scripts/lib/options_cio_review.py`): APPROVE / REJECT / MORE_RESEARCH / MONITOR_ONLY with a Decision GUID in `cio_decisions`. **Validate** (`POST /api/v2/options/validate`): approval refused without a `VALIDATED` re-quote inside 30 min.
+- **Cards and data:** chain ATM IV fallback, IV history rank needs 60 samples over 90 days, unknown IV is `IV_UNKNOWN`; freshest dated spot with `price_source`; status pills, plain-English explainer, ticker CIO view. **Aegis** reviews run on `ensemble.options_lanes` (grok, chatgpt, deepseek-flash); no local/Gemma lane.
+- **Docs:** options docs aligned to the above; Alpaca paper options labelled training only; superseded 2026-09-24 plan/contract and the 2026-07-19 lifecycle diagnosis marked HISTORICAL; resolution addendum on the 2026-09-25 executive audit.
+
 ## 2026-09-23 (later) — Day P/L: FIFO lots, positions closed today, and a Schwab cross-check
 
 - **Correction to the same-day fix.** The first fill-aware formula valued every share held at the open at the current price AND counted each sold share at its fill: a partial sell was double-counted (DIV: 415.65 held at the open, 411 sold). Replaced by FIFO lot matching — a sell consumes shares held at the open (basis prev close) first, then today's buys in time order; what is still held is marked at the price. This also makes a same-day round trip realize sell − buy.

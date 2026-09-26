@@ -1,4 +1,6 @@
 # OPTIONS LIFECYCLE DESK — Phase 0 Read-Only Truth Audit
+
+> **Status: HISTORICAL (superseded 2026-09-26 by docs/options-module.md).** Point-in-time 2026-07-19 audit; kept for the record. Current proposal flow: `docs/options-module.md`; open-position management: `docs/OPTIONS_LIFECYCLE_DESK.md`.
 **Date:** 2026-07-19 · **Auditor:** Claude (read-only; no code or data changed)
 
 ## Executive summary

@@ -204,7 +204,19 @@ Design law, stated across the module headers: **"outcome yield outranks throughp
    Grok/ChatGPT cloud second opinions before an intent reaches the live broker queue.
 7. **Execution** — paper lane via ATM (autonomous), live lane via per-order 2FA (§7).
 
-**Options paper-strategy lane (Stage A/B, 2026-07-05; lifecycle monitor 2026-07-07):** parallel to the
+**Options desk (current, 2026-09-26):** `scripts/options_engine.py` builds proposals from a listed Schwab
+chain through an income screen (`scripts/lib/options_income_quality.py`) and the enterprise gates
+(`scripts/options_desk_enterprise.py`). Each idea gets an options thesis record
+(`scripts/lib/options_thesis.py`); `scripts/options_thesis_lifecycle.py` (cron) queues Hermes CIO
+research and a CIO review (`scripts/lib/options_cio_review.py`, APPROVE / REJECT / MORE_RESEARCH /
+MONITOR_ONLY). Approval needs a CIO APPROVE and a fresh Schwab re-quote from
+`POST /api/v2/options/validate`; the order itself stays per-order 2FA by the operator. Aegis reviews are
+advisory on `ensemble.options_lanes` (grok, chatgpt, deepseek-flash). Canonical:
+[docs/options-module.md](docs/options-module.md).
+
+**Options paper-strategy lane (Stage A/B, 2026-07-05; lifecycle monitor 2026-07-07) — training only:**
+Alpaca paper options are training only (operator rule): never a live or acceptance path, and they
+never alert. Parallel to the
 equity pipeline, the options desk has a discovery-fed **paper-only** strategy lane —
 `scripts/options_strategy_scanner.py` runs `scripts/lib/options_pipeline/` generators (first:
 `deep_itm_call`, 0.80–0.95Δ stock replacement) over held + buy-rated underlyings and queues winners

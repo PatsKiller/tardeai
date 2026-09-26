@@ -6,8 +6,13 @@ Measured at: efcc51365 / not measured
 
 Trade AI v12 closed-loop design for automatic vs manual broker execution.
 
+> **2026-09-26:** `docs/options-module.md` ("Current flow (2026-09-26)") is canonical for the
+> options proposal path: income screen, enterprise gates, options thesis + CIO review,
+> Schwab Validate, operator approval, per-order 2FA. This page covers broker routing and
+> manual-execution logging; where the two differ, options-module.md wins.
+
 > **Equity proposals (same two-path model):** see `docs/PROPOSAL_EXECUTION_PATHS.md`
-> — **Path A** paper auto (Alpaca testing) vs **Path B** live Schwab 2FA auto / Fidelity FA manual.
+> — **Path A** Alpaca paper (training only: never a live or acceptance path, never alerts) vs **Path B** live Schwab 2FA / Fidelity FA manual.
 
 ## Options Desk (`/v3/trading` → Options tab)
 
@@ -16,8 +21,9 @@ Trade AI v12 closed-loop design for automatic vs manual broker execution.
 `scripts/options_engine.py` scans:
 
 - **Schwab + Fidelity holdings** from `data/portfolios/state/holdings.json` (normalized `price` / `current_price`)
-- Schwab option chain (live) with **Black-Scholes fallback** when chain is thin
-- Portfolio intent sleeve (V, SCHD, LMT) and Aegis screening
+- Schwab option chain (live) first; chain ATM IV fills missing IV. Black-Scholes estimates never become cards (Validate reports `NOT_A_LISTED_QUOTE`)
+- Portfolio intent sleeve (V, SCHD, LMT) and Aegis screening (`aegis_covered_call_candidates`)
+- Income screen for covered calls, CSPs and credit spreads (`scripts/lib/options_income_quality.py`)
 
 ### Strategy types
 
@@ -26,7 +32,7 @@ Trade AI v12 closed-loop design for automatic vs manual broker execution.
 | `covered_call` | Income on owned stock (≥100 shares) | Schwab or Fidelity |
 | `cash_secured_put` | Short put funded by account cash | Fidelity (SPAXX) / Schwab |
 | `protective_put` | Long put hedge on large positions (≥$15k) | Any manual sleeve |
-| `long_call` / `credit_spread` | High-conviction defined risk | Schwab auto path |
+| `long_call` / `credit_spread` | High-conviction defined risk | Schwab (operator 2FA) |
 
 ### Execution labels
 
@@ -35,15 +41,20 @@ Each proposal carries:
 - `broker` — `schwab` | `fidelity`
 - `execution_mode` — `auto_or_manual` | `manual`
 - `execution_label` — e.g. `Manual · Fidelity` or `Schwab · auto or manual`
-- `auto_eligible` — `true` only for Schwab (options pilot + 2FA)
+- `auto_eligible` — `true` only for Schwab (options pilot + 2FA). No options strategy is live-auto: approval needs a complete options thesis, a CIO `APPROVE` decision and a fresh `VALIDATED` Schwab re-quote, then the operator's per-order 2FA
 
 **Fidelity** proposals always show `Manual · Fidelity` — execute at the broker, then log via **Executed manually**.
 
 ### Quality gates
 
-- Default: edge ≥62, POP ≥52%, IV rank ≥20
+- Default: edge ≥62, POP ≥52%, IV rank ≥20 (unknown IV → `IV_UNKNOWN`, dropped)
 - **Manual/Fidelity holdings**: relaxed IV floor (12) and edge floor (52) — still turnkey, no junk
 - Income-sleeve names (portfolio_intent): edge floor 52
+- Income screen: underlying ≥ $5, listed chain, OI ≥ 50, spread ≤ 12%, premium ≥ $0.10/sh, annualized ROC ≥ 6%
+- Enterprise gates (earnings blackout, liquidity, concentration) and thesis blocks (`thesis_required`, `thesis_missing_*`, `awaiting_cio_decision`)
+- Approval refused without a `VALIDATED` re-quote inside 30 min (`options_desk_settings.validation.fresh_minutes`)
+
+Full table with config keys: `docs/options-module.md`.
 
 ## Broker Proposals (`/v3/trading` → Broker Proposals tab)
 
@@ -55,7 +66,7 @@ Unified live queue for Schwab + Fidelity equity proposals from `paper_trade_prop
 - **Thesis validity bar** — visual drift gap (green/yellow/red) from `broker_thesis_validity.py`
 - **Account picker** — Schwab (auto+manual) vs Fidelity (FA manual only) with cash/slot preview
 - **↻ Refresh prices** — `POST /api/v2/broker-proposals/refresh-prices` (quote + recalibrate sizing)
-- **AI oversight** — Queue local reviews · **Run Grok+ChatGPT** (per-lane verdicts + consensus)
+- **AI oversight** — Queue agent oversight (Maria/Risk/Steph reviews + proposal analyzer on this host, `broker_promote_oversight.queue_oversight_jobs`) · **Run Grok+ChatGPT** (per-lane verdicts + consensus). Equity proposals only; options use the Aegis review on `ensemble.options_lanes`
 - **Actions** — Executed manually · Edit trade · Auto route (2FA) / Record (Fidelity)
 
 ### Account selection
@@ -129,7 +140,8 @@ Monitored by `health_agent.py` → `collect_proposal_maturity()`:
 | `/api/v2/broker-proposals` | GET | Schwab/Fidelity queue + account metadata |
 | `/api/v2/broker-proposals/refresh-prices` | POST | Live quote + thesis band + sizing recalc |
 | `/api/v2/broker-proposals/run-cloud-oversight` | POST | Grok+ChatGPT second opinion |
-| `/api/v2/broker-proposals/queue-oversight` | POST | Queue local agent + LLM reviews |
+| `/api/v2/broker-proposals/queue-oversight` | POST | Queue agent oversight jobs (equity) |
+| `/api/v2/options/validate` | POST | Read-only Schwab re-quote of an options proposal (required before approval) |
 | `/api/v2/broker-proposals/prepare-manual` | POST | Pre-fill adjustment modal |
 | `/api/v2/executions/log-manual` | POST | Log equity manual execution + tagging |
 | `/api/v2/options/executions/log-manual` | POST | Log options manual execution |

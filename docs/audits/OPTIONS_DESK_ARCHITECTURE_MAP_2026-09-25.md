@@ -1,5 +1,7 @@
 # Options Desk Architecture Map — 2026-09-25
 
+> **Status 2026-09-26:** see the [resolution addendum](OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md#resolution-addendum-2026-09-26) in the executive audit for which findings are addressed by code on `main`. Findings below are unchanged.
+
 **Authority:** `READ_ONLY_ADVISORY` · no broker execution, order, 2FA, or durable-state mutation performed
 **Review basis:** source/config/test inspection of the Options Desk v3 worktree; served release pin resolved to `2cfcb2947`
 **Status:** audit artifact; implementation changes are specified separately

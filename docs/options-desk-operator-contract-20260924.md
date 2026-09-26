@@ -1,7 +1,9 @@
 # Options Desk — operator contract (skim)
 
+> **Status: HISTORICAL (superseded 2026-09-26 by docs/options-module.md).** Kept for the record; do not treat as current. Current proposal flow: `docs/options-module.md` ("Current flow (2026-09-26)").
+
 ```
-Status: ACTIVE
+Status: HISTORICAL (superseded 2026-09-26 by docs/options-module.md)
 as_of: 2026-09-24T12:25:00-04:00
 Authority: companion skim only
 Canonical SoT: plan-options-desk-holdings-strategies-20260924.md
