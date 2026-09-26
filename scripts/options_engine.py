@@ -2475,6 +2475,68 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
             "thesis_gate_state": record["thesis_gate_state"],
         }
         p["thesis_blocks"] = thesis_blocks(record)
+        _stamp_truth_flags(p)
+        try:
+            from lib.options_plain_english import committee_memo
+            p["committee_memo"] = committee_memo(
+                p, t, record, exit_rules=_desk_cfg().get("options_exit_rules") or {},
+                queue_status=p.get("approval_status"),
+            )
+        except Exception as e:
+            p["committee_memo"] = {"error": type(e).__name__}
+
+
+_PURPOSE = {
+    "cash_secured_put": ("INCOME", "Income"),
+    "covered_call": ("INCOME", "Income"),
+    "credit_spread": ("DEFINED_RISK_INCOME", "Defined-risk income"),
+    "protective_put": ("INSURANCE", "Insurance"),
+    "long_put": ("DOWNSIDE", "Downside bet"),
+    "long_call": ("UPSIDE", "Upside"),
+}
+
+
+def _stamp_truth_flags(p: dict) -> None:
+    """One honest status per card, as pills and filterable keys (operator 2026-09-26).
+
+    A card that fails the thesis bar must not say "live eligible": the approval
+    queue refuses it. Thesis blocks join the enterprise blocks the card already
+    renders, live eligibility goes false, and ``flags`` names purpose, status,
+    thesis gaps and data session so the desk can filter on them.
+    """
+    ent = p.setdefault("enterprise", {})
+    tb = list(p.get("thesis_blocks") or [])
+    if tb:
+        existing = list(ent.get("blocks") or [])
+        ent["blocks"] = existing + [b for b in tb if b not in existing]
+        ent["live_eligible"] = False
+        p["enterprise_blocked"] = True
+    approvable = not (p.get("enterprise_blocked") or ent.get("blocks"))
+    key, label = _PURPOSE.get(str(p.get("strategy") or ""), ("OTHER", "Other"))
+    flags = [{"key": key, "label": label, "tone": "blue"}]
+    if approvable:
+        flags.append({"key": "APPROVABLE", "label": "Approvable", "tone": "green"})
+    else:
+        why = "thesis incomplete" if tb else "enterprise block"
+        flags.append({"key": "NOT_APPROVABLE", "label": f"Not approvable: {why}", "tone": "red"})
+    missing = (p.get("options_thesis") or {}).get("missing_required") or []
+    if missing:
+        flags.append({"key": "THESIS_INCOMPLETE", "tone": "amber",
+                      "label": "Thesis missing: " + ", ".join(m.replace("_", " ") for m in missing)})
+    elif p.get("options_thesis"):
+        flags.append({"key": "THESIS_COMPLETE", "label": "Thesis complete", "tone": "green"})
+    session = _market_session_now()
+    if session and session != "REGULAR":
+        flags.append({"key": "CLOSED_MARKET_CHAIN", "tone": "amber",
+                      "label": f"Chain read {session.lower().replace('_', ' ')}"})
+    p["purpose"] = key
+    p["approvable"] = approvable
+    p["flags"] = flags
+    try:
+        from lib.options_plain_english import explain
+        p["plain_english"] = explain(p)
+    except Exception:
+        p["plain_english"] = None
 
 
 def _income_screen_summary() -> dict:
@@ -3122,7 +3184,7 @@ def evaluate_covered_call_status(
             "detail": (
                 f"{shares:,.0f} sh in {acct.replace('_', ' ') or 'account'} covers {contracts} call(s); "
                 f"best call ${strike:g} {dte}d pays ${premium:.2f} (POP {pop:.0f}%), "
-                f"edge {edge:.0f} < min {min_edge:.0f}"
+                f"edge {edge:.1f} < min {min_edge:.0f}"
                 + (" (intent sleeve)" if in_intent else "")
             ),
             "premium": round(premium, 2),

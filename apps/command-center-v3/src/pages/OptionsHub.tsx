@@ -57,6 +57,8 @@ export default function OptionsHub({ onDrill }: Props) {
   const [legStyleFilter, setLegStyleFilter] = useState('')
   const [tierFilter, setTierFilter] = useState('')
   const [liveOnly, setLiveOnly] = useState(false)
+  // 2026-09-26 (operator): filter on the card's honest status pills.
+  const [flagFilter, setFlagFilter] = useState<string | null>(null)
   // When Live eligible is 0, auto-show Blocked so the desk is not blank (2026-09-25).
   // Operator can still hide via the Blocked chip.
   const [showBlocked, setShowBlocked] = useState(false)
@@ -151,9 +153,16 @@ export default function OptionsHub({ onDrill }: Props) {
       && !(p as any).paper_only
       && String(p.broker || '').toLowerCase() !== 'alpaca'
     )
-    if (!showBlocked) base = base.filter(p => !isBlockedProp(p))
+    if (!showBlocked && !flagFilter) base = base.filter(p => !isBlockedProp(p))
+    if (flagFilter) base = base.filter(p => ((p as any).flags || []).some((f: any) => f.key === flagFilter))
     return base
-  }, [propList, showBlocked])
+  }, [propList, showBlocked, flagFilter])
+  // Counts for the status pills, from every card the desk returned.
+  const flagCounts = useMemo(() => {
+    const c: Record<string, number> = {}
+    for (const p of propList) for (const f of ((p as any).flags || [])) c[f.key] = (c[f.key] || 0) + 1
+    return c
+  }, [propList])
   const propCount = proposals?.filtered_count ?? proposals?.count ?? propList.length
   const propFacets = proposals?.filter_facets ?? {}
   const posList: Position[] = Array.isArray(monitor?.positions) ? monitor.positions : []
@@ -163,7 +172,7 @@ export default function OptionsHub({ onDrill }: Props) {
   const clearPropFilters = () => {
     setSymbolFilter(''); setStrategyFilter(''); setGroupFilter('')
     setOptionTypeFilter(''); setSideFilter(''); setSleeveFilter('')
-    setLegStyleFilter(''); setTierFilter(''); setLiveOnly(false)
+    setLegStyleFilter(''); setTierFilter(''); setLiveOnly(false); setFlagFilter(null)
     setMinPop(0); setMinEdge(0)
   }
 
@@ -517,6 +526,20 @@ export default function OptionsHub({ onDrill }: Props) {
               {facetChip(FILTERS.singleLeg, 'Single leg', propFacets.single_leg, legStyleFilter === 'single', () => setLegStyleFilter(l => l === 'single' ? '' : 'single'))}
               {facetChip(FILTERS.spreadPairs, 'Spread pairs', propFacets.spread_pairs, legStyleFilter === 'spread', () => setLegStyleFilter(l => l === 'spread' ? '' : 'spread'), '#ef4444')}
             </div>
+            <TipSection tip="Honest status of each card: can you approve it, what it is for, and whether its thesis is complete.">STATUS</TipSection>
+            <div data-testid="options-status-filters" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+              {([
+                ['APPROVABLE', 'Approvable', 'Passes liquidity and the thesis bar; you can approve it (sizing and 2FA stay yours).', BB.green],
+                ['NOT_APPROVABLE', 'Not approvable', 'The approval queue refuses it: thesis incomplete or an enterprise block.', BB.red],
+                ['THESIS_INCOMPLETE', 'Thesis incomplete', 'Missing thesis fields such as catalyst or exit criteria.', BB.amber],
+                ['INCOME', 'Income', 'You collect premium now (covered call, cash-secured put).', BB.green],
+                ['DEFINED_RISK_INCOME', 'Defined-risk income', 'Premium collected with a capped worst case (credit spread).', BB.green],
+                ['INSURANCE', 'Insurance', 'You pay premium to protect shares you own (protective put).', BB.amber],
+                ['UPSIDE', 'Upside', 'You pay premium for leveraged upside (long call).', BB.green],
+                ['CLOSED_MARKET_CHAIN', 'Chain read closed', 'Quotes were read while the market was closed; re-check prices at the open.', BB.amber],
+              ] as [string, string, string, string][]).filter(([k]) => (flagCounts[k] || 0) > 0).map(([k, label, tip, color]) =>
+                facetChip(tip, label, flagCounts[k], flagFilter === k, () => setFlagFilter(f => f === k ? null : k), color))}
+            </div>
             <TipSection tip="Portfolio sleeve = holdings-based. Conviction = watchlist names. Tiers from enterprise desk scoring.">SLEEVE &amp; DESK</TipSection>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {facetChip(FILTERS.portfolio, 'Portfolio', propFacets.by_sleeve?.portfolio, sleeveFilter === 'portfolio', () => setSleeveFilter(s => s === 'portfolio' ? '' : 'portfolio'))}
@@ -525,7 +548,7 @@ export default function OptionsHub({ onDrill }: Props) {
               {facetChip(FILTERS.tierB, 'Tier B', propFacets.by_tier?.B, tierFilter === 'B', () => setTierFilter(t => t === 'B' ? '' : 'B'), '#60a5fa')}
               {facetChip(FILTERS.tierC, 'Tier C', propFacets.by_tier?.C, tierFilter === 'C', () => setTierFilter(t => t === 'C' ? '' : 'C'), 'var(--text3)')}
               {facetChip(FILTERS.liveEligible, 'Live eligible', propFacets.live_eligible, liveOnly, () => setLiveOnly(v => !v), '#22c55e')}
-              {blockedCount > 0 && facetChip('Blocked = enterprise liquidity/spread/OI/BS-estimate. Schwab Path B only. Auto-shown when Live eligible is 0.', `Blocked`, blockedCount, showBlocked, () => setShowBlocked(v => !v), '#ef4444')}
+              {blockedCount > 0 && facetChip('Blocked = enterprise liquidity/spread/OI/BS-estimate or an incomplete options thesis. Schwab Path B only. Auto-shown when Live eligible is 0.', `Blocked`, blockedCount, showBlocked, () => setShowBlocked(v => !v), '#ef4444')}
               <Tip tip={FILTERS.showing} style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
                 Showing {propCount}{propFacets.total != null && propCount !== propFacets.total ? ` of ${propFacets.total}` : ''} ⓘ
               </Tip>
