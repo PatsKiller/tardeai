@@ -241,7 +241,10 @@ def test_shadow_projection_sql_no_longer_drops_unconditionally():
 
 def test_base_sql_allowlists_the_test_database():
     sql = (ROOT / "sql" / "r10_m2_isolated_benchmark.sql").read_text(encoding="utf-8")
-    assert "'m2_shadow,m2_shadow_test'" in sql
+    assert "'m2_shadow,m2_shadow_test,m2_shadow_test_*'" in sql
+    # The per-worktree pattern lives only in the DEFAULT allowlist; an unconditional
+    # OR-bypass would let it override an explicitly narrowed m2.isolated_databases.
+    assert "OR current_database() ~ '^m2_shadow_test_" not in sql
 
 
 # ---------------------------------------------------------------------------

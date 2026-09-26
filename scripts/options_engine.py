@@ -636,6 +636,116 @@ def _entry_state_conviction_symbols(limit: int = 15) -> List[dict]:
     return out[:limit]
 
 
+def _watchlist_buy_conviction_rows(limit: int = 40) -> List[dict]:
+    """Buy and strong-buy watchlist names. Not the whole watchlist. [] if the DB is down."""
+    try:
+        from lib.options_pipeline.universe import (
+            _fetch_watchlist_buy_rows,
+            _normalize_verdict,
+        )
+    except Exception:
+        return []
+    out: List[dict] = []
+    for row in _fetch_watchlist_buy_rows():
+        verdict = _normalize_verdict(row.get("card_rec")) or _normalize_verdict(row.get("synth_rec"))
+        if not verdict:
+            continue
+        sym = str(row.get("symbol") or "").upper()
+        if not sym or not sym.isalpha() or len(sym) > 6:
+            continue
+        out.append({
+            "symbol": sym,
+            "source": "watchlist_buy_strong_buy",
+            "confidence": 0.64 if verdict == "strong_buy" else 0.60,
+            "summary": f"watchlist {verdict.replace('_', ' ')}",
+            "verdict": verdict,
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _researched_watchlist_rows(limit: int = 120) -> List[dict]:
+    """All active/researched watchlist names, not only BUY/STRONG_BUY.
+
+    This is intentionally separate from the legacy conviction resolver.  A
+    researched neutral or bearish name can be useful for puts and hedges; the
+    deterministic strategy gates decide whether an option is admissible.
+    """
+    try:
+        from db_adapter import _execute, USE_DB
+        if not USE_DB:
+            return []
+        rows = _execute(
+            """SELECT DISTINCT ON (upper(wi.symbol))
+                      upper(wi.symbol) AS symbol,
+                      rc.latest_recommendation AS card_rec,
+                      fs.recommendation AS synth_rec,
+                      wi.hermes_composite_score,
+                      wi.catalyst_headline,
+                      wi.catalyst_at,
+                      rc.updated_at AS research_card_at,
+                      fs.updated_at AS synthesis_at
+                 FROM watchlist_items wi
+                 LEFT JOIN watchlist_research_cards rc ON upper(rc.symbol) = upper(wi.symbol)
+                 LEFT JOIN watchlist_final_synthesis fs ON upper(fs.symbol) = upper(wi.symbol)
+                WHERE wi.status IN ('active', 'researched')
+                  AND wi.symbol ~ '^[A-Z][A-Z0-9.\\-]{0,9}$'
+                  AND (rc.symbol IS NOT NULL OR fs.symbol IS NOT NULL OR wi.catalyst_headline IS NOT NULL)
+                ORDER BY upper(wi.symbol), GREATEST(
+                  COALESCE(fs.updated_at, 'epoch'::timestamp),
+                  COALESCE(rc.updated_at, 'epoch'::timestamp),
+                  COALESCE(wi.catalyst_at, 'epoch'::timestamp)
+                ) DESC NULLS LAST
+                LIMIT %s""",
+            (int(limit),), fetch="all",
+        ) or []
+    except Exception:
+        return []
+    out: List[dict] = []
+    for row in rows:
+        sym = str(row.get("symbol") or "").upper()
+        if not sym:
+            continue
+        verdict = row.get("synth_rec") or row.get("card_rec")
+        out.append({
+            "symbol": sym,
+            "source": "watchlist",
+            "source_lanes": ["watchlist"],
+            "research_status": "researched",
+            "research_artifact_id": f"watchlist:{sym}",
+            "verdict": verdict,
+            "summary": row.get("catalyst_headline") or f"researched watchlist name ({verdict or 'unresolved'})",
+            "catalyst": row.get("catalyst_headline"),
+            "research_as_of": row.get("synthesis_at") or row.get("research_card_at") or row.get("catalyst_at"),
+            "confidence": _f(row.get("hermes_composite_score"), 0.0) or None,
+        })
+    return out
+
+
+def _reentry_research_rows(limit: int = 120) -> List[dict]:
+    """Read-only re-entry research lane for former holdings and exit reviews."""
+    try:
+        from lib.options_research_universe import reentry_research_rows
+        snapshot = _load_json(PROJECT_ROOT / "data" / "runtime" / "reentry_decision_desk_latest.json") or {}
+        return reentry_research_rows(snapshot)[:limit]
+    except Exception:
+        return []
+
+
+def _research_universe_rows() -> List[dict]:
+    """Union all research-qualified option underlyings and retain source lanes."""
+    from lib.options_research_universe import merge_research_rows
+
+    rows: List[dict] = []
+    rows.extend(_high_conviction_symbols())
+    rows.extend(_watchlist_buy_conviction_rows())
+    rows.extend(_researched_watchlist_rows())
+    rows.extend(_reentry_research_rows())
+    merged = merge_research_rows(rows)
+    return [row for row in merged if row.get("research_qualified")]
+
+
 def _high_conviction_symbols(limit: int = 25) -> List[dict]:
     """Layer 4 + fused signals + Aegis CC candidates + Stage 1E entry_state."""
     out: Dict[str, dict] = {}
@@ -2185,6 +2295,17 @@ def _apply_enterprise_layer(proposals: List[dict]) -> List[dict]:
     return enriched
 
 
+def _universe_census(holdings, convictions, scored_rows, listed) -> dict:
+    from lib.options_universe_census import build_universe_census
+    return build_universe_census(
+        holdings=holdings,
+        convictions=convictions,
+        scored=len(scored_rows),
+        listed=listed,
+        inputs_recorded=True,
+    )
+
+
 def generate_proposals(force: bool = False) -> dict:
     """Full proposal pass with quality filter."""
     cached = _load_json(PROPOSALS_CACHE)
@@ -2192,6 +2313,14 @@ def generate_proposals(force: bool = False) -> dict:
         try:
             age = (_now() - datetime.fromisoformat(cached["generated_at"].replace("Z", "+00:00"))).total_seconds()
             if age < 600:
+                if not cached.get("universe_census"):
+                    from lib.options_universe_census import build_universe_census
+                    cached = dict(cached)
+                    cached["universe_census"] = build_universe_census(
+                        listed=cached.get("proposals") or [],
+                        scored=len(cached.get("proposals") or []),
+                        inputs_recorded=False,
+                    )
                 return cached
         except Exception:
             pass
@@ -2201,7 +2330,11 @@ def generate_proposals(force: bool = False) -> dict:
     intent_cfg = _load_intent_cfg()
     aegis_map = _aegis_cc_map()
     owned = {h.get("symbol", "").upper() for h in holdings if _f(h.get("shares")) >= 100}
-    convictions = _high_conviction_symbols()
+    # Full research universe: holdings remain the portfolio lane, while
+    # researched watchlist and re-entry names are now first-class candidates.
+    # The helper is research-qualified only; raw starred/scan names remain
+    # visible to their originating desks but do not become option ideas here.
+    convictions = _research_universe_rows()
     entry_scanned = [
         {
             "symbol": c.get("symbol"),
@@ -2285,6 +2418,23 @@ def generate_proposals(force: bool = False) -> dict:
         # Desk Ideas must still render if CIO strip stamping fails.
         pass
     all_p = _allocate_strategy_slots(strict)
+    research_by_symbol = {
+        str(c.get("symbol") or "").upper(): c for c in convictions if c.get("symbol")
+    }
+    for proposal in all_p:
+        ctx = research_by_symbol.get(str(proposal.get("symbol") or "").upper())
+        if ctx:
+            proposal["research_context"] = {
+                "source_lanes": list(ctx.get("source_lanes") or []),
+                "research_status": ctx.get("research_status") or "researched",
+                "research_artifact_id": ctx.get("research_artifact_id"),
+                "research_as_of": ctx.get("research_as_of") or ctx.get("evaluated_at"),
+                "summary": ctx.get("summary"),
+                "catalyst": ctx.get("catalyst"),
+                "reentry_signal": ctx.get("reentry_signal"),
+                "reentry_trigger": ctx.get("reentry_trigger"),
+                "invalidated_if": ctx.get("invalidated_if"),
+            }
 
     enterprise_summary = {}
     approval_sync = {}
@@ -2296,6 +2446,12 @@ def generate_proposals(force: bool = False) -> dict:
     except Exception as e:
         enterprise_summary = {"ok": False, "error": str(e)[:120]}
         approval_sync = {"ok": False, "error": str(e)[:120]}
+
+    try:
+        from lib.options_research_universe import research_universe_summary
+        universe_summary = research_universe_summary(convictions)
+    except Exception:
+        universe_summary = {"total": len(convictions), "research_qualified": len(convictions)}
 
     out = {
         "generated_at": _iso(),
@@ -2315,7 +2471,10 @@ def generate_proposals(force: bool = False) -> dict:
         },
         "entry_directional_scanned": entry_scanned,
         "entry_directional_dropped": entry_drops,
+        "research_universe": universe_summary,
+        "research_lanes": sorted({lane for c in convictions for lane in (c.get("source_lanes") or [])}),
         "proposals": all_p,
+        "universe_census": _universe_census(holdings, convictions, strict, all_p),
         "desk_level": "enterprise",
         "enterprise": enterprise_summary,
         "approval_queue": approval_sync,
