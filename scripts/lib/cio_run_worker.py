@@ -1039,6 +1039,7 @@ class CIORunWorker:
 
     def _write_actions(self, synthesis_result: dict[str, Any]) -> dict[str, Any]:
         action_ids: list[str] = []
+        actions_written: list[dict[str, Any]] = []
         blocked_recommendations: list[dict[str, Any]] = []
 
         if self.action_ledger is None:
@@ -1116,6 +1117,7 @@ class CIORunWorker:
                 aid = event.get("payload", {}).get("cio_action_id")
                 if aid:
                     action_ids.append(aid)
+                    actions_written.append({**(event.get("payload") or {}), **action, "cio_action_id": aid})
                     if self.run_store:
                         self.run_store.transition(
                             self._run_id, "ACTION_WRITE",
@@ -1153,7 +1155,8 @@ class CIORunWorker:
             except Exception:
                 pass
 
-        return {"action_ids": action_ids, "blocked_recommendations": blocked_recommendations}
+        return {"action_ids": action_ids, "actions": actions_written,
+                "blocked_recommendations": blocked_recommendations}
 
     # ── Step: Enqueue Notifications ─────────────────────────────────────────
 
@@ -1167,18 +1170,34 @@ class CIORunWorker:
         if self.notification_outbox is None:
             return {"notification_ids": notification_ids}
 
-        for action_id in action_result.get("action_ids", []):
+        # 2026-09-26 (operator): one readable message per run, material actions
+        # only, each piece of advice at most once per repeat window. Every action
+        # stays in the CIO action ledger; what does not page goes to the digest.
+        try:
+            from scripts.lib.cio_action_notify import load_policy, render, select_new
+        except ImportError:
+            from lib.cio_action_notify import load_policy, render, select_new  # type: ignore
+        try:
+            policy = load_policy()
+            store_path = getattr(self.notification_outbox, "event_store_path", None)
+            state_path = (Path(store_path).parent / "cio_action_notify_state.json") if store_path else None
+            fresh = select_new(list(action_result.get("actions") or []), policy, state_path=state_path)
+            msg = render(fresh, policy)
+        except Exception as e:
+            log.warning("CIO action notify selection failed: %s", e)
+            fresh, msg = [], None
+        if msg:
             try:
                 nid = f"notif-{uuid.uuid4().hex[:12]}"
-                body_text = f"CIO run {self._run_id or 'unknown'} produced action {action_id}"
                 notification = {
                     "notification_id": nid,
                     "message_class": "advisory",
                     "channel_targets": ["telegram"],
-                    "subject": f"CIO Advisory Action {action_id[:12]}",
-                    "body": body_text,
-                    "body_hash": hashlib.sha256(body_text.encode()).hexdigest(),
-                    "cio_action_id": action_id,
+                    "subject": msg["subject"],
+                    "body": msg["body"],
+                    "body_hash": hashlib.sha256(msg["body"].encode()).hexdigest(),
+                    "cio_action_id": fresh[0].get("cio_action_id"),
+                    "cio_action_ids": [a.get("cio_action_id") for a in fresh],
                     "wake_job_id": self._run_id,
                     "severity": "P2",
                 }
@@ -1194,7 +1213,10 @@ class CIORunWorker:
                         except Exception:
                             pass
             except Exception as e:
-                log.warning("Notification enqueue failed for action %s: %s", action_id, e)
+                log.warning("Notification enqueue failed for run %s: %s", self._run_id, e)
+        else:
+            log.info("CIO run %s: %d action(s), none new and material; ledger + digest only",
+                     self._run_id, len(action_result.get("action_ids") or []))
 
         summary = synthesis_result.get("result", {}).get("summary")
         # Telegram export audit 2026-09-14: 86 of 95 CIO Desk messages were
@@ -1203,7 +1225,10 @@ class CIORunWorker:
         # 6-hour content dedupe never held. Operator decision: noise goes to the
         # digest, not the chat. A run with no action writes no check-in; a run
         # with actions still sends one alongside them.
-        if summary and not notification_ids:
+        # Operator 2026-09-26: "CIO Run Complete — <uuid> / NO_PORTFOLIO_CHANGE" is a
+        # log line, not intelligence. The material message above carries the news;
+        # the run summary goes to the digest only.
+        if summary:
             log.info("CIO run %s: no advisory action; check-in not sent (digest only)", self._run_id)
             summary = None
         if summary:

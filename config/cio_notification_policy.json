@@ -1,0 +1,8 @@
+{
+  "_doc": "Which CIO run actions page the operator on Telegram (operator 2026-09-26). Everything else is recorded in the CIO action ledger and the digest only. Read by scripts/lib/cio_action_notify.py.",
+  "material_title_verbs": ["BUY", "ADD", "RE_ENTER", "REENTER", "TRIM", "SELL", "EXIT", "AVOID", "HEDGE", "UPGRADE", "DOWNGRADE", "THESIS", "RISK", "ALLOCATION", "REDUCE", "INCREASE"],
+  "material_priorities": ["HIGH", "CRITICAL", "URGENT"],
+  "page_when_operator_decision_required": true,
+  "repeat_suppress_days": 7,
+  "max_lines_per_message": 12
+}
