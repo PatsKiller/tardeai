@@ -829,7 +829,9 @@ export default function OptionProposalCardV4({
         const strikes = p.short_strike != null && p.long_strike != null
           ? `$${fmtNum(p.short_strike, 2)} / $${fmtNum(p.long_strike, 2)}`
           : (p.strike != null ? `$${fmtNum(p.strike, 2)}` : '')
-        const spot = p.underlying_price != null ? `spot $${fmtNum(p.underlying_price, 2)}` : ''
+        // 2026-09-26: say where the spot came from (DELL once used a 3-week-old scanner price).
+        const ps = (p as any).price_source
+        const spot = p.underlying_price != null ? `spot $${fmtNum(p.underlying_price, 2)}${ps?.source ? ` (${String(ps.source).replace(/_/g, ' ')}${ps.age_hours != null ? `, ${ps.age_hours}h old` : ''})` : ''}` : ''
         const acct = (p.account || '').replace(/_/g, ' ')
         const when = p.expiration ? fmtExpiry(p.expiration) : (stock.time_horizon || '')
         const ensembleRunning = /validat|pending|running/i.test(String((p as any).ensemble_status || (p as any).ensemble_state || ''))

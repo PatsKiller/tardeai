@@ -208,9 +208,11 @@ def committee_memo(p: dict[str, Any], t: dict[str, Any], record: Optional[dict[s
     rc = p.get("research_context") or {}
     has_thesis = bool(t.get("symbol_thesis_version")) and state not in ("INSUFFICIENT_DATA",)
     evidence = _thesis_list(t, "evidence_for")
+    ra = p.get("research_answers") or {}
     if has_thesis and evidence and state == "CURRENT":
         research, conf = "FULLY_RESEARCHED", "High" if (t.get("thesis_confidence") or 0) >= 0.7 else "Medium"
-    elif has_thesis:
+    elif has_thesis or ra.get("thesis"):
+        # Research done for this option counts, even without a symbol thesis (2026-09-26).
         research, conf = "PARTIALLY_RESEARCHED", "Medium" if state == "CURRENT" else "Low"
     else:
         research, conf = "SCREENING_ONLY", "Low"
@@ -245,7 +247,7 @@ def committee_memo(p: dict[str, Any], t: dict[str, Any], record: Optional[dict[s
         "classification": ckey,
         "classification_label": clabel,
         "purpose": cpurpose,
-        "investment_thesis": (t.get("thesis_summary") or "").strip() or not_researched,
+        "investment_thesis": (t.get("thesis_summary") or "").strip() or str(ra.get("thesis") or "").strip() or not_researched,
         # A source label ("high", "watchlist buy") is not a market thesis (2026-09-26).
         "market_thesis": (rc.get("summary") if len(str(rc.get("summary") or "").split()) >= 6 else None) or not_researched,
         # Counter-evidence arrives as ids (ev_...); show the researched bear case as text,
@@ -253,7 +255,7 @@ def committee_memo(p: dict[str, Any], t: dict[str, Any], record: Optional[dict[s
         "contrarian_view": (str((p.get("research_answers") or {}).get("bear_case") or "").strip()
                             or (f"{len(_thesis_list(t, 'counter_evidence'))} counter-evidence item(s) on file; "
                                 "text not attached to this card" if _thesis_list(t, "counter_evidence") else not_researched)),
-        "why_now": p.get("catalyst") or rc.get("catalyst") or not_researched,
+        "why_now": p.get("catalyst") or rc.get("catalyst") or ra.get("catalysts") or _calendar(p) or not_researched,
         "research_status": research,
         "confidence": conf,
         "cio_status": cio[0],
@@ -309,3 +311,11 @@ def _plain_summary(p: dict[str, Any], ckey: str, purpose: str) -> str:
     if pe.get("breakeven_line"):
         parts.append(pe["breakeven_line"])
     return " ".join(parts)
+
+
+def _calendar(p: dict[str, Any]) -> Optional[str]:
+    try:
+        from scripts.lib.options_thesis import calendar_catalyst
+    except ImportError:
+        from lib.options_thesis import calendar_catalyst  # type: ignore
+    return calendar_catalyst(p)

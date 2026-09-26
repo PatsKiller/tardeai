@@ -76,6 +76,24 @@ def _nonempty(v: Any) -> bool:
     return True
 
 
+def calendar_catalyst(p: dict[str, Any]) -> Optional[str]:
+    """The dated event that matters most to an option: does earnings fall inside it?
+
+    From the earnings calendar the desk already reads (enterprise.earnings_blackout).
+    Labelled "Calendar" so it is never mistaken for researched judgment (2026-09-26:
+    DELL's 2026-11-27 earnings sat on the proposal while the card said "catalysts
+    missing").
+    """
+    eb = ((p.get("enterprise") or {}).get("earnings_blackout") or {})
+    nxt, exp = eb.get("next_earnings"), p.get("expiration")
+    if not nxt or not exp:
+        return None
+    nxt_d, exp_d = str(nxt)[:10], str(exp)[:10]
+    if nxt_d > exp_d:
+        return f"Calendar: next earnings {nxt_d}, after the {exp_d} expiry - no earnings event inside this trade."
+    return f"Calendar: earnings {nxt_d} falls inside this trade (expiry {exp_d}) - expect a volatility event before expiry."
+
+
 def build_record(proposal: dict[str, Any], thesis: dict[str, Any]) -> dict[str, Any]:
     """One options thesis record from the proposal and the symbol thesis projection."""
     p = proposal or {}
@@ -83,7 +101,7 @@ def build_record(proposal: dict[str, Any], thesis: dict[str, Any]) -> dict[str, 
     rc = p.get("research_context") or {}
     ent = p.get("enterprise") or {}
     ra = p.get("research_answers") or {}
-    catalyst = p.get("catalyst") or rc.get("catalyst") or ra.get("catalysts")
+    catalyst = p.get("catalyst") or rc.get("catalyst") or ra.get("catalysts") or calendar_catalyst(p)
     pin = t.get("symbol_thesis_version")
     state = str(t.get("thesis_state") or "INSUFFICIENT_DATA").upper()
     summary = (t.get("thesis_summary") or "").strip()

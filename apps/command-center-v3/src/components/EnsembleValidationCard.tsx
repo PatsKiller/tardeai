@@ -37,7 +37,7 @@ export interface EnsembleResult {
 const decColor = (d?: string) => (d === 'approve' ? '#22c55e' : '#ef4444')
 const scoreColor = (s?: number) => (s == null ? 'var(--text2)' : s >= 8 ? '#34d399' : s >= 6 ? '#facc15' : '#f87171')
 const LANE_ICON: Record<string, string> = { grok: '𝕏', chatgpt: '◎', local: '🖥', claude: '✶' }
-const LANE_LABEL: Record<string, string> = { grok: 'Grok', chatgpt: 'ChatGPT', local: 'Gemma', claude: 'Claude' }
+const LANE_LABEL: Record<string, string> = { grok: 'Grok', chatgpt: 'ChatGPT', 'deepseek-flash': 'DeepSeek', local: 'Gemma (legacy)', claude: 'Claude' }
 
 /** Map DB score to 0–10 (some rows store 0–1 fractions). */
 export function normalizeScore10(val: unknown): number {
@@ -191,7 +191,7 @@ function EnsembleRunButtons({ compact, busy, onRun }: {
       </button>
       <button type="button" disabled={!!busy} onClick={() => onRun(undefined)}
         style={ensembleBtnStyle(ALL, busy === 'all', compact)}>
-        {busy === 'all' ? '⏳ validating…' : '⚖ All (Grok+ChatGPT+Gemma)'}
+        {busy === 'all' ? '⏳ validating…' : '⚖ All (Grok+ChatGPT)'}
       </button>
     </div>
   )
@@ -274,7 +274,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
     if (state === 'done' || state === 'idle' || state === 'error') setRunBusy(null)
   }, [state])
 
-  if (state === 'loading') return <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: compact ? 0 : 6 }}>checking Grok/ChatGPT/Gemma…</div>
+  if (state === 'loading') return <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: compact ? 0 : 6 }}>checking Aegis review…</div>
   if (state === 'done' && result) {
     if (compact) {
       return (

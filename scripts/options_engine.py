@@ -1149,6 +1149,23 @@ def _edge_score_debit(
     return round(pop_s + iv_s + hedge_s + conv_s + dte_s, 1)
 
 
+# Where each symbol's spot came from on this pass (shown on the card).
+_PRICE_SOURCE: Dict[str, dict] = {}
+
+
+def _spot_for(sym: str, price: float) -> float:
+    """The option's own spot: the Schwab chain's underlying when present, else ``price``."""
+    try:
+        cu = _f((_schwab_chain(sym, strikes=16) or {}).get("underlying_price"))
+    except Exception:
+        cu = 0.0
+    if cu > 0:
+        _PRICE_SOURCE[sym.upper()] = {"source": "schwab_chain_underlying", "as_of": _iso(),
+                                      "replaced": round(price, 2) if price and abs(cu / price - 1) > 0.005 else None}
+        return cu
+    return price
+
+
 def _resolve_symbol_price(sym: str, tech_map: dict, holdings: List[dict]) -> float:
     """Resolve live price for conviction / watchlist symbols missing from technical_snapshot."""
     sym = (sym or "").upper()
@@ -1161,18 +1178,33 @@ def _resolve_symbol_price(sym: str, tech_map: dict, holdings: List[dict]) -> flo
             hp = _f(h.get("price"))
             if hp > 0:
                 return hp
+    # 2026-09-26: DELL priced at $524.14 from a scanner row dated 2026-09-05 while
+    # market_quotes had $563.28 at the 09-25 close. Take the FRESHEST dated price
+    # of scan vs quote, and refuse one older than price_max_age_hours.
     try:
         from db_adapter import _execute, USE_DB
         if USE_DB:
+            cands = []
             row = _execute(
-                """SELECT price FROM trade_ai_scans
+                """SELECT price, scanned_at AS at FROM trade_ai_scans
                    WHERE symbol=%s AND price IS NOT NULL AND price > 0
-                   ORDER BY scanned_at DESC LIMIT 1""",
-                (sym,),
-                fetch="one",
-            )
+                   ORDER BY scanned_at DESC LIMIT 1""", (sym,), fetch="one")
             if row and _f(row.get("price")) > 0:
-                return _f(row["price"])
+                cands.append(("trade_ai_scans", _f(row["price"]), row.get("at")))
+            row = _execute(
+                """SELECT price, fetched_at AS at FROM market_quotes
+                   WHERE symbol=%s AND price IS NOT NULL AND price > 0
+                   ORDER BY fetched_at DESC LIMIT 1""", (sym,), fetch="one")
+            if row and _f(row.get("price")) > 0:
+                cands.append(("market_quotes", _f(row["price"]), row.get("at")))
+            cands = [c for c in cands if c[2] is not None]
+            if cands:
+                src, px, at = max(cands, key=lambda c: c[2])
+                max_age_h = float(_desk_cfg().get("price_max_age_hours") or 96)
+                age_h = (_now() - (at if at.tzinfo else at.replace(tzinfo=timezone.utc))).total_seconds() / 3600.0
+                if age_h <= max_age_h:
+                    _PRICE_SOURCE[sym] = {"source": src, "as_of": at.isoformat(), "age_hours": round(age_h, 1)}
+                    return px
     except Exception:
         pass
     try:
@@ -1580,7 +1612,7 @@ def generate_holdings_put_proposals(
             continue
         gates = _holding_quality_gates(h)
         tech = tech_map.get(sym) or {}
-        und = price
+        und = price = _spot_for(sym, price)
         iv_rank = _iv_rank_proxy(sym, tech, chain_lookup=True, price=price)
         if iv_rank < gates["min_iv"]:
             continue
@@ -1899,7 +1931,7 @@ def generate_defined_risk_proposals(
                 INCOME_SCREEN_DROPS.append({"symbol": sym, "strategy": "any", "reason": "IV_UNKNOWN"})
             continue
 
-        und = price
+        und = price = _spot_for(sym, price)
         bias = _conviction_bias(c)
         owned_entry = from_entry and sym in owned
 
@@ -1972,7 +2004,7 @@ def generate_credit_spread_proposals(
             price = _resolve_symbol_price(sym, tech_map, holdings or [])
         if price <= 0:
             continue
-        und = price
+        und = price = _spot_for(sym, price)
         conf = _f(c.get("confidence"), 0.5)
         if conf < 0.58:
             continue
@@ -2535,6 +2567,7 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
         rc = p.get("research_context") or {}
         if not p.get("catalyst") and rc.get("catalyst"):
             p["catalyst"] = rc["catalyst"]  # memo and strategy-fit read the top level
+        p["price_source"] = _PRICE_SOURCE.get(sym)
         p["symbol_thesis_id"] = t.get("symbol_thesis_id")
         p["thesis_version_at_decision"] = t.get("symbol_thesis_version")
         p["thesis_state"] = t.get("thesis_state")
@@ -2666,6 +2699,7 @@ def generate_proposals(force: bool = False) -> dict:
 
     INCOME_SCREEN_DROPS.clear()
     _CHAIN_CACHE.clear()
+    _PRICE_SOURCE.clear()
     holdings, _ = _load_holdings()
     tech_map = _load_technicals()
     intent_cfg = _load_intent_cfg()
