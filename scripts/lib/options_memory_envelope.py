@@ -83,6 +83,137 @@ def default_outcome_loader(symbol: str, limit: int) -> list[dict[str, Any]]:
         return []
 
 
+# ── M2 read-back (2026-09-26) ─────────────────────────────────────────────
+# scripts/options_memory_projector.py writes the options thesis store into the
+# CIO's bitemporal memory (memory_r10_m2, source_type options_thesis_store).
+# The CIO options review reads prior decisions / theses / follow-ups back from
+# there. Enabled by options_desk_settings.options_thesis_lifecycle.memory_reads;
+# the MEMORY_BEHAVIOR_INFLUENCE_OPTIONS env flag, when set, overrides config.
+# OUTCOME_LOADER_ENV="0" (tests/conftest.py) disables this DB read too.
+PRIOR_FACT_PREDICATES = ("options_cio_decision", "options_thesis", "options_followup")
+PRIOR_FACT_SOURCE_TYPE = "options_thesis_store"
+PRIOR_TEXT_CLIP = 300
+PRIOR_LIST_CLIP = 3
+
+
+def options_memory_reads_enabled(config_value: Any = None, *, env: Optional[dict[str, Any]] = None) -> bool:
+    """Config turns M2 reads on; a set MEMORY_BEHAVIOR_INFLUENCE_OPTIONS env wins either way."""
+    e = os.environ if env is None else env
+    raw = e.get("MEMORY_BEHAVIOR_INFLUENCE_OPTIONS")
+    if raw is not None and str(raw).strip() != "":
+        return _coerce_int_flag(raw) == 1
+    return _coerce_int_flag(config_value) == 1
+
+
+def _compact_prior(predicate: str, obj: dict[str, Any], valid_from: Any, same_strategy: bool) -> dict[str, Any]:
+    """Advisory summary only. GUIDs are left out: the review's number-traceability
+    rail reads every digit in the facts, and a GUID would loosen it."""
+    def _clip(v: Any) -> Any:
+        return (v[:PRIOR_TEXT_CLIP] + "…") if isinstance(v, str) and len(v) > PRIOR_TEXT_CLIP else v
+
+    def _lst(v: Any) -> list[str]:
+        return [str(_clip(x)) for x in (v or []) if x][:PRIOR_LIST_CLIP] if isinstance(v, list) else []
+
+    row: dict[str, Any] = {
+        "kind": predicate,
+        "as_of": str(valid_from)[:10] if valid_from else None,
+        "same_strategy": bool(same_strategy),
+        "strategy": obj.get("strategy"),
+    }
+    if predicate == "options_cio_decision":
+        row.update(outcome=obj.get("outcome"), confidence=obj.get("confidence"),
+                   reasoning=_clip(obj.get("reasoning")), concerns=_lst(obj.get("concerns")),
+                   unknowns=_lst(obj.get("unknowns")))
+    elif predicate == "options_thesis":
+        row.update(thesis_state=obj.get("thesis_state"), missing_required=_lst(obj.get("missing_required")),
+                   summary=_clip((obj.get("investment_thesis") or {}).get("summary")))
+    elif predicate == "options_followup":
+        row.update(stage=obj.get("stage"), deliverables=_lst(obj.get("deliverables")))
+    return {k: v for k, v in row.items() if v not in (None, [], "")}
+
+
+def load_prior_options_facts(
+    option_strategy_guid: Any,
+    symbol: Any,
+    *,
+    limit: int,
+    lookback_days: int,
+    dsn: Optional[str] = None,
+    connect: Optional[Any] = None,
+    tenant_id: Optional[str] = None,
+) -> list[dict[str, Any]]:
+    """Prior options facts from M2 for this strategy and symbol, newest first.
+
+    Current rows (upper_inf(tx_period)) valid within ``lookback_days``. Returns
+    [] on any failure, when no DSN is configured, or when disabled for tests —
+    it never raises and never writes (read-only session).
+    """
+    guid = str(option_strategy_guid or "").strip()
+    sym = str(symbol or "").strip().upper()
+    if not (guid or sym) or int(limit) <= 0:
+        return []
+    if connect is None and os.environ.get(OUTCOME_LOADER_ENV, "1") == "0":
+        return []
+    target = dsn or os.environ.get("M2_DSN")
+    if connect is None and not target:
+        return []
+    conn = None
+    try:
+        from scripts.lib.memory_namespace import DEFAULT_TENANT
+
+        tenant = tenant_id or DEFAULT_TENANT
+        if connect is None:
+            import psycopg2
+
+            from scripts.lib.m2_live_shadow_guard import refuse_live_shadow_under_pytest
+            from scripts.lib.memory_m2_benchmark import _assert_isolated_dsn
+
+            conn = psycopg2.connect(refuse_live_shadow_under_pytest(_assert_isolated_dsn(target)))
+        else:
+            conn = connect()
+        try:
+            conn.set_session(readonly=True, autocommit=True)
+        except Exception:  # noqa: BLE001 — fakes and poolers may not support it
+            pass
+        with conn.cursor() as cur:
+            cur.execute("SELECT set_config('app.tenant_id', %s, false)", (tenant,))
+            cur.execute(
+                """
+                SELECT predicate, object_value, lower(valid_period)
+                  FROM memory_r10_m2.memory_fact_version
+                 WHERE tenant_id = %s
+                   AND source_type = %s
+                   AND predicate = ANY(%s)
+                   AND upper_inf(tx_period)
+                   AND (object_value->>'option_strategy_guid' = %s
+                        OR upper(object_value->>'symbol') = %s)
+                   AND lower(valid_period) >= now() - make_interval(days => %s)
+                 ORDER BY lower(valid_period) DESC, version_seq DESC
+                 LIMIT %s
+                """,
+                (tenant, PRIOR_FACT_SOURCE_TYPE, list(PRIOR_FACT_PREDICATES), guid, sym,
+                 int(lookback_days), int(limit)),
+            )
+            rows = cur.fetchall()
+        out = []
+        for pred, obj, vfrom in rows:
+            if isinstance(obj, str):
+                obj = json.loads(obj)
+            if not isinstance(obj, dict):
+                continue
+            out.append(_compact_prior(str(pred), obj, vfrom,
+                                      bool(guid) and str(obj.get("option_strategy_guid") or "") == guid))
+        return out
+    except Exception:  # noqa: BLE001 — memory is advisory; a read failure is "no priors"
+        return []
+    finally:
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
 def options_behavior_influence_active(
     flags: Optional[dict[str, Any]] = None,
     *,
@@ -303,4 +434,6 @@ __all__ = [
     "load_cio_learning_notes_for_symbol",
     "load_options_outcomes_for_symbol",
     "build_options_memory_envelope",
+    "options_memory_reads_enabled",
+    "load_prior_options_facts",
 ]

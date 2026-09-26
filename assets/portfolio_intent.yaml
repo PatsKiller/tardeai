@@ -120,6 +120,9 @@ options_desk_settings:
     max_followup_rounds: 2         # more MORE_RESEARCH decisions than this archive the idea
     monitor_recheck_hours: 24      # MONITOR_ONLY re-reviews after this
     max_deliverables: 5            # follow-up questions taken from the CIO's unknowns/concerns
+    memory_reads: true             # operator 2026-09-26: CIO review reads prior options facts from M2 memory
+    memory_reads_limit: 8          # prior decisions/theses/follow-ups supplied to one review
+    memory_reads_lookback_days: 180
   # Live Schwab validation (operator 2026-09-26): approve only on a fresh re-quote.
   validation:
     max_premium_change_pct: 15.0   # premium move vs the proposal that counts as material

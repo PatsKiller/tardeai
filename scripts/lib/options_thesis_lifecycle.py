@@ -37,7 +37,18 @@ DEFAULTS = {
     "max_followup_rounds": 2,
     "monitor_recheck_hours": 24,
     "max_deliverables": 5,
+    # CIO review reads prior options facts from bitemporal memory (M2). Env
+    # MEMORY_BEHAVIOR_INFLUENCE_OPTIONS, when set, overrides this.
+    "memory_reads": False,
+    "memory_reads_limit": 8,
+    "memory_reads_lookback_days": 180,
 }
+
+
+def memory_settings(s: dict[str, Any]) -> dict[str, Any]:
+    """The ``memory`` argument options_cio_review.review/build_facts takes."""
+    return {"memory_reads": s.get("memory_reads"), "limit": s.get("memory_reads_limit"),
+            "lookback_days": s.get("memory_reads_lookback_days")}
 
 
 def settings(cfg: Optional[dict[str, Any]]) -> dict[str, Any]:

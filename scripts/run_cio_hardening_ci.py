@@ -2481,6 +2481,18 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-26 -- options history into the CIO's bitemporal memory (M2): thesis
+        # versions, decisions (SUPERSEDES provenance), follow-ups, validations and
+        # abandonments projected by event_hash with a payload allowlist; the CIO
+        # options review reads prior decisions back (config memory_reads).
+        "options_memory_20260926",
+        [
+            "tests/test_options_memory_projection_20260926.py",
+            "tests/test_options_thesis_lifecycle_20260926.py",
+            "tests/test_aec_agent_bus_memory_20260919.py",
+        ],
+    ),
+    (
         # 2026-09-26 -- watchlist names read at-the-money IV from their Schwab chain
         # (technical_snapshot.json is holdings-only); one chain read per pass.
         "chain_iv_fallback_20260926",
