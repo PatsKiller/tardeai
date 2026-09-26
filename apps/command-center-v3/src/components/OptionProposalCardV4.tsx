@@ -817,6 +817,7 @@ export default function OptionProposalCardV4({
         const comparison = cmp.comparison || {}
         const oversight = cmp.oversight || {}
         const prov = cmp.provenance || {}
+        const research = (p as any).research_context || (p as any).options_decision_packet_v2?.research || {}
         const pin = cmp.thesis?.thesis_version || 'no thesis pin on this proposal'
         const refuse = comparison.preferred_structure === 'neither'
         const pop = opt.probability_of_success == null ? null : `${opt.probability_of_success}%`
@@ -835,6 +836,11 @@ export default function OptionProposalCardV4({
             <div style={{ marginTop: 4 }}>{stock.maximum_loss_model}</div>
             <div style={{ marginTop: 4, color: BB.text1 }}>CIO {oversight.review_status || 'unreviewed'}. A model score is not a CIO decision.</div>
             <div style={{ marginTop: 4, color: BB.text3 }}>{fresh} · thesis {pin}</div>
+            <div style={{ marginTop: 4, color: BB.text3 }}>
+              Research: {(research.source_lanes || []).join(' · ') || 'research lane unavailable'}
+              {research.reentry_signal ? ` · re-entry ${research.reentry_signal}` : ''}
+              {research.research_as_of || research.as_of ? ` · as of ${String(research.research_as_of || research.as_of).slice(0, 16)}` : ''}
+            </div>
             {(() => {
               const memo = (p as any).options_research_memo
               if (!memo?.thesis) return null
