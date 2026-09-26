@@ -2359,6 +2359,8 @@ GATES = [
             # Stock-versus-options comparison contract (2026-09-25).
             "tests/test_recommendation_comparison_20260925.py",
             "tests/test_options_decision_stages_20260925.py",
+            "tests/test_options_universe_census_20260925.py",
+            "tests/test_options_research_universe_v2.py",
         ],
     ),
     (
