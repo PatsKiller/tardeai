@@ -11,6 +11,30 @@ if [[ ! -x "$PY" ]]; then
   PY="python3"
 fi
 
+# Profiles (2026-09-25). Default: the FAST profile of run_cio_hardening_ci.py --
+# every registered gate, run in a worker pool. `--full` runs the serial
+# isolation reference instead (what the nightly cio-hardening-full job runs).
+CIO_PROFILE="fast"
+for arg in "$@"; do
+  case "$arg" in
+    --full) CIO_PROFILE="full" ;;
+    *) echo "unknown argument: $arg (supported: --full)" >&2; exit 2 ;;
+  esac
+done
+
+# One Postgres test database PER WORKTREE, so acceptance runs in different
+# worktrees never drop each other's memory schema. The name must match
+# m2_shadow_test_<suffix> (scripts/lib/m2_live_shadow_guard.TEST_DATABASE_RE and the
+# SQL isolated-database check both refuse anything else, including the live shadow).
+if [[ -z "${M2_TEST_DATABASE:-}" ]]; then
+  M2_TEST_DATABASE="m2_shadow_test_$(printf '%s' "$ROOT" | sha256sum | cut -c1-12)"
+  export M2_TEST_DATABASE
+fi
+echo "profile=$CIO_PROFILE M2_TEST_DATABASE=$M2_TEST_DATABASE"
+# A missing database makes every m2_conn test SKIP (green-looking); create it.
+# CREATE only, regex-guarded, never the live m2_shadow. Exit 3 = cluster/driver absent.
+"$PY" scripts/ensure_m2_test_database.py --name "$M2_TEST_DATABASE" || true
+
 changed_paths() {
   python3 - <<'PY'
 import subprocess
@@ -180,7 +204,7 @@ else
     # shape as the pre-push probe at the top of this file — one early failure
     # silently cancelling later coverage.
     cio_failed=()
-    "$PY" scripts/run_cio_hardening_ci.py       || cio_failed+=("cio_hardening")
+    "$PY" scripts/run_cio_hardening_ci.py --profile "$CIO_PROFILE" || cio_failed+=("cio_hardening")
     "$PY" scripts/run_cio_adversarial_suite.py  || cio_failed+=("cio_adversarial")
     # The cio-hardening CI job runs these as separate steps, so local acceptance
     # could pass while CI failed on something provable locally in seconds. That
@@ -189,6 +213,7 @@ else
     # a 16-line edit). Mirror both steps here.
     "$PY" scripts/check_dark_contracts.py --fail-on-new || cio_failed+=("dark_contracts")
     "$PY" scripts/check_line_endings.py                   || cio_failed+=("line_endings")
+    "$PY" scripts/check_test_host_paths.py --fail-on-new  || cio_failed+=("test_host_paths")
     # One Source of Truth (2026-09-13): the authority registry binds, and the rendered
     # docs must match it. A retired provider creeping back, a new host without a
     # registry row, or a writer count that rose all fail here before they reach CI.
