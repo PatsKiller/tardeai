@@ -115,6 +115,12 @@ options_desk_settings:
     research_priority: high
     research_drain_per_tick: 2     # hermes CIO worker --max 2
     research_tick_minutes: 15      # tradeai-hermes-cio-worker.timer OnCalendar=*:0/15
+  # Live Schwab validation (operator 2026-09-26): approve only on a fresh re-quote.
+  validation:
+    max_premium_change_pct: 15.0   # premium move vs the proposal that counts as material
+    max_spot_change_pct: 3.0       # underlying move vs the proposal that counts as material
+    fresh_minutes: 30              # a VALIDATED result older than this does not allow approval
+    strike_count: 40               # strikes requested around the money when re-quoting
   options_exit_rules:
     cash_secured_put:
       take_profit: "Buy back when 50% of the credit is earned"

@@ -42103,6 +42103,41 @@ def _options_lifecycle_post(base_path, body):
     return {"ok": False, "error": f"unknown lifecycle action {action}"}
 
 
+def _options_validate(body=None):
+    """POST /api/v2/options/validate — re-quote one proposal's contract from Schwab (read-only).
+
+    Operator 2026-09-26: never approve on cached/weekend/estimated option values.
+    Records OPTIONS_VALIDATED on the options thesis; approval needs a fresh one.
+    """
+    b = body if isinstance(body, dict) else {}
+    pid = str(b.get("proposal_id") or "").strip()
+    if not pid:
+        return {"ok": False, "error": "proposal_id required"}
+    import options_engine as oe
+    import options_desk_enterprise as ent
+    from lib.options_validate import validate
+    from lib.options_thesis import OptionsThesisStore
+    try:
+        from lib.canonical_observation import market_session
+        session = market_session()
+    except Exception:
+        session = None
+    data = oe._load_json(oe.PROPOSALS_CACHE) or {}
+    prop = next((x for x in (data.get("proposals") or []) if str(x.get("id")) == pid), None)
+    if prop is None:
+        return {"ok": False, "error": "proposal not on the current desk; regenerate"}
+    res = validate(prop, chain_fn=lambda sym, strikes=40: oe._schwab_chain(sym, strikes=strikes),
+                   cfg=ent.load_desk_config(), session=session)
+    guid = prop.get("option_strategy_guid")
+    if guid:
+        try:
+            OptionsThesisStore().append_event(guid, "OPTIONS_VALIDATED", **{k: v for k, v in res.items()
+                                                                            if k not in ("schema",)})
+        except Exception as e:
+            res["record_error"] = type(e).__name__
+    return {"ok": True, "data": _json_clean(res)}
+
+
 def _options_approval_resolve(body=None):
     """POST /api/v2/options/approval-queue/resolve — approve or reject desk proposal."""
     b = body if isinstance(body, dict) else {}
@@ -53939,6 +53974,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             proposals = data.get("proposals") or []
             ens = oe.enqueue_ensemble_for_proposals(proposals, fresh_hours=fresh_hours)
             return 200, {"ok": True, "proposal_count": len(proposals), **ens}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:200]}
+
+    if method == "POST" and base_path == "/api/v2/options/validate":
+        try:
+            return 200, _options_validate(body if isinstance(body, dict) else {})
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import OptionValidateButton from './OptionValidateButton'
 import { useApi } from '../hooks/useApi'
 import { fmt$, fmtNum } from '../lib/format'
 import { plainEnglishProposal, proposalRiskFlags, strikeDistance, strategyGuide } from '../lib/optionsNovice'
@@ -868,6 +869,7 @@ export default function OptionProposalCardV4({
                 })}
               </div>
             )}
+            {p.id && <OptionValidateButton proposalId={String(p.id)} />}
             {(() => {
               // 2026-09-26 (operator): the living CIO view of this ticker, then this idea's lifecycle.
               const v = (p as any).cio_view
