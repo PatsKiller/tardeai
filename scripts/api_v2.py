@@ -42117,8 +42117,10 @@ def _options_validate(body=None):
     import options_desk_enterprise as ent
     from lib.options_validate import validate
     from lib.options_thesis import OptionsThesisStore
+
     try:
         from lib.canonical_observation import market_session
+
         session = market_session()
     except Exception:
         session = None
@@ -42126,13 +42128,18 @@ def _options_validate(body=None):
     prop = next((x for x in (data.get("proposals") or []) if str(x.get("id")) == pid), None)
     if prop is None:
         return {"ok": False, "error": "proposal not on the current desk; regenerate"}
-    res = validate(prop, chain_fn=lambda sym, strikes=40: oe._schwab_chain(sym, strikes=strikes),
-                   cfg=ent.load_desk_config(), session=session)
+    res = validate(
+        prop,
+        chain_fn=lambda sym, strikes=40: oe._schwab_chain(sym, strikes=strikes),
+        cfg=ent.load_desk_config(),
+        session=session,
+    )
     guid = prop.get("option_strategy_guid")
     if guid:
         try:
-            OptionsThesisStore().append_event(guid, "OPTIONS_VALIDATED", **{k: v for k, v in res.items()
-                                                                            if k not in ("schema",)})
+            OptionsThesisStore().append_event(
+                guid, "OPTIONS_VALIDATED", **{k: v for k, v in res.items() if k not in ("schema",)}
+            )
         except Exception as e:
             res["record_error"] = type(e).__name__
     return {"ok": True, "data": _json_clean(res)}
