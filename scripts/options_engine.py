@@ -636,6 +636,35 @@ def _entry_state_conviction_symbols(limit: int = 15) -> List[dict]:
     return out[:limit]
 
 
+def _watchlist_buy_conviction_rows(limit: int = 40) -> List[dict]:
+    """Buy and strong-buy watchlist names. Not the whole watchlist. [] if the DB is down."""
+    try:
+        from lib.options_pipeline.universe import (
+            _fetch_watchlist_buy_rows,
+            _normalize_verdict,
+        )
+    except Exception:
+        return []
+    out: List[dict] = []
+    for row in _fetch_watchlist_buy_rows():
+        verdict = _normalize_verdict(row.get("card_rec")) or _normalize_verdict(row.get("synth_rec"))
+        if not verdict:
+            continue
+        sym = str(row.get("symbol") or "").upper()
+        if not sym or not sym.isalpha() or len(sym) > 6:
+            continue
+        out.append({
+            "symbol": sym,
+            "source": "watchlist_buy_strong_buy",
+            "confidence": 0.64 if verdict == "strong_buy" else 0.60,
+            "summary": f"watchlist {verdict.replace('_', ' ')}",
+            "verdict": verdict,
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _high_conviction_symbols(limit: int = 25) -> List[dict]:
     """Layer 4 + fused signals + Aegis CC candidates + Stage 1E entry_state."""
     out: Dict[str, dict] = {}
@@ -2221,6 +2250,11 @@ def generate_proposals(force: bool = False) -> dict:
     aegis_map = _aegis_cc_map()
     owned = {h.get("symbol", "").upper() for h in holdings if _f(h.get("shares")) >= 100}
     convictions = _high_conviction_symbols()
+    have = {(c.get("symbol") or "").upper() for c in convictions}
+    for row in _watchlist_buy_conviction_rows():
+        if row["symbol"] not in have:
+            convictions.append(row)
+            have.add(row["symbol"])
     entry_scanned = [
         {
             "symbol": c.get("symbol"),

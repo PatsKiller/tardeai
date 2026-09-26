@@ -333,7 +333,7 @@ export default function OptionsHub({ onDrill }: Props) {
             Options Desk ⓘ
           </Tip>
           <div style={hubSubtitle(terminalUi)}>
-            {(proposals?.universe_census?.banner) || 'This is not a market-wide options search. These cards were scored from holdings and a short signal list.'}
+            {(proposals?.universe_census?.banner) || 'This is not a market-wide options search. These cards were scored from holdings, the buy and strong-buy watchlist, and a short signal list.'}
             {' '}· {propCount} cards from that limited set · {posList.length} open legs
             {proposals?.quality_gate && (
               <Tip tip={HEADER.qualityGate}> · gate {proposals.quality_gate.min_edge_score}+ / sleeve {proposals.quality_gate.relaxed_edge_floor}+ ⓘ</Tip>

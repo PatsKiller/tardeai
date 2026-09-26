@@ -5,8 +5,10 @@ from typing import Any, Optional
 
 BANNER = (
     "This is not a market-wide options search. "
-    "These cards were scored from holdings and a short signal list."
+    "These cards were scored from holdings, the buy and strong-buy watchlist, "
+    "and a short signal list."
 )
+WATCHLIST_LIMIT = 40
 RANKING = "edge_score among names already in this limited set"
 
 
@@ -66,6 +68,8 @@ def build_universe_census(
             "fused_used": by_source.get("fused_signal", 0) if inputs_recorded else None,
             "starred_used": by_source.get("operator_starred", 0) if inputs_recorded else None,
             "entry_state_used": by_source.get("entry_state", 0) if inputs_recorded else None,
+            "watchlist_buy_strong_buy_limit": WATCHLIST_LIMIT,
+            "watchlist_used": by_source.get("watchlist_buy_strong_buy", 0) if inputs_recorded else None,
             "liquid_options_core_included": False,
         },
         "scored": int(scored),
