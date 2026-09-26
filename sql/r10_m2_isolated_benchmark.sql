@@ -32,8 +32,15 @@ DECLARE
   -- shadow's own rebuild.
   -- m2_shadow_test is the pytest database (tests/conftest.py routes every
   -- shadow DSN there so tests never touch the live m2_shadow).
-  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow,m2_shadow_test');
-  v_isolated  boolean := current_database() = ANY (string_to_array(v_allowed, ','));
+  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow,m2_shadow_test,m2_shadow_test_*');
+  -- The allowlist is authoritative. An entry ending in '_*' matches that prefix plus
+  -- [a-z0-9_]{1,40} (per-worktree pytest databases, 2026-09-25); it is part of the DEFAULT
+  -- list only, so an explicitly narrowed m2.isolated_databases still refuses them.
+  v_isolated  boolean := EXISTS (
+                           SELECT 1 FROM unnest(string_to_array(v_allowed, ',')) AS a(n)
+                           WHERE current_database() = btrim(a.n)
+                              OR (right(btrim(a.n), 2) = '_*'
+                                  AND current_database() ~ ('^' || left(btrim(a.n), length(btrim(a.n)) - 1) || '[a-z0-9_]{1,40}$')));
   v_opted_in  boolean := coalesce(current_setting('m2.allow_destructive_reset', true), 'off') = 'on';
   v_exists    boolean := EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'memory_r10_m2');
 BEGIN
@@ -66,8 +73,15 @@ CREATE SCHEMA IF NOT EXISTS memory_r10_m2;
 -- password generated into Bitwarden SM, never printed).
 DO $ensure_m2_agent$
 DECLARE
-  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow,m2_shadow_test');
-  v_isolated  boolean := current_database() = ANY (string_to_array(v_allowed, ','));
+  v_allowed   text := coalesce(nullif(current_setting('m2.isolated_databases', true), ''), 'm2_shadow,m2_shadow_test,m2_shadow_test_*');
+  -- The allowlist is authoritative. An entry ending in '_*' matches that prefix plus
+  -- [a-z0-9_]{1,40} (per-worktree pytest databases, 2026-09-25); it is part of the DEFAULT
+  -- list only, so an explicitly narrowed m2.isolated_databases still refuses them.
+  v_isolated  boolean := EXISTS (
+                           SELECT 1 FROM unnest(string_to_array(v_allowed, ',')) AS a(n)
+                           WHERE current_database() = btrim(a.n)
+                              OR (right(btrim(a.n), 2) = '_*'
+                                  AND current_database() ~ ('^' || left(btrim(a.n), length(btrim(a.n)) - 1) || '[a-z0-9_]{1,40}$')));
   v_pw        text := nullif(current_setting('m2.agent_password', true), '');
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'm2_agent') THEN
