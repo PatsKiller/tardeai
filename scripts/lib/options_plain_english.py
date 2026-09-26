@@ -246,8 +246,13 @@ def committee_memo(p: dict[str, Any], t: dict[str, Any], record: Optional[dict[s
         "classification_label": clabel,
         "purpose": cpurpose,
         "investment_thesis": (t.get("thesis_summary") or "").strip() or not_researched,
-        "market_thesis": rc.get("summary") or not_researched,
-        "contrarian_view": "; ".join(_thesis_list(t, "counter_evidence")) or not_researched,
+        # A source label ("high", "watchlist buy") is not a market thesis (2026-09-26).
+        "market_thesis": (rc.get("summary") if len(str(rc.get("summary") or "").split()) >= 6 else None) or not_researched,
+        # Counter-evidence arrives as ids (ev_...); show the researched bear case as text,
+        # and count the ids rather than printing them as if they were a view (2026-09-26).
+        "contrarian_view": (str((p.get("research_answers") or {}).get("bear_case") or "").strip()
+                            or (f"{len(_thesis_list(t, 'counter_evidence'))} counter-evidence item(s) on file; "
+                                "text not attached to this card" if _thesis_list(t, "counter_evidence") else not_researched)),
         "why_now": p.get("catalyst") or rc.get("catalyst") or not_researched,
         "research_status": research,
         "confidence": conf,

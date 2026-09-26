@@ -841,7 +841,8 @@ export default function OptionProposalCardV4({
             <div style={{ color: BB.text1, fontWeight: 700 }}>{p.symbol} {String(opt.structure || p.strategy || 'option').replace(/_/g, ' ')}{acct ? ` · ${acct}` : ''}{when ? ` · ${when}` : ''}{strikes ? ` · ${strikes}` : ''}{spot ? ` · ${spot}` : ''}</div>
             <div style={{ marginTop: 4, color: refuse ? BB.red : BB.text1, fontWeight: 700 }}>{verdict}{rr != null ? ` Reward/risk ${rr}.` : ''}{pop ? ` POP ${pop}.` : ''}</div>
             <div style={{ marginTop: 4 }}>{stock.maximum_loss_model}</div>
-            <div style={{ marginTop: 4, color: BB.text1 }}>CIO {oversight.review_status || 'unreviewed'}. {ensembleRunning ? 'Aegis is still running. That is not a CIO decision.' : 'A model score is not a CIO decision.'}</div>
+            {/* 2026-09-26: the committee memo below states the CIO status; this line contradicted it. */}
+            {!(p as any).committee_memo && <div style={{ marginTop: 4, color: BB.text1 }}>CIO {oversight.review_status || 'unreviewed'}. {ensembleRunning ? 'Aegis is still running. That is not a CIO decision.' : 'A model score is not a CIO decision.'}</div>}
             <div style={{ marginTop: 4, color: BB.text3 }}>{fresh} · thesis {pin}</div>
             {(() => {
               // 2026-09-26: options carry the same thesis bar as a stock purchase.
@@ -931,7 +932,7 @@ export default function OptionProposalCardV4({
                 <div style={{ marginTop: 3 }}><b style={{ color: BB.text1 }}>{label}</b> {Array.isArray(v) ? v.join('; ') : String(v ?? '—')}</div>
               )
               return (
-                <details data-testid="options-committee-memo" open style={{ marginTop: 8, borderTop: `1px solid ${BB.border}`, paddingTop: 6 }}>
+                <details data-testid="options-committee-memo" style={{ marginTop: 8, borderTop: `1px solid ${BB.border}`, paddingTop: 6 }}>
                   <summary style={{ cursor: 'pointer', fontWeight: 900, color: BB.text1 }}>
                     {m.classification_label} · <span style={{ color: cioColor }}>{cioIcon} {m.cio_status_label}</span>
                     {' · '}research {String(m.research_status).toLowerCase().replace(/_/g, ' ')} · confidence {m.confidence}
@@ -978,7 +979,7 @@ export default function OptionProposalCardV4({
               if (!pe) return null
               const money = (v: number) => `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
               return (
-                <details data-testid="options-plain-english" open style={{ marginTop: 8, borderTop: `1px solid ${BB.border}`, paddingTop: 6 }}>
+                <details data-testid="options-plain-english" style={{ marginTop: 8, borderTop: `1px solid ${BB.border}`, paddingTop: 6 }}>
                   <summary style={{ cursor: 'pointer', fontWeight: 800, color: BB.text1 }}>What this trade does</summary>
                   <div style={{ marginTop: 4 }}><b style={{ color: BB.text1 }}>Objective.</b> {pe.objective}</div>
                   <div style={{ marginTop: 4 }}><b style={{ color: BB.text1 }}>Your premium.</b> {pe.premium_line}</div>
@@ -1017,7 +1018,8 @@ export default function OptionProposalCardV4({
             </div>
             {(() => {
               const memo = (p as any).options_research_memo
-              if (!memo?.thesis) return null
+              // Superseded by the committee memo (2026-09-26): it repeated one block reason three times.
+              if (!memo?.thesis || (p as any).committee_memo) return null
               const t = memo.thesis
               const c = memo.committee || {}
               const line = (label: string, value: unknown) => (

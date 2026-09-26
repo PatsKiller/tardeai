@@ -12,7 +12,7 @@ function ensembleContent(p: OptionProposal): string {
     `OPTIONS PROPOSAL — ${p.strategy.replace(/_/g, ' ')}`,
     `Symbol: ${p.symbol} · Account: ${p.account || '—'}`,
     `Strike: $${p.strike} · Exp: ${p.expiration} · DTE: ${p.dte}`,
-    `Contracts: ${p.contracts} · Premium: $${p.premium} · Credit: $${p.premium_total}`,
+    `Contracts: ${p.contracts} · Premium: $${p.premium} · ${['protective_put', 'long_call', 'long_put'].includes(p.strategy) ? 'Debit (you pay)' : 'Credit (you collect)'}: $${p.premium_total}`,
     `POP: ${p.pop_pct}% · Edge: ${p.edge_score} · IV: ${p.iv_rank}% · R:R: ${p.risk_reward}`,
     p.aegis_note ? `Aegis: ${p.aegis_note}` : '',
     p.reasoning || '',

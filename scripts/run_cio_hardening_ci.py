@@ -2486,6 +2486,7 @@ GATES = [
         "chain_iv_fallback_20260926",
         ["tests/test_chain_iv_fallback_20260926.py", "tests/test_options_holdings_funnel.py",
          "tests/test_cc_yield_scoring_20260926.py", "tests/test_truthful_cards_20260926.py",
+         "tests/test_card_cleanup_20260926.py",
          "tests/test_iv_history_depth_20260926.py"],
     ),
 ]
