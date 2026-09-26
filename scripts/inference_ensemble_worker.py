@@ -17,6 +17,7 @@ import argparse
 import hashlib
 import json
 import logging
+import os
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -145,10 +146,30 @@ def main() -> int:
     if not a.run:
         ap.print_help()
         return 0
-    out = process(a.limit)
+    try:
+        out = process(a.limit)
+    except Exception as e:  # a claim failure used to die silently in the cron log (lanes outage, 2026-07-08)
+        out = {"claimed": 0, "done": 0, "errors": 1, "last_error": str(e)[:500]}
+        _write_heartbeat(out)
+        log.error("ensemble worker failed before processing: %s", e)
+        print(json.dumps(out))
+        return 1
+    _write_heartbeat(out)
     log.info("ensemble worker: claimed=%d done=%d errors=%d", out["claimed"], out["done"], out["errors"])
     print(json.dumps(out))
     return 0
+
+
+def _write_heartbeat(out: dict) -> None:
+    """Durable proof of each run; health_agent reads it (ensemble_worker_stalled)."""
+    try:
+        from datetime import datetime, timezone
+        path = Path(os.environ.get("ENSEMBLE_WORKER_HEARTBEAT",
+                                   str(Path(__file__).resolve().parents[1] / "data" / "runtime" / "ensemble_worker_heartbeat.json")))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({**out, "at": datetime.now(timezone.utc).isoformat()}), encoding="utf-8")
+    except Exception as e:
+        log.warning("heartbeat write failed: %s", e)
 
 
 if __name__ == "__main__":

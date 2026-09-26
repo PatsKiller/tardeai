@@ -1073,10 +1073,24 @@ def collect_intelligence_quality() -> list[dict]:
             out.append(_f("intelligence_quality", "local_llm_down", "critical",
                           "Local LLM (Ollama) not reachable", base_url=base, kind="code"))
         # ensemble failures
-        ef = _db("SELECT COUNT(*) AS c FROM inference_ensemble_jobs WHERE status='failed' AND requested_at > now() - interval '24 hours'", fetch="one")
+        # The worker writes status='error' (never 'failed'); counting only 'failed' kept this silent.
+        ef = _db("SELECT COUNT(*) AS c FROM inference_ensemble_jobs WHERE status IN ('failed','error') AND requested_at > now() - interval '24 hours'", fetch="one")
         if ef and ef.get("c", 0) > 0:
             out.append(_f("intelligence_quality", "ensemble_failures", "warning",
                           f"{ef['c']} ensemble jobs failed in 24h", count=ef["c"]))
+        # A claim crash changes no row status, so the failure count above cannot see it
+        # (2026-07-08..09-26: 0 claims, 3,687 queued). Stalled = old queued work and nothing finished.
+        stall_h = float(os.getenv("ENSEMBLE_STALL_HOURS", "72"))
+        st = _db("""SELECT COUNT(*) FILTER (WHERE status='queued' AND requested_at < now() - make_interval(hours => %s)) AS old_q,
+                           MAX(finished_at) AS last_done
+                    FROM inference_ensemble_jobs""", (stall_h,), fetch="one")
+        if st and (st.get("old_q") or 0) > 0:
+            last_done = st.get("last_done")
+            stale = last_done is None or (datetime.now(timezone.utc) - last_done).total_seconds() > stall_h * 3600
+            if stale:
+                out.append(_f("intelligence_quality", "ensemble_worker_stalled", "critical",
+                              f"Aegis ensemble worker stalled: {st['old_q']} jobs queued > {stall_h:.0f}h, last finished {last_done or 'never'}",
+                              count=st["old_q"], kind="code"))
         # stale research backlog
         aged = _db("SELECT MAX(EXTRACT(DAY FROM now()-created_at)) AS d FROM hermes_research_intelligence WHERE status='staged'", fetch="one")
         if aged and aged.get("d") and float(aged["d"]) > 14:
@@ -1544,6 +1558,7 @@ WHY = {
     "siem_p0p1": "High-severity (P0/P1) protection/execution SIEM events are open and need review.",
     "local_llm_down": "The local LLM is the free-lane analysis brain; down means degraded intelligence or metered fallback.",
     "ensemble_failures": "Ensemble validation failures weaken proposal/decision confidence.",
+    "ensemble_worker_stalled": "Aegis cannot claim jobs, so every options card shows 'validating…' forever and no ensemble verdict exists.",
     "research_stale": "Hermes research backlog isn't being promoted/refreshed.",
     "hermes_rag_gap": "Promoted Hermes research isn't in RAG — agents read stale/missing context.",
     "hermes_embed_backlog": "Hermes embedding queue is backing up — RAG won't catch up until drained.",

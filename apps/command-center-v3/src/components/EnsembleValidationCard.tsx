@@ -212,6 +212,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
   const [runBusy, setRunBusy] = useState<'grok' | 'chatgpt' | 'all' | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval>>()
   const autoFired = useRef(false)
+  const [job, setJob] = useState<{ status?: string; requested_at?: string; error?: string } | null>(null)
 
   // Read the latest persisted verdict / pending-job status for this target.
   const fetchOnce = useCallback(async (): Promise<'done' | 'pending' | 'none' | 'error'> => {
@@ -220,6 +221,7 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
       const j = await r.json()
       const norm = normalizeEnsembleResult(j.result)
       if (norm) { setResult(norm); return 'done' }
+      setJob(j.job || null)
       if (j.job?.status === 'queued' || j.job?.status === 'running') return 'pending'
       return 'none'
     } catch { return 'error' }
@@ -299,7 +301,10 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
     return <EnsembleValidationCard result={result} onRevalidate={() => request()} />
   }
   if (state === 'queued') {
-    return <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: compact ? 0 : 6 }}>⏳ ensemble validating…</div>
+    // Say how long the job has waited; the worker runs weekdays in market hours only.
+    const age = job?.requested_at ? Math.max(0, Math.round((Date.now() - Date.parse(job.requested_at)) / 60000)) : null
+    const ageText = age == null ? '' : age < 60 ? ` · queued ${age}m` : age < 2880 ? ` · queued ${Math.round(age / 60)}h` : ` · queued ${Math.round(age / 1440)}d`
+    return <div style={{ fontSize: 10, color: age != null && age > 1440 ? '#f59e0b' : 'var(--text3)', marginTop: compact ? 0 : 6 }} title="The ensemble worker runs weekdays during market hours.">⏳ ensemble validating{ageText}</div>
   }
   if (state === 'error') {
     return (
@@ -309,7 +314,12 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
       </div>
     )
   }
-  return <EnsembleRunButtons compact={compact} busy={runBusy} onRun={request} />
+  return (
+    <div>
+      {job?.status === 'expired' && <div style={{ fontSize: 10, color: '#f59e0b', marginTop: compact ? 0 : 6 }}>Earlier request expired during the worker outage. Run it again.</div>}
+      <EnsembleRunButtons compact={compact} busy={runBusy} onRun={request} />
+    </div>
+  )
 }
 
 export default EnsembleValidationCard

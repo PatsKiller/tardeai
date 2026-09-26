@@ -297,6 +297,28 @@ export default function WatchIntelligenceUnified() {
       data-broker-projection="watch_intelligence"
       data-broker-catalog="/api/v3/data-broker"
     >
+      {/* 0. Why nothing is actionable — one glance (2026-09-26) */}
+      {cards.length > 0 && (() => {
+        // A system defect (packet never rebuilt) is not the same as "no setup".
+        const SYSTEM = new Set(['DATA_UNAVAILABLE', 'STALE'])
+        const tally: Record<string, string[]> = {}
+        for (const c of cards) {
+          const k = c.trade_ai_state || 'UNKNOWN'
+          ;(tally[k] = tally[k] || []).push(c.symbol)
+        }
+        const actionable = cards.filter(c => c.proposal_allowed).length
+        const rows = Object.entries(tally).sort((a, b) => b[1].length - a[1].length)
+        return (
+          <div data-testid="watch-blocked-by" style={{ border: `1px solid ${BB.border}`, borderRadius: 8, padding: '8px 10px', marginBottom: 10, fontSize: TYPE.sm, color: BB.text2 }}>
+            <b style={{ color: BB.text0 }}>{actionable} of {cards.length} on this page can become a proposal.</b>{' '}
+            {rows.map(([k, syms]) => (
+              <span key={k} style={{ marginRight: 12, color: SYSTEM.has(k) ? '#f59e0b' : BB.text2 }} title={syms.join(', ')}>
+                {syms.length} {k.replace(/_/g, ' ').toLowerCase()}{SYSTEM.has(k) ? ' (system: decision packet not rebuilt)' : ''}
+              </span>
+            ))}
+          </div>
+        )
+      })()}
       {/* 1. System truth strip — advertises Data Broker ownership */}
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
         <div>

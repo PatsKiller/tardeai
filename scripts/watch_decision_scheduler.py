@@ -104,7 +104,16 @@ def build_plan(conn) -> dict:
         # A non-held quarantined research symbol remains queryable but is not an
         # active scheduler candidate. Operator stars and holdings stay visible
         # for evidence/management, never as an implicit new-entry exemption.
-        if quality_state == "QUARANTINED" and not held_or_starred:
+        # 2026-09-26: a quarantine judged on a packet from 09-13 was never looked at
+        # again (1,021 deferred). Past the recheck age, rebuild locally so the gate
+        # judges current data; a rebuild grants no entry, it only re-assesses.
+        recheck_min = float(os.getenv("WATCH_QUARANTINE_RECHECK_DAYS", "7")) * 1440
+        quarantine_recheck = bool(
+            quality_state == "QUARANTINED" and not held_or_starred and packet_info
+            and recheck_min > 0
+            and (now - packet_info["generated_at"]).total_seconds() / 60 > recheck_min
+        )
+        if quality_state == "QUARANTINED" and not held_or_starred and not quarantine_recheck:
             plan["quality_deferred"].append({
                 "symbol": symbol,
                 "tier": tier,
@@ -121,7 +130,10 @@ def build_plan(conn) -> dict:
         due_local = False
         due_reason = ""
 
-        if not packet:
+        if quarantine_recheck:
+            due_local = True
+            due_reason = "QUARANTINE_RECHECK — quarantine judged on a packet older than the recheck age"
+        elif not packet:
             due_local = True
             due_reason = "PACKET_ABSENT — deterministic quality assessment required"
         elif quality_state == "UNASSESSED":

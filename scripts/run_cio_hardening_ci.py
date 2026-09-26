@@ -2445,6 +2445,14 @@ GATES = [
             "tests/test_ci_pr_selection_20260925.py",
         ],
     ),
+    (
+        # 2026-09-26 -- "everything BLOCKED": income ideas screened before a card is built,
+        # Aegis worker heartbeat + stall alarm, Watch refresh workers outside the scheduler cgroup.
+        "everything_blocked_20260926",
+        [
+            "tests/test_everything_blocked_20260926.py",
+        ],
+    ),
 ]
 
 

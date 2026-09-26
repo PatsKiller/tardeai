@@ -421,6 +421,7 @@ def liquidity_gate(contract: dict, *, cfg: Optional[dict] = None) -> dict:
     mid = _f(contract.get("mid"))
     if mid <= 0 and bid > 0 and ask > 0:
         mid = (bid + ask) / 2.0
+    oi_missing = contract.get("oi") is None
     oi = int(_f(contract.get("oi")))
     vol = int(_f(contract.get("volume")))
     spread_pct = 100.0 * (ask - bid) / mid if mid > 0 and ask >= bid else 999.0
@@ -428,7 +429,10 @@ def liquidity_gate(contract: dict, *, cfg: Optional[dict] = None) -> dict:
     min_vol = int(cfg.get("min_volume") or 5)
     max_spread = float(cfg.get("max_bid_ask_spread_pct") or 12.0)
     issues = []
-    if oi < min_oi:
+    if oi_missing:
+        # Still refused, but named: a chain row without the field is not "0 open interest".
+        issues.append("OI unknown (chain field missing)")
+    elif oi < min_oi:
         issues.append(f"OI {oi} < {min_oi}")
     if vol < min_vol and oi < min_oi * 2:
         issues.append(f"volume {vol} < {min_vol}")
