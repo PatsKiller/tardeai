@@ -807,10 +807,14 @@ def test_isolated_allowlist_default_survives_reset(m2_conn):
     for a bug in the first cut of the guard."""
     with m2_conn.cursor() as cur:
         cur.execute("RESET m2.isolated_databases")
+        # Same matching rule the schema files use: exact names, or a '_*' prefix entry
+        # (per-worktree pytest databases are covered by the DEFAULT list only).
         cur.execute(
-            "SELECT current_database() = ANY (string_to_array(coalesce(nullif("
+            "SELECT EXISTS (SELECT 1 FROM unnest(string_to_array(coalesce(nullif("
             "current_setting('m2.isolated_databases', true), ''), "
-            "'m2_shadow,m2_shadow_test'), ','))"
+            "'m2_shadow,m2_shadow_test,m2_shadow_test_*'), ',')) AS a(n) "
+            "WHERE current_database() = btrim(a.n) OR (right(btrim(a.n), 2) = '_*' AND "
+            "current_database() ~ ('^' || left(btrim(a.n), length(btrim(a.n)) - 1) || '[a-z0-9_]{1,40}$')))"
         )
         assert cur.fetchone()[0] is True
 

@@ -106,9 +106,18 @@ def safe_context(symbol):
         cur.execute("""SELECT strategy_id, status, count(*) FROM trade_instances WHERE symbol=%s
                        GROUP BY 1,2 ORDER BY 3 DESC LIMIT 5""", (symbol,))
         ctx["trade_strategy_status_counts"] = [list(map(str, r)) for r in cur.fetchall()]  # counts only, no $
-        cur.execute("""SELECT topic FROM hermes_research_intelligence WHERE symbol=%s
-                       ORDER BY created_at DESC LIMIT 5""", (symbol,))
-        ctx["recent_research_topics"] = [redact(r[0]) for r in cur.fetchall()]
+        # DISTINCT with count + date range + age. The old query had no dedup, so five identical
+        # "Stop health: NEAR_TRIGGER" rows became five identical lines and models dutifully reported
+        # "repeated near-trigger stress" (PR #255, 2026-07-29 audit). One line, honestly dated.
+        cur.execute("""SELECT topic, count(*), min(created_at)::date, max(created_at)::date,
+                              (current_date - max(created_at)::date)
+                         FROM hermes_research_intelligence
+                        WHERE symbol=%s AND created_at > now() - interval '45 days'
+                        GROUP BY topic ORDER BY max(created_at) DESC LIMIT 5""", (symbol,))
+        ctx["recent_research_topics"] = [
+            {"topic": redact(t), "occurrences": int(n), "first_seen": str(lo), "last_seen": str(hi),
+             "age_days": int(age) if age is not None else None}
+            for t, n, lo, hi, age in cur.fetchall()]
         c.close()
     except Exception as e:
         ctx["context_error"] = str(e)[:80]

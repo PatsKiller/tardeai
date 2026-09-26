@@ -10,9 +10,13 @@ Exit 0 only if all gates pass.
 
 from __future__ import annotations
 
+import argparse
 import os
+import re
 import subprocess
 import sys
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -685,6 +689,8 @@ GATES = [
             "tests/test_price_unit_integrity_20260914.py",
             "tests/test_finviz_view_contracts_20260914.py",
             "tests/test_source_health_and_av_selection_20260914.py",
+            # 2026-09-22 (split from #1189): researched names stay in the price-refresh universe.
+            "tests/test_researched_price_universe_20260925.py",
             "tests/test_source_litmus_vs_yahoo_20260914.py",
             "tests/test_social_discovery_monday_window_20260914.py",
             "tests/test_retention_fk_and_schwab_fractional_20260914.py",
@@ -806,6 +812,9 @@ GATES = [
             "tests/test_operator_reply_routing_sources_20260913.py",
             # Stage 1+3 parity: shared Hermes join + internal-first finalize (desk + Maria).
             "tests/test_hermes_join_internal_first_20260923.py",
+            # Failed-lane bodies never reach research consumers; the news guard vetoes a
+            # headline whose stated 52-week extreme contradicts ours (PR #255 refresh).
+            "tests/test_research_packet_hygiene_20260925.py",
             # M5 step 5: join keyed by subject_guid + DB opr_ leg; LEGEND in finalize; [n] citations.
             "tests/test_join_format_m5_20260923.py",
             # Stage 4 residual: atomic jobs.json mirror + bak/migrated recovery.
@@ -1212,6 +1221,9 @@ GATES = [
         "hermes_escalation_dedupe",
         [
             "tests/test_hermes_escalation_dedupe_20260922.py",
+            # Agent-job producers dedup against PENDING work (a fresh-id ON CONFLICT never
+            # fires) and direct Ollama callers share one num_ctx rule (PR #165 refresh).
+            "tests/test_agent_queue_dedup_and_ollama_ctx_20260925.py",
         ],
     ),
     # Training trades must never page the operator. open_trade_monitor sent
@@ -1391,6 +1403,9 @@ GATES = [
             # made pipeline_zero_rows fire on five pipelines that had never
             # reported a row. Pins that unknown stays distinct from zero.
             "tests/test_pipeline_rows_unknown.py",
+            # A retry that raises (subprocess timeout) is a failed retry, not an ERROR flood:
+            # run closed as failed, action recorded, escalation at MAX_RETRIES (PR #140 refresh).
+            "tests/test_pipeline_watchdog_retry_failure_20260925.py",
         ],
     ),
     (
@@ -1768,6 +1783,7 @@ GATES = [
         [
             "tests/test_watch_lock_holders_20260915.py",
             "tests/test_watch_idle_txn_20260924.py",
+            "tests/test_watch_review_automation.py",
         ],
     ),
     (
@@ -2342,6 +2358,15 @@ GATES = [
             "tests/test_agent_memory_shadow_measure.py",
             "tests/test_memory_shadow_measure_honesty.py",
             "tests/test_options_pipeline_validation.py",
+            # Live Schwab Options Desk Stage A–E + Alpaca retirement (2026-09-25).
+            "tests/test_live_schwab_options_desk_stage_abc.py",
+            # Credit-spread R:R floor — refuse $66 vs $1,184 Ideas (2026-09-25).
+            "tests/test_options_credit_spread_rr_floor_20260925.py",
+            # Stock-versus-options comparison contract (2026-09-25).
+            "tests/test_recommendation_comparison_20260925.py",
+            "tests/test_options_decision_stages_20260925.py",
+            "tests/test_options_universe_census_20260925.py",
+            "tests/test_options_research_universe_v2.py",
         ],
     ),
     (
@@ -2392,32 +2417,387 @@ GATES = [
             "tests/test_cio_action_ledger.py",
         ],
     ),
+    (
+        # 2026-09-25 -- CI speed + evidence redesign: no new live-host paths in tests
+        # (a test reading /home/johnclaw/trade-ai-releases broke #1234 on a deploy).
+        "test_host_paths_ratchet_20260925",
+        [
+            "tests/test_check_test_host_paths_20260925.py",
+            "tests/test_cio_ci_profiles_20260925.py",
+            "tests/test_ci_pr_selection_20260925.py",
+        ],
+    ),
 ]
 
 
-def main() -> int:
+# ---------------------------------------------------------------------------
+# Execution profiles (2026-09-25, operator: "speed up to like 5 mins")
+#
+# Measured before this change (3 green CI runs, 2026-09-25): the gates step took
+# 610-1090 s of a 1077-1127 s job. It ran 181 pytest invocations one after the
+# other; one gate (maturity_overnight_20260912, 130 files) alone took 226-385 s.
+# No test was run twice (567 unique files, 7 shared), so the only lever that
+# keeps every registered test is PARALLELISM, not pruning.
+#
+#   fast (default; the required `cio-hardening` context): EVERY gate still runs.
+#         Gates execute concurrently in a worker pool; gates with many files are
+#         split into file chunks so no single gate bounds the wall clock. Gates
+#         whose tests touch shared state (the live docs/INDEX.md, git in the repo,
+#         a Postgres test database) run afterwards, one at a time.
+#   full: the historical behaviour -- one gate at a time, in declared order. It is
+#         the isolation reference (a test that only passes in `fast` or only in
+#         `full` has a hidden dependency) and runs on push to main, nightly, and on
+#         workflow_dispatch in `cio-hardening-full`.
+#
+#   pr:   the required `cio-hardening` context on pull requests (operator budget:
+#         5 minutes wall clock including runner setup). Runs a SELECTION, in the
+#         fast pool: the smoke gates, the full named gates of every HIGH risk tier
+#         the diff touches, every changed test, every test that imports/references
+#         a changed file, then further-reachable tests nearest-first while the
+#         estimate fits config/ci_risk_tiers.json budget_seconds. What does not
+#         fit is DEFERRED -- listed in the log and job summary -- and runs in the
+#         post-merge `full` run (push to main), which opens an issue on failure.
+#         See scripts/lib/test_impact.py. If the base ref or the map is unusable
+#         it falls back to `fast` (everything).
+#
+# All profiles run the same tail checks (docs index drift, release manifest).
+# Registration is unchanged: a test file is covered iff it is in GATES
+# (check_test_coverage.py enforces that), whatever the profile.
+# ---------------------------------------------------------------------------
+
+#: Parallel work is packed into units of about this many seconds (by duration hint).
+UNIT_TARGET_SECONDS = float(os.environ.get("CIO_CI_UNIT_SECONDS", "25"))
+
+#: Per-file wall-second hints (config/ci_test_duration_hints.json). They only order
+#: and pack work; a missing or stale hint can never drop a test.
+DURATION_HINTS_PATH = REPO / "config" / "ci_test_duration_hints.json"
+DEFAULT_FILE_SECONDS = 1.0
+
+#: A FILE runs in the serial tail if it matches one of these. They mark tests that
+#: touch state other workers can see: the committed docs index, git operations, a
+#: Postgres test database, or a probe file planted in scripts/. (Per file, not per gate: the rest of a gate still runs in
+#: parallel.) Conservative on purpose -- a false positive only costs a few seconds.
+SHARED_STATE_PATTERNS = (
+    r"docs/INDEX\.md",
+    r"\bm2_conn\b",
+    r"psycopg2\.connect",
+    r"M2_TEST_DATABASE",
+    r"\bgit\b[\"', ]+(?:stash|checkout|reset|commit|worktree|merge)\b",
+    # plants a probe file INTO scripts/ (ROOT / "scripts" / "_pytest_..._probe.py") to
+    # prove a tree-wide ratchet fires; any concurrent tree scan would see it too
+    r"[\"']scripts[\"']\s*/\s*f?[\"']_",
+)
+_SHARED_STATE_RE = re.compile("|".join(SHARED_STATE_PATTERNS))
+
+#: pytest exit 5 = "no tests collected": a unit whose every module skips at import
+#: (e.g. the Postgres-only files split out of a gate when psycopg2 is absent). The
+#: serial `full` profile never saw it because those files shared one invocation
+#: with runnable tests.
+#: Only when pytest reports skips -- a unit that collects nothing at all still fails.
+PASS_CODES = frozenset({0, 5})
+
+
+def _unit_passed(rc: int, out: str) -> bool:
+    return rc == 0 or (rc == 5 and " skipped" in out)
+
+
+#: Files proven to need the serial tail even though no pattern marks them.
+SERIAL_FILES: frozenset[str] = frozenset()
+
+
+def _profile_from_env() -> str:
+    return (os.environ.get("CIO_CI_PROFILE") or "fast").strip().lower()
+
+
+def _default_jobs() -> int:
+    raw = os.environ.get("CIO_CI_JOBS")
+    if raw and raw.strip().isdigit():
+        return max(1, int(raw))
+    return max(1, min(os.cpu_count() or 2, 8))
+
+
+def load_duration_hints(path: Path = DURATION_HINTS_PATH) -> dict[str, float]:
+    try:
+        import json
+
+        return {str(k): float(v) for k, v in (json.loads(path.read_text(encoding="utf-8")).get("files") or {}).items()}
+    except (OSError, ValueError):
+        return {}
+
+
+def file_needs_serial(path: str) -> bool:
+    if path in SERIAL_FILES:
+        return True
+    try:
+        return bool(_SHARED_STATE_RE.search((REPO / path).read_text(encoding="utf-8", errors="replace")))
+    except OSError:
+        return False
+
+
+def gate_needs_serial(name: str, paths: list[str]) -> bool:
+    """True if any file of the gate needs the serial tail (kept for callers/tests)."""
+    return any(file_needs_serial(p) for p in paths)
+
+
+def plan_units(gates, *, unit_seconds: float = UNIT_TARGET_SECONDS, hints: dict[str, float] | None = None):
+    """Return (parallel_units, serial_units); a unit is (gate_name, [files]).
+
+    Every existing registered file appears in exactly one unit per registration.
+    """
+    hints = load_duration_hints() if hints is None else hints
+
+    def w(p: str) -> float:
+        return hints.get(p, DEFAULT_FILE_SECONDS)
+
+    parallel, serial = [], []
+    for name, paths in gates:
+        existing = [p for p in paths if (REPO / p).is_file()]
+        if not existing:
+            continue
+        shared = [p for p in existing if file_needs_serial(p)]
+        free = [p for p in existing if p not in shared]
+        if shared:
+            serial.append((name, shared))
+        chunk: list[str] = []
+        acc = 0.0
+        for p in free:
+            if chunk and acc + w(p) > unit_seconds:
+                parallel.append((name, chunk))
+                chunk, acc = [], 0.0
+            chunk.append(p)
+            acc += w(p)
+        if chunk:
+            parallel.append((name, chunk))
+
+    parallel.sort(key=lambda u: sum(w(p) for p in u[1]), reverse=True)  # longest first
+    return parallel, serial
+
+
+def _run_unit(unit):
+    name, files = unit
+    t0 = time.monotonic()
+    r = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "--tb=line", "-p", "no:cacheprovider", *files],
+        cwd=str(REPO),
+        capture_output=True,
+        text=True,
+    )
+    return name, files, r.returncode, (r.stdout or "") + (r.stderr or ""), time.monotonic() - t0
+
+
+def run_gates(gates, *, profile: str, jobs: int) -> list[str]:
+    """Run every gate; return the names of failed gates."""
+    failed: list[str] = []
+    if profile == "full" or jobs <= 1:
+        for name, paths in gates:
+            existing = [p for p in paths if (REPO / p).is_file()]
+            if not existing:
+                print(f"[SKIP] {name}: no test files", flush=True)
+                continue
+            print(f"[RUN]  {name}: {' '.join(existing)}", flush=True)
+            r = subprocess.run([sys.executable, "-m", "pytest", "-q", "--tb=line", *existing], cwd=str(REPO))
+            if r.returncode != 0:
+                failed.append(name)
+                print(f"[FAIL] {name}", flush=True)
+            else:
+                print(f"[PASS] {name}", flush=True)
+        return failed
+
+    parallel, serial = plan_units(gates)
+    print(f"[plan] profile=fast jobs={jobs} parallel_units={len(parallel)} serial_gates={len(serial)}", flush=True)
+    results: dict[str, list[tuple]] = {}
+
+    def record(res):
+        name, files, rc, out, secs = res
+        results.setdefault(name, []).append(res)
+        tail = (out.strip().splitlines() or [""])[-1]
+        status = "PASS" if _unit_passed(rc, out) else "FAIL"
+        print(f"[{status}] {name} ({len(files)} files, {secs:.1f}s) {tail[-100:]}", flush=True)
+        if not _unit_passed(rc, out):
+            print(out[-6000:], flush=True)
+
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        for res in pool.map(_run_unit, parallel):
+            record(res)
+    for unit in serial:
+        record(_run_unit(unit))
+
+    declared = [n for n, _ in gates]
+    for name in declared:
+        if any(not _unit_passed(r[2], r[3]) for r in results.get(name, [])) and name not in failed:
+            failed.append(name)
+    return failed
+
+
+def select_pr_gates(
+    base: str, *, include_worktree: bool = False, budget: float | None = None, changed: list[str] | None = None
+):
+    """Return (gates, profile) for the pr profile; falls back to (GATES, "fast")."""
+    import json
+
+    sys.path.insert(0, str(REPO))
+    from scripts.lib import test_impact
+
+    t0 = time.monotonic()
+    if changed is None:
+        changed = test_impact.changed_paths(base, root=REPO, include_worktree=include_worktree)
+    if changed is None:
+        print(f"[select] base {base!r} unusable -> FALLBACK to fast (every gate)", flush=True)
+        return GATES, "fast"
+    try:
+        impact_map, status = test_impact.load_map(REPO)
+        tiers = test_impact.load_tiers()
+    except (OSError, ValueError) as exc:
+        print(f"[select] impact map/tiers unusable ({exc}) -> FALLBACK to fast (every gate)", flush=True)
+        return GATES, "fast"
+    sel = test_impact.select(
+        changed,
+        GATES,
+        impact_map=impact_map,
+        tiers=tiers,
+        hints=load_duration_hints(),
+        default_seconds=DEFAULT_FILE_SECONDS,
+        budget_seconds=budget,
+    )
+    n_files = sum(len(f) for _n, f in sel["gates"])
+    print(
+        f"[select] base={base} changed={len(changed)} tier={sel['tier']} map={status} "
+        f"impacted={sel['impacted']} selected_files={n_files} gates={len(sel['gates'])} "
+        f"estimate={sel['estimate_seconds']}s (mandatory {sel['mandatory_estimate_seconds']}s, "
+        f"budget {sel['budget_seconds']}s) deferred={len(sel['deferred'])} "
+        f"select_secs={time.monotonic() - t0:.1f}",
+        flush=True,
+    )
+    for cat, paths in sorted(sel["high"].items()):
+        print(f"[select] HIGH {cat}: {', '.join(paths[:8])}{' ...' if len(paths) > 8 else ''}", flush=True)
+    for f in sel["deferred"][:25]:
+        print(f"[select] DEFERRED to post-merge full run: {f}", flush=True)
+    if len(sel["deferred"]) > 25:
+        print(
+            f"[select] ... and {len(sel['deferred']) - 25} more DEFERRED (all listed in the job summary "
+            "and in CIO_CI_SELECTION_OUT when set)",
+            flush=True,
+        )
+    if sel["unknown_gates"]:
+        print(f"[select] WARNING tier config names unknown gates: {sel['unknown_gates']}", flush=True)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        lines = [
+            "## cio-hardening (pr profile)",
+            f"- changed paths: {len(changed)}; risk tier: **{sel['tier'].upper()}**",
+            f"- selected: {n_files} test files in {len(sel['gates'])} gates; "
+            f"estimate {sel['estimate_seconds']} s of {sel['budget_seconds']} s budget",
+            f"- deferred to the post-merge full run: {len(sel['deferred'])}",
+        ]
+        if sel["high"]:
+            lines.append("")
+            lines.append("### HIGH-risk paths touched -- independent review required (reviewer is not the author)")
+            for cat, paths in sorted(sel["high"].items()):
+                lines.append(f"- **{cat}**: " + ", ".join(f"`{p}`" for p in paths))
+        if sel["deferred"]:
+            lines.append("")
+            lines.append("<details><summary>Deferred tests</summary>\n")
+            lines += [f"- `{f}`" for f in sel["deferred"]]
+            lines.append("\n</details>")
+        try:
+            with open(summary, "a", encoding="utf-8") as fh:
+                fh.write("\n".join(lines) + "\n")
+        except OSError:
+            pass
+    out = os.environ.get("CIO_CI_SELECTION_OUT")
+    if out:
+        Path(out).write_text(
+            json.dumps({k: v for k, v in sel.items()}, indent=1, default=list) + "\n", encoding="utf-8"
+        )
+    return sel["gates"], "fast"
+
+
+def write_duration_hints(*, jobs: int) -> int:
+    """Measure per-file wall time and rewrite config/ci_test_duration_hints.json."""
+    import json
+
+    files = sorted({p for _n, ps in GATES for p in ps if (REPO / p).is_file() and not file_needs_serial(p)})
+
+    def one(path: str):
+        t0 = time.monotonic()
+        subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", path],
+            cwd=str(REPO),
+            capture_output=True,
+        )
+        return path, round(time.monotonic() - t0, 1)
+
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        measured = dict(pool.map(one, files))
+    doc = {
+        "schema": "CiTestDurationHints@v1",
+        "note": (
+            "Per-file wall seconds (one pytest process per file). Used ONLY to order and pack work in "
+            "run_cio_hardening_ci.py --profile fast; never decides which tests run. Files below 2 s are "
+            "omitted (default weight 1 s). Refresh with scripts/run_cio_hardening_ci.py --write-duration-hints."
+        ),
+        "files": {k: v for k, v in sorted(measured.items()) if v >= 2.0},
+    }
+    DURATION_HINTS_PATH.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    print(f"wrote {DURATION_HINTS_PATH.relative_to(REPO)} ({len(doc['files'])} files >= 2 s of {len(files)})")
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    ap.add_argument("--profile", choices=("pr", "fast", "full"), default=_profile_from_env())
+    ap.add_argument("--base", default=os.environ.get("CIO_CI_BASE", "origin/main"), help="pr profile: diff base")
+    ap.add_argument("--include-worktree", action="store_true", help="pr profile: add uncommitted/untracked paths")
+    ap.add_argument("--print-selection", action="store_true", help="pr profile: print the selection and exit")
+    ap.add_argument("--changed", nargs="+", default=None, help="pr profile: use these paths instead of the git diff")
+    ap.add_argument("--budget", type=float, default=None, help="pr profile: override budget_seconds (fast_check.sh)")
+    ap.add_argument(
+        "--no-tail",
+        action="store_true",
+        help="skip the docs-index/manifest tail checks (fast_check.sh: the candidate manifest step writes files)",
+    )
+    ap.add_argument("--jobs", type=int, default=_default_jobs())
+    ap.add_argument("--list-plan", action="store_true", help="print the fast-profile plan and exit")
+    ap.add_argument(
+        "--write-duration-hints",
+        action="store_true",
+        help="time every parallel-safe registered file (one pytest per file) and rewrite the hints file",
+    )
+    args = ap.parse_args(argv)
+
     os.chdir(REPO)
     os.environ.setdefault("TRADE_AI_CI", "1")
     os.environ.setdefault("CIO_TELEGRAM_INTERDICT", "1")
     # Ensure pytest interdicts telegram
     os.environ.setdefault("PYTEST_ADDOPTS", "")
 
-    failed: list[str] = []
-    for name, paths in GATES:
-        existing = [p for p in paths if (REPO / p).is_file()]
-        if not existing:
-            print(f"[SKIP] {name}: no test files")
-            continue
-        print(f"[RUN]  {name}: {' '.join(existing)}")
-        r = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "--tb=line", *existing],
-            cwd=str(REPO),
+    if args.write_duration_hints:
+        return write_duration_hints(jobs=args.jobs)
+
+    if args.list_plan:
+        parallel, serial = plan_units(GATES)
+        print(f"parallel_units={len(parallel)} serial_gates={len(serial)}")
+        for name, files in serial:
+            print(f"  serial: {name} ({len(files)} files)")
+        return 0
+
+    t0 = time.monotonic()
+    gates, profile = GATES, args.profile
+    if profile == "pr":
+        gates, profile = select_pr_gates(
+            args.base, include_worktree=args.include_worktree, budget=args.budget, changed=args.changed
         )
-        if r.returncode != 0:
-            failed.append(name)
-            print(f"[FAIL] {name}")
-        else:
-            print(f"[PASS] {name}")
+        if args.print_selection:
+            return 0
+    failed = run_gates(gates, profile=profile, jobs=args.jobs)
+    print(f"[timing] gates profile={args.profile} jobs={args.jobs} wall={time.monotonic() - t0:.0f}s", flush=True)
+
+    if args.no_tail:
+        if failed:
+            print(f"\nCIO HARDENING CI FAILED: {failed}")
+            return 1
+        print("\nCIO HARDENING CI: ALL SELECTED GATES PASS (tail checks skipped)")
+        return 0
 
     # Phase 2: never regenerate the committed manifest before validating it.
     # 1) check-committed — read-only integrity of the files in git
