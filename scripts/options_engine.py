@@ -65,6 +65,35 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+_DESK_CFG: Optional[dict] = None
+# Why an income idea was not built (2026-09-26); reset per generate_proposals pass.
+INCOME_SCREEN_DROPS: List[dict] = []
+
+
+def _desk_cfg() -> dict:
+    global _DESK_CFG
+    if _DESK_CFG is None:
+        try:
+            from options_desk_enterprise import load_desk_config
+            _DESK_CFG = load_desk_config()
+        except Exception:
+            _DESK_CFG = {}
+    return _DESK_CFG
+
+
+def _income_screen(strategy: str, sym: str, contract: Optional[dict], data_source: str, und: float) -> Optional[str]:
+    """Named reason an income card must not be built, recorded for the funnel."""
+    from lib.options_income_quality import income_drop_reason
+    reason = income_drop_reason(strategy, contract, data_source, und, _desk_cfg())
+    if reason:
+        INCOME_SCREEN_DROPS.append({
+            "symbol": sym, "strategy": strategy, "reason": reason,
+            "strike": (contract or {}).get("strike"), "premium": (contract or {}).get("mid"),
+            "oi": (contract or {}).get("oi"), "bid_ask_spread_pct": (contract or {}).get("bid_ask_spread_pct"),
+        })
+    return reason
+
+
 def _iso(dt: Optional[datetime] = None) -> str:
     return (dt or _now()).isoformat()
 
@@ -197,6 +226,10 @@ def _iv_rank_proxy(sym: str, tech: dict, chain_iv: Optional[float] = None) -> fl
     hist = _iv_rank_from_history(sym, iv_pct)
     if hist is not None:
         return max(0.0, min(100.0, hist))
+    if iv_pct <= 0 and not (hi > lo and px > 0) and vol_boost <= 0:
+        # No IV, no 52-week range, no volatility: the blend is a constant 12.5 that
+        # cleared the conviction floor on nothing (2026-09-26). Say "unknown" as 0.
+        return 0.0
     rank = min(95.0, max(5.0, iv_pct * 0.55 + range_pos * 0.25 + vol_boost))
     return round(rank, 1)
 
@@ -424,11 +457,12 @@ def _resolve_option_contract(
     target_strike: float,
     target_dte: int,
     strikes: int = 16,
+    target_abs_delta: Optional[float] = None,
 ) -> Tuple[Optional[dict], str]:
     """Pick live chain contract or BS estimate."""
     chain = _schwab_chain(sym, strikes=strikes)
     und = _f(chain.get("underlying_price")) or price
-    contract = _pick_chain_contract(chain, side, target_strike, target_dte)
+    contract = _pick_chain_contract(chain, side, target_strike, target_dte, target_abs_delta=target_abs_delta)
     if contract:
         contract["data_source"] = "schwab_chain"
         return contract, "schwab_chain"
@@ -884,7 +918,14 @@ def _schwab_chain(symbol: str, strikes: int = 12) -> dict:
         return {"status": "error", "error": str(e)[:120]}
 
 
-def _pick_chain_contract(chain: dict, side: str, target_strike: float, target_dte: int) -> Optional[dict]:
+def _pick_chain_contract(
+    chain: dict,
+    side: str,
+    target_strike: float,
+    target_dte: int,
+    *,
+    target_abs_delta: Optional[float] = None,
+) -> Optional[dict]:
     """Nearest DTE/strike with a preference for two-sided liquid quotes.
 
     Stage B (2026-09-25): proximity alone once preferred a zero-bid / 100% spread
@@ -911,8 +952,12 @@ def _pick_chain_contract(chain: dict, side: str, target_strike: float, target_dt
                 100.0 * (ask - bid) / mid if two_sided and mid > 0 else 999.0
             )
             proximity = abs(strike - target_strike) + abs(dte - target_dte) * 0.15
-            oi = int(_f(row.get("oi")))
+            oi = None if row.get("oi") is None else int(_f(row.get("oi")))
             vol = int(_f(row.get("volume")))
+            delta = _f(row.get("delta"))
+            if target_abs_delta and delta:
+                # Strike by delta when the chain carries it; strike units keep the DTE weight comparable.
+                proximity = abs(abs(delta) - target_abs_delta) * max(abs(target_strike), 1.0) + abs(dte - target_dte) * 0.15
             contract = {
                 "exp": exp.get("exp"),
                 "dte": dte,
@@ -921,16 +966,28 @@ def _pick_chain_contract(chain: dict, side: str, target_strike: float, target_dt
                 "ask": ask,
                 "mid": round(mid, 2),
                 "iv": _f(row.get("iv")) / 100.0 if _f(row.get("iv")) > 3 else _f(row.get("iv")),
-                "delta": _f(row.get("delta")),
+                "delta": delta,
                 "oi": oi,
                 "volume": vol,
                 "bid_ask_spread_pct": round(spread_pct, 2) if spread_pct < 900 else None,
             }
             # sort key: proximity, then spread, then prefer higher OI
-            candidates.append((proximity, spread_pct, -oi, contract))
+            candidates.append((proximity, spread_pct, -(oi or 0), contract))
     if not candidates:
         return None
     candidates.sort(key=lambda t: (t[0], t[1], t[2]))
+    # 2026-09-26: prefer a contract the enterprise liquidity gate can pass, within a
+    # configured distance of the target, before falling back to raw proximity.
+    try:
+        from lib.options_income_quality import is_liquid, setting
+        cfg = _desk_cfg()
+        slack = abs(target_strike) * float(setting(cfg, "picker_strike_slack_pct")) / 100.0
+        best = candidates[0][0]
+        liquid_near = [c for c in candidates if c[0] <= best + max(slack, 1.0) and is_liquid(c[3], cfg)]
+        if liquid_near:
+            return liquid_near[0][3]
+    except Exception:
+        pass
     best_prox = candidates[0][0]
     # Within ~2% of underlying (or $1 floor) of the nearest strike, prefer liquidity.
     strike_slack = max(1.0, abs(target_strike) * 0.02)
@@ -991,7 +1048,8 @@ def _edge_score_wheel(
     iv_s = min(100.0, iv_rank) * 0.14
     base = max(capital_at_risk, premium, 0.01)
     ann = (premium / base) * (365.0 / max(dte, 7)) * 100.0
-    roc_s = min(28.0, ann * 4.5)
+    from lib.options_income_quality import roc_score
+    roc_s = roc_score(ann, _desk_cfg(), 28.0)
     conv_s = min(14.0, conviction * 14.0)
     dte_s = 6.0 if 21 <= dte <= 45 else (3.0 if 14 <= dte <= 60 else 0.0)
     return round(pop_s + iv_s + roc_s + conv_s + dte_s, 1)
@@ -1266,10 +1324,12 @@ def generate_covered_call_proposals(
         else:
             target_strike = round(target_strike / 5.0) * 5.0
 
+        from lib.options_income_quality import setting as _qs
         contract, data_source = _resolve_option_contract(
             sym, price, tech, "call", target_strike, default_dte,
+            target_abs_delta=float(_qs(_desk_cfg(), "cc_target_delta")),
         )
-        if not contract:
+        if not contract or _income_screen("covered_call", sym, contract, data_source, _f(price)):
             continue
         premium = contract["mid"]
         strike = contract["strike"]
@@ -1726,7 +1786,9 @@ def generate_defined_risk_proposals(
         iv_rank = _iv_rank_proxy(sym, tech)
         min_iv = MIN_IV_CONVICTION if conf >= 0.6 else MIN_IV_RANK
         if iv_rank < min_iv:
-            _drop_entry(c, "IV_BELOW", iv_rank=iv_rank, min_iv=min_iv)
+            _drop_entry(c, "IV_UNKNOWN" if iv_rank <= 0 else "IV_BELOW", iv_rank=iv_rank, min_iv=min_iv)
+            if iv_rank <= 0:
+                INCOME_SCREEN_DROPS.append({"symbol": sym, "strategy": "any", "reason": "IV_UNKNOWN"})
             continue
 
         und = price
@@ -1749,8 +1811,15 @@ def generate_defined_risk_proposals(
         elif conf >= 0.55 and not owned_entry:
             # entry_state + owned → long_call only; never CSP on a name already held ≥100.
             target_strike = round(und * 0.92 / 2.5) * 2.5 if und > 50 else round(und * 0.93, 1)
-            contract, data_source = _resolve_option_contract(sym, und, tech, "put", target_strike, 30)
-            if contract:
+            from lib.options_income_quality import setting as _qs
+            contract, data_source = _resolve_option_contract(
+                sym, und, tech, "put", target_strike, 30,
+                target_abs_delta=float(_qs(_desk_cfg(), "csp_target_abs_delta")),
+            )
+            reason = _income_screen("cash_secured_put", sym, contract, data_source, und)
+            if reason:
+                _drop_entry(c, reason)
+            elif contract:
                 _append_csp_proposal(
                     proposals, sym=sym, und=und, conf=conf, iv_rank=iv_rank,
                     c=c, contract=contract, data_source=data_source,
@@ -2274,7 +2343,7 @@ def _apply_enterprise_layer(proposals: List[dict]) -> List[dict]:
                     "bid": bid,
                     "ask": ask,
                     "mid": mid,
-                    "oi": int(_f(p.get("oi"))),
+                    "oi": None if p.get("oi") is None else int(_f(p.get("oi"))),
                     "volume": int(_f(p.get("volume"))),
                     "strike": _f(p.get("strike")),
                     "dte": int(p.get("dte") or 0),
@@ -2293,6 +2362,25 @@ def _apply_enterprise_layer(proposals: List[dict]) -> List[dict]:
                 ent.persist_chain_snapshot(sym, chain, vol)
         enriched.append(row)
     return enriched
+
+
+def _income_screen_summary() -> dict:
+    """Reason -> count and names for income ideas the screen refused to build."""
+    by: Dict[str, dict] = {}
+    for d in INCOME_SCREEN_DROPS:
+        slot = by.setdefault(d["reason"], {"count": 0, "symbols": []})
+        slot["count"] += 1
+        if d.get("symbol") and d["symbol"] not in slot["symbols"]:
+            slot["symbols"].append(d["symbol"])
+    return {"reasons": by, "total": len(INCOME_SCREEN_DROPS), "drops": INCOME_SCREEN_DROPS[:200]}
+
+
+def _market_session_now() -> Optional[str]:
+    try:
+        from lib.canonical_observation import market_session
+        return market_session()
+    except Exception:
+        return None
 
 
 def _universe_census(holdings, convictions, scored_rows, listed) -> dict:
@@ -2325,6 +2413,7 @@ def generate_proposals(force: bool = False) -> dict:
         except Exception:
             pass
 
+    INCOME_SCREEN_DROPS.clear()
     holdings, _ = _load_holdings()
     tech_map = _load_technicals()
     intent_cfg = _load_intent_cfg()
@@ -2475,6 +2564,8 @@ def generate_proposals(force: bool = False) -> dict:
         "research_lanes": sorted({lane for c in convictions for lane in (c.get("source_lanes") or [])}),
         "proposals": all_p,
         "universe_census": _universe_census(holdings, convictions, strict, all_p),
+        "income_screen": _income_screen_summary(),
+        "market_session": _market_session_now(),
         "desk_level": "enterprise",
         "enterprise": enterprise_summary,
         "approval_queue": approval_sync,

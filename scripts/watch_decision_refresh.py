@@ -37,6 +37,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -55,6 +56,7 @@ TIERS = ("LOCAL_QUANT", "STANDARD_BLIND", "PREMIUM_REVIEW")
 JOB_STAGES = ("lock", "assess", "inputs", "rebuild", "policy", "readback")
 MAX_SYMBOLS_PER_RUN = int(os.getenv("WDR_MAX_SYMBOLS_PER_RUN", "200"))
 WORKERS_PER_RUN = int(os.getenv("WDR_WORKERS", "2"))
+WORKER_MAX_RUNTIME_S = int(os.getenv("WDR_WORKER_MAX_RUNTIME_S", "3300"))  # under the hourly sweep
 JOB_SLA_SECONDS = int(os.getenv("WDR_JOB_SLA_SECONDS", "240"))
 ADVISORY_LOCK_NS = 774401  # namespace for per-symbol advisory locks
 
@@ -249,11 +251,7 @@ def enqueue_run(symbols: list[str], *, scope: str = "FULL_STRATEGY",
             skipped += 1
     conn.commit()
     if spawn_workers and queued:
-        for _ in range(min(WORKERS_PER_RUN, queued)):
-            subprocess.Popen([PY, str(PROJECT_ROOT / "scripts" / "watch_decision_refresh.py"),
-                              "--worker"],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                             start_new_session=True, cwd=PROJECT_ROOT)
+        _spawn_workers(min(WORKERS_PER_RUN, queued))
     return {"ok": True, "run_id": run_id, "symbols": syms, "estimated_symbols": len(syms),
             "queued": queued, "skipped_locked": skipped,
             "estimated_lane_calls": est_lanes, "estimated_paid_cost_usd": 0,
@@ -537,11 +535,45 @@ def _refresh_worker_running() -> bool:
     return False
 
 
+def _under_systemd_user() -> bool:
+    return bool(os.environ.get("INVOCATION_ID")) and bool(shutil.which("systemd-run"))
+
+
+def _worker_argv() -> list[str]:
+    return [PY, str(PROJECT_ROOT / "scripts" / "watch_decision_refresh.py"), "--worker"]
+
+
+def _systemd_worker_argv(index: int) -> list[str]:
+    """Run a worker as its own transient user unit, outside the caller's cgroup.
+
+    2026-09-26: a worker Popen'd from the scheduler lives in the scheduler's cgroup.
+    The scheduler's exit reaper (#987, 2026-09-13) SIGKILLed it and systemd's cgroup
+    teardown would have too, so every claimed job died as WorkerDied. 400 failed in
+    five days, 607 sat QUEUED, and no decision packet was rebuilt at scale since 09-13.
+    start_new_session does not leave a cgroup; a separate unit does. Only PATH and
+    PYTHONPATH are passed: secrets load from their files, never from argv.
+    """
+    unit = f"tradeai-watch-refresh-worker-{os.getpid()}-{index}-{int(time.time())}"
+    argv = ["systemd-run", "--user", "--collect", "--quiet", "--no-block",
+            f"--unit={unit}", f"--working-directory={PROJECT_ROOT}",
+            f"--property=RuntimeMaxSec={WORKER_MAX_RUNTIME_S}", "--property=Nice=10"]
+    for key in ("PATH", "PYTHONPATH"):
+        if os.environ.get(key):
+            argv.append(f"--setenv={key}={os.environ[key]}")
+    return argv + _worker_argv()
+
+
 def _spawn_workers(n: int) -> int:
     started = 0
-    for _ in range(max(0, int(n))):
-        subprocess.Popen([PY, str(PROJECT_ROOT / "scripts" / "watch_decision_refresh.py"), "--worker"],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+    detached = _under_systemd_user()
+    for i in range(max(0, int(n))):
+        if detached:
+            rc = subprocess.run(_systemd_worker_argv(i), stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL, cwd=PROJECT_ROOT, timeout=30).returncode
+            if rc == 0:
+                started += 1
+                continue
+        subprocess.Popen(_worker_argv(), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                          start_new_session=True, cwd=PROJECT_ROOT)
         started += 1
     return started
