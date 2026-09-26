@@ -826,15 +826,22 @@ export default function OptionProposalCardV4({
           ? comparison.capital_efficiency
           : `Preferred structure: ${String(comparison.preferred_structure || 'review required').replace(/_/g, ' ')}`
         const fresh = prov.freshness === 'live_chain' ? 'Schwab chain' : (prov.freshness || 'quote not labeled')
+        const strikes = p.short_strike != null && p.long_strike != null
+          ? `$${fmtNum(p.short_strike, 2)} / $${fmtNum(p.long_strike, 2)}`
+          : (p.strike != null ? `$${fmtNum(p.strike, 2)}` : '')
+        const spot = p.underlying_price != null ? `spot $${fmtNum(p.underlying_price, 2)}` : ''
+        const acct = (p.account || '').replace(/_/g, ' ')
+        const when = p.expiration ? fmtExpiry(p.expiration) : (stock.time_horizon || '')
+        const ensembleRunning = /validat|pending|running/i.test(String((p as any).ensemble_status || (p as any).ensemble_state || ''))
         return (
           <div
             title={oversight.cio_commentary || ''}
             style={{ margin: '8px 12px 0', padding: '8px 10px', borderRadius: 8, border: `1px solid ${refuse ? BB.red : BB.border}`, fontSize: 12, lineHeight: 1.45, color: BB.text2 }}
           >
-            <div style={{ color: BB.text1, fontWeight: 700 }}>{p.symbol} {String(opt.structure || p.strategy || 'option').replace(/_/g, ' ')}</div>
+            <div style={{ color: BB.text1, fontWeight: 700 }}>{p.symbol} {String(opt.structure || p.strategy || 'option').replace(/_/g, ' ')}{acct ? ` · ${acct}` : ''}{when ? ` · ${when}` : ''}{strikes ? ` · ${strikes}` : ''}{spot ? ` · ${spot}` : ''}</div>
             <div style={{ marginTop: 4, color: refuse ? BB.red : BB.text1, fontWeight: 700 }}>{verdict}{rr != null ? ` Reward/risk ${rr}.` : ''}{pop ? ` POP ${pop}.` : ''}</div>
             <div style={{ marginTop: 4 }}>{stock.maximum_loss_model}</div>
-            <div style={{ marginTop: 4, color: BB.text1 }}>CIO {oversight.review_status || 'unreviewed'}. A model score is not a CIO decision.</div>
+            <div style={{ marginTop: 4, color: BB.text1 }}>CIO {oversight.review_status || 'unreviewed'}. {ensembleRunning ? 'Aegis is still running. That is not a CIO decision.' : 'A model score is not a CIO decision.'}</div>
             <div style={{ marginTop: 4, color: BB.text3 }}>{fresh} · thesis {pin}</div>
             <div style={{ marginTop: 4, color: BB.text3 }}>
               Research: {(research.source_lanes || []).join(' · ') || 'research lane unavailable'}

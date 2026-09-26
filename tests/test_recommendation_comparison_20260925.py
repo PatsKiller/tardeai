@@ -183,6 +183,58 @@ def test_credit_reward_over_risk_not_loss_over_capital():
     assert "1,177" in cmp["comparison"]["capital_efficiency"] or "1177" in cmp["comparison"]["capital_efficiency"]
 
 
+def test_amzn_credit_uses_the_numbers_on_the_row_and_refuses():
+    row = {
+        "symbol": "AMZN",
+        "strategy": "credit_spread",
+        "account": "schwab_taxable",
+        "data_source": "schwab_chain",
+        "underlying_price": 249.38,
+        "short_strike": 232.5,
+        "long_strike": 220,
+        "max_profit": 73,
+        "max_loss": 1177,
+        "pop_pct": 83.1,
+        "dte": 21,
+        "enterprise": {"live_eligible": True, "blocks": []},
+        "ensemble_verdict": {"confidence": 0.8},
+    }
+    cmp = build_recommendation_comparison(
+        row,
+        thesis={"verdict": "bullish", "direction": "bullish", "thesis_version": "desk@v5", "evidence_refs": []},
+        generated_at="2026-09-25T20:42:00Z",
+    )
+    assert cmp["options_play"]["probability_of_success"] == 83.1
+    assert cmp["options_play"]["probability_basis"] == "proposal.pop_pct"
+    assert cmp["options_play"]["expected_return"] is None
+    assert cmp["comparison"]["preferred_structure"] == "neither"
+    text = cmp["comparison"]["capital_efficiency"]
+    assert "73" in text and ("1177" in text or "1,177" in text) and "0.06" in text
+    assert "sell" not in text.lower()
+    assert "sell" not in cmp["oversight"]["cio_commentary"].lower()
+    assert cmp["oversight"]["review_status"] == "unreviewed"
+    assert cmp["stock_play"]["maximum_loss_model"] == "No stop on this row, so shares are not compared."
+
+
+def test_credit_above_the_floor_is_not_refused():
+    row = {
+        "symbol": "T",
+        "strategy": "credit_spread",
+        "data_source": "schwab_chain",
+        "underlying_price": 200,
+        "stop": 180,
+        "share_count": 100,
+        "max_profit": 400,
+        "max_loss": 1000,
+        "pop_pct": 55,
+        "dte": 30,
+        "enterprise": {"live_eligible": True, "blocks": []},
+    }
+    cmp = build_recommendation_comparison(row, thesis=_THESIS, generated_at="2026-09-25T00:00:00Z")
+    assert cmp["comparison"]["risk_reward"] == 0.4
+    assert cmp["comparison"]["preferred_structure"] != "neither"
+
+
 def test_matrix_covers_generated_families_and_refuses_leaps():
     for sid in ("covered_call", "cash_secured_put", "protective_put", "long_call", "debit_spread", "credit_spread"):
         assert known_family(sid)
