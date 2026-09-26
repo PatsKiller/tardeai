@@ -192,14 +192,22 @@ def _iv_rank_from_history(sym: str, current_iv_pct: float) -> Optional[float]:
         if not USE_DB or current_iv_pct <= 0:
             return None
         rows = _execute(
-            """SELECT iv_pct FROM options_iv_history
+            """SELECT iv_pct, captured_at FROM options_iv_history
                WHERE symbol=%s AND captured_at > NOW() - INTERVAL '365 days'
                ORDER BY captured_at ASC""",
             (sym.upper(),),
             fetch="all",
         ) or []
         vals = [_f(r.get("iv_pct")) for r in rows if _f(r.get("iv_pct")) > 0]
-        if len(vals) < 5:
+        # 2026-09-26: 5 readings from the same week (XAR 31.7-33.5%) made a "52-week
+        # rank" of -95 -> 0 and refused the name. Trust history only once it is deep
+        # and long enough; otherwise the caller falls back to the chain/Finviz proxy.
+        cfg = _desk_cfg()
+        min_n = int(cfg.get("iv_history_min_samples") or 60)
+        min_span = float(cfg.get("iv_history_min_span_days") or 90)
+        stamps = [r.get("captured_at") for r in rows if r.get("captured_at") is not None]
+        span_days = (stamps[-1] - stamps[0]).total_seconds() / 86400.0 if len(stamps) >= 2 else 0.0
+        if len(vals) < min_n or span_days < min_span:
             return None
         lo, hi = min(vals), max(vals)
         if hi <= lo:

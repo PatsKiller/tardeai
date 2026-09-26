@@ -101,6 +101,8 @@ options_desk_settings:
   cc_target_delta: 0.25                # Covered call strike by delta when the chain has deltas
   edge_roc_full_credit_ann_pct: 25.0   # Wheel edge gives full ROC credit only at this annualized yield
   funnel_dust_max_market_value: 250.0  # Holdings below this (and under 100 sh) are fractional leftovers, not CC candidates
+  iv_history_min_samples: 60           # IV rank from history needs at least this many readings
+  iv_history_min_span_days: 90         # ...spanning at least this many days; else the chain/Finviz proxy
   hard_risk_limits:
     max_contracts_per_order: 5
     max_daily_orders: 10
