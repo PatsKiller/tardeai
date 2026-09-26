@@ -123,6 +123,26 @@ options_desk_settings:
     memory_reads: true             # operator 2026-09-26: CIO review reads prior options facts from M2 memory
     memory_reads_limit: 8          # prior decisions/theses/follow-ups supplied to one review
     memory_reads_lookback_days: 180
+  # Symbol-thesis ENRICHES rule (operator 2026-09-26): grade-A research that is not
+  # INSUFFICIENT_DATA may FILL EMPTY invalidation_conditions / catalysts on an existing
+  # symbol thesis. It never changes stance or an authored summary. Also caps the
+  # merged lists every research acceptance writes. Read by scripts/lib/research_thesis_delta.py.
+  symbol_thesis_enrich:
+    scope: options_horizon         # write_provenance.scope on an ENRICHES version
+    cooldown_hours: 24             # min hours between ENRICHES versions for one symbol
+    invalidation_cap: 8            # max invalidation_conditions kept (prior conditions first)
+    catalyst_cap: 8                # max catalysts kept after past-dated ones are pruned
+    evidence_cap: 60               # max evidence_for / counter_evidence ids kept (newest)
+    item_max_chars: 2000           # longest single invalidation/catalyst/evidence text stored
+    # Writers whose summary is machine text, so research may replace it. Any other
+    # writer's summary is treated as authored and inherited. A mint record (mint_state
+    # set, no write_provenance) is machine text too.
+    machine_writers:
+      - research_thesis_delta
+      - thesis_mint_from_research
+      - thesis_mint_dryrun
+      - symbol_thesis_canary
+      - symbol_thesis_freshness
   # Live Schwab validation (operator 2026-09-26): approve only on a fresh re-quote.
   validation:
     max_premium_change_pct: 15.0   # premium move vs the proposal that counts as material

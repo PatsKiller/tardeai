@@ -17,12 +17,10 @@ import math
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
 
-ANSWER_MAP = {
-    "q_catalyst_map": "catalysts",
-    "q_invalidation": "invalidation",
-    "q_bear_case": "bear_case",
-    "q_thesis_check": "thesis",
-}
+try:  # one map for the lifecycle and the symbol-thesis bridge
+    from scripts.lib.cio_question_ids import ANSWER_MAP
+except ImportError:  # run as scripts/options_thesis_lifecycle.py (scripts/ on sys.path)
+    from lib.cio_question_ids import ANSWER_MAP  # type: ignore[no-redef]
 
 DEFAULTS = {
     "abandon_after_hours": 48,

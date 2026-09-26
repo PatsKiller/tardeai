@@ -2503,6 +2503,19 @@ GATES = [
          "tests/test_option_spot_freshness_20260926.py",
          "tests/test_iv_history_depth_20260926.py"],
     ),
+    (
+        # 2026-09-26 -- options research answers improve the SYMBOL thesis through the one
+        # existing writer path: per-question answers mapped to invalidation / catalysts /
+        # bear-case evidence, merged (never replaced) lists, authored summaries kept, and
+        # the governed ENRICHES rule (fill empty fields only; cooldown in config).
+        "symbol_thesis_enrich_20260926",
+        [
+            "tests/test_symbol_thesis_enrich_20260926.py",
+            "tests/test_research_thesis_delta.py",
+            "tests/test_symbol_thesis_integration.py",
+            "tests/test_cio_product_reassessment.py",
+        ],
+    ),
 ]
 
 

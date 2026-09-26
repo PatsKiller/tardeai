@@ -811,7 +811,11 @@ def reassess_on_research_completed(
                         sym_for_thesis,
                         result,
                         prompt_context=prompt_context,
-                        research_id=str(result_id),
+                        # The research id (res_...) is the id options records and
+                        # the thesis provenance share; the result id (rr_...) is kept
+                        # as source_result_id. Changes delta_id hash input once.
+                        research_id=str(parent.get("research_id") or result_id),
+                        source_result_id=str(result_id),
                         root=root,
                         provider=str(result.get("provider") or result.get("lane") or "") or None,
                         model=str(result.get("model") or "") or None,
