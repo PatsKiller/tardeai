@@ -13,6 +13,61 @@ _FOREIGN_COMPANY_MARKERS = (
 )
 
 
+# "<name> stock hits 52-week high at 27.99 USD": a headline stating the security's own 52-week
+# extreme. Deliberately narrow; it must NOT match a price target, a deal size or guidance, all of
+# which legitimately differ from the quote (PR #255, measured ~9 headlines in 21 days).
+_52W_CLAIM_RE = re.compile(
+    r"(?:hits?|reach(?:es|ed)?|touch(?:es|ed)?)\s+(?:a\s+)?52[-\s]?week\s+"
+    r"(high|low)\s+(?:at|of)\s+\$?\s*([0-9]{1,6}(?:\.[0-9]{1,2})?)",
+    re.I,
+)
+#: Relative gap above which a stated 52-week extreme is treated as a different security.
+_52W_TOLERANCE = 0.25
+
+
+def fifty_two_week_reference(cur, symbol: str) -> tuple[float, float] | None:
+    """(low, high) daily close over the trailing year; close_price > 0.5 drops known corrupt bars."""
+    try:
+        cur.execute(
+            """SELECT min(close_price), max(close_price) FROM price_cache
+                WHERE symbol=%s AND price_date > current_date - 365 AND close_price > 0.5""",
+            ((symbol or "").upper(),),
+        )
+        row = cur.fetchone()
+        if row and row[0] is not None and row[1] is not None:
+            return float(row[0]), float(row[1])
+    except Exception:
+        pass
+    return None
+
+
+def price_contradiction(title: str, summary: str = "", *, reference_52w: tuple | None = None) -> str | None:
+    """Reason string when a headline's stated 52-week extreme cannot be this security.
+
+    The ticker-token test upper-cases text first, so "Eaton Vance Tax Advantaged Div stock"
+    matched DIV (a $20 ETF) and four $27.99 Eaton Vance headlines were attached to it
+    (2026-07-29). Compares to our 52-week EXTREME, not spot: a "52-week high" headline
+    legitimately quotes a level above today's price (spot comparison wrongly rejected RDWR).
+    """
+    if not reference_52w:
+        return None
+    lo, hi = reference_52w
+    m = _52W_CLAIM_RE.search(f"{title or ''} {summary or ''}")
+    if not m:
+        return None
+    kind, raw = m.group(1).lower(), m.group(2)
+    ref = hi if kind == "high" else lo
+    try:
+        claimed, ref = float(raw), float(ref or 0)
+    except (TypeError, ValueError):
+        return None
+    if ref <= 0:
+        return None
+    if abs(claimed - ref) / ref > _52W_TOLERANCE:
+        return f"price_conflict_52w_{kind}:{claimed}_vs_{round(ref, 2)}"
+    return None
+
+
 def _company_tokens(description: str | None) -> list[str]:
     if not description:
         return []
@@ -33,11 +88,20 @@ def headline_matches_symbol(
     summary: str = "",
     *,
     company_description: str | None = None,
+    reference_52w: tuple | None = None,
 ) -> tuple[bool, str]:
-    """Return (ok, reason). False = do not attach this headline to symbol."""
+    """Return (ok, reason). False = do not attach this headline to symbol.
+
+    ``reference_52w`` (our 52-week low, high) enables a hard veto evaluated before any positive
+    match: a contradicted 52-week extreme means another issuer, however the ticker appears.
+    """
     sym = (symbol or "").upper().strip()
     if not sym or not title:
         return False, "missing_symbol_or_title"
+
+    conflict = price_contradiction(title, summary, reference_52w=reference_52w)
+    if conflict:
+        return False, conflict
 
     text = f"{title} {summary or ''}"
     upper = text.upper()
