@@ -1,0 +1,32 @@
+{
+  "schema": "TradeAIAgentsDriveMirrorManifest@v1",
+  "canonical_repo": "PatsKiller/tardeai",
+  "canonical_repo_path": "AGENTS.md",
+  "drive_folder_id": "1spBGi8OgIpDE1p2tlIXzk8fJLqxqMCCU",
+  "drive_file_id": "10vKQJaFFO5-sRGr9jcmC0nIvg31Yz4W6",
+  "drive_path": "Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md",
+  "mime_type": "text/markdown",
+  "verification": "OBSERVED_MISMATCH",
+  "observed_at": "2026-09-25T13:30:00Z",
+  "observed_by": "governance truth repair (read-only gog ls/download; no upload)",
+  "observed_drive_state": {
+    "policy_version": "1.1.0",
+    "status": "ACTIVE",
+    "modified_time": "2026-09-02T02:53:10.721Z",
+    "bytes": 95628,
+    "content_sha256": "425f1953a3f1f0cf (prefix)"
+  },
+  "observed_main_state": {
+    "policy_version": "1.2.7",
+    "bytes": 249223,
+    "content_sha256": "a16949eb7549b312947c49f2b7f6b232e5b67f7d5f57cb7fd89be6ce20f27840"
+  },
+  "other_copies_not_governed": [
+    {
+      "drive_file_id": "1aEDHNUTA9aH_MM00Cer4cyda_ah4hy3u",
+      "parent": "Trade_AI_Docs_v2 (1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR)",
+      "note": "byte-identical to main 1.2.7 at 2026-09-25T01:35Z; not the governed mirror path; operator decides whether to archive"
+    }
+  ],
+  "next_step": "operator unlocks Bitwarden and runs scripts/mirror_agents_md_to_drive.sh; it replaces drive_file_id in place and rewrites this manifest as BYTE_EXACT only after read-back matches"
+}

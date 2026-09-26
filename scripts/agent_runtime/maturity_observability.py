@@ -846,7 +846,17 @@ def build_observations(
             operator_checks_required=operator_checks,
             has_runtime_spec=(agent_id in definitions),
         ))
-    return [item.to_dict() for item in observations]
+    # Gate status is read at render time from the measurement store, never from
+    # catalog prose (governance truth repair 2026-09-25). Agents with no rows in
+    # the store report NOT_YET_MEASURED.
+    from .gate_status import gate_status  # noqa: PLC0415
+
+    out = []
+    for item in observations:
+        row = item.to_dict()
+        row["gate_measurement"] = gate_status(root, str(row.get("agent_id") or ""))
+        out.append(row)
+    return out
 
 
 def summarize_observations(observations: Iterable[Mapping[str, Any]]) -> dict[str, Any]:

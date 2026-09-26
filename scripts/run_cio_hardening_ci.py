@@ -999,6 +999,8 @@ GATES = [
         "guard_push_auth",
         [
             "tests/test_guard_push_auth.py",
+            # A push grant must name the branch or head SHA it covers (1.3.0 PROPOSED).
+            "tests/test_guard_push_scope_20260925.py",
         ],
     ),
     (
@@ -1286,6 +1288,12 @@ GATES = [
         "maturity_gate_restatement",
         [
             "tests/test_maturity_gate_restatement_20260922.py",
+            # Governance truth repair 2026-09-25: gate status is read from the
+            # measurement store at render time (never a count frozen in the
+            # catalog); AGENTS.md policy state on main; the Drive mirror
+            # updates one pinned file id and never creates a duplicate.
+            "tests/test_governance_truth_repair_20260925.py",
+            "tests/test_agents_drive_mirror_20260925.py",
         ],
     ),
     (
@@ -1630,6 +1638,10 @@ GATES = [
             "tests/test_sop_toolchain.py",
             "tests/test_sop_attestation_base.py",
             "tests/test_agents_drive_mirror_policy.py",
+            # AGENTS.md 1.3.0 (PROPOSED): the draft must not act before ratification, and
+            # the broker-boundary verifier must refuse every out-of-envelope mutation.
+            "tests/test_agents_policy_1_3_0_amendment.py",
+            "tests/test_trading_session_grant_20260925.py",
             "tests/test_operator_approval_workflow_docs.py",
         ],
     ),
