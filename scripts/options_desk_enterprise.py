@@ -906,7 +906,10 @@ def sync_approval_queue(proposals: List[dict], *, apply: bool = True) -> dict:
         if not pid:
             continue
         ent = p.get("enterprise") or {}
-        status = "blocked" if p.get("enterprise_blocked") else "pending"
+        thesis_blocks = list(p.get("thesis_blocks") or [])
+        # 2026-09-26: an option needs the same thesis bar as a stock purchase.
+        # resolve_approval refuses any row with blocks, so this fails closed.
+        status = "blocked" if (p.get("enterprise_blocked") or thesis_blocks) else "pending"
         # A row marked blocked with an EMPTY blocks_json tells the operator
         # nothing — the Options desk rendered "Blocked (11)" with no reasons
         # attached (2026-07-20). If the enricher did not attach its block list,
@@ -920,6 +923,7 @@ def sync_approval_queue(proposals: List[dict], *, apply: bool = True) -> dict:
                 _blocks = [{"code": "block_reason_unavailable",
                             "reason": f"blocked, but reasons could not be recomputed: "
                                       f"{type(_be).__name__}"}]
+        _blocks = list(_blocks) + [b for b in thesis_blocks if b not in _blocks]
         cur.execute(
             """INSERT INTO options_approval_queue
                (proposal_id, symbol, strategy, desk_tier, edge_score, status,
@@ -1027,7 +1031,27 @@ def resolve_approval(
                     "error": f"cannot approve — {len(blocks)} enterprise block(s) remain",
                     "blocks": blocks}
     conn.commit()
+    _record_thesis_approval(cur, proposal_id, action, reviewer, note)
     return {"ok": True, "proposal_id": proposal_id, "status": new_status, "symbol": row[1], "strategy": row[2]}
+
+
+def _record_thesis_approval(cur, proposal_id: str, action: str, reviewer: str, note: str) -> None:
+    """CIO approval record on the options thesis (append-only). Best-effort, never blocks."""
+    try:
+        cur.execute("SELECT proposal_json->>'option_strategy_guid' FROM options_approval_queue WHERE proposal_id=%s",
+                    (proposal_id,))
+        r = cur.fetchone()
+        guid = r[0] if r else None
+        if not guid:
+            return
+        try:
+            from scripts.lib.options_thesis import OptionsThesisStore
+        except ImportError:
+            from lib.options_thesis import OptionsThesisStore  # type: ignore
+        OptionsThesisStore().record_approval(guid, proposal_id=proposal_id, action=action,
+                                             reviewer=reviewer, note=note)
+    except Exception:
+        pass
 
 
 def check_preflight_approval(proposal_id: str) -> Tuple[bool, str]:

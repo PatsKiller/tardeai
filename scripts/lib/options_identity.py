@@ -235,8 +235,19 @@ def stamp_proposal_identity(proposal: dict[str, Any], *,
     venue = proposal.get("venue") or ""
     account = proposal.get("account") or ""
     strategy = proposal.get("strategy") or proposal.get("strategy_id")
-    issuer = proposal.get("issuer_guid") or None
+    issuer = proposal.get("issuer_guid") or resolve_issuer_guid(und, registry=registry) or None
     legs = proposal.get("legs") if isinstance(proposal.get("legs"), list) else None
+    # A spread with no legs array hashed only its short strike, so two spreads
+    # sharing a short strike collided (2026-09-26). Build both legs when known.
+    if not legs and proposal.get("short_strike") is not None and proposal.get("long_strike") is not None:
+        legs = [
+            {"option_type": right, "strike": proposal.get("short_strike"), "side": "SELL", "expiration": expiration},
+            {"option_type": right, "strike": proposal.get("long_strike"), "side": "BUY", "expiration": expiration},
+        ]
+    if issuer:
+        # Join the option to its underlying (looked up, never minted). Nested so the
+        # proposal's own *_guid keys stay the contract and strategy identities only.
+        proposal["underlying_identity"] = {"symbol": _norm_underlying(und), "issuer_guid": issuer}
 
     cg = contract_guid(und, right, strike, expiration, venue=venue,
                        issuer_guid=issuer, registry=registry)
