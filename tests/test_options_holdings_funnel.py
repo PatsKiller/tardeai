@@ -41,9 +41,12 @@ def test_need_100_shares_schg_amanx():
     )
     assert out["ok"] is True
     by_sym = {r["symbol"]: r["cc"]["status"] for r in out["rows"]}
-    assert by_sym["SCHG"] == "NEED_100_SHARES"
+    # Operator 2026-09-26: a 0.23-share ($8) leftover is not a covered-call refusal;
+    # it is reported once as fractional residue. A real 63-share lot still is.
+    assert "SCHG" not in by_sym
+    assert [p["symbol"] for p in out["summary"]["fractional_residue"]["positions"]] == ["SCHG"]
     assert by_sym["AMANX"] == "NEED_100_SHARES"
-    assert out["summary"]["cc_need_100_shares"] == 2
+    assert out["summary"]["cc_need_100_shares"] == 1
 
 
 def test_size_eligible_low_iv_named_not_silent():

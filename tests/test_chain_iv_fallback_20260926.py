@@ -65,3 +65,34 @@ def test_chain_is_read_once_per_pass(monkeypatch):
 def test_repair_rerun_writes_no_empty_archive():
     src = (ROOT / "scripts" / "repair_ensemble_jobs.py").read_text(encoding="utf-8")
     assert "if not a.apply or (has_lanes and not ids):" in src
+
+
+# ── holdings funnel honesty (operator 2026-09-26: "these are hallucinations i dont even own") ──
+def _h(sym, acct, shares, price):
+    return {"symbol": sym, "account": acct, "shares": shares, "price": price,
+            "market_value": round(shares * price, 2), "broker": "schwab"}
+
+
+def test_fractional_leftovers_are_one_line_not_refusals():
+    f = oe.build_holdings_funnel(
+        holdings=[_h("NOC", "schwab_taxable", 0.2328, 510.5), _h("SCHG", "schwab_taxable", 0.2294, 36.3),
+                  _h("SPCX", "schwab_taxable", 100, 148.57), _h("SPCX", "schwab_rollover_ira", 300, 148.57)],
+        tech_map={}, intent_cfg={}, resolve_chain=False)
+    res = f["summary"]["fractional_residue"]
+    assert [p["symbol"] for p in res["positions"]] == ["NOC", "SCHG"]
+    assert f["summary"]["cc_need_100_shares"] == 0
+    assert {r["symbol"] for r in f["rows"]} == {"SPCX"}
+
+
+def test_rows_carry_total_shares_across_accounts():
+    f = oe.build_holdings_funnel(
+        holdings=[_h("SPCX", "schwab_taxable", 100, 148.57), _h("SPCX", "schwab_rollover_ira", 300, 148.57)],
+        tech_map={}, intent_cfg={}, resolve_chain=False)
+    for r in f["rows"]:
+        assert r["symbol_total_shares"] == 400
+        assert r["shares_by_account"] == {"schwab_taxable": 100, "schwab_rollover_ira": 300}
+
+
+def test_dust_threshold_is_config():
+    text = (ROOT / "assets" / "portfolio_intent.yaml").read_text(encoding="utf-8")
+    assert "  funnel_dust_max_market_value:" in text

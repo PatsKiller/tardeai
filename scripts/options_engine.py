@@ -3097,8 +3097,15 @@ def evaluate_covered_call_status(
         return {
             **base,
             "status": status,
-            "detail": f"edge {edge:.0f} < min {min_edge:.0f}"
-            + (" (intent sleeve)" if in_intent else ""),
+            "detail": (
+                f"{shares:,.0f} sh in {acct.replace('_', ' ') or 'account'} covers {contracts} call(s); "
+                f"best call ${strike:g} {dte}d pays ${premium:.2f} (POP {pop:.0f}%), "
+                f"edge {edge:.0f} < min {min_edge:.0f}"
+                + (" (intent sleeve)" if in_intent else "")
+            ),
+            "premium": round(premium, 2),
+            "strike": strike,
+            "dte": dte,
         }
 
     aegis_ok = (aegis.get("verdict") or "").lower() in ("candidate", "write", "ok", "")
@@ -3229,12 +3236,36 @@ def build_holdings_funnel(
     intent_cfg = intent_cfg if intent_cfg is not None else _load_intent_cfg()
     aegis_map = aegis_map or {}
 
+    # 2026-09-26 (operator): fractional leftovers Schwab still carries after a sale
+    # (NOC 0.23 sh, $119) were listed as covered-call refusals and read as positions
+    # the operator does not own. Below the dust value they collapse into one line.
+    try:
+        from options_desk_enterprise import load_desk_config
+        dust_mv = float(load_desk_config().get("funnel_dust_max_market_value") or 250.0)
+    except Exception:
+        dust_mv = 250.0
+    totals: Dict[str, dict] = {}
+    for h in holdings:
+        sym = (h.get("symbol") or "").upper()
+        if not sym or h.get("is_cash"):
+            continue
+        t = totals.setdefault(sym, {"total_shares": 0.0, "accounts": {}})
+        t["total_shares"] = round(t["total_shares"] + _f(h.get("shares")), 4)
+        acct_key = h.get("account") or ""
+        t["accounts"][acct_key] = round(t["accounts"].get(acct_key, 0.0) + _f(h.get("shares")), 4)
+
     rows: List[dict] = []
+    residue: List[dict] = []
     for h in holdings:
         if h.get("is_cash"):
             continue
         sym = (h.get("symbol") or "").upper()
         if not sym:
+            continue
+        mv_h = _f(h.get("market_value")) or _f(h.get("shares")) * _f(h.get("price"))
+        if 0 < mv_h < dust_mv and _f(h.get("shares")) < MIN_HOLDING_SHARES_CC:
+            residue.append({"symbol": sym, "account": h.get("account") or "",
+                            "shares": round(_f(h.get("shares")), 4), "market_value": round(mv_h, 2)})
             continue
         cc = evaluate_covered_call_status(
             h, tech_map, intent_cfg, aegis_map, resolve_chain=resolve_chain,
@@ -3247,6 +3278,8 @@ def build_holdings_funnel(
             "account": h.get("account") or "",
             "shares": cc.get("shares"),
             "market_value": cc.get("market_value"),
+            "symbol_total_shares": (totals.get(sym) or {}).get("total_shares"),
+            "shares_by_account": (totals.get(sym) or {}).get("accounts") or {},
             "cc": cc,
             "protective_put": put,
         })
@@ -3262,6 +3295,13 @@ def build_holdings_funnel(
     cc_statuses = sorted({(r.get("cc") or {}).get("status") for r in rows if (r.get("cc") or {}).get("status")})
     summary = {
         "holdings_scanned": len(rows),
+        "fractional_residue": {
+            "count": len(residue),
+            "market_value": round(sum(r["market_value"] for r in residue), 2),
+            "dust_max_market_value": dust_mv,
+            "positions": residue,
+            "note": "Fractional leftovers the broker still carries (e.g. after a sale or dividend reinvest). Not option candidates.",
+        },
         "holdings_source": holdings_path,
         "holdings_mtime": holdings_mtime,
         "cc_by_status": {s: _count("cc", s) for s in cc_statuses if s},

@@ -562,10 +562,19 @@ export default function OptionsHub({ onDrill }: Props) {
                     .slice(0, 8)
                     .map((r: any) => (
                       <div key={`${r.symbol}-${r.account}`}>
-                        <b style={{ color: T.link }}>{r.symbol}</b> · {r.cc?.status}
+                        <b style={{ color: T.link }}>{r.symbol}</b> · {String(r.account || '').replace(/_/g, ' ')} · {r.cc?.status}
                         {r.cc?.detail ? ` — ${r.cc.detail}` : ''}
+                        {r.symbol_total_shares != null && Object.keys(r.shares_by_account || {}).length > 1
+                          ? ` · you hold ${Number(r.symbol_total_shares).toLocaleString()} sh total (${Object.entries(r.shares_by_account).map(([a, n]) => `${String(a).replace(/_/g, ' ')} ${Number(n).toLocaleString()}`).join(', ')}); a call is covered per account`
+                          : ''}
                       </div>
                     ))}
+                </div>
+              )}
+              {(funnelSummary.fractional_residue?.count ?? 0) > 0 && (
+                <div data-testid="funnel-fractional-residue" style={{ marginTop: 6, fontSize: TYPE.xs, color: 'var(--text3)' }}
+                  title={(funnelSummary.fractional_residue.positions || []).map((r: any) => `${r.symbol} ${r.shares} sh $${r.market_value}`).join(' · ')}>
+                  {funnelSummary.fractional_residue.count} fractional leftover(s) worth ${Number(funnelSummary.fractional_residue.market_value || 0).toLocaleString()} ({(funnelSummary.fractional_residue.positions || []).map((r: any) => r.symbol).join(', ')}) — held by the broker after a sale or dividend reinvest; not option candidates.
                 </div>
               )}
             </div>
