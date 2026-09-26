@@ -142,3 +142,27 @@ def test_options_alpaca_mark_ready_refuses_schwab_only_desk():
         assert name in src
     assert src.count("options_desk_schwab_only") >= 5
 
+
+def test_stamp_cio_hub_strip_defined_and_stamps_entry_state():
+    """Regression 2026-09-25: call site shipped without the helper → NameError blanked Ideas."""
+    oe = _load("options_engine_cio_strip", "scripts/options_engine.py")
+    assert callable(getattr(oe, "_stamp_cio_hub_strip", None))
+    props = [{"symbol": "V", "strategy": "covered_call"}, {"symbol": "ZZZ", "strategy": "long_call"}]
+    out = oe._stamp_cio_hub_strip(
+        props,
+        [
+            {
+                "symbol": "V",
+                "source": "entry_state",
+                "entry_state": "BUY_READY",
+                "bias": "bullish",
+                "confidence": 0.62,
+                "summary": "BUY_READY entry",
+                "volatility_elevated": False,
+            }
+        ],
+    )
+    assert out[0]["cio"]["entry_state"] == "BUY_READY"
+    assert out[0]["cio"]["bias"] == "bullish"
+    assert "cio" not in out[1]
+
