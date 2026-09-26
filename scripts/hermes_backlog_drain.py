@@ -21,6 +21,10 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+try:
+    from lib.ollama_ctx import canonical_num_ctx
+except ImportError:  # imported as scripts.<module>
+    from scripts.lib.ollama_ctx import canonical_num_ctx
 LOCKFILE = Path("/tmp/hermes_backlog_drain.lock")
 LOOP_MODEL = os.environ.get("HERMES_LOOP_MODEL", "gemma3:4b")
 MAX_RUNTIME = 540
@@ -160,7 +164,7 @@ def _call_ollama(prompt: str) -> dict:
         "model": LOOP_MODEL,
         "messages": [{"role": "user", "content": prompt}],
         "stream": False,
-        "options": {"num_ctx": 8192, "num_predict": 2000, "temperature": 0.3},
+        "options": {"num_ctx": canonical_num_ctx(LOOP_MODEL), "num_predict": 2000, "temperature": 0.3},
         "format": "json",
     }).encode()
     req = urllib.request.Request(

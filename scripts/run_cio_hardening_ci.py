@@ -1216,6 +1216,9 @@ GATES = [
         "hermes_escalation_dedupe",
         [
             "tests/test_hermes_escalation_dedupe_20260922.py",
+            # Agent-job producers dedup against PENDING work (a fresh-id ON CONFLICT never
+            # fires) and direct Ollama callers share one num_ctx rule (PR #165 refresh).
+            "tests/test_agent_queue_dedup_and_ollama_ctx_20260925.py",
         ],
     ),
     # Training trades must never page the operator. open_trade_monitor sent

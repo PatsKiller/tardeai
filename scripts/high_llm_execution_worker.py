@@ -33,7 +33,7 @@ NUM_CTX = 4096
 def warm_model(model=MODEL):
     """Warm model with tiny prompt to force load into VRAM."""
     try:
-        payload = json.dumps({"model": model, "prompt": "hello", "stream": False, "options": {"num_ctx": 512}}).encode()
+        payload = json.dumps({"model": model, "prompt": "hello", "stream": False, "options": {"num_ctx": NUM_CTX}}).encode()  # same ctx as the real calls: a 512 probe spun up a throwaway runner (07-23)
         req = urllib.request.Request("http://localhost:11434/api/generate", data=payload,
                                      headers={"Content-Type": "application/json"})
         urllib.request.urlopen(req, timeout=120)

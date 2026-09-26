@@ -9,6 +9,10 @@ from pathlib import Path
 from datetime import datetime
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 try:
+    from lib.ollama_ctx import canonical_num_ctx
+except ImportError:  # imported as scripts.<module>
+    from scripts.lib.ollama_ctx import canonical_num_ctx
+try:
     from llm_net import post_retry
 except Exception:
     def post_retry(url, json_payload, timeout=120, **_):  # fallback: plain post if helper missing
@@ -27,7 +31,8 @@ def _call_local(prompt, model, max_tokens=2500):
     try:
         r = post_retry("http://127.0.0.1:11434/api/chat", {
             "model": model, "stream": False, "messages": [{"role": "user", "content": prompt}],
-            "options": {"num_ctx": 16384, "num_predict": max_tokens, "temperature": 0.3}},
+            # 16384 split gemma3:12b Vulkan→CPU on the B50 and emitted pad garbage (07-04 root cause).
+            "options": {"num_ctx": canonical_num_ctx(model), "num_predict": max_tokens, "temperature": 0.3}},
             timeout=600, attempts=2, base=2.0)
         return r.json().get("message", {}).get("content", "").strip() or "(empty local response)"
     except Exception as e:
