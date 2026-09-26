@@ -137,7 +137,7 @@ curl -X POST http://127.0.0.1:7777/api/v2/inference/ensemble/request \
 
 UI: **EnsembleValidationInline** on broker/watchlist/options/inference cards — **▶ Grok**, **▶ ChatGPT**, or **⚖ All (Grok+ChatGPT)**.
 
-Lanes (verified 2026-09-26): `config/inference_layers.yaml` `ensemble.lanes: [grok, chatgpt]` for general use; options proposal reviews queued by `options_engine.enqueue_ensemble_for_proposals()` carry `ensemble.options_lanes: [grok, chatgpt, deepseek-flash]` on the job row. `deepseek-flash` is metered and capped by `config/llm_process_registry.json` `options_ensemble` (`daily_cost_cap_usd` 0.5). No local/Gemma lane is configured. The manual request route (`scripts/inference_api.py`) accepts only `grok`, `chatgpt` or `local` in `lanes`.
+Lanes (verified 2026-09-26): `config/inference_layers.yaml` `ensemble.lanes: [grok, chatgpt]` for general use; options proposal reviews queued by `options_engine.enqueue_ensemble_for_proposals()` carry `ensemble.options_lanes: [grok, chatgpt, deepseek-flash]` on the job row. `deepseek-flash` is metered and capped by `config/llm_process_registry.json` `options_ensemble` (`daily_cost_cap_usd` 0.5). No local/Gemma lane is configured. The manual request route (`scripts/inference_api.py`) accepts `grok`, `chatgpt` and `deepseek-flash` in `lanes`; `local` is refused (2026-09-26).
 
 Optional cron (weekdays, stays Manual in DB):
 

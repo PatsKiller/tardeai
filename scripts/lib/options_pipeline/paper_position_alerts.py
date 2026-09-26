@@ -117,7 +117,7 @@ def format_telegram_message(
 
 
 def is_telegram_enabled(cfg: dict) -> bool:
-    return bool(cfg.get("alert_telegram_enabled", True))
+    return bool(cfg.get("alert_telegram_enabled", False))  # paper never alerts unless explicitly enabled
 
 
 def is_ui_enabled(cfg: dict) -> bool:

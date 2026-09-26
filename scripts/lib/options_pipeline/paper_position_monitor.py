@@ -51,7 +51,8 @@ def load_config(path: Path | None = None) -> dict:
         return {"enabled": True, "max_positions_per_run": 50, "quote_stale_seconds": 900,
                 "max_spread_pct": 12.0, "profit_target_pct": 25.0, "max_loss_pct": 35.0,
                 "dte_roll_watch": 14, "advice_only": True,
-                "alert_telegram_enabled": True, "alert_ui_enabled": True,
+                "alert_telegram_enabled": False,  # paper = training, never alerts (operator 2026-09-22)
+                "alert_ui_enabled": True,
                 "telegram_dedupe_minutes": 60}
     with p.open(encoding="utf-8") as fh:
         return yaml.safe_load(fh) or {}

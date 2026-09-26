@@ -78,7 +78,7 @@ researched judgment). Thesis blocks join the enterprise blocks, so the card read
 `scripts/options_thesis_lifecycle.py` (dry run by default; cron `7,22,37,52 * * * * … --apply`)
 advances each thesis. Ideas that carry liquidity or enterprise blocks are skipped.
 Config: `options_desk_settings.options_thesis_lifecycle` (`abandon_after_hours` 48,
-`research_rerequest_hours` 24, `cio_review_mode: live`, `max_reviews_per_run` 6).
+`research_rerequest_hours` 24, `cio_review_mode: live`, `max_reviews_per_run` 6, `review_max_tokens` 2500 — 1200 truncated the first live reviews).
 
 ### CIO review
 

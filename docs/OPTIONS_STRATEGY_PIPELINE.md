@@ -206,7 +206,7 @@ each queued paper card carries a `paper validation n/30` chip.
 - Schwab chain preferred for quotes; `DATA_STALE` when quotes fail or exceed `quote_stale_seconds`.
 - Strategy rules for all desk strategies (`deep_itm_call`, ATM, income, protective, default).
 - Advisory labels: profit target, max loss, DTE roll watch, theta/IV crush warnings.
-- Alerts: UI + Telegram on by default (`paper_position_alerts.py`; dedupe via `config/operator_alert_policy.yaml`). **2026-09-26:** operator rule is that paper options never alert; `config/options_paper_monitor.yaml` still sets `alert_telegram_enabled: true` (code/config not changed by this doc update — flagged for follow-up).
+- Alerts: UI only. Telegram is **off** — operator rule: paper options are training and never alert (`config/options_paper_monitor.yaml` `alert_telegram_enabled: false`; the code default in `paper_position_alerts.py` / `paper_position_monitor.py` is also off since 2026-09-26).
 
 **Pipeline hook**: `scripts/run_options_monitor.py` calls `paper_monitor_ops.run_pipeline_hook()` on each options-desk cron tick so lifecycle marks run inside the existing monitor schedule (not a separate competing loop).
 
