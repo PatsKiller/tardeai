@@ -41,7 +41,7 @@ export const FILTERS = {
   edge: 'Minimum composite quality score (POP + IV + R:R + conviction).',
   refresh: 'Reload cached proposals and positions from server.',
   forceScan: 'Bypass 10m cache — regenerate proposals from live chains.',
-  validateAll: 'Queue Grok + ChatGPT + local Gemma review for each proposal card.',
+  validateAll: 'Queue the Aegis model review (Grok + ChatGPT over OAuth, plus DeepSeek) for each proposal card.',
   clear: 'Reset all proposal filters.',
   showing: 'Count after filters vs total on desk.',
   all: 'Clear type/side/pair filters.',

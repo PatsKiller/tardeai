@@ -16,6 +16,20 @@ function ensembleContent(p: OptionProposal): string {
     `POP: ${p.pop_pct}% · Edge: ${p.edge_score} · IV: ${p.iv_rank}% · R:R: ${p.risk_reward}`,
     p.aegis_note ? `Aegis: ${p.aegis_note}` : '',
     p.reasoning || '',
+    // House facts from stored memory (2026-09-26): review against the thesis, not the numbers alone.
+    ...(() => {
+      const m = (p as any).committee_memo
+      if (!m || m.error) return []
+      return [
+        'HOUSE FACTS (deterministic, from stored memory):',
+        `Classification: ${m.classification_label} · Research: ${m.research_status} · Confidence: ${m.confidence}`,
+        `Symbol thesis ${(p as any).thesis_version_at_decision || 'none'}: ${m.investment_thesis}`,
+        `Counter-evidence: ${m.contrarian_view}`,
+        `Why now: ${m.why_now}`,
+        `Thesis invalid when: ${(m.exit_plan?.thesis_invalid_when || []).join('; ')}`,
+        'Judge only against these facts; name any missing fact rather than assume it.',
+      ]
+    })(),
   ].filter(Boolean).join('\n')
 }
 
@@ -34,7 +48,7 @@ export default function OptionReviewBar({ proposal: p, autoRequest }: { proposal
         {aegis && <span style={{ fontSize: 9.5, color: MUTED, flex: '1 1 180px', lineHeight: 1.35 }}>{aegis}</span>}
       </div>
       <div title={REVIEW.ensemble} style={{ fontSize: 9, color: MUTED, marginBottom: 4, cursor: 'help' }}>
-        Multi-LLM ensemble (OAuth-free): <b style={{ color: BLUE }}>Grok</b> + <b style={{ color: '#10a37f' }}>ChatGPT</b> + <b style={{ color: '#2dd4bf' }}>local Gemma</b> ⓘ
+        Aegis model review: <b style={{ color: BLUE }}>Grok</b> + <b style={{ color: '#10a37f' }}>ChatGPT</b> (OAuth) + <b style={{ color: '#2dd4bf' }}>DeepSeek</b>. It checks this card against the house thesis; it does not fetch news, earnings or filings, and a model vote is not research or a CIO decision. ⓘ
       </div>
       <EnsembleValidationInline
         targetType="options_proposal"

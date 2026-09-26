@@ -103,6 +103,28 @@ options_desk_settings:
   funnel_dust_max_market_value: 250.0  # Holdings below this (and under 100 sh) are fractional leftovers, not CC candidates
   iv_history_min_samples: 60           # IV rank from history needs at least this many readings
   iv_history_min_span_days: 90         # ...spanning at least this many days; else the chain/Finviz proxy
+  # Advisory exit plan shown on each options card (operator 2026-09-26). Text, not orders.
+  options_exit_rules:
+    cash_secured_put:
+      take_profit: "Buy back when 50% of the credit is earned"
+      cut_loss: "Close if the put costs 2x the credit collected, or the thesis breaks"
+      time_exit: "At 21 days left, close or roll rather than hold into expiry"
+    covered_call:
+      take_profit: "Buy back when 50% of the credit is earned"
+      cut_loss: "Roll up and out if the stock runs through the strike and you want to keep the shares"
+      time_exit: "At 21 days left, decide: let it expire, roll, or accept assignment"
+    credit_spread:
+      take_profit: "Close at 50% of max profit"
+      cut_loss: "Close if the loss reaches 2x the credit, or the short strike is breached"
+      time_exit: "At 21 days left, close rather than hold into expiry"
+    protective_put:
+      take_profit: "If the stock falls and the put gains, decide whether to sell the put or keep the floor"
+      cut_loss: "The cost is capped at the premium paid"
+      time_exit: "Remove or roll the hedge at 21 days left, or when the risk it covers has passed"
+    long_call:
+      take_profit: "Take profit at +100% on the premium"
+      cut_loss: "Cut at -50% of the premium, or when the thesis breaks"
+      time_exit: "Exit by 21 days left; time decay accelerates"
   hard_risk_limits:
     max_contracts_per_order: 5
     max_daily_orders: 10

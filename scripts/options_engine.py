@@ -1266,7 +1266,12 @@ def _proposal_id(strategy: str, sym: str, account: str, strike: Any, expiration:
 
 
 def _proposal_ensemble_content(p: dict) -> str:
-    """Payload for free-lane ensemble (Grok OAuth + ChatGPT OAuth + local gemma)."""
+    """Payload for the Aegis review: the proposal plus the house's deterministic facts and memory.
+
+    2026-09-26 (operator): reviewers must judge against the thesis the house holds
+    (pin, evidence, counter-evidence, invalidation), the stored options-thesis
+    version and the plain-English outcomes -- not the trade numbers alone.
+    """
     lines = [
         f"OPTIONS PROPOSAL — {p.get('strategy', '').replace('_', ' ')}",
         f"Symbol: {p.get('symbol')} · Account: {p.get('account') or '—'}",
@@ -1281,11 +1286,38 @@ def _proposal_ensemble_content(p: dict) -> str:
         lines.append(f"Aegis screening (local): {p['aegis_note']}")
     if p.get("reasoning"):
         lines.append(f"Engine notes: {p['reasoning']}")
+    memo = p.get("committee_memo") or {}
+    ot = p.get("options_thesis") or {}
+    if memo and not memo.get("error"):
+        lines += [
+            "HOUSE FACTS (deterministic, from stored memory):",
+            f"Classification: {memo.get('classification_label')} · Research: {memo.get('research_status')} · Confidence: {memo.get('confidence')}",
+            f"Symbol thesis {p.get('thesis_version_at_decision') or 'none'} ({p.get('thesis_state') or 'unknown'}): {memo.get('investment_thesis')}",
+            f"Counter-evidence: {memo.get('contrarian_view')}",
+            f"Why now: {memo.get('why_now')}",
+            f"Thesis invalid when: {'; '.join((memo.get('exit_plan') or {}).get('thesis_invalid_when') or [])}",
+            f"Options thesis {ot.get('pin') or 'not stored'}; missing: {', '.join(ot.get('missing_required') or []) or 'none'}",
+        ]
+    pe = p.get("plain_english") or {}
+    if pe:
+        lines.append(f"Plain English: {pe.get('objective')} {pe.get('premium_line')} {pe.get('breakeven_line')}")
+    lines.append("Judge only against these facts; name any missing fact rather than assume it.")
     return "\n".join(lines)[:4000]
 
 
+def _options_ensemble_lanes() -> Optional[str]:
+    """Options review lanes from config/inference_layers.yaml ensemble.options_lanes (JSON for the job row)."""
+    try:
+        import yaml
+        cfg = yaml.safe_load((PROJECT_ROOT / "config" / "inference_layers.yaml").read_text()) or {}
+        lanes = ((cfg.get("inference_layers") or cfg).get("ensemble") or {}).get("options_lanes")
+        return json.dumps(list(lanes)) if lanes else None
+    except Exception:
+        return None
+
+
 def enqueue_ensemble_for_proposals(proposals: List[dict], fresh_hours: int = 24) -> dict:
-    """Enqueue Grok+ChatGPT+local ensemble jobs for options proposals (idempotent)."""
+    """Enqueue Aegis review jobs for options proposals (idempotent); lanes from options_lanes."""
     try:
         from db_adapter import _get_conn, USE_DB
         if not USE_DB:
@@ -1296,6 +1328,7 @@ def enqueue_ensemble_for_proposals(proposals: List[dict], fresh_hours: int = 24)
     conn = _get_conn()
     cur = conn.cursor()
     enqueued = skipped = 0
+    lanes_json = _options_ensemble_lanes()
     for p in proposals:
         tid = str(p.get("id") or "")
         if not tid:
@@ -1323,9 +1356,9 @@ def enqueue_ensemble_for_proposals(proposals: List[dict], fresh_hours: int = 24)
         content = _proposal_ensemble_content(p)
         cur.execute(
             """INSERT INTO inference_ensemble_jobs
-               (target_type, target_id, subject, content, task, requested_by, status)
-               VALUES ('options_proposal', %s, %s, %s, 'options_proposal_quality', 'options_engine', 'queued')""",
-            (tid, subject[:300], content),
+               (target_type, target_id, subject, content, task, requested_by, status, lanes)
+               VALUES ('options_proposal', %s, %s, %s, 'options_proposal_quality', 'options_engine', 'queued', %s::jsonb)""",
+            (tid, subject[:300], content, lanes_json),
         )
         enqueued += 1
     conn.commit()
@@ -2483,6 +2516,68 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
             "thesis_gate_state": record["thesis_gate_state"],
         }
         p["thesis_blocks"] = thesis_blocks(record)
+        _stamp_truth_flags(p)
+        try:
+            from lib.options_plain_english import committee_memo
+            p["committee_memo"] = committee_memo(
+                p, t, record, exit_rules=_desk_cfg().get("options_exit_rules") or {},
+                queue_status=p.get("approval_status"),
+            )
+        except Exception as e:
+            p["committee_memo"] = {"error": type(e).__name__}
+
+
+_PURPOSE = {
+    "cash_secured_put": ("INCOME", "Income"),
+    "covered_call": ("INCOME", "Income"),
+    "credit_spread": ("DEFINED_RISK_INCOME", "Defined-risk income"),
+    "protective_put": ("INSURANCE", "Insurance"),
+    "long_put": ("DOWNSIDE", "Downside bet"),
+    "long_call": ("UPSIDE", "Upside"),
+}
+
+
+def _stamp_truth_flags(p: dict) -> None:
+    """One honest status per card, as pills and filterable keys (operator 2026-09-26).
+
+    A card that fails the thesis bar must not say "live eligible": the approval
+    queue refuses it. Thesis blocks join the enterprise blocks the card already
+    renders, live eligibility goes false, and ``flags`` names purpose, status,
+    thesis gaps and data session so the desk can filter on them.
+    """
+    ent = p.setdefault("enterprise", {})
+    tb = list(p.get("thesis_blocks") or [])
+    if tb:
+        existing = list(ent.get("blocks") or [])
+        ent["blocks"] = existing + [b for b in tb if b not in existing]
+        ent["live_eligible"] = False
+        p["enterprise_blocked"] = True
+    approvable = not (p.get("enterprise_blocked") or ent.get("blocks"))
+    key, label = _PURPOSE.get(str(p.get("strategy") or ""), ("OTHER", "Other"))
+    flags = [{"key": key, "label": label, "tone": "blue"}]
+    if approvable:
+        flags.append({"key": "APPROVABLE", "label": "Approvable", "tone": "green"})
+    else:
+        why = "thesis incomplete" if tb else "enterprise block"
+        flags.append({"key": "NOT_APPROVABLE", "label": f"Not approvable: {why}", "tone": "red"})
+    missing = (p.get("options_thesis") or {}).get("missing_required") or []
+    if missing:
+        flags.append({"key": "THESIS_INCOMPLETE", "tone": "amber",
+                      "label": "Thesis missing: " + ", ".join(m.replace("_", " ") for m in missing)})
+    elif p.get("options_thesis"):
+        flags.append({"key": "THESIS_COMPLETE", "label": "Thesis complete", "tone": "green"})
+    session = _market_session_now()
+    if session and session != "REGULAR":
+        flags.append({"key": "CLOSED_MARKET_CHAIN", "tone": "amber",
+                      "label": f"Chain read {session.lower().replace('_', ' ')}"})
+    p["purpose"] = key
+    p["approvable"] = approvable
+    p["flags"] = flags
+    try:
+        from lib.options_plain_english import explain
+        p["plain_english"] = explain(p)
+    except Exception:
+        p["plain_english"] = None
 
 
 def _income_screen_summary() -> dict:
@@ -3130,7 +3225,7 @@ def evaluate_covered_call_status(
             "detail": (
                 f"{shares:,.0f} sh in {acct.replace('_', ' ') or 'account'} covers {contracts} call(s); "
                 f"best call ${strike:g} {dte}d pays ${premium:.2f} (POP {pop:.0f}%), "
-                f"edge {edge:.0f} < min {min_edge:.0f}"
+                f"edge {edge:.1f} < min {min_edge:.0f}"
                 + (" (intent sleeve)" if in_intent else "")
             ),
             "premium": round(premium, 2),

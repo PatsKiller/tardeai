@@ -770,7 +770,7 @@ export default function OptionProposalCardV4({
                 {p.cio?.bias ? ` · ${p.cio.bias}` : ''}
               </span>
             )}
-            {p.enterprise?.live_eligible && !paper && <span title={PROPOSAL.liveOk} style={{ ...chip(WL.signal.teal, false, terminalUi), cursor: 'help' }}>live eligible</span>}
+            {p.enterprise?.live_eligible && !paper && (p as any).approvable !== false && <span title={PROPOSAL.liveOk} style={{ ...chip(WL.signal.teal, false, terminalUi), cursor: 'help' }}>live eligible</span>}
             {paper && !p.enterprise?.live_eligible && (
               <MetricChipTooltip
                 metricKey="live_eligible_false"
@@ -855,6 +855,104 @@ export default function OptionProposalCardV4({
                   {missing.length ? ` · missing: ${missing.join(', ')}` : ' · complete'}
                   {' · sizing and CIO approval are yours'}
                 </div>
+              )
+            })()}
+            {Array.isArray((p as any).flags) && (p as any).flags.length > 0 && (
+              <div data-testid="options-truth-pills" style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginTop: 6 }}>
+                {((p as any).flags as { key: string; label: string; tone: string }[]).map(f => {
+                  const color = f.tone === 'green' ? BB.green : f.tone === 'red' ? BB.red : f.tone === 'amber' ? BB.amber : BB.text2
+                  return <span key={f.key} style={{ fontSize: 10, fontWeight: 800, padding: '2px 7px', borderRadius: 999, border: `1px solid ${color}`, color }}>{f.label}</span>
+                })}
+              </div>
+            )}
+            {(() => {
+              // 2026-09-26 (operator): investment-committee memo. Classify first; a section
+              // with no research behind it says so rather than inventing text.
+              const m = (p as any).committee_memo
+              if (!m || m.error) return null
+              const cioColor = m.cio_status === 'CIO_APPROVED' ? BB.green : m.cio_status === 'NOT_APPROVED' ? BB.red : BB.amber
+              const cioIcon = m.cio_status === 'CIO_APPROVED' ? '✅' : m.cio_status === 'NOT_APPROVED' ? '🔴' : '🟡'
+              const row = (label: string, v: any) => (
+                <div style={{ marginTop: 3 }}><b style={{ color: BB.text1 }}>{label}</b> {Array.isArray(v) ? v.join('; ') : String(v ?? '—')}</div>
+              )
+              return (
+                <details data-testid="options-committee-memo" open style={{ marginTop: 8, borderTop: `1px solid ${BB.border}`, paddingTop: 6 }}>
+                  <summary style={{ cursor: 'pointer', fontWeight: 900, color: BB.text1 }}>
+                    {m.classification_label} · <span style={{ color: cioColor }}>{cioIcon} {m.cio_status_label}</span>
+                    {' · '}research {String(m.research_status).toLowerCase().replace(/_/g, ' ')} · confidence {m.confidence}
+                  </summary>
+                  <div data-testid="options-evidence-ladder" style={{ marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {(m.evidence_ladder || []).map((st: any) => (
+                      <span key={st.key} title={st.detail} style={{ fontSize: 10, fontWeight: 800, color: st.done ? BB.green : BB.text3 }}>
+                        {st.done ? '✅' : '⬜'} {st.label}
+                      </span>
+                    ))}
+                  </div>
+                  {m.cio_status !== 'CIO_APPROVED' && m.cio_status !== 'NOT_APPROVED' && row('CIO.', '🟡 No CIO review completed yet.')}
+                  {row('Intended to.', m.intent_answer)}
+                  {row('In plain English.', m.plain_summary)}
+                  {row('Purpose.', m.purpose)}
+                  {row('Investment thesis.', m.investment_thesis)}
+                  {row('Market thesis.', m.market_thesis)}
+                  {row('Contrarian view.', m.contrarian_view)}
+                  {row('Why now.', m.why_now)}
+                  {m.missing_for_approval?.length > 0 && row('Missing before approval.', m.missing_for_approval.map((x: string) => x.replace(/_/g, ' ')))}
+                  <div style={{ marginTop: 6, fontWeight: 800, color: BB.text1 }}>Exit plan</div>
+                  {row('Thesis invalid when.', m.exit_plan?.thesis_invalid_when)}
+                  {m.exit_plan?.take_profit && row('Take profit.', m.exit_plan.take_profit)}
+                  {m.exit_plan?.cut_loss && row('Cut loss.', m.exit_plan.cut_loss)}
+                  {m.exit_plan?.time_exit && row('Time exit.', m.exit_plan.time_exit)}
+                  <div style={{ marginTop: 6, fontWeight: 800, color: BB.text1 }}>Living thesis</div>
+                  {row('Thesis.', `${m.living_thesis?.thesis_pin || 'none'} · last reviewed ${m.living_thesis?.last_reviewed || 'never'} · next review ${m.living_thesis?.next_review_at || 'not scheduled'}`)}
+                  {row('Research.', m.continuous_research?.status)}
+                  {row('Monitors.', m.continuous_research?.per_symbol_monitors)}
+                  {row('Remembered.', m.living_thesis?.remembered)}
+                  {row('Withdrawn when.', m.living_thesis?.withdrawn_when)}
+                  <details style={{ marginTop: 6 }}>
+                    <summary style={{ cursor: 'pointer', color: BB.text3 }}>What every number means</summary>
+                    {Object.entries(m.metric_guide || {}).map(([k, g]: [string, any]) => (
+                      <div key={k} style={{ marginTop: 3 }}><b>{k.replace(/_/g, ' ')}</b>: {g.means} {g.why} Better: {g.better}.</div>
+                    ))}
+                  </details>
+                </details>
+              )
+            })()}
+            {(() => {
+              // 2026-09-26 (operator): say what the trade is for and what the premium buys.
+              const pe = (p as any).plain_english
+              if (!pe) return null
+              const money = (v: number) => `${v < 0 ? '-' : ''}$${Math.abs(v).toLocaleString(undefined, { maximumFractionDigits: 0 })}`
+              return (
+                <details data-testid="options-plain-english" open style={{ marginTop: 8, borderTop: `1px solid ${BB.border}`, paddingTop: 6 }}>
+                  <summary style={{ cursor: 'pointer', fontWeight: 800, color: BB.text1 }}>What this trade does</summary>
+                  <div style={{ marginTop: 4 }}><b style={{ color: BB.text1 }}>Objective.</b> {pe.objective}</div>
+                  <div style={{ marginTop: 4 }}><b style={{ color: BB.text1 }}>Your premium.</b> {pe.premium_line}</div>
+                  <div style={{ marginTop: 4 }}><b style={{ color: BB.text1 }}>Why an option.</b> {pe.why_option}</div>
+                  <div style={{ marginTop: 4 }}>{pe.breakeven_line}</div>
+                  <div style={{ marginTop: 4 }}><b style={{ color: BB.green }}>Best:</b> {pe.cases?.best}</div>
+                  <div style={{ marginTop: 2 }}><b style={{ color: BB.text1 }}>Expected:</b> {pe.cases?.expected}</div>
+                  <div style={{ marginTop: 2 }}><b style={{ color: BB.red }}>Worst:</b> {pe.cases?.worst}</div>
+                  <div style={{ overflowX: 'auto', marginTop: 6 }}>
+                    <table style={{ fontSize: 11, borderCollapse: 'collapse' }}>
+                      <thead><tr><th style={{ textAlign: 'left', paddingRight: 10 }}>At expiry</th><th style={{ textAlign: 'right', paddingRight: 10 }}>Option result</th>{pe.scenarios?.[0]?.shares_plus_option_vs_today != null && <th style={{ textAlign: 'right' }}>Shares + option vs today</th>}</tr></thead>
+                      <tbody>
+                        {(pe.scenarios || []).map((r: any) => (
+                          <tr key={r.price}>
+                            <td style={{ paddingRight: 10 }}>${Number(r.price).toFixed(2)}</td>
+                            <td style={{ textAlign: 'right', paddingRight: 10, color: r.option_pl >= 0 ? BB.green : BB.red }}>{money(r.option_pl)}</td>
+                            {r.shares_plus_option_vs_today != null && <td style={{ textAlign: 'right', color: r.shares_plus_option_vs_today >= 0 ? BB.green : BB.red }}>{money(r.shares_plus_option_vs_today)}</td>}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <details style={{ marginTop: 6 }}>
+                    <summary style={{ cursor: 'pointer', color: BB.text3 }}>What these numbers mean</summary>
+                    {Object.entries(pe.tooltips || {}).map(([k, v]) => (
+                      <div key={k} style={{ marginTop: 2 }}><b>{k.replace(/_/g, ' ')}</b>: {String(v)}</div>
+                    ))}
+                  </details>
+                </details>
               )
             })()}
             <div style={{ marginTop: 4, color: BB.text3 }}>

@@ -305,7 +305,13 @@ export function EnsembleValidationInline({ targetType, targetId, subject, conten
     // Say how long the job has waited; the worker runs weekdays in market hours only.
     const age = job?.requested_at ? Math.max(0, Math.round((Date.now() - Date.parse(job.requested_at)) / 60000)) : null
     const ageText = age == null ? '' : age < 60 ? ` · queued ${age}m` : age < 2880 ? ` · queued ${Math.round(age / 60)}h` : ` · queued ${Math.round(age / 1440)}d`
-    return <div style={{ fontSize: 10, color: age != null && age > 1440 ? BB.amber : 'var(--text3)', marginTop: compact ? 0 : 6 }} title="The ensemble worker runs weekdays during market hours.">⏳ ensemble validating{ageText}</div>
+    // The worker's cron runs weekdays 09:00-16:00 ET; say when the next run is instead of spinning.
+    const now = new Date()
+    const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }))
+    const day = et.getDay(), hr = et.getHours()
+    const inWindow = day >= 1 && day <= 5 && hr >= 9 && hr < 16
+    const nextRun = inWindow ? 'within 3 min' : (day === 5 && hr >= 16) || day === 6 || day === 0 ? 'next run Mon 09:00 ET' : 'next run 09:00 ET'
+    return <div style={{ fontSize: 10, color: age != null && age > 1440 ? BB.amber : 'var(--text3)', marginTop: compact ? 0 : 6 }} title="The Aegis reviewer runs weekdays 09:00-16:00 ET.">⏳ Aegis review queued{ageText} · {nextRun}</div>
   }
   if (state === 'error') {
     return (
