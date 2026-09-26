@@ -689,6 +689,8 @@ GATES = [
             "tests/test_price_unit_integrity_20260914.py",
             "tests/test_finviz_view_contracts_20260914.py",
             "tests/test_source_health_and_av_selection_20260914.py",
+            # 2026-09-22 (split from #1189): researched names stay in the price-refresh universe.
+            "tests/test_researched_price_universe_20260925.py",
             "tests/test_source_litmus_vs_yahoo_20260914.py",
             "tests/test_social_discovery_monday_window_20260914.py",
             "tests/test_retention_fk_and_schwab_fractional_20260914.py",
