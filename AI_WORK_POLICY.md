@@ -164,6 +164,11 @@ Do not push unfinished code merely to outsource validation to GitHub Actions.
 The wrapper `scripts/ai_local_acceptance.sh` is the default command. It may skip
 heavy suites when the tranche diff is policy/docs/hooks only.
 
+While iterating, `scripts/fast_check.sh` checks only the changed files and the
+tests that import them (read-only; under 60 s for most diffs). Before requesting
+sync, `ai_local_acceptance.sh` runs every registered gate in parallel (`--full`:
+one at a time). See `docs/ops/CI_FAST_CORE_20260925.md`.
+
 ---
 
 # 6. TEST-FIRST / LOCAL-FIRST ITERATION

@@ -137,17 +137,21 @@ def test_agents_md_is_deliberately_not_covered():
         assert not line.startswith("AGENTS.md"), "AGENTS.md must be merged by hand"
 
 
-def test_regeneration_actually_repairs_a_broken_digest(tmp_path):
-    """Behaviour, not shape: corrupt the digest in a copy and confirm the script
-    restores a state the validator accepts."""
+def test_regeneration_stages_nothing_and_validates(tmp_path):
+    """2026-09-25 redesign: the evidence files no longer embed a per-PR digest and
+    docs/INDEX.md no longer commits its fingerprint/counts, so there is nothing to
+    rewrite by sed. The script must never `git add -A` (it used to, three times,
+    staging unrelated worktree files); it refuses when a new doc is untracked
+    (the index is built from `git ls-files`) and names the exact files to add."""
     script = ROOT / "scripts" / "regenerate_generated_files.sh"
     assert script.is_file() and os.access(script, os.X_OK)
     body = script.read_text(encoding="utf-8")
-    # The ordering that was learned by getting it wrong once.
-    assert body.index("git add") < body.index("write-index"), (
-        "the index is built from git ls-files; regenerating before staging omits new files")
-    assert "control_surface_digest" in body
-    assert "validate_in_repo_evidence" in body
+    code = "\n".join(l for l in body.splitlines() if not l.lstrip().startswith("#"))
+    assert "git add -A" not in code and "git add ." not in code
+    assert "--others --exclude-standard" in code, "must detect untracked docs before writing the index"
+    assert "write-index" in code
+    assert "validate_in_repo_evidence" in code
+    assert "control_surface_digest" not in code, "no digest is rewritten any more"
 
 
 def test_the_driver_never_repairs_by_deleting():

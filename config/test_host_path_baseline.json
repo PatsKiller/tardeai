@@ -1,0 +1,30 @@
+{
+  "files": {
+    "tests/test_cc_v3_gap_closure.py": 1,
+    "tests/test_cio_current_truth_provenance.py": 1,
+    "tests/test_cio_decision_quality_pr1.py": 35,
+    "tests/test_cio_question_id_contract.py": 1,
+    "tests/test_cron_remediation_installer.py": 2,
+    "tests/test_data_source_health_decay_20260913.py": 1,
+    "tests/test_gap_resolution_monitor_20260913.py": 1,
+    "tests/test_governed_agent_flash_market.py": 2,
+    "tests/test_health_remediation_outcome.py": 2,
+    "tests/test_lane_portfolio_repricer.py": 1,
+    "tests/test_maturity_gate_restatement_20260922.py": 1,
+    "tests/test_operator_answer_quality_20260913.py": 1,
+    "tests/test_ops_tree_pin_audit.py": 9,
+    "tests/test_p0_tsla_quarantine.py": 1,
+    "tests/test_p18_specialist_foundation.py": 1,
+    "tests/test_r16_integration.py": 1,
+    "tests/test_r18_data_operator_convergence.py": 1,
+    "tests/test_r93_free_first_scheduler.py": 1,
+    "tests/test_receipt_write_barrier.py": 1,
+    "tests/test_release_pin_and_validator.py": 2,
+    "tests/test_sop_toolchain.py": 1,
+    "tests/test_state_migration_rehearsal.py": 3,
+    "tests/test_state_root_disposition.py": 2,
+    "tests/test_wake_state_root_stability.py": 3
+  },
+  "note": "Inherited tests that read live host paths. May only shrink; see scripts/check_test_host_paths.py.",
+  "schema": "TestHostPathBaseline@v1"
+}

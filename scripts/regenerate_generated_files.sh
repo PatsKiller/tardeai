@@ -1,39 +1,30 @@
 #!/usr/bin/env bash
-# Recompute every generated artifact, in the ONE order that works.
+# Recompute the generated artifacts, then validate them. Stages NOTHING.
 #
-# Ordering is load-bearing and was learned the hard way:
-#   1. git add        — the index is built from `git ls-files`, so regenerating
-#                       before staging produces an index that omits the new files
-#                       and fails again. (Done exactly that once.)
-#   2. digest         — control_surface_digest is computed over the merged tree
-#   3. write-index    — after the digest edit, because the evidence files are
-#                       themselves tracked docs and change the index fingerprint
-#   4. git add        — stage the regenerated results
+# 2026-09-25 redesign (operator: "plan and build the evidence-file change"):
+#   * The four SOP evidence files no longer embed control_surface_digest, so there
+#     is no per-PR digest to rewrite. The digest is computed at HEAD by
+#     validate_sop_evidence_integrity.py and recorded in the runtime attestation.
+#   * docs/INDEX.md no longer commits the tree fingerprint or the counts tables,
+#     so it changes only for the docs a PR actually adds or edits.
+#   * This script no longer runs `git add -A` (it used to, three times, which
+#     staged whatever else was in the worktree and contradicted new-worktree.sh's
+#     "never add-all" rule). The index is built from `git ls-files`, so a NEW doc
+#     must be staged first -- by name. If any untracked doc is found under docs/,
+#     the script lists the exact `git add` command and stops without writing.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 PY="${TRADEAI_PY:-python3}"
-D="docs/implementation/maturity-program/sop-1.2.0-20260902"
 
-git add -A >/dev/null 2>&1 || true
-
-NEW="$($PY -c "
-import sys; sys.path.insert(0,'scripts')
-from lib import sop_evidence_integrity as S
-from pathlib import Path
-print(S.control_surface_digest(Path('.'))['digest'])")"
-OLD="$(grep -rho 'control_surface_digest=[a-f0-9]*' "$D/FULL_TEST_MATRIX.txt" 2>/dev/null | head -1 | cut -d= -f2 || true)"
-
-if [[ -n "$OLD" && "$OLD" != "$NEW" ]]; then
-  echo "  control_surface_digest ${OLD:0:12} -> ${NEW:0:12}"
-  grep -rl "control_surface_digest=$OLD" "$D/" | while read -r f; do
-    sed -i "s/$OLD/$NEW/g" "$f"
-  done
+untracked="$(git ls-files --others --exclude-standard -- docs)"
+if [[ -n "$untracked" ]]; then
+  echo "  untracked docs found -- the index is built from tracked files, so stage them first:" >&2
+  echo "    git add -- $(echo "$untracked" | tr '\n' ' ')" >&2
+  exit 2
 fi
 
-git add -A >/dev/null 2>&1 || true
-$PY scripts/report_docs_inventory.py --write-index >/dev/null 2>&1 || true
-git add -A >/dev/null 2>&1 || true
+$PY scripts/report_docs_inventory.py --write-index >/dev/null
 
 $PY -c "
 import sys; sys.path.insert(0,'scripts')
@@ -43,3 +34,5 @@ errs = S.validate_in_repo_evidence(Path('.'))
 print('  sop evidence:', errs or 'clean')
 raise SystemExit(1 if errs else 0)"
 $PY scripts/report_docs_inventory.py --check-index | grep -oE '^\[(PASS|FAIL)\]' | sed 's/^/  docs index: /'
+echo "  changed generated files (stage them explicitly if you want them in the commit):"
+git status --porcelain -- docs/INDEX.md docs/implementation/maturity-program/sop-1.2.0-20260902 | sed 's/^/    /'
