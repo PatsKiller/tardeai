@@ -1,0 +1,164 @@
+{
+  "schema": "CiRiskTiers@v1",
+  "note": "Path risk tiers for the PR fast core (scripts/run_cio_hardening_ci.py --profile pr). HIGH: the named gates run IN FULL regardless of budget, plus impacted tests and every gate of <= expand_gate_max_seconds holding a direct test, and the job summary flags independent review. LOW (every changed path LOW): smoke set only. Anything else: MEDIUM, impacted tests within budget. Every CODEOWNERS path must classify HIGH (tests/test_ci_risk_tiers_20260925.py). The full suite runs after merge regardless of tier. budget_seconds is summed per-file duration hints (CPU-bound, ~4 run concurrently on a GitHub runner): 540 is about 150-170 s of wall clock in CI.",
+  "budget_seconds": 540,
+  "expand_gate_max_seconds": 60,
+  "smoke_gates": [
+    "governance_section_zero_parity",
+    "agents_type_vocabulary",
+    "guard_push_auth",
+    "ci_self_guards",
+    "ci_fixture_immutability",
+    "generated_file_merge",
+    "import_shadowing",
+    "scripts_lib_bootstrap",
+    "dashboard_no_embedded_key",
+    "canonical_observation_contract",
+    "release_manifest",
+    "test_host_paths_ratchet_20260925"
+  ],
+  "high": {
+    "policy_and_guard": {
+      "globs": [
+        "AGENTS.md",
+        "AI_WORK_POLICY.md",
+        "CLAUDE.md",
+        ".cursor/**",
+        ".githooks/**",
+        "docs/governance/**",
+        "bin/guard",
+        "bin/agent-push",
+        "scripts/lib/guard_*.py",
+        "scripts/guard_*.py",
+        "scripts/check_no_secrets.py",
+        "scripts/check_agents_policy_state.py",
+        "config/sop_120_control_surface.manifest.json"
+      ],
+      "gates": [
+        "governance_section_zero_parity",
+        "agents_type_vocabulary",
+        "agent_brief",
+        "guard_push_auth",
+        "guard_remote_approval",
+        "agent_governance_sop",
+        "tiered_validation_20260916"
+      ]
+    },
+    "broker_and_execution": {
+      "globs": [
+        "scripts/brokers/**",
+        "scripts/moomoo/**",
+        "scripts/active_trader/**",
+        "scripts/*schwab*",
+        "scripts/lib/*schwab*",
+        "scripts/*moomoo*",
+        "scripts/lib/*execution_guard*",
+        "scripts/*execution_guard*",
+        "scripts/lib/trading_session_grant.py",
+        "scripts/lib/cio_instrument_record.py",
+        "config/data_source_authority.json"
+      ],
+      "gates": [
+        "gog_broker_approval",
+        "protection_truth",
+        "paper_trades_never_page",
+        "stop_path_notification",
+        "stop_warning_transitions",
+        "institutional_sizing"
+      ]
+    },
+    "memory_sql": {
+      "globs": [
+        "sql/**",
+        "migrations/**",
+        "scripts/lib/cio_memory_*.py",
+        "scripts/lib/m2_*.py",
+        "scripts/lib/*bitemporal*.py"
+      ],
+      "gates": [
+        "campaign_m2_canary_lanes",
+        "agentic_memory_tranche2_20260925",
+        "options_identity_memory_20260924",
+        "instrument_belief_20260925",
+        "subject_identity_spine",
+        "identity_custodian",
+        "notification_memory"
+      ]
+    },
+    "deploy_and_release": {
+      "globs": [
+        "deploy/**",
+        "scripts/*deploy*",
+        "scripts/*promote*",
+        "scripts/*release*",
+        "scripts/lib/*release*.py",
+        "bin/*deploy*"
+      ],
+      "gates": [
+        "release_pin_and_validator",
+        "release_manifest",
+        "deploy_durable_dirs",
+        "deploy_ff_dev_tree",
+        "runtime_state_survives_checkout",
+        "state_root_convergence"
+      ]
+    },
+    "schedule": {
+      "globs": [
+        "config/lane_registry.json",
+        "config/systemd/**",
+        "config/cron/**",
+        "config/crontab*",
+        "crontab*",
+        "scripts/*crontab*"
+      ],
+      "gates": [
+        "lane_registry",
+        "cron_hygiene_20260915",
+        "llm_cap_admin"
+      ]
+    },
+    "ci_control_surface": {
+      "globs": [
+        ".github/**",
+        "scripts/run_cio_hardening_ci.py",
+        "scripts/lib/test_impact.py",
+        "scripts/fast_check.sh",
+        "scripts/ai_local_acceptance.sh",
+        "scripts/regenerate_generated_files.sh",
+        "scripts/git_merge_regenerate.sh",
+        "scripts/lib/sop_evidence_integrity.py",
+        "scripts/check_test_coverage.py",
+        "scripts/check_test_host_paths.py",
+        "config/ci_*.json",
+        "config/test_*_baseline.json",
+        "docs/implementation/maturity-program/sop-1.2.0-20260902/**",
+        "requirements*.txt",
+        "pyproject.toml"
+      ],
+      "gates": [
+        "ci_self_guards",
+        "generated_file_merge",
+        "agent_governance_sop",
+        "tiered_validation_20260916",
+        "gate_honesty_and_archive_or_wire",
+        "gate_honesty_p6_20260922",
+        "test_host_paths_ratchet_20260925",
+        "overnight_g3_docs_index"
+      ]
+    }
+  },
+  "low": {
+    "globs": [
+      "docs/**",
+      "archive/**",
+      "reference/**",
+      "references/**",
+      "**/*.md",
+      "*.txt"
+    ],
+    "gates": [
+      "overnight_g3_docs_index"
+    ]
+  }
+}

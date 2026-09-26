@@ -4,29 +4,39 @@ name: cio-production-hardening-ci
 # READ_ONLY_ADVISORY: no broker writes, no live Telegram (pytest interdict).
 
 on:
+  # Post-merge: EVERY registered test (fast profile) on every push to main. A red
+  # run opens/updates a `ci-main-red` issue (job main-red-alert) instead of
+  # blocking PRs. Until 2026-09-25 push ran only on 11 CIO paths and on wt/**,
+  # hardening/**, feat/** branches -- a second copy of each PR run.
   push:
-    branches: ["main", "wt/**", "hardening/**", "feat/**"]
-    paths:
-      - "scripts/lib/cio_*.py"
-      - "scripts/render_cio_report_files.py"
-      - "scripts/cio_release_manifest.py"
-      - "scripts/run_cio_hardening_ci.py"
-      - "scripts/run_cio_acceptance.py"
-      - "scripts/telegram_transport.py"
-      - "tests/test_cio_*.py"
-      - "tests/test_canonical_observation.py"
-      - "tests/test_overview_observation_contract.py"
-      - "docs/investment-office/**"
-      - ".github/workflows/cio-production-hardening-ci.yml"
+    branches: ["main"]
   pull_request:
     # `cio-hardening` is a required status check on main. A path filter here
     # would let unrelated PRs skip the job and leave the check "Pending",
     # blocking merge. Run on every PR so the required check is always reported.
   workflow_dispatch:
+  # Nightly isolation run of the FULL (serial) profile -- see cio-hardening-full.
+  schedule:
+    - cron: "17 7 * * *"
+
+# A new push to a PR branch supersedes the run in flight; main runs never cancel.
+concurrency:
+  group: cio-hardening-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   cio-hardening:
+    # Required status check. Operator budget (2026-09-25): 5 minutes wall clock
+    # including runner setup. On pull_request it runs the PR profile: smoke gates,
+    # every gate of each HIGH risk tier the diff touches, changed and impacted
+    # tests within budget; the rest is DEFERRED to the push-to-main run and listed
+    # in the job summary (scripts/lib/test_impact.py, config/ci_risk_tiers.json).
+    # On push/dispatch it runs the FAST profile: every registered gate, in a worker
+    # pool. Measured before 2026-09-25: 1,077-1,127 s per job, 610-1,090 s in the
+    # serial gates step.
+    if: github.event_name != 'schedule'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       TRADE_AI_CI: "1"
       CIO_TELEGRAM_INTERDICT: "1"
@@ -61,7 +71,15 @@ jobs:
           PY
 
       - name: CIO hardening gates (unit + manifest)
-        run: python3 scripts/run_cio_hardening_ci.py
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            python3 scripts/run_cio_hardening_ci.py --profile pr --base "origin/$BASE_REF"
+          else
+            python3 scripts/run_cio_hardening_ci.py --profile fast
+          fi
 
       - name: Phase 11 adversarial suite
         run: python3 scripts/run_cio_adversarial_suite.py
@@ -86,6 +104,12 @@ jobs:
       # that may shrink, and a NEW unlisted test file fails here.
       - name: Test coverage guard (no new test file outside CI)
         run: python3 scripts/check_test_coverage.py --fail-on-new
+
+      # A test that reads /home/johnclaw/trade-ai-releases (or the dev tree) by
+      # absolute path tests the host, not the code: PR #1234 went red on its own
+      # head when an unrelated release was promoted (2026-09-25). New ones fail.
+      - name: Test host-path guard (no new live-host paths in tests)
+        run: python3 scripts/check_test_host_paths.py --fail-on-new
 
       - name: Report HTML export smoke
         run: |
@@ -192,3 +216,62 @@ jobs:
             docs/investment-office/RELEASE_MANIFEST.json
             exports/ci_smoke/
           if-no-files-found: ignore
+
+  # The historical one-gate-at-a-time run. Same gates, same tail checks, as the
+  # isolation reference: a test green in one profile and red in the other has a
+  # hidden dependency on ordering or shared state. Not required (it is the slow
+  # one); nightly and on demand.
+  cio-hardening-full:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      TRADE_AI_CI: "1"
+      CIO_TELEGRAM_INTERDICT: "1"
+      ENABLE_TELEGRAM: "0"
+      ALPACA_MODE: paper
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install test deps
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install pytest pyyaml requests
+          pip install python-docx || true
+          pip install "ruff==0.16.2"
+      - name: CIO hardening gates (full, serial)
+        run: python3 scripts/run_cio_hardening_ci.py --profile full
+
+  # A red post-merge or nightly run must be SEEN without blocking every open PR:
+  # open (or comment on) one `ci-main-red` issue. The PR check stays fast; main
+  # carries the full suite and this alarm.
+  main-red-alert:
+    needs: [cio-hardening, cio-hardening-full]
+    if: >-
+      always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' &&
+      (needs.cio-hardening.result == 'failure' || needs.cio-hardening-full.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      SHA: ${{ github.sha }}
+      EVENT_NAME: ${{ github.event_name }}
+    steps:
+      - name: Open or update the ci-main-red issue
+        run: |
+          gh label create ci-main-red --color B60205 --description "cio-hardening red on main (post-merge/nightly)" --force
+          body="cio-hardening failed on main ($EVENT_NAME) at $SHA: $RUN_URL"
+          n="$(gh issue list --label ci-main-red --state open --json number --jq '.[0].number')"
+          if [ -n "$n" ]; then
+            gh issue comment "$n" --body "$body"
+          else
+            gh issue create --label ci-main-red --title "cio-hardening red on main" --body "$body"
+          fi
