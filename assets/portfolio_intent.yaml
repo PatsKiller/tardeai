@@ -100,6 +100,7 @@ options_desk_settings:
   csp_target_abs_delta: 0.25           # Cash-secured put strike by |delta| when the chain has deltas
   cc_target_delta: 0.25                # Covered call strike by delta when the chain has deltas
   edge_roc_full_credit_ann_pct: 25.0   # Wheel edge gives full ROC credit only at this annualized yield
+  funnel_dust_max_market_value: 250.0  # Holdings below this (and under 100 sh) are fractional leftovers, not CC candidates
   hard_risk_limits:
     max_contracts_per_order: 5
     max_daily_orders: 10
