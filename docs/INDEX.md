@@ -83,7 +83,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/OPERATOR_RUNBOOK_LLM_v4_1_FINAL.md` | Operator Runbook — LLM Fleet v4.1 Final Execution Pack | active_keep | OK | `22e1f1116a74` |
 | `docs/OPTIONS_BROKER_EXECUTION_FLOWS.md` | Options & Broker Execution Flows | review_required | OK | `2e6811adec59` |
 | `docs/OPTIONS_LIFECYCLE_DESK.md` | Options Lifecycle Desk — Architecture & Acceptance (2026-07-19) | review_required | OK | `7ad06fa60fcf` |
-| `docs/OPTIONS_STRATEGY_PIPELINE.md` | Options Strategy Pipeline (paper-only lane) | review_required | OK | `72e620fa297d` |
+| `docs/OPTIONS_STRATEGY_PIPELINE.md` | Options Strategy Pipeline (paper-only lane) | review_required | OK | `df23a95dcefe` |
 | `docs/PEER_REVIEW_PACKET_COMMAND_CENTER_PAGES.md` | Peer-Review Packet — Command Center v3 Intelligence Pages | review_required | OK | `3a0a0500f287` |
 | `docs/PHANTOM_ELIMINATION_BROKER_CONFIRMATION_DESIGN.md` | Phantom Elimination — Broker-Confirmation Gate (DESIGN, vendor-neutral) | review_required | OK | `0458a3ad1d4d` |
 | `docs/PRIVATE_COMPANY_PROXY.md` | Private-Company Proxy Graph | review_required | OK | `371d6bfc0777` |
@@ -847,7 +847,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/TWO_WAY_CURATION_OPS_STATUS_2026-08-13.md` | Two-Way Watchlist Curation — Ops Status (2026-08-13) | review_required | OK | `cf6dc79d8253` |
 | `docs/cio/TWO_WAY_WATCHLIST_CURATION.md` | Two-Way Watchlist Curation | review_required | OK | `6154bc9debd1` |
 | `docs/cio/WAKE_TRACES_P5.md` | Phase P5 — Lightweight wake traces | review_required | OK | `b17c04bc59ed` |
-| `docs/consumption-monitoring.md` | LLM Consumption Monitoring (Command Center v3) | review_required | OK | `18887cf3f136` |
+| `docs/consumption-monitoring.md` | LLM Consumption Monitoring (Command Center v3) | review_required | OK | `b8a71308c99d` |
 | `docs/convergence/COMMAND_CENTER_CUTOVER_PLAN.md` | Command Center cutover plan | review_required | OK | `7d77edf9913d` |
 | `docs/convergence/CONTRACT_CHANGE_LOG.md` | Control-plane contract change log | review_required | OK | `5c2362bce8d1` |
 | `docs/convergence/CONTROL_PLANE_API_V1_1.md` | CONTROL_PLANE_API_V1.1 | review_required | OK | `82a64c09a88f` |
@@ -1793,7 +1793,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/telegram_channel_diligence_20260916/06_IMPLEMENTATION_ROADMAP.md` | Phase 6 — Implementation Roadmap | review_required | OK | `8d2eb858f8d7` |
 | `docs/ops/telegram_channel_diligence_20260916/07_EXECUTION_PLAN.md` | Phase 7 — Execution Plan & Maturity Scorecard | review_required | OK | `c3ec2b72146f` |
 | `docs/options-desk-operator-contract-20260924.md` | Options Desk — operator contract (skim) | review_required | OK | `2b6cf11e6d35` |
-| `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `445b2aee91c3` |
+| `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `c189e25a1dab` |
 | `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | Phase 179A: Paper Trade Source Inventory | review_required | OK | `72664d5cf493` |
 | `docs/paper_trading/PHASE179C_CURRENT_PAPER_TRADE_STATISTICS_REPORT.md` | Phase 179C: Current Paper Trade Statistics Report | review_required | OK | `95ccbd19ce31` |
 | `docs/paper_trading/PHASE179D_STATISTICAL_READINESS_THRESHOLDS.md` | Phase 179D: Statistical Readiness Thresholds | review_required | OK | `cebd18783641` |
