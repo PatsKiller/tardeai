@@ -2185,6 +2185,17 @@ def _apply_enterprise_layer(proposals: List[dict]) -> List[dict]:
     return enriched
 
 
+def _universe_census(holdings, convictions, scored_rows, listed) -> dict:
+    from lib.options_universe_census import build_universe_census
+    return build_universe_census(
+        holdings=holdings,
+        convictions=convictions,
+        scored=len(scored_rows),
+        listed=listed,
+        inputs_recorded=True,
+    )
+
+
 def generate_proposals(force: bool = False) -> dict:
     """Full proposal pass with quality filter."""
     cached = _load_json(PROPOSALS_CACHE)
@@ -2192,6 +2203,14 @@ def generate_proposals(force: bool = False) -> dict:
         try:
             age = (_now() - datetime.fromisoformat(cached["generated_at"].replace("Z", "+00:00"))).total_seconds()
             if age < 600:
+                if not cached.get("universe_census"):
+                    from lib.options_universe_census import build_universe_census
+                    cached = dict(cached)
+                    cached["universe_census"] = build_universe_census(
+                        listed=cached.get("proposals") or [],
+                        scored=len(cached.get("proposals") or []),
+                        inputs_recorded=False,
+                    )
                 return cached
         except Exception:
             pass
@@ -2316,6 +2335,7 @@ def generate_proposals(force: bool = False) -> dict:
         "entry_directional_scanned": entry_scanned,
         "entry_directional_dropped": entry_drops,
         "proposals": all_p,
+        "universe_census": _universe_census(holdings, convictions, strict, all_p),
         "desk_level": "enterprise",
         "enterprise": enterprise_summary,
         "approval_queue": approval_sync,
