@@ -215,11 +215,23 @@ def _memory_context(symbol: str) -> dict[str, Any]:
             for r in (rows or []) if isinstance(r, dict)
         ][:6]
 
+    receipt_id = None
+    try:
+        from scripts.lib.memory_consumption_receipt import record_consumption
+        _rec = record_consumption(
+            consumer="hermes_research_prompt", purpose="research_prompt_context",
+            symbols=[symbol], result=result,
+            query=f"{symbol} investment thesis research context",
+        )
+        receipt_id = _rec.get("receipt_id") if _rec else None
+    except Exception:  # noqa: BLE001
+        receipt_id = None
     base.update({
         "retrieval_status": result.get("retrieval_status"),
         "supporting": slim(result.get("supporting")),
         "counter": slim(result.get("counter_memory")),
         "conflicts": list(result.get("conflicts") or [])[:6],
+        "consumption_receipt_id": receipt_id,
     })
     return base
 

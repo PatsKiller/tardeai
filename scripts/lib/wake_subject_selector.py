@@ -156,6 +156,31 @@ def material_change_is_suppressed(
     return (now - latest_consume) < timedelta(hours=float(reeval_hours))
 
 
+def latest_record_per_subject(records: Iterable[dict]) -> list[dict]:
+    """Collapse an append-only record history to one tip per subject_key.
+
+    2026-09-25: `load_selection_inputs` read `cio_instrument_records.jsonl`
+    line by line, so every historical version of a subject reached the
+    selector. The first row seen per subject won the `seen` guard — the OLDEST
+    write, whose `next_eligible_at` was long past — so HELD:NOC was "due" on
+    every hourly wake and took the reserved instrument slot 100% of the time
+    while the record's current `next_eligible_at` said otherwise.
+
+    Later rows win; on equal position the higher `as_of` wins.
+    """
+    tips: dict[str, dict] = {}
+    for rec in records:
+        if not isinstance(rec, dict):
+            continue
+        sk = str(rec.get("subject_key") or "").strip()
+        if not sk:
+            continue
+        prev = tips.get(sk)
+        if prev is None or str(rec.get("as_of") or "") >= str(prev.get("as_of") or ""):
+            tips[sk] = rec
+    return list(tips.values())
+
+
 def instrument_record_candidates(
     records: Iterable[dict],
     *,
@@ -184,9 +209,7 @@ def instrument_record_candidates(
 
     out: list[SubjectCandidate] = []
     seen: set[str] = set()
-    for rec in records:
-        if not isinstance(rec, dict):
-            continue
+    for rec in latest_record_per_subject(records):
         sk = str(rec.get("subject_key") or "").strip()
         if ":" not in sk:
             continue
@@ -389,6 +412,7 @@ __all__ = [
     "research_is_consumed",
     "material_change_is_suppressed",
     "instrument_record_candidates",
+    "latest_record_per_subject",
     "select_subjects",
     "load_selection_inputs",
 ]
