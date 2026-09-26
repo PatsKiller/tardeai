@@ -514,12 +514,14 @@ served release. Both are required.
 - **A worktree has no live data.** `test_advisory_desk_phase2::test_build_evidence_stats` builds the desk from
   runtime data; it fails in every worktree and passes in the dev tree. Compare against main in the same
   location before calling a failure yours.
-- **After merging main into a branch, regenerate the docs index in its own commit.** `cio-hardening` fails
-  `docs_index_drift` / `overnight_g3_docs_index` otherwise; `report_docs_inventory.py --check` must exit 0
-  before pushing.
-- **Rebind the SOP control-surface digest in the four bound files only:** `CONTROL7_LOCAL_EQUIVALENT.txt`,
-  `CONTROL7_WORKFLOW_PROOF.txt`, `FULL_TEST_MATRIX.txt`, `RUFF_SHELLCHECK.txt`. The other evidence files hold
-  historical digests; a blanket `sed` rewrites history.
+- **After merging main into a branch, check the docs index** (`report_docs_inventory.py --check-index`). Since
+  2026-09-25 it commits rows only (no fingerprint or counts), so it changes only when a doc is added, moved or
+  retitled; `scripts/regenerate_generated_files.sh` rewrites it and stages nothing.
+- **Never write a `control_surface_digest` into the SOP evidence files.** Since 2026-09-25 the four formerly
+  bound files (`CONTROL7_LOCAL_EQUIVALENT.txt`, `CONTROL7_WORKFLOW_PROOF.txt`, `FULL_TEST_MATRIX.txt`,
+  `RUFF_SHELLCHECK.txt`) say `AT_HEAD`; the digest is computed at HEAD and recorded in the runtime attestation.
+  A committed digest there fails `EVIDENCE_EMBEDS_VOLATILE_DIGEST`. Other evidence files hold historical
+  digests; a blanket `sed` rewrites history.
 - **`sys.path` and root resolution.** `scripts` is an implicit namespace package, resolvable only
   with the repo root on `sys.path`. Cron runs a script *by path*, so `sys.path[0]` is
   `<root>/scripts`. `python -c` puts cwd on the path and masks the failure entirely. **Reproduce

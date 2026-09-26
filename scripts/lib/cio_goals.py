@@ -27,7 +27,7 @@ import json
 import os
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -102,6 +102,7 @@ TERMINATION_STATUS = {
 #: -- the one outcome loop that already works and refuses to fabricate -- is what
 #: picks it up when it comes due.
 DEFAULT_CHECKPOINT_HORIZON = "5_sessions"
+DEFAULT_GOAL_CADENCE_HOURS = 24.0
 
 
 def _now() -> str:
@@ -406,6 +407,8 @@ class CIOGoalStore:
             g["wake_count"] = int(g.get("wake_count") or 0) + 1
             g["last_outcome"] = p.get("outcome", g.get("last_outcome"))
             g["updated_ts"] = g["last_wake_ts"]
+            if p.get("next_due_ts"):
+                g["due_ts"] = p["next_due_ts"]
         elif et == "GOAL_LINKED":
             for field in ("linked_event_types", "linked_symbols", "linked_action_ids"):
                 if field in p and isinstance(p[field], list):
@@ -798,16 +801,27 @@ class CIOGoalStore:
     ) -> dict[str, Any]:
         if goal_id not in self._goals:
             raise KeyError(f"unknown goal_id: {goal_id}")
-        self._append_event(
-            "GOAL_WAKE_RECORDED",
-            goal_id,
-            {
-                "last_wake_ts": _now(),
-                "outcome": outcome,
-                "agent_id": agent_id,
-            },
-            actor_id=actor_id,
-        )
+        payload: dict[str, Any] = {
+            "last_wake_ts": _now(),
+            "outcome": outcome,
+            "agent_id": agent_id,
+        }
+        # 2026-09-25: `due_ts` never advanced, so a goal once due stayed due
+        # forever and was re-woken every cycle (11,950 wakes on one goal, all
+        # "due"). A recorded wake on a past-due goal schedules the next due
+        # time one cadence ahead; the goal's own `cadence_hours` wins, default
+        # DEFAULT_GOAL_CADENCE_HOURS. Idle/never-woken logic is untouched.
+        g = self._goals[goal_id]
+        due = _parse_ts(g.get("due_ts")) if g.get("due_ts") else None
+        now_dt = datetime.now(timezone.utc)
+        if due is not None and due <= now_dt:
+            try:
+                cadence_h = float(g.get("cadence_hours") or DEFAULT_GOAL_CADENCE_HOURS)
+            except (TypeError, ValueError):
+                cadence_h = DEFAULT_GOAL_CADENCE_HOURS
+            payload["next_due_ts"] = (now_dt + timedelta(hours=cadence_h)).isoformat()
+            payload["due_advanced_from"] = g.get("due_ts")
+        self._append_event("GOAL_WAKE_RECORDED", goal_id, payload, actor_id=actor_id)
         return dict(self._goals[goal_id])
 
     def list_open_goals(

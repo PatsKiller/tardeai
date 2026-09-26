@@ -14123,6 +14123,22 @@ def _alerts_debug():
     }
 
 
+BUY_READY_PACKET_DIR = PROJECT_ROOT / "data" / "runtime" / "buy_ready_packets"
+
+
+def _buy_ready_packet(symbol: str) -> dict:
+    """GET /api/v2/symbol/<SYM>/buy-ready-packet — latest BUY_READY/ENTRY_NEAR packet
+    saved by cio_entry_state_runner (equity plan, per-unit options alternatives,
+    portfolio facts, CIO review). Read-only; never sizes; NO_PACKET when none saved."""
+    sym = str(symbol or "").upper()
+    path = BUY_READY_PACKET_DIR / f"{sym}.json"
+    try:
+        packet = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {"symbol": sym, "status": "NO_PACKET"}
+    return {"symbol": sym, "status": "OK", "saved_at": packet.get("saved_at"), "packet": packet}
+
+
 def _symbol_timeline(symbol: str):
     """GET /api/v2/symbol/{symbol}/timeline — unified symbol timeline."""
     sym = symbol.upper()
@@ -40125,18 +40141,27 @@ def _fetch_paper_model_queue_proposals() -> list:
 
 
 def _options_validation(query=None):
-    """GET /api/v2/options/validation — advisory paper-validation gate report (Stage B).
+    """GET /api/v2/options/validation — advisory gate report (paper lab + desk Path B lanes).
 
     Powers the Options tab "Strategy Validation" strip. Advisory only — a met
-    gate is reported as operator-decision-required, never acted on.
+    gate is reported as operator-decision-required, never acted on. Desk Path B
+    strategies carry lane=desk_path_b so the Hub does not paint them PAPER MODEL.
     """
     try:
-        from lib.options_pipeline.validation import SUPPORTED_STRATEGIES, validation_status
+        from lib.options_pipeline.validation import (
+            PAPER_LAB_STRATEGIES,
+            SUPPORTED_STRATEGIES,
+            validation_status,
+        )
 
+        strategies = [validation_status(s) for s in SUPPORTED_STRATEGIES]
         return _json_clean(
             {
                 "ok": True,
-                "strategies": [validation_status(s) for s in SUPPORTED_STRATEGIES],
+                "strategies": strategies,
+                "paper_lab_strategies": [s for s in strategies if s.get("lane") == "paper_lab"],
+                "desk_path_b_strategies": [s for s in strategies if s.get("lane") == "desk_path_b"],
+                "paper_lab_ids": sorted(PAPER_LAB_STRATEGIES),
             }
         )
     except Exception as e:
@@ -40168,12 +40193,26 @@ def _options_proposals(query=None):
     oe = _get_options_engine()
     data = oe.generate_proposals(force=force)
     proposals = data.get("proposals") or []
-    # Stage B: append paper-model queue rows (deep_itm_call) BEFORE filtering so
-    # facets/filters treat them uniformly with desk proposals.
-    paper_rows = _fetch_paper_model_queue_proposals()
+    # Schwab-only Options Desk (2026-09-25): do NOT merge Alpaca / educational
+    # paper-model queue rows into Ideas. Opt-in only via include_paper_lab=1.
+    include_paper_lab = str(g("include_paper_lab", "")).lower() in ("1", "true", "yes")
+    paper_rows = _fetch_paper_model_queue_proposals() if include_paper_lab else []
     if paper_rows:
         seen = {p.get("id") for p in proposals}
         proposals = proposals + [p for p in paper_rows if p.get("id") not in seen]
+    # Fail-closed: never surface Alpaca-broker or educational paper rows on the
+    # primary Schwab desk unless paper lab was explicitly requested.
+    if not include_paper_lab:
+        proposals = [
+            p
+            for p in proposals
+            if not (
+                p.get("educational_paper_model")
+                or p.get("paper_only")
+                or (str(p.get("broker") or "").lower() == "alpaca")
+                or (p.get("enterprise") or {}).get("paper_model")
+            )
+        ]
     live_raw = g("live_eligible", "")
     live_eligible = None
     if str(live_raw).lower() in ("1", "true", "yes"):
@@ -40210,6 +40249,60 @@ def _options_proposals(query=None):
         filtered = apply_card_semantics_batch(filtered, schwab_armed=schwab_armed)
     except Exception:
         pass
+    try:
+        from lib.recommendation_comparison import build_recommendation_comparison
+        from lib.options_decision_packet import build_options_decision_packet
+        from lib.options_decision_packet_v2 import build_options_decision_packet_v2
+        from lib.options_research_memo import build_research_memo
+
+        census = data.get("universe_census") if isinstance(data, dict) else None
+        for row in filtered:
+            try:
+                cmp = build_recommendation_comparison(row)
+                memo = build_research_memo(
+                    row,
+                    census=census,
+                    share_count=row.get("share_count"),
+                )
+                row["recommendation_comparison"] = cmp
+                row["options_decision_packet"] = build_options_decision_packet(row, comparison=cmp)
+                row["options_decision_packet_v2"] = build_options_decision_packet_v2(
+                    row,
+                    comparison=cmp,
+                    memo=memo,
+                    research=row.get("research_context") or {},
+                    generated_at=data.get("generated_at") if isinstance(data, dict) else None,
+                )
+                row["options_research_memo"] = memo
+            except Exception:
+                row["recommendation_comparison"] = {
+                    "comparison": {"preferred_structure": "review_required"},
+                    "oversight": {
+                        "review_status": "unreviewed",
+                        "authority": "READ_ONLY_ADVISORY",
+                        "cio_commentary": "Comparison failed closed. No CIO disposition is on file.",
+                    },
+                }
+                row["options_decision_packet"] = {
+                    "schema": "OptionsDecisionPacket@v1",
+                    "state": "REVIEW_REQUIRED",
+                    "cio_approved": False,
+                    "readiness": {"cta": "none", "live_submit": False},
+                }
+                row["options_decision_packet_v2"] = {
+                    "schema": "OptionsDecisionPacket@v2",
+                    "state": "REVIEW_REQUIRED",
+                    "cio": {"status": "unreviewed", "cio_review_id": None},
+                    "decision": {"size": {"status": "not_sized", "display": "Not sized"}},
+                }
+    except Exception:
+        pass
+    try:
+        from lib.options_desk_scorecard import build_scorecard
+
+        data["options_desk_scorecard"] = build_scorecard(closed_outcomes=0, open_positions=0)
+    except Exception:
+        data["options_desk_scorecard"] = None
     return _json_clean(
         {
             **data,
@@ -40340,7 +40433,11 @@ def _options_paper_position_alerts(query=None):
 
 
 def _options_open_positions(query=None):
-    """GET /api/v2/options/open-positions — unified broker legs + monitored paper positions."""
+    """GET /api/v2/options/open-positions — Schwab/broker open legs only.
+
+    Alpaca paper / monitored lab legs are excluded from the Options Desk
+    (operator 2026-09-25). include_paper / paper_only query flags are ignored.
+    """
     from lib.options_pipeline import paper_positions_api as ppa
 
     broker_data = _options_positions(query) or {}
@@ -40350,11 +40447,8 @@ def _options_open_positions(query=None):
         p.setdefault("unified_id", f"broker:{p.get('id')}")
     q = query or {}
     g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
-    monitored = ppa.list_monitored_positions(
-        status="OPEN",
-        symbol=(g("symbol") or "").upper() or None,
-    )
-    unified = ppa.build_unified_open_positions(broker_positions, monitored)
+    # Schwab desk: broker legs only — do not merge Alpaca monitored paper.
+    unified = ppa.build_unified_open_positions(broker_positions, [])
     filtered = ppa.filter_positions(
         unified,
         symbol=(g("symbol") or "").upper(),
@@ -40362,22 +40456,30 @@ def _options_open_positions(query=None):
         side=(g("side") or ""),
         route=(g("route") or ""),
         source=(g("source") or ""),
-        paper_only=True if str(g("paper_only", "")).lower() in ("1", "true", "yes") else None,
+        paper_only=False,
     )
-    mon_alerts = ppa.list_position_alerts(unacked_only=True, limit=30)
+    # Drop any residual alpaca / paper-model rows.
+    filtered = [
+        p
+        for p in filtered
+        if not (
+            p.get("paper_only")
+            or p.get("is_paper_model_row")
+            or str(p.get("broker") or "").lower() == "alpaca"
+            or str(p.get("execution_route") or "").lower() in ("alpaca_paper", "tradeai_automated")
+        )
+    ]
     broker_alerts = broker_data.get("alerts") or []
     return _json_clean(
         {
             **broker_data,
-            "ok": True,
-            "monitored_positions": monitored,
-            "monitored_count": len(monitored),
             "positions": filtered,
-            "unified_count": len(unified),
             "filtered_count": len(filtered),
-            "filter_facets": ppa.position_filter_facets(unified),
-            "alerts": broker_alerts + mon_alerts,
-            "monitored_alerts": mon_alerts,
+            "unified_count": len(unified),
+            "monitored_count": 0,
+            "paper_lab_retired": True,
+            "alerts": broker_alerts,
+            "filter_facets": ppa.position_filter_facets(filtered) if hasattr(ppa, "position_filter_facets") else {},
         }
     )
 
@@ -42043,6 +42145,13 @@ def _options_alpaca_mark_ready(body=None):
     gates lane ENTRY here (server-side twin of the card's button gating —
     atm_call/atm_put ship with alpaca_paper_enabled=false until the operator
     flips the registry after paper observation)."""
+    # Schwab-only Options Desk (2026-09-25): Alpaca paper lane retired from Hub.
+    return 403, {
+        "ok": False,
+        "reason": "options_desk_schwab_only",
+        "message": "Alpaca paper options lane is retired on the Options Desk / Lifecycle — use Schwab Path B + per-order 2FA only.",
+    }
+
     from lib.options_pipeline import alpaca_paper as ap
 
     b = body if isinstance(body, dict) else {}
@@ -42071,6 +42180,13 @@ def _options_alpaca_submit(body=None):
     MANDATORY (mirrors the executor CLI's --confirm); missing/false → 400.
     Missing/invalid ALPACA_PAPER_BASE_URL → honest 4xx {reason} from the
     paper-endpoint hard lock — never a silent fallback."""
+    # Schwab-only Options Desk (2026-09-25): Alpaca paper lane retired from Hub.
+    return 403, {
+        "ok": False,
+        "reason": "options_desk_schwab_only",
+        "message": "Alpaca paper options lane is retired on the Options Desk / Lifecycle — use Schwab Path B + per-order 2FA only.",
+    }
+
     from lib.options_pipeline import alpaca_paper as ap
 
     b = body if isinstance(body, dict) else {}
@@ -42095,6 +42211,13 @@ def _options_alpaca_reconcile(body=None):
     """POST /api/v2/options/alpaca-paper/reconcile — poll fills/rejects/closes
     → outcomes (read-only vs Alpaca; state transitions via the legality-checked
     machine)."""
+    # Schwab-only Options Desk (2026-09-25): Alpaca paper lane retired from Hub.
+    return 403, {
+        "ok": False,
+        "reason": "options_desk_schwab_only",
+        "message": "Alpaca paper options lane is retired on the Options Desk / Lifecycle — use Schwab Path B + per-order 2FA only.",
+    }
+
     from lib.options_pipeline import alpaca_paper as ap
 
     try:
@@ -42108,6 +42231,13 @@ def _options_alpaca_record_outcome(body=None):
     — minimal honest operator close: FILLED/CLOSED row + operator-entered exit
     premium → close blob + validation ledger (record_outcome) → OUTCOME_RECORDED.
     P/L math matches reconcile_fills: (exit − entry fill) × 100 × 1 contract."""
+    # Schwab-only Options Desk (2026-09-25): Alpaca paper lane retired from Hub.
+    return 403, {
+        "ok": False,
+        "reason": "options_desk_schwab_only",
+        "message": "Alpaca paper options lane is retired on the Options Desk / Lifecycle — use Schwab Path B + per-order 2FA only.",
+    }
+
     from lib.options_pipeline import alpaca_paper as ap
     from lib.options_pipeline.validation import record_outcome
 
@@ -42212,6 +42342,13 @@ def _options_alpaca_promote_live_review(body=None):
     This does NOT place an order; live consideration still requires operator
     2FA + broker preview/read-back, and the model stays unvalidated until
     30 paper outcomes / 3 months."""
+    # Schwab-only Options Desk (2026-09-25): Alpaca paper lane retired from Hub.
+    return 403, {
+        "ok": False,
+        "reason": "options_desk_schwab_only",
+        "message": "Alpaca paper options lane is retired on the Options Desk / Lifecycle — use Schwab Path B + per-order 2FA only.",
+    }
+
     from lib.options_pipeline import alpaca_paper as ap
     from lib.options_pipeline.prime_rubric import VERDICT_LIVE_REVIEW_LABEL
 
@@ -53145,6 +53282,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 400, {"ok": False, "error": "symbol required"}
         try:
             return 200, {"ok": True, "data": _symbol_timeline(symbol)}
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)}
+
+    # BUY_READY institutional packet (M5 09-24): equity plan, chain-ranked options
+    # alternatives (per unit), portfolio facts and the CIO review — read-only.
+    if base_path.startswith("/api/v2/symbol/") and base_path.endswith("/buy-ready-packet"):
+        symbol = base_path[len("/api/v2/symbol/") :].replace("/buy-ready-packet", "").strip("/").upper()
+        if not symbol or not symbol.replace(".", "").replace("-", "").isalnum():
+            return 400, {"ok": False, "error": "symbol required"}
+        try:
+            return 200, {"ok": True, "data": _buy_ready_packet(symbol)}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)}
 

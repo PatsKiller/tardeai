@@ -81,7 +81,9 @@ explicitly authorizes remote sync.
 
 ## Evidence layers (exact HEAD)
 
-Committed evidence binds to ``control_surface_digest`` only (Layer 1). After a
+Committed evidence records the control-surface facts that change only when the
+surface does (Layer 1); the ``control_surface_digest`` itself is computed at HEAD
+and recorded in Layer 2, not committed (since 2026-09-25). After a
 successful launcher receipt, verifiers must also obtain a **runtime exact-head
 attestation** via ``python3 scripts/emit_sop_runtime_attestation.py`` (writes
 under ``artifacts/sop-attestations/``, never into tracked docs). See

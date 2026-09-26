@@ -15,6 +15,7 @@ Fail-soft: missing record / no question change → reported, never raised.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Mapping, Optional
@@ -31,6 +32,13 @@ def _now() -> str:
 
 
 def _persistent_records_path() -> Path:
+    # Hermetic override (2026-09-25): the wake selector already honors
+    # TRADEAI_WAKE_INSTRUMENT_RECORDS_PATH; the writeback read the served
+    # persistent-state tree unconditionally, so an isolated replay could write
+    # a critique onto the production record.
+    override = os.environ.get("TRADEAI_WAKE_INSTRUMENT_RECORDS_PATH")
+    if override:
+        return Path(override)
     shared = (
         Path.home()
         / "trade-ai-releases"
@@ -47,6 +55,9 @@ def _persistent_records_path() -> Path:
 def _artifact_path(root: Path | None = None) -> Path:
     if root is not None:
         return Path(root) / ARTIFACT_REL
+    override = os.environ.get("TRADEAI_WAKE_CRITIQUE_ARTIFACT_PATH")
+    if override:
+        return Path(override)
     shared = (
         Path.home()
         / "trade-ai-releases"
@@ -192,6 +203,10 @@ def apply_critique_question_writeback(
             out["reason"] = "record_missing"
             return out
         before = str(rec.get("next_research_question") or "") or None
+        # Which version of the record the critique was applied to: a later
+        # writeback can be placed before/after other cognition writes.
+        out["record_as_of_before"] = rec.get("as_of")
+        out["record_version_before"] = rec.get("version") or rec.get("revision")
         if delta["before"] is not None:
             out["before"] = delta["before"]
         else:
@@ -207,10 +222,12 @@ def apply_critique_question_writeback(
         if "next_research_question" not in changed:
             out["reason"] = "cognition_noop"
             return out
-        store.upsert(updated)
+        written = store.upsert(updated)
         out["applied"] = True
         out["reason"] = "persisted"
         out["changed"] = changed
+        out["record_as_of_after"] = (written or updated).get("as_of")
+        out["store_path"] = str(getattr(store, "path", None) or getattr(store, "_path", None) or "")
     except Exception as exc:  # noqa: BLE001 — wake fail-soft
         out["reason"] = f"{type(exc).__name__}: {exc}"
         return out

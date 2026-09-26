@@ -181,13 +181,32 @@ def _measure_alex(root: Path | None = None) -> dict[str, Any]:
     )
 
     # ── Gate 2: retrieval_provenance_completeness (100%) ─────────────────
+    # 2026-09-25: this counted `payload.domain` — a routing label every action
+    # carries — and so reported 100%. Retrieval provenance is the evidence an
+    # action was built FROM: a non-empty `evidence_refs` list AND a
+    # `source_snapshot_id` naming the heartbeat snapshot it read. Both are
+    # written by the run worker; an action missing either was not provably
+    # retrieved from anything.
     with_domains = sum(1 for a in real_actions
                        if (a.get("payload") or {}).get("domains")
                        or (a.get("payload") or {}).get("domain"))
-    g2_value = (with_domains / artifact_count) if artifact_count else None
+    with_provenance = 0
+    with_refs_only = 0
+    for a in real_actions:
+        pl = a.get("payload") or {}
+        refs = pl.get("evidence_refs")
+        has_refs = isinstance(refs, (list, tuple)) and len(refs) > 0
+        has_snap = bool(pl.get("source_snapshot_id"))
+        if has_refs and has_snap:
+            with_provenance += 1
+        elif has_refs:
+            with_refs_only += 1
+    g2_value = (with_provenance / artifact_count) if artifact_count else None
     g2 = _gate(
         round(g2_value, 4) if g2_value is not None else None, 1.0, "min",
-        evidence=f"{with_domains}/{artifact_count} actions carry domain provenance",
+        evidence=(f"{with_provenance}/{artifact_count} actions carry non-empty evidence_refs "
+                  f"AND a source_snapshot_id ({with_refs_only} refs without snapshot; "
+                  f"{with_domains} carry only a domain label, which is routing, not provenance)"),
         unmeasured_reason="no actions in the ledger to measure provenance over",
     )
 

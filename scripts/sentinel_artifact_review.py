@@ -136,27 +136,33 @@ def run_review() -> dict[str, Any]:
             "affected_actions": [],
         })
 
-    # Produce review records
+    # Produce review records. 2026-09-25: rows carried no `artifact_id`, so the
+    # gate-3 join (review names an action id, reviewer != producer) matched
+    # zero Alex actions. One row per affected action, each naming the action;
+    # a finding with no affected action is written once with artifact_id None.
     reviews_created = 0
     for finding in findings:
-        review = {
-            "event_type": "SENTINEL_REVIEW",
-            "event_id": str(uuid.uuid4()),
-            "timestamp": _now_iso(),
-            "reviewer": "sentinel",
-            "reviewer_agent_id": "sentinel",
-            "producer_agent_id": "alex",
-            "verdict": "CAUTION" if finding["severity"] in ("HIGH", "MEDIUM") else "PASS",
-            "check": finding["check"],
-            "severity": finding["severity"],
-            "message": finding["message"],
-            "findings_count": 1,
-            "deterministic": True,
-            "model_calls": 0,
-            "cost_usd": 0.0,
-        }
-        _append_jsonl(REVIEW_PATH, review)
-        reviews_created += 1
+        targets = list(finding.get("affected_actions") or []) or [None]
+        for aid in targets:
+            review = {
+                "event_type": "SENTINEL_REVIEW",
+                "event_id": str(uuid.uuid4()),
+                "timestamp": _now_iso(),
+                "reviewer": "sentinel",
+                "reviewer_agent_id": "sentinel",
+                "producer_agent_id": "alex",
+                "artifact_id": aid,
+                "verdict": "CAUTION" if finding["severity"] in ("HIGH", "MEDIUM") else "PASS",
+                "check": finding["check"],
+                "severity": finding["severity"],
+                "message": finding["message"],
+                "findings_count": 1,
+                "deterministic": True,
+                "model_calls": 0,
+                "cost_usd": 0.0,
+            }
+            _append_jsonl(REVIEW_PATH, review)
+            reviews_created += 1
 
     elapsed = _time.time() - t0
     return {

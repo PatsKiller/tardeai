@@ -275,46 +275,33 @@ def tree_fingerprint(inventory: list[dict]) -> str:
 
 def render_index_md(inventory: list[dict], summary: dict) -> str:
     """Deterministic INDEX.md body — no wall-clock as_of (avoids spurious drift)."""
-    fp = tree_fingerprint(inventory)
     rows = [
         e for e in inventory
         if e["ext"] == ".md" and e["path"] != INDEX_RELPATH
     ]
     rows.sort(key=lambda e: e["path"])
 
-    by_header = {HEADER_OK: 0, HEADER_MISSING: 0}
-    for e in rows:
-        by_header[e["header_status"]] = by_header.get(e["header_status"], 0) + 1
-
+    # 2026-09-25: the committed file carries ONLY per-document rows. The tree
+    # fingerprint and the counts tables were the two global sections, and every
+    # PR that added or edited any doc rewrote them, so two docs-touching PRs
+    # conflicted by construction (and every PR rewrote the digest-bearing
+    # evidence docs). Rows change only for the docs a PR actually touches, which
+    # git merges line by line. The fingerprint and counts are still computed and
+    # printed by --check-index / --verbose (and CI logs them); the drift gate
+    # still compares the whole rendered file.
     lines = [
         GENERATOR_BANNER,
         "# Docs Index",
         "",
         "**Generator:** `python3 scripts/report_docs_inventory.py --write-index`",
-        f"**Tree fingerprint:** `{fp}`",
+        "**Counts and tree fingerprint:** printed by "
+        "`python3 scripts/report_docs_inventory.py --check-index` (not committed: they "
+        "change on every docs PR and made concurrent PRs conflict).",
         "",
         "Hand-maintained narrative indexes remain authoritative for *what is current*:",
         "`docs/DOCUMENTATION_INDEX.md`, `docs/project/PROJECT_DOC_INDEX.md`.",
         "This file is the regenerable tree listing from `report_docs_inventory.py`.",
-        "",
-        "## Counts",
-        "",
-        "| Metric | Count |",
-        "|--------|------:|",
-        f"| Files under `docs/` (excl. this INDEX) | {summary['total']} |",
-        f"| Markdown (excl. this INDEX) | {summary['markdown_total']} |",
-        f"| **{HEADER_MISSING}** | **{summary['missing_header']}** |",
-        f"| Header OK | {by_header.get(HEADER_OK, 0)} |",
-        f"| Duplicate groups | {summary['duplicate_groups']} |",
-        "",
-        "### By status_guess",
-        "",
-        "| Status | Count |",
-        "|--------|------:|",
     ]
-    for s, c in sorted(summary["by_status"].items()):
-        lines.append(f"| {s} | {c} |")
-
     lines.extend([
         "",
         "## Markdown tree",
@@ -350,7 +337,9 @@ def check_index(inventory: list[dict], summary: dict) -> int:
         print(
             f"[PASS] {INDEX_RELPATH} matches inventory "
             f"(MISSING HEADER={summary['missing_header']}, "
-            f"md={summary['markdown_total']}, fingerprint={tree_fingerprint(inventory)[:12]})"
+            f"md={summary['markdown_total']}, files={summary['total']}, "
+            f"duplicate_groups={summary['duplicate_groups']}, "
+            f"fingerprint={tree_fingerprint(inventory)[:12]})"
         )
         return 0
     import difflib

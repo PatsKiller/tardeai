@@ -581,6 +581,23 @@ def weak_beliefs(record: Optional[dict[str, Any]], *,
     return sorted(out, key=lambda b: float(b.get("success_rate") or 0.0))
 
 
+def salient_belief(record: Optional[dict[str, Any]], *,
+                   min_samples: int = BELIEF_MIN_SAMPLES,
+                   threshold: float = BELIEF_WEAK_SUCCESS_RATE) -> Optional[dict[str, Any]]:
+    """The belief a wake should reason from.
+
+    2026-09-25: the wake surfaced `latest_belief` (newest write) while the
+    research gate escalated on `weak_beliefs` (settled, below threshold). On a
+    record whose newest belief is strong and an older one weak, the two paths
+    disagreed about which belief mattered. The weakest sufficiently-sampled
+    belief is the one that should change a judgment; absent any, the latest.
+    """
+    weak = weak_beliefs(record, min_samples=min_samples, threshold=threshold)
+    if weak:
+        return weak[0]
+    return latest_belief(record)
+
+
 def belief_sentence(belief: Optional[dict[str, Any]]) -> str:
     """One plain sentence a model can be shown. Numbers, no instructions."""
     if not belief:

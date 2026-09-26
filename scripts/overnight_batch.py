@@ -134,15 +134,20 @@ def queue_screener_batch():
     screener_symbols = [s for s in screener_symbols if s not in portfolio_symbols]
 
     # Queue Maria only for screener candidates
+    # The id carries a fresh uuid, so ON CONFLICT could never fire; guard on pending work
+    # for the same (symbol, agent, request_type) instead (2026-07-23 queue audit).
+    from lib.agent_job_queue import insert_agent_job_unless_pending
+
     queued = 0
     for symbol in screener_symbols:
         job_id = f"t2_{symbol.lower()}_maria_{uuid.uuid4().hex[:6]}"
-        cur.execute("""
-            INSERT INTO watchlist_agent_jobs (id, symbol, requested_agent, request_type, priority, note, status, submitted_from)
-            VALUES (%s, %s, 'maria', 'full_analysis', 2, 'Tier 2: Screener MWF — Maria only', 'queued', 'command_center')
-            ON CONFLICT DO NOTHING
-        """, (job_id, symbol))
-        queued += 1
+        if insert_agent_job_unless_pending(cur, {
+            "id": job_id, "symbol": symbol, "requested_agent": "maria",
+            "request_type": "full_analysis", "priority": 2,
+            "note": "Tier 2: Screener MWF — Maria only", "status": "queued",
+            "submitted_from": "command_center",
+        }):
+            queued += 1
 
     conn.commit()
     conn.close()
@@ -172,18 +177,22 @@ def _queue_stale_symbols_legacy():
     """)
     stale = cur.fetchall()
 
+    # These symbols stay stale until analyzed, so the same 20 were re-queued nightly
+    # (2026-07-23 queue audit); the uuid id meant ON CONFLICT never fired.
+    from lib.agent_job_queue import insert_agent_job_unless_pending
+
     queued = 0
     agents = ["maria", "steph", "risk_agent"]
     for row in stale:
         symbol = row["symbol"]
         for agent in agents:
             job_id = f"overnight_{symbol.lower()}_{agent}_{uuid.uuid4().hex[:6]}"
-            cur.execute("""
-                INSERT INTO watchlist_agent_jobs (id, symbol, requested_agent, request_type, priority, note, status)
-                VALUES (%s, %s, %s, 'full_analysis', 3, 'Overnight refresh — stale analysis', 'queued')
-                ON CONFLICT DO NOTHING
-            """, (job_id, symbol, agent))
-            queued += 1
+            if insert_agent_job_unless_pending(cur, {
+                "id": job_id, "symbol": symbol, "requested_agent": agent,
+                "request_type": "full_analysis", "priority": 3,
+                "note": "Overnight refresh — stale analysis", "status": "queued",
+            }):
+                queued += 1
 
     conn.commit()
     conn.close()
@@ -713,25 +722,31 @@ def run_tax_sweep():
             cur.execute("""SELECT DISTINCT symbol FROM watchlist_agent_results
                           WHERE agent = 'tax_agent' AND created_at > NOW() - INTERVAL '24 hours'""")
             recent = {r[0] for r in cur.fetchall()}
+            from lib.agent_job_queue import insert_agent_job_unless_pending
+
             for sym in loss_symbols[:10]:
                 if sym not in recent:
-                    cur.execute("""INSERT INTO watchlist_agent_jobs
-                        (id, symbol, requested_agent, request_type, note, status, priority, submitted_from, created_at)
-                        VALUES (%s, %s, 'tax_agent', 'full_analysis', 'tax harvest review — loss > $500', 'pending', 1, 'tax_sweep', NOW())
-                    """, (str(uuid.uuid4()), sym))
-                    jobs_queued += 1
+                    # 24h-results exclusion alone let a still-pending review be queued again.
+                    if insert_agent_job_unless_pending(cur, {
+                        "id": str(uuid.uuid4()), "symbol": sym, "requested_agent": "tax_agent",
+                        "request_type": "full_analysis", "note": "tax harvest review — loss > $500",
+                        "status": "pending", "priority": 1, "submitted_from": "tax_sweep",
+                    }, raw_columns={"created_at": "NOW()"}):
+                        jobs_queued += 1
 
     # 2. Proposals with SSDI impact not yet reviewed by tax_agent
     cur.execute("""SELECT id, symbol FROM watchlist_proposals
                    WHERE ssdi_impact IS NOT NULL AND ssdi_impact != 'none' AND status = 'proposed' LIMIT 5""")
     ssdi_proposals = cur.fetchall()
+    from lib.agent_job_queue import insert_agent_job_unless_pending
+
     for pid, sym in ssdi_proposals:
-        cur.execute("""INSERT INTO watchlist_agent_jobs
-            (id, symbol, requested_agent, request_type, note, status, priority, submitted_from, created_at)
-            VALUES (%s, %s, 'tax_agent', 'full_analysis', %s, 'pending', 1, 'tax_sweep', NOW())
-            ON CONFLICT DO NOTHING
-        """, (str(uuid.uuid4()), sym, f"SSDI-impacted proposal #{pid}"))
-        jobs_queued += 1
+        if insert_agent_job_unless_pending(cur, {
+            "id": str(uuid.uuid4()), "symbol": sym, "requested_agent": "tax_agent",
+            "request_type": "full_analysis", "note": f"SSDI-impacted proposal #{pid}",
+            "status": "pending", "priority": 1, "submitted_from": "tax_sweep",
+        }, raw_columns={"created_at": "NOW()"}):
+            jobs_queued += 1
 
     conn.commit()
     cur.close()

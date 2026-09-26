@@ -91,6 +91,15 @@ options_desk_settings:
   approval_required: true       # Operator must approve in desk queue before live submit
   desk_tier_edge_a: 72          # Tier A — priority desk routing
   desk_tier_edge_b: 62          # Tier B — standard desk
+  # Income idea screen (2026-09-26): build a card only from a contract the
+  # liquidity gate above can pass. Read by scripts/lib/options_income_quality.py.
+  min_underlying_price: 5.0            # No income ideas on sub-$5 names
+  min_premium_per_share: 0.10          # Below this the idea is noise
+  min_annualized_roc_pct: 6.0          # Premium / capital at risk, annualized
+  picker_strike_slack_pct: 8.0         # How far from the target strike a liquid contract may be
+  csp_target_abs_delta: 0.25           # Cash-secured put strike by |delta| when the chain has deltas
+  cc_target_delta: 0.25                # Covered call strike by delta when the chain has deltas
+  edge_roc_full_credit_ann_pct: 25.0   # Wheel edge gives full ROC credit only at this annualized yield
   hard_risk_limits:
     max_contracts_per_order: 5
     max_daily_orders: 10

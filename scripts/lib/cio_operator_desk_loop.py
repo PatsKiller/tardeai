@@ -330,6 +330,19 @@ def buy_perspective_needs_research_first(intent: dict[str, Any], evidence: dict[
     return any(subject_price_is_stale(prices.get(s)) for s in syms if s)
 
 
+_PRICE_IN_TEXT = re.compile(r"\$\s?(\d{1,5}(?:\.\d{1,4})?)")
+
+
+def _operator_quoted_price(text: str | None) -> float | None:
+    """The last dollar amount the operator typed, when exactly one plausible
+    price appears; None otherwise (never guess between two numbers)."""
+    hits = [float(m) for m in _PRICE_IN_TEXT.findall(str(text or ""))]
+    hits = [h for h in hits if 0.5 <= h <= 100000]
+    if len(hits) == 1:
+        return hits[0]
+    return None
+
+
 def _held_positions_map() -> dict[str, dict[str, Any]]:
     """symbol -> {shares, market_value, account} from holdings.json (store of record)."""
     path = PROJECT_ROOT / "data" / "portfolios" / "state" / "holdings.json"
@@ -1800,11 +1813,19 @@ def _gather_tradeai_evidence_core(intent: dict[str, Any]) -> dict[str, Any]:
             # own row, gates, levels and held status -- never with the book dump.
             if symbols:
                 held_map = _held_positions_map()
+                # An operator who quotes a price ("fallen to $33.68") gets it
+                # reconciled against the desk print, not silently replaced.
+                _op_price = _operator_quoted_price(
+                    intent.get("question") or intent.get("raw_question") or intent.get("text")
+                    or intent.get("raw_text") or intent.get("message") or ""
+                )
                 cards: dict[str, str] = {}
                 for sym in symbols[:6]:
                     row = by_sym.get(sym)
                     if row:
-                        cards[sym] = format_reentry_symbol_reply(row, holding=held_map.get(sym), computed_at=as_of)
+                        cards[sym] = format_reentry_symbol_reply(
+                            row, holding=held_map.get(sym), computed_at=as_of, operator_price=_op_price,
+                        )
                 if cards:
                     available["reentry_symbol_cards"] = cards
             check_syms = symbols or [

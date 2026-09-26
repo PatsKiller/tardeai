@@ -81,6 +81,14 @@ def load_desk_config() -> dict:
     cfg.setdefault("approval_required", os.getenv("OPTIONS_APPROVAL_REQUIRED", "1") == "1")
     cfg.setdefault("desk_tier_edge_a", float(os.getenv("OPTIONS_DESK_TIER_A_EDGE", "72")))
     cfg.setdefault("desk_tier_edge_b", float(os.getenv("OPTIONS_DESK_TIER_B_EDGE", "62")))
+    # Defined-risk credit spreads: refuse max_profit / max_loss below this floor.
+    # 0.25 ⇒ may lose at most 4× the credit. AMZN-class 0.06 R:R ($66 vs $1,184)
+    # was Tier A / live eligible with no model veto (2026-09-25) — that is immature.
+    # Does NOT apply to cash_secured_put (assignment economics are different).
+    cfg.setdefault(
+        "min_credit_spread_rr",
+        float(os.getenv("OPTIONS_MIN_CREDIT_SPREAD_RR", "0.25")),
+    )
     # Hard preflight limits (live path only — advisory desk may warn)
     hr = cfg.get("hard_risk_limits") or {}
     cfg.setdefault("hard_max_contracts_per_order", int(hr.get("max_contracts_per_order", 5)))
@@ -221,6 +229,20 @@ def evaluate_hard_risk_blocks(
             elif "spread" in str(issue).lower():
                 code = "spread_too_wide"
             blocks.append(_hard_block(code, str(issue), snapshot=liq))
+
+    # Defined-risk credit spread asymmetric payoff (2026-09-25 maturity).
+    rr_reason = credit_spread_rr_block(proposal, cfg=cfg)
+    if rr_reason:
+        blocks.append(_hard_block(
+            "credit_spread_rr_below_floor",
+            rr_reason,
+            snapshot={
+                "risk_reward": credit_spread_rr_ratio(proposal),
+                "min_credit_spread_rr": cfg.get("min_credit_spread_rr"),
+                "max_profit": proposal.get("max_profit"),
+                "max_loss": proposal.get("max_loss"),
+            },
+        ))
 
     # Quote / chain staleness
     q_age = proposal.get("quote_age_seconds")
@@ -399,6 +421,7 @@ def liquidity_gate(contract: dict, *, cfg: Optional[dict] = None) -> dict:
     mid = _f(contract.get("mid"))
     if mid <= 0 and bid > 0 and ask > 0:
         mid = (bid + ask) / 2.0
+    oi_missing = contract.get("oi") is None
     oi = int(_f(contract.get("oi")))
     vol = int(_f(contract.get("volume")))
     spread_pct = 100.0 * (ask - bid) / mid if mid > 0 and ask >= bid else 999.0
@@ -406,7 +429,10 @@ def liquidity_gate(contract: dict, *, cfg: Optional[dict] = None) -> dict:
     min_vol = int(cfg.get("min_volume") or 5)
     max_spread = float(cfg.get("max_bid_ask_spread_pct") or 12.0)
     issues = []
-    if oi < min_oi:
+    if oi_missing:
+        # Still refused, but named: a chain row without the field is not "0 open interest".
+        issues.append("OI unknown (chain field missing)")
+    elif oi < min_oi:
         issues.append(f"OI {oi} < {min_oi}")
     if vol < min_vol and oi < min_oi * 2:
         issues.append(f"volume {vol} < {min_vol}")
@@ -662,6 +688,62 @@ def aggregate_book_greeks(positions: List[dict], tech_map: Optional[dict] = None
     }
 
 
+def credit_spread_rr_ratio(proposal: dict) -> Optional[float]:
+    """max_profit / max_loss for a credit_spread, or None if not computable."""
+    if (proposal.get("strategy") or "") != "credit_spread":
+        return None
+    rr = proposal.get("risk_reward")
+    if rr is not None:
+        try:
+            v = float(rr)
+            if v >= 0:
+                return v
+        except (TypeError, ValueError):
+            pass
+    mx_p = _f(proposal.get("max_profit"))
+    mx_l = _f(proposal.get("max_loss"))
+    if mx_p > 0 and mx_l > 0:
+        return mx_p / mx_l
+    # Reconstruct from credit + width when stamped fields missing.
+    credit = _f(proposal.get("premium_total"))
+    if credit <= 0:
+        credit = _f(proposal.get("premium")) * 100.0
+    short_k = _f(proposal.get("short_strike") or proposal.get("strike"))
+    long_k = _f(proposal.get("long_strike"))
+    if credit > 0 and short_k > 0 and long_k > 0 and short_k > long_k:
+        width = short_k - long_k
+        mx_l = (width * 100.0) - credit
+        if mx_l > 0:
+            return credit / mx_l
+    return None
+
+
+def credit_spread_rr_block(
+    proposal: dict,
+    *,
+    cfg: Optional[dict] = None,
+) -> Optional[str]:
+    """Human-readable refuse reason when credit_spread R:R is below floor; else None."""
+    if (proposal.get("strategy") or "") != "credit_spread":
+        return None
+    cfg = cfg or load_desk_config()
+    floor = _f(cfg.get("min_credit_spread_rr"), 0.25)
+    if floor <= 0:
+        return None  # operator disabled
+    rr = credit_spread_rr_ratio(proposal)
+    if rr is None:
+        return "credit_spread R:R unknown — refuse rather than guess"
+    if rr < floor:
+        mx_p = _f(proposal.get("max_profit"))
+        mx_l = _f(proposal.get("max_loss"))
+        return (
+            f"credit_spread R:R {rr:.3f} < min {floor:.2f} "
+            f"(max profit ${mx_p:,.0f} vs max loss ${mx_l:,.0f}) — "
+            f"asymmetric payoff refused"
+        )
+    return None
+
+
 def desk_tier(edge: float, cfg: Optional[dict] = None) -> str:
     cfg = cfg or load_desk_config()
     if edge >= _f(cfg.get("desk_tier_edge_a"), 72):
@@ -702,6 +784,9 @@ def enterprise_enrich_proposal(
         blocks.append(blackout.get("reason") or "earnings_blackout")
     if not liq.get("pass"):
         blocks.extend(liq.get("issues") or [])
+    rr_reason = credit_spread_rr_block(proposal, cfg=cfg)
+    if rr_reason:
+        blocks.append(rr_reason)
 
     tier = desk_tier(edge, cfg)
     live_eligible = not blocks and liq.get("pass", True)
