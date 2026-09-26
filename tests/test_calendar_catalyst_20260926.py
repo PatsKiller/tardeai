@@ -18,7 +18,13 @@ from lib.options_plain_english import committee_memo  # noqa: E402
 
 def _p(nxt, exp="2026-11-20"):
     return {"symbol": "DELL", "strategy": "cash_secured_put", "expiration": exp, "strike": 490,
-            "option_strategy_guid": "g", "enterprise": {"earnings_blackout": {"next_earnings": nxt}}}
+            "option_strategy_guid": "g", "enterprise": {"earnings": {"next_earnings": nxt}}}
+
+
+def test_live_key_is_enterprise_earnings():
+    # The shape the enterprise layer actually writes (options_desk_enterprise: ent["earnings"]).
+    live = {"expiration": "2026-11-20", "enterprise": {"earnings": {"in_blackout": False, "next_earnings": "2026-11-27"}}}
+    assert ot.calendar_catalyst(live).startswith("Calendar: next earnings 2026-11-27")
 
 
 def test_earnings_after_expiry_is_stated_as_a_calendar_fact():
