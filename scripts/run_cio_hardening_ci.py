@@ -2442,6 +2442,15 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-26 — P2 audit remediation: cron hygiene CLI replacing the
+        # quoting-bug one-liners (R-10); grant USE consumption on release
+        # preflight and pre-push (C-10, the ledger under-counted every Claude
+        # Code push/promote); MariaDeskExchange@v1 receipt so a desk answer that
+        # reaches the operator via OpenClaw leaves a durable row (C-05).
+        "p2_hygiene_guard_lineage_20260926",
+        ["tests/test_p2_hygiene_guard_lineage_20260926.py"],
+    ),
+    (
         # 2026-09-25 — CIO cognition tranche 3: prompt event-driven cognition on
         # the existing bus/wake-store/dispatcher lane (cursor lands on the
         # newest handled event, singular `symbol` subjects, priority-FIFO

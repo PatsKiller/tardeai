@@ -13,6 +13,8 @@ AUTHORITY: READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0. No invented grants.
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from typing import Any, Optional, Sequence
 
 from scripts.lib.specialist_attribution import (
@@ -134,10 +136,79 @@ def try_shared_perspective_entry(
     out["body"] = scrubbed
     out["specialist_attribution"] = decision.to_dict()
     out["maria_parity_hook"] = SCHEMA
+    # C-05 (2026-09-26): the SCHD 10:48 ET desk answer reached the operator through
+    # this hook and left NO durable row anywhere (no communication_events, no
+    # operator turn). Record the exchange so a later contradiction can be joined
+    # to what the desk actually said before Maria's LLM rewrote it.
+    out["exchange_receipt_id"] = record_desk_exchange(
+        question=question, chat_id=str(chat_id or ""), message_id=str(message_id or ""),
+        channel=str(channel or "skill"), desk_text=scrubbed, result=out,
+    )
     return out
 
 
+EXCHANGE_SCHEMA = "MariaDeskExchange@v1"
+EXCHANGE_REL = "data/cio/maria_desk_exchanges.jsonl"
+
+
+def _exchange_path() -> Path:
+    import os as _os
+    override = _os.environ.get("TRADEAI_MARIA_EXCHANGE_PATH")
+    if override:
+        return Path(override)
+    shared = Path.home() / "trade-ai-releases" / "persistent-state" / EXCHANGE_REL
+    if shared.parent.is_dir():
+        return shared
+    return Path(__file__).resolve().parents[2] / EXCHANGE_REL
+
+
+def record_desk_exchange(*, question: str, chat_id: str, message_id: str, channel: str,
+                         desk_text: str, result: dict | None = None, path=None) -> str | None:
+    """Append one MariaDeskExchange@v1 row (fail-soft; returns the receipt id).
+
+    Stores the DESK text (post-scrub) that Maria received, never Maria's
+    rewrite — that is the point: the two can later be diffed. Question text
+    is hashed and truncated (operator words are personal data).
+    """
+    import hashlib
+    import json as _json
+    from datetime import datetime, timezone
+    try:
+        ts = datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        qhash = hashlib.sha256((question or "").encode("utf-8")).hexdigest()[:16]
+        rid = "mdx_" + hashlib.sha256(f"{ts}|{chat_id}|{message_id}|{qhash}".encode("utf-8")).hexdigest()[:20]
+        symbols = []
+        try:
+            symbols = list((result or {}).get("symbols") or (result or {}).get("subjects") or [])[:6]
+        except Exception:  # noqa: BLE001
+            symbols = []
+        integrity = None
+        for marker in ("Decision integrity: *", "Decision integrity:"):
+            if marker in (desk_text or ""):
+                integrity = desk_text.split(marker, 1)[1].split("*", 1)[0].strip()[:40]
+                break
+        row = {
+            "schema": EXCHANGE_SCHEMA, "receipt_id": rid, "at": ts, "surface": "maria",
+            "channel": channel, "chat_id": chat_id or None, "message_id": message_id or None,
+            "question_sha16": qhash, "question_excerpt": (question or "")[:160],
+            "symbols": symbols, "desk_text_sha16": hashlib.sha256((desk_text or "").encode("utf-8")).hexdigest()[:16],
+            "desk_text_excerpt": (desk_text or "")[:600], "decision_integrity_state": integrity,
+            "alert_armed": ("Watch alert: none armed" not in (desk_text or "")) if desk_text else None,
+            "prose_author": "downstream LLM (Maria) — not recorded here",
+            "authority": AUTHORITY, "mbi_behavior": 0,
+        }
+        p = Path(path) if path else _exchange_path()
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with p.open("a", encoding="utf-8") as fh:
+            fh.write(_json.dumps(row, sort_keys=True, default=str) + "\n")
+        return rid
+    except Exception:  # noqa: BLE001 — never fail Maria's reply on receipting
+        return None
+
+
 __all__ = [
+    "EXCHANGE_SCHEMA",
+    "record_desk_exchange",
     "A2A_DENY_NOTICE",
     "AUTHORITY",
     "SCHEMA",
