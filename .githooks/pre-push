@@ -16,17 +16,26 @@ authorized=0
 override=0
 [[ "${TRADEAI_REMOTE_PUSH_OVERRIDE:-0}" == "1" ]] && override=1
 
-guard_meta="$(python3 - <<'PY'
+push_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo HEAD)"
+push_head="$(git rev-parse HEAD 2>/dev/null || echo "")"
+guard_meta="$(PUSH_BRANCH="$push_branch" PUSH_HEAD="$push_head" python3 - <<'PY'
 import json, os, sys
 sys.path.insert(0, os.environ.get("PYTHONPATH", "").split(":")[0] or ".")
 try:
-    from scripts.lib.guard_push_auth import push_authorized_by_guard
-    ok, reason = push_authorized_by_guard()
-    print(json.dumps({"ok": ok, "reason": reason}))
+    from scripts.lib.guard_push_auth import push_authorized_by_guard_scoped
+    v = push_authorized_by_guard_scoped(branch=os.environ.get("PUSH_BRANCH", ""),
+                                        head_sha=os.environ.get("PUSH_HEAD", ""))
+    print(json.dumps(v))
 except Exception:
-    print(json.dumps({"ok": False, "reason": ""}))
+    print(json.dumps({"ok": False, "reason": "", "scoped": False, "why": "", "enforced": False}))
 PY
 )"
+guard_scoped="$(python3 -c 'import json,sys; print("1" if json.loads(sys.argv[1]).get("scoped") else "0")' "$guard_meta")"
+guard_has="$(python3 -c 'import json,sys; print("1" if json.loads(sys.argv[1]).get("reason") else "0")' "$guard_meta")"
+if [[ "$guard_has" == "1" && "$guard_scoped" != "1" ]]; then
+  echo "WARNING: the active guard git-push grant does not name branch '$push_branch' or head ${push_head:0:9}."
+  echo "         A grant is permission for one operation; set TRADEAI_GUARD_PUSH_SCOPE_ENFORCE=1 to refuse unscoped grants."
+fi
 guard_ok="$(python3 -c 'import json,sys; print("1" if json.loads(sys.argv[1])["ok"] else "0")' "$guard_meta")"
 guard_reason="$(python3 -c 'import json,sys; print(json.loads(sys.argv[1])["reason"])' "$guard_meta")"
 if [[ "$guard_ok" == "1" ]]; then

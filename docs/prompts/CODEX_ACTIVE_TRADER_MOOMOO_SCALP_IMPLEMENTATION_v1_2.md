@@ -1,10 +1,18 @@
-> **SUPERSEDED by v1.2** (`CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_2.md`, 2026-09-25). Its per-stage push / Drive / email steps conflict with `AI_WORK_POLICY.md` §3–§4; do not start a run from this file. Kept for history, not deleted.
+# CODEX IMPLEMENTATION PROGRAM v1.2
 
-# CODEX IMPLEMENTATION PROGRAM v1.1
+Status:      PROPOSED (with AGENTS.md 1.3.0)
+as_of:       2026-09-25
+Measured at: 1c60ecb42 / not measured
+Supersedes:  v1.1 (kept, marked superseded)
 
-Status:      ACTIVE
-as_of:       2026-07-22T23:51:03Z
-Measured at: efcc51365 / not measured
+**What changed from v1.1, and why.** v1.1 required a push, a Drive sync and an email after every
+stage. That contradicts `AI_WORK_POLICY.md` §3–§4 (one push per tranche; no intermediate remote
+checkpoints) and §16 (explicit remote intent). Per the precedence recorded in
+`docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md` §2 and §6, AI_WORK_POLICY.md
+wins over this program. A stage checkpoint is a local commit plus stage artifacts; the night run
+is one tranche with one push; Drive sync and hash readback happen once, after that push; operator
+notification goes through the operator chokepoint, and email needs an operator-granted mail scope.
+No other instruction changed.
 
 ## Active Trader Next · Moomoo Live Momentum Scalp · Trade AI Architecture v3.3
 
@@ -43,9 +51,9 @@ A stage is green only after:
 5. closeout written;
 6. architecture compliance checked;
 7. stage committed;
-8. branch pushed;
-9. Drive sync complete;
-10. local/GitHub/Drive hashes match;
+8. stage checkpoint recorded locally (no push — one push per tranche, `AI_WORK_POLICY.md` §3);
+9. stage artifacts listed in the local stage manifest (Drive sync happens once, after the tranche push);
+10. local hashes recorded in the stage manifest (GitHub and Drive hashes are verified once, at tranche end);
 11. checkpoint updated.
 
 Only then may the next stage begin.
@@ -58,17 +66,17 @@ On any failed assertion:
 - do not begin another stage;
 - preserve logs and worktree;
 - write failure closeout;
-- push safe diagnostic artifacts;
-- sync available evidence to Drive;
-- send operator email;
+- commit safe diagnostic artifacts locally (a push happens only as the tranche's authorized corrective push);
+- sync evidence to Drive only after an authorized push;
+- notify the operator through the operator notification chokepoint (email only with an operator-granted mail scope);
 - record exact resume command.
 
 ## Required unattended preflight
 
 ```text
-GitHub push test
+GitHub reachability test (git ls-remote — read-only, no push)
 Google Drive create/update/hash test
-Gmail operator-send test
+operator-notification channel dry run (Gmail only if a mail scope is granted)
 Bitwarden lab placeholder-create test
 test database migration rollback
 disk and time budget
@@ -77,7 +85,7 @@ no production deploy credentials mounted
 all live feature flags false
 ```
 
-The night run cannot begin if Gmail or Drive verification fails.
+The night run cannot begin if the notification-channel or Drive verification fails.
 
 ## Required outputs per stage
 
@@ -100,7 +108,7 @@ ROLLBACK.md
 DRIVE_FINAL_MANIFEST.json
 ```
 
-Send the operator an email with the PR, Drive folder, commits, tests, TODOs, credential requirements, litmus verdict, and next action.
+Notify the operator (chokepoint; email only with a granted mail scope) with the PR, Drive folder, commits, tests, TODOs, credential requirements, litmus verdict, and next action.
 
 # 0. OPERATING INSTRUCTIONS FOR CODEX
 
@@ -358,9 +366,9 @@ Implement:
 - complete replay timeline;
 - outcome scoring;
 - stage checkpoint controller;
-- GitHub stage commit/push;
+- stage commit (local); one tranche push at the end (`AI_WORK_POLICY.md` §3);
 - Drive idempotent sync and hash verification;
-- Gmail completion/failure notification;
+- completion/failure notification via the operator chokepoint (email only with a granted mail scope);
 - credential requirement manifest;
 - Bitwarden lab placeholder records;
 - operator TODO.
@@ -394,7 +402,7 @@ Prove:
 - all live flags off;
 - draft PR current;
 - Drive and GitHub complete;
-- operator completion email delivered.
+- operator completion notification delivered.
 
 The unattended night run stops here.
 
@@ -443,11 +451,11 @@ PRODUCTION SECRET READ:
 PRODUCTION GUARDRAIL CHANGED:
 /V3 ROUTE REMOVED OR REPLACED:
 STAGE COMMIT:
-GITHUB PUSH:
+GITHUB PUSH (tranche end only):
 DRIVE SYNC:
 DRIVE HASH VERIFIED:
 CHECKPOINT:
-OPERATOR EMAIL:
+OPERATOR NOTIFICATION:
 BITWARDEN PLACEHOLDERS:
 OPERATOR TODO:
 LITMUS REVIEW VERDICT:

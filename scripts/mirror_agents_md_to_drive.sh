@@ -20,7 +20,9 @@
 # WHAT IT GUARANTEES
 #   - uploads the file from disk (real bytes, no transcription)
 #   - downloads it back and compares SHA-256; a mismatch is a hard failure
-#   - updates ONE Drive file by stable id; never creates a timestamped duplicate
+#   - updates ONE Drive file by the stable id pinned in the committed manifest
+#     (`gog upload --replace <id>`); never creates a duplicate; creating the
+#     first copy needs AGENTS_MIRROR_CREATE_FIRST=1 and an empty folder
 #   - writes the manifest ONLY after verification passes
 #   - never prints the secret, and never reads ~/.openclaw/credentials/*
 #
@@ -30,12 +32,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="$ROOT/AGENTS.md"
-MANIFEST="$ROOT/docs/ops/AGENTS_DRIVE_MIRROR_MANIFEST.json"
+SRC="${AGENTS_MIRROR_SRC:-$ROOT/AGENTS.md}"
+MANIFEST="${AGENTS_MIRROR_MANIFEST:-$ROOT/docs/ops/AGENTS_DRIVE_MIRROR_MANIFEST.json}"
 FOLDER_ID="${AGENTS_DRIVE_FOLDER_ID:-1spBGi8OgIpDE1p2tlIXzk8fJLqxqMCCU}"
 DRIVE_PATH="Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md"
 ACCOUNT="${GOG_ACCOUNT:-john@jwwhiting.com}"
-BROKER="$ROOT/scripts/gog_broker.sh"
+BROKER="${AGENTS_MIRROR_GOG_BROKER:-$ROOT/scripts/gog_broker.sh}"  # override is for tests (fake gog)
 AGENT="${TRADEAI_AGENT:-}"
 
 die() { echo "mirror_agents_md: $*" >&2; exit 2; }
@@ -57,22 +59,43 @@ echo "local  sha256 : $LOCAL_SHA"
 echo "commit        : $COMMIT"
 echo "policy version: $POLICY_VERSION"
 
-# ── one mutable file, found by name in the target folder ─────────────────────
+# ── one mutable file, pinned by stable id ────────────────────────────────────
+# Governance truth repair 2026-09-25: this block used to call
+# `gog upload --parent`, which (per `gog drive upload --help`, v0.12.0) CREATES
+# a new file; only `--replace=<fileId>` updates in place. So the "updates ONE
+# Drive file by stable id" promise above was false: with one AGENTS.md present,
+# a run would add a second, and the next run would refuse on the duplicate.
+# The stable id now comes from the committed manifest; the folder listing must
+# agree with it; a mismatch or duplicate stops the run for the operator.
 echo "== locating the single mirror file in $FOLDER_ID"
 LISTING="$(gog ls --parent "$FOLDER_ID")" || die "drive ls failed (is BW_SESSION set and the vault unlocked?)"
 
-# Refuse to guess if the folder holds more than one AGENTS.md. Reporting and
-# stopping is correct here; picking one could orphan the other silently.
 COUNT="$(printf '%s' "$LISTING" | python3 -c "$FIND_COUNT")"
 if [ "$COUNT" -gt 1 ]; then
   printf '%s' "$LISTING" | python3 -c "$FIND_IDS" >&2
   die "$COUNT files named AGENTS.md in the target folder; the operator must resolve which is canonical"
 fi
+LISTED_ID="$(printf '%s' "$LISTING" | python3 -c 'import json,sys; d=json.load(sys.stdin); ids=[f["id"] for f in d.get("files",[]) if f.get("name")=="AGENTS.md" and not f.get("trashed")]; print(ids[0] if ids else "")')"
+PINNED_ID=""
+if [ -r "$MANIFEST" ]; then
+  PINNED_ID="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("drive_file_id",""))' "$MANIFEST")"
+fi
 
-echo "== uploading from disk (real bytes, no transcription)"
-OUT="$(gog upload "$SRC" --parent "$FOLDER_ID")" || die "upload failed"
+if [ -n "$PINNED_ID" ]; then
+  [ "$LISTED_ID" = "$PINNED_ID" ] || die "manifest pins $PINNED_ID but the folder lists '${LISTED_ID:-none}'; refusing to guess"
+  echo "== replacing content of pinned file $PINNED_ID (real bytes, no transcription)"
+  OUT="$(gog upload "$SRC" --replace "$PINNED_ID")" || die "replace upload failed"
+elif [ -z "$LISTED_ID" ] && [ "${AGENTS_MIRROR_CREATE_FIRST:-0}" = "1" ]; then
+  echo "== no mirror exists and AGENTS_MIRROR_CREATE_FIRST=1: creating the first copy"
+  OUT="$(gog upload "$SRC" --parent "$FOLDER_ID")" || die "create upload failed"
+else
+  die "no manifest drive_file_id to pin (listed: '${LISTED_ID:-none}'); commit the manifest id, or set AGENTS_MIRROR_CREATE_FIRST=1 when the folder is empty"
+fi
 FILE_ID="$(printf '%s' "$OUT" | python3 -c "$READ_ID")"
 [ -n "$FILE_ID" ] || die "upload returned no file id"
+if [ -n "$PINNED_ID" ] && [ "$FILE_ID" != "$PINNED_ID" ]; then
+  die "replace returned id $FILE_ID, expected the pinned $PINNED_ID — a new file may have been created; stop"
+fi
 echo "drive file id : $FILE_ID"
 
 # ── read back and prove equality ─────────────────────────────────────────────

@@ -11,6 +11,7 @@ service, or represents broker/order/approval/2FA authority.
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -21,6 +22,16 @@ from .contracts import canonical_hash
 
 CATALOG_SCHEMA = "trade-ai-agent-maturity-catalog-v1"
 MONITORING_CONTRACT = "agent-runtime-monitoring-v1"
+
+# A gate count in catalog prose is a runtime measurement frozen into config.
+# "11/12 gates passing" sat here from 2026-08-09 while the measured board said
+# 0/12 (M5 governance truth repair, 2026-09-25). Gate status is read at render
+# time from the measurement store (data/cio/agent_gate_measurements.json);
+# the catalog may point at that store but never state a count.
+_STATIC_GATE_COUNT_RE = re.compile(
+    r"\b\d+\s*/\s*\d+\s+gates?\b|\bgates?\s*:?\s*\d+\s*/\s*\d+|\bgates?\s+passing\b",
+    re.IGNORECASE,
+)
 ALLOWED_DEPLOYMENT_STATES = frozenset(
     {"DESIGNED", "SHADOW", "OPERATIONAL", "RESTRICTED", "RETOOL", "RETIRED"}
 )
@@ -286,6 +297,13 @@ def record_from_mapping(agent_id: str, raw: Mapping[str, Any]) -> AgentMaturityR
         ),
         authority=authority,
     )
+    for field_name in ("current_limitations", "acceptance_evidence"):
+        for text in getattr(record, field_name):
+            if _STATIC_GATE_COUNT_RE.search(text):
+                raise MonitoringContractError(
+                    f"{agent_id}.{field_name} states a static gate count ({text!r}); "
+                    "gate status must be read from the measurement store at render time"
+                )
     if record.deployment_state == "OPERATIONAL":
         raise MonitoringContractError(
             f"{agent_id} cannot be represented as OPERATIONAL before acceptance evidence"

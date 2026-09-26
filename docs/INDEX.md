@@ -256,7 +256,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/AGENTIC_MVL_REMAINING_DELIVERABLES_2026-07-24.md` | Agentic MVL Remaining Deliverables — 2026-07-24 | review_required | OK | `628266ec7e8f` |
 | `docs/architecture/AGENTIC_RUNTIME_BASELINE_2026-07-23.md` | Trade AI Agentic Runtime Baseline — 2026-07-23 | review_required | OK | `26a644a55edf` |
 | `docs/architecture/AGENT_MATURITY_COMMAND_CENTER_IMPLEMENTATION_PLAN_2026-07-25.md` | Agent Maturity and Command Center Implementation Plan — 2026-07-25 | review_required | OK | `4a66cdff27f6` |
+| `docs/architecture/AGENT_SERVICE_MAP_2026-09-25.md` | Agent and Service Map — traced from code and the served host | review_required | OK | `58493f51fd43` |
 | `docs/architecture/AGENT_TOOL_PERMISSION_MATRIX_2026-07-23.md` | Trade AI Agent Tool Permission Matrix — 2026-07-23 | review_required | OK | `f40d7f04bd37` |
+| `docs/architecture/ARCHITECTURE_INDEX.md` | Architecture Index — where to look before you change a component | review_required | OK | `4df7691b69b0` |
 | `docs/architecture/ATM_BROKER_ACCOUNT_AUTOMATION_2026_06_05.md` | ATM → Broker/Account Automation Console (Phase 1) — 2026-06-05 | review_required | OK | `4cc7fdd232c2` |
 | `docs/architecture/ATM_BROKER_ACCOUNT_REFACTOR_DUE_DILIGENCE.md` | ATM Controls → Broker/Account Automation — Due Diligence (Phase 1) | review_required | OK | `34549ef247f4` |
 | `docs/architecture/ATM_EXECUTOR_AUTOMATION_MODE_WIRING_2026_06_05.md` | ATM Executor ← automation_mode Wiring (2026-06-05) | review_required | OK | `62abcc4e67d2` |
@@ -981,6 +983,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/financial-senses/SEC_EXISTING_PIPELINE_COMPATIBILITY.md` | SEC existing pipeline compatibility | review_required | OK | `84de4761bed2` |
 | `docs/financial-senses/SEC_FILING_DIFF_INTELLIGENCE.md` | SEC filing diff intelligence | review_required | OK | `54342b36e125` |
 | `docs/financial-senses/TEST_AND_DRY_RUN_PLAN.md` | Test and dry-run plan | review_required | OK | `57920902f3d6` |
+| `docs/governance/ENGINEERING_STANDARD.md` | Trade AI Engineering Standard | review_required | OK | `c85f9e573a0e` |
+| `docs/governance/NEW_AGENT_STARTS_HERE.md` | New agent starts here (one page) | review_required | OK | `46a6da8e23f4` |
 | `docs/governance/PHASE111A_AUTHORITY_BOUNDARY_SCORECARD.md` | Phase 111A — Authority Boundary Scorecard | review_required | OK | `c138020b5406` |
 | `docs/governance/PHASE111B_PROGRESSIVE_AUTHORITY_LADDER.md` | Phase 111B — Progressive Hermes Authority Ladder | review_required | OK | `76838566a709` |
 | `docs/governance/PHASE113A_PROPOSAL_AUTHORITY_CONTROL_COMPARISON.md` | Phase 113A — Proposal Authority Control Comparison | review_required | OK | `fe605e2d90c0` |
@@ -991,6 +995,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/governance/PHASE119C_TONIGHT_GO_LIVE_BOUNDARY_DECISION.md` | Phase 119C — Tonight Go-Live Boundary Decision | review_required | OK | `5d8fe282fca5` |
 | `docs/governance/PHASE182A_LIVE_READINESS_EVIDENCE_STANDARD.md` | Phase 182A: Live-Readiness Evidence Standard | review_required | OK | `b42ed5069903` |
 | `docs/governance/PHASE182B_LIVE_READINESS_SCORING_MODEL.md` | Phase 182B: Live Readiness Scoring Model | review_required | OK | `a4b194f75fab` |
+| `docs/governance/agent-standards/AGENT_OPERATING_STANDARDS_v1.md` | Agent operating standards v1 (companion to AGENTS.md) | review_required | MISSING HEADER | `397cbb5907a1` |
+| `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md` | AGENTS.md 1.3.0 — authority amendment (PROPOSED, not in force) | review_required | OK | `edf5c9dd339a` |
+| `docs/governance/agent-standards/REPOSITORY_PROTECTION_ADMIN_ACTIONS.md` | Repository protection — actions only a repository administrator can take | review_required | MISSING HEADER | `9adc27a4862c` |
+| `docs/governance/agent-standards/TRADING_SESSION_GRANT_CONTRACT.md` | TradingSessionGrant@v1 — contract and enforcement point | review_required | OK | `98355d33c64d` |
 | `docs/governance/phase9c_scheduled_maturity_board/00_README.md` | Phase 9C — Scheduled Maturity Control Board | current_phase_keep | OK | `514ad61e8c46` |
 | `docs/governance/phase_gov1_scheduled_facts_a1a/00_README.md` | GOV-1 — Scheduled System Facts and A1A Checks | current_phase_keep | OK | `174c5a2c8411` |
 | `docs/health-inspection-system.md` | Trade AI Health Inspection System | review_required | OK | `b124f6cc38ef` |
@@ -2037,7 +2045,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/prompts/ACTIVE_TRADER_ARCHITECT_LITMUS_REVIEW_PROMPT_v1_0.md` | ACTIVE TRADER ARCHITECT LITMUS REVIEW PROMPT v1.0 | review_required | OK | `0807d32556a8` |
 | `docs/prompts/CLAUDE_ACTIVE_TRADER_LIVE_MOTION_UI_v1.md` | Claude Code Prompt — Active Trader Live Motion UI v1 | review_required | OK | `22ed014b0818` |
 | `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_0.md` | CODEX IMPLEMENTATION PROGRAM v1.0 | review_required | OK | `65d09ab1fdb0` |
-| `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md` | CODEX IMPLEMENTATION PROGRAM v1.1 | review_required | OK | `ceb4364505d5` |
+| `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md` | CODEX IMPLEMENTATION PROGRAM v1.1 | review_required | OK | `af5afc17b32a` |
+| `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_2.md` | CODEX IMPLEMENTATION PROGRAM v1.2 | review_required | OK | `3d648e88c693` |
 | `docs/proposal_quality/phase_promote1_pre_promotion_readiness_gate/00_README.md` | PROMOTE-1 — Pre-Promotion Readiness Gate | current_phase_keep | OK | `4b2142d8b3cc` |
 | `docs/proposal_sandbox/PHASE115B_PROPOSAL_DRAFT_SCORE_RESULTS.md` | Phase 115B — Proposal Draft Score Results | review_required | OK | `039190d4f687` |
 | `docs/remediation-plan.md` | Remediation plan — 5-stage hardening, governance and bitemporal cutover | review_required | OK | `24b9c65c695c` |

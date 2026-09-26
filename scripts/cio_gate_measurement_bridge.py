@@ -675,11 +675,14 @@ def main(argv: list[str] | None = None) -> int:
                 for gate_id, g in measurements["gates"].items()
             },
         }
+        # No gate COUNT goes into catalog prose: a committed count goes stale the
+        # hour after it is written ("11/12 gates passing" survived from 08-09 to
+        # 09-25 while the board said 0/12). monitoring.record_from_mapping now
+        # refuses such text; the count is read at render time from the
+        # measurement store by scripts/agent_runtime/gate_status.py.
         agent["current_limitations"] = [
-            f"SHADOW - {measurements['evidence_summary']['actions_real']} advisory actions",
-            f"Gates: {summary['gates_passing']}/12 passing, "
-            f"{summary['gates_not_measured']} NOT_YET_MEASURED, "
-            f"{summary['gates_failing']} failing",
+            "Gate status is NOT stored in this catalog: read it at render time from "
+            "data/cio/agent_gate_measurements.json (AgentGateMeasurement@v1)",
             *(f"{gid}: {measurements['gates'][gid]['note']}"
               for gid in summary["not_measured"]),
         ]
