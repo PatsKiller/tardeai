@@ -1401,6 +1401,9 @@ GATES = [
             # made pipeline_zero_rows fire on five pipelines that had never
             # reported a row. Pins that unknown stays distinct from zero.
             "tests/test_pipeline_rows_unknown.py",
+            # A retry that raises (subprocess timeout) is a failed retry, not an ERROR flood:
+            # run closed as failed, action recorded, escalation at MAX_RETRIES (PR #140 refresh).
+            "tests/test_pipeline_watchdog_retry_failure_20260925.py",
         ],
     ),
     (
