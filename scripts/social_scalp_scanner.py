@@ -320,28 +320,37 @@ def hermes_catalyst_for(symbol: str) -> dict | None:
 
 def route_to_portfolio_agents(conn, symbol: str, mention_count: int, strategy_tags: list):
     """Retirement/income/ETF tickers → agent queue instead of scalp pipeline."""
+    # One pending social_discovery job per symbol is all the queue can act on. The scanner fires
+    # ~25x/weekday and the uuid id meant ON CONFLICT never fired: 1,250 queued jobs across 50
+    # symbols, 93 identical NVDA rows (2026-07-23 queue audit).
+    from lib.agent_job_queue import insert_agent_job_unless_pending
+
     cur = conn.cursor()
-    job_id = str(uuid.uuid4())
-    cur.execute(
-        """
-        INSERT INTO watchlist_agent_jobs
-            (id, symbol, requested_agent, request_type, priority, status, submitted_from, payload, created_at)
-        VALUES (%s, %s, 'maria', 'social_discovery', 5, 'queued', 'social_scalp_scanner', %s, NOW())
-        ON CONFLICT DO NOTHING
-        """,
-        [
-            job_id,
-            symbol,
-            json.dumps({
+    new_id = insert_agent_job_unless_pending(
+        cur,
+        {
+            "id": str(uuid.uuid4()),
+            "symbol": symbol,
+            "requested_agent": "maria",
+            "request_type": "social_discovery",
+            "priority": 5,
+            "status": "queued",
+            "submitted_from": "social_scalp_scanner",
+            "payload": json.dumps({
                 "mention_count": mention_count,
                 "strategy_tags": strategy_tags,
                 "source": "social_discovery",
                 "note": f"Social mentions: {mention_count}x — routed to portfolio agents (not scalp)",
             }),
-        ],
+        },
+        raw_columns={"created_at": "NOW()"},
+        match_agent=False,
     )
     conn.commit()
-    logger.info("Routed %s to portfolio agents (%d mentions)", symbol, mention_count)
+    if new_id:
+        logger.info("Routed %s to portfolio agents (%d mentions)", symbol, mention_count)
+    else:
+        logger.info("Skipped %s: social_discovery job already pending", symbol)
 
 
 def ensure_results_table(conn):

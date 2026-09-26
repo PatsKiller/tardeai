@@ -791,6 +791,7 @@
       "description": "CIO view \u2014 Grok primary + ChatGPT reconcile when both run",
       "deepseek_default_policy": "PRO_THINK",
       "deepseek_allowed_policies": [
+        "PRO",
         "FAST_THINK",
         "PRO_THINK",
         "PRO_MAX"

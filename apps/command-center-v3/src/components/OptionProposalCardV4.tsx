@@ -710,7 +710,7 @@ export default function OptionProposalCardV4({
           <div style={{ display: 'flex', gap: terminalUi ? 4 : 5, alignItems: 'center', flexWrap: 'wrap', marginTop: terminalUi ? 4 : 5 }}>
             {paper && (
               <span
-                title="Educational paper model — manual review only, never live-eligible. Outcomes feed the strategy validation gate (30 paper outcomes, PF>1.3, WR>55%) before any live consideration."
+                title="Educational paper / Alpaca lab only — never live-eligible. Paper n/30 is a lab ledger; Schwab Path B live eligibility is enterprise liquidity + per-order 2FA."
                 style={{ ...chip(WL.signal.amber, false, terminalUi), background: 'transparent', cursor: 'help' }}
               >
                 {paperFamily} · PAPER MODEL
@@ -761,6 +761,15 @@ export default function OptionProposalCardV4({
               </span>
             ))}
             {p.intent_sleeve && <span title="Portfolio intent covered-call sleeve (V/SCHD/LMT) — relaxed edge floor 52 vs 62" style={chip(WL.text.secondary, true, terminalUi)}>income sleeve</span>}
+            {!!p.cio?.entry_state && (
+              <span
+                title={p.cio?.summary || p.cio?.hub_note || 'CIO entry stance for this symbol (advisory)'}
+                style={{ ...chip(WL.signal.teal, false, terminalUi), cursor: 'help' }}
+              >
+                CIO {p.cio.entry_state}
+                {p.cio?.bias ? ` · ${p.cio.bias}` : ''}
+              </span>
+            )}
             {p.enterprise?.live_eligible && !paper && <span title={PROPOSAL.liveOk} style={{ ...chip(WL.signal.teal, false, terminalUi), cursor: 'help' }}>live eligible</span>}
             {paper && !p.enterprise?.live_eligible && (
               <MetricChipTooltip
@@ -800,6 +809,65 @@ export default function OptionProposalCardV4({
         )}
       </div>
 
+      {(() => {
+        const cmp = (p as any).recommendation_comparison
+        if (!cmp) return null
+        const stock = cmp.stock_play || {}
+        const opt = cmp.options_play || {}
+        const comparison = cmp.comparison || {}
+        const oversight = cmp.oversight || {}
+        const prov = cmp.provenance || {}
+        const research = (p as any).research_context || (p as any).options_decision_packet_v2?.research || {}
+        const pin = cmp.thesis?.thesis_version || 'no thesis pin on this proposal'
+        const refuse = comparison.preferred_structure === 'neither'
+        const pop = opt.probability_of_success == null ? null : `${opt.probability_of_success}%`
+        const rr = comparison.reward_to_risk
+        const verdict = refuse && comparison.capital_efficiency
+          ? comparison.capital_efficiency
+          : `Preferred structure: ${String(comparison.preferred_structure || 'review required').replace(/_/g, ' ')}`
+        const fresh = prov.freshness === 'live_chain' ? 'Schwab chain' : (prov.freshness || 'quote not labeled')
+        return (
+          <div
+            title={oversight.cio_commentary || ''}
+            style={{ margin: '8px 12px 0', padding: '8px 10px', borderRadius: 8, border: `1px solid ${refuse ? BB.red : BB.border}`, fontSize: 12, lineHeight: 1.45, color: BB.text2 }}
+          >
+            <div style={{ color: BB.text1, fontWeight: 700 }}>{p.symbol} {String(opt.structure || p.strategy || 'option').replace(/_/g, ' ')}</div>
+            <div style={{ marginTop: 4, color: refuse ? BB.red : BB.text1, fontWeight: 700 }}>{verdict}{rr != null ? ` Reward/risk ${rr}.` : ''}{pop ? ` POP ${pop}.` : ''}</div>
+            <div style={{ marginTop: 4 }}>{stock.maximum_loss_model}</div>
+            <div style={{ marginTop: 4, color: BB.text1 }}>CIO {oversight.review_status || 'unreviewed'}. A model score is not a CIO decision.</div>
+            <div style={{ marginTop: 4, color: BB.text3 }}>{fresh} · thesis {pin}</div>
+            <div style={{ marginTop: 4, color: BB.text3 }}>
+              Research: {(research.source_lanes || []).join(' · ') || 'research lane unavailable'}
+              {research.reentry_signal ? ` · re-entry ${research.reentry_signal}` : ''}
+              {research.research_as_of || research.as_of ? ` · as of ${String(research.research_as_of || research.as_of).slice(0, 16)}` : ''}
+            </div>
+            {(() => {
+              const memo = (p as any).options_research_memo
+              if (!memo?.thesis) return null
+              const t = memo.thesis
+              const c = memo.committee || {}
+              const line = (label: string, value: unknown) => (
+                <div style={{ marginTop: 4 }}><b style={{ color: BB.text1 }}>{label}</b> {String(value ?? 'missing')}</div>
+              )
+              return (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BB.border}` }}>
+                  {line('Why now.', t.why_now)}
+                  {line('Why an option.', t.why_option_instead_of_stock)}
+                  {line('Catalyst.', t.catalyst)}
+                  {line('Timeframe.', t.timeframe)}
+                  {line('Reward/risk.', t.reward_to_risk)}
+                  {line('Expected value.', t.probability_weighted_expected_return)}
+                  {line('What kills it.', t.invalidation)}
+                  {line('Size.', t.position_size)}
+                  {line('Bear case.', c.cio?.bear_case)}
+                  {line('Opposition.', c.strongest_opposing_argument)}
+                </div>
+              )
+            })()}
+          </div>
+        )
+      })()}
+
       {/* ② Hero — strategy + reasoning + headline economics + actions */}
       <div
         onClick={e => e.stopPropagation()}
@@ -825,7 +893,13 @@ export default function OptionProposalCardV4({
             valueStyle={{ ...ns, fontSize: terminalUi ? 12 : 13.5, fontWeight: 800, color: terminalUi ? (isCredit ? BB.green : BB.text0) : cfColor }}
           />
           <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
-            {actionButtons.map((b, i) => {
+            {actionButtons.filter(b => {
+              const packet = (p as any).options_decision_packet
+              const preferred = (p as any).recommendation_comparison?.comparison?.preferred_structure
+              const state = packet?.state
+              const hide = preferred === 'neither' || state === 'BLOCKED' || state === 'REVIEW_REQUIRED' || packet?.readiness?.cta === 'none'
+              return !(hide && EXEC_ACTIONS.has(b.action))
+            }).map((b, i) => {
               const execLocked = EXEC_ACTIONS.has(b.action) && !armed && !manualOnly
               return (
                 <button

@@ -498,6 +498,26 @@ def submit_ready_proposal(proposal_id: str, *, confirm: bool = False,
     row = get_queue_row(proposal_id, ex)
     if not row:
         return {"ok": False, "error": f"proposal {proposal_id!r} not in queue"}
+    # Stage E (2026-09-25): primary desk is Schwab Path B + per-order 2FA.
+    # Alpaca paper submit stays lab-only — refuse desk Path B strategies here.
+    try:
+        from lib.options_pipeline.validation import DESK_PATH_B_STRATEGIES, PAPER_LAB_STRATEGIES
+    except Exception:
+        DESK_PATH_B_STRATEGIES = frozenset()
+        PAPER_LAB_STRATEGIES = frozenset()
+    prop = row.get("proposal_json") if isinstance(row.get("proposal_json"), dict) else {}
+    if isinstance(row.get("proposal_json"), str):
+        try:
+            prop = json.loads(row["proposal_json"])
+        except Exception:
+            prop = {}
+    strat = str((prop or {}).get("strategy") or row.get("strategy") or "").strip()
+    edu = bool((prop or {}).get("educational_paper_model") or (prop or {}).get("paper_only"))
+    if strat in DESK_PATH_B_STRATEGIES and not edu and strat not in PAPER_LAB_STRATEGIES:
+        raise OperatorActionRequiredError(
+            f"Alpaca paper refused for desk Path B strategy {strat!r} — "
+            "execute via Schwab Path B + per-order 2FA only (paper lab is for educational rows)"
+        )
     payload = build_order_payload(row)
     if dry_run:
         return {"ok": True, "dry_run": True, "proposal_id": proposal_id,

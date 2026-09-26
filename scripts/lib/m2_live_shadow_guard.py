@@ -33,6 +33,7 @@ CI (pytest + pyyaml only) imports this module without the driver.
 from __future__ import annotations
 
 import os
+import re
 import sys
 from urllib.parse import urlsplit, urlunsplit
 
@@ -83,8 +84,20 @@ def live_shadow_databases() -> set[str]:
     return names or {dsn_database(SHADOW_ADMIN_DSN)}
 
 
+#: Allowed pytest database names: the shared default, or a per-worktree suffix so
+#: concurrent acceptance runs in different worktrees never share one database.
+#: The SQL files' isolated-database check accepts exactly this pattern too.
+TEST_DATABASE_RE = re.compile(r"^m2_shadow_test(?:_[a-z0-9_]{1,40})?$")
+
+
 def shadow_test_database() -> str:
-    return os.environ.get(TEST_DATABASE_ENV, "").strip() or DEFAULT_TEST_DATABASE
+    name = os.environ.get(TEST_DATABASE_ENV, "").strip() or DEFAULT_TEST_DATABASE
+    if not TEST_DATABASE_RE.match(name):
+        raise RuntimeError(
+            f"M2_TEST_DATABASE_REFUSED: {name!r} is not m2_shadow_test or m2_shadow_test_<suffix>; "
+            "tests may never be pointed at another database"
+        )
+    return name
 
 
 def under_pytest() -> bool:

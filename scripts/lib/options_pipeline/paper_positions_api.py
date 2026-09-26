@@ -408,6 +408,8 @@ def filter_positions(
         out = [p for p in out if str(p.get("position_source") or "") == source]
     if paper_only is True:
         out = [p for p in out if p.get("paper_only") or p.get("is_paper_model_row")]
+    elif paper_only is False:
+        out = [p for p in out if not (p.get("paper_only") or p.get("is_paper_model_row"))]
     return out
 
 
