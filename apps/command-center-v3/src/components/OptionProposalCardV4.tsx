@@ -809,6 +809,36 @@ export default function OptionProposalCardV4({
         )}
       </div>
 
+      {(() => {
+        const cmp = (p as any).recommendation_comparison
+        if (!cmp) return null
+        const stock = cmp.stock_play || {}
+        const opt = cmp.options_play || {}
+        const comparison = cmp.comparison || {}
+        const oversight = cmp.oversight || {}
+        const prov = cmp.provenance || {}
+        const pin = cmp.thesis?.thesis_version || 'no thesis pin on this proposal'
+        const refuse = comparison.preferred_structure === 'neither'
+        const pop = opt.probability_of_success == null ? null : `${opt.probability_of_success}%`
+        const rr = comparison.reward_to_risk
+        const verdict = refuse && comparison.capital_efficiency
+          ? comparison.capital_efficiency
+          : `Preferred structure: ${String(comparison.preferred_structure || 'review required').replace(/_/g, ' ')}`
+        const fresh = prov.freshness === 'live_chain' ? 'Schwab chain' : (prov.freshness || 'quote not labeled')
+        return (
+          <div
+            title={oversight.cio_commentary || ''}
+            style={{ margin: '8px 12px 0', padding: '8px 10px', borderRadius: 8, border: `1px solid ${refuse ? BB.red : BB.border}`, fontSize: 12, lineHeight: 1.45, color: BB.text2 }}
+          >
+            <div style={{ color: BB.text1, fontWeight: 700 }}>{p.symbol} {String(opt.structure || p.strategy || 'option').replace(/_/g, ' ')}</div>
+            <div style={{ marginTop: 4, color: refuse ? BB.red : BB.text1, fontWeight: 700 }}>{verdict}{rr != null ? ` Reward/risk ${rr}.` : ''}{pop ? ` POP ${pop}.` : ''}</div>
+            <div style={{ marginTop: 4 }}>{stock.maximum_loss_model}</div>
+            <div style={{ marginTop: 4, color: BB.text1 }}>CIO {oversight.review_status || 'unreviewed'}. A model score is not a CIO decision.</div>
+            <div style={{ marginTop: 4, color: BB.text3 }}>{fresh} · thesis {pin}</div>
+          </div>
+        )
+      })()}
+
       {/* ② Hero — strategy + reasoning + headline economics + actions */}
       <div
         onClick={e => e.stopPropagation()}
@@ -834,7 +864,13 @@ export default function OptionProposalCardV4({
             valueStyle={{ ...ns, fontSize: terminalUi ? 12 : 13.5, fontWeight: 800, color: terminalUi ? (isCredit ? BB.green : BB.text0) : cfColor }}
           />
           <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
-            {actionButtons.map((b, i) => {
+            {actionButtons.filter(b => {
+              const packet = (p as any).options_decision_packet
+              const preferred = (p as any).recommendation_comparison?.comparison?.preferred_structure
+              const state = packet?.state
+              const hide = preferred === 'neither' || state === 'BLOCKED' || state === 'REVIEW_REQUIRED' || packet?.readiness?.cta === 'none'
+              return !(hide && EXEC_ACTIONS.has(b.action))
+            }).map((b, i) => {
               const execLocked = EXEC_ACTIONS.has(b.action) && !armed && !manualOnly
               return (
                 <button

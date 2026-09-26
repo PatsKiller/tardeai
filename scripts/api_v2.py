@@ -40249,6 +40249,38 @@ def _options_proposals(query=None):
         filtered = apply_card_semantics_batch(filtered, schwab_armed=schwab_armed)
     except Exception:
         pass
+    try:
+        from lib.recommendation_comparison import build_recommendation_comparison
+        from lib.options_decision_packet import build_options_decision_packet
+
+        for row in filtered:
+            try:
+                cmp = build_recommendation_comparison(row)
+                row["recommendation_comparison"] = cmp
+                row["options_decision_packet"] = build_options_decision_packet(row, comparison=cmp)
+            except Exception:
+                row["recommendation_comparison"] = {
+                    "comparison": {"preferred_structure": "review_required"},
+                    "oversight": {
+                        "review_status": "unreviewed",
+                        "authority": "READ_ONLY_ADVISORY",
+                        "cio_commentary": "Comparison failed closed. No CIO disposition is on file.",
+                    },
+                }
+                row["options_decision_packet"] = {
+                    "schema": "OptionsDecisionPacket@v1",
+                    "state": "REVIEW_REQUIRED",
+                    "cio_approved": False,
+                    "readiness": {"cta": "none", "live_submit": False},
+                }
+    except Exception:
+        pass
+    try:
+        from lib.options_desk_scorecard import build_scorecard
+
+        data["options_desk_scorecard"] = build_scorecard(closed_outcomes=0, open_positions=0)
+    except Exception:
+        data["options_desk_scorecard"] = None
     return _json_clean(
         {
             **data,
