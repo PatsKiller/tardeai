@@ -817,30 +817,60 @@ export default function OptionProposalCardV4({
         const comparison = cmp.comparison || {}
         const oversight = cmp.oversight || {}
         const prov = cmp.provenance || {}
-        const pin = cmp.thesis?.thesis_version || 'no thesis pin'
+        const research = (p as any).research_context || (p as any).options_decision_packet_v2?.research || {}
+        const pin = cmp.thesis?.thesis_version || 'no thesis pin on this proposal'
+        const refuse = comparison.preferred_structure === 'neither'
+        const pop = opt.probability_of_success == null ? null : `${opt.probability_of_success}%`
+        const rr = comparison.reward_to_risk
+        const verdict = refuse && comparison.capital_efficiency
+          ? comparison.capital_efficiency
+          : `Preferred structure: ${String(comparison.preferred_structure || 'review required').replace(/_/g, ' ')}`
+        const fresh = prov.freshness === 'live_chain' ? 'Schwab chain' : (prov.freshness || 'quote not labeled')
         const strikes = p.short_strike != null && p.long_strike != null
           ? `$${fmtNum(p.short_strike, 2)} / $${fmtNum(p.long_strike, 2)}`
           : (p.strike != null ? `$${fmtNum(p.strike, 2)}` : '')
         const spot = p.underlying_price != null ? `spot $${fmtNum(p.underlying_price, 2)}` : ''
         const acct = (p.account || '').replace(/_/g, ' ')
         const when = p.expiration ? fmtExpiry(p.expiration) : (stock.time_horizon || '')
-        const structure = String(opt.structure || p.strategy || 'option').replace(/_/g, ' ')
-        const refuse = comparison.preferred_structure === 'neither'
-        const verdict = refuse && comparison.capital_efficiency
-          ? `Do not sell. ${comparison.capital_efficiency}`
-          : (comparison.capital_efficiency || `Preferred structure: ${String(comparison.preferred_structure || 'review required').replace(/_/g, ' ')}`)
-        const fresh = prov.freshness === 'live_chain' ? 'Schwab chain' : (prov.freshness || 'quote missing')
         const ensembleRunning = /validat|pending|running/i.test(String((p as any).ensemble_status || (p as any).ensemble_state || ''))
         return (
           <div
             title={oversight.cio_commentary || ''}
-            style={{ margin: '8px 12px 0', padding: '8px 10px', borderRadius: 8, border: `1px solid ${refuse ? 'rgba(239,68,68,.45)' : 'rgba(148,163,184,.45)'}`, fontSize: 12, lineHeight: 1.45, color: 'var(--text1)' }}
+            style={{ margin: '8px 12px 0', padding: '8px 10px', borderRadius: 8, border: `1px solid ${refuse ? BB.red : BB.border}`, fontSize: 12, lineHeight: 1.45, color: BB.text2 }}
           >
-            <div><b style={{ color: 'var(--text0)' }}>{p.symbol} {structure}</b>{acct ? ` · ${acct}` : ''}{when ? ` · ${when}` : ''}{strikes ? ` · ${strikes}` : ''}{spot ? ` · ${spot}` : ''}</div>
-            <div style={{ marginTop: 4, fontWeight: 700, color: refuse ? '#f87171' : 'var(--text0)' }}>{verdict}</div>
-            <div style={{ marginTop: 4 }}>{stock.maximum_loss_model || 'No share comparison on this row.'}</div>
-            <div style={{ marginTop: 4 }}><b style={{ color: 'var(--text0)' }}>CIO.</b> {oversight.review_status || 'unreviewed'}. {ensembleRunning ? 'Aegis is still running. That is not a CIO decision.' : 'A model score is not a CIO decision.'}</div>
-            <div style={{ marginTop: 4, color: 'var(--text3)' }}>{fresh} · thesis {pin}</div>
+            <div style={{ color: BB.text1, fontWeight: 700 }}>{p.symbol} {String(opt.structure || p.strategy || 'option').replace(/_/g, ' ')}{acct ? ` · ${acct}` : ''}{when ? ` · ${when}` : ''}{strikes ? ` · ${strikes}` : ''}{spot ? ` · ${spot}` : ''}</div>
+            <div style={{ marginTop: 4, color: refuse ? BB.red : BB.text1, fontWeight: 700 }}>{verdict}{rr != null ? ` Reward/risk ${rr}.` : ''}{pop ? ` POP ${pop}.` : ''}</div>
+            <div style={{ marginTop: 4 }}>{stock.maximum_loss_model}</div>
+            <div style={{ marginTop: 4, color: BB.text1 }}>CIO {oversight.review_status || 'unreviewed'}. {ensembleRunning ? 'Aegis is still running. That is not a CIO decision.' : 'A model score is not a CIO decision.'}</div>
+            <div style={{ marginTop: 4, color: BB.text3 }}>{fresh} · thesis {pin}</div>
+            <div style={{ marginTop: 4, color: BB.text3 }}>
+              Research: {(research.source_lanes || []).join(' · ') || 'research lane unavailable'}
+              {research.reentry_signal ? ` · re-entry ${research.reentry_signal}` : ''}
+              {research.research_as_of || research.as_of ? ` · as of ${String(research.research_as_of || research.as_of).slice(0, 16)}` : ''}
+            </div>
+            {(() => {
+              const memo = (p as any).options_research_memo
+              if (!memo?.thesis) return null
+              const t = memo.thesis
+              const c = memo.committee || {}
+              const line = (label: string, value: unknown) => (
+                <div style={{ marginTop: 4 }}><b style={{ color: BB.text1 }}>{label}</b> {String(value ?? 'missing')}</div>
+              )
+              return (
+                <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${BB.border}` }}>
+                  {line('Why now.', t.why_now)}
+                  {line('Why an option.', t.why_option_instead_of_stock)}
+                  {line('Catalyst.', t.catalyst)}
+                  {line('Timeframe.', t.timeframe)}
+                  {line('Reward/risk.', t.reward_to_risk)}
+                  {line('Expected value.', t.probability_weighted_expected_return)}
+                  {line('What kills it.', t.invalidation)}
+                  {line('Size.', t.position_size)}
+                  {line('Bear case.', c.cio?.bear_case)}
+                  {line('Opposition.', c.strongest_opposing_argument)}
+                </div>
+              )
+            })()}
           </div>
         )
       })()}
@@ -871,12 +901,11 @@ export default function OptionProposalCardV4({
           />
           <span style={{ display: 'inline-flex', gap: 6, flexShrink: 0 }}>
             {actionButtons.filter(b => {
-              const cmp = (p as any).recommendation_comparison
-              const preferred = cmp?.comparison?.preferred_structure
-              const rr = cmp?.comparison?.risk_reward
-              const credit = String(p.strategy || '').includes('credit')
-              const refuse = preferred === 'neither' || (credit && typeof rr === 'number' && rr < 0.25)
-              return !(refuse && EXEC_ACTIONS.has(b.action))
+              const packet = (p as any).options_decision_packet
+              const preferred = (p as any).recommendation_comparison?.comparison?.preferred_structure
+              const state = packet?.state
+              const hide = preferred === 'neither' || state === 'BLOCKED' || state === 'REVIEW_REQUIRED' || packet?.readiness?.cta === 'none'
+              return !(hide && EXEC_ACTIONS.has(b.action))
             }).map((b, i) => {
               const execLocked = EXEC_ACTIONS.has(b.action) && !armed && !manualOnly
               return (

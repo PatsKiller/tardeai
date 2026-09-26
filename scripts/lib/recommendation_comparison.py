@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-POLICY_VERSION = "AGENTS.md 1.2.7 PROPOSED"
 AUTHORITY = "READ_ONLY_ADVISORY"
+POLICY_UNPINNED = "policy_version_unpinned"
 _BEHAVIOR_KEYS = frozenset({"shares", "qty", "order", "size_usd"})
 _DISPOSITIONS = frozenset({"reviewed", "challenged", "deferred"})
 
@@ -81,9 +81,6 @@ def _package_max_loss(proposal: dict[str, Any]) -> float | None:
     return None
 
 
-CREDIT_RR_FLOOR = 0.25
-
-
 def _pop(proposal: dict[str, Any]) -> tuple[float | None, str | None]:
     basis = proposal.get("pop_basis") or proposal.get("probability_basis")
     raw = proposal.get("pop_pct")
@@ -97,6 +94,15 @@ def _pop(proposal: dict[str, Any]) -> tuple[float | None, str | None]:
     return n, str(basis)
 
 
+def _credit_rr(proposal: dict[str, Any]) -> tuple[float | None, str | None]:
+    """Use the desk floor helper. Do not invent a second threshold."""
+    try:
+        from scripts.options_desk_enterprise import credit_spread_rr_block, credit_spread_rr_ratio
+    except ImportError:
+        from options_desk_enterprise import credit_spread_rr_block, credit_spread_rr_ratio  # type: ignore
+    return credit_spread_rr_ratio(proposal), credit_spread_rr_block(proposal)
+
+
 def build_recommendation_comparison(
     proposal: dict[str, Any],
     *,
@@ -104,7 +110,6 @@ def build_recommendation_comparison(
     thesis: Optional[dict[str, Any]] = None,
     generated_at: Optional[str] = None,
     cio_disposition: Optional[str] = None,
-    policy_version: str = POLICY_VERSION,
 ) -> dict[str, Any]:
     """One comparison. Identical inputs return an identical object."""
     equity = equity or {}
@@ -114,17 +119,7 @@ def build_recommendation_comparison(
     price = _f(equity.get("price") if equity.get("price") is not None else proposal.get("underlying_price"))
     stop = _f(equity.get("stop") if equity.get("stop") is not None else proposal.get("stop"))
     share_count = _f(equity.get("share_count") if equity.get("share_count") is not None else proposal.get("share_count"))
-    pin = thesis.get("thesis_version")
-    if not pin:
-        try:
-            from scripts.lib.cio_theses import safe_current_pin
-            pin = safe_current_pin("desk")
-        except Exception:
-            try:
-                from lib.cio_theses import safe_current_pin  # type: ignore
-                pin = safe_current_pin("desk")
-            except Exception:
-                pin = None
+    pin = thesis.get("thesis_version") or proposal.get("thesis_version_at_decision")
     freshness = _freshness(proposal)
     liquidity = _liquidity(proposal, freshness)
     blocked = liquidity == "block" or bool(_blocks(proposal))
@@ -168,8 +163,9 @@ def build_recommendation_comparison(
         option_risk = _f(proposal.get("max_loss") or proposal.get("premium_total"))
         option_capital = _f(proposal.get("premium_total") or proposal.get("capital_required"))
 
+    review_id = proposal.get("cio_review_id") or thesis.get("cio_review_id")
     disposition = str(cio_disposition or proposal.get("cio_disposition") or "").lower()
-    review_status = disposition if disposition in _DISPOSITIONS else "unreviewed"
+    review_status = disposition if review_id and disposition in _DISPOSITIONS else "unreviewed"
     commentary = proposal.get("eligibility_sentence") or proposal.get("cio_commentary")
     if commentary:
         commentary = f"Desk narrative, not a CIO disposition: {commentary}"
@@ -178,7 +174,6 @@ def build_recommendation_comparison(
 
     preferred = "review_required"
     capital_efficiency = None
-    risk_reward = None
     if str(thesis.get("verdict") or "").lower() == "avoid":
         preferred = "neither"
     elif (
@@ -194,7 +189,6 @@ def build_recommendation_comparison(
     ):
         option_ratio = option_risk / option_capital
         stock_ratio = stock_loss / stock_capital
-        risk_reward = round(option_ratio, 4)
         if option_ratio < stock_ratio:
             preferred = "options"
             capital_efficiency = "Defined option loss per dollar of option capital is lower than share loss per dollar of stock capital, on the same horizon."
@@ -208,18 +202,20 @@ def build_recommendation_comparison(
             preferred = "review_required"
     if "NEED_100_SHARES" in risk_notes:
         preferred = "review_required"
-    if "credit" in strategy.lower():
-        profit = _f(proposal.get("max_profit"))
-        loss = _package_max_loss(proposal)
-        if profit is not None and loss:
-            ratio = profit / loss
-            risk_reward = round(ratio, 4)
-            if ratio < CREDIT_RR_FLOOR:
-                preferred = "neither"
-                capital_efficiency = (
-                    f"Collect {profit:g}. Can lose {loss:g}. "
-                    f"Ratio {ratio:.2f}. Floor {CREDIT_RR_FLOOR:.2f}."
-                )
+
+    max_profit_n = _f(proposal.get("max_profit"))
+    reward_to_risk = None
+    if max_profit_n is not None and option_risk not in (None, 0):
+        reward_to_risk = round(max_profit_n / option_risk, 4)
+    risk_to_capital = None
+    if option_risk not in (None, 0) and option_capital not in (None, 0):
+        risk_to_capital = round(option_risk / option_capital, 4)
+    credit_rr, credit_block = _credit_rr(proposal)
+    if credit_rr is not None:
+        reward_to_risk = round(credit_rr, 4)
+    if credit_block:
+        preferred = "neither"
+        capital_efficiency = credit_block
 
     out = {
         "underlying": {
@@ -246,6 +242,7 @@ def build_recommendation_comparison(
             "legs": list(proposal.get("legs") or []),
             "capital_required": option_capital,
             "maximum_risk": option_risk,
+            "max_profit": max_profit_n,
             "expected_return": expected_return,
             "expected_return_basis": proposal.get("expected_return_basis"),
             "probability_of_success": pop,
@@ -257,7 +254,9 @@ def build_recommendation_comparison(
         },
         "comparison": {
             "capital_efficiency": capital_efficiency,
-            "risk_reward": risk_reward,
+            "risk_reward": reward_to_risk,
+            "reward_to_risk": reward_to_risk,
+            "risk_to_capital": risk_to_capital,
             "opportunity_cost": None,
             "cash_preservation": None,
             "concentration_effect": None,
@@ -266,6 +265,7 @@ def build_recommendation_comparison(
         "oversight": {
             "cio_commentary": commentary,
             "review_status": review_status,
+            "cio_review_id": review_id,
             "authority": AUTHORITY,
         },
         "provenance": {
@@ -273,7 +273,7 @@ def build_recommendation_comparison(
             "generated_at": generated_at,
             "freshness": freshness,
             "model_or_engine": "recommendation_comparison",
-            "policy_versions": [policy_version],
+            "policy_versions": [POLICY_UNPINNED],
         },
     }
     if not pin:

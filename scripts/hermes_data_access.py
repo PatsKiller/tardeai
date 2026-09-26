@@ -28,6 +28,20 @@ def _q(sql: str, params=()):
         return []
 
 
+# A lane row whose recommendation is really a transport/billing failure. These flowed into every
+# Hermes consumer verbatim: a Grok 403 body was ~30% of each packet in the 2026-07-29 audit, and
+# 52 "[ERROR] HTTP_402 ... deepseek-flash" rows were stored in the 14 days to 2026-09-25 (the
+# DeepSeek 402 outage). A billing error is not research; drop it for every consumer.
+_LANE_FAILURE_MARKERS = (
+    "[error", "run_failed", "spending-limit", "http 4", "http 5", "auth_pending", "traceback", "error code:",
+)
+
+
+def lane_row_failed(recommendation) -> bool:
+    s = str(recommendation or "").lower()
+    return (not s.strip()) or any(m in s for m in _LANE_FAILURE_MARKERS)
+
+
 def get_hermes_context(symbol: str, *, research_limit: int = 3, external_limit: int = 3) -> dict:
     """Everything Hermes knows about one symbol: composite score+rank, graded research, external lanes."""
     sym = (symbol or "").upper().strip()
@@ -88,7 +102,10 @@ def get_hermes_context(symbol: str, *, research_limit: int = 3, external_limit: 
     # external-lane opinions (Grok / ChatGPT)
     ex = _q("""SELECT lane, recommendation, confidence, dissent, risk_flags, created_at
                FROM hermes_external_research WHERE symbol=%s AND recommendation IS NOT NULL
-               ORDER BY created_at DESC LIMIT %s""", (sym, external_limit))
+               ORDER BY created_at DESC LIMIT %s""", (sym, external_limit * 4))
+    # Over-fetch, drop failure bodies, then keep the newest `external_limit` real opinions, so a
+    # run of billing errors cannot use up the limit.
+    ex = [x for x in ex if not lane_row_failed(dict(x).get("recommendation"))][:external_limit]
     out["external_lanes"] = [{
         "lane": dict(x).get("lane"), "recommendation": dict(x).get("recommendation"),
         "confidence": dict(x).get("confidence"), "dissent": dict(x).get("dissent"),

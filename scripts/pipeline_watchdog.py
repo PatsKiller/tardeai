@@ -19,7 +19,11 @@ MAX_RETRIES = 3
 MAX_ENRICH_ATTEMPTS = int(os.getenv('WATCHDOG_MAX_ENRICH_ATTEMPTS', '6'))
 
 def _load_env():
-    for line in Path(PROJECT_ROOT, '.env').read_text().splitlines():
+    env_path = Path(PROJECT_ROOT, '.env')
+    if not env_path.is_file():
+        # CI and tests have no rendered .env; production always does. Nothing to load.
+        return
+    for line in env_path.read_text().splitlines():
         line = line.strip()
         if line and not line.startswith('#') and '=' in line:
             k, v = line.split('=', 1)
@@ -155,6 +159,8 @@ def handle_pipeline_issues(conn, issues, no_telegram=False):
 
         if retries_today < MAX_RETRIES and issue.get('command'):
             log.info(f"[watchdog] Retrying {script} (attempt {retries_today+1})")
+            rid = None
+            run_fail = None
             try:
                 from pipeline_registry import run_start, run_complete, run_fail
                 rid = run_start(script, run_label=f'retry_{retries_today+1}', triggered_by='watchdog')
@@ -164,14 +170,33 @@ def handle_pipeline_issues(conn, issues, no_telegram=False):
                     run_complete(rid)
                     log_action(conn, 'retry', script, issue['issue'], True, 'success')
                 else:
-                    run_fail(rid, result.stderr[-200:])
-                    log_action(conn, 'retry', script, issue['issue'], False, result.stderr[-100:])
-                    if retries_today + 1 >= MAX_RETRIES and not no_telegram:
-                        if not was_alerted_recently(conn, script):
-                            send_telegram(f"CRITICAL: {script} failed {MAX_RETRIES}x. Manual check needed.", urgent=True)
-                            log_action(conn, 'alert', script, 'max_retries', True, '')
+                    _record_retry_failure(conn, issue, retries_today, no_telegram,
+                                          result.stderr, rid=rid, run_fail=run_fail)
             except Exception as e:
-                log.error(f"[watchdog] Retry failed for {script}: {e}")
+                # A retry that RAISES (typically subprocess.TimeoutExpired at 300s) is still just a
+                # failed retry. It used to log a bare ERROR every cycle -- flooding the
+                # execution_health log_errors check (PR #140, 2026-07-08) -- while leaving the
+                # pipeline_runs row stuck 'running' and never escalating at MAX_RETRIES.
+                log.warning(f"[watchdog] Retry error for {script}: {str(e)[:200]}")
+                _record_retry_failure(conn, issue, retries_today, no_telegram,
+                                      str(e), rid=rid, run_fail=run_fail)
+
+
+def _record_retry_failure(conn, issue, retries_today, no_telegram, detail, *, rid=None, run_fail=None):
+    """One failed-retry path for a non-zero exit AND a raised retry: close the run as failed,
+    record the action, and escalate once at MAX_RETRIES (deduped by was_alerted_recently)."""
+    script = issue['script']
+    detail = str(detail or '')
+    if rid is not None and run_fail is not None:
+        try:
+            run_fail(rid, detail[-200:])
+        except Exception as e:  # the registry being down must not hide the escalation below
+            log.warning(f"[watchdog] could not mark retry run failed for {script}: {e}")
+    log_action(conn, 'retry', script, issue['issue'], False, detail[-100:])
+    if retries_today + 1 >= MAX_RETRIES and not no_telegram:
+        if not was_alerted_recently(conn, script):
+            send_telegram(f"CRITICAL: {script} failed {MAX_RETRIES}x. Manual check needed.", urgent=True)
+            log_action(conn, 'alert', script, 'max_retries', True, '')
 
 
 # ── FUNCTION 2: GO Signal Coverage ──
