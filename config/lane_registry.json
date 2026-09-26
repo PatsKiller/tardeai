@@ -2332,6 +2332,106 @@
         "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/options_thesis_lifecycle.log"
       },
       "note": "Operator 2026-09-26 'add the cron' (PR #1256): options thesis research -> CIO decision (LLM CIO review, operator confirms) or archived after 48h. Runs after each hermes CIO drain. Dry run first by default; the cron passes --apply."
+    },
+    {
+      "lane_id": "alpaca-stop-manager-rth",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "7-59/20 9-16 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock bash scripts/market_day_gate.sh $PY scripts/alpaca_stop_manager.py --apply >> logs/alpaca_stop_manager_cron.log 2>&1",
+        "match": "scripts/alpaca_stop_manager.py --apply"
+      },
+      "expected_cadence_hours": 0.34,
+      "state": "ACTIVE",
+      "state_since": "2026-09-26",
+      "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-05 — both stop-manager lines now share ONE lock (/tmp/tradeai_alpaca_stop_manager.lock) and the RTH line runs at :07/:27/:47 so it never coincides with the 04-10 repair line's :00/:15/:30/:45.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/alpaca_stop_manager_cron.log"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/check_cron_sanity.py::check_shared_script_locks (P1 linter, tests/test_p1_cron_unit_linters_20260926.py::test_r05_two_schedules_of_a_broker_script_must_share_one_lock); crontab lines 544/731 measured 2026-09-26 colliding at 09:00/10:00 weekdays; grant dbe23b0073b3a925.",
+      "note": "Paper-only Alpaca stop ratchet (--apply). Broker-touching: overlapping runs were the P1 High finding."
+    },
+    {
+      "lane_id": "alpaca-stop-manager-oco-repair",
+      "owner": "execution",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/15 4-10 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_alpaca_stop_manager.lock $PY scripts/alpaca_stop_manager.py --repair-oco --apply >> logs/alpaca_stop_manager_repair.log 2>&1",
+        "match": "scripts/alpaca_stop_manager.py --repair-oco --apply"
+      },
+      "expected_cadence_hours": 0.25,
+      "state": "ACTIVE",
+      "state_since": "2026-09-26",
+      "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-05 — lock renamed from /tmp/tradeai_oco_repair.lock to the shared /tmp/tradeai_alpaca_stop_manager.lock.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/alpaca_stop_manager_repair.log"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/check_cron_sanity.py::check_shared_script_locks (P1 linter); crontab line 731 measured 2026-09-26 with lock /tmp/tradeai_oco_repair.lock distinct from line 544's (none); grant dbe23b0073b3a925.",
+      "note": "OCO repair supervisor (2026-07-04) for OCO_REPLACING/naked paper positions."
+    },
+    {
+      "lane_id": "reconcile-exit-advisory-outcomes",
+      "owner": "watch",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 9 * * 0 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/exit_outcomes.lock $PY scripts/reconcile_exit_advisory_outcomes.py >> logs/exit_outcomes.log 2>&1",
+        "match": "scripts/reconcile_exit_advisory_outcomes.py"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "state_since": "2026-09-26",
+      "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-02 — interpreter changed from the relative .venv/bin/python (releases ship no .venv since 2026-09-25; last successful run 2026-09-20, `flock: failed to execute .venv/bin/python` since) to $PY (/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/exit_outcomes.log"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/check_cron_sanity.py::check_relative_interpreters (P1 linter, tests/test_p1_cron_unit_linters_20260926.py::test_r02_relative_venv_inside_release_is_flagged_and_fix_clears_it); persistent-state logs show `flock: failed to execute .venv/bin/python` after 2026-09-20; cio_phase2_exact_main_deploy.sh:533 excludes .venv from releases; grant dbe23b0073b3a925.",
+      "note": "Weekly exit-advisory outcome reconciler."
+    },
+    {
+      "lane_id": "reconcile-pullback-outcomes",
+      "owner": "watch",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "45 9 * * 0 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/pullback_outcomes.lock $PY scripts/reconcile_pullback_outcomes.py >> logs/pullback_outcomes.log 2>&1",
+        "match": "scripts/reconcile_pullback_outcomes.py"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "state_since": "2026-09-26",
+      "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-02 — interpreter changed from the relative .venv/bin/python (releases ship no .venv since 2026-09-25; last successful run 2026-09-20, `flock: failed to execute .venv/bin/python` since) to $PY (/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/pullback_outcomes.log"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/check_cron_sanity.py::check_relative_interpreters (P1 linter, tests/test_p1_cron_unit_linters_20260926.py::test_r02_relative_venv_inside_release_is_flagged_and_fix_clears_it); persistent-state logs show `flock: failed to execute .venv/bin/python` after 2026-09-20; cio_phase2_exact_main_deploy.sh:533 excludes .venv from releases; grant dbe23b0073b3a925.",
+      "note": "Watch Desk v2 D1 weekly trigger-outcome reconciler."
+    },
+    {
+      "lane_id": "reconcile-watch-outcomes",
+      "owner": "watch",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "50 9 * * 0 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/watch_outcomes.lock $PY scripts/reconcile_watch_outcomes.py >> logs/watch_outcomes.log 2>&1",
+        "match": "scripts/reconcile_watch_outcomes.py"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "ACTIVE",
+      "state_since": "2026-09-26",
+      "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-02 — interpreter changed from the relative .venv/bin/python (releases ship no .venv since 2026-09-25; last successful run 2026-09-20, `flock: failed to execute .venv/bin/python` since) to $PY (/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/watch_outcomes.log"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/check_cron_sanity.py::check_relative_interpreters (P1 linter, tests/test_p1_cron_unit_linters_20260926.py::test_r02_relative_venv_inside_release_is_flagged_and_fix_clears_it); persistent-state logs show `flock: failed to execute .venv/bin/python` after 2026-09-20; cio_phase2_exact_main_deploy.sh:533 excludes .venv from releases; grant dbe23b0073b3a925.",
+      "note": "Watch Desk v3 source scoreboard."
     }
   ],
   "undeclared_baseline": [

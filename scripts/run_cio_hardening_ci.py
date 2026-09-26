@@ -2429,6 +2429,19 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-26 — P1 audit remediation: cron/unit linters that reproduce the
+        # live scheduler defects (relative .venv inside a release that ships
+        # none; two schedules of a broker-touching script under different
+        # locks; relative path with no cd; python -c quoting) and the unit
+        # EnvironmentFile linter (silently skipped missing env files).
+        "p1_cron_unit_linters_20260926",
+        [
+            "tests/test_p1_cron_unit_linters_20260926.py",
+            "tests/test_check_cron_sanity_hardened.py",
+            "tests/test_check_cron_sanity_resolves_like_cron_20260915.py",
+        ],
+    ),
+    (
         # 2026-09-25 — CIO cognition tranche 3: prompt event-driven cognition on
         # the existing bus/wake-store/dispatcher lane (cursor lands on the
         # newest handled event, singular `symbol` subjects, priority-FIFO
