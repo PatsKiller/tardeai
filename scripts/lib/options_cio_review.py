@@ -47,12 +47,41 @@ TASK - return JSON only:
   "exit_plan_view": "is the stated exit plan adequate for this structure",
   "unknowns": ["missing or stale inputs that limited this review"]}}
 Use MORE_RESEARCH when a catalyst, exit or bear case is too thin to judge;
-MONITOR_ONLY when the thesis is sound but the timing or price is not."""
+MONITOR_ONLY when the thesis is sound but the timing or price is not.
+Be concise: reasoning at most 150 words; each list at most 4 short items. Return the
+JSON object only, complete, with no text before or after it."""
+
+
+def _pct(a: Any, b: Any) -> Optional[float]:
+    try:
+        a, b = float(a), float(b)
+        return round(100.0 * (a - b) / b, 1) if b else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _clip(v: Any, n: int) -> Any:
+    return (v[:n] + "…") if isinstance(v, str) and len(v) > n else v
 
 
 def build_facts(p: dict[str, Any]) -> dict[str, Any]:
     memo = p.get("committee_memo") or {}
     pe = p.get("plain_english") or {}
+    spot, strike, prem, dte = p.get("underlying_price"), p.get("strike"), p.get("premium"), p.get("dte")
+    # Derived figures the reviewer would otherwise compute and then fail the
+    # traceability rail on (2026-09-26: DELL breakeven 16.8% below spot was refused).
+    derived = {
+        # Signed and unsigned: reviewers write "16.8% below spot", the rail compares values.
+        "strike_vs_spot_pct": _pct(strike, spot),
+        "breakeven_vs_spot_pct": _pct(p.get("breakeven"), spot),
+        "strike_distance_from_spot_pct": abs(_pct(strike, spot) or 0) or None,
+        "breakeven_distance_from_spot_pct": abs(_pct(p.get("breakeven"), spot) or 0) or None,
+        "premium_pct_of_strike": round(100.0 * float(prem) / float(strike), 2) if prem and strike else None,
+        "annualized_yield_pct": (round(100.0 * float(prem) / float(strike) * 365.0 / max(int(dte), 1), 1)
+                                 if prem and strike and dte else None),
+        "desk_floor_min_pop_pct": 52, "desk_floor_min_edge": 62,
+    }
+    ra = p.get("research_answers") or {}
     return {
         "symbol": p.get("symbol"), "strategy": p.get("strategy"), "classification": memo.get("classification_label"),
         "spot": p.get("underlying_price"), "strike": p.get("strike"), "expiration": p.get("expiration"),
@@ -60,9 +89,11 @@ def build_facts(p: dict[str, Any]) -> dict[str, Any]:
         "breakeven": p.get("breakeven"), "pop_pct": p.get("pop_pct"), "iv_rank": p.get("iv_rank"),
         "max_loss": p.get("max_loss"), "max_profit": p.get("max_profit"),
         "oi": p.get("oi"), "bid_ask_spread_pct": p.get("bid_ask_spread_pct"),
-        "thesis": memo.get("investment_thesis"), "counter_evidence": memo.get("contrarian_view"),
+        "derived": derived,
+        # Long narrative is clipped per field so the research answers are never cut off.
+        "thesis": _clip(memo.get("investment_thesis"), 1200), "counter_evidence": _clip(memo.get("contrarian_view"), 600),
         "why_now": memo.get("why_now"), "exit_plan": memo.get("exit_plan"),
-        "research_answers": p.get("research_answers") or {},
+        "research_answers": {k: _clip(v, 600) for k, v in ra.items() if k != "research_id"},
         "plain_english": {k: pe.get(k) for k in ("objective", "premium_line", "breakeven_line", "scenarios")},
     }
 
@@ -92,18 +123,20 @@ def validate(review: Any, facts: dict[str, Any]) -> tuple[bool, list[str]]:
     return (not errs), errs
 
 
-def _default_llm(prompt: str, *, symbol: str, job_key: str) -> dict[str, Any]:
+def _default_llm(prompt: str, *, symbol: str, job_key: str, max_tokens: int = 2500) -> dict[str, Any]:
     try:
         from llm_router import get_llm_response  # type: ignore
     except ImportError:
         from scripts.llm_router import get_llm_response  # type: ignore
-    return get_llm_response("cio_synthesis", prompt, high_impact=True, max_tokens=1200,
+    # 2026-09-26 first live run: 1200 output tokens cut both reviews off before the
+    # closing brace ("no JSON object in response"). Limit now comes from config.
+    return get_llm_response("cio_synthesis", prompt, high_impact=True, max_tokens=max_tokens,
                             metadata={"symbol": symbol, "agent": "alex", "task": "options_thesis_review"},
                             job_key=job_key)
 
 
 def review(p: dict[str, Any], *, mode: str, llm_fn: Optional[Callable[[str], Any]] = None,
-           now: Optional[datetime] = None) -> dict[str, Any]:
+           now: Optional[datetime] = None, max_tokens: int = 2500) -> dict[str, Any]:
     """Run (or dry-run) the review. Never raises; never sizes."""
     now = now or datetime.now(timezone.utc)
     sym = str(p.get("symbol") or "").upper()
@@ -115,15 +148,19 @@ def review(p: dict[str, Any], *, mode: str, llm_fn: Optional[Callable[[str], Any
             "authority": "READ_ONLY_ADVISORY"}
     if mode == "off":
         return {**base, "status": "DISABLED"}
-    prompt = PROMPT.replace("{SYMBOL}", sym).replace("{FACTS}", json.dumps(facts, default=str)[:6000])
+    prompt = PROMPT.replace("{SYMBOL}", sym).replace("{FACTS}", json.dumps(facts, default=str))
     if mode != "live":
         return {**base, "status": "DRY_RUN", "prompt_chars": len(prompt)}
     try:
-        resp = (llm_fn or (lambda x: _default_llm(x, symbol=sym, job_key=job_key)))(prompt)
+        resp = (llm_fn or (lambda x: _default_llm(x, symbol=sym, job_key=job_key, max_tokens=max_tokens)))(prompt)
     except Exception as exc:  # noqa: BLE001
         return {**base, "status": "LLM_ERROR", "reason": f"{type(exc).__name__}: {str(exc)[:160]}"}
     raw = resp.get("response") if isinstance(resp, dict) else resp
     meta = {k: resp.get(k) for k in ("model_used", "provider", "cost_estimate")} if isinstance(resp, dict) else {}
+    text = str(raw or "").strip()
+    if text.count("{") > text.count("}"):
+        return {**base, "status": "TRUNCATED", "errors": [f"response cut off at {len(text)} chars (unclosed JSON)"],
+                "model": meta}
     try:
         r = br._parse_json(raw)
     except (ValueError, TypeError) as exc:
