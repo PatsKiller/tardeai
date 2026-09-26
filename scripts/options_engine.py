@@ -1049,14 +1049,33 @@ def _edge_score(
     rr: float,
     catalyst_boost: float = 0.0,
     conviction: float = 0.0,
+    yield_ann_pct: Optional[float] = None,
 ) -> float:
-    """0–100 composite edge for credit/income strategies."""
+    """0–100 composite edge for credit/income strategies.
+
+    ``yield_ann_pct`` (covered calls, 2026-09-26): the premium's annualized yield
+    on the covered shares, scored on the configured scale (full 20 points at
+    ``edge_roc_full_credit_ann_pct``). The old ``rr * 25`` term gave SPCX's
+    $4.10 / 27-day call on a $148.57 stock -- ~37% annualized -- under 2 of 20
+    points, so no covered call could clear 62 on premium.
+    """
     pop_s = min(100.0, max(0.0, pop)) * 0.35
     iv_s = min(100.0, iv_rank) * 0.20
-    rr_s = min(100.0, rr * 25.0) * 0.20
+    if yield_ann_pct is not None:
+        from lib.options_income_quality import roc_score
+        rr_s = roc_score(float(yield_ann_pct), _desk_cfg(), 20.0)
+    else:
+        rr_s = min(100.0, rr * 25.0) * 0.20
     cat_s = min(15.0, catalyst_boost)
     conv_s = min(10.0, conviction * 10.0)
     return round(pop_s + iv_s + rr_s + cat_s + conv_s, 1)
+
+
+def _cc_yield_ann_pct(premium: float, underlying: float, dte: int) -> float:
+    """Covered-call premium as an annualized % of the covered shares' value."""
+    if premium <= 0 or underlying <= 0:
+        return 0.0
+    return (premium / underlying) * (365.0 / max(int(dte or 0), 1)) * 100.0
 
 
 def _conviction_bias(c: dict) -> str:
@@ -1419,6 +1438,7 @@ def generate_covered_call_proposals(
             rr,
             catalyst_boost=12.0 if in_intent else (8.0 if gates["manual"] else 3.0),
             conviction=_f(aegis.get("confidence"), 0.6),
+            yield_ann_pct=_cc_yield_ann_pct(premium, und, dte),
         )
         if in_intent and pop >= MIN_POP_PCT:
             edge = max(edge, pop * 0.55 + 18.0)
@@ -3043,7 +3063,8 @@ def evaluate_covered_call_status(
             }
 
     iv = (contract or {}).get("iv") or 0.25
-    iv_rank = _iv_rank_proxy(sym, tech, chain_iv=iv if contract else None)
+    iv_rank = _iv_rank_proxy(sym, tech, chain_iv=iv if contract else None,
+                             chain_lookup=resolve_chain, price=price)
     base["iv_rank"] = round(iv_rank, 1)
     base["intent_sleeve"] = in_intent
     if contract:
@@ -3073,6 +3094,7 @@ def evaluate_covered_call_status(
         rr,
         catalyst_boost=12.0 if in_intent else (8.0 if gates["manual"] else 3.0),
         conviction=_f(aegis.get("confidence"), 0.6),
+        yield_ann_pct=_cc_yield_ann_pct(premium, und, dte),
     )
     if in_intent and pop >= MIN_POP_PCT:
         edge = max(edge, pop * 0.55 + 18.0)

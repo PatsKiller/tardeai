@@ -2478,7 +2478,8 @@ GATES = [
         # 2026-09-26 -- watchlist names read at-the-money IV from their Schwab chain
         # (technical_snapshot.json is holdings-only); one chain read per pass.
         "chain_iv_fallback_20260926",
-        ["tests/test_chain_iv_fallback_20260926.py", "tests/test_options_holdings_funnel.py"],
+        ["tests/test_chain_iv_fallback_20260926.py", "tests/test_options_holdings_funnel.py",
+         "tests/test_cc_yield_scoring_20260926.py"],
     ),
 ]
 
