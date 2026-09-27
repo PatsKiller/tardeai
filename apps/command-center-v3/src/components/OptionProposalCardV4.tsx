@@ -895,6 +895,28 @@ export default function OptionProposalCardV4({
                   ) : v?.genuinely_new ? (
                     <div style={{ color: BB.amber, fontWeight: 800 }}>New to the house: no thesis, decision or research on file for {p.symbol}. Research starts automatically.</div>
                   ) : null}
+                  {(p as any).fundamentals && (
+                    <div data-testid="options-fundamentals" style={{ marginTop: 6 }}>
+                      <b style={{ color: BB.text1 }}>Fundamentals.</b>{' '}
+                      {(p as any).fundamentals.state === 'UNAVAILABLE' ? (
+                        <span style={{ color: BB.text3 }}>No reported SEC financials on file for {p.symbol}.</span>
+                      ) : (
+                        <>
+                          <span style={{ color: (p as any).fundamentals.state === 'FRESH' ? BB.green : BB.amber }}>
+                            {(p as any).fundamentals.state === 'FRESH' ? 'Reported' : 'Stale'} · quarter ended {(p as any).fundamentals.latest_quarter_end}
+                          </span>
+                          {(p as any).fundamentals.gross_margin_pct != null && <span style={{ color: BB.text2 }}> · gross margin {(p as any).fundamentals.gross_margin_pct}%</span>}
+                          {(p as any).fundamentals.operating_margin_pct != null && <span style={{ color: BB.text2 }}> · operating margin {(p as any).fundamentals.operating_margin_pct}%</span>}
+                          {((p as any).fundamentals.lines || []).map((ln: string, i: number) => (
+                            <div key={i} style={{ color: BB.text2, marginLeft: 10 }}>{ln}</div>
+                          ))}
+                          {(p as any).fundamentals.filing_url && (
+                            <a href={(p as any).fundamentals.filing_url} target="_blank" rel="noreferrer" style={{ color: BB.text1, textDecoration: 'underline', marginLeft: 10 }}>SEC filing →</a>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
                   {life?.stage && (
                     <div data-testid="options-lifecycle" style={{ marginTop: 6 }}>
                       <b style={{ color: BB.text1 }}>This idea.</b>{' '}

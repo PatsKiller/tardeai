@@ -1151,6 +1151,7 @@ def _edge_score_debit(
 
 # Where each symbol's spot came from on this pass (shown on the card).
 _PRICE_SOURCE: Dict[str, dict] = {}
+_FUNDAMENTALS: dict = {}  # per-run cache of fundamentals card blocks (F5)
 
 
 def _spot_for(sym: str, price: float) -> float:
@@ -2589,6 +2590,15 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
                 except Exception:
                     views[sym] = {"has_view": False, "error": True}
             p["cio_view"] = views[sym]
+        # Reported fundamentals from SEC filings (fundamentals plan F5, 2026-09-27).
+        if sym not in _FUNDAMENTALS:
+            try:
+                from db_adapter import _execute as _fx
+                from lib.fundamentals_feed import card_block
+                _FUNDAMENTALS[sym] = card_block(sym, _fx)
+            except Exception:  # noqa: BLE001
+                _FUNDAMENTALS[sym] = {"state": "UNAVAILABLE", "symbol": sym, "lines": []}
+        p["fundamentals"] = _FUNDAMENTALS[sym]
         rc = p.get("research_context") or {}
         if not p.get("catalyst") and rc.get("catalyst"):
             p["catalyst"] = rc["catalyst"]  # memo and strategy-fit read the top level
@@ -2725,6 +2735,7 @@ def generate_proposals(force: bool = False) -> dict:
     INCOME_SCREEN_DROPS.clear()
     _CHAIN_CACHE.clear()
     _PRICE_SOURCE.clear()
+    _FUNDAMENTALS.clear()
     holdings, _ = _load_holdings()
     tech_map = _load_technicals()
     intent_cfg = _load_intent_cfg()

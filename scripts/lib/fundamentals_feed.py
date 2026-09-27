@@ -210,3 +210,29 @@ def freshness(summary: dict[str, Any], s: dict[str, Any], *, today: Optional[dat
         return "UNAVAILABLE"
     today = today or datetime.now().date()
     return "FRESH" if (today - end).days <= int(s["stale_days_after_quarter"]) else "STALE"
+
+
+CARD_METRICS = ("revenue", "operating_income", "eps_diluted", "remaining_performance_obligation")
+CARD_SQL = """SELECT symbol, form_type, metric_name, metric_value, unit, period_start, period_end,
+                     filing_date, sec_url FROM sec_xbrl WHERE symbol=%s ORDER BY period_end DESC LIMIT 400"""
+
+
+def card_block(symbol: str, execute, s: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Compact fundamentals for a card (fundamentals plan F5): state, latest quarter,
+    up to four reported figures with YoY, margins, and the filing link. Numbers come
+    only from sec_xbrl; an ETF or a symbol with no filings says so."""
+    s = s or settings()
+    try:
+        rows = [dict(r) for r in (execute(CARD_SQL, (symbol.upper(),), fetch="all") or [])]
+    except Exception:  # noqa: BLE001
+        rows = []
+    if not rows:
+        return {"state": "UNAVAILABLE", "symbol": symbol.upper(), "lines": []}
+    summ = summarize(symbol, rows)
+    by = {f["metric"]: f for f in summ["facts"]}
+    lines = [ln["fact"] for ln in evidence_lines({**summ, "facts": [by[m] for m in CARD_METRICS if m in by]})
+             if not ln["metric"].endswith("_pct")]
+    top = by.get("revenue") or next(iter(by.values()), {})
+    return {"state": freshness(summ, s), "symbol": symbol.upper(), "latest_quarter_end": summ["latest_quarter_end"],
+            "gross_margin_pct": summ.get("gross_margin_pct"), "operating_margin_pct": summ.get("operating_margin_pct"),
+            "lines": lines, "filing_url": top.get("sec_url"), "source": "sec_xbrl"}
