@@ -7,7 +7,7 @@ Type=oneshot
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 ExecStart=/usr/bin/python3 %h/trade-ai-releases/portfolio-server/CURRENT/scripts/process_due_checkpoints.py --root %h/trade-ai-releases/portfolio-server/CURRENT --source-available --persist
 Environment=MEMORY_BEHAVIOR_INFLUENCE=0
-Environment=TRADEAI_READ_ONLY_ADVISORY=1
+# TRADEAI_READ_ONLY_ADVISORY retired 2026-09-26 (audit R-06): read by no code; the advisory rail is MBI_BEHAVIOR=0 in code.
 # No broker, orders, stops, or 2FA.
 
 [Install]
