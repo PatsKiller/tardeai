@@ -2490,7 +2490,7 @@
       "owner": "options",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 10-15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PROJECT_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT bash linux_launchers/reconcile_alpaca_paper_options.sh",
+        "expression": "0 10-15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PROJECT_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT PY=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python bash linux_launchers/reconcile_alpaca_paper_options.sh",
         "match": "linux_launchers/reconcile_alpaca_paper_options.sh"
       },
       "expected_cadence_hours": 1.0,

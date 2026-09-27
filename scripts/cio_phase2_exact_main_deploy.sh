@@ -678,7 +678,7 @@ write_expected_release_pin() {
 # activeness is the one signal that cannot detect this.
 restart_root_frozen_units() {
   local dir="$1"
-  local units="${TRADEAI_CURRENT_BOUND_UNITS:-tradeai-health-agent.service cio-governed-bridge.service}"
+  local units="${TRADEAI_CURRENT_BOUND_UNITS:-tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service}"
   local u pid cwd
   for u in $units; do
     systemctl --user list-unit-files "$u" >/dev/null 2>&1 || { log "  skip $u (not installed)"; continue; }
@@ -711,6 +711,11 @@ cmd_rollback() {
     write_deploy_receipt false rollback fail false "rollback_health_failed"
     die "rollback health failed"
   fi
+  # CURRENT moved. Bound units keep the concrete directory they resolved at
+  # start, so a rollback that only flips the symlink leaves them on the
+  # release that was just rolled away. Same restart and pin write as promote.
+  restart_root_frozen_units "$target"
+  write_expected_release_pin "$target"
   write_deploy_receipt true rollback ok false "rollback_ok"
   log "ROLLBACK OK → $target"
 }
