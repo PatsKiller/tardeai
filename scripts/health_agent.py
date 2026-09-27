@@ -136,6 +136,37 @@ def _data_source_retry_cmd(policy: dict, ftype: str, finding: dict) -> str | Non
     return cmd if isinstance(cmd, str) else None
 
 
+FAIL_STREAK_CEILING = int(os.environ.get("HEALTH_REMEDIATION_FAIL_STREAK_CEILING", "5"))
+_NON_FAILURE_RCS = (0, 69, 99)     # 69/99: flock contention / fresh-dump gate, not a failure
+_PAUSED_OR_RETIRED = frozenset({"PAUSED", "RETIRED", "NEVER_SCHEDULED"})
+
+
+def _next_fail_streak(st: dict, rc) -> int:
+    """Consecutive hard-failure count for one remediation type (pure)."""
+    try:
+        code = int(rc)
+    except (TypeError, ValueError):
+        code = -1
+    return 0 if code in _NON_FAILURE_RCS else int(st.get("fail_streak", 0) or 0) + 1
+
+
+def _circuit_open(st: dict, ceiling: int | None = None) -> bool:
+    """True when the remediation has failed `ceiling` times in a row (pure)."""
+    return int(st.get("fail_streak", 0) or 0) >= (ceiling if ceiling is not None else FAIL_STREAK_CEILING)
+
+
+def _lane_state_for_cmd(cmd: str) -> dict:
+    """Registry lane state for the script a remediation runs (fail-soft: unknown → no lane)."""
+    try:
+        try:
+            from lib.lane_registry import lane_state_for_command
+        except ImportError:
+            from scripts.lib.lane_registry import lane_state_for_command  # type: ignore
+        return lane_state_for_command(cmd)
+    except Exception:
+        return {"lane_id": None, "state": None, "matched": None}
+
+
 def _remediation_cwd() -> Path:
     """Cwd with scripts/ + .env. Prefer DEV (has venv + full scripts); fall back to live."""
     if (DEV_ROOT / "scripts").is_dir() and (DEV_ROOT / ".env").is_file():
@@ -540,6 +571,35 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             continue
         if not any(s in cmd for s in _SAFE_REMEDIATION_SCRIPTS):
             continue
+        # R-15 (2026-09-26): never run a remediation whose lane is PAUSED/RETIRED —
+        # the allowlist could resurrect scripts/cio_decision_engine.py (lane PAUSED).
+        _lane = _lane_state_for_cmd(cmd)
+        if _lane.get("state") in _PAUSED_OR_RETIRED:
+            entry = {"at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
+                     "skipped": "lane_" + _lane["state"].lower(), "lane_id": _lane.get("lane_id"),
+                     "note": f"remediation skipped: lane {_lane.get('lane_id')} is {_lane['state']}",
+                     "trigger": f.get("message", "")[:200]}
+            results.append(entry)
+            REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with open(REMEDIATION_LOG, "a") as fh:
+                fh.write(json.dumps(entry) + "\n")
+            continue
+        # R-04 (2026-09-26): a remediation that FAILS (non-zero exit) every run was
+        # re-run forever — remediate_watchlist_news_guard hit a ForeignKeyViolation
+        # 2,447 times. The existing breaker only counted "succeeded then recurred".
+        if _circuit_open(st):
+            entry = {"at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": False,
+                     "circuit_open": True, "fail_streak": st.get("fail_streak", 0),
+                     "note": (f"remediation failed {st.get('fail_streak', 0)}x in a row — circuit open, "
+                              f"not re-running; needs operator/code review"),
+                     "trigger": f.get("message", "")[:200]}
+            results.append(entry)
+            REMEDIATION_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with open(REMEDIATION_LOG, "a") as fh:
+                fh.write(json.dumps(entry) + "\n")
+            state[ftype] = st
+            _record_rc_memory(ftype, f, entry)
+            continue
         try:
             # P0 agent_jobs containment (same guard as escalation handler)
             try:
@@ -633,9 +693,11 @@ def run_auto_remediation(policy: dict, findings: list[dict]) -> list[dict]:
             # served numbers stayed stale. The real verdict is decided below, after
             # the originating check is re-run. `ok` is overwritten there.
             ok = False
+            st["fail_streak"] = _next_fail_streak(st, rc)
             entry = {
                 "at": now.isoformat(), "type": ftype, "cmd": cmd, "ok": ok,
                 "exit_code": rc,
+                "fail_streak": st["fail_streak"],
                 "cwd": str(run_cwd),
                 "stdout_tail": (stdout or "")[-400:],
                 "stderr_tail": (stderr or "")[-400:],
@@ -2171,19 +2233,21 @@ def collect_pipeline_containment() -> list[dict]:
         contained = state["status"] == STATUS_ACTIVE
 
         # ── 2. Crontab integrity — are critical watchlist agent lines commented? ──
-        cron_proc = subprocess.run(
-            ["crontab", "-l"], capture_output=True, text=True, timeout=10
-        )
-        crontab_raw = cron_proc.stdout or ""
-        if cron_proc.returncode != 0 and (
-            "Permission denied" in (cron_proc.stderr or "") or "fopen" in (cron_proc.stderr or "")
-        ):
-            crontab_raw = ""
+        # R-03 (2026-09-26): under NoNewPrivileges `crontab -l` is denied and every
+        # cron_missing check was skipped as "info". Read the cron-written snapshot
+        # instead; only when neither is available is the skip reported — as a warning.
+        try:
+            from lib.crontab_snapshot import read_crontab as _read_crontab
+        except ImportError:
+            from scripts.lib.crontab_snapshot import read_crontab as _read_crontab  # type: ignore
+        _cron_read = _read_crontab()
+        crontab_raw = _cron_read.text if _cron_read.ok else ""
+        if not _cron_read.ok:
             out.append(_f(
                 "intelligence_quality",
                 "hermes_crontab_unreadable",
-                "info",
-                "Could not read crontab this cycle — skipping cron_missing checks (hardened systemd)",
+                "warning",
+                f"cron_missing checks NOT run this cycle: {_cron_read.error}",
             ))
         agent_cron_lines = [
             l for l in crontab_raw.split("\n")
