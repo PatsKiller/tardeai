@@ -64,7 +64,34 @@ def _clip(v: Any, n: int) -> Any:
     return (v[:n] + "…") if isinstance(v, str) and len(v) > n else v
 
 
-def build_facts(p: dict[str, Any]) -> dict[str, Any]:
+def _prior_decisions(p: dict[str, Any], memory: Optional[dict[str, Any]]) -> Optional[list[dict[str, Any]]]:
+    """Prior options memory from M2 when enabled (config memory_reads, env override).
+
+    None = reads off (the key is left out of the facts); [] = on, nothing found
+    or the read failed. Never raises."""
+    m = memory or {}
+    try:
+        try:
+            from scripts.lib import options_memory_envelope as ome
+            from scripts.lib.options_thesis_lifecycle import DEFAULTS
+        except ImportError:  # scripts/ on sys.path
+            from lib import options_memory_envelope as ome  # type: ignore
+            from lib.options_thesis_lifecycle import DEFAULTS  # type: ignore
+        if not ome.options_memory_reads_enabled(m.get("memory_reads")):
+            return None
+        loader = m.get("loader") or ome.load_prior_options_facts
+        rows = loader(p.get("option_strategy_guid"), p.get("symbol"),
+                      limit=int(m.get("limit") or DEFAULTS["memory_reads_limit"]),
+                      lookback_days=int(m.get("lookback_days") or DEFAULTS["memory_reads_lookback_days"]))
+        return list(rows or [])
+    except Exception:  # noqa: BLE001 — memory is advisory; failure is "no priors"
+        return []
+
+
+def build_facts(p: dict[str, Any], *, memory: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+    """Supplied facts for the review. ``memory`` = {memory_reads, limit, lookback_days,
+    loader?} from options_thesis_lifecycle settings; prior options facts from the CIO's
+    bitemporal memory land in ``prior_decisions`` (their numbers are then traceable)."""
     memo = p.get("committee_memo") or {}
     pe = p.get("plain_english") or {}
     spot, strike, prem, dte = p.get("underlying_price"), p.get("strike"), p.get("premium"), p.get("dte")
@@ -82,7 +109,7 @@ def build_facts(p: dict[str, Any]) -> dict[str, Any]:
         "desk_floor_min_pop_pct": 52, "desk_floor_min_edge": 62,
     }
     ra = p.get("research_answers") or {}
-    return {
+    facts = {
         "symbol": p.get("symbol"), "strategy": p.get("strategy"), "classification": memo.get("classification_label"),
         "spot": p.get("underlying_price"), "strike": p.get("strike"), "expiration": p.get("expiration"),
         "dte": p.get("dte"), "premium": p.get("premium"), "contracts": p.get("contracts"),
@@ -96,6 +123,10 @@ def build_facts(p: dict[str, Any]) -> dict[str, Any]:
         "research_answers": {k: _clip(v, 600) for k, v in ra.items() if k != "research_id"},
         "plain_english": {k: pe.get(k) for k in ("objective", "premium_line", "breakeven_line", "scenarios")},
     }
+    prior = _prior_decisions(p, memory)
+    if prior is not None:
+        facts["prior_decisions"] = prior
+    return facts
 
 
 def validate(review: Any, facts: dict[str, Any]) -> tuple[bool, list[str]]:
@@ -136,12 +167,13 @@ def _default_llm(prompt: str, *, symbol: str, job_key: str, max_tokens: int = 25
 
 
 def review(p: dict[str, Any], *, mode: str, llm_fn: Optional[Callable[[str], Any]] = None,
-           now: Optional[datetime] = None, max_tokens: int = 2500) -> dict[str, Any]:
+           now: Optional[datetime] = None, max_tokens: int = 2500,
+           memory: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     """Run (or dry-run) the review. Never raises; never sizes."""
     now = now or datetime.now(timezone.utc)
     sym = str(p.get("symbol") or "").upper()
     guid = p.get("option_strategy_guid") or ""
-    facts = build_facts(p)
+    facts = build_facts(p, memory=memory)
     job_key = f"options_thesis_review:{guid}:{(p.get('options_thesis') or {}).get('pin')}"
     base = {"schema": SCHEMA, "symbol": sym, "position_guid": guid, "mode": mode, "job_key": job_key,
             "agent": "alex", "as_of": now.replace(microsecond=0).isoformat(), "mbi_behavior": 0,
@@ -149,6 +181,8 @@ def review(p: dict[str, Any], *, mode: str, llm_fn: Optional[Callable[[str], Any
     if mode == "off":
         return {**base, "status": "DISABLED"}
     prompt = PROMPT.replace("{SYMBOL}", sym).replace("{FACTS}", json.dumps(facts, default=str))
+    if "prior_decisions" in facts:
+        base["prior_decisions_count"] = len(facts["prior_decisions"])
     if mode != "live":
         return {**base, "status": "DRY_RUN", "prompt_chars": len(prompt)}
     try:

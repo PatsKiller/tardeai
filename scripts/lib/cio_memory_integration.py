@@ -37,7 +37,13 @@ FORBIDDEN_OBJECT_KEYS = frozenset({
 SINGLE_VALUED_PREDICATES = frozenset({
     "thesis", "investment_thesis", "strategic_thesis", "operating_principle",
     "executive_priority", "held_view", "advisor_stance",
+    # 2026-09-26: one current options thesis per option_strategy_guid (the
+    # options memory projector sets subject_guid = the strategy GUID).
+    "options_thesis",
 })
+
+# Envelope ``source_type`` when the caller names none (the wake/AEC cycle).
+DEFAULT_SOURCE_TYPE = "cio_envelope"
 
 
 SUPERSEDE_POLICY = "latest_assertion_supersedes_overlap"
@@ -187,6 +193,11 @@ class CIOEnvelopeIntegrator:
         ids = subject_from_security(symbol=str(symbol) if symbol else None)
         if envelope.get("subject_guid"):
             ids["subject_guid"] = str(envelope["subject_guid"])
+        # A caller that already resolved the issuer (the options projector, via
+        # the identity registry) overrides the ticker-alias issuer; absent, the
+        # subject_from_security value stands exactly as before.
+        if envelope.get("issuer_guid"):
+            ids["issuer_guid"] = str(envelope["issuer_guid"])
         if not ids.get("subject_guid"):
             sk = subject_key or envelope.get("topic") or "unknown"
             ids["subject_guid"] = str(
@@ -301,6 +312,7 @@ class CIOEnvelopeIntegrator:
         _refuse_financial_payload(obj)
 
         predicate = str(envelope.get("predicate") or "thesis")
+        source_type = str(envelope.get("source_type") or DEFAULT_SOURCE_TYPE)
         claim = str(
             envelope.get("claim")
             or envelope.get("summary")
@@ -336,6 +348,7 @@ class CIOEnvelopeIntegrator:
             "security_guid": ids.get("security_guid"),
             "listing_guid": ids.get("listing_guid"),
             "predicate": predicate,
+            "source_type": source_type,
             "temporal_policy": temporal_policy,
             "valid_period": valid_period,
             "writer": "save_bitemporal_fact_version",
@@ -361,6 +374,7 @@ class CIOEnvelopeIntegrator:
             receipt = self._apply_in_transaction(
                 conn, envelope, receipt, obj=obj, claim=claim, subject_guid=subject_guid,
                 ids=ids, predicate=predicate, temporal_policy=temporal_policy, valid_period=valid_period,
+                source_type=source_type,
             )
             conn.commit()
         except Exception:
@@ -383,6 +397,7 @@ class CIOEnvelopeIntegrator:
         predicate: str,
         temporal_policy: str,
         valid_period: str,
+        source_type: str = DEFAULT_SOURCE_TYPE,
     ) -> dict[str, Any]:
         self._set_tenant(conn, local=True)
         self._lock_identity_predicate(conn, subject_guid=subject_guid, predicate=predicate)
@@ -435,12 +450,12 @@ class CIOEnvelopeIntegrator:
                     """
                     SELECT memory_r10_m2.save_bitemporal_fact_version(
                         %s, %s::uuid, %s, %s, %s::jsonb, %s::tstzrange, %s, %s,
-                        'cio_envelope', %s, %s, NULL::vector
+                        %s, %s, %s, NULL::vector
                     )
                     """,
                     (
                         self.tenant_id, identity_guid, subject_guid, predicate, json.dumps(obj),
-                        valid_period, status, temporal_policy, source_id, summary,
+                        valid_period, status, temporal_policy, source_type, source_id, summary,
                     ),
                 )
                 receipt["memory_version_id"] = str(cur.fetchone()[0])
@@ -492,12 +507,12 @@ class CIOEnvelopeIntegrator:
                 """
                 SELECT memory_r10_m2.supersede_single_valued_fact(
                     %s, %s::uuid, %s, %s, %s::jsonb, %s::tstzrange, %s,
-                    'cio_envelope', %s, %s, %s::uuid
+                    %s, %s, %s, %s::uuid
                 )
                 """,
                 (
                     self.tenant_id, identity_guid, subject_guid, predicate, json.dumps(obj),
-                    valid_period, status, source_id, summary, new_id,
+                    valid_period, status, source_type, source_id, summary, new_id,
                 ),
             )
             receipt["memory_version_id"] = str(cur.fetchone()[0])

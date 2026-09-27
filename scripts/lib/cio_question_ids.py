@@ -117,3 +117,42 @@ def unknown_intents(questions: list[dict[str, Any]]) -> list[str]:
         if intent and intent not in KNOWN_INTENTS:
             out.append(intent)
     return sorted(set(out))
+
+
+# Semantic question id -> the thesis field its answer feeds. One map, shared by
+# the options lifecycle (short display answers) and the symbol-thesis bridge
+# (full text), so the two cannot drift onto different ids.
+ANSWER_MAP = {
+    "q_thesis_check": "thesis",
+    "q_catalyst_map": "catalysts",
+    "q_invalidation": "invalidation",
+    "q_bear_case": "bear_case",
+}
+FOLLOWUP_PREFIX = "q_cio_followup_"
+
+
+def answer_text(answer: dict[str, Any]) -> str:
+    """summary + detail, joined; the full text, never truncated here."""
+    parts = (str(answer.get("summary") or "").strip(), str(answer.get("detail") or "").strip())
+    return " ".join(x for x in parts if x)
+
+
+def structured_answers(result: Optional[dict[str, Any]]) -> dict[str, str]:
+    """Per-question answers keyed by meaning (thesis, catalysts, invalidation,
+    bear_case, cio_followup_N). An answer whose status is 'unanswered' is
+    skipped: its text says why nothing was found, which is not a finding.
+    """
+    out: dict[str, str] = {}
+    for a in (result or {}).get("answers") or []:
+        if not isinstance(a, dict):
+            continue
+        qid = str(a.get("question_id") or "")
+        key = ANSWER_MAP.get(qid)
+        if not key and qid.startswith(FOLLOWUP_PREFIX):
+            key = qid[len(PREFIX):]
+        if not key or str(a.get("status") or "").lower() == "unanswered":
+            continue
+        text = answer_text(a)
+        if text:
+            out[key] = text
+    return out
