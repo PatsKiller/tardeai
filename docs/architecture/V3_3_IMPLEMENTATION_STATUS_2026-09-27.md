@@ -14,6 +14,9 @@ replace that document.
 - The options pipeline (advisory, Schwab, operator Path B).
 - DecisionIntegrity@v1 on the re-entry desk.
 - Release-grant binding and the worker-pin check.
+- Proposed, not built: the cognitive transformation package
+  `docs/architecture/cognitive_transformation_20260927/` (memory enforcement, Global Intelligence Record,
+  retrieval-first, cognitive memory, governance, supervision, graph, influence path).
 
 ## Named in v3.3 and not built
 

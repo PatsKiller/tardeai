@@ -4,6 +4,7 @@
 **Status:** SOURCE/DESIGN + **ISOLATED IMPLEMENTATION TESTED** (`:55432`). Production `:5432` **not executed.** `production_executed=false`  
 **Authorized only after CIO L5 natural proof (2026-08-24 23:17 ET material_scan SCHD).**  
 **Authority:** `READ_ONLY_ADVISORY` · `MEMORY_BEHAVIOR_INFLUENCE=0`
+**Amended by:** `docs/architecture/cognitive_transformation_20260927/02_GLOBAL_INTELLIGENCE_RECORD.md` §5 (2026-09-27, PROPOSED) — the GIR projection reuses this projector pattern; production cutover remains gated (12_INSTALL_AND_PERMISSION_INVENTORY.md IN-2).
 
 Architectural winner remains `POSTGRES_PGVECTOR` (`provisional=false`). This document does **not** apply SQL to production `:5432`, does **not** enable a dual writer, does **not** retire JSONL, and does **not** let CIO read the shadow.
 

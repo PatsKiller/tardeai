@@ -2,6 +2,7 @@
 
 Status: implemented on `feat/ticker-guid-lineage` (`#487`/`#488`)  
 Authority: `READ_ONLY_ADVISORY`
+Amended by: `docs/architecture/cognitive_transformation_20260927/07_ENTERPRISE_COGNITIVE_GRAPH.md` (2026-09-27, PROPOSED) — `ticker_guid` is an alias; edges move to `intelligence.gir_edge`
 
 **SUPERSEDED AS OF 2026-08-23 (`feat/r93-hermes-persistent-intel`)** for the claim that `ticker_guid` is the permanent security identity. `ticker_guid` remains the **symbol alias** for idempotency. Issuer / security / listing GUIDs are defined in `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md`. Do not erase this document; it is the v1 GUID lineage evidence.
 

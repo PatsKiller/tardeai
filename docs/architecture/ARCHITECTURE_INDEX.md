@@ -24,6 +24,13 @@ registry that does, so there is exactly one place to change each fact.
 | GUI routes (v3) | `apps/command-center-v3/src/App.tsx` (52 routes) | **no registry** — gap |
 | HTTP API routes | `scripts/api_v2.py` `handle()` (:47145) + `scripts/portfolio_server.py` prefix routing | **no registry** — gap |
 | Governance authority and agent rules | `AGENTS.md`, `AI_WORK_POLICY.md` | agent-governance CI |
+| Memory architecture: what memory is, who must read/write it, how it is enforced | `docs/architecture/cognitive_transformation_20260927/01_MEMORY_ENFORCEMENT_LAYER.md`, `02_GLOBAL_INTELLIGENCE_RECORD.md` (PROPOSED 2026-09-27; the 2026-08-24 memory designs stand, amended) | `MemoryCompliance@v1` audit (proposed) |
+| Worker contract (lease, lock, heartbeat, status vocabulary) | `PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md` §5 → `docs/architecture/cognitive_transformation_20260927/06_SUPERVISORY_INTELLIGENCE_LAYER.md` (PROPOSED) | `supervisor.sla` / conformance audit (proposed) |
+| Model routing (lane chooser, gating before generation) | `PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md` §9, `docs/architecture/cognitive_transformation_20260927/03_RESEARCH_RETRIEVAL_FIRST.md` (PROPOSED) | `config/llm_process_registry.json` gate |
+| SLA, heartbeat, escalation ladder | `docs/architecture/cognitive_transformation_20260927/06_SUPERVISORY_INTELLIGENCE_LAYER.md` (PROPOSED) | breach detector (proposed) |
+| Knowledge graph (nodes, edges, traversals that produce work) | `docs/architecture/cognitive_transformation_20260927/07_ENTERPRISE_COGNITIVE_GRAPH.md` (PROPOSED); `TICKER_KNOWLEDGE_GRAPH_GUID_LINEAGE.md` (amended) | projector idempotency (proposed) |
+| Silo conformance and architecture drift | `docs/architecture/cognitive_transformation_20260927/05_PLATFORM_INTELLIGENCE_GOVERNANCE.md` (PROPOSED) | `platform-conformance-audit` (proposed) |
+| Maturity roadmap to ≥ 4.7 | `docs/architecture/cognitive_transformation_20260927/09_MATURITY_GAP_AND_ROADMAP.md` (PROPOSED; supersedes 09-27 §12 waves 1–5 on approval) | independent re-measurement lane (Wave 5) |
 
 ## Who owns a fact when registries disagree
 

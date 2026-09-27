@@ -4,6 +4,8 @@ Measured at: not measured — target spec, not runtime
 Canonical repo path: docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md
 Authority:   full-maturity target (judgment, commitment, scoring, self-repair)
 Supersedes:  none
+Amended by:  docs/architecture/cognitive_transformation_20260927/04_PERSISTENT_COGNITIVE_MEMORY.md (checkpoints) and
+             08_MEMORY_INFLUENCE_PATH.md (MBI_COGNITION ladder) — 2026-09-27, PROPOSED; MBI_BEHAVIOR = 0 unchanged
 Superseded-by: docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md (delta + build-order status refreshed; this file kept as historical)
 See also:    docs/architecture/CIO_ASIS_VS_SPEC_2026-08-30.md
              docs/architecture/PROJECT_THE_DESK_V2.md

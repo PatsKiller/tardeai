@@ -3,6 +3,7 @@
 Status:      ACTIVE
 as_of:       2026-08-28T09:21:08-04:00
 Measured at: efcc51365 / not measured
+Amended by:  docs/architecture/cognitive_transformation_20260927/07_ENTERPRISE_COGNITIVE_GRAPH.md §3 (2026-09-27, PROPOSED) — provenance becomes USED edges emitted by the façade
 
 Answers one question: **which parts of what the operator reads are the system's own
 view, and which are rules?**

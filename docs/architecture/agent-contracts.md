@@ -7,6 +7,7 @@ This page documents `AgentConsumptionReceipt@v1` as current. It is not:
 `INTERFACE_CONTRACTS.md` §6 names `@v2` as the single frozen receipt
 contract superseding `@v1`. Read `@v2` as authoritative; the `@v1` shape
 below is retained for historical rows only.
+See also `docs/architecture/cognitive_transformation_20260927/01_MEMORY_ENFORCEMENT_LAYER.md` §3 (2026-09-27, PROPOSED): receipts are written by the façade, never by the actor.
 
 Filed under §20 (a contradicting finding opens an amendment in the same
 wave) during the narrative-identity work — see

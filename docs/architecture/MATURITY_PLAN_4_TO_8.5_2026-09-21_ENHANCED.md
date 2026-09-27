@@ -5,6 +5,9 @@ active operational roadmap. Integrates five architectural enhancements from the
 2026-09-21 operator review, **two of which are relocated** after verification
 against the source.
 
+**Amended by** `docs/architecture/cognitive_transformation_20260927/09_MATURITY_GAP_AND_ROADMAP.md` (2026-09-27, PROPOSED):
+phases P4 (memory join) and P6 (gate honesty) are re-planned there; P1–P3 and P5 are unchanged.
+
 ---
 
 ## 0. Two corrections to the review, before anything else

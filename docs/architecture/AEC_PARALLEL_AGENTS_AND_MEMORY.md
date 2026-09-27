@@ -4,6 +4,7 @@
 Status: ACTIVE
 as_of: 2026-09-19T13:20:00-04:00
 Authority: operator license 2026-09-19 (parallel agents + memory granted)
+Amended by: docs/architecture/cognitive_transformation_20260927/01_MEMORY_ENFORCEMENT_LAYER.md (2026-09-27, PROPOSED) — the four spines are read through the façade; the "not yet built" items are Waves 1–3 there
 See: config/aec_agent_mesh.json, scripts/lib/aec_agent_bus.py, scripts/lib/aec_memory_spines.py
 ```
 
