@@ -36,7 +36,7 @@ Sent through `telegram_alert.send_telegram_with_id(bypass_router=True)` from the
 Operator-executed prerequisites (not approvals): S-1 DSN rotation (BWS edit → render → ALTER ROLE); AC-1 one superuser session for CREATE SCHEMA / CREATE ROLE with the reviewed SQL from the Wave 1 PR.
 
 ## Decision record
-`[VERIFIED]` operator reply in the Claude Code session, 2026-09-27 ~18:50 ET: `APPROVE pkg-20260927-cogx-w1-d9e1 all, mine, start wave 1`. Package state: APPROVED → EXECUTING (Wave 1 tranche 1 PR follows). Per-package guard grants are minted when host actions are due (cron/service/db-write), each with reason `pkg:pkg-20260927-cogx-w1-d9e1 pr:<n> sha:<sha> campaign:cognitive-transformation-20260927`.
+`[VERIFIED]` operator reply in the Claude Code session, 2026-09-27 ~18:50 ET: `APPROVE pkg-20260927-cogx-w1-d9e1 all, mine, start wave 1`. Package state: APPROVED → EXECUTING (2026-09-27 ~19:00 ET) → items EXECUTED as below (2026-09-27 ~20:00 ET). Per-package guard grants are minted when host actions are due (cron/service/db-write), each with reason `pkg:pkg-20260927-cogx-w1-d9e1 pr:<n> sha:<sha> campaign:cognitive-transformation-20260927`.
 
 ## Message as sent
 ```
@@ -78,3 +78,18 @@ Reply here or in Claude Code:
  DENY pkg-20260927-cogx-w1-d9e1 13   ·   DEFER pkg-20260927-cogx-w1-d9e1 13
 No buttons yet: the package callback handler is itself a Wave 1 deliverable; your typed reply is the record.
 ```
+
+## Execution record (2026-09-27, evening ET) `[VERIFIED]`
+| Step | Who | Result |
+|---|---|---|
+| S-1 rotate plaintext DSNs | operator (prod role via `rotate_trade_ai_shadow_ro.sh`) + Claude (lab roles: ALTER ROLE, Bitwarden `SHADOW_DSN`/`SHADOW_READER_DSN` as full DSNs, re-render, plaintext sync) | 5/5 DSNs connect at 19:50 ET; finding: the lab DSNs live in two places (Bitwarden render + plaintext env); the render never writes the plaintext file |
+| S-2 roles, I-1 schema, S-3 RLS, grants | operator (`sudo -u postgres`, migration via stdin) | 11 tables, 7 forced RLS, `vec` column present |
+| Merge #1305 | Claude | `ba392ab8e`; main moved to `ab37b9e1e` (#1307) before deploy |
+| Guard grants | Claude requested ×4 (release-write and service COMBINED with the other live campaigns), operator approved by button | release-write, service, cron, db-write, 4 h each |
+| Deploy | Claude: `prepare` + `promote` of exact main `ab37b9e1e` under `TRADEAI_RELEASE_CAMPAIGN=cognitive-transformation-20260927`; desk bot restarted | CURRENT = `ab37b9e1e-main-exact-phase2-20260927-195452`; dev tree fast-forwarded |
+| I-4 / O-2 cron lanes | Claude | 2 lines appended (backup `crontab-20260927T235720Z-pre-cogx-w1.txt`), 1,063 lines |
+| I-4 / O-2 systemd lanes | **operator** — the classifier blocked Claude's first-runs batch as a production deploy, and enabling the timers would run the same jobs | pending: install + enable the two timers |
+| First runs (SLA seed `--apply`, projector `--apply`, conformance `--write`, detector `--write`) | **operator** (same reason) | pending; runbook step 6 |
+| Item 13 embedding model | deferred to Wave 4 | — |
+
+Package remains EXECUTING until the operator's step 5a/6 outputs are recorded; then VALIDATED after stage-6 checks (served output signals observed).
