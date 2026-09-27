@@ -98,7 +98,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
-| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `da409cf56a06` |
+| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `0f3f1a1f8de8` |
 | `docs/STAGING_VS_V2_BITEMPORAL_STATUS_REPORT.md` | Staging vs V2 bitemporal database — status report | review_required | OK | `809ec60535eb` |
 | `docs/STOP_METHODOLOGY.md` | Stop & Trailing-Stop Methodology (canonical) | review_required | OK | `5b9791931edc` |
 | `docs/STOP_SYSTEM_GAP_REPORT.md` | Trade AI v12 — Stop System Alignment / Gap Report | review_required | OK | `12d1dfe39ffb` |
@@ -851,6 +851,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/TWO_WAY_WATCHLIST_CURATION.md` | Two-Way Watchlist Curation | review_required | OK | `6154bc9debd1` |
 | `docs/cio/WAKE_TRACES_P5.md` | Phase P5 — Lightweight wake traces | review_required | OK | `b17c04bc59ed` |
 | `docs/consumption-monitoring.md` | LLM Consumption Monitoring (Command Center v3) | review_required | OK | `b8a71308c99d` |
+| `docs/contracts/ApprovalPackage_v1.md` | ApprovalPackage@v1 — one consolidated approval per wave | review_required | OK | `bdf7c17833a6` |
+| `docs/contracts/Breach_v1.md` | Breach@v1 — an SLA breach on a lane, with its evidence and ladder level | review_required | OK | `824215eb59c0` |
+| `docs/contracts/LaneHeartbeat_v1.md` | LaneHeartbeat@v1 — every lane beats; a beat is not success | review_required | OK | `2a4d8be71b48` |
+| `docs/contracts/MemoryContext_v1.md` | MemoryContext@v1 — what an actor holds before it acts | review_required | OK | `cb0a4c23ba34` |
+| `docs/contracts/RetrievalReceipt_v1.md` | RetrievalReceipt@v1 — proof the ladder ran before generation | review_required | OK | `ef5ebe9c56bf` |
 | `docs/convergence/COMMAND_CENTER_CUTOVER_PLAN.md` | Command Center cutover plan | review_required | OK | `7d77edf9913d` |
 | `docs/convergence/CONTRACT_CHANGE_LOG.md` | Control-plane contract change log | review_required | OK | `5c2362bce8d1` |
 | `docs/convergence/CONTROL_PLANE_API_V1_1.md` | CONTROL_PLANE_API_V1.1 | review_required | OK | `82a64c09a88f` |
@@ -1657,6 +1662,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CI_FAST_CORE_20260925.md` | CI fast core, risk tiers and digest-free evidence (2026-09-25) | review_required | MISSING HEADER | `0848756e5ca9` |
 | `docs/ops/CLOSE_OPERATOR_GAPS_TO_100_2026-08-19.md` | Close remaining operator gaps to 100% | review_required | OK | `9f9aada669d7` |
 | `docs/ops/COGNITIVE_MEMORY_PRODUCTION_RUNBOOK.md` | Cognitive memory in production: runbook | review_required | OK | `720ebe9b2fee` |
+| `docs/ops/COGX_WAVE1_OPERATOR_RUNBOOK_2026-09-27.md` | COGX Wave 1 — operator runbook: the commands only you can run | review_required | OK | `d2afff1dea8d` |
+| `docs/ops/COGX_WAVE1_STATUS_2026-09-27.md` | COGX Wave 1 · tranches 1–3 — foundations, shadow wiring, lane artifacts | review_required | OK | `b1bf2bde41b0` |
 | `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) | review_required | MISSING HEADER | `de97ccca2b56` |
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) | review_required | OK | `7ded3894288a` |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 | review_required | OK | `e11d852dddbb` |

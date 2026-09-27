@@ -1,0 +1,7 @@
+# COGX Wave 1 — the two cron lanes (approval pkg-20260927-cogx-w1-d9e1 items 1 and 4).
+# Append to the user crontab AFTER PR #1305 is merged and promoted to CURRENT.
+# $PY and $PROJ are the crontab's existing variables (dev-tree venv; CURRENT release).
+# Lane platform-conformance-audit — nightly 02:30 (05 §4). Output signal: data/governance/platform_conformance_latest.json
+30 2 * * * cd $PROJ && TRADEAI_ROOT=$PROJ flock -n /tmp/tradeai_platform_conformance.lock $PY scripts/report_platform_conformance.py --write >> $HOME/trade-ai-releases/persistent-state/logs/platform_conformance.log 2>&1
+# Lane approval-package-reminder — hourly (13 §6). Output signal: data/governance/approval_packages.jsonl
+5 * * * * cd $PROJ && flock -n /tmp/tradeai_approval_reminder.lock $PY scripts/approval_package_reminder.py --send --record >> $HOME/trade-ai-releases/persistent-state/logs/approval_package_reminder.log 2>&1

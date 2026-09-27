@@ -57,10 +57,25 @@ def request_research(p: dict, questions: list | None = None) -> dict:
     )
     if not isinstance(plan, dict) or not plan.get("plan_id"):
         return {"ok": False, "error": "no_plan_id"}
+    # COGX W1 shadow: retrieval ladder before an options research request (receipt only)
+    _ic_ctx = None
+    try:
+        from lib import intelligence_client as _ic
+        _qs = questions or research_questions(p)
+        _ic_ctx = _ic.shadow_open("options-thesis-lifecycle", [sym], "RESEARCH",
+                                  question={"text": (_qs[0].get("text") if _qs and isinstance(_qs[0], dict) else "") or "", "question_class": "thesis",
+                                            "horizon": str(p.get("strategy") or "options")})
+    except Exception:  # noqa: BLE001
+        _ic_ctx = None
     out = emit_research_for_plan({**plan, "hermes_requested": True}, reason="options_thesis_gap",
                                  priority=settings(load_desk_config())["research_priority"],
                                  questions=questions or research_questions(p), actor_id="options_thesis_lifecycle")
     out = dict(out) if isinstance(out, dict) else {}
+    try:
+        if _ic_ctx:
+            _ic.shadow_commit(_ic_ctx, {"kind": "RESEARCH_REQUESTED", "ref": str(out.get("research_id") or ""), "plan_id": plan["plan_id"]})
+    except Exception:  # noqa: BLE001
+        pass
     out["plan_id"] = plan["plan_id"]
     return out
 

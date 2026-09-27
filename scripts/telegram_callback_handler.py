@@ -90,6 +90,19 @@ def edit_message(chat_id, message_id, text):
     _tg_post("editMessageText", {"chat_id": chat_id, "message_id": message_id, "text": text})
 
 
+
+def _allowed_from_ids():
+    """Operator Telegram user ids allowed to decide an approval package (13 §6; item 10 = 'mine').
+
+    ``TRADEAI_OPERATOR_FROM_IDS`` (comma-separated) when set; otherwise the allowed chat ids, which
+    for a private chat equal the operator's own user id. Never hardcoded.
+    """
+    import os as _os
+    raw = _os.environ.get("TRADEAI_OPERATOR_FROM_IDS", "").strip()
+    if raw:
+        return {x.strip() for x in raw.split(",") if x.strip()}
+    return set(_allowed_chat_ids())
+
 def handle_callback_query(cb):
     """Main callback handler for proposal inline buttons."""
     cb_id = cb["id"]
@@ -157,6 +170,42 @@ def handle_callback_query(cb):
         answer_callback(cb_id,
                         f"Granted {r['scope']} for {int(r['seconds']) // 60} min "
                         f"({r['uses']} uses) — {now_short}")
+        return
+
+    # ── Approval packages (pkgapprove:<pkg>[:items] / pkgdeny:<pkg>[:items] / pkgshow:<pkg>) ──
+    # One consolidated package per wave (docs/architecture/cognitive_transformation_20260927/13).
+    # Wave 1 tranche 1: the decision is RECORDED in the hash-chained ledger with the sender's
+    # from_id verified against the operator allowlist (item 10, "mine"); per-package guard
+    # grants are minted at execution time by a later tranche, never here.
+    if action in ("pkgapprove", "pkgdeny", "pkgshow"):
+        try:
+            from scripts.lib import approval_package as _ap
+        except ImportError:
+            from lib import approval_package as _ap  # type: ignore
+        if user_id not in _allowed_from_ids():
+            answer_callback(cb_id, "Not authorized (from_id)", show_alert=True)
+            return
+        pkg_id = parts[1] if len(parts) > 1 else ""
+        led = _ap.Ledger(_ap.ledger_path())
+        if action == "pkgshow":
+            pkg = led.package(pkg_id)
+            answer_callback(cb_id, f"{pkg_id}: {pkg['state']}" if pkg else "unknown package", show_alert=bool(pkg))
+            return
+        items = parts[2] if len(parts) > 2 else "all"
+        verb = "APPROVE" if action == "pkgapprove" else "DENY"
+        rep = _ap.parse_reply(f"{verb} {pkg_id} {items}")
+        if not rep:
+            answer_callback(cb_id, "Invalid package reply", show_alert=True)
+            return
+        try:
+            view = _ap.apply_reply(led, rep, decided_by={"who": "operator", "from_id": user_id,
+                                                          "from_username": user.get("username"), "via": "button",
+                                                          "message_id": message_id, "chat_id": chat_id, "text": data})
+        except _ap.LedgerError as exc:
+            answer_callback(cb_id, f"Not recorded: {exc}", show_alert=True)
+            return
+        n = sum(1 for it in view["items"] if it["state"] == ("APPROVED" if verb == "APPROVE" else "DENIED"))
+        answer_callback(cb_id, f"{verb.title()}d {n} item(s); package {view['state']} — {now_short}")
         return
 
     # ── Broker-order 2FA buttons (bkapprove:<intent_uuid>:<code>, bkreject:<intent_uuid>) ──

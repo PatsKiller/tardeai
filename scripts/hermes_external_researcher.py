@@ -664,6 +664,14 @@ def main():
         account("SKIP_GATED", reason="CAPABILITY_CACHE", metadata={"status": status, "reason_code": reason})
         return
 
+    # COGX W1 shadow: retrieval ladder before the external lane (receipt only)
+    _ic_ctx = None
+    try:
+        import intelligence_client as _ic
+        _ic_ctx = _ic.shadow_open(f"hermes-external-{args.lane}", [str(args.symbol or "")], "RESEARCH",
+                                  question={"text": question, "question_class": "thesis"})
+    except Exception:  # noqa: BLE001
+        _ic_ctx = None
     status, parsed, raw = "sent", {}, ""
     try:
         raw = call_external(args.lane, args.model, prompt, max_tokens=max_out or 4096)
@@ -738,6 +746,11 @@ def main():
          str(raw)[:16000], research_guid, prior_research_guid))
     rid = cur.fetchone()[0]; c.commit(); c.close()
     print(f"\nstored hermes_external_research id={rid} status={status}")
+    try:
+        if _ic_ctx:
+            _ic.shadow_commit(_ic_ctx, {"kind": "RESEARCHED", "ref": f"hermes_external_research:{rid}", "status": status})
+    except Exception:  # noqa: BLE001
+        pass
     if status == "skipped":
         account("COST_CAP_EXCEEDED", reason=parsed.get("error") or "COST_CAP_EXCEEDED", attempt_no=1,
                 metadata={"research_id": rid})

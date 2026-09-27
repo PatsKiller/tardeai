@@ -27,6 +27,7 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 KNOWN_CONSUMERS = frozenset({
     "hermes_research_prompt", "advisory_desk_operator", "persistent_agent_wake",
     "cio_run_worker", "test",
+    "intelligence_client",  # the façade (Wave 1, pkg-20260927-cogx-w1-d9e1 item 5)
 })
 
 

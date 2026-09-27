@@ -571,6 +571,17 @@ def generate_row_opinion(
             )
             return cached
 
+    # COGX W1 shadow: memory context before the opinion call (receipt only)
+    _ic_ctx = None
+    try:
+        try:
+            from lib import intelligence_client as _ic
+        except ImportError:
+            from scripts.lib import intelligence_client as _ic  # type: ignore
+        _ic_ctx = _ic.shadow_open("advisory-desk-opinion", [str(row.get("symbol") or "")], "ADVISE",
+                                  question={"text": "advisory row opinion", "question_class": "thesis", "horizon": "row"})
+    except Exception:  # noqa: BLE001
+        _ic_ctx = None
     messages = _build_opinion_messages(
         evidence_bundle,
         deterministic_verdict,
@@ -681,6 +692,12 @@ def generate_row_opinion(
         }
         _save_opinion_cache(opinion_cache)
 
+    try:
+        if _ic_ctx:
+            _ic.shadow_commit(_ic_ctx, {"kind": "ADVISED", "ref": str(row.get("advisory_row_hash") or ""),
+                                        "conviction": validated.get("conviction")})
+    except Exception:  # noqa: BLE001
+        pass
     _emit_advisory_decision_payload(row, validated)
     return validated
 

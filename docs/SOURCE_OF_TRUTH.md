@@ -1,7 +1,7 @@
 # Source of Truth — one declaration per domain
 
 **Rendered from `config/data_source_authority.json` by `scripts/render_source_of_truth.py`. Do not edit by hand.**
-Registry as of 2026-09-13 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 26 domains · 22 providers.
+Registry as of 2026-09-13 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 33 domains · 22 providers.
 
 One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.
 
@@ -76,6 +76,13 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | **inverse_stoplights** | derived | `runtime/inverse_stoplights_latest.json` | `scripts/defense_inverse_stoplights.py` | 10:15 · 17:55 Mon-Fri | 26h | — | internal | — | — | `say_so` | operator 2026-09-13 |
 | **data_gaps** | native | `data_gap_registry` | `scripts/lib/writers/data_gap_registry_writer.py` | crontab: data_gap_resolver.py hourly 10:00-16:00 and --pre-overnight 18:00 on weekdays, --weekly-audit Sunday 08:00 (the desk reads these times from the crontab itself) | 168h | — | internal | — | — | `say_so` | operator 2026-09-13 |
 | **operator_conversation** | native | `operator_conversation_turns` | `scripts/lib/inbound_identity_tagger.py` | event-driven: every operator message and every agent reply on Telegram | 720h | — | internal | — | — | `say_so` | operator 2026-09-13 |
+| **intelligence_memory_contexts** | derived | `cio/memory_contexts.jsonl` | `scripts/lib/intelligence_client.py` | per context open/commit | 24h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **intelligence_retrieval_receipts** | derived | `cio/retrieval_receipts.jsonl` | `scripts/lib/intelligence_client.py` | per generation | 24h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **supervisor_heartbeats** | derived | `intelligence.heartbeat` · `runtime/heartbeats/<lane_id>.json` | `scripts/lib/supervisor_heartbeat.py` | per lane run | 48h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **approval_packages** | derived | `intelligence.approval_package` · `governance/approval_packages.jsonl` | `scripts/lib/approval_package.py` | per package event | 720h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **platform_conformance** | derived | `governance/platform_conformance_latest.json` | `scripts/report_platform_conformance.py` | daily | 36h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **intelligence_gir_projection** | derived | `intelligence.gir_entity` · `runtime/gir_projection_dryrun.json` | `scripts/gir_projector.py` | batch (nightly) then incremental | 36h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **supervisor_breaches** | derived | `intelligence.breach` · `runtime/supervisor_breaches.jsonl` | `scripts/supervisor_breach_detector.py` | every 2 min once installed | 1h | — | native | — | — | `say_so` | operator 2026-09-27 |
 
 ## Writer ceilings — stores not yet consolidated to one writer
 
@@ -123,6 +130,7 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **One Source of Truth campaign — operator approved Phases 1-7 on 2026-09-13 (PRs #992 #993 #994); registry seeded from the measured sweep; retirement = Phase 2, archive/ARCHIVE_MANIFEST.json (polygon_source.py row) and zero call sites proven by RETIRED_CALL_SITE** — 4 rows: provider `finnhub`, provider `polygon`, provider `fmp`, provider `newsapi`
 - **Operator approved reconnecting the operator desk to the data gap queue in session on 2026-09-13 ("yess reconect approved"); shipped in PR #998; the desk becomes a caller of the store's one write module** — 1 rows: domain `data_gaps`
 - **Operator asked in session on 2026-09-13 to connect chat memory recall per subject GUID ("yes connect chat memory recall per guid"); shipped in PR #1001 (branch feat/chat-memory-recall)** — 1 rows: domain `operator_conversation`
+- **ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304** — 7 rows: domain `intelligence_memory_contexts`, domain `intelligence_retrieval_receipts`, domain `supervisor_heartbeats`, domain `approval_packages`, domain `platform_conformance`, domain `intelligence_gir_projection`, domain `supervisor_breaches`
 
 ## Monitors
 

@@ -3046,6 +3046,14 @@ def process_jobs(limit: int = 10):
                     else:
                         print(f"  [data-gate] {symbol}: Enrichment succeeded (Q was {quality['quality_score']}). Proceeding with {agent}.")
 
+        # COGX W1 shadow: memory context + ladder before the agent's LLM call (receipt only)
+        _ic_ctx = None
+        try:
+            from lib import intelligence_client as _ic
+            _ic_ctx = _ic.shadow_open(f"watchlist-agent-{agent}", [str(symbol or "")], "RESEARCH", agent_id=str(agent),
+                                      question={"text": str(note or request_type or ""), "question_class": "thesis", "horizon": str(request_type or "job")})
+        except Exception:  # noqa: BLE001
+            _ic_ctx = None
         # Build context and prompt
         context = _get_context(conn, symbol)
 
@@ -3258,6 +3266,11 @@ def process_jobs(limit: int = 10):
             print(f"  [recovery] {symbol}: rolled back poisoned transaction")
 
         cur.execute("UPDATE watchlist_agent_jobs SET status='completed', completed_at=now(), result_id=%s WHERE id=%s", (result_id, job_id))
+        try:
+            if _ic_ctx:
+                _ic.shadow_commit(_ic_ctx, {"kind": "RESEARCHED", "ref": result_id, "recommendation": str((parsed or {}).get("recommendation") or "")[:40]})
+        except Exception:  # noqa: BLE001
+            pass
 
         # Proposal review jobs: sync watchlist verdict back to proposal_agent_reviews
         try:
