@@ -435,12 +435,29 @@ def lane_circuit_open(lane):
                        ORDER BY created_at DESC LIMIT %s""", (lane, BREAKER_WINDOW_MIN, BREAKER_N))
         rows = cur.fetchall()
         c.close()
-        if len(rows) < BREAKER_N:
-            return False
-        return all(st == "error" and ("HTTP 403" in (rec or "") or "HTTP 401" in (rec or ""))
-                   for st, rec in rows)
+        return breaker_trips(rows)
     except Exception:
         return False
+
+
+def breaker_trips(rows, n=None):
+    """True when the last ``n`` results for a lane are all lane-level failures.
+
+    2026-09-27: only HTTP 401/403 errors tripped it. ChatGPT's
+    CODEX_HEADLESS_UNAVAILABLE rows are stored as status 'unavailable', so the
+    breaker never opened and 3,021 of 3,374 ChatGPT rows in a week were retries
+    of a lane that could not answer (failed rows do not count toward dedupe)."""
+    n = BREAKER_N if n is None else n
+    if len(rows) < n:
+        return False
+
+    def lane_failure(st, rec):
+        rec = rec or ""
+        if st == "error":
+            return "HTTP 403" in rec or "HTTP 401" in rec
+        return st in ("unavailable", "auth_pending")
+
+    return all(lane_failure(st, rec) for st, rec in rows[:n])
 
 
 def read_capability(lane):
@@ -605,8 +622,8 @@ def main():
 
     if lane_circuit_open(args.lane):
         print(f"\n[circuit-breaker] lane={args.lane} OPEN — last {BREAKER_N} calls in {BREAKER_WINDOW_MIN}m "
-              f"were all HTTP 401/403. Deferring (no call, no row); re-auth the lane "
-              f"(hermes auth add …) and the breaker self-closes on the next non-403 result.")
+              f"were all lane failures (HTTP 401/403, unavailable, auth pending). Deferring (no call, no row); "
+              f"fix or re-auth the lane (hermes auth add …); the breaker self-closes once the window passes.")
         try:
             from db_adapter import _execute
             from datetime import datetime as _dt
@@ -614,7 +631,7 @@ def main():
                         VALUES (%s,'system_health',NULL,'warning','hermes_external_researcher',%s,NOW())
                         ON CONFLICT (alert_uid) DO NOTHING""",
                      (f"lane_breaker_{args.lane}_{_dt.now().strftime('%Y%m%d%H')}",
-                      f"Hermes lane '{args.lane}' circuit OPEN: {BREAKER_N} consecutive HTTP 401/403 — "
+                      f"Hermes lane '{args.lane}' circuit OPEN: {BREAKER_N} consecutive lane failures — "
                       f"external calls deferred until re-auth."), fetch=None)
         except Exception:
             pass
