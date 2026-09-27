@@ -101,6 +101,24 @@ Config: `options_desk_settings.options_thesis_lifecycle` (`abandon_after_hours` 
   `sync-docs-to-drive.sh` mirrors under `runtime/options/` and preserves. The purge no longer
   re-uploads dated top-level docs every hour.
 
+### Workers and schedule (24/7, 2026-09-26)
+Every step runs unattended. Nothing waits for market hours or for the operator, except approval.
+
+| Worker | When | Does | Log / proof |
+|---|---|---|---|
+| `options_thesis_lifecycle.py --apply` (cron) | `7,22,37,52 * * * *` | Queues research, reads answers, runs the CIO review, runs follow-ups, archives after 48h. Reads prior M2 facts (the M2 read credentials come from `/run/user/$UID/tradeai/env`, `M2_DSN=$M2_AGENT_DSN`) | `logs/options_thesis_lifecycle.log`; events in `data/cio/options_theses.jsonl` |
+| `tradeai-hermes-cio-worker.timer` (systemd user) | `*:0/15` | Drains the Hermes CIO research queue that the lifecycle fills. Off-peak deferral is **off** for this unit (`offpeak-defer.conf`: `LLM_DEFER_OFFPEAK=0`, operator 2026-09-26 "research worker should run everyday 24/7"). Process cost caps still apply | `journalctl --user -u tradeai-hermes-cio-worker`; `data/cio/hermes_research_projection.json` |
+| `options_memory_projector.py --apply` (cron) | `9,24,39,54 * * * *` | Two minutes after the lifecycle, writes new thesis-store events to M2. Idempotent (watermark `data/cio/options_memory_projector_state.json`; skips an `event_hash` it already holds) | `logs/options_memory_projector.log`; M2 rows `source_type='options_thesis_store'` |
+| `export_options_runtime_snapshot.py --apply` (cron) | `3 * * * *` | Writes the redacted snapshot two minutes before the `:05` Drive sync | `logs/options_runtime_export.log`; Drive `runtime/options/` |
+| `run_ensemble_worker.sh` (cron) | `*/3 * * * *` (24/7; before 2026-09-26 `*/3 9-16 * * 1-5`) | Drains `inference_ensemble_jobs`, including Aegis options reviews on the row's lanes (grok, chatgpt, deepseek-flash); `options_ensemble` cap $0.50/day | `logs/ensemble_worker.log` |
+
+Every chain step reads what the previous one wrote, so a stalled worker shows as a queue that stops moving:
+- research stays `queued` in the projection;
+- the card's research ETA grows;
+- the projector reports pending events.
+
+Lanes are declared in `config/lane_registry.json` (`options-thesis-lifecycle`, `options-memory-projector`, `options-runtime-export`). Crontab backups are in `~/backups-crontab/`.
+
 ### After a CIO decision (continuous, 2026-09-26)
 - **MORE_RESEARCH** is an assignment, not an end state: the next lifecycle run requests follow-up
   research whose questions are the CIO's own unknowns/concerns (up to `max_deliverables` 5), due in
