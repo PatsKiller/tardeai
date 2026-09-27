@@ -2609,6 +2609,15 @@ GATES = [
         ["tests/test_options_wave_b_20260927.py"],
     ),
     (
+        # 2026-09-27 -- Dell 8-K EX-99.1 primary evidence: the earnings-release exhibit is
+        # fetched, parsed into dated dollar-figure facts (backlog, orders, guidance ...),
+        # stored on (accession, exhibit), and reaches the thesis catalog / synthesis prompt
+        # (with url + date) and the options CIO packet (with real per-leg liquidity,
+        # fundamentals and the RPO-is-not-backlog note); web queries keep "AI" and ask sec.gov.
+        "sec_filing_documents_20260927",
+        ["tests/test_sec_filing_documents_20260927.py"],
+    ),
+    (
         # 2026-09-27 -- options fill truth (reviewer work order): credit spreads priced from an
         # explicit fill assumption (sell short at bid, buy long at ask; midpoint labelled, not a
         # fill; a non-credit is refused), both legs gated, hedged-put headline = floor not
