@@ -1499,7 +1499,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/operations/PHASE46C_SCHEDULED_JOB_HEALTH_UI_REPORT.md` | Phase 46C — Scheduled Job Health UI Report | review_required | OK | `c88717c8c453` |
 | `docs/operations/PHASE46D_SCHEDULED_JOB_HEALTH_SAFETY_AUDIT.md` | Phase 46D — Scheduled Job Health Safety Audit | review_required | OK | `b04a97b346bb` |
 | `docs/operations/PROMOTION_GATE_v1.md` | Promotion Gate v1 — Phase 10 (prepare-only) | review_required | OK | `0aa2bd3d8266` |
-| `docs/operations/SCHEDULED_JOBS_REFERENCE.md` | Trade AI v12 — Scheduled Jobs Reference | review_required | OK | `6b01b69f665d` |
+| `docs/operations/SCHEDULED_JOBS_REFERENCE.md` | Trade AI v12 — Scheduled Jobs Reference | review_required | OK | `d142134ab4a3` |
 | `docs/operations/WATCH_QUALITY_GOVERNANCE_2026-07-25.md` | Watch Quality Governance — 2026-07-25 | review_required | OK | `0191c9818079` |
 | `docs/operations/WATCH_QUALITY_PROJECTION_V2_2026-07-25.md` | Watch quality projection v2 — source-unit correction | review_required | OK | `ab142131545c` |
 | `docs/operations/overnight_activity_repair/00_README.md` | Overnight Activity Repair | current_phase_keep | OK | `7e5bcddb3828` |
@@ -1793,7 +1793,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/telegram_channel_diligence_20260916/06_IMPLEMENTATION_ROADMAP.md` | Phase 6 — Implementation Roadmap | review_required | OK | `8d2eb858f8d7` |
 | `docs/ops/telegram_channel_diligence_20260916/07_EXECUTION_PLAN.md` | Phase 7 — Execution Plan & Maturity Scorecard | review_required | OK | `c3ec2b72146f` |
 | `docs/options-desk-operator-contract-20260924.md` | Options Desk — operator contract (skim) | review_required | OK | `2b6cf11e6d35` |
-| `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `c597de892c15` |
+| `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `037848400240` |
 | `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | Phase 179A: Paper Trade Source Inventory | review_required | OK | `72664d5cf493` |
 | `docs/paper_trading/PHASE179C_CURRENT_PAPER_TRADE_STATISTICS_REPORT.md` | Phase 179C: Current Paper Trade Statistics Report | review_required | OK | `95ccbd19ce31` |
 | `docs/paper_trading/PHASE179D_STATISTICAL_READINESS_THRESHOLDS.md` | Phase 179D: Statistical Readiness Thresholds | review_required | OK | `cebd18783641` |
