@@ -27,8 +27,35 @@ systemctl --user start tradeai-sm-render.service && systemctl --user status trad
 psql -h ~/tradeai-lab/sock -p 5433 -U johnclaw -d postgres -c "\password agentic_runtime_reader"
 psql -h ~/tradeai-lab/sock -p 5433 -U johnclaw -d postgres -c "\password agentic_runtime_shadow_rw"
 
+# 1c — FINDING 2026-09-27 19:30 ET: the lab DSNs live in TWO places and the render does not write the plaintext one.
+#   Bitwarden SM → tmpfs /run/user/$UID/tradeai/env as SHADOW_DSN / SHADOW_READER_DSN (M2 shadow consumers)
+#   plaintext ~/.config/tradeai/agent-operator.env as AGENT_RUNTIME_DISPATCH_DSN / AGENT_RUNTIME_READ_DSN (agent runtime)
+# After \password on the lab cluster BOTH copies must carry the new passwords. Order: edit the two Bitwarden
+# secrets (password segment of each DSN), re-render, then copy the passwords from the rendered file into the
+# plaintext file with the snippet below (it never prints a value; backup first; chmod 600 kept).
+systemctl --user start tradeai-sm-render.service
+ENVF=~/.config/tradeai/agent-operator.env; cp -p $ENVF $ENVF.bak-$(date -u +%Y%m%dT%H%M%SZ)-pre-lab-sync
+python3 - <<'PY'
+import os, re
+ren = open(f"/run/user/{os.getuid()}/tradeai/env").read()
+envf = os.path.expanduser("~/.config/tradeai/agent-operator.env")
+def pw(key):
+    m = re.search(rf"^{key}=['\"]?postgres(?:ql)?://[^:@/]+:([^@]*)@", ren, re.M); assert m, key; return m.group(1)
+pairs = {"AGENT_RUNTIME_READ_DSN": pw("SHADOW_READER_DSN"), "AGENT_RUNTIME_DISPATCH_DSN": pw("SHADOW_DSN")}
+lines = open(envf).read().split("\n"); n = 0
+for i, l in enumerate(lines):
+    for key, p in pairs.items():
+        m = re.match(rf"^({key}=)(['\"]?)postgres(ql)?://([^:@/]+):[^@]*@(.*)$", l)
+        if m:
+            lines[i] = f"{m.group(1)}{m.group(2)}postgres{m.group(3) or ''}://{m.group(4)}:{p}@{m.group(5)}"; n += 1
+assert n == 2, f"expected 2 DSN lines rewritten, got {n}"
+open(envf, "w").write("\n".join(lines)); os.chmod(envf, 0o600); print("agent-operator.env: 2 lab DSNs synced from the render")
+PY
 # verify: crons that source the env still connect (read-only probe)
-$PY -c "import os,psycopg2;[psycopg2.connect(os.environ[k]).close() or print(k,'ok') for k in ('AGENT_RUNTIME_SOURCE_DSN','AGENT_RUNTIME_READ_DSN','AGENT_RUNTIME_DISPATCH_DSN')]"
+( set -a; . ~/.config/tradeai/agent-operator.env; . /run/user/$(id -u)/tradeai/env; set +a; $PY -c "import os,psycopg2
+for k in ('AGENT_RUNTIME_SOURCE_DSN','AGENT_RUNTIME_READ_DSN','AGENT_RUNTIME_DISPATCH_DSN','SHADOW_DSN','SHADOW_READER_DSN'):
+    try: psycopg2.connect(os.environ[k], connect_timeout=5).close(); print(k, 'ok')
+    except Exception as e: print(k, 'FAIL', str(e).strip().splitlines()[0][:60])" )
 ```
 Rollback: the timestamped `.bak-…` copy of the env file; previous secret version in Bitwarden SM.
 
