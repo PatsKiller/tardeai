@@ -2534,6 +2534,12 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-27 -- contradiction candidates derived incrementally (only the new
+        # delta's pairs; ids equal the full O(n^2) derivation, which took 31 s per accept).
+        "contradiction_incremental_20260927",
+        ["tests/test_contradiction_incremental_20260927.py", "tests/test_research_metadata_contradiction.py"],
+    ),
+    (
         # 2026-09-27 -- symbol-thesis acquisition runs after the operator clears
         # P0 containment (archive tripwire); a flag missing without a clear still
         # fails closed. It had exited 78 every day since 09-16.
