@@ -2504,6 +2504,22 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "scripts/check_worker_pins.py classified the line DEV_TREE (audit C-02); linux_launchers/reconcile_alpaca_paper_options.sh:4 hard-coded the dev tree until this change; alpaca_paper_options_executor.py writes Postgres only, so the execution root changes no file store; tests/test_p2_controls_truth_20260926.py::test_options_launcher_honours_project_root_and_py.",
       "note": "Hourly RTH Alpaca PAPER options reconcile (read-only poll of fills/closes; no order submit)."
+    },
+    {
+      "lane_id": "symbol-news-curation-monitor",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "27 * * * * symbol_news_curation_monitor.py --apply",
+        "match": "symbol_news_curation_monitor.py"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/symbol_news_curation_sla.json"
+      },
+      "note": "Operator 2026-09-27 'wire a process that monitors and fixes this ... we need SLAs': curates evidence-needing symbols' company news, re-acquires priority theses, writes the SLA report, alerts when a breach survives the fix."
     }
   ],
   "undeclared_baseline": [
