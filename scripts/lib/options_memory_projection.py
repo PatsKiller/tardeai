@@ -43,6 +43,7 @@ EVENT_PREDICATES = {
     "OPTIONS_THESIS_ESCALATED": "options_followup",
     "OPTIONS_VALIDATED": "options_validation",
     "OPTIONS_THESIS_ABANDONED": "options_thesis_outcome",
+    "OPTIONS_THESIS_REOPENED": "options_thesis_outcome",
 }
 
 # Keys that must never reach cognitive memory from an options event, at any
@@ -190,6 +191,9 @@ def _validation_object(e: dict[str, Any]) -> dict[str, Any]:
 
 
 def _outcome_object(e: dict[str, Any]) -> dict[str, Any]:
+    if e.get("event_type") == "OPTIONS_THESIS_REOPENED":
+        return {"outcome": "REOPENED", "reason": _clip(e.get("reason")), "actor": e.get("actor"),
+                "reopened_from": e.get("reopened_from")}
     return {
         "outcome": "ABANDONED",
         "reason": _clip(e.get("reason")),

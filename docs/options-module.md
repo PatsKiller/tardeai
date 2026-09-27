@@ -158,6 +158,15 @@ findings ("Confirmed: no thesis exists") are left out.
 The external lanes see only the redacted house context and the question, so they supply a second opinion
 on the web findings, not new searches. Config: `options_desk_settings.options_thesis_lifecycle.escalation_*`.
 
+### Reopen an archived thesis (operator, 2026-09-27)
+`scripts/options_thesis_reopen.py --symbol DELL --reason "..." [--apply]` (dry run by default)
+appends `OPTIONS_THESIS_REOPENED` with the actor and the reason. The earlier archive no longer holds,
+and the follow-up round count and the abandon clock restart from the reopen. Nothing is removed: the
+archive and every earlier decision stay in the history. M2 records it as an `options_thesis_outcome`.
+
+First use: DELL was archived at 00:37 ET after three rounds of research that read only house data,
+three minutes before web research went live.
+
 ### Workers and schedule (24/7, 2026-09-26)
 Every step runs unattended. Nothing waits for market hours or for the operator, except approval.
 
