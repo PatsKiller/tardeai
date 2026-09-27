@@ -139,6 +139,22 @@ def main(argv=None) -> int:
                     with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                         step.update(upsert(cur, rows))
                     conn.commit()
+                # F3: recent 8-K items and 10-Q/10-K filings become dated catalyst events;
+                # a new high-severity 8-K files a thesis re-synthesis request.
+                from lib import sec_filing_events as sfe
+                events = sfe.events_from_filings(sym, sfe.filings_from_submissions(cik, sec.get_submissions(cik)))
+                step["filing_events"] = len(events)
+                if a.apply and events:
+                    with conn.cursor() as cur:
+                        new = sfe.insert(cur, events)
+                    conn.commit()
+                    step["filing_events_new"] = len(new)
+                    material = [e for e in new if sfe.is_material(e)]
+                    if material:
+                        from lib.symbol_thesis_priority import request
+                        request(sym, reason=f"new SEC filing: {material[0]['headline']}", source="sec_fundamentals_ingest",
+                                root=ROOT)
+                        step["thesis_refresh_requested"] = True
             except Exception as exc:  # noqa: BLE001
                 conn.rollback()
                 step.update(status="ERROR", error=f"{type(exc).__name__}: {str(exc)[:160]}")
