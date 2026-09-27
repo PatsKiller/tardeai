@@ -316,10 +316,25 @@ def test_build_office_home_has_six_sections():
     assert home["posture"]["income"]["total_usd"] == 10543.13
 
 
-def test_build_office_home_deterministic():
+def test_build_office_home_deterministic(monkeypatch):
     from datetime import datetime, timezone
+    # The composition must not read the live holdings file, the Aegis packet,
+    # or the instrument-record store. Those change under a running desk, and
+    # two calls then differ for a reason that is not this function.
+    monkeypatch.setattr(
+        c, "build_operator_trust",
+        lambda: {
+            "aegis_last_run": {"available": False},
+            "holdings": {"reason_code": "DATA_UNAVAILABLE"},
+            "notification": {"notify_enabled": False},
+            "authority": "READ_ONLY_ADVISORY",
+        },
+    )
+    monkeypatch.setattr(c, "resolve_record_store", lambda record_store=None: None)
     fixed = datetime(2026, 8, 13, 20, 0, 0, tzinfo=timezone.utc)
-    args = dict(capital_plan=_plan(), sector_opportunities=_sectors(), opportunity_queue=_queue(),
+    plan = dict(_plan())
+    plan["strategy_context"] = {"role": "risk_modifier_or_context"}
+    args = dict(capital_plan=plan, sector_opportunities=_sectors(), opportunity_queue=_queue(),
                 report=_report(), thesis=_thesis(), attribution=_attribution(), now=fixed)
     a = c.build_office_home(**args)
     b = c.build_office_home(**args)
