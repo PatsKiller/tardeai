@@ -29,6 +29,9 @@ DEFAULTS = {
     "research_rerequest_hours": 24,
     "cio_review_mode": "dry",
     "max_reviews_per_run": 6,
+    # 2026-09-27: failed review attempts (INVALID / TRUNCATED / LLM_ERROR / DEDUPE_SKIPPED)
+    # per idea before the desk stops spending on it and says so on the card.
+    "max_review_failures": 3,
     "research_priority": "high",
     "research_drain_per_tick": 2,
     "research_tick_minutes": 15,
@@ -446,6 +449,17 @@ def advance(
             continue
         if rereview:
             p = with_followup_facts(p, life)
+        # 2026-09-27: a review that came back INVALID left the idea stuck -- the router
+        # dedupes on the (guid, pin) job key and returned the failed attempt's empty answer
+        # on every later pass ("no JSON object in response"). Each attempt now carries its
+        # number, and after max_review_failures the desk stops spending and names it.
+        attempt = int(life.get("review_failures") or 0)
+        if attempt >= int(s["max_review_failures"]):
+            step.update(action="REVIEW_FAILURE_CAP", attempts=attempt,
+                        reason=f"{attempt} failed CIO review attempts; operator to inspect the recorded raw heads")
+            report.append(step)
+            continue
+        p = dict(p, cio_review_attempt=attempt)
         res = review_fn(p, mode)
         if res.get("status") == "OK":
             r = res["review"]
@@ -468,6 +482,11 @@ def advance(
         else:
             if not any(t.get("stage") == "CIO_REVIEW_QUEUED" for t in life.get("timeline") or []):
                 store.append_event(guid, "OPTIONS_THESIS_CIO_REVIEW_QUEUED", mode=mode, status=res.get("status"))
-            step.update(action="CIO_REVIEW_NOT_ISSUED", status=res.get("status"), errors=res.get("errors"))
+            if res.get("status") not in ("DRY_RUN", "DISABLED"):
+                store.append_event(guid, "OPTIONS_THESIS_CIO_REVIEW_FAILED", mode=mode, status=res.get("status"),
+                                   attempt=attempt, errors=res.get("errors"), reason=res.get("reason"),
+                                   raw_head=res.get("raw_head"), job_key=res.get("job_key"), model=res.get("model"))
+            step.update(action="CIO_REVIEW_NOT_ISSUED", status=res.get("status"), errors=res.get("errors"),
+                        reason=res.get("reason"), attempt=attempt)
         report.append(step)
     return report

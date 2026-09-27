@@ -230,6 +230,11 @@ def review(p: dict[str, Any], *, mode: str, llm_fn: Optional[Callable[[str], Any
     guid = p.get("option_strategy_guid") or ""
     facts = build_facts(p, memory=memory)
     job_key = f"options_thesis_review:{guid}:{(p.get('options_thesis') or {}).get('pin')}"
+    # 2026-09-27: a retry after a failed attempt must not reuse the failed attempt's key --
+    # the router dedupes on it and hands back an empty answer (DELL, "no JSON object").
+    attempt = int(p.get("cio_review_attempt") or 0)
+    if attempt > 0:
+        job_key += f":r{attempt}"
     base = {"schema": SCHEMA, "symbol": sym, "position_guid": guid, "mode": mode, "job_key": job_key,
             "agent": "alex", "as_of": now.replace(microsecond=0).isoformat(), "mbi_behavior": 0,
             "authority": "READ_ONLY_ADVISORY"}
@@ -247,16 +252,23 @@ def review(p: dict[str, Any], *, mode: str, llm_fn: Optional[Callable[[str], Any
     raw = resp.get("response") if isinstance(resp, dict) else resp
     meta = {k: resp.get(k) for k in ("model_used", "provider", "cost_estimate")} if isinstance(resp, dict) else {}
     text = str(raw or "").strip()
+    head = text[:600]
+    # The router's dedupe skip is not a model answer; say so instead of "no JSON object".
+    router_err = str(resp.get("error") or "") if isinstance(resp, dict) else ""
+    if isinstance(resp, dict) and resp.get("success") is False and router_err.startswith("DEDUPE_SKIP"):
+        return {**base, "status": "DEDUPE_SKIPPED", "reason": router_err[:200], "model": meta, "raw_head": head}
+    if isinstance(resp, dict) and resp.get("success") is False and not text:
+        return {**base, "status": "LLM_ERROR", "reason": (router_err or "empty response")[:200], "model": meta}
     if text.count("{") > text.count("}"):
         return {**base, "status": "TRUNCATED", "errors": [f"response cut off at {len(text)} chars (unclosed JSON)"],
-                "model": meta}
+                "model": meta, "raw_head": head}
     try:
         r = br._parse_json(raw)
     except (ValueError, TypeError) as exc:
-        return {**base, "status": "INVALID", "errors": [f"unparseable: {exc}"], "model": meta}
+        return {**base, "status": "INVALID", "errors": [f"unparseable: {exc}"], "model": meta, "raw_head": head}
     ok, errs = validate(r, facts)
     if not ok:
-        return {**base, "status": "INVALID", "errors": errs, "model": meta}
+        return {**base, "status": "INVALID", "errors": errs, "model": meta, "raw_head": head}
     return {**base, "status": "OK", "review": r, "model": meta,
             "decision_guid": f"dec_{uuid.uuid4()}"}
 
