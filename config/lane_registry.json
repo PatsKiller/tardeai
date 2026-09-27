@@ -2484,6 +2484,26 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "/api/v2/health findings hermes_crontab_unreadable + cron_sanity_check_hardened (audit R-03); scripts/lib/crontab_snapshot.py SNAPSHOT_CRON_LINE; tests/test_p2_alarms_truth_20260926.py; grant 1d4795f8471a664a.",
       "note": "Every 20 min: crontab -l → persistent-state/data/runtime/crontab_snapshot.txt (atomic tmp+mv)."
+    },
+    {
+      "lane_id": "reconcile-alpaca-paper-options",
+      "owner": "options",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 10-15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && PROJECT_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT bash linux_launchers/reconcile_alpaca_paper_options.sh",
+        "match": "linux_launchers/reconcile_alpaca_paper_options.sh"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "ACTIVE",
+      "state_since": "2026-09-26",
+      "state_reason": "Declared 2026-09-26 by the P2 audit remediation (C-02 first tranche: dev-tree workers that write served state move to `cd CURRENT`). Was an inherited-debt baseline entry running from the dev tree via a launcher that hard-coded PROJECT_ROOT; the launcher now honours PROJECT_ROOT/PY. The installed cron line is edited only under an operator cron grant; `match` covers both the pre- and post-edit text.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/alpaca_paper_options_reconcile.log"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/check_worker_pins.py classified the line DEV_TREE (audit C-02); linux_launchers/reconcile_alpaca_paper_options.sh:4 hard-coded the dev tree until this change; alpaca_paper_options_executor.py writes Postgres only, so the execution root changes no file store; tests/test_p2_controls_truth_20260926.py::test_options_launcher_honours_project_root_and_py.",
+      "note": "Hourly RTH Alpaca PAPER options reconcile (read-only poll of fills/closes; no order submit)."
     }
   ],
   "undeclared_baseline": [
@@ -2579,7 +2599,6 @@
     "0 10 1 * * cd $PROJ && $PY scripts/youtube_channel_discovery.py --discover --telegram >> logs/youtube_discovery.log 2>&1",
     "0 10,14,18 * * 0,6 cd $PROJ && flock -n /tmp/news_tail_rotate.lock timeout 90m $PY scripts/news_ingestion.py --tail-rotate >> logs/news_ingestion.log 2>&1",
     "0 10-15 * * 1-5 $PROJ/scripts/agent_router_cron.sh light",
-    "0 10-15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/reconcile_alpaca_paper_options.sh",
     "0 10-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/alpaca_recon.lock $PY scripts/alpaca_paper_adapter.py --sync-only >> logs/alpaca_paper_adapter.log 2>&1",
     "0 10-16 * * 1-5 cd $PROJ && flock -n /tmp/social_scalp.lock $PY scripts/social_scalp_scanner.py >> logs/social_scalp_scanner.log 2>&1",
     "0 10-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && .venv/bin/python scripts/data_gap_resolver.py >> logs/data_gap_resolver.log 2>&1",

@@ -1,0 +1,106 @@
+{
+  "schema": "EnvFlagsUnreadBaseline@v1",
+  "as_of": "2026-09-26",
+  "note": "Every row is an env name SET on a governed or host surface and READ by no code, with the decision taken (audit R-06/K-07). IMPLEMENT = code must read it (row is removed when it does); RETIRE = remove the assignment (host rows need an operator grant; the row is removed after); FOREIGN_APP = consumed by software outside this repo; KEEP_DOCUMENTED = intentionally informational.",
+  "flags": {
+    "ACTIVE_TRADER_ENV": {
+      "decision": "FOREIGN_APP",
+      "reason": "moomoo lab units (trade-ai-lab-moomoo-*) read it from the lab tree, not scripts/; audit R-20",
+      "set_in": [
+        "config/systemd/user/trade-ai-lab-moomoo-opend.service"
+      ]
+    },
+    "SEARXNG_SECRET": {
+      "decision": "FOREIGN_APP",
+      "reason": "consumed by the searxng container via infra/searxng/docker-compose.yml",
+      "set_in": [
+        "infra/searxng/.env.example"
+      ]
+    },
+    "AGENT_RUNTIME_CRITIC_LANES": {
+      "decision": "RETIRE",
+      "reason": "host agent-operator.env; no reader since the critic lanes moved to config (audit R-20)",
+      "host_only": true
+    },
+    "AGENT_RUNTIME_SHADOW_MODEL": {
+      "decision": "RETIRE",
+      "reason": "host agent-operator.env; shadow model is chosen by model_policy, not env (audit R-20)",
+      "host_only": true
+    },
+    "AGENT_RUNTIME_TIMER_PROBE": {
+      "decision": "RETIRE",
+      "reason": "portfolio-server drop-in 12-agent-runtime-probe.conf; probe retired, no reader",
+      "host_only": true
+    },
+    "ATOMIC_INBOUND_OK_RECEIPT": {
+      "decision": "RETIRE",
+      "reason": "phase8-safe-canary.env; canary closed 2026-09, no reader (audit R-20)",
+      "host_only": true
+    },
+    "FLASH_CIO_SOAK_STATUS": {
+      "decision": "RETIRE",
+      "reason": "phase8-safe-canary.env; soak closed, no reader (audit R-20)",
+      "host_only": true
+    },
+    "FLASH_CIO_SOAK_SYMBOL": {
+      "decision": "RETIRE",
+      "reason": "phase8-safe-canary.env; soak closed, no reader (audit R-20)",
+      "host_only": true
+    },
+    "OBS_SESSION_INDEX": {
+      "decision": "RETIRE",
+      "reason": "at-observation-01-closeout.service belongs to a RETIRED lane still enabled (audit R-18); goes with the unit",
+      "host_only": true
+    },
+    "OBS_TARGET_DATE": {
+      "decision": "RETIRE",
+      "reason": "same unit as OBS_SESSION_INDEX",
+      "host_only": true
+    },
+    "DOF_PORT": {
+      "decision": "FOREIGN_APP",
+      "reason": "dof-dashboard.service is the NYC DOF app, outside this repo (audit D-01)",
+      "host_only": true
+    },
+    "OPENCLAW_GATEWAY_PORT": {
+      "decision": "FOREIGN_APP",
+      "reason": "openclaw-gateway.service (OpenClaw runtime)",
+      "host_only": true
+    },
+    "OPENCLAW_SERVICE_KIND": {
+      "decision": "FOREIGN_APP",
+      "reason": "openclaw-gateway.service",
+      "host_only": true
+    },
+    "OPENCLAW_SERVICE_MARKER": {
+      "decision": "FOREIGN_APP",
+      "reason": "openclaw-gateway.service",
+      "host_only": true
+    },
+    "OPENCLAW_SERVICE_VERSION": {
+      "decision": "FOREIGN_APP",
+      "reason": "openclaw-gateway.service",
+      "host_only": true
+    },
+    "OPENCLAW_SYSTEMD_UNIT": {
+      "decision": "FOREIGN_APP",
+      "reason": "openclaw-gateway.service",
+      "host_only": true
+    },
+    "OPENCLAW_WINDOWS_TASK_NAME": {
+      "decision": "FOREIGN_APP",
+      "reason": "openclaw-gateway.service",
+      "host_only": true
+    },
+    "TRADEAI_READ_ONLY_ADVISORY": {
+      "decision": "RETIRE",
+      "reason": "decorative posture flag; the advisory rail is the unconditional MBI raise in code, not an env var. Removed from the tracked unit in this PR; the installed host copy of tradeai-due-checkpoints.service still carries it until an operator unit-edit grant (R-12 drift is expected until then)",
+      "host_only": true
+    },
+    "FORCE_DEBATE_PROVIDER": {
+      "decision": "RETIRE",
+      "reason": "dev-tree .env; no reader anywhere (audit R-06)",
+      "host_only": true
+    }
+  }
+}

@@ -35,6 +35,7 @@ call requires both an operator flag and a provider the caller injects.
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
@@ -83,17 +84,92 @@ class ProviderSeparationError(ValueError):
     """Raised before any call when a critic is not independent of what it judges."""
 
 
+#: Operator cost controls on the paid judge (2026-09-26, audit finding R-06). Until this
+#: change the host set all three and no code read any of them — a declared cap that caps
+#: nothing. They are read here and enforced in ``validate`` fail-closed: an unknown spend
+#: against a set cap DENIES, exactly like an unfunded judge does.
+TIER2_DAILY_USD_CAP_FLAG = "TRADEAI_TIER2_DAILY_USD_CAP"
+TIER2_OFF_PEAK_ONLY_FLAG = "TRADEAI_TIER2_OFF_PEAK_ONLY"
+TIER2_PROVIDER_FLAG = "TRADEAI_TIER2_PROVIDER"
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def _parse_cap(raw: Any) -> float | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        value = float(text)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
 @dataclass(frozen=True)
 class TierPolicy:
     tier1_lanes: tuple[CriticLane, ...] = FREE_TIER1_LANES
     tier2_enabled: bool = False
     tier2_reason: str = "operator-gated (AGENTS.md §17): funding a paid judge is not the agent's decision"
+    #: USD the paid judge may spend per UTC day; ``None`` = no cap declared.
+    tier2_daily_usd_cap: float | None = None
+    #: When true the paid judge is never consulted inside DeepSeek's official peak window.
+    tier2_off_peak_only: bool = False
+    #: Provider family the operator funded; the injected judge must declare the same family.
+    tier2_provider: str = ""
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None, **kwargs: Any) -> "TierPolicy":
         source = env if env is not None else os.environ
-        enabled = str(source.get(TIER2_FLAG, "")).strip().lower() in {"1", "true", "yes", "on"}
+        enabled = str(source.get(TIER2_FLAG, "")).strip().lower() in _TRUTHY
+        kwargs.setdefault("tier2_daily_usd_cap", _parse_cap(source.get(TIER2_DAILY_USD_CAP_FLAG)))
+        kwargs.setdefault(
+            "tier2_off_peak_only",
+            str(source.get(TIER2_OFF_PEAK_ONLY_FLAG, "")).strip().lower() in _TRUTHY,
+        )
+        kwargs.setdefault("tier2_provider", str(source.get(TIER2_PROVIDER_FLAG, "")).strip().lower())
         return cls(tier2_enabled=enabled, **kwargs)
+
+    def tier2_denial(
+        self,
+        *,
+        spent_today_usd: float | None,
+        now: datetime | None = None,
+        judge_provider: str | None = None,
+    ) -> str | None:
+        """Why the paid judge may NOT be consulted right now, or ``None`` when it may.
+
+        Fail-closed on every declared control: a cap with unknown spend denies, a cap that is
+        exhausted denies, off-peak-only inside the peak window denies, and a funded provider
+        that does not match the injected judge's family denies.
+        """
+        if self.tier2_daily_usd_cap is not None:
+            if spent_today_usd is None:
+                return (
+                    f"DENIED_SPEND_UNKNOWN — {TIER2_DAILY_USD_CAP_FLAG}={self.tier2_daily_usd_cap:.2f} "
+                    "is set but today's paid spend was not supplied"
+                )
+            if float(spent_today_usd) >= self.tier2_daily_usd_cap:
+                return (
+                    f"DENIED_DAILY_CAP — spent {float(spent_today_usd):.4f} of "
+                    f"{self.tier2_daily_usd_cap:.2f} USD ({TIER2_DAILY_USD_CAP_FLAG})"
+                )
+        if self.tier2_off_peak_only and _in_deepseek_peak(now):
+            return f"DENIED_PEAK_WINDOW — {TIER2_OFF_PEAK_ONLY_FLAG} is set and now is inside the official peak hours"
+        if self.tier2_provider and judge_provider is not None:
+            if str(judge_provider).strip().lower() != self.tier2_provider:
+                return (
+                    f"DENIED_PROVIDER_MISMATCH — {TIER2_PROVIDER_FLAG}={self.tier2_provider} but the "
+                    f"injected judge declares {str(judge_provider).strip().lower() or 'nothing'}"
+                )
+        return None
+
+
+def _in_deepseek_peak(now: datetime | None) -> bool:
+    try:
+        from scripts.lib.deepseek_offpeak import is_deepseek_peak_utc
+    except ImportError:  # pragma: no cover - release layout
+        from lib.deepseek_offpeak import is_deepseek_peak_utc  # type: ignore
+    return bool(is_deepseek_peak_utc(now))
 
 
 @dataclass(frozen=True)
@@ -225,6 +301,9 @@ def validate(
     calibration_ledger: Mapping[str, Sequence[Observation]] | None = None,
     min_sample: int = 30,
     paid_judge: CriticProvider | None = None,
+    tier2_spent_today_usd: float | None = None,
+    tier2_now: datetime | None = None,
+    tier2_judge_provider: str | None = None,
 ) -> TieredValidationResult:
     """Run the three tiers in order and stop at the first that answers.
 
@@ -296,6 +375,14 @@ def validate(
     elif paid_judge is None:
         # Enabled but unfunded is a misconfiguration, and a cost misconfiguration denies.
         tier2_state = "DENIED_NO_PAID_JUDGE_CONFIGURED"
+        tier_reached = 1
+    elif (
+        denial := policy.tier2_denial(
+            spent_today_usd=tier2_spent_today_usd, now=tier2_now, judge_provider=tier2_judge_provider
+        )
+    ) is not None:
+        # Operator cost controls (R-06): the declared cap / window / provider now bind.
+        tier2_state = denial
         tier_reached = 1
     else:
         verdict = dict(paid_judge(dict(request)))
