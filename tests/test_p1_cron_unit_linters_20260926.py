@@ -33,8 +33,8 @@ L897 = f'0 5 * * 1-5 cd {CUR} && python3 -c "import sys; sys.path.insert(0, \'sc
 GOOD = f"0 9 * * 0 cd {CUR} && flock -n /tmp/exit_outcomes.lock $PY scripts/reconcile_exit_advisory_outcomes.py >> logs/exit_outcomes.log 2>&1"
 
 # Host shape at audit time: the dev tree has a venv, the release does not.
-def _exists(path: str) -> bool:
-    return path.startswith(f"{DEV}/.venv")
+def _exists(path) -> bool:
+    return str(path).startswith(f"{DEV}/.venv")
 
 
 def test_cron_env_and_expansion():

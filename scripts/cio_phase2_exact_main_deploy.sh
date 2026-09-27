@@ -651,6 +651,14 @@ write_expected_release_pin() {
     fi
   done
   [[ $wrote -gt 0 ]] || log "  WARN no expected-release pin written — health inspector will report a stale mismatch"
+  # R-09 (2026-09-26): check_file_integrity.py asserts ACTIVE_RELEASE == CURRENT's
+  # target, but nothing wrote ACTIVE_RELEASE since 2026-08-11 (it still named a
+  # feature branch), so the check reported a permanent P0 mismatch. Write it here.
+  if printf '%s\n' "$dir" >"${RELEASES_BASE}/ACTIVE_RELEASE" 2>/dev/null; then
+    log "  active-release pin → ${RELEASES_BASE}/ACTIVE_RELEASE"
+  else
+    log "  WARN could not write ${RELEASES_BASE}/ACTIVE_RELEASE"
+  fi
 }
 
 # Long-lived daemons that resolve CURRENT once, at start, and hold that concrete
