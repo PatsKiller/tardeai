@@ -55,6 +55,33 @@ DEFAULT_MAX_TOKENS = int(os.getenv("HERMES_BRIDGE_MAX_TOKENS", "8192"))
 DEFAULT_TIMEOUT_S = float(os.getenv("HERMES_BRIDGE_TIMEOUT_S", "180"))
 
 
+def _web_mod():
+    try:
+        from lib import hermes_web_research as m
+    except ImportError:
+        from scripts.lib import hermes_web_research as m  # type: ignore
+    return m
+
+
+def _gather_web(request: dict[str, Any]) -> dict[str, Any]:
+    """Options-gap research gets live web results first (2026-09-26). Never raises."""
+    try:
+        return _web_mod().gather(request)
+    except Exception as exc:  # noqa: BLE001
+        return {"used": False, "error": type(exc).__name__}
+
+
+def _web_prompt() -> str:
+    return _web_mod().PROMPT
+
+
+def _ground_web(body: dict[str, Any], web: dict[str, Any]) -> dict[str, Any]:
+    try:
+        return _web_mod().ground_citations(body, web)
+    except Exception:  # noqa: BLE001
+        return body
+
+
 class BridgeHermesResearchBackend:
     """
     Hermes research via governed bridge (:8766 by default).
@@ -96,6 +123,9 @@ class BridgeHermesResearchBackend:
         if not qs:
             raise HermesBackendError("no questions", retryable=False)
 
+        web = _gather_web(request)
+        if web.get("used"):
+            request = {**request, "web_results": web.get("results") or []}
         messages = self._build_messages(request, qs)
         try:
             raw_text = self._chat_completions(messages)
@@ -125,6 +155,8 @@ class BridgeHermesResearchBackend:
             # finishes. The advice is not shipped.
             body = self._rewrite_without_execution_language(messages, raw_text, str(refusal), request, qs)
 
+        if web.get("used"):
+            body = _ground_web(body, web)
         if not body.get("as_of"):
             body["as_of"] = utc_now_iso()
         return body
@@ -208,8 +240,13 @@ class BridgeHermesResearchBackend:
             else (request.get("success_criteria") or [])[:4],
             "prompt_context": request.get("prompt_context") or {},
         }
+        extra: list[dict] = []
+        if request.get("web_results") is not None:
+            user_payload["web_results"] = request.get("web_results")
+            extra = [{"role": "system", "content": _web_prompt()}]
         return [
             {"role": "system", "content": self._system_prompt()},
+            *extra,
             {
                 "role": "user",
                 "content": "JSON only. Request:\n"

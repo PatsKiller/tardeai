@@ -2534,6 +2534,17 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
+        # Brave router), answers cite supplied urls only, and CIO follow-ups are research
+        # tasks (a symbol with no thesis also gets the four thesis questions).
+        "hermes_web_research_20260926",
+        [
+            "tests/test_hermes_web_research_20260926.py",
+            "tests/test_options_thesis_lifecycle_20260926.py",
+            "tests/test_research_heartbeat_20260914.py",
+        ],
+    ),
+    (
         # 2026-09-26 -- options history into the CIO's bitemporal memory (M2): thesis
         # versions, decisions (SUPERSEDES provenance), follow-ups, validations and
         # abandonments projected by event_hash with a payload allowlist; the CIO

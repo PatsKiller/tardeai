@@ -123,6 +123,18 @@ options_desk_settings:
     memory_reads: true             # operator 2026-09-26: CIO review reads prior options facts from M2 memory
     memory_reads_limit: 8          # prior decisions/theses/follow-ups supplied to one review
     memory_reads_lookback_days: 180
+  # Web retrieval for Hermes CIO research on an options thesis gap (operator 2026-09-26:
+  # "why not using hermes brave etc research ... same research lanes"). SearXNG first
+  # (free), Brave router only when SearXNG finds nothing (paid; caller cap in
+  # search_budget.CALLER_DAILY_CAPS). Read by scripts/lib/hermes_web_research.py.
+  web_research:
+    enabled_reasons: [options_thesis_gap]
+    caller: hermes_cio_research
+    max_queries: 6                 # searches per research request (4 thesis intents + CIO concerns)
+    results_per_query: 3
+    max_results: 10                # web results supplied to the model
+    snippet_chars: 500
+    brave_fallback: true
   # Symbol-thesis ENRICHES rule (operator 2026-09-26): grade-A research that is not
   # INSUFFICIENT_DATA may FILL EMPTY invalidation_conditions / catalysts on an existing
   # symbol thesis. It never changes stance or an authored summary. Also caps the

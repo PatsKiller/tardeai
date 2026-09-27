@@ -101,6 +101,31 @@ Config: `options_desk_settings.options_thesis_lifecycle` (`abandon_after_hours` 
   `sync-docs-to-drive.sh` mirrors under `runtime/options/` and preserves. The purge no longer
   re-uploads dated top-level docs every hour.
 
+### Research reads the web (2026-09-26)
+Options-gap research (`reason: options_thesis_gap`) is no longer closed-world. Before the model call,
+`scripts/lib/hermes_web_research.py` runs up to `max_queries` searches:
+- **Queries:** one per thesis intent (outlook, next earnings, risks and downgrades, bear case), then the
+  CIO's own concerns, with house schema words removed.
+- **Search order:** the same lanes as the governed research producer. SearXNG goes first (self-hosted,
+  free). The Brave router runs only when SearXNG returns nothing (paid, reserved and settled, caller cap
+  `hermes_cio_research` 10/day).
+- **Filtering:** results must read like investment material; shop, driver and support pages are dropped.
+
+The model answers from `web_results` and cites them by url. `ground_citations` drops any url it was not
+given, and the result records `web_research` (queries, provider, supplied and cited counts) plus
+`source_urls`.
+
+CIO follow-ups are research tasks ("find dated, sourced facts that resolve this CIO concern"), not
+statements. A symbol with no standing thesis (`INSUFFICIENT_DATA`) also gets the four thesis questions,
+and their answers feed the living symbol thesis.
+
+- **Why:** the first DELL follow-up cited only internal ids and answered "no authored thesis exists".
+- **Result:** the same questions now return dated, cited facts:
+  - the 2026-09-01 Q2 earnings;
+  - the $95B AI backlog and raised FY27 guidance;
+  - the 2026-09-14 HPE-downgrade selloff.
+- **Config:** `options_desk_settings.web_research`.
+
 ### Workers and schedule (24/7, 2026-09-26)
 Every step runs unattended. Nothing waits for market hours or for the operator, except approval.
 

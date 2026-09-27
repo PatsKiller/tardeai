@@ -176,6 +176,8 @@ CALLER_DAILY_CAPS: dict[str, int] = {
     "catalyst_intelligence": 10,
     "topic_ingestion": 5,
     "web_news_fetcher": 5,
+    # Options-gap CIO research: Brave only after SearXNG found nothing (2026-09-26).
+    "hermes_cio_research": 10,
     "default": 25,
 }
 
