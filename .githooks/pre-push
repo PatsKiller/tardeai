@@ -42,6 +42,17 @@ if [[ "$guard_ok" == "1" ]]; then
   authorized=1
   # Operator scope grant covers the push-budget override for this window.
   override=1
+  # C-10 (2026-09-26): only the Cursor shell guard consumed a use per push; a
+  # Claude Code (or plain shell) push authorized by the same grant consumed
+  # nothing, so the ledger under-counted. Consume one use here unless the shell
+  # guard already did (it exports TRADEAI_GUARD_CONSUMED_BY_SHELL=1). Fail-soft:
+  # accounting must never block a push the grant already authorized.
+  if [[ "${TRADEAI_GUARD_CONSUMED_BY_SHELL:-0}" != "1" && "${TRADEAI_GUARD_CONSUME:-1}" != "0" ]]; then
+    if [[ -f ".cursor/hooks/guard_ledger.py" ]]; then
+      consume_out="$(python3 .cursor/hooks/guard_ledger.py consume --tier git-push 2>/dev/null | tail -1)" || true
+      echo "guard: consumed one git-push use (${consume_out:0:120})"
+    fi
+  fi
 fi
 
 decision="$(python3 - <<PY
