@@ -224,7 +224,12 @@ def test_standing_hold_is_complete_contract():
     assert d["confidence_status"] == NOT_PROVIDED
     assert "not fabricated" in d["confidence_text"]
     assert d["counter_evidence"]
-    assert d["next_review_at"]
+    # W3 3b: no producer date → next_review_at is cleared. The cadence lives
+    # on standing_cadence_template, not a dated-catalyst field.
+    assert d["next_review_at"] is None
+    assert d["next_review_role"] == "standing_cadence_template"
+    assert d["standing_cadence_template"]
+    assert d["field_status"]["next_review_at"] == NOT_PROVIDED
     assert "HOLD remains correct" in d["why_it_matters"] or "intact" in d["why_it_matters"].lower()
     text = render_decision(d)
     assert "Confidence:" in text
@@ -249,6 +254,13 @@ def test_all_action_classes_have_required_fields():
         for f in ("decision_id", "entity", "decision", "urgency", "what_changed", "why_it_matters",
                   "operator_action", "counter_evidence", "data_quality", "created_at",
                   "last_confirmed_at", "next_review_at"):
+            if f == "data_quality":
+                # A2: absence is None, not a fabricated "OK".
+                assert "data_quality" in d, action
+                continue
+            if f == "next_review_at" and d.get("next_review_role") == "standing_cadence_template":
+                assert d.get("standing_cadence_template"), action
+                continue
             assert d.get(f) not in (None, ""), (action, f)
         assert "confidence" in d
 

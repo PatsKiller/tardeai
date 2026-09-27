@@ -247,6 +247,13 @@ def completeness(product: dict[str, Any]) -> dict[str, Any]:
                     partial.append(f"decisions[{i}].next_review_at")
                 else:
                     missing.append(f"decisions[{i}].{f}")
+            elif f == "data_quality" and (v is None or v == ""):
+                # A2: absent data_quality stays None so the renderer says
+                # "not computed" or falls through to the product verdict.
+                # That is an honest partial, same shape as confidence
+                # NOT_PROVIDED — not a missing product. Counting it missing
+                # graded every standing HOLD INVALID.
+                partial.append(f"decisions[{i}].data_quality")
             elif f != "confidence" and (v is None or v == ""):
                 missing.append(f"decisions[{i}].{f}")
         fs = d.get("field_status") or {}
