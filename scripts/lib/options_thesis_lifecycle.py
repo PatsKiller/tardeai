@@ -255,7 +255,8 @@ def advance(
                 rereview = True
             elif outcome == "MORE_RESEARCH":
                 fu, fc = life.get("followup"), life.get("followup_complete")
-                rounds = sum(1 for d in life.get("decisions") or [] if d.get("outcome") == "MORE_RESEARCH")
+                rounds = sum(1 for d in life.get("decisions_since_reopen", life.get("decisions")) or []
+                             if d.get("outcome") == "MORE_RESEARCH")
                 if not _after(fu, dec):
                     if rounds > int(s["max_followup_rounds"]):
                         step.update(action="ABANDON", reason=f"CIO asked for more research {rounds} times; "

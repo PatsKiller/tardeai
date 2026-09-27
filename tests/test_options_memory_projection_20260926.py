@@ -645,3 +645,10 @@ def test_escalation_is_projected_as_a_followup_fact():
     assert proj.EVENT_PREDICATES["OPTIONS_THESIS_ESCALATED"] == "options_followup"
     assert "escalated to grok" in proj._claim("options_followup", "DELL", obj)
     assert not proj.forbidden_keys_deep(obj)
+
+
+def test_reopen_is_projected_as_an_outcome():
+    obj = proj._outcome_object({"event_type": "OPTIONS_THESIS_REOPENED", "actor": "operator", "reason": "web live"})
+    assert obj["outcome"] == "REOPENED" and obj["actor"] == "operator"
+    assert proj.EVENT_PREDICATES["OPTIONS_THESIS_REOPENED"] == "options_thesis_outcome"
+    assert not proj.forbidden_keys_deep(obj)

@@ -1793,7 +1793,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/telegram_channel_diligence_20260916/06_IMPLEMENTATION_ROADMAP.md` | Phase 6 — Implementation Roadmap | review_required | OK | `8d2eb858f8d7` |
 | `docs/ops/telegram_channel_diligence_20260916/07_EXECUTION_PLAN.md` | Phase 7 — Execution Plan & Maturity Scorecard | review_required | OK | `c3ec2b72146f` |
 | `docs/options-desk-operator-contract-20260924.md` | Options Desk — operator contract (skim) | review_required | OK | `2b6cf11e6d35` |
-| `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `3b6fa61e7b7c` |
+| `docs/options-module.md` | Options Module — Architecture & Operations | review_required | OK | `bbd2c11a4072` |
 | `docs/paper_trading/PHASE179A_PAPER_TRADE_SOURCE_INVENTORY.md` | Phase 179A: Paper Trade Source Inventory | review_required | OK | `72664d5cf493` |
 | `docs/paper_trading/PHASE179C_CURRENT_PAPER_TRADE_STATISTICS_REPORT.md` | Phase 179C: Current Paper Trade Statistics Report | review_required | OK | `95ccbd19ce31` |
 | `docs/paper_trading/PHASE179D_STATISTICAL_READINESS_THRESHOLDS.md` | Phase 179D: Statistical Readiness Thresholds | review_required | OK | `cebd18783641` |

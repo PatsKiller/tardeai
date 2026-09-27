@@ -58,6 +58,7 @@ LIFECYCLE_EVENTS = {
     "OPTIONS_THESIS_FOLLOWUP_REQUESTED": "CIO_FOLLOWUP_RESEARCH",
     "OPTIONS_THESIS_FOLLOWUP_COMPLETE": "FOLLOWUP_COMPLETE",
     "OPTIONS_THESIS_ESCALATED": "EXTERNAL_RESEARCH",
+    "OPTIONS_THESIS_REOPENED": "REOPENED",
     "OPTIONS_THESIS_ABANDONED": "ARCHIVED_ABANDONED",
 }
 
@@ -328,16 +329,27 @@ class OptionsThesisStore:
         for e in events:
             if e.get("event_type") in LIFECYCLE_EVENTS:
                 last[e["event_type"]] = e
+        # Operator reopen (2026-09-27): an archive before the reopen no longer holds, and
+        # the follow-up round count and the abandon clock restart from the reopen. Nothing
+        # is removed -- the archive and every earlier decision stay in the history.
+        reopened = last.get("OPTIONS_THESIS_REOPENED")
+        since = str((reopened or {}).get("recorded_at") or "")
+        abandoned = last.get("OPTIONS_THESIS_ABANDONED")
+        if abandoned and since and str(abandoned.get("recorded_at") or "") < since:
+            abandoned = None
+        decisions = [e for e in events if e.get("event_type") == "OPTIONS_THESIS_DECISION"]
         return {"stage": stage, "timeline": timeline,
-                "created_at": timeline[0]["at"] if timeline else None,
+                "created_at": since or (timeline[0]["at"] if timeline else None),
+                "reopened": reopened,
+                "decisions_since_reopen": [d for d in decisions if str(d.get("recorded_at") or "") > since],
                 "research": last.get("OPTIONS_THESIS_RESEARCH_COMPLETE"),
                 "research_request": last.get("OPTIONS_THESIS_RESEARCH_REQUESTED"),
                 "decision": last.get("OPTIONS_THESIS_DECISION"),
-                "decisions": [e for e in events if e.get("event_type") == "OPTIONS_THESIS_DECISION"],
+                "decisions": decisions,
                 "followup": last.get("OPTIONS_THESIS_FOLLOWUP_REQUESTED"),
                 "followup_complete": last.get("OPTIONS_THESIS_FOLLOWUP_COMPLETE"),
                 "escalation": last.get("OPTIONS_THESIS_ESCALATED"),
-                "abandoned": last.get("OPTIONS_THESIS_ABANDONED")}
+                "abandoned": abandoned}
 
     def verify_chain(self) -> bool:
         prev = GENESIS

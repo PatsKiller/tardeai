@@ -330,3 +330,21 @@ def test_escalation_question_drops_house_only_findings_and_repeats():
     q = lc.escalation_question(p, ans)
     assert "Confirmed: no authored" not in q and q.count("No authored DELL thesis") == 1
     assert "Web found so far: UBS downgraded 09-15" in q and "dated catalysts before 2026-11-20" in q
+
+
+def test_reopen_restarts_rounds_and_keeps_history(tmp_path):
+    """2026-09-27 DELL: archived after 3 closed-world rounds, 3 minutes before web research went live."""
+    s = _store(tmp_path)
+    for i in range(3):
+        _decide(s, "MORE_RESEARCH", (T0 + timedelta(hours=1 + i)).isoformat())
+    assert _run(s, [_p(missing=())], T0 + timedelta(hours=4))[0]["action"] == "ABANDON"
+    assert s.lifecycle("g1")["abandoned"]
+    assert _run(s, [_p(missing=())], T0 + timedelta(hours=4, minutes=15)) == []
+    s.append_event("g1", "OPTIONS_THESIS_REOPENED", actor="operator", reason="web research now live")
+    life = s.lifecycle("g1")
+    assert life["abandoned"] is None and life["stage"] == "REOPENED" and len(life["decisions"]) == 3
+    assert life["decisions_since_reopen"] == []
+    step = _run(s, [_p(missing=())], T0 + timedelta(hours=4, minutes=30),
+                research=lambda p, qs=None: {"research_id": "res_new"})[0]
+    assert step["action"] == "REQUEST_FOLLOWUP"
+    assert any(e["event_type"] == "OPTIONS_THESIS_ABANDONED" for e in s.history("g1"))  # never removed
