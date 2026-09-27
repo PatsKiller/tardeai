@@ -209,7 +209,10 @@ def committee_memo(p: dict[str, Any], t: dict[str, Any], record: Optional[dict[s
     has_thesis = bool(t.get("symbol_thesis_version")) and state not in ("INSUFFICIENT_DATA",)
     evidence = _thesis_list(t, "evidence_for")
     ra = p.get("research_answers") or {}
-    if has_thesis and evidence and state == "CURRENT":
+    stance = str(t.get("thesis_stance") or "").strip()
+    # Wave B 2026-09-27: "fully researched" requires a thesis that takes a position; PUR and
+    # DELL showed it over a thesis whose own summary said the evidence was insufficient.
+    if has_thesis and evidence and state == "CURRENT" and stance:
         research, conf = "FULLY_RESEARCHED", "High" if (t.get("thesis_confidence") or 0) >= 0.7 else "Medium"
     elif has_thesis or ra.get("thesis"):
         # Research done for this option counts, even without a symbol thesis (2026-09-26).

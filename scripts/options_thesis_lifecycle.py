@@ -65,6 +65,18 @@ def request_research(p: dict, questions: list | None = None) -> dict:
     return out
 
 
+def recent_requests(symbol: str) -> list:
+    """Hermes research requests naming this symbol (projection read; no writes)."""
+    from lib import cio_hermes_research as h
+    try:
+        proj = json.loads(h.PROJECTION_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    sym = str(symbol or "").upper()
+    return [r for r in (proj.get("by_research_id") or {}).values()
+            if sym in [str(x).upper() for x in (r.get("symbols") or [r.get("symbol")]) if x]]
+
+
 def research_status(research_id: str) -> dict:
     from lib import cio_hermes_research as h
     req = h.get_request(research_id) or {}
@@ -156,6 +168,7 @@ def main(argv=None) -> int:
         record_decision=record_decision,
         apply=a.apply, escalate=escalate,
         request_thesis_acquisition=lambda sym, why: _priority_request(sym, why),
+        recent_requests=recent_requests,
     )
     print(json.dumps({"mode": "apply" if a.apply else "dry_run", "steps": report}, indent=1, default=str))
     return 0

@@ -379,7 +379,7 @@ export default function OptionsHub({ onDrill }: Props) {
                 tip={execStatus.armed_for_execution ? HEADER.executionArmed : HEADER.executionAdvisory}
                 style={{ color: execStatus.armed_for_execution ? '#22c55e' : '#f59e0b' }}
               >
-                {' '}· execution {execStatus.armed_for_execution ? 'ARMED' : 'advisory'} ⓘ
+                {' '}· {execStatus.armed_for_execution ? 'broker route open: you place each order (2FA)' : 'advisory only'} ⓘ
               </Tip>
             )}
           </div>
@@ -425,7 +425,7 @@ export default function OptionsHub({ onDrill }: Props) {
             </span>
           ))}
           {execStatus?.armed_for_execution && (
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e' }}>execution ARMED</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e' }}>broker route open · operator places orders (2FA)</span>
           )}
         </div>
       )}
