@@ -2632,6 +2632,13 @@ GATES = [
         "audit_rest_20260927",
         ["tests/test_audit_rest_20260927.py"],
     ),
+    (
+        # 2026-09-27 — wake store and scored tickers link to the live copies.
+        # Migration report lists filenames only. v3_0–v3_2 and v2_0 are
+        # superseded by v3_3.
+        "audit_all_phases_20260927",
+        ["tests/test_audit_all_phases_20260927.py"],
+    ),
 ]
 
 

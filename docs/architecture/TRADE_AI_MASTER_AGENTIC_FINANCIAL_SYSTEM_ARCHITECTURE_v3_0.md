@@ -1,7 +1,7 @@
 # TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.0
 ## Canonical Architecture for Trade AI v12, OpenClaw, Hermes, Moomoo OpenD, Watch Decision Integrity, and Momentum Scalp
 
-**Status:** CANONICAL MASTER ARCHITECTURE — implementation blueprint; no execution authorization  
+**Status:** SUPERSEDED BY TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_3.md  
 **Architecture owner:** Lead Architect  
 **Date:** 2026-07-22  
 **Target production host:** `ms01-openclaw`  

@@ -248,7 +248,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/alerts/PHASE68D_ALERT_TO_HERMES_BACKLOG_DESIGN.md` | Phase 68D — Alert-to-Hermes Backlog Design | review_required | OK | `761874de8ee9` |
 | `docs/alerts/PHASE68E_ALERT_DEDUPE_DRYRUN_REPORT.md` | Phase 68E — Alert Dedupe Dry-Run Report | review_required | OK | `d0286b9c9fc2` |
 | `docs/architecture/AEC_PARALLEL_AGENTS_AND_MEMORY.md` | AEC parallel agents and memory spines | review_required | OK | `541a2bfbe61a` |
-| `docs/architecture/AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v2_0.md` | AGENTIC FINANCIAL SYSTEM & COGNITIVE ARCHITECTURE v2.0 | review_required | OK | `4d1b395eee0f` |
+| `docs/architecture/AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v2_0.md` | AGENTIC FINANCIAL SYSTEM & COGNITIVE ARCHITECTURE v2.0 | archive_superseded | OK | `470b688fcc3b` |
 | `docs/architecture/AGENTIC_LAB_EXECUTION_PACKET_2026-07-24.md` | Agentic MVL Disposable LAB Execution Checklist — 2026-07-24 | review_required | OK | `77b3c7bfb04c` |
 | `docs/architecture/AGENTIC_LAB_PROVISIONING_BLOCKER_2026-07-24.md` | Agentic LAB Provisioning Checkpoint — 2026-07-24 | review_required | OK | `74d473239727` |
 | `docs/architecture/AGENTIC_MVL_BACKLOG_2026-07-23.md` | Trade AI Agentic MVL Backlog — 2026-07-23 | review_required | OK | `3dcbd79295c2` |
@@ -438,9 +438,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/TRADE_AI_FUTURE_STATE_2026-09-14.md` | Trade AI Platform — FUTURE STATE: Target Architecture & Build Recommendation | review_required | OK | `b6ec05e6f6db` |
 | `docs/architecture/TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md` | Trade AI Platform — FUTURE STATE Lifecycles: target lifecycles, lifecycle contract and build roadmap | review_required | OK | `0705cb774b73` |
 | `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | Trade AI Institutional Memory + Autonomous Agent Architecture | review_required | OK | `27f6d0b5fa01` |
-| `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_0.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.0 | review_required | OK | `f4df2050d710` |
-| `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_1.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.1 | review_required | OK | `d51c0412e728` |
-| `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_2.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.2 | review_required | OK | `a857086bab55` |
+| `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_0.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.0 | archive_superseded | OK | `513271e8544b` |
+| `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_1.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.1 | archive_superseded | OK | `cafe3fa26a8c` |
+| `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_2.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.2 | archive_superseded | OK | `45cf5d3a3ad9` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_3.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.3 | review_required | OK | `e2649ec30f53` |
 | `docs/architecture/TRADE_AI_MEMORY_RETRIEVAL_AND_INDEX_STRATEGY_2026-08-24.md` | Memory retrieval and index strategy | review_required | OK | `c37d853660e6` |
 | `docs/architecture/TRADE_AI_WORKLOG_2026-09-14.md` | Trade AI — Work Log: everything changed from 2026-09-13 20:00 to 2026-09-14 23:44 | review_required | OK | `f6af86715bf5` |

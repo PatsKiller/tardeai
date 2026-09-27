@@ -200,7 +200,8 @@ def declared_archive_status(path: Path) -> str | None:
         s = line.strip().strip("*").strip()
         if not s.lower().startswith("status:"):
             continue
-        word = s.split(":", 1)[1].strip().split()[0].strip("*").upper() if ":" in s else ""
+        raw = s.split(":", 1)[1].replace("*", " ")
+        word = raw.split()[0].upper() if raw.split() else ""
         if word.startswith("SUPERSEDED"):
             return "SUPERSEDED"
         if word.startswith("DEPRECATED"):

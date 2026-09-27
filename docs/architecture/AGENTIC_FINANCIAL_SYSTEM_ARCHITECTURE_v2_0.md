@@ -1,7 +1,7 @@
 # AGENTIC FINANCIAL SYSTEM & COGNITIVE ARCHITECTURE v2.0
 ## Trade AI v12 · OpenClaw · Hermes · Moomoo OpenD · Governed Multi-Model Intelligence
 
-**Status:** ARCHITECTURE AND IMPLEMENTATION BLUEPRINT — advisory system design; no execution authorization  
+**Status:** SUPERSEDED BY TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_3.md  
 **Date:** 2026-07-22  
 **Supersedes:** `AGENTIC_MATURITY_ARCHITECTURE_v1_0.md`  
 **Primary objective:** Convert Trade AI from a large collection of deterministic jobs and episodic model calls into a durable, memory-grounded, continuously evaluated agentic financial operating system—without allowing learning or models to bypass deterministic truth, risk policy, operator approval, or per-order 2FA.
