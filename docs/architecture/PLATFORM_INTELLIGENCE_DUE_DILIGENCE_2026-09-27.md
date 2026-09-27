@@ -474,10 +474,10 @@ Every surface reads it, and surfaces stop querying the raw research tables.
 | # | Fix | PR | State | Measured effect |
 |---|---|---|---|---|
 | W0-2 | Wake dispatcher hang: stale `DISPATCHED` wakes dead-lettered (they can't be released); no per-wake rescan; head hash read from the file tail | #1280 | **merged** cb6e76c12 | On a copy: the one-time cleanup of 1,558 wakes went from 547 s to 0.9 s; steady state 0.7 s (it was ~9 min per 5-min cycle) |
-| W0-1 | Symbol-thesis acquisition runs after an operator clear. A missing flag with no tripwire still fails closed. | #1282 | CI green; update pending (push grant) | Live dry run: `containment_state=cleared`, exit 0 |
+| W0-1 | Symbol-thesis acquisition runs after an operator clear. A missing flag with no tripwire still fails closed. | #1282 | **merged** 820d55d75 | Live dry run: `containment_state=cleared`, exit 0 |
 | W0-3 | Lane breaker trips on `unavailable` (Codex headless), not only 401/403 | #1283 | **merged** 65e039be9 | Replay since 09-26: 21 of 82 wasted ChatGPT calls skipped |
 | W0-4 | Every Hermes CIO research request is web-grounded; governed-producer pages reused first | #1284 | **merged** 9b76b4c6b | Real S3 re-entry request (IBIO) gets 2 sources; AUUD reuses 4 producer pages |
-| W0-8 | Contradiction candidates derived incrementally | #1285 | CI green; update pending | 31 s → 0.02 s per accept, ids identical (171/171) |
+| W0-8 | Contradiction candidates derived incrementally | #1285 | **merged** 48e05a6fe | 31 s → 0.02 s per accept, ids identical (171/171) |
 | W0-7 | Retire duplicate crons (recovery watch, aegis surveillance) and the dead flash-market cron | host | diff prepared; cron grant pending | — |
 
 **Moved out of Wave 0, with reasons:**

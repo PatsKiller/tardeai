@@ -410,7 +410,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/PHASE210B_LOOKTHROUGH_APPLY_DIFF_SCHEDULE.md` | Phase 210B — Lookthrough Apply + Diff + Schedule — 2026-06-07 | review_required | OK | `8f9f70d8d735` |
 | `docs/architecture/PHASE210C_CADENCE_TIMER_SCHEDULE_VERIFICATION.md` | Phase 210C — Cadence Timer Schedule Verification — 2026-06-07 | review_required | OK | `1d9cdac8c715` |
 | `docs/architecture/PLAN_S_HOLLOW_RESEARCH_THEN_ANSWER_2026-09-22.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | delete_candidate_duplicate | OK | `5e9e634f7fa6` |
-| `docs/architecture/PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md` | Platform Intelligence Due Diligence: Memory, Research, Agents, Workers (As-Is / To-Be) | review_required | OK | `cfc8e0bd8f53` |
+| `docs/architecture/PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md` | Platform Intelligence Due Diligence: Memory, Research, Agents, Workers (As-Is / To-Be) | review_required | OK | `33fa062d49c3` |
 | `docs/architecture/PRE_DEPLOY_STATE_GUARD.md` | Pre-Deploy State Guard (canonical) | review_required | OK | `fe30cc8699b6` |
 | `docs/architecture/PROJECT_THE_DESK_V2.md` | PROJECT · THE DESK — an autonomous CIO, built as extensions to the existing spec | review_required | OK | `2af6860a863f` |
 | `docs/architecture/QUOTE_PIPELINE_UNIFICATION_SCOPING_2026-08-27.md` | Quote Pipeline Unification — Scoping (Audit Finding H4) | review_required | OK | `d3580a82544b` |
