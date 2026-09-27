@@ -140,8 +140,24 @@ def _yoy(cur: dict[str, Any], rows: list[dict[str, Any]]) -> Optional[dict[str, 
     return None
 
 
+def _normalize(r: dict[str, Any]) -> dict[str, Any]:
+    """sec_xbrl rows from Postgres carry Decimal values and date objects (2026-09-27:
+    Decimal * float raised TypeError, the evidence path swallowed it, and no SEC fact
+    reached DELL's thesis). Use float and ISO strings throughout."""
+    out = dict(r)
+    try:
+        out["metric_value"] = float(out.get("metric_value"))
+    except (TypeError, ValueError):
+        out["metric_value"] = 0.0
+    for k in ("period_start", "period_end", "filing_date"):
+        v = out.get(k)
+        out[k] = v.isoformat() if hasattr(v, "isoformat") else v
+    return out
+
+
 def summarize(symbol: str, rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Latest-quarter facts with YoY, margins and the latest instants. Numbers only from rows."""
+    rows = [_normalize(r) for r in rows]
     rows = [dict(r, period_kind=r.get("period_kind") or _kind_of(r)) for r in rows]
     out: dict[str, Any] = {"symbol": symbol.upper(), "facts": [], "latest_quarter_end": None}
     rev = _q(rows, "revenue")
