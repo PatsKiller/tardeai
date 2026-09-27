@@ -2627,6 +2627,14 @@ GATES = [
         ["tests/test_options_fill_truth_20260927.py"],
     ),
     (
+        # 2026-09-27 -- broker-layer order gate proofs for the options desk (per-task
+        # execution-engineering grant): 2FA, kill switch, submit-time re-check, leg pin (strict
+        # xfail: spec_from_intent rebuilds from the cache), stale quote (strict xfail: missing
+        # age passes when a data_source is named), LLM cannot unlock.
+        "options_broker_gates_20260927",
+        ["tests/test_options_broker_gates_20260927.py"],
+    ),
+    (
         # 2026-09-27 -- options order gates (operator work order, PR 3): the submit-mode risk
         # evaluator fails closed on an input the desk does not have (quote/chain age, session,
         # buying power, liquidity); approvals are pinned to the legs and expire; archived
