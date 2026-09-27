@@ -2578,6 +2578,12 @@ GATES = [
         ["tests/test_thesis_evidence_not_circular_20260927.py"],
     ),
     (
+        # 2026-09-27 -- closed-market quotes are not a liquidity verdict: ideas are kept
+        # and labelled "awaiting live quotes" instead of dropped as NO_LIQUID_CONTRACT.
+        "weekend_aware_liquidity_20260927",
+        ["tests/test_weekend_aware_liquidity_20260927.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).

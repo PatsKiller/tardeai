@@ -347,7 +347,12 @@ export default function OptionsHub({ onDrill }: Props) {
             {(() => {
               // 2026-09-26: say why names did not become cards, instead of showing dead ones.
               const reasons = (proposals as any)?.income_screen?.reasons as Record<string, { count: number; symbols: string[] }> | undefined
-              if (!reasons || !Object.keys(reasons).length) return null
+              // 2026-09-27: closed-market quotes are not a liquidity verdict; those ideas are kept.
+              const deferred = (proposals as any)?.income_screen?.liquidity_deferred as { count: number; symbols: string[]; session?: string } | undefined
+              const deferredNote = deferred?.count
+                ? <div data-testid="options-liquidity-deferred" style={{ marginTop: 4, color: 'var(--amber)' }}>Awaiting live quotes: {deferred.symbols.slice(0, 8).join(', ')}{deferred.symbols.length > 8 ? '…' : ''}. The market is closed, so liquidity is checked at the open; these ideas stay unapprovable until then.</div>
+                : null
+              if (!reasons || !Object.keys(reasons).length) return deferredNote
               const LABEL: Record<string, string> = {
                 NO_LIQUID_CONTRACT: 'no liquid contract',
                 PREMIUM_BELOW_FLOOR: 'premium below floor',
@@ -358,7 +363,7 @@ export default function OptionsHub({ onDrill }: Props) {
               }
               const parts = Object.entries(reasons).sort((a, b) => b[1].count - a[1].count)
                 .map(([k, v]) => `${v.count} ${LABEL[k] || k.toLowerCase().replace(/_/g, ' ')} (${v.symbols.slice(0, 4).join(', ')}${v.symbols.length > 4 ? '…' : ''})`)
-              return <div data-testid="options-income-screen" style={{ marginTop: 4, color: 'var(--text2)' }}>Not built: {parts.join(' · ')}.{(proposals as any)?.market_session && (proposals as any).market_session !== 'REGULAR' ? ` Chains read during ${String((proposals as any).market_session).toLowerCase().replace('_', ' ')}.` : ''}</div>
+              return <>{deferredNote}<div data-testid="options-income-screen" style={{ marginTop: 4, color: 'var(--text2)' }}>Not built: {parts.join(' · ')}.{(proposals as any)?.market_session && (proposals as any).market_session !== 'REGULAR' ? ` Chains read during ${String((proposals as any).market_session).toLowerCase().replace('_', ' ')}.` : ''}</div></>
             })()}
             {proposals?.quality_gate && (
               <Tip tip={HEADER.qualityGate}> · gate {proposals.quality_gate.min_edge_score}+ / sleeve {proposals.quality_gate.relaxed_edge_floor}+ ⓘ</Tip>

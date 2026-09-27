@@ -783,7 +783,21 @@ def enterprise_enrich_proposal(
     if blackout.get("in_blackout"):
         blocks.append(blackout.get("reason") or "earnings_blackout")
     if not liq.get("pass"):
-        blocks.extend(liq.get("issues") or [])
+        # 2026-09-27: closed-market quotes (weekend OI 0, 100%+ spreads) are not a
+        # liquidity verdict. Say so; the idea stays blocked until live quotes and a
+        # fresh Validate, which approval requires anyway.
+        try:
+            from lib.canonical_observation import market_session
+            from lib.options_income_quality import defer_liquidity
+            session = market_session()
+        except Exception:  # noqa: BLE001
+            session, defer_liquidity = None, (lambda *_a, **_k: False)
+        if defer_liquidity(session, cfg):
+            proposal["liquidity_pending"] = True
+            blocks.append(f"awaiting live quotes (market {str(session).lower().replace('_', ' ')}): "
+                          + "; ".join(liq.get("issues") or []))
+        else:
+            blocks.extend(liq.get("issues") or [])
     rr_reason = credit_spread_rr_block(proposal, cfg=cfg)
     if rr_reason:
         blocks.append(rr_reason)
