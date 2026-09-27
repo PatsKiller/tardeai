@@ -970,6 +970,15 @@ GATES = [
         ],
     ),
     (
+        "cogx_w1_foundations",
+        [
+            "tests/test_intelligence_client_facade.py",
+            "tests/test_memory_chokepoint_ratchet.py",
+            "tests/test_supervisor_foundations.py",
+            "tests/test_approval_package_ledger.py",
+        ],
+    ),
+    (
         "goal_work_minter_ratchet",
         [
             "tests/test_goal_work_minter_ratchet.py",

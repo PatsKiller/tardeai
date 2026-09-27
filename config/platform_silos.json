@@ -1,0 +1,20 @@
+{
+  "schema": "PlatformSilos@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "as_of": "2026-09-27",
+  "_note": "Twelve governed silos (05 §2). A lane belongs to the first silo whose prefix matches its lane_id, else to its owner's silo, else UNASSIGNED (a finding). Package: cognitive_transformation_20260927; approval pkg-20260927-cogx-w1-d9e1.",
+  "silos": [
+    {"silo_id": "cio-decision", "title": "CIO wake / decision", "lane_prefixes": ["cio-", "cio_", "persistent-wake", "aec-", "commitment-", "instrument-belief"], "owners": []},
+    {"silo_id": "hermes-cio-research", "title": "Hermes CIO research", "lane_prefixes": ["hermes-cio", "hermes_cio", "symbol-thesis", "thesis-", "governed-research", "research-"], "owners": []},
+    {"silo_id": "hermes-external", "title": "Hermes external lanes", "lane_prefixes": ["hermes-external", "hermes-momentum", "hermes-update", "hermes-", "free-first"], "owners": []},
+    {"silo_id": "watchlist-agents", "title": "Watchlist agents", "lane_prefixes": ["watchlist-", "watchlist_", "watch-", "maria", "steph", "risk-agent"], "owners": []},
+    {"silo_id": "holdings-advisory", "title": "Holdings advisory", "lane_prefixes": ["advisory-", "holdings-", "portfolio-", "advisor"], "owners": []},
+    {"silo_id": "options-desk", "title": "Options desk", "lane_prefixes": ["options-", "options_", "ensemble", "inference-ensemble"], "owners": []},
+    {"silo_id": "reentry-desk", "title": "Re-entry desk", "lane_prefixes": ["reentry", "re-entry", "recovery-watch"], "owners": []},
+    {"silo_id": "analyst-research-intel", "title": "Analyst / research intelligence", "lane_prefixes": ["analyst", "research-intel", "narrative", "iris", "darwin"], "owners": []},
+    {"silo_id": "portfolio-review", "title": "Portfolio review / cadence reports", "lane_prefixes": ["portfolio-daily", "portfolio-weekly", "portfolio-monthly", "portfolio-lookthrough", "portfolio-backup", "tax-"], "owners": []},
+    {"silo_id": "agent-runtime", "title": "Risk / agent runtime (Wave-3)", "lane_prefixes": ["agent-runtime", "sentinel", "argus", "vigil", "aegis", "trigger-intake", "mvl"], "owners": []},
+    {"silo_id": "health-watchdog", "title": "Health / watchdog / supervisor", "lane_prefixes": ["health", "autonomy-watchdog", "watchdog", "freshness", "heartbeat", "supervisor", "platform-conformance", "memory-compliance", "process-reaper", "cron-", "governance-"], "owners": []},
+    {"silo_id": "desk-bot", "title": "Desk bot (Telegram) and comms", "lane_prefixes": ["telegram", "desk", "comms", "communication", "cio-delivery", "notify"], "owners": []}
+  ]
+}

@@ -2536,6 +2536,83 @@
         "path": "/home/johnclaw/trade-ai-releases/persistent-state/logs/sec_fundamentals_ingest.log"
       },
       "note": "Operator 2026-09-27 fundamentals plan F1: SEC company facts -> sec_xbrl for priority requests, options desk and the debt-ordered queue (ETFs skipped). The only writer of sec_xbrl."
+    },
+    {
+      "lane_id": "platform-conformance-audit",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 2 * * *",
+        "match": "platform-conformance-audit"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-09-27T18:50:00-04:00",
+      "state_reason": "approved in ApprovalPackage pkg-20260927-cogx-w1-d9e1 (operator 2026-09-27); host install pending the per-package cron/service grant (AGENTS.md §17) — declared here so CI knows the lane and the conformance audit can see it",
+      "reason_confidence": "ESTABLISHED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/governance/platform_conformance_latest.json"
+      },
+      "note": "scripts/report_platform_conformance.py --write (05 §4)"
+    },
+    {
+      "lane_id": "supervisor-breach-detector",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-supervisor-breach-detector.timer (*/2)",
+        "match": "supervisor-breach-detector"
+      },
+      "expected_cadence_hours": 0.05,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-09-27T18:50:00-04:00",
+      "state_reason": "approved in ApprovalPackage pkg-20260927-cogx-w1-d9e1 (operator 2026-09-27); host install pending the per-package cron/service grant (AGENTS.md §17) — declared here so CI knows the lane and the conformance audit can see it",
+      "reason_confidence": "ESTABLISHED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/supervisor_breach_detector_latest.json"
+      },
+      "note": "breach detector inside the watchdog cycle (06 §5) — body lands in Wave 1 tranche 2"
+    },
+    {
+      "lane_id": "gir-projector",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-gir-projector.service (bus consumer)",
+        "match": "gir-projector"
+      },
+      "expected_cadence_hours": 1,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-09-27T18:50:00-04:00",
+      "state_reason": "approved in ApprovalPackage pkg-20260927-cogx-w1-d9e1 (operator 2026-09-27); host install pending the per-package cron/service grant (AGENTS.md §17) — declared here so CI knows the lane and the conformance audit can see it",
+      "reason_confidence": "ESTABLISHED",
+      "output_signal": {
+        "kind": "db_max",
+        "table": "intelligence.gir_envelope",
+        "column": "projected_at"
+      },
+      "note": "GIR projector (02 §5) — body lands in Wave 1 tranche 2"
+    },
+    {
+      "lane_id": "approval-package-reminder",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 * * * *",
+        "match": "approval-package-reminder"
+      },
+      "expected_cadence_hours": 1,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-09-27T18:50:00-04:00",
+      "state_reason": "approved in ApprovalPackage pkg-20260927-cogx-w1-d9e1 (operator 2026-09-27); host install pending the per-package cron/service grant (AGENTS.md §17) — declared here so CI knows the lane and the conformance audit can see it",
+      "reason_confidence": "ESTABLISHED",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/governance/approval_packages.jsonl"
+      },
+      "note": "approval reminders at +4h/+12h and expiry (13 §6) — body lands in Wave 1 tranche 2"
     }
   ],
   "undeclared_baseline": [
