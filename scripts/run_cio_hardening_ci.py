@@ -2639,6 +2639,12 @@ GATES = [
         "audit_all_phases_20260927",
         ["tests/test_audit_all_phases_20260927.py"],
     ),
+    (
+        # 2026-09-27 — two uncalled state-changing ATM posts refuse.
+        # Session validators move under scripts/archive with a tripwire stub.
+        "audit_finish_20260927",
+        ["tests/test_audit_finish_20260927.py"],
+    ),
 ]
 
 
