@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
-PROJECT_ROOT="/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
+# P2 audit remediation (2026-09-26): overridable for tests; the report step now
+# FAILS the launcher (exit code) instead of printing "skipped (non-fatal)" while the
+# cadence pipeline recorded status=ok — both reports had been failing silently for months.
+PROJECT_ROOT="${PROJECT_ROOT:-/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild}"
+REPORT_RC=0
 LOG_DIR="$PROJECT_ROOT/logs"
 STAMP="$(date '+%Y%m%d-%H%M%S')"
 LOG_FILE="$LOG_DIR/run_portfolio_monthly-$STAMP.log"
@@ -13,10 +17,10 @@ source .venv/bin/activate
   python scripts/portfolio_ai_analyst.py --project-root .
   # Generate this week's report first (Ollama)
   echo "[MONTHLY] Generating weekly report for this month..."
-  python3 scripts/portfolio_weekly_report.py --project-root . || echo "[MONTHLY] weekly report skipped"
+  python3 scripts/portfolio_weekly_report.py --project-root . || { REPORT_RC=$?; echo "[MONTHLY] weekly report FAILED rc=$REPORT_RC — no weekly report produced"; }
   # Monthly comprehensive report (Sonnet 8-section deep analysis + DOCX + Telegram)
   echo "[MONTHLY] Running monthly report (Claude Sonnet)..."
-  python3 scripts/portfolio_monthly_report.py --project-root . || echo "[MONTHLY] monthly report skipped (non-fatal)"
+  python3 scripts/portfolio_monthly_report.py --project-root . || { REPORT_RC=$?; echo "[MONTHLY] monthly report FAILED rc=$REPORT_RC — no monthly report produced (was: skipped non-fatal)"; }
   python3 scripts/generate_reports_hub.py --project-root . || true
   if [ "$ENABLE_YAML_ADVISOR" = "1" ]; then
     python scripts/portfolio_yaml_advisor.py
@@ -26,4 +30,8 @@ source .venv/bin/activate
   if [ -f data/portfolios/reports/portfolio_live.html ]; then
     cp data/portfolios/reports/portfolio_live.html reports/portfolio_live.html
   fi
+  if [ "$REPORT_RC" != "0" ]; then
+    echo "[MONTHLY] REPORT_FAILED rc=$REPORT_RC — launcher exits non-zero so the cadence pipeline records FAILED, not ok"
+  fi
+  exit "$REPORT_RC"
 } 2>&1 | tee "$LOG_FILE"

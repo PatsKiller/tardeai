@@ -515,6 +515,29 @@ def _get_brave_analyst_commentary(symbols: list, brave_api_key: str) -> Dict:
     return commentary
 
 
+def _num(v: Any, default: float = 0.0) -> float:
+    """Float for a number that may be None/str/missing. The period JSON carries
+    ``change_pct: None`` when a window has no baseline; ``.get(k, 0)`` does NOT
+    substitute for a present-but-None value, so the f-string ``:+.2f`` raised
+    ``TypeError: unsupported format string passed to NoneType.__format__`` on
+    every weekly run since at least 2026-08-16 (P2 audit remediation)."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return default
+    return f if f == f else default
+
+
+def _period_summary_lines(total: Any, p1w: Dict, p1m: Dict, pytd: Dict, p1y: Dict) -> str:
+    """The two prompt lines that summarise portfolio performance. Pure; None-safe."""
+    p1w, p1m, pytd, p1y = (d or {} for d in (p1w, p1m, pytd, p1y))
+    return (
+        f"Portfolio: ${_num(total):,.0f} | 1W: {_num(p1w.get('change_pct')):+.2f}% (${_num(p1w.get('change')):+,.0f})\n"
+        f"1M: {_num(p1m.get('change_pct')):+.2f}% | YTD: {_num(pytd.get('change_pct')):+.2f}% "
+        f"(${_num(pytd.get('change')):+,.0f}) | 1Y: {_num(p1y.get('change_pct')):+.2f}%"
+    )
+
+
 def _generate_narrative(
     perf_data: Dict,
     tech_data: Dict,
@@ -640,14 +663,13 @@ def _generate_narrative(
 
 {prev_context}
 THIS WEEK DATA:
-Portfolio: ${total:,.0f} | 1W: {p1w.get('change_pct',0):+.2f}% (${p1w.get('change',0):+,.0f})
-1M: {p1m.get('change_pct',0):+.2f}% | YTD: {pytd.get('change_pct',0):+.2f}% (${pytd.get('change',0):+,.0f}) | 1Y: {p1y.get('change_pct',0):+.2f}%
+{_period_summary_lines(total, p1w, p1m, pytd, p1y)}
 By account:
 {acct_lines}
 Top gainers this week: {[f"{t['symbol']} {t['change_pct']:+.1f}%" for t in top_gainers]}
 Top losers this week: {[f"{t['symbol']} {t['change_pct']:+.1f}%" for t in top_losers]}
-Cash: {cash_pct:.1f}% | Annual dividends: ${annual_div:,.0f}/yr | Beta: {beta:.3f}
-Rebalancing needed: ${rebal_total:,.0f}
+Cash: {_num(cash_pct):.1f}% | Annual dividends: ${_num(annual_div):,.0f}/yr | Beta: {_num(beta, 0.38):.3f}
+Rebalancing needed: ${_num(rebal_total):,.0f}
 
 Write a 4-sentence performance summary. Include: (1) what changed vs prior weeks, (2) which accounts led/lagged, (3) biggest movers, (4) one specific concern or opportunity.
 Be direct. Use real numbers. No generic statements.
@@ -1081,7 +1103,7 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
             _sv.mkdir(parents=True, exist_ok=True)
             _sh.copy2(html_path, _sv / html_path.name)
             _sh.copy2(docx_path, _sv / docx_path.name)
-            print(f"[weekly-report] Copied to reports/weekly/ for serving")
+            print("[weekly-report] Copied to reports/weekly/ for serving")
         except Exception as _e:
             print(f"[weekly-report] Copy warning: {_e}")
     except Exception as e:
@@ -1094,7 +1116,7 @@ def run_weekly_report(project_root: str = ".") -> Optional[Path]:
         live_dst = PROJECT_ROOT / "reports" / "portfolio_live.html"
         if live_src.exists():
             _sh.copy2(live_src, live_dst)
-            print(f"[weekly-report] CC dashboard updated")
+            print("[weekly-report] CC dashboard updated")
     except Exception as e:
         print(f"[weekly-report] CC update skipped: {e}")
 
