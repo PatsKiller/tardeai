@@ -89,6 +89,10 @@ options_desk_settings:
   max_net_delta_pct: 35.0       # Portfolio net-delta exposure warning threshold
   max_symbol_notional_pct: 25.0 # Single-name options notional concentration cap
   approval_required: true       # Operator must approve in desk queue before live submit
+  # Order gates (2026-09-27): an approval binds to ONE set of legs (pinned by hash at approve
+  # time) and expires. preflight_desk_gate refuses an approval older than this (approval_expired)
+  # and any proposal whose legs changed since (legs_changed). 240 min = one trading session.
+  approval_ttl_minutes: 240
   desk_tier_edge_a: 72          # Tier A — priority desk routing
   desk_tier_edge_b: 62          # Tier B — standard desk
   # Income idea screen (2026-09-26): build a card only from a contract the
@@ -112,6 +116,7 @@ options_desk_settings:
     research_rerequest_hours: 24
     cio_review_mode: live          # operator choice 2026-09-26: LLM CIO review, operator confirms
     max_reviews_per_run: 6
+    max_review_failures: 3         # 2026-09-27: failed review attempts (INVALID/TRUNCATED/LLM_ERROR/DEDUPE_SKIPPED) per idea before the desk stops spending and says so
     research_priority: high
     research_drain_per_tick: 2     # hermes CIO worker --max 2
     research_tick_minutes: 15      # tradeai-hermes-cio-worker.timer OnCalendar=*:0/15

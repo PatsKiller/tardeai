@@ -21,7 +21,10 @@ from typing import Any, Optional
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "SymbolThesisSynthesisPacket@v1"
-PRIMARY_SLOTS = 16  # SEC company-facts lines carried into the packet, ahead of news
+PRIMARY_SLOTS = 24  # SEC lines (8-K exhibit sentences first, then company facts) ahead of news
+# Dated filing-text sentences lead the primary block (2026-09-27): the $95B backlog line
+# from the 8-K exhibit must outrank the xbrl RPO line, which is a different metric.
+PRIMARY_ORDER = {"sec_8k_ex99": 0, "sec_xbrl": 1}
 
 
 def _now() -> str:
@@ -52,7 +55,8 @@ def build_synthesis_packet(
     # Reported SEC figures get their own allowance (2026-09-27): the packet kept the first 8
     # structured rows, the retriever lists news first, so DELL's 13 sec_xbrl facts (revenue,
     # margins, RPO) were cut and every version said "no reported fundamentals".
-    primary = [s for s in structured if s.get("quality") == "PRIMARY_REGULATORY"]
+    primary = sorted((s for s in structured if s.get("quality") == "PRIMARY_REGULATORY"),
+                     key=lambda s: PRIMARY_ORDER.get(str(s.get("source_type")), 9))
     other = [s for s in structured if s.get("quality") != "PRIMARY_REGULATORY"]
     sufficiency = (evidence_catalog or {}).get("sufficiency") or {}
     plan = acquisition_plan or {}
@@ -78,6 +82,10 @@ def build_synthesis_packet(
                 "quality": r.get("quality"),
                 "rag_status": r.get("rag_status"),
                 "rag_score": r.get("rag_score"),
+                # Dated links survive into the prompt (2026-09-27) so the model can cite
+                # the filing, not just an evidence_id.
+                "observed_at": (str(r.get("observed_at") or "")[:10] or None),
+                "url": (str(r.get("url") or "")[:200] or None),
             })
         return out
 
@@ -165,9 +173,14 @@ def _build_flash_synthesis_prompt(symbol: str, packet: dict[str, Any]) -> str:
             fact = (r.get("fact") or r.get("title") or "").strip()
             if not fact:
                 continue
+            tail = ""
+            if r.get("observed_at"):
+                tail += f" [dated {str(r.get('observed_at'))[:10]}]"
+            if r.get("url"):
+                tail += f" <{str(r.get('url'))[:200]}>"
             out.append(
                 f"- [{r.get('evidence_id')}] ({r.get('polarity') or 'CONTEXT'}, "
-                f"{r.get('source_type') or 'unknown'}, {r.get('freshness') or 'UNKNOWN'}) {fact}"
+                f"{r.get('source_type') or 'unknown'}, {r.get('freshness') or 'UNKNOWN'}) {fact}{tail}"
             )
         return out
 

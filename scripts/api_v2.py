@@ -54201,6 +54201,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     proposal = None
             if not proposal:
                 return 404, {"ok": False, "error": "proposal not found"}
+            # ORDER GATES (operator work order 2026-09-27, PR 3). Every desk-side reason an
+            # order must not be created is decided HERE, from desk state only (queue row,
+            # thesis store, the proposal's own timestamps), BEFORE any brokers.* import,
+            # intent, authorize or 2FA. Approval status alone was the only desk check; an
+            # approved row survived a changed long leg, an archived thesis, a stale quote
+            # and an unknown buying power. All refusals are returned, not the first.
+            gate = ent.preflight_desk_gate(proposal_id, proposal)
+            if not gate.get("ok"):
+                return 200, {
+                    "ok": False,
+                    "mode": "blocked",
+                    "gate": "desk_preflight",
+                    "refusals": gate.get("refusals") or [],
+                    "checked_at": gate.get("checked_at"),
+                    "proposal_id": proposal_id,
+                }
             account_key = str(b.get("account_key") or proposal.get("account") or "").strip()
             if not account_key:
                 return 400, {"ok": False, "error": "account_key required (or set on proposal)"}

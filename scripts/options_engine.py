@@ -957,6 +957,14 @@ def _schwab_chain(symbol: str, strikes: int = 12) -> dict:
     return out
 
 
+def _chain_fetched_at(symbol: str) -> Optional[str]:
+    """When the cached chain for ``symbol`` was read (normalize_option_chain stamps it)."""
+    for (sym, _n), out in _CHAIN_CACHE.items():
+        if sym == symbol.upper() and isinstance(out, dict) and out.get("fetched_at"):
+            return out["fetched_at"]
+    return None
+
+
 def _chain_atm_iv_pct(chain: dict, price: float) -> Optional[float]:
     """Median IV (percent) of the contracts nearest the money, 14-60 DTE."""
     if not chain or price <= 0:
@@ -1030,6 +1038,10 @@ def _pick_chain_contract(
                 "oi": oi,
                 "volume": vol,
                 "bid_ask_spread_pct": round(spread_pct, 2) if spread_pct < 900 else None,
+                # Fill truth (2026-09-27): keep what the chain said, and when it said it.
+                "last": _f(row.get("last")) if row.get("last") is not None else None,
+                "mark": _f(row.get("mark")) if row.get("mark") is not None else None,
+                "quote_time": row.get("quote_time"),
             }
             # sort key: proximity, then spread, then prefer higher OI
             candidates.append((proximity, spread_pct, -(oi or 0), contract))
@@ -1283,7 +1295,7 @@ def _allocate_strategy_slots(proposals: List[dict]) -> List[dict]:
 
 
 def _proposal_id(strategy: str, sym: str, account: str, strike: Any, expiration: str = "",
-                 trade_date: str = "") -> str:
+                 trade_date: str = "", long_strike: Any = None) -> str:
     """Stable WITHIN A TRADE DATE so ensemble verdicts persist across rescans."""
     acct = re.sub(r"[^a-z0-9]+", "_", (account or "default").lower()).strip("_")[:22]
     exp = (expiration or "")[:10].replace("-", "")
@@ -1291,6 +1303,13 @@ def _proposal_id(strategy: str, sym: str, account: str, strike: Any, expiration:
         st = f"{float(strike):.4f}".replace(".", "p")
     except (TypeError, ValueError):
         st = str(strike or "0").replace(".", "p")
+    # Order gates (2026-09-27): a spread's id named only the SHORT strike, so a changed
+    # long leg kept the same proposal_id and inherited its approved queue row.
+    if long_strike is not None:
+        try:
+            st += "_l" + f"{float(long_strike):.4f}".replace(".", "p")
+        except (TypeError, ValueError):
+            st += "_l" + str(long_strike).replace(".", "p")
     # DATE-SCOPED (2026-07-20). The id was globally stable, so a contract that
     # once reached a TERMINAL queue status could never be proposed again: the
     # deterministic id collided with the old row and the upsert preserves
@@ -1580,6 +1599,7 @@ def generate_covered_call_proposals(
             "bid": contract.get("bid") if contract else None,
             "ask": contract.get("ask") if contract else None,
             "bid_ask_spread_pct": contract.get("bid_ask_spread_pct") if contract else None,
+            "quote_time": contract.get("quote_time") if contract else None,
             "severity": "positive" if edge >= 75 else "info",
             "recommended_action": "Sell Covered Call",
             "action_buttons": [
@@ -1681,6 +1701,7 @@ def generate_holdings_put_proposals(
             "bid": contract.get("bid"),
             "ask": contract.get("ask"),
             "bid_ask_spread_pct": contract.get("bid_ask_spread_pct"),
+            "quote_time": contract.get("quote_time"),
             "severity": "info",
             "recommended_action": "Buy Protective Put",
             "action_buttons": [
@@ -1765,6 +1786,7 @@ def _append_long_call_proposal(
         "edge_score": edge,
         "iv_rank": iv_rank,
         "delta": contract.get("delta"),
+        "quote_time": contract.get("quote_time"),
         "severity": "info",
         "recommended_action": "Buy Call (defined risk)",
         "action_buttons": [
@@ -1857,6 +1879,7 @@ def _append_csp_proposal(
         "bid": contract.get("bid"),
         "ask": contract.get("ask"),
         "bid_ask_spread_pct": contract.get("bid_ask_spread_pct"),
+        "quote_time": contract.get("quote_time"),
         "severity": "positive" if edge >= 72 else "info",
         "recommended_action": "Sell Cash-Secured Put",
         "action_buttons": [
@@ -2038,7 +2061,35 @@ def generate_credit_spread_proposals(
         short_c, long_c, data_source = _resolve_spread_puts(sym, und, tech, short_strike, long_strike, 30)
         if not short_c or not long_c:
             continue
-        net_credit = round(max(0.05, short_c["mid"] - long_c["mid"]), 2)
+        # Operator 2026-09-27: the picker may settle on a nearby liquid strike; the card must
+        # carry the strikes that were PRICED, not the targets.
+        short_strike = _f(short_c.get("strike")) or short_strike
+        long_strike = _f(long_c.get("strike")) or long_strike
+        if long_strike >= short_strike:
+            continue
+        # Operator 2026-09-27: price from an explicit fill assumption. The advertised credit was
+        # the leg-midpoint difference (DELL $8.10 vs $6.35 selling at bid / buying at ask; ETON
+        # $0.89 while crossing the quotes was a $2.00 debit). A midpoint is not a fill.
+        from lib.options_economics import spread_quote
+        sq = spread_quote(short_c, long_c, session=_SESSION.get("now"),
+                          quotes_as_of=(short_c.get("quote_time") or long_c.get("quote_time")
+                                        or _chain_fetched_at(sym)))
+        if data_source == "bs_estimate":
+            # A modelled quote has no bid/ask worth crossing; keep the mid but say so.
+            net_credit = sq["mid_credit"]
+            sq["credit_basis"] = "midpoint"
+            sq["executable_credit"] = None
+        else:
+            net_credit = sq["executable_credit"]
+        if net_credit is None or net_credit <= 0:
+            INCOME_SCREEN_DROPS.append({"symbol": sym, "strategy": "credit_spread", "reason": "NO_EXECUTABLE_CREDIT",
+                                        "detail": (f"sell {short_strike:g}p at bid {sq['legs'][0]['bid']} - buy "
+                                                   f"{long_strike:g}p at ask {sq['legs'][1]['ask']} = {sq['executable_credit']}"
+                                                   f" (mid {sq['mid_credit']})"),
+                                        "short_strike": short_strike, "long_strike": long_strike,
+                                        "session": _SESSION.get("now")})
+            continue
+        net_credit = round(net_credit, 2)
         if net_credit < 0.08:
             continue
         width = short_strike - long_strike
@@ -2074,7 +2125,8 @@ def generate_credit_spread_proposals(
             continue
         acct = _auto_select_account(sym, holdings or [], strategy="credit_spread", cash_map=cash_map)
         proposals.append(_stamp_execution({
-            "id": _proposal_id("credit_spread", sym, acct, short_strike, short_c.get("exp") or ""),
+            "id": _proposal_id("credit_spread", sym, acct, short_strike, short_c.get("exp") or "",
+                               long_strike=long_strike),
             "strategy": "credit_spread",
             "symbol": sym,
             "underlying": sym,
@@ -2091,12 +2143,24 @@ def generate_credit_spread_proposals(
             "contracts": 1,
             "premium": net_credit,
             "premium_total": round(net_credit * 100, 2),
+            # Fill truth (operator 2026-09-27): what the credit is, and what it would be at mid.
+            "net_credit": net_credit,
+            "executable_credit": sq["executable_credit"],
+            "mid_credit": sq["mid_credit"],
+            "credit_basis": sq["credit_basis"],
+            "credit_haircut": sq["credit_haircut"],
+            "fill_assumption": sq["fill_assumption"],
+            "spread_quote": sq,
+            "quotes_as_of": sq["quotes_as_of"],
             "underlying_price": round(und, 2),
             "pop_pct": pop,
             "iv_used": round(float(iv), 4) if iv else None,
             "max_profit": round(net_credit * 100, 2),
             "max_loss": max_loss,
             "breakeven": round(short_strike - net_credit, 2),
+            "max_profit_at_mid": (round(sq["mid_credit"] * 100, 2) if sq["mid_credit"] is not None else None),
+            "max_loss_at_mid": (round((width - sq["mid_credit"]) * 100, 2) if sq["mid_credit"] is not None else None),
+            "breakeven_at_mid": (round(short_strike - sq["mid_credit"], 2) if sq["mid_credit"] is not None else None),
             "risk_reward": round(rr, 3),
             "expected_value": round(net_credit * 100 * (pop / 100.0), 2),
             "edge_score": edge,
@@ -2529,6 +2593,44 @@ def _apply_enterprise_layer(proposals: List[dict]) -> List[dict]:
                     chain, side, _f(p.get("strike")), int(p.get("dte") or 30),
                 )
         row = ent.enterprise_enrich_proposal(dict(p), contract=contract, chain=chain)
+        # Operator 2026-09-27: a two-leg order has two quotes; gate BOTH legs. DELL's short leg
+        # passed alone (OI 366) while the long leg was never looked at.
+        if str(row.get("strategy") or "") == "credit_spread" and row.get("legs_liquidity"):
+            try:
+                _liq = dict((row.get("enterprise") or {}).get("liquidity") or {})
+                _legs, _issues = [], []
+                for _leg in row.get("legs_liquidity") or []:
+                    _g = ent.liquidity_gate({"bid": _leg.get("bid"), "ask": _leg.get("ask"), "mid": _leg.get("mid"),
+                                             "oi": _leg.get("open_interest"), "volume": _leg.get("volume")})
+                    _g["role"] = _leg.get("role")
+                    _g["strike"] = _leg.get("strike")
+                    _legs.append(_g)
+                    _issues += [f"{_leg.get('role')} {_leg.get('strike'):g}: {i}" for i in _g.get("issues") or []]
+                _liq["legs"] = _legs
+                if _issues:
+                    _liq["pass"] = False
+                    _liq["issues"] = list(_liq.get("issues") or []) + [i for i in _issues if i not in (_liq.get("issues") or [])]
+                    _ent = row.setdefault("enterprise", {})
+                    _ent["liquidity"] = _liq
+                    _ent["live_eligible"] = False
+                    if not any("awaiting live quotes" in str(b) or "OI" in str(b) or "spread" in str(b) for b in _ent.get("blocks") or []):
+                        try:
+                            from lib.canonical_observation import market_session as _ms
+                            from lib.options_income_quality import defer_liquidity as _dl
+                            _sess = _ms()
+                        except Exception:  # noqa: BLE001
+                            _sess, _dl = None, (lambda *_a, **_k: False)
+                        if _dl(_sess, ent.load_desk_config()):
+                            row["liquidity_pending"] = True
+                            _ent["blocks"] = list(_ent.get("blocks") or []) + [
+                                f"awaiting live quotes (market {str(_sess).lower().replace('_', ' ')}): " + "; ".join(_issues[:3])]
+                        else:
+                            _ent["blocks"] = list(_ent.get("blocks") or []) + _issues[:3]
+                        row["enterprise_blocked"] = True
+                else:
+                    row.setdefault("enterprise", {})["liquidity"] = _liq
+            except Exception as _e:  # noqa: BLE001
+                print(f"[options_engine] per-leg liquidity gate skipped for {sym}: {type(_e).__name__}: {_e}", file=sys.stderr)
         und = _f(row.get("underlying_price"))
         if sym and und > 0:
             vol = ent.vol_analytics_from_chain(chain, und)
@@ -2652,9 +2754,26 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
             from lib.options_economics import economics as _econ
             _liq = (p.get("enterprise") or {}).get("liquidity") or {}
             p["economics"] = _econ(p, shares_held=p.get("shares_held"),
-                                   quote_issues=(list(_liq.get("issues") or []) if _liq.get("pass") is False else None))
+                                   quote_issues=(list(_liq.get("issues") or []) if _liq.get("pass") is False else None),
+                                   session=_SESSION.get("now"))
             p["expected_value"] = p["economics"].get("expected_pl_at_expiry")
             p["expected_value_method"] = p["economics"]["ev_method"]
+            if p["economics"].get("ev_caveat"):
+                p["expected_value_caveat"] = p["economics"]["ev_caveat"]
+            # Protective put (operator 2026-09-27): the card is insurance for held stock, so its
+            # headline max loss / breakeven are the hedged position's, and the put-alone figures
+            # are labelled as such.
+            if str(p.get("strategy") or "") == "protective_put":
+                _e = p["economics"]
+                if _e.get("hedged_max_loss_from_mark") is not None:
+                    p["option_max_loss"] = _e.get("option_max_loss")
+                    p["put_breakeven"] = _e.get("put_breakeven")
+                    p["max_loss"] = _e["hedged_max_loss_from_mark"]
+                    p["max_loss_label"] = "Max loss (hedged shares, to the floor)"
+                    p["breakeven"] = _e.get("stock_plus_put_breakeven_from_mark")
+                    p["breakeven_label"] = "Stock+put breakeven from mark"
+                    p["floor_value"] = _e.get("floor_value_after_premium")
+                    p["uninsured_shares"] = _e.get("uninsured_shares")
         except Exception:  # noqa: BLE001
             p["expected_value"] = None
         rc = p.get("research_context") or {}
@@ -2736,6 +2855,12 @@ def _stamp_truth_flags(p: dict) -> None:
         ent["live_eligible"] = False
         p["enterprise_blocked"] = True
     approvable = not (p.get("enterprise_blocked") or ent.get("blocks"))
+    # Operator 2026-09-27: "POSITIVE" beside BLOCKED was the edge score talking. Keep the raw
+    # edge tone as ``edge_severity``; the card's severity is the card's status.
+    if p.get("severity") not in (None, "blocked"):
+        p["edge_severity"] = p.get("severity")
+    if not approvable:
+        p["severity"] = "blocked"
     key, label = _PURPOSE.get(str(p.get("strategy") or ""), ("OTHER", "Other"))
     flags = [{"key": key, "label": label, "tone": "blue"}]
     if approvable:
@@ -2923,7 +3048,9 @@ def generate_proposals(force: bool = False) -> dict:
         if ctx:
             proposal["research_context"] = {
                 "source_lanes": list(ctx.get("source_lanes") or []),
-                "research_status": ctx.get("research_status") or "researched",
+                # Operator 2026-09-27: lane membership is not research; say which it is.
+                "research_status": ctx.get("research_status") or "unknown",
+                "research_lane_status": ctx.get("research_lane_status"),
                 "research_artifact_id": ctx.get("research_artifact_id"),
                 "research_as_of": ctx.get("research_as_of") or ctx.get("evaluated_at"),
                 "summary": ctx.get("summary"),
@@ -2933,6 +3060,36 @@ def generate_proposals(force: bool = False) -> dict:
                 "invalidated_if": ctx.get("invalidated_if"),
             }
     _attach_options_thesis(all_p)
+    # A thesis that could not be completed inside the window is archived, not shown -- and
+    # (operator 2026-09-27) not counted in another card's combined exposure either.
+    for _p in [x for x in all_p if x.get("thesis_abandoned")]:
+        INCOME_SCREEN_DROPS.append({"symbol": _p.get("symbol"), "strategy": _p.get("strategy"),
+                                    "reason": "THESIS_ABANDONED", "detail": _p["thesis_abandoned"]})
+    _archived = [x for x in all_p if x.get("thesis_abandoned")]
+    # Order gates (2026-09-27): an archived idea's approval-queue row used to survive
+    # untouched (it was dropped before sync_approval_queue), so an 'approved' row for an
+    # idea the desk had archived still passed check_preflight_approval. Archive the rows first.
+    archive_sync = {}
+    if _archived:
+        try:
+            import options_desk_enterprise as _ent_arch
+            archive_sync = _ent_arch.archive_approval_rows(_archived)
+        except Exception as _ae:  # noqa: BLE001
+            archive_sync = {"ok": False, "error": f"{type(_ae).__name__}: {str(_ae)[:120]}"}
+    all_p = [x for x in all_p if not x.get("thesis_abandoned")]
+    # Order gates (2026-09-27): stamp the freshness inputs the submit-mode risk evaluator
+    # fails closed on -- market_session (this run), chain_age_seconds (the chain's fetched_at),
+    # quote_age_seconds (the contract's / oldest leg's quote_time). buying_power is NOT stamped:
+    # it needs a broker read the desk holds no grant for, so an order fails closed on
+    # buying_power_unknown by design until a granted layer supplies it. Recomputed at preflight.
+    try:
+        import options_desk_enterprise as _ent_fresh
+        _fresh_now = datetime.now(timezone.utc)
+        for _p in all_p:
+            _ent_fresh.stamp_freshness(_p, now=_fresh_now, session=_SESSION.get("now"),
+                                       chain_fetched_at=_chain_fetched_at(str(_p.get("symbol") or "")))
+    except Exception as _fe:  # noqa: BLE001
+        print(f"[options_engine] freshness stamp skipped: {type(_fe).__name__}: {_fe}", file=sys.stderr)
     # Wave B 2026-09-27: ideas on the same symbol are one bet; say so on each card.
     try:
         from lib.options_exposure import combined_exposure
@@ -2941,18 +3098,13 @@ def generate_proposals(force: bool = False) -> dict:
             if not _h.get("is_cash") and _h.get("symbol"):
                 _k = str(_h["symbol"]).upper()
                 _shares[_k] = round(_shares.get(_k, 0.0) + _f(_h.get("shares") or _h.get("quantity")), 3)
-        _combo = combined_exposure(all_p, cash_by_account=cash_map, shares_by_symbol=_shares)
+        _combo = combined_exposure(all_p + _archived, cash_by_account=cash_map, shares_by_symbol=_shares)
         for _p in all_p:
             _c = _combo.get(str(_p.get("symbol") or "").upper())
             if _c:
                 _p["combined_exposure"] = _c
     except Exception as _e:  # noqa: BLE001
         print(f"[options_engine] combined exposure skipped: {type(_e).__name__}: {_e}", file=sys.stderr)
-    # A thesis that could not be completed inside the window is archived, not shown.
-    for _p in [x for x in all_p if x.get("thesis_abandoned")]:
-        INCOME_SCREEN_DROPS.append({"symbol": _p.get("symbol"), "strategy": _p.get("strategy"),
-                                    "reason": "THESIS_ABANDONED", "detail": _p["thesis_abandoned"]})
-    all_p = [x for x in all_p if not x.get("thesis_abandoned")]
 
     enterprise_summary = {}
     approval_sync = {}
@@ -2998,6 +3150,7 @@ def generate_proposals(force: bool = False) -> dict:
         "desk_level": "enterprise",
         "enterprise": enterprise_summary,
         "approval_queue": approval_sync,
+        "archived_queue_rows": archive_sync,
         "strategy_overview": {
             "total_edge_avg": round(sum(p["edge_score"] for p in all_p) / max(len(all_p), 1), 1),
             "avg_pop": round(sum(p.get("pop_pct", 50) for p in all_p) / max(len(all_p), 1), 1),

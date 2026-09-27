@@ -373,6 +373,33 @@ def retrieve_structured_sources(
             if conn:
                 conn.rollback()
 
+        # 8-K exhibit 99.1 sentences (earnings release, Reg FD) with their dollar figures
+        # (2026-09-27): Dell's record $95B backlog and $60.9B orders are in the filing the
+        # house held only as a catalyst headline. Dated, linked, PRIMARY_REGULATORY.
+        try:
+            try:
+                from lib import sec_filing_documents as sfd
+            except ImportError:  # pragma: no cover
+                from scripts.lib import sec_filing_documents as sfd  # type: ignore
+            for rec in sfd.load_documents(sym, cur=cur, limit=3):
+                for f in rec.get("facts") or []:
+                    items.append(evidence_item(
+                        fact=sfd.fact_line(sym, rec, f),
+                        title=f"{sym} {rec.get('form') or '8-K'} {rec.get('exhibit') or 'EX-99'} {f.get('category')}",
+                        source_type=sfd.SOURCE_TYPE,
+                        source_id=f"{rec.get('accession')}:{rec.get('exhibit')}:{f.get('category')}:{f.get('amount_raw')}",
+                        polarity=POLARITY_NEUTRAL,
+                        quality=sfd.QUALITY,
+                        observed_at=rec.get("filing_date") or None,
+                        url=rec.get("doc_url") or None,
+                        provenance={"table": sfd.TABLE, "accession": rec.get("accession"),
+                                    "exhibit": rec.get("exhibit"), "form": rec.get("form"),
+                                    "category": f.get("category"), "amount_usd": f.get("amount_usd")},
+                    ))
+        except Exception:
+            if conn:
+                conn.rollback()
+
         # Reported fundamentals from SEC company facts (fundamentals plan F2, 2026-09-27):
         # a thesis can cite revenue, margins, cash flow and backlog from the filings.
         try:

@@ -970,6 +970,17 @@ GATES = [
         ],
     ),
     (
+        "cogx_w1_foundations",
+        [
+            "tests/test_intelligence_client_facade.py",
+            "tests/test_memory_chokepoint_ratchet.py",
+            "tests/test_supervisor_foundations.py",
+            "tests/test_approval_package_ledger.py",
+            "tests/test_gir_projector_and_breach_detector.py",
+            "tests/test_approval_package_reminder.py",
+        ],
+    ),
+    (
         "goal_work_minter_ratchet",
         [
             "tests/test_goal_work_minter_ratchet.py",
@@ -2607,6 +2618,47 @@ GATES = [
         # stance, and same-symbol research is reused across strikes (DELL: 11 requests/26h).
         "options_wave_b_20260927",
         ["tests/test_options_wave_b_20260927.py"],
+    ),
+    (
+        # 2026-09-27 -- Dell 8-K EX-99.1 primary evidence: the earnings-release exhibit is
+        # fetched, parsed into dated dollar-figure facts (backlog, orders, guidance ...),
+        # stored on (accession, exhibit), and reaches the thesis catalog / synthesis prompt
+        # (with url + date) and the options CIO packet (with real per-leg liquidity,
+        # fundamentals and the RPO-is-not-backlog note); web queries keep "AI" and ask sec.gov.
+        "sec_filing_documents_20260927",
+        ["tests/test_sec_filing_documents_20260927.py"],
+    ),
+    (
+        # 2026-09-27 -- options fill truth (reviewer work order): credit spreads priced from an
+        # explicit fill assumption (sell short at bid, buy long at ask; midpoint labelled, not a
+        # fill; a non-credit is refused), both legs gated, hedged-put headline = floor not
+        # premium, archived ideas out of combined exposure, blocked cards never POSITIVE,
+        # "fully researched" needs research on file, leg quote timestamps.
+        "options_fill_truth_20260927",
+        ["tests/test_options_fill_truth_20260927.py"],
+    ),
+    (
+        # 2026-09-27 -- broker-layer order gate proofs for the options desk (per-task
+        # execution-engineering grant): 2FA, kill switch, submit-time re-check, leg pin (strict
+        # xfail: spec_from_intent rebuilds from the cache), stale quote (strict xfail: missing
+        # age passes when a data_source is named), LLM cannot unlock.
+        "options_broker_gates_20260927",
+        ["tests/test_options_broker_gates_20260927.py"],
+    ),
+    (
+        # 2026-09-27 -- a failed options CIO review is retryable (attempt-suffixed job key),
+        # the router's dedupe skip is classified, raw response heads are kept for diagnosis,
+        # and failed attempts are capped (max_review_failures) and named on the card.
+        "cio_review_retry_20260927",
+        ["tests/test_cio_review_retry_20260927.py"],
+    ),
+    (
+        # 2026-09-27 -- options order gates (operator work order, PR 3): the submit-mode risk
+        # evaluator fails closed on an input the desk does not have (quote/chain age, session,
+        # buying power, liquidity); approvals are pinned to the legs and expire; archived
+        # ideas lose their approved row; preflight_desk_gate runs before any broker call.
+        "options_order_gates_20260927",
+        ["tests/test_options_order_gates_20260927.py"],
     ),
     (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the

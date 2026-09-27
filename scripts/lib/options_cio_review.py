@@ -88,10 +88,46 @@ def _prior_decisions(p: dict[str, Any], memory: Optional[dict[str, Any]]) -> Opt
         return []
 
 
-def build_facts(p: dict[str, Any], *, memory: Optional[dict[str, Any]] = None) -> dict[str, Any]:
+def _first(*vals: Any) -> Any:
+    for v in vals:
+        if v is not None:
+            return v
+    return None
+
+
+def liquidity_facts(p: dict[str, Any]) -> dict[str, Any]:
+    """Quote liquidity as the desk saw it. A credit spread carries no top-level ``oi``:
+    the gate's verdict is ``enterprise.liquidity`` and the two quotes are ``legs_liquidity``
+    (2026-09-27: the CIO saw null OI while the card showed 366)."""
+    ent = (p.get("enterprise") or {}).get("liquidity") or {}
+    legs = [dict(l) for l in (p.get("legs_liquidity") or []) if isinstance(l, dict)]
+    lead = legs[0] if legs else {}
+    return {
+        "oi": _first(p.get("oi"), ent.get("oi"), lead.get("open_interest")),
+        "volume": _first(p.get("volume"), ent.get("volume"), lead.get("volume")),
+        "bid_ask_spread_pct": _first(p.get("bid_ask_spread_pct"), ent.get("bid_ask_spread_pct"), lead.get("spread_pct")),
+        "gate_pass": ent.get("pass"),
+        "issues": list(ent.get("issues") or []),
+        "legs": [{k: l.get(k) for k in ("role", "strike", "bid", "ask", "mid", "open_interest", "volume", "spread_pct")}
+                 for l in legs],
+    }
+
+
+def _default_disclosures(symbol: Any) -> list[dict[str, Any]]:
+    try:
+        from scripts.lib import sec_filing_documents as sfd
+    except ImportError:  # scripts/ on sys.path
+        from lib import sec_filing_documents as sfd  # type: ignore
+    return sfd.load_primary_disclosures(str(symbol or ""))
+
+
+def build_facts(p: dict[str, Any], *, memory: Optional[dict[str, Any]] = None,
+                disclosures_loader: Optional[Callable[[Any], list[dict[str, Any]]]] = None) -> dict[str, Any]:
     """Supplied facts for the review. ``memory`` = {memory_reads, limit, lookback_days,
     loader?} from options_thesis_lifecycle settings; prior options facts from the CIO's
-    bitemporal memory land in ``prior_decisions`` (their numbers are then traceable)."""
+    bitemporal memory land in ``prior_decisions`` (their numbers are then traceable).
+    ``disclosures_loader(symbol)`` supplies dated 8-K exhibit sentences (default: the
+    stored sec_filing_documents rows); it lands in ``primary_disclosures``."""
     memo = p.get("committee_memo") or {}
     pe = p.get("plain_english") or {}
     spot, strike, prem, dte = p.get("underlying_price"), p.get("strike"), p.get("premium"), p.get("dte")
@@ -115,7 +151,6 @@ def build_facts(p: dict[str, Any], *, memory: Optional[dict[str, Any]] = None) -
         "dte": p.get("dte"), "premium": p.get("premium"), "contracts": p.get("contracts"),
         "breakeven": p.get("breakeven"), "pop_pct": p.get("pop_pct"), "iv_rank": p.get("iv_rank"),
         "max_loss": p.get("max_loss"), "max_profit": p.get("max_profit"),
-        "oi": p.get("oi"), "bid_ask_spread_pct": p.get("bid_ask_spread_pct"),
         "derived": derived,
         # Long narrative is clipped per field so the research answers are never cut off.
         "thesis": _clip(memo.get("investment_thesis"), 1200), "counter_evidence": _clip(memo.get("contrarian_view"), 600),
@@ -123,6 +158,26 @@ def build_facts(p: dict[str, Any], *, memory: Optional[dict[str, Any]] = None) -
         "research_answers": {k: _clip(v, 600) for k, v in ra.items() if k != "research_id"},
         "plain_english": {k: pe.get(k) for k in ("objective", "premium_line", "breakeven_line", "scenarios")},
     }
+    liq = liquidity_facts(p)
+    facts["oi"], facts["bid_ask_spread_pct"] = liq["oi"], liq["bid_ask_spread_pct"]
+    facts["liquidity"] = liq
+    # Reported SEC fundamentals (sec_xbrl lines set on the proposal by options_engine) and the
+    # dated 8-K exhibit sentences; both are primary and were missing from the packet.
+    fund = p.get("fundamentals") or {}
+    facts["fundamentals"] = {"state": fund.get("state"), "lines": list(fund.get("lines") or [])[:12],
+                             "filing_url": fund.get("filing_url")}
+    try:
+        disclosures = list((disclosures_loader or _default_disclosures)(p.get("symbol")) or [])
+    except Exception:  # noqa: BLE001 — primary text is advisory; failure is "none on file"
+        disclosures = []
+    facts["primary_disclosures"] = disclosures
+    try:
+        from scripts.lib import sec_filing_documents as _sfd
+    except ImportError:  # scripts/ on sys.path
+        from lib import sec_filing_documents as _sfd  # type: ignore
+    note = _sfd.rpo_note(facts["fundamentals"]["lines"], disclosures)
+    if note:
+        facts["rpo_vs_backlog_note"] = note
     prior = _prior_decisions(p, memory)
     if prior is not None:
         facts["prior_decisions"] = prior
@@ -175,6 +230,11 @@ def review(p: dict[str, Any], *, mode: str, llm_fn: Optional[Callable[[str], Any
     guid = p.get("option_strategy_guid") or ""
     facts = build_facts(p, memory=memory)
     job_key = f"options_thesis_review:{guid}:{(p.get('options_thesis') or {}).get('pin')}"
+    # 2026-09-27: a retry after a failed attempt must not reuse the failed attempt's key --
+    # the router dedupes on it and hands back an empty answer (DELL, "no JSON object").
+    attempt = int(p.get("cio_review_attempt") or 0)
+    if attempt > 0:
+        job_key += f":r{attempt}"
     base = {"schema": SCHEMA, "symbol": sym, "position_guid": guid, "mode": mode, "job_key": job_key,
             "agent": "alex", "as_of": now.replace(microsecond=0).isoformat(), "mbi_behavior": 0,
             "authority": "READ_ONLY_ADVISORY"}
@@ -192,16 +252,23 @@ def review(p: dict[str, Any], *, mode: str, llm_fn: Optional[Callable[[str], Any
     raw = resp.get("response") if isinstance(resp, dict) else resp
     meta = {k: resp.get(k) for k in ("model_used", "provider", "cost_estimate")} if isinstance(resp, dict) else {}
     text = str(raw or "").strip()
+    head = text[:600]
+    # The router's dedupe skip is not a model answer; say so instead of "no JSON object".
+    router_err = str(resp.get("error") or "") if isinstance(resp, dict) else ""
+    if isinstance(resp, dict) and resp.get("success") is False and router_err.startswith("DEDUPE_SKIP"):
+        return {**base, "status": "DEDUPE_SKIPPED", "reason": router_err[:200], "model": meta, "raw_head": head}
+    if isinstance(resp, dict) and resp.get("success") is False and not text:
+        return {**base, "status": "LLM_ERROR", "reason": (router_err or "empty response")[:200], "model": meta}
     if text.count("{") > text.count("}"):
         return {**base, "status": "TRUNCATED", "errors": [f"response cut off at {len(text)} chars (unclosed JSON)"],
-                "model": meta}
+                "model": meta, "raw_head": head}
     try:
         r = br._parse_json(raw)
     except (ValueError, TypeError) as exc:
-        return {**base, "status": "INVALID", "errors": [f"unparseable: {exc}"], "model": meta}
+        return {**base, "status": "INVALID", "errors": [f"unparseable: {exc}"], "model": meta, "raw_head": head}
     ok, errs = validate(r, facts)
     if not ok:
-        return {**base, "status": "INVALID", "errors": errs, "model": meta}
+        return {**base, "status": "INVALID", "errors": errs, "model": meta, "raw_head": head}
     return {**base, "status": "OK", "review": r, "model": meta,
             "decision_guid": f"dec_{uuid.uuid4()}"}
 

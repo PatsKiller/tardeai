@@ -1,0 +1,11 @@
+[Unit]
+Description=Trade AI supervisor breach detector every 2 minutes (lane supervisor-breach-detector)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=2min
+AccuracySec=15s
+Unit=tradeai-supervisor-breach-detector.service
+
+[Install]
+WantedBy=timers.target

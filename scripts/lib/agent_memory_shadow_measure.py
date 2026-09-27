@@ -8,6 +8,8 @@ Never promotes influence. Never mutates live decisions.
 """
 from __future__ import annotations
 
+import datetime as _dt
+
 import json
 from collections import Counter
 from datetime import datetime, timezone, timedelta
@@ -289,6 +291,43 @@ def run_measure(
                              "error": f"{type(exc).__name__}: {exc}"[:200],
                              "independent_consumer_proof": False}
 
+    # COGX W1: counterfactual section from the façade's receipts (what the ladder WOULD have reused;
+    # how many wakes/producers opened a context; degraded share). Fail-soft.
+    try:
+        import json as _json
+        from scripts.lib import intelligence_client as _ic
+        _since = _dt.datetime.now(_dt.timezone.utc) - _dt.timedelta(hours=24)
+        def _rows(_p):
+            _out = []
+            if _p.exists():
+                for _line in _p.read_text(encoding="utf-8").splitlines():
+                    if _line.strip():
+                        try:
+                            _out.append(_json.loads(_line))
+                        except _json.JSONDecodeError:
+                            pass
+            return _out
+        _ctx = [r for r in _rows(_ic.contexts_path(root_p)) if r.get("event") == "OPENED"]
+        _rr = _rows(_ic.retrieval_receipts_path(root_p))
+        _by_dec = {}
+        for r in _rr:
+            _by_dec[r.get("decision")] = _by_dec.get(r.get("decision"), 0) + 1
+        _by_lane = {}
+        for r in _ctx:
+            _l = str(r.get("lane_id") or (r.get("actor") or {}).get("lane_id"))
+            _by_lane[_l] = _by_lane.get(_l, 0) + 1
+        counterfactual = {
+            "schema": "MemoryCounterfactual@v1",
+            "contexts_opened": len(_ctx), "contexts_by_lane": _by_lane,
+            "degraded_share": (sum(1 for r in _ctx if r.get("degraded")) / len(_ctx)) if _ctx else None,
+            "retrieval_receipts": len(_rr), "decisions": _by_dec,
+            "would_have_reused_share": ((_by_dec.get("HIT_FRESH", 0)) / len(_rr)) if _rr else None,
+            "generated_despite_hit_fresh": sum(1 for r in _rr if r.get("decision") == "HIT_FRESH" and r.get("generated")),
+            "mode": "SHADOW", "note": "counterfactual only: no output was changed by memory (MBI_COGNITION shadow, 08 §2)",
+        }
+    except Exception as exc:  # noqa: BLE001
+        counterfactual = {"schema": "MemoryCounterfactual@v1", "error": f"{type(exc).__name__}: {exc}"[:200]}
+
     report = {
         "schema": "MemoryShadowMeasure@v1",
         "as_of": _now(),
@@ -319,6 +358,7 @@ def run_measure(
         },
         "cross_agent_memory_agreement": cross_agent,
         "consumer_receipts": consumer_receipts,
+        "memory_counterfactual": counterfactual,
         "promotion_gate": {
             "verdict": gate.get("verdict"),
             "all_hard_gates": gate.get("all_hard_gates"),

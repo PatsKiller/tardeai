@@ -1,0 +1,20 @@
+[Unit]
+Description=Trade AI supervisor breach detector (Wave 1: detect + record only; no ladder action)
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT:%h/trade-ai-releases/portfolio-server/CURRENT/scripts
+Environment=MEMORY_BEHAVIOR_INFLUENCE=0
+Environment=TRADEAI_ROOT=%h/trade-ai-releases/portfolio-server/CURRENT
+EnvironmentFile=-/run/user/%U/tradeai/env
+EnvironmentFile=-%h/.config/tradeai/cio-operator-live.env
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/supervisor_breach_detector.py --write
+Nice=10
+# READ_ONLY_ADVISORY — writes data/runtime/supervisor_breaches.jsonl + supervisor_breach_detector_latest.json only.
+# Never restarts anything (L1 is Wave 2, after the sudoers review). Never sends Telegram.
+# Approval: pkg-20260927-cogx-w1-d9e1 item 2.
+
+[Install]
+WantedBy=default.target
