@@ -128,7 +128,16 @@ class _Conn:
         pass
 
 
-def test_sec_facts_become_primary_regulatory_evidence():
+def test_sec_facts_become_primary_regulatory_evidence(monkeypatch):
+    # CI installs only pytest + pyyaml; the function imports psycopg2.extras for its
+    # cursor factory even with an injected connection, so give it a stub.
+    import types
+    pg = types.ModuleType("psycopg2")
+    ext = types.ModuleType("psycopg2.extras")
+    ext.RealDictCursor = object
+    pg.extras = ext
+    monkeypatch.setitem(sys.modules, "psycopg2", pg)
+    monkeypatch.setitem(sys.modules, "psycopg2.extras", ext)
     from scripts.lib import symbol_thesis_evidence as ste
     xrows = [dict(r) for r in ff.extract_rows("DELL", "0001571996", FACTS, S)]
     items = ste.retrieve_structured_sources("DELL", limit=8, conn=_Conn(_RoutingCur(xrows)))
