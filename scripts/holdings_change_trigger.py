@@ -175,24 +175,56 @@ def check_and_enqueue(apply: bool = False, baseline: bool = False) -> dict:
                                      start_new_session=True)
         except Exception:
             pass
-        try:
-            from alert_event_writer import save_alert_event
-            for c in changes:
-                save_alert_event(alert_type="system_health", severity="info",
-                                 source_script="holdings_change_trigger.py",
-                                 raw_text=(f"[holdings-change] {c['symbol']} {c['kind']} "
-                                           f"{c['old_shares']:.0f}→{c['new_shares']:.0f} sh — "
-                                           f"protective-stop band recheck recommended"),
-                                 parsed_payload={"kind": "stop_band_recheck", "symbol": c["symbol"],
-                                                 "change": c["kind"]})
-        except Exception:
-            pass
+        # C-11 (2026-09-26): the recheck was only STORED (alert_events.telegram_sent_at
+        # stayed NULL — e.g. the SCHD 1→913 sh resize at 11:07 ET on 09-25 while the
+        # position sat below its plan's stop). save_alert_event's own contract says the
+        # caller must still send. Deliver through the Telegram chokepoint and attach the
+        # provider message id so DELIVERED, not stored, is what the ledger shows.
+        for c in changes:
+            text = (f"[holdings-change] {c['symbol']} {c['kind']} "
+                    f"{c['old_shares']:.0f}→{c['new_shares']:.0f} sh — "
+                    f"protective-stop band recheck recommended")
+            deliver_stop_band_recheck(text, symbol=c["symbol"], change=c["kind"])
 
     summary = (f"{len(changes)} change(s): "
                + "; ".join(f"{c['symbol']} {c['kind']} {c['old_shares']:.0f}→{c['new_shares']:.0f}" for c in changes)
                + (f" | enqueued: {', '.join(enqueued)}" if enqueued else "")
                + (f" | skipped: {', '.join(skipped)}" if skipped else ""))
     return {"changed": changes, "enqueued": enqueued, "skipped": skipped, "summary": summary}
+
+
+def deliver_stop_band_recheck(text: str, *, symbol: str, change: str,
+                              save=None, send=None, attach=None) -> dict:
+    """Store the recheck AND deliver it; return what happened (never raises).
+
+    Injectable `save`/`send`/`attach` for tests. Delivery goes through
+    telegram_alert.send_telegram_with_id (the normalization chokepoint), so the
+    router/digest/stance rules still apply; `accepted` is the platform taking
+    responsibility, `message_id` is actual provider delivery.
+    """
+    out = {"symbol": symbol, "stored_id": None, "accepted": False, "message_id": None, "error": None}
+    try:
+        if save is None:
+            from alert_event_writer import save_alert_event as save  # type: ignore
+        out["stored_id"] = save(alert_type="system_health", severity="info",
+                                source_script="holdings_change_trigger.py", raw_text=text,
+                                parsed_payload={"kind": "stop_band_recheck", "symbol": symbol,
+                                                "change": change})
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = f"store:{type(exc).__name__}"
+    try:
+        if send is None:
+            from telegram_alert import send_telegram_with_id as send  # type: ignore
+        res = send(text, message_class="operator_alert") or {}
+        out["accepted"] = bool(res.get("accepted"))
+        out["message_id"] = res.get("message_id")
+        if out["stored_id"] and out["message_id"]:
+            if attach is None:
+                from alert_event_writer import attach_telegram_message_id as attach  # type: ignore
+            attach(out["stored_id"], str(out["message_id"]))
+    except Exception as exc:  # noqa: BLE001
+        out["error"] = (out["error"] + ";" if out["error"] else "") + f"send:{type(exc).__name__}"
+    return out
 
 
 def main() -> int:

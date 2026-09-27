@@ -2434,6 +2434,26 @@
       "note": "Watch Desk v3 source scoreboard."
     },
     {
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "owner": "ops",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/20 * * * * crontab -l > /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp 2>/dev/null && mv -f /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt  # R-03: readable crontab snapshot for the hardened health agent",
+        "match": "crontab_snapshot.txt.tmp"
+      },
+      "expected_cadence_hours": 0.34,
+      "state": "ACTIVE",
+      "state_since": "2026-09-26",
+      "state_reason": "Declared 2026-09-26 by the P2 audit remediation R-03: the health agent runs under NoNewPrivileges, which strips crontab's setgid bit, so `crontab -l` fails inside the unit and every cron_missing check was silently skipped. This line writes a readable snapshot every 20 minutes that scripts/lib/crontab_snapshot.read_crontab falls back to. Installed under operator cron grant 1d4795f8471a664a (Telegram /approve).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "/api/v2/health findings hermes_crontab_unreadable + cron_sanity_check_hardened (audit R-03); scripts/lib/crontab_snapshot.py SNAPSHOT_CRON_LINE; tests/test_p2_alarms_truth_20260926.py; grant 1d4795f8471a664a.",
+      "note": "Every 20 min: crontab -l → persistent-state/data/runtime/crontab_snapshot.txt (atomic tmp+mv)."
+    },
+    {
       "lane_id": "reconcile-alpaca-paper-options",
       "owner": "options",
       "scheduler": {
