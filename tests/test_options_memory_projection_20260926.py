@@ -634,3 +634,14 @@ def test_projects_and_reads_back_as_the_production_writer_role(agent_role, tmp_p
         "options_thesis",
     ]
     assert rows and all(r["same_strategy"] for r in rows)
+
+
+def test_escalation_is_projected_as_a_followup_fact():
+    """2026-09-26: web-backed answers still weak -> ChatGPT/Grok/DeepSeek; memory keeps it."""
+    obj = proj._followup_object({"event_type": "OPTIONS_THESIS_ESCALATED", "reason": "only 0 of 5 fully answered",
+                                 "lane": "grok", "status": "sent", "external_research_id": 7,
+                                 "recommendation": "Next earnings 2026-11-24.", "confidence": "MEDIUM"})
+    assert obj["stage"] == "EXTERNAL_RESEARCH" and obj["lane"] == "grok" and "2026-11-24" in obj["findings"]
+    assert proj.EVENT_PREDICATES["OPTIONS_THESIS_ESCALATED"] == "options_followup"
+    assert "escalated to grok" in proj._claim("options_followup", "DELL", obj)
+    assert not proj.forbidden_keys_deep(obj)
