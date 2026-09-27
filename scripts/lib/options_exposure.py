@@ -50,9 +50,12 @@ def leg_liquidity(contract: Optional[dict[str, Any]], *, role: str, strike: Any)
         spread_pct = round(100.0 * (ask - bid) / mid, 1)
     return {"role": role, "strike": _f(strike), "bid": bid, "ask": ask,
             "mid": round(mid, 2) if mid is not None else None,
+            "last": _f(c.get("last")), "mark": _f(c.get("mark")),
             "open_interest": c.get("oi", c.get("open_interest")),
             "volume": c.get("volume", c.get("vol")),
-            "spread_pct": spread_pct}
+            "spread_pct": spread_pct,
+            "quote_time": c.get("quote_time"),
+            "two_sided": bool(bid and ask and bid > 0 and ask > bid)}
 
 
 def _committed(p: dict[str, Any]) -> float:
@@ -64,10 +67,20 @@ def combined_exposure(proposals: list[dict[str, Any]], *, cash_by_account: Optio
                       shares_by_symbol: Optional[dict[str, float]] = None) -> dict[str, dict[str, Any]]:
     """symbol -> combined block, for symbols with two or more ideas on the desk."""
     by_sym: dict[str, list[dict[str, Any]]] = {}
+    excluded: dict[str, list[dict[str, Any]]] = {}
     for p in proposals:
         sym = str(p.get("symbol") or "").upper()
-        if sym:
-            by_sym.setdefault(sym, []).append(p)
+        if not sym:
+            continue
+        # Operator 2026-09-27: an archived idea is not a live bet; it must not inflate the
+        # combined exposure of the card that survived (DELL $490 CSP was archived at 20:22Z
+        # and still counted at 21:16Z). Named, so the card can say what was left out.
+        stage = str(((p.get("lifecycle") or {}).get("stage")) or "")
+        if p.get("thesis_abandoned") or stage.startswith("ARCHIVED"):
+            excluded.setdefault(sym, []).append({"id": p.get("id"), "strategy": p.get("strategy"),
+                                                 "strike": p.get("strike"), "reason": "archived"})
+            continue
+        by_sym.setdefault(sym, []).append(p)
     out: dict[str, dict[str, Any]] = {}
     for sym, ps in by_sym.items():
         if len(ps) < 2:
@@ -105,6 +118,7 @@ def combined_exposure(proposals: list[dict[str, Any]], *, cash_by_account: Optio
             "account_cash": cash,
             "committed_pct_of_cash": (round(100.0 * committed / cash, 1) if cash else None),
             "shares_held": (shares_by_symbol or {}).get(sym),
+            "excluded_ideas": excluded.get(sym, []),
             "scenarios": scen,
             "note": (f"These {len(ps)} {sym} ideas are the same bet (all lose if {sym} falls); taken "
                      f"together they commit ${committed:,.0f}. Compare with the scenario rows, not "

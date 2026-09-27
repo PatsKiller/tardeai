@@ -77,14 +77,17 @@ def validate(p: dict[str, Any], *, chain_fn: Callable[..., dict[str, Any]], cfg:
         return {**base, "status": "UNAVAILABLE", "reason": f"{type(exc).__name__}: {str(exc)[:120]}"}
     if chain.get("status") not in (None, "ok"):
         return {**base, "status": "UNAVAILABLE", "reason": str(chain.get("status") or chain.get("error"))[:120]}
-    row = None
-    for e in chain.get("expirations") or []:
-        if str(e.get("exp") or "")[:10] != exp:
-            continue
-        for r in e.get("strikes") or []:
-            if r.get("side") == side and strike is not None and abs((_f(r.get("strike")) or 0) - strike) < 1e-6:
-                row = r
-                break
+    def _find(k: Optional[float]) -> Optional[dict[str, Any]]:
+        for e in chain.get("expirations") or []:
+            if str(e.get("exp") or "")[:10] != exp:
+                continue
+            for r in e.get("strikes") or []:
+                if r.get("side") == side and k is not None and abs((_f(r.get("strike")) or 0) - k) < 1e-6:
+                    return r
+        return None
+    if str(p.get("strategy") or "") == "credit_spread":
+        return _validate_spread(p, base, chain, s, session, now, _find)
+    row = _find(strike)
     if row is None:
         return {**base, "status": "CONTRACT_NOT_FOUND",
                 "reason": f"{sym} {exp} {strike:g} {side} is not in the live chain; regenerate the proposal"}
@@ -120,6 +123,67 @@ def validate(p: dict[str, Any], *, chain_fn: Callable[..., dict[str, Any]], cfg:
     closed = bool(session) and session != "REGULAR"
     return {**base, "status": status, "live": live, "recomputed": econ, "material_changes": changes,
             "liquidity_issues": liq_issues,
+            "note": ("Quotes read while the market is closed; validate again at the open before approving."
+                     if closed else None)}
+
+
+def _validate_spread(p: dict[str, Any], base: dict[str, Any], chain: dict[str, Any], s: dict[str, Any],
+                     session: Optional[str], now: datetime, find) -> dict[str, Any]:
+    """Two-leg validation (operator 2026-09-27): a credit spread was validated as ONE contract,
+    comparing the short put's mid to the net credit, so DELL always read "premium 8.1 -> 32.9".
+    Both legs are re-quoted, the credit is recomputed under the explicit fill assumption
+    (sell short at bid, buy long at ask), and a spread that is not a credit fails."""
+    try:
+        from lib.options_economics import spread_quote
+    except ImportError:  # pragma: no cover
+        from scripts.lib.options_economics import spread_quote  # type: ignore
+    try:
+        from options_desk_enterprise import liquidity_gate
+    except ImportError:  # pragma: no cover
+        from scripts.options_desk_enterprise import liquidity_gate  # type: ignore
+    sk, lk = _f(p.get("short_strike")) or _f(p.get("strike")), _f(p.get("long_strike"))
+    short_r, long_r = find(sk), find(lk)
+    sym, exp = base["symbol"], base["expiration"]
+    if short_r is None or long_r is None:
+        missing = f"{sk:g}" if short_r is None else f"{lk:g}"
+        return {**base, "status": "CONTRACT_NOT_FOUND", "short_strike": sk, "long_strike": lk,
+                "reason": f"{sym} {exp} {missing} put is not in the live chain; regenerate the proposal"}
+    sq = spread_quote(short_r, long_r, session=session, quotes_as_of=chain.get("fetched_at"))
+    spot = _f(chain.get("underlying_price")) or _f(p.get("underlying_price")) or 0.0
+    n = 100 * max(1, int(_f(p.get("contracts")) or 1))
+    credit = sq["executable_credit"]
+    econ = None
+    if credit is not None and sk is not None and lk is not None:
+        econ = {"credit_basis": "executable", "net_credit": credit, "premium_total": round(credit * n, 2),
+                "max_profit": round(credit * n, 2), "max_loss": round((sk - lk - credit) * n, 2),
+                "breakeven": round(sk - credit, 2), "mid_credit": sq["mid_credit"],
+                "credit_haircut": sq["credit_haircut"], "cash_flow": "credit" if credit > 0 else "debit"}
+    changes: list[str] = []
+    old = _f(p.get("executable_credit")) if p.get("executable_credit") is not None else _f(p.get("premium"))
+    if old and credit is not None and old > 0:
+        d = 100.0 * (credit - old) / old
+        if abs(d) > float(s["max_premium_change_pct"]):
+            changes.append(f"executable credit {old:g} -> {credit:g} ({d:+.1f}%)")
+    old_spot = _f(p.get("underlying_price"))
+    if old_spot and spot:
+        d = 100.0 * (spot - old_spot) / old_spot
+        if abs(d) > float(s["max_spot_change_pct"]):
+            changes.append(f"spot {old_spot:g} -> {spot:g} ({d:+.1f}%)")
+    liq_issues: list[str] = []
+    for leg in sq["legs"]:
+        lg = liquidity_gate({"bid": leg["bid"], "ask": leg["ask"], "mid": leg["mid"],
+                             "oi": leg["open_interest"], "volume": leg["volume"]})
+        liq_issues += [f"{leg['role']} {leg['strike']:g}: {i}" for i in lg.get("issues") or []]
+    if credit is None:
+        status, changes = "NO_QUOTE", changes + ["a leg has no two-sided quote"]
+    elif credit <= 0:
+        status = "NOT_A_CREDIT"
+        changes.append(f"sell {sk:g}p at bid {sq['legs'][0]['bid']} - buy {lk:g}p at ask {sq['legs'][1]['ask']} = {credit:g}")
+    else:
+        status = "ILLIQUID" if liq_issues else ("CHANGED" if changes else "VALIDATED")
+    closed = bool(session) and session != "REGULAR"
+    return {**base, "status": status, "short_strike": sk, "long_strike": lk, "live": sq,
+            "recomputed": econ, "material_changes": changes, "liquidity_issues": liq_issues,
             "note": ("Quotes read while the market is closed; validate again at the open before approving."
                      if closed else None)}
 

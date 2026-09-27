@@ -64,7 +64,10 @@ def test_fully_researched_requires_a_stance():
          "thesis_stance": ""}
     p = {"strategy": "cash_secured_put", "symbol": "PUR", "strike": 30, "premium": 3.35}
     assert committee_memo(p, t, {}).get("research_status") != "FULLY_RESEARCHED"
-    assert committee_memo(p, dict(t, thesis_stance="watch"), {}).get("research_status") == "FULLY_RESEARCHED"
+    # Operator 2026-09-27: a stance alone is not enough either -- research must be on file.
+    assert committee_memo(p, dict(t, thesis_stance="watch"), {}).get("research_status") != "FULLY_RESEARCHED"
+    p_runs = dict(p, cio_view={"research": {"count": 1}})
+    assert committee_memo(p_runs, dict(t, thesis_stance="watch"), {}).get("research_status") == "FULLY_RESEARCHED"
 
 
 def _req(rid, created, status, first, sym="DELL"):

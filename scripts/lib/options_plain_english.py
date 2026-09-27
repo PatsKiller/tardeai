@@ -98,11 +98,22 @@ def explain(p: dict[str, Any]) -> Optional[dict[str, Any]]:
                      else "A bet that the stock falls below the breakeven by expiry.")
         premium_line = (f"You pay {_usd(cash)} for the right to sell {shares} {sym} at ${strike:g} until {exp}, "
                         f"however low the price goes.")
+        econ = p.get("economics") or {}
+        floor_v, hedged_loss = econ.get("floor_value_after_premium"), econ.get("hedged_max_loss_from_mark")
+        unins = econ.get("uninsured_shares")
+        if strategy == "protective_put" and floor_v is not None and hedged_loss is not None:
+            # Operator 2026-09-27: the worst case of INSURED stock is the fall to the floor plus
+            # the premium, not "the premium is the most this can cost".
+            worst = (f"{sym} falls hard: the insured shares are worth no less than {_usd(floor_v)} after the premium "
+                     f"(a {_usd(hedged_loss)} loss from today's mark, premium included)"
+                     + (f"; the {unins:g} uninsured shares fall with the stock" if unins else "") + ".")
+        else:
+            worst = f"You lose the {_usd(cash)} premium; that is the most the option itself can cost."
         cases = {
             "best": f"{sym} falls far below ${strike:g}: the puts gain dollar-for-dollar below ${be:.2f} and offset the share loss.",
             "expected": f"{sym} stays above ${strike:g}{odds.replace('estimate', 'odds it does not')}: the puts expire "
                         f"and {_usd(cash)} is the cost of the insurance.",
-            "worst": f"You lose the {_usd(cash)} premium; that is the most this position can cost.",
+            "worst": worst,
         }
         why = (f"Insurance: the right to sell {shares} shares at ${strike:g} until {exp}. Negative expected value "
                f"is normal for insurance - it is the price of the floor.") if strategy == "protective_put" else \
@@ -212,7 +223,10 @@ def committee_memo(p: dict[str, Any], t: dict[str, Any], record: Optional[dict[s
     stance = str(t.get("thesis_stance") or "").strip()
     # Wave B 2026-09-27: "fully researched" requires a thesis that takes a position; PUR and
     # DELL showed it over a thesis whose own summary said the evidence was insufficient.
-    if has_thesis and evidence and state == "CURRENT" and stance:
+    # Operator 2026-09-27: "fully researched" beside "0 runs" is a contradiction; the label
+    # needs research actually on file for this symbol or this option.
+    runs = int(((p.get("cio_view") or {}).get("research") or {}).get("count") or 0)
+    if has_thesis and evidence and state == "CURRENT" and stance and (runs > 0 or ra.get("thesis")):
         research, conf = "FULLY_RESEARCHED", "High" if (t.get("thesis_confidence") or 0) >= 0.7 else "Medium"
     elif has_thesis or ra.get("thesis"):
         # Research done for this option counts, even without a symbol thesis (2026-09-26).
