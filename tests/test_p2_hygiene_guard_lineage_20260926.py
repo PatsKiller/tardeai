@@ -71,7 +71,7 @@ def test_c05_maria_exchange_receipt_written_with_desk_text_not_rewrite(tmp_path)
     desk = ("🎯 *SCHD — re-entry check* _(READ_ONLY)_\nPrice $33.12 …\nDecision integrity: *INVALIDATED_BY_PRICE_OR_STOP* — no actionable mechanics\n"
             "Watch alert: none armed — nothing is monitored from this chat; ask to arm a price-cross alert.")
     rid = mp.record_desk_exchange(question="...fallen 4.6% to $33.68... whats CIO prepective on rentry",
-                                  chat_id="8797974247", message_id="tg:54321", channel="skill",
+                                  chat_id="8797974247", message_id="tg:54321", channel="skill",  # hardcode-ok: fixture asserting lineage capture of the desk chat id
                                   desk_text=desk, result={"symbols": ["SCHD"]}, path=path)
     assert rid and rid.startswith("mdx_")
     rows = [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
