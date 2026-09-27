@@ -22,9 +22,10 @@ sudo -v && bash ~/ops-rotation/rotate_trade_ai_shadow_ro.sh
 
 # 1b — lab roles: change the two secrets in Bitwarden SM first (SHADOW_DSN, SHADOW_READER_DSN), then
 systemctl --user start tradeai-sm-render.service && systemctl --user status tradeai-sm-render.service --no-pager | tail -3
-# then set the same passwords on the lab cluster (superuser johnclaw via the socket; paste each password when prompted):
-psql -h ~/tradeai-lab/sock -p 5433 -d postgres -c "\password agentic_runtime_reader"
-psql -h ~/tradeai-lab/sock -p 5433 -d postgres -c "\password agentic_runtime_shadow_rw"
+# then set the same passwords on the lab cluster. -U johnclaw is required: the operator shell exports PGUSER=trade_ai,
+# which makes peer auth fail ("Peer authentication failed for user trade_ai", seen 2026-09-27). Paste each password when prompted:
+psql -h ~/tradeai-lab/sock -p 5433 -U johnclaw -d postgres -c "\password agentic_runtime_reader"
+psql -h ~/tradeai-lab/sock -p 5433 -U johnclaw -d postgres -c "\password agentic_runtime_shadow_rw"
 
 # verify: crons that source the env still connect (read-only probe)
 $PY -c "import os,psycopg2;[psycopg2.connect(os.environ[k]).close() or print(k,'ok') for k in ('AGENT_RUNTIME_SOURCE_DSN','AGENT_RUNTIME_READ_DSN','AGENT_RUNTIME_DISPATCH_DSN')]"
