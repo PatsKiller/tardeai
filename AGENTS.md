@@ -4,25 +4,25 @@
 Policy-Version:      1.3.0
 Versioning-Scheme:   Semantic Versioning 2.0.0
 Policy-Schema:       TradeAI-Agent-Operating-Standard/v1
-Status:              PROPOSED
-Effective-Date:      PENDING
-Last-Reviewed:       2026-09-25T12:00:00-04:00
+Status:              ACTIVE
+Effective-Date:      2026-09-27
+Last-Reviewed:       2026-09-27T20:00:00-04:00
 Canonical-Repo-Path: AGENTS.md
 Drive-Mirror-Path:   Trade_AI_Docs_v2/governance/agent-policy/AGENTS.md
 Supersedes:          1.2.7
 Approval-Class:      OPERATOR_REQUIRED_FOR_SECTIONS_0_2_17_AND_ROLE_AUTHORITY
 ```
 
-**1.3.0 is PROPOSED — MAJOR, and not in force.** It resolves the conflict between this file's
-blanket broker prohibition (§0 rule 2, §1) and architecture v3.3's staged, operator-authorized
-live Active Trader, in the operator's own direction (recorded 2026-09-25): engineering agents may
-build and simulate broker-adjacent code; only the deterministic execution path may place a live
-order, and only inside a verified 2FA session envelope or a per-order authorization; no LLM ever
-originates an order; approving this direction is not a live-session grant. It also records that
-`AI_WORK_POLICY.md`'s push budget outranks the implementation program's per-stage pushes.
-**Until the operator ratifies it (`APPROVE_AGENTS_POLICY_1_3_0 <pr> <sha>`) and it merges, §0,
-§1, §2B and §17 below govern exactly as written.** The replacement text lives in §22 and
-`docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md`, not in the sections it would change.
+**1.3.0 is ACTIVE from 2026-09-27 — MAJOR.** Ratified by the operator 2026-09-27
+(`APPROVE_AGENTS_POLICY_1_3_0 1232 1ea66d24912b4242a49d42cc92e94b0030ec4173`, amendment reviewed,
+"yes" to the ratification edit). It resolves the conflict between the old blanket broker
+prohibition and architecture v3.3: engineering agents may build and simulate broker-adjacent code
+(A1/A2) **only while a per-task `execution-engineering` grant is active** (operator decision at
+ratification); only the deterministic execution path may place a live order, and only inside a
+verified 2FA session envelope or a per-order authorization; no LLM ever originates an order or holds
+live activation (A4) or order authority (A5). `AI_WORK_POLICY.md`'s push budget outranks the
+implementation program's per-stage pushes. Details: §22 and
+`docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md`.
 
 **1.2.7 is ACTIVE from 2026-09-24T21:31:15-04:00** (merge of PR #1227, `756eb977e`; a PATCH outside §0/§2/§17 is ACTIVE on merge under `APPROVE_AGENTS_POLICY_1_2_0`). A PATCH release: §13.4
 is corrected to what shipped in PRs #1223, #1225 and #1226 (live 2026-09-24 as `7a9dcec26`) — the
@@ -135,8 +135,8 @@ This section is unnumbered on purpose: it governs the document, not the agent.
 - **The class is not the author's preference.** If a change could be read as either, it takes the
   higher class — the same safer-or-more-restrictive rule this file applies everywhere else.
 
-> 1.3.0 (PROPOSED, **not in force**) would change rules 1–2 — see §22. Until it is ratified and
-> merged, the ten rules below are the rules, word for word.
+> 1.3.0 (RATIFIED 2026-09-27) changed rule 2 — see §22. Broker-adjacent code work needs an active
+> per-task `execution-engineering` grant; live broker authority is never an agent's.
 
 ---
 
@@ -148,8 +148,12 @@ agent that reads fifteen lines and stops must still know them.
 1. **`MBI_BEHAVIOR = 0`.** The agent never sizes, orders, stops, weights, or writes to a broker.
    Ever, for any reason, under any framing. (`MBI_BEHAVIOR` is the shorthand, not a variable —
    the rail is an unconditional raise in code. See `AGENTS.md` §2.)
-2. **The broker execution subsystem is out of scope.** Do not modify, disable, test against,
-   investigate, call `place_order`, or POST to any order route. It is 2FA-gated and by design.
+2. **Broker code is buildable only under a per-task grant; broker authority never is.** With an
+   active operator-approved `execution-engineering` grant naming the files, purpose and expiry, an
+   agent may implement and test broker-adjacent code (A1/A2: mocks, fixtures, simulated broker,
+   replay). Without one, the broker execution subsystem is out of scope: do not modify, test
+   against or investigate it. No agent ever calls a live broker, reads a live credential, sets a
+   live flag, requests 2FA, calls `place_order`, or POSTs to an order route (AGENTS.md §22).
 3. **Never route around a permission denial.** Stop and report. No alternate remote, no
    direct-to-main push, no API call substituting for a blocked CLI, no branch rename to reset a
    budget.
@@ -183,8 +187,10 @@ everything from event intake through the daily brief.
 
 ## What the agent never touches
 
-- **Broker execution.** Separate, operator-controlled, 2FA-gated. Its existence and its armed
-  accounts are by design — not a finding, not an inconsistency, not a thread to pull.
+- **Live broker authority.** Live credentials, live endpoints, 2FA, live flags, live sessions and
+  real orders. Broker-*adjacent code* is in scope under A1/A2 only while a per-task
+  `execution-engineering` grant is active; broker *authority* never is. The armed accounts are by
+  design — not a finding.
 - **Credentials, 2FA, and secret rotation.**
 - **Trading policy** — stop policy, investment policy statement, risk limits. These live under
   `config/` as domain policy and belong to the operator.
@@ -328,8 +334,9 @@ ADVISORY_AGENT
 EXECUTION_ENGINEERING_AGENT
   may edit declared adapter, contract, fixture and simulation files
   no live credentials, endpoints, 2FA, deploy, live flags, or real broker calls
-  mocks / replay only, until separately authorized
-  -> BLOCKED until the §7 authority reconciliation is approved (see below)
+  mocks / replay only
+  -> GRANTED by 1.3.0 for A1/A2 within a declared file set, only while a per-task
+     execution-engineering grant is active; live authority (A4/A5) never
 
 RELEASE_COORDINATOR
   integrates reviewed code and evidence
@@ -347,10 +354,12 @@ widest one. A profile that cannot be resolved is not a licence to proceed.
 reads, scheduler changes, live flags, or promotion of itself or another agent. Those are §17
 operator-only regardless of profile, and `BehaviorWriteRefused` applies to every one of them.
 
-**`EXECUTION_ENGINEERING_AGENT` is defined but not granted.** Defining a role is not activating
-it. It stays blocked until an operator-approved reconciliation between this file and
-architecture v3.3 explicitly authorizes it (that reconciliation is proposed as 1.3.0, §22 — not in force), with a declared file set and a proof that live
-credentials and endpoints are unreachable from that scope.
+**`EXECUTION_ENGINEERING_AGENT` is granted A1/A2 only, per task.** The declared file set is
+`scripts/active_trader/**`, `scripts/brokers/**`, `scripts/lib/trading_session_grant.py`, broker
+adapter modules and their tests. Work in that set needs an active `execution-engineering` guard grant
+(`bin/guard request execution-engineering --for <duration> --reason "<files and purpose>"`, approved
+by the operator), and every change must keep a test proving that no live credential or endpoint is
+reachable from the test process.
 
 ---
 
@@ -3218,7 +3227,8 @@ overnight LLM window · merging divergent copies of any authoritative store · *
 retiring a data source, or a writer of an authoritative store** (§7A — an agent proposes the
 registry row; the operator's grant is recorded in its `approval`; the gate fails an ungranted
 source) · branch-protection or required-context changes · provisioning or funding any model or data
-plan · deleting anything · anything in the broker subsystem, credentials, or 2FA.
+plan · deleting anything · live broker authority (A4/A5): live flags, live sessions, 2FA, credentials, the
+Stage 14 canary, and any change to `DETERMINISTIC_ENTRY_POINTS`, session-grant limits or the grant contract.
 
 **The deferred list should shrink each wave.** The escalate-never-resolve rule exists for cases
 where a machine choosing between two candidate truths can destroy one. It does **not** cover
@@ -3600,11 +3610,13 @@ Operator activation phrase (after review):
 
 ---
 
-# 22 · Proposed authority amendment 1.3.0 — NOT IN FORCE
+# 22 · Authority amendment 1.3.0 — RATIFIED 2026-09-27
 
-**Status: PROPOSED.** Nothing in this section is a rule until the operator ratifies 1.3.0 and it
-merges. Until then §0, §1, §2B and §17 govern as written. The full text, with the exact
-replacement wording for each section, is `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md`.
+**Status: RATIFIED 2026-09-27** (`APPROVE_AGENTS_POLICY_1_3_0 1232 1ea66d24912b4242a49d42cc92e94b0030ec4173`).
+**Ratification condition (operator decision):** A1/A2 on the declared execution file set applies only
+while a per-task `execution-engineering` guard grant (files, purpose, expiry) is active; without it
+the pre-1.3.0 rule governs (out of scope). The full text is
+`docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md`.
 
 **Why.** The 2026-09-25 standards review measured two conflicts:
 - AGENTS.md §0/§1 ("the broker subsystem is out of scope") against architecture v3.3 §1.2–§1.4,
@@ -3665,7 +3677,7 @@ superseded).
 
 | Version | Date | Status | Change class | Summary | Approval |
 |---|---|---|---|---|---|
-| 1.3.0 | 2026-09-25 | PROPOSED (not in force) | MAJOR | §22 added: operator-directed resolution of the §0/§1 broker prohibition vs architecture v3.3 — authority hierarchy, five distinct authorities (coding, simulation, deployment, live activation, broker order authority), LLMs never hold live activation or order authority, `TradingSessionGrant@v1` verified at the broker mutation boundary (pure verifier + 26 negative tests; not wired until ratified), Stage 14 keeps its separate operator start, and AI_WORK_POLICY.md's push budget outranks the implementation program (v1.2). §0/§1/§2B/§17 text unchanged until ratification; replacement text in `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md`. Adds companion `AGENT_OPERATING_STANDARDS_v1.md`, `REPOSITORY_PROTECTION_ADMIN_ACTIONS.md`, `.github/CODEOWNERS` (advisory until code-owner review is required), `.github/pull_request_template.md`. | **PENDING** — `APPROVE_AGENTS_POLICY_1_3_0 <pr> <sha>`; operator direction recorded 2026-09-25 ("Yes, mine, draft it"); independent review required |
+| 1.3.0 | 2026-09-27 | ACTIVE | MAJOR | §22 added: operator-directed resolution of the §0/§1 broker prohibition vs architecture v3.3 — authority hierarchy, five distinct authorities (coding, simulation, deployment, live activation, broker order authority), LLMs never hold live activation or order authority, `TradingSessionGrant@v1` verified at the broker mutation boundary (pure verifier + 26 negative tests; not wired until ratified), Stage 14 keeps its separate operator start, and AI_WORK_POLICY.md's push budget outranks the implementation program (v1.2). §0/§1/§2B/§17 text unchanged until ratification; replacement text in `docs/governance/agent-standards/AUTHORITY_AMENDMENT_1_3_0.md`. Adds companion `AGENT_OPERATING_STANDARDS_v1.md`, `REPOSITORY_PROTECTION_ADMIN_ACTIONS.md`, `.github/CODEOWNERS` (advisory until code-owner review is required), `.github/pull_request_template.md`. | **RATIFIED 2026-09-27** — `APPROVE_AGENTS_POLICY_1_3_0 1232 1ea66d24912b4242a49d42cc92e94b0030ec4173`; operator direction 2026-09-25 ("Yes, mine, draft it"); independent review confirmed by the operator 2026-09-27; ratification condition: A1/A2 on the execution file set only under an active per-task `execution-engineering` grant ("approve the amendment with a process of the approval to do when we need"). Ratifying edit: §0 rule 2 (and the four adapters), §1, §2B, §17, §22 status. |
 | 1.2.7 | 2026-09-24 | ACTIVE — merged PR #1227 `756eb977e` 2026-09-24T21:31:15-04:00 | PATCH | §13.4 corrected to what shipped in PRs #1223/#1225/#1226 (live 2026-09-24 as `7a9dcec26`): `InstrumentRecord@v1` gains the shipped `beliefs[]` block (`InstrumentBelief@v1`, written only by `cio_belief_writer` through `apply_belief`, read by the research gate / L3 question / `default_decide`) and retires the `priors` / `scored_lessons[]` SPECIFIED lines; `last_outcome` documented as the research-gate route; subject-key namespace records `INDUSTRY:`/`THEME:` tags-only by policy (`is_mintable` → `tags_only_by_policy`) and `SECTOR:` mintable-with-no-producer; narrative-subject table gains `OPTION_CONTRACT` (a `security_guid`, `share_class="option"`, no options id prefix; `expiration_guid`/`strike_guid` not minted). Lanes `commitment-outcome-sweep` (18:20) and `instrument-belief-writer` (18:50) installed under an operator cron grant and declared ACTIVE. No rule added, nothing weakened; §0/§2/§17 untouched. | Rides `APPROVE_AGENTS_POLICY_1_2_0` (sections outside §0/§2/§17) |
 | 1.2.6 | 2026-09-20 | ACTIVE — merged PR #1145 2026-09-20T15:13:47-04:00 (amended by PR #1153, 19:18:34-04:00, no bump) | MINOR | §6: a dry run must not be able to REACH the mutation — `--dry-run` called `claim_due()` and stranded the row it previewed (PR #1143) — and anything that claims work owes a reclaimer. §12: `should_scheduled_skip` superseded by `lib/llm_deferral`; out-of-window paid work is queued in `llm_deferred_requests` and drained by lane `llm-deferred-drain`; three operator-set caller tiers; `LLM_DEFER_OFFPEAK` arming; measured 21% (965/4,590) blast radius of arming globally (PR #1134), and records that the process-boundary wrapper (25 active crontab lines) still DROPS. §9.3: a refused scheduled call is queued not dropped; `llm-deferred-drain` and `llm-provider-health` declared. No change to §0, §2, §17 or role authority. **Amendment (PR #1153, same version):** Research lanes + §13.4 dark list: `hermes_advisory_event_enqueue` → **RETIRED** after Operator-Token `APPROVE_RETIRE_HERMES_ADVISORY_EVENT_ENQUEUE` (PR #1151) and follow-on `lane_registry` row `hermes-advisory-event-enqueue` (EXPECTED_SILENT; manual CLI retained; no archive). No change to §0, §2, §17 or role authority. | **Operator-directed** 2026-09-20 ("update documentation agents.md"). MINOR — adds proof obligations, weakens nothing; rides `APPROVE_AGENTS_POLICY_1_2_0`. |
 | 1.2.5 | 2026-09-20 | ACTIVE | PATCH | §13.4: dark-contracts list + AgentView/AGENT_COMMITMENT “no producer” prose corrected to match ledger CLOSED (load-by-subject, OUTCOME, AgentView, commitment, librarian index OBSERVED). hermes enqueue remains KNOWN DARK — PROPOSED RETIRE. No change to §0, §2, §17 or role authority. | PATCH stale measurements; rides `APPROVE_AGENTS_POLICY_1_2_0`. |

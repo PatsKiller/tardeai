@@ -18,6 +18,7 @@ tier_scope() {
     deps)          echo "pip/npm/apt install, remove, upgrade — changes the runtime environment." ;;
     sudo)          echo "Any command run as root." ;;
     state-write)   echo "Writes to data/portfolios/state/ — live holdings, risk_management, personal_situation." ;;
+    execution-engineering) echo "Per-task A1/A2 work on broker-adjacent code (scripts/active_trader/**, scripts/brokers/**, trading_session_grant.py): mocks, fixtures, simulated broker, replay. Never live credentials, endpoints, 2FA, live flags or orders (AGENTS.md 1.3.0 §22)." ;;
     release-write) echo "Writes to ~/trade-ai-releases/ or ~/trade-ai-deployments/ — immutable artifacts that are CURRENTLY RUNNING." ;;
     openclaw)      echo "OpenClaw gateway and ClawHub skill operations. Skills inherit full disk/terminal/network permissions." ;;
     telegram)      echo "Real Telegram sends — these reach your phone." ;;
