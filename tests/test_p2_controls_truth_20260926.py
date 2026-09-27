@@ -151,3 +151,45 @@ def test_tier2_flags_are_now_read_so_the_gate_no_longer_lists_them():
     blob = ck.code_blob()
     for n in ("TRADEAI_TIER2_DAILY_USD_CAP", "TRADEAI_TIER2_OFF_PEAK_ONLY", "TRADEAI_TIER2_PROVIDER", "RISK_GATE_H4_ENABLED", "CORRELATION_CAP"):
         assert ck.unread_names([n], blob) == [], n
+
+
+# ---------------------------------------------------------------- C-02 first tranche: workers pin to CURRENT
+
+
+def test_options_launcher_honours_project_root_and_py(tmp_path):
+    """Before: the launcher hard-coded the dev tree and a relative .venv, so a cron could not
+    pin it to the served release. Now PROJECT_ROOT and PY override both."""
+    import os
+    import shutil
+    import subprocess
+
+    root = tmp_path / "release"
+    (root / "scripts").mkdir(parents=True)
+    shutil.copy(ROOT / "scripts" / "safe_flock.sh", root / "scripts" / "safe_flock.sh")
+    (root / "scripts" / "alpaca_paper_options_executor.py").write_text("")
+    stub = tmp_path / "py"
+    stub.write_text("#!/usr/bin/env bash\necho \"STUB_PY cwd=$PWD args=$*\"\n")
+    stub.chmod(0o755)
+    env = {**os.environ, "PROJECT_ROOT": str(root), "PY": str(stub), "HOME": str(tmp_path)}
+    proc = subprocess.run(["bash", str(ROOT / "linux_launchers" / "reconcile_alpaca_paper_options.sh")], env=env, capture_output=True, text=True, timeout=30)
+    log = (root / "logs" / "alpaca_paper_options_reconcile.log").read_text()
+    assert "STUB_PY" in log, (proc.returncode, proc.stdout, proc.stderr, log)
+    assert f"cwd={root}" in log and "--reconcile" in log
+
+
+def test_gate_bridge_defaults_to_its_own_tree(monkeypatch):
+    monkeypatch.delenv("TRADE_AI_PROJECT_ROOT", raising=False)
+    mod = _load(ROOT / "scripts" / "cio_gate_measurement_bridge.py", "gate_bridge_p2")
+    assert Path(mod.PROJECT_ROOT) == ROOT
+    monkeypatch.setenv("TRADE_AI_PROJECT_ROOT", "/somewhere/else")
+    mod2 = _load(ROOT / "scripts" / "cio_gate_measurement_bridge.py", "gate_bridge_p2b")
+    assert str(mod2.PROJECT_ROOT) == "/somewhere/else"
+    src = (ROOT / "scripts" / "cio_gate_measurement_bridge.py").read_text()
+    assert "/home/" + "johnclaw/trade-ai-v12-rebuild" not in src, "hard-coded host path must be gone"
+
+
+def test_options_reconcile_lane_is_declared_and_out_of_baseline():
+    reg = json.loads((ROOT / "config" / "lane_registry.json").read_text())
+    ids = {l["lane_id"] for l in reg["lanes"]}
+    assert "reconcile-alpaca-paper-options" in ids
+    assert not [b for b in reg["undeclared_baseline"] if "reconcile_alpaca_paper_options" in b]
