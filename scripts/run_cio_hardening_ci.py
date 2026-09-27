@@ -2442,7 +2442,6 @@ GATES = [
         ],
     ),
     (
-<<<<<<< HEAD
         # 2026-09-26 — P2 audit remediation: alarms that see the truth. Health
         # agent reads a cron-written crontab snapshot when `crontab -l` is denied
         # (R-03); FK-safe catalyst purge + failure-streak circuit breaker (R-04);
@@ -2455,14 +2454,14 @@ GATES = [
             "tests/test_news_symbol_guard.py",
             "tests/test_p1_cron_unit_linters_20260926.py",
         ],
-=======
+    ),
+    (
         # 2026-09-26 — P2 audit remediation: the cadence reports fail LOUDLY.
         # Weekly (NoneType format) and monthly (undefined total_val) had failed
         # on every run for months while the launcher said "skipped (non-fatal)"
         # and the pipeline recorded status=ok.
         "p2_report_honesty_20260926",
         ["tests/test_p2_report_honesty_20260926.py"],
->>>>>>> origin/main
     ),
     (
         # 2026-09-25 — CIO cognition tranche 3: prompt event-driven cognition on
