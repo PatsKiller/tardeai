@@ -2464,6 +2464,26 @@
         "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/options_runtime_export.log"
       },
       "note": "Operator 2026-09-26 'add the crons' (PR #1266): redacted options snapshot (no account names, no dollar amounts) for the :05 Drive sync under runtime/options/."
+    },
+    {
+      "lane_id": "crontab-snapshot-for-health-agent",
+      "owner": "ops",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/20 * * * * crontab -l > /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp 2>/dev/null && mv -f /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt.tmp /home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt  # R-03: readable crontab snapshot for the hardened health agent",
+        "match": "crontab_snapshot.txt.tmp"
+      },
+      "expected_cadence_hours": 0.34,
+      "state": "ACTIVE",
+      "state_since": "2026-09-26",
+      "state_reason": "Declared 2026-09-26 by the P2 audit remediation R-03: the health agent runs under NoNewPrivileges, which strips crontab's setgid bit, so `crontab -l` fails inside the unit and every cron_missing check was silently skipped. This line writes a readable snapshot every 20 minutes that scripts/lib/crontab_snapshot.read_crontab falls back to. Installed under operator cron grant 1d4795f8471a664a (Telegram /approve).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "/api/v2/health findings hermes_crontab_unreadable + cron_sanity_check_hardened (audit R-03); scripts/lib/crontab_snapshot.py SNAPSHOT_CRON_LINE; tests/test_p2_alarms_truth_20260926.py; grant 1d4795f8471a664a.",
+      "note": "Every 20 min: crontab -l → persistent-state/data/runtime/crontab_snapshot.txt (atomic tmp+mv)."
     }
   ],
   "undeclared_baseline": [
@@ -2509,7 +2529,7 @@
     "*/20 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/options_lifecycle.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/options_lifecycle_run.py\" >> logs/options_lifecycle.log 2>&1",
     "*/3 * * * * cd $PROJ && flock -n /tmp/process_reaper.lock $PY scripts/process_reaper.py >> logs/process_reaper.log 2>&1  # reap hung/piled-up batch jobs (advisory unless REAP_ENABLED=1)",
     "*/3 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/unified_stop_supervisor.lock bash scripts/market_day_gate.sh $PY scripts/unified_stop_supervisor.py --apply >> logs/unified_stop_supervisor.log 2>&1",
-    "*/3 9-16 * * 1-5 cd $PROJ && bash linux_launchers/run_ensemble_worker.sh",
+    "*/3 * * * * cd $PROJ && bash linux_launchers/run_ensemble_worker.sh  # 24/7 operator 2026-09-26 (was */3 9-16 * * 1-5)",
     "*/30 * * * * cd $PROJ && bash $PROJ/scripts/llm_priority_guard.sh && flock -n /tmp/hermes_directive_discovery.lock $PY scripts/hermes_directive_discovery.py --apply >> logs/hermes_directive_discovery.log 2>&1  # Hermes directive discovery producer (near 24/7)",
     "*/30 * * * * cd $PROJ && flock -n /tmp/freshness_watchdog_heartbeat.lock $PY scripts/freshness_watchdog_heartbeat.py --send >> logs/freshness_watchdog_heartbeat.log 2>&1",
     "*/30 * * * * cd $PROJ && flock -n /tmp/oauth_keepalive.lock $PY scripts/oauth_lane_keepalive.py >> logs/oauth_lane_keepalive.log 2>&1  # keep free-OAuth LLM lanes warm + alert on stale (every 30min — 2026-08-02)",

@@ -647,3 +647,26 @@ def changed_findings(current: dict[str, Any], previous: Optional[dict[str, Any]]
         if r["verdict"] in FINDING_VERDICTS and prev.get(lid) != r["verdict"]:
             out.append(r)
     return out
+
+
+def lane_state_for_command(cmd: str, reg: dict[str, Any] | None = None) -> dict[str, Any]:
+    """The registry lane that owns the script a command runs, and its state.
+
+    R-15 (2026-09-26): the health agent's remediation allowlist could run
+    `scripts/cio_decision_engine.py`, whose lane is PAUSED with an UNKNOWN reason.
+    A remediation must not resurrect a paused or retired lane. Returns
+    {"lane_id", "state", "matched"}; state None when no lane owns the script.
+    """
+    import re as _re
+    reg = reg or load_registry()
+    scripts = set(_re.findall(r"scripts/[\w/-]+\.(?:py|sh)", str(cmd or "")))
+    for row in reg.get("lanes") or []:
+        sched = row.get("scheduler") or {}
+        blob = " ".join(str(sched.get(k) or "") for k in ("expression", "match")) + " " + str(row.get("entrypoint") or "")
+        for sc in scripts:
+            if sc in blob:
+                return {"lane_id": row.get("lane_id"), "state": str(row.get("state") or "").upper(), "matched": sc}
+    return {"lane_id": None, "state": None, "matched": None}
+
+
+PAUSED_OR_RETIRED = frozenset({"PAUSED", "RETIRED", "NEVER_SCHEDULED"})

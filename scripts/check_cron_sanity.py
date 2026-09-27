@@ -234,30 +234,34 @@ def check() -> list[dict]:
     """Return findings list (health_agent collector format).  Empty = clean."""
     findings = []
     try:
-        proc = subprocess.run(["crontab", "-l"], capture_output=True, text=True, timeout=10)
-        if proc.returncode != 0:
-            err = (proc.stderr or "").strip()
-            # Hardened user-systemd (NoNewPrivileges) strips crontab setgid, so
-            # /var/spool/cron/crontabs/$USER is unreadable. That is not a cron
-            # integrity defect — inventory systemd user timers instead.
-            if "Permission denied" in err or "fopen" in err:
-                return [{
-                    "category": "execution_health",
-                    "type": "cron_sanity_check_hardened",
-                    "severity": "info",
-                    "message": (
-                        "crontab -l unreadable under hardened systemd "
-                        "(NoNewPrivileges strips setgid). Root crontab is none; "
-                        "use systemctl --user list-timers for scheduler inventory."
-                    ),
-                }]
-            return [{"category": "execution_health", "type": "cron_sanity_check_failed",
-                     "severity": "warning",
-                     "message": f"crontab -l failed: {err[:200]}"}]
+        try:
+            from lib.crontab_snapshot import read_crontab
+        except ImportError:
+            from scripts.lib.crontab_snapshot import read_crontab  # type: ignore
+        read = read_crontab(root=PROJECT_ROOT)
     except Exception as e:
         return [{"category": "execution_health", "type": "cron_sanity_check_failed",
                  "severity": "warning",
                  "message": f"Could not read crontab: {e}"}]
+    if not read.ok:
+        # Hardened user-systemd (NoNewPrivileges) strips crontab setgid, so
+        # /var/spool/cron/crontabs/$USER is unreadable. R-03 (2026-09-26): that
+        # used to silence every cron check as "info". With no fresh snapshot
+        # either, say so as a WARNING — the checks are not running.
+        return [{
+            "category": "execution_health",
+            "type": "cron_sanity_check_hardened",
+            "severity": "warning",
+            "message": (f"cron checks NOT run: {read.error}. Install the snapshot cron line "
+                        f"(lib.crontab_snapshot.SNAPSHOT_CRON_LINE) so the hardened agent can read it."),
+        }]
+    class _Proc:  # keep the downstream shape (proc.stdout)
+        stdout = read.text
+    proc = _Proc()
+    if read.source == "snapshot":
+        findings.append({"category": "execution_health", "type": "cron_sanity_via_snapshot",
+                         "severity": "info",
+                         "message": f"crontab read from snapshot ({(read.age_s or 0)/60:.0f}m old); crontab -l denied"})
 
     for script_path, full_path, cron_line in resolve_script_refs(proc.stdout, PROJECT_ROOT):
         if not full_path.is_file():
