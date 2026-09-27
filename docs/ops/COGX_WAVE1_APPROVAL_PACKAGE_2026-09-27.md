@@ -1,7 +1,7 @@
 # COGX Wave 1 approval package — pkg-20260927-cogx-w1-d9e1
 
 ```
-Status:      ACTIVE (SUBMITTED 2026-09-27 ~18:40 ET; answer window to 2026-09-28 18:30 ET)
+Status:      ACTIVE (APPROVED all 14 items 2026-09-27 ~18:50 ET by typed reply in Claude Code: "APPROVE pkg-20260927-cogx-w1-d9e1 all, mine, start wave 1")
 as_of:       2026-09-27T18:28:50-04:00
 Measured at: 8f2a178d5 / served 8f2a178d5-main-exact-phase2-20260927-171004
 Authority:   READ_ONLY_ADVISORY. This file is the durable artifact for the first ApprovalPackage@v1 until the
@@ -18,22 +18,25 @@ Sent through `telegram_alert.send_telegram_with_id(bypass_router=True)` from the
 ## Items and state
 | # | Item | Category | State |
 |---|---|---|---|
-| 1 | lane platform-conformance-audit (nightly 02:30, cron) | OPERATOR | PENDING |
-| 2 | lane supervisor-breach-detector (watchdog */2, service) | OPERATOR | PENDING |
-| 3 | lane gir-projector (incremental, service) | OPERATOR | PENDING |
-| 4 | lane approval-package-reminder (hourly, cron) | OPERATOR | PENDING |
-| 5 | writer: intelligence client façade → receipts + checkpoints (DSA row) | OPERATOR | PENDING |
-| 6 | writer: GIR projector → schema intelligence (DSA row) | OPERATOR | PENDING |
-| 7 | writer: supervisor heartbeat + SLA tables (DSA row) | OPERATOR | PENDING |
-| 8 | writer: approval-package ledger (DSA row) | OPERATOR | PENDING |
-| 9 | RLS tenant policy on the intelligence schema | SECURITY | PENDING |
-| 10 | verify Telegram from-id against an operator allowlist (needs the id) | SECURITY | PENDING |
-| 11 | rotation lanes: checkpoints, contradiction candidates, advisory KB (cron) | INFRA | PENDING |
-| 12 | install 2–4 user units via install script (service) | INFRA | PENDING |
-| 13 | Ollama nomic-embed-text (recommended DEFER to W4) | SOFTWARE | PENDING |
-| 14 | Wave 1 effort ≈ 14 agent-days, $0 new spend | BUDGET | PENDING |
+| 1 | lane platform-conformance-audit (nightly 02:30, cron) | OPERATOR | APPROVED |
+| 2 | lane supervisor-breach-detector (watchdog */2, service) | OPERATOR | APPROVED |
+| 3 | lane gir-projector (incremental, service) | OPERATOR | APPROVED |
+| 4 | lane approval-package-reminder (hourly, cron) | OPERATOR | APPROVED |
+| 5 | writer: intelligence client façade → receipts + checkpoints (DSA row) | OPERATOR | APPROVED |
+| 6 | writer: GIR projector → schema intelligence (DSA row) | OPERATOR | APPROVED |
+| 7 | writer: supervisor heartbeat + SLA tables (DSA row) | OPERATOR | APPROVED |
+| 8 | writer: approval-package ledger (DSA row) | OPERATOR | APPROVED |
+| 9 | RLS tenant policy on the intelligence schema | SECURITY | APPROVED |
+| 10 | verify Telegram from-id against an operator allowlist — operator answered "mine": the allowlist is the operator's own id, read from the existing chat-id source (`tg_chat_ids`), never hardcoded | SECURITY | APPROVED |
+| 11 | rotation lanes: checkpoints, contradiction candidates, advisory KB (cron) | INFRA | APPROVED |
+| 12 | install 2–4 user units via install script (service) | INFRA | APPROVED |
+| 13 | Ollama nomic-embed-text — approved with "all" despite the DEFER recommendation; the pull is still sequenced to Wave 4 unless the operator asks for it earlier (approval ≠ schedule) | SOFTWARE | APPROVED |
+| 14 | Wave 1 effort ≈ 14 agent-days, $0 new spend | BUDGET | APPROVED |
 
 Operator-executed prerequisites (not approvals): S-1 DSN rotation (BWS edit → render → ALTER ROLE); AC-1 one superuser session for CREATE SCHEMA / CREATE ROLE with the reviewed SQL from the Wave 1 PR.
+
+## Decision record
+`[VERIFIED]` operator reply in the Claude Code session, 2026-09-27 ~18:50 ET: `APPROVE pkg-20260927-cogx-w1-d9e1 all, mine, start wave 1`. Package state: APPROVED → EXECUTING (Wave 1 tranche 1 PR follows). Per-package guard grants are minted when host actions are due (cron/service/db-write), each with reason `pkg:pkg-20260927-cogx-w1-d9e1 pr:<n> sha:<sha> campaign:cognitive-transformation-20260927`.
 
 ## Message as sent
 ```

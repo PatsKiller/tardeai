@@ -1677,7 +1677,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CI_FAST_CORE_20260925.md` | CI fast core, risk tiers and digest-free evidence (2026-09-25) | review_required | MISSING HEADER | `0848756e5ca9` |
 | `docs/ops/CLOSE_OPERATOR_GAPS_TO_100_2026-08-19.md` | Close remaining operator gaps to 100% | review_required | OK | `9f9aada669d7` |
 | `docs/ops/COGNITIVE_MEMORY_PRODUCTION_RUNBOOK.md` | Cognitive memory in production: runbook | review_required | OK | `720ebe9b2fee` |
-| `docs/ops/COGX_WAVE1_APPROVAL_PACKAGE_2026-09-27.md` | COGX Wave 1 approval package — pkg-20260927-cogx-w1-d9e1 | review_required | OK | `a5e9eccc73a8` |
+| `docs/ops/COGX_WAVE1_APPROVAL_PACKAGE_2026-09-27.md` | COGX Wave 1 approval package — pkg-20260927-cogx-w1-d9e1 | review_required | OK | `f0f8be421437` |
 | `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) | review_required | MISSING HEADER | `de97ccca2b56` |
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) | review_required | OK | `7ded3894288a` |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 | review_required | OK | `e11d852dddbb` |
