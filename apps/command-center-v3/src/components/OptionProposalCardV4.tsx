@@ -119,6 +119,8 @@ import type { OptionProposal } from './OptionProposalCard'
 
 function proposalVerdictFromSeverity(s?: string): { verdict: CardVerdict; urgency: ActionUrgency } {
   const v = (s || '').toLowerCase()
+  // Operator 2026-09-27: a blocked card is WAIT, never READY, whatever its edge score says.
+  if (/block/.test(v)) return { verdict: 'WAIT', urgency: 'amber' }
   if (/crit|urgent|danger/.test(v)) return { verdict: 'FIX', urgency: 'red' }
   if (/warn|caution/.test(v)) return { verdict: 'WAIT', urgency: 'amber' }
   if (/pos|ok|good/.test(v)) return { verdict: 'READY', urgency: 'green' }
@@ -263,6 +265,7 @@ type HeroTone = { c: string; bg: string; border: string; label: string }
 
 const heroTone = (s?: string): HeroTone => {
   const v = (s || '').toLowerCase()
+  if (/block/.test(v)) return { c: WL.signal.amber, bg: 'rgba(245,166,35,.07)', border: 'rgba(245,166,35,.25)', label: 'BLOCKED' }
   if (/crit|urgent|danger/.test(v)) return { c: WL.signal.red, bg: 'rgba(239,83,80,.07)', border: 'rgba(239,83,80,.25)', label: 'CRITICAL' }
   if (/warn|caution/.test(v)) return { c: WL.signal.amber, bg: 'rgba(245,166,35,.07)', border: 'rgba(245,166,35,.25)', label: 'WARNING' }
   if (/pos|ok|good/.test(v)) return { c: WL.signal.teal, bg: 'rgba(45,212,191,.08)', border: 'rgba(45,212,191,.28)', label: 'POSITIVE' }
@@ -430,8 +433,11 @@ export default function OptionProposalCardV4({
   const route = executionRouteBadge(ext)
   const liqWarnings = liquidityWarnings(p)
   const displayEdgeRaw = ext.display_edge_score ?? p.edge_score
-  const tone = heroTone(p.severity || (displayEdgeRaw && Number(displayEdgeRaw) >= 75 ? 'positive' : 'info'))
-  const { verdict, urgency } = proposalVerdictFromSeverity(p.severity || (displayEdgeRaw && Number(displayEdgeRaw) >= 75 ? 'positive' : 'info'))
+  // Operator 2026-09-27: status first. "POSITIVE"/READY beside BLOCKED was the edge score talking.
+  const blockedCard = (p as any).approvable === false || !!(p as any).enterprise_blocked
+  const severityForCard = blockedCard ? 'blocked' : (p.severity || (displayEdgeRaw && Number(displayEdgeRaw) >= 75 ? 'positive' : 'info'))
+  const tone = heroTone(severityForCard)
+  const { verdict, urgency } = proposalVerdictFromSeverity(severityForCard)
   const rail = terminalUi ? terminalRail(verdict, urgency) : tone.c
   const verdictColor = terminalVerdictColor(verdict, urgency)
   const verdictBg = terminalVerdictBg(verdict, urgency)
@@ -901,7 +907,10 @@ export default function OptionProposalCardV4({
                     const parts: string[] = []
                     if (e.net_cost_if_assigned_per_share != null) parts.push(`Net cost if assigned $${e.net_cost_if_assigned_per_share.toFixed(2)}/sh${e.discount_to_spot_pct != null ? ` (${e.discount_to_spot_pct}% below spot)` : ''} · cash committed ${$(e.cash_committed)}`)
                     if (e.called_away_price_per_share != null) parts.push(`If called away: $${e.called_away_price_per_share.toFixed(2)}/sh incl. premium · ${e.shares_committed} shares committed`)
-                    if (e.collateral != null) parts.push(`Collateral ${$(e.collateral)} · max loss ${$(e.max_loss_total)} · breakeven $${e.breakeven}`)
+                    if (e.collateral != null) parts.push(`Collateral ${$(e.collateral)} · max loss ${$(e.max_loss_total)} · breakeven $${e.breakeven}${e.credit_basis ? ` · credit basis: ${e.credit_basis}` : ''}`)
+                    if (e.credit_total_at_mid != null) parts.push(`At leg midpoints (not a fill): credit ${$(e.credit_total_at_mid)} · max loss ${$(e.max_loss_total_at_mid)} · breakeven $${e.breakeven_at_mid} · haircut vs executable ${$(e.credit_haircut_total)}`)
+                    if ((p as any).fill_assumption) parts.push(`Fill assumption: ${(p as any).fill_assumption}${(p as any).quotes_as_of ? ` · quotes as of ${String((p as any).quotes_as_of).slice(0, 16)}` : ''}`)
+                    if (e.ev_caveat) parts.push(`Expected P/L: ${e.ev_caveat}`)
                     if (e.expected_pl_status) parts.push(`Expected P/L ${e.expected_pl_status}`)
                     if (e.floor_value_after_premium != null) parts.push(`Insures ${e.insured_shares} sh${e.uninsured_shares ? ` (${e.uninsured_shares} uninsured)` : ''} · floor ${$(e.floor_value_after_premium)} after premium · downside to floor from mark ${$(e.downside_to_floor_from_mark)} · stock+put breakeven $${e.stock_plus_put_breakeven_from_mark}`)
                     return parts.length ? (
@@ -916,8 +925,9 @@ export default function OptionProposalCardV4({
                       <b style={{ color: BB.text1 }}>Each leg.</b>{' '}
                       {(p as any).legs_liquidity.map((l: any, i: number) => (
                         <div key={i} style={{ color: BB.text2, marginLeft: 10 }}>
-                          {l.role} ${l.strike}: bid {l.bid ?? '—'} / ask {l.ask ?? '—'}
+                          {l.role} ${l.strike}: bid {l.bid ?? '—'} / ask {l.ask ?? '—'}{l.mid != null ? ` / mid ${l.mid}` : ''}
                           {l.spread_pct != null ? ` (${l.spread_pct}% wide)` : ''} · OI {l.open_interest ?? '—'} · volume {l.volume ?? '—'}
+                          {l.quote_time ? ` · quoted ${String(l.quote_time).slice(0, 16)}` : ''}{l.two_sided === false ? ' · no two-sided quote' : ''}
                         </div>
                       ))}
                     </div>
@@ -933,6 +943,11 @@ export default function OptionProposalCardV4({
                           {c.account_cash != null ? ` · account cash ${fmt$(c.account_cash)}${c.committed_pct_of_cash != null ? ` (${c.committed_pct_of_cash}% of it)` : ''}` : ''}
                           {c.shares_held ? ` · ${c.shares_held} ${c.symbol} shares already held` : ''}
                         </div>
+                        {(c.excluded_ideas || []).length > 0 && (
+                          <div style={{ color: BB.text3, marginLeft: 10 }}>
+                            Not counted (archived): {(c.excluded_ideas || []).map((x: any) => `${String(x.strategy || '').replace(/_/g, ' ')} $${x.strike}`).join(', ')}
+                          </div>
+                        )}
                         {(c.scenarios || []).length > 0 && (
                           <div style={{ color: BB.text2, marginLeft: 10 }}>
                             Combined at expiry: {(c.scenarios || []).map((r: any) => `${r.move_pct > 0 ? '+' : ''}${r.move_pct}% ($${r.price}) ${r.combined_pl_at_expiry == null ? '—' : fmt$(r.combined_pl_at_expiry)}`).join(' · ')}
@@ -1199,7 +1214,9 @@ export default function OptionProposalCardV4({
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: terminalUi ? 10 : 12, flexWrap: 'wrap', fontSize: terminalUi ? 9.5 : 11, color: terminalUi ? BB.text2 : WL.text.secondary }}>
           <HeroMetricChip metricKey="edge" label="edge" value={edge ?? '—'} context={metricCtx} color={edgeColor} />
-          <HeroMetricChip metricKey="ev" label="exp. P/L" value={p.expected_value == null && (p as any).economics?.expected_pl_status ? 'withheld' : fmt$(p.expected_value)} context={metricCtx} />
+          <span title={(p as any).expected_value_caveat || (p as any).economics?.expected_pl_status || undefined} style={{ display: 'inline-flex' }}>
+            <HeroMetricChip metricKey="ev" label={(p as any).expected_value_caveat ? 'exp. P/L*' : 'exp. P/L'} value={p.expected_value == null && (p as any).economics?.expected_pl_status ? 'withheld' : fmt$(p.expected_value)} context={metricCtx} />
+          </span>
           <HeroMetricChip
             metricKey="pop"
             label="POP"
@@ -1506,9 +1523,9 @@ export default function OptionProposalCardV4({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: terminalUi ? 4 : 7 }}>
               <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} context={metricCtx} terminal={terminalUi} />
               <Metric label="Strike" value={`$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)}`} context={metricCtx} terminal={terminalUi} />
-              <Metric label="Premium" value={p.premium != null ? fmt$(p.premium, 2) : '—'} color={isCredit ? WL.price.up : WL.text.primary} metricKey="premium" context={metricCtx} terminal={terminalUi} />
+              <Metric label={(p as any).credit_basis === 'executable' ? 'Credit (executable)' : (p as any).credit_basis === 'midpoint' ? 'Credit (midpoint est.)' : 'Premium'} value={p.premium != null ? fmt$(p.premium, 2) : '—'} color={isCredit ? WL.price.up : WL.text.primary} metricKey="premium" context={metricCtx} terminal={terminalUi} />
               <Metric label={cashflowLabel} value={fmt$(p.premium_total)} color={cfColor} metricKey={isCredit ? 'total_credit' : 'total_debit'} context={metricCtx} terminal={terminalUi} />
-              <Metric label="Breakeven" value={p.breakeven != null ? `$${fmtNum(p.breakeven, 2)}` : '—'} context={metricCtx} terminal={terminalUi} />
+              <Metric label={(p as any).breakeven_label || 'Breakeven'} value={p.breakeven != null ? `$${fmtNum(p.breakeven, 2)}` : '—'} context={metricCtx} terminal={terminalUi} />
               <Metric label="Max profit" value={fmtMoneyish(p.max_profit)} color={WL.price.up} context={metricCtx} terminal={terminalUi} />
               {p.strategy === 'covered_call' ? (
                 <>
@@ -1516,7 +1533,16 @@ export default function OptionProposalCardV4({
                   <Metric label="Upside cap" value={p.upside_cap ?? `$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)} if assigned`} color={WL.signal.amber} terminal={terminalUi} />
                 </>
               ) : (
-                <Metric label="Max loss" value={fmtMoneyish(p.max_loss)} color={WL.signal.red} context={metricCtx} terminal={terminalUi} />
+                <Metric label={(p as any).max_loss_label || 'Max loss'} value={fmtMoneyish(p.max_loss)} color={WL.signal.red} context={metricCtx} terminal={terminalUi} />
+              )}
+              {(p as any).mid_credit != null && (p as any).credit_basis === 'executable' && (
+                <Metric label="Mid credit (not a fill)" value={fmt$((p as any).mid_credit, 2)} context={metricCtx} terminal={terminalUi} />
+              )}
+              {(p as any).floor_value != null && (
+                <Metric label="Floor (after premium)" value={fmt$((p as any).floor_value)} context={metricCtx} terminal={terminalUi} />
+              )}
+              {(p as any).option_max_loss != null && (
+                <Metric label="Put alone: max loss" value={fmt$((p as any).option_max_loss)} context={metricCtx} terminal={terminalUi} />
               )}
               <Metric label="IV rank" value={p.iv_rank != null ? `${p.iv_rank}%` : '—'} context={metricCtx} terminal={terminalUi} />
               <Metric label="Contracts" value={p.contracts ?? '—'} context={metricCtx} terminal={terminalUi} />

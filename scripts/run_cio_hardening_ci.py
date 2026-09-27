@@ -2609,6 +2609,15 @@ GATES = [
         ["tests/test_options_wave_b_20260927.py"],
     ),
     (
+        # 2026-09-27 -- options fill truth (reviewer work order): credit spreads priced from an
+        # explicit fill assumption (sell short at bid, buy long at ask; midpoint labelled, not a
+        # fill; a non-credit is refused), both legs gated, hedged-put headline = floor not
+        # premium, archived ideas out of combined exposure, blocked cards never POSITIVE,
+        # "fully researched" needs research on file, leg quote timestamps.
+        "options_fill_truth_20260927",
+        ["tests/test_options_fill_truth_20260927.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).

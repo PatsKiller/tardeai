@@ -948,8 +948,16 @@ def normalize_option_chain(raw):
     summaries with mid/IV/delta/OI for calls+puts. Read-only analytics shape."""
     if not isinstance(raw, dict):
         return {"status": "error", "error": "unexpected chain payload type"}
+    from datetime import datetime as _dt, timezone as _tz
     out = {"status": "ok", "symbol": raw.get("symbol"), "underlying_price": (raw.get("underlyingPrice") or
-           (raw.get("underlying") or {}).get("last")), "expirations": []}
+           (raw.get("underlying") or {}).get("last")), "expirations": [],
+           # Fill truth (2026-09-27): when this chain was read, so a card can say how old its quotes are.
+           "fetched_at": _dt.now(_tz.utc).isoformat()}
+    def _ms_iso(v):
+        try:
+            return _dt.fromtimestamp(float(v) / 1000.0, tz=_tz.utc).isoformat() if v else None
+        except (TypeError, ValueError, OSError):
+            return None
     def _walk(side_map, side):
         rows = []
         for exp, strikes in (side_map or {}).items():
@@ -957,9 +965,12 @@ def normalize_option_chain(raw):
                 c = (contracts or [{}])[0]
                 rows.append({"exp": exp.split(":")[0], "strike": float(strike), "side": side,
                              "bid": c.get("bid"), "ask": c.get("ask"), "last": c.get("last"),
+                             "mark": c.get("mark"),
                              "iv": c.get("volatility"), "delta": c.get("delta"),
                              "oi": c.get("openInterest"), "volume": c.get("totalVolume"),
-                             "dte": c.get("daysToExpiration")})
+                             "dte": c.get("daysToExpiration"),
+                             "quote_time": _ms_iso(c.get("quoteTimeInLong")),
+                             "trade_time": _ms_iso(c.get("tradeTimeInLong"))})
         return rows
     rows = _walk(raw.get("callExpDateMap"), "call") + _walk(raw.get("putExpDateMap"), "put")
     by_exp = {}

@@ -75,8 +75,20 @@ def merge_research_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                     continue
                 if current.get(key) in (None, "", [], {}):
                     current[key] = value
-        current["research_status"] = "researched" if _is_researched(current, set(current.get("source_lanes") or [])) else "research_required"
-        current["research_qualified"] = current["research_status"] == "researched"
+        lanes_now = set(current.get("source_lanes") or [])
+        qualified = _is_researched(current, lanes_now)
+        # Operator 2026-09-27: a lane membership qualifies a name for the desk; it is not
+        # itself research. Say which one the card is looking at.
+        if raw.get("research_status") in {"researched", "research_qualified"}:
+            current["_explicit_researched"] = True
+        has_artifact = bool(current.get("research_artifact_id") or current.get("research_memo")
+                            or current.get("_explicit_researched"))
+        current["research_lane_status"] = "lane_qualified" if lanes_now.intersection(RESEARCH_SOURCES) else "unqualified"
+        current["research_status"] = ("researched" if has_artifact else
+                                      ("lane_qualified" if qualified else "research_required"))
+        current["research_qualified"] = qualified
+    for row in merged.values():
+        row.pop("_explicit_researched", None)
     return list(merged.values())
 
 

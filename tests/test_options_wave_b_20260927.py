@@ -64,6 +64,13 @@ def test_fully_researched_requires_a_stance():
          "thesis_stance": ""}
     p = {"strategy": "cash_secured_put", "symbol": "PUR", "strike": 30, "premium": 3.35}
     assert committee_memo(p, t, {}).get("research_status") != "FULLY_RESEARCHED"
+    # Operator 2026-09-27: a card whose CIO view says "0 runs" is not fully researched either.
+    p_zero = dict(p, cio_view={"research": {"count": 0}})
+    m0 = committee_memo(p_zero, dict(t, thesis_stance="watch"), {})
+    assert m0.get("research_status") != "FULLY_RESEARCHED" and m0.get("research_runs") == 0
+    p_runs = dict(p, cio_view={"research": {"count": 1}})
+    assert committee_memo(p_runs, dict(t, thesis_stance="watch"), {}).get("research_status") == "FULLY_RESEARCHED"
+    # No CIO view attached at all is unknown, not zero: the thesis alone decides.
     assert committee_memo(p, dict(t, thesis_stance="watch"), {}).get("research_status") == "FULLY_RESEARCHED"
 
 
