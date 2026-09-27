@@ -21,6 +21,7 @@ from typing import Any, Optional
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "SymbolThesisSynthesisPacket@v1"
+PRIMARY_SLOTS = 16  # SEC company-facts lines carried into the packet, ahead of news
 
 
 def _now() -> str:
@@ -48,6 +49,11 @@ def build_synthesis_packet(
         s for s in ((evidence_catalog or {}).get("structured") or [])
         if s.get("source_type") != "research_sources_registry"
     ]
+    # Reported SEC figures get their own allowance (2026-09-27): the packet kept the first 8
+    # structured rows, the retriever lists news first, so DELL's 13 sec_xbrl facts (revenue,
+    # margins, RPO) were cut and every version said "no reported fundamentals".
+    primary = [s for s in structured if s.get("quality") == "PRIMARY_REGULATORY"]
+    other = [s for s in structured if s.get("quality") != "PRIMARY_REGULATORY"]
     sufficiency = (evidence_catalog or {}).get("sufficiency") or {}
     plan = acquisition_plan or {}
 
@@ -115,7 +121,7 @@ def build_synthesis_packet(
         "evidence": {
             "supporting": _slim(supporting),
             "contradictory": _slim(contradictory),
-            "structured": _slim(structured),
+            "structured": _slim(primary, PRIMARY_SLOTS) + _slim(other),
             "sufficiency": sufficiency,
         },
         "acquisition_plan_status": plan.get("status"),
