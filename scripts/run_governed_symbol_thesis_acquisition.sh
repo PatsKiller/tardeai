@@ -6,12 +6,13 @@
 #   17 17 * * 1-5 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_governed_symbol_thesis_acquisition.sh >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/symbol_thesis_acquisition.log 2>&1 # TRADEAI_GOVERNED_WORKER thesis-acquisition-daily
 #
 # Guarantees (mirrors run_governed_agent_flash_market.sh):
-#   - Canonical host containment flag remains on disk (never cleared)
+#   - Canonical host containment flag is never touched; runs when containment is
+#     active (process-scoped override) or cleared by the operator (archive tripwire)
 #   - Process-scoped containment override only for this process
 #   - RAG-first → acquire → embed → governed Flash synthesis → reconcile → publish
 #   - Bounded LLM spend (LLM_GLOBAL_DAILY_USD_CAP + per-run call cap)
 #   - Production flock /tmp/tradeai_symbol_thesis_acquisition.lock
-#   - Fail closed on missing env / cap / lock / flag
+#   - Fail closed on missing env / cap / lock, or a flag that is missing without an operator clear
 #
 set -euo pipefail
 
@@ -24,6 +25,15 @@ PY="${PY:-$PROJ/.venv/bin/python}"
 LOG="${TRADEAI_GOVERNED_THESIS_LOG:-$PROJ/logs/symbol_thesis_acquisition.log}"
 LOCK="${TRADEAI_THESIS_LOCK_PATH:-/tmp/tradeai_symbol_thesis_acquisition.lock}"
 FLAG_HOST="${HOME}/.local/state/tradeai/AGENT_JOBS_P0_CONTAINED"
+# Operator clear (2026-09-15 "agents clear") archives the flag and leaves this
+# tripwire. Flag absent + tripwire present = containment CLEARED, not missing.
+CLEARED_TRIPWIRE="${HOME}/.local/state/tradeai/archive/AGENT_JOBS_P0_CONTAINED.TRIPWIRE.md"
+containment_state() {
+  if [[ -f "$FLAG_HOST" ]]; then echo active
+  elif [[ -f "$CLEARED_TRIPWIRE" ]]; then echo cleared
+  else echo missing
+  fi
+}
 TIMEOUT_SEC="${TRADEAI_GOVERNED_THESIS_TIMEOUT_SEC:-300}"
 MAX_LLM="${TRADEAI_GOVERNED_THESIS_MAX_LLM:-3}"
 LIMIT="${TRADEAI_GOVERNED_THESIS_LIMIT:-10}"
@@ -44,9 +54,13 @@ log "SRC=${SRC}"
 log "PROJ=${PROJ}"
 log "host_flag_present=$( [[ -f "$FLAG_HOST" ]] && echo yes || echo no )"
 
-# --- Fail closed: canonical containment flag must be present (and stays active) ---
-if [[ ! -f "$FLAG_HOST" ]]; then
-  log "failure: containment flag missing path=${FLAG_HOST}"
+# --- Fail closed unless containment is active (override below) or was cleared by the operator ---
+# 2026-09-27: after the 09-15 clear this check exited 78 every day, so no symbol
+# thesis was acquired from 09-16 on; the wrapper existed to run DESPITE containment.
+CONTAINMENT="$(containment_state)"
+log "containment_state=${CONTAINMENT}"
+if [[ "$CONTAINMENT" == "missing" ]]; then
+  log "failure: containment flag missing path=${FLAG_HOST} (and no operator clear at ${CLEARED_TRIPWIRE})"
   log "exit=78"
   exit 78
 fi
@@ -139,8 +153,8 @@ fi
 # --- Dry-run / contained probe: no provider work ---
 if [[ "$DRY_RUN" == "1" ]] || [[ "$DRY_RUN" == "true" ]] || [[ "$DRY_RUN" == "yes" ]]; then
   log "mode=dry_run: env+lock+containment probe only (no provider)"
-  if [[ ! -f "$FLAG_HOST" ]]; then
-    log "failure: host flag disappeared during dry_run"
+  if [[ "$(containment_state)" != "$CONTAINMENT" ]]; then
+    log "failure: containment state changed during dry_run"
     log "exit=78"
     exit 78
   fi
@@ -150,7 +164,7 @@ if [[ "$DRY_RUN" == "1" ]] || [[ "$DRY_RUN" == "true" ]] || [[ "$DRY_RUN" == "ye
     exit 99
   fi
   log "lock_ok=${LOCK}"
-  log "host_flag_still_present=yes"
+  log "containment_state_still=${CONTAINMENT}"
   log "success: dry_run complete (no provider)"
   log "exit=0"
   exit 0
@@ -193,10 +207,10 @@ case "$rc" in
     ;;
 esac
 
-if [[ -f "$FLAG_HOST" ]]; then
-  log "host_flag_still_present=yes"
+if [[ "$(containment_state)" == "$CONTAINMENT" ]]; then
+  log "containment_state_still=${CONTAINMENT}"
 else
-  log "host_flag_still_present=no CRITICAL"
+  log "containment_state_changed=${CONTAINMENT}->$(containment_state) CRITICAL"
 fi
 
 log "exit=${rc}"
