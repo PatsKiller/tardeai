@@ -2534,6 +2534,13 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-27 -- symbol-thesis acquisition runs after the operator clears
+        # P0 containment (archive tripwire); a flag missing without a clear still
+        # fails closed. It had exited 78 every day since 09-16.
+        "thesis_acquisition_containment_20260927",
+        ["tests/test_thesis_acquisition_containment_20260927.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).
