@@ -7,15 +7,16 @@
 #
 # DOCUMENTATION INDEX
 # -------------------
-# All documentation lives in docs/. The addendum model is deprecated.
-# These are the authoritative documents:
+# Start here. Command Center is /v3/ on port 7777.
 #
-#   docs/MASTER_SYSTEM_DOCUMENTATION.md   -- Complete system reference
-#   docs/ARCHITECTURE_OVERVIEW.md         -- Executive architecture summary
-#   docs/ARCHITECTURE_INFOGRAM.md         -- Visual architecture diagrams
-#   docs/CHEAT_SHEET.md                   -- Operator quick reference
-#   docs/COST_MODEL.md                    -- Cloud operating cost estimates (incl. topic intelligence)
-#   docs/GPU_OLLAMA_SETUP.md              -- GPU/LLM hardware config
+#   AGENTS.md                                              -- operator policy
+#   docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md             -- merge and promote
+#   docs/ops/ROLLBACK_COMMANDS.md                          -- rollback
+#   docs/architecture/V3_3_IMPLEMENTATION_STATUS_2026-09-27.md
+#   docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_3.md
+#
+# Older architecture files v2_0 and v3_0 through v3_2 are superseded by v3_3.
+# docs/ARCHITECTURE_OVERVIEW.md is not in this tree.
 #
 # TOPIC INTELLIGENCE (NEW 2026-05-09)
 # -----------------------------------

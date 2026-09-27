@@ -1,7 +1,7 @@
 # TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.2
 ## Canonical Active Trader, Moomoo Level 2, Live Momentum Scalp, Journal, and Dual-Dashboard Amendment
 
-**Status:** ARCHITECTURE-OWNER APPROVED IMPLEMENTATION BLUEPRINT  
+**Status:** SUPERSEDED BY TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_3.md  
 **Date:** 2026-07-22  
 **Supersedes:** `TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_1.md` where this amendment conflicts.  
 **Full canonical artifact SHA-256:** `8085c644efcf6039eb236566bdaaae5496546d09949812577d68d92058f635bc`  

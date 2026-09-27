@@ -107,6 +107,13 @@ def test_promote_restarts_governed_bridge_by_default():
         "desk bot omitted from default BOUND_UNITS — it keeps the previous release import")
 
 
+def test_prepare_links_the_live_wake_store_and_scored_tickers():
+    src = DEPLOY.read_text(encoding="utf-8")
+    assert "trade-ai-state/persistent_wake" in src
+    assert "scored_tickers_latest.json" in src
+    assert "release-local-" in src
+
+
 def test_promote_invokes_bound_unit_restart():
     src = DEPLOY.read_text(encoding="utf-8")
     promote = src.split("cmd_promote()", 1)[1].split("\n}", 1)[0]

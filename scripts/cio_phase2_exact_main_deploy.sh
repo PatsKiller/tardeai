@@ -345,6 +345,37 @@ PY
   else
     log "  WARN .env not found - tree-relative scripts will fail from this release"
   fi
+
+  # R-08: the live wake store is ~/trade-ai-state/persistent_wake (written today).
+  # The copy inside a release was frozen on 2026-09-07. Link the live store.
+  # A release-local directory is renamed, not deleted.
+  local wake_src="${HOME}/trade-ai-state/persistent_wake"
+  local wake_dst="${dest}/data/persistent_wake"
+  if [[ -d "$wake_src" ]]; then
+    if [[ -d "$wake_dst" && ! -L "$wake_dst" ]]; then
+      local wake_stash="${wake_dst}.release-local-$(date -u +%Y%m%dT%H%M%SZ)"
+      mv "$wake_dst" "$wake_stash"
+      log "  RECONCILE data/persistent_wake preserved at $wake_stash"
+    fi
+    mkdir -p "$(dirname "$wake_dst")"
+    ln -sfn "$wake_src" "$wake_dst"
+    log "  symlink data/persistent_wake → $wake_src"
+  else
+    log "  WARN ~/trade-ai-state/persistent_wake missing — release keeps its own copy"
+  fi
+
+  # The dev tree holds the fresh scored-ticker file. The release copy was
+  # frozen on 2026-08-31. Link it. The file stays one place.
+  local scored_src="${CANONICAL_SOURCE}/data/scored_tickers_latest.json"
+  local scored_dst="${dest}/data/scored_tickers_latest.json"
+  if [[ -f "$scored_src" ]]; then
+    if [[ -f "$scored_dst" && ! -L "$scored_dst" ]]; then
+      mv "$scored_dst" "${scored_dst}.release-local-$(date -u +%Y%m%dT%H%M%SZ)"
+      log "  RECONCILE scored_tickers_latest.json preserved beside the link"
+    fi
+    ln -sfn "$scored_src" "$scored_dst"
+    log "  symlink data/scored_tickers_latest.json → canonical"
+  fi
 }
 
 write_build_meta() {
