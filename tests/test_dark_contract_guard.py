@@ -149,7 +149,10 @@ def test_reclassification_lands_in_declared_not_in_new():
     # Exactly the in-scope modules that declare themselves unwired. Pinned as a
     # set rather than a count: a count could be satisfied by the wrong modules,
     # and would not go RED if the rule started matching something else.
+    # report_slo_burn_rate.py declares SCHEDULED_ENTRYPOINT "unscheduled by
+    # design"; that is a not-installed claim, so it belongs here, not in NEW.
     assert set(res["declared_not_installed"]) == {
         "scripts/check_operator_answer_quality.py",
+        "scripts/report_slo_burn_rate.py",
         "scripts/set_goal_predicate.py",
     }

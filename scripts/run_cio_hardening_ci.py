@@ -2590,6 +2590,23 @@ GATES = [
             "tests/test_ws7_belief_wake_20260926.py",
         ],
     ),
+    (
+        # 2026-09-26 WS-4 — six suites that sat outside CI while red or hanging.
+        # Standing HOLD next_review is the demoted cadence (not a dated
+        # catalyst); absent data_quality is partial, not INVALID. Advisory
+        # enrich is hermetic (no live desk build). Alpaca Hub routes stay
+        # 403. Spread fixture expiry stays in the future. Handoffs carry
+        # parent_run_id. Not-installed declarations include the SLO report.
+        "ci_honesty_ws4_20260926",
+        [
+            "tests/test_r18_2_production_hardening.py",
+            "tests/test_advisory_desk_phase3.py",
+            "tests/test_alpaca_paper_options_executor.py",
+            "tests/test_dark_contract_guard.py",
+            "tests/test_options_prime_rubric.py",
+            "tests/test_p211_restart.py",
+        ],
+    ),
 ]
 
 
