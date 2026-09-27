@@ -1,9 +1,9 @@
-"""AGENTS.md 1.3.0 (PROPOSED) — the amendment must not act before it is ratified.
+"""AGENTS.md 1.3.0 — ratified 2026-09-27 with a per-task grant condition.
 
-The failure this guards against: an authority-widening draft merged into AGENTS.md reads, to an
-agent, exactly like a rule. So while 1.3.0 is PROPOSED the ACTIVE §0/§1/§2B wording must be
-intact, the new text must be labelled NOT IN FORCE, and the promises the amendment makes
-(no LLM live authority, Stage 14's separate start, push precedence) must be present.
+The failure this guards against: an authority-widening amendment that reads as unconditional. After
+ratification §0 rule 2 must carry the per-task `execution-engineering` grant condition in AGENTS.md
+and every adapter, live authority (A4/A5) must stay operator-only in §17, and the promises the
+amendment makes (no LLM live authority, Stage 14's separate start, push precedence) must be present.
 """
 
 from __future__ import annotations
@@ -30,26 +30,30 @@ def _section(title_prefix: str) -> str:
     return m.group(0)
 
 
-def test_1_3_0_is_proposed_and_undated():
-    if _control("Policy-Version") == "1.3.0":
-        assert _control("Status") == "PROPOSED"
-        assert _control("Effective-Date") == "PENDING"
+def test_1_3_0_is_active_and_dated():
+    assert _control("Policy-Version") == "1.3.0"
+    assert _control("Status") == "ACTIVE"
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", _control("Effective-Date"))
 
 
-def test_active_broker_prohibition_is_untouched_while_proposed():
-    """Negative authority test: the unratified draft must not have rewritten §0 rule 2."""
-    if _control("Status") != "PROPOSED":
-        return
+def test_rule_2_requires_a_per_task_grant():
+    """Negative authority test: ratification must not have made broker code unconditionally in scope."""
     sec0 = _section("0 · If you read nothing else")
-    assert "**The broker execution subsystem is out of scope.**" in sec0
+    assert "per-task grant" in sec0 and "`execution-engineering` grant" in sec0
+    assert "Without one, the broker execution subsystem is out of scope" in sec0
+    assert "No agent ever calls a live broker" in sec0
     assert "never sizes, orders, stops, weights, or writes to a broker" in sec0
-    assert "defined but not granted" in AGENTS
-    assert "anything in the broker subsystem, credentials, or 2FA" in _section("17 · Operator-only")
+    assert "live broker authority (A4/A5)" in _section("17 · Operator-only")
+    for adapter in ("CLAUDE.md", ".cursor/rules/00-tradeai-work-policy.mdc",
+                    ".github/copilot-instructions.md", ".goosehints"):
+        assert "Without one, the broker execution subsystem is out of scope" in (ROOT / adapter).read_text(encoding="utf-8"), adapter
 
 
-def test_section_22_is_labelled_not_in_force():
-    s22 = _section("22 · Proposed authority amendment 1.3.0")
-    assert "NOT IN FORCE" in s22 and "Status: PROPOSED" in s22
+def test_section_22_is_ratified_with_the_binding():
+    s22 = _section("22 · Authority amendment 1.3.0")
+    assert "RATIFIED 2026-09-27" in s22
+    assert "APPROVE_AGENTS_POLICY_1_3_0 1232 1ea66d24912b4242a49d42cc92e94b0030ec4173" in s22
+    assert "per-task `execution-engineering` guard grant" in s22
 
 
 def test_no_llm_ever_holds_live_or_order_authority():

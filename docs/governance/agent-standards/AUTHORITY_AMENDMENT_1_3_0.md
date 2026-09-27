@@ -1,10 +1,14 @@
-# AGENTS.md 1.3.0 — authority amendment (PROPOSED, not in force)
+# AGENTS.md 1.3.0 — authority amendment (RATIFIED 2026-09-27)
 
 ```
 Amends:          AGENTS.md 1.2.7
 Proposed-Version: 1.3.0
 Change-Class:    MAJOR (changes §0, §1, §2B and §17 — broker authority semantics)
-Status:          PROPOSED — Effective-Date PENDING
+Status:          ACTIVE — Effective-Date 2026-09-27
+Ratified:        APPROVE_AGENTS_POLICY_1_3_0 1232 1ea66d24912b4242a49d42cc92e94b0030ec4173
+                 (independent review confirmed by the operator 2026-09-27)
+Condition:       A1/A2 on the execution file set only while a per-task
+                 execution-engineering guard grant (files, purpose, expiry) is active
 Requires:        operator ratification bound to this PR's reviewed head SHA
                  (APPROVE_AGENTS_POLICY_1_3_0 <pr> <sha>) AND merge
 Base-SHA:        1c60ecb4264ba4dcc6a38106e76fae0d96a26787
