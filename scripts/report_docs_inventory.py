@@ -190,6 +190,25 @@ def _candidate_files(root: Path) -> list[Path]:
     return list(root.rglob("*"))
 
 
+def declared_archive_status(path: Path) -> str | None:
+    """SUPERSEDED or DEPRECATED from the first Status line. ACTIVE is ignored."""
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")[:4000]
+    except OSError:
+        return None
+    for line in text.splitlines():
+        s = line.strip().strip("*").strip()
+        if not s.lower().startswith("status:"):
+            continue
+        word = s.split(":", 1)[1].strip().split()[0].strip("*").upper() if ":" in s else ""
+        if word.startswith("SUPERSEDED"):
+            return "SUPERSEDED"
+        if word.startswith("DEPRECATED"):
+            return "DEPRECATED"
+        return None
+    return None
+
+
 def collect_inventory(root: Path) -> tuple[list[dict], dict]:
     inventory: list[dict] = []
     hash_groups: dict[str, list[str]] = {}
@@ -210,6 +229,15 @@ def collect_inventory(root: Path) -> tuple[list[dict], dict]:
         ).isoformat()
         fhash = sha256(filepath)
         status, reason, confidence = classify(relpath, ext, size)
+        declared = declared_archive_status(filepath) if ext == ".md" else None
+        if declared:
+            # A header that says SUPERSEDED or DEPRECATED is explicit. A header
+            # that says ACTIVE is not: hundreds of those are unmeasured stamps.
+            status, reason, confidence = (
+                "archive_superseded",
+                f"header Status: {declared}",
+                "high",
+            )
         h_status, title = header_status_for(filepath, ext)
 
         entry = {

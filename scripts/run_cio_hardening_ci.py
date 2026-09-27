@@ -2625,6 +2625,13 @@ GATES = [
         "audit_remaining_phases_20260927",
         ["tests/test_audit_remaining_phases_20260927.py"],
     ),
+    (
+        # 2026-09-27 — rest of the audit that does not delete routes or tables.
+        # Route counts, jsonl head archived not deleted, SUPERSEDED headers
+        # win over the path guess, update_docx generators tripwire-retired.
+        "audit_rest_20260927",
+        ["tests/test_audit_rest_20260927.py"],
+    ),
 ]
 
 

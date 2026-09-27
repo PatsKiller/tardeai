@@ -269,36 +269,36 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-ceiling.md` | CIO Agent — AS-IS vs SPEC (2026-09-09 live ceiling) | review_required | OK | `11646742f3fe` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09-final.md` | CIO Agent — AS-IS vs SPEC (2026-09-09 final) | review_required | OK | `dd2922037c1f` |
 | `docs/architecture/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO Agent — AS-IS vs SPEC (2026-09-09) | review_required | OK | `3b89fb965505` |
-| `docs/architecture/CIO_AS_IS_2026-09-19-1352.md` | CIO / AEC AS-IS — 2026-09-19 13:52 ET | review_required | OK | `d8bb7a991973` |
+| `docs/architecture/CIO_AS_IS_2026-09-19-1352.md` | CIO / AEC AS-IS — 2026-09-19 13:52 ET | archive_superseded | OK | `d8bb7a991973` |
 | `docs/architecture/CIO_AS_IS_2026-09-19-1401.md` | CIO / AEC AS-IS — 2026-09-19 14:01 ET | review_required | OK | `8dcab97ad169` |
 | `docs/architecture/CIO_AS_IS_2026-09-19-1436.md` | CIO / AEC AS-IS — 2026-09-19 14:36 ET | review_required | OK | `381bde614ff5` |
 | `docs/architecture/CIO_AS_IS_2026-09-19-1452.md` | CIO / AEC AS-IS — 2026-09-19 14:52 ET | review_required | OK | `205ae246b32a` |
 | `docs/architecture/CIO_AS_IS_2026-09-19-1541.md` | CIO / AEC AS-IS — 2026-09-19 15:41 ET | review_required | OK | `515016da7ea5` |
-| `docs/architecture/CIO_AS_IS_2026-09-20-0604.md` | CIO / AEC AS-IS — 2026-09-20 06:04 ET | review_required | OK | `b0eb4b77e06a` |
-| `docs/architecture/CIO_AS_IS_2026-09-20-0902.md` | CIO / AEC AS-IS — 2026-09-20 09:02 ET | review_required | OK | `d7525cec0ad8` |
-| `docs/architecture/CIO_AS_IS_2026-09-20-0945.md` | CIO / AEC AS-IS — 2026-09-20 09:45 ET | review_required | OK | `f24fe496db77` |
+| `docs/architecture/CIO_AS_IS_2026-09-20-0604.md` | CIO / AEC AS-IS — 2026-09-20 06:04 ET | archive_superseded | OK | `b0eb4b77e06a` |
+| `docs/architecture/CIO_AS_IS_2026-09-20-0902.md` | CIO / AEC AS-IS — 2026-09-20 09:02 ET | archive_superseded | OK | `d7525cec0ad8` |
+| `docs/architecture/CIO_AS_IS_2026-09-20-0945.md` | CIO / AEC AS-IS — 2026-09-20 09:45 ET | archive_superseded | OK | `f24fe496db77` |
 | `docs/architecture/CIO_AS_IS_2026-09-20-1445.md` | CIO / AEC AS-IS — 2026-09-20 14:45 ET | review_required | OK | `9a1162669c23` |
-| `docs/architecture/CIO_FUTURE_2026-09-19-1352.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 13:52 ET | review_required | OK | `c6fd02492610` |
+| `docs/architecture/CIO_FUTURE_2026-09-19-1352.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 13:52 ET | archive_superseded | OK | `c6fd02492610` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1401.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:01 ET | review_required | OK | `d3da6ba1132c` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1436.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:36 ET | review_required | OK | `a8e36ace8e6b` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1452.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:52 ET | review_required | OK | `42ed1a7f9a1f` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1541.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 15:41 ET | review_required | OK | `81101b520dfa` |
-| `docs/architecture/CIO_FUTURE_2026-09-20-0604.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 06:04 ET | review_required | OK | `fd9c45fff458` |
-| `docs/architecture/CIO_FUTURE_2026-09-20-0902.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 09:02 ET | review_required | OK | `85651c22a853` |
-| `docs/architecture/CIO_FUTURE_2026-09-20-0945.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 09:45 ET | review_required | OK | `8981ae27954a` |
+| `docs/architecture/CIO_FUTURE_2026-09-20-0604.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 06:04 ET | archive_superseded | OK | `fd9c45fff458` |
+| `docs/architecture/CIO_FUTURE_2026-09-20-0902.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 09:02 ET | archive_superseded | OK | `85651c22a853` |
+| `docs/architecture/CIO_FUTURE_2026-09-20-0945.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 09:45 ET | archive_superseded | OK | `8981ae27954a` |
 | `docs/architecture/CIO_FUTURE_2026-09-20-1445.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 14:45 ET | review_required | OK | `60a4819f9f02` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `4edef7d3ee4d` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-final.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 final) | review_required | OK | `5b412d2266d6` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09) | review_required | OK | `999bb7b18aab` |
-| `docs/architecture/CIO_GAP_2026-09-19-1352.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 13:52 ET | review_required | OK | `ce7582850a3d` |
+| `docs/architecture/CIO_GAP_2026-09-19-1352.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 13:52 ET | archive_superseded | OK | `ce7582850a3d` |
 | `docs/architecture/CIO_GAP_2026-09-19-1401.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 14:01 ET | review_required | OK | `473218619794` |
 | `docs/architecture/CIO_GAP_2026-09-19-1436.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 14:36 ET | review_required | OK | `474cac5eea1f` |
 | `docs/architecture/CIO_GAP_2026-09-19-1452.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 14:52 ET | review_required | OK | `1593a284fbbe` |
 | `docs/architecture/CIO_GAP_2026-09-19-1541.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-19 15:41 ET | review_required | OK | `0af5e23e53f2` |
-| `docs/architecture/CIO_GAP_2026-09-20-0604.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 06:04 ET | review_required | OK | `e3dabb7a2089` |
-| `docs/architecture/CIO_GAP_2026-09-20-0902.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 09:02 ET | review_required | OK | `f42c6580aae2` |
-| `docs/architecture/CIO_GAP_2026-09-20-0945.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 09:45 ET | review_required | OK | `84a023a4d889` |
+| `docs/architecture/CIO_GAP_2026-09-20-0604.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 06:04 ET | archive_superseded | OK | `e3dabb7a2089` |
+| `docs/architecture/CIO_GAP_2026-09-20-0902.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 09:02 ET | archive_superseded | OK | `f42c6580aae2` |
+| `docs/architecture/CIO_GAP_2026-09-20-0945.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 09:45 ET | archive_superseded | OK | `84a023a4d889` |
 | `docs/architecture/CIO_GAP_2026-09-20-1445.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 14:45 ET (amended 2026-09-21) | review_required | OK | `c99951d0cdb9` |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
@@ -321,12 +321,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `bc68c49ea023` |
 | `docs/architecture/HERMES_PERSISTENT_TICKER_INTELLIGENCE_ARCHITECTURE_2026-08-23.md` | Hermes Persistent Ticker Intelligence Architecture | review_required | OK | `3a4320625b1e` |
 | `docs/architecture/HOME_COMMAND_BRAIN_V2.md` | Home v2 — The Command Brain (2026-07-17) | review_required | OK | `6e695df9a86e` |
-| `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0902.md` | Honest maturity assessment — 2026-09-20 09:02 ET | review_required | OK | `9400539bf093` |
-| `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0945.md` | Honest maturity assessment — 2026-09-20 09:45 ET | review_required | OK | `04de608df23b` |
+| `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0902.md` | Honest maturity assessment — 2026-09-20 09:02 ET | archive_superseded | OK | `9400539bf093` |
+| `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-0945.md` | Honest maturity assessment — 2026-09-20 09:45 ET | archive_superseded | OK | `04de608df23b` |
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-1445.md` | Honest maturity assessment — 2026-09-20 14:45 ET (amended 2026-09-21) | review_required | OK | `24cd6d6edd4b` |
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-21-1905.md` | Where this actually stands — 2026-09-21, 19:05 ET | review_required | MISSING HEADER | `0d6be8ffe087` |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
-| `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-1600.md` | LLM Cost Governance AS-IS — 2026-09-20 16:00 ET | review_required | OK | `c33d84747e79` |
+| `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-1600.md` | LLM Cost Governance AS-IS — 2026-09-20 16:00 ET | archive_superseded | OK | `c33d84747e79` |
 | `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-2100.md` | LLM Cost Governance AS-IS — 2026-09-20 21:00 ET | review_required | OK | `ae7ab963993b` |
 | `docs/architecture/M2_PRODUCTION_SHADOW_MIGRATION_DESIGN_2026-08-24.md` | M2 production shadow migration — DESIGN ONLY | review_required | OK | `18aa33439911` |
 | `docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md` | Material change → due-diligence questions | review_required | OK | `665175b2ce35` |
@@ -447,13 +447,14 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md` | Trade-AI work log — 2026-09-15 | review_required | MISSING HEADER | `c64058d9dff7` |
 | `docs/architecture/TRADE_AI_WORKLOG_2026-09-16.md` | Trade-AI work log — 2026-09-16 | review_required | MISSING HEADER | `75af831ec916` |
 | `docs/architecture/TRADE_INTELLIGENCE_JOURNAL_DESIGN.md` | Trade Intelligence Journal -- Design Document | review_required | OK | `471edac9ceb2` |
+| `docs/architecture/V3_3_IMPLEMENTATION_STATUS_2026-09-27.md` | v3.3 implementation status | review_required | OK | `fdead3fe6fc7` |
 | `docs/architecture/V3_OPENCLAW_TRADEAI_SYSTEM_TABS.md` | Command Center v3 — OpenClaw + TradeAI System Tabs — 2026-06-07 | review_required | OK | `10a7313b3681` |
 | `docs/architecture/V3_OPEN_TRADES_INTELLIGENCE_2026_06_05.md` | v3 Open Trades — Actionable Position Intelligence (2026-06-05) | review_required | OK | `f0c1ace4b5a9` |
 | `docs/architecture/WATCH_DESK_V2.md` | Watch Desk v2 — Truth & Directive Governance (P0 workstreams, 2026-07-16) | review_required | OK | `be5f8cd47049` |
 | `docs/architecture/WATCH_DESK_V3.md` | Watch Desk v3 — From Watching to Learning (2026-07-16 evening) | review_required | OK | `ea65c14610d0` |
 | `docs/architecture/WATCH_DESK_V4.md` | Watch Desk v4 — Terminal Grade (2026-07-16, evening) | review_required | OK | `018c8ea82d4c` |
 | `docs/architecture/adr/ADR-005-decision-integrity-validator-and-alert-semantics.md` | ADR-005 — One decision-integrity validator before any actionable surface; alert and wake semantics | review_required | OK | `24682fee658c` |
-| `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | review_required | OK | `1b18a9999a79` |
+| `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | archive_superseded | OK | `1b18a9999a79` |
 | `docs/architecture/agent-memory-view-proposal.md` | Command Center — Agent Memory view (proposal) | review_required | OK | `7b90f4d8e3d6` |
 | `docs/architecture/channel-adapters.md` | Gateway Channel Adapters — Phase 10 | review_required | OK | `2457155850f5` |
 | `docs/architecture/cio-cognition-tranche3-20260925.md` | CIO cognition tranche 3 — prompt event-driven cognition and the closed learning chain | review_required | OK | `4593665c031d` |
@@ -1733,7 +1734,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/RESEARCH_TIER_LLM_CADENCE.md` | Research tiers, watchlist, and when each gets an LLM | review_required | OK | `28c7d73a7129` |
 | `docs/ops/ROLLBACK_COMMANDS.md` | CURRENT rollback (exact-main phase2) | review_required | OK | `1bf79024085d` |
 | `docs/ops/SESSION_CLOSEOUT_2026-08-22.md` | Session closeout — 2026-08-22 | review_required | OK | `22febcb04ade` |
-| `docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md` | Stance organic park — CLOSED by OBSERVED_LIVE | review_required | OK | `c2b8e5cfeebb` |
+| `docs/ops/STANCE_ORGANIC_PARK_2026-09-20.md` | Stance organic park — CLOSED by OBSERVED_LIVE | archive_superseded | OK | `c2b8e5cfeebb` |
 | `docs/ops/SYMBOL_THESIS_ACQUISITION_PIPELINE_LIVE_2026-08-20.md` | Symbol-thesis acquisition pipeline — live (autonomous, debt-sensitive) — 2026-08-20 | review_required | OK | `c2bbceeb4d87` |
 | `docs/ops/SYMBOL_THESIS_CANARY_DRY_RUN_2026-08-20.md` | Bounded canary dry-run — SCHG / CSCO / ANET | review_required | OK | `fb6602cf2a8a` |
 | `docs/ops/TELEGRAM_FEED_REMEDIATION_2026-08-22.md` | Telegram feed audit — P0 gates (freeze window) + P1 queue | review_required | OK | `bf3111399284` |

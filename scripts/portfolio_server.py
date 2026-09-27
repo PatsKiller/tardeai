@@ -1537,6 +1537,18 @@ _INFLIGHT_LOCK = threading.Lock()
 _WATCHDOG_ABANDON_SEC = float(os.getenv("DASHBOARD_WATCHDOG_ABANDON_SEC", "25"))
 
 
+def _note_route(method: str, raw_path: str) -> None:
+    """Count the path. Never affects the response."""
+    try:
+        try:
+            from lib.route_access_count import note
+        except ImportError:
+            from scripts.lib.route_access_count import note
+        note(method, raw_path)
+    except Exception:
+        return
+
+
 def _peer_closed(conn) -> bool:
     """True when the client has closed its end (socket EOF ⇒ our side is CLOSE-WAIT).
     Zero-timeout select first: recv on a timeout-mode socket would block in select
@@ -1675,6 +1687,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         self.send_error(405, "Method Not Allowed")
 
     def do_GET(self):
+        _note_route("GET", self.path)
         # WS-1 Path B: don't start compute for a client that already hung up
         # (poll storms abort + retry; the aborted request must cost ~0)
         if _peer_closed(self.connection):
@@ -2237,6 +2250,7 @@ class PortfolioHandler(http.server.BaseHTTPRequestHandler):
         self.send_error(404, f"Not found: {path}")
 
     def do_POST(self):
+        _note_route("POST", self.path)
         tid = threading.get_ident()
         with _INFLIGHT_LOCK:
             _INFLIGHT[tid] = (self.path, _wd_time.time(), self.connection)
