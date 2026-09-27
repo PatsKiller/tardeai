@@ -317,9 +317,37 @@ class CIOWakeJobStore:
         finally:
             self._release_lock(lock_fd)
 
+    def _tail_last_event(self, chunk: int = 65536) -> Optional[dict[str, Any]]:
+        """Last event from the end of the file, or None if the last record does
+        not parse (the caller then does the full scan and corrupt-tail trim).
+
+        2026-09-27: every append re-parsed the whole 65 MB store to find the head
+        hash (~0.35 s per write); lease recovery's 1,557 writes took 547 s."""
+        try:
+            with open(self.event_store_path, "rb") as f:
+                f.seek(0, os.SEEK_END)
+                pos = f.tell()
+                buf = b""
+                while pos > 0:
+                    step = min(chunk, pos)
+                    pos -= step
+                    f.seek(pos)
+                    buf = f.read(step) + buf
+                    lines = [x for x in buf.split(b"\n") if x.strip()]
+                    # Need one complete line: either we reached the file start,
+                    # or there is a newline before the last non-empty line.
+                    if lines and (pos == 0 or len(lines) > 1):
+                        return self._loads_event_line(lines[-1].decode("utf-8", errors="replace").strip())
+                return None
+        except OSError:
+            return None
+
     def _get_last_event(self) -> Optional[dict[str, Any]]:
         if not self.event_store_path.exists():
             return None
+        tail = self._tail_last_event()
+        if tail is not None:
+            return tail
         last: dict[str, Any] | None = None
         corrupt_suffix = False
         for line_no, stripped in self._iter_event_lines() or ():
@@ -659,9 +687,13 @@ class CIOWakeJobStore:
         actor_id: str = "cio_detector",
         actor_type: str = "system",
         authority: str = "system",
+        _state: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
-        """Mark a wake job as expired with a reason."""
-        wake = self.get_wake_job(wake_job_id)
+        """Mark a wake job as expired with a reason.
+
+        ``_state``: the wake's already-replayed state, when the caller has it
+        (lease recovery). Skips a full-file rescan per wake (2026-09-27)."""
+        wake = _state if _state is not None else self.get_wake_job(wake_job_id)
         if wake is None:
             raise ValueError(f"Wake job not found: {wake_job_id}")
 
@@ -733,9 +765,10 @@ class CIOWakeJobStore:
         actor_type: str = "system",
         authority: str = "system",
         reason: str = "",
+        _state: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
-        """Release a claimed/dispatched wake job back to PENDING."""
-        wake = self.get_wake_job(wake_job_id)
+        """Release a claimed wake job back to PENDING (DISPATCHED cannot be released)."""
+        wake = _state if _state is not None else self.get_wake_job(wake_job_id)
         if wake is None:
             raise ValueError(f"Wake job not found: {wake_job_id}")
 
@@ -802,18 +835,33 @@ class CIOWakeJobStore:
                     expiry = expiry.replace(tzinfo=timezone.utc)
                 if now <= expiry + timedelta(seconds=stale_seconds):
                     continue
+                if status == "DISPATCHED":
+                    # 2026-09-27: TRANSITIONS forbid DISPATCHED -> RELEASED, so
+                    # release() raised (swallowed) after a full-file rescan for
+                    # every stale dispatched wake: 1,557 of them made each 5-min
+                    # cycle take ~9 min and the 15-min timeout killed it (73x on
+                    # 09-26), which stranded yet more wakes in DISPATCHED. A
+                    # dispatch whose lease ran out never reached IN_FLIGHT, so
+                    # it is dead-lettered with a reason; hourly slots re-enqueue.
+                    reason = "dead_letter:dispatch_lease_expired_never_in_flight"
+                    try:
+                        self.expire(wid, reason=reason, actor_id="lease_recovery", _state=wake)
+                        dead.append({"wake_job_id": wid, "reason": reason})
+                    except ValueError:
+                        pass
+                    continue
                 releases = int(wake.get("release_count") or 0)
                 if releases >= max_recoveries:
                     reason = f"dead_letter:lease_recovered_{releases}_times"
                     try:
-                        self.expire(wid, reason=reason, actor_id="lease_recovery")
+                        self.expire(wid, reason=reason, actor_id="lease_recovery", _state=wake)
                         dead.append({"wake_job_id": wid, "reason": reason})
                     except ValueError:
                         pass
                     continue
                 try:
                     self.release(wid, actor_id="lease_recovery",
-                                 reason=f"lease_expired:{status.lower()}")
+                                 reason=f"lease_expired:{status.lower()}", _state=wake)
                     recovered.append(wid)
                 except ValueError:
                     pass
@@ -832,7 +880,7 @@ class CIOWakeJobStore:
                     continue
                 reason = f"stale_in_flight:{status.lower()}_over_{stale_in_flight_seconds}s"
                 try:
-                    self.expire(wid, reason=reason, actor_id="lease_recovery")
+                    self.expire(wid, reason=reason, actor_id="lease_recovery", _state=wake)
                     dead.append({"wake_job_id": wid, "reason": reason})
                 except ValueError:
                     pass
