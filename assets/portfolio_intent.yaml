@@ -136,7 +136,13 @@ options_desk_settings:
   # (free), Brave router only when SearXNG finds nothing (paid; caller cap in
   # search_budget.CALLER_DAILY_CAPS). Read by scripts/lib/hermes_web_research.py.
   web_research:
-    enabled_reasons: [options_thesis_gap]
+    # 2026-09-27 due diligence W0-4: every Hermes CIO research request (~17/day) is
+    # web-grounded, not only options gaps; its answer reaches the symbol thesis via
+    # accept_research_result. Book-level requests with no symbol search nothing.
+    enabled_reasons: ["*"]
+    research_objects_path: ~/trade-ai-state/persistent_wake/research_objects.jsonl   # governed producer feed
+    reuse_research_objects_hours: 72
+    max_reused_objects: 4
     caller: hermes_cio_research
     max_queries: 6                 # searches per research request (4 thesis intents + CIO concerns)
     results_per_query: 3
