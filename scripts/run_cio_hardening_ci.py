@@ -2553,6 +2553,12 @@ GATES = [
         ["tests/test_lane_breaker_unavailable_20260927.py"],
     ),
     (
+        # 2026-09-27 -- local_llm_compat registered with a hard cap; the shim logs
+        # refusals instead of silently returning "" to its 18 importers.
+        "local_llm_compat_20260927",
+        ["tests/test_local_llm_compat_registered_20260927.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).

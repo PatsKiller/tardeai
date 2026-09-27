@@ -1179,6 +1179,33 @@
       "registered_by": "llm-label-split-20260914",
       "registered_at": "2026-09-14T23:00:00Z",
       "notes": "2026-09-14: split out of the shared advisory_desk_opinion id (operator approved) so spend names its caller and scheduled work can be held to the 09:00-21:00 ET weekday window. Global LLM_GLOBAL_DAILY_USD_CAP still binds."
+    },
+    {
+      "id": "local_llm_compat",
+      "name": "Local-LLM compatibility shim (Flash)",
+      "category": "Compatibility",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "scripts/local_llm.py: local generation is retired, so generate() calls DeepSeek Flash for its 18 importers. Before 2026-09-27 this id was unregistered, every call was refused, and callers silently got an empty string. READ_ONLY_ADVISORY.",
+      "allowed_lanes": [
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 16000,
+      "max_output_tokens": 4096,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "daily_soft_cap": 150,
+      "daily_cost_cap_usd": 0.25,
+      "registered_by": "platform-due-diligence-20260927",
+      "registered_at": "2026-09-27T16:30:00Z",
+      "notes": "Operator 2026-09-27 approved turning it back on. Hard cap $0.25/day and 150 calls/day; the global LLM_GLOBAL_DAILY_USD_CAP still binds. The shim now logs each refusal instead of returning an empty string silently."
     }
   ],
   "default_deepseek_policy": "FAST",

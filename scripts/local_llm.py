@@ -78,8 +78,23 @@ def _try_deepseek(prompt: str, timeout: int = 120) -> str | None:
                 process_id="local_llm_compat",
             )
         return result.strip() if result and result.strip() else None
-    except Exception:
+    except Exception as exc:  # noqa: BLE001
+        # 2026-09-27: refusals were swallowed and callers got "" with no trace.
+        _log_refusal(exc)
         return None
+
+
+_REFUSALS_LOGGED: set[str] = set()
+
+
+def _log_refusal(exc: BaseException) -> None:
+    """Log each distinct refusal reason once per process (never the prompt)."""
+    import logging
+    key = f"{type(exc).__name__}:{str(exc)[:80]}"
+    if key in _REFUSALS_LOGGED:
+        return
+    _REFUSALS_LOGGED.add(key)
+    logging.getLogger("local_llm").warning("local_llm_compat call failed: %s", key)
 
 
 def _try_openai(prompt: str) -> str | None:
