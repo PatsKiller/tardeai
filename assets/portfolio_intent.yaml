@@ -123,6 +123,14 @@ options_desk_settings:
     memory_reads: true             # operator 2026-09-26: CIO review reads prior options facts from M2 memory
     memory_reads_limit: 8          # prior decisions/theses/follow-ups supplied to one review
     memory_reads_lookback_days: 180
+    # Operator 2026-09-26: "if web unsure use chatgpt grok deepseek". Web-backed follow-up
+    # answers still weak -> Hermes external researcher, lanes in order, first answer wins.
+    escalation_enabled: true
+    escalation_lanes: [chatgpt, grok, deepseek]
+    escalation_min_answered_ratio: 0.6   # share of deliverables fully answered
+    escalation_min_cited_urls: 2         # web sources cited across the answers
+    escalation_timeout_s: 300            # per lane
+    escalation_max_per_run: 1
   # Web retrieval for Hermes CIO research on an options thesis gap (operator 2026-09-26:
   # "why not using hermes brave etc research ... same research lanes"). SearXNG first
   # (free), Brave router only when SearXNG finds nothing (paid; caller cap in

@@ -40,8 +40,10 @@ EVENT_PREDICATES = {
     "OPTIONS_THESIS_DECISION": "options_cio_decision",
     "OPTIONS_THESIS_FOLLOWUP_REQUESTED": "options_followup",
     "OPTIONS_THESIS_FOLLOWUP_COMPLETE": "options_followup",
+    "OPTIONS_THESIS_ESCALATED": "options_followup",
     "OPTIONS_VALIDATED": "options_validation",
     "OPTIONS_THESIS_ABANDONED": "options_thesis_outcome",
+    "OPTIONS_THESIS_REOPENED": "options_thesis_outcome",
 }
 
 # Keys that must never reach cognitive memory from an options event, at any
@@ -146,6 +148,16 @@ def _deliverable_texts(v: Any) -> list[str]:
 
 
 def _followup_object(e: dict[str, Any]) -> dict[str, Any]:
+    if e.get("event_type") == "OPTIONS_THESIS_ESCALATED":
+        return {
+            "stage": "EXTERNAL_RESEARCH",
+            "reason": _clip(e.get("reason")),
+            "lane": e.get("lane"),
+            "status": e.get("status"),
+            "external_research_id": e.get("external_research_id"),
+            "findings": _clip(e.get("recommendation")),
+            "confidence": e.get("confidence"),
+        }
     if e.get("event_type") == "OPTIONS_THESIS_FOLLOWUP_COMPLETE":
         answers = [a for a in (e.get("answers") or []) if isinstance(a, dict)]
         return {
@@ -179,6 +191,9 @@ def _validation_object(e: dict[str, Any]) -> dict[str, Any]:
 
 
 def _outcome_object(e: dict[str, Any]) -> dict[str, Any]:
+    if e.get("event_type") == "OPTIONS_THESIS_REOPENED":
+        return {"outcome": "REOPENED", "reason": _clip(e.get("reason")), "actor": e.get("actor"),
+                "reopened_from": e.get("reopened_from")}
     return {
         "outcome": "ABANDONED",
         "reason": _clip(e.get("reason")),
@@ -252,6 +267,9 @@ def _claim(predicate: str, sym: str, obj: dict[str, Any]) -> str:
         return (
             f"CIO options decision {sym}: {obj.get('outcome')} ({obj.get('confidence')}) - {obj.get('reasoning') or ''}"
         )[:TEXT_CLIP]
+    if predicate == "options_followup" and obj.get("stage") == "EXTERNAL_RESEARCH":
+        return (f"{sym} CIO follow-up escalated to {obj.get('lane') or 'no lane'} ({obj.get('status')}): "
+                f"{obj.get('findings') or obj.get('reason') or ''}")[:TEXT_CLIP]
     if predicate == "options_followup":
         return f"{sym} CIO follow-up research {str(obj.get('stage')).lower()}: {len(obj.get('deliverables') or [])} deliverable(s)"
     if predicate == "options_validation":
