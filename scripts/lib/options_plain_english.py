@@ -225,8 +225,12 @@ def committee_memo(p: dict[str, Any], t: dict[str, Any], record: Optional[dict[s
     # DELL showed it over a thesis whose own summary said the evidence was insufficient.
     # Operator 2026-09-27: "fully researched" beside "0 runs" is a contradiction; the label
     # needs research actually on file for this symbol or this option.
-    runs = int(((p.get("cio_view") or {}).get("research") or {}).get("count") or 0)
-    if has_thesis and evidence and state == "CURRENT" and stance and (runs > 0 or ra.get("thesis")):
+    view = p.get("cio_view")
+    runs = (int(((view or {}).get("research") or {}).get("count") or 0) if isinstance(view, dict) else None)
+    # A card that carries a CIO view saying "0 runs" cannot also say fully researched; a card
+    # with no CIO view attached (unknown, not zero) is judged on the thesis alone.
+    research_on_file = runs is None or runs > 0 or bool(ra.get("thesis"))
+    if has_thesis and evidence and state == "CURRENT" and stance and research_on_file:
         research, conf = "FULLY_RESEARCHED", "High" if (t.get("thesis_confidence") or 0) >= 0.7 else "Medium"
     elif has_thesis or ra.get("thesis"):
         # Research done for this option counts, even without a symbol thesis (2026-09-26).
@@ -290,6 +294,7 @@ def committee_memo(p: dict[str, Any], t: dict[str, Any], record: Optional[dict[s
                                "you reject it in the approval queue", "the contract expires"],
         },
         "exit_plan": exit_plan,
+        "research_runs": runs,
         "evidence_ladder": [
             {"key": "AI_IDEA", "label": "AI-generated idea", "done": True,
              "detail": "The engine built this from screens and scores. It is a starting point, not a recommendation."},
