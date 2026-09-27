@@ -17,6 +17,9 @@ Writes data/audit/options_gate_proof/<utc>-<sha7>.json and prints a summary.
 """
 from __future__ import annotations
 
+# Receipt script run by the operator or a CI step; nothing imports it (dark-contract guard).
+NO_CONSUMER_REASON = "operator/CI-invoked served-release receipt (scripts/options_gate_proof.py); emits OptionsGateProof@v1 to data/audit, no importer by design"
+
 import argparse
 import json
 import os
