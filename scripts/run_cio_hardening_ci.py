@@ -2642,6 +2642,13 @@ GATES = [
         ["tests/test_cio_review_retry_20260927.py"],
     ),
     (
+        # 2026-09-27 -- the options CIO packet supplies the spread ratios a reviewer derives
+        # (loss:credit 2.15 refused the DELL MONITOR_ONLY review); the traceability rail is
+        # unchanged and still refuses a number that is not in the facts.
+        "cio_packet_derived_ratios_20260927",
+        ["tests/test_cio_packet_derived_ratios_20260927.py"],
+    ),
+    (
         # 2026-09-27 -- options order gates (operator work order, PR 3): the submit-mode risk
         # evaluator fails closed on an input the desk does not have (quote/chain age, session,
         # buying power, liquidity); approvals are pinned to the legs and expire; archived
