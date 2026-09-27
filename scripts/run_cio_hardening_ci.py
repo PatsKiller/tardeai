@@ -977,6 +977,7 @@ GATES = [
             "tests/test_supervisor_foundations.py",
             "tests/test_approval_package_ledger.py",
             "tests/test_gir_projector_and_breach_detector.py",
+            "tests/test_approval_package_reminder.py",
         ],
     ),
     (

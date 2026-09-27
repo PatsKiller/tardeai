@@ -101,7 +101,8 @@ class Projection:
         self.counts[f"edge:{rel}"] = self.counts.get(f"edge:{rel}", 0) + 1
 
 
-def build(root: Path, *, now: _dt.datetime | None = None, env: dict | None = None, contra_max_lines: int = 200_000) -> Projection:
+def build(root: Path, *, now: _dt.datetime | None = None, env: dict | None = None, contra_max_lines: int = 200_000,
+          graph_max_lines: int = 50_000) -> Projection:
     env = os.environ if env is None else env
     now = now or _now()
     pj = Projection(now, env.get("TRADEAI_RELEASE_SHA"))
@@ -236,7 +237,65 @@ def build(root: Path, *, now: _dt.datetime | None = None, env: dict | None = Non
                         pj.edge(cg, sec, "CONTRADICTS", "research_contradiction_candidates", r.get("candidate_id"))
                 n += 1
         pj.counts["contradictions_projected"] = n
+    # 6. ticker research graph → RESEARCH:ARTIFACT entities keyed by artifact id, re-keyed to SEC: by symbol
+    #    (the rows carry ticker_guid only; the registry key is attached HERE, projection-side)
+    g_p = data / "cio" / "ticker_research_graph.jsonl"
+    if g_p.exists():
+        n = unresolved = 0
+        with g_p.open("r", encoding="utf-8") as fh:
+            for i, line in enumerate(fh):
+                if i >= graph_max_lines:
+                    pj.counts["ticker_graph_capped_at"] = graph_max_lines; break
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                aid = r.get("artifact_id") or r.get("id") or r.get("research_artifact_id")
+                sym = r.get("symbol") or r.get("ticker")
+                if not aid or not sym:
+                    continue
+                ag = f"EVID:tg:{aid}"
+                pj.entity(ag, "RESEARCH", "ARTIFACT", "ticker_research_graph", aid)
+                sec = sec_for(sym)
+                if sec:
+                    pj.edge(sec, ag, "HAS_ARTIFACT", "ticker_research_graph", aid, r.get("created_at") or r.get("captured_at"))
+                else:
+                    unresolved += 1
+                n += 1
+        pj.counts["ticker_graph_artifacts"] = n; pj.counts["ticker_graph_symbol_unresolved"] = unresolved
     return pj
+
+
+def _source_fingerprints(root: Path, env: dict) -> dict:
+    """mtime+size of every source file — the incremental trigger (a bus consumer arrives with memory.delta in Wave 2)."""
+    data = root / "data"
+    srcs = {
+        "identity_registry": Path(env.get("TRADEAI_IDENTITY_REGISTRY") or data / "runtime" / "identity_registry.json"),
+        "cio_theses_projection": data / "cio" / "cio_theses_projection.json",
+        "cio_instrument_records": data / "cio" / "cio_instrument_records.jsonl",
+        "holdings_snapshot": data / "cio" / "holdings_snapshot_latest.json",
+        "research_contradiction_candidates": data / "cio" / "research_contradiction_candidates.jsonl",
+        "ticker_research_graph": data / "cio" / "ticker_research_graph.jsonl",
+    }
+    out = {}
+    for k, p in srcs.items():
+        try:
+            st = p.stat(); out[k] = {"mtime": st.st_mtime, "size": st.st_size}
+        except OSError:
+            out[k] = None
+    return out
+
+
+def incremental_needed(root: Path, state_path: Path, env: dict) -> tuple[bool, dict, dict]:
+    """True when any source changed since the last recorded run. Returns (needed, current, previous)."""
+    cur = _source_fingerprints(root, env)
+    prev = {}
+    if state_path.exists():
+        try:
+            prev = json.loads(state_path.read_text(encoding="utf-8")).get("sources", {})
+        except (OSError, json.JSONDecodeError):
+            prev = {}
+    return (cur != prev), cur, prev
 
 
 def apply(pj: Projection) -> dict:
@@ -271,15 +330,30 @@ def main() -> int:
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--out", help="dry-run JSON (default data/runtime/gir_projection_dryrun.json under --root or cwd)")
     ap.add_argument("--contra-max-lines", type=int, default=200_000)
+    ap.add_argument("--incremental", action="store_true", help="skip the run when no source changed since the last recorded run")
+    ap.add_argument("--state", help="run-state file (default data/runtime/gir_projector_state.json under cwd)")
     a = ap.parse_args()
     root = Path(a.root) if a.root else state_root(os.environ)
+    state_p = Path(a.state) if a.state else (Path.cwd() / "data" / "runtime" / "gir_projector_state.json")
+    if a.incremental:
+        needed, cur_fp, prev_fp = incremental_needed(root, state_p, os.environ)
+        if not needed:
+            print(json.dumps({"schema": "GirProjectionRun@v1", "as_of": _now().isoformat(), "skipped": True,
+                              "reason": "no source changed since last run", "state": str(state_p)}))
+            return 0
+        changed = [k for k in cur_fp if cur_fp.get(k) != prev_fp.get(k)]
+        print(json.dumps({"incremental": True, "changed_sources": changed}))
     pj = build(root, contra_max_lines=a.contra_max_lines)
     summary = {"schema": "GirProjectionRun@v1", "as_of": pj.now.isoformat(), "root": str(root), "entities": len(pj.entities),
                "envelopes": len(pj.envelopes), "edges": len(pj.edges), "counts": pj.counts, "authority": "READ_ONLY_ADVISORY"}
     print(json.dumps(summary, indent=1))
     if a.apply:
         try:
-            print(json.dumps({"applied": apply(pj)}))
+            applied = apply(pj)
+            print(json.dumps({"applied": applied}))
+            state_p.parent.mkdir(parents=True, exist_ok=True)
+            state_p.write_text(json.dumps({"schema": "GirProjectorState@v1", "as_of": pj.now.isoformat(), "applied": applied,
+                                           "sources": _source_fingerprints(root, os.environ)}, indent=1) + "\n", encoding="utf-8")
         except Exception as exc:  # noqa: BLE001
             print(f"apply failed: {type(exc).__name__}: {exc}", file=sys.stderr); return 3
     else:

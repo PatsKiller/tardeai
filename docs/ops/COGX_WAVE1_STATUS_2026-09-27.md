@@ -1,8 +1,8 @@
-# COGX Wave 1 · tranches 1 and 2 — foundations and shadow wiring
+# COGX Wave 1 · tranches 1–3 — foundations, shadow wiring, lane artifacts
 
 ```
 Status:      ACTIVE
-as_of:       2026-09-27T20:20:00-04:00
+as_of:       2026-09-27T20:45:00-04:00
 Measured at: cbf603526 (origin/main base) / served 8f2a178d5-main-exact-phase2-20260927-171004; nothing deployed yet
 Authority:   READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0. Every artifact here is a read, a receipt or a declaration.
 Package:     docs/architecture/cognitive_transformation_20260927/ (PR #1304); approval pkg-20260927-cogx-w1-d9e1 (all 14 items, operator 2026-09-27)
@@ -37,12 +37,20 @@ Package:     docs/architecture/cognitive_transformation_20260927/ (PR #1304); ap
 
 **Dropped from tranche 2, deliberately:** automatic per-package guard-grant minting on APPROVED (13 §6). The auto-mode classifier refused the change that would let the callback mint `bin/guard` grants; grants stay a manual operator action (`bin/guard grant … --reason "pkg:<id> pr:<n> sha:<sha> campaign:…"`), and the ledger records `GRANT_*` notes by hand. Revisit only on the operator's explicit instruction.
 
-## What is NOT in Wave 1 yet (tranche 3)
-- The GIR bus consumer (incremental projection) and the projector's Postgres `--apply` on production (needs the migration + roles).
-- Installing the four lanes (operator cron/service grant) and the first real nightly conformance + detector runs.
-- `security_guid` on the ticker research graph rows (the projection re-keys instrument records; the graph rows still carry `ticker_guid` only).
-- Approval reminders (+4 h / +12 h) and expiry handling.
-- Per-package guard grants (manual until the operator says otherwise).
+## What tranche 3 adds (same PR #1305)
+
+| Deliverable | Where | Proof `[VERIFIED]` |
+|---|---|---|
+| Projector: ticker research graph source (RESEARCH:ARTIFACT, re-keyed to SEC: projection-side) + `--incremental` (source fingerprints in a state file; a bus consumer replaces it in Wave 2) | `scripts/gir_projector.py` | dry run on production state: 141,293 entities / 250,076 edges; 12,293 artifacts, 83 with an unresolved symbol; incremental test green |
+| Approval reminders +4 h / +12 h and expiry (dry-run default; `--send` through the Telegram chokepoint) | `scripts/approval_package_reminder.py` | 1 hermetic test (once-each reminders, expiry marks items) |
+| Unit files for the two systemd lanes + the two cron lines | `config/systemd/user/tradeai-supervisor-breach-detector.{service,timer}`, `tradeai-gir-projector.{service,timer}`, `docs/ops/COGX_WAVE1_CRONTAB_LINES.txt`; lane rows now name their schedulers | validators green |
+| Operator runbook: every command only the operator can run, in order, with expected outputs and rollbacks | `docs/ops/COGX_WAVE1_OPERATOR_RUNBOOK_2026-09-27.md` | — |
+
+## What is NOT in Wave 1 yet (after the operator runbook)
+- The `memory.delta` bus consumer (Wave 2) — until then the projector is hourly-incremental by source fingerprint.
+- The operator steps in the runbook: credential rotation, roles + migration, merge + deploy, grants, lane install, first real runs.
+- Post-deploy validation (stage 6) and marking the package items EXECUTED / VALIDATED.
+- Per-package guard grants stay manual (classifier refusal).
 
 ## Operator-executed prerequisites (unchanged)
 1. Rotate the plaintext DSNs (BWS edit → render → ALTER ROLE).

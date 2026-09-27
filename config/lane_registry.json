@@ -2543,7 +2543,7 @@
       "scheduler": {
         "kind": "cron",
         "expression": "30 2 * * *",
-        "match": "platform-conformance-audit"
+        "match": "report_platform_conformance.py --write"
       },
       "expected_cadence_hours": 24,
       "state": "NEVER_SCHEDULED",
@@ -2562,8 +2562,8 @@
       "owner": "platform",
       "scheduler": {
         "kind": "systemd",
-        "expression": "tradeai-supervisor-breach-detector.timer (*/2)",
-        "match": "supervisor-breach-detector"
+        "expression": "tradeai-supervisor-breach-detector.timer (OnUnitActiveSec=2min)",
+        "match": "tradeai-supervisor-breach-detector"
       },
       "expected_cadence_hours": 0.05,
       "state": "NEVER_SCHEDULED",
@@ -2582,8 +2582,8 @@
       "owner": "platform",
       "scheduler": {
         "kind": "systemd",
-        "expression": "tradeai-gir-projector.service (bus consumer)",
-        "match": "gir-projector"
+        "expression": "tradeai-gir-projector.timer (OnUnitActiveSec=1h)",
+        "match": "tradeai-gir-projector"
       },
       "expected_cadence_hours": 1,
       "state": "NEVER_SCHEDULED",
@@ -2603,8 +2603,8 @@
       "owner": "platform",
       "scheduler": {
         "kind": "cron",
-        "expression": "0 * * * *",
-        "match": "approval-package-reminder"
+        "expression": "5 * * * *",
+        "match": "approval_package_reminder.py"
       },
       "expected_cadence_hours": 1,
       "state": "NEVER_SCHEDULED",

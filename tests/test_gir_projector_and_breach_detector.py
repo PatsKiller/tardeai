@@ -89,3 +89,21 @@ def test_breach_detector_kinds():
     assert kinds == {("a-ungoverned", "UNGOVERNED"), ("b-silent", "SILENT"), ("c-no-output", "NO_OUTPUT"), ("e-mem", "MEMORY_UNREACHABLE")}
     assert all(r["schema"] == "Breach@v1" and r["state"] == "OPEN" and r["kind"] in bd.KINDS for r in rows)
     assert bd.breach_id("x", "SILENT", "2026-09-27") == bd.breach_id("x", "SILENT", "2026-09-27") != bd.breach_id("x", "SILENT", "2026-09-28")
+
+
+def test_projector_ticker_graph_and_incremental_state(tmp_path):
+    root = _state(tmp_path)
+    (root / "data" / "cio" / "ticker_research_graph.jsonl").write_text("\n".join([
+        json.dumps({"artifact_id": "a1", "symbol": "V", "created_at": NOW.isoformat()}),
+        json.dumps({"artifact_id": "a2", "symbol": "NOPE"}),
+        json.dumps({"no": "id"})]) + "\n")
+    pj = gp.build(root, now=NOW, env={})
+    assert "EVID:tg:a1" in pj.entities and pj.counts["ticker_graph_artifacts"] == 2 and pj.counts["ticker_graph_symbol_unresolved"] == 1
+    assert ("SEC:sec-v", "HAS_ARTIFACT", "EVID:tg:a1") in {(e["from_guid"], e["relation"], e["to_guid"]) for e in pj.edges.values()}
+    state = tmp_path / "state.json"
+    needed, cur, prev = gp.incremental_needed(root, state, {})
+    assert needed and prev == {} and cur["cio_theses_projection"]["size"] > 0
+    state.write_text(json.dumps({"sources": cur}))
+    assert gp.incremental_needed(root, state, {})[0] is False
+    (root / "data" / "cio" / "holdings_snapshot_latest.json").write_text(json.dumps({"holdings": []}))
+    assert gp.incremental_needed(root, state, {})[0] is True
