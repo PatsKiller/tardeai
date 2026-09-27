@@ -512,8 +512,14 @@ class CIOActionLedger:
         domain: Optional[str] = None,
         limit: int = 50,
     ) -> list[dict[str, Any]]:
-        """List actions, optionally filtered by status and/or domain."""
-        stream_ids: set[str] = set()
+        """List actions, optionally filtered by status and/or domain.
+
+        One pass over the ledger, events grouped by stream, each stream replayed
+        once (2026-09-27). This used to collect the stream ids and then call
+        get_action() per id -- a full-file re-read for every action -- which was
+        95% of the CIO wake cycle (py-spy on a copy of the live store) and, with
+        the lease-recovery loop, kept the */5 dispatcher at its 15-min timeout."""
+        by_stream: dict[str, list[dict[str, Any]]] = {}
         if self.event_store_path.exists():
             with open(self.event_store_path, "r") as f:
                 for line in f:
@@ -526,11 +532,11 @@ class CIOActionLedger:
                         continue
                     sid = event.get("stream_id") if isinstance(event, dict) else None
                     if sid and sid != "ledger-genesis":
-                        stream_ids.add(sid)
+                        by_stream.setdefault(sid, []).append(event)
 
         actions: list[dict[str, Any]] = []
-        for sid in stream_ids:
-            action = self.get_action(sid)
+        for sid, events in by_stream.items():
+            action = self._replay_state(events)
             if action is None:
                 continue
             if status is not None and action.get("current_status") != status:

@@ -705,3 +705,30 @@ def test_list_actions_status_filter(temp_ledger):
 
     assert any(a["cio_action_id"] == "st-002" for a in open_actions)
     assert any(a["cio_action_id"] == "st-001" for a in done_actions)
+
+
+# ── 2026-09-27: list_actions reads the ledger once ──────────────────────
+
+
+def test_list_actions_single_pass_matches_per_action_replay(temp_ledger, monkeypatch):
+    """list_actions re-read the whole ledger per action (170 s on the live file,
+    x5 runs per wake cycle = the 15-min timeout). One pass must give the same
+    result as replaying each action through get_action."""
+    ledger = temp_ledger
+    for i in range(6):
+        ledger.create_action(
+            {"cio_action_id": f"sp-{i}", "title": f"Action {i}", "recommendation": "Review",
+             "why_now": "test", "priority": "LOW", "domain": "PORTFOLIO" if i % 2 else "RESEARCH",
+             "idempotency_key": f"sp-{i}-create"},
+            actor_id="alex",
+        )
+    calls = []
+    real = ledger.get_action
+    monkeypatch.setattr(ledger, "get_action", lambda aid: calls.append(aid) or real(aid))
+    listed = ledger.list_actions(limit=100)
+    assert calls == []  # no per-action re-read
+    monkeypatch.undo()
+    expected = sorted((ledger.get_action(a["cio_action_id"]) for a in listed),
+                      key=lambda a: str(a.get("created_at", "")), reverse=True)
+    assert listed == expected and len(listed) == 6
+    assert {a["cio_action_id"] for a in ledger.list_actions(domain="PORTFOLIO")} == {"sp-1", "sp-3", "sp-5"}
