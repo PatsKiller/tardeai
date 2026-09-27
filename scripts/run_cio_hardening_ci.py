@@ -2559,6 +2559,13 @@ GATES = [
         ["tests/test_local_llm_compat_registered_20260927.py"],
     ),
     (
+        # 2026-09-27 -- symbol-news curation with an SLA: gap-driven approval of a
+        # symbol's company news (topic_curator never reviewed it), priority
+        # acquisition requests from the options CIO loop, SLA breach reporting.
+        "symbol_news_curation_20260927",
+        ["tests/test_symbol_news_curation_20260927.py", "tests/test_options_thesis_lifecycle_20260926.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).

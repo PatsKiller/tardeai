@@ -348,3 +348,17 @@ def test_reopen_restarts_rounds_and_keeps_history(tmp_path):
                 research=lambda p, qs=None: {"research_id": "res_new"})[0]
     assert step["action"] == "REQUEST_FOLLOWUP"
     assert any(e["event_type"] == "OPTIONS_THESIS_ABANDONED" for e in s.history("g1"))  # never removed
+
+
+def test_more_research_on_symbol_without_thesis_requests_acquisition(tmp_path):
+    s = _store(tmp_path)
+    asked = []
+    rev = {"outcome": "MORE_RESEARCH", "confidence": "LOW", "reasoning": "no house thesis"}
+    step = lc.advance([_p(missing=(), thesis_state="INSUFFICIENT_DATA")], s, CFG,
+                      request_research=lambda p, qs=None: {"research_id": "r"},
+                      research_status=lambda rid: {"status": "queued"},
+                      review_fn=lambda p, m: {"status": "OK", "review": rev, "decision_guid": "dec_x"},
+                      record_decision=lambda r: None, apply=True, now=T0 + timedelta(hours=1),
+                      request_thesis_acquisition=lambda sym, why: asked.append((sym, why)))[0]
+    assert step["action"] == "DECISION" and step["thesis_acquisition_requested"] is True
+    assert asked == [("DELL", "options CIO MORE_RESEARCH dec_x: no house thesis")]

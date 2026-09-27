@@ -217,6 +217,7 @@ def advance(
     apply: bool,
     now: Optional[datetime] = None,
     escalate: Optional[Callable[[dict[str, Any], str, list[str], float], dict[str, Any]]] = None,
+    request_thesis_acquisition: Optional[Callable[[str, str], Any]] = None,
 ) -> list[dict[str, Any]]:
     """One pass. Returns what it did (or would do, when apply=False).
 
@@ -382,6 +383,16 @@ def advance(
                                supersedes=(dec or {}).get("decision_guid"))
             record_decision(res)
             step.update(action="DECISION", outcome=r["outcome"], decision_guid=res["decision_guid"])
+            # 2026-09-27: the CIO keeps asking for more research when the symbol has
+            # no house thesis; ask the symbol-thesis acquisition worker for one.
+            if (r["outcome"] == "MORE_RESEARCH" and request_thesis_acquisition is not None
+                    and str(p.get("thesis_state") or "").upper() in ("", "INSUFFICIENT_DATA")):
+                try:
+                    request_thesis_acquisition(str(p.get("symbol") or ""),
+                                               f"options CIO MORE_RESEARCH {res['decision_guid']}: no house thesis")
+                    step.update(thesis_acquisition_requested=True)
+                except Exception:  # noqa: BLE001
+                    step.update(thesis_acquisition_requested=False)
         else:
             if not any(t.get("stage") == "CIO_REVIEW_QUEUED" for t in life.get("timeline") or []):
                 store.append_event(guid, "OPTIONS_THESIS_CIO_REVIEW_QUEUED", mode=mode, status=res.get("status"))
