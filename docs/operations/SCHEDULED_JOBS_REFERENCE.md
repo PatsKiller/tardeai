@@ -300,14 +300,18 @@ Canonical flow: `docs/options-module.md` ("Current flow (2026-09-26)"). Weekdays
 
 | Schedule | Script | What It Does | Lock |
 |----------|--------|--------------|------|
-| `7,22,37,52 * * * *` (daily) | `options_thesis_lifecycle.py --apply` | Options thesis lifecycle: queue Hermes CIO research → CIO review → Decision GUID, or archive after 48h. Runs after each Hermes CIO drain | `/tmp/options_thesis_lifecycle.lock` |
+| `7,22,37,52 * * * *` (daily) | `options_thesis_lifecycle.py --apply` | Options thesis lifecycle: queue Hermes CIO research → CIO review → Decision GUID, or archive after 48h. Runs after each Hermes CIO drain. Sources M2 read creds so the CIO review reads its prior options facts | `/tmp/options_thesis_lifecycle.lock` |
+| `9,24,39,54 * * * *` (daily) | `options_memory_projector.py --apply` | Options thesis/decision/follow-up/validation events → CIO M2 memory (`source_type=options_thesis_store`), idempotent by `event_hash` | `/tmp/options_memory_projector.lock` |
+| `3 * * * *` (daily) | `export_options_runtime_snapshot.py --apply` | Redacted options snapshot for the `:05` Drive sync (`runtime/options/`) | `/tmp/options_runtime_export.lock` |
 | `*/10 12-15`, `5 16` | `linux_launchers/run_options_monitor.sh` → `run_options_monitor.py` | Proposals + position monitor + Hermes bridge (morning 9:35–9:55 slots moved off on 2026-07-17) | — |
 | `*/20 9-16`; digest `5 8` | `options_lifecycle_run.py`; `options_lifecycle_digest.py` | Options Lifecycle Desk: open-position intake, policy, alerts; morning digest | `/tmp/options_lifecycle.lock`, `/tmp/options_lc_digest.lock` |
 | `0 10`, `35 17` | `options_chain_snapshot.py` | Read-only chain snapshots | `/tmp/chain_snapshot.lock` |
 | `45 15` | `options_iv_snapshot.py --run --symbols-from-universe` | Daily ATM IV history (IV rank); global `options_chain_snapshots` prune | `/tmp/tradeai_options_iv.lock` |
 | `50 15` | `run_scheduled_two_way_curation.sh options-edge` | Options edge reverse fold after IV snapshot | `/tmp/two_way_options_edge.lock` |
-| `*/3 9-16` | `linux_launchers/run_ensemble_worker.sh` | Ensemble worker: drains `inference_ensemble_jobs`, including Aegis options reviews on the lanes stored on each row (grok, chatgpt, deepseek-flash) | — |
+| `*/3 * * * *` (24/7 since 2026-09-26) | `linux_launchers/run_ensemble_worker.sh` | Ensemble worker: drains `inference_ensemble_jobs`, including Aegis options reviews on the lanes stored on each row (grok, chatgpt, deepseek-flash) | — |
 | `0 10-15`; `10 17` | `reconcile_alpaca_paper_options.sh`; `run_options_paper_position_monitor.sh` | Alpaca paper options reconcile + paper monitor. Training only: never live, never alerts | — |
+
+Research worker: `tradeai-hermes-cio-worker.timer` (systemd user, `*:0/15`, 24/7). Its off-peak deferral has been off since 2026-09-26 (drop-in `offpeak-defer.conf`: `LLM_DEFER_OFFPEAK=0`), so options research queued overnight or on weekends is answered within about 15 minutes. It is the operator's exception to the off-peak schedule rule; process cost caps still apply.
 
 ---
 
