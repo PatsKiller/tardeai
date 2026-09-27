@@ -156,3 +156,23 @@ def test_the_concept_with_current_data_wins_over_a_stale_first_choice():
     }}}
     rows = ff.extract_rows("V", "1403161", facts, S)
     assert ff.summarize("V", rows)["latest_quarter_end"] == "2026-06-30"
+
+
+def test_postgres_row_types_decimal_and_date_are_handled():
+    """2026-09-27: live rows carry Decimal and date; float arithmetic raised TypeError
+    and no SEC fact reached DELL's thesis or card."""
+    from decimal import Decimal
+    rows = []
+    for r in ff.extract_rows("DELL", "0001571996", FACTS, S):
+        r = dict(r)
+        r.pop("period_kind", None)
+        r["metric_value"] = Decimal(str(r["metric_value"]))
+        for k in ("period_start", "period_end", "filing_date"):
+            r[k] = date.fromisoformat(r[k]) if r.get(k) else None
+        rows.append(r)
+    summ = ff.summarize("DELL", rows)
+    rev = next(f for f in summ["facts"] if f["metric"] == "revenue")
+    assert rev["yoy_pct"] == round(100 * (46.97 - 29.78) / 29.78, 1) and rev["period_end"] == "2026-07-31"
+    assert summ["gross_margin_pct"] == round(100 * 9.83 / 46.97, 1)
+    blk = ff.card_block("DELL", lambda *a, **k: rows, ff.settings({"stale_days_after_quarter": 10_000}))
+    assert blk["state"] == "FRESH" and blk["lines"]
