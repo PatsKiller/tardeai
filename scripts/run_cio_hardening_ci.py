@@ -2592,6 +2592,14 @@ GATES = [
          "tests/test_fundamentals_f3_f5_20260927.py"],
     ),
     (
+        # 2026-09-27 -- options Wave A: honest expected P/L (not credit x POP), net cost if
+        # assigned / cash committed / hedge floor, instrument classes and the leveraged-fund
+        # policy, real not-approvable reasons, desk-side never-approvable guarantees, and
+        # retirement of unanswerable thesis gaps.
+        "options_economics_20260927",
+        ["tests/test_options_economics_20260927.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).

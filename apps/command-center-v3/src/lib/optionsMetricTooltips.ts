@@ -262,9 +262,9 @@ const BASE: Record<OptionsMetricKey, (ctx: OptionsMetricContext) => OptionsMetri
   }),
 
   ev: () => ({
-    short: 'Expected value is a probability-weighted P/L estimate.',
-    more: 'EV blends win rate, credit/debit, and modeled payoffs into one number. Positive EV suggests statistical edge in backtests — not a promise for any single trade.',
-    watch: 'Use EV with POP and max loss — one lucky fill does not validate the model.',
+    short: 'Model expected P/L at expiration — wins AND losses, not credit × POP.',
+    more: 'Integrated over a lognormal price range at the same implied volatility the desk used for POP, with zero drift. For a fairly priced option it is close to zero: collecting premium is not free money. Until 2026-09-27 this chip showed credit × POP, which ignored the losing outcomes.',
+    watch: 'Model estimate only. Use it with max loss, net cost if assigned, and a live Schwab validation.',
   }),
 
   edge: () => ({

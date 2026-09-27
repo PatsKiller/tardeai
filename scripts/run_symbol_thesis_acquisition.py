@@ -177,6 +177,50 @@ def _append_ledger(root: Path, rec: dict[str, Any]) -> None:
         fh.write(json.dumps(rec, sort_keys=True, default=str) + "\n")
 
 
+GAP_RETRY_LIMIT = 2  # a gap asked this many times with no stance emerging is retired
+
+
+def _asked_counts(root: Path, sym: str) -> dict[str, int]:
+    """question_digest -> times a PUBLISHED run asked it for this symbol."""
+    counts: dict[str, int] = {}
+    path = root / LEDGER_REL
+    if not path.exists():
+        return counts
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if str(r.get("symbol") or "").upper() == sym.upper() and r.get("status") == "PUBLISHED":
+            qd = str(r.get("question_digest") or "")
+            counts[qd] = counts.get(qd, 0) + 1
+    return counts
+
+
+def choose_question(sym: str, fields: dict[str, Any], *, root: Path, memberships: list[str], role: str,
+                    thesis_state: str) -> tuple[str, str]:
+    """The question for this run, and why it was chosen (2026-09-27).
+
+    DELL's thesis was re-synthesized four times on "DELL's exact AI server backlog dollar
+    figure" -- filings report total remaining performance obligations, not an AI-server
+    split -- so every version said INSUFFICIENT_DATA and the stance stayed empty. A gap
+    asked GAP_RETRY_LIMIT times while the stance is still empty is retired; when every
+    gap is retired, the question is to form a stance from the evidence on file."""
+    gaps = list(fields.get("research_gaps") or ["Create living symbol thesis"])
+    if str(fields.get("thesis_stance") or "").strip():
+        q = _specific_question(sym, gaps[0], memberships=memberships, role=role, thesis_state=thesis_state)
+        return q, "first_gap"
+    asked = _asked_counts(root, sym)
+    for gap in gaps:
+        q = _specific_question(sym, gap, memberships=memberships, role=role, thesis_state=thesis_state)
+        if asked.get(_digest(sym, q), 0) < GAP_RETRY_LIMIT:
+            return q, "first_open_gap"
+    return (f"Form a thesis stance for {sym} (hold / watch / add / trim / avoid) from the reported "
+            f"fundamentals and dated evidence on file. State the bull and bear case, what would change "
+            f"the stance, and list any narrower figure the filings do not break out as a research gap "
+            f"rather than a reason to leave the stance empty."), "gaps_exhausted_form_stance"
+
+
 def _prior_state(root: Path, question_digest: str) -> dict[str, Any]:
     for rec in _load_ledger(root):
         if rec.get("question_digest") == question_digest:
@@ -255,14 +299,13 @@ def _run_one_impl(
     memberships = list(fields.get("memberships") or [])
     role = str(fields.get("portfolio_role") or "UNKNOWN")
     thesis_state = str(fields.get("thesis_state") or "INSUFFICIENT_DATA")
-    gap = (fields.get("research_gaps") or ["Create living symbol thesis"])[0]
-    question = _specific_question(
-        sym, gap, memberships=memberships, role=role, thesis_state=thesis_state
-    )
+    question, gap_note = choose_question(sym, fields, root=root, memberships=memberships, role=role,
+                                         thesis_state=thesis_state)
     qd = _digest(sym, question)
     prior = _prior_state(root, qd)
 
     out: dict[str, Any] = {
+        "question_choice": gap_note,
         "schema": "SymbolThesisAcquisitionRun@v1",
         "as_of": _now(),
         "symbol": sym.upper(),
