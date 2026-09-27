@@ -1,8 +1,8 @@
 # Trade AI v12 — Scheduled Jobs Reference
 
-**Updated:** 2026-07-02 (verified from live crontab + systemd)
+**Updated:** 2026-07-02 (verified from live crontab + systemd). **Counts re-measured 2026-09-27; see below.**
 **Server:** ms01-openclaw
-**Active cron jobs:** 187+
+**Active cron jobs:** 467 (1,059 crontab lines; 451 run the dev tree; 188 have no lock). **User timers:** 90. **Lane registry:** 147 declared lanes, 517 in the undeclared baseline. Measured 2026-09-27 for `docs/architecture/PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md`, which also lists 3 jobs scheduled by BOTH cron and systemd. The per-job tables below were written 2026-07-02, except the options section, which is dated 2026-09-26.
 **Systemd services:** system-level persistent + user-level portfolio/OAuth/Hermes units (see below)
 
 All times are Eastern (America/New_York) unless noted.
