@@ -163,6 +163,11 @@ def purge_mismatched_for_symbol(conn, symbol: str, *, apply: bool = True, auto_c
             continue
         cat_del.append(cid)
         if apply:
+            # catalyst_symbol_impact.catalyst_event_id references catalyst_events.id
+            # without ON DELETE CASCADE. Deleting the parent first raised
+            # ForeignKeyViolation on every auto-remediation run (2,447 times by
+            # 2026-09-26) and the mismatch finding never cleared. Children first.
+            cur.execute("DELETE FROM catalyst_symbol_impact WHERE catalyst_event_id=%s", (cid,))
             cur.execute("DELETE FROM catalyst_events WHERE id=%s", (cid,))
 
     if apply and auto_commit and (news_del or cat_del):

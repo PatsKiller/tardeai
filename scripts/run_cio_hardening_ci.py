@@ -2442,6 +2442,20 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-26 — P2 audit remediation: alarms that see the truth. Health
+        # agent reads a cron-written crontab snapshot when `crontab -l` is denied
+        # (R-03); FK-safe catalyst purge + failure-streak circuit breaker (R-04);
+        # ACTIVE_RELEASE written on promote (R-09); remediations skip PAUSED/
+        # RETIRED lanes (R-15); stop-band recheck alerts DELIVERED, not just
+        # stored (C-11).
+        "p2_alarms_truth_20260926",
+        [
+            "tests/test_p2_alarms_truth_20260926.py",
+            "tests/test_news_symbol_guard.py",
+            "tests/test_p1_cron_unit_linters_20260926.py",
+        ],
+    ),
+    (
         # 2026-09-26 — P2 audit remediation: cron hygiene CLI replacing the
         # quoting-bug one-liners (R-10); grant USE consumption on release
         # preflight and pre-push (C-10, the ledger under-counted every Claude

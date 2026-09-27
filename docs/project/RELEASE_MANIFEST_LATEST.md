@@ -2,7 +2,7 @@
 
 Status: FAIL
 
-_Generated: 2026-09-27T00:04:54.378703+00:00_  
+_Generated: 2026-09-27T00:09:17.081237+00:00_  
 _Source: `python3 scripts/validate_release_readiness.py --json --skip-build`_
 
 ## Checks

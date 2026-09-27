@@ -1,28 +1,28 @@
 # CI Evidence — Release Readiness Proof
 
 **Status: FAIL**  
-_Generated: 2026-09-27T00:05:17.287344+00:00_  
+_Generated: 2026-09-27T00:09:36.425341+00:00_  
 _Source: `python3 scripts/run_release_ci_equivalent.py --json`_  
-_Steps: 14 passed / 3 failed / 0 warn in 40.9s_
+_Steps: 14 passed / 3 failed / 0 warn in 37.48s_
 
 No broker writes are performed — every step is a read-only validator or test.
 
 | Step | Status | Exit | Duration (s) | Command | Detail |
 |------|--------|------|--------------|---------|--------|
-| execution_state | PASS | 0 | 0.17 | `python3 scripts/execution_state.py --json` | } |
-| release_readiness | FAIL | 1 | 17.82 | `python3 scripts/validate_release_readiness.py --json --skip-build` | } |
-| schwab_write_policy | FAIL | 1 | 8.87 | `python3 scripts/validate_schwab_write_policy.py --source-only` |   source-only mode: DB-state posture guards are proven by th |
-| no_broker_write_bypass | FAIL | 1 | 9.18 | `python3 tests/test_no_broker_write_bypass.py` |   [PASS] schwab_transport calls execution_readiness |
-| execution_readiness | PASS | 0 | 0.33 | `python3 tests/test_execution_readiness.py` | 20 passed, 0 failed |
-| evidence_bound_approval | PASS | 0 | 0.11 | `python3 tests/test_evidence_bound_approval.py` | 13 passed, 0 failed |
-| intraday_window_fail_closed | PASS | 0 | 0.06 | `python3 tests/test_intraday_window_fail_closed.py` | 23 passed, 0 failed |
-| order_lifecycle | PASS | 0 | 0.14 | `python3 tests/test_order_lifecycle.py` | 24 passed, 0 failed |
-| reconcile_orders | PASS | 0 | 0.05 | `python3 tests/test_reconcile_orders.py` | 12 passed, 0 failed |
-| audit_ledger | PASS | 0 | 0.24 | `python3 tests/test_audit_ledger.py` | 15 passed, 0 failed |
-| options_hard_risk_blocks_matrix | PASS | 0 | 1.82 | `python3 tests/test_options_hard_risk_blocks_matrix.py` | 87 passed, 0 failed |
-| options_hard_risk_blocks | PASS | 0 | 0.97 | `python3 tests/test_options_hard_risk_blocks.py` | 5 passed, 0 failed |
-| llm_governance_no_override | PASS | 0 | 0.88 | `python3 tests/test_llm_governance_no_override.py` | 4 passed, 0 failed |
-| kill_switches_status | PASS | 0 | 0.09 | `python3 scripts/brokers/kill_switches.py --status` | } |
-| journal_ai_critique | PASS | 0 | 0.06 | `python3 tests/test_journal_ai_critique.py` | 25 passed, 0 failed |
+| execution_state | PASS | 0 | 0.18 | `python3 scripts/execution_state.py --json` | } |
+| release_readiness | FAIL | 1 | 17.99 | `python3 scripts/validate_release_readiness.py --json --skip-build` | } |
+| schwab_write_policy | FAIL | 1 | 8.47 | `python3 scripts/validate_schwab_write_policy.py --source-only` |   source-only mode: DB-state posture guards are proven by th |
+| no_broker_write_bypass | FAIL | 1 | 7.52 | `python3 tests/test_no_broker_write_bypass.py` |   [PASS] schwab_transport calls execution_readiness |
+| execution_readiness | PASS | 0 | 0.23 | `python3 tests/test_execution_readiness.py` | 20 passed, 0 failed |
+| evidence_bound_approval | PASS | 0 | 0.07 | `python3 tests/test_evidence_bound_approval.py` | 13 passed, 0 failed |
+| intraday_window_fail_closed | PASS | 0 | 0.05 | `python3 tests/test_intraday_window_fail_closed.py` | 23 passed, 0 failed |
+| order_lifecycle | PASS | 0 | 0.08 | `python3 tests/test_order_lifecycle.py` | 24 passed, 0 failed |
+| reconcile_orders | PASS | 0 | 0.03 | `python3 tests/test_reconcile_orders.py` | 12 passed, 0 failed |
+| audit_ledger | PASS | 0 | 0.2 | `python3 tests/test_audit_ledger.py` | 15 passed, 0 failed |
+| options_hard_risk_blocks_matrix | PASS | 0 | 1.04 | `python3 tests/test_options_hard_risk_blocks_matrix.py` | 87 passed, 0 failed |
+| options_hard_risk_blocks | PASS | 0 | 0.63 | `python3 tests/test_options_hard_risk_blocks.py` | 5 passed, 0 failed |
+| llm_governance_no_override | PASS | 0 | 0.73 | `python3 tests/test_llm_governance_no_override.py` | 4 passed, 0 failed |
+| kill_switches_status | PASS | 0 | 0.08 | `python3 scripts/brokers/kill_switches.py --status` | } |
+| journal_ai_critique | PASS | 0 | 0.07 | `python3 tests/test_journal_ai_critique.py` | 25 passed, 0 failed |
 | audit_ledger_coverage | PASS | 0 | 0.06 | `python3 scripts/audit_ledger.py --coverage --release-mode review --json` | } |
 | frontend_smoke | PASS | 0 | 0.05 | `python3 -c import sys;sys.path.insert(0,'scripts');import validate_release_readiness as v;c=v.frontend_smoke();print(c.status,c.detail);sys.exit(0 if c.status!='FAIL' else 1)` | WARN dist/index.html (run: npm --prefix apps/command-center- |
