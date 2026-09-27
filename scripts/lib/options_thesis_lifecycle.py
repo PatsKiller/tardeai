@@ -74,14 +74,22 @@ def followup_questions(p: dict[str, Any], review: dict[str, Any], limit: int) ->
             t = str(x).strip()
             if t and t not in items:
                 items.append(t)
-    return [{"intent": f"cio_followup_{i + 1}", "text": f"{sym}: {t}"} for i, t in enumerate(items[:limit])]
+    # 2026-09-26: the concerns were pasted in as statements ("DELL: No authored DELL
+    # thesis ...") and research answered "Confirmed: no thesis exists". Each one is
+    # now a research task, and a symbol with no standing thesis also gets the four
+    # thesis questions, whose answers feed the living symbol thesis (ANSWER_MAP).
+    base = research_questions(p) if str(p.get("thesis_state") or "").upper() == "INSUFFICIENT_DATA" else []
+    tasks = [{"intent": f"cio_followup_{i + 1}",
+              "text": f"{sym}: find dated, sourced facts that resolve this CIO concern "
+                      f"(do not restate it): {t}"} for i, t in enumerate(items[:limit])]
+    return base + tasks
 
 
 def followup_answers(result: Optional[dict[str, Any]], deliverables: list[dict[str, str]]) -> list[dict[str, Any]]:
     by_id = {str(a.get("question_id") or ""): a for a in (result or {}).get("answers") or []}
     out = []
     for i, q in enumerate(deliverables):
-        a = by_id.get(f"q_cio_followup_{i + 1}") or {}
+        a = by_id.get(f"q_{q.get('intent')}") or by_id.get(f"q_cio_followup_{i + 1}") or {}
         answered = str(a.get("status") or "").lower() != "unanswered" and (a.get("summary") or a.get("detail"))
         text = " ".join(x for x in (str(a.get("summary") or "").strip(), str(a.get("detail") or "").strip()) if x)
         out.append({"deliverable": q.get("text"), "answered": bool(answered), "answer": text[:600] if answered else None})

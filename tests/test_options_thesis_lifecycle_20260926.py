@@ -190,7 +190,8 @@ def test_more_research_starts_named_followup_with_a_due_time(tmp_path):
     step = _run(s, [_p(missing=())], T0 + timedelta(hours=1, minutes=10),
                 research=lambda p, qs=None: asked.append(qs) or {"research_id": "res_fu", "plan_id": "plan_fu"})[0]
     assert step["action"] == "REQUEST_FOLLOWUP"
-    assert step["deliverables"] == ["DELL: No authored DELL thesis", "DELL: Bear case thin", "DELL: Catalyst after expiry"]
+    assert [d.split(": ", 2)[-1] for d in step["deliverables"]] == ["No authored DELL thesis", "Bear case thin", "Catalyst after expiry"]
+    assert all("find dated, sourced facts" in d for d in step["deliverables"])
     assert asked[0][0]["intent"] == "cio_followup_1"
     fu = s.lifecycle("g1")["followup"]
     assert fu["research_id"] == "res_fu" and fu["due_at"].startswith("2026-09-27")
@@ -246,3 +247,22 @@ def test_reject_and_approve_are_final(tmp_path):
         s = _store(tmp_path / outcome)
         _decide(s, outcome, (T0 + timedelta(hours=1)).isoformat())
         assert _run(s, [_p(missing=())], T0 + timedelta(hours=40)) == []
+
+
+def test_followup_for_symbol_without_thesis_asks_the_thesis_questions_first(tmp_path):
+    """2026-09-26 DELL: concerns pasted as statements were answered "Confirmed: no thesis"."""
+    rev = {"unknowns": ["No authored DELL thesis"], "concerns": ["Bear case thin"]}
+    qs = lc.followup_questions({"symbol": "DELL", "strategy": "cash_secured_put", "thesis_state": "INSUFFICIENT_DATA",
+                                "expiration": "2026-11-20", "dte": 55}, rev, 5)
+    intents = [q["intent"] for q in qs]
+    assert intents[:4] == ["thesis_check", "catalyst_map", "invalidation", "bear_case"]
+    assert intents[4:] == ["cio_followup_1", "cio_followup_2"]
+    assert "do not restate it" in qs[4]["text"]
+
+
+def test_followup_answers_are_keyed_by_intent(tmp_path):
+    dels = [{"intent": "thesis_check", "text": "q1"}, {"intent": "cio_followup_1", "text": "q2"}]
+    result = {"answers": [{"question_id": "q_thesis_check", "status": "answered", "summary": "AI server backlog"},
+                          {"question_id": "q_cio_followup_1", "status": "answered", "summary": "Earnings 11-25"}]}
+    ans = lc.followup_answers(result, dels)
+    assert [a["answer"] for a in ans] == ["AI server backlog", "Earnings 11-25"]
