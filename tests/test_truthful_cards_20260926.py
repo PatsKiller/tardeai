@@ -53,7 +53,7 @@ def test_memo_classifies_first_and_never_invents_research():
 
 def test_memo_cio_status_follows_the_queue_not_the_model():
     t = {"symbol_thesis_version": "symbol_spcx@v13", "thesis_state": "CURRENT", "thesis_confidence": 0.8,
-         "evidence_for": ["x"], "thesis_summary": "s"}
+         "evidence_for": ["x"], "thesis_summary": "s", "thesis_stance": "hold"}
     assert pe.committee_memo(SPCX, t, {"missing_required": []}, queue_status="approved")["cio_status"] == "CIO_APPROVED"
     assert pe.committee_memo(SPCX, t, {"missing_required": []}, queue_status="rejected")["cio_status"] == "NOT_APPROVED"
     assert pe.committee_memo(SPCX, t, {"missing_required": []})["cio_status"] == "AWAITING_CIO"
@@ -94,7 +94,7 @@ def test_exit_rules_are_config():
 
 def test_evidence_ladder_separates_idea_research_cio_approval():
     t = {"symbol_thesis_version": "symbol_spcx@v13", "thesis_state": "CURRENT", "thesis_confidence": 0.8,
-         "evidence_for": ["x"], "thesis_summary": "s"}
+         "evidence_for": ["x"], "thesis_summary": "s", "thesis_stance": "hold"}
     lad = {s["key"]: s["done"] for s in pe.committee_memo(SPCX, t, {"missing_required": []})["evidence_ladder"]}
     assert lad == {"AI_IDEA": True, "RESEARCH_COMPLETED": True, "CIO_REVIEWED": False, "APPROVED": False}
     lad = {s["key"]: s["done"] for s in pe.committee_memo(SPCX, {}, {"missing_required": ["x"]})["evidence_ladder"]}

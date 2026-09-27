@@ -2600,6 +2600,13 @@ GATES = [
         ["tests/test_options_economics_20260927.py"],
     ),
     (
+        # 2026-09-27 -- options Wave B: per-leg liquidity, combined same-symbol exposure,
+        # policy blocks lead, EV withheld on non-tradeable quotes, "fully researched" needs a
+        # stance, and same-symbol research is reused across strikes (DELL: 11 requests/26h).
+        "options_wave_b_20260927",
+        ["tests/test_options_wave_b_20260927.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).

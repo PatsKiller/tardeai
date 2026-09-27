@@ -16,6 +16,7 @@ import math
 import os
 import datetime as _dt
 import re
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -2002,6 +2003,11 @@ def _resolve_spread_puts(
     return None, None, ""
 
 
+def _leg_liq(contract, *, role, strike):
+    from lib.options_exposure import leg_liquidity
+    return leg_liquidity(contract, role=role, strike=strike)
+
+
 def generate_credit_spread_proposals(
     convictions: List[dict],
     tech_map: dict,
@@ -2078,6 +2084,9 @@ def generate_credit_spread_proposals(
             "long_strike": long_strike,
             "strike": short_strike,
             "expiration": short_c.get("exp"),
+            # Wave B 2026-09-27: a two-leg order has two quotes; show both.
+            "legs_liquidity": [_leg_liq(short_c, role="short put", strike=short_strike),
+                               _leg_liq(long_c, role="long put", strike=long_strike)],
             "dte": short_c["dte"],
             "contracts": 1,
             "premium": net_credit,
@@ -2630,8 +2639,10 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
         if (p["instrument_class"] == "LEVERAGED_FUND" and _lev_policy == "block_income"
                 and str(p.get("strategy") or "") in ("cash_secured_put", "covered_call", "credit_spread")):
             _ent = p.setdefault("enterprise", {})
-            _ent["blocks"] = list(_ent.get("blocks") or []) + [
-                "daily leveraged fund: resets daily and decays over a holding period; not an income/wheel underlying"]
+            # A standing policy block leads: "awaiting live quotes" clears on Monday, this does not.
+            _ent["blocks"] = [
+                "daily leveraged fund: resets daily and decays over a holding period; not an income/wheel underlying"
+            ] + list(_ent.get("blocks") or [])
             _ent["live_eligible"] = False
             p["enterprise_blocked"] = True
         # Honest economics (2026-09-27): expected P/L at expiration over the whole price
@@ -2639,7 +2650,9 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
         # assigned, cash committed, and hedge floor / insured vs uninsured shares.
         try:
             from lib.options_economics import economics as _econ
-            p["economics"] = _econ(p, shares_held=p.get("shares_held"))
+            _liq = (p.get("enterprise") or {}).get("liquidity") or {}
+            p["economics"] = _econ(p, shares_held=p.get("shares_held"),
+                                   quote_issues=(list(_liq.get("issues") or []) if _liq.get("pass") is False else None))
             p["expected_value"] = p["economics"].get("expected_pl_at_expiry")
             p["expected_value_method"] = p["economics"]["ev_method"]
         except Exception:  # noqa: BLE001
@@ -2700,10 +2713,10 @@ def _not_approvable_reason(p: dict, tb: list, ent: dict) -> str:
     if any(c.startswith("thesis_") for c in codes):
         return "thesis incomplete"
     blocks = " ".join(str(b) for b in (ent.get("blocks") or []))
-    if "awaiting live quotes" in blocks:
-        return "awaiting live quotes"
     if "daily leveraged fund" in blocks:
         return "leveraged fund policy"
+    if "awaiting live quotes" in blocks:
+        return "awaiting live quotes"
     return "enterprise block"
 
 
@@ -2920,6 +2933,21 @@ def generate_proposals(force: bool = False) -> dict:
                 "invalidated_if": ctx.get("invalidated_if"),
             }
     _attach_options_thesis(all_p)
+    # Wave B 2026-09-27: ideas on the same symbol are one bet; say so on each card.
+    try:
+        from lib.options_exposure import combined_exposure
+        _shares = {}
+        for _h in holdings:
+            if not _h.get("is_cash") and _h.get("symbol"):
+                _k = str(_h["symbol"]).upper()
+                _shares[_k] = round(_shares.get(_k, 0.0) + _f(_h.get("shares") or _h.get("quantity")), 3)
+        _combo = combined_exposure(all_p, cash_by_account=cash_map, shares_by_symbol=_shares)
+        for _p in all_p:
+            _c = _combo.get(str(_p.get("symbol") or "").upper())
+            if _c:
+                _p["combined_exposure"] = _c
+    except Exception as _e:  # noqa: BLE001
+        print(f"[options_engine] combined exposure skipped: {type(_e).__name__}: {_e}", file=sys.stderr)
     # A thesis that could not be completed inside the window is archived, not shown.
     for _p in [x for x in all_p if x.get("thesis_abandoned")]:
         INCOME_SCREEN_DROPS.append({"symbol": _p.get("symbol"), "strategy": _p.get("strategy"),

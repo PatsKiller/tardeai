@@ -902,6 +902,7 @@ export default function OptionProposalCardV4({
                     if (e.net_cost_if_assigned_per_share != null) parts.push(`Net cost if assigned $${e.net_cost_if_assigned_per_share.toFixed(2)}/sh${e.discount_to_spot_pct != null ? ` (${e.discount_to_spot_pct}% below spot)` : ''} · cash committed ${$(e.cash_committed)}`)
                     if (e.called_away_price_per_share != null) parts.push(`If called away: $${e.called_away_price_per_share.toFixed(2)}/sh incl. premium · ${e.shares_committed} shares committed`)
                     if (e.collateral != null) parts.push(`Collateral ${$(e.collateral)} · max loss ${$(e.max_loss_total)} · breakeven $${e.breakeven}`)
+                    if (e.expected_pl_status) parts.push(`Expected P/L ${e.expected_pl_status}`)
                     if (e.floor_value_after_premium != null) parts.push(`Insures ${e.insured_shares} sh${e.uninsured_shares ? ` (${e.uninsured_shares} uninsured)` : ''} · floor ${$(e.floor_value_after_premium)} after premium · downside to floor from mark ${$(e.downside_to_floor_from_mark)} · stock+put breakeven $${e.stock_plus_put_breakeven_from_mark}`)
                     return parts.length ? (
                       <div data-testid="options-economics" style={{ marginTop: 6 }}>
@@ -909,6 +910,36 @@ export default function OptionProposalCardV4({
                         {parts.map((t, i) => <div key={i} style={{ color: BB.text2, marginLeft: 10 }}>{t}</div>)}
                       </div>
                     ) : null
+                  })()}
+                  {Array.isArray((p as any).legs_liquidity) && (p as any).legs_liquidity.length > 0 && (
+                    <div data-testid="options-legs-liquidity" style={{ marginTop: 6 }}>
+                      <b style={{ color: BB.text1 }}>Each leg.</b>{' '}
+                      {(p as any).legs_liquidity.map((l: any, i: number) => (
+                        <div key={i} style={{ color: BB.text2, marginLeft: 10 }}>
+                          {l.role} ${l.strike}: bid {l.bid ?? '—'} / ask {l.ask ?? '—'}
+                          {l.spread_pct != null ? ` (${l.spread_pct}% wide)` : ''} · OI {l.open_interest ?? '—'} · volume {l.volume ?? '—'}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(p as any).combined_exposure && (() => {
+                    const c = (p as any).combined_exposure
+                    return (
+                      <div data-testid="options-combined-exposure" style={{ marginTop: 6 }}>
+                        <b style={{ color: c.correlated ? BB.amber : BB.text1 }}>Same-symbol ideas ({(c.ideas || []).length}).</b>{' '}
+                        <span style={{ color: BB.text2 }}>{c.note}</span>
+                        <div style={{ color: BB.text2, marginLeft: 10 }}>
+                          Committed together {fmt$(c.capital_committed_total)}
+                          {c.account_cash != null ? ` · account cash ${fmt$(c.account_cash)}${c.committed_pct_of_cash != null ? ` (${c.committed_pct_of_cash}% of it)` : ''}` : ''}
+                          {c.shares_held ? ` · ${c.shares_held} ${c.symbol} shares already held` : ''}
+                        </div>
+                        {(c.scenarios || []).length > 0 && (
+                          <div style={{ color: BB.text2, marginLeft: 10 }}>
+                            Combined at expiry: {(c.scenarios || []).map((r: any) => `${r.move_pct > 0 ? '+' : ''}${r.move_pct}% ($${r.price}) ${r.combined_pl_at_expiry == null ? '—' : fmt$(r.combined_pl_at_expiry)}`).join(' · ')}
+                          </div>
+                        )}
+                      </div>
+                    )
                   })()}
                   {(p as any).fundamentals && (
                     <div data-testid="options-fundamentals" style={{ marginTop: 6 }}>
@@ -1168,7 +1199,7 @@ export default function OptionProposalCardV4({
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: terminalUi ? 10 : 12, flexWrap: 'wrap', fontSize: terminalUi ? 9.5 : 11, color: terminalUi ? BB.text2 : WL.text.secondary }}>
           <HeroMetricChip metricKey="edge" label="edge" value={edge ?? '—'} context={metricCtx} color={edgeColor} />
-          <HeroMetricChip metricKey="ev" label="exp. P/L" value={fmt$(p.expected_value)} context={metricCtx} />
+          <HeroMetricChip metricKey="ev" label="exp. P/L" value={p.expected_value == null && (p as any).economics?.expected_pl_status ? 'withheld' : fmt$(p.expected_value)} context={metricCtx} />
           <HeroMetricChip
             metricKey="pop"
             label="POP"

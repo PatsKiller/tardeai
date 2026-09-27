@@ -69,8 +69,13 @@ def _payoff(p: dict[str, Any]) -> Optional[Callable[[float], float]]:
     return None
 
 
-def economics(p: dict[str, Any], *, shares_held: Optional[float] = None) -> dict[str, Any]:
-    """Economics block for one proposal. Missing inputs give None, never a guess."""
+def economics(p: dict[str, Any], *, shares_held: Optional[float] = None,
+              quote_issues: Optional[list[str]] = None) -> dict[str, Any]:
+    """Economics block for one proposal. Missing inputs give None, never a guess.
+
+    ``quote_issues`` (the liquidity gate's failures) withholds expected P/L: on a 185%-wide
+    weekend quote the desk's IV is not the market's, and XLB's hedge showed +$827 on a
+    $345 put (Wave B, 2026-09-27). Strike/premium arithmetic is still shown, at the mid."""
     strat = str(p.get("strategy") or "")
     n = int(_f(p.get("contracts")) or 1)
     mult = 100 * n
@@ -84,6 +89,10 @@ def economics(p: dict[str, Any], *, shares_held: Optional[float] = None) -> dict
     pay = _payoff(p)
     ev = expected_payoff(pay, spot, iv, dte) if pay else None
     out["expected_pl_at_expiry"] = round(ev * mult, 2) if ev is not None else None
+    if quote_issues:
+        out["expected_pl_at_expiry"] = None
+        out["expected_pl_status"] = "withheld: quotes not tradeable (" + "; ".join(map(str, quote_issues[:3])) + ")"
+        out["prices_basis"] = "mid of a non-tradeable quote; recheck on live quotes"
     if strat == "cash_secured_put" and k is not None and prem is not None:
         out.update({
             "net_cost_if_assigned_per_share": round(k - prem, 2),

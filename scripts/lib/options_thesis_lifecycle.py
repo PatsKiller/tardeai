@@ -50,6 +50,11 @@ DEFAULTS = {
     "escalation_min_cited_urls": 2,         # web urls cited across the answers
     "escalation_timeout_s": 300,            # per lane
     "escalation_max_per_run": 1,
+    # 2026-09-27: DELL ran 11 research requests in 26h -- each new strike/expiry is a new
+    # strategy GUID, and each GUID asked again. Research is about the SYMBOL: reuse a
+    # same-symbol, same-strategy thesis request, and join an in-flight CIO follow-up.
+    "research_reuse_hours": 24,
+    "followup_reuse_hours": 6,
 }
 
 
@@ -93,6 +98,35 @@ def followup_questions(p: dict[str, Any], review: dict[str, Any], limit: int) ->
               "text": f"{sym}: find dated, sourced facts that resolve this CIO concern "
                       f"(do not restate it): {t}"} for i, t in enumerate(items[:limit])]
     return base + tasks
+
+
+REUSABLE_STATES = ("queued", "running", "in_progress", "claimed", "completed")
+FOLLOWUP_MARK = ": find dated, sourced facts that resolve this CIO concern"
+
+
+def reusable_request(requests: list[dict[str, Any]], *, symbol: str, first_text: str, kind: str,
+                     now: datetime, hours: float) -> Optional[dict[str, Any]]:
+    """A recent request for the same symbol that answers the same thing, or None.
+
+    kind "thesis": the first question text is identical (it names symbol and strategy,
+    never the strike). kind "followup": an in-flight CIO follow-up for the symbol."""
+    best = None
+    for r in requests or []:
+        syms = [str(x).upper() for x in (r.get("symbols") or [r.get("symbol")]) if x]
+        if symbol.upper() not in syms:
+            continue
+        status = str(r.get("status") or "").lower()
+        if status not in REUSABLE_STATES or _hours_since(r.get("created_ts"), now) > float(hours):
+            continue
+        qs = r.get("questions") or []
+        first = str((qs[0] or {}).get("text") or "") if qs else ""
+        if kind == "thesis":
+            ok = first == first_text
+        else:
+            ok = status != "completed" and any(FOLLOWUP_MARK in str((q or {}).get("text") or "") for q in qs)
+        if ok and (best is None or str(r.get("created_ts") or "") > str(best.get("created_ts") or "")):
+            best = r
+    return best
 
 
 def followup_answers(result: Optional[dict[str, Any]], deliverables: list[dict[str, str]]) -> list[dict[str, Any]]:
@@ -218,6 +252,7 @@ def advance(
     now: Optional[datetime] = None,
     escalate: Optional[Callable[[dict[str, Any], str, list[str], float], dict[str, Any]]] = None,
     request_thesis_acquisition: Optional[Callable[[str, str], Any]] = None,
+    recent_requests: Optional[Callable[[str], list[dict[str, Any]]]] = None,
 ) -> list[dict[str, Any]]:
     """One pass. Returns what it did (or would do, when apply=False).
 
@@ -228,6 +263,25 @@ def advance(
     report: list[dict[str, Any]] = []
     reviews = 0
     escalations = 0
+    made: dict[str, list[dict[str, Any]]] = {}  # requests made in this pass, by symbol
+
+    def _reuse(p: dict[str, Any], kind: str, first_text: str) -> Optional[dict[str, Any]]:
+        sym = str(p.get("symbol") or "").upper()
+        pool = list(made.get(sym) or [])
+        if recent_requests is not None:
+            try:
+                pool += list(recent_requests(sym) or [])
+            except Exception:  # noqa: BLE001 -- reuse is an optimisation, never a blocker
+                pass
+        hours = s["research_reuse_hours"] if kind == "thesis" else s["followup_reuse_hours"]
+        return reusable_request(pool, symbol=sym, first_text=first_text, kind=kind, now=now, hours=hours)
+
+    def _remember(p: dict[str, Any], out: dict[str, Any], qs: list[dict[str, str]]) -> None:
+        if out.get("research_id"):
+            made.setdefault(str(p.get("symbol") or "").upper(), []).append(
+                {"research_id": out["research_id"], "plan_id": out.get("plan_id"), "status": "queued",
+                 "symbols": [p.get("symbol")], "questions": qs, "created_ts": now.isoformat()})
+
     for p in proposals:
         guid = p.get("option_strategy_guid")
         ot = p.get("options_thesis") or {}
@@ -268,13 +322,24 @@ def advance(
                         continue
                     qs = followup_questions(p, dec.get("review") or {}, int(s["max_deliverables"]))
                     due = (now + timedelta(hours=float(s["followup_due_hours"]))).isoformat()
-                    step.update(action="REQUEST_FOLLOWUP", deliverables=[q["text"] for q in qs], due_at=due,
+                    shared = _reuse(p, "followup", "")
+                    if shared:
+                        qs = [{"intent": q.get("intent") or q.get("question_id") or "", "text": q.get("text") or ""}
+                              for q in (shared.get("questions") or [])]
+                    step.update(action="JOIN_FOLLOWUP" if shared else "REQUEST_FOLLOWUP",
+                                deliverables=[q["text"] for q in qs], due_at=due,
                                 decision_guid=dec.get("decision_guid"))
+                    if shared:
+                        step.update(reused_research_id=shared.get("research_id"))
                     if apply:
-                        out = request_research(p, qs)
+                        out = ({"research_id": shared.get("research_id"), "plan_id": shared.get("plan_id")}
+                               if shared else request_research(p, qs))
+                        if not shared:
+                            _remember(p, out, qs)
                         store.append_event(guid, "OPTIONS_THESIS_FOLLOWUP_REQUESTED",
                                            research_id=out.get("research_id"), plan_id=out.get("plan_id"),
-                                           deliverables=qs, due_at=due, for_decision=dec.get("decision_guid"))
+                                           deliverables=qs, due_at=due, for_decision=dec.get("decision_guid"),
+                                           reused=bool(shared))
                     report.append(step)
                     continue
                 if not _after(fc, fu):
@@ -350,12 +415,19 @@ def advance(
                 report.append(step)
                 continue
             if not req:
-                step.update(action="REQUEST_RESEARCH", missing=missing)
+                qs = research_questions(p)
+                shared = _reuse(p, "thesis", qs[0]["text"])
+                step.update(action="REUSE_RESEARCH" if shared else "REQUEST_RESEARCH", missing=missing)
+                if shared:
+                    step.update(reused_research_id=shared.get("research_id"))
                 if apply:
-                    out = request_research(p)
+                    out = ({"research_id": shared.get("research_id"), "plan_id": shared.get("plan_id")}
+                           if shared else request_research(p))
+                    if not shared:
+                        _remember(p, out, qs)
                     store.append_event(guid, "OPTIONS_THESIS_RESEARCH_REQUESTED",
                                        research_id=out.get("research_id"), plan_id=out.get("plan_id"),
-                                       missing=missing)
+                                       missing=missing, reused=bool(shared))
                 report.append(step)
                 continue
             # research done but gaps remain: wait for abandonment or a re-run of the desk
