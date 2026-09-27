@@ -2473,6 +2473,15 @@ GATES = [
         ["tests/test_p2_report_honesty_20260926.py"],
     ),
     (
+        # 2026-09-26 — P2 audit remediation R-06/K-07: declared controls must exist.
+        # The Tier-2 daily cap / off-peak / provider flags are read and enforced
+        # fail-closed by TierPolicy; RISK_GATE_H4_ENABLED warns that H4 is not
+        # built instead of being silently ignored; check_env_flags_unread lists
+        # every env name set on a governed surface and read by no code.
+        "p2_controls_truth_20260926",
+        ["tests/test_p2_controls_truth_20260926.py"],
+    ),
+    (
         # 2026-09-25 — CIO cognition tranche 3: prompt event-driven cognition on
         # the existing bus/wake-store/dispatcher lane (cursor lands on the
         # newest handled event, singular `symbol` subjects, priority-FIFO

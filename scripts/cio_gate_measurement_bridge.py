@@ -62,10 +62,9 @@ SCHEDULED_ENTRYPOINT = (
     "APPROVE E3 (full package). Lane: goal-gate-bridge."
 )
 
-PROJECT_ROOT = Path(os.environ.get(
-    "TRADE_AI_PROJECT_ROOT",
-    "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild",
-))
+# C-02 (2026-09-26): default to the tree this file lives in (dev tree or served release), so a
+# cron that `cd`s into CURRENT measures and writes there; the env override still wins.
+PROJECT_ROOT = Path(os.environ.get("TRADE_AI_PROJECT_ROOT") or Path(__file__).resolve().parents[1])
 
 # Default location for the measurements file that ``evaluate_gates()`` reads.
 MEASUREMENTS_RELPATH = ("data", "cio", "agent_gate_measurements.json")

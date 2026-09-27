@@ -335,6 +335,12 @@ class RiskGate:
             # H4. Correlation cap (0.7 default, disabled by default — enable after validation)
             # Expensive: requires bar data fetch. Runs last, only if H1-H3 passed.
             # Implementation deferred to Phase B when correlation calculation is validated.
+            # 2026-09-26 (audit R-06): the flag was SET on a host and read by nothing, so a
+            # declared control silently did not exist. It is now read; setting it produces a
+            # loud, non-blocking warning until H4 is built (the verdict is unchanged).
+            _h4 = h4_status()
+            if _h4["enabled"]:
+                log.warning(_h4["message"])
 
             # 14. Data quality
             intel = extra_data.get('intel_readiness', 0)
@@ -499,6 +505,25 @@ class RiskGate:
                 self.conn.rollback()
             except Exception:
                 pass
+
+
+H4_FLAG = "RISK_GATE_H4_ENABLED"
+H4_CAP_FLAG = "CORRELATION_CAP"
+
+
+def h4_status(env=None) -> dict:
+    """Read the H4 flags honestly: H4 is NOT implemented; say so when it is switched on."""
+    source = env if env is not None else os.environ
+    enabled = str(source.get(H4_FLAG, "")).strip().lower() in {"1", "true", "yes", "on"}
+    cap = str(source.get(H4_CAP_FLAG, "")).strip()
+    message = ""
+    if enabled:
+        message = (
+            f"{H4_FLAG} is set but the H4 correlation cap is NOT implemented"
+            + (f" ({H4_CAP_FLAG}={cap} is ignored)" if cap else "")
+            + "; the risk verdict does not include H4. Unset the flag or implement H4."
+        )
+    return {"enabled": enabled, "implemented": False, "correlation_cap": cap or None, "message": message}
 
 
 def _get_conn():
