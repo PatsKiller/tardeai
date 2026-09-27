@@ -211,3 +211,40 @@ def test_concern_queries_drop_house_schema_words():
     )
     assert "catalyst.events" not in q and "event_ids" not in q and "events" not in q.split()
     assert q.startswith("DELL") and "analyst" in q and "rating" in q
+
+
+# ── 2026-09-27 W0-4: all CIO research web-grounded; producer pages reused first ──
+
+def test_wildcard_enables_every_reason():
+    assert hw.applies({"reason": "situation.raised:S3_REENTRY_CANDIDATE"}, hw.settings({"enabled_reasons": ["*"]}))
+    assert not hw.applies({"reason": "x"}, hw.settings({"enabled_reasons": ["options_thesis_gap"]}))
+
+
+def test_research_objects_are_reused_before_searching(tmp_path):
+    feed = tmp_path / "research_objects.jsonl"
+    rows = [
+        {"symbol": "DELL", "captured_at": "2026-09-26T12:00:00Z", "source_url": "https://a.com/dell-earnings",
+         "title": "Dell earnings preview", "body": "Dell stock ahead of quarter", "research_object_id": "ro1"},
+        {"symbol": "DELL", "captured_at": "2026-09-20T12:00:00Z", "source_url": "https://old.com/x",
+         "title": "Dell stock old", "body": "earnings", "research_object_id": "ro_old"},
+        {"symbol": "HPE", "captured_at": "2026-09-26T12:00:00Z", "source_url": "https://b.com/hpe",
+         "title": "HPE stock", "body": "earnings", "research_object_id": "ro2"},
+        {"symbol": "DELL", "captured_at": "2026-09-26T13:00:00Z", "source_url": "https://www.dell.com/shop",
+         "title": "Dell laptops", "body": "Shop now", "research_object_id": "ro_shop"},
+    ]
+    feed.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
+    cfg = {**CFG, "enabled_reasons": ["*"], "research_objects_path": str(feed), "brave_fallback": False, "max_queries": 1}
+    searched = []
+    out = hw.gather(_req(reason="situation.raised:S3_REENTRY_CANDIDATE"), cfg=cfg, env={}, now=NOW,
+                    free_fn=lambda q, **k: searched.append(q) or Resp(ok=True, results=[_hit(1)]))
+    assert out["results"][0]["url"] == "https://a.com/dell-earnings"
+    assert out["results"][0]["provider"] == "research_objects" and out["results"][0]["research_object_id"] == "ro1"
+    urls = [r["url"] for r in out["results"]]
+    assert "https://old.com/x" not in urls and "https://b.com/hpe" not in urls and "https://www.dell.com/shop" not in urls
+    assert out["queries"][0]["query"] == "reused_research_objects" and len(searched) == 1
+
+
+def test_missing_feed_is_just_no_reuse(tmp_path):
+    cfg = {**CFG, "research_objects_path": str(tmp_path / "absent.jsonl"), "brave_fallback": False, "max_queries": 1}
+    out = hw.gather(_req(), cfg=cfg, env={}, now=NOW, free_fn=lambda q, **k: Resp(ok=True, results=[_hit(1)]))
+    assert [r["provider"] for r in out["results"]] == ["searxng"]

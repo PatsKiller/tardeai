@@ -102,6 +102,7 @@ Config: `options_desk_settings.options_thesis_lifecycle` (`abandon_after_hours` 
   re-uploads dated top-level docs every hour.
 
 ### Research reads the web (2026-09-26)
+**2026-09-27:** this is no longer options-only. Every Hermes CIO research request is web-grounded (`enabled_reasons: ["*"]`), and requests with no symbol search nothing. The governed research producer's recent pages for the symbol (`research_objects.jsonl`, the last 72h, relevance-filtered) are supplied first, so the same page is not searched twice. The answers reach the symbol thesis through `accept_research_result`.
 Options-gap research (`reason: options_thesis_gap`) is no longer closed-world. Before the model call,
 `scripts/lib/hermes_web_research.py` runs up to `max_queries` searches:
 - **Queries:** one per thesis intent (outlook, next earnings, risks and downgrades, bear case), then the

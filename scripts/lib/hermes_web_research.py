@@ -16,6 +16,7 @@ READ_ONLY_ADVISORY; MBI_BEHAVIOR=0.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from datetime import datetime, timezone
@@ -32,6 +33,10 @@ DEFAULTS: dict[str, Any] = {
     "max_results": 10,
     "snippet_chars": 500,
     "brave_fallback": True,
+    # Reuse the governed research producer's pages before searching (2026-09-27).
+    "research_objects_path": "",
+    "reuse_research_objects_hours": 72,
+    "max_reused_objects": 4,
 }
 
 # Base queries per research intent; the CIO follow-up items add their own.
@@ -75,7 +80,57 @@ def settings(cfg: Optional[dict[str, Any]] = None) -> dict[str, Any]:
 
 
 def applies(request: dict[str, Any], s: dict[str, Any]) -> bool:
-    return str(request.get("reason") or "") in set(s.get("enabled_reasons") or [])
+    reasons = set(s.get("enabled_reasons") or [])
+    return "*" in reasons or str(request.get("reason") or "") in reasons
+
+
+def _objects_path(s: dict[str, Any], env: dict[str, str]) -> Optional[Path]:
+    raw = str(s.get("research_objects_path") or env.get("TRADEAI_WAKE_RESEARCH_OBJECTS_PATH") or "").strip()
+    return Path(os.path.expanduser(raw)) if raw else None
+
+
+def reused_objects(
+    symbol: str, s: dict[str, Any], env: dict[str, str], *, now: Optional[datetime] = None
+) -> list[dict[str, Any]]:
+    """Recent pages the governed research producer already fetched for this symbol.
+
+    2026-09-27 due diligence: 4,647 research objects sat at IDENTIFIED and never
+    reached a thesis. Supplying them here means the Hermes CIO answer -- which goes
+    through accept_research_result -> symbol thesis -- is built on them, and the
+    same page is not searched for twice."""
+    path = _objects_path(s, env)
+    if not symbol or path is None or not path.is_file():
+        return []
+    cutoff = (now or datetime.now(timezone.utc)).timestamp() - 3600 * float(s["reuse_research_objects_hours"])
+    out: list[dict[str, Any]] = []
+    try:
+        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    for line in reversed(lines):
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if str(row.get("symbol") or "").upper() != symbol:
+            continue
+        try:
+            ts = datetime.fromisoformat(str(row.get("captured_at") or "").replace("Z", "+00:00")).timestamp()
+        except ValueError:
+            continue
+        if ts < cutoff:
+            continue
+        hit = {
+            "url": row.get("source_url_canonical") or row.get("source_url"),
+            "title": row.get("title"),
+            "description": row.get("body"),
+            "research_object_id": row.get("research_object_id"),
+        }
+        if relevant(hit):
+            out.append(hit)
+        if len(out) >= int(s["max_reused_objects"]):
+            break
+    return out
 
 
 def _symbol(request: dict[str, Any]) -> str:
@@ -189,6 +244,24 @@ def gather(
     log: list[dict[str, Any]] = []
     results: list[dict[str, Any]] = []
     seen: set[str] = set()
+    reused = reused_objects(_symbol(request), s, env, now=now)
+    for h in reused:
+        url = str(h.get("url") or "").strip()
+        if url.startswith("http") and _canonical(url) not in seen and len(results) < cap:
+            seen.add(_canonical(url))
+            results.append(
+                {
+                    "id": f"w{len(results) + 1}",
+                    "title": str(h.get("title") or "")[:200],
+                    "url": url,
+                    "snippet": str(h.get("description") or "")[:chars],
+                    "provider": "research_objects",
+                    "query": "reused",
+                    "research_object_id": h.get("research_object_id"),
+                }
+            )
+    if reused:
+        log.append({"query": "reused_research_objects", "provider": "research_objects", "ok": True, "n": len(reused)})
     for q, kind in planned_queries(request, s, now=now):
         provider, resp = "searxng", None
         try:
