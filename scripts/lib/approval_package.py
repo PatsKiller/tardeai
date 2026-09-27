@@ -250,18 +250,17 @@ def render_message(pkg: dict) -> str:
 
 
 def chunks(text: str, limit: int = MAX_MSG_LEN) -> list[str]:
-    try:
-        from telegram_transport import split_for_telegram  # type: ignore
-        return split_for_telegram(text)
-    except Exception:  # noqa: BLE001
-        out, cur = [], ""
-        for line in text.splitlines(keepends=True):
-            if len(cur) + len(line) > limit:
-                out.append(cur); cur = ""
-            cur += line
-        if cur:
-            out.append(cur)
-        return out
+    """Split on line boundaries under the transport limit. Deliberately does NOT import
+    telegram_transport (that is a chokepoint bypass); the sender that owns delivery re-splits anyway."""
+    out: list[str] = []
+    cur = ""
+    for line in text.splitlines(keepends=True):
+        if len(cur) + len(line) > limit and cur:
+            out.append(cur); cur = ""
+        cur += line
+    if cur:
+        out.append(cur)
+    return out or [""]
 
 
 __all__ = ["Ledger", "new_package", "derive_state", "parse_reply", "apply_reply", "render_message", "chunks",

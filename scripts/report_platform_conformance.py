@@ -156,7 +156,16 @@ def build(root: Path, *, now: _dt.datetime | None = None, env: dict | None = Non
             findings.append({"standard": "research", "measure": "retrieval_receipts_24h", "value": len(rrs), "note": f"shadow_duplicate_generation={dup}/{len(rrs)} (DGR proxy)"})
         else:
             measures["research"] = None
-        measures["identity"] = None  # v0: no per-silo identity coverage query yet (Wave 1 tranche 2)
+        # identity: share of subjects in this silo's contexts (24 h) that resolved to a registry GUID
+        subj = [s for c in opened for s in (c.get("subjects") or []) if isinstance(s, dict)]
+        if subj:
+            ok_id = sum(1 for s in subj if s.get("identity_status") in ("CONFIRMED", "CANDIDATE", "NAMESPACED"))
+            measures["identity"] = ok_id / len(subj)
+            if ok_id < len(subj):
+                findings.append({"standard": "identity", "measure": "subjects_resolved_to_guid", "value": f"{ok_id}/{len(subj)}", "threshold": "all", "class": "B",
+                                 "action": "unresolved symbols: identity registry mint or UNRESOLVABLE stamp"})
+        else:
+            measures["identity"] = None
         um = [k for k, v in measures.items() if v is None]
         unmeasured_total += len(um)
         scored = {k: v for k, v in measures.items() if v is not None}
@@ -166,7 +175,7 @@ def build(root: Path, *, now: _dt.datetime | None = None, env: dict | None = Non
 
     return {
         "schema": SCHEMA, "as_of": now.isoformat(), "release_sha": env.get("TRADEAI_RELEASE_SHA"),
-        "authority": "READ_ONLY_ADVISORY", "version": "v0 (measure only; no remediation)",
+        "authority": "READ_ONLY_ADVISORY", "version": "v0.1 (measure only; identity from context receipts; no remediation)",
         "unmeasured_standards_total": unmeasured_total,
         "silos_scored": sum(1 for s in report_silos if s["score"] is not None),
         "silos": report_silos,

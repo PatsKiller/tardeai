@@ -283,9 +283,20 @@ def run_one(
     enqueue_refresh: bool,
     llm_budget_left: list[int],
 ) -> dict[str, Any]:
+    # COGX W1 shadow: memory context around thesis acquisition (receipt only)
+    _ic_ctx = None
+    try:
+        try:
+            from lib import intelligence_client as _ic
+        except ImportError:
+            from scripts.lib import intelligence_client as _ic  # type: ignore
+        _ic_ctx = _ic.shadow_open("symbol-thesis-acquisition", [str(sym or "")], "RESEARCH", root=root,
+                                  question={"text": "symbol thesis acquisition", "question_class": "thesis"})
+    except Exception:  # noqa: BLE001
+        _ic_ctx = None
     conn = _thesis_conn(root)
     try:
-        return _run_one_impl(
+        _res = _run_one_impl(
             sym,
             root=root,
             apply=apply,
@@ -297,6 +308,12 @@ def run_one(
             llm_budget_left=llm_budget_left,
             conn=conn,
         )
+        try:
+            if _ic_ctx and isinstance(_res, dict):
+                _ic.shadow_commit(_ic_ctx, {"kind": "RESEARCHED", "ref": str(_res.get("question_digest") or ""), "status": str(_res.get("status") or "")}, root=root)
+        except Exception:  # noqa: BLE001
+            pass
+        return _res
     finally:
         if conn is not None:
             conn.close()

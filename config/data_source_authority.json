@@ -1767,9 +1767,15 @@
       "no_coverage": "say_so",
       "on_gap": [
         {
-          "vector": "none",
+          "vector": "refresh_producer",
           "cost_class": "free",
-          "max_per_day": 0,
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
           "expected_seconds": 0
         }
       ],
@@ -1804,9 +1810,15 @@
       "no_coverage": "say_so",
       "on_gap": [
         {
-          "vector": "none",
+          "vector": "refresh_producer",
           "cost_class": "free",
-          "max_per_day": 0,
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
           "expected_seconds": 0
         }
       ],
@@ -1840,9 +1852,15 @@
       "no_coverage": "say_so",
       "on_gap": [
         {
-          "vector": "none",
+          "vector": "refresh_producer",
           "cost_class": "free",
-          "max_per_day": 0,
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
           "expected_seconds": 0
         }
       ],
@@ -1876,9 +1894,15 @@
       "no_coverage": "say_so",
       "on_gap": [
         {
-          "vector": "none",
+          "vector": "refresh_producer",
           "cost_class": "free",
-          "max_per_day": 0,
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
           "expected_seconds": 0
         }
       ],
@@ -1913,8 +1937,99 @@
         {
           "vector": "refresh_producer",
           "cost_class": "free",
-          "max_per_day": 4,
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ]
+    },
+    {
+      "domain": "intelligence_gir_projection",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-27",
+        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
+        "scope": "GIR@v1 projection (entities, envelopes, edges) into schema intelligence — zero authority, idempotent, rebuildable; the canonical stores keep their writers (02 §5)"
+      },
+      "store": {
+        "table": "intelligence.gir_entity",
+        "file": "runtime/gir_projection_dryrun.json"
+      },
+      "writer": "scripts/gir_projector.py",
+      "cadence": "batch (nightly) then incremental",
+      "stale_after_hours": 36,
+      "projection": null,
+      "required_fields": [
+        "guid",
+        "class",
+        "kind",
+        "idempotency_key"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
           "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Dry run 2026-09-27 on production persistent-state: 129,000 entities / 5,803 envelopes / 237,866 edges (118,027 are contradiction candidates). Postgres tables land with migrations/2026_09_27_intelligence_v1.sql."
+    },
+    {
+      "domain": "supervisor_breaches",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-27",
+        "reference": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304",
+        "scope": "Breach@v1 append-only ledger + BreachDetectorRun@v1 latest (06 §5); detect and record only in Wave 1"
+      },
+      "store": {
+        "file": "runtime/supervisor_breaches.jsonl",
+        "table": "intelligence.breach"
+      },
+      "writer": "scripts/supervisor_breach_detector.py",
+      "cadence": "every 2 min once installed",
+      "stale_after_hours": 1,
+      "projection": null,
+      "required_fields": [
+        "breach_id",
+        "lane_id",
+        "kind",
+        "detected_at"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
         }
       ]
     }

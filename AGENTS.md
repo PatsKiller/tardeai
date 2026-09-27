@@ -1480,6 +1480,13 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 | **inverse_stoplights** | derived | `runtime/inverse_stoplights_latest.json` | `scripts/defense_inverse_stoplights.py` | 10:15 · 17:55 Mon-Fri | 26h | — | internal | — | — | `say_so` | operator 2026-09-13 |
 | **data_gaps** | native | `data_gap_registry` | `scripts/lib/writers/data_gap_registry_writer.py` | crontab: data_gap_resolver.py hourly 10:00-16:00 and --pre-overnight 18:00 on weekdays, --weekly-audit Sunday 08:00 (the desk reads these times from the crontab itself) | 168h | — | internal | — | — | `say_so` | operator 2026-09-13 |
 | **operator_conversation** | native | `operator_conversation_turns` | `scripts/lib/inbound_identity_tagger.py` | event-driven: every operator message and every agent reply on Telegram | 720h | — | internal | — | — | `say_so` | operator 2026-09-13 |
+| **intelligence_memory_contexts** | derived | `cio/memory_contexts.jsonl` | `scripts/lib/intelligence_client.py` | per context open/commit | 24h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **intelligence_retrieval_receipts** | derived | `cio/retrieval_receipts.jsonl` | `scripts/lib/intelligence_client.py` | per generation | 24h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **supervisor_heartbeats** | derived | `intelligence.heartbeat` · `runtime/heartbeats/<lane_id>.json` | `scripts/lib/supervisor_heartbeat.py` | per lane run | 48h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **approval_packages** | derived | `intelligence.approval_package` · `governance/approval_packages.jsonl` | `scripts/lib/approval_package.py` | per package event | 720h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **platform_conformance** | derived | `governance/platform_conformance_latest.json` | `scripts/report_platform_conformance.py` | daily | 36h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **intelligence_gir_projection** | derived | `intelligence.gir_entity` · `runtime/gir_projection_dryrun.json` | `scripts/gir_projector.py` | batch (nightly) then incremental | 36h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **supervisor_breaches** | derived | `intelligence.breach` · `runtime/supervisor_breaches.jsonl` | `scripts/supervisor_breach_detector.py` | every 2 min once installed | 1h | — | native | — | — | `say_so` | operator 2026-09-27 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 §0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an

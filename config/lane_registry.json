@@ -2554,7 +2554,8 @@
         "kind": "file_mtime",
         "path": "data/governance/platform_conformance_latest.json"
       },
-      "note": "scripts/report_platform_conformance.py --write (05 §4)"
+      "note": "scripts/report_platform_conformance.py --write (05 §4)",
+      "reason_evidence": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 item 1 approved by the operator's typed reply in Claude Code 2026-09-27 ~18:50 ET (recorded in docs/ops/COGX_WAVE1_APPROVAL_PACKAGE_2026-09-27.md on PR #1304); body = scripts/report_platform_conformance.py, dry run measured 45 UNMEASURED standards on 2026-09-27"
     },
     {
       "lane_id": "supervisor-breach-detector",
@@ -2573,7 +2574,8 @@
         "kind": "file_mtime",
         "path": "data/runtime/supervisor_breach_detector_latest.json"
       },
-      "note": "breach detector inside the watchdog cycle (06 §5) — body lands in Wave 1 tranche 2"
+      "note": "breach detector inside the watchdog cycle (06 §5) — body lands in Wave 1 tranche 2",
+      "reason_evidence": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 item 2 approved by the operator's typed reply 2026-09-27 ~18:50 ET; body = scripts/supervisor_breach_detector.py, dry run on 2026-09-27 found 115 ACTIVE lanes UNGOVERNED (no SLA rows yet)"
     },
     {
       "lane_id": "gir-projector",
@@ -2593,7 +2595,8 @@
         "table": "intelligence.gir_envelope",
         "column": "projected_at"
       },
-      "note": "GIR projector (02 §5) — body lands in Wave 1 tranche 2"
+      "note": "GIR projector (02 §5) — body lands in Wave 1 tranche 2",
+      "reason_evidence": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 item 3 approved by the operator's typed reply 2026-09-27 ~18:50 ET; body = scripts/gir_projector.py, dry run on 2026-09-27 projected 129,000 entities / 5,803 envelopes / 237,866 edges from production persistent-state"
     },
     {
       "lane_id": "approval-package-reminder",
@@ -2612,7 +2615,8 @@
         "kind": "file_mtime",
         "path": "data/governance/approval_packages.jsonl"
       },
-      "note": "approval reminders at +4h/+12h and expiry (13 §6) — body lands in Wave 1 tranche 2"
+      "note": "approval reminders at +4h/+12h and expiry (13 §6) — body lands in Wave 1 tranche 2",
+      "reason_evidence": "ApprovalPackage pkg-20260927-cogx-w1-d9e1 item 4 approved by the operator's typed reply 2026-09-27 ~18:50 ET; reminder body lands in Wave 1 tranche 2b; the ledger lib scripts/lib/approval_package.py is merged with the tranche-1 PR #1305"
     }
   ],
   "undeclared_baseline": [

@@ -170,6 +170,20 @@ class HermesWorker:
             )
             raise HermesWorkerError(why)
 
+        # COGX W1 shadow: retrieval ladder before generation (receipt only)
+        _ic_ctx = None
+        try:
+            try:
+                from lib import intelligence_client as _ic
+            except ImportError:
+                from scripts.lib import intelligence_client as _ic  # type: ignore
+            _qs = request.get("questions") or []
+            _q0 = _qs[0] if _qs and isinstance(_qs[0], dict) else {}
+            _ic_ctx = _ic.shadow_open("hermes-cio-worker", [str(request.get("symbol") or (request.get("subject") or {}).get("symbol") or "")],
+                                      "RESEARCH", agent_id=self.worker_id,
+                                      question={"text": _q0.get("text") or "", "question_class": "thesis", "fingerprint": request.get("fingerprint")})
+        except Exception:  # noqa: BLE001
+            _ic_ctx = None
         t0 = time.time()
         try:
             try:
@@ -227,6 +241,11 @@ class HermesWorker:
             elif isinstance(stored, dict) and stored.get("ok") and stored.get("result"):
                 result = stored["result"]
 
+            try:
+                if _ic_ctx:
+                    _ic.shadow_commit(_ic_ctx, {"kind": "RESEARCHED", "ref": rid, "latency_ms": latency_ms})
+            except Exception:  # noqa: BLE001
+                pass
             if self.on_completed:
                 try:
                     # Anything the completion callback sends is caused by the

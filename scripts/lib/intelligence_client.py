@@ -52,6 +52,9 @@ FAIL_CLOSED_PURPOSES = ("DECIDE", "ADVISE")
 MODES = ("SHADOW", "ENFORCED")
 DECISIONS = ("HIT_FRESH", "HIT_STALE", "HIT_PARTIAL", "MISS")
 REQUIRED_CLASSES_FOR_DECISION = ("facts", "beliefs", "contradictions")
+# A context carries at most this many contradiction rows; the count is always exact. V alone had 7,676
+# open candidates on 2026-09-27 (live proof) — embedding them made one context row 1.8 MB.
+CONTRADICTIONS_IN_CONTEXT = 25
 
 NAMESPACES = ("SEC", "ISS", "OPT", "THESIS", "EVID", "Q", "DEC", "WAKE", "COMMIT", "OUT", "AGENT",
               "BELIEF", "CKPT", "LANE", "RUN", "BREACH", "LESSON", "PROC", "RISK", "CONTRA", "EVENT",
@@ -350,6 +353,7 @@ def open_context(actor: dict, purpose: str, subjects: Iterable[str], *, as_of: s
         "thesis": {},
         "beliefs": [],
         "open_contradictions": [],
+        "open_contradictions_count": 0,
         "prior_decisions": {"state": "UNMEASURED", "note": "DECISION class joins the record in Wave 2 (02 §2)"},
         "lessons": [],
         "lessons_state": "NONE_PROMOTED",
@@ -431,11 +435,17 @@ def open_context(actor: dict, purpose: str, subjects: Iterable[str], *, as_of: s
         try:
             if loaders.contradictions is None:
                 raise RuntimeError("no contradictions loader")
+            total = 0
             for sym in symbols:
                 for c in loaders.contradictions(sym) or []:
-                    ctx["open_contradictions"].append({"contradiction_id": c.get("candidate_id"), "symbol": sym,
-                                                       "left": c.get("left_artifact_id"), "right": c.get("right_artifact_id"),
-                                                       "opposition": c.get("opposition"), "state": "OPEN"})
+                    total += 1
+                    if len(ctx["open_contradictions"]) < CONTRADICTIONS_IN_CONTEXT:
+                        ctx["open_contradictions"].append({"contradiction_id": c.get("candidate_id"), "symbol": sym,
+                                                           "left": c.get("left_artifact_id"), "right": c.get("right_artifact_id"),
+                                                           "opposition": c.get("opposition"), "state": "OPEN"})
+            ctx["open_contradictions_count"] = total
+            if total > CONTRADICTIONS_IN_CONTEXT:
+                ctx["open_contradictions_truncated"] = True
         except Exception as exc:  # noqa: BLE001
             failed_classes.append("contradictions"); degraded.append(f"CONTRADICTIONS_UNAVAILABLE:{type(exc).__name__}")
 
@@ -695,7 +705,69 @@ def commit(ctx: dict, outcome: dict, *, deltas: Iterable[dict] = (), confidence_
     return row
 
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Shadow helpers for the producer hooks (Wave 1 tranche 2). Fail-soft by construction: a hook
+# must never change a producer's output or raise into it. They return None on any failure.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def shadow_open(lane_id: str, subjects: Iterable[str], purpose: str = "RESEARCH", *, agent_id: str | None = None,
+                question: dict | None = None, root: Path | None = None, env: dict | None = None) -> dict | None:
+    """open_context in SHADOW and, when a question is given, observe the ladder as the caller's own
+    generation (receipt generated=True, reason SHADOW_CALLER). Returns the context or None."""
+    try:
+        subs = [s for s in (subjects or []) if s]
+        if not subs:
+            return None
+        ctx = open_context({"lane_id": lane_id, "agent_id": agent_id}, purpose, subs, mode="SHADOW", root=root, env=env)
+        if question:
+            observe_generation(ctx, question, root=root, env=env)
+        return ctx
+    except Exception:  # noqa: BLE001 — shadow never raises into a producer
+        return None
+
+
+def observe_generation(ctx: dict, question: dict, *, root: Path | None = None, env: dict | None = None,
+                       loaders: Loaders | None = None) -> dict | None:
+    """The caller is about to generate anyway: run the ladder and write a receipt that says so."""
+    try:
+        env = os.environ if env is None else env
+        loaders = loaders or default_loaders(root, env)
+        ladder, decision, reused = run_ladder(ctx, question, loaders, now=loaders.now())
+        receipt = {
+            "schema": SCHEMA_RETRIEVAL, "receipt_id": "rr_" + uuid.uuid4().hex[:16], "context_id": ctx.get("context_id"),
+            "lane_id": (ctx.get("actor") or {}).get("lane_id"),
+            "subject_guid": next((s.get("guid") for s in ctx.get("subjects", []) if s.get("guid")), None),
+            "symbol": next((s.get("symbol") for s in ctx.get("subjects", []) if s.get("symbol")), None),
+            "question": {"text": (question.get("text") or "")[:500], "question_class": question.get("question_class"), "horizon": question.get("horizon") or "default"},
+            "ladder": ladder, "decision": decision, "reused_refs": reused, "generated": True, "generation_reason": "SHADOW_CALLER",
+            "mode": "SHADOW", "release_sha": (ctx.get("actor") or {}).get("release_sha"), "created_at": _iso(loaders.now()), "authority": "READ_ONLY_ADVISORY",
+        }
+        _append(retrieval_receipts_path(root, env), receipt)
+        ctx["retrieval_receipt"] = receipt["receipt_id"]
+        return receipt
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def shadow_commit(ctx: dict | None, outcome: dict, *, root: Path | None = None, env: dict | None = None) -> dict | None:
+    """commit that never raises. Outcomes are refs and kinds only; a behaviour field is still refused
+    (and the refusal is itself recorded as a REFUSED row) — that rail is not softened."""
+    if not ctx:
+        return None
+    try:
+        return commit(ctx, outcome, root=root, env=env)
+    except BehaviorWriteRefused as exc:
+        try:
+            _append(contexts_path(root, env), {"schema": SCHEMA_COMMIT, "event": "REFUSED", "context_id": ctx.get("context_id"),
+                                               "reason": str(exc)[:200], "committed_at": _iso(_now())})
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+    except Exception:  # noqa: BLE001
+        return None
+
 __all__ = ["open_context", "retrieve_or_generate", "run_ladder", "commit", "Loaders", "default_loaders",
            "MemoryUnavailable", "BehaviorWriteRefused", "contexts_path", "retrieval_receipts_path",
            "resolve_mode", "is_namespaced", "behavior_fields", "SCHEMA_CONTEXT", "SCHEMA_RETRIEVAL",
-           "SCHEMA_COMMIT", "PURPOSES", "MODES", "DECISIONS"]
+           "SCHEMA_COMMIT", "PURPOSES", "MODES", "DECISIONS", "shadow_open", "observe_generation", "shadow_commit"]

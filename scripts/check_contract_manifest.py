@@ -5,6 +5,10 @@ from __future__ import annotations
 import hashlib, json, sys, datetime
 from pathlib import Path
 PROJ = Path(__file__).resolve().parents[1]
+NO_CONSUMER_REASON = (
+    "CI drift gate; ContractManifest@v1 is written by --update and read back by this same check "
+    "and by the platform-conformance audit (05 §5) — pkg-20260927-cogx-w1-d9e1"
+)
 MAN = PROJ / "config" / "contract_manifest.json"
 
 def current() -> dict:

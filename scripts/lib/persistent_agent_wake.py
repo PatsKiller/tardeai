@@ -1038,6 +1038,16 @@ class WakeEngine:
         snap = self.memory_loader.load(subject_guid, now=now)
         wake["memory_snapshot_id"] = snap.snapshot_id
         wake["memory_fact_ids"] = [f.fact_id for f in snap.facts]
+        # COGX W1 shadow: read platform memory through the façade (receipt only; no output change)
+        _ic_ctx = None
+        try:
+            from scripts.lib import intelligence_client as _ic
+            _ic_ctx = _ic.shadow_open("persistent-wake", [str((selection_meta or {}).get("symbol") or subject_guid or "")],
+                                      "DECIDE", agent_id=agent_id, question=None)
+            if _ic_ctx:
+                wake["intelligence_context_id"] = _ic_ctx.get("context_id")
+        except Exception:  # noqa: BLE001 — shadow never touches the wake
+            _ic_ctx = None
         wake["lifecycle_state"] = "LOADED"
         wake["provenance"]["inputs"] = list(wake["provenance"].get("inputs") or []) + [
             {"kind": "memory_snapshot", "id": snap.snapshot_id}
@@ -1517,6 +1527,13 @@ class WakeEngine:
         # 'gateway'. Missing any one of them means NOTHING is sent. This module
         # never imports a transport and never touches the network itself; the
         # interdiction is enforced by there being no default transport to call.
+        try:
+            if _ic_ctx:
+                from scripts.lib import intelligence_client as _ic
+                _ic.shadow_commit(_ic_ctx, {"kind": "DECIDED", "ref": wake_id, "effect_kind": effect_kind,
+                                            "act": bool(decision.get("act")), "reason": str(decision.get("reason") or "")[:200]})
+        except Exception:  # noqa: BLE001
+            pass
         if decision.get("act") and effect_kind != "none" and self._outbound is not None:
             try:
                 wake["outbound"] = self._outbound(wake=wake, receipts=receipts)

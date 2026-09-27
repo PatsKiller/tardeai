@@ -194,3 +194,27 @@ def test_commit_records_and_refuses_behavior_fields(tmp_path):
 def test_resolve_mode_defaults_to_shadow():
     assert ic.resolve_mode({}) == "SHADOW" and ic.resolve_mode({"TRADEAI_INTELLIGENCE_MODE": "enforced"}) == "ENFORCED"
     assert ic.resolve_mode({"TRADEAI_INTELLIGENCE_MODE": "bogus"}) == "SHADOW"
+
+
+def test_shadow_helpers_never_raise_and_record(tmp_path):
+    env = _env(tmp_path)
+    ctx = ic.shadow_open("hermes-cio-worker", ["V"], question={"text": "bull?", "question_class": "bull"}, env=env)
+    # default loaders are used here (no injection) → identity/facts may degrade in a hermetic env, but never raise
+    assert ctx is None or (ctx["mode"] == "SHADOW" and ctx["purpose"] == "RESEARCH")
+    assert ic.shadow_open("l", [], env=env) is None
+    ctx2 = ic.open_context({"lane_id": "l"}, "RESEARCH", ["V"], loaders=_loaders(tmp_path), env=env)
+    rec = ic.observe_generation(ctx2, {"text": "bull?", "question_class": "bull"}, loaders=_loaders(tmp_path), env=env)
+    assert rec["generated"] is True and rec["generation_reason"] == "SHADOW_CALLER" and rec["decision"] == "HIT_FRESH"
+    assert ic.shadow_commit(None, {"kind": "X"}) is None
+    assert ic.shadow_commit(ctx2, {"kind": "RESEARCHED", "ref": "res_1"}, env=env)["event"] == "COMMITTED"
+    assert ic.shadow_commit(ctx2, {"kind": "RESEARCHED", "size_usd": 5}, env=env) is None
+    assert _rows(tmp_path / "ctx.jsonl")[-1]["event"] == "REFUSED"
+
+
+def test_contradictions_are_capped_but_counted(tmp_path):
+    env = _env(tmp_path)
+    many = [{"candidate_id": f"contra_{i}", "left_symbol": "V", "right_symbol": "V", "status": "CANDIDATE"} for i in range(300)]
+    ctx = ic.open_context({"lane_id": "l"}, "DECIDE", ["V"], loaders=_loaders(tmp_path, contradictions=many), env=env)
+    assert len(ctx["open_contradictions"]) == ic.CONTRADICTIONS_IN_CONTEXT and ctx["open_contradictions_count"] == 300
+    assert ctx["open_contradictions_truncated"] is True and ctx["contradiction_state"] == "OPEN"
+    assert len(json.dumps(ctx)) < 40_000
