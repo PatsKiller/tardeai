@@ -2597,7 +2597,9 @@ GATES = [
         # policy, real not-approvable reasons, desk-side never-approvable guarantees, and
         # retirement of unanswerable thesis gaps.
         "options_economics_20260927",
-        ["tests/test_options_economics_20260927.py"],
+        ["tests/test_options_economics_20260927.py",
+         # SEC facts reach the thesis prompt; reworded gaps still retire (DELL v5).
+         "tests/test_thesis_packet_sec_and_stance_retire_20260927.py"],
     ),
     (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the

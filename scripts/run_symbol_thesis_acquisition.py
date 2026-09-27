@@ -178,6 +178,7 @@ def _append_ledger(root: Path, rec: dict[str, Any]) -> None:
 
 
 GAP_RETRY_LIMIT = 2  # a gap asked this many times with no stance emerging is retired
+STANCELESS_RUN_LIMIT = 3  # consecutive stance-less publishes, however the gap is worded
 
 
 def _asked_counts(root: Path, sym: str) -> dict[str, int]:
@@ -197,6 +198,23 @@ def _asked_counts(root: Path, sym: str) -> dict[str, int]:
     return counts
 
 
+def _stanceless_runs(root: Path, sym: str) -> int:
+    """Trailing PUBLISHED runs for this symbol that left the stance empty."""
+    n = 0
+    path = root / LEDGER_REL
+    if not path.exists():
+        return 0
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        try:
+            r = json.loads(line)
+        except ValueError:
+            continue
+        if str(r.get("symbol") or "").upper() != sym.upper() or r.get("status") != "PUBLISHED":
+            continue
+        n = 0 if str(r.get("stance_after") or "").strip() else n + 1
+    return n
+
+
 def choose_question(sym: str, fields: dict[str, Any], *, root: Path, memberships: list[str], role: str,
                     thesis_state: str) -> tuple[str, str]:
     """The question for this run, and why it was chosen (2026-09-27).
@@ -211,6 +229,8 @@ def choose_question(sym: str, fields: dict[str, Any], *, root: Path, memberships
         q = _specific_question(sym, gaps[0], memberships=memberships, role=role, thesis_state=thesis_state)
         return q, "first_gap"
     asked = _asked_counts(root, sym)
+    if _stanceless_runs(root, sym) >= STANCELESS_RUN_LIMIT:
+        gaps = []  # the model rewords the gap each version, so per-text counts never retire it
     for gap in gaps:
         q = _specific_question(sym, gap, memberships=memberships, role=role, thesis_state=thesis_state)
         if asked.get(_digest(sym, q), 0) < GAP_RETRY_LIMIT:
@@ -422,6 +442,7 @@ def _run_one_impl(
         "raw": str(synth.get("raw") or "")[:2000],
     }
     llm_budget_left[0] -= 1
+    out["stance_after"] = str((synth.get("synthesis_result") or {}).get("stance") or "")
     if not synth.get("ok"):
         out["status"] = "SYNTHESIS_FAILED"
         out["error"] = synth.get("error")
