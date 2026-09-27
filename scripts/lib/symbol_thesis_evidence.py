@@ -373,6 +373,41 @@ def retrieve_structured_sources(
             if conn:
                 conn.rollback()
 
+        # Reported fundamentals from SEC company facts (fundamentals plan F2, 2026-09-27):
+        # a thesis can cite revenue, margins, cash flow and backlog from the filings.
+        try:
+            cur.execute(
+                """
+                SELECT symbol, form_type, metric_name, metric_value, unit, period_start,
+                       period_end, filing_date, sec_url
+                FROM sec_xbrl WHERE symbol=%s
+                ORDER BY period_end DESC LIMIT 400
+                """,
+                (sym,),
+            )
+            xrows = [dict(r) for r in (cur.fetchall() or [])]
+            if xrows:
+                try:
+                    from lib import fundamentals_feed as ff
+                except ImportError:  # pragma: no cover
+                    from scripts.lib import fundamentals_feed as ff  # type: ignore
+                summary = ff.summarize(sym, xrows)
+                for line in ff.evidence_lines(summary)[:limit + 6]:
+                    items.append(evidence_item(
+                        fact=line["fact"],
+                        title=f"{sym} {line['metric'].replace('_', ' ')} (SEC filing)",
+                        source_type="sec_xbrl",
+                        source_id=f"{sym}:{line['metric']}:{summary.get('latest_quarter_end')}",
+                        polarity=POLARITY_NEUTRAL,
+                        quality="PRIMARY_REGULATORY",
+                        observed_at=line.get("filed") or None,
+                        url=line.get("sec_url") or None,
+                        provenance={"table": "sec_xbrl", "latest_quarter_end": summary.get("latest_quarter_end")},
+                    ))
+        except Exception:
+            if conn:
+                conn.rollback()
+
         # research_sources active registry snapshot (governance, not content)
         try:
             cur.execute(

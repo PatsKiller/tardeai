@@ -75,6 +75,40 @@ def _alert(cur, report: dict) -> None:
               f"{report['platform_pending_30d']} pending in 30d."))
 
 
+def fundamentals_sla(conn, symbols: list[str], *, apply: bool) -> dict:
+    import psycopg2.extras
+    from lib import fundamentals_feed as ff
+    from sec_fundamentals_ingest import is_fund
+    fs = ff.settings()
+    latest: dict[str, str] = {}
+    with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+        cur.execute("""SELECT symbol, max(period_end) AS q FROM sec_xbrl
+                       WHERE metric_name='revenue' AND symbol = ANY(%s) GROUP BY symbol""", (list(symbols),))
+        for r in cur.fetchall() or []:
+            latest[r["symbol"]] = str(r["q"])
+        operating = [s for s in symbols if not is_fund(cur, s)]
+    breaches = []
+    for sym in operating:
+        state = ff.freshness({"latest_quarter_end": latest.get(sym)}, fs)
+        if state != "FRESH":
+            breaches.append({"symbol": sym, "state": state, "latest_quarter_end": latest.get(sym)})
+    fixed = []
+    if apply and breaches:
+        import contextlib
+        import io
+        from sec_fundamentals_ingest import main as ingest
+        todo = [b["symbol"] for b in breaches][: int(fs.get("fix_per_run", 20))]
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            ingest(["--symbols", ",".join(todo), "--apply"])
+        try:
+            fixed = [(r["symbol"], r["status"], r.get("inserted", 0)) for r in json.loads(buf.getvalue())["results"]]
+        except Exception:  # noqa: BLE001
+            fixed = [(t, "UNKNOWN", 0) for t in todo]
+    return {"operating_symbols": len(operating), "breaches_before_fix": len(breaches),
+            "breaches": breaches[:30], "fixed": fixed}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Symbol-news curation SLA monitor + auto-fix")
     ap.add_argument("--apply", action="store_true")
@@ -107,6 +141,10 @@ def main(argv=None) -> int:
                 acquired = [{"symbol": r.get("symbol"), "status": r.get("status"), "gate": r.get("gate")}
                             for r in batch.get("results") or []]
         result["acquired"] = acquired
+        # Fundamentals SLA (fundamentals plan F4, 2026-09-27): an operating company in the
+        # priority set whose reported quarter is missing or older than
+        # fundamentals_feed.stale_days_after_quarter is a breach; fix = ingest it now.
+        result["fundamentals"] = fundamentals_sla(conn, pri, apply=a.apply)
         with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
             after = snc.sla_report(cur, pri, s)
             if a.apply and after["breach_count"]:
@@ -123,6 +161,7 @@ def main(argv=None) -> int:
     print(json.dumps({k: result[k] for k in ("mode", "sla_before")} | {
         "curated_symbols": [(c["symbol"], c["selected"], c["approved"]) for c in result.get("curated", [])],
         "acquired": result.get("acquired"), "breaches_after": result["sla"]["breach_count"],
+        "fundamentals": {k: result.get("fundamentals", {}).get(k) for k in ("operating_symbols", "breaches_before_fix")},
         "platform_pending_30d": result["sla"]["platform_pending_30d"]}, indent=1, default=str))
     return 0
 

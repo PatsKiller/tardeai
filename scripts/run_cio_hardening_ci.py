@@ -2578,6 +2578,13 @@ GATES = [
         ["tests/test_thesis_evidence_not_circular_20260927.py"],
     ),
     (
+        # 2026-09-27 -- fundamentals F1/F2/F4: SEC company facts -> sec_xbrl (quarter vs
+        # YTD, restatements, like-for-like YoY), PRIMARY_REGULATORY thesis evidence,
+        # fundamentals freshness SLA in the curation monitor.
+        "fundamentals_feed_20260927",
+        ["tests/test_fundamentals_feed_20260927.py", "tests/test_symbol_news_curation_20260927.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).

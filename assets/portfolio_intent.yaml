@@ -242,3 +242,13 @@ benchmark:
 # 16 cio_decision rows ("DELL CIO: MORE_RESEARCH"). Read by symbol_thesis_evidence.
 thesis_evidence:
   exclude_source_types: [cio_decision, agent_result, agent_synthesis, fused_signal]
+
+# Reported fundamentals from SEC company facts (fundamentals plan F1-F4, operator
+# 2026-09-27). Read by scripts/lib/fundamentals_feed.py, sec_fundamentals_ingest.py and
+# the curation SLA monitor. Official SEC source only; ETFs/funds are not applicable.
+fundamentals_feed:
+  quarters_kept: 8                 # quarterly facts kept per metric (YoY needs 5+)
+  years_kept: 3
+  max_symbols_per_run: 120         # nightly universe: priority requests, options desk, debt-ordered queue
+  stale_days_after_quarter: 100    # quarter end older than this = STALE (SLA breach)
+  fix_per_run: 20                  # symbols the SLA monitor re-ingests per run
