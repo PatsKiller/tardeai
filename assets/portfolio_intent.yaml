@@ -149,6 +149,9 @@ options_desk_settings:
     sla_hours_default: 72
     acquire_per_run: 2             # open priority requests re-acquired per monitor run
     acquire_max_llm: 2             # model calls per monitor run for those acquisitions
+  # Daily-leveraged funds (2x/3x daily reset) decay over a holding period (operator
+  # 2026-09-27, PUR). block_income: no CSP / covered call / credit spread on them; allow: off.
+  leveraged_fund_policy: block_income
   web_research:
     # 2026-09-27 due diligence W0-4: every Hermes CIO research request (~17/day) is
     # web-grounded, not only options gaps; its answer reaches the symbol thesis via

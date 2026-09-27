@@ -1159,6 +1159,7 @@ _PRICE_SOURCE: Dict[str, dict] = {}
 _SESSION: dict = {}  # market session for this run (weekend-aware liquidity, 2026-09-27)
 LIQUIDITY_DEFERRED: list = []  # ideas kept despite closed-market quotes, for the funnel
 _FUNDAMENTALS: dict = {}  # per-run cache of fundamentals card blocks (F5)
+_INSTRUMENT_CLASS: dict = {}  # per-run cache: OPERATING_COMPANY | ETF | LEVERAGED_FUND
 
 
 def _spot_for(sym: str, price: float) -> float:
@@ -1560,6 +1561,7 @@ def generate_covered_call_proposals(
             "premium_total": premium_total,
             "underlying_price": round(und, 2),
             "pop_pct": pop,
+            "iv_used": round(float(iv), 4) if iv else None,
             "max_profit": max_profit,
             "max_loss": max_loss,
             "stock_downside_risk": stock_downside_risk,
@@ -1663,6 +1665,8 @@ def generate_holdings_put_proposals(
             "premium_total": cost,
             "underlying_price": round(und, 2),
             "pop_pct": round(pop, 1),
+            "iv_used": round(float(iv), 4) if iv else None,
+            "shares_held": round(float(shares), 3) if shares else None,
             "max_profit": "hedge",
             "max_loss": cost,
             "breakeven": round(strike - premium, 2),
@@ -1751,6 +1755,7 @@ def _append_long_call_proposal(
         "premium_total": round(premium * 100, 2),
         "underlying_price": round(und, 2),
         "pop_pct": round(pop, 1),
+        "iv_used": round(float(iv), 4) if iv else None,
         "max_profit": "unlimited",
         "max_loss": max_loss,
         "breakeven": breakeven,
@@ -1837,6 +1842,7 @@ def _append_csp_proposal(
         "premium_total": round(premium * 100, 2),
         "underlying_price": round(und, 2),
         "pop_pct": pop,
+        "iv_used": round(float(iv), 4) if iv else None,
         "max_profit": max_profit,
         "max_loss": max_loss,
         "breakeven": breakeven,
@@ -2078,6 +2084,7 @@ def generate_credit_spread_proposals(
             "premium_total": round(net_credit * 100, 2),
             "underlying_price": round(und, 2),
             "pop_pct": pop,
+            "iv_used": round(float(iv), 4) if iv else None,
             "max_profit": round(net_credit * 100, 2),
             "max_loss": max_loss,
             "breakeven": round(short_strike - net_credit, 2),
@@ -2606,6 +2613,37 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
             except Exception:  # noqa: BLE001
                 _FUNDAMENTALS[sym] = {"state": "UNAVAILABLE", "symbol": sym, "lines": []}
         p["fundamentals"] = _FUNDAMENTALS[sym]
+        # Instrument class (2026-09-27): ETFs have no company financials; a daily-leveraged
+        # fund (PUR 2x) is not a wheel/income underlying under the desk policy.
+        if sym not in _INSTRUMENT_CLASS:
+            try:
+                from db_adapter import _execute as _cx
+                from lib.instrument_class import classify_symbol
+                _INSTRUMENT_CLASS[sym] = classify_symbol(sym, _cx)
+            except Exception:  # noqa: BLE001
+                _INSTRUMENT_CLASS[sym] = None
+        p["instrument_class"] = _INSTRUMENT_CLASS[sym]
+        if p["instrument_class"] in ("ETF", "LEVERAGED_FUND"):
+            p["fundamentals"] = {"state": "NOT_APPLICABLE", "symbol": sym, "lines": [],
+                                 "reason": "fund: company financial statements do not apply"}
+        _lev_policy = str(_desk_cfg().get("leveraged_fund_policy") or "block_income")
+        if (p["instrument_class"] == "LEVERAGED_FUND" and _lev_policy == "block_income"
+                and str(p.get("strategy") or "") in ("cash_secured_put", "covered_call", "credit_spread")):
+            _ent = p.setdefault("enterprise", {})
+            _ent["blocks"] = list(_ent.get("blocks") or []) + [
+                "daily leveraged fund: resets daily and decays over a holding period; not an income/wheel underlying"]
+            _ent["live_eligible"] = False
+            p["enterprise_blocked"] = True
+        # Honest economics (2026-09-27): expected P/L at expiration over the whole price
+        # distribution at the desk's own IV, replacing `credit x POP`; plus net cost if
+        # assigned, cash committed, and hedge floor / insured vs uninsured shares.
+        try:
+            from lib.options_economics import economics as _econ
+            p["economics"] = _econ(p, shares_held=p.get("shares_held"))
+            p["expected_value"] = p["economics"].get("expected_pl_at_expiry")
+            p["expected_value_method"] = p["economics"]["ev_method"]
+        except Exception:  # noqa: BLE001
+            p["expected_value"] = None
         rc = p.get("research_context") or {}
         if not p.get("catalyst") and rc.get("catalyst"):
             p["catalyst"] = rc["catalyst"]  # memo and strategy-fit read the top level
@@ -2647,6 +2685,28 @@ _PURPOSE = {
 }
 
 
+def _not_approvable_reason(p: dict, tb: list, ent: dict) -> str:
+    """The real reason a card is not approvable (2026-09-27): every thesis-stage block
+    used to read "thesis incomplete", so HOOD -- thesis complete, CIO REJECT -- said
+    "thesis incomplete"."""
+    codes = [str(b.get("code") if isinstance(b, dict) else "") for b in tb]
+    reasons = " ".join(str(b.get("reason") if isinstance(b, dict) else b) for b in tb).upper()
+    if "awaiting_cio_decision" in codes:
+        if "REJECT" in reasons:
+            return "CIO rejected"
+        if "MORE_RESEARCH" in reasons:
+            return "CIO asked for more research"
+        return "awaiting CIO decision"
+    if any(c.startswith("thesis_") for c in codes):
+        return "thesis incomplete"
+    blocks = " ".join(str(b) for b in (ent.get("blocks") or []))
+    if "awaiting live quotes" in blocks:
+        return "awaiting live quotes"
+    if "daily leveraged fund" in blocks:
+        return "leveraged fund policy"
+    return "enterprise block"
+
+
 def _stamp_truth_flags(p: dict) -> None:
     """One honest status per card, as pills and filterable keys (operator 2026-09-26).
 
@@ -2668,7 +2728,7 @@ def _stamp_truth_flags(p: dict) -> None:
     if approvable:
         flags.append({"key": "APPROVABLE", "label": "Approvable", "tone": "green"})
     else:
-        why = "thesis incomplete" if tb else "enterprise block"
+        why = _not_approvable_reason(p, tb, ent)
         flags.append({"key": "NOT_APPROVABLE", "label": f"Not approvable: {why}", "tone": "red"})
     missing = (p.get("options_thesis") or {}).get("missing_required") or []
     if missing:
@@ -2748,6 +2808,7 @@ def generate_proposals(force: bool = False) -> dict:
     LIQUIDITY_DEFERRED.clear()
     _SESSION["now"] = _market_session_now()
     _FUNDAMENTALS.clear()
+    _INSTRUMENT_CLASS.clear()
     holdings, _ = _load_holdings()
     tech_map = _load_technicals()
     intent_cfg = _load_intent_cfg()

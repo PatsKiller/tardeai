@@ -85,7 +85,9 @@ def build_synthesis_packet(
             " invalidation_conditions, research_gaps, what_changes_my_mind.",
             "Explicitly weigh contradictory evidence; do not suppress the bear case.",
             "Cite evidence_ids for every material claim.",
-            "If evidence is thin, set stance empty and leave research_gaps specific.",
+            "Form the stance from ALL cataloged evidence incl. reported SEC fundamentals; a narrower"
+            " figure the filings do not break out is a research gap, not a reason for no stance"
+            " ('watch' = low conviction). Leave stance empty only if no stance is supportable.",
             "Never invent broker/order/stop authority. READ_ONLY_ADVISORY.",
         ],
         "must_not": [
@@ -186,7 +188,11 @@ def _build_flash_synthesis_prompt(symbol: str, packet: dict[str, Any]) -> str:
         "- You are a thesis synthesizer AND challenger, not a research source.",
         "- Weigh contradictory evidence; do not suppress the bear case.",
         "- Cite evidence_ids for every material claim.",
-        "- If evidence is thin, set stance to \"\" and leave research_gaps specific.",
+        "- Form the stance from ALL cataloged evidence, including reported fundamentals from SEC",
+        "  filings (sec_xbrl). A narrower figure the filings do not break out is a research gap,",
+        "  not a reason to leave the stance empty; 'watch' is the stance for low conviction.",
+        "- Set stance to \"\" only when the evidence cannot support any stance at all, and then",
+        "  leave research_gaps specific.",
         "- Never invent facts not present above. Never grant RE_ENTER / ADD execution authority.",
         "",
         "Output STRICT JSON only (no markdown fences, no prose) with exactly these keys:",

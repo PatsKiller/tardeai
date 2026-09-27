@@ -895,11 +895,28 @@ export default function OptionProposalCardV4({
                   ) : v?.genuinely_new ? (
                     <div style={{ color: BB.amber, fontWeight: 800 }}>New to the house: no thesis, decision or research on file for {p.symbol}. Research starts automatically.</div>
                   ) : null}
+                  {(p as any).economics && (() => {
+                    const e = (p as any).economics
+                    const $ = (v: any) => (v == null ? '—' : fmt$(v))
+                    const parts: string[] = []
+                    if (e.net_cost_if_assigned_per_share != null) parts.push(`Net cost if assigned $${e.net_cost_if_assigned_per_share.toFixed(2)}/sh${e.discount_to_spot_pct != null ? ` (${e.discount_to_spot_pct}% below spot)` : ''} · cash committed ${$(e.cash_committed)}`)
+                    if (e.called_away_price_per_share != null) parts.push(`If called away: $${e.called_away_price_per_share.toFixed(2)}/sh incl. premium · ${e.shares_committed} shares committed`)
+                    if (e.collateral != null) parts.push(`Collateral ${$(e.collateral)} · max loss ${$(e.max_loss_total)} · breakeven $${e.breakeven}`)
+                    if (e.floor_value_after_premium != null) parts.push(`Insures ${e.insured_shares} sh${e.uninsured_shares ? ` (${e.uninsured_shares} uninsured)` : ''} · floor ${$(e.floor_value_after_premium)} after premium · downside to floor from mark ${$(e.downside_to_floor_from_mark)} · stock+put breakeven $${e.stock_plus_put_breakeven_from_mark}`)
+                    return parts.length ? (
+                      <div data-testid="options-economics" style={{ marginTop: 6 }}>
+                        <b style={{ color: BB.text1 }}>Economics.</b>{' '}
+                        {parts.map((t, i) => <div key={i} style={{ color: BB.text2, marginLeft: 10 }}>{t}</div>)}
+                      </div>
+                    ) : null
+                  })()}
                   {(p as any).fundamentals && (
                     <div data-testid="options-fundamentals" style={{ marginTop: 6 }}>
                       <b style={{ color: BB.text1 }}>Fundamentals.</b>{' '}
-                      {(p as any).fundamentals.state === 'UNAVAILABLE' ? (
-                        <span style={{ color: BB.text3 }}>No reported SEC financials on file for {p.symbol}.</span>
+                      {(p as any).fundamentals.state === 'NOT_APPLICABLE' ? (
+                        <span style={{ color: BB.text3 }}>Not applicable: {p.symbol} is a fund ({String((p as any).instrument_class || 'ETF').toLowerCase().replace('_', ' ')}); company financials do not apply.</span>
+                      ) : (p as any).fundamentals.state === 'UNAVAILABLE' ? (
+                        <span style={{ color: BB.text3 }}>No reported SEC financials ingested yet for {p.symbol}.</span>
                       ) : (
                         <>
                           <span style={{ color: (p as any).fundamentals.state === 'FRESH' ? BB.green : BB.amber }}>
@@ -1151,7 +1168,7 @@ export default function OptionProposalCardV4({
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: terminalUi ? 10 : 12, flexWrap: 'wrap', fontSize: terminalUi ? 9.5 : 11, color: terminalUi ? BB.text2 : WL.text.secondary }}>
           <HeroMetricChip metricKey="edge" label="edge" value={edge ?? '—'} context={metricCtx} color={edgeColor} />
-          <HeroMetricChip metricKey="ev" label="EV" value={fmt$(p.expected_value)} context={metricCtx} />
+          <HeroMetricChip metricKey="ev" label="exp. P/L" value={fmt$(p.expected_value)} context={metricCtx} />
           <HeroMetricChip
             metricKey="pop"
             label="POP"
