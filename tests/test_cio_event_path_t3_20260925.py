@@ -254,3 +254,80 @@ def test_process_event_bus_stamps_source_sha_and_is_pure_of_clock(tmp_path):
     assert wid.endswith("_2026092515")
     ctx = store.get_wake_job(wid)["context"]
     assert "source_sha" in ctx
+
+
+# ── 2026-09-27: DISPATCHED wakes with an expired lease stalled every cycle ──
+
+def test_stale_dispatched_wake_is_dead_lettered_not_released(tmp_path):
+    """DISPATCHED -> RELEASED is not a legal transition; release() raised after a
+    full-file rescan for each of 1,557 stuck wakes (~9 min per 5-min cycle)."""
+    from scripts.lib.cio_wake_jobs import CIOWakeJobStore
+
+    store = CIOWakeJobStore(event_store_path=tmp_path / "wakes.jsonl")
+    _enqueue(store, "w_disp", "2026-09-25T10:00:00+00:00")
+    store.claim("w_disp", claim_token="t", lease_seconds=0)
+    store.dispatch("w_disp", linked_run_id="run-1")
+    recovered = store.recover_expired_leases(stale_seconds=0)
+    assert recovered == []
+    w = store.get_wake_job("w_disp")
+    assert w["current_status"] == "EXPIRED"
+    assert w["expiration_reason"] == "dead_letter:dispatch_lease_expired_never_in_flight"
+    assert store.last_dead_lettered == [{"wake_job_id": "w_disp",
+                                         "reason": "dead_letter:dispatch_lease_expired_never_in_flight"}]
+    # A second pass has nothing left to do.
+    assert store.recover_expired_leases(stale_seconds=0) == []
+    assert store.last_dead_lettered == []
+
+
+def test_lease_recovery_does_not_rescan_the_store_per_wake(tmp_path, monkeypatch):
+    from scripts.lib.cio_wake_jobs import CIOWakeJobStore
+
+    store = CIOWakeJobStore(event_store_path=tmp_path / "wakes.jsonl")
+    for i in range(5):
+        _enqueue(store, f"w{i}", f"2026-09-25T10:0{i}:00+00:00")
+        store.claim(f"w{i}", claim_token=f"t{i}", lease_seconds=0)
+        if i % 2:
+            store.dispatch(f"w{i}", linked_run_id=f"run-{i}")
+    calls = []
+    real = store.get_wake_job
+    monkeypatch.setattr(store, "get_wake_job", lambda wid: calls.append(wid) or real(wid))
+    store.recover_expired_leases(stale_seconds=0)
+    assert calls == []  # states come from the single list_wakes replay
+    assert {store.get_wake_job(f"w{i}")["current_status"] for i in (1, 3)} == {"EXPIRED"}
+    assert {store.get_wake_job(f"w{i}")["current_status"] for i in (0, 2, 4)} == {"PENDING"}
+
+
+def test_head_hash_comes_from_the_file_tail_and_chain_still_verifies(tmp_path, monkeypatch):
+    from scripts.lib.cio_wake_jobs import CIOWakeJobStore
+
+    path = tmp_path / "wakes.jsonl"
+    store = CIOWakeJobStore(event_store_path=path)
+    for i in range(30):
+        _enqueue(store, f"w{i}", f"2026-09-25T10:{i:02d}:00+00:00")
+    scans = []
+    real_iter = store._iter_event_lines
+    monkeypatch.setattr(store, "_iter_event_lines", lambda: scans.append(1) or real_iter())
+    head = store._get_last_event()
+    assert scans == []  # no full-file scan for the head hash
+    events = [json.loads(x) for x in path.read_text().splitlines() if x.strip()]
+    assert head["event_hash"] == events[-1]["event_hash"]
+    monkeypatch.undo()
+    store.claim("w1", claim_token="t", lease_seconds=300)
+    events = [json.loads(x) for x in path.read_text().splitlines() if x.strip()]
+    assert all(b["prev_event_hash"] == a["event_hash"] for a, b in zip(events, events[1:]))
+
+
+def test_corrupt_tail_still_falls_back_to_full_scan_and_trim(tmp_path):
+    from scripts.lib.cio_wake_jobs import CIOWakeJobStore
+
+    path = tmp_path / "wakes.jsonl"
+    store = CIOWakeJobStore(event_store_path=path)
+    _enqueue(store, "w_a", "2026-09-25T10:00:00+00:00")
+    good_head = store._get_last_event()["event_hash"]
+    with path.open("a") as fh:
+        fh.write('{"event_type": "CIO_WAKE_ENQ')  # truncated write (ENOSPC)
+    assert store._tail_last_event() is None
+    assert store._get_last_event()["event_hash"] == good_head
+    _enqueue(store, "w_b", "2026-09-25T10:01:00+00:00")
+    events = [json.loads(x) for x in path.read_text().splitlines() if x.strip()]
+    assert all(b["prev_event_hash"] == a["event_hash"] for a, b in zip(events, events[1:]))
