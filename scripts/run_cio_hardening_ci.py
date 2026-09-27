@@ -2618,6 +2618,14 @@ GATES = [
         ["tests/test_options_fill_truth_20260927.py"],
     ),
     (
+        # 2026-09-27 -- broker-layer order gate proofs for the options desk (per-task
+        # execution-engineering grant): 2FA, kill switch, submit-time re-check, leg pin (strict
+        # xfail: spec_from_intent rebuilds from the cache), stale quote (strict xfail: missing
+        # age passes when a data_source is named), LLM cannot unlock.
+        "options_broker_gates_20260927",
+        ["tests/test_options_broker_gates_20260927.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).
