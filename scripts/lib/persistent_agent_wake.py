@@ -89,16 +89,77 @@ def _normalize_selection(selection: Any) -> dict[str, Any] | None:
     symbol = getattr(selection, "symbol", None) if not isinstance(selection, dict) else selection.get("symbol")
     if symbol:
         out["symbol"] = str(symbol).upper()
+    # The research object's subject_guid, when the selector already has one.
+    # Copied, never minted: a missing guid stays missing.
+    sg = selection.get("subject_guid") if isinstance(selection, dict) else getattr(selection, "subject_guid", None)
+    if sg:
+        out["subject_guid"] = str(sg)
     return out
+
+
+def _no_subject_detail(reason: str) -> str:
+    if reason == "subject_guid_missing":
+        return "NO_SUBJECT: research subject_guid is missing"
+    if reason == "subject_guid_not_confirmed":
+        return "NO_SUBJECT: research subject_guid is not CONFIRMED"
+    if reason == "confirmed_without_symbol":
+        return "NO_SUBJECT: CONFIRMED subject has no symbol; ticker not fabricated"
+    return "NO_SUBJECT"
+
+
+def _confirmed_subject_for_guid(subject_guid: str | None) -> dict[str, Any]:
+    """Resolve a symbol or subject_key from a guid that is already CONFIRMED.
+
+    Lookup only. Never calls ``register`` and never derives a GUID from ticker
+    text. A missing guid, an unknown guid, and any status other than
+    CONFIRMED all stay unresolved — the ticker on a CANDIDATE row is not used.
+    """
+    guid = str(subject_guid or "").strip()
+    if not guid:
+        reason = "subject_guid_missing"
+        return {"ok": False, "symbol": None, "subject_key": None, "reason": reason,
+                "detail": _no_subject_detail(reason)}
+    try:
+        from scripts.lib import identity_registry as ir
+
+        doc = ir.load_cached()
+        active = ir.resolve_guid(doc, guid)
+        ent = (doc.get("entities") or {}).get(str(active or ""))
+    except Exception:  # noqa: BLE001 — an unreadable registry is not a confirmation
+        ent = None
+    if not isinstance(ent, dict) or str(ent.get("identity_status") or "") != "CONFIRMED":
+        reason = "subject_guid_not_confirmed"
+        return {"ok": False, "symbol": None, "subject_key": None, "reason": reason,
+                "detail": _no_subject_detail(reason)}
+    sk = str(ent.get("subject_key") or "").strip()
+    if ":" in sk:
+        return {"ok": True, "symbol": None, "subject_key": sk, "reason": "confirmed",
+                "detail": None}
+    sym = ent.get("ticker_alias") if isinstance(ent.get("ticker_alias"), str) else None
+    if not sym:
+        aliases = ent.get("aliases") or []
+        if isinstance(aliases, list) and aliases and isinstance(aliases[0], str):
+            sym = aliases[0]
+    sym = str(sym or "").strip().upper()
+    if not sym or ":" in sym:
+        reason = "confirmed_without_symbol"
+        return {"ok": False, "symbol": None, "subject_key": None, "reason": reason,
+                "detail": _no_subject_detail(reason)}
+    return {"ok": True, "symbol": sym, "subject_key": None, "reason": "confirmed",
+            "detail": None}
 
 
 def _load_instrument_record_for_selection(selection_meta: dict[str, Any] | None,
                                           subject_guid: str | None) -> dict[str, Any]:
     """Load the InstrumentRecord a wake is about (fail-soft; never raises).
 
-    ``instrument_record_due`` selections carry the subject_key as source_id;
-    other selections probe HELD|EXIT|WATCH by the subject's symbol when the
-    selection names one. The store path is the registered one (Slice 1, R6).
+    ``instrument_record_due`` selections carry the subject_key as source_id.
+    ``unconsumed_research`` resolves a symbol or subject_key only from the
+    research object's subject_guid when that guid is already CONFIRMED in the
+    identity registry. A caller-supplied ticker on that selection is ignored:
+    research rows do not carry a symbol, and inventing one is how a wake
+    attaches the wrong record. Any other selection still probes by an explicit
+    symbol when it has one. The store path is the registered one (Slice 1, R6).
     """
     try:
         from scripts.lib.cio_instrument_record import (
@@ -108,13 +169,35 @@ def _load_instrument_record_for_selection(selection_meta: dict[str, Any] | None,
 
         hint = None
         symbol = None
+        reason = None
         if isinstance(selection_meta, dict):
-            if str(selection_meta.get("source") or "") == "instrument_record_due":
+            source = str(selection_meta.get("source") or "")
+            if source == "instrument_record_due":
                 hint = selection_meta.get("source_id")
-            symbol = selection_meta.get("symbol")
+                symbol = selection_meta.get("symbol")
+            elif source == "unconsumed_research":
+                guid = selection_meta.get("subject_guid") or subject_guid
+                resolved = _confirmed_subject_for_guid(guid)
+                if not resolved["ok"]:
+                    return {
+                        "status": "NO_SUBJECT",
+                        "record": None,
+                        "subject_key": None,
+                        "reason": resolved["reason"],
+                        "detail": resolved["detail"],
+                    }
+                hint = resolved["subject_key"]
+                symbol = resolved["symbol"]
+                reason = resolved["reason"]
+            else:
+                symbol = selection_meta.get("symbol")
         if not hint and not symbol:
-            return {"status": "NO_SUBJECT", "record": None, "subject_key": None}
+            return {"status": "NO_SUBJECT", "record": None, "subject_key": None,
+                    "reason": "no_subject",
+                    "detail": "NO_SUBJECT: selection names no subject"}
         out = load_instrument_record_for_wake(subject_key_hint=hint, symbol=symbol)
+        if reason:
+            out["reason"] = reason
         try:
             out["store_path"] = str(_store_for_root(None).path)
         except Exception:  # noqa: BLE001
@@ -476,6 +559,141 @@ def _iso(dt: datetime | None) -> str | None:
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+_ISO_DURATION_RE = re.compile(
+    r"^P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?$"
+)
+_UNIT_DURATION_RE = re.compile(r"^(?P<n>\d+(?:\.\d+)?)(?P<u>d|h|m|s)$", re.I)
+_CADENCE_DICT_KEYS = frozenset({"days", "hours", "minutes", "seconds"})
+
+
+def parse_record_cadence(raw: Any) -> timedelta | None:
+    """The record's own cadence. A bare number is refused — the unit would be a guess."""
+    if isinstance(raw, timedelta):
+        return raw if raw.total_seconds() > 0 else None
+    if isinstance(raw, dict):
+        if not raw or any(k not in _CADENCE_DICT_KEYS for k in raw):
+            return None
+        try:
+            delta = timedelta(**{k: float(raw[k]) for k in raw})
+        except (TypeError, ValueError):
+            return None
+        return delta if delta.total_seconds() > 0 else None
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    matched = _ISO_DURATION_RE.match(text)
+    if matched and any(matched.group(name) for name in ("days", "hours", "minutes", "seconds")):
+        delta = timedelta(
+            days=int(matched.group("days") or 0),
+            hours=int(matched.group("hours") or 0),
+            minutes=int(matched.group("minutes") or 0),
+            seconds=int(matched.group("seconds") or 0),
+        )
+        return delta if delta.total_seconds() > 0 else None
+    unit = _UNIT_DURATION_RE.match(text)
+    if not unit:
+        return None
+    n = float(unit.group("n"))
+    scale = {"d": "days", "h": "hours", "m": "minutes", "s": "seconds"}[unit.group("u").lower()]
+    delta = timedelta(**{scale: n})
+    return delta if delta.total_seconds() > 0 else None
+
+
+def advance_instrument_record_after_due_wake(
+    selection: Any,
+    *,
+    now: datetime | None = None,
+    root: Path | str | None = None,
+) -> dict[str, Any]:
+    """After an instrument_record_due wake, move next_eligible_at by that record's cadence.
+
+    The interval is the record's ``cadence`` field and nothing else. Missing or
+    unreadable cadence leaves ``next_eligible_at`` where it is and records that
+    fact. ``last_woken_at`` is stamped either way so the reserved due slot can
+    rotate. MBI_BEHAVIOR stays 0: this does not touch size, order, stop, or a
+    gate threshold. A loaded belief is copied through, not acted on.
+    """
+    now = now or _now()
+    meta = _normalize_selection(selection) or {}
+    key = str(meta.get("source_id") or "")
+    base: dict[str, Any] = {
+        "advanced": False,
+        "subject_key": key or None,
+        "memory_behavior_influence": 0,
+    }
+    if str(meta.get("source") or "") != "instrument_record_due":
+        base["reason"] = "not_instrument_record_due"
+        return base
+    if not key:
+        base["reason"] = "no_subject_key"
+        return base
+    try:
+        from scripts.lib.cio_instrument_record import (
+            MBI_BEHAVIOR,
+            _store_for_root,
+            apply_cognition,
+        )
+
+        store = _store_for_root(root)
+        rec = store.load(key)
+        if not rec:
+            base["reason"] = "no_record"
+            return base
+        prior_eligible = rec.get("next_eligible_at")
+        raw_cadence = rec.get("cadence")
+        missing = raw_cadence is None or (isinstance(raw_cadence, str) and not str(raw_cadence).strip())
+        delta = None if missing else parse_record_cadence(raw_cadence)
+        woken = _iso(now)
+        updated = dict(rec)
+        updated["last_woken_at"] = woken
+        updated["memory_behavior_influence"] = MBI_BEHAVIOR
+        if delta is None:
+            reason = "cadence_missing" if missing else "cadence_unparseable"
+            updated["cadence_advance"] = {
+                "advanced": False,
+                "reason": reason,
+                "at": woken,
+            }
+            # next_eligible_at is intentionally not assigned.
+            stored = store.upsert(updated)
+            return {
+                **base,
+                "reason": reason,
+                "next_eligible_at": stored.get("next_eligible_at"),
+                "prior_next_eligible_at": prior_eligible,
+                "last_woken_at": stored.get("last_woken_at"),
+            }
+        nxt = _iso(now + delta)
+        updated, changed = apply_cognition(
+            updated, next_eligible_at=nxt, strict=False,
+        )
+        updated["last_woken_at"] = woken
+        updated["cadence_advance"] = {
+            "advanced": True,
+            "reason": "cadence_applied",
+            "cadence": raw_cadence,
+            "at": woken,
+            "next_eligible_at": nxt,
+        }
+        updated["memory_behavior_influence"] = MBI_BEHAVIOR
+        stored = store.upsert(updated)
+        return {
+            **base,
+            "advanced": True,
+            "reason": "cadence_applied",
+            "next_eligible_at": stored.get("next_eligible_at"),
+            "prior_next_eligible_at": prior_eligible,
+            "last_woken_at": stored.get("last_woken_at"),
+            "changed": list(changed),
+        }
+    except Exception as exc:  # noqa: BLE001 — a cadence stamp must not fail the wake
+        base["reason"] = "cadence_advance_error"
+        base["detail"] = f"{type(exc).__name__}: {exc}"[:200]
+        return base
 
 
 def _content_hash(obj: Any) -> str:
@@ -936,12 +1154,17 @@ class WakeEngine:
         except Exception:  # noqa: BLE001
             context["instrument_belief"] = None
         context["instrument_record_as_of"] = (ir_load.get("record") or {}).get("as_of")
-        wake["provenance"]["instrument_record"] = {
+        ir_prov = {
             "status": ir_load.get("status"),
             "subject_key": ir_load.get("subject_key"),
             "belief_key": (context["instrument_belief"] or {}).get("belief_key"),
             "store_path": ir_load.get("store_path"),
         }
+        if ir_load.get("reason"):
+            ir_prov["reason"] = ir_load.get("reason")
+        if ir_load.get("detail"):
+            ir_prov["detail"] = ir_load.get("detail")
+        wake["provenance"]["instrument_record"] = ir_prov
 
         # 1b) AEC four-spine memory (Strategic / Operational / Relationship /
         # Learning). Additive context only — fail-soft so a missing spine file
@@ -1877,6 +2100,8 @@ __all__ = [
     "run_scheduled_wake",
     "recover_incomplete_wakes",
     "default_decide",
+    "parse_record_cadence",
+    "advance_instrument_record_after_due_wake",
     "ScheduleContract",
     "evaluate_health",
 ]
