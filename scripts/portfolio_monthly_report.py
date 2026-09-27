@@ -866,6 +866,18 @@ def _build_telegram_payload(month_name, date_str, holdings, periods,
     )
 
 
+def _portfolio_total(holdings: Dict) -> float:
+    """Total portfolio value from the holdings document, 0.0 when absent.
+    ``run_monthly_report`` used ``total_val`` in its Telegram caption without
+    defining it (the name lives in ``_generate_monthly_sections``), so the
+    monthly report raised NameError on every run since 2026-06-05 except
+    2026-08-01 (P2 audit remediation)."""
+    try:
+        return float(((holdings or {}).get("portfolio_totals") or {}).get("total_value") or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def run_monthly_report(project_root: str = ".", dry_run: bool = False,
                        output_path: str = None) -> Optional[Path]:
     """Main entry point. Generate comprehensive monthly report.
@@ -949,7 +961,7 @@ def run_monthly_report(project_root: str = ".", dry_run: bool = False,
         tg_path.write_text(tg_preview)
         print(f"[monthly-report] DRY RUN — Telegram preview saved: {tg_path}")
         print(f"[monthly-report] DRY RUN — HTML saved: {html_path}")
-        print(f"[monthly-report] DRY RUN — No Telegram sent, no DOCX, no deploy.")
+        print("[monthly-report] DRY RUN — No Telegram sent, no DOCX, no deploy.")
         return html_path
 
     # Copy to served directory
@@ -958,7 +970,7 @@ def run_monthly_report(project_root: str = ".", dry_run: bool = False,
         served_dir = PROJECT_ROOT / "reports" / "monthly"
         served_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(html_path, served_dir / html_path.name)
-        print(f"[monthly-report] Copied to reports/monthly/ for serving")
+        print("[monthly-report] Copied to reports/monthly/ for serving")
     except Exception as e:
         print(f"[monthly-report] Copy to served dir warning: {e}")
 
@@ -1020,6 +1032,7 @@ def run_monthly_report(project_root: str = ".", dry_run: bool = False,
 
     # Send DOCX attachment
     if docx_path and docx_path.exists():
+        total_val = _portfolio_total(holdings)
         caption = f"📈 Monthly Portfolio Report — {month_name} | ${total_val:,.0f}"
         _send_telegram_doc(docx_path, caption)
 

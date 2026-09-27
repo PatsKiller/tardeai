@@ -2442,6 +2442,7 @@ GATES = [
         ],
     ),
     (
+<<<<<<< HEAD
         # 2026-09-26 — P2 audit remediation: cron hygiene CLI replacing the
         # quoting-bug one-liners (R-10); grant USE consumption on release
         # preflight and pre-push (C-10, the ledger under-counted every Claude
@@ -2449,6 +2450,14 @@ GATES = [
         # reaches the operator via OpenClaw leaves a durable row (C-05).
         "p2_hygiene_guard_lineage_20260926",
         ["tests/test_p2_hygiene_guard_lineage_20260926.py"],
+=======
+        # 2026-09-26 — P2 audit remediation: the cadence reports fail LOUDLY.
+        # Weekly (NoneType format) and monthly (undefined total_val) had failed
+        # on every run for months while the launcher said "skipped (non-fatal)"
+        # and the pipeline recorded status=ok.
+        "p2_report_honesty_20260926",
+        ["tests/test_p2_report_honesty_20260926.py"],
+>>>>>>> origin/main
     ),
     (
         # 2026-09-25 — CIO cognition tranche 3: prompt event-driven cognition on
