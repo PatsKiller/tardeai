@@ -34,6 +34,8 @@ if str(_PROJECT) not in sys.path:
 
 from scripts.lib.persistent_agent_wake import (  # noqa: E402
     FEATURE_FLAG as WAKE_FLAG,
+    TERMINAL_WAKE,
+    advance_instrument_record_after_due_wake,
     feature_enabled as wake_feature_enabled,
     run_scheduled_wake,
 )
@@ -451,6 +453,40 @@ def _process_one_subject(
         outcome = "refused"
         detail = f"lifecycle_state={state}"
 
+    # instrument_record_due consumed this slot. Push next_eligible_at by the
+    # record's own cadence — never a guessed interval — and stamp last_woken_at
+    # so the next hour's reserved slot rotates. A replay of an already-terminal
+    # wake must not push the date again. Not inside WakeEngine.run: unit tests
+    # call that against whatever store resolve_store finds, which on this host
+    # is the live book.
+    cadence_advance = None
+    sel_source = None
+    if isinstance(selection, SubjectCandidate):
+        sel_source = selection.source
+    elif isinstance(selection, dict):
+        sel_source = selection.get("source")
+    if (
+        sel_source == "instrument_record_due"
+        and not result.get("skipped")
+        and not result.get("replay_suppressed")
+        and wake_id != "none"
+    ):
+        try:
+            cadence_advance = advance_instrument_record_after_due_wake(selection, now=when)
+            prov = wake.setdefault("provenance", {})
+            if isinstance(prov, dict):
+                prov["cadence_advance"] = cadence_advance
+                store.upsert_by_key(
+                    "wakes", "wake_id", wake,
+                    preserve_terminal=True, terminal_states=TERMINAL_WAKE,
+                )
+        except Exception as exc:  # noqa: BLE001 — the wake already settled
+            cadence_advance = {
+                "advanced": False,
+                "reason": "cadence_advance_error",
+                "detail": f"{type(exc).__name__}: {exc}"[:200],
+            }
+
     # Phase-8 optional cortex shadow (flags default OFF). Never blocks wake.
     if wake_id != "none":
         _maybe_cortex_shadow_after_wake(
@@ -468,6 +504,7 @@ def _process_one_subject(
         "detail": detail,
         "missed_skipped": _missed_slots(contract, when, completed, slot),
         "inserted": bool(result.get("inserted")),
+        "cadence_advance": cadence_advance,
     })
     return 0
 

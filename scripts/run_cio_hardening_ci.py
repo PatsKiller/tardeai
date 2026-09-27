@@ -2547,6 +2547,17 @@ GATES = [
             "tests/test_options_runtime_export_20260926.py",
         ],
     ),
+    (
+        # 2026-09-26 — WS-7 C-13. Hourly wakes were not consuming beliefs:
+        # unconsumed_research carried no symbol (NO_SUBJECT), and the reserved
+        # instrument_record_due slot stuck on the first-due record because
+        # next_eligible_at never moved. Cadence is the record's own field;
+        # a missing one is recorded and not invented. MBI_BEHAVIOR stays 0.
+        "ws7_belief_wake_20260926",
+        [
+            "tests/test_ws7_belief_wake_20260926.py",
+        ],
+    ),
 ]
 
 

@@ -69,6 +69,20 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _last_woken_sort_key(rec: dict) -> str:
+    """Empty when the record has never been woken, else a UTC timestamp.
+
+    Empty sorts first: a never-woken due record is the least recently woken.
+    """
+    raw = rec.get("last_woken_at")
+    if raw in (None, ""):
+        return ""
+    parsed = _parse_ts(raw)
+    if parsed is None:
+        return str(raw)
+    return parsed.astimezone(timezone.utc).isoformat()
+
+
 def _load_jsonl(path: Path | str | None) -> list[dict]:
     if not path:
         return []
@@ -209,6 +223,7 @@ def instrument_record_candidates(
 
     out: list[SubjectCandidate] = []
     seen: set[str] = set()
+    woken_at: dict[str, str] = {}
     for rec in latest_record_per_subject(records):
         sk = str(rec.get("subject_key") or "").strip()
         if ":" not in sk:
@@ -223,6 +238,7 @@ def instrument_record_candidates(
         if not guid or guid in seen:
             continue
         seen.add(guid)
+        woken_at[sk] = _last_woken_sort_key(rec)
         out.append(
             SubjectCandidate(
                 subject_guid=guid,
@@ -231,7 +247,11 @@ def instrument_record_candidates(
                 observed_at=(nxt.isoformat().replace("+00:00", "Z") if nxt else None),
             )
         )
-    out.sort(key=lambda c: (c.subject_guid, c.source_id))
+    # Least-recently-woken first. Tie-break stays subject_guid then source_id
+    # so two never-woken records keep the previous deterministic order.
+    # Measured 2026-09-26: sorting by subject_guid alone handed every reserved
+    # slot to the same first-due record (EXIT:BJDX).
+    out.sort(key=lambda c: (woken_at.get(c.source_id, ""), c.subject_guid, c.source_id))
     return out
 
 
@@ -359,8 +379,9 @@ def select_subjects(
     # limit=3, the last 200 hourly wakes were 200/200 unconsumed_research and
     # 0 instrument_record_due while 37 of 52 HELD/WATCH/EXIT records were due.
     # When research alone would fill every slot and a record is due, one slot
-    # is reserved for the first due record so the cadence path is never
-    # starved. Ordering inside each source is unchanged (deterministic).
+    # is reserved for the least-recently-woken due record so the cadence path
+    # is never starved and does not stick to whichever record sorts first.
+    # Ordering inside each source is otherwise unchanged (deterministic).
     if ir_candidates and len(research_candidates) >= limit and limit > 1:
         ordered = (
             research_candidates[: limit - 1]
