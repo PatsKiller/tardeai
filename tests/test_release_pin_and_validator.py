@@ -103,12 +103,23 @@ def test_promote_restarts_governed_bridge_by_default():
     assert "cio-governed-bridge.service" in default_line[0], (
         "bridge omitted from default BOUND_UNITS — pin drift will recur on every promote")
     assert "tradeai-health-agent.service" in default_line[0]
+    assert "tradeai-cio-telegram.service" in default_line[0], (
+        "desk bot omitted from default BOUND_UNITS — it keeps the previous release import")
 
 
 def test_promote_invokes_bound_unit_restart():
     src = DEPLOY.read_text(encoding="utf-8")
     promote = src.split("cmd_promote()", 1)[1].split("\n}", 1)[0]
     assert "restart_root_frozen_units" in promote
+
+
+def test_rollback_restarts_bound_units_and_rewrites_the_pin():
+    """Rollback used to flip CURRENT and health-check only. The desk bot and
+    the bridge then kept running the release that had just been rolled away."""
+    src = DEPLOY.read_text(encoding="utf-8")
+    rollback = src.split("cmd_rollback()", 1)[1].split("\ncmd_", 1)[0]
+    assert "restart_root_frozen_units" in rollback
+    assert "write_expected_release_pin" in rollback
 
 
 def test_bridge_unit_runs_from_served_current_not_hub():
