@@ -23,7 +23,12 @@ _DEFAULTS = {
     "csp_target_abs_delta": 0.25,
     "cc_target_delta": 0.25,
     "edge_roc_full_credit_ann_pct": 25.0,
+    # Operator 2026-09-27: when the market is closed, chain quotes look illiquid (OI 0,
+    # 100%+ spreads on XLB/XAR). "defer" keeps the idea and labels it awaiting live
+    # quotes; "drop" restores the old behaviour.
+    "closed_market_liquidity": "defer",
 }
+LIVE_SESSIONS = frozenset({"REGULAR"})
 
 
 def setting(cfg: Optional[dict], key: str) -> Any:
@@ -45,6 +50,13 @@ def spread_pct(contract: dict) -> Optional[float]:
     if mid <= 0 or ask < bid or bid <= 0:
         return None
     return 100.0 * (ask - bid) / mid
+
+
+def defer_liquidity(session: Optional[str], cfg: Optional[dict]) -> bool:
+    """True when a liquidity miss must not drop an idea: the quotes are closed-market
+    quotes (WEEKEND, CLOSED, PRE_MARKET, AFTER_HOURS) and the desk defers."""
+    return bool(session) and session not in LIVE_SESSIONS and \
+        str(setting(cfg, "closed_market_liquidity")).lower() == "defer"
 
 
 def is_liquid(contract: dict, cfg: Optional[dict]) -> bool:
@@ -69,6 +81,7 @@ def income_drop_reason(
     data_source: str,
     underlying: float,
     cfg: Optional[dict],
+    session: Optional[str] = None,
 ) -> Optional[str]:
     """Why this income idea should not become a card, or None when it may.
 
@@ -81,7 +94,7 @@ def income_drop_reason(
         return "NO_CHAIN"
     if data_source == "bs_estimate" and bool(cfg.get("require_chain_for_live", True)):
         return "NO_CHAIN"
-    if not is_liquid(contract, cfg):
+    if not is_liquid(contract, cfg) and not defer_liquidity(session, cfg):
         return "NO_LIQUID_CONTRACT"
     premium = _num(contract.get("mid")) or 0.0
     if premium < float(setting(cfg, "min_premium_per_share")):

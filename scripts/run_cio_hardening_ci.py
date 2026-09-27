@@ -2578,6 +2578,12 @@ GATES = [
         ["tests/test_thesis_evidence_not_circular_20260927.py"],
     ),
     (
+        # 2026-09-27 -- closed-market quotes are not a liquidity verdict: ideas are kept
+        # and labelled "awaiting live quotes" instead of dropped as NO_LIQUID_CONTRACT.
+        "weekend_aware_liquidity_20260927",
+        ["tests/test_weekend_aware_liquidity_20260927.py"],
+    ),
+    (
         # 2026-09-27 -- fundamentals F1/F2/F4: SEC company facts -> sec_xbrl (quarter vs
         # YTD, restatements, like-for-like YoY), PRIMARY_REGULATORY thesis evidence,
         # fundamentals freshness SLA in the curation monitor.

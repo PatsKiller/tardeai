@@ -83,8 +83,13 @@ def _desk_cfg() -> dict:
 
 def _income_screen(strategy: str, sym: str, contract: Optional[dict], data_source: str, und: float) -> Optional[str]:
     """Named reason an income card must not be built, recorded for the funnel."""
-    from lib.options_income_quality import income_drop_reason
-    reason = income_drop_reason(strategy, contract, data_source, und, _desk_cfg())
+    from lib.options_income_quality import defer_liquidity, income_drop_reason, is_liquid
+    reason = income_drop_reason(strategy, contract, data_source, und, _desk_cfg(), session=_SESSION.get("now"))
+    if not reason and contract and not is_liquid(contract, _desk_cfg()) \
+            and defer_liquidity(_SESSION.get("now"), _desk_cfg()):
+        LIQUIDITY_DEFERRED.append({"symbol": sym, "strategy": strategy, "strike": contract.get("strike"),
+                                   "oi": contract.get("oi"), "bid_ask_spread_pct": contract.get("bid_ask_spread_pct"),
+                                   "session": _SESSION.get("now")})
     if reason:
         INCOME_SCREEN_DROPS.append({
             "symbol": sym, "strategy": strategy, "reason": reason,
@@ -1151,6 +1156,8 @@ def _edge_score_debit(
 
 # Where each symbol's spot came from on this pass (shown on the card).
 _PRICE_SOURCE: Dict[str, dict] = {}
+_SESSION: dict = {}  # market session for this run (weekend-aware liquidity, 2026-09-27)
+LIQUIDITY_DEFERRED: list = []  # ideas kept despite closed-market quotes, for the funnel
 _FUNDAMENTALS: dict = {}  # per-run cache of fundamentals card blocks (F5)
 
 
@@ -2025,8 +2032,8 @@ def generate_credit_spread_proposals(
         width = short_strike - long_strike
         # 2026-09-26: ETON built a Tier A spread on OI 0 / 122% spread legs; the income
         # screen now covers spreads: both legs liquid, credit and return-on-risk floors.
-        from lib.options_income_quality import is_liquid
-        if not is_liquid(long_c, _desk_cfg()):
+        from lib.options_income_quality import defer_liquidity, is_liquid
+        if not is_liquid(long_c, _desk_cfg()) and not defer_liquidity(_SESSION.get("now"), _desk_cfg()):
             INCOME_SCREEN_DROPS.append({"symbol": sym, "strategy": "credit_spread", "reason": "NO_LIQUID_CONTRACT",
                                         "strike": long_strike, "oi": long_c.get("oi")})
             continue
@@ -2691,7 +2698,10 @@ def _income_screen_summary() -> dict:
         slot["count"] += 1
         if d.get("symbol") and d["symbol"] not in slot["symbols"]:
             slot["symbols"].append(d["symbol"])
-    return {"reasons": by, "total": len(INCOME_SCREEN_DROPS), "drops": INCOME_SCREEN_DROPS[:200]}
+    return {"reasons": by, "total": len(INCOME_SCREEN_DROPS), "drops": INCOME_SCREEN_DROPS[:200],
+            "liquidity_deferred": {"count": len(LIQUIDITY_DEFERRED), "session": _SESSION.get("now"),
+                                   "symbols": sorted({d["symbol"] for d in LIQUIDITY_DEFERRED}),
+                                   "note": "market closed: quotes are not live; liquidity is checked at the open"}}
 
 
 def _market_session_now() -> Optional[str]:
@@ -2735,6 +2745,8 @@ def generate_proposals(force: bool = False) -> dict:
     INCOME_SCREEN_DROPS.clear()
     _CHAIN_CACHE.clear()
     _PRICE_SOURCE.clear()
+    LIQUIDITY_DEFERRED.clear()
+    _SESSION["now"] = _market_session_now()
     _FUNDAMENTALS.clear()
     holdings, _ = _load_holdings()
     tech_map = _load_technicals()
