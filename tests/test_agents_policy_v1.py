@@ -195,11 +195,13 @@ def test_profiles_fail_closed_to_the_narrowest_role():
     )
 
 
-def test_execution_engineering_is_defined_but_not_granted():
+def test_execution_engineering_is_granted_only_per_task():
+    """1.3.0 (ratified 2026-09-27): A1/A2 only, and only under an active per-task grant."""
     t = _text()
-    assert "defined but not granted" in t, (
-        "EXECUTION_ENGINEERING_AGENT must be explicitly blocked until reconciled"
+    assert "is granted A1/A2 only, per task" in t, (
+        "EXECUTION_ENGINEERING_AGENT must be conditioned on a per-task grant"
     )
+    assert "live authority (A4/A5) never" in t
 
 
 DENIALS = (

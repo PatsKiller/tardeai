@@ -24,8 +24,12 @@ agent that reads fifteen lines and stops must still know them.
 1. **`MBI_BEHAVIOR = 0`.** The agent never sizes, orders, stops, weights, or writes to a broker.
    Ever, for any reason, under any framing. (`MBI_BEHAVIOR` is the shorthand, not a variable —
    the rail is an unconditional raise in code. See `AGENTS.md` §2.)
-2. **The broker execution subsystem is out of scope.** Do not modify, disable, test against,
-   investigate, call `place_order`, or POST to any order route. It is 2FA-gated and by design.
+2. **Broker code is buildable only under a per-task grant; broker authority never is.** With an
+   active operator-approved `execution-engineering` grant naming the files, purpose and expiry, an
+   agent may implement and test broker-adjacent code (A1/A2: mocks, fixtures, simulated broker,
+   replay). Without one, the broker execution subsystem is out of scope: do not modify, test
+   against or investigate it. No agent ever calls a live broker, reads a live credential, sets a
+   live flag, requests 2FA, calls `place_order`, or POSTs to an order route (AGENTS.md §22).
 3. **Never route around a permission denial.** Stop and report. No alternate remote, no
    direct-to-main push, no API call substituting for a blocked CLI, no branch rename to reset a
    budget.

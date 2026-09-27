@@ -37,7 +37,7 @@ _ledger_require_valid() {
 # Every tier classify_cmd/classify_path can return, except the never-grantable
 # ones. A tier missing here is unreachable: guarded paths now deny without a
 # grant, so an ungrantable tier would be a permanent lockout.
-ALL_TIERS="db-write cron git-push maintree service deps sudo state-write release-write openclaw telegram llm destructive config-write frozen-v2 guard-config file-delete"
+ALL_TIERS="db-write cron git-push maintree service deps sudo state-write release-write openclaw telegram llm destructive config-write frozen-v2 guard-config file-delete execution-engineering"
 BOLD=$'\e[1m'; RED=$'\e[31m'; YEL=$'\e[33m'; GRN=$'\e[32m'; OFF=$'\e[0m'
 
 # Accepts 30m / 2h / 45s / a bare number of seconds. An unparseable duration
