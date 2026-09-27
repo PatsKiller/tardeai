@@ -415,6 +415,7 @@ def accept_research_result(
         contradiction_result = persist_candidates(
             _read_rows(delta_path(root)),
             path=root_path / "data/cio/research_contradiction_candidates.jsonl",
+            new_records=[delta],
         )
     except Exception as exc:
         contradiction_result = {"ok": False, "error": f"{type(exc).__name__}:{exc}"}
