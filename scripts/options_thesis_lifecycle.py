@@ -83,6 +83,43 @@ def research_status(research_id: str) -> dict:
     return {"status": status, "result": result}
 
 
+def escalate(p: dict, question: str, lanes: list, timeout_s: float) -> dict:
+    """Ask the Hermes external researcher lanes in order (operator 2026-09-26: "if web unsure
+    use chatgpt grok deepseek"); the first lane that answers wins. The script stores the row in
+    hermes_external_research and reconciles it into the symbol thesis."""
+    import re
+    import subprocess
+    sym = str(p.get("symbol") or "").upper()
+    tried = []
+    for lane in lanes:
+        cmd = [sys.executable, str(ROOT / "scripts" / "hermes_external_researcher.py"), "--lane", lane,
+               "--symbol", sym, "--question", question, "--trigger", "proposal_review:options_escalation",
+               "--family", "REGISTERED", "--producer", "options_thesis_lifecycle", "--apply"]
+        try:
+            out = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True, timeout=timeout_s)
+            m = re.search(r"stored hermes_external_research id=(\d+) status=(\w+)", out.stdout or "")
+        except subprocess.TimeoutExpired:
+            m = None
+        if not m:
+            tried.append({"lane": lane, "status": "no_result"})
+            continue
+        row_id, status = int(m.group(1)), m.group(2)
+        tried.append({"lane": lane, "status": status, "id": row_id})
+        if status != "sent":
+            continue
+        rec, conf = "", None
+        try:
+            from db_adapter import _execute
+            row = _execute("SELECT recommendation, confidence FROM hermes_external_research WHERE id=%s",
+                           (row_id,), fetch="one") or {}
+            rec, conf = row.get("recommendation") or "", row.get("confidence")
+        except Exception:
+            pass
+        return {"lane": lane, "status": status, "row_id": row_id, "recommendation": rec,
+                "confidence": conf, "tried": tried}
+    return {"lane": None, "status": "no_lane_answered", "tried": tried}
+
+
 def record_decision(res: dict) -> None:
     from db_adapter import _execute
     from lib.options_cio_review import INSERT_SQL, decision_row
@@ -112,7 +149,7 @@ def main(argv=None) -> int:
         review_fn=lambda p, mode: review(p, mode=mode, max_tokens=int(settings(load_desk_config())["review_max_tokens"]),
                                          memory=memory_settings(settings(load_desk_config()))),
         record_decision=record_decision,
-        apply=a.apply,
+        apply=a.apply, escalate=escalate,
     )
     print(json.dumps({"mode": "apply" if a.apply else "dry_run", "steps": report}, indent=1, default=str))
     return 0

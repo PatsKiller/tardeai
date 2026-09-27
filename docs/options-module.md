@@ -126,6 +126,38 @@ and their answers feed the living symbol thesis.
   - the 2026-09-14 HPE-downgrade selloff.
 - **Config:** `options_desk_settings.web_research`.
 
+### Escalation when the web is not enough (2026-09-27)
+Operator: "if web unsure use chatgpt grok deepseek". The lifecycle checks each delivered CIO follow-up.
+It escalates when too few deliverables are fully answered (`escalation_min_answered_ratio`, default 0.6)
+or too few web sources are cited (`escalation_min_cited_urls`, default 2).
+
+**How it runs:**
+- `hermes_external_researcher.py` is called for the symbol, trying the lanes in order: **ChatGPT
+  (OAuth), Grok (OAuth proxy), DeepSeek (governed)**. The first lane that answers wins.
+- At most `escalation_max_per_run` escalations per run, with a timeout of `escalation_timeout_s` per
+  lane.
+- The trigger is `proposal_review:options_escalation`, which is budget-guard tier T0 (an open proposal
+  under CIO review).
+
+**The question:** one question per ticker. It asks for:
+- the thesis;
+- dated catalysts before expiry;
+- the analyst rating and target;
+- the risks and invalidation.
+
+It lists each open item once and passes on only what the web research found, with its URLs. House-only
+findings ("Confirmed: no thesis exists") are left out.
+
+**Where the answer goes:**
+- the row is stored in `hermes_external_research` and reconciled into the symbol thesis by that script;
+- the thesis store records `OPTIONS_THESIS_ESCALATED` (stage `EXTERNAL_RESEARCH`: lane, status, row id,
+  findings);
+- M2 gets it as an `options_followup` fact;
+- the CIO re-review receives it as `research_answers.external_research`, next to the follow-up answers.
+
+The external lanes see only the redacted house context and the question, so they supply a second opinion
+on the web findings, not new searches. Config: `options_desk_settings.options_thesis_lifecycle.escalation_*`.
+
 ### Workers and schedule (24/7, 2026-09-26)
 Every step runs unattended. Nothing waits for market hours or for the operator, except approval.
 

@@ -13,6 +13,8 @@ config, never from a guess. Advisory only: nothing sizes or orders.
 """
 from __future__ import annotations
 
+import re
+
 import math
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional
@@ -40,6 +42,14 @@ DEFAULTS = {
     "memory_reads": False,
     "memory_reads_limit": 8,
     "memory_reads_lookback_days": 180,
+    # Operator 2026-09-26: "if web unsure use chatgpt grok deepseek". Follow-up answers
+    # still weak after web research go to the Hermes external researcher lanes in order.
+    "escalation_enabled": False,
+    "escalation_lanes": ["chatgpt", "grok", "deepseek"],
+    "escalation_min_answered_ratio": 0.6,   # share of deliverables fully "answered"
+    "escalation_min_cited_urls": 2,         # web urls cited across the answers
+    "escalation_timeout_s": 300,            # per lane
+    "escalation_max_per_run": 1,
 }
 
 
@@ -92,8 +102,68 @@ def followup_answers(result: Optional[dict[str, Any]], deliverables: list[dict[s
         a = by_id.get(f"q_{q.get('intent')}") or by_id.get(f"q_cio_followup_{i + 1}") or {}
         answered = str(a.get("status") or "").lower() != "unanswered" and (a.get("summary") or a.get("detail"))
         text = " ".join(x for x in (str(a.get("summary") or "").strip(), str(a.get("detail") or "").strip()) if x)
-        out.append({"deliverable": q.get("text"), "answered": bool(answered), "answer": text[:600] if answered else None})
+        urls = [c for c in a.get("citations") or [] if isinstance(c, str) and c.startswith("http")]
+        out.append({"deliverable": q.get("text"), "answered": bool(answered), "answer": text[:600] if answered else None,
+                    "status": str(a.get("status") or "unanswered").lower(), "cited_urls": urls[:8]})
     return out
+
+
+def needs_escalation(answers: list[dict[str, Any]], s: dict[str, Any]) -> Optional[str]:
+    """Why the web-backed answers are still too weak for the CIO, or None."""
+    if not s.get("escalation_enabled") or not answers:
+        return None
+    full = sum(1 for a in answers if a.get("status") == "answered")
+    ratio = full / len(answers)
+    urls = {u for a in answers for u in a.get("cited_urls") or []}
+    if ratio < float(s["escalation_min_answered_ratio"]):
+        return f"only {full} of {len(answers)} deliverables fully answered"
+    if len(urls) < int(s["escalation_min_cited_urls"]):
+        return f"only {len(urls)} web sources cited"
+    return None
+
+
+def escalation_question(p: dict[str, Any], answers: list[dict[str, Any]], limit: int = 1800) -> str:
+    """One question for an external research lane: what is still open, and what the web found.
+
+    House-only findings ("Confirmed: no authored thesis exists") are left out -- they are the
+    gap, not an answer -- and repeated concerns are asked once."""
+    sym = str(p.get("symbol") or "").upper()
+    strat = str(p.get("strategy") or "").replace("_", " ")
+    exp = p.get("expiration")
+    lines = [f"Research {sym} for a {strat} expiring {exp}. The CIO is still unsure. Give dated, "
+             f"sourced facts for: the investment thesis; dated catalysts before {exp}; the analyst "
+             "rating, price target and recent revisions; the main risks and what would invalidate "
+             "the thesis. Say plainly what you could not establish. Open items:"]
+    seen: set[str] = set()
+    n = 0
+    for a in answers:
+        if a.get("status") == "answered":
+            continue
+        item = str(a.get("deliverable") or "").split("): ", 1)[-1]
+        item = re.sub(rf"^\s*{re.escape(sym)}\s*:\s*", "", item)
+        key = " ".join(sorted(set(re.findall(r"[a-z]{4,}", item.lower())))[:80])
+        if not item or key in seen:
+            continue
+        seen.add(key)
+        n += 1
+        lines.append(f"{n}. {item[:200]}")
+        if a.get("answer") and a.get("cited_urls"):
+            lines.append(f"   Web found so far: {str(a['answer'])[:220]}")
+    return "\n".join(lines)[:limit]
+
+def with_followup_facts(p: dict[str, Any], life: dict[str, Any]) -> dict[str, Any]:
+    """The re-review sees the delivered follow-up and any external escalation directly
+    from the thesis store, not only when the desk has rebuilt the proposals since."""
+    ra = dict(p.get("research_answers") or {})
+    fc, fu, esc = life.get("followup_complete"), life.get("followup"), life.get("escalation")
+    if fc and _after(fc, fu):
+        ra["followup"] = [{k: a.get(k) for k in ("deliverable", "status", "answer", "cited_urls")}
+                          for a in fc.get("answers") or []]
+    if esc and _after(esc, fu) and esc.get("status") == "sent":
+        ra["external_research"] = {"lane": esc.get("lane"), "confidence": esc.get("confidence"),
+                                   "id": esc.get("external_research_id"),
+                                   "findings": str(esc.get("recommendation") or "")[:2500]}
+    return {**p, "research_answers": ra}
 
 
 def _after(a: Optional[dict[str, Any]], b: Optional[dict[str, Any]]) -> bool:
@@ -146,12 +216,17 @@ def advance(
     record_decision: Callable[[dict[str, Any]], None],
     apply: bool,
     now: Optional[datetime] = None,
+    escalate: Optional[Callable[[dict[str, Any], str, list[str], float], dict[str, Any]]] = None,
 ) -> list[dict[str, Any]]:
-    """One pass. Returns what it did (or would do, when apply=False)."""
+    """One pass. Returns what it did (or would do, when apply=False).
+
+    ``escalate(p, question, lanes, timeout_s)`` asks the Hermes external researcher
+    lanes in order and returns {lane, status, row_id, recommendation, confidence, tried}."""
     now = now or datetime.now(timezone.utc)
     s = settings(cfg)
     report: list[dict[str, Any]] = []
     reviews = 0
+    escalations = 0
     for p in proposals:
         guid = p.get("option_strategy_guid")
         ot = p.get("options_thesis") or {}
@@ -210,6 +285,20 @@ def advance(
                         if apply:
                             store.append_event(guid, "OPTIONS_THESIS_FOLLOWUP_COMPLETE",
                                                research_id=fu.get("research_id"), answers=ans)
+                        why = needs_escalation(ans, s)
+                        if why and escalate is not None and escalations < int(s["escalation_max_per_run"]):
+                            escalations += 1
+                            step.update(escalation_reason=why)
+                            if apply:
+                                esc = escalate(p, escalation_question(p, ans), list(s["escalation_lanes"]),
+                                               float(s["escalation_timeout_s"])) or {}
+                                step.update(escalated_to=esc.get("lane"), escalation_status=esc.get("status"))
+                                store.append_event(guid, "OPTIONS_THESIS_ESCALATED", reason=why,
+                                                   lane=esc.get("lane"), status=esc.get("status"),
+                                                   external_research_id=esc.get("row_id"),
+                                                   tried=esc.get("tried") or [],
+                                                   recommendation=str(esc.get("recommendation") or "")[:3000],
+                                                   confidence=esc.get("confidence"))
                     elif _hours_since(fu.get("due_at"), now) > 0 and now.isoformat() > str(fu.get("due_at")):
                         step.update(action="ABANDON", reason="CIO follow-up research not delivered by its due time")
                         if apply:
@@ -281,6 +370,8 @@ def advance(
             step.update(action="CIO_REVIEW", mode=mode)
             report.append(step)
             continue
+        if rereview:
+            p = with_followup_facts(p, life)
         res = review_fn(p, mode)
         if res.get("status") == "OK":
             r = res["review"]

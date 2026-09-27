@@ -266,3 +266,67 @@ def test_followup_answers_are_keyed_by_intent(tmp_path):
                           {"question_id": "q_cio_followup_1", "status": "answered", "summary": "Earnings 11-25"}]}
     ans = lc.followup_answers(result, dels)
     assert [a["answer"] for a in ans] == ["AI server backlog", "Earnings 11-25"]
+
+
+# ── escalation: web-backed answers still weak -> ChatGPT, Grok, DeepSeek (operator 2026-09-26) ──
+
+ESC_CFG = {"options_thesis_lifecycle": {**CFG["options_thesis_lifecycle"], "escalation_enabled": True}}
+
+
+def _weak_result():
+    return {"answers": [{"question_id": "q_cio_followup_1", "status": "partial", "summary": "Q2 was 09-01",
+                         "citations": ["https://a.com/1"]},
+                        {"question_id": "q_cio_followup_2", "status": "partial", "summary": "", "citations": []}]}
+
+
+def test_weak_followup_escalates_once_and_feeds_the_rereview(tmp_path):
+    s = _store(tmp_path)
+    _decide(s, "MORE_RESEARCH", (T0 + timedelta(hours=1)).isoformat())
+    research = lambda p, qs=None: {"research_id": "res_fu"}
+    lc.advance([_p(missing=())], s, ESC_CFG, request_research=research, research_status=lambda r: {"status": "queued"},
+               review_fn=lambda p, m: {"status": "DRY_RUN"}, record_decision=lambda r: None, apply=True,
+               now=T0 + timedelta(hours=1, minutes=10))
+    calls = []
+
+    def esc(p, q, lanes, timeout):
+        calls.append((q, lanes))
+        return {"lane": "grok", "status": "sent", "row_id": 7, "recommendation": "Next earnings 2026-11-24.",
+                "confidence": "MEDIUM", "tried": [{"lane": "chatgpt", "status": "unavailable"}, {"lane": "grok"}]}
+
+    step = lc.advance([_p(missing=())], s, ESC_CFG, request_research=research,
+                      research_status=lambda r: {"status": "completed", "result": _weak_result()},
+                      review_fn=lambda p, m: {"status": "DRY_RUN"}, record_decision=lambda r: None, apply=True,
+                      now=T0 + timedelta(hours=2), escalate=esc)[0]
+    assert step["action"] == "FOLLOWUP_COMPLETE" and step["escalated_to"] == "grok"
+    assert "fully answered" in step["escalation_reason"]
+    assert calls[0][1] == ["chatgpt", "grok", "deepseek"] and "Web found so far: Q2 was 09-01" in calls[0][0]
+    seen = {}
+    lc.advance([_p(missing=())], s, ESC_CFG, request_research=research,
+               research_status=lambda r: {"status": "completed", "result": _weak_result()},
+               review_fn=lambda p, m: seen.update(p=p) or {"status": "DRY_RUN"}, record_decision=lambda r: None,
+               apply=True, now=T0 + timedelta(hours=2, minutes=15), escalate=esc)
+    ra = seen["p"]["research_answers"]
+    assert ra["external_research"]["lane"] == "grok" and "2026-11-24" in ra["external_research"]["findings"]
+    assert ra["followup"][0]["answer"].startswith("Q2 was 09-01")
+    assert len(calls) == 1  # one escalation per follow-up, not per run
+
+
+def test_strong_followup_does_not_escalate():
+    ans = [{"status": "answered", "cited_urls": ["https://a.com/1"]},
+           {"status": "answered", "cited_urls": ["https://b.com/2"]}]
+    assert lc.needs_escalation(ans, lc.settings(ESC_CFG)) is None
+    assert lc.needs_escalation(ans[:1] + [{"status": "partial", "cited_urls": []}], lc.settings(ESC_CFG))
+    assert lc.needs_escalation([{"status": "answered", "cited_urls": []}], lc.settings(ESC_CFG)).startswith("only 0 web")
+    assert lc.needs_escalation([{"status": "partial"}], lc.settings(CFG)) is None  # off unless configured
+
+
+def test_escalation_question_drops_house_only_findings_and_repeats():
+    p = {"symbol": "DELL", "strategy": "cash_secured_put", "expiration": "2026-11-20"}
+    ans = [{"deliverable": "DELL: No authored DELL thesis: version, stance", "status": "partial",
+            "answer": "Confirmed: no authored DELL thesis exists.", "cited_urls": []},
+           {"deliverable": "DELL: No authored DELL thesis: stance, version", "status": "partial", "answer": None},
+           {"deliverable": "DELL: analyst rating unknown", "status": "partial", "answer": "UBS downgraded 09-15",
+            "cited_urls": ["https://y.com/1"]}]
+    q = lc.escalation_question(p, ans)
+    assert "Confirmed: no authored" not in q and q.count("No authored DELL thesis") == 1
+    assert "Web found so far: UBS downgraded 09-15" in q and "dated catalysts before 2026-11-20" in q

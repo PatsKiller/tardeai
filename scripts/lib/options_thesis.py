@@ -57,6 +57,7 @@ LIFECYCLE_EVENTS = {
     "OPTIONS_THESIS_DECISION": "DECISION_ISSUED",
     "OPTIONS_THESIS_FOLLOWUP_REQUESTED": "CIO_FOLLOWUP_RESEARCH",
     "OPTIONS_THESIS_FOLLOWUP_COMPLETE": "FOLLOWUP_COMPLETE",
+    "OPTIONS_THESIS_ESCALATED": "EXTERNAL_RESEARCH",
     "OPTIONS_THESIS_ABANDONED": "ARCHIVED_ABANDONED",
 }
 
@@ -321,7 +322,7 @@ class OptionsThesisStore:
                 stage = LIFECYCLE_EVENTS[et]
                 timeline.append({"stage": stage, "at": e.get("recorded_at"),
                                  **{k: e.get(k) for k in ("research_id", "decision_guid", "outcome", "reason",
-                                                          "due_at", "deliverables")
+                                                          "due_at", "deliverables", "lane")
                                     if e.get(k) is not None}})
         last = {}
         for e in events:
@@ -335,6 +336,7 @@ class OptionsThesisStore:
                 "decisions": [e for e in events if e.get("event_type") == "OPTIONS_THESIS_DECISION"],
                 "followup": last.get("OPTIONS_THESIS_FOLLOWUP_REQUESTED"),
                 "followup_complete": last.get("OPTIONS_THESIS_FOLLOWUP_COMPLETE"),
+                "escalation": last.get("OPTIONS_THESIS_ESCALATED"),
                 "abandoned": last.get("OPTIONS_THESIS_ABANDONED")}
 
     def verify_chain(self) -> bool:
