@@ -236,3 +236,9 @@ benchmark:
   spy_weight: 0.55
   ita_weight: 0.20    # iShares US Aerospace & Defense
   agg_weight: 0.25    # iShares Core US Aggregate Bond
+
+# Symbol-thesis evidence (operator 2026-09-27): the house's own conclusions are not
+# evidence for a thesis about the same symbol. DELL's v1 thesis was synthesized from
+# 16 cio_decision rows ("DELL CIO: MORE_RESEARCH"). Read by symbol_thesis_evidence.
+thesis_evidence:
+  exclude_source_types: [cio_decision, agent_result, agent_synthesis, fused_signal]

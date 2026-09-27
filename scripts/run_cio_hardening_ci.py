@@ -2572,6 +2572,12 @@ GATES = [
         ["tests/test_news_url_column_20260927.py"],
     ),
     (
+        # 2026-09-27 -- thesis evidence excludes the house's own conclusions
+        # (cio_decision etc.) and rows that do not name the symbol/company.
+        "thesis_evidence_not_circular_20260927",
+        ["tests/test_thesis_evidence_not_circular_20260927.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).

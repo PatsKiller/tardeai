@@ -131,6 +131,10 @@ def retrieve_rag_for_gap(
     Fail-soft if Ollama/DB unavailable.
     """
     support_q, counter_q = _rag_query_pair(symbol, question, role=role)
+    excluded = excluded_evidence_source_types()
+    skipped_circular = 0
+    skipped_off_subject = 0
+    name_tokens = _company_tokens(symbol, conn)
     supporting: list[dict[str, Any]] = []
     contradictory: list[dict[str, Any]] = []
     errors: list[str] = []
@@ -161,10 +165,21 @@ def retrieve_rag_for_gap(
             rows = get_rag_context(
                 symbol.upper(),
                 query_text=qtext,
-                limit=limit_each,
+                limit=limit_each * 4,
                 conn=conn,
             ) or []
+            passing = []
             for r in rows:
+                if str(r.get("source_type") or "rag") in excluded:
+                    skipped_circular += 1
+                    continue
+                if not _about_symbol(r, symbol, name_tokens):
+                    skipped_off_subject += 1
+                    continue
+                passing.append(r)
+            # Sourced material before social chatter; RAG order kept within each tier.
+            passing.sort(key=lambda r: str(r.get("source_type") or "") in LOW_WEIGHT_SOURCE_TYPES)
+            for r in passing[:limit_each]:
                 bucket.append(evidence_item(
                     fact=r.get("title") or "",
                     title=r.get("title") or "",
@@ -190,9 +205,64 @@ def retrieve_rag_for_gap(
         "counter_query": counter_q,
         "supporting": supporting,
         "contradictory": contradictory,
+        "skipped_circular": skipped_circular,
+        "skipped_off_subject": skipped_off_subject,
         "errors": errors,
         "authority": AUTHORITY,
     }
+
+
+# The house's own conclusions are not evidence for a thesis about the same symbol
+# (2026-09-27): DELL's 16 "supporting/contradictory" RAG items were all cio_decision
+# rows reading "DELL CIO: MORE_RESEARCH", so v1 was synthesized from the CIO's own
+# indecision. Configurable: portfolio_intent.yaml thesis_evidence.exclude_source_types.
+DEFAULT_EXCLUDED_SOURCE_TYPES = ("cio_decision", "agent_result", "agent_synthesis", "fused_signal")
+LOW_WEIGHT_SOURCE_TYPES = frozenset({"social_post"})
+
+
+def _company_tokens(symbol: str, conn=None) -> list[str]:
+    """Company-name token from symbol_profiles (e.g. 'dell'); [] when unavailable."""
+    try:
+        try:
+            from lib.symbol_news_curation import name_tokens
+        except ImportError:  # pragma: no cover
+            from scripts.lib.symbol_news_curation import name_tokens  # type: ignore
+        if conn is None:
+            return []
+        with conn.cursor() as cur:
+            cur.execute("SELECT description_1s FROM symbol_profiles WHERE symbol=%s LIMIT 1", (symbol.upper(),))
+            row = cur.fetchone()
+        return name_tokens(row[0] if row else None)
+    except Exception:  # noqa: BLE001
+        try:
+            conn.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        return []
+
+
+def _about_symbol(row: dict[str, Any], symbol: str, tokens: list[str]) -> bool:
+    """An evidence row must name the ticker or company (2026-09-27): RAG hits for DELL
+    included social posts about MSFT and AAPL."""
+    try:
+        from lib.symbol_news_curation import names_the_company
+    except ImportError:  # pragma: no cover
+        from scripts.lib.symbol_news_curation import names_the_company  # type: ignore
+    text = " ".join(str(row.get(k) or "") for k in ("title", "content", "text", "snippet", "chunk_text"))
+    return names_the_company(text, symbol, tokens)
+
+
+def excluded_evidence_source_types() -> frozenset[str]:
+    try:
+        import yaml
+        intent = yaml.safe_load((Path(__file__).resolve().parents[2] / "assets" / "portfolio_intent.yaml")
+                                .read_text()) or {}
+        cfg = (intent.get("thesis_evidence") or {}).get("exclude_source_types")
+        if isinstance(cfg, list):
+            return frozenset(str(x) for x in cfg)
+    except Exception:  # noqa: BLE001
+        pass
+    return frozenset(DEFAULT_EXCLUDED_SOURCE_TYPES)
 
 
 def retrieve_structured_sources(

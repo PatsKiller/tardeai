@@ -316,6 +316,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/DOCUMENT_MENTIONS_AND_LLM_ESCALATION.md` | Document mentions, subject vs. passing reference, and LLM escalation | review_required | OK | `a54c4035c298` |
 | `docs/architecture/EXECUTION_QUALITY.md` | Replay-Aware Execution Quality (design) | review_required | OK | `685082a5cd95` |
 | `docs/architecture/FINDING_interface_contracts_not_in_repo.md` | Finding — `INTERFACE_CONTRACTS.md` is cited everywhere and version-controlled nowhere | review_required | OK | `f9c9cfc0beea` |
+| `docs/architecture/FUNDAMENTALS_FEED_PLAN_2026-09-27.md` | Fundamentals Feed Plan: SEC company facts and 8-K into the living thesis | review_required | OK | `cef82749ea3f` |
 | `docs/architecture/GAIN_GUARDIAN.md` | Gain Guardian — Holdings Exit Intelligence (Live Book, Advisory-Only) | review_required | OK | `1d3bec366edc` |
 | `docs/architecture/GOOGLE_NOTES_BITEMPORAL_DDL_ARCHITECT_RECONCILIATION_2026-08-24.md` | Google Notes bitemporal DDL — architect reconciliation | review_required | OK | `8d29266fc3e6` |
 | `docs/architecture/GOVERNED_MODEL_BRIDGE.md` | The governed model bridge — caps, callers, and how it fails | review_required | OK | `bc68c49ea023` |
