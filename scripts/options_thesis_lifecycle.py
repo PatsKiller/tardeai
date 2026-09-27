@@ -120,6 +120,11 @@ def escalate(p: dict, question: str, lanes: list, timeout_s: float) -> dict:
     return {"lane": None, "status": "no_lane_answered", "tried": tried}
 
 
+def _priority_request(symbol: str, reason: str) -> None:
+    from lib.symbol_thesis_priority import request
+    request(symbol, reason=reason, source="options_thesis_lifecycle", root=ROOT)
+
+
 def record_decision(res: dict) -> None:
     from db_adapter import _execute
     from lib.options_cio_review import INSERT_SQL, decision_row
@@ -150,6 +155,7 @@ def main(argv=None) -> int:
                                          memory=memory_settings(settings(load_desk_config()))),
         record_decision=record_decision,
         apply=a.apply, escalate=escalate,
+        request_thesis_acquisition=lambda sym, why: _priority_request(sym, why),
     )
     print(json.dumps({"mode": "apply" if a.apply else "dry_run", "steps": report}, indent=1, default=str))
     return 0

@@ -287,6 +287,31 @@ def _run_one_impl(
                     acquired.extend(dry_run_searx_step(step.get("targets") or []))
                     step["status"] = "EXECUTED"
 
+    # Gap-driven curation (operator 2026-09-27): company news for this symbol was
+    # never curated (topic_curator reviews topic_* rows only), so the gate's
+    # "no approved primary or news" could not clear. Approve this symbol's pending
+    # news under the symbol_news_curation rules before re-reading the catalog.
+    curated: dict[str, Any] = {}
+    gaps_now = set((catalog.get("sufficiency") or {}).get("remaining_evidence_gaps") or []) | set(
+        (catalog.get("sufficiency") or {}).get("gaps") or [])
+    if apply and conn is not None and "no_approved_primary_or_news" in gaps_now:
+        try:
+            try:
+                from lib import symbol_news_curation as snc
+            except ImportError:  # pragma: no cover
+                from scripts.lib import symbol_news_curation as snc  # type: ignore
+            import psycopg2.extras
+            with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as ccur:
+                curated = snc.curate_symbol(ccur, sym, snc.settings(), apply=True)
+            conn.commit()
+        except Exception as exc:  # noqa: BLE001
+            curated = {"error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+            try:
+                conn.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+        out["curation"] = curated
+
     if acquired:
         out["acquired_n"] = len(acquired)
         if apply and not skip_embed:
@@ -296,7 +321,7 @@ def _run_one_impl(
         out["embed_result"] = embed_result
 
     final_catalog = catalog
-    if acquired or (embed_result or {}).get("embedded"):
+    if acquired or (embed_result or {}).get("embedded") or (curated or {}).get("approved"):
         # re-retrieve so newly embedded (approved) items count toward sufficiency
         final_catalog = build_evidence_catalog(sym, question=question, role=role, limit_each=8, conn=conn)
         sufficiency = (final_catalog.get("sufficiency") or {}).get("sufficient_for_synthesis", False)
@@ -397,6 +422,18 @@ def run(
         queue = [{"symbol": s.upper(), "_priority": "MANUAL"} for s in symbols]
     else:
         queue = build_debt_ordered_queue(root=root, canary=canary, limit=limit)
+        # Priority requests (e.g. options CIO said MORE_RESEARCH on a symbol with no
+        # house thesis) go first, 2026-09-27.
+        try:
+            try:
+                from lib.symbol_thesis_priority import open_requests
+            except ImportError:  # pragma: no cover
+                from scripts.lib.symbol_thesis_priority import open_requests  # type: ignore
+            pri = [s for s in open_requests(root) if not canary]
+        except Exception:  # noqa: BLE001
+            pri = []
+        rest = [r for r in queue if str(r.get("symbol") or "").upper() not in set(pri)]
+        queue = ([{"symbol": s, "_priority": "REQUESTED"} for s in pri] + rest)[: max(limit, len(pri))]
 
     llm_budget = [max(0, int(max_llm))]
     results: list[dict[str, Any]] = []

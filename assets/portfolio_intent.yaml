@@ -135,6 +135,20 @@ options_desk_settings:
   # "why not using hermes brave etc research ... same research lanes"). SearXNG first
   # (free), Brave router only when SearXNG finds nothing (paid; caller cap in
   # search_budget.CALLER_DAILY_CAPS). Read by scripts/lib/hermes_web_research.py.
+  # Symbol-news curation + SLA (operator 2026-09-27: "wire a process that monitors and
+  # fixes this ... we need SLAs"). topic_curator reviews topic_* news only; company news
+  # was never curated, so the thesis gate's "no approved primary or news" never cleared.
+  # Read by scripts/lib/symbol_news_curation.py and scripts/symbol_news_curation_monitor.py.
+  symbol_news_curation:
+    max_age_days: 30               # only recent articles are approved as evidence
+    max_per_symbol: 5              # approvals per symbol per pass
+    max_symbols_per_run: 40        # priority symbols the monitor curates per run
+    blocked_sources: []            # publishers never auto-approved
+    primary_source_prefixes: [sec_edgar]   # counted as primary filings
+    sla_hours_priority: 24         # evidence-needing symbol with no approved news past this = breach
+    sla_hours_default: 72
+    acquire_per_run: 2             # open priority requests re-acquired per monitor run
+    acquire_max_llm: 2             # model calls per monitor run for those acquisitions
   web_research:
     # 2026-09-27 due diligence W0-4: every Hermes CIO research request (~17/day) is
     # web-grounded, not only options gaps; its answer reaches the symbol thesis via
