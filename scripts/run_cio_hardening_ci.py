@@ -2534,6 +2534,12 @@ GATES = [
         ],
     ),
     (
+        # 2026-09-27 -- contradiction candidates derived incrementally (only the new
+        # delta's pairs; ids equal the full O(n^2) derivation, which took 31 s per accept).
+        "contradiction_incremental_20260927",
+        ["tests/test_contradiction_incremental_20260927.py", "tests/test_research_metadata_contradiction.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).

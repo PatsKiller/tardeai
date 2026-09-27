@@ -1,4 +1,5 @@
 """Deterministic contradiction-candidate detection across research records."""
+
 from __future__ import annotations
 
 import hashlib
@@ -32,7 +33,12 @@ def _value(record: dict[str, Any], group: str, key: str) -> Any:
 
 def _shared_context(left: dict[str, Any], right: dict[str, Any]) -> list[str]:
     shared = []
-    for group, key in (("factual", "sector"), ("factual", "industry"), ("judgment", "theme"), ("judgment", "catalyst_type")):
+    for group, key in (
+        ("factual", "sector"),
+        ("factual", "industry"),
+        ("judgment", "theme"),
+        ("judgment", "catalyst_type"),
+    ):
         lv, rv = _value(left, group, key), _value(right, group, key)
         if lv and rv and lv == rv:
             shared.append(f"{group}.{key}:{lv}")
@@ -49,21 +55,52 @@ def _opposes(left: dict[str, Any], right: dict[str, Any]) -> bool:
     return {ls, rs} == {"BULLISH", "BEARISH"}
 
 
-def find_contradiction_candidates(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Return candidates only; this function never resolves or rewrites artifacts."""
+def _artifact_id(row: dict[str, Any]) -> str:
+    return str(row.get("delta_id") or row.get("research_id") or "")
+
+
+def find_contradiction_candidates(
+    records: list[dict[str, Any]],
+    *,
+    new_records: list[dict[str, Any]] | None = None,
+) -> list[dict[str, Any]]:
+    """Return candidates only; this function never resolves or rewrites artifacts.
+
+    ``new_records``: only pairs involving one of these are evaluated (2026-09-27).
+    Every accepted research result re-derived all pairs of all 5,634 deltas --
+    31 s and 117k candidates inside the Hermes worker callback -- although pairs
+    among older deltas were persisted when those arrived. Pair order and
+    candidate ids are the same as the full derivation."""
     out = []
-    ordered = sorted(records, key=lambda row: str(row.get("delta_id") or row.get("research_id") or ""))
-    for index, left in enumerate(ordered):
-        for right in ordered[index + 1:]:
-            left_id = str(left.get("delta_id") or left.get("research_id") or "")
-            right_id = str(right.get("delta_id") or right.get("research_id") or "")
-            if not left_id or not right_id or left_id == right_id:
-                continue
-            shared = _shared_context(left, right)
-            if not shared or not _opposes(left, right):
-                continue
-            core = {"left": left_id, "right": right_id, "shared": shared}
-            out.append({
+    ordered = sorted(records, key=_artifact_id)
+    new_ids = None if new_records is None else {_artifact_id(r) for r in new_records if _artifact_id(r)}
+    pairs = []
+    if new_ids is None:
+        for index, left in enumerate(ordered):
+            for right in ordered[index + 1 :]:
+                pairs.append((left, right))
+    else:
+        by_id = {_artifact_id(r): r for r in ordered}
+        for r in new_records or []:
+            by_id.setdefault(_artifact_id(r), r)
+        for nid in sorted(new_ids):
+            new = by_id[nid]
+            for other in sorted(by_id.values(), key=_artifact_id):
+                oid = _artifact_id(other)
+                if oid in new_ids and oid <= nid:
+                    continue  # each new/new pair once
+                pairs.append((new, other) if nid < oid else (other, new))
+    for left, right in pairs:
+        left_id = _artifact_id(left)
+        right_id = _artifact_id(right)
+        if not left_id or not right_id or left_id == right_id:
+            continue
+        shared = _shared_context(left, right)
+        if not shared or not _opposes(left, right):
+            continue
+        core = {"left": left_id, "right": right_id, "shared": shared}
+        out.append(
+            {
                 "schema": SCHEMA,
                 "candidate_id": "contra_" + _digest(core)[:20],
                 "status": "CANDIDATE",
@@ -76,19 +113,24 @@ def find_contradiction_candidates(records: list[dict[str, Any]]) -> list[dict[st
                     "left_classification": left.get("classification"),
                     "right_classification": right.get("classification"),
                 },
-                "evidence_refs": list(dict.fromkeys(
-                    list(left.get("source_refs") or []) + list(right.get("source_refs") or [])
-                ))[:40],
+                "evidence_refs": list(
+                    dict.fromkeys(list(left.get("source_refs") or []) + list(right.get("source_refs") or []))
+                )[:40],
                 "self_validated": False,
                 "thesis_rewritten": False,
                 "authority": AUTHORITY,
                 "financial_action": False,
-            })
+            }
+        )
     return out
 
 
-def persist_candidates(records: list[dict[str, Any]], *, path: Path) -> dict[str, Any]:
-    """Append new candidates without resolving or rewriting any source artifact."""
+def persist_candidates(
+    records: list[dict[str, Any]], *, path: Path, new_records: list[dict[str, Any]] | None = None
+) -> dict[str, Any]:
+    """Append new candidates without resolving or rewriting any source artifact.
+
+    Pass ``new_records`` (the just-accepted delta) to evaluate only its pairs."""
     existing: set[str] = set()
     if path.is_file():
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -98,7 +140,7 @@ def persist_candidates(records: list[dict[str, Any]], *, path: Path) -> dict[str
                 continue
             if isinstance(row, dict) and row.get("candidate_id"):
                 existing.add(str(row["candidate_id"]))
-    candidates = find_contradiction_candidates(records)
+    candidates = find_contradiction_candidates(records, new_records=new_records)
     written = 0
     for candidate in candidates:
         if candidate["candidate_id"] in existing:
