@@ -1158,6 +1158,7 @@ def _edge_score_debit(
 _PRICE_SOURCE: Dict[str, dict] = {}
 _SESSION: dict = {}  # market session for this run (weekend-aware liquidity, 2026-09-27)
 LIQUIDITY_DEFERRED: list = []  # ideas kept despite closed-market quotes, for the funnel
+_FUNDAMENTALS: dict = {}  # per-run cache of fundamentals card blocks (F5)
 
 
 def _spot_for(sym: str, price: float) -> float:
@@ -2596,6 +2597,15 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
                 except Exception:
                     views[sym] = {"has_view": False, "error": True}
             p["cio_view"] = views[sym]
+        # Reported fundamentals from SEC filings (fundamentals plan F5, 2026-09-27).
+        if sym not in _FUNDAMENTALS:
+            try:
+                from db_adapter import _execute as _fx
+                from lib.fundamentals_feed import card_block
+                _FUNDAMENTALS[sym] = card_block(sym, _fx)
+            except Exception:  # noqa: BLE001
+                _FUNDAMENTALS[sym] = {"state": "UNAVAILABLE", "symbol": sym, "lines": []}
+        p["fundamentals"] = _FUNDAMENTALS[sym]
         rc = p.get("research_context") or {}
         if not p.get("catalyst") and rc.get("catalyst"):
             p["catalyst"] = rc["catalyst"]  # memo and strategy-fit read the top level
@@ -2737,6 +2747,7 @@ def generate_proposals(force: bool = False) -> dict:
     _PRICE_SOURCE.clear()
     LIQUIDITY_DEFERRED.clear()
     _SESSION["now"] = _market_session_now()
+    _FUNDAMENTALS.clear()
     holdings, _ = _load_holdings()
     tech_map = _load_technicals()
     intent_cfg = _load_intent_cfg()
