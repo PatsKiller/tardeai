@@ -2607,6 +2607,13 @@ GATES = [
             "tests/test_p211_restart.py",
         ],
     ),
+    (
+        # 2026-09-27 — remaining audit phases that are safe to land.
+        # Desk bot is a bound unit. Rollback restarts bound units and rewrites
+        # the pin. The heartbeat backfill no longer appends legacy ledger rows.
+        "audit_remaining_phases_20260927",
+        ["tests/test_audit_remaining_phases_20260927.py"],
+    ),
 ]
 
 

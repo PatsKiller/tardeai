@@ -89,6 +89,18 @@ def _make_action(aid: str, domain: str, priority: str, title: str, why_now: str,
 
 def run_backfill(dry_run: bool = False) -> dict[str, Any]:
     import time as _time
+    # C-01: this writer appended CIO_ACTION_CREATED rows with no stream_id and
+    # no event_hash. That is the legacy shape. It does not append anymore.
+    # --dry-run still counts what a backfill would have proposed.
+    if not dry_run:
+        return {
+            "actions_created": 0,
+            "snapshots": 0,
+            "dry_run": True,
+            "retired": True,
+            "reason": "legacy writer retired; new rows go through CIOActionLedger",
+            "elapsed_ms": 0,
+        }
     t0 = _time.time()
     snapshots = _read_jsonl(SNAPSHOT_DIR / "cio_heartbeat_snapshots.jsonl")
     existing = _read_jsonl(ACTION_LEDGER)

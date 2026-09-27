@@ -26,8 +26,13 @@ or, equivalently, the two explicit grants the plan expands to:
 
 ```bash
 "$GUARD" grant git-push     --for 12h --uses 25 --reason "feature-to-live: push + merge exact green PR heads"
-"$GUARD" grant release-write --for 12h --uses 25 --reason "feature-to-live: prepare + promote exact verified merge SHAs"
+"$GUARD" grant release-write --for 12h --uses 25 --reason "prepare and promote #PR SHA. No broker writes."
 ```
+
+The release-write reason has to name this release and the actions. `prepare` and `promote` must
+both appear: a reason that only says "promote" refuses the prepare step. The reason must also
+contain `#<PR number>` or the merge SHA (at least 9 hex characters). Set `TRADEAI_RELEASE_PR` to
+that PR number on the prepare and promote commands. `TRADEAI_RELEASE_GRANT_BINDING` stays `enforce`.
 
 `git-push` covers push + PR open + merge. `release-write` covers the immutable release write +
 systemd promote. `maintree` is **not** required — the primary tree fast-forwards with a plain
@@ -137,21 +142,19 @@ non-zero *after* `PROMOTE OK` and names the blocking paths. The release is live 
 exit means the dev tree still needs attention. `CIO_DEPLOY_FF_DEV_TREE=0` skips the step.
 
 `promote` restarts `portfolio-server` and the units in `TRADEAI_CURRENT_BOUND_UNITS` (default
-`tradeai-health-agent.service cio-governed-bridge.service`). Promote reads back each bound unit's
-`/proc/<pid>/cwd` and must match the new CURRENT dir — see `docs/ops/BRIDGE_PIN_ALIGNMENT.md`.
-Three things it does not do (`AGENTS.md` §9.3, §10):
+`tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service`). Promote
+reads back each bound unit's `/proc/<pid>/cwd` and must match the new CURRENT dir — see
+`docs/ops/BRIDGE_PIN_ALIGNMENT.md`. The desk bot is in that default because it keeps the code it
+imported at start. After promote, its cwd must be the new CURRENT directory.
 
-1. **Restart the Telegram desk bot when desk or converse code changed.** `tradeai-cio-telegram.service`
-   is a long-lived loop that keeps the code it imported at start. The callback poller is a `*/2` cron
-   through the `CURRENT` launcher and needs nothing.
+```bash
+pid=$(systemctl --user show -p MainPID --value tradeai-cio-telegram.service)
+readlink /proc/$pid/cwd        # must equal: readlink -f ~/trade-ai-releases/portfolio-server/CURRENT
+```
 
-   ```bash
-   systemctl --user restart tradeai-cio-telegram.service
-   pid=$(systemctl --user show -p MainPID --value tradeai-cio-telegram.service)
-   readlink /proc/$pid/cwd        # must equal: readlink -f ~/trade-ai-releases/portfolio-server/CURRENT
-   ```
+Two things it does not do (`AGENTS.md` §9.3, §10):
 
-2. **Install a new user unit.** A `config/systemd/user/*.timer` added by the PR is copied into the release
+1. **Install a new user unit.** A `config/systemd/user/*.timer` added by the PR is copied into the release
    but not into `~/.config/systemd/user`. Installing is operator-approved; the convention is
    `scripts/install_cio_operator_runtime.sh`:
 
@@ -169,13 +172,14 @@ Three things it does not do (`AGENTS.md` §9.3, §10):
    `install -m 0600` of `cio-governed-bridge.service` from CURRENT plus `daemon-reload` is enough
    before the next promote (or before a manual align restart — `docs/ops/BRIDGE_PIN_ALIGNMENT.md`).
 
-3. **Declare a crontab edit.** Any crontab line changed alongside the deploy (a new `timeout`, a
+2. **Declare a crontab edit.** Any crontab line changed alongside the deploy (a new `timeout`, a
    re-enabled job) needs its `config/lane_registry.json` row in the same PR, or
    `check_lane_registry.py --fail-on-new` fails `ai_local_acceptance`. Editing the crontab is operator-only.
 
 ## Failure / rollback
 
-`promote` already auto-rolls back to `PREV_RELEASE` on a failed health check. Manual rollback:
+`promote` already auto-rolls back to `PREV_RELEASE` on a failed health check. Manual rollback
+restarts the bound units and rewrites the expected-release pin. See `docs/ops/ROLLBACK_COMMANDS.md`.
 
 ```bash
 bash scripts/cio_phase2_exact_main_deploy.sh rollback
