@@ -2609,6 +2609,15 @@ GATES = [
         ["tests/test_options_wave_b_20260927.py"],
     ),
     (
+        # 2026-09-27 -- Dell 8-K EX-99.1 primary evidence: the earnings-release exhibit is
+        # fetched, parsed into dated dollar-figure facts (backlog, orders, guidance ...),
+        # stored on (accession, exhibit), and reaches the thesis catalog / synthesis prompt
+        # (with url + date) and the options CIO packet (with real per-leg liquidity,
+        # fundamentals and the RPO-is-not-backlog note); web queries keep "AI" and ask sec.gov.
+        "sec_filing_documents_20260927",
+        ["tests/test_sec_filing_documents_20260927.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).

@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Ingest reported fundamentals from SEC company facts into sec_xbrl (fundamentals plan F1, 2026-09-27).
 
-The only writer of sec_xbrl. Official source only (data.sec.gov, declared User-Agent,
+The only writer of sec_xbrl and (under --apply) of sec_filing_documents, the 8-K exhibit
+99.1 text + dollar-figure facts read by the thesis catalog and the options CIO packet
+(2026-09-27). Official source only (data.sec.gov / sec.gov Archives, declared User-Agent,
 rate-limited by financial_senses.sec_companyfacts_reader). Universe, in order: open
 symbol-thesis priority requests, options-desk symbols, the acquisition worker's
 debt-ordered queue (held names first); ETFs/funds are skipped. Idempotent: a row is
@@ -102,6 +104,22 @@ def is_fund(cur, symbol: str) -> bool:
         str(r.get("quote_type") or "").upper() in ("ETF", "MUTUALFUND")
 
 
+def ingest_documents(conn, sym: str, cik: str, filings: list, *, fetch_json=None, fetch_text=None) -> dict:
+    """Fetch + store EX-99.1 for in-window 8-K 2.02/7.01 filings. Own transaction; never raises."""
+    from lib import sec_filing_documents as sfd
+    try:
+        with conn.cursor() as cur:
+            docs = sfd.fetch_documents_for_filings(sym, cik, filings, skip=lambda acc, ex: sfd.stored(cur, acc, ex),
+                                                   fetch_json=fetch_json, fetch_text=fetch_text)
+            for d in docs:
+                sfd.upsert(cur, d)
+        conn.commit()
+        return {"filing_documents_new": len(docs), "filing_facts_new": sum(len(d["facts"]) for d in docs)}
+    except Exception as exc:  # noqa: BLE001
+        conn.rollback()
+        return {"filing_documents_error": f"{type(exc).__name__}: {str(exc)[:160]}"}
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="SEC company facts -> sec_xbrl")
     ap.add_argument("--symbols", default="")
@@ -142,7 +160,8 @@ def main(argv=None) -> int:
                 # F3: recent 8-K items and 10-Q/10-K filings become dated catalyst events;
                 # a new high-severity 8-K files a thesis re-synthesis request.
                 from lib import sec_filing_events as sfe
-                events = sfe.events_from_filings(sym, sfe.filings_from_submissions(cik, sec.get_submissions(cik)))
+                filings = sfe.filings_from_submissions(cik, sec.get_submissions(cik))
+                events = sfe.events_from_filings(sym, filings)
                 step["filing_events"] = len(events)
                 if a.apply and events:
                     with conn.cursor() as cur:
@@ -155,6 +174,12 @@ def main(argv=None) -> int:
                         request(sym, reason=f"new SEC filing: {material[0]['headline']}", source="sec_fundamentals_ingest",
                                 root=ROOT)
                         step["thesis_refresh_requested"] = True
+                # 8-K exhibit 99.1 (earnings release / Reg FD) text and its dollar-figure
+                # sentences become primary evidence (2026-09-27: Dell's $95B backlog and
+                # $60.9B orders were in the filing the house held only as a headline).
+                # Idempotent on (accession, exhibit); a missing table is reported, not fatal.
+                if a.apply:
+                    step.update(ingest_documents(conn, sym, cik, filings))
             except Exception as exc:  # noqa: BLE001
                 conn.rollback()
                 step.update(status="ERROR", error=f"{type(exc).__name__}: {str(exc)[:160]}")

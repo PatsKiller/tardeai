@@ -45,7 +45,19 @@ INTENT_QUERIES = {
     "catalyst_map": "{sym} next earnings date {year}",
     "invalidation": "{sym} stock risks downgrade",
     "bear_case": "{sym} bear case risks analyst",
+    # Primary sources (2026-09-27): the issuer's own earnings release on sec.gov and its IR
+    # page. Dell's $95B backlog sat in an 8-K exhibit no query ever asked for.
+    "primary_source": "{sym} earnings press release 8-K site:sec.gov",
+    "investor_relations": "{sym} investor relations earnings release",
 }
+PRIMARY_INTENTS = ("primary_source", "investor_relations")
+# A concern about a reported figure is answered by the filing itself, so these words add
+# the primary-source queries even when no question carries that intent.
+_PRIMARY_HINT = re.compile(
+    r"\b(backlog|orders?|bookings|guidance|outlook|revenue|margin|8-K|10-Q|10-K|filing|press release|"
+    r"primary source|disclos\w*|earnings release)\b",
+    re.I,
+)
 # Intents whose answers are dated events: SearXNG "news" first (then general).
 NEWS_INTENTS = {"catalyst_map", "invalidation", "bear_case"}
 # A hit must read like investment material; "DELL" alone returns the issuer's shop,
@@ -142,10 +154,13 @@ def _question_query(sym: str, text: str) -> str:
     t = re.sub(rf"^\s*{re.escape(sym)}\s*[:\-—]\s*", "", str(text or ""), flags=re.I)
     t = re.sub(r"^(research|find)[^:]*:\s*", "", t, flags=re.I)
     t = _FILLER.sub(" ", re.sub(r"[^A-Za-z0-9/ .$%-]", " ", t))
+    # Two-letter tokens are dropped unless they are an acronym ("AI" carried the whole
+    # Dell question and vanished, 2026-09-27); "of"/"in" still go.
     words = [
         w
         for w in t.split()
-        if len(w) > 2 and w.upper() != sym and "." not in w and "_" not in w and w.lower() not in _HOUSE_JARGON
+        if (len(w) > 2 or (len(w) == 2 and w.isalpha() and w.isupper()))
+        and w.upper() != sym and "." not in w and "_" not in w and w.lower() not in _HOUSE_JARGON
     ][:7]
     return f"{sym} {' '.join(words)}".strip() if words else ""
 
@@ -172,6 +187,9 @@ def planned_queries(
         intent = str(q.get("intent") or "")
         if intent in INTENT_QUERIES:
             out.append((INTENT_QUERIES[intent].format(sym=sym, year=year), "news" if intent in NEWS_INTENTS else "web"))
+    if any(_PRIMARY_HINT.search(str(q.get("text") or "")) for q in qs):
+        for intent in PRIMARY_INTENTS:
+            out.append((INTENT_QUERIES[intent].format(sym=sym, year=year), "web"))
     for q in qs:
         if str(q.get("intent") or "") not in INTENT_QUERIES:
             out.append((_question_query(sym, q.get("text")), "web"))
@@ -262,7 +280,8 @@ def gather(
             )
     if reused:
         log.append({"query": "reused_research_objects", "provider": "research_objects", "ok": True, "n": len(reused)})
-    for q, kind in planned_queries(request, s, now=now):
+    planned = planned_queries(request, s, now=now)
+    for q, kind in planned:
         provider, resp = "searxng", None
         try:
             resp = free_fn(q, caller=caller, kind=kind, count=n)
@@ -314,7 +333,15 @@ def gather(
                     "query": q,
                 }
             )
-    return {"used": True, "as_of": (now or datetime.now(timezone.utc)).isoformat(), "queries": log, "results": results}
+    return {
+        "used": True,
+        "as_of": (now or datetime.now(timezone.utc)).isoformat(),
+        "queries": log,
+        # What was planned (query text + lane), whether or not a provider answered, so an
+        # audit can see what was searched for (2026-09-27).
+        "planned_queries": [{"query": q, "kind": kind} for q, kind in planned],
+        "results": results,
+    }
 
 
 PROMPT = (
@@ -355,6 +382,7 @@ def ground_citations(body: dict[str, Any], web: dict[str, Any]) -> dict[str, Any
     body["source_urls"] = used
     body["web_research"] = {
         "queries": web.get("queries"),
+        "planned_queries": web.get("planned_queries"),
         "supplied": len(results),
         "cited": len(used),
         "providers": sorted({r["provider"] for r in results}),
