@@ -11,6 +11,7 @@ Adds institutional-grade controls on top of the advisory desk:
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -29,6 +30,10 @@ BLOCKING_STRATEGIES = frozenset({"covered_call", "cash_secured_put", "credit_spr
 # scheduled earnings) — event gates must treat these two cases differently.
 EARNINGS_UNKNOWN = "UNKNOWN"
 _EARNINGS_LAST_ERROR = ""
+
+# Session labels (lib.canonical_observation.market_session, lower-cased) that are a
+# closed market for a listed equity option order. Only REGULAR is open.
+CLOSED_SESSIONS = frozenset({"closed", "unsupported", "weekend", "pre_market", "after_hours"})
 
 
 def _f(v, default=0.0) -> float:
@@ -79,6 +84,9 @@ def load_desk_config() -> dict:
     cfg.setdefault("max_net_delta_pct", float(os.getenv("OPTIONS_MAX_NET_DELTA_PCT", "35.0")))
     cfg.setdefault("max_symbol_notional_pct", float(os.getenv("OPTIONS_MAX_SYMBOL_NOTIONAL_PCT", "25.0")))
     cfg.setdefault("approval_required", os.getenv("OPTIONS_APPROVAL_REQUIRED", "1") == "1")
+    # Order gates (2026-09-27): an approval is a decision about ONE set of legs at ONE
+    # time. It is pinned (approval_pin) and expires; preflight_desk_gate refuses after this.
+    cfg.setdefault("approval_ttl_minutes", int(os.getenv("OPTIONS_APPROVAL_TTL_MINUTES", "240")))
     cfg.setdefault("desk_tier_edge_a", float(os.getenv("OPTIONS_DESK_TIER_A_EDGE", "72")))
     cfg.setdefault("desk_tier_edge_b", float(os.getenv("OPTIONS_DESK_TIER_B_EDGE", "62")))
     # Defined-risk credit spreads: refuse max_profit / max_loss below this floor.
@@ -140,6 +148,11 @@ def evaluate_hard_risk_blocks(
     # P0-4 readiness modes; ``advisory``/``dry_run``/``audit`` intentionally return no blocks.
     if mode not in ("live", "operator_required", "submit", "preflight"):
         return []
+    # ORDER GATE (2026-09-27): on the order path an input the desk does not have is a
+    # refusal, not a pass. ``live``/``operator_required`` keep the old "skip when absent"
+    # behaviour because they compute live_eligible for the desk render; ``submit`` and
+    # ``preflight`` are the modes that stand between an approved card and a broker call.
+    fail_closed = mode in ("submit", "preflight")
     cfg = cfg or load_desk_config()
     blocks: List[dict] = []
     warnings: List[dict] = []
@@ -219,7 +232,12 @@ def evaluate_hard_risk_blocks(
                                   snapshot={"data_source": "bs_estimate"}))
     if proposal.get("occ_symbol") is None and proposal.get("contract") is None and cfg.get("require_chain_for_live"):
         blocks.append(_hard_block("no_resolved_occ", "no resolved OCC contract on proposal"))
-    if not liq.get("pass", True):
+    if fail_closed and (not isinstance(liq, dict) or "pass" not in liq):
+        blocks.append(_hard_block("liquidity_unknown",
+                                  "no liquidity verdict on this proposal (enterprise.liquidity absent)",
+                                  snapshot={"liquidity": liq if isinstance(liq, dict) else None}))
+        liq = {}
+    if isinstance(liq, dict) and not liq.get("pass", True):
         for issue in liq.get("issues") or []:
             code = "liquidity_gate"
             if "OI" in str(issue):
@@ -244,17 +262,36 @@ def evaluate_hard_risk_blocks(
             },
         ))
 
-    # Quote / chain staleness
+    # Quote / chain staleness. On the order path an ABSENT age is unknown, not fresh.
     q_age = proposal.get("quote_age_seconds")
-    if q_age is not None and float(q_age) > cfg.get("hard_quote_max_age_seconds", 120):
+    if q_age is None:
+        if fail_closed:
+            blocks.append(_hard_block("quote_age_unknown",
+                                      "quote age unknown (no quote_time on the proposal's contract)",
+                                      snapshot={"quote_time": proposal.get("quote_time"),
+                                                "quotes_as_of": proposal.get("quotes_as_of")}))
+    elif float(q_age) > cfg.get("hard_quote_max_age_seconds", 120):
         blocks.append(_hard_block("quote_stale", f"quote age {q_age}s exceeds cap",
                                   snapshot={"quote_age_seconds": q_age}))
     c_age = proposal.get("chain_age_seconds")
-    if c_age is not None and float(c_age) > cfg.get("hard_chain_max_age_seconds", 300):
+    if c_age is None:
+        if fail_closed:
+            blocks.append(_hard_block("chain_age_unknown",
+                                      "chain age unknown (no fetched_at on the chain this proposal came from)",
+                                      snapshot={"chain_fetched_at": proposal.get("chain_fetched_at")}))
+    elif float(c_age) > cfg.get("hard_chain_max_age_seconds", 300):
         blocks.append(_hard_block("option_chain_stale", f"chain age {c_age}s exceeds cap",
                                   snapshot={"chain_age_seconds": c_age}))
-    if proposal.get("market_session") in ("closed", "unsupported"):
-        blocks.append(_hard_block("market_closed", f"session={proposal.get('market_session')}"))
+    session = proposal.get("market_session")
+    if session is None or str(session).strip() == "":
+        if fail_closed:
+            blocks.append(_hard_block("market_session_unknown",
+                                      "market session unknown (proposal carries no market_session)"))
+    elif str(session).strip().lower() in CLOSED_SESSIONS:
+        # Listed equity options trade in the regular session only; a weekend or
+        # pre/after-hours label is a closed market for an option order.
+        blocks.append(_hard_block("market_closed", f"session={session} (options trade in the regular session only)",
+                                  snapshot={"market_session": session}))
 
     # Contract caps
     if contracts > cfg.get("hard_max_contracts_per_order", 5):
@@ -268,9 +305,16 @@ def evaluate_hard_risk_blocks(
                                   f"notional ${notional:,.0f} exceeds strategy cap",
                                   snapshot={"notional": notional, "strategy": strat}))
 
-    # Minimum buying power for the live submit (when broker buying power is known).
+    # Minimum buying power for the live submit. The desk never reads buying power (that
+    # is a broker read, outside the desk grant), so on the order path its absence is a
+    # refusal by design: buying_power_unknown until a granted layer supplies it.
     bp = proposal.get("buying_power")
-    if bp is not None and _f(bp) < cfg.get("hard_min_buying_power", 5_000):
+    if bp is None:
+        if fail_closed:
+            blocks.append(_hard_block("buying_power_unknown",
+                                      "buying power unknown (no broker buying-power read on this proposal)",
+                                      snapshot={"min": cfg.get("hard_min_buying_power")}))
+    elif _f(bp) < cfg.get("hard_min_buying_power", 5_000):
         blocks.append(_hard_block("min_buying_power",
                                   f"buying power ${_f(bp):,.0f} below minimum ${cfg.get('hard_min_buying_power'):,.0f}",
                                   snapshot={"buying_power": _f(bp), "min": cfg.get("hard_min_buying_power")}))
@@ -1015,7 +1059,7 @@ def resolve_approval(
         """UPDATE options_approval_queue
            SET status=%s, reviewer=%s, review_note=%s, reviewed_at=NOW(), updated_at=NOW()
            WHERE proposal_id=%s AND status IN ('pending','blocked')
-           RETURNING id, symbol, strategy, live_eligible, blocks_json""",
+           RETURNING id, symbol, strategy, live_eligible, blocks_json, proposal_json""",
         (new_status, reviewer, note[:500], proposal_id),
     )
     row = cur.fetchone()
@@ -1049,6 +1093,25 @@ def resolve_approval(
         if stale:
             conn.rollback()
             return {"ok": False, "error": stale}
+        # 2026-09-27 (order gates): pin WHAT was approved and WHEN. sync_approval_queue and
+        # the CC card upsert keep status='approved' while overwriting proposal_json, so
+        # without a pin a changed long leg (same proposal_id) would ride the old approval.
+        # preflight_desk_gate recomputes the hash from the CURRENT proposal and refuses on
+        # mismatch (legs_changed) or after approval_ttl_minutes (approval_expired).
+        pj = row[5]
+        if isinstance(pj, str):
+            try:
+                pj = json.loads(pj)
+            except ValueError:
+                pj = {}
+        pin = approval_pin(pj if isinstance(pj, dict) else {})
+        pin.update({"approved_at": _iso(), "reviewer": reviewer})
+        cur.execute(
+            """UPDATE options_approval_queue
+               SET meta = COALESCE(meta, '{}'::jsonb) || %s::jsonb
+               WHERE proposal_id=%s""",
+            (json.dumps({"approval": pin}, default=str), proposal_id),
+        )
     conn.commit()
     _record_thesis_approval(cur, proposal_id, action, reviewer, note)
     return {"ok": True, "proposal_id": proposal_id, "status": new_status, "symbol": row[1], "strategy": row[2]}
@@ -1096,30 +1159,416 @@ def _record_thesis_approval(cur, proposal_id: str, action: str, reviewer: str, n
         pass
 
 
-def check_preflight_approval(proposal_id: str) -> Tuple[bool, str]:
-    """Gate live submit on desk approval when required."""
-    cfg = load_desk_config()
-    if not cfg.get("approval_required"):
-        return True, ""
+def _fetch_queue_row(proposal_id: str) -> Optional[dict]:
+    """The desk's own record of a proposal: queue status, eligibility, stored legs, approval pin.
+
+    Returns None when the proposal is not in the queue. Raises RuntimeError when the queue
+    cannot be read -- callers on the order path treat that as a refusal, never a pass.
+    Tests replace this with an in-memory fake; nothing else in the gate touches the DB.
+    """
     conn = _conn()
     if not conn:
-        return False, "approval queue unavailable"
+        raise RuntimeError("approval queue unavailable")
     cur = conn.cursor()
     cur.execute(
-        "SELECT status, live_eligible, blocks_json FROM options_approval_queue WHERE proposal_id=%s",
+        """SELECT status, live_eligible, blocks_json, proposal_json, reviewed_at, meta, expires_at
+           FROM options_approval_queue WHERE proposal_id=%s""",
         (proposal_id,),
     )
     row = cur.fetchone()
     if not row:
+        return None
+    out = dict(zip(("status", "live_eligible", "blocks_json", "proposal_json", "reviewed_at", "meta", "expires_at"), row))
+    for k in ("blocks_json", "proposal_json", "meta"):
+        if isinstance(out.get(k), str):
+            try:
+                out[k] = json.loads(out[k])
+            except ValueError:
+                pass
+    return out
+
+
+def check_preflight_approval(proposal_id: str, *, row: Optional[dict] = None) -> Tuple[bool, str]:
+    """Gate live submit on desk approval when required. Any status but 'approved' refuses."""
+    cfg = load_desk_config()
+    if not cfg.get("approval_required"):
+        return True, ""
+    if row is None:
+        try:
+            row = _fetch_queue_row(proposal_id)
+        except Exception as e:
+            return False, f"approval queue unavailable ({type(e).__name__})"
+    if not row:
         return False, "proposal not in desk approval queue — operator review required"
-    status, live_eligible, blocks = row[0], row[1], row[2] or []
+    status, live_eligible, blocks = row.get("status"), row.get("live_eligible"), row.get("blocks_json") or []
     if status == "rejected":
         return False, "desk rejected this proposal"
     if status != "approved":
         return False, f"desk status={status} — approve in queue before submit"
     if not live_eligible:
-        return False, f"not live-eligible: {', '.join(blocks[:3]) if blocks else 'enterprise block'}"
+        names = [b.get("code") if isinstance(b, dict) else str(b) for b in blocks[:3]]
+        return False, f"not live-eligible: {', '.join(names) if names else 'enterprise block'}"
     return True, ""
+
+
+# ---------------------------------------------------------------------------
+# Order gates (operator work order 2026-09-27, PR 3). Desk layer only: nothing here
+# imports brokers.*, builds an intent, or requests 2FA. Everything is decided from the
+# proposal the desk holds, its approval-queue row and the options thesis store.
+# ---------------------------------------------------------------------------
+
+_LEG_FIELDS = ("symbol", "strategy", "account", "expiration", "short_strike", "long_strike", "contracts", "option_type")
+
+
+def _canon_num(v: Any) -> Any:
+    if v is None or v == "":
+        return None
+    try:
+        f = float(str(v).replace(",", ""))
+    except (TypeError, ValueError):
+        return str(v)
+    return f"{f:.4f}"
+
+
+def canonical_legs(proposal: dict) -> dict:
+    """The legs an approval is a decision about, normalised so a re-serialised proposal hashes the same."""
+    p = proposal or {}
+    short_strike = p.get("short_strike")
+    if short_strike is None:
+        short_strike = p.get("strike")
+    return {
+        "symbol": str(p.get("symbol") or p.get("underlying") or "").upper(),
+        "strategy": str(p.get("strategy") or ""),
+        "account": str(p.get("account") or ""),
+        "expiration": str(p.get("expiration") or "")[:10],
+        "short_strike": _canon_num(short_strike),
+        "long_strike": _canon_num(p.get("long_strike")),
+        "contracts": _canon_num(p.get("contracts") or 1),
+        "option_type": str(p.get("option_type") or "").lower(),
+    }
+
+
+def approval_pin(proposal: dict) -> dict:
+    """What an approval binds to: the strategy GUID and a sha256 of the canonical legs."""
+    legs = canonical_legs(proposal)
+    digest = hashlib.sha256(json.dumps(legs, sort_keys=True).encode("utf-8")).hexdigest()
+    return {
+        "approved_strategy_guid": (proposal or {}).get("option_strategy_guid"),
+        "approved_hash": digest,
+        "legs": legs,
+        "proposal_id": (proposal or {}).get("id"),
+    }
+
+
+def _parse_ts(v: Any) -> Optional[datetime]:
+    """ISO string (Z ok), epoch seconds or epoch milliseconds -> aware UTC datetime; else None."""
+    if v is None or v == "":
+        return None
+    if isinstance(v, datetime):
+        return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
+    if isinstance(v, (int, float)):
+        try:
+            secs = float(v) / (1000.0 if float(v) > 1e11 else 1.0)
+            return datetime.fromtimestamp(secs, tz=timezone.utc)
+        except (OverflowError, OSError, ValueError):
+            return None
+    try:
+        dt = datetime.fromisoformat(str(v).strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _age_seconds(ts: Any, now: datetime) -> Optional[float]:
+    dt = _parse_ts(ts)
+    if dt is None:
+        return None
+    return round(max(0.0, (now - dt).total_seconds()), 1)
+
+
+def stamp_freshness(
+    proposal: dict,
+    *,
+    now: Optional[datetime] = None,
+    session: Optional[str] = None,
+    chain_fetched_at: Optional[str] = None,
+) -> dict:
+    """Stamp the inputs evaluate_hard_risk_blocks fails closed on, from the timestamps the
+    proposal carries. Run at generation (engine) and again at preflight from the STORED
+    timestamps, so the ages are as of now, not as of the scan.
+
+    * ``market_session``      from the caller (engine run / preflight clock)
+    * ``chain_age_seconds``   from the chain's ``fetched_at`` (normalize_option_chain stamps it)
+    * ``quote_age_seconds``   from the contract's ``quote_time`` (oldest leg on a spread)
+    * ``buying_power``        deliberately NOT stamped: it needs a broker read, which the
+                              desk does not hold a grant for, so the gate refuses with
+                              buying_power_unknown by design until a granted layer supplies it.
+    A timestamp the desk does not have leaves the key ABSENT (never 0), so the gate refuses.
+    """
+    now = now or _now()
+    if session is not None:
+        proposal["market_session"] = session
+    if chain_fetched_at:
+        proposal["chain_fetched_at"] = chain_fetched_at
+    c_age = _age_seconds(proposal.get("chain_fetched_at"), now)
+    if c_age is None:
+        proposal.pop("chain_age_seconds", None)
+    else:
+        proposal["chain_age_seconds"] = c_age
+    # Quote time: the contract's own stamp first; on a spread the OLDEST leg quote.
+    candidates: List[Any] = []
+    for leg in proposal.get("legs_liquidity") or []:
+        if isinstance(leg, dict) and leg.get("quote_time"):
+            candidates.append(leg["quote_time"])
+    for leg in (proposal.get("spread_quote") or {}).get("legs") or []:
+        if isinstance(leg, dict) and leg.get("quote_time"):
+            candidates.append(leg["quote_time"])
+    if not candidates:
+        for k in ("quote_time", "quotes_as_of"):
+            if proposal.get(k):
+                candidates.append(proposal[k])
+    ages = [a for a in (_age_seconds(c, now) for c in candidates) if a is not None]
+    if ages:
+        proposal["quote_age_seconds"] = max(ages)
+    else:
+        proposal.pop("quote_age_seconds", None)
+    proposal["freshness_as_of"] = _iso(now)
+    return proposal
+
+
+def archive_approval_rows(proposals: List[dict], *, apply: bool = True) -> dict:
+    """Queue rows for ARCHIVED (thesis-abandoned) ideas stop being approvable.
+
+    The engine used to drop abandoned proposals BEFORE sync_approval_queue, so a row
+    already 'approved' for an idea the desk had archived survived untouched and
+    check_preflight_approval would still pass it. Rows are matched by proposal_id AND by
+    strategy GUID (yesterday's date-scoped id for the same idea). The status CHECK has no
+    'archived', so the row becomes 'blocked' with a THESIS_ABANDONED block; the archive is
+    recorded in meta. Alpaca-lane and terminal rows are left alone.
+    """
+    conn = _conn()
+    if not conn:
+        return {"ok": False, "error": "no_db"}
+    cur = conn.cursor()
+    archived: List[str] = []
+    for p in proposals:
+        pid = p.get("id")
+        guid = p.get("option_strategy_guid")
+        if not pid and not guid:
+            continue
+        reason = str(p.get("thesis_abandoned") or "abandoned")
+        block = {"code": "THESIS_ABANDONED", "severity": "hard", "source": "options_desk_enterprise",
+                 "function": "archive_approval_rows",
+                 "reason": f"thesis archived as abandoned: {reason}"}
+        cur.execute(
+            """UPDATE options_approval_queue
+               SET status='blocked', live_eligible=FALSE,
+                   blocks_json=%s::jsonb,
+                   review_note=%s,
+                   meta = COALESCE(meta, '{}'::jsonb) || %s::jsonb,
+                   updated_at=NOW()
+               WHERE status IN ('pending','approved','blocked')
+                 AND (proposal_id=%s OR (%s <> '' AND proposal_json->>'option_strategy_guid' = %s))
+               RETURNING proposal_id""",
+            (json.dumps([block]), f"archived: {reason}"[:500],
+             json.dumps({"archived": {"at": _iso(), "reason": reason, "proposal_id": pid, "option_strategy_guid": guid}}),
+             pid or "", guid or "", guid or ""),
+        )
+        archived += [r[0] for r in cur.fetchall()]
+    if apply:
+        conn.commit()
+    return {"ok": True, "archived": sorted(set(archived))}
+
+
+def _thesis_store():
+    try:
+        from scripts.lib.options_thesis import OptionsThesisStore
+    except ImportError:
+        from lib.options_thesis import OptionsThesisStore  # type: ignore
+    return OptionsThesisStore()
+
+
+def _refusal(code: str, reason: str, **detail: Any) -> dict:
+    out = {"code": code, "reason": reason, "gate": "desk_preflight"}
+    if detail:
+        out["detail"] = detail
+    return out
+
+
+def preflight_desk_gate(
+    proposal_id: str,
+    proposal: dict,
+    *,
+    store=None,
+    now: Optional[datetime] = None,
+    row: Optional[dict] = None,
+    cfg: Optional[dict] = None,
+) -> dict:
+    """Every desk-side reason an options ORDER must not be created, in one place.
+
+    Runs BEFORE any broker call (intent, authorize, 2FA) and reads only desk state: the
+    approval-queue row, the options thesis store and the proposal the desk holds.
+    Returns {"ok": bool, "refusals": [...]} -- all refusals, not the first, so the
+    operator sees the whole distance to an order. Checks:
+      1. queue row exists, status == 'approved', live_eligible
+      2. approval not older than options_desk_settings.approval_ttl_minutes  (approval_expired)
+      3. approval pin: strategy GUID and canonical-legs hash unchanged        (legs_changed)
+      4. lifecycle not ARCHIVED_* / abandoned                                 (thesis_abandoned)
+      5. thesis bar cleared and CIO decision APPROVE (lib.options_thesis.thesis_blocks)
+      6. fresh VALIDATED event                            (lib.options_validate.fresh_validation)
+      7. liquidity pass on the proposal and on EVERY leg
+      8. evaluate_hard_risk_blocks(mode="submit") empty, with the freshness inputs
+         recomputed from the stored timestamps as of ``now``
+    """
+    cfg = cfg or load_desk_config()
+    now = now or _now()
+    proposal = dict(proposal or {})
+    refusals: List[dict] = []
+
+    # 1. queue status
+    if row is None:
+        try:
+            row = _fetch_queue_row(proposal_id)
+        except Exception as e:
+            refusals.append(_refusal("queue_unavailable", f"approval queue unavailable ({type(e).__name__})"))
+            row = None
+    if cfg.get("approval_required", True):
+        if not row:
+            refusals.append(_refusal("not_in_queue", "proposal not in desk approval queue — operator review required"))
+        else:
+            ok_ap, why = check_preflight_approval(proposal_id, row=row)
+            if not ok_ap:
+                refusals.append(_refusal("not_approved", why, status=row.get("status")))
+    approval = ((row or {}).get("meta") or {}).get("approval") if isinstance((row or {}).get("meta"), dict) else None
+    approval = approval if isinstance(approval, dict) else {}
+
+    if row and row.get("status") == "approved":
+        # 2. expiry
+        approved_at = _parse_ts(approval.get("approved_at"))
+        ttl_min = float(cfg.get("approval_ttl_minutes") or 240)
+        if approved_at is None:
+            refusals.append(_refusal("approval_pin_missing",
+                                     "approval carries no pin (approved before order gates existed); re-approve"))
+        elif (now - approved_at).total_seconds() > ttl_min * 60:
+            refusals.append(_refusal("approval_expired",
+                                     f"approved {_iso(approved_at)} is older than {ttl_min:g} min; re-approve",
+                                     approved_at=_iso(approved_at), ttl_minutes=ttl_min))
+        # 3. pin
+        if approval.get("approved_hash"):
+            cur_pin = approval_pin(proposal)
+            if cur_pin["approved_hash"] != approval.get("approved_hash"):
+                refusals.append(_refusal("legs_changed",
+                                         "the legs differ from the ones that were approved; re-approve",
+                                         approved=approval.get("legs"), current=cur_pin["legs"]))
+            if (approval.get("approved_strategy_guid") or None) != (cur_pin["approved_strategy_guid"] or None):
+                refusals.append(_refusal("strategy_guid_changed",
+                                         "the strategy GUID differs from the approved one; re-approve",
+                                         approved=approval.get("approved_strategy_guid"),
+                                         current=cur_pin["approved_strategy_guid"]))
+
+    # 4-6. lifecycle, thesis, validation -- all keyed by the strategy GUID
+    guid = proposal.get("option_strategy_guid")
+    if not guid:
+        refusals.append(_refusal("strategy_guid_missing", "proposal has no option_strategy_guid; regenerate"))
+    else:
+        try:
+            store = store or _thesis_store()
+            try:
+                from scripts.lib.options_thesis import thesis_blocks as _thesis_blocks
+                from scripts.lib.options_validate import fresh_validation as _fresh, settings as _vsettings
+            except ImportError:
+                from lib.options_thesis import thesis_blocks as _thesis_blocks  # type: ignore
+                from lib.options_validate import fresh_validation as _fresh, settings as _vsettings  # type: ignore
+            life = store.lifecycle(guid) or {}
+            stage = str(life.get("stage") or "")
+            if life.get("abandoned") or stage.startswith("ARCHIVED"):
+                refusals.append(_refusal("thesis_abandoned",
+                                         f"options thesis is {stage or 'abandoned'}: "
+                                         f"{(life.get('abandoned') or {}).get('reason') or 'archived'}",
+                                         stage=stage))
+            record = store.current(guid)
+            codes_seen = set()
+            if record is None:
+                refusals.append(_refusal("thesis_missing", "no options thesis record on file for this strategy"))
+            else:
+                for b in _thesis_blocks(record):
+                    codes_seen.add(b.get("code"))
+                    refusals.append(_refusal(str(b.get("code") or "thesis_block"), str(b.get("reason") or "")))
+            for b in proposal.get("thesis_blocks") or []:
+                code = str((b or {}).get("code") if isinstance(b, dict) else b)
+                if code not in codes_seen:
+                    codes_seen.add(code)
+                    refusals.append(_refusal(code, str((b or {}).get("reason") if isinstance(b, dict) else b)))
+            outcome = ((life.get("decision") or {}).get("outcome"))
+            if outcome != "APPROVE" and "awaiting_cio_decision" not in codes_seen:
+                refusals.append(_refusal("cio_decision_not_approve",
+                                         f"CIO decision on file: {outcome or 'none'}; an order needs APPROVE",
+                                         outcome=outcome))
+            mins = float(_vsettings(cfg)["fresh_minutes"])
+            if _fresh(store.history(guid), mins, now=now) is None:
+                refusals.append(_refusal("validation_stale",
+                                         f"no VALIDATED result within {mins:g} min; validate against live Schwab data",
+                                         fresh_minutes=mins))
+        except Exception as e:  # fail closed: a gate that cannot read its inputs refuses
+            refusals.append(_refusal("thesis_check_unavailable",
+                                     f"thesis/lifecycle/validation check unavailable ({type(e).__name__})"))
+
+    # 7. liquidity on the proposal and on every leg
+    ent = proposal.get("enterprise") or {}
+    liq = ent.get("liquidity") if isinstance(ent, dict) else None
+    if not isinstance(liq, dict) or "pass" not in liq:
+        refusals.append(_refusal("liquidity_unknown", "no liquidity verdict on this proposal"))
+    else:
+        if not liq.get("pass"):
+            refusals.append(_refusal("liquidity_failed", "; ".join(str(i) for i in (liq.get("issues") or [])) or
+                                     "liquidity gate failed"))
+        for leg in liq.get("legs") or []:
+            if isinstance(leg, dict) and not leg.get("pass", False):
+                refusals.append(_refusal("liquidity_failed",
+                                         f"{leg.get('role') or 'leg'} {leg.get('strike')}: "
+                                         + ("; ".join(str(i) for i in (leg.get("issues") or [])) or "no liquidity verdict"),
+                                         leg=leg.get("role"), strike=leg.get("strike")))
+    for leg in proposal.get("legs_liquidity") or []:
+        if isinstance(leg, dict) and leg.get("two_sided") is False:
+            refusals.append(_refusal("leg_quote_not_two_sided",
+                                     f"{leg.get('role') or 'leg'} {leg.get('strike')}: quote is not two-sided",
+                                     leg=leg.get("role"), strike=leg.get("strike")))
+
+    # 8. hard risk blocks in submit mode, freshness recomputed as of now
+    try:
+        try:
+            from scripts.lib.canonical_observation import market_session as _ms
+        except ImportError:
+            from lib.canonical_observation import market_session as _ms  # type: ignore
+        session_now: Optional[str] = _ms(now)
+    except Exception:
+        session_now = None
+    proposal["market_session_at_generation"] = proposal.get("market_session")
+    if session_now is not None:
+        stamp_freshness(proposal, now=now, session=session_now)
+    else:
+        proposal.pop("market_session", None)  # unknown, not the stale generation label
+        stamp_freshness(proposal, now=now)
+    seen_codes = {r["code"] for r in refusals}
+    seen = set()
+    for b in evaluate_hard_risk_blocks(proposal, mode="submit", cfg=cfg):
+        key = (b.get("code"), b.get("reason"))
+        if b.get("code") in seen_codes or key in seen:
+            continue
+        seen.add(key)
+        refusals.append(_refusal(str(b.get("code") or "hard_block"), str(b.get("reason") or ""),
+                                 snapshot=b.get("snapshot") or None))
+
+    return {
+        "ok": not refusals,
+        "gate": "desk_preflight",
+        "proposal_id": proposal_id,
+        "checked_at": _iso(now),
+        "market_session": proposal.get("market_session"),
+        "quote_age_seconds": proposal.get("quote_age_seconds"),
+        "chain_age_seconds": proposal.get("chain_age_seconds"),
+        "refusals": refusals,
+    }
 
 
 def persist_chain_snapshot(symbol: str, chain: dict, vol: dict) -> None:
