@@ -37,8 +37,10 @@ def _load_cases():
 def _run_case(case):
     import options_desk_enterprise as ent
     inp = case["input"]
+    # Order gates (2026-09-27): the *_unknown codes exist only on the order path
+    # (mode submit/preflight); a case names its mode, default live.
     return ent.evaluate_hard_risk_blocks(
-        inp["proposal"], mode="live",
+        inp["proposal"], mode=inp.get("mode") or "live",
         holdings=inp.get("holdings"), positions=inp.get("positions"),
     )
 
@@ -70,6 +72,9 @@ def test_matrix_covers_required_codes():
         "option_chain_stale", "market_closed", "max_contracts_per_order", "max_per_strategy_notional",
         "assignment_exercise_risk", "max_net_delta_pct", "max_symbol_notional_pct",
         "min_buying_power",
+        # order path fails closed on an input the desk does not have (2026-09-27)
+        "quote_age_unknown", "chain_age_unknown", "market_session_unknown",
+        "buying_power_unknown", "liquidity_unknown",
     }
     covered = {c["expect"]["code"] for c in _load_cases()}
     missing = required - covered
@@ -96,8 +101,11 @@ def _export_matrix():
         "Each row is a hard block enforced on the live options path by "
         "`options_desk_enterprise.evaluate_hard_risk_blocks`. Codes are a stable contract.",
         "",
-        "| Block code | Severity | Source | Verified reason (sample) | Snapshot keys |",
-        "|------------|----------|--------|--------------------------|---------------|",
+        "Modes: `live` blocks also apply to the desk's live-eligibility render; `submit` blocks "
+        "fire only on the order path, where an ABSENT input fails closed (2026-09-27).",
+        "",
+        "| Block code | Severity | Source | Verified reason (sample) | Snapshot keys | Mode |",
+        "|------------|----------|--------|--------------------------|---------------|------|",
     ]
     for case in cases:
         try:
@@ -108,8 +116,9 @@ def _export_matrix():
         match = next((b for b in blocks if b.get("code") == exp["code"]), None)
         reason = (match or {}).get("reason", "—")
         snap_keys = ", ".join((match or {}).get("snapshot", {}).keys()) or "—"
+        mode = (case.get("input") or {}).get("mode") or "live"
         lines.append(f"| `{exp['code']}` | {exp.get('severity','hard')} | {exp.get('source')} | "
-                     f"{str(reason)[:60]} | {snap_keys} |")
+                     f"{str(reason)[:60]} | {snap_keys} | {mode} |")
     out = ROOT / "docs" / "diligence" / "current" / "OPTIONS_RISK_BLOCK_MATRIX.md"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("\n".join(lines) + "\n", encoding="utf-8")

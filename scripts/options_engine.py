@@ -1295,7 +1295,7 @@ def _allocate_strategy_slots(proposals: List[dict]) -> List[dict]:
 
 
 def _proposal_id(strategy: str, sym: str, account: str, strike: Any, expiration: str = "",
-                 trade_date: str = "") -> str:
+                 trade_date: str = "", long_strike: Any = None) -> str:
     """Stable WITHIN A TRADE DATE so ensemble verdicts persist across rescans."""
     acct = re.sub(r"[^a-z0-9]+", "_", (account or "default").lower()).strip("_")[:22]
     exp = (expiration or "")[:10].replace("-", "")
@@ -1303,6 +1303,13 @@ def _proposal_id(strategy: str, sym: str, account: str, strike: Any, expiration:
         st = f"{float(strike):.4f}".replace(".", "p")
     except (TypeError, ValueError):
         st = str(strike or "0").replace(".", "p")
+    # Order gates (2026-09-27): a spread's id named only the SHORT strike, so a changed
+    # long leg kept the same proposal_id and inherited its approved queue row.
+    if long_strike is not None:
+        try:
+            st += "_l" + f"{float(long_strike):.4f}".replace(".", "p")
+        except (TypeError, ValueError):
+            st += "_l" + str(long_strike).replace(".", "p")
     # DATE-SCOPED (2026-07-20). The id was globally stable, so a contract that
     # once reached a TERMINAL queue status could never be proposed again: the
     # deterministic id collided with the old row and the upsert preserves
@@ -1592,6 +1599,7 @@ def generate_covered_call_proposals(
             "bid": contract.get("bid") if contract else None,
             "ask": contract.get("ask") if contract else None,
             "bid_ask_spread_pct": contract.get("bid_ask_spread_pct") if contract else None,
+            "quote_time": contract.get("quote_time") if contract else None,
             "severity": "positive" if edge >= 75 else "info",
             "recommended_action": "Sell Covered Call",
             "action_buttons": [
@@ -1693,6 +1701,7 @@ def generate_holdings_put_proposals(
             "bid": contract.get("bid"),
             "ask": contract.get("ask"),
             "bid_ask_spread_pct": contract.get("bid_ask_spread_pct"),
+            "quote_time": contract.get("quote_time"),
             "severity": "info",
             "recommended_action": "Buy Protective Put",
             "action_buttons": [
@@ -1777,6 +1786,7 @@ def _append_long_call_proposal(
         "edge_score": edge,
         "iv_rank": iv_rank,
         "delta": contract.get("delta"),
+        "quote_time": contract.get("quote_time"),
         "severity": "info",
         "recommended_action": "Buy Call (defined risk)",
         "action_buttons": [
@@ -1869,6 +1879,7 @@ def _append_csp_proposal(
         "bid": contract.get("bid"),
         "ask": contract.get("ask"),
         "bid_ask_spread_pct": contract.get("bid_ask_spread_pct"),
+        "quote_time": contract.get("quote_time"),
         "severity": "positive" if edge >= 72 else "info",
         "recommended_action": "Sell Cash-Secured Put",
         "action_buttons": [
@@ -2114,7 +2125,8 @@ def generate_credit_spread_proposals(
             continue
         acct = _auto_select_account(sym, holdings or [], strategy="credit_spread", cash_map=cash_map)
         proposals.append(_stamp_execution({
-            "id": _proposal_id("credit_spread", sym, acct, short_strike, short_c.get("exp") or ""),
+            "id": _proposal_id("credit_spread", sym, acct, short_strike, short_c.get("exp") or "",
+                               long_strike=long_strike),
             "strategy": "credit_spread",
             "symbol": sym,
             "underlying": sym,
@@ -3054,7 +3066,30 @@ def generate_proposals(force: bool = False) -> dict:
         INCOME_SCREEN_DROPS.append({"symbol": _p.get("symbol"), "strategy": _p.get("strategy"),
                                     "reason": "THESIS_ABANDONED", "detail": _p["thesis_abandoned"]})
     _archived = [x for x in all_p if x.get("thesis_abandoned")]
+    # Order gates (2026-09-27): an archived idea's approval-queue row used to survive
+    # untouched (it was dropped before sync_approval_queue), so an 'approved' row for an
+    # idea the desk had archived still passed check_preflight_approval. Archive the rows first.
+    archive_sync = {}
+    if _archived:
+        try:
+            import options_desk_enterprise as _ent_arch
+            archive_sync = _ent_arch.archive_approval_rows(_archived)
+        except Exception as _ae:  # noqa: BLE001
+            archive_sync = {"ok": False, "error": f"{type(_ae).__name__}: {str(_ae)[:120]}"}
     all_p = [x for x in all_p if not x.get("thesis_abandoned")]
+    # Order gates (2026-09-27): stamp the freshness inputs the submit-mode risk evaluator
+    # fails closed on -- market_session (this run), chain_age_seconds (the chain's fetched_at),
+    # quote_age_seconds (the contract's / oldest leg's quote_time). buying_power is NOT stamped:
+    # it needs a broker read the desk holds no grant for, so an order fails closed on
+    # buying_power_unknown by design until a granted layer supplies it. Recomputed at preflight.
+    try:
+        import options_desk_enterprise as _ent_fresh
+        _fresh_now = datetime.now(timezone.utc)
+        for _p in all_p:
+            _ent_fresh.stamp_freshness(_p, now=_fresh_now, session=_SESSION.get("now"),
+                                       chain_fetched_at=_chain_fetched_at(str(_p.get("symbol") or "")))
+    except Exception as _fe:  # noqa: BLE001
+        print(f"[options_engine] freshness stamp skipped: {type(_fe).__name__}: {_fe}", file=sys.stderr)
     # Wave B 2026-09-27: ideas on the same symbol are one bet; say so on each card.
     try:
         from lib.options_exposure import combined_exposure
@@ -3115,6 +3150,7 @@ def generate_proposals(force: bool = False) -> dict:
         "desk_level": "enterprise",
         "enterprise": enterprise_summary,
         "approval_queue": approval_sync,
+        "archived_queue_rows": archive_sync,
         "strategy_overview": {
             "total_edge_avg": round(sum(p["edge_score"] for p in all_p) / max(len(all_p), 1), 1),
             "avg_pop": round(sum(p.get("pop_pct", 50) for p in all_p) / max(len(all_p), 1), 1),
