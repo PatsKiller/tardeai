@@ -640,20 +640,22 @@ def test_migration_additive_and_complete():
 
 # ═══ (9) EARNINGS-SPREADS Stage 1b (Part G) — guarded multi-leg lane ═════════
 
-LONG_OCC = "NVDA260821C00190000"
-SHORT_OCC = "NVDA260821C00195000"
+# Must stay in the future. 2026-08-21 aged out (today past expiry), so the
+# not-expired reconcile case collapsed into the post-expiry poll.
+LONG_OCC = "NVDA271217C00190000"
+SHORT_OCC = "NVDA271217C00195000"
 
 SPREAD_PROPOSAL = {
-    "id": "opt_earnings_vertical_debit_call_NVDA_190_195_20260821",
+    "id": "opt_earnings_vertical_debit_call_NVDA_190_195_20271217",
     "strategy": "earnings_vertical_debit_call",
     "symbol": "NVDA",
     "underlying": "NVDA",
     "net_debit": 1.50,
     "spreads": 1,
     "legs": [
-        {"underlying": "NVDA", "expiration": "2026-08-21", "strike": 190.0,
+        {"underlying": "NVDA", "expiration": "2027-12-17", "strike": 190.0,
          "option_type": "call", "side": "buy"},
-        {"underlying": "NVDA", "expiration": "2026-08-21", "strike": 195.0,
+        {"underlying": "NVDA", "expiration": "2027-12-17", "strike": 195.0,
          "option_type": "call", "side": "sell"},
     ],
 }
@@ -816,7 +818,7 @@ def test_spread_net_debit_required_and_positive():
 
 
 def test_spread_debit_vertical_shape_enforced():
-    def leg(strike, side, ot="call", exp="2026-08-21", under="NVDA"):
+    def leg(strike, side, ot="call", exp="2027-12-17", under="NVDA"):
         return {"underlying": under, "expiration": exp, "strike": strike,
                 "option_type": ot, "side": side}
     # call debit must be long-low/short-high; the inverse is a credit shape
@@ -937,7 +939,7 @@ def test_spread_submit_persists_every_leg():
     assert len(aj["legs"]) == 2                       # EVERY leg detailed
     for leg, occ, strike in zip(aj["legs"], (LONG_OCC, SHORT_OCC), (190.0, 195.0)):
         assert leg["symbol"] == occ and leg["ratio_qty"] == "1"
-        assert leg["strike"] == strike and leg["expiration"] == "2026-08-21"
+        assert leg["strike"] == strike and leg["expiration"] == "2027-12-17"
         assert leg["option_type"] == "call"
         assert leg["response_leg"]["symbol"] == occ   # broker echo per leg
     assert [(e["symbol"], e["event"]) for e in aj["leg_events"]] == [

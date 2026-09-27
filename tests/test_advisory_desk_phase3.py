@@ -173,10 +173,10 @@ class TestOutcomeScoring(unittest.TestCase):
 
 class TestEnrichMemoryWire(unittest.TestCase):
     def test_enrich_appends_history_and_thrash(self) -> None:
-        from lib.data_broker.advisory_desk import (
-            build_advisory_desk,
-            enrich_advisory_with_opinions,
-        )
+        # Hermetic desk row. build_advisory_desk(force=True) walks the live
+        # holdings and OHLC cache and has hung past 300s; that is not this
+        # contract. The contract is history append, prior hit, and thrash.
+        from lib.data_broker.advisory_desk import enrich_advisory_with_opinions
         from lib.advisory import advisory_memory as am
 
         with tempfile.TemporaryDirectory() as td:
@@ -188,18 +188,23 @@ class TestEnrichMemoryWire(unittest.TestCase):
             ), patch.object(am, "RUNTIME", td_path), patch.object(
                 am, "CALIBRATION_PATH", td_path / "cal.json"
             ):
-                # Seed thrashing history for first holding symbol
-                desk = build_advisory_desk(force=True, max_age_s=0)
-                holds = [
-                    r for r in desk["data"]["rows"]
-                    if r.get("row_class") == "holding"
-                    and float(r.get("market_value") or 0) >= 500
-                ]
-                self.assertTrue(holds)
-                # Largest MV so it is always in the enrichment ordered set
-                holds.sort(key=lambda r: float(r.get("market_value") or 0), reverse=True)
-                sym = holds[0]["symbol"]
-                acct = holds[0].get("account") or ""
+                sym, acct = "SCHD", "ira"
+                desk = {
+                    "ok": True,
+                    "data": {
+                        "rows": [{
+                            "symbol": sym,
+                            "account": acct,
+                            "row_class": "holding",
+                            "market_value": 10000,
+                            "verdict": "HOLD",
+                            "confidence": 0.7,
+                            "advisory_row_hash": "row-schd",
+                            "rationale": "Thesis intact.",
+                        }],
+                        "metadata": {},
+                    },
+                }
                 for i, v in enumerate(["TRIM", "HOLD", "TRIM", "HOLD", "TRIM"]):
                     am.append_run_history(
                         [{

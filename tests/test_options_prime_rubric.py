@@ -7,10 +7,10 @@ paper_fill_quality null-exclusion + weight renormalization, persist shape
 (exactly ONE UPDATE merging meta.prime_json, never status), the no-order-path
 invariant (grep + AST: the rubric never imports the alpaca_paper submit lane,
 any broker/HTTP module, and never calls transition/submit), CLI flag
-enforcement, and the Part-F API routes through api_v2.handle (mark-ready actor,
-submit refused without confirm / without ALPACA_PAPER_BASE_URL as honest 4xx,
-prime-rubric route, reconcile, record-outcome and promote guards, GET-list
-meta.alpaca_json + prime_json exposure).
+enforcement, the prime-rubric route, GET-list meta.alpaca_json + prime_json
+exposure, and the 2026-09-25 retirement of the Hub alpaca-paper routes
+(mark-ready / submit / reconcile / record-outcome / promote-live-review
+return 403 options_desk_schwab_only and never call the lane).
 
     .venv/bin/python -m pytest tests/test_options_prime_rubric.py -q
 """
@@ -407,71 +407,32 @@ def _post(api, path, body):
     return api.handle(path, method="POST", body=body)
 
 
-def test_api_mark_ready_requires_proposal_id(api):
-    st, res = _post(api, "/api/v2/options/alpaca-paper/mark-ready", {})
-    assert st == 400 and res["ok"] is False and "proposal_id" in res["reason"]
+# Hub alpaca-paper routes retired 2026-09-25 (Schwab-only desk). The old
+# contract — 400 missing proposal_id, 200 mark-ready, 409 illegal transition,
+# confirm-gated submit — is gone. These routes return 403 before the lane.
+_RETIRED_ALPACA_HUB_ROUTES = (
+    "/api/v2/options/alpaca-paper/mark-ready",
+    "/api/v2/options/alpaca-paper/submit",
+    "/api/v2/options/alpaca-paper/reconcile",
+    "/api/v2/options/alpaca-paper/record-outcome",
+    "/api/v2/options/alpaca-paper/promote-live-review",
+)
 
 
-def test_api_mark_ready_uses_operator_ui_actor(api, monkeypatch):
-    from lib.options_pipeline import alpaca_paper as ap
-    seen = {}
-
-    def fake_mark_ready(pid, *, operator_actor, executor=None):
-        seen.update(pid=pid, actor=operator_actor)
-        return {"ok": True, "proposal_id": pid, "from": "pending",
-                "to": ap.STATE_READY}
-    monkeypatch.setattr(ap, "mark_ready", fake_mark_ready)
-    st, res = _post(api, "/api/v2/options/alpaca-paper/mark-ready",
-                    {"proposal_id": "p1"})
-    assert st == 200 and res["ok"]
-    assert seen == {"pid": "p1", "actor": "operator:ui"}
-
-
-def test_api_mark_ready_illegal_transition_is_409(api, monkeypatch):
-    from lib.options_pipeline import alpaca_paper as ap
-
-    def boom(pid, *, operator_actor, executor=None):
-        raise ap.IllegalTransitionError("ALPACA_PAPER_FILLED → READY is illegal")
-    monkeypatch.setattr(ap, "mark_ready", boom)
-    st, res = _post(api, "/api/v2/options/alpaca-paper/mark-ready",
-                    {"proposal_id": "p1"})
-    assert st == 409 and res["ok"] is False and "illegal" in res["reason"]
-
-
-def test_api_submit_refused_without_confirm(api, monkeypatch):
+def test_api_alpaca_paper_hub_routes_stay_retired(api, monkeypatch):
     from lib.options_pipeline import alpaca_paper as ap
     called = []
-    monkeypatch.setattr(ap, "submit_ready_proposal",
-                        lambda *a, **k: called.append(1))
-    for body in ({"proposal_id": "p1"}, {"proposal_id": "p1", "confirm": False},
-                 {"proposal_id": "p1", "confirm": "yes"}):
-        st, res = _post(api, "/api/v2/options/alpaca-paper/submit", body)
-        assert st == 400 and res["ok"] is False and "confirm" in res["reason"]
-    assert not called  # never reached the lane
-
-
-def test_api_submit_refused_without_paper_env(api, monkeypatch):
-    """confirm:true + READY row but NO ALPACA_PAPER_BASE_URL → honest 4xx reason
-    from the real paper-endpoint hard lock (no monkeypatched submit)."""
-    from lib.options_pipeline import alpaca_paper as ap
-    db = FakeDB([_row(ap.STATE_READY)])
-    monkeypatch.setattr(ap, "_default_executor", lambda: db)
-    for name in ("ALPACA_PAPER_BASE_URL", "ALPACA_MODE"):
-        monkeypatch.delenv(name, raising=False)
-    st, res = _post(api, "/api/v2/options/alpaca-paper/submit",
-                    {"proposal_id": RTX_PROPOSAL["id"], "confirm": True})
-    assert st == 409 and res["ok"] is False
-    assert "ALPACA_PAPER_BASE_URL" in res["reason"]
-    assert db.rows[RTX_PROPOSAL["id"]]["status"] == ap.STATE_READY  # untouched
-
-
-def test_api_reconcile_route(api, monkeypatch):
-    from lib.options_pipeline import alpaca_paper as ap
-    monkeypatch.setattr(ap, "reconcile_fills",
-                        lambda **k: {"ok": True, "submitted_polled": 0,
-                                     "transitions": [], "warnings": []})
-    st, res = _post(api, "/api/v2/options/alpaca-paper/reconcile", {})
-    assert st == 200 and res["ok"] and res["transitions"] == []
+    monkeypatch.setattr(ap, "mark_ready", lambda *a, **k: called.append("mark_ready"))
+    monkeypatch.setattr(ap, "submit_ready_proposal", lambda *a, **k: called.append("submit"))
+    monkeypatch.setattr(ap, "reconcile_fills", lambda **k: called.append("reconcile"))
+    body = {"proposal_id": "p1", "confirm": True, "exit_premium": 1.0}
+    for path in _RETIRED_ALPACA_HUB_ROUTES:
+        st, res = _post(api, path, body)
+        assert st == 403 and res["ok"] is False, path
+        assert res["reason"] == "options_desk_schwab_only"
+        st0, res0 = _post(api, path, {})
+        assert st0 == 403 and res0["reason"] == "options_desk_schwab_only", path
+    assert called == []
 
 
 def test_api_prime_rubric_route(api, monkeypatch):
@@ -490,74 +451,6 @@ def test_api_prime_rubric_route(api, monkeypatch):
     assert st2 == 404 and res2["ok"] is False
 
 
-def test_api_record_outcome_guards(api, monkeypatch):
-    from lib.options_pipeline import alpaca_paper as ap
-    st, res = _post(api, "/api/v2/options/alpaca-paper/record-outcome",
-                    {"proposal_id": "p1"})
-    assert st == 400 and "exit_premium" in res["reason"]
-    # wrong state → 409
-    db = FakeDB([_row("pending")])
-    monkeypatch.setattr(ap, "_default_executor", lambda: db)
-    st2, res2 = _post(api, "/api/v2/options/alpaca-paper/record-outcome",
-                      {"proposal_id": RTX_PROPOSAL["id"], "exit_premium": 42.0})
-    assert st2 == 409 and "pending" in res2["reason"]
-    # FILLED but no fill price in meta → honest refusal, no fabricated P/L
-    db3 = FakeDB([_row(ap.STATE_FILLED, meta={"alpaca_json": {}})])
-    monkeypatch.setattr(ap, "_default_executor", lambda: db3)
-    st3, res3 = _post(api, "/api/v2/options/alpaca-paper/record-outcome",
-                      {"proposal_id": RTX_PROPOSAL["id"], "exit_premium": 42.0})
-    assert st3 == 409 and "fill" in res3["reason"]
-
-
-def test_api_record_outcome_happy_path(api, monkeypatch):
-    from lib.options_pipeline import alpaca_paper as ap
-    import lib.options_pipeline.validation as val
-    meta = {"alpaca_json": {
-        "request": {"symbol": "RTX260918C00160000"},
-        "response": {"id": "ord-42"},
-        "fill": {"price": 40.10, "filled_at": "2026-07-06T14:31:00Z"}}}
-    db = FakeDB([_row(ap.STATE_FILLED, meta=meta)])
-    monkeypatch.setattr(ap, "_default_executor", lambda: db)
-    recorded = {}
-
-    def fake_record(pid, **kw):
-        recorded.update(proposal_id=pid, **kw)
-        return {"ok": True}
-    monkeypatch.setattr(val, "record_outcome", fake_record)
-    st, res = _post(api, "/api/v2/options/alpaca-paper/record-outcome",
-                    {"proposal_id": RTX_PROPOSAL["id"], "exit_premium": 43.85})
-    assert st == 200 and res["ok"]
-    assert res["pnl"] == 375.0 and res["outcome"] == "win"  # (43.85-40.10)×100
-    assert recorded["pnl"] == 375.0 and recorded["exit_reason"] == "manual"
-    assert db.rows[RTX_PROPOSAL["id"]]["status"] == ap.STATE_OUTCOME
-
-
-def test_api_promote_requires_confirm_and_prime_verdict(api, monkeypatch):
-    from lib.options_pipeline import alpaca_paper as ap
-    st, res = _post(api, "/api/v2/options/alpaca-paper/promote-live-review",
-                    {"proposal_id": "p1"})
-    assert st == 400 and "confirm" in res["reason"]
-    # OUTCOME_RECORDED but prime verdict below the live-review label → 409
-    db = FakeDB([_row(ap.STATE_OUTCOME,
-                      meta={"prime_json": {"verdict": "PRIME_FOR_PAPER"}})])
-    monkeypatch.setattr(ap, "_default_executor", lambda: db)
-    st2, res2 = _post(api, "/api/v2/options/alpaca-paper/promote-live-review",
-                      {"proposal_id": RTX_PROPOSAL["id"], "confirm": True})
-    assert st2 == 409 and "PRIME_FOR_PAPER" in res2["reason"]
-    assert db.rows[RTX_PROPOSAL["id"]]["status"] == ap.STATE_OUTCOME
-    # verdict label present → operator-only state machine promote succeeds
-    db3 = FakeDB([_row(ap.STATE_OUTCOME,
-                       meta={"prime_json": {"verdict": pr.VERDICT_LIVE_REVIEW_LABEL}})])
-    monkeypatch.setattr(ap, "_default_executor", lambda: db3)
-    st3, res3 = _post(api, "/api/v2/options/alpaca-paper/promote-live-review",
-                      {"proposal_id": RTX_PROPOSAL["id"], "confirm": True})
-    assert st3 == 200 and res3["ok"]
-    assert "no order was placed" in res3["note"]
-    assert db3.rows[RTX_PROPOSAL["id"]]["status"] == ap.STATE_LIVE_REVIEW
-    log = db3.rows[RTX_PROPOSAL["id"]]["meta"]["alpaca_state_log"]
-    assert log[-1]["actor"] == "operator:ui"
-
-
 def test_api_get_list_exposes_alpaca_and_prime_json(api, monkeypatch):
     """Paper-model queue rows in the proposals feed carry meta.alpaca_json +
     prime_json through to the frontend; flag-less rows stay fail-closed dropped."""
@@ -573,7 +466,7 @@ def test_api_get_list_exposes_alpaca_and_prime_json(api, monkeypatch):
 
     def fake_execute(sql, params=None, fetch=None):
         s = " ".join(sql.split())
-        if "FROM options_approval_queue" in s and "strategy = 'deep_itm_call'" in s:
+        if "FROM options_approval_queue" in s and "strategy = ANY(%s)" in s:
             return [{"proposal_id": r["proposal_id"],
                      "queue_status": r["status"],
                      "proposal_json": r["proposal_json"], "meta": r["meta"],

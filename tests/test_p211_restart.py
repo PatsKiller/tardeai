@@ -97,6 +97,7 @@ class TestRestartRecovery:
         """Handoffs survive simulated restart."""
         handoff = {
             "handoff_id": "handoff-restart-001",
+            "parent_run_id": "run-restart-001",
             "from_agent": "alex",
             "to_agent": "maria",
             "task_type": "cio_question",
@@ -110,6 +111,7 @@ class TestRestartRecovery:
         new_queue = AgentHandoffQueue(event_store_path=store_path)
         recovered = new_queue.get_handoff("handoff-restart-001")
         assert recovered is not None
+        assert recovered["parent_run_id"] == "run-restart-001"
 
     def test_notification_persistence(self, notification_outbox):
         """Notifications survive simulated restart."""

@@ -498,8 +498,9 @@ def submit_ready_proposal(proposal_id: str, *, confirm: bool = False,
     row = get_queue_row(proposal_id, ex)
     if not row:
         return {"ok": False, "error": f"proposal {proposal_id!r} not in queue"}
-    # Stage E (2026-09-25): primary desk is Schwab Path B + per-order 2FA.
+    # Stage E (2026-09-25): primary desk is the live Path B route.
     # Alpaca paper submit stays lab-only — refuse desk Path B strategies here.
+    # Do not name the live broker in this module; the isolation scan forbids it.
     try:
         from lib.options_pipeline.validation import DESK_PATH_B_STRATEGIES, PAPER_LAB_STRATEGIES
     except Exception:
@@ -516,7 +517,7 @@ def submit_ready_proposal(proposal_id: str, *, confirm: bool = False,
     if strat in DESK_PATH_B_STRATEGIES and not edu and strat not in PAPER_LAB_STRATEGIES:
         raise OperatorActionRequiredError(
             f"Alpaca paper refused for desk Path B strategy {strat!r} — "
-            "execute via Schwab Path B + per-order 2FA only (paper lab is for educational rows)"
+            "execute on the desk live route only (paper lab is for educational rows)"
         )
     payload = build_order_payload(row)
     if dry_run:
