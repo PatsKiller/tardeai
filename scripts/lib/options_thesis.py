@@ -54,6 +54,9 @@ LIFECYCLE_EVENTS = {
     "OPTIONS_THESIS_RESEARCH_REQUESTED": "RESEARCH_QUEUED",
     "OPTIONS_THESIS_RESEARCH_COMPLETE": "RESEARCH_COMPLETE",
     "OPTIONS_THESIS_CIO_REVIEW_QUEUED": "CIO_REVIEW_QUEUED",
+    # 2026-09-27: one event per failed review attempt (INVALID / TRUNCATED / LLM_ERROR /
+    # DEDUPE_SKIPPED) so the next attempt can use a fresh job key and the cap can count.
+    "OPTIONS_THESIS_CIO_REVIEW_FAILED": "CIO_REVIEW_FAILED",
     "OPTIONS_THESIS_DECISION": "DECISION_ISSUED",
     "OPTIONS_THESIS_FOLLOWUP_REQUESTED": "CIO_FOLLOWUP_RESEARCH",
     "OPTIONS_THESIS_FOLLOWUP_COMPLETE": "FOLLOWUP_COMPLETE",
@@ -323,7 +326,7 @@ class OptionsThesisStore:
                 stage = LIFECYCLE_EVENTS[et]
                 timeline.append({"stage": stage, "at": e.get("recorded_at"),
                                  **{k: e.get(k) for k in ("research_id", "decision_guid", "outcome", "reason",
-                                                          "due_at", "deliverables", "lane")
+                                                          "due_at", "deliverables", "lane", "status")
                                     if e.get(k) is not None}})
         last = {}
         for e in events:
@@ -338,7 +341,14 @@ class OptionsThesisStore:
         if abandoned and since and str(abandoned.get("recorded_at") or "") < since:
             abandoned = None
         decisions = [e for e in events if e.get("event_type") == "OPTIONS_THESIS_DECISION"]
-        return {"stage": stage, "timeline": timeline,
+        # Failed review attempts since the last reopen (and since the last issued decision):
+        # the next attempt's job key carries this count so the router's dedupe does not
+        # return the failed attempt's empty answer forever (DELL cb162b79, 2026-09-27).
+        last_dec_at = str((last.get("OPTIONS_THESIS_DECISION") or {}).get("recorded_at") or "")
+        floor_at = max(since, last_dec_at)
+        review_failures = sum(1 for e in events if e.get("event_type") == "OPTIONS_THESIS_CIO_REVIEW_FAILED"
+                              and str(e.get("recorded_at") or "") > floor_at)
+        return {"stage": stage, "timeline": timeline, "review_failures": review_failures,
                 "created_at": since or (timeline[0]["at"] if timeline else None),
                 "reopened": reopened,
                 "decisions_since_reopen": [d for d in decisions if str(d.get("recorded_at") or "") > since],

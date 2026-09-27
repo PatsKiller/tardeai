@@ -2635,6 +2635,13 @@ GATES = [
         ["tests/test_options_broker_gates_20260927.py"],
     ),
     (
+        # 2026-09-27 -- a failed options CIO review is retryable (attempt-suffixed job key),
+        # the router's dedupe skip is classified, raw response heads are kept for diagnosis,
+        # and failed attempts are capped (max_review_failures) and named on the card.
+        "cio_review_retry_20260927",
+        ["tests/test_cio_review_retry_20260927.py"],
+    ),
+    (
         # 2026-09-27 -- options order gates (operator work order, PR 3): the submit-mode risk
         # evaluator fails closed on an input the desk does not have (quote/chain age, session,
         # buying power, liquidity); approvals are pinned to the legs and expire; archived
