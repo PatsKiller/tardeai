@@ -88,6 +88,13 @@ def _prior_decisions(p: dict[str, Any], memory: Optional[dict[str, Any]]) -> Opt
         return []
 
 
+def _f(v: Any) -> Optional[float]:
+    try:
+        return None if v is None else float(v)
+    except (TypeError, ValueError):
+        return None
+
+
 def _first(*vals: Any) -> Any:
     for v in vals:
         if v is not None:
@@ -144,6 +151,31 @@ def build_facts(p: dict[str, Any], *, memory: Optional[dict[str, Any]] = None,
                                  if prem and strike and dte else None),
         "desk_floor_min_pop_pct": 52, "desk_floor_min_edge": 62,
     }
+    # 2026-09-27: the DELL review derived "max loss / credit = 2.15" (1365 / 635) and the
+    # traceability rail refused it. The rail stays; the ratios a reviewer naturally forms
+    # from a defined-risk spread are supplied as facts instead.
+    max_loss, max_profit = _f(p.get("max_loss")), _f(p.get("max_profit"))
+    if max_loss and max_profit and max_profit > 0:
+        derived["loss_to_credit_ratio"] = round(max_loss / max_profit, 2)
+        derived["credit_to_loss_ratio"] = round(max_profit / max_loss, 2)
+        derived["return_on_risk_pct"] = round(100.0 * max_profit / max_loss, 1)
+        if dte:
+            derived["annualized_return_on_risk_pct"] = round(100.0 * max_profit / max_loss * 365.0 / max(int(dte), 1), 1)
+    sk, lk = _f(p.get("short_strike")), _f(p.get("long_strike"))
+    if sk and lk and sk > lk:
+        width = round(sk - lk, 2)
+        derived["spread_width"] = width
+        derived["spread_width_pct_of_spot"] = _pct(width, spot) if spot else None
+        credit = _f(p.get("executable_credit")) if p.get("executable_credit") is not None else _f(prem)
+        if credit is not None:
+            derived["credit_pct_of_width"] = round(100.0 * credit / width, 1)
+            derived["max_loss_per_share"] = round(width - credit, 2)
+        derived["long_strike_vs_spot_pct"] = _pct(lk, spot) if spot else None
+        for k in ("executable_credit", "mid_credit", "credit_haircut", "credit_basis", "max_loss_at_mid", "breakeven_at_mid"):
+            if p.get(k) is not None:
+                derived[k] = p.get(k)
+        if p.get("mid_credit") and credit:
+            derived["credit_haircut_pct_of_mid"] = round(100.0 * (float(p["mid_credit"]) - credit) / float(p["mid_credit"]), 1)
     ra = p.get("research_answers") or {}
     facts = {
         "symbol": p.get("symbol"), "strategy": p.get("strategy"), "classification": memo.get("classification_label"),
