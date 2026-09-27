@@ -223,7 +223,7 @@ def retrieve_structured_sources(
         try:
             cur.execute(
                 """
-                SELECT id, title, source, rag_status, relevance_score, created_at, url
+                SELECT id, title, source, rag_status, relevance_score, created_at, source_url AS url
                 FROM news_articles
                 WHERE symbol=%s AND rag_status='approved'
                 ORDER BY created_at DESC LIMIT %s

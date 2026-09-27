@@ -2566,6 +2566,12 @@ GATES = [
         ["tests/test_symbol_news_curation_20260927.py", "tests/test_options_thesis_lifecycle_20260926.py"],
     ),
     (
+        # 2026-09-27 -- news_articles has source_url, not url: the thesis evidence
+        # gate never counted approved news for any symbol (since 2026-08-19).
+        "news_url_column_20260927",
+        ["tests/test_news_url_column_20260927.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).

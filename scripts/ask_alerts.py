@@ -71,7 +71,7 @@ def _news_hits(company: str, keywords):
         from alert_event_writer import _get_conn
         c = _get_conn(); cur = c.cursor()
         like = "%" + company.lower() + "%"
-        cur.execute("""SELECT title, url, published_at FROM news_articles
+        cur.execute("""SELECT title, source_url AS url, published_at FROM news_articles
                        WHERE lower(title) LIKE %s AND published_at > NOW() - INTERVAL '3 days'
                        ORDER BY published_at DESC LIMIT 25""", (like,))
         rows = cur.fetchall()
