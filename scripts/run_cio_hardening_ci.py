@@ -2540,6 +2540,12 @@ GATES = [
         ["tests/test_contradiction_incremental_20260927.py", "tests/test_research_metadata_contradiction.py"],
     ),
     (
+        # 2026-09-27 -- the Hermes external lane breaker also trips on 'unavailable'
+        # (ChatGPT CODEX_HEADLESS), not only HTTP 401/403.
+        "lane_breaker_unavailable_20260927",
+        ["tests/test_lane_breaker_unavailable_20260927.py"],
+    ),
+    (
         # 2026-09-26 -- options-gap CIO research reads the web first (SearXNG, then the
         # Brave router), answers cite supplied urls only, and CIO follow-ups are research
         # tasks (a symbol with no thesis also gets the four thesis questions).
