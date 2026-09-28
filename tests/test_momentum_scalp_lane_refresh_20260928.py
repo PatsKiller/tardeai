@@ -140,6 +140,11 @@ def test_wrapper_refreshes_at_16_min_and_skips_at_4_min(tmp_path, monkeypatch):
     seen.clear(); rc, rep = run(4.0)
     assert rc == 0 and not seen
     assert rep["stages"][0]["reason"].startswith("skipped_finviz_refresh_fresh (age=4.0m")
+    # grid tolerance: 14.5 min at a 15-min threshold IS due (observed slip to 20-min refreshes)
+    seen.clear(); rc, rep = run(14.5)
+    assert seen, "age within one grid slack of the threshold must refresh"
+    seen.clear(); rc, rep = run(14.0)
+    assert not seen
     seen.clear(); rc, rep = run(None)   # no receipt ever → refresh
     assert seen
 
