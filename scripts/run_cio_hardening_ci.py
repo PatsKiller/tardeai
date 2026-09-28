@@ -2833,7 +2833,8 @@ GATES = [
         # row broke check_lane_registry on main; recorded as a dated inherited tranche
         # with provenance (the original baseline is not grown) that the gate honours.
         "lane_registry_inherited_tranche_20260928",
-        ["tests/test_lane_registry_inherited_tranche_20260928.py"],
+        ["tests/test_lane_registry_inherited_tranche_20260928.py",
+         "tests/test_alarm_fires_reminder_and_supervisor_20260928.py"],
     ),
 ]
 
