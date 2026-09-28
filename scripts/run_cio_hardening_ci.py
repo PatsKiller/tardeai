@@ -2660,6 +2660,16 @@ GATES = [
         ["tests/test_cio_packet_derived_ratios_20260927.py"],
     ),
     (
+        # 2026-09-27 -- options order-authorization contract (execution-engineering grant):
+        # the order is built from the 2FA'd intent only, the evidence-bound approval is
+        # created at confirm, freshness is recomputed from the intent's timestamps (absent
+        # fails closed regardless of source), buying power is read and gated, and changed
+        # legs / account / quantity / limit / proposal version after approval fail closed.
+        "options_order_authorization_20260927",
+        ["tests/test_options_order_authorization_20260927.py",
+         "tests/test_options_broker_gates_20260927.py"],
+    ),
+    (
         # 2026-09-27 -- options order gates (operator work order, PR 3): the submit-mode risk
         # evaluator fails closed on an input the desk does not have (quote/chain age, session,
         # buying power, liquidity); approvals are pinned to the legs and expire; archived
