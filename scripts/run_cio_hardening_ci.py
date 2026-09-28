@@ -2703,6 +2703,13 @@ GATES = [
         ["tests/test_ui_metric_guide.py", "tests/test_ui_insight.py"],
     ),
     (
+        # 2026-09-28: the lifecycle script self-deadlocked against the crontab's own flock
+        # (57 skipped passes, every options thesis stuck at CREATED). An ancestor's lock is
+        # inherited from /proc/self/fd, a foreign holder is still refused.
+        "options_lifecycle_inherited_lock_20260928",
+        ["tests/test_lifecycle_inherited_lock_20260928.py"],
+    ),
+    (
         # Reviewer 2026-09-28: combined same-symbol exposure includes the shares held (by account),
         # reports options-only / shares / whole-position P/L per row and groups rows by expiration;
         # the earnings gate blocks debit spreads and long puts and names its trigger.
@@ -2852,6 +2859,16 @@ GATES = [
         ["tests/test_go_alerts_and_lane_collectors_20260928.py",
          "tests/test_screener_go_alerts_delivery_20260914.py",
          "tests/test_cio_telegram_stance_gate_20260918.py"],
+    ),
+    (
+        # 2026-09-28 — execution truth: market_cap_usd beside the millions field; expired
+        # proposals leave the blocked queue; a stale summary mirror is not a clock divergence;
+        # a fund's cached NAV is not a degraded quote; extended-hours provider declared;
+        # continuous runner derives its root (unit pinned to CURRENT).
+        "execution_truth_20260928",
+        ["tests/test_execution_truth_20260928.py",
+         "tests/test_quote_selection_contract.py",
+         "tests/test_portfolio_aggregate_contract.py"],
     ),
     (
         # 2026-09-28 — pre-open window honesty: 0400/0700 run two screeners by design and

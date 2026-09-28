@@ -523,7 +523,9 @@
           "expected_seconds": 7200
         }
       ],
-      "writer_facade": "scripts/external_market_data_ingest.py"
+      "writer_facade": "scripts/external_market_data_ingest.py",
+      "extended_hours_provider": "finviz_elite",
+      "extended_hours_note": "2026-09-28 (plan root cause 6): outside 09:30-16:00 the header is priced by portfolio_repricer from Finviz Elite (label 'after-hours mark'); alpaca stays the RTH authority for market_quotes. Mutual funds carry a cached NAV (price_cache_nav) — a mark, not a degraded quote. PROPOSED by the agent; operator ratification pending (approval block above unchanged)."
     },
     {
       "domain": "symbol_identity",

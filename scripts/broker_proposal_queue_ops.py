@@ -19,7 +19,13 @@ def _conn():
 
 
 def _active_where() -> str:
-    return "status IN ('PENDING','APPROVED_FOR_PAPER_TEST')"
+    # 2026-09-28: a proposal past expires_at is not queued work. 22 of the 24 "blocked" rows on
+    # the desk that morning had expired 09-20..09-27 and were still counted.
+    return "status IN ('PENDING','APPROVED_FOR_PAPER_TEST') AND (expires_at IS NULL OR expires_at > NOW())"
+
+
+def _expired_uncounted_where() -> str:
+    return "status IN ('PENDING','APPROVED_FOR_PAPER_TEST') AND expires_at IS NOT NULL AND expires_at <= NOW()"
 
 
 def compute_queue_summary(*, force: bool = False) -> dict:
@@ -41,6 +47,11 @@ def compute_queue_summary(*, force: bool = False) -> dict:
     """)
     cols = [d[0] for d in cur.description]
     rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    try:
+        cur.execute(f"SELECT count(*) FROM paper_trade_proposals WHERE {_expired_uncounted_where()}")
+        expired_uncounted = int((cur.fetchone() or [0])[0] or 0)
+    except Exception:  # noqa: BLE001  # ALARM-DELIVERY-DECLARED: informational count only
+        expired_uncounted = None
 
     pending_by_pid: dict[int, list[str]] = {}
     if rows:
@@ -86,6 +97,7 @@ def compute_queue_summary(*, force: bool = False) -> dict:
         "ok": True,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "total": total,
+        "expired_uncounted": expired_uncounted,   # 2026-09-28: past expires_at, no longer in the active counts
         "route_ready": route_ready,
         "blocked": blocked,
         "agent_pending": agent_pending,
