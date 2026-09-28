@@ -925,7 +925,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_FAST_PATH.md` | Momentum Scalp Validation Fast Path | review_required | OK | `3748851b3d6f` |
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_OPS.md` | Momentum Scalp Validation Ops | review_required | OK | `b51f26253575` |
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_TRACKER.md` | Momentum Scalp Validation Tracker | review_required | OK | `ec2e5f4ac157` |
-| `docs/diligence/current/OPTIONS_ORDER_GATE_PROOF_2026-09-27.md` | Options order gate proof — broker layer (2026-09-27) | review_required | MISSING HEADER | `cae3d3e14be4` |
+| `docs/diligence/current/OPTIONS_ORDER_GATE_PROOF_2026-09-27.md` | Options order gate proof — broker layer (2026-09-27) | review_required | MISSING HEADER | `6dcb1e84f8b7` |
 | `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | MISSING HEADER | `8dd58706d664` |
 | `docs/diligence/current/ORDER_LIFECYCLE.md` | Order Lifecycle | review_required | OK | `8bd7b79ca8fe` |
 | `docs/diligence/current/RELEASE_READINESS.md` | Release Readiness | review_required | OK | `356036502fea` |
@@ -1664,7 +1664,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CLOSE_OPERATOR_GAPS_TO_100_2026-08-19.md` | Close remaining operator gaps to 100% | review_required | OK | `9f9aada669d7` |
 | `docs/ops/COGNITIVE_MEMORY_PRODUCTION_RUNBOOK.md` | Cognitive memory in production: runbook | review_required | OK | `720ebe9b2fee` |
 | `docs/ops/COGX_WAVE1_OPERATOR_RUNBOOK_2026-09-27.md` | COGX Wave 1 — operator runbook: the commands only you can run | review_required | OK | `d2afff1dea8d` |
-| `docs/ops/COGX_WAVE1_STATUS_2026-09-27.md` | COGX Wave 1 · tranches 1–3 — foundations, shadow wiring, lane artifacts | review_required | OK | `8d88b55c71e5` |
+| `docs/ops/COGX_WAVE1_STATUS_2026-09-27.md` | COGX Wave 1 · tranches 1–3 — foundations, shadow wiring, lane artifacts | review_required | OK | `e6da0204bd99` |
 | `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) | review_required | MISSING HEADER | `de97ccca2b56` |
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) | review_required | OK | `7ded3894288a` |
 | `docs/ops/COST_CAP_EXCEEDED_2026-08-22.md` | COST_CAP_EXCEEDED 2026-08-22 — what did not run, and why 895 ≠ 312 | review_required | OK | `e11d852dddbb` |
