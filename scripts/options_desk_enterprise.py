@@ -1403,6 +1403,7 @@ def preflight_desk_gate(
     now: Optional[datetime] = None,
     row: Optional[dict] = None,
     cfg: Optional[dict] = None,
+    holdings: Optional[tuple] = None,
 ) -> dict:
     """Every desk-side reason an options ORDER must not be created, in one place.
 
@@ -1419,6 +1420,8 @@ def preflight_desk_gate(
       7. liquidity pass on the proposal and on EVERY leg
       8. evaluate_hard_risk_blocks(mode="submit") empty, with the freshness inputs
          recomputed from the stored timestamps as of ``now``
+      9. protective put / covered call: shares and cost basis reconciled to the holdings
+         snapshot of record (reconcile_hedge_holdings)
     """
     cfg = cfg or load_desk_config()
     now = now or _now()
@@ -1559,6 +1562,15 @@ def preflight_desk_gate(
         refusals.append(_refusal(str(b.get("code") or "hard_block"), str(b.get("reason") or ""),
                                  snapshot=b.get("snapshot") or None))
 
+    # 9. hedge reconciliation (reviewer 2026-09-27, item 3): a protective put or covered call
+    #    is presented as insurance on / income from HELD shares, so the shares and cost basis
+    #    are reconciled to the holdings snapshot of record before an order exists.
+    hedge = None
+    if str(proposal.get("strategy") or "") in ("protective_put", "covered_call"):
+        hedge = reconcile_hedge_holdings(proposal, now=now, cfg=cfg, holdings=holdings)
+        for r in hedge.get("refusals") or []:
+            refusals.append(r)
+
     return {
         "ok": not refusals,
         "gate": "desk_preflight",
@@ -1567,8 +1579,99 @@ def preflight_desk_gate(
         "market_session": proposal.get("market_session"),
         "quote_age_seconds": proposal.get("quote_age_seconds"),
         "chain_age_seconds": proposal.get("chain_age_seconds"),
+        "hedge_reconciliation": hedge,
         "refusals": refusals,
     }
+
+
+def _fnone(v: Any) -> Optional[float]:
+    """float or None -- unlike _f, absence is not zero (a card without shares_held is unknown)."""
+    try:
+        return None if v in (None, "") else float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _load_holdings_snapshot() -> tuple[list, dict]:
+    """The holdings of record the engine itself reads (persistent state first)."""
+    try:
+        import options_engine as _oe
+    except ImportError:  # pragma: no cover
+        from scripts import options_engine as _oe  # type: ignore
+    rows, meta = _oe._load_holdings()
+    return list(rows or []), dict(meta or {})
+
+
+def reconcile_hedge_holdings(proposal: dict, *, now: Optional[datetime] = None, cfg: Optional[dict] = None,
+                             holdings: Optional[tuple] = None) -> dict:
+    """Shares and cost basis of the hedged position, from the holdings snapshot of record.
+
+    Refuses (fail closed) when: no snapshot; the snapshot is older than
+    ``options_desk_settings.holdings_max_age_hours`` (default 36 -- a Friday close still
+    covers a Sunday review); the symbol is not held in the proposal's account; fewer shares
+    are held than the contracts insure/cover; or no cost basis is on file. Reports the
+    hedged position against BASIS as well as against the mark, because the card's floor and
+    max-loss figures are from the mark and the operator's P/L is from basis.
+    """
+    cfg = cfg or load_desk_config()
+    now = now or _now()
+    sym = str(proposal.get("symbol") or "").upper()
+    acct = str(proposal.get("account") or "")
+    contracts = int(_fnone(proposal.get("contracts")) or 1)
+    covered = contracts * 100
+    refusals: List[dict] = []
+    out: dict = {"symbol": sym, "account": acct, "shares_required": covered}
+    try:
+        rows, meta = holdings if holdings is not None else _load_holdings_snapshot()
+    except Exception as e:  # noqa: BLE001
+        return {**out, "refusals": [_refusal("holdings_unavailable", f"holdings snapshot unreadable ({type(e).__name__})")]}
+    if not rows:
+        return {**out, "refusals": [_refusal("holdings_unavailable", "no holdings snapshot of record")]}
+    max_age_h = float(cfg.get("holdings_max_age_hours") or 36)
+    as_of = _parse_ts(meta.get("data_as_of") or meta.get("generated_at") or meta.get("as_of"))
+    out["snapshot_as_of"] = _iso(as_of) if as_of else None
+    if as_of is None:
+        refusals.append(_refusal("holdings_age_unknown", "holdings snapshot carries no timestamp"))
+    elif (now - as_of).total_seconds() > max_age_h * 3600:
+        refusals.append(_refusal("holdings_stale",
+                                 f"holdings snapshot {_iso(as_of)} is older than {max_age_h:g} h; refresh before an order",
+                                 max_age_hours=max_age_h))
+    matches = [r for r in rows if str(r.get("symbol") or "").upper() == sym and not r.get("is_cash")
+               and (not acct or str(r.get("account") or r.get("account_key") or "") == acct)]
+    if not matches:
+        refusals.append(_refusal("shares_not_held",
+                                 f"{sym} is not held in {acct or 'the proposal account'} per the holdings snapshot"))
+        return {**out, "refusals": refusals}
+    held = round(sum(float(_fnone(r.get("shares") or r.get("quantity")) or 0.0) for r in matches), 4)
+    basis_total = sum(float(_fnone(r.get("cost_basis")) or 0.0) for r in matches)
+    basis_ps = round(basis_total / held, 4) if held and basis_total else None
+    out.update({"shares_held": held, "shares_on_card": _fnone(proposal.get("shares_held")),
+                "cost_basis_total": round(basis_total, 2) if basis_total else None, "cost_basis_per_share": basis_ps})
+    if held + 1e-6 < covered:
+        refusals.append(_refusal("insufficient_shares",
+                                 f"{contracts} contract(s) insure/cover {covered} shares but {held:g} are held",
+                                 shares_held=held, shares_required=covered))
+    card_shares = _fnone(proposal.get("shares_held"))
+    if card_shares is not None and abs(card_shares - held) > 0.01:
+        refusals.append(_refusal("shares_changed",
+                                 f"card was built on {card_shares:g} shares; {held:g} are held now — regenerate",
+                                 shares_on_card=card_shares, shares_held=held))
+    if basis_ps is None:
+        refusals.append(_refusal("cost_basis_missing", f"no cost basis on file for {sym} in {acct or 'the account'}"))
+    else:
+        k, prem, spot = _fnone(proposal.get("strike")), _fnone(proposal.get("premium")), _fnone(proposal.get("underlying_price"))
+        if k and prem is not None:
+            insured = min(held, covered)
+            if str(proposal.get("strategy") or "") == "protective_put":
+                out["floor_per_share_after_premium"] = round(k - prem, 2)
+                out["pl_vs_basis_at_floor"] = round((k - prem - basis_ps) * insured, 2)
+            else:
+                out["called_away_per_share_incl_premium"] = round(k + prem, 2)
+                out["pl_vs_basis_if_called"] = round((k + prem - basis_ps) * insured, 2)
+            if spot:
+                out["pl_vs_basis_at_mark"] = round((spot - basis_ps) * held, 2)
+    out["refusals"] = refusals
+    return {**out, "ok": not refusals}
 
 
 def persist_chain_snapshot(symbol: str, chain: dict, vol: dict) -> None:

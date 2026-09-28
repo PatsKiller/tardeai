@@ -93,6 +93,7 @@ options_desk_settings:
   # time) and expires. preflight_desk_gate refuses an approval older than this (approval_expired)
   # and any proposal whose legs changed since (legs_changed). 240 min = one trading session.
   approval_ttl_minutes: 240
+  holdings_max_age_hours: 36     # 2026-09-27: hedge share/basis reconciliation refuses an older holdings snapshot (a Friday close still covers a Sunday review)
   desk_tier_edge_a: 72          # Tier A — priority desk routing
   desk_tier_edge_b: 62          # Tier B — standard desk
   # Income idea screen (2026-09-26): build a card only from a contract the
