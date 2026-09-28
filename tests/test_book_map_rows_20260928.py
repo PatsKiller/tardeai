@@ -11,6 +11,27 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from scripts.lib.book_map_rows import cash_total, shape_book_row  # noqa: E402
 
 
+def test_finviz_percent_recomputes_a_stored_zero():
+    row = shape_book_row(
+        {
+            "symbol": "SCHD",
+            "account": "schwab_rollover_ira",
+            "market_value": 63142.52,
+            "day_change": 0.0,
+            "day_change_pct": 0,
+            "current_price": 35.14,
+            "broker_day_pl": -363.33,
+            "broker_day_pl_at": "2026-09-28T15:52:03+00:00",
+        },
+        sector="Financials",
+        stop=None,
+        today="2026-09-28",
+        finviz_day_pct=-0.62,
+    )
+    assert row["day_change_basis"] == "finviz_day_pct"
+    assert row["day_change"] < -300
+
+
 def test_zero_day_change_uses_todays_broker_pl():
     row = shape_book_row(
         {
@@ -65,6 +86,29 @@ def test_nonzero_day_change_is_kept():
     )
     assert row["day_change"] == -18.97
     assert "day_change_basis" not in row
+
+
+def test_market_day_ignores_stale_totals_when_finviz_has_a_percent():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+    from portfolio_snapshot_sanity import portfolio_market_day
+
+    md = portfolio_market_day({
+        "portfolio_totals": {"total_value": 1_260_676, "day_change": -23.32, "day_change_pct": -0.0018},
+        "_finviz_day_pct": {"SCHD": -0.62},
+        "holdings": [{
+            "symbol": "SCHD",
+            "account": "schwab_rollover_ira",
+            "is_cash": False,
+            "market_value": 63142.52,
+            "day_change": 0.0,
+            "day_change_pct": 0,
+            "current_price": 35.14,
+        }],
+    })
+    assert md["change"] < -300
+    assert md["change"] != -23.32
 
 
 def test_unpriced_cusip_and_cash_total():
