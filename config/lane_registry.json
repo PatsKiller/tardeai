@@ -696,13 +696,13 @@
         "kind": "systemd",
         "expression": "tradeai-cio-delivery.timer"
       },
-      "expected_cadence_hours": 0.25,
+      "expected_cadence_hours": 24,
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/cio/operator_notification_outbox.jsonl"
       },
-      "note": "cio_delivery_worker --once --mode live. It writes the notification outbox (operator_notification_outbox.jsonl), not cio_delivery_receipts.jsonl — Wave 3C DeliveryReceipt@v1 has no production writer (dark contract)."
+      "note": "cio_delivery_worker --once --mode live. It writes the notification outbox (operator_notification_outbox.jsonl), not cio_delivery_receipts.jsonl — Wave 3C DeliveryReceipt@v1 has no production writer (dark contract). 2026-09-27 breach triage: the outbox is the worker's store (pinned by tests/test_lane_registry.py) but it changes only when a producer queues; cadence set to 24h so an idle healthy worker is not paged (the timer itself fires every 5 min and is proven by systemd Result=success)."
     },
     {
       "lane_id": "cio-defer-revisit",
@@ -715,9 +715,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "data/cio/cio_defer_lineage.jsonl"
+        "path": "data/audit/cio_defer_revisit_last.json"
       },
-      "note": "cio_defer_revisit --live."
+      "note": "cio_defer_revisit --live. Signal corrected 2026-09-27 (breach triage: WRONG_SIGNAL — the previous artifact only changed when the lane had work, or pointed at the dev tree)."
     },
     {
       "lane_id": "autonomy-watchdog",
@@ -1305,11 +1305,10 @@
       "expected_cadence_hours": 0.5,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "db_max",
-        "table": "hermes_external_research",
-        "column": "identity_tagged_at"
+        "kind": "file_mtime",
+        "path": "logs/identity_sweep.log"
       },
-      "note": "Stage 0 of material-change intelligence: resolves research rows to subject identities. identity_tagged_at advances only when the sweep actually tagged something, so it cannot be satisfied by a no-op run."
+      "note": "Stage 0 of material-change intelligence: resolves research rows to subject identities. identity_tagged_at advances only when the sweep actually tagged something, so it cannot be satisfied by a no-op run. Signal corrected 2026-09-27 (breach triage: WRONG_SIGNAL — the previous artifact only changed when the lane had work, or pointed at the dev tree)."
     },
     {
       "lane_id": "material-change-detector-stage1",
@@ -1339,11 +1338,10 @@
       "expected_cadence_hours": 0.25,
       "state": "ACTIVE",
       "output_signal": {
-        "kind": "db_max",
-        "table": "material_changes",
-        "column": "notified_at"
+        "kind": "file_mtime",
+        "path": "logs/material_change_notify.log"
       },
-      "note": "Stage 2 notifier, gateway CANARY mode. Keyed on notified_at rather than communication_events so the signal proves THIS lane advanced a row, not that some other producer wrote an event."
+      "note": "Stage 2 notifier, gateway CANARY mode. Keyed on notified_at rather than communication_events so the signal proves THIS lane advanced a row, not that some other producer wrote an event. Signal corrected 2026-09-27 (breach triage: WRONG_SIGNAL — the previous artifact only changed when the lane had work, or pointed at the dev tree)."
     },
     {
       "lane_id": "watch-review-workers",
@@ -1535,7 +1533,14 @@
         "kind": "file_mtime",
         "path": "logs/morning_brief.log"
       },
-      "note": "The one morning brief: 07:30 ET weekdays. Operator decision 2026-09-14 after the Telegram export showed 50 identical briefs in 16 days, sent at ~20:00 ET by aegis_overnight plus 2-4 repeats (08:00 send_morning_brief, 08:05 aegis_morning_brief_delivery)."
+      "note": "The one morning brief: 07:30 ET weekdays. Operator decision 2026-09-14 after the Telegram export showed 50 identical briefs in 16 days, sent at ~20:00 ET by aegis_overnight plus 2-4 repeats (08:00 send_morning_brief, 08:05 aegis_morning_brief_delivery).",
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
     },
     {
       "lane_id": "aegis-morning-brief-delivery-0805",
@@ -1587,7 +1592,14 @@
         "kind": "file_mtime",
         "path": "data/runtime/screener_go_alerts_last_run.json"
       },
-      "note": "Momentum-scalp GO alerts on Trade-AI scalp criteria (price, float, RVOL, gap, volume, score, verified catalyst), one per symbol per session, social and screener. Operator decision 2026-09-14; dry run that day: ARMP (A+) and ELMT qualified and had never been alerted."
+      "note": "Momentum-scalp GO alerts on Trade-AI scalp criteria (price, float, RVOL, gap, volume, score, verified catalyst), one per symbol per session, social and screener. Operator decision 2026-09-14; dry run that day: ARMP (A+) and ELMT qualified and had never been alerted.",
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
     },
     {
       "lane_id": "data-plausibility-audit",
@@ -1778,7 +1790,8 @@
         "kind": "file_mtime",
         "path": "data/runtime/llm_spend_report_last_monthly.json"
       },
-      "note": "Last calendar month's AI and search spend texted to the operator. Operator ask 2026-09-14."
+      "note": "Last calendar month's AI and search spend texted to the operator. Operator ask 2026-09-14.",
+      "first_due": "2026-10-01T07:15:00-04:00"
     },
     {
       "lane_id": "research-scheduler-holdings",
@@ -1877,12 +1890,16 @@
         3,
         4
       ],
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/governed_agent_flash_market.log"
       },
-      "note": "One governed DeepSeek Flash market-hours agent call per 15 min. 2026-09-14: hours 06-19 -> 09-19 ET (last run 19:45, off DeepSeek peak year-round). Cadence 31 h covers the weekday overnight gap and Monday morning. Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled)."
+      "note": "One governed DeepSeek Flash market-hours agent call per 15 min. 2026-09-14: hours 06-19 -> 09-19 ET (last run 19:45, off DeepSeek peak year-round). Cadence 31 h covers the weekday overnight gap and Monday morning. Operator rule 2026-09-14: scheduled paid work runs weekdays 09:00-21:00 ET or weekends, never inside DeepSeek billing peak (scripts/run_with_deepseek_offpeak.sh --scheduled).",
+      "state_since": "2026-09-27T11:55:00-04:00",
+      "state_reason": "crontab line commented out as RETIRED_DUPLICATE (W0-7, 2026-09-27); the lane had exited 78 since 09-16 on a missing containment flag",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "crontab line 873 reads \"# RETIRED_DUPLICATE (W0-7 2026-09-27 exit 78 since 09-16…)\"; dev-tree log governed_agent_flash_market.log last entry 2026-09-25 19:45 \"failure: containment flag missing …AGENT_JOBS_P0_CONTAINED exit=78\" (breach triage 2026-09-27)"
     },
     {
       "lane_id": "deepseek-balance-snapshot",
@@ -1949,7 +1966,14 @@
         "path": "data/runtime/cio_entry_state_last_run.json",
         "key": "as_of"
       },
-      "note": "2026-09-15 operator: the CIO owns entry state and BUY; the operator and the CIO are alerted; small caps labeled. Deterministic, advisory only, no model calls."
+      "note": "2026-09-15 operator: the CIO owns entry state and BUY; the operator and the CIO are alerted; small caps labeled. Deterministic, advisory only, no model calls.",
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
     },
     {
       "lane_id": "catalyst-graph",
@@ -2027,9 +2051,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "data/cio/dormant_lane_consumers.jsonl"
+        "path": "/home/johnclaw/logs/dormant_lane_consumers.log"
       },
-      "note": "P10 wire. Armed 2026-09-16 with full package approval."
+      "note": "P10 wire. Armed 2026-09-16 with full package approval. Signal corrected 2026-09-27 (breach triage: WRONG_SIGNAL — the previous artifact only changed when the lane had work, or pointed at the dev tree). The script writes only this log (outside the state root)."
     },
     {
       "lane_id": "tradeai-aec-command-center-cycle",
@@ -2272,9 +2296,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "data/runtime/advisory_kb_lesson_candidates.jsonl"
+        "path": "logs/advisory_lessons.log"
       },
-      "note": "Declared 2026-09-24 (agentic-memory tranche 1): nightly reflect -> ratify-safe -> auto-retire over the advisory KB lessons. Was in undeclared_baseline."
+      "note": "Declared 2026-09-24 (agentic-memory tranche 1): nightly reflect -> ratify-safe -> auto-retire over the advisory KB lessons. Was in undeclared_baseline. Signal corrected 2026-09-27 (breach triage: WRONG_SIGNAL — the previous artifact only changed when the lane had work, or pointed at the dev tree)."
     },
     {
       "lane_id": "commitment-outcome-sweep",
@@ -2311,11 +2335,11 @@
       "output_signal": {
         "kind": "json_key",
         "path": "data/cio/instrument_belief_latest.json",
-        "key": "written_beliefs"
+        "key": "as_of"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "scripts/write_instrument_beliefs.py SCHEDULED_ENTRYPOINT; scripts/lib/cio_belief_writer.py; tests/test_instrument_belief_mutation_20260925.py.",
-      "note": "The belief writer. Output signal is the written_beliefs count in instrument_belief_latest.json; 0 is a valid day when nothing new settled."
+      "note": "The belief writer. Output signal is the written_beliefs count in instrument_belief_latest.json; 0 is a valid day when nothing new settled. Signal key corrected 2026-09-27: written_beliefs is a count, as_of is the timestamp."
     },
     {
       "lane_id": "options-thesis-lifecycle",
@@ -2329,9 +2353,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/options_thesis_lifecycle.log"
+        "path": "logs/options_thesis_lifecycle.log"
       },
-      "note": "Operator 2026-09-26 'add the cron' (PR #1256): options thesis research -> CIO decision (LLM CIO review, operator confirms) or archived after 48h. Runs after each hermes CIO drain. Dry run first by default; the cron passes --apply."
+      "note": "Operator 2026-09-26 'add the cron' (PR #1256): options thesis research -> CIO decision (LLM CIO review, operator confirms) or archived after 48h. Runs after each hermes CIO drain. Dry run first by default; the cron passes --apply. Signal path made state-root-relative 2026-09-27 (crontab PROJ moved to CURRENT; the absolute dev-tree log went stale)."
     },
     {
       "lane_id": "alpaca-stop-manager-rth",
@@ -2347,11 +2371,18 @@
       "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-05 — both stop-manager lines now share ONE lock (/tmp/tradeai_alpaca_stop_manager.lock) and the RTH line runs at :07/:27/:47 so it never coincides with the 04-10 repair line's :00/:15/:30/:45.",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/alpaca_stop_manager_cron.log"
+        "path": "logs/alpaca_stop_manager_cron.log"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "scripts/check_cron_sanity.py::check_shared_script_locks (P1 linter, tests/test_p1_cron_unit_linters_20260926.py::test_r05_two_schedules_of_a_broker_script_must_share_one_lock); crontab lines 544/731 measured 2026-09-26 colliding at 09:00/10:00 weekdays; grant dbe23b0073b3a925.",
-      "note": "Paper-only Alpaca stop ratchet (--apply). Broker-touching: overlapping runs were the P1 High finding."
+      "note": "Paper-only Alpaca stop ratchet (--apply). Broker-touching: overlapping runs were the P1 High finding. Signal path made state-root-relative 2026-09-27 (crontab PROJ moved to CURRENT; the absolute dev-tree log went stale).",
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
     },
     {
       "lane_id": "alpaca-stop-manager-oco-repair",
@@ -2367,11 +2398,18 @@
       "state_reason": "Declared 2026-09-26 by the P1 audit remediation (was an inherited-debt baseline entry, undeclared). Crontab edited under operator cron grant dbe23b0073b3a925 (Telegram /approve): R-05 — lock renamed from /tmp/tradeai_oco_repair.lock to the shared /tmp/tradeai_alpaca_stop_manager.lock.",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/alpaca_stop_manager_repair.log"
+        "path": "logs/alpaca_stop_manager_repair.log"
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "scripts/check_cron_sanity.py::check_shared_script_locks (P1 linter); crontab line 731 measured 2026-09-26 with lock /tmp/tradeai_oco_repair.lock distinct from line 544's (none); grant dbe23b0073b3a925.",
-      "note": "OCO repair supervisor (2026-07-04) for OCO_REPLACING/naked paper positions."
+      "note": "OCO repair supervisor (2026-07-04) for OCO_REPLACING/naked paper positions. Signal path made state-root-relative 2026-09-27 (crontab PROJ moved to CURRENT; the absolute dev-tree log went stale).",
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
     },
     {
       "lane_id": "reconcile-exit-advisory-outcomes",
@@ -2445,9 +2483,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/options_memory_projector.log"
+        "path": "logs/options_memory_projector.log"
       },
-      "note": "Operator 2026-09-26 'add the crons' (PR #1266): options theses, CIO decisions, follow-ups and validations into CIO M2 memory via CIOEnvelopeIntegrator; idempotent by event_hash; M2 creds sourced from the rendered secrets file."
+      "note": "Operator 2026-09-26 'add the crons' (PR #1266): options theses, CIO decisions, follow-ups and validations into CIO M2 memory via CIOEnvelopeIntegrator; idempotent by event_hash; M2 creds sourced from the rendered secrets file. Signal path made state-root-relative 2026-09-27 (crontab PROJ moved to CURRENT; the absolute dev-tree log went stale)."
     },
     {
       "lane_id": "options-runtime-export",
@@ -2461,9 +2499,9 @@
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
-        "path": "/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/options_runtime_export.log"
+        "path": "logs/options_runtime_export.log"
       },
-      "note": "Operator 2026-09-26 'add the crons' (PR #1266): redacted options snapshot (no account names, no dollar amounts) for the :05 Drive sync under runtime/options/."
+      "note": "Operator 2026-09-26 'add the crons' (PR #1266): redacted options snapshot (no account names, no dollar amounts) for the :05 Drive sync under runtime/options/. Signal path made state-root-relative 2026-09-27 (crontab PROJ moved to CURRENT; the absolute dev-tree log went stale)."
     },
     {
       "lane_id": "crontab-snapshot-for-health-agent",
@@ -2503,7 +2541,14 @@
       },
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "scripts/check_worker_pins.py classified the line DEV_TREE (audit C-02); linux_launchers/reconcile_alpaca_paper_options.sh:4 hard-coded the dev tree until this change; alpaca_paper_options_executor.py writes Postgres only, so the execution root changes no file store; tests/test_p2_controls_truth_20260926.py::test_options_launcher_honours_project_root_and_py.",
-      "note": "Hourly RTH Alpaca PAPER options reconcile (read-only poll of fills/closes; no order submit)."
+      "note": "Hourly RTH Alpaca PAPER options reconcile (read-only poll of fills/closes; no order submit).",
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ]
     },
     {
       "lane_id": "symbol-news-curation-monitor",
@@ -2558,8 +2603,7 @@
       "owner": "platform",
       "scheduler": {
         "kind": "systemd",
-        "expression": "tradeai-supervisor-breach-detector.timer (OnUnitActiveSec=2min)",
-        "match": "tradeai-supervisor-breach-detector"
+        "expression": "tradeai-supervisor-breach-detector.timer"
       },
       "expected_cadence_hours": 0.05,
       "state": "ACTIVE",
@@ -2574,8 +2618,7 @@
       "owner": "platform",
       "scheduler": {
         "kind": "systemd",
-        "expression": "tradeai-gir-projector.timer (OnUnitActiveSec=1h)",
-        "match": "tradeai-gir-projector"
+        "expression": "tradeai-gir-projector.timer"
       },
       "expected_cadence_hours": 1,
       "state": "ACTIVE",

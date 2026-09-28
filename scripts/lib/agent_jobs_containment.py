@@ -108,6 +108,21 @@ def evaluate_containment_state() -> dict[str, Any]:
     }
 
 
+CLEARED_TRIPWIRE = Path.home() / ".local" / "state" / "tradeai" / "archive" / "AGENT_JOBS_P0_CONTAINED.TRIPWIRE.md"
+
+
+def containment_cleared() -> bool:
+    """True when the operator CLEARED containment (the 2026-09-15 "agents clear" archived the flag
+    and left this tripwire). W0-1 (PR #1282) taught the acquisition wrapper the three states
+    active / cleared / missing; governed reviews that still demanded ACTIVE refused every run
+    with CONTAINMENT_REQUIRED (2026-09-27 triage: watch-review-workers). Cleared is an operator
+    decision and is honoured as satisfying a containment requirement."""
+    try:
+        return CLEARED_TRIPWIRE.is_file()
+    except OSError:
+        return False
+
+
 def is_contained() -> bool:
     """True when containment is ACTIVE.
 

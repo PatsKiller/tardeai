@@ -57,6 +57,45 @@ def breach_id(lane_id: str, kind: str, day: str) -> str:
     return "br_" + hashlib.sha256(f"{lane_id}|{kind}|{day}".encode()).hexdigest()[:16]
 
 
+def _parse_any(ts):
+    return _parse(ts)
+
+
+def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> tuple[_dt.datetime | None, str]:
+    """When should this lane have produced by? Returns (deadline, basis).
+
+    cron lanes: the most recent scheduled fire ≤ now (5-field expression), so a weekday-only or
+    market-hours lane is not judged over a weekend (2026-09-27 triage: 6 false breaches). Other
+    lanes: 3 × cadence (min 15 min), extended by any declared inactive days ending today.
+    """
+    sched = lane.get("scheduler") or {}
+    expr = str(sched.get("expression") or "")
+    cad_h = lane.get("expected_cadence_hours")
+    if sched.get("kind") == "cron" and expr:
+        try:
+            import cron_last_fire as cron_schedule  # type: ignore
+            # the most recent fire that has had max_run to finish: a run still in progress is not a miss
+            local_ref = (now - _dt.timedelta(seconds=max_run_s)).astimezone()
+            lf = cron_schedule.last_fire(expr, local_ref.replace(tzinfo=None))
+            local_now = local_ref
+            if lf is not None:
+                lf = lf.replace(tzinfo=local_now.tzinfo).astimezone(_dt.timezone.utc)
+                return lf, f"cron:{expr}"
+        except Exception:  # noqa: BLE001 — fall back to the cadence rule
+            pass
+    if not cad_h:
+        return None, "no_cadence"
+    limit_s = max(3 * float(cad_h) * 3600, 900)
+    days = lane.get("active_days")
+    if isinstance(days, (list, tuple)) and days:
+        # extend the window by the inactive days that end today (Mon=0 .. Sun=6)
+        d = now.astimezone().date(); extra = 0
+        while d.weekday() not in days and extra < 7:
+            extra += 1; d -= _dt.timedelta(days=1)
+        limit_s += extra * 86400
+    return now - _dt.timedelta(seconds=limit_s), f"cadence:{cad_h}h×3"
+
+
 def detect(*, lanes: list[dict], sla_by_lane: dict[str, dict], heartbeats: dict[str, dict],
            observe, now: _dt.datetime) -> list[dict]:
     """Pure: returns Breach@v1 rows. ``observe(sig)`` returns {last_output_at, readable}."""
@@ -72,6 +111,9 @@ def detect(*, lanes: list[dict], sla_by_lane: dict[str, dict], heartbeats: dict[
         if lane.get("state") != "ACTIVE":
             continue
         lid = lane.get("lane_id")
+        fd = _parse(lane.get("first_due"))
+        if fd and now < fd:
+            continue  # declared not-yet-due (e.g. a monthly report installed mid-month)
         sla = sla_by_lane.get(lid)
         if not sla:
             add(lane, "UNGOVERNED", {"note": "no SLA row", "cmd": "python3 scripts/seed_supervisor_sla.py --json-out data/runtime/supervisor_sla_seed.json"})
@@ -83,17 +125,48 @@ def detect(*, lanes: list[dict], sla_by_lane: dict[str, dict], heartbeats: dict[
                 add(lane, "SILENT", {"last_beat": hb.get("last_beat"), "max_silence_s": sla["max_silence_s"], "boot_id": hb.get("boot_id")})
             if hb.get("memory_context_ok") is False and sla.get("memory_context_required") == "fail-closed":
                 add(lane, "MEMORY_UNREACHABLE", {"degraded_reasons": hb.get("degraded_reasons"), "last_beat": hb.get("last_beat")}, level=2)
-        cad_h = lane.get("expected_cadence_hours")
         sig = lane.get("output_signal") or {}
-        if cad_h and sig.get("kind") not in (None, "none"):
-            obs = {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in (observe(sig) or {}).items()}
-            lo = _parse(obs.get("last_output_at"))
-            limit_s = max(3 * float(cad_h) * 3600, 900)
-            if not obs.get("readable", True) or lo is None:
-                add(lane, "NO_OUTPUT", {"signal": sig, "observed": obs, "note": "signal unreadable or never produced"})
-            elif (now - lo).total_seconds() > limit_s:
-                add(lane, "NO_OUTPUT", {"signal": sig, "last_output_at": obs.get("last_output_at"), "limit_s": limit_s})
+        if sig.get("kind") in (None, "none"):
+            continue
+        max_run = float(sla.get("max_run_s") or 900)
+        deadline, basis = _expected_since(lane, now, max_run)
+        if deadline is None:
+            continue
+        obs = {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in (observe(sig) or {}).items()}
+        lo = _parse(obs.get("last_output_at"))
+        if obs.get("readable") is False:
+            add(lane, "NO_OUTPUT", {"signal": sig, "observed": obs, "basis": basis, "note": "signal unreadable (UNVERIFIABLE, reported as NO_OUTPUT)"})
+        elif lo is None:
+            add(lane, "NO_OUTPUT", {"signal": sig, "observed": obs, "basis": basis, "note": "never produced"})
+        elif lo < deadline:
+            add(lane, "NO_OUTPUT", {"signal": sig, "last_output_at": obs.get("last_output_at"), "expected_by": deadline.isoformat(), "basis": basis})
     return out
+
+
+def _read_only_db_query():
+    """A `db_query(sql) -> rows` for db_max signals, read-only, fail-soft (None when no DSN).
+    2026-09-27 triage: without it every db_max lane read as NO_OUTPUT ("no db_query supplied")."""
+    try:
+        import db_adapter  # type: ignore
+        conn = db_adapter._get_conn()
+    except Exception:  # noqa: BLE001
+        return None
+
+    def q(sql: str):
+        try:
+            with conn.cursor() as cur:
+                cur.execute("BEGIN READ ONLY")
+                cur.execute(sql)
+                rows = cur.fetchall()
+            conn.rollback()
+            return rows
+        except Exception:  # noqa: BLE001
+            try:
+                conn.rollback()
+            except Exception:  # noqa: BLE001
+                pass
+            return None
+    return q
 
 
 def main() -> int:
@@ -115,7 +188,8 @@ def main() -> int:
     sla_by_lane = {r["lane_id"]: r for r in (json.loads(seed_p.read_text()).get("rows", []) if seed_p.exists() else [])}
     heartbeats = {h.get("lane_id"): h for h in hbmod.read_all(root=root, env=env)}
     state_root = Path(a.state_root) if a.state_root else None
-    observe = (lambda sig: lane_registry.observe_signal(sig, root=state_root)) if state_root else (lambda sig: lane_registry.observe_signal(sig))
+    db_query = _read_only_db_query()
+    observe = (lambda sig: lane_registry.observe_signal(sig, root=state_root, db_query=db_query)) if state_root else (lambda sig: lane_registry.observe_signal(sig, db_query=db_query))
     rows = detect(lanes=reg.get("lanes", []), sla_by_lane=sla_by_lane, heartbeats=heartbeats, observe=observe, now=now)
     by_kind: dict[str, int] = {}
     for r in rows:
