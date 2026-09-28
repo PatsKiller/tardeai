@@ -1,15 +1,15 @@
 @import './styles/tokens.css';
 
 :root {
-  --bg0: #0f1117;
-  --bg1: #171923;
-  --bg2: #1e2130;
-  --border: #2d3148;
-  --border-subtle: #232640;
-  --text0: #e8eaf0;
-  --text1: #c4c8d8;
-  --text2: #9098b0;
-  --text3: #5a6180;
+  --bg0: var(--bg-0); /* themed alias (PR4) */
+  --bg1: var(--bg-1); /* themed alias (PR4) */
+  --bg2: var(--bg-2); /* themed alias (PR4) */
+  --border: var(--border-color); /* themed alias (PR4) */
+  --border-subtle: var(--border-subtle); /* themed alias (PR4) */
+  --text0: var(--text-0); /* themed alias (PR4) */
+  --text1: var(--text-1); /* themed alias (PR4) */
+  --text2: var(--text-2); /* themed alias (PR4) */
+  --text3: var(--text-3); /* themed alias (PR4) */
   --green: #22c55e;
   --red: #ef4444;
   --amber: #f59e0b;
@@ -445,14 +445,14 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
 
 /* ── Global Bloomberg Terminal UI mode (.cc-terminal-ui on app-shell) ── */
 .cc-terminal-ui {
-  --bg0: #0a0e1a;
-  --bg1: #0f172a;
-  --bg2: #111827;
-  --border: #1e293b;
-  --text0: #f8fafc;
-  --text1: #e2e8f0;
-  --text2: #cbd5e1;
-  --text3: #94a3b8;
+  --bg0: var(--bg-0); /* themed alias (PR4) */
+  --bg1: var(--bg-1); /* themed alias (PR4) */
+  --bg2: var(--bg-2); /* themed alias (PR4) */
+  --border: var(--border-color); /* themed alias (PR4) */
+  --text0: var(--text-0); /* themed alias (PR4) */
+  --text1: var(--text-1); /* themed alias (PR4) */
+  --text2: var(--text-2); /* themed alias (PR4) */
+  --text3: var(--text-3); /* themed alias (PR4) */
   --accent: #ffb000;
   --accent-dim: rgba(255, 176, 0, 0.14);
   --amber: #ffb000;

@@ -30,6 +30,8 @@ export function Metric({ guideKey, label, value, tone, size = 'md', trend, spark
   return (
     <MetricGuide guideKey={guideKey} values={values} placement={size === 'sm' ? 'bottom' : 'top'}>
       <div
+        data-testid="metric"
+        data-guide-key={guideKey}
         onClick={onClick}
         role={onClick ? 'button' : undefined}
         style={{ display: 'inline-flex', flexDirection: 'column', gap: 2, minWidth: 0, cursor: onClick ? 'pointer' : 'help', ...style }}

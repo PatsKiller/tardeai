@@ -71,8 +71,13 @@ def options_insight(p: dict[str, Any]) -> dict[str, Any]:
     econ = p.get("economics") or {}
     flags = p.get("flags") or []
     not_ok = next((f for f in flags if isinstance(f, dict) and f.get("key") == "NOT_APPROVABLE"), None)
-    blocks = list(((p.get("enterprise") or {}).get("blocks") or [])) + [
-        str((b or {}).get("reason") or b) for b in (p.get("thesis_blocks") or [])]
+    # blocks arrive as strings or {code, reason, gate} dicts; read the reason, never repr() a dict; dedupe in order
+    raw = list(((p.get("enterprise") or {}).get("blocks") or [])) + list(p.get("thesis_blocks") or [])
+    blocks: list[str] = []
+    for b in raw:
+        txt = str(b.get("reason") or b.get("code") or "") if isinstance(b, dict) else str(b or "")
+        if txt and txt not in blocks:
+            blocks.append(txt)
     drivers: list[str] = []
     if review.get("concerns"):
         drivers += [str(c) for c in review["concerns"][:2]]
