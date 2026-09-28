@@ -110,6 +110,8 @@ def main() -> int:
     else:
         print(f"declared lanes          : {len(rows)}  ({active} ACTIVE)")
         print(f"inherited-debt baseline : {len(reg.get('undeclared_baseline') or [])}")
+        for _t in reg.get("inherited_tranches") or []:
+            print(f"inherited tranche {_t.get('added')}: {len(_t.get('lines') or [])} lines — {str(_t.get('reason'))[:90]}…")
         print(f"reason ESTABLISHED     : "
               f"{sum(1 for r in rows if r.get('reason_confidence') == 'ESTABLISHED')}")
         print(f"reason CORRELATED      : {len(correlated)}"
