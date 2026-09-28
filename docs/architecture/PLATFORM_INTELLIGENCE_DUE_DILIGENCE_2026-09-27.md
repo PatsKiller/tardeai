@@ -10,6 +10,9 @@ Method:      three independent read-only exploration passes, plus targeted measu
              - file counts; crontab and systemd listings
              Wave 0 fixes were made afterwards as separate PRs (Section 13).
 Authority:   READ_ONLY_ADVISORY. MBI_BEHAVIOR = 0 was not touched.
+Extended by: cognitive_transformation_20260927/ (2026-09-27, PROPOSED) — memory enforcement, Global Intelligence Record,
+             retrieval-first, supervision, governance; its 09_MATURITY_GAP_AND_ROADMAP.md supersedes §12
+             waves 1–5 as the active plan once approved; §12 remains the baseline.
 Supersedes:  nothing. Read with TRADE_AI_AS_IS_2026-09-14.md, TRADE_AI_FUTURE_STATE_2026-09-14.md,
              CIO_AS_IS_2026-09-20-1445.md, IDENTITY_AND_MEMORY_ADVISORY_2026-08-27.md, AGENT_SERVICE_MAP_2026-09-25.md
 Requested:   operator 2026-09-27: principal-architect review of memory, research persistence, agents,

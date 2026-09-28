@@ -44,7 +44,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/CURSOR_CLOUD_PLAIN_ENGLISH_STARTER_GUIDE.md` | Cursor Cloud Plain-English Starter Guide | review_required | OK | `c7ab9524a7e1` |
 | `docs/DAILY_OPS_LOG.md` | DAILY_OPS_LOG.md | review_required | OK | `80578251dbf0` |
 | `docs/DASHBOARD_AUDIT_WORKFLOW.md` | Dashboard Visual Audit — Operator Workflow | review_required | OK | `4f878d49e6a9` |
-| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `c58887fa762d` |
+| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `74b05b6bc2d9` |
 | `docs/ENGINEERING_HARD_RULES.md` | Engineering Hard Rules (enforced) | review_required | OK | `c9798da3d1f2` |
 | `docs/ENGINE_ROOM_V1.md` | Engine Room v1 — Plumbing & Intake Hardening (2026-07-16) | review_required | OK | `c13ce7b7e784` |
 | `docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md` | Trade AI v12 — Executive Architecture Overview | review_required | OK | `84fd22510408` |
@@ -247,7 +247,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/alerts/PHASE68C_FALSE_FIXED_VERIFICATION_GATE.md` | Phase 68C — False-Fixed Verification Gate | review_required | OK | `7722b0a39795` |
 | `docs/alerts/PHASE68D_ALERT_TO_HERMES_BACKLOG_DESIGN.md` | Phase 68D — Alert-to-Hermes Backlog Design | review_required | OK | `761874de8ee9` |
 | `docs/alerts/PHASE68E_ALERT_DEDUPE_DRYRUN_REPORT.md` | Phase 68E — Alert Dedupe Dry-Run Report | review_required | OK | `d0286b9c9fc2` |
-| `docs/architecture/AEC_PARALLEL_AGENTS_AND_MEMORY.md` | AEC parallel agents and memory spines | review_required | OK | `541a2bfbe61a` |
+| `docs/architecture/AEC_PARALLEL_AGENTS_AND_MEMORY.md` | AEC parallel agents and memory spines | review_required | OK | `5900fa7f9744` |
 | `docs/architecture/AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v2_0.md` | AGENTIC FINANCIAL SYSTEM & COGNITIVE ARCHITECTURE v2.0 | archive_superseded | OK | `470b688fcc3b` |
 | `docs/architecture/AGENTIC_LAB_EXECUTION_PACKET_2026-07-24.md` | Agentic MVL Disposable LAB Execution Checklist — 2026-07-24 | review_required | OK | `77b3c7bfb04c` |
 | `docs/architecture/AGENTIC_LAB_PROVISIONING_BLOCKER_2026-07-24.md` | Agentic LAB Provisioning Checkpoint — 2026-07-24 | review_required | OK | `74d473239727` |
@@ -256,9 +256,9 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/AGENTIC_MVL_REMAINING_DELIVERABLES_2026-07-24.md` | Agentic MVL Remaining Deliverables — 2026-07-24 | review_required | OK | `628266ec7e8f` |
 | `docs/architecture/AGENTIC_RUNTIME_BASELINE_2026-07-23.md` | Trade AI Agentic Runtime Baseline — 2026-07-23 | review_required | OK | `26a644a55edf` |
 | `docs/architecture/AGENT_MATURITY_COMMAND_CENTER_IMPLEMENTATION_PLAN_2026-07-25.md` | Agent Maturity and Command Center Implementation Plan — 2026-07-25 | review_required | OK | `4a66cdff27f6` |
-| `docs/architecture/AGENT_SERVICE_MAP_2026-09-25.md` | Agent and Service Map — traced from code and the served host | review_required | OK | `58493f51fd43` |
+| `docs/architecture/AGENT_SERVICE_MAP_2026-09-25.md` | Agent and Service Map — traced from code and the served host | review_required | OK | `5d1890b5787e` |
 | `docs/architecture/AGENT_TOOL_PERMISSION_MATRIX_2026-07-23.md` | Trade AI Agent Tool Permission Matrix — 2026-07-23 | review_required | OK | `f40d7f04bd37` |
-| `docs/architecture/ARCHITECTURE_INDEX.md` | Architecture Index — where to look before you change a component | review_required | OK | `4df7691b69b0` |
+| `docs/architecture/ARCHITECTURE_INDEX.md` | Architecture Index — where to look before you change a component | review_required | OK | `3af8b36899d6` |
 | `docs/architecture/ATM_BROKER_ACCOUNT_AUTOMATION_2026_06_05.md` | ATM → Broker/Account Automation Console (Phase 1) — 2026-06-05 | review_required | OK | `4cc7fdd232c2` |
 | `docs/architecture/ATM_BROKER_ACCOUNT_REFACTOR_DUE_DILIGENCE.md` | ATM Controls → Broker/Account Automation — Due Diligence (Phase 1) | review_required | OK | `34549ef247f4` |
 | `docs/architecture/ATM_EXECUTOR_AUTOMATION_MODE_WIRING_2026_06_05.md` | ATM Executor ← automation_mode Wiring (2026-06-05) | review_required | OK | `62abcc4e67d2` |
@@ -287,7 +287,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_FUTURE_2026-09-20-0902.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 09:02 ET | archive_superseded | OK | `85651c22a853` |
 | `docs/architecture/CIO_FUTURE_2026-09-20-0945.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 09:45 ET | archive_superseded | OK | `8981ae27954a` |
 | `docs/architecture/CIO_FUTURE_2026-09-20-1445.md` | CIO / AEC FUTURE — full maturity — 2026-09-20 14:45 ET | review_required | OK | `60a4819f9f02` |
-| `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `4edef7d3ee4d` |
+| `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `2abbbd77884e` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-final.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 final) | review_required | OK | `5b412d2266d6` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09) | review_required | OK | `999bb7b18aab` |
@@ -302,7 +302,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_GAP_2026-09-20-1445.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 14:45 ET (amended 2026-09-21) | review_required | OK | `c99951d0cdb9` |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
-| `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | OK | `56592a4af733` |
+| `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | OK | `9a7681fff8f2` |
 | `docs/architecture/DEFENSE_DESK_V1.md` | Defense Desk v1 — Sector Momentum · Posture · (Hedge/Short foundations) — 2026-07-17 | review_required | OK | `2d7224586b88` |
 | `docs/architecture/DEFENSE_DESK_V10.md` | Defense Desk v10 — Cross-Desk Consistency & Stop Re-Entry Watch (2026-08-06) | review_required | OK | `0bb10a0bd93d` |
 | `docs/architecture/DEFENSE_DESK_V2.md` | Defense Desk v2 — Whole Market · Industries · The Rotation Picture (2026-07-18) | review_required | OK | `420f9c7484ef` |
@@ -329,10 +329,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
 | `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-1600.md` | LLM Cost Governance AS-IS — 2026-09-20 16:00 ET | archive_superseded | OK | `c33d84747e79` |
 | `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-2100.md` | LLM Cost Governance AS-IS — 2026-09-20 21:00 ET | review_required | OK | `ae7ab963993b` |
-| `docs/architecture/M2_PRODUCTION_SHADOW_MIGRATION_DESIGN_2026-08-24.md` | M2 production shadow migration — DESIGN ONLY | review_required | OK | `18aa33439911` |
+| `docs/architecture/M2_PRODUCTION_SHADOW_MIGRATION_DESIGN_2026-08-24.md` | M2 production shadow migration — DESIGN ONLY | review_required | OK | `5b7812587fbc` |
 | `docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md` | Material change → due-diligence questions | review_required | OK | `665175b2ce35` |
 | `docs/architecture/MATURITY_PLAN_4_TO_8.5_2026-09-21.md` | Getting from 4 to 8.5 — the plan, with the arithmetic shown | review_required | MISSING HEADER | `9d0f384de05a` |
-| `docs/architecture/MATURITY_PLAN_4_TO_8.5_2026-09-21_ENHANCED.md` | Enhanced six-phase maturity plan — 4.75 → 8.6 | review_required | MISSING HEADER | `37f80744f2ff` |
+| `docs/architecture/MATURITY_PLAN_4_TO_8.5_2026-09-21_ENHANCED.md` | Enhanced six-phase maturity plan — 4.75 → 8.6 | review_required | MISSING HEADER | `df6abeb4c235` |
 | `docs/architecture/MATURITY_STATUS_2026-09-21-2205.md` | Where we are: 4.75 / 10 — and what moves it to 8.5 | review_required | MISSING HEADER | `833bdb36740f` |
 | `docs/architecture/MATURITY_STATUS_2026-09-22.md` | Maturity status — 2026-09-22 | review_required | MISSING HEADER | `f27194274d5b` |
 | `docs/architecture/MENTIONS_SCHEDULING_AND_RETENTION.md` | Mentions: scheduling, retention, and who decides relevance | review_required | OK | `44f38a74e254` |
@@ -411,7 +411,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/PHASE210B_LOOKTHROUGH_APPLY_DIFF_SCHEDULE.md` | Phase 210B — Lookthrough Apply + Diff + Schedule — 2026-06-07 | review_required | OK | `8f9f70d8d735` |
 | `docs/architecture/PHASE210C_CADENCE_TIMER_SCHEDULE_VERIFICATION.md` | Phase 210C — Cadence Timer Schedule Verification — 2026-06-07 | review_required | OK | `1d9cdac8c715` |
 | `docs/architecture/PLAN_S_HOLLOW_RESEARCH_THEN_ANSWER_2026-09-22.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | delete_candidate_duplicate | OK | `5e9e634f7fa6` |
-| `docs/architecture/PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md` | Platform Intelligence Due Diligence: Memory, Research, Agents, Workers (As-Is / To-Be) | review_required | OK | `33fa062d49c3` |
+| `docs/architecture/PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md` | Platform Intelligence Due Diligence: Memory, Research, Agents, Workers (As-Is / To-Be) | review_required | OK | `235d5804d634` |
 | `docs/architecture/PRE_DEPLOY_STATE_GUARD.md` | Pre-Deploy State Guard (canonical) | review_required | OK | `fe30cc8699b6` |
 | `docs/architecture/PROJECT_THE_DESK_V2.md` | PROJECT · THE DESK — an autonomous CIO, built as extensions to the existing spec | review_required | OK | `2af6860a863f` |
 | `docs/architecture/QUOTE_PIPELINE_UNIFICATION_SCOPING_2026-08-27.md` | Quote Pipeline Unification — Scoping (Audit Finding H4) | review_required | OK | `d3580a82544b` |
@@ -432,31 +432,36 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/SCALP_MULTI_SETUP_INTEGRATION_2026-07-27.md` | Scalp Multi-Setup Taxonomy — Integration Architecture (2026-07-27) | review_required | OK | `970e5489b60b` |
 | `docs/architecture/SCHWAB_API_CAPABILITY_MAP.md` | Schwab Trader API → Trade AI v12 — Capability Map (design, no code) | review_required | OK | `163c131c4c86` |
 | `docs/architecture/SCHWAB_API_PHASE1_READONLY_FOUNDATION.md` | Schwab API — Phase 1 Read-Only Foundation (canonical) | review_required | OK | `a11674ef7b56` |
-| `docs/architecture/TICKER_KNOWLEDGE_GRAPH_GUID_LINEAGE.md` | Ticker Knowledge Graph GUID Lineage | review_required | OK | `a7c43967abca` |
+| `docs/architecture/TICKER_KNOWLEDGE_GRAPH_GUID_LINEAGE.md` | Ticker Knowledge Graph GUID Lineage | review_required | OK | `2437d6bcbab8` |
 | `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | TradeAI System State & Autonomy Record — 2026-08-20 (updated 2026-08-21 evening) | review_required | OK | `d9303c3e9930` |
 | `docs/architecture/TRADE_AI_AS_IS_2026-09-14.md` | Trade AI Platform — AS-IS: Deployed & Tested Environment | review_required | OK | `4272eddf89f6` |
 | `docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md` | Trade AI Platform — AS-IS Lifecycles: the complete end-to-end picture | review_required | OK | `cf4cbeb78077` |
 | `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md` | Bitemporal memory data model | review_required | OK | `8491cfb5a15b` |
-| `docs/architecture/TRADE_AI_FUTURE_STATE_2026-09-14.md` | Trade AI Platform — FUTURE STATE: Target Architecture & Build Recommendation | review_required | OK | `b6ec05e6f6db` |
+| `docs/architecture/TRADE_AI_FUTURE_STATE_2026-09-14.md` | Trade AI Platform — FUTURE STATE: Target Architecture & Build Recommendation | review_required | OK | `0b8d8c77a12c` |
 | `docs/architecture/TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md` | Trade AI Platform — FUTURE STATE Lifecycles: target lifecycles, lifecycle contract and build roadmap | review_required | OK | `0705cb774b73` |
-| `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | Trade AI Institutional Memory + Autonomous Agent Architecture | review_required | OK | `27f6d0b5fa01` |
+| `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | Trade AI Institutional Memory + Autonomous Agent Architecture | review_required | OK | `b8f0727bdc82` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_0.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.0 | archive_superseded | OK | `513271e8544b` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_1.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.1 | archive_superseded | OK | `cafe3fa26a8c` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_2.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.2 | archive_superseded | OK | `45cf5d3a3ad9` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_3.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.3 | review_required | OK | `e2649ec30f53` |
-| `docs/architecture/TRADE_AI_MEMORY_RETRIEVAL_AND_INDEX_STRATEGY_2026-08-24.md` | Memory retrieval and index strategy | review_required | OK | `c37d853660e6` |
+| `docs/architecture/TRADE_AI_MEMORY_RETRIEVAL_AND_INDEX_STRATEGY_2026-08-24.md` | Memory retrieval and index strategy | review_required | OK | `afd3648362c2` |
 | `docs/architecture/TRADE_AI_WORKLOG_2026-09-14.md` | Trade AI — Work Log: everything changed from 2026-09-13 20:00 to 2026-09-14 23:44 | review_required | OK | `f6af86715bf5` |
 | `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md` | Trade-AI work log — 2026-09-15 | review_required | MISSING HEADER | `c64058d9dff7` |
 | `docs/architecture/TRADE_AI_WORKLOG_2026-09-16.md` | Trade-AI work log — 2026-09-16 | review_required | MISSING HEADER | `75af831ec916` |
 | `docs/architecture/TRADE_INTELLIGENCE_JOURNAL_DESIGN.md` | Trade Intelligence Journal -- Design Document | review_required | OK | `471edac9ceb2` |
-| `docs/architecture/V3_3_IMPLEMENTATION_STATUS_2026-09-27.md` | v3.3 implementation status | review_required | OK | `fdead3fe6fc7` |
+| `docs/architecture/V3_3_IMPLEMENTATION_STATUS_2026-09-27.md` | v3.3 implementation status | review_required | OK | `b50d5b17334d` |
 | `docs/architecture/V3_OPENCLAW_TRADEAI_SYSTEM_TABS.md` | Command Center v3 — OpenClaw + TradeAI System Tabs — 2026-06-07 | review_required | OK | `10a7313b3681` |
 | `docs/architecture/V3_OPEN_TRADES_INTELLIGENCE_2026_06_05.md` | v3 Open Trades — Actionable Position Intelligence (2026-06-05) | review_required | OK | `f0c1ace4b5a9` |
 | `docs/architecture/WATCH_DESK_V2.md` | Watch Desk v2 — Truth & Directive Governance (P0 workstreams, 2026-07-16) | review_required | OK | `be5f8cd47049` |
 | `docs/architecture/WATCH_DESK_V3.md` | Watch Desk v3 — From Watching to Learning (2026-07-16 evening) | review_required | OK | `ea65c14610d0` |
 | `docs/architecture/WATCH_DESK_V4.md` | Watch Desk v4 — Terminal Grade (2026-07-16, evening) | review_required | OK | `018c8ea82d4c` |
 | `docs/architecture/adr/ADR-005-decision-integrity-validator-and-alert-semantics.md` | ADR-005 — One decision-integrity validator before any actionable surface; alert and wake semantics | review_required | OK | `24682fee658c` |
-| `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | archive_superseded | OK | `1b18a9999a79` |
+| `docs/architecture/adr/ADR-006-memory-as-platform-dependency.md` | ADR-006 — Memory is a platform dependency, not a service | review_required | OK | `9c078d1698c4` |
+| `docs/architecture/adr/ADR-007-retrieval-first-before-generation.md` | ADR-007 — Retrieval before generation: research is never done twice | review_required | OK | `3522798fcef9` |
+| `docs/architecture/adr/ADR-008-one-global-intelligence-record.md` | ADR-008 — One Global Intelligence Record with one envelope and one key discipline | review_required | OK | `9f396476b9b5` |
+| `docs/architecture/adr/ADR-009-supervisory-ladder-and-conformance-gate.md` | ADR-009 — A supervisory ladder for every lane and a conformance gate for every silo | review_required | OK | `71cf9c194f2b` |
+| `docs/architecture/adr/ADR-010-approval-packages.md` | ADR-010 — Consolidated approval packages in front of the guard | review_required | OK | `ec933d7433de` |
+| `docs/architecture/agent-contracts.md` | Agent Consumption Contracts — AgentConsumptionReceipt@v1 | archive_superseded | OK | `f8b7769839f4` |
 | `docs/architecture/agent-memory-view-proposal.md` | Command Center — Agent Memory view (proposal) | review_required | OK | `7b90f4d8e3d6` |
 | `docs/architecture/channel-adapters.md` | Gateway Channel Adapters — Phase 10 | review_required | OK | `2457155850f5` |
 | `docs/architecture/cio-cognition-tranche3-20260925.md` | CIO cognition tranche 3 — prompt event-driven cognition and the closed learning chain | review_required | OK | `4593665c031d` |
@@ -503,6 +508,21 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/cio/PHASE_MINUS_1_DEPENDENCY_GRAPH.md` | CIO Phase -1 Dependency Graph | review_required | OK | `f070b02eaf30` |
 | `docs/architecture/cio/PHASE_MINUS_1_FINAL_ACCEPTANCE.md` | CIO Phase -1 Final Acceptance Report | review_required | OK | `6f150fa78ddf` |
 | `docs/architecture/cio/SPECIALIST_MATURITY_CATALOG.md` | Specialist Maturity Catalog | review_required | OK | `98aaa9379997` |
+| `docs/architecture/cognitive_transformation_20260927/00_EXECUTIVE_PACKAGE.md` | 00 · Executive Package — Platform Cognitive Transformation to ≥ 4.7 / 5 | review_required | OK | `4841095ceabf` |
+| `docs/architecture/cognitive_transformation_20260927/01_MEMORY_ENFORCEMENT_LAYER.md` | 01 · Memory Enforcement Layer — memory as a platform dependency | review_required | OK | `ef82b82b9242` |
+| `docs/architecture/cognitive_transformation_20260927/02_GLOBAL_INTELLIGENCE_RECORD.md` | 02 · Global Intelligence Record — one envelope for every kind of intelligence | review_required | OK | `a1a8bdeaf89a` |
+| `docs/architecture/cognitive_transformation_20260927/03_RESEARCH_RETRIEVAL_FIRST.md` | 03 · Research Retrieval First — research is never done twice | review_required | OK | `31fc61d9c544` |
+| `docs/architecture/cognitive_transformation_20260927/04_PERSISTENT_COGNITIVE_MEMORY.md` | 04 · Persistent Cognitive Memory — restoring thought, not files | review_required | OK | `166aef09e8c2` |
+| `docs/architecture/cognitive_transformation_20260927/05_PLATFORM_INTELLIGENCE_GOVERNANCE.md` | 05 · Platform Intelligence Governance Layer — every silo behaves identically | review_required | OK | `2fe361ef97bf` |
+| `docs/architecture/cognitive_transformation_20260927/06_SUPERVISORY_INTELLIGENCE_LAYER.md` | 06 · Supervisory Intelligence Layer — SLA enforcement, health oversight, no silent failures | review_required | OK | `fcb6f02f1c97` |
+| `docs/architecture/cognitive_transformation_20260927/07_ENTERPRISE_COGNITIVE_GRAPH.md` | 07 · Enterprise Cognitive Graph — the graph as an execution framework | review_required | OK | `648ae0e74b50` |
+| `docs/architecture/cognitive_transformation_20260927/08_MEMORY_INFLUENCE_PATH.md` | 08 · Memory Influence Path — from 0 % to > 80 % without an unsafe loop | review_required | OK | `ee0fbe9a3464` |
+| `docs/architecture/cognitive_transformation_20260927/09_MATURITY_GAP_AND_ROADMAP.md` | 09 · Maturity Gap to ≥ 4.7 — honest scores, debts, and the Wave 1–5 roadmap | review_required | OK | `207900470ca2` |
+| `docs/architecture/cognitive_transformation_20260927/10_DOCUMENTATION_PLAN.md` | 10 · Documentation Plan — affected, new, obsolete; diffs; sequencing | review_required | OK | `5db3d8544493` |
+| `docs/architecture/cognitive_transformation_20260927/11_APPROVAL_PACKAGE.md` | 11 · Approval Package — what must be approved, by whom, through which stages | review_required | OK | `fe97ba364b66` |
+| `docs/architecture/cognitive_transformation_20260927/12_INSTALL_AND_PERMISSION_INVENTORY.md` | 12 · Installation and Permission Inventory — pre-execution gates | review_required | OK | `a6a14f92e043` |
+| `docs/architecture/cognitive_transformation_20260927/13_TELEGRAM_APPROVAL_GATE.md` | 13 · Consolidated Telegram Approval Gate — one queue, one message, full audit | review_required | OK | `881190a84f62` |
+| `docs/architecture/cognitive_transformation_20260927/AGENTS_13_AMENDMENT_DRAFT.md` | AGENTS.md §13.8 amendment — DRAFT for operator review (not applied) | review_required | OK | `13a032ffcdd4` |
 | `docs/architecture/communication-event.md` | CommunicationEvent@v2 — Architecture | review_required | OK | `b01accbb7a09` |
 | `docs/architecture/communications-workspace.md` | Communications Workspace — Phase 7 | review_required | OK | `ef24c2e77a8e` |
 | `docs/architecture/curation-and-provenance.md` | Controlled Curation and Provenance (Phase 5) | review_required | OK | `3e135a9b0d64` |
@@ -767,6 +787,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/briefs/WAVE_3E_close_leftovers.md` | No Wave 3F — close leftovers | review_required | OK | `02d2e413ec7f` |
 | `docs/briefs/WAVE_CASH_PROOF_authorized_promote.md` | Authorized merge #635 + exact-main promote | review_required | OK | `00e7c9d65c79` |
 | `docs/briefs/WAVE_CASH_PROOF_saturday_635.md` | Saturday cash-fossil proof of #635 | review_required | OK | `587d1d6a5bdf` |
+| `docs/briefs/WAVE_COGX_cognitive_maturity_4_7.md` | Wave COGX — Drive Platform Intelligence Maturity From Current State to 4.7+ | review_required | OK | `72ff91c06995` |
 | `docs/briefs/WAVE_OVERNIGHT_2026-09-01.md` | CIO overnight wave — the five-minute version, 2026-09-01 | review_required | OK | `021e9c78d091` |
 | `docs/briefs/WAVE_PERSISTENT_CIO_slices_a_e.md` | Persistent CIO — Slices A-E (InstrumentRecord, rehydrate, CC reads record, research budget, preconditions board) | review_required | OK | `8e822c859ba1` |
 | `docs/briefs/WAVE_RESIDUAL_WEB_live_still_gated.md` | Residual web — live, still gated | review_required | OK | `f92827b61b73` |
@@ -1663,6 +1684,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/CI_FAST_CORE_20260925.md` | CI fast core, risk tiers and digest-free evidence (2026-09-25) | review_required | MISSING HEADER | `0848756e5ca9` |
 | `docs/ops/CLOSE_OPERATOR_GAPS_TO_100_2026-08-19.md` | Close remaining operator gaps to 100% | review_required | OK | `9f9aada669d7` |
 | `docs/ops/COGNITIVE_MEMORY_PRODUCTION_RUNBOOK.md` | Cognitive memory in production: runbook | review_required | OK | `720ebe9b2fee` |
+| `docs/ops/COGX_WAVE1_APPROVAL_PACKAGE_2026-09-27.md` | COGX Wave 1 approval package — pkg-20260927-cogx-w1-d9e1 | review_required | OK | `07d135121c55` |
 | `docs/ops/COGX_WAVE1_OPERATOR_RUNBOOK_2026-09-27.md` | COGX Wave 1 — operator runbook: the commands only you can run | review_required | OK | `d2afff1dea8d` |
 | `docs/ops/COGX_WAVE1_STATUS_2026-09-27.md` | COGX Wave 1 · tranches 1–3 — foundations, shadow wiring, lane artifacts | review_required | OK | `e6da0204bd99` |
 | `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) | review_required | MISSING HEADER | `de97ccca2b56` |
@@ -1998,7 +2020,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/project/PROFIT_CAPTURE_EVIDENCE_FLOOR_CEILING_20260606.md` | Profit-Capture — Evidence-Floor Ceiling Determination (2026-06-06) | current_phase_keep | OK | `accb7e33d8e8` |
 | `docs/project/PROFIT_CAPTURE_INTRABAR_PREMATURE_EXIT_20260606.md` | Profit-Capture — Intrabar Path Ingestion + Path-Measured Premature-Exit (Phase 206c, 2026-06-06) | current_phase_keep | OK | `080663aeae4d` |
 | `docs/project/PROFIT_CAPTURE_RULE_BACKTEST_HARDENING_20260606.md` | Profit-Capture Rule Backtest — Hardening (Phase 206b, 2026-06-06) | current_phase_keep | OK | `5895cb719065` |
-| `docs/project/PROJECT_DOC_INDEX.md` | PROJECT_DOC_INDEX.md | active_keep | OK | `6f5786455e6b` |
+| `docs/project/PROJECT_DOC_INDEX.md` | PROJECT_DOC_INDEX.md | active_keep | OK | `0d6146c1d769` |
 | `docs/project/PROTECTIVE_STOP_SUBMIT_UI_FIX_2026-06-21.md` | Protective-Stop Submit — Confirm Response Handling Fix (2026-06-21) | current_phase_keep | OK | `fdbc12f84836` |
 | `docs/project/RECOMMENDATION_INTELLIGENCE.md` | Recommendation Intelligence Engine | current_phase_keep | OK | `86fc73d96ca3` |
 | `docs/project/RELEASE_MANIFEST_LATEST.md` | Release Manifest (auto-generated) | current_phase_keep | OK | `ceefe4e9466d` |

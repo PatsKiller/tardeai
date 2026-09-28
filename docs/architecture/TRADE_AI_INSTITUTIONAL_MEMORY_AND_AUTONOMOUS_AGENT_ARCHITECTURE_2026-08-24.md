@@ -4,6 +4,7 @@
 **Authority:** `READ_ONLY_ADVISORY`  
 **MEMORY_BEHAVIOR_INFLUENCE:** 0  
 **This is not autonomous trading.**
+**Amended by:** `docs/architecture/cognitive_transformation_20260927/` 01 (enforcement), 04 (layer transitions), 08 (influence path) — 2026-09-27, PROPOSED. The seven-plane taxonomy stands.
 
 Memory is context, history, and learning evidence. It is never broker, position, cash, price, order, stop, risk, 2FA, or execution truth. LLMs never own deterministic financial arithmetic.
 

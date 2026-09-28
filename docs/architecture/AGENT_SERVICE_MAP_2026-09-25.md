@@ -4,6 +4,7 @@ Status:      PROPOSED (dated snapshot; re-measure, do not re-date)
 Owner:       platform
 as_of:       2026-09-25T09:20:00-04:00
 Measured at: base 1c60ecb42 (origin/main) / served 1c60ecb42-main-exact-phase2-20260925-091436
+Amended by:  docs/architecture/cognitive_transformation_20260927/06_SUPERVISORY_INTELLIGENCE_LAYER.md (2026-09-27, PROPOSED) — every component gains an SLA row and a heartbeat; registry-vs-host drift becomes a 05 detector
 
 Scope: every component on the research → decision → authorization → broker →
 reconciliation → outcome → memory path, with its entry point, schedule, stores and the

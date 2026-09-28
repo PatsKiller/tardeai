@@ -12,6 +12,8 @@ Measured at:   target specification — NO number in this document is a measurem
 Authority:     full-maturity target, bounded by the AGENTS.md §0/§2 authority rails.
                Maturity never widens authority.
 Supersedes:    CIO_FUTURE_2026-09-11-2013, CIO_FUTURE_2026-09-10-2215 (CIO pipeline only)
+Amended by:    docs/architecture/cognitive_transformation_20260927/00_EXECUTIVE_PACKAGE.md (2026-09-27, PROPOSED) for the
+               memory, agent, research, worker and governance domains
 See also:      TRADE_AI_AS_IS_2026-09-14.md · TRADE_AI_WORKLOG_2026-09-14.md · AGENTS.md §2, §7A, §9, §10, §12,
                §13.4, §15, §17, §18 (Policy-Version 1.2.0 ACTIVE since 2026-09-14)
 ```

@@ -3,6 +3,7 @@
 **Date:** 2026-08-24  
 **Status:** DESIGNED + IMPLEMENTED_SOURCE + TESTED (harness). Index type: **UNMEASURED**.  
 **Authority:** `READ_ONLY_ADVISORY`
+**Amended by:** `docs/architecture/cognitive_transformation_20260927/03_RESEARCH_RETRIEVAL_FIRST.md` (2026-09-27, PROPOSED) — retrieval modes become ladder steps 1–7; index type resolved to pgvector (extension present on production, measured 2026-09-27).
 
 ## Retrieval unit
 

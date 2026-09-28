@@ -10,6 +10,14 @@
 
 ---
 
+## Cognitive transformation package (2026-09-27) — PROPOSED
+
+| Document | Purpose | Status |
+|----------|---------|--------|
+| `docs/architecture/cognitive_transformation_20260927/00_EXECUTIVE_PACKAGE.md` | **Start here** — the ≥ 4.7 transformation package: summary, architecture, Waves 1–5, approvals, top-10 | PROPOSED |
+| `docs/architecture/cognitive_transformation_20260927/01_…13_*.md` | Memory enforcement · Global Intelligence Record · retrieval-first · cognitive memory · governance · supervision · graph · influence path · roadmap · docs plan · approvals · inventory · Telegram gate | PROPOSED |
+| `docs/architecture/adr/ADR-006…ADR-010` | Decisions: memory as dependency, retrieval-first, one record, supervisory ladder + conformance gate, approval packages | PROPOSED |
+
 ## Autonomy & system state (2026-08-20) — read first for recovery
 
 | Document | Purpose | Status |

@@ -2,6 +2,18 @@ Status:      ACTIVE
 as_of:       2026-09-14T23:43:50-04:00
 Measured at: efcc51365 / not measured
 
+## Cognitive transformation package (2026-09-27, PROPOSED)
+Operator-requested principal-architect challenge of the 09-27 due diligence: how to reach ≥ 4.7/5 maturity. All PROPOSED; no code, no host change. Read `00_EXECUTIVE_PACKAGE.md` first.
+
+| Document | Purpose |
+|----------|---------|
+| `docs/architecture/cognitive_transformation_20260927/00_EXECUTIVE_PACKAGE.md` | Executive summary, architecture plan, implementation plan (Waves 1–5), approval summary, top-10 actions, ask→section checklist |
+| `docs/architecture/cognitive_transformation_20260927/01…08_*.md` | The five pillars plus the record, the cognitive memory layers, the graph and the memory-influence ladder |
+| `docs/architecture/cognitive_transformation_20260927/09_MATURITY_GAP_AND_ROADMAP.md` | Per-domain Current / True / Projected / Maximum, debts, Waves 1–5 with §15 proofs |
+| `docs/architecture/cognitive_transformation_20260927/10…13_*.md` | Documentation plan, approval package, install/permission inventory, consolidated Telegram approval gate |
+| `docs/architecture/adr/ADR-006…ADR-010` | The five decisions the package rests on |
+| `docs/briefs/WAVE_COGX_cognitive_maturity_4_7.md` | The operator brief, recovered verbatim |
+
 ## Platform architecture set (2026-09-14)
 Updated after the 29 PRs of 2026-09-13/14 (live `341bce2c1`). Each document has a Word copy with rendered
 Graphviz flow diagrams in the CIO architecture folder on Google Drive; the markdown here is the source of truth.
