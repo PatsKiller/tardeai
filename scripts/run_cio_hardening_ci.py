@@ -2702,6 +2702,13 @@ GATES = [
         ["tests/test_ui_metric_guide.py", "tests/test_ui_insight.py"],
     ),
     (
+        # Reviewer 2026-09-28: combined same-symbol exposure includes the shares held (by account),
+        # reports options-only / shares / whole-position P/L per row and groups rows by expiration;
+        # the earnings gate blocks debit spreads and long puts and names its trigger.
+        "options_exposure_earnings_20260928",
+        ["tests/test_options_exposure_earnings_20260928.py"],
+    ),
+    (
         # 2026-09-27 -- protective puts / covered calls reconcile held shares and cost basis to
         # the holdings snapshot of record at preflight (fail closed on stale, missing, short,
         # changed); every CIO-packet yield names its denominator.

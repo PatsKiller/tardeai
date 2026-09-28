@@ -948,11 +948,17 @@ export default function OptionProposalCardV4({
                             Not counted (archived): {(c.excluded_ideas || []).map((x: any) => `${String(x.strategy || '').replace(/_/g, ' ')} $${x.strike}`).join(', ')}
                           </div>
                         )}
-                        {(c.scenarios || []).length > 0 && (
+                        {c.shares_by_account && Object.keys(c.shares_by_account).length > 0 && (
                           <div style={{ color: BB.text2, marginLeft: 10 }}>
-                            Combined at expiry: {(c.scenarios || []).map((r: any) => `${r.move_pct > 0 ? '+' : ''}${r.move_pct}% ($${r.price}) ${r.combined_pl_at_expiry == null ? '—' : fmt$(r.combined_pl_at_expiry)}`).join(' · ')}
+                            Shares by account: {Object.entries(c.shares_by_account).map(([a, n]) => `${String(a).replace(/_/g, ' ')} ${n}`).join(' · ')}
                           </div>
                         )}
+                        {(c.scenarios_by_expiry || []).map((g: any, gi: number) => (
+                          <div key={gi} style={{ color: BB.text2, marginLeft: 10 }}>
+                            At expiry {g.expiration || '—'}: {(g.rows || []).map((r: any) => `${r.move_pct > 0 ? '+' : ''}${r.move_pct}% ($${r.price}) options ${r.options_only_pl == null ? '—' : fmt$(r.options_only_pl)} · shares ${r.shares_pl == null ? 'unknown' : fmt$(r.shares_pl)} · whole ${r.whole_position_pl == null ? 'withheld' : fmt$(r.whole_position_pl)}`).join(' · ')}
+                          </div>
+                        ))}
+                        {c.scenario_basis && <div style={{ color: BB.text3, marginLeft: 10 }}>{c.scenario_basis}</div>}
                       </div>
                     )
                   })()}
