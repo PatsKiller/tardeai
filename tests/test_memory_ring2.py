@@ -55,6 +55,7 @@ def test_enforced_refuses_and_records_refusal(tmp_path):
 def test_current_context_threads_and_clears(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_MEMORY_CONTEXTS_PATH", str(tmp_path / "c.jsonl"))
     monkeypatch.setenv("TRADEAI_RETRIEVAL_RECEIPTS_PATH", str(tmp_path / "r.jsonl"))
+    ic.set_current_context(None)  # isolation: another test's shadow_open may have left one set
     assert ic.current_context_id() is None
     ctx = {"context_id": "ctx_t", "retrieval_receipt": "rr_t", "actor": {"lane_id": "l"}, "subjects": [], "mode": "SHADOW"}
     ic.set_current_context(ctx)

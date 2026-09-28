@@ -56,7 +56,10 @@ REQUIRED_CLASSES_FOR_DECISION = ("facts", "beliefs", "contradictions")
 # open candidates on 2026-09-27 (live proof) — embedding them made one context row 1.8 MB.
 CONTRADICTIONS_IN_CONTEXT = 25
 
-NAMESPACES = ("SEC", "ISS", "OPT", "THESIS", "EVID", "Q", "DEC", "WAKE", "COMMIT", "OUT", "AGENT",
+import re as _re
+_UUID_RE = _re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+NAMESPACES = ("SUBJ", "SEC", "ISS", "OPT", "THESIS", "EVID", "Q", "DEC", "WAKE", "COMMIT", "OUT", "AGENT",
               "BELIEF", "CKPT", "LANE", "RUN", "BREACH", "LESSON", "PROC", "RISK", "CONTRA", "EVENT",
               "MACRO", "REGIME")
 
@@ -147,8 +150,7 @@ def _freshness(age_hours: float | None, sla_hours: float) -> str:
 
 def behavior_fields() -> tuple[str, ...]:
     try:
-        from cio_instrument_record import BEHAVIOR_FIELDS  # type: ignore
-        return tuple(BEHAVIOR_FIELDS)
+        return tuple(_lib("cio_instrument_record").BEHAVIOR_FIELDS)
     except Exception:  # noqa: BLE001 — the rail must exist even when the module is absent
         return _BEHAVIOR_FIELDS_FALLBACK
 
@@ -194,6 +196,7 @@ def _append(path: Path, row: dict) -> None:
 class Loaders:
     """Each callable reads one existing store. Any of them may raise; open_context degrades."""
     resolve_subject: Callable[[str], dict | None] | None = None      # symbol -> registry entity
+    resolve_guid: Callable[[str], dict | None] | None = None         # security/subject guid -> registry entity
     facts: Callable[[list[str], list[str]], dict] | None = None      # (symbols, guids) -> provider search result
     instrument: Callable[[str], dict | None] | None = None           # symbol -> InstrumentRecord (with beliefs[])
     thesis: Callable[[str], dict | None] | None = None               # symbol -> current symbol thesis record
@@ -205,31 +208,74 @@ class Loaders:
     release_sha: str | None = None
 
 
+
+
+def _lib(name: str):
+    """Import a sibling scripts/lib module under any entrypoint's sys.path shape.
+
+    Live finding 2026-09-27 (first shadow receipts): the wake engine, the Hermes worker and thesis
+    acquisition run with ROOT or ROOT/scripts on sys.path, not ROOT/scripts/lib, so the bare
+    ``import identity_registry`` inside the default loaders raised ModuleNotFoundError and EVERY
+    context in those lanes degraded (identity, facts, thesis, beliefs all "unavailable") while the
+    external-lane hook, which puts scripts/lib on the path, worked. Enforcing on that would have held
+    every wake. Try bare, then ``lib.<name>``, then ``scripts.lib.<name>``, then a path-based load.
+    """
+    import importlib
+    last: Exception | None = None
+    for mod in (name, f"lib.{name}", f"scripts.lib.{name}"):
+        try:
+            return importlib.import_module(mod)
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+    try:
+        import importlib.util as _u
+        here = Path(__file__).resolve().parent
+        spec = _u.spec_from_file_location(name, here / f"{name}.py")
+        if spec and spec.loader:
+            m = _u.module_from_spec(spec); spec.loader.exec_module(m); return m
+    except Exception as exc:  # noqa: BLE001
+        last = exc
+    raise ImportError(f"{name}: {type(last).__name__}: {last}")
+
+
 def default_loaders(root: Path | None = None, env: dict | None = None) -> Loaders:
     """Wrap the existing readers. Imports are lazy so a missing module degrades one class, not all."""
     env = os.environ if env is None else env
     root = Path(root) if root else None
 
     def resolve_subject(symbol: str) -> dict | None:
-        import identity_registry  # type: ignore
+        identity_registry = _lib("identity_registry")
         reg = identity_registry.load_cached() if root is None else identity_registry.load_cached(root=root)
         return identity_registry.lookup_symbol(reg, symbol.upper())
 
+    def resolve_guid(guid: str) -> dict | None:
+        identity_registry = _lib("identity_registry")
+        reg = identity_registry.load_cached() if root is None else identity_registry.load_cached(root=root)
+        ents = (reg.get("entities") or {}) if isinstance(reg, dict) else {}
+        e = ents.get(guid)
+        if e:
+            return e
+        g = str(guid).lower()
+        for ent in ents.values():
+            if isinstance(ent, dict) and (str(ent.get("security_guid") or "").lower() == g or str(ent.get("subject_guid") or "").lower() == g):
+                return ent
+        return None
+
     def facts(symbols: list[str], guids: list[str]) -> dict:
-        from agent_durable_memory import get_durable_provider  # type: ignore
-        from agent_memory_governance import retrieve_for_context  # type: ignore
+        get_durable_provider = _lib("agent_durable_memory").get_durable_provider
+        retrieve_for_context = _lib("agent_memory_governance").retrieve_for_context
         provider = get_durable_provider(root) if root is not None else get_durable_provider()
         query = f"{' '.join(symbols)} investment thesis research context".strip()
         return retrieve_for_context(provider, query=query, symbols=symbols, top_k=8, budget_tokens=1500)
 
     def instrument(symbol: str) -> dict | None:
-        from cio_instrument_record import load_instrument_record_for_wake  # type: ignore
+        load_instrument_record_for_wake = _lib("cio_instrument_record").load_instrument_record_for_wake
         out = load_instrument_record_for_wake(symbol=symbol, root=root)
         return out.get("record") if out and out.get("ok") else None
 
     def thesis(symbol: str) -> dict | None:
-        from cio_theses import CIOThesisStore  # type: ignore
-        from symbol_thesis_coverage import symbol_thesis_id  # type: ignore
+        CIOThesisStore = _lib("cio_theses").CIOThesisStore
+        symbol_thesis_id = _lib("symbol_thesis_coverage").symbol_thesis_id
         cio = _cio_dir(root, env)
         store = CIOThesisStore(event_path=cio / "cio_theses.jsonl", projection_path=cio / "cio_theses_projection.json")
         return store.get_current(symbol_thesis_id(symbol))
@@ -260,13 +306,12 @@ def default_loaders(root: Path | None = None, env: dict | None = None) -> Loader
         return out
 
     def research_objects(symbol: str) -> list[dict]:
-        import hermes_web_research  # type: ignore
+        hermes_web_research = _lib("hermes_web_research")
         s = hermes_web_research.settings()
         return hermes_web_research.reused_objects(symbol.upper(), s, dict(env))
 
     def hermes_completed(fingerprint: str) -> dict | None:
-        import cio_hermes_research  # type: ignore
-        return cio_hermes_research.find_latest_completed_by_fingerprint(fingerprint)
+        return _lib("cio_hermes_research").find_latest_completed_by_fingerprint(fingerprint)
 
     def hermes_results(symbol: str) -> list[dict]:
         path = _cio_dir(root, env) / "hermes_research_results.jsonl"
@@ -286,7 +331,7 @@ def default_loaders(root: Path | None = None, env: dict | None = None) -> Loader
                     out.append(row)
         return out
 
-    return Loaders(resolve_subject=resolve_subject, facts=facts, instrument=instrument, thesis=thesis,
+    return Loaders(resolve_subject=resolve_subject, resolve_guid=resolve_guid, facts=facts, instrument=instrument, thesis=thesis,
                    contradictions=contradictions, research_objects=research_objects,
                    hermes_completed=hermes_completed, hermes_results=hermes_results,
                    release_sha=env.get("TRADEAI_RELEASE_SHA"))
@@ -309,6 +354,22 @@ def _resolve_subjects(subjects: Iterable[str], loaders: Loaders, degraded: list[
             continue
         if is_namespaced(raw):
             out.append({"input": raw, "guid": raw, "symbol": None, "identity_status": "NAMESPACED"})
+            continue
+        if _UUID_RE.match(raw):
+            # The wake engine passes subject_guid (a registry GUID), not a symbol (live finding 2026-09-27).
+            ent = None
+            try:
+                ent = loaders.resolve_guid(raw) if loaders.resolve_guid else None
+            except Exception as exc:  # noqa: BLE001
+                degraded.append(f"IDENTITY_LOADER_FAILED:{raw}:{type(exc).__name__}")
+            if ent:
+                guid = ent.get("security_guid") or ent.get("subject_guid") or raw
+                out.append({"input": raw, "guid": f"SEC:{guid}", "security_guid": ent.get("security_guid"),
+                            "issuer_guid": ent.get("issuer_guid"), "symbol": (ent.get("ticker_alias") or "").upper() or None,
+                            "identity_status": ent.get("identity_status", "CONFIRMED")})
+            else:
+                degraded.append(f"IDENTITY_GUID_UNKNOWN:{raw}")
+                out.append({"input": raw, "guid": f"SUBJ:{raw}", "symbol": None, "identity_status": "UNRESOLVED"})
             continue
         sym = raw.upper()
         entity = None
@@ -495,7 +556,7 @@ def _consumption_receipt(ctx: dict, root: Path | None, env: dict) -> None:
     if not ids:
         return
     try:
-        from memory_consumption_receipt import record_consumption  # type: ignore
+        record_consumption = _lib("memory_consumption_receipt").record_consumption
         record_consumption(consumer="intelligence_client", purpose=ctx["purpose"].lower(),
                            symbols=[s.get("symbol") for s in ctx["subjects"] if s.get("symbol")],
                            result={"memory_ids": ids, "supporting": [{"memory_id": i} for i in ids],
@@ -743,18 +804,31 @@ def shadow_open(lane_id: str, subjects: Iterable[str], purpose: str = "RESEARCH"
         subs = [s for s in (subjects or []) if s]
         if not subs:
             return None
-        ctx = open_context({"lane_id": lane_id, "agent_id": agent_id}, purpose, subs, mode="SHADOW", root=root, env=env)
+        # Per-lane context mode (Wave 2 item 1): policy surface "context:<lane_id>" → SHADOW | ENFORCED.
+        # ENFORCED + DECIDE/ADVISE + memory unreachable → MemoryUnavailable propagates: the producer HOLDS.
+        try:
+            mode = _lib("memory_ring2").mode_for(f"context:{lane_id}", env)
+        except Exception:  # noqa: BLE001
+            mode = "SHADOW"
+        try:
+            ctx = open_context({"lane_id": lane_id, "agent_id": agent_id}, purpose, subs, mode=mode, root=root, env=env)
+        except MemoryUnavailable:
+            if mode == "ENFORCED":
+                raise
+            return None
         if question:
             observe_generation(ctx, question, root=root, env=env)
         set_current_context(ctx)
         # Every hooked producer beats (06 §3): file fallback only, never Postgres from here, never raises.
         try:
-            from supervisor_heartbeat import beat  # type: ignore
+            beat = _lib("supervisor_heartbeat").beat
             beat(lane_id, work_claimed=1, memory_context_ok=not ctx.get("degraded"),
                  degraded_reasons=list(ctx.get("degraded_reasons") or [])[:5], root=root, env=env)
         except Exception:  # noqa: BLE001
             pass
         return ctx
+    except MemoryUnavailable:
+        raise  # ENFORCED lanes hold (01 §4); SHADOW lanes were already turned into None above
     except Exception:  # noqa: BLE001 — shadow never raises into a producer
         return None
 

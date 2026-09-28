@@ -1,7 +1,7 @@
 {
   "schema": "MemoryInfluencePolicy@v1",
   "authority": "READ_ONLY_ADVISORY",
-  "as_of": "2026-09-27T21:00:00-04:00",
+  "as_of": "2026-09-27T21:40:00-04:00",
   "_note": "08 §2 modes per surface × silo and 01 §2 Ring 2 modes per chokepoint. Every change to a row is an operator approval item (11 O-6). TRADEAI_INTELLIGENCE_MODE overrides everything (global kill switch back to SHADOW). MBI_BEHAVIOR is not a row here and never will be.",
   "ring2": {
     "default": "SHADOW",
@@ -9,8 +9,10 @@
       "gate_and_generate": "SHADOW",
       "model_bridge": "SHADOW",
       "accept_research_result": "SHADOW",
-      "create_action": "SHADOW"
-    }
+      "create_action": "SHADOW",
+      "context:persistent-wake": "SHADOW"
+    },
+    "_contexts_note": "context:<lane_id> rows govern shadow_open per producer lane (Wave 2 item 1). ENFORCED = a DECIDE/ADVISE context that cannot open makes the lane HOLD (MemoryUnavailable). Flip one lane at a time; watch the HOLD rate against the rollback criterion (11 §2)."
   },
   "influence": {
     "default": "SHADOW",
@@ -24,5 +26,7 @@
       "risk_advice": "SHADOW"
     }
   },
-  "behaviour": {"note": "no row: MBI_BEHAVIOR = 0 is the unconditional raise in cio_instrument_record.py, not a policy value"}
+  "behaviour": {
+    "note": "no row: MBI_BEHAVIOR = 0 is the unconditional raise in cio_instrument_record.py, not a policy value"
+  }
 }

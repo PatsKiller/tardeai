@@ -76,6 +76,16 @@ Wave 2 approval items are drafted in `docs/ops/COGX_WAVE2_PACKAGE_SPEC.json` (11
 - ABOVE, BLD, CXMT, EKSO: asked Schwab, `broker_returned_no_identifier`; the sweep's resume skips recorded misses. Re-ask is a sweep option (`--no-resume`), left to the Saturday lane or the operator.
 - BOOK (53 artifacts), DYNC, EUDA, FUBO, IRTC, RIBB, STLN, SVCC, WBTN, YHNA, YXT: never entered the registry because the mint's symbol sources were holdings, watchlist and decision tables only. `mint_identity_registry._intelligence_surface_rows()` adds the symbol-thesis projection and the ticker research graph as additive sources; the Monday mint registers them UNRESOLVED and the Saturday sweep asks Schwab.
 
+## Wave 2 · tranche 2 (branch wt/cogx-w2-t2-20260927)
+
+| Deliverable | Where | Proof |
+|---|---|---|
+| **Defect fixed before any enforcement:** the façade's default loaders used bare imports; under the wake engine's, the Hermes worker's and thesis acquisition's sys.path shape every class degraded (`ModuleNotFoundError`) — 100 % of contexts on three lanes in the first live receipts | `intelligence_client._lib()` import shim (bare → `lib.` → `scripts.lib.` → path load) | regression test under a ROOT-only path; live proof under that shape: V → CONFIRMED, 6 facts, thesis v25, 2 beliefs, not degraded |
+| UUID subjects (the wake passes `subject_guid`) resolve through the registry by GUID | `_resolve_subjects` + `Loaders.resolve_guid` | test |
+| Per-lane context mode `context:<lane_id>` in the policy; ENFORCED + DECIDE + memory unreachable → the wake HOLDS (`MemoryUnavailable` propagates; runner records `outcome=error`; dispatcher retries; REFUSED row on the ledger) — row shipped as SHADOW | `intelligence_client.shadow_open`, `persistent_agent_wake` hook, `config/memory_influence_policy.json` | test: enforced lane raises, shadow lane never does, monitors degrade |
+| Postgres heartbeat upsert from the detector and the projector (item 10) | `supervisor_breach_detector`, `gir_projector` | live after deploy |
+| Wave 2 decision record | `docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md` | ledger 29 rows verified |
+
 ## What is NOT in Wave 1 yet (after the operator runbook)
 - The `memory.delta` bus consumer (Wave 2) — until then the projector is hourly-incremental by source fingerprint.
 - The operator steps in the runbook: credential rotation, roles + migration, merge + deploy, grants, lane install, first real runs.

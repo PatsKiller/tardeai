@@ -351,6 +351,15 @@ def main() -> int:
         try:
             applied = apply(pj)
             print(json.dumps({"applied": applied}))
+            try:  # item 10: the projector beats into intelligence.heartbeat too
+                import db_adapter  # type: ignore
+                import supervisor_heartbeat as _hb  # type: ignore
+                _conn = db_adapter._get_conn()
+                with _conn.cursor() as _c:
+                    _c.execute("SET app.tenant_id = 'tradeai:tenant:primary'")
+                print("heartbeat:", _hb.beat("gir-projector", conn=_conn, success=True, output_signal=True, work_done=applied["entities"]).get("pg"))
+            except Exception as exc:  # noqa: BLE001
+                print(f"heartbeat pg skipped: {type(exc).__name__}")
             state_p.parent.mkdir(parents=True, exist_ok=True)
             state_p.write_text(json.dumps({"schema": "GirProjectorState@v1", "as_of": pj.now.isoformat(), "applied": applied,
                                            "sources": _source_fingerprints(root, os.environ)}, indent=1) + "\n", encoding="utf-8")
