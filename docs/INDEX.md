@@ -950,7 +950,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_OPS.md` | Momentum Scalp Validation Ops | review_required | OK | `b51f26253575` |
 | `docs/diligence/current/MOMENTUM_SCALP_VALIDATION_TRACKER.md` | Momentum Scalp Validation Tracker | review_required | OK | `ec2e5f4ac157` |
 | `docs/diligence/current/OPTIONS_ORDER_GATE_PROOF_2026-09-27.md` | Options order gate proof — broker layer (2026-09-27) | review_required | MISSING HEADER | `6dcb1e84f8b7` |
-| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | MISSING HEADER | `11b46a320304` |
+| `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Options Hard-Risk Block Matrix | review_required | MISSING HEADER | `3757cde68556` |
 | `docs/diligence/current/ORDER_LIFECYCLE.md` | Order Lifecycle | review_required | OK | `8bd7b79ca8fe` |
 | `docs/diligence/current/RELEASE_READINESS.md` | Release Readiness | review_required | OK | `356036502fea` |
 | `docs/diligence/current/RISK_GATE_MATRIX.md` | Risk Gate Matrix | review_required | OK | `ceaf05c64e9c` |
@@ -1824,10 +1824,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/litmus/LITMUS_WAKE_2026-09-01.md` | Litmus · E wake | review_required | OK | `abf36821e5af` |
 | `docs/ops/live_proof_20260928/00-served-baseline.md` | 00 — Served baseline (read-only, Phase 0.1) | review_required | OK | `cda3d45db077` |
 | `docs/ops/live_proof_20260928/02-runtime-lane-registry.md` | 02-runtime-lane-registry: host survey, 2026-09-28, about 10:55–11:05 EDT (read-only) | review_required | OK | `c9e06d229d81` |
-| `docs/ops/live_proof_20260928/03-maturity-board.md` | 03 — Maturity board (history preserved; served re-measurement) | review_required | OK | `405db7beac6f` |
+| `docs/ops/live_proof_20260928/03-maturity-board.md` | 03 — Maturity board (history preserved; served re-measurement) | review_required | OK | `ff0c22a100dc` |
 | `docs/ops/live_proof_20260928/05-defects-and-dispositions.md` | 05 — Defects and dispositions | review_required | OK | `2d641f4d3927` |
-| `docs/ops/live_proof_20260928/06-changes-and-promotion.md` | 06 — Changes and promotion | review_required | OK | `596291921783` |
-| `docs/ops/live_proof_20260928/07-operator-summary.md` | 07 — Operator summary (redacted) | review_required | OK | `b4db1b8f12c1` |
+| `docs/ops/live_proof_20260928/06-changes-and-promotion.md` | 06 — Changes and promotion | review_required | OK | `6ed3b5907f66` |
+| `docs/ops/live_proof_20260928/07-operator-summary.md` | 07 — Operator summary (redacted) | review_required | OK | `e4e6a058cde6` |
 | `docs/ops/openclaw_stage2_soul_patch_20260923.md` | OpenClaw Maria SOUL / skill patch — Stage 2 (specialist honesty) | review_required | OK | `d0a83ec99d47` |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary | review_required | OK | `19050e08a848` |

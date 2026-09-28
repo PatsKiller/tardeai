@@ -14,8 +14,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / "scripts"), str(ROOT / "tests")]
 
+import pytest  # noqa: E402
 import options_desk_enterprise as ent  # noqa: E402
 from test_options_order_gates_20260927 import NOW, PID, _gate, _iso, _proposal, _store  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_earnings_calendar(monkeypatch):
+    """LP-DEF-04 (live-proof 2026-09-28): a cached ``enterprise.earnings`` verdict without a gate_version is
+    no longer trusted at preflight — it is recomputed against the live gate. This suite is hermetic and CI
+    has no earnings provider (the recompute returned EARNINGS_TIMESTAMP_UNKNOWN there, run 36452009384), so
+    the calendar answers "no scheduled event" for every symbol; a test that needs a blackout sets its own."""
+    monkeypatch.setattr(ent, "earnings_calendar", lambda syms: {str(s).upper(): "" for s in syms})
 
 
 def _legacy_row(proposal, *, reviewed_age_min=10, as_json=False, with_proposal=True):

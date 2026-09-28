@@ -24,6 +24,15 @@ import options_desk_enterprise as ent  # noqa: E402
 from test_options_order_gates_20260927 import NOW, GUID, PID, _proposal, _store, _row  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def _hermetic_earnings_calendar(monkeypatch):
+    """LP-DEF-04 (live-proof 2026-09-28): a cached ``enterprise.earnings`` verdict without a gate_version is
+    no longer trusted at preflight — it is recomputed against the live gate. This suite is hermetic and CI
+    has no earnings provider (the recompute returned EARNINGS_TIMESTAMP_UNKNOWN there, run 36452009384), so
+    the calendar answers "no scheduled event" for every symbol; a test that needs a blackout sets its own."""
+    monkeypatch.setattr(ent, "earnings_calendar", lambda syms: {str(s).upper(): "" for s in syms})
+
+
 def _iso(dt):
     return dt.isoformat()
 

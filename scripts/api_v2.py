@@ -14142,12 +14142,17 @@ def _buy_ready_packet(symbol: str) -> dict:
     # alternatives are withheld rather than shown un-checked.
     try:
         from lib.buy_ready_options_alternatives import packet_view
+
         return {"symbol": sym, **packet_view(packet)}
     except Exception as exc:  # noqa: BLE001
         withheld = {k: v for k, v in packet.items() if k != "options_alternatives"}
-        return {"symbol": sym, "status": "PACKET_UNVERIFIED", "saved_at": packet.get("saved_at"),
-                "stale": {"code": "PACKET_UNVERIFIED", "reason": f"staleness check unavailable ({type(exc).__name__})"},
-                "packet": withheld}
+        return {
+            "symbol": sym,
+            "status": "PACKET_UNVERIFIED",
+            "saved_at": packet.get("saved_at"),
+            "stale": {"code": "PACKET_UNVERIFIED", "reason": f"staleness check unavailable ({type(exc).__name__})"},
+            "packet": withheld,
+        }
 
 
 def _symbol_timeline(symbol: str):
