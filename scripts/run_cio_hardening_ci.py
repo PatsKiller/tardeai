@@ -2898,6 +2898,13 @@ GATES = [
         ["tests/test_lane_registry_inherited_tranche_20260928.py",
          "tests/test_alarm_fires_reminder_and_supervisor_20260928.py"],
     ),
+    (
+        # 2026-09-28 — home book map. A zero day_change uses today's broker_day_pl.
+        # Cash is reported beside the map and is not a tile. Unpriced rows stay
+        # in the payload and are not drawn.
+        "book_map_day_pl_20260928",
+        ["tests/test_book_map_rows_20260928.py"],
+    ),
 ]
 
 
