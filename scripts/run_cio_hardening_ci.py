@@ -2661,6 +2661,13 @@ GATES = [
         ["tests/test_cio_packet_derived_ratios_20260927.py"],
     ),
     (
+        # 2026-09-27 -- protective puts / covered calls reconcile held shares and cost basis to
+        # the holdings snapshot of record at preflight (fail closed on stale, missing, short,
+        # changed); every CIO-packet yield names its denominator.
+        "options_hedge_recon_yield_labels_20260927",
+        ["tests/test_options_hedge_recon_yield_labels_20260927.py"],
+    ),
+    (
         # 2026-09-27 -- options order gates (operator work order, PR 3): the submit-mode risk
         # evaluator fails closed on an input the desk does not have (quote/chain age, session,
         # buying power, liquidity); approvals are pinned to the legs and expire; archived
