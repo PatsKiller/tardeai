@@ -54228,16 +54228,32 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             # authorization binds to (proposal pin, desk approval pin, quote/chain timestamps,
             # data source, collateral) plus the broker's buying power read NOW.
             _bp, _bp_as_of = oop.read_buying_power(account_key)
-            intent = oop.build_intent(account_key, proposal, held_qty=held_qty, buying_power=_bp, buying_power_as_of=_bp_as_of)
+            intent = oop.build_intent(
+                account_key, proposal, held_qty=held_qty, buying_power=_bp, buying_power_as_of=_bp_as_of
+            )
             from brokers.execution_readiness import evaluate_execution_readiness as _ready
-            _pre = _ready({"intent_id": intent.intent_id, "correlation_id": intent.correlation_id,
-                           "account_key": account_key,
-                           "signal_evidence": getattr(getattr(intent, "meta", None), "signal_evidence", None) or {}},
-                          asset_class="option", broker="schwab", account_key=account_key, mode="preflight")
+
+            _pre = _ready(
+                {
+                    "intent_id": intent.intent_id,
+                    "correlation_id": intent.correlation_id,
+                    "account_key": account_key,
+                    "signal_evidence": getattr(getattr(intent, "meta", None), "signal_evidence", None) or {},
+                },
+                asset_class="option",
+                broker="schwab",
+                account_key=account_key,
+                mode="preflight",
+            )
             if not _pre.get("ok"):
-                return 200, {"ok": False, "mode": "blocked", "gate": "execution_readiness",
-                             "refusals": _pre.get("hard_blocks") or [], "operator_required_steps": _pre.get("operator_required_steps"),
-                             "proposal_id": proposal_id}
+                return 200, {
+                    "ok": False,
+                    "mode": "blocked",
+                    "gate": "execution_readiness",
+                    "refusals": _pre.get("hard_blocks") or [],
+                    "operator_required_steps": _pre.get("operator_required_steps"),
+                    "proposal_id": proposal_id,
+                }
             dec = authorize(intent, "submit")
             if not dec.allowed:
                 return 200, {"ok": False, "mode": "blocked", "error": dec.reason, "proposal": proposal}
@@ -54285,8 +54301,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             # intent -- before submit. Nothing here contacts the broker's order endpoint.
             auth = oop.confirm_authorization(intent)
             if not auth.get("ok"):
-                return 200, {"ok": False, "mode": "blocked", "stage": "authorization", "broker_submitted": False,
-                             "refusals": auth.get("refusals") or [], "intent_id": intent_id}
+                return 200, {
+                    "ok": False,
+                    "mode": "blocked",
+                    "stage": "authorization",
+                    "broker_submitted": False,
+                    "refusals": auth.get("refusals") or [],
+                    "intent_id": intent_id,
+                }
             res = oop.submit(acct, auth["order_spec"], intent)
             return 200, {"ok": True, "stage": "submit", "result": res, "evidence": auth.get("evidence")}
         except Exception as e:
