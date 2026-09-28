@@ -2851,6 +2851,16 @@ GATES = [
         ["tests/test_momentum_scalp_proposal_contract_20260928.py"],
     ),
     (
+        # 2026-09-28 — execution truth: market_cap_usd beside the millions field; expired
+        # proposals leave the blocked queue; a stale summary mirror is not a clock divergence;
+        # a fund's cached NAV is not a degraded quote; extended-hours provider declared;
+        # continuous runner derives its root (unit pinned to CURRENT).
+        "execution_truth_20260928",
+        ["tests/test_execution_truth_20260928.py",
+         "tests/test_quote_selection_contract.py",
+         "tests/test_portfolio_aggregate_contract.py"],
+    ),
+    (
         # 2026-09-28 — pre-open window honesty: 0400/0700 run two screeners by design and
         # were labelled UNIVERSE_TOO_SMALL every day; per-window floors + PREOPEN_WINDOW_BY_DESIGN
         # (status/auto-proposal gate unchanged); unenriched injects → MANUAL_REVIEW, never scored.
