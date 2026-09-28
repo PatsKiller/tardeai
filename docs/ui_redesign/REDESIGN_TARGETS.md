@@ -1,3 +1,5 @@
+> **Status: SUPERSEDED (2026-09-27)** by [`docs/design/UI_AUDIT_2026-09.md`](../design/UI_AUDIT_2026-09.md). Kept for history; open items were absorbed into that audit's §12.
+
 # Redesign Targets
 
 Status:      HISTORICAL

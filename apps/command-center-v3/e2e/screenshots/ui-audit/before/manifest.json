@@ -1,0 +1,121 @@
+{
+ "dir": "before",
+ "theme": null,
+ "captured_at": "2026-09-28T02:20:24.615Z",
+ "routes": {
+  "home": [
+   "home.png"
+  ],
+  "portfolio": [
+   "portfolio.png",
+   "portfolio--holdings.png",
+   "portfolio--allocation.png",
+   "portfolio--look-through.png",
+   "portfolio--returns.png",
+   "portfolio--dividends.png",
+   "portfolio--forecast.png",
+   "portfolio--tax.png",
+   "portfolio--redeploy.png",
+   "portfolio--stop-management.png"
+  ],
+  "trading": [
+   "trading.png",
+   "trading--trade-ai.png",
+   "trading--options.png",
+   "trading--open-trades.png",
+   "trading--proposals.png",
+   "trading--entry-desk.png",
+   "trading--execution.png",
+   "trading--broker-recon.png",
+   "trading--scalp.png",
+   "trading--atm-controls.png",
+   "trading--broker-orders.png",
+   "trading--schwab-accounts.png"
+  ],
+  "watch": [
+   "watch.png",
+   "watch--intelligence.png",
+   "watch--watchpool.png",
+   "watch--sectors.png",
+   "watch--pullback.png"
+  ],
+  "symbol-DELL": [
+   "symbol-DELL.png"
+  ],
+  "risk": [
+   "risk.png",
+   "risk--exposure.png",
+   "risk--correlation.png",
+   "risk--regime.png",
+   "risk--recovery.png"
+  ],
+  "active-trader": [
+   "active-trader.png"
+  ],
+  "journal": [
+   "journal.png"
+  ],
+  "cio": [
+   "cio.png",
+   "cio--cio-brain.png",
+   "cio--cio-now.png",
+   "cio--operator-policy.png",
+   "cio--investment-books.png",
+   "cio--capital-plan.png",
+   "cio--opportunities.png",
+   "cio--report.png",
+   "cio--evidence.png",
+   "cio--notification-gate.png",
+   "cio--telegram-receipts.png",
+   "cio--senses-evidence.png"
+  ],
+  "advisory": [
+   "advisory.png"
+  ],
+  "redeploy": [
+   "redeploy.png"
+  ],
+  "rotation": [
+   "rotation.png"
+  ],
+  "re-entry": [
+   "re-entry.png"
+  ],
+  "research-intelligence": [
+   "research-intelligence.png"
+  ],
+  "hermes": [
+   "hermes.png"
+  ],
+  "intelligence": [
+   "intelligence.png"
+  ],
+  "communications": [
+   "communications.png"
+  ],
+  "reports": [
+   "reports.png"
+  ],
+  "health": [
+   "health.png"
+  ],
+  "consumption": [
+   "consumption.png"
+  ],
+  "system": [
+   "system.png",
+   "system--admin.png",
+   "system--llm.png",
+   "system--crons.png"
+  ],
+  "defense": [
+   "defense.png"
+  ],
+  "retirement": [
+   "retirement.png"
+  ],
+  "sectors": [
+   "sectors.png"
+  ]
+ }
+}

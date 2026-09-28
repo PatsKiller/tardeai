@@ -1,0 +1,9633 @@
+{
+ "schema": "UiAuditMetrics@v1",
+ "generated_at": "2026-09-28T02:06:42.101Z",
+ "root": "apps/command-center-v3/src",
+ "totals": {
+  "files": 444,
+  "hex": 3269,
+  "fontLt10": 1394,
+  "inlineStyle": 14048,
+  "className": 348,
+  "details": 43,
+  "titleAttr": 824,
+  "metricLike": 188,
+  "metricWithGuide": 55,
+  "cssVar": 6536,
+  "radii": {
+   "1": 10,
+   "2": 234,
+   "3": 98,
+   "4": 271,
+   "5": 170,
+   "6": 486,
+   "7": 66,
+   "8": 404,
+   "9": 9,
+   "10": 302,
+   "11": 5,
+   "12": 62,
+   "14": 7,
+   "16": 5,
+   "20": 1,
+   "99": 3,
+   "999": 47,
+   "var(--radius)": 13,
+   "2px 2px 0 0": 8,
+   "1px 1px 0 0": 1,
+   "50%": 33,
+   "featured ? 14 : 12": 1,
+   "6px 0 0 6px": 2,
+   "0 6px 6px 0": 3,
+   "16px;overflow:hidden;box-shadow:0 8px 30px rgba(0": 1,
+   "6px;background:#10151c;color:#9db0c8;white-space:nowrap": 1,
+   "8px;padding:10px;color:var(--at-text)": 1,
+   "12px;background:var(--at-panel2);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px": 1,
+   "6px;overflow:hidden;margin:6px 0": 1,
+   "6px": 1,
+   "8px;background:#22272f;color:#c4cedd;padding:12px 14px;font-weight:700": 1,
+   "8px;color:var(--at-text);padding:10px;text-align:right;font-family:ui-monospace": 1,
+   "18px;box-shadow:0 20px 80px rgba(0": 1,
+   "8px;background:var(--at-panel2);border:1px solid var(--at-line)": 1,
+   "12px;background:var(--at-panel);color:var(--at-muted);margin-bottom:8px": 1,
+   "10px; background: var(--at-panel2);": 1,
+   "12px;background:var(--at-panel2);color:var(--at-muted);font-size:14px;line-height:1.5;margin:6px 0": 1,
+   "12px;background:var(--at-panel);margin-top:6px": 1,
+   "12px;padding:14px 16px;background:var(--at-panel2)": 1,
+   "6px;background:var(--at-panel);color:var(--at-muted)": 1,
+   "5px;background:var(--at-panel);overflow:hidden;margin:6px 0 12px": 1,
+   "desk.radius": 10,
+   "desk.radiusLg": 9,
+   "desk.radiusXl": 3,
+   "WL.card.radius": 7,
+   "terminalUi ? 2 : 10": 1,
+   "compact ? 0 : 10": 1,
+   "terminalUi ? undefined : 4": 2,
+   "terminalUi ? 1 :": 2,
+   "terminalUi ? 0 : 8": 4,
+   "terminalUi ? 0 : 6": 2,
+   "terminalUi ? 2 : 5": 1,
+   "term ? 2 : 5": 1,
+   "0 8px 8px 0": 2,
+   "3px 3px 0 0": 1,
+   "prominent ? 7 : 6": 1
+  },
+  "shadows": {
+   "0 10px 30px rgba(0,0,0,.35)": 1,
+   "0 12px 40px rgba(0,0,0,.4)": 2,
+   "0 0 5px ${sc}": 1,
+   "0 24px 80px rgba(0,0,0,.45)": 2,
+   "0 10px 30px rgba(0,0,0,.5)": 4,
+   "-10px 0 40px rgba(0,0,0,.55)": 1,
+   "0 4px 20px rgba(0,0,0,.35)": 1,
+   "0 0 0 1px rgba(239,68,68,.15)": 1,
+   "inset 3px 0 0 ${statusColor}": 1,
+   "-12px 0 40px rgba(0,0,0,.6)": 1,
+   "0 8px 24px rgba(0,0,0,.35)": 1,
+   "0 10px 28px rgba(0,0,0,.18)": 1,
+   "-12px 0 40px rgba(0,0,0,.65)": 1,
+   "0 20px 60px rgba(0,0,0,.55)": 1,
+   "0 18px 50px rgba(0,0,0,.5)": 1,
+   "0 0 12px ${status.color}66": 1,
+   "0 8px 24px rgba(0,0,0,0.5)": 1,
+   "0 0 12px ${color}33": 1,
+   "0 0 8px ${color}": 1,
+   "0 12px 40px rgba(0,0,0,.45)": 1,
+   "0 8px 20px rgba(0,0,0,.55)": 1,
+   "0 2px 10px rgba(0,0,0,.5)": 1,
+   "0 10px 28px rgba(0,0,0,.4)": 1,
+   "0 24px 80px rgba(0,0,0,.5)": 1,
+   "0 0 6px ${BLUE}": 1,
+   "0 24px 80px rgba(0,0,0,.55)": 1,
+   "0 20px 60px rgba(0,0,0,.6)": 2,
+   "0 16px 48px rgba(0,0,0,.55)": 1,
+   "0 4px 20px rgba(0,0,0,.4)": 1
+  },
+  "fontLt10By": {
+   "7": 25,
+   "8": 374,
+   "9": 995
+  },
+  "tokenImports": {
+   "watchTokens": 63,
+   "terminalHubChrome": 28,
+   "terminalUi": 36,
+   "holdingsTerminalTokens": 28,
+   "proposalDeskTheme": 14,
+   "watchlistCardTokens": 12,
+   "terminalCardTheme": 4,
+   "watchlistTerminalTokens": 13
+  },
+  "distinctRadii": 56,
+  "distinctShadows": 29,
+  "tooltipCoveragePct": 29.3
+ },
+ "files": {
+  "pages/ActiveTraderConfigTab.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 8
+   },
+   "shadows": {},
+   "inlineStyle": 155,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 11,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 818
+  },
+  "pages/ActiveTraderHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "8": 1,
+    "10": 1,
+    "14": 1
+   },
+   "shadows": {},
+   "inlineStyle": 15,
+   "className": 1,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 16,
+   "tokenImports": [],
+   "lines": 110
+  },
+  "pages/ActiveTraderPage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 94,
+   "details": 0,
+   "titleAttr": 16,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 459
+  },
+  "pages/AdvisorChangesHub.tsx": {
+   "hex": 8,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "9": 3
+   },
+   "radii": {
+    "4": 1,
+    "8": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 18,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [],
+   "lines": 118
+  },
+  "pages/AdvisoryDeskHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 11,
+    "8": 3,
+    "999": 1
+   },
+   "shadows": {},
+   "inlineStyle": 94,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 140,
+   "tokenImports": [
+    "terminalHubChrome"
+   ],
+   "lines": 1051
+  },
+  "pages/AgentRuntimeHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 1,
+    "3": 1,
+    "6": 3,
+    "7": 3,
+    "8": 1,
+    "10": 1,
+    "999": 2
+   },
+   "shadows": {},
+   "inlineStyle": 149,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 13,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 94,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 585
+  },
+  "pages/AgentsHub.tsx": {
+   "hex": 11,
+   "hexInTokenFile": 0,
+   "fontLt10": 21,
+   "fontLt10By": {
+    "8": 8,
+    "9": 13
+   },
+   "radii": {
+    "3": 3,
+    "6": 1,
+    "8": 2,
+    "10": 7
+   },
+   "shadows": {},
+   "inlineStyle": 99,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 4,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 79,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 523
+  },
+  "pages/CioHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 1,
+    "6": 14,
+    "8": 9
+   },
+   "shadows": {},
+   "inlineStyle": 285,
+   "className": 0,
+   "details": 5,
+   "titleAttr": 3,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 247,
+   "tokenImports": [
+    "terminalHubChrome"
+   ],
+   "lines": 2110
+  },
+  "pages/ClosedLoopPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "10": 1,
+    "999": 1
+   },
+   "shadows": {},
+   "inlineStyle": 23,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 19,
+   "tokenImports": [],
+   "lines": 103
+  },
+  "pages/CommunicationsHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 6
+   },
+   "shadows": {},
+   "inlineStyle": 133,
+   "className": 9,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 11,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 565
+  },
+  "pages/ConsumptionHub.tsx": {
+   "hex": 24,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "9": 4
+   },
+   "radii": {
+    "4": 3,
+    "6": 6,
+    "8": 2,
+    "10": 4,
+    "999": 1
+   },
+   "shadows": {},
+   "inlineStyle": 71,
+   "className": 1,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome",
+    "watchTokens"
+   ],
+   "lines": 383
+  },
+  "pages/DefenseHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 2,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens",
+    "terminalHubChrome",
+    "terminalUi"
+   ],
+   "lines": 118
+  },
+  "pages/HealthHub.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 2,
+    "5": 1,
+    "6": 3,
+    "8": 3,
+    "9": 1,
+    "var(--radius)": 8,
+    "2px 2px 0 0": 1,
+    "1px 1px 0 0": 1
+   },
+   "shadows": {},
+   "inlineStyle": 131,
+   "className": 3,
+   "details": 0,
+   "titleAttr": 4,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 157,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 621
+  },
+  "pages/HermesHub.tsx": {
+   "hex": 129,
+   "hexInTokenFile": 0,
+   "fontLt10": 61,
+   "fontLt10By": {
+    "8": 29,
+    "9": 32
+   },
+   "radii": {
+    "3": 6,
+    "4": 4,
+    "5": 2,
+    "6": 16,
+    "7": 1,
+    "8": 16,
+    "10": 24
+   },
+   "shadows": {},
+   "inlineStyle": 268,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 259,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 1262
+  },
+  "pages/HomeHub.tsx": {
+   "hex": 77,
+   "hexInTokenFile": 0,
+   "fontLt10": 24,
+   "fontLt10By": {
+    "8": 7,
+    "9": 17
+   },
+   "radii": {
+    "2": 2,
+    "4": 1,
+    "6": 1,
+    "8": 7,
+    "10": 8
+   },
+   "shadows": {},
+   "inlineStyle": 150,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 15,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 107,
+   "tokenImports": [
+    "watchTokens",
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 800
+  },
+  "pages/IntelligenceHub.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 2,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 96
+  },
+  "pages/JournalHub.tsx": {
+   "hex": 144,
+   "hexInTokenFile": 0,
+   "fontLt10": 65,
+   "fontLt10By": {
+    "7": 5,
+    "8": 26,
+    "9": 34
+   },
+   "radii": {
+    "2": 3,
+    "3": 3,
+    "4": 24,
+    "5": 6,
+    "6": 5,
+    "7": 1,
+    "8": 6,
+    "9": 1,
+    "10": 15,
+    "11": 1,
+    "50%": 1
+   },
+   "shadows": {},
+   "inlineStyle": 224,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 10,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 218,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 1133
+  },
+  "pages/ManualExecutionHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 4
+  },
+  "pages/ManualTosDesk.tsx": {
+   "hex": 16,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "8": 2,
+    "9": 2
+   },
+   "radii": {
+    "6": 2,
+    "9": 1,
+    "10": 3
+   },
+   "shadows": {},
+   "inlineStyle": 28,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 22,
+   "tokenImports": [],
+   "lines": 464
+  },
+  "pages/MaturityPanels.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "8": 2,
+    "10": 1,
+    "999": 1
+   },
+   "shadows": {},
+   "inlineStyle": 80,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 44,
+   "tokenImports": [],
+   "lines": 442
+  },
+  "pages/OpsAutonomyDashboard.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "5": 2,
+    "6": 4,
+    "8": 1,
+    "9": 1
+   },
+   "shadows": {},
+   "inlineStyle": 83,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 134,
+   "tokenImports": [
+    "terminalHubChrome",
+    "terminalUi"
+   ],
+   "lines": 667
+  },
+  "pages/OptionsHub.tsx": {
+   "hex": 42,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "8": 1
+   },
+   "radii": {
+    "4": 1,
+    "6": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 76,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 3,
+   "metricLike": 1,
+   "metricWithGuide": 1,
+   "cssVar": 35,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome",
+    "watchTokens"
+   ],
+   "lines": 770
+  },
+  "pages/PortfolioHub.tsx": {
+   "hex": 86,
+   "hexInTokenFile": 0,
+   "fontLt10": 12,
+   "fontLt10By": {
+    "7": 2,
+    "8": 5,
+    "9": 5
+   },
+   "radii": {
+    "3": 6,
+    "5": 1,
+    "6": 7,
+    "7": 1,
+    "8": 6,
+    "10": 8,
+    "12": 4,
+    "50%": 1
+   },
+   "shadows": {},
+   "inlineStyle": 120,
+   "className": 2,
+   "details": 1,
+   "titleAttr": 7,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 85,
+   "tokenImports": [
+    "holdingsTerminalTokens",
+    "terminalUi",
+    "terminalHubChrome",
+    "watchTokens"
+   ],
+   "lines": 984
+  },
+  "pages/PullbackMacdHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 4
+   },
+   "shadows": {},
+   "inlineStyle": 41,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 8,
+   "metricWithGuide": 1,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 208
+  },
+  "pages/ReEntryPage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 2
+  },
+  "pages/ReEntryPageV2.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 2,
+    "5": 2,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 88,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 17,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 423
+  },
+  "pages/ReEntryPageV3.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 2,
+    "5": 2,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 89,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 17,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 1040
+  },
+  "pages/ReEntryPageV4.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 50
+  },
+  "pages/RecommendationIntelligence.tsx": {
+   "hex": 42,
+   "hexInTokenFile": 0,
+   "fontLt10": 12,
+   "fontLt10By": {
+    "8": 1,
+    "9": 11
+   },
+   "radii": {
+    "3": 4,
+    "4": 3,
+    "6": 2,
+    "8": 3,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 181,
+   "className": 1,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 98,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 462
+  },
+  "pages/RedeployDesk.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 9,
+    "6": 8,
+    "8": 5
+   },
+   "shadows": {},
+   "inlineStyle": 266,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 54,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 1631
+  },
+  "pages/RedeployDeskIntegrated.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "5": 1,
+    "6": 1,
+    "8": 1
+   },
+   "shadows": {
+    "0 10px 30px rgba(0,0,0,.35)": 1
+   },
+   "inlineStyle": 6,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 5,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 68
+  },
+  "pages/RemediationDashboard.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 1,
+    "4": 2,
+    "var(--radius)": 3
+   },
+   "shadows": {},
+   "inlineStyle": 37,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 47,
+   "tokenImports": [
+    "terminalHubChrome",
+    "terminalUi"
+   ],
+   "lines": 369
+  },
+  "pages/ReportsHub.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 10
+   },
+   "shadows": {},
+   "inlineStyle": 55,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 29,
+   "tokenImports": [
+    "terminalUi",
+    "watchTokens"
+   ],
+   "lines": 516
+  },
+  "pages/ResearchIntelligenceHub.tsx": {
+   "hex": 41,
+   "hexInTokenFile": 0,
+   "fontLt10": 11,
+   "fontLt10By": {
+    "9": 11
+   },
+   "radii": {
+    "6": 12,
+    "7": 1,
+    "8": 5,
+    "10": 10,
+    "12": 7,
+    "14": 3,
+    "16": 2,
+    "999": 9,
+    "50%": 1,
+    "featured ? 14 : 12": 1
+   },
+   "shadows": {
+    "0 12px 40px rgba(0,0,0,.4)": 1
+   },
+   "inlineStyle": 279,
+   "className": 2,
+   "details": 2,
+   "titleAttr": 23,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 11,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 2559
+  },
+  "pages/RetirementHub.tsx": {
+   "hex": 11,
+   "hexInTokenFile": 0,
+   "fontLt10": 6,
+   "fontLt10By": {
+    "8": 2,
+    "9": 4
+   },
+   "radii": {
+    "4": 1,
+    "5": 1,
+    "7": 3,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 48,
+   "className": 6,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 5,
+   "metricWithGuide": 0,
+   "cssVar": 38,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 248
+  },
+  "pages/RiskHub.tsx": {
+   "hex": 44,
+   "hexInTokenFile": 0,
+   "fontLt10": 20,
+   "fontLt10By": {
+    "8": 5,
+    "9": 15
+   },
+   "radii": {
+    "2": 3,
+    "3": 4,
+    "4": 2,
+    "6": 5,
+    "8": 1,
+    "10": 7,
+    "6px 0 0 6px": 2,
+    "0 6px 6px 0": 2
+   },
+   "shadows": {},
+   "inlineStyle": 103,
+   "className": 4,
+   "details": 0,
+   "titleAttr": 11,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 53,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 418
+  },
+  "pages/RotationIntelligence.tsx": {
+   "hex": 125,
+   "hexInTokenFile": 0,
+   "fontLt10": 53,
+   "fontLt10By": {
+    "8": 10,
+    "9": 43
+   },
+   "radii": {
+    "3": 6,
+    "4": 6,
+    "5": 2,
+    "6": 2,
+    "8": 14,
+    "10": 1,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 292,
+   "className": 2,
+   "details": 5,
+   "titleAttr": 6,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 161,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 1246
+  },
+  "pages/SchwabReauthHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 5,
+    "7": 3,
+    "10": 5
+   },
+   "shadows": {},
+   "inlineStyle": 52,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 73,
+   "tokenImports": [],
+   "lines": 348
+  },
+  "pages/ScreenerFindsHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 1
+   },
+   "shadows": {},
+   "inlineStyle": 19,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "terminalUi",
+    "watchTokens"
+   ],
+   "lines": 117
+  },
+  "pages/SectorsHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 3
+   },
+   "shadows": {},
+   "inlineStyle": 43,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 13,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 249
+  },
+  "pages/StrategyHub.tsx": {
+   "hex": 56,
+   "hexInTokenFile": 0,
+   "fontLt10": 23,
+   "fontLt10By": {
+    "8": 8,
+    "9": 15
+   },
+   "radii": {
+    "3": 1,
+    "5": 1,
+    "8": 1,
+    "10": 8
+   },
+   "shadows": {},
+   "inlineStyle": 87,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 4,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 86,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome",
+    "watchTokens"
+   ],
+   "lines": 442
+  },
+  "pages/SymbolIntelligencePage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "8": 6,
+    "10": 2,
+    "12": 1,
+    "14": 1,
+    "99": 1,
+    "999": 1
+   },
+   "shadows": {},
+   "inlineStyle": 102,
+   "className": 0,
+   "details": 2,
+   "titleAttr": 13,
+   "metricLike": 14,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 674
+  },
+  "pages/SystemHub.tsx": {
+   "hex": 99,
+   "hexInTokenFile": 0,
+   "fontLt10": 56,
+   "fontLt10By": {
+    "8": 35,
+    "9": 21
+   },
+   "radii": {
+    "2": 1,
+    "3": 3,
+    "4": 4,
+    "5": 3,
+    "6": 3,
+    "7": 1,
+    "8": 9,
+    "10": 22,
+    "50%": 3
+   },
+   "shadows": {
+    "0 0 5px ${sc}": 1
+   },
+   "inlineStyle": 259,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 8,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 261,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 874
+  },
+  "pages/TradingHub.tsx": {
+   "hex": 93,
+   "hexInTokenFile": 0,
+   "fontLt10": 55,
+   "fontLt10By": {
+    "7": 12,
+    "8": 14,
+    "9": 29
+   },
+   "radii": {
+    "2": 7,
+    "3": 10,
+    "4": 5,
+    "5": 6,
+    "6": 2,
+    "8": 19,
+    "10": 9,
+    "2px 2px 0 0": 1
+   },
+   "shadows": {},
+   "inlineStyle": 285,
+   "className": 13,
+   "details": 1,
+   "titleAttr": 10,
+   "metricLike": 12,
+   "metricWithGuide": 8,
+   "cssVar": 273,
+   "tokenImports": [
+    "terminalUi",
+    "terminalHubChrome",
+    "watchTokens"
+   ],
+   "lines": 1329
+  },
+  "pages/WatchDiscovery.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens",
+    "terminalUi"
+   ],
+   "lines": 31
+  },
+  "pages/WatchHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "999": 2
+   },
+   "shadows": {},
+   "inlineStyle": 13,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "terminalUi",
+    "watchTokens"
+   ],
+   "lines": 126
+  },
+  "pages/WatchIntelligenceUnified.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "8": 7,
+    "10": 1,
+    "12": 5,
+    "999": 7
+   },
+   "shadows": {},
+   "inlineStyle": 98,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 8,
+   "metricLike": 5,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 819
+  },
+  "pages/WatchLegacy.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 6,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [
+    "watchTokens",
+    "terminalUi"
+   ],
+   "lines": 86
+  },
+  "pages/WatchlistHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 35,
+    "999": 2,
+    "50%": 1
+   },
+   "shadows": {},
+   "inlineStyle": 145,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 9,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 31,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 898
+  },
+  "pages/WatchlistIntelligenceBoard.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "8": 7,
+    "12": 4,
+    "999": 6
+   },
+   "shadows": {},
+   "inlineStyle": 74,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 11,
+   "metricLike": 7,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 533
+  },
+  "pages/WatchpoolHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 4
+   },
+   "shadows": {},
+   "inlineStyle": 97,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 8,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "terminalUi",
+    "watchTokens"
+   ],
+   "lines": 458
+  },
+  "pages/activeTrader.css": {
+   "hex": 48,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "16px;overflow:hidden;box-shadow:0 8px 30px rgba(0": 1,
+    "6px;background:#10151c;color:#9db0c8;white-space:nowrap": 1,
+    "8px;padding:10px;color:var(--at-text)": 1,
+    "12px;background:var(--at-panel2);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:12px": 1,
+    "6px;overflow:hidden;margin:6px 0": 1,
+    "6px": 1,
+    "8px;background:#22272f;color:#c4cedd;padding:12px 14px;font-weight:700": 1,
+    "8px;color:var(--at-text);padding:10px;text-align:right;font-family:ui-monospace": 1,
+    "18px;box-shadow:0 20px 80px rgba(0": 1,
+    "8px;background:var(--at-panel2);border:1px solid var(--at-line)": 1,
+    "12px;background:var(--at-panel);color:var(--at-muted);margin-bottom:8px": 1,
+    "10px; background: var(--at-panel2);": 1,
+    "12px;background:var(--at-panel2);color:var(--at-muted);font-size:14px;line-height:1.5;margin:6px 0": 1,
+    "12px;background:var(--at-panel);margin-top:6px": 1,
+    "12px;padding:14px 16px;background:var(--at-panel2)": 1,
+    "6px;background:var(--at-panel);color:var(--at-muted)": 1,
+    "5px;background:var(--at-panel);overflow:hidden;margin:6px 0 12px": 1
+   },
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 154,
+   "tokenImports": [],
+   "lines": 143
+  },
+  "pages/activeTrader.mock.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 92
+  },
+  "pages/activeTrader.types.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 260
+  },
+  "pages/control-plane/ControlPlaneHub.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 5,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 36
+  },
+  "pages/control-plane/SystemPage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 5,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 4,
+   "tokenImports": [],
+   "lines": 33
+  },
+  "pages/control-plane/index.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 12
+  },
+  "pages/control-plane/r22/AgentOfficePage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 27,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 3,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [],
+   "lines": 346
+  },
+  "pages/control-plane/r22/WorkflowTracePage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 61,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 36,
+   "tokenImports": [],
+   "lines": 439
+  },
+  "pages/control-plane/r22/contractView.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 35
+  },
+  "pages/control-plane/r22/controlPlaneChrome.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 2
+   },
+   "shadows": {},
+   "inlineStyle": 24,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 28,
+   "tokenImports": [],
+   "lines": 320
+  },
+  "pages/control-plane/r22/fetchControlPlane.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 226
+  },
+  "pages/control-plane/r22/index.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 3
+  },
+  "pages/control-plane/r22/mocks/json.d.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 5
+  },
+  "pages/control-plane/r22/mocks/loadFixtures.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 31
+  },
+  "pages/control-plane/r23/ControlPlaneFrame.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 5
+   },
+   "shadows": {},
+   "inlineStyle": 2,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 31,
+   "tokenImports": [],
+   "lines": 308
+  },
+  "pages/control-plane/r23/DataIntegrityPage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 2,
+   "tokenImports": [],
+   "lines": 124
+  },
+  "pages/control-plane/r23/IdentityPage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 4,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 129
+  },
+  "pages/control-plane/r23/NotificationsPage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 1
+   },
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 149
+  },
+  "pages/control-plane/r23/ResearchAttentionPage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [],
+   "lines": 126
+  },
+  "pages/control-plane/r23/display.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 75
+  },
+  "pages/control-plane/r23/fetchControlPlaneSummary.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 209
+  },
+  "pages/control-plane/r23/index.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 7
+  },
+  "pages/control-plane/r23/payloadTypes.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 31
+  },
+  "pages/control-plane/r23/previewEnvelopes.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 28
+  },
+  "pages/control-plane/r23/r23Routes.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 13
+  },
+  "pages/control-plane/r23/useControlPlaneSummary.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 85
+  },
+  "pages/control-plane/r24/AuditPage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 5,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 168
+  },
+  "pages/control-plane/r24/LearningPage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 3,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 138
+  },
+  "pages/control-plane/r24/MaturityPage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 4,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 3,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 5,
+   "tokenImports": [],
+   "lines": 102
+  },
+  "pages/control-plane/r24/controlPlaneChrome.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 2,
+    "6": 2,
+    "999": 1
+   },
+   "shadows": {},
+   "inlineStyle": 10,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 31,
+   "tokenImports": [],
+   "lines": 286
+  },
+  "pages/control-plane/r24/frozenEnvelope.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 73
+  },
+  "pages/control-plane/r24/httpEnvelope.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 110
+  },
+  "pages/control-plane/r24/index.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 4
+  },
+  "pages/control-plane/r24/payloadTypes.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 112
+  },
+  "pages/control-plane/r24/useControlPlaneEnvelope.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 273
+  },
+  "components/ATMControlPanel.tsx": {
+   "hex": 24,
+   "hexInTokenFile": 0,
+   "fontLt10": 8,
+   "fontLt10By": {
+    "8": 1,
+    "9": 7
+   },
+   "radii": {
+    "4": 3,
+    "5": 1,
+    "6": 1,
+    "8": 1,
+    "10": 1,
+    "12": 2
+   },
+   "shadows": {},
+   "inlineStyle": 67,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 35,
+   "tokenImports": [],
+   "lines": 248
+  },
+  "components/ActionButton.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "var(--radius)": 1,
+    "50%": 1
+   },
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [],
+   "lines": 77
+  },
+  "components/AdminConfirmModal.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 2,
+    "8": 1,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 15,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [],
+   "lines": 61
+  },
+  "components/AdvisorChangesPanel.tsx": {
+   "hex": 7,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "9": 3
+   },
+   "radii": {
+    "4": 1,
+    "8": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 14,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 12,
+   "tokenImports": [],
+   "lines": 108
+  },
+  "components/AgentConsensusPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "9": 3
+   },
+   "radii": {
+    "desk.radius": 4,
+    "desk.radiusLg": 1
+   },
+   "shadows": {},
+   "inlineStyle": 36,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 250
+  },
+  "components/AgentSoulEditor.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 3,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 13,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 11,
+   "tokenImports": [],
+   "lines": 52
+  },
+  "components/AllocationPanel.tsx": {
+   "hex": 18,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "8": 2
+   },
+   "radii": {
+    "2": 2,
+    "3": 3,
+    "6": 4,
+    "8": 1,
+    "10": 8,
+    "50%": 3
+   },
+   "shadows": {},
+   "inlineStyle": 68,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 59,
+   "tokenImports": [],
+   "lines": 453
+  },
+  "components/AlpacaLiveReadPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 1,
+    "8": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 13,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 164
+  },
+  "components/AnalystReviews.tsx": {
+   "hex": 9,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "8": 1,
+    "9": 1
+   },
+   "radii": {
+    "6": 1
+   },
+   "shadows": {},
+   "inlineStyle": 5,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 50
+  },
+  "components/AskAgents.tsx": {
+   "hex": 10,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "8": 2,
+    "9": 3
+   },
+   "radii": {
+    "4": 1,
+    "6": 1,
+    "7": 2,
+    "10": 2
+   },
+   "shadows": {},
+   "inlineStyle": 19,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 14,
+   "tokenImports": [],
+   "lines": 106
+  },
+  "components/BacktestPanel.tsx": {
+   "hex": 36,
+   "hexInTokenFile": 0,
+   "fontLt10": 53,
+   "fontLt10By": {
+    "8": 9,
+    "9": 44
+   },
+   "radii": {
+    "2": 6,
+    "3": 3,
+    "4": 10,
+    "5": 1,
+    "6": 9,
+    "8": 6,
+    "10": 1,
+    "12": 1,
+    "20": 1,
+    "50%": 2
+   },
+   "shadows": {},
+   "inlineStyle": 331,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 244,
+   "tokenImports": [],
+   "lines": 1344
+  },
+  "components/BrokerAccountPicker.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "8": 2,
+    "9": 2
+   },
+   "radii": {
+    "5": 2,
+    "8": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 10,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [],
+   "lines": 114
+  },
+  "components/BrokerDiligenceStrip.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 9,
+   "fontLt10By": {
+    "7": 1,
+    "8": 2,
+    "9": 6
+   },
+   "radii": {
+    "4": 1,
+    "5": 1,
+    "desk.radiusLg": 1
+   },
+   "shadows": {},
+   "inlineStyle": 16,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 104
+  },
+  "components/BrokerIntelPanel.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "9": 3
+   },
+   "radii": {
+    "4": 2,
+    "5": 1,
+    "6": 1,
+    "8": 3,
+    "desk.radiusLg": 1
+   },
+   "shadows": {},
+   "inlineStyle": 71,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 452
+  },
+  "components/BrokerOrders.tsx": {
+   "hex": 150,
+   "hexInTokenFile": 0,
+   "fontLt10": 62,
+   "fontLt10By": {
+    "8": 8,
+    "9": 54
+   },
+   "radii": {
+    "3": 8,
+    "4": 11,
+    "5": 4,
+    "6": 9,
+    "8": 3
+   },
+   "shadows": {},
+   "inlineStyle": 221,
+   "className": 2,
+   "details": 1,
+   "titleAttr": 5,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "terminalUi"
+   ],
+   "lines": 1148
+  },
+  "components/BrokerPromoteModal.tsx": {
+   "hex": 10,
+   "hexInTokenFile": 0,
+   "fontLt10": 9,
+   "fontLt10By": {
+    "9": 9
+   },
+   "radii": {
+    "6": 7,
+    "8": 8,
+    "10": 4,
+    "16": 1
+   },
+   "shadows": {
+    "0 24px 80px rgba(0,0,0,.45)": 1
+   },
+   "inlineStyle": 45,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 609
+  },
+  "components/BrokerProposalCard.tsx": {
+   "hex": 9,
+   "hexInTokenFile": 0,
+   "fontLt10": 19,
+   "fontLt10By": {
+    "9": 19
+   },
+   "radii": {
+    "4": 1,
+    "5": 6,
+    "6": 3,
+    "7": 1,
+    "8": 3,
+    "10": 1,
+    "desk.radius": 1
+   },
+   "shadows": {},
+   "inlineStyle": 171,
+   "className": 6,
+   "details": 0,
+   "titleAttr": 6,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 1257
+  },
+  "components/BrokerProposalCardV4.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 18,
+   "fontLt10By": {
+    "9": 18
+   },
+   "radii": {
+    "4": 1,
+    "5": 7,
+    "6": 1,
+    "8": 4,
+    "50%": 2,
+    "desk.radius": 1
+   },
+   "shadows": {
+    "0 10px 30px rgba(0,0,0,.5)": 2
+   },
+   "inlineStyle": 202,
+   "className": 7,
+   "details": 0,
+   "titleAttr": 11,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [
+    "proposalDeskTheme",
+    "watchlistCardTokens",
+    "terminalUi",
+    "terminalCardTheme",
+    "watchlistTerminalTokens"
+   ],
+   "lines": 1526
+  },
+  "components/BrokerProposals.tsx": {
+   "hex": 9,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "9": 5
+   },
+   "radii": {
+    "6": 9,
+    "7": 2,
+    "8": 3,
+    "10": 2,
+    "12": 2,
+    "desk.radiusLg": 1,
+    "desk.radius": 1
+   },
+   "shadows": {},
+   "inlineStyle": 85,
+   "className": 0,
+   "details": 2,
+   "titleAttr": 11,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 17,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 1583
+  },
+  "components/BrokerRouteConfirmModal.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "9": 5
+   },
+   "radii": {
+    "8": 3,
+    "10": 3,
+    "16": 1
+   },
+   "shadows": {},
+   "inlineStyle": 23,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 2,
+   "tokenImports": [],
+   "lines": 224
+  },
+  "components/CentralIntelligencePages.tsx": {
+   "hex": 13,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "9": 5
+   },
+   "radii": {
+    "6": 2,
+    "7": 2,
+    "8": 1,
+    "10": 1,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 71,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 6,
+   "tokenImports": [],
+   "lines": 365
+  },
+  "components/CloudLlmRunButtons.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 1
+   },
+   "shadows": {},
+   "inlineStyle": 2,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 141
+  },
+  "components/CountryFlag.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 2,
+   "tokenImports": [],
+   "lines": 83
+  },
+  "components/CsvUpload.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 2,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 8,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 12,
+   "tokenImports": [],
+   "lines": 57
+  },
+  "components/DataSourceHealth.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "8": 1,
+    "9": 3
+   },
+   "radii": {
+    "5": 1,
+    "6": 1,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 16,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 9,
+   "tokenImports": [],
+   "lines": 67
+  },
+  "components/DecisionPacketBand.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 1
+   },
+   "shadows": {},
+   "inlineStyle": 84,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 4,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistTerminalTokens"
+   ],
+   "lines": 348
+  },
+  "components/DeskAutomationBar.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "9": 3
+   },
+   "radii": {
+    "8": 1,
+    "desk.radiusLg": 1
+   },
+   "shadows": {},
+   "inlineStyle": 12,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 70
+  },
+  "components/DetailDrawer.tsx": {
+   "hex": 24,
+   "hexInTokenFile": 0,
+   "fontLt10": 7,
+   "fontLt10By": {
+    "9": 7
+   },
+   "radii": {
+    "6": 2,
+    "7": 2,
+    "8": 2,
+    "10": 1,
+    "11": 1,
+    "12": 1
+   },
+   "shadows": {
+    "-10px 0 40px rgba(0,0,0,.55)": 1
+   },
+   "inlineStyle": 82,
+   "className": 1,
+   "details": 0,
+   "titleAttr": 17,
+   "metricLike": 1,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [
+    "terminalUi"
+   ],
+   "lines": 337
+  },
+  "components/DiscoveryPanel.tsx": {
+   "hex": 24,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "8": 1,
+    "9": 3
+   },
+   "radii": {
+    "6": 2,
+    "7": 4,
+    "10": 2
+   },
+   "shadows": {},
+   "inlineStyle": 31,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 3,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 23,
+   "tokenImports": [],
+   "lines": 99
+  },
+  "components/DividendsPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 1,
+    "6": 2,
+    "8": 4,
+    "10": 4,
+    "12": 2,
+    "50%": 1
+   },
+   "shadows": {},
+   "inlineStyle": 85,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 61,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 397
+  },
+  "components/EnsembleValidationCard.tsx": {
+   "hex": 21,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 1,
+    "5": 2,
+    "8": 1,
+    "99": 2
+   },
+   "shadows": {},
+   "inlineStyle": 25,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 14,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 333
+  },
+  "components/EntryDeskDiligenceStrip.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 11,
+   "fontLt10By": {
+    "8": 7,
+    "9": 4
+   },
+   "radii": {
+    "4": 1,
+    "5": 1,
+    "6": 3
+   },
+   "shadows": {},
+   "inlineStyle": 19,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 162
+  },
+  "components/EntryDeskRow.tsx": {
+   "hex": 14,
+   "hexInTokenFile": 0,
+   "fontLt10": 21,
+   "fontLt10By": {
+    "8": 8,
+    "9": 13
+   },
+   "radii": {
+    "4": 2,
+    "6": 2,
+    "7": 2,
+    "8": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 54,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 9,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 329
+  },
+  "components/EvidenceBlock.tsx": {
+   "hex": 7,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "8": 1,
+    "9": 1
+   },
+   "radii": {
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 6,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 92
+  },
+  "components/ExecutionCoachPanel.tsx": {
+   "hex": 9,
+   "hexInTokenFile": 0,
+   "fontLt10": 11,
+   "fontLt10By": {
+    "8": 3,
+    "9": 8
+   },
+   "radii": {
+    "3": 1,
+    "4": 1,
+    "5": 1,
+    "8": 3,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 32,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 26,
+   "tokenImports": [],
+   "lines": 124
+  },
+  "components/ExecutionHypothesesPanel.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "8": 1,
+    "9": 1
+   },
+   "radii": {
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 17,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 10,
+   "tokenImports": [],
+   "lines": 37
+  },
+  "components/ExecutionPathsStrip.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 6,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 33
+  },
+  "components/ExecutionStatePanel.tsx": {
+   "hex": 14,
+   "hexInTokenFile": 0,
+   "fontLt10": 6,
+   "fontLt10By": {
+    "8": 2,
+    "9": 4
+   },
+   "radii": {
+    "6": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 17,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 14,
+   "tokenImports": [],
+   "lines": 77
+  },
+  "components/FibChartModal.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 2,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 20,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 331
+  },
+  "components/FibChartsInline.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 30
+  },
+  "components/FibConfluencePanel.tsx": {
+   "hex": 8,
+   "hexInTokenFile": 0,
+   "fontLt10": 6,
+   "fontLt10By": {
+    "8": 2,
+    "9": 4
+   },
+   "radii": {
+    "4": 1,
+    "5": 1,
+    "6": 2,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 41,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 7,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 24,
+   "tokenImports": [],
+   "lines": 114
+  },
+  "components/FinvizCookieBanner.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 4,
+   "tokenImports": [],
+   "lines": 98
+  },
+  "components/FinvizEnrichmentPanel.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "8": 1,
+    "9": 1
+   },
+   "radii": {
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 11,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 10,
+   "tokenImports": [],
+   "lines": 46
+  },
+  "components/FinvizSectorPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 4
+   },
+   "shadows": {},
+   "inlineStyle": 15,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 57
+  },
+  "components/ForecastPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "8": 3,
+    "10": 2
+   },
+   "shadows": {},
+   "inlineStyle": 24,
+   "className": 1,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 26,
+   "tokenImports": [
+    "terminalHubChrome"
+   ],
+   "lines": 93
+  },
+  "components/GradingAuditMethodology.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "9": 5
+   },
+   "radii": {
+    "desk.radiusXl": 1,
+    "desk.radiusLg": 3
+   },
+   "shadows": {},
+   "inlineStyle": 16,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 2,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 144
+  },
+  "components/HermesClosedLoopPanel.tsx": {
+   "hex": 205,
+   "hexInTokenFile": 0,
+   "fontLt10": 87,
+   "fontLt10By": {
+    "7": 1,
+    "8": 21,
+    "9": 65
+   },
+   "radii": {
+    "4": 14,
+    "5": 8,
+    "6": 19,
+    "8": 27,
+    "10": 15,
+    "12": 4,
+    "2px 2px 0 0": 6
+   },
+   "shadows": {
+    "0 4px 20px rgba(0,0,0,.35)": 1,
+    "0 0 0 1px rgba(239,68,68,.15)": 1
+   },
+   "inlineStyle": 426,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 6,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 342,
+   "tokenImports": [],
+   "lines": 2127
+  },
+  "components/HermesDiscoveryInbox.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "9": 3
+   },
+   "radii": {
+    "4": 1,
+    "6": 4,
+    "8": 3,
+    "WL.card.radius": 4
+   },
+   "shadows": {},
+   "inlineStyle": 128,
+   "className": 3,
+   "details": 0,
+   "titleAttr": 17,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistCardTokens",
+    "terminalUi"
+   ],
+   "lines": 1257
+  },
+  "components/HermesPanel.tsx": {
+   "hex": 78,
+   "hexInTokenFile": 0,
+   "fontLt10": 12,
+   "fontLt10By": {
+    "9": 12
+   },
+   "radii": {
+    "4": 2,
+    "6": 2,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 208,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 5,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 126,
+   "tokenImports": [],
+   "lines": 515
+  },
+  "components/HermesQualitySpotCheck.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "8": 4,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 28,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 23,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 107
+  },
+  "components/HermesSoulEditor.tsx": {
+   "hex": 13,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "5": 1,
+    "6": 5,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 28,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 21,
+   "tokenImports": [],
+   "lines": 123
+  },
+  "components/HoldingProtectionActions.tsx": {
+   "hex": 13,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "8": 1,
+    "9": 1
+   },
+   "radii": {
+    "4": 4,
+    "5": 2,
+    "6": 18,
+    "7": 3,
+    "8": 6,
+    "999": 3
+   },
+   "shadows": {
+    "inset 3px 0 0 ${statusColor}": 1
+   },
+   "inlineStyle": 117,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 3,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [],
+   "lines": 1154
+  },
+  "components/HoldingReportLinks.tsx": {
+   "hex": 8,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "6": 1,
+    "50%": 1
+   },
+   "shadows": {},
+   "inlineStyle": 11,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [],
+   "lines": 161
+  },
+  "components/HoldingsCard.tsx": {
+   "hex": 10,
+   "hexInTokenFile": 0,
+   "fontLt10": 17,
+   "fontLt10By": {
+    "7": 1,
+    "8": 6,
+    "9": 10
+   },
+   "radii": {
+    "3": 3,
+    "4": 7,
+    "6": 3,
+    "terminalUi ? 2 : 10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 59,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 16,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 2,
+   "tokenImports": [
+    "holdingsTerminalTokens",
+    "terminalUi"
+   ],
+   "lines": 302
+  },
+  "components/HoldingsDetailPanel.tsx": {
+   "hex": 15,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "9": 5
+   },
+   "radii": {
+    "4": 5,
+    "6": 19,
+    "8": 3,
+    "10": 2,
+    "999": 1
+   },
+   "shadows": {},
+   "inlineStyle": 136,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 27,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 1120
+  },
+  "components/HoldingsSideDrawer.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "6": 1
+   },
+   "shadows": {
+    "-12px 0 40px rgba(0,0,0,.6)": 1
+   },
+   "inlineStyle": 10,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 85
+  },
+  "components/HoldingsTableView.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 8,
+   "fontLt10By": {
+    "8": 2,
+    "9": 6
+   },
+   "radii": {
+    "3": 1,
+    "4": 3,
+    "5": 1,
+    "8": 1,
+    "999": 1
+   },
+   "shadows": {},
+   "inlineStyle": 44,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 5,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 714
+  },
+  "components/HubPlaceholder.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 2,
+   "tokenImports": [],
+   "lines": 9
+  },
+  "components/InferenceLayersPanel.tsx": {
+   "hex": 20,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "9": 2
+   },
+   "radii": {
+    "6": 1,
+    "7": 2,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 36,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 28,
+   "tokenImports": [],
+   "lines": 213
+  },
+  "components/InsiderActivity.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "9": 2
+   },
+   "radii": {
+    "6": 1
+   },
+   "shadows": {},
+   "inlineStyle": 11,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 7,
+   "tokenImports": [],
+   "lines": 30
+  },
+  "components/IntelligenceWorkflow.tsx": {
+   "hex": 12,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "8": 2,
+    "9": 1
+   },
+   "radii": {
+    "8": 2,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 9,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 9,
+   "tokenImports": [],
+   "lines": 99
+  },
+  "components/LlmRoutingModal.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 4,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 28,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 242
+  },
+  "components/ManualExecutionLog.tsx": {
+   "hex": 8,
+   "hexInTokenFile": 0,
+   "fontLt10": 8,
+   "fontLt10By": {
+    "8": 1,
+    "9": 7
+   },
+   "radii": {
+    "4": 3,
+    "6": 1,
+    "8": 1,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 21,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 90
+  },
+  "components/ManualExecutionModal.tsx": {
+   "hex": 8,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "9": 3
+   },
+   "radii": {
+    "5": 3,
+    "7": 3,
+    "14": 1
+   },
+   "shadows": {},
+   "inlineStyle": 17,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 224
+  },
+  "components/MetricChipTooltip.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "9": 2
+   },
+   "radii": {
+    "8": 1
+   },
+   "shadows": {
+    "0 8px 24px rgba(0,0,0,.35)": 1
+   },
+   "inlineStyle": 11,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 2,
+   "metricWithGuide": 0,
+   "cssVar": 5,
+   "tokenImports": [],
+   "lines": 195
+  },
+  "components/MetricStrip.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 3
+   },
+   "shadows": {},
+   "inlineStyle": 14,
+   "className": 6,
+   "details": 0,
+   "titleAttr": 3,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 637
+  },
+  "components/NavRail.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 16,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 186
+  },
+  "components/OpenClawPanel.tsx": {
+   "hex": 7,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "4": 2,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 29,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 20,
+   "tokenImports": [],
+   "lines": 82
+  },
+  "components/OpenTradesIntelligence.tsx": {
+   "hex": 11,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 5,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 35,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [],
+   "lines": 189
+  },
+  "components/OperatorInboxPanel.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "8": 3,
+    "9": 2
+   },
+   "radii": {
+    "compact ? 0 : 10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 14,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 14,
+   "tokenImports": [],
+   "lines": 72
+  },
+  "components/OptionChainPanel.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "9": 3
+   },
+   "radii": {
+    "5": 1,
+    "6": 1,
+    "8": 2
+   },
+   "shadows": {},
+   "inlineStyle": 23,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 9,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 11,
+   "tokenImports": [],
+   "lines": 201
+  },
+  "components/OptionPositionCard.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 10,
+   "fontLt10By": {
+    "8": 4,
+    "9": 6
+   },
+   "radii": {
+    "4": 3,
+    "5": 1,
+    "6": 6,
+    "8": 4,
+    "11": 1
+   },
+   "shadows": {},
+   "inlineStyle": 29,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 14,
+   "metricWithGuide": 14,
+   "cssVar": 15,
+   "tokenImports": [],
+   "lines": 294
+  },
+  "components/OptionPositionCardV4.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 6,
+   "fontLt10By": {
+    "8": 3,
+    "9": 3
+   },
+   "radii": {
+    "6": 2,
+    "8": 1,
+    "terminalUi ? undefined : 4": 2,
+    "terminalUi ? 1 :": 1,
+    "terminalUi ? 0 : 8": 3,
+    "terminalUi ? 0 : 6": 2
+   },
+   "shadows": {},
+   "inlineStyle": 39,
+   "className": 4,
+   "details": 0,
+   "titleAttr": 4,
+   "metricLike": 11,
+   "metricWithGuide": 11,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistCardTokens",
+    "terminalUi",
+    "terminalCardTheme",
+    "watchlistTerminalTokens"
+   ],
+   "lines": 459
+  },
+  "components/OptionProposalCard.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 15,
+   "fontLt10By": {
+    "8": 9,
+    "9": 6
+   },
+   "radii": {
+    "4": 8,
+    "5": 1,
+    "6": 5,
+    "8": 2,
+    "11": 1
+   },
+   "shadows": {},
+   "inlineStyle": 35,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 5,
+   "metricLike": 16,
+   "metricWithGuide": 14,
+   "cssVar": 18,
+   "tokenImports": [],
+   "lines": 537
+  },
+  "components/OptionProposalCardV4.tsx": {
+   "hex": 2,
+   "hexInTokenFile": 0,
+   "fontLt10": 17,
+   "fontLt10By": {
+    "8": 5,
+    "9": 12
+   },
+   "radii": {
+    "1": 1,
+    "4": 3,
+    "5": 2,
+    "6": 6,
+    "8": 3,
+    "999": 1,
+    "terminalUi ? 2 : 5": 1,
+    "terminalUi ? 1 :": 1,
+    "terminalUi ? 0 : 8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 184,
+   "className": 2,
+   "details": 4,
+   "titleAttr": 13,
+   "metricLike": 35,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistCardTokens",
+    "terminalUi",
+    "terminalCardTheme",
+    "watchlistTerminalTokens"
+   ],
+   "lines": 1613
+  },
+  "components/OptionReviewBar.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "8": 1,
+    "9": 4
+   },
+   "radii": {
+    "5": 1,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 10,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 4,
+   "tokenImports": [],
+   "lines": 69
+  },
+  "components/OptionValidateButton.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 1
+   },
+   "shadows": {},
+   "inlineStyle": 8,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistTerminalTokens"
+   ],
+   "lines": 65
+  },
+  "components/OptionsNovicePanel.tsx": {
+   "hex": 21,
+   "hexInTokenFile": 0,
+   "fontLt10": 16,
+   "fontLt10By": {
+    "8": 1,
+    "9": 15
+   },
+   "radii": {
+    "4": 3,
+    "6": 2,
+    "8": 5,
+    "10": 1,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 72,
+   "className": 0,
+   "details": 3,
+   "titleAttr": 9,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [],
+   "lines": 312
+  },
+  "components/OptionsTip.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "5": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 7,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 8,
+   "tokenImports": [],
+   "lines": 81
+  },
+  "components/OptionsTrendsPanel.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 8,
+   "fontLt10By": {
+    "8": 2,
+    "9": 6
+   },
+   "radii": {
+    "5": 1,
+    "6": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 32,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 6,
+   "metricWithGuide": 6,
+   "cssVar": 42,
+   "tokenImports": [],
+   "lines": 263
+  },
+  "components/PipelineControlTower.tsx": {
+   "hex": 21,
+   "hexInTokenFile": 0,
+   "fontLt10": 6,
+   "fontLt10By": {
+    "8": 1,
+    "9": 5
+   },
+   "radii": {
+    "5": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 38,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 25,
+   "tokenImports": [],
+   "lines": 118
+  },
+  "components/PortfolioDeskHealth.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 4,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 11,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 5,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 19,
+   "tokenImports": [],
+   "lines": 172
+  },
+  "components/PositionDecisionCard.tsx": {
+   "hex": 56,
+   "hexInTokenFile": 0,
+   "fontLt10": 15,
+   "fontLt10By": {
+    "8": 3,
+    "9": 12
+   },
+   "radii": {
+    "4": 2,
+    "5": 1,
+    "6": 17,
+    "7": 2,
+    "8": 7,
+    "9": 1,
+    "10": 3,
+    "12": 1,
+    "14": 1
+   },
+   "shadows": {
+    "0 10px 28px rgba(0,0,0,.18)": 1
+   },
+   "inlineStyle": 136,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 10,
+   "metricLike": 9,
+   "metricWithGuide": 0,
+   "cssVar": 2,
+   "tokenImports": [],
+   "lines": 660
+  },
+  "components/PositionDecisionCardV4.tsx": {
+   "hex": 38,
+   "hexInTokenFile": 0,
+   "fontLt10": 16,
+   "fontLt10By": {
+    "8": 1,
+    "9": 15
+   },
+   "radii": {
+    "4": 4,
+    "5": 3,
+    "6": 15,
+    "7": 2,
+    "8": 9,
+    "12": 1,
+    "50%": 6
+   },
+   "shadows": {
+    "0 10px 30px rgba(0,0,0,.5)": 2
+   },
+   "inlineStyle": 167,
+   "className": 1,
+   "details": 0,
+   "titleAttr": 17,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistCardTokens",
+    "terminalUi",
+    "terminalCardTheme",
+    "watchlistTerminalTokens"
+   ],
+   "lines": 995
+  },
+  "components/PreflightChangedPanel.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 2,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 14,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 57
+  },
+  "components/PrivateProxyCard.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 8,
+   "fontLt10By": {
+    "8": 2,
+    "9": 6
+   },
+   "radii": {
+    "4": 1,
+    "5": 1,
+    "6": 3,
+    "8": 1,
+    "WL.card.radius": 1
+   },
+   "shadows": {},
+   "inlineStyle": 76,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 5,
+   "metricLike": 8,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistCardTokens"
+   ],
+   "lines": 306
+  },
+  "components/ProAnalystPill.tsx": {
+   "hex": 9,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "8": 1,
+    "9": 2
+   },
+   "radii": {
+    "4": 3
+   },
+   "shadows": {},
+   "inlineStyle": 10,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 8,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 10,
+   "tokenImports": [],
+   "lines": 61
+  },
+  "components/ProposalDeskStrip.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "9": 2
+   },
+   "radii": {
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 9,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 78
+  },
+  "components/ProposalLaneGateStrip.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "5": 1
+   },
+   "shadows": {},
+   "inlineStyle": 10,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 113
+  },
+  "components/ProposalLifecycleTimeline.tsx": {
+   "hex": 2,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 1
+   },
+   "shadows": {},
+   "inlineStyle": 9,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 41
+  },
+  "components/ProposalQueueSummaryBar.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "9": 2
+   },
+   "radii": {
+    "6": 3,
+    "desk.radius": 1,
+    "desk.radiusLg": 1
+   },
+   "shadows": {},
+   "inlineStyle": 11,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 98
+  },
+  "components/ProposalSourceBadges.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "8": 1,
+    "9": 1
+   },
+   "radii": {
+    "3": 1,
+    "5": 1
+   },
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 110
+  },
+  "components/ProposalStrategyBadge.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "4": 1,
+    "5": 1
+   },
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 40
+  },
+  "components/ProtectionOutcomesPanel.tsx": {
+   "hex": 28,
+   "hexInTokenFile": 0,
+   "fontLt10": 12,
+   "fontLt10By": {
+    "8": 4,
+    "9": 8
+   },
+   "radii": {
+    "4": 1,
+    "8": 3,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 39,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 6,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 32,
+   "tokenImports": [],
+   "lines": 150
+  },
+  "components/ProtectionPanel.tsx": {
+   "hex": 12,
+   "hexInTokenFile": 0,
+   "fontLt10": 6,
+   "fontLt10By": {
+    "8": 1,
+    "9": 5
+   },
+   "radii": {
+    "3": 2,
+    "8": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 29,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 8,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 18,
+   "tokenImports": [],
+   "lines": 146
+  },
+  "components/ProtectionProposalCard.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "9": 4
+   },
+   "radii": {
+    "desk.radiusXl": 1,
+    "desk.radius": 1
+   },
+   "shadows": {},
+   "inlineStyle": 15,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 101
+  },
+  "components/QueueHealthPanel.tsx": {
+   "hex": 7,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "9": 5
+   },
+   "radii": {
+    "5": 1,
+    "6": 2,
+    "8": 1,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 35,
+   "className": 0,
+   "details": 2,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 4,
+   "tokenImports": [],
+   "lines": 237
+  },
+  "components/RedeployEventModal.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 9,
+   "fontLt10By": {
+    "8": 4,
+    "9": 5
+   },
+   "radii": {
+    "2": 7
+   },
+   "shadows": {
+    "-12px 0 40px rgba(0,0,0,.65)": 1
+   },
+   "inlineStyle": 89,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 12,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 648
+  },
+  "components/RedeployPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 7,
+   "fontLt10By": {
+    "8": 6,
+    "9": 1
+   },
+   "radii": {
+    "2": 1
+   },
+   "shadows": {},
+   "inlineStyle": 50,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "holdingsTerminalTokens",
+    "terminalHubChrome"
+   ],
+   "lines": 318
+  },
+  "components/ResearchTopicsModal.tsx": {
+   "hex": 14,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "4": 1,
+    "5": 3,
+    "6": 4,
+    "8": 1,
+    "10": 2,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 35,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 29,
+   "tokenImports": [],
+   "lines": 182
+  },
+  "components/ReturnsPanel.tsx": {
+   "hex": 14,
+   "hexInTokenFile": 0,
+   "fontLt10": 15,
+   "fontLt10By": {
+    "8": 4,
+    "9": 11
+   },
+   "radii": {
+    "6": 1,
+    "8": 1,
+    "10": 5,
+    "12": 1,
+    "50%": 3
+   },
+   "shadows": {},
+   "inlineStyle": 79,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 5,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 48,
+   "tokenImports": [],
+   "lines": 605
+  },
+  "components/ScalpSetupsPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 2,
+    "5": 1,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 20,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 19,
+   "tokenImports": [],
+   "lines": 102
+  },
+  "components/ScalpStopMonitorCard.tsx": {
+   "hex": 22,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "8": 4
+   },
+   "radii": {
+    "5": 3,
+    "6": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 35,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 25,
+   "tokenImports": [],
+   "lines": 117
+  },
+  "components/ScalpStrategyModal.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 2,
+    "4": 2,
+    "5": 1,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 38,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 38,
+   "tokenImports": [],
+   "lines": 218
+  },
+  "components/SchwabAccountsMonitor.tsx": {
+   "hex": 61,
+   "hexInTokenFile": 0,
+   "fontLt10": 14,
+   "fontLt10By": {
+    "8": 4,
+    "9": 10
+   },
+   "radii": {
+    "3": 1,
+    "4": 4,
+    "6": 2
+   },
+   "shadows": {},
+   "inlineStyle": 40,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 208
+  },
+  "components/SchwabJournal.tsx": {
+   "hex": 21,
+   "hexInTokenFile": 0,
+   "fontLt10": 12,
+   "fontLt10By": {
+    "7": 2,
+    "8": 2,
+    "9": 8
+   },
+   "radii": {
+    "3": 3,
+    "4": 1,
+    "6": 2,
+    "7": 1,
+    "8": 4
+   },
+   "shadows": {},
+   "inlineStyle": 41,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 5,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 34,
+   "tokenImports": [],
+   "lines": 121
+  },
+  "components/SchwabMonitor.tsx": {
+   "hex": 9,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "5": 3,
+    "6": 1,
+    "7": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 25,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 30,
+   "tokenImports": [],
+   "lines": 93
+  },
+  "components/SchwabReauthBanner.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 7,
+   "tokenImports": [],
+   "lines": 111
+  },
+  "components/ScreenerConfigModal.tsx": {
+   "hex": 48,
+   "hexInTokenFile": 0,
+   "fontLt10": 9,
+   "fontLt10By": {
+    "9": 9
+   },
+   "radii": {
+    "4": 21,
+    "6": 5,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 86,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 68,
+   "tokenImports": [],
+   "lines": 337
+  },
+  "components/SecretsManager.tsx": {
+   "hex": 18,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "8": 4,
+    "9": 1
+   },
+   "radii": {
+    "3": 3,
+    "7": 8,
+    "10": 1,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 33,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 36,
+   "tokenImports": [],
+   "lines": 162
+  },
+  "components/ShadowBatchButton.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 1
+   },
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistTerminalTokens"
+   ],
+   "lines": 60
+  },
+  "components/ShadowStrategyButton.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 3
+   },
+   "shadows": {},
+   "inlineStyle": 25,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistTerminalTokens"
+   ],
+   "lines": 222
+  },
+  "components/ShareReconciliationModal.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "9": 2
+   },
+   "radii": {
+    "6": 2,
+    "8": 5,
+    "12": 1,
+    "999": 1
+   },
+   "shadows": {
+    "0 20px 60px rgba(0,0,0,.55)": 1
+   },
+   "inlineStyle": 25,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 282
+  },
+  "components/SharedIntelligenceBridge.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 1,
+    "4": 3,
+    "6": 1
+   },
+   "shadows": {},
+   "inlineStyle": 22,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 5,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 10,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 105
+  },
+  "components/SizingTable.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "9": 3
+   },
+   "radii": {
+    "4": 1,
+    "term ? 2 : 5": 1
+   },
+   "shadows": {},
+   "inlineStyle": 21,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 7,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistCardTokens",
+    "watchlistTerminalTokens"
+   ],
+   "lines": 261
+  },
+  "components/SnapTradeCredsModal.tsx": {
+   "hex": 26,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "9": 2
+   },
+   "radii": {
+    "5": 1,
+    "6": 3,
+    "12": 1
+   },
+   "shadows": {
+    "0 18px 50px rgba(0,0,0,.5)": 1
+   },
+   "inlineStyle": 17,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 107
+  },
+  "components/SpendPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 1,
+    "5": 1,
+    "6": 1,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 49,
+   "className": 1,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 6,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens",
+    "terminalHubChrome"
+   ],
+   "lines": 213
+  },
+  "components/StateCard.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "var(--radius)": 1
+   },
+   "shadows": {},
+   "inlineStyle": 4,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 23,
+   "tokenImports": [],
+   "lines": 81
+  },
+  "components/StatusBadge.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "10": 1,
+    "50%": 1
+   },
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 14,
+   "tokenImports": [],
+   "lines": 57
+  },
+  "components/StopIntelligencePanel.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "8": 1,
+    "9": 2
+   },
+   "radii": {
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 11,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 10,
+   "tokenImports": [],
+   "lines": 50
+  },
+  "components/StopKindPill.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "999": 1
+   },
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 51
+  },
+  "components/StopManagement.tsx": {
+   "hex": 10,
+   "hexInTokenFile": 0,
+   "fontLt10": 7,
+   "fontLt10By": {
+    "8": 1,
+    "9": 6
+   },
+   "radii": {
+    "5": 3,
+    "6": 3,
+    "7": 8,
+    "8": 6,
+    "9": 2,
+    "10": 2,
+    "12": 3,
+    "50%": 2
+   },
+   "shadows": {
+    "0 0 12px ${status.color}66": 1
+   },
+   "inlineStyle": 244,
+   "className": 2,
+   "details": 0,
+   "titleAttr": 4,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 4,
+   "tokenImports": [
+    "watchlistCardTokens",
+    "terminalUi",
+    "terminalHubChrome"
+   ],
+   "lines": 1483
+  },
+  "components/StrategyPlanner.tsx": {
+   "hex": 7,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "9": 3
+   },
+   "radii": {
+    "5": 2,
+    "6": 1,
+    "7": 2,
+    "9": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 52,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 6,
+   "tokenImports": [],
+   "lines": 196
+  },
+  "components/SymbolJourneyPanel.tsx": {
+   "hex": 12,
+   "hexInTokenFile": 0,
+   "fontLt10": 6,
+   "fontLt10By": {
+    "8": 2,
+    "9": 4
+   },
+   "radii": {
+    "2": 2,
+    "6": 1,
+    "10": 1,
+    "12": 1,
+    "50%": 1
+   },
+   "shadows": {},
+   "inlineStyle": 36,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 6,
+   "metricLike": 13,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 321
+  },
+  "components/SynthesizedReportCard.tsx": {
+   "hex": 24,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "8": 1,
+    "9": 4
+   },
+   "radii": {
+    "4": 1,
+    "5": 1,
+    "6": 2,
+    "11": 1
+   },
+   "shadows": {},
+   "inlineStyle": 21,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [],
+   "lines": 119
+  },
+  "components/TaxPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 1,
+    "8": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 29,
+   "className": 1,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 20,
+   "tokenImports": [],
+   "lines": 89
+  },
+  "components/TechnicalAssessmentCard.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "6": 1,
+    "8": 1,
+    "10": 2
+   },
+   "shadows": {},
+   "inlineStyle": 14,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "proposalDeskTheme"
+   ],
+   "lines": 129
+  },
+  "components/TerminalChip.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 1
+   },
+   "shadows": {
+    "0 8px 24px rgba(0,0,0,0.5)": 1
+   },
+   "inlineStyle": 13,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 80
+  },
+  "components/ThesisValidityBar.tsx": {
+   "hex": 10,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "1": 2,
+    "2": 1,
+    "3": 1,
+    "4": 1,
+    "8": 1,
+    "10": 1,
+    "50%": 1
+   },
+   "shadows": {
+    "0 0 12px ${color}33": 1,
+    "0 0 8px ${color}": 1
+   },
+   "inlineStyle": 24,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 5,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 160
+  },
+  "components/ThresholdProposalModal.tsx": {
+   "hex": 20,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "9": 2
+   },
+   "radii": {
+    "4": 2,
+    "6": 4,
+    "8": 2,
+    "10": 1,
+    "12": 1
+   },
+   "shadows": {
+    "0 12px 40px rgba(0,0,0,.45)": 1
+   },
+   "inlineStyle": 39,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 29,
+   "tokenImports": [],
+   "lines": 386
+  },
+  "components/TickerLinks.tsx": {
+   "hex": 2,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "9": 2
+   },
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 30
+  },
+  "components/TimeExitProposals.tsx": {
+   "hex": 8,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "6": 2,
+    "7": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 14,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 9,
+   "tokenImports": [],
+   "lines": 49
+  },
+  "components/ToSWatchlists.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 2,
+    "5": 2,
+    "6": 2,
+    "8": 1,
+    "10": 2
+   },
+   "shadows": {},
+   "inlineStyle": 21,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 27,
+   "tokenImports": [],
+   "lines": 67
+  },
+  "components/TradeAIPanel.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "4": 1,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 27,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 19,
+   "tokenImports": [],
+   "lines": 68
+  },
+  "components/TradeReplayChart.tsx": {
+   "hex": 44,
+   "hexInTokenFile": 0,
+   "fontLt10": 8,
+   "fontLt10By": {
+    "8": 2,
+    "9": 6
+   },
+   "radii": {
+    "4": 3,
+    "5": 2,
+    "6": 5,
+    "8": 1,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 41,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 5,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 31,
+   "tokenImports": [],
+   "lines": 350
+  },
+  "components/TradingCommandTriage.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "5": 1,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 6,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 16,
+   "tokenImports": [],
+   "lines": 90
+  },
+  "components/TradingDeskHealth.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 3,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 6,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 7,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 16,
+   "tokenImports": [],
+   "lines": 174
+  },
+  "components/TradingSymbolChart.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 1,
+    "6": 1
+   },
+   "shadows": {},
+   "inlineStyle": 6,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 8,
+   "tokenImports": [],
+   "lines": 74
+  },
+  "components/WatchTruthAuditPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 1,
+    "4": 1
+   },
+   "shadows": {},
+   "inlineStyle": 71,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 6,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 27,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 290
+  },
+  "components/WatchlistCard.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 6,
+   "fontLt10By": {
+    "9": 6
+   },
+   "radii": {
+    "2": 2,
+    "4": 2,
+    "5": 2,
+    "WL.card.radius": 1,
+    "50%": 1
+   },
+   "shadows": {},
+   "inlineStyle": 67,
+   "className": 6,
+   "details": 0,
+   "titleAttr": 5,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistCardTokens"
+   ],
+   "lines": 756
+  },
+  "components/WatchlistCardV4.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 12,
+   "fontLt10By": {
+    "8": 4,
+    "9": 8
+   },
+   "radii": {
+    "1": 1,
+    "2": 2
+   },
+   "shadows": {
+    "0 8px 20px rgba(0,0,0,.55)": 1
+   },
+   "inlineStyle": 76,
+   "className": 11,
+   "details": 0,
+   "titleAttr": 9,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [
+    "watchlistTerminalTokens",
+    "watchTokens"
+   ],
+   "lines": 700
+  },
+  "components/WatchlistProposeModal.tsx": {
+   "hex": 9,
+   "hexInTokenFile": 0,
+   "fontLt10": 9,
+   "fontLt10By": {
+    "9": 9
+   },
+   "radii": {
+    "8": 10,
+    "10": 5,
+    "16": 1
+   },
+   "shadows": {
+    "0 24px 80px rgba(0,0,0,.45)": 1
+   },
+   "inlineStyle": 52,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 4,
+   "tokenImports": [],
+   "lines": 490
+  },
+  "components/active-trader-motion/MotionRail.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 16,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 83
+  },
+  "components/active-trader-motion/MotionSection.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 10,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 129
+  },
+  "components/active-trader-motion/PositionMomentumPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 31,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 113
+  },
+  "components/active-trader-motion/T2CapacityIndicator.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 9,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 50
+  },
+  "components/active-trader-motion/motionFormat.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 82
+  },
+  "components/active-trader-motion/normalizeMotion.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 152
+  },
+  "components/cio/CioBrainPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 50,
+   "details": 0,
+   "titleAttr": 29,
+   "metricLike": 8,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 340
+  },
+  "components/cio/SymbolThesisCard.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 3,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 13,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 21,
+   "tokenImports": [],
+   "lines": 341
+  },
+  "components/defense/BookStanceStrip.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 6
+   },
+   "shadows": {},
+   "inlineStyle": 29,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 151
+  },
+  "components/defense/DefenseDetails.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "1": 1,
+    "2": 4
+   },
+   "shadows": {},
+   "inlineStyle": 52,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 6,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 174
+  },
+  "components/defense/ExecutionPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 6
+   },
+   "shadows": {},
+   "inlineStyle": 27,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 3,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 118
+  },
+  "components/defense/InverseStoplightRail.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 1,
+    "999": 1
+   },
+   "shadows": {},
+   "inlineStyle": 13,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 77
+  },
+  "components/defense/LadderTrack.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 1
+   },
+   "shadows": {},
+   "inlineStyle": 6,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 74
+  },
+  "components/defense/LlmLogos.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 4,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 65
+  },
+  "components/defense/OptionsLifecycleStrip.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 1
+   },
+   "shadows": {},
+   "inlineStyle": 10,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 36
+  },
+  "components/defense/RecommendationsRail.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 16
+   },
+   "shadows": {},
+   "inlineStyle": 89,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 9,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 496
+  },
+  "components/defense/ReviewConsole.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 4
+   },
+   "shadows": {},
+   "inlineStyle": 18,
+   "className": 0,
+   "details": 1,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 72
+  },
+  "components/defense/RotationBoards.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "1": 1,
+    "2": 4
+   },
+   "shadows": {},
+   "inlineStyle": 27,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 5,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 182
+  },
+  "components/defense/RotationPlanPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 6
+   },
+   "shadows": {},
+   "inlineStyle": 24,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 3,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 119
+  },
+  "components/defense/SectorLeadersCard.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 47,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 13,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 435
+  },
+  "components/defense/SectorLeadersPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 2,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 13,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 118
+  },
+  "components/defense/redesign/CashAlternatives.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 1
+   },
+   "shadows": {},
+   "inlineStyle": 36,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 14,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 196
+  },
+  "components/defense/redesign/DefenseRedesign.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 1
+   },
+   "shadows": {},
+   "inlineStyle": 113,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 10,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 774
+  },
+  "components/defense/redesign/Val.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 51
+  },
+  "components/defense/redesign/transitionRead.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 63
+  },
+  "components/health/CoderDispatchLedger.tsx": {
+   "hex": 25,
+   "hexInTokenFile": 0,
+   "fontLt10": 13,
+   "fontLt10By": {
+    "8": 1,
+    "9": 12
+   },
+   "radii": {
+    "4": 1,
+    "5": 2,
+    "6": 3,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 54,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 40,
+   "tokenImports": [],
+   "lines": 212
+  },
+  "components/home/BookTreemap.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "8": 2,
+    "9": 2
+   },
+   "radii": {
+    "1": 1,
+    "2": 5
+   },
+   "shadows": {
+    "0 2px 10px rgba(0,0,0,.5)": 1
+   },
+   "inlineStyle": 25,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 164
+  },
+  "components/home/HomeTrustRender.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 12,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 7,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 69
+  },
+  "components/home/MajorNewsGrid.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 7,
+   "fontLt10By": {
+    "8": 4,
+    "9": 3
+   },
+   "radii": {
+    "2": 8
+   },
+   "shadows": {},
+   "inlineStyle": 31,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 129
+  },
+  "components/home/MarketMoversBoard.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "8": 2,
+    "9": 2
+   },
+   "radii": {
+    "2": 4
+   },
+   "shadows": {},
+   "inlineStyle": 22,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 3,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 155
+  },
+  "components/intelligence/IntelligenceNewsTab.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "9": 2
+   },
+   "radii": {
+    "4": 1,
+    "6": 3,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 21,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 25,
+   "tokenImports": [],
+   "lines": 158
+  },
+  "components/intelligence/IntelligenceResearchTab.tsx": {
+   "hex": 8,
+   "hexInTokenFile": 0,
+   "fontLt10": 7,
+   "fontLt10By": {
+    "9": 7
+   },
+   "radii": {
+    "5": 1,
+    "6": 1,
+    "8": 2,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 56,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 41,
+   "tokenImports": [],
+   "lines": 208
+  },
+  "components/intelligence/IntelligenceRotationTab.tsx": {
+   "hex": 22,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "8": 1,
+    "9": 2
+   },
+   "radii": {
+    "5": 1,
+    "6": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 47,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 28,
+   "tokenImports": [],
+   "lines": 154
+  },
+  "components/intelligence/IntelligenceSourcesTab.tsx": {
+   "hex": 7,
+   "hexInTokenFile": 0,
+   "fontLt10": 13,
+   "fontLt10By": {
+    "9": 13
+   },
+   "radii": {
+    "5": 1,
+    "6": 2,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 42,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 32,
+   "tokenImports": [],
+   "lines": 163
+  },
+  "components/options/OptionsLifecycleView.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 14
+   },
+   "shadows": {},
+   "inlineStyle": 68,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 8,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 331
+  },
+  "components/options/optionsLifecyclePrimary.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 30
+  },
+  "components/primitives/cardPrimitives.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "5": 1,
+    "7": 1,
+    "8": 1
+   },
+   "shadows": {
+    "0 10px 28px rgba(0,0,0,.4)": 1
+   },
+   "inlineStyle": 16,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistCardTokens"
+   ],
+   "lines": 156
+  },
+  "components/reentry/AuthoritativeExitUniverse.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "5": 2,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 130,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 10,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 19,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 249
+  },
+  "components/reentry/ReEntryAlertArmModal.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 2,
+    "6": 1
+   },
+   "shadows": {},
+   "inlineStyle": 13,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 172
+  },
+  "components/reentry/ReEntryAnalystEvidence.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "5": 4,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 25,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 68
+  },
+  "components/reentry/ReEntryAnalystLookthroughBoard.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "5": 3,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 26,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 148
+  },
+  "components/reentry/ReEntryClassificationOverlay.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 2,
+    "5": 1
+   },
+   "shadows": {
+    "0 24px 80px rgba(0,0,0,.5)": 1
+   },
+   "inlineStyle": 63,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 15,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 315
+  },
+  "components/reentry/ReEntryCommandHeader.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "5": 1,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 11,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 15,
+   "tokenImports": [],
+   "lines": 111
+  },
+  "components/reentry/ReEntryCurrentIntelligence.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 1,
+    "4": 4,
+    "5": 1
+   },
+   "shadows": {},
+   "inlineStyle": 66,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 23,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 874
+  },
+  "components/reentry/ReEntryEvidenceContractPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 1,
+    "5": 1
+   },
+   "shadows": {},
+   "inlineStyle": 13,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 9,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 36
+  },
+  "components/reentry/ReEntryExitDetailLedger.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 1,
+    "5": 3,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 26,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 12,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 124
+  },
+  "components/reentry/ReEntryExitWorkbench.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 2,
+    "5": 1
+   },
+   "shadows": {},
+   "inlineStyle": 24,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 16,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 100
+  },
+  "components/reentry/ReEntryHelpGuide.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "5": 2,
+    "8": 1,
+    "999": 1
+   },
+   "shadows": {},
+   "inlineStyle": 12,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 4,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 49
+  },
+  "components/reentry/ReEntryMiniChart.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 1,
+    "5": 1
+   },
+   "shadows": {},
+   "inlineStyle": 6,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 82
+  },
+  "components/reentry/ReEntryResistanceBoard.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "5": 4,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 20,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 12,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 87
+  },
+  "components/reentry/ReEntryRotationWorkspace.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 2,
+    "5": 2,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 152,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 4,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 14,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 541
+  },
+  "components/reports/ActionDeck.tsx": {
+   "hex": 7,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "9": 1
+   },
+   "shadows": {},
+   "inlineStyle": 8,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 5,
+   "tokenImports": [],
+   "lines": 89
+  },
+  "components/reports/AlertAnalyticsBand.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "8": 1
+   },
+   "radii": {
+    "1": 1,
+    "2": 4
+   },
+   "shadows": {},
+   "inlineStyle": 26,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 97
+  },
+  "components/reports/AlertSettingsModal.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 2
+   },
+   "shadows": {},
+   "inlineStyle": 26,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 22,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 127
+  },
+  "components/reports/AnalystActionModal.tsx": {
+   "hex": 9,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "6": 3,
+    "8": 1,
+    "12": 1
+   },
+   "shadows": {
+    "0 12px 40px rgba(0,0,0,.4)": 1
+   },
+   "inlineStyle": 14,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 11,
+   "tokenImports": [],
+   "lines": 101
+  },
+  "components/reports/AnalystReportViewer.tsx": {
+   "hex": 56,
+   "hexInTokenFile": 0,
+   "fontLt10": 11,
+   "fontLt10By": {
+    "8": 2,
+    "9": 9
+   },
+   "radii": {
+    "3": 2,
+    "6": 6,
+    "8": 6,
+    "10": 1,
+    "0 8px 8px 0": 2,
+    "0 6px 6px 0": 1
+   },
+   "shadows": {},
+   "inlineStyle": 92,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 67,
+   "tokenImports": [],
+   "lines": 572
+  },
+  "components/reports/AnalystReportsPanel.tsx": {
+   "hex": 23,
+   "hexInTokenFile": 0,
+   "fontLt10": 6,
+   "fontLt10By": {
+    "9": 6
+   },
+   "radii": {
+    "2": 4,
+    "5": 3,
+    "6": 7,
+    "8": 2,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 44,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 41,
+   "tokenImports": [],
+   "lines": 441
+  },
+  "components/reports/ArchiveListItem.tsx": {
+   "hex": 8,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "8": 4,
+    "9": 1
+   },
+   "radii": {
+    "4": 3,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 14,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 9,
+   "tokenImports": [],
+   "lines": 62
+  },
+  "components/reports/ArchiveReader.tsx": {
+   "hex": 22,
+   "hexInTokenFile": 0,
+   "fontLt10": 6,
+   "fontLt10By": {
+    "9": 6
+   },
+   "radii": {
+    "5": 3,
+    "6": 2,
+    "8": 1,
+    "10": 2
+   },
+   "shadows": {},
+   "inlineStyle": 22,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 16,
+   "tokenImports": [],
+   "lines": 152
+  },
+  "components/reports/BriefSectionPanels.tsx": {
+   "hex": 10,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 7,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 5,
+   "tokenImports": [],
+   "lines": 31
+  },
+  "components/reports/DocxDownloads.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 1
+   },
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [],
+   "lines": 14
+  },
+  "components/reports/MorningCommandStrip.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 5,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 5,
+   "tokenImports": [],
+   "lines": 48
+  },
+  "components/reports/PriorityActionBoard.tsx": {
+   "hex": 19,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "8": 2,
+    "9": 3
+   },
+   "radii": {
+    "4": 1,
+    "8": 2
+   },
+   "shadows": {},
+   "inlineStyle": 15,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [],
+   "lines": 112
+  },
+  "components/reports/ProspectusBatchPanel.tsx": {
+   "hex": 18,
+   "hexInTokenFile": 0,
+   "fontLt10": 6,
+   "fontLt10By": {
+    "8": 1,
+    "9": 5
+   },
+   "radii": {
+    "3": 1,
+    "5": 4,
+    "6": 5,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 45,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 34,
+   "tokenImports": [],
+   "lines": 269
+  },
+  "components/reports/ReportCoverageStrip.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 7,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 8,
+   "tokenImports": [],
+   "lines": 25
+  },
+  "components/reports/ReportLibrary.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 2
+   },
+   "shadows": {},
+   "inlineStyle": 21,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 123
+  },
+  "components/reports/ReportSearch.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "6": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 13,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 8,
+   "tokenImports": [],
+   "lines": 45
+  },
+  "components/reports/ReportsArchive.tsx": {
+   "hex": 30,
+   "hexInTokenFile": 0,
+   "fontLt10": 7,
+   "fontLt10By": {
+    "8": 3,
+    "9": 4
+   },
+   "radii": {
+    "4": 1,
+    "5": 4,
+    "6": 4,
+    "7": 3,
+    "8": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 62,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 7,
+   "metricWithGuide": 0,
+   "cssVar": 49,
+   "tokenImports": [],
+   "lines": 256
+  },
+  "components/reports/StructuredBrief.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 1,
+    "999": 1
+   },
+   "shadows": {},
+   "inlineStyle": 16,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 135
+  },
+  "components/reports/SystemRollupTab.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "8": 1
+   },
+   "radii": {
+    "1": 1,
+    "2": 2
+   },
+   "shadows": {},
+   "inlineStyle": 33,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 9,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 169
+  },
+  "components/reports/briefUtils.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 73
+  },
+  "components/reports/reportLinks.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 69
+  },
+  "components/risk/DrawdownChart.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "8": 2
+   },
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 2,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 6,
+   "tokenImports": [],
+   "lines": 37
+  },
+  "components/risk/GreeksOverview.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "8": 2,
+    "9": 2
+   },
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 6,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 8,
+   "tokenImports": [],
+   "lines": 93
+  },
+  "components/risk/OptionMoneynessBar.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "8": 1,
+    "9": 2
+   },
+   "radii": {
+    "1": 1,
+    "3": 1,
+    "4": 1,
+    "8": 1,
+    "50%": 1
+   },
+   "shadows": {
+    "0 0 6px ${BLUE}": 1
+   },
+   "inlineStyle": 11,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [],
+   "lines": 78
+  },
+  "components/risk/OptionsPnLProfile.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 6,
+   "fontLt10By": {
+    "8": 5,
+    "9": 1
+   },
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 7,
+   "tokenImports": [],
+   "lines": 64
+  },
+  "components/risk/PositionSizingRiskBar.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "5": 1,
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 7,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 2,
+   "tokenImports": [],
+   "lines": 44
+  },
+  "components/risk/RiskContributionBars.tsx": {
+   "hex": 8,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "8": 1,
+    "9": 2
+   },
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 3,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 7,
+   "tokenImports": [],
+   "lines": 47
+  },
+  "components/risk/RiskGauge.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "8": 1
+   },
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 4,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 40
+  },
+  "components/risk/RiskHealthStrip.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 1,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 2,
+   "tokenImports": [],
+   "lines": 43
+  },
+  "components/risk/RiskHeatmapGrid.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "8": 2
+   },
+   "radii": {
+    "8": 1
+   },
+   "shadows": {},
+   "inlineStyle": 11,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 6,
+   "tokenImports": [],
+   "lines": 52
+  },
+  "components/risk/ThesisValidityGauge.tsx": {
+   "hex": 2,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 6,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [],
+   "lines": 41
+  },
+  "components/rockville/CioDailyPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 2,
+    "8": 1,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 21,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 1,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 211
+  },
+  "components/rockville/WatchCardV2.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 2,
+    "8": 5,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 47,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 353
+  },
+  "components/rotation/ActionableSectorDecisionBoard.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 2
+   },
+   "shadows": {
+    "0 24px 80px rgba(0,0,0,.55)": 1
+   },
+   "inlineStyle": 80,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 7,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 539
+  },
+  "components/rotation/InstitutionalRotationBrief.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 2
+  },
+  "components/tradeinview/AdvancedReportsPanel.tsx": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "9": 4
+   },
+   "radii": {
+    "5": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 12,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 6,
+   "tokenImports": [],
+   "lines": 64
+  },
+  "components/tradeinview/AiCritiqueInsightsPanel.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "9": 4
+   },
+   "radii": {
+    "6": 2,
+    "10": 3
+   },
+   "shadows": {},
+   "inlineStyle": 26,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 21,
+   "tokenImports": [],
+   "lines": 128
+  },
+  "components/tradeinview/AiTradeCritique.tsx": {
+   "hex": 9,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "8": 1,
+    "9": 4
+   },
+   "radii": {
+    "4": 1,
+    "6": 4,
+    "8": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 35,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 23,
+   "tokenImports": [],
+   "lines": 265
+  },
+  "components/tradeinview/BehavioralPanel.tsx": {
+   "hex": 8,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "10": 4
+   },
+   "shadows": {},
+   "inlineStyle": 23,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [],
+   "lines": 54
+  },
+  "components/tradeinview/BulkTagModal.tsx": {
+   "hex": 7,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 1,
+    "6": 2,
+    "8": 2,
+    "12": 1
+   },
+   "shadows": {
+    "0 20px 60px rgba(0,0,0,.6)": 1
+   },
+   "inlineStyle": 20,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 24,
+   "tokenImports": [],
+   "lines": 247
+  },
+  "components/tradeinview/ByTickerPanel.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "9": 5
+   },
+   "radii": {
+    "6": 2,
+    "8": 2,
+    "3px 3px 0 0": 1
+   },
+   "shadows": {},
+   "inlineStyle": 49,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 16,
+   "tokenImports": [],
+   "lines": 226
+  },
+  "components/tradeinview/CostsPanel.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "4": 1,
+    "6": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 33,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 28,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 126
+  },
+  "components/tradeinview/CsvImportPanel.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "9": 3
+   },
+   "radii": {
+    "5": 1,
+    "6": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 8,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 6,
+   "tokenImports": [],
+   "lines": 44
+  },
+  "components/tradeinview/ExitIntelligencePanel.tsx": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "8": 2,
+    "9": 1
+   },
+   "radii": {
+    "8": 1,
+    "10": 3
+   },
+   "shadows": {},
+   "inlineStyle": 20,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 16,
+   "tokenImports": [],
+   "lines": 64
+  },
+  "components/tradeinview/ExitTypePicker.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 14
+  },
+  "components/tradeinview/IndustryPicker.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 14
+  },
+  "components/tradeinview/JournalVocabPicker.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 5,
+    "10": 1
+   },
+   "shadows": {
+    "0 16px 48px rgba(0,0,0,.55)": 1
+   },
+   "inlineStyle": 10,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [],
+   "lines": 150
+  },
+  "components/tradeinview/ManualEntryPanel.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "9": 1
+   },
+   "radii": {
+    "4": 3,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 8,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 8,
+   "tokenImports": [],
+   "lines": 40
+  },
+  "components/tradeinview/MarketRegimePicker.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 21
+  },
+  "components/tradeinview/MonteCarloPanel.tsx": {
+   "hex": 10,
+   "hexInTokenFile": 0,
+   "fontLt10": 7,
+   "fontLt10By": {
+    "8": 6,
+    "9": 1
+   },
+   "radii": {
+    "6": 1,
+    "10": 3
+   },
+   "shadows": {},
+   "inlineStyle": 17,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 23,
+   "tokenImports": [],
+   "lines": 138
+  },
+  "components/tradeinview/OptionsJournalPanel.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 3,
+   "fontLt10By": {
+    "9": 3
+   },
+   "radii": {
+    "4": 1,
+    "10": 4
+   },
+   "shadows": {},
+   "inlineStyle": 25,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 16,
+   "tokenImports": [],
+   "lines": 61
+  },
+  "components/tradeinview/PsychologyBeforePicker.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 21
+  },
+  "components/tradeinview/ReportingAuditPanel.tsx": {
+   "hex": 10,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "8": 2,
+    "9": 2
+   },
+   "radii": {
+    "6": 2,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 17,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 11,
+   "tokenImports": [],
+   "lines": 63
+  },
+  "components/tradeinview/SavedFilterBar.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "9": 4
+   },
+   "radii": {
+    "4": 3
+   },
+   "shadows": {},
+   "inlineStyle": 5,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 6,
+   "tokenImports": [],
+   "lines": 41
+  },
+  "components/tradeinview/SessionRecapPanel.tsx": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 4,
+   "fontLt10By": {
+    "9": 4
+   },
+   "radii": {
+    "5": 1,
+    "6": 2,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 9,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 11,
+   "tokenImports": [],
+   "lines": 39
+  },
+  "components/tradeinview/SetupFamilyPicker.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 21
+  },
+  "components/tradeinview/StopContextPanel.tsx": {
+   "hex": 2,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 13,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 8,
+   "tokenImports": [],
+   "lines": 83
+  },
+  "components/tradeinview/TagChipGrid.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "6": 4,
+    "8": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 19,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 13,
+   "tokenImports": [],
+   "lines": 123
+  },
+  "components/tradeinview/TaggingQueuePanel.tsx": {
+   "hex": 58,
+   "hexInTokenFile": 0,
+   "fontLt10": 5,
+   "fontLt10By": {
+    "9": 5
+   },
+   "radii": {
+    "4": 2,
+    "5": 2,
+    "6": 9,
+    "8": 21,
+    "10": 10,
+    "12": 1
+   },
+   "shadows": {
+    "0 4px 20px rgba(0,0,0,.4)": 1
+   },
+   "inlineStyle": 88,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 71,
+   "tokenImports": [],
+   "lines": 731
+  },
+  "components/tradeinview/TradeCompareReplay.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "9": 2
+   },
+   "radii": {
+    "4": 2,
+    "8": 1,
+    "12": 1
+   },
+   "shadows": {},
+   "inlineStyle": 10,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 6,
+   "tokenImports": [],
+   "lines": 40
+  },
+  "components/tradeinview/TradeInViewDetail.tsx": {
+   "hex": 14,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "8": 1
+   },
+   "radii": {
+    "4": 1,
+    "6": 9,
+    "8": 1,
+    "10": 1,
+    "12": 1
+   },
+   "shadows": {
+    "0 20px 60px rgba(0,0,0,.6)": 1
+   },
+   "inlineStyle": 32,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 33,
+   "tokenImports": [],
+   "lines": 282
+  },
+  "components/tradeinview/TradeLogTable.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 1,
+   "fontLt10By": {
+    "8": 1
+   },
+   "radii": {
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 7,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 7,
+   "tokenImports": [],
+   "lines": 67
+  },
+  "components/tradeinview/TradePlanPicker.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 14
+  },
+  "components/tradeinview/TradeReportReadiness.tsx": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "8": 3
+   },
+   "shadows": {},
+   "inlineStyle": 16,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 8,
+   "tokenImports": [],
+   "lines": 106
+  },
+  "components/tradeinview/ZellaScoreCard.tsx": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "7": 1,
+    "8": 1
+   },
+   "radii": {
+    "6": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 9,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 6,
+   "tokenImports": [],
+   "lines": 27
+  },
+  "components/truth/RouteErrorBoundary.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 7,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 75
+  },
+  "components/truth/SurfaceModeBanner.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 5,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 1,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 73
+  },
+  "lib/adminWrite.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 47
+  },
+  "lib/agentMaturityObservability.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 348
+  },
+  "lib/agentModelLabel.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 16
+  },
+  "lib/agentReviews.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 4,
+   "tokenImports": [],
+   "lines": 114
+  },
+  "lib/agentRuntimeDetailAdapter.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 144
+  },
+  "lib/agentRuntimeMonitoring.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 225
+  },
+  "lib/agentRuntimeReadAdapter.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 139
+  },
+  "lib/bookTreemapLayout.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 81
+  },
+  "lib/brokerReconSummary.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 101
+  },
+  "lib/brokerThesis.ts": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 254
+  },
+  "lib/cardsV4.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 40
+  },
+  "lib/chipScope.mjs": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 41
+  },
+  "lib/cioLabels.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 106
+  },
+  "lib/cloudLlmRun.ts": {
+   "hex": 7,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 225
+  },
+  "lib/country.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 151
+  },
+  "lib/defenseRedesign.ts": {
+   "hex": 11,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "3": 1,
+    "6": 1,
+    "10": 1
+   },
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchTokens"
+   ],
+   "lines": 84
+  },
+  "lib/exitLadder.ts": {
+   "hex": 2,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 67
+  },
+  "lib/exportBrokerProposalsCsv.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 83
+  },
+  "lib/exportExecutionQualityCsv.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 71
+  },
+  "lib/exportHoldingsCsv.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 36
+  },
+  "lib/exportOpenTradesCsv.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 69
+  },
+  "lib/fmtTimestamp.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 22
+  },
+  "lib/format.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 23
+  },
+  "lib/healthCta.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 29
+  },
+  "lib/holdingsRowModel.ts": {
+   "hex": 8,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 637
+  },
+  "lib/holdingsTerminalTokens.ts": {
+   "hex": 14,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 79
+  },
+  "lib/homeLabels.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 247
+  },
+  "lib/homeWinRate.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 59
+  },
+  "lib/httpOutcome.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 149
+  },
+  "lib/journalTagVocab.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 289
+  },
+  "lib/journalVocab.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 61
+  },
+  "lib/manualTosRating.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 41
+  },
+  "lib/marketRegimes.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 45
+  },
+  "lib/metricChipTooltipState.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 22
+  },
+  "lib/observationEnvelope.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 342
+  },
+  "lib/operatorBoundary.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 110
+  },
+  "lib/operatorDecisionCard.ts": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 581
+  },
+  "lib/optionsCardSemantics.ts": {
+   "hex": 6,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 3,
+   "tokenImports": [],
+   "lines": 230
+  },
+  "lib/optionsEducation.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 570
+  },
+  "lib/optionsMetricTooltips.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 416
+  },
+  "lib/optionsNovice.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 231
+  },
+  "lib/optionsTooltips.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 134
+  },
+  "lib/oscillatorDisplay.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 48
+  },
+  "lib/portfolioDeepLink.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 104
+  },
+  "lib/pricingStamp.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 64
+  },
+  "lib/proposalBlockers.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 62
+  },
+  "lib/proposalCardAction.ts": {
+   "hex": 3,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 152
+  },
+  "lib/proposalDeskTheme.ts": {
+   "hex": 1,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "desk.radiusXl": 1,
+    "desk.radius": 1
+   },
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 21,
+   "tokenImports": [],
+   "lines": 64
+  },
+  "lib/proposalLabels.ts": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 40
+  },
+  "lib/proposalRouting.ts": {
+   "hex": 4,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 52
+  },
+  "lib/proposalSource.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 129
+  },
+  "lib/protectionTrail.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 47
+  },
+  "lib/protectiveStopPreflight.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 140
+  },
+  "lib/psychologyBefore.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 39
+  },
+  "lib/redeployDeskTypes.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 204
+  },
+  "lib/reentryDecisionScorecard.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 640
+  },
+  "lib/reentrySharedContext.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 124
+  },
+  "lib/replayChartScale.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 228
+  },
+  "lib/replayTrade.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 59
+  },
+  "lib/reportLinks.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 46
+  },
+  "lib/riskMath.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 92
+  },
+  "lib/runHealth.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 4,
+   "tokenImports": [],
+   "lines": 92
+  },
+  "lib/scannerSelection.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 592
+  },
+  "lib/schwabTickets.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 86
+  },
+  "lib/sectorLeaders.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 111
+  },
+  "lib/sectorNormalize.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 56
+  },
+  "lib/setupFamilies.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 39
+  },
+  "lib/setupRunSummary.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 237
+  },
+  "lib/stopCoverage.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 81
+  },
+  "lib/stopManagement.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 560
+  },
+  "lib/stopReviewTooltip.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 46
+  },
+  "lib/supportResistance.tsx": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 2,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 2,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "holdingsTerminalTokens"
+   ],
+   "lines": 93
+  },
+  "lib/surfaceAuthority.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 156
+  },
+  "lib/surfaceFreshness.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 280
+  },
+  "lib/surfaceProjection.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 192
+  },
+  "lib/terminalCardTheme.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 2,
+   "fontLt10By": {
+    "8": 1,
+    "9": 1
+   },
+   "radii": {
+    "2": 1,
+    "WL.card.radius": 1
+   },
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistCardTokens",
+    "watchlistTerminalTokens"
+   ],
+   "lines": 74
+  },
+  "lib/terminalHubChrome.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 5
+   },
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistTerminalTokens"
+   ],
+   "lines": 73
+  },
+  "lib/terminalUi.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 22
+  },
+  "lib/tradingCommandTriage.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 218
+  },
+  "lib/tradingDeepLink.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 203
+  },
+  "lib/watchPacketQuality.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 83
+  },
+  "lib/watchTokens.ts": {
+   "hex": 0,
+   "hexInTokenFile": 53,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 2,
+    "999": 2
+   },
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistTerminalTokens",
+    "terminalHubChrome"
+   ],
+   "lines": 193
+  },
+  "lib/watchV5.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 93
+  },
+  "lib/watchlistCardAction.ts": {
+   "hex": 16,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "prominent ? 7 : 6": 1
+   },
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 651
+  },
+  "lib/watchlistCardTokens.ts": {
+   "hex": 11,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 83
+  },
+  "lib/watchlistCardV4.ts": {
+   "hex": 2,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 93
+  },
+  "lib/watchlistDiligence.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 43
+  },
+  "lib/watchlistProposeSizing.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 270
+  },
+  "lib/watchlistTerminalTokens.ts": {
+   "hex": 12,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {
+    "2": 1
+   },
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [
+    "watchlistCardTokens"
+   ],
+   "lines": 82
+  },
+  "lib/watchlistVolatility.ts": {
+   "hex": 5,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 160
+  },
+  "control-plane/apiV1Baseline.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 90
+  },
+  "control-plane/contractV1.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 203
+  },
+  "hooks/useActiveTraderMotion.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 196
+  },
+  "hooks/useAnalystReportMap.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 34
+  },
+  "hooks/useApi.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 282
+  },
+  "hooks/useOAuthLanes.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 74
+  },
+  "hooks/useReEntryExitEvidence.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 478
+  },
+  "hooks/useReentryDecisionDesk.ts": {
+   "hex": 0,
+   "hexInTokenFile": 0,
+   "fontLt10": 0,
+   "fontLt10By": {},
+   "radii": {},
+   "shadows": {},
+   "inlineStyle": 0,
+   "className": 0,
+   "details": 0,
+   "titleAttr": 0,
+   "metricLike": 0,
+   "metricWithGuide": 0,
+   "cssVar": 0,
+   "tokenImports": [],
+   "lines": 189
+  }
+ }
+}
