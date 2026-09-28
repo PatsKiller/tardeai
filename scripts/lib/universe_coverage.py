@@ -76,6 +76,9 @@ def inject_prime_setup_universe(
             "_source": "screener",
             "_universe_inject": inject_tag,
             "_pre_score": min_pre_score,
+            # 2026-09-28: a top-gainer inject with neither RVOL nor gap has no screener export behind
+            # it; scoring routes it to MANUAL_REVIEW (UNENRICHED_INJECT) instead of scoring 11–13.
+            "_enrichment_missing": bool(float(rvol or 0) == 0 and float(gap or 0) == 0),
         }
         tickers.append(row)
         by_sym[sym] = row
