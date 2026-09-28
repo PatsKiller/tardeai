@@ -134,9 +134,9 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **Operator approved reconnecting the operator desk to the data gap queue in session on 2026-09-13 ("yess reconect approved"); shipped in PR #998; the desk becomes a caller of the store's one write module** — 1 rows: domain `data_gaps`
 - **Operator asked in session on 2026-09-13 to connect chat memory recall per subject GUID ("yes connect chat memory recall per guid"); shipped in PR #1001 (branch feat/chat-memory-recall)** — 1 rows: domain `operator_conversation`
 - **ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304** — 7 rows: domain `intelligence_memory_contexts`, domain `intelligence_retrieval_receipts`, domain `supervisor_heartbeats`, domain `approval_packages`, domain `platform_conformance`, domain `intelligence_gir_projection`, domain `supervisor_breaches`
-- **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 2** — 1 rows: domain `research_write_path_receipts`
-- **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md items 3-4** — 1 rows: domain `edge_fanout_work_items`
-- **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 8** — 1 rows: domain `intelligence_research_index`
+- **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 2** — 1 rows: domain `research_write_path_receipts`
+- **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md items 3-4** — 1 rows: domain `edge_fanout_work_items`
+- **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 8** — 1 rows: domain `intelligence_research_index`
 
 ## Monitors
 
