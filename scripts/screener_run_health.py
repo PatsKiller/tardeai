@@ -72,8 +72,31 @@ def classify_run_health(stats: dict) -> tuple:
     if stats.get("timeout"):
         reasons.append("PROVIDER_TIMEOUT")
     if not reasons:
-        reasons.append("UNIVERSE_TOO_SMALL")
+        # 2026-09-28: a pre-open window that runs two Tier-1 screeners is small BY DESIGN. When the
+        # window's own floor (assets/screeners.yaml run_windows.<label>.expected_min_symbols) is met,
+        # say so instead of crying UNIVERSE_TOO_SMALL every morning. Status stays RUN_UNDERFILLED —
+        # the 40-symbol auto-proposal gate is unchanged; only the reason is honest.
+        window_min = stats.get("window_expected_min_symbols")
+        if window_min is not None and symbols >= int(window_min):
+            reasons.append("PREOPEN_WINDOW_BY_DESIGN")
+        else:
+            reasons.append("UNIVERSE_TOO_SMALL")
     return "RUN_UNDERFILLED", reasons
+
+
+def window_expected_min_symbols(run_label: str, cfg: dict | None = None, config_path=None):
+    """Per-window floor from assets/screeners.yaml run_windows.<label>.expected_min_symbols, or None."""
+    try:
+        if cfg is None:
+            import yaml
+            from pathlib import Path as _P
+            path = _P(config_path) if config_path else _P(__file__).resolve().parents[1] / "assets" / "screeners.yaml"
+            cfg = yaml.safe_load(path.read_text()) or {}
+        win = (cfg.get("run_windows") or {}).get(str(run_label)) or {}
+        val = win.get("expected_min_symbols")
+        return None if val is None else int(val)
+    except Exception:
+        return None
 
 
 def record_screener_run_start(conn, run_label: str, source: str = "finviz",

@@ -736,6 +736,7 @@ def score_all(
         from high_rvol_manual_review import qualifies_high_rvol_manual, apply_high_rvol_manual_fields
         from micro_float_manual_review import apply_micro_float_manual_fields
         from low_price_manual_review import apply_low_price_manual_fields
+        from unenriched_inject_review import qualifies_unenriched_inject, apply_unenriched_inject_fields
         risk = classify_ticker_risk(sym, row)
         if risk["action"] in ("hard_dq", "standard_dq"):
             disq_reason = risk["reasons"]
@@ -818,7 +819,11 @@ def score_all(
         # Momentum Scalp GOs (e.g. HCTI score 46 → MANUAL_REVIEW) while strategy_signals
         # still carried momentum_scalp GO for the same symbols.
         _dec = (scored.get("decision") or "").upper()
-        if squeeze_manual:
+        if qualifies_unenriched_inject(row, scored):
+            # 2026-09-28: an inject with no RVOL/gap/float is unscored, not NOGO — manual review.
+            apply_unenriched_inject_fields(scored)
+            print(f"  [scoring] UNENRICHED_INJECT_MANUAL_REVIEW {sym}: injected without RVOL/gap/float")
+        elif squeeze_manual:
             apply_squeeze_manual_fields(scored, rs_reason=risk["reverse_split"] or risk["reasons"])
             print(f"  [scoring] SQUEEZE_MANUAL_REVIEW {sym}: {risk['reasons'][:80]}")
         elif micro_float_manual and _dec != "GO":
