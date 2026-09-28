@@ -485,6 +485,13 @@ def enrich_tickers(
 
             # Derived fields
             merged["float_m"] = merged.get("float_m") or 0.0
+            # 2026-09-28: Finviz "Market Cap" is stored under market_cap_b in MILLIONS (AAPL 4967858.67).
+            # Publish an unambiguous market_cap_usd next to it; readers prefer it (lib/finviz_csv).
+            try:
+                _mc_m = merged.get("market_cap_b")
+                merged["market_cap_usd"] = round(float(_mc_m) * 1_000_000, 2) if _mc_m not in (None, "", 0) else None
+            except (TypeError, ValueError):
+                merged["market_cap_usd"] = None
             merged["rvol"] = merged.get("rvol") or 0.0
             merged["rsi"] = merged.get("rsi")
             merged["sma20_pct"] = merged.get("sma20_pct")
