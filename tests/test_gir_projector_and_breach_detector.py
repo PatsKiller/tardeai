@@ -116,3 +116,31 @@ def test_breach_rows_serialize_when_observe_returns_datetimes(tmp_path):
     assert rows[0]["kind"] == "NO_OUTPUT"
     json.dumps(rows[0])  # must not raise: the 2026-09-27 first live run crashed here
     assert rows[0]["evidence"]["last_output_at"].startswith("2026-09-27T11:00")
+
+
+def test_detector_is_schedule_aware_on_a_weekend():
+    sunday = dt.datetime(2026, 9, 27, 20, 30, tzinfo=dt.timezone.utc)  # Sunday evening
+    lanes = [
+        {"lane_id": "weekday-cron", "state": "ACTIVE", "expected_cadence_hours": 0.25, "scheduler": {"kind": "cron", "expression": "*/15 9-16 * * 1-5"}, "output_signal": {"kind": "file_mtime", "path": "a"}},
+        {"lane_id": "weekday-days", "state": "ACTIVE", "expected_cadence_hours": 0.25, "active_days": [0, 1, 2, 3, 4], "scheduler": {"kind": "systemd", "expression": "x.timer"}, "output_signal": {"kind": "file_mtime", "path": "b"}},
+        {"lane_id": "monthly-not-due", "state": "ACTIVE", "expected_cadence_hours": 744, "first_due": "2026-10-01T11:15:00+00:00", "scheduler": {"kind": "cron", "expression": "15 7 1 * *"}, "output_signal": {"kind": "file_mtime", "path": "c"}},
+        {"lane_id": "every-5-missed", "state": "ACTIVE", "expected_cadence_hours": 0.0833, "scheduler": {"kind": "cron", "expression": "*/5 * * * *"}, "output_signal": {"kind": "file_mtime", "path": "d"}},
+    ]
+    sla = {l["lane_id"]: {"lane_id": l["lane_id"], "max_run_s": 300} for l in lanes}
+    friday = dt.datetime(2026, 9, 25, 20, 45, tzinfo=dt.timezone.utc)
+    def observe(sig):
+        return {"a": {"last_output_at": friday.isoformat(), "readable": True}, "b": {"last_output_at": friday.isoformat(), "readable": True},
+                "c": {"last_output_at": None, "readable": True}, "d": {"last_output_at": (sunday - dt.timedelta(hours=3)).isoformat(), "readable": True}}[sig["path"]]
+    kinds = {(r["lane_id"], r["kind"]) for r in bd.detect(lanes=lanes, sla_by_lane=sla, heartbeats={}, observe=observe, now=sunday)}
+    assert ("weekday-cron", "NO_OUTPUT") not in kinds and ("weekday-days", "NO_OUTPUT") not in kinds and ("monthly-not-due", "NO_OUTPUT") not in kinds
+    assert ("every-5-missed", "NO_OUTPUT") in kinds
+
+
+def test_cron_schedule_last_and_next_fire():
+    import cron_schedule as cs
+    sunday = dt.datetime(2026, 9, 27, 20, 30)
+    assert cs.last_fire("*/15 9-16 * * 1-5", sunday) == dt.datetime(2026, 9, 25, 16, 45)
+    assert cs.next_fire("30 7 * * 1-5", sunday) == dt.datetime(2026, 9, 28, 7, 30)
+    assert cs.last_fire("15 7 1 * *", sunday) == dt.datetime(2026, 9, 1, 7, 15)
+    assert cs.last_fire("5,20 16 * * 1,3,5", sunday) == dt.datetime(2026, 9, 25, 16, 20)
+    assert cs.parse("bad expr") is None and cs.parse("@daily")["hours"] == [0]

@@ -69,9 +69,11 @@ def _fetch_ohlcv(symbol: str, days: int = 90) -> Optional[pd.DataFrame]:
         if (datetime.now() - fetched_at).seconds < CACHE_SECONDS:
             return df.copy()
 
+    if _rate_limit_cooldown_active():
+        logger.warning(f"OHLCV fetch skipped for {symbol}: provider rate-limit cooldown active")
+        return None
     try:
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period=f"{days}d", interval="1d", auto_adjust=True)
+        df = _history_with_backoff(symbol, days)
 
         if df is None or df.empty:
             logger.warning(f"No OHLCV data returned for {symbol}")
@@ -95,6 +97,58 @@ def _fetch_ohlcv(symbol: str, days: int = 90) -> Optional[pd.DataFrame]:
     except Exception as e:
         logger.warning(f"OHLCV fetch failed for {symbol} (non-fatal): {e}")
         return None
+
+
+# ── provider rate limiting (2026-09-27 triage: indicator-cache-refresh updated 0/788 symbols for three
+# weekdays because every yfinance call answered "Too Many Requests" and the loop kept hammering) ──
+_RATE_LIMIT_MARKERS = ("too many requests", "rate limit", "ratelimit", "429")
+_rate_limit_cooldown_until: Optional[datetime] = None
+_consecutive_rate_limits = 0
+
+
+def _is_rate_limited(exc: BaseException) -> bool:
+    text = f"{type(exc).__name__} {exc}".lower()
+    return any(m in text for m in _RATE_LIMIT_MARKERS)
+
+
+def _rate_limit_cooldown_active() -> bool:
+    return bool(_rate_limit_cooldown_until and datetime.now() < _rate_limit_cooldown_until)
+
+
+def _history_with_backoff(symbol: str, days: int, *, tries: int | None = None, sleep=None):
+    """yfinance history with exponential backoff on rate limits and a run-level cooldown.
+
+    Env: TRADEAI_YF_THROTTLE_S (pause between fetches, default 0.35), TRADEAI_YF_RETRIES (default 3),
+    TRADEAI_YF_COOLDOWN_S (after 5 consecutive rate limits, skip the rest of the run for this long,
+    default 900). A cooldown makes the job finish honestly ("0 updated, rate limited") instead of
+    spending an hour being refused for every symbol.
+    """
+    import time as _time
+    global _rate_limit_cooldown_until, _consecutive_rate_limits
+    sleep = sleep or _time.sleep
+    tries = tries or int(os.environ.get("TRADEAI_YF_RETRIES", "3"))
+    throttle = float(os.environ.get("TRADEAI_YF_THROTTLE_S", "0.35"))
+    last_exc: BaseException | None = None
+    for attempt in range(tries):
+        try:
+            if throttle:
+                sleep(throttle)
+            df = yf.Ticker(symbol).history(period=f"{days}d", interval="1d", auto_adjust=True)
+            _consecutive_rate_limits = 0
+            return df
+        except Exception as exc:  # noqa: BLE001
+            last_exc = exc
+            if not _is_rate_limited(exc):
+                raise
+            _consecutive_rate_limits += 1
+            if _consecutive_rate_limits >= int(os.environ.get("TRADEAI_YF_COOLDOWN_AFTER", "5")):
+                _rate_limit_cooldown_until = datetime.now() + timedelta(seconds=int(os.environ.get("TRADEAI_YF_COOLDOWN_S", "900")))
+                logger.warning("provider rate limit: %d consecutive refusals; cooling down until %s",
+                               _consecutive_rate_limits, _rate_limit_cooldown_until.isoformat(timespec="seconds"))
+                raise
+            sleep(2 ** attempt * 2.0)
+    assert last_exc is not None
+    raise last_exc
 
 
 def _neutral(details=None):
