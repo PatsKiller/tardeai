@@ -120,6 +120,49 @@ entries:
     why_it_matters: "It is the most you make on the shares while the call is open; upside above it is given up."
     interpretation: "Compare to your cost basis and to the analyst targets: a strike below basis locks in a loss on assignment."
     sources: ["options_engine"]
+  entry.state:
+    label: "Entry state"
+    short: "Where the entry-state runner places this stock against its plan: BUY_READY, ENTRY_NEAR or WATCH."
+    definition: "BUY_READY means the price is inside the plan's entry zone and the hard gates pass; ENTRY_NEAR means within about 3% of the zone or a soft setup; WATCH means wait. Set by cio_entry_state_runner from the current quote and the saved plan."
+    why_it_matters: "BUY_READY pages Telegram; it is the desk's cue to review, not an approval or an order."
+    interpretation: "Read it with the zone position and the age: a BUY_READY from four hours ago at a price now above the zone is no longer ready."
+    sources: ["cio_entry_state_runner"]
+  entry.zone:
+    label: "Price vs zone"
+    short: "Whether today's price is inside, above or below the plan's entry zone, and by how much."
+    definition: "The plan carries an entry zone (low to high). In zone = actionable per the plan; above = the setup has run away (a chase); below = the setup is breaking down."
+    why_it_matters: "The plan's numbers only hold for an entry inside the zone; above it the risk-reward collapses."
+    interpretation: "Above the zone by more than a few percent means wait for a pullback or drop the idea; do not adjust the plan to the price."
+    sources: ["cio_entry_state_runner"]
+  entry.rr_plan:
+    label: "R:R (plan)"
+    short: "Reward-to-risk the plan promises, quoted at the top of the entry zone."
+    definition: "(target − zone top) ÷ (zone top − stop). The worst in-zone entry, so the plan figure is conservative for any entry inside the zone."
+    why_it_matters: "It is the figure the Telegram alert prints; it assumes you enter inside the zone."
+    interpretation: "Compare with R:R at quote: when the price has left the zone the two diverge and the quote figure is the honest one."
+    sources: ["cio_entry_state_runner"]
+  entry.rr_at_quote:
+    label: "R:R at quote"
+    short: "Reward-to-risk if you bought at the current price instead of inside the zone."
+    definition: "(target − current price) ÷ (current price − stop); withheld when the price is not above the stop."
+    why_it_matters: "A plan's 4:1 can be 1.5:1 at today's price; this is the number an entry now would actually get."
+    interpretation: "Below about 2:1 the desk's own rules would not initiate; treat the idea as a watch, not a buy."
+    benchmark: "The entry desk's floor is 2:1 at the planned entry."
+    sources: ["cio_entry_state_runner"]
+  entry.options_alt:
+    label: "Options alternative"
+    short: "What the alert's options scan found: a qualified structure, or why none qualified."
+    definition: "The runner reads the Schwab chain and ranks defined-risk structures (long call, debit vertical, cash-secured put, LEAPS); each must pass liquidity, earnings and delta/DTE gates to be qualified."
+    why_it_matters: "A structure shown for comparison is not qualified unless it says so; NONE_QUALIFIED means the desk has nothing to offer on this name."
+    interpretation: "Read the reason: a liquidity failure is about the contract, not the stock thesis."
+    sources: ["buy_ready_options_alternatives"]
+  entry.desk_link:
+    label: "Options desk"
+    short: "Where this idea went on the options desk: a proposal, a named not-built reason, or not scanned."
+    definition: "The desk scans entry-state ideas each run; each one either becomes a proposal card, is dropped with a reason (edge below floor, IV unknown, no chain) or was not in the desk's last universe."
+    why_it_matters: "A Telegram idea with no desk record used to vanish; this is the durable record of what happened to it."
+    interpretation: "'not built' with a reason is a desk decision you can read; 'not in the desk universe' means the lanes did not include it and is worth a look."
+    sources: ["options_engine"]
   options.alpaca_paper_only:
     label: "Alpaca Paper Only"
     short: "This route uses Alpaca simulated paper orders only."

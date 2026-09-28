@@ -14139,6 +14139,25 @@ def _buy_ready_packet(symbol: str) -> dict:
     return {"symbol": sym, "status": "OK", "saved_at": packet.get("saved_at"), "packet": packet}
 
 
+def _buy_ready_packets_index(query=None):
+    """GET /api/v2/buy-ready/packets — every saved entry-state packet (BUY_READY / ENTRY_NEAR …) in one
+    list for the Re-Entry page's "Entry alerts" lane, with price vs zone, plan R:R and R:R at quote,
+    the options-alternative outcome and the options-desk disposition. READ-ONLY (2026-09-28)."""
+    from lib.buy_ready_packets_index import index_packets
+
+    proposals: list = []
+    dropped: list = []
+    try:
+        cache = json.loads(
+            (PROJECT_ROOT / "data" / "portfolios" / "state" / "options_proposals.json").read_text(encoding="utf-8")
+        )
+        proposals = list(cache.get("proposals") or [])
+        dropped = list(cache.get("entry_directional_dropped") or [])
+    except Exception:  # noqa: BLE001 -- the desk cache is optional context; the lane still lists the packets
+        pass
+    return _json_clean(index_packets(BUY_READY_PACKET_DIR, proposals=proposals, dropped=dropped))
+
+
 def _symbol_timeline(symbol: str):
     """GET /api/v2/symbol/{symbol}/timeline — unified symbol timeline."""
     sym = symbol.upper()
@@ -47183,6 +47202,7 @@ ROUTES = {
     "/api/v2/watch/alerts/list": _watch_alerts_list,
     "/api/v2/ui/prefs/get": _ui_prefs_get,
     "/api/v2/ui/metric-guide": _ui_metric_guide,
+    "/api/v2/buy-ready/packets": _buy_ready_packets_index,
     "/api/v2/sectors/monitor": _sectors_monitor,
     "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,
     "/api/v2/hermes/curate-top20": _hermes_curate_top20_status,
