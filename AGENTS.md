@@ -1494,6 +1494,12 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 | **agent_checkpoints** | derived | `cio/agent_checkpoints/<agent_id>.jsonl` | `scripts/lib/cognitive_checkpoint.py` | per non-monitor commit | 48h | — | native | — | — | `say_so` | operator 2026-09-27 |
 | **lesson_promotions** | derived | `cio/lesson_promotions.jsonl` | `scripts/lib/lesson_promotion.py` | weekly batch (operator CLI) | 336h | — | native | — | — | `say_so` | operator 2026-09-27 |
 | **contradiction_verdicts** | derived | `cio/contradiction_verdicts.jsonl` | `scripts/contradiction_adjudicator.py` | daily (systemd timer, after the service grant) | 48h | — | deepseek | — | — | `say_so` | operator 2026-09-27 |
+| **agent_registry** | manual | `config/agent_registry.json` | `scripts/lib/agent_registry.py` | per PR | 8760h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **model_chooser_receipts** | derived | `runtime/model_chooser_receipts.jsonl` | `scripts/lib/model_chooser.py` | per disagreeing LLM call | 48h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **supervisor_ladder_receipts** | derived | `runtime/supervisor_ladder_receipts.jsonl` | `scripts/supervisor_breach_detector.py` | per detector run (3 min) | 1h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **maturity_scores** | derived | `governance/maturity_scores.jsonl` | `scripts/maturity_remeasure.py` | weekly (cron, after the cron grant) | 336h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **conformance_gate_receipts** | derived | `governance/conformance_gate_receipts.jsonl` | `scripts/conformance_gate.py` | per promote | 720h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **supervisor_recoveries** | derived | `runtime/supervisor_recoveries.jsonl` | `scripts/supervisor_breach_detector.py` | per detector run | 1h | — | native | — | — | `say_so` | operator 2026-09-27 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 §0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an

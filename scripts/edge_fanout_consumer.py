@@ -255,10 +255,29 @@ def main() -> int:
             print(json.dumps(r, default=str)[:300])
         return 0
 
+    # Wave 4 O-W4-1: the reference lane on the ONE worker contract — a lane lease (owner / boot_id / TTL),
+    # the shared status vocabulary, one heartbeat at exit. A concurrent run gets LeaseHeld and exits 0.
+    try:
+        import worker_contract as wc  # type: ignore
+    except ImportError:  # pragma: no cover
+        wc = None
+    if wc is not None:
+        try:
+            lease_cm = wc.lease(LANE, ttl_s=600, env=env, root=root, heartbeat=False)
+            worker = lease_cm.__enter__()
+        except wc.LeaseHeld as exc:
+            print(json.dumps({**summary, "skipped": True, "reason": f"LeaseHeld: {exc}"}))
+            return 0
+    else:
+        lease_cm = worker = None
+    if worker is not None:
+        worker.claimed(len(events))
     items_path.parent.mkdir(parents=True, exist_ok=True)
     with items_path.open("a", encoding="utf-8") as fh:
         for r in new_rows:
             fh.write(json.dumps(r, sort_keys=True, default=str) + "\n")
+            if worker is not None:
+                worker.status(r["item_id"], "queued")
     if touched:
         dirty_path.parent.mkdir(parents=True, exist_ok=True)
         prev = {}
@@ -280,6 +299,12 @@ def main() -> int:
             bus.advance_cursor(CONSUMER, events[-1].event_id, events[-1].event_type)
         except Exception as exc:  # noqa: BLE001
             print(f"cursor advance failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+    if worker is not None:
+        worker.done(len(new_rows))
+        try:
+            lease_cm.__exit__(None, None, None)
+        except Exception:  # noqa: BLE001
+            pass
     try:
         import supervisor_heartbeat as hb  # type: ignore
         if conn is not None:

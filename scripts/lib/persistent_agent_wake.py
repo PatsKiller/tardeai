@@ -48,6 +48,11 @@ from scripts.lib.persistent_wake_store import JsonlStore
 AUTHORITY = "READ_ONLY_ADVISORY"
 FEATURE_FLAG = "PERSISTENT_WAKE_ENABLED"  # default OFF
 KNOWN_AGENTS = frozenset({"cio", "hermes", "advisory", "darwin", "maria"})
+try:  # Wave 4 O-W4-2: the ONE registry may add wake-eligible agents; it never removes the five above
+    from scripts.lib import agent_registry as _agent_registry
+    KNOWN_AGENTS = frozenset(KNOWN_AGENTS | set(_agent_registry.wake_eligible()))
+except Exception:  # noqa: BLE001
+    pass
 TERMINAL_WAKE = frozenset({
     "SETTLED", "ABANDONED", "STALE", "MEMORY_UNAVAILABLE", "MEMORY_MALFORMED",
 })

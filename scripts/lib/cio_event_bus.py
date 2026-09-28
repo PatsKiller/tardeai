@@ -545,12 +545,42 @@ class CIOEventBus:
         return events
 
     def route_to_agents(self, event_type: str) -> list[str]:
-        """Return agent IDs that should be woken for this event type."""
+        """Return agent IDs that should be woken for this event type.
+
+        Wave 4 O-W4-2: config/agent_registry.json is the ONE registry. Its routing is used when
+        TRADEAI_AGENT_REGISTRY_ROUTING=1; otherwise (SHADOW) the static map answers and any
+        disagreement is recorded, so the flip is measured before it happens."""
         agents: list[str] = []
         for agent_id, subscribed in AGENT_EVENT_ROUTING.items():
             if any(fnmatch.fnmatch(event_type, pat) for pat in subscribed):
                 agents.append(agent_id)
+        try:
+            try:
+                import agent_registry as _ar  # type: ignore
+            except ImportError:
+                from scripts.lib import agent_registry as _ar  # type: ignore
+            reg = _ar.subscribers(event_type)
+            if not _ar.agents():
+                return agents
+            # the static map spells the CIO "alex"; the registry keys the wake spine on "cio"
+            canon_static = sorted({_ar.canonical(a) or a for a in agents})
+            if os.environ.get("TRADEAI_AGENT_REGISTRY_ROUTING", "0") == "1":
+                return sorted(reg)
+            if canon_static != sorted(reg):
+                self._record_routing_disagreement(event_type, agents, reg)
+        except Exception:  # noqa: BLE001
+            pass
         return agents
+
+    def _record_routing_disagreement(self, event_type: str, static: list[str], registry: list[str]) -> None:
+        try:
+            p = Path(os.environ.get("TRADEAI_AGENT_REGISTRY_ROUTING_RECEIPTS") or (Path(self.bus_path).parent.parent / "runtime" / "agent_registry_routing_receipts.jsonl"))
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps({"schema": "AgentRoutingDisagreement@v1", "ts": datetime.now(timezone.utc).isoformat(), "event_type": event_type,
+                                     "static": static, "registry": sorted(registry), "mode": "SHADOW"}, sort_keys=True) + "\n")
+        except Exception:  # noqa: BLE001
+            pass
 
     def verify_integrity(self) -> tuple[bool, str]:
         """Verify the hash chain of all source events.

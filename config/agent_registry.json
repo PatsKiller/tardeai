@@ -1,0 +1,365 @@
+{
+  "schema": "AgentRegistry@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "as_of": "2026-09-27T23:40:00-04:00",
+  "_why": "Wave 4 item O-W4-2 (pkg …-80f2): at least 12 files enumerated agents with drifting ids (maria/maria_research, aegis/aegis_core, steph/steph_allocation, tax_agent/ledger, alex/cio/cio_agent, risk_agent/guardian/risk). This file is the ONE registry: canonical id, every alias it absorbs, role, the lanes it runs on, the bus event types it wakes for, and its model-policy caller key. The old lists are superseded (never deleted) and scripts/check_agent_registry.py fails when a hard-coded id is not an alias here.",
+  "agents": [
+    {
+      "agent_id": "cio",
+      "aliases": [
+        "alex",
+        "cio_agent",
+        "alex_cio"
+      ],
+      "role": "CIO (alex) — portfolio-level synthesis and decisions; the wake spine keys on this id",
+      "wake_eligible": true,
+      "lanes": [
+        "persistent-wake",
+        "cio-reactive-cycle",
+        "cio-run-worker"
+      ],
+      "bus_events": [
+        "situation.raised",
+        "portfolio.material_change",
+        "risk.heat_increased",
+        "risk.stop_triggered",
+        "allocation.drift",
+        "action.stale",
+        "action.operator_silence",
+        "hermes.contradiction_found",
+        "hermes.research_promoted",
+        "watch.new_signal",
+        "reconciliation.drift",
+        "market.regime_change",
+        "behavioral.flag_raised",
+        "system.domain_stale",
+        "operator.message",
+        "thesis.changed"
+      ],
+      "model_caller": "alex",
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "hermes",
+      "aliases": [
+        "hermes_research",
+        "hermes-cio-worker",
+        "hermes-external"
+      ],
+      "role": "research producer (CIO worker + external lanes)",
+      "wake_eligible": true,
+      "lanes": [
+        "hermes-cio-worker",
+        "hermes-external-chatgpt",
+        "hermes-external-grok",
+        "symbol-thesis-acquisition"
+      ],
+      "bus_events": [
+        "hermes.contradiction_found",
+        "hermes.research_promoted",
+        "watch.new_signal",
+        "market.regime_change"
+      ],
+      "model_caller": "hermes",
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "steph",
+      "aliases": [
+        "steph_allocation"
+      ],
+      "role": "allocation review",
+      "wake_eligible": true,
+      "lanes": [
+        "watchlist-agent-steph"
+      ],
+      "bus_events": [
+        "situation.raised",
+        "portfolio.material_change",
+        "allocation.drift",
+        "market.regime_change"
+      ],
+      "model_caller": "steph",
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "morgan",
+      "aliases": [
+        "morgan_wealth"
+      ],
+      "role": "wealth synthesis",
+      "wake_eligible": true,
+      "lanes": [],
+      "bus_events": [
+        "situation.raised",
+        "portfolio.material_change",
+        "allocation.drift",
+        "behavioral.flag_raised",
+        "risk.heat_increased",
+        "market.regime_change"
+      ],
+      "model_caller": "morgan",
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "maria",
+      "aliases": [
+        "maria_research",
+        "Maria"
+      ],
+      "role": "research critique / watchlist opinion",
+      "wake_eligible": true,
+      "lanes": [
+        "watchlist-agent-maria"
+      ],
+      "bus_events": [
+        "watch.new_signal",
+        "thesis.changed"
+      ],
+      "model_caller": "maria",
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "risk_agent",
+      "aliases": [
+        "guardian",
+        "risk",
+        "Risk"
+      ],
+      "role": "risk critique",
+      "wake_eligible": false,
+      "lanes": [
+        "watchlist-agent-risk_agent"
+      ],
+      "bus_events": [
+        "risk.heat_increased",
+        "risk.stop_triggered"
+      ],
+      "model_caller": "guardian",
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "tax_agent",
+      "aliases": [
+        "ledger",
+        "tax"
+      ],
+      "role": "tax critique",
+      "wake_eligible": false,
+      "lanes": [
+        "watchlist-agent-tax_agent"
+      ],
+      "bus_events": [
+        "cost_basis.material_change"
+      ],
+      "model_caller": "ledger",
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "advisory",
+      "aliases": [
+        "advisory_desk",
+        "advisor_agent",
+        "iris"
+      ],
+      "role": "advisory desk opinion / nightly reflection",
+      "wake_eligible": true,
+      "lanes": [
+        "advisory-desk-opinion"
+      ],
+      "bus_events": [
+        "thesis.changed"
+      ],
+      "model_caller": "advisory_desk",
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "darwin",
+      "aliases": [],
+      "role": "deterministic outcome scorer (0 model calls)",
+      "wake_eligible": true,
+      "lanes": [],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "aegis",
+      "aliases": [
+        "aegis_core",
+        "Aegis"
+      ],
+      "role": "defense / stop discipline (notifier only)",
+      "wake_eligible": false,
+      "lanes": [],
+      "bus_events": [
+        "risk.stop_triggered"
+      ],
+      "model_caller": null,
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "sentinel",
+      "aliases": [
+        "vigil"
+      ],
+      "role": "reflective critic (agent runtime)",
+      "wake_eligible": false,
+      "lanes": [],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "reflection",
+      "aliases": [],
+      "role": "nightly reflection critic",
+      "wake_eligible": false,
+      "lanes": [],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "concierge",
+      "aliases": [
+        "main"
+      ],
+      "role": "operator concierge (OpenClaw)",
+      "wake_eligible": false,
+      "lanes": [],
+      "bus_events": [
+        "operator.message"
+      ],
+      "model_caller": null,
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "argus",
+      "aliases": [],
+      "role": "agent runtime monitor",
+      "wake_eligible": false,
+      "lanes": [],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "atlas",
+      "aliases": [],
+      "role": "agent runtime (catalog)",
+      "wake_eligible": false,
+      "lanes": [],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "CATALOG_ONLY"
+    },
+    {
+      "agent_id": "pulse",
+      "aliases": [],
+      "role": "agent runtime (catalog)",
+      "wake_eligible": false,
+      "lanes": [],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "CATALOG_ONLY"
+    },
+    {
+      "agent_id": "vega",
+      "aliases": [],
+      "role": "agent runtime (catalog)",
+      "wake_eligible": false,
+      "lanes": [],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "CATALOG_ONLY"
+    },
+    {
+      "agent_id": "orchestrator",
+      "aliases": [],
+      "role": "legacy orchestrator (config/agents.json)",
+      "wake_eligible": false,
+      "lanes": [],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "LEGACY"
+    },
+    {
+      "agent_id": "social_scalp",
+      "aliases": [],
+      "role": "legacy social scout",
+      "wake_eligible": false,
+      "lanes": [],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "LEGACY"
+    },
+    {
+      "agent_id": "narrator_agent",
+      "aliases": [
+        "narrator"
+      ],
+      "role": "AEC narrator",
+      "wake_eligible": false,
+      "lanes": [
+        "aec-command-center-cycle"
+      ],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "telegram",
+      "aliases": [
+        "command_center"
+      ],
+      "role": "operator surfaces (not an agent; kept so envelope code resolves)",
+      "wake_eligible": false,
+      "lanes": [],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "SURFACE"
+    },
+    {
+      "agent_id": "full_chain",
+      "aliases": [],
+      "role": "watchlist full-chain pseudo-agent",
+      "wake_eligible": false,
+      "lanes": [
+        "watchlist-agent-full_chain"
+      ],
+      "bus_events": [],
+      "model_caller": null,
+      "status": "ACTIVE"
+    },
+    {
+      "agent_id": "tradeai-health-inspector",
+      "aliases": [
+        "health_agent",
+        "health_inspector"
+      ],
+      "role": "health inspector",
+      "wake_eligible": false,
+      "lanes": [
+        "health-agent"
+      ],
+      "bus_events": [
+        "system.heartbeat_ok",
+        "system.domain_stale"
+      ],
+      "model_caller": null,
+      "status": "ACTIVE"
+    }
+  ],
+  "superseded_lists": {
+    "config/agents.json": "agents[] ids → aliases here (supersede, never delete)",
+    "config/agents.yaml": "agents → aliases here",
+    "config/agent_runtime.json": "agent_operating_windows keys → aliases here",
+    "config/agent_runtime_mvl.json": "ids → aliases here",
+    "config/agent_maturity_catalog.json": "catalog ids → agents (CATALOG_ONLY where no lane exists)",
+    "scripts/lib/cio_event_bus.py:AGENT_EVENT_ROUTING": "bus_events per agent here; route_to_agents reads this registry when present",
+    "scripts/lib/persistent_agent_wake.py:KNOWN_AGENTS": "wake_eligible agents here",
+    "scripts/lib/cio_governed_model_bridge.py:CALLER_TASK_POLICY_MAP": "model_caller here"
+  },
+  "_routing_note": "route_to_agents reads bus_events here only when TRADEAI_AGENT_REGISTRY_ROUTING=1 (Wave 4 O-W4-2 ships SHADOW: disagreements with the static AGENT_EVENT_ROUTING are written to data/runtime/agent_registry_routing_receipts.jsonl). memory.delta is deliberately absent: the edge-fanout consumer owns that fan-out."
+}

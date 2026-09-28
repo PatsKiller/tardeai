@@ -597,6 +597,19 @@ cmd_prepare() {
   echo "$NEW_RELEASE"
 }
 
+# Wave 5 O-W5-2 (05 §4): the conformance gate runs from the dev tree (like every other deploy check) and
+# blocks a promote only under TRADEAI_CONFORMANCE_GATE=block; default warn = receipt only.
+conformance_gate() {
+  local sha="$1"
+  if [[ -f "${CANONICAL_SOURCE}/scripts/conformance_gate.py" ]]; then
+    if ! "$VENV_PYTHON" "${CANONICAL_SOURCE}/scripts/conformance_gate.py" --sha "$sha"; then
+      die "conformance gate BLOCKED promote of ${sha} (TRADEAI_CONFORMANCE_GATE=block; set TRADEAI_CONFORMANCE_GATE_OVERRIDE=\"<reason>\" for an emergency, it is recorded)"
+    fi
+  else
+    log "conformance gate: scripts/conformance_gate.py absent — skipped"
+  fi
+}
+
 cmd_promote() {
   load_state
   local dir="${1:-${NEW_RELEASE:-}}"
@@ -607,6 +620,7 @@ cmd_promote() {
   NEW_RELEASE="$dir"
   CONTENT_SHA="$sha"
   release_grant_preflight promote "$sha"
+  conformance_gate "$sha"
   write_state
   activate_release "$dir" "$sha"
   if ! health_check "promote"; then

@@ -129,11 +129,21 @@ def advisory_block(ctx: dict) -> str:
     return text if len(text) <= MAX_CHARS else text[:MAX_CHARS - 20] + "\n=== END MEMORY ==="
 
 
+WEIGHTED_NOTE = ("=== MEMORY WEIGHT (weighted mode) === Rank and word your ADVICE with the memory above as a weighted input: a "
+                 "refuted belief or an open contradiction lowers the weight of any option that relies on it; a promoted lesson "
+                 "that applies raises the weight of options consistent with it. This never sets sizing, orders, stops or weights "
+                 "of positions (MBI_BEHAVIOR = 0). State which memory items changed your ranking. === END MEMORY WEIGHT ===")
+
+
 def render(surface: str, ctx: dict | None, env: dict | None = None) -> str:
-    """The block to inject for this surface, or "" when the surface is SHADOW / the context is empty."""
+    """The block to inject for this surface, or "" when the surface is SHADOW / the context is empty.
+    ADVISORY: the block. WEIGHTED / ENFORCED: the block plus the weighting instruction (08 §3)."""
     if not ctx or not at_least(surface, "ADVISORY", env):
         return ""
-    return advisory_block(ctx)
+    block = advisory_block(ctx)
+    if block and at_least(surface, "WEIGHTED", env):
+        return block + "\n" + WEIGHTED_NOTE
+    return block
 
 
 def influence_for(ctx: dict, surface: str, *, rendered: bool, env: dict | None = None, changed_decision: bool = False) -> dict:

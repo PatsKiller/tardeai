@@ -4,3 +4,6 @@
 # Lane sec-filings-feed — 08:20 / 12:20 / 17:20 / 21:20 ET on market days (02 §2 Market class).
 # Output signal: persistent-state data/runtime/sec_filings_feed_latest.json. One EDGAR request per symbol per run, free.
 20 8,12,17,21 * * 1-5 CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) && cd "$CUR" && set -a && . /run/user/1000/tradeai/env && set +a && flock -n /tmp/tradeai_sec_filings_feed.lock $PY scripts/sec_filings_feed.py --apply >> /home/johnclaw/trade-ai-releases/persistent-state/logs/sec_filings_feed.log 2>&1
+# ── Waves 3–5 (approval pkg-20260928-waves-3-5-cognition-unification-maturity-80f2) ──
+# Lane maturity-remeasure — Mondays 06:40 ET (item O-W5-4). Output signal: persistent-state data/governance/maturity_latest.json
+40 6 * * 1 CUR=$(readlink -f /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT) && cd "$CUR" && flock -n /tmp/tradeai_maturity_remeasure.lock $PY scripts/maturity_remeasure.py --write >> /home/johnclaw/trade-ai-releases/persistent-state/logs/maturity_remeasure.log 2>&1

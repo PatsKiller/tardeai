@@ -2708,6 +2708,26 @@
         "path": "data/runtime/contradiction_adjudicator_latest.json"
       },
       "note": "Wave 3 O-W3-3 (07 §5, 03 §6): paid judge (deepseek-flash FAST, process contradiction_adjudicator $0.50/day + Tier-2 policy $2/day off-peak) over ResearchContradictionCandidate@v1 → ContradictionVerdict@v1; verdicts close pairs in the façade and the GIR envelope. 129,547 candidates were all CANDIDATE when this lane was written."
+    },
+    {
+      "lane_id": "maturity-remeasure",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 6 * * 1 maturity_remeasure.py --write",
+        "match": "maturity_remeasure.py"
+      },
+      "expected_cadence_hours": 168.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-09-28T00:20:00-04:00",
+      "state_reason": "crontab line ships in docs/ops/COGX_WAVE2_CRONTAB_LINES.txt (Waves 3–5 block); appending it is the pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 cron grant (item O-W5-4)",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/maturity_remeasure.py on the Wave 5 tranche 1 branch; data/governance/maturity_scores.jsonl does not exist in persistent-state, so no score has ever been written by a lane",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/governance/maturity_latest.json"
+      },
+      "note": "Wave 5 O-W5-4 (09 §W5, AGENTS §15): the independent scorer — nine domains from receipts only, fixed rules, producer ≠ reviewer ≠ scorer. The 4.7 claim is this lane's output, never a session's."
     }
   ],
   "undeclared_baseline": [
