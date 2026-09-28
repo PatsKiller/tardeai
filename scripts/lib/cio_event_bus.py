@@ -67,6 +67,7 @@ VALID_EVENT_TYPES = frozenset({
     "situation.raised",
     "operator.message",  # dedicated CIO Telegram free-text (P1 converse)
     "plan.enriched",     # P2b narrative enrichment
+    "memory.delta",      # façade commit published a MemoryDelta (01 §3.2); consumers opt in (07 §4)
     "thesis.changed",    # symbol thesis minted / upgraded / downgraded / invalidated
 })
 
@@ -155,6 +156,7 @@ EVENT_PRIORITY: dict[str, str] = {
     "situation.raised": "MEDIUM",
     "operator.message": "HIGH",
     "plan.enriched": "LOW",
+    "memory.delta": "LOW",
     "thesis.changed": "HIGH",
 }
 

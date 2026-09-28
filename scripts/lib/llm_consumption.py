@@ -1088,6 +1088,25 @@ def gate_and_generate(
             raise ManualRequired(process_id, lane, task_summary or summarize_prompt(prompt), prompt[:500])
         raise RuntimeError(decision.get("reason") or "call not allowed")
 
+    # Ring 2 (01 §2): a research-class process must carry a MemoryContext (and its retrieval receipt).
+    # SHADOW records the miss on the call log; ENFORCED refuses before any cap is reserved.
+    try:
+        from memory_ring2 import check as _ring2_check, research_class as _ring2_research  # type: ignore
+    except ImportError:  # pragma: no cover
+        from scripts.lib.memory_ring2 import check as _ring2_check, research_class as _ring2_research  # type: ignore
+    if not meta.get("context_id"):
+        try:
+            from intelligence_client import current_context_id as _cur_ctx, current_retrieval_receipt_id as _cur_rr  # type: ignore
+            if _cur_ctx():
+                meta["context_id"] = _cur_ctx(); meta.setdefault("retrieval_receipt_id", _cur_rr())
+        except Exception:  # noqa: BLE001
+            pass
+    _r2 = _ring2_check("gate_and_generate", process_id, meta.get("context_id"),
+                       required=_ring2_research(process_id, _registry_process(process_id) or {}),
+                       extra={"lane": lane, "retrieval_receipt_id": meta.get("retrieval_receipt_id")})
+    if _r2["decision"] == "ALLOW_MISS":
+        meta["memory_context_miss"] = True
+
     is_deepseek_lane = lane.startswith("deepseek") or lane in (
         "fast", "fast_think", "pro", "pro_think", "pro_max",
     )
@@ -1204,7 +1223,7 @@ def gate_and_generate(
                 **{
                     key: meta[key] for key in (
                         "research_run_id", "research_call_id", "research_producer", "research_family",
-                        "symbol", "trigger",
+                        "symbol", "trigger", "context_id", "retrieval_receipt_id", "memory_context_miss",
                     ) if meta.get(key)
                 },
             },

@@ -46,10 +46,21 @@ Package:     docs/architecture/cognitive_transformation_20260927/ (PR #1304); ap
 | Unit files for the two systemd lanes + the two cron lines | `config/systemd/user/tradeai-supervisor-breach-detector.{service,timer}`, `tradeai-gir-projector.{service,timer}`, `docs/ops/COGX_WAVE1_CRONTAB_LINES.txt`; lane rows now name their schedulers | validators green |
 | Operator runbook: every command only the operator can run, in order, with expected outputs and rollbacks | `docs/ops/COGX_WAVE1_OPERATOR_RUNBOOK_2026-09-27.md` | — |
 
+## Wave 2 · tranche 1 — Ring 2 in SHADOW (branch wt/cogx-w2-t1-20260927)
+
+| Deliverable | Where | Proof |
+|---|---|---|
+| `memory_ring2.check()` — mode per surface from `config/memory_influence_policy.json` (all SHADOW), env kill switch, receipts | `scripts/lib/memory_ring2.py`, `config/memory_influence_policy.json`, `docs/contracts/Ring2Decision_v1.md` | 7 hermetic tests |
+| Chokepoint 1: `gate_and_generate` — research-class processes (registry `memory_context_required` / category) must carry `context_id`; falls back to the process-current context; ids ride the reservation metadata | `scripts/lib/llm_consumption.py` | test |
+| Chokepoint 2: the :8766 bridge — `X-TradeAI-Context-Id` required for registry-declared research callers; 428 in ENFORCED | `scripts/lib/cio_governed_model_bridge.py`; both bridge clients send the header | bridge suite 25 passed |
+| Chokepoint 3: `accept_research_result` — refusal dict in ENFORCED; `context_id` / `retrieval_receipt_id` / `memory_context_miss` in thesis provenance | `scripts/lib/research_thesis_delta.py` | test |
+| Chokepoint 4: `CIOActionLedger.create_action` — `context_id` + `memory_context_miss` on every new action payload (additive; old hashes untouched); raises in ENFORCED | `scripts/lib/cio_action_ledger.py` | ledger suite 30 passed + test |
+| `memory.delta` event type; `commit` publishes MemoryDelta@v1 when deltas exist (no consumer yet) | `scripts/lib/cio_event_bus.py`, `intelligence_client.commit` | wake-detector/goal suites green |
+| Process-current context (`set_current_context`) so the seven hooks thread ids without touching every call site | `intelligence_client` | test |
+
+Wave 2 approval items are drafted in `docs/ops/COGX_WAVE2_PACKAGE_SPEC.json` (11 items: the mode flips per surface, six adapter writers, `memory.delta` consumer lane, filings feed, identity sources, sudoers for L1, citation index, M2 cutover, PG heartbeats, effort). Nothing is enforced until the operator flips a policy row.
 ## Findings fixed (operator: "fix findings", 2026-09-27 evening) `[VERIFIED by triage; fixes in this PR]`
-
 **25 NO_OUTPUT breaches → 2 broken jobs, 15 wrong signals, 6 weekday lanes judged on a Sunday, 2 not yet due.**
-
 | Root cause | Fix |
 |---|---|
 | The detector never queried the database, so every `db_max` lane read as silent | `supervisor_breach_detector` passes a read-only `db_query` (BEGIN READ ONLY … ROLLBACK) to `observe_signal` |
@@ -60,7 +71,6 @@ Package:     docs/architecture/cognitive_transformation_20260927/ (PR #1304); ap
 | `governed-agent-flash-market` still ACTIVE though its crontab line was retired (W0-7) | RETIRED with evidence |
 | **JOB_BROKEN** `watch-review-workers`: every run refused `CONTAINMENT_REQUIRED:containment_not_active` since the operator's 09-15 "agents clear" archived the containment flag | `agent_jobs_containment.containment_cleared()` (the W0-1 precedent) and the watch-review policy gate honours the operator-cleared tripwire |
 | **JOB_BROKEN** `indicator-cache-refresh`: 0 of ~800 symbols updated on three weekdays — yfinance "Too Many Requests" on every call, no backoff | `indicator_engine._history_with_backoff`: throttle, exponential backoff, and a run-level cooldown after 5 consecutive refusals (env-tunable) |
-
 **19 unresolvable symbols → three causes, no hand-built map (AGENTS §7).**
 - AIFF, GLND, HASI, SDOT: Schwab evidence (CUSIP + description) arrived with Saturday's sweep, after Friday's mint → the Monday 05:50 mint promotes them to CONFIRMED. Nothing to change; verify Monday.
 - ABOVE, BLD, CXMT, EKSO: asked Schwab, `broker_returned_no_identifier`; the sweep's resume skips recorded misses. Re-ask is a sweep option (`--no-resume`), left to the Saturday lane or the operator.

@@ -979,6 +979,7 @@ GATES = [
             "tests/test_gir_projector_and_breach_detector.py",
             "tests/test_approval_package_reminder.py",
             "tests/test_memory_compliance.py",
+            "tests/test_memory_ring2.py",
             "tests/test_containment_cleared_state.py",
             "tests/test_indicator_engine_rate_limit.py",
         ],

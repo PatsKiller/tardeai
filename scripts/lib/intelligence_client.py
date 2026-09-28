@@ -76,6 +76,28 @@ _BEHAVIOR_FIELDS_FALLBACK = ("recommended_delta_usd", "size_usd", "shares", "qty
                              "stop", "limit", "target_weight_pct", "trade", "execution")
 
 
+import contextvars as _cv
+
+_CURRENT_CTX: _cv.ContextVar[dict | None] = _cv.ContextVar("tradeai_intelligence_context", default=None)
+
+
+def set_current_context(ctx: dict | None) -> None:
+    """Make ``ctx`` the process-current MemoryContext so chokepoints the producer cannot pass a kwarg
+    to (gate_and_generate via helpers, the :8766 bridge clients) still see its id (Ring 2, 01 §2).
+    shadow_open sets it; shadow_commit clears it."""
+    _CURRENT_CTX.set(ctx)
+
+
+def current_context_id() -> str | None:
+    c = _CURRENT_CTX.get()
+    return c.get("context_id") if isinstance(c, dict) else None
+
+
+def current_retrieval_receipt_id() -> str | None:
+    c = _CURRENT_CTX.get()
+    return c.get("retrieval_receipt") if isinstance(c, dict) else None
+
+
 class MemoryUnavailable(RuntimeError):
     """A DECIDE/ADVISE context could not be opened in ENFORCED mode. The caller must HOLD."""
 
@@ -700,6 +722,8 @@ def commit(ctx: dict, outcome: dict, *, deltas: Iterable[dict] = (), confidence_
     }
     if write_receipt:
         _append(contexts_path(root, env), row)
+        if deltas:
+            _emit_memory_delta(ctx, row, env)
     ctx["committed_at"] = row["committed_at"]
     ctx["influence"] = infl
     return row
@@ -722,6 +746,7 @@ def shadow_open(lane_id: str, subjects: Iterable[str], purpose: str = "RESEARCH"
         ctx = open_context({"lane_id": lane_id, "agent_id": agent_id}, purpose, subs, mode="SHADOW", root=root, env=env)
         if question:
             observe_generation(ctx, question, root=root, env=env)
+        set_current_context(ctx)
         # Every hooked producer beats (06 §3): file fallback only, never Postgres from here, never raises.
         try:
             from supervisor_heartbeat import beat  # type: ignore
@@ -773,8 +798,32 @@ def shadow_commit(ctx: dict | None, outcome: dict, *, root: Path | None = None, 
         return None
     except Exception:  # noqa: BLE001
         return None
+    finally:
+        if _CURRENT_CTX.get() is ctx:
+            set_current_context(None)
+
+
+def _emit_memory_delta(ctx: dict, row: dict, env: dict) -> None:
+    """Publish MemoryDelta@v1 on the CIO event bus (01 §3.2; consumers opt in, 07 §4). Fail-soft."""
+    if str(env.get("TRADEAI_MEMORY_DELTA_BUS", "1")).lower() in ("0", "false", "off"):
+        return
+    try:
+        try:
+            from cio_event_bus import CIOEventBus  # type: ignore
+        except ImportError:  # pragma: no cover
+            from scripts.lib.cio_event_bus import CIOEventBus  # type: ignore
+        CIOEventBus().emit("memory.delta", {"schema": "MemoryDelta@v1", "context_id": ctx.get("context_id"),
+                                            "lane_id": (ctx.get("actor") or {}).get("lane_id"),
+                                            "subjects": [s.get("guid") for s in ctx.get("subjects", []) if s.get("guid")],
+                                            "delta_count": row.get("delta_count", 0), "payload_sha256": row.get("payload_sha256"),
+                                            "mode": ctx.get("mode"), "authority": "READ_ONLY_ADVISORY"},
+                           source="intelligence_client", priority="LOW")
+    except Exception:  # noqa: BLE001
+        pass
+
 
 __all__ = ["open_context", "retrieve_or_generate", "run_ladder", "commit", "Loaders", "default_loaders",
            "MemoryUnavailable", "BehaviorWriteRefused", "contexts_path", "retrieval_receipts_path",
            "resolve_mode", "is_namespaced", "behavior_fields", "SCHEMA_CONTEXT", "SCHEMA_RETRIEVAL",
-           "SCHEMA_COMMIT", "PURPOSES", "MODES", "DECISIONS", "shadow_open", "observe_generation", "shadow_commit"]
+           "SCHEMA_COMMIT", "PURPOSES", "MODES", "DECISIONS", "shadow_open", "observe_generation", "shadow_commit",
+           "set_current_context", "current_context_id", "current_retrieval_receipt_id"]

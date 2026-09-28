@@ -1,0 +1,125 @@
+{
+ "campaign": "cognitive-transformation-20260927",
+ "wave": "Wave 2 · Enforcement",
+ "summary": "Wave 2 makes memory and retrieval dependencies: fail-closed decisions at the seven chokepoints (per surface, mode-flipped by the operator), one write path for research, deltas on the bus with fan-out from edges, ladder L1–L3, filings feed, and the identity fixes from the Wave 1 findings.",
+ "reviews": {
+  "architecture": "MISSING (W2 PR)",
+  "infrastructure": "MISSING (W2 PR)",
+  "security": "MISSING (W2 PR)"
+ },
+ "items": [
+  {
+   "item_id": "O-W2-1",
+   "category": "OPERATOR",
+   "title": "Ring 2 mode flip: DECIDE/ADVISE contexts fail closed (HOLD_MEMORY_UNAVAILABLE) at the wake engine and the advisory/options review; RESEARCH generation refused without a RetrievalReceipt at gate_and_generate — per-surface, starting with persistent-wake",
+   "why": "01 §4, 08 §2",
+   "rule": "AGENTS §13.4 cognition; operator-only mode change",
+   "rollback": "set TRADEAI_INTELLIGENCE_MODE=SHADOW (one env line) — every hook degrades instead of refusing",
+   "scopes_needed": []
+  },
+  {
+   "item_id": "O-W2-2",
+   "category": "OPERATOR",
+   "title": "writers: six producer adapters route thesis-like research through accept_research_result (external lanes, watchlist agents, analyst/research-intel, advisory opinion, options review, AEC thesis fact)",
+   "why": "02 §7, 09-27 W2",
+   "rule": "AGENTS §17 + DataSourceAuthority@v2 rows (one per adapter)",
+   "rollback": "DSA row → REVOKED; adapter off (flag)",
+   "scopes_needed": []
+  },
+  {
+   "item_id": "O-W2-3",
+   "category": "OPERATOR",
+   "title": "writer: façade commit publishes memory.delta on the CIO event bus (new event type) and the edge projector consumes it (fan-out from edges replaces the hard-coded thesis.changed list)",
+   "why": "01 §3.2, 07 §4",
+   "rule": "AGENTS §17 new writer + bus event type",
+   "rollback": "unregister the event type; consumer off",
+   "scopes_needed": [
+    "service"
+   ]
+  },
+  {
+   "item_id": "O-W2-4",
+   "category": "OPERATOR",
+   "title": "new lane: edge-fanout-consumer (bus consumer; traversal → work items)",
+   "why": "07 §4",
+   "rule": "AGENTS §17 new systemd entry",
+   "rollback": "disable the timer/service",
+   "scopes_needed": [
+    "service"
+   ]
+  },
+  {
+   "item_id": "O-W2-5",
+   "category": "OPERATOR",
+   "title": "new data source: SEC 8-K / 10-Q filings feed → EVENT nodes (Market class)",
+   "why": "09-27 §8, 02 §2",
+   "rule": "AGENTS §7A adding a data source (operator grant recorded in the DSA row)",
+   "rollback": "DSA row → REVOKED; lane off",
+   "scopes_needed": [
+    "cron"
+   ]
+  },
+  {
+   "item_id": "O-W2-6",
+   "category": "OPERATOR",
+   "title": "mint lane reads symbol theses and the ticker research graph as symbol sources (11 symbols never entered the registry); sweep re-asks Schwab for recorded misses monthly",
+   "why": "identity finding 2026-09-27",
+   "rule": "AGENTS §7 identity spine (deterministic; no hand-built map)",
+   "rollback": "revert the source list",
+   "scopes_needed": []
+  },
+  {
+   "item_id": "S-W2-1",
+   "category": "SECURITY",
+   "title": "sudoers allowlist for supervisor L1 actions: systemctl --user restart of named lanes only; no system units",
+   "why": "06 §5 L1, 11 S-6",
+   "rule": "least privilege",
+   "rollback": "remove the sudoers lines",
+   "scopes_needed": [
+    "sudo"
+   ]
+  },
+  {
+   "item_id": "S-W2-2",
+   "category": "SECURITY",
+   "title": "per-URL/day citation index writes source_url_canonical + extraction only (no page bodies) into intelligence.research_index",
+   "why": "03 §3 step 5",
+   "rule": "data minimisation",
+   "rollback": "truncate the index",
+   "scopes_needed": [
+    "db-write"
+   ]
+  },
+  {
+   "item_id": "I-W2-1",
+   "category": "INFRA",
+   "title": "M2 production cutover (memory_prod_cutover.apply) so bitemporal history reads from :5432 instead of the :55432 shadow",
+   "why": "02 §5",
+   "rule": "12 IN-2; reversible by pointing M2_AGENT_DSN back",
+   "rollback": "M2_AGENT_DSN → shadow",
+   "scopes_needed": [
+    "db-write"
+   ]
+  },
+  {
+   "item_id": "I-W2-2",
+   "category": "INFRA",
+   "title": "Postgres heartbeat upsert from the detector and the hooked producers (intelligence.heartbeat)",
+   "why": "06 §3",
+   "rule": "12 IN-1 tables exist",
+   "rollback": "file fallback only",
+   "scopes_needed": [
+    "db-write"
+   ]
+  },
+  {
+   "item_id": "B-W2-1",
+   "category": "BUDGET",
+   "title": "Wave 2 effort ≈ 20 agent-days; no new paid lane; the filings feed is free (EDGAR)",
+   "why": "09 §3",
+   "rule": "operator",
+   "rollback": "stop the wave",
+   "scopes_needed": []
+  }
+ ]
+}
