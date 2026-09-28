@@ -2717,6 +2717,14 @@ GATES = [
         ["tests/test_buy_ready_packets_index_20260928.py"],
     ),
     (
+        # Failed acceptance 2026-09-28 (490735fba rolled back): the index served a pre-fix AXTI packet as
+        # OPTIONS_ALT_OK / qualified 1 from the file's own flag. Verdicts now go through packet_view
+        # (STALE_PRE_FIX) or fail closed (PACKET_UNVERIFIED); a unit counts only when current, known,
+        # earnings-cleared and gate-stamped; the single-symbol handler is the live-proof hunk.
+        "buy_ready_packet_verdict_20260928",
+        ["tests/test_buy_ready_packet_verdict_20260928.py"],
+    ),
+    (
         # 2026-09-28: the lifecycle script self-deadlocked against the crontab's own flock
         # (57 skipped passes, every options thesis stuck at CREATED). An ancestor's lock is
         # inherited from /proc/self/fd, a foreign holder is still refused.
