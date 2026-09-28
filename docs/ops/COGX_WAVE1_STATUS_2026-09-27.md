@@ -86,6 +86,22 @@ Wave 2 approval items are drafted in `docs/ops/COGX_WAVE2_PACKAGE_SPEC.json` (11
 | Postgres heartbeat upsert from the detector and the projector (item 10) | `supervisor_breach_detector`, `gir_projector` | live after deploy |
 | Wave 2 decision record | `docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md` | ledger 29 rows verified |
 
+## Wave 2 · flip 1 — `context:persistent-wake` → ENFORCED (branch wt/cogx-w2-enforce-wake-20260927)
+
+Package item 1, first surface. Operator instruction 2026-09-27 21:38 ET: "flip persistent-wake to enforced when receipts are clean".
+
+| Evidence | Value | Tag |
+|---|---|---|
+| Release under test | CURRENT = `aa14c24a9-main-exact-phase2-20260927-212341` (tranche 2 promoted 21:33 ET) | [VERIFIED] |
+| Runner dry run from CURRENT (cron command + `--dry-run`) | rc 0; slot `2026-09-28T01:00Z` already complete; `would invoke run_scheduled_wake; no writes` for `HELD:XAR` (`instrument_record_due`) | [VERIFIED] |
+| First context on the lane under the runner's path shape (project root only) on the new release | `ctx_21f4e27cd0a24e54` 01:40Z: mode SHADOW, **degraded False**, subject GUID `1527f991-…` → XAR, 5 facts, thesis present, contradiction_state OPEN; committed as `DRY_TEST` (no decision) | [VERIFIED] |
+| Last contexts on the OLD release (01:27–01:30Z, other lanes) | degraded True, `IDENTITY_LOADER_FAILED:*:ModuleNotFoundError` — the tranche 2 defect, as expected | [VERIFIED] |
+| Change | one policy row: `ring2.surfaces["context:persistent-wake"]`: SHADOW → ENFORCED | [CODE] |
+
+What ENFORCED does on this lane: a DECIDE/ADVISE context that cannot open raises `MemoryUnavailable` from `shadow_open`; the wake hook propagates it; the runner records `outcome=error` for that subject and the dispatcher retries; a REFUSED row lands on the ledger. Contexts that open degraded still proceed (degradation is recorded, not fatal). Monitors are never held.
+
+Rollback criterion (package §2): HOLD rate on the lane > 5 % of DECIDE contexts over any 24 h window, or any HOLD that is not `MemoryUnavailable` → revert the row (one-line PR) and report. Watch: `memory_contexts.jsonl` rows with `event=REFUSED` and `actor.lane_id=persistent-wake`, plus `outcome=error` in `~/logs/persistent_wake.log`.
+
 ## What is NOT in Wave 1 yet (after the operator runbook)
 - The `memory.delta` bus consumer (Wave 2) — until then the projector is hourly-incremental by source fingerprint.
 - The operator steps in the runbook: credential rotation, roles + migration, merge + deploy, grants, lane install, first real runs.
