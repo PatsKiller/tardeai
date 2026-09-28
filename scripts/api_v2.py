@@ -39980,8 +39980,25 @@ def _schwab_option_chain(query=None):
     if not sym:
         return {"status": "error", "error": "symbol required"}
     import schwab_transport
+    import uuid as _uuid
 
-    return _json_clean(schwab_transport.get_option_chain(sym, strike_count=min(int(g("strikes", 8) or 8), 20)))
+    # 2026-09-28 (reviewer): the drawer could not show a proposal's exact contract -- 12 near-
+    # market strikes on the nearest four dates. `expiration` pins one date; strikes cap 40;
+    # `side` halves the payload; the request and a trace id ride back with the answer.
+    try:
+        strikes = max(1, min(int(g("strikes", 12) or 12), 40))
+    except (TypeError, ValueError):
+        strikes = 12
+    expiration = (g("expiration") or "").strip() or None
+    side = (g("side") or "").strip().lower() or None
+    trace = _uuid.uuid4().hex[:12]
+    out = schwab_transport.get_option_chain(
+        sym, strike_count=strikes, expiration=expiration, contract_type=side if side in ("call", "put") else None
+    )
+    if isinstance(out, dict):
+        out.setdefault("request", {"symbol": sym, "strikes": strikes, "expiration": expiration, "side": side})
+        out.setdefault("trace_id", trace)
+    return _json_clean(out)
 
 
 _OPTIONS_ENGINE_MTIME = [0.0]

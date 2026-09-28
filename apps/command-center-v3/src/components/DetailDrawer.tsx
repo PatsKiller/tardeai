@@ -27,8 +27,11 @@ export interface DrillContext {
   /** Option chain drill — show chain table instead of stock intel panels */
   chainMode?: boolean
   highlightStrike?: number
+  highlightStrikes?: number[]
   highlightExpiration?: string
   chainSide?: 'call' | 'put'
+  chainLegs?: Array<{ role: 'short' | 'long'; side: 'call' | 'put'; strike: number }>
+  chainContracts?: number
 }
 
 interface Props { ctx: DrillContext | null; onClose: () => void }
@@ -173,8 +176,11 @@ export default function DetailDrawer({ ctx, onClose }: Props) {
             <OptionChainPanel
               endpoint={ctx.endpoint}
               highlightStrike={ctx.highlightStrike}
+              highlightStrikes={ctx.highlightStrikes}
               highlightExp={ctx.highlightExpiration}
               defaultSide={ctx.chainSide || 'call'}
+              legs={ctx.chainLegs}
+              contracts={ctx.chainContracts}
             />
           </Section>
         )}

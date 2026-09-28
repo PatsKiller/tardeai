@@ -10,6 +10,9 @@ import OptionProposalCardV5 from '../components/OptionProposalCardV5'
 import OptionPositionCardV5 from '../components/OptionPositionCardV5'
 import UiV5Toggle from '../components/UiV5Toggle'
 import { useUiV5 } from '../lib/uiV5'
+import { legsFromProposal } from '../lib/optionChainTruth'
+import { isNoviceMode, setNoviceMode } from '../lib/optionsNovice'
+import { NoviceToggle } from '../components/OptionsNovicePanel'
 import OptionReviewBar from '../components/OptionReviewBar'
 import ManualExecutionModal, { type ManualExecSeed } from '../components/ManualExecutionModal'
 import ManualExecutionLog from '../components/ManualExecutionLog'
@@ -82,6 +85,8 @@ export default function OptionsHub({ onDrill }: Props) {
   const [manualSeed, setManualSeed] = useState<ManualExecSeed | null>(null)
   // PR4 (2026-09-28): the redesigned cards render only behind ui_v5; v4 stays the fallback.
   const [uiV5] = useUiV5()
+  // 2026-09-28 (reviewer): the beginner explanations existed but the hub never passed `novice`.
+  const [novice, setNovice] = useState<boolean>(() => isNoviceMode())
   const ProposalCard = uiV5 ? OptionProposalCardV5 : OptionProposalCardV4
   const PositionCard = uiV5 ? OptionPositionCardV5 : OptionPositionCardV4
 
@@ -251,10 +256,14 @@ export default function OptionsHub({ onDrill }: Props) {
         subtitle: prop
           ? `${prop.strategy?.replace(/_/g, ' ')} · $${prop.strike} · ${prop.expiration ?? ''} · verify live bid/ask`
           : 'Schwab read-only chain — pick expiration & strike',
-        endpoint: `/api/v2/schwab/option-chain?symbol=${sym}&strikes=12`,
+        // 2026-09-28: pin the proposal's expiration and widen the window so its exact legs are in the answer.
+        endpoint: `/api/v2/schwab/option-chain?symbol=${sym}&strikes=24${prop?.expiration ? `&expiration=${prop.expiration}` : ''}`,
         rows: [],
         chainMode: true,
         highlightStrike: prop?.strike,
+        highlightStrikes: prop ? [prop.strike, (prop as any).short_strike, (prop as any).long_strike].filter((k): k is number => typeof k === 'number') : undefined,
+        chainLegs: prop ? legsFromProposal(prop as any) : undefined,
+        chainContracts: prop?.contracts || 1,
         highlightExpiration: prop?.expiration,
         // option_type wins when present (atm_put/protective_put render the put side)
         chainSide: prop?.option_type === 'put' || prop?.strategy === 'cash_secured_put' ? 'put' : 'call',
@@ -369,6 +378,12 @@ export default function OptionsHub({ onDrill }: Props) {
               }
               const parts = Object.entries(reasons).sort((a, b) => b[1].count - a[1].count)
                 .map(([k, v]) => `${v.count} ${LABEL[k] || k.toLowerCase().replace(/_/g, ' ')} (${v.symbols.slice(0, 4).join(', ')}${v.symbols.length > 4 ? '…' : ''})`)
+              // 2026-09-28 (reviewer): entry-desk ideas dropped before a card existed (AXTI: EDGE_BELOW) were invisible here.
+              const dropped = ((proposals as any)?.entry_directional_dropped || []) as Array<{ symbol: string; reason: string }>
+              const byReason: Record<string, string[]> = {}
+              for (const d of dropped) if (d?.symbol) (byReason[d.reason || 'UNKNOWN'] ||= []).push(d.symbol)
+              const DROP_LABEL: Record<string, string> = { EDGE_BELOW: 'entry ideas below the edge floor', IV_UNKNOWN: 'entry ideas with IV unknown', NO_CHAIN: 'entry ideas with no chain' }
+              for (const [k, syms] of Object.entries(byReason)) parts.push(`${syms.length} ${DROP_LABEL[k] || `entry ideas ${k.toLowerCase().replace(/_/g, ' ')}`} (${syms.slice(0, 4).join(', ')}${syms.length > 4 ? '…' : ''})`)
               return <>{deferredNote}<div data-testid="options-income-screen" style={{ marginTop: 4, color: 'var(--text2)' }}>Not built: {parts.join(' · ')}.{(proposals as any)?.market_session && (proposals as any).market_session !== 'REGULAR' ? ` Chains read during ${String((proposals as any).market_session).toLowerCase().replace('_', ' ')}.` : ''}</div></>
             })()}
             {proposals?.quality_gate && (
@@ -627,12 +642,13 @@ export default function OptionsHub({ onDrill }: Props) {
             </div>
           )}
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}><UiV5Toggle /></div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center', marginBottom: 6 }}><NoviceToggle on={novice} onChange={v => { setNovice(v); setNoviceMode(v) }} /><UiV5Toggle /></div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
             {shownProps.map(p => (
               <ProposalCard
                 key={p.id}
                 proposal={p}
+                novice={novice}
                 armed={!!execStatus?.armed_for_execution}
 
                 onAction={(a, id) => handleAction(a, id, p)}
@@ -714,12 +730,13 @@ export default function OptionsHub({ onDrill }: Props) {
               </div>
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}><UiV5Toggle /></div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center', marginBottom: 6 }}><NoviceToggle on={novice} onChange={v => { setNovice(v); setNoviceMode(v) }} /><UiV5Toggle /></div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
             {posList.map(p => (
               <PositionCard
                 key={p.id}
                 position={p}
+                novice={novice}
 
                 onAction={(a, id) => handleAction(a, id, p)}
                 onDrill={() => onDrill({

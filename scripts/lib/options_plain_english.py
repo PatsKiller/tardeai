@@ -177,8 +177,9 @@ CLASSIFICATION = {
     "cash_secured_put": ("INCOME", "Income trade", "Collect premium while waiting to buy lower."),
     "credit_spread": ("INCOME", "Income trade (defined risk)", "Collect premium with a capped worst case."),
     "protective_put": ("HEDGE", "Hedge / insurance", "Reduce the risk of shares you already own."),
-    "long_call": ("MONEY_MAKING", "Money-making trade", "Profit if the stock rises past breakeven."),
-    "long_put": ("SPECULATIVE", "Speculative trade", "Profit if the stock falls past breakeven."),
+    # 2026-09-28 (reviewer): "Money-making trade" on a blocked long call read as a promise.
+    "long_call": ("DIRECTIONAL", "Directional trade (long call)", "Profit only if the stock rises past breakeven by expiry; the premium paid is the most you can lose."),
+    "long_put": ("DIRECTIONAL", "Directional trade (long put)", "Profit only if the stock falls past breakeven by expiry; the premium paid is the most you can lose."),
 }
 
 METRIC_GUIDE = {
