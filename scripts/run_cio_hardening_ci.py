@@ -2836,6 +2836,16 @@ GATES = [
         ["tests/test_momentum_scalp_proposal_contract_20260928.py"],
     ),
     (
+        # 2026-09-28 — GO alerts carry delivery evidence (provider message id; accepted_no_id
+        # is not "sent"; a held GO reports whether the CIO review was enqueued) and three
+        # collectors own the scalp lane: GO→proposal conversion, underfilled streaks for
+        # real reasons, social-inject failures.
+        "go_alerts_and_lane_collectors_20260928",
+        ["tests/test_go_alerts_and_lane_collectors_20260928.py",
+         "tests/test_screener_go_alerts_delivery_20260914.py",
+         "tests/test_cio_telegram_stance_gate_20260918.py"],
+    ),
+    (
         # 2026-09-28 — momentum-scalp lane refresh: the */15 Finviz-refresh cron line was
         # killed silently every quarter-hour (timeout 150 < stage 240, shared lock) and the
         # lane had not refreshed since 09-18; the stage now clamps to an outer deadline,

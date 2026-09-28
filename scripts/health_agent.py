@@ -1983,6 +1983,122 @@ def collect_momentum_scalp_multi_source_health() -> list[dict]:
     return out
 
 
+def _assess_go_conversion(go_scans: int, created: int, skipped_by_reason: dict, window_days: int) -> dict:
+    """Pure (2026-09-28, plan root cause 5): the scanner produced GO rows but no momentum_scalp
+    proposal was created in the window → the pipeline discards what it finds. Names the skip
+    reasons so the operator sees WHICH gate ate the GOs (in 09-2026: the $3 floor + analyst gate)."""
+    if go_scans <= 0:
+        return {"finding": False, "reason": "no_go_rows"}
+    if created > 0:
+        return {"finding": False, "reason": "converting"}
+    top = sorted(skipped_by_reason.items(), key=lambda kv: -kv[1])[:4]
+    return {"finding": True, "type": "momentum_scalp_go_not_converting",
+            "severity": "critical" if go_scans >= 5 else "warning",
+            "message": (f"{go_scans} GO scan row(s) in {window_days}d but 0 momentum_scalp proposals created — "
+                        f"skips: {', '.join(f'{k}={v}' for k, v in top) or 'none recorded'}")}
+
+
+def collect_go_to_proposal_conversion() -> list[dict]:
+    """GO → proposal conversion for momentum_scalp over the last N days (auto_proposal_decisions)."""
+    out: list[dict] = []
+    cfg = (_POLICY.get("lane_ownership") or {})
+    if not cfg.get("enabled", True):
+        return out
+    days = int(cfg.get("conversion_window_days", 5))
+    try:
+        go = _db("SELECT count(*) n FROM trade_ai_scans WHERE decision='GO' AND scanned_at > now() - make_interval(days => %s)",
+                 (days,), fetch="one") or {}
+        rows = _db("""SELECT decision, count(*) n FROM auto_proposal_decisions
+                      WHERE strategy_id='momentum_scalp' AND created_at > now() - make_interval(days => %s)
+                      GROUP BY decision""", (days,), fetch="all") or []
+        by = {str(r.get("decision")): int(r.get("n") or 0) for r in rows}
+        created = by.pop("CREATED", 0)
+        a = _assess_go_conversion(int((go or {}).get("n") or 0), created, by, days)
+        if a.get("finding"):
+            out.append(_f("pipeline_freshness", a["type"], a["severity"], a["message"],
+                          surfaced="Trading hub · momentum scalp proposals", skips=by))
+    except Exception as e:
+        out.append(_f("pipeline_freshness", "go_conversion_monitor_error", "info", f"go→proposal monitor failed: {str(e)[:80]}"))
+    return out
+
+
+def _assess_underfilled_streak(statuses_reasons: list, threshold: int) -> dict:
+    """Pure: consecutive most-recent runs (one window label) that are RUN_UNDERFILLED for a REAL reason.
+    PREOPEN_WINDOW_BY_DESIGN never counts (that is configuration, not failure)."""
+    streak = 0
+    for status, reasons in statuses_reasons:          # newest first
+        rs = list(reasons or [])
+        if status in ("RUN_UNDERFILLED", "RUN_FAILED") and "PREOPEN_WINDOW_BY_DESIGN" not in rs:
+            streak += 1
+        else:
+            break
+    if streak >= threshold:
+        return {"finding": True, "type": "screener_run_underfilled_streak",
+                "severity": "critical" if streak >= threshold * 2 else "warning",
+                "message": f"{streak} consecutive underfilled/failed runs for a real reason (threshold {threshold})"}
+    return {"finding": False, "streak": streak}
+
+
+def collect_underfilled_streak() -> list[dict]:
+    out: list[dict] = []
+    cfg = (_POLICY.get("lane_ownership") or {})
+    if not cfg.get("enabled", True):
+        return out
+    threshold = int(cfg.get("underfilled_streak", 3))
+    try:
+        labels = _db("SELECT DISTINCT run_label FROM screener_run_health WHERE finished_at > now() - interval '3 days'",
+                     fetch="all") or []
+        for row in labels:
+            label = str(row.get("run_label") or "")
+            hist = _db("""SELECT status, reason_codes FROM screener_run_health WHERE run_label=%s
+                          ORDER BY finished_at DESC NULLS LAST LIMIT %s""", (label, threshold * 2), fetch="all") or []
+            a = _assess_underfilled_streak([(r.get("status"), r.get("reason_codes")) for r in hist], threshold)
+            if a.get("finding"):
+                out.append(_f("pipeline_freshness", a["type"], a["severity"], f"{label}: {a['message']}",
+                              surfaced="Trading hub · scanner run health", run_label=label))
+    except Exception as e:
+        out.append(_f("pipeline_freshness", "underfilled_streak_monitor_error", "info", f"underfilled-streak monitor failed: {str(e)[:80]}"))
+    return out
+
+
+def _freshest_glob_log(pattern: str) -> Path | None:
+    """Newest file matching logs/<pattern> across the served release and the DEV tree (dated logs)."""
+    newest, newest_mtime = None, -1.0
+    for root in (LOG_DIR, DEV_ROOT / "logs"):
+        try:
+            for cand in Path(root).glob(pattern):
+                m = cand.stat().st_mtime
+                if m > newest_mtime:
+                    newest, newest_mtime = cand, m
+        except OSError:
+            continue
+    return newest
+
+
+def _count_social_inject_errors(text: str) -> int:
+    return sum(1 for ln in text.splitlines() if "social inject" in ln and ("ERROR" in ln or "warning" in ln))
+
+
+def collect_social_inject_errors() -> list[dict]:
+    """The scanner's social overlay failing on every live cycle used to be a footnote in the log."""
+    out: list[dict] = []
+    cfg = (_POLICY.get("lane_ownership") or {})
+    if not cfg.get("enabled", True):
+        return out
+    try:
+        log = _freshest_glob_log("continuous_*.log")
+        if not log or not log.exists():
+            return out
+        n = _count_social_inject_errors(log.read_text(errors="replace")[-400_000:])
+        if n >= int(cfg.get("social_inject_errors", 3)):
+            out.append(_f("pipeline_freshness", "scanner_social_inject_failing", "warning",
+                          f"{n} social-inject failures in today's continuous log — the social overlay contributes nothing",
+                          surfaced="Trading hub · scanner", log=str(log)))
+    except Exception as e:
+        out.append(_f("pipeline_freshness", "social_inject_monitor_error", "info", f"social-inject monitor failed: {str(e)[:80]}"))
+    return out
+
+
 def collect_scalp_catalyst_health() -> list[dict]:
     """URGENT: the real-time momentum-scalp GO/WAIT Telegram lane. Scalp GO tier depends on catalyst
     verification (news / RAG / Hermes); when that silently produces nothing, every setup is capped to
@@ -3710,6 +3826,9 @@ COLLECTORS = [
     collect_log_errors,
     collect_pipeline_freshness,
     collect_momentum_scalp_source_health,
+    collect_go_to_proposal_conversion,
+    collect_underfilled_streak,
+    collect_social_inject_errors,
     collect_momentum_scalp_multi_source_health,
     collect_scalp_catalyst_health,
     collect_infra_optimization_health,

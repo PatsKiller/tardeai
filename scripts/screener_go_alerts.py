@@ -152,6 +152,41 @@ def _send_go(send_telegram: Callable[..., Any], item: dict,
     return ok, None
 
 
+def _send_go_receipt(item: dict, db_query: Optional[Callable[..., list[dict]]] = None,
+                     sender_with_id: Optional[Callable[..., Any]] = None) -> dict[str, Any]:
+    """2026-09-28 (plan root cause 5): send through the chokepoint's id-returning entry point and
+    return a receipt the ledger can keep — accepted + provider message id. ``send_telegram`` returning
+    True was recorded as "sent" for months while nothing reached the operator; a missing id is now
+    its own state (accepted_no_id), never "sent"."""
+    rich = rich_alert(item)
+    text = rich["text"] if rich else format_alert(item)
+    sym = str(item["row"].get("symbol") or "").upper()
+    gate = _cio_go_gate(sym, text, db_query=db_query)
+    if not gate.get("allow", False):
+        return {"symbol": sym, "sent": False, "held_reason": str(gate.get("held_reason") or "cio_stance_conflict"),
+                "review_requested": gate.get("review_requested"), "review_status": gate.get("review_status")}
+    if str(gate.get("annotation_text") or "").strip():
+        try:
+            from lib.cio_telegram_stance_gate import StanceGateVerdict, apply_stance_rewrite  # noqa: PLC0415
+        except ImportError:
+            from scripts.lib.cio_telegram_stance_gate import StanceGateVerdict, apply_stance_rewrite  # type: ignore
+        text = apply_stance_rewrite(text, sym, StanceGateVerdict(**gate))
+    extra = ({"reply_markup": rich["reply_markup"], "link_preview_options": rich["link_preview_options"]}
+             if rich else {})
+    if sender_with_id is None:
+        import telegram_alert as _ta  # noqa: PLC0415
+        sender_with_id = getattr(_ta, "send_telegram_with_id", None)
+        if sender_with_id is None:
+            # transport without an id-returning entry point (older module / test fake): accepted but no id
+            _plain = _ta.send_telegram
+            sender_with_id = lambda msg, **kw: {"accepted": bool(_plain(msg, **kw)), "message_id": None}  # noqa: E731
+    res = sender_with_id(text, bypass_router=True, message_class="operator_alert", **extra) or {}
+    accepted = bool(res.get("accepted"))
+    mid = res.get("message_id")
+    delivery = "sent" if (accepted and mid) else ("accepted_no_id" if accepted else "failed")
+    return {"symbol": sym, "sent": accepted, "message_id": mid, "delivery": delivery, "held_reason": None}
+
+
 def _load_ledger(path: Path) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -212,9 +247,8 @@ def main() -> int:
         from lib.comms_editor import default_db_query as _cio_db  # noqa: PLC0415
     except Exception:  # noqa: BLE001
         _cio_db = None
+    deliveries: list[dict[str, Any]] = []
     if args.send:
-        from telegram_alert import send_telegram  # noqa: PLC0415
-
         for item in plan["alert"]:
             sym = str(item["row"]["symbol"]).upper()
             # bypass_router: the legacy router classified "momentum scalp setup" as
@@ -224,12 +258,19 @@ def main() -> int:
             # GO signals for months. The operator asked for these in real time; the
             # Communications Editor still formats every message at the transport.
             # 2026-09-18: also join cio_decisions before would-send (fail closed).
-            ok, held_reason = _send_go(send_telegram, item, db_query=_cio_db)
-            if ok:
-                ledger[f"{session.isoformat()}:{sym}"] = datetime.now(timezone.utc).isoformat()
+            rcpt = _send_go_receipt(item, db_query=_cio_db)
+            if rcpt.get("sent"):
+                # ledger value carries the provider message id (delivery evidence), not just a timestamp
+                ledger[f"{session.isoformat()}:{sym}"] = {"sent_at": datetime.now(timezone.utc).isoformat(),
+                                                          "message_id": rcpt.get("message_id"),
+                                                          "delivery": rcpt.get("delivery")}
                 sent_now.append(sym)
-            elif held_reason:
-                cio_held.append({"symbol": sym, "held_reason": held_reason})
+                deliveries.append({"symbol": sym, "message_id": rcpt.get("message_id"), "delivery": rcpt.get("delivery")})
+            elif rcpt.get("held_reason"):
+                cio_held.append({"symbol": sym, "held_reason": rcpt["held_reason"],
+                                 "review_requested": rcpt.get("review_requested"), "review_status": rcpt.get("review_status")})
+            else:
+                deliveries.append({"symbol": sym, "message_id": None, "delivery": "failed"})
         LEDGER.parent.mkdir(parents=True, exist_ok=True)
         LEDGER.write_text(json.dumps(ledger, indent=2), encoding="utf-8")
     else:
@@ -239,11 +280,12 @@ def main() -> int:
             text = format_alert(item)
             gate = _cio_go_gate(sym, text, db_query=_cio_db)
             if not gate.get("allow", False):
-                cio_held.append({"symbol": sym, "held_reason": str(gate.get("held_reason") or "cio_stance_conflict")})
+                cio_held.append({"symbol": sym, "held_reason": str(gate.get("held_reason") or "cio_stance_conflict"),
+                                 "review_requested": gate.get("review_requested"), "review_status": gate.get("review_status")})
     report = {"schema": "ScreenerGoAlerts@v1", "ran_at": datetime.now(timezone.utc).isoformat(),
               "session": session.isoformat(), "mode": "send" if args.send else "dry_run",
               "go_rows": len(rows), "qualifying": [a["row"]["symbol"] for a in plan["alert"]],
-              "sent": sent_now, "already_sent": plan["already_sent"], "withheld": plan["withheld"],
+              "sent": sent_now, "deliveries": deliveries, "already_sent": plan["already_sent"], "withheld": plan["withheld"],
               "cio_held": cio_held, "authority": AUTHORITY}
     print(json.dumps({k: report[k] for k in ("session", "mode", "go_rows", "qualifying", "sent",
                                               "already_sent", "cio_held")}))
