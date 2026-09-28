@@ -63,6 +63,17 @@ def _wire(monkeypatch, resp):
     monkeypatch.setattr(st, "build_client", lambda account_key, **k: (client, None))
     monkeypatch.setattr(st, "_rate_acquire", lambda: None)
     monkeypatch.setattr(st, "_default_account_key", lambda: "schwab_taxable")
+    # 2026-09-28: the first version of this test drove a fake 403 through the REAL
+    # schwab_token_manager.record_auth_failure, which flagged the live token store degraded
+    # and emptied the options desk for an hour. The token manager is stubbed here, always.
+    import types
+    stub = types.ModuleType("schwab_token_manager")
+    stub.record_auth_failure = lambda *a, **k: RECORDED.append((a, k))
+    stub.is_auth_failure = lambda err: False
+    monkeypatch.setitem(sys.modules, "schwab_token_manager", stub)
+
+
+RECORDED: list = []
 
 
 def test_http_failures_are_typed_before_normalization(monkeypatch):
@@ -72,6 +83,7 @@ def test_http_failures_are_typed_before_normalization(monkeypatch):
         assert r["status"] == status and r["http_status"] == code, (code, r)
         assert "123456789" not in r["error"] and "<num>" in r["error"]     # redacted
         assert r.get("expirations") is None                                 # never an empty chain
+    assert len(RECORDED) == 2 and all("transport:get_option_chain" in str(k) for _, k in RECORDED)  # 401 + 403 recorded, on the STUB
 
 
 def test_ok_response_still_normalizes(monkeypatch):
