@@ -2673,6 +2673,13 @@ GATES = [
          "tests/test_options_broker_gates_20260927.py"],
     ),
     (
+        # 2026-09-27 -- Defense CC queue evaluates queue-time eligibility (mode live), the
+        # fail-closed gates run at preflight/confirm; queue rows approved before the pin
+        # existed are pinned to their stored proposal_json + reviewed_at.
+        "options_queue_eligibility_legacy_pins_20260927",
+        ["tests/test_options_queue_eligibility_legacy_pins_20260927.py"],
+    ),
+    (
         # 2026-09-27 -- protective puts / covered calls reconcile held shares and cost basis to
         # the holdings snapshot of record at preflight (fail closed on stale, missing, short,
         # changed); every CIO-packet yield names its denominator.
