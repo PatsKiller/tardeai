@@ -82,6 +82,23 @@ def _ground_web(body: dict[str, Any], web: dict[str, Any]) -> dict[str, Any]:
         return body
 
 
+
+def _context_headers() -> dict:
+    """Ring 2 (01 §2): carry the process-current MemoryContext id to the bridge. Empty when none."""
+    try:
+        try:
+            from intelligence_client import current_context_id, current_retrieval_receipt_id  # type: ignore
+        except ImportError:  # pragma: no cover
+            from scripts.lib.intelligence_client import current_context_id, current_retrieval_receipt_id  # type: ignore
+        h = {}
+        if current_context_id():
+            h["X-TradeAI-Context-Id"] = current_context_id()
+        if current_retrieval_receipt_id():
+            h["X-TradeAI-Retrieval-Receipt-Id"] = current_retrieval_receipt_id()
+        return h
+    except Exception:  # noqa: BLE001
+        return {}
+
 class BridgeHermesResearchBackend:
     """
     Hermes research via governed bridge (:8766 by default).
@@ -272,6 +289,7 @@ class BridgeHermesResearchBackend:
                 "X-TradeAI-Agent": self.agent,
                 "X-TradeAI-Task-Type": self.task_type,
                 "X-TradeAI-Process-Id": self.process_id,
+                **_context_headers(),
             },
         )
         with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:

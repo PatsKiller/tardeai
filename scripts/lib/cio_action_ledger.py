@@ -268,7 +268,23 @@ class CIOActionLedger:
 
         self._validate_action_create(action)
 
+        # Ring 2 (01 §2): every CIO action carries the MemoryContext it was decided under.
+        # SHADOW stamps memory_context_miss; ENFORCED raises MemoryContextRequired (the caller HOLDS).
+        _ctx_id = str(action.get("context_id") or "") or None
+        try:
+            try:
+                from memory_ring2 import check as _ring2_check  # type: ignore
+            except ImportError:  # pragma: no cover
+                from scripts.lib.memory_ring2 import check as _ring2_check  # type: ignore
+            _r2 = _ring2_check("create_action", f"actor:{actor_id}", _ctx_id, extra={"cio_action_id": action.get("cio_action_id")})
+        except Exception as exc:  # noqa: BLE001
+            if type(exc).__name__ == "MemoryContextRequired":
+                raise
+            _r2 = {"decision": "ALLOW"}
+
         payload: dict[str, Any] = {
+            "context_id": _ctx_id,
+            "memory_context_miss": _r2.get("decision") == "ALLOW_MISS",
             "cio_action_id": action["cio_action_id"],
             "status": "OPEN",
             "priority": action.get("priority", "MEDIUM"),

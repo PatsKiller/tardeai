@@ -198,6 +198,18 @@ def _call_bridge(
             if resolved_task == "advisory_synthesis"
             else "advisory_desk_opinion"
         )
+        # Ring 2 (01 §2): the process-current MemoryContext id rides to the bridge
+        try:
+            try:
+                from intelligence_client import current_context_id as _cur_ctx, current_retrieval_receipt_id as _cur_rr  # type: ignore
+            except ImportError:  # pragma: no cover
+                from scripts.lib.intelligence_client import current_context_id as _cur_ctx, current_retrieval_receipt_id as _cur_rr  # type: ignore
+            if _cur_ctx():
+                headers["X-TradeAI-Context-Id"] = _cur_ctx()
+            if _cur_rr():
+                headers["X-TradeAI-Retrieval-Receipt-Id"] = _cur_rr()
+        except Exception:  # noqa: BLE001
+            pass
 
     req = urllib.request.Request(
         endpoint,

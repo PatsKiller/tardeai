@@ -1,12 +1,13 @@
 {
   "schema": "ContractManifest@v1",
-  "as_of": "2026-09-27T23:08:29.333418+00:00",
+  "as_of": "2026-09-28T00:37:32.089554+00:00",
   "_note": "Content hashes of the standard interface contracts (05 \u00a75 contract drift). Regenerate: python3 scripts/check_contract_manifest.py --update; CI compares.",
   "contracts": {
     "ApprovalPackage_v1.md": "bdf7c17833a6214ad024a1d71c4ca799169991e57e02f8b7ad0d051215cb81c5",
     "Breach_v1.md": "824215eb59c0bfee6dbba665dda7e2fd81dd81c2494237fcd64f27f64405781a",
     "LaneHeartbeat_v1.md": "2a4d8be71b48723f38a4c44a82c97c65cd2f9636376d68e17edd04f35261a802",
     "MemoryContext_v1.md": "cb0a4c23ba34bf9e3907b8bed84d9172224346c089853b335603dc7802117968",
-    "RetrievalReceipt_v1.md": "ef5ebe9c56bf44e68ed99d711b6fba4b2e0f02e6e4e80d5fafd2d6728da8f9c6"
+    "RetrievalReceipt_v1.md": "ef5ebe9c56bf44e68ed99d711b6fba4b2e0f02e6e4e80d5fafd2d6728da8f9c6",
+    "Ring2Decision_v1.md": "0fa74fe875107266ed22dd6a61a6516b201dd14753de384dce50c2a1d131c6e0"
   }
 }

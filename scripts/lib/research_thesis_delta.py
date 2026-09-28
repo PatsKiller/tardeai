@@ -378,6 +378,20 @@ def accept_research_result(
     now = now or datetime.now(timezone.utc)
     cap_chars = int(cfg["item_max_chars"])
     answers = structured_answers(result)
+    # Ring 2 (01 §2): every research write carries the MemoryContext it was produced under.
+    _ctx_id = result.get("context_id") or (prompt_context or {}).get("context_id")
+    try:
+        try:
+            from memory_ring2 import check as _ring2_check, MemoryContextRequired as _MCR  # type: ignore
+        except ImportError:  # pragma: no cover
+            from scripts.lib.memory_ring2 import check as _ring2_check, MemoryContextRequired as _MCR  # type: ignore
+        _r2 = _ring2_check("accept_research_result", f"research:{research_id}", _ctx_id,
+                           extra={"symbol": symbol, "retrieval_receipt_id": result.get("retrieval_receipt_id")})
+    except _MCR as exc:
+        return {"ok": False, "refused": True, "refusal_reason": "MEMORY_CONTEXT_MISSING", "detail": str(exc)[:200],
+                "version_published": False, "research_id": research_id, "symbol": symbol, "authority": AUTHORITY}
+    except Exception:  # noqa: BLE001
+        _r2 = {"decision": "ALLOW"}
     from scripts.lib.symbol_thesis_coverage import symbol_thesis_id
     store = _thesis_store(root)
     thesis_id = symbol_thesis_id(str(symbol or "").upper().strip())
@@ -441,6 +455,9 @@ def accept_research_result(
         "writer_version": SCHEMA,
         "run_id": run_id,
         "source_sha": source_sha,
+        "context_id": _ctx_id,
+        "retrieval_receipt_id": result.get("retrieval_receipt_id"),
+        "memory_context_miss": _r2.get("decision") == "ALLOW_MISS",
     }
     grade = str((delta.get("thesis_quality_grade") or {}).get("grade") or "")
     enrich_fields: dict[str, Any] = {}

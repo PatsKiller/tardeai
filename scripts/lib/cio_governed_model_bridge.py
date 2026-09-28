@@ -1260,6 +1260,27 @@ class GovernedBridgeHandler(http.server.BaseHTTPRequestHandler):
                              f"Unknown caller '{caller}' — not in server-side mapping")
             return
 
+        # Ring 2 (01 §2): the bridge is the paid path that bypasses gate_and_generate (advisory desk,
+        # Hermes worker). A research-class caller must carry X-TradeAI-Context-Id; SHADOW records
+        # the miss, ENFORCED answers 428 and spends nothing.
+        try:
+            try:
+                from memory_ring2 import check as _ring2_check, research_class as _ring2_research, MemoryContextRequired as _MCR  # type: ignore
+            except ImportError:  # pragma: no cover
+                from scripts.lib.memory_ring2 import check as _ring2_check, research_class as _ring2_research, MemoryContextRequired as _MCR  # type: ignore
+            _ctx_id = self.headers.get("X-TradeAI-Context-Id") or None
+            try:
+                from llm_consumption import _registry_process as _reg  # type: ignore
+            except ImportError:  # pragma: no cover
+                from scripts.lib.llm_consumption import _registry_process as _reg  # type: ignore
+            _r2 = _ring2_check("model_bridge", process_id, _ctx_id, required=_ring2_research(process_id, _reg(process_id) or {}),
+                               extra={"caller": caller, "task_type": task_type})
+        except _MCR as exc:
+            self._send_error(428, "MEMORY_CONTEXT_REQUIRED", str(exc)[:300])
+            return
+        except Exception:  # noqa: BLE001 — Ring 2 failing must never take the bridge down
+            pass
+
         # Read body
         try:
             content_length = int(self.headers.get("Content-Length", "0"))

@@ -46,6 +46,20 @@ Package:     docs/architecture/cognitive_transformation_20260927/ (PR #1304); ap
 | Unit files for the two systemd lanes + the two cron lines | `config/systemd/user/tradeai-supervisor-breach-detector.{service,timer}`, `tradeai-gir-projector.{service,timer}`, `docs/ops/COGX_WAVE1_CRONTAB_LINES.txt`; lane rows now name their schedulers | validators green |
 | Operator runbook: every command only the operator can run, in order, with expected outputs and rollbacks | `docs/ops/COGX_WAVE1_OPERATOR_RUNBOOK_2026-09-27.md` | — |
 
+## Wave 2 · tranche 1 — Ring 2 in SHADOW (branch wt/cogx-w2-t1-20260927)
+
+| Deliverable | Where | Proof |
+|---|---|---|
+| `memory_ring2.check()` — mode per surface from `config/memory_influence_policy.json` (all SHADOW), env kill switch, receipts | `scripts/lib/memory_ring2.py`, `config/memory_influence_policy.json`, `docs/contracts/Ring2Decision_v1.md` | 7 hermetic tests |
+| Chokepoint 1: `gate_and_generate` — research-class processes (registry `memory_context_required` / category) must carry `context_id`; falls back to the process-current context; ids ride the reservation metadata | `scripts/lib/llm_consumption.py` | test |
+| Chokepoint 2: the :8766 bridge — `X-TradeAI-Context-Id` required for registry-declared research callers; 428 in ENFORCED | `scripts/lib/cio_governed_model_bridge.py`; both bridge clients send the header | bridge suite 25 passed |
+| Chokepoint 3: `accept_research_result` — refusal dict in ENFORCED; `context_id` / `retrieval_receipt_id` / `memory_context_miss` in thesis provenance | `scripts/lib/research_thesis_delta.py` | test |
+| Chokepoint 4: `CIOActionLedger.create_action` — `context_id` + `memory_context_miss` on every new action payload (additive; old hashes untouched); raises in ENFORCED | `scripts/lib/cio_action_ledger.py` | ledger suite 30 passed + test |
+| `memory.delta` event type; `commit` publishes MemoryDelta@v1 when deltas exist (no consumer yet) | `scripts/lib/cio_event_bus.py`, `intelligence_client.commit` | wake-detector/goal suites green |
+| Process-current context (`set_current_context`) so the seven hooks thread ids without touching every call site | `intelligence_client` | test |
+
+Wave 2 approval items are drafted in `docs/ops/COGX_WAVE2_PACKAGE_SPEC.json` (11 items: the mode flips per surface, six adapter writers, `memory.delta` consumer lane, filings feed, identity sources, sudoers for L1, citation index, M2 cutover, PG heartbeats, effort). Nothing is enforced until the operator flips a policy row.
+
 ## What is NOT in Wave 1 yet (after the operator runbook)
 - The `memory.delta` bus consumer (Wave 2) — until then the projector is hourly-incremental by source fingerprint.
 - The operator steps in the runbook: credential rotation, roles + migration, merge + deploy, grants, lane install, first real runs.
