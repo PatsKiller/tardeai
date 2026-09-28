@@ -102,7 +102,9 @@ def test_failed_receipt_when_runner_fails(tmp_path, monkeypatch):
     assert json.loads(receipt.read_text())["state"] == "FAILED"
 
 
-def test_refresh_age_only_counts_done_receipts():
+def test_refresh_age_only_counts_done_receipts(tmp_path, monkeypatch):
+    # isolate from the host: with receipt=None the function reads the live receipt path
+    monkeypatch.setenv(lane.REFRESH_RECEIPT_ENV, str(tmp_path / "absent.json"))
     now = datetime(2026, 9, 28, 7, 30, tzinfo=timezone.utc)
     done16 = {"state": "DONE", "at": (now - timedelta(minutes=16)).isoformat()}
     done4 = {"state": "DONE", "at": (now - timedelta(minutes=4)).isoformat()}
