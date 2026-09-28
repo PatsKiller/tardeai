@@ -1064,8 +1064,11 @@ def get_option_chain(symbol, strike_count=8, account_key=None, expiration=None, 
         kw["from_date"] = d
         kw["to_date"] = d
     if contract_type in ("call", "put"):
-        from schwab.client import Client
-        kw["contract_type"] = Client.Options.ContractType.CALL if contract_type == "call" else Client.Options.ContractType.PUT
+        try:
+            from schwab.client import Client
+            kw["contract_type"] = Client.Options.ContractType.CALL if contract_type == "call" else Client.Options.ContractType.PUT
+        except ImportError:  # CI installs no broker SDK (cio-hardening: pytest + pyyaml only); the string form is what the enum carries
+            kw["contract_type"] = contract_type.upper()
     return _read(account_key, "get_option_chain", normalize_option_chain, symbol.upper(), **kw)
 
 
