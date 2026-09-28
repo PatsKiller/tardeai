@@ -30,7 +30,7 @@ from __future__ import annotations
 import json
 import os
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Optional
@@ -301,6 +301,10 @@ class StanceGateVerdict:
     effective_action: Optional[str] = None
     annotation_text: str = ""
     cio_as_of: Optional[str] = None
+    #: 2026-09-28: a held GO says whether it ENQUEUED the CIO review the operator rule requires,
+    #: so the caller's receipt can show it (screener_go_alerts.cio_held[].review_requested).
+    review_requested: Optional[bool] = None
+    review_status: Optional[str] = None
     schema: str = SCHEMA
     authority: str = AUTHORITY
 
@@ -506,6 +510,11 @@ def check_investment_send(
         elif said == "bullish":
             # Observe-only callers (Maria gate in observe mode) must not spend.
             review = {"review_requested": False, "review_status": "skipped_observe_only"}
+        verdict = replace(
+            verdict,
+            review_requested=bool((review or {}).get("review_requested")) if review is not None else None,
+            review_status=str((review or {}).get("review_status") or "") or None if review is not None else None,
+        )
         record_hold(verdict, source=source, extra=review)
         return verdict
 

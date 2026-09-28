@@ -2858,6 +2858,16 @@ GATES = [
         ["tests/test_momentum_scalp_proposal_contract_20260928.py"],
     ),
     (
+        # 2026-09-28 — GO alerts carry delivery evidence (provider message id; accepted_no_id
+        # is not "sent"; a held GO reports whether the CIO review was enqueued) and three
+        # collectors own the scalp lane: GO→proposal conversion, underfilled streaks for
+        # real reasons, social-inject failures.
+        "go_alerts_and_lane_collectors_20260928",
+        ["tests/test_go_alerts_and_lane_collectors_20260928.py",
+         "tests/test_screener_go_alerts_delivery_20260914.py",
+         "tests/test_cio_telegram_stance_gate_20260918.py"],
+    ),
+    (
         # 2026-09-28 — execution truth: market_cap_usd beside the millions field; expired
         # proposals leave the blocked queue; a stale summary mirror is not a clock divergence;
         # a fund's cached NAV is not a degraded quote; extended-hours provider declared;
