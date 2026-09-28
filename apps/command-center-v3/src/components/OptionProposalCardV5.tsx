@@ -204,7 +204,15 @@ export default function OptionProposalCardV5(props: Props) {
                 <div style={line}><span style={{ ...label, color: combined.correlated ? TOKENS.warning : TOKENS.text[1] }}>Same-symbol ideas ({(combined.ideas || []).length}).</span> <span style={dim}>{combined.note}</span></div>
                 <div style={line}>Committed together {$(combined.capital_committed_total)}{combined.account_cash != null ? ` · account cash ${$(combined.account_cash)}${combined.committed_pct_of_cash != null ? ` (${combined.committed_pct_of_cash}% of it)` : ''}` : ''}{combined.shares_held ? ` · ${combined.shares_held} ${combined.symbol} shares already held` : ''}</div>
                 {(combined.excluded_ideas || []).length > 0 && <div style={{ ...line, color: TOKENS.text[3] }}>Not counted (archived): {(combined.excluded_ideas || []).map((e: any) => `${String(e.strategy || '').replace(/_/g, ' ')} $${e.strike}`).join(', ')}</div>}
-                {(combined.scenarios || []).length > 0 && <div style={line}>Combined at expiry: {(combined.scenarios || []).map((r: any) => `${r.move_pct > 0 ? '+' : ''}${r.move_pct}% ($${r.price}) ${r.combined_pl_at_expiry == null ? '—' : $(r.combined_pl_at_expiry)}`).join(' · ')}</div>}
+                {combined.shares_by_account && Object.keys(combined.shares_by_account).length > 0 && (
+                  <div style={line}>Shares by account: {Object.entries(combined.shares_by_account).map(([a, n]) => `${String(a).replace(/_/g, ' ')} ${n}`).join(' · ')}</div>
+                )}
+                {(combined.scenarios_by_expiry || []).map((g: any, gi: number) => (
+                  <div key={gi} style={{ ...line, ...numStyle }}>
+                    <span style={label}>At expiry {g.expiration || '—'}.</span> {(g.rows || []).map((r: any) => `${r.move_pct > 0 ? '+' : ''}${r.move_pct}% ($${r.price}) options ${r.options_only_pl == null ? '—' : $(r.options_only_pl)} · shares ${r.shares_pl == null ? 'unknown' : $(r.shares_pl)} · whole ${r.whole_position_pl == null ? 'withheld' : $(r.whole_position_pl)}`).join(' · ')}
+                  </div>
+                ))}
+                {combined.scenario_basis && <div style={{ ...line, color: TOKENS.text[3] }}>{combined.scenario_basis}</div>}
               </div>
             )}
           </Collapsible>
