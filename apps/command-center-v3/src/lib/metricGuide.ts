@@ -8,6 +8,7 @@
  * `{placeholder}`s from values already in the payload.
  */
 import { useEffect, useState } from 'react'
+import { unwrapGuideResponse } from './metricGuideEnvelope.ts'
 
 export type MetricGuideEntry = {
   label: string
@@ -64,10 +65,11 @@ export function loadGuideOnce(): Promise<void> {
   return fetch('/api/v2/ui/metric-guide')
     .then(r => (r.ok ? r.json() : null))
     .then(j => {
-      const entries = j && (j.entries || j.guide || j.metrics)
-      if (entries && typeof entries === 'object') {
-        registerGuide(entries)
-        VERSION = String(j.version || 'server')
+      const got = unwrapGuideResponse(j)   // api_v2 wraps the body in { ok, data }
+      if (got) {
+        const { entries } = got
+        registerGuide(entries as Record<string, MetricGuideEntry>)
+        VERSION = got.version
         try { localStorage.setItem('cc.metricGuide', JSON.stringify({ version: VERSION, entries })) } catch { /* ignore */ }
         window.dispatchEvent(new CustomEvent(EVENT))
       }
