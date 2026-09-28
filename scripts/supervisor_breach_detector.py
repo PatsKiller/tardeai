@@ -86,7 +86,7 @@ def detect(*, lanes: list[dict], sla_by_lane: dict[str, dict], heartbeats: dict[
         cad_h = lane.get("expected_cadence_hours")
         sig = lane.get("output_signal") or {}
         if cad_h and sig.get("kind") not in (None, "none"):
-            obs = observe(sig) or {}
+            obs = {k: (v.isoformat() if hasattr(v, "isoformat") else v) for k, v in (observe(sig) or {}).items()}
             lo = _parse(obs.get("last_output_at"))
             limit_s = max(3 * float(cad_h) * 3600, 900)
             if not obs.get("readable", True) or lo is None:
@@ -109,7 +109,9 @@ def main() -> int:
     import lane_registry  # type: ignore
     import supervisor_heartbeat as hbmod  # type: ignore
     reg = lane_registry.load_registry(root / "config" / "lane_registry.json")
-    seed_p = root / "data" / "runtime" / "supervisor_sla_seed.json"
+    from approval_package import governance_dir  # type: ignore
+    runtime_dir = governance_dir(root, env).parent / "runtime"   # state root's data/runtime (a persistent symlink in releases)
+    seed_p = runtime_dir / "supervisor_sla_seed.json"
     sla_by_lane = {r["lane_id"]: r for r in (json.loads(seed_p.read_text()).get("rows", []) if seed_p.exists() else [])}
     heartbeats = {h.get("lane_id"): h for h in hbmod.read_all(root=root, env=env)}
     state_root = Path(a.state_root) if a.state_root else None
@@ -127,7 +129,7 @@ def main() -> int:
     if len(rows) > 15:
         print(f"  … {len(rows) - 15} more")
     if a.write:
-        led = root / "data" / "runtime" / "supervisor_breaches.jsonl"
+        led = runtime_dir / "supervisor_breaches.jsonl"
         led.parent.mkdir(parents=True, exist_ok=True)
         seen = set()
         if led.exists():
@@ -139,9 +141,9 @@ def main() -> int:
         new = [r for r in rows if r["breach_id"] not in seen]
         with led.open("a", encoding="utf-8") as fh:
             for r in new:
-                fh.write(json.dumps(r, sort_keys=True) + "\n")
-        latest = root / "data" / "runtime" / "supervisor_breach_detector_latest.json"
-        tmp = latest.with_suffix(".json.tmp"); tmp.write_text(json.dumps({**summary, "new_rows": len(new)}, indent=1) + "\n"); os.replace(tmp, latest)
+                fh.write(json.dumps(r, sort_keys=True, default=str) + "\n")
+        latest = runtime_dir / "supervisor_breach_detector_latest.json"
+        tmp = latest.with_suffix(".json.tmp"); tmp.write_text(json.dumps({**summary, "new_rows": len(new)}, indent=1, default=str) + "\n"); os.replace(tmp, latest)
         hbmod.beat("supervisor-breach-detector", success=True, output_signal=True, work_done=len(rows), root=root, env=env)
         print(f"wrote {len(new)} new breach rows; latest → {latest}")
         if a.enqueue_escalations and new:

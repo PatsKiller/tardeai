@@ -37,6 +37,27 @@ MAX_MSG_LEN = 4000
 _REPLY = re.compile(r"^\s*(APPROVE|DENY|DEFER)\s+(pkg-[a-z0-9-]+)\s*(.*)$", re.I)
 
 
+
+def governance_dir(root: Path | None = None, env: dict | None = None) -> Path:
+    """Where governance artifacts live: ``$TRADEAI_GOVERNANCE_DIR`` → ``$TRADEAI_STATE_ROOT/data/governance`` →
+    the production persistent-state root → ``<root>/data/governance``. Releases carry a plain ``data/governance``
+    directory (not a symlink), so writing next to the code would be lost on the next release flip (found 2026-09-27)."""
+    env = os.environ if env is None else env
+    if env.get("TRADEAI_GOVERNANCE_DIR"):
+        return Path(env["TRADEAI_GOVERNANCE_DIR"])
+    if env.get("TRADEAI_STATE_ROOT"):
+        return Path(env["TRADEAI_STATE_ROOT"]) / "data" / "governance"
+    try:
+        from canonical_store_registry import production_state_root  # type: ignore
+        p = Path(production_state_root())
+        if p.exists():
+            return p / "data" / "governance"
+    except Exception:  # noqa: BLE001
+        pass
+    base = Path(root) if root else Path(env.get("TRADEAI_ROOT") or Path.cwd())
+    return base / "data" / "governance"
+
+
 class LedgerError(RuntimeError):
     pass
 
@@ -49,9 +70,7 @@ def ledger_path(root: Path | None = None, env: dict | None = None) -> Path:
     env = os.environ if env is None else env
     if env.get("TRADEAI_APPROVAL_LEDGER_PATH"):
         return Path(env["TRADEAI_APPROVAL_LEDGER_PATH"])
-    base = Path(root) if root else Path(env.get("TRADEAI_ROOT") or Path.cwd())
-    return base / "data" / "governance" / "approval_packages.jsonl"
-
+    return governance_dir(root, env) / "approval_packages.jsonl"
 
 def _hash(row: dict) -> str:
     body = {k: v for k, v in row.items() if k != "hash_self"}
@@ -264,4 +283,4 @@ def chunks(text: str, limit: int = MAX_MSG_LEN) -> list[str]:
 
 
 __all__ = ["Ledger", "new_package", "derive_state", "parse_reply", "apply_reply", "render_message", "chunks",
-           "ledger_path", "SCHEMA", "CATEGORIES", "ITEM_STATES", "PACKAGE_STATES", "REMOTE_FORBIDDEN_SCOPES", "LedgerError"]
+           "ledger_path", "governance_dir", "SCHEMA", "CATEGORIES", "ITEM_STATES", "PACKAGE_STATES", "REMOTE_FORBIDDEN_SCOPES", "LedgerError"]

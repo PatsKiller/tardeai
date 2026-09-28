@@ -107,3 +107,12 @@ def test_projector_ticker_graph_and_incremental_state(tmp_path):
     assert gp.incremental_needed(root, state, {})[0] is False
     (root / "data" / "cio" / "holdings_snapshot_latest.json").write_text(json.dumps({"holdings": []}))
     assert gp.incremental_needed(root, state, {})[0] is True
+
+
+def test_breach_rows_serialize_when_observe_returns_datetimes(tmp_path):
+    lanes = [{"lane_id": "x", "state": "ACTIVE", "expected_cadence_hours": 1, "output_signal": {"kind": "file_mtime", "path": "p"}}]
+    sla = {"x": {"lane_id": "x", "max_silence_s": 600}}
+    rows = bd.detect(lanes=lanes, sla_by_lane=sla, heartbeats={}, observe=lambda sig: {"last_output_at": NOW - dt.timedelta(hours=9), "readable": True}, now=NOW)
+    assert rows[0]["kind"] == "NO_OUTPUT"
+    json.dumps(rows[0])  # must not raise: the 2026-09-27 first live run crashed here
+    assert rows[0]["evidence"]["last_output_at"].startswith("2026-09-27T11:00")
