@@ -105,7 +105,11 @@ def main() -> int:
         rep["stages"].append({"stage": "finviz_scan", "ran": False, "ok": True, "reason": "skipped_finviz_refresh"})
     elif args.refresh_if_older_min is not None:
         age = lane.refresh_age_min()
-        if age is not None and age < args.refresh_if_older_min:
+        # Grid tolerance (2026-09-28, observed 10:20→11:40): the lane runs on a */5 grid and the
+        # DONE receipt is stamped ~20 s into a run, so at the 15-minute mark the age reads
+        # 14.5–14.7 min and the refresh slipped to every 20 min. A refresh is due when the age is
+        # within one grid slack of the threshold.
+        if age is not None and age < args.refresh_if_older_min - lane.REFRESH_GRID_TOLERANCE_MIN:
             rep["stages"].append({"stage": "finviz_scan", "ran": False, "ok": True,
                                   "reason": f"skipped_finviz_refresh_fresh (age={age:.1f}m < {args.refresh_if_older_min:g}m)",
                                   "refresh_age_min": round(age, 1)})
