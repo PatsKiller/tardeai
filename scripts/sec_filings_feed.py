@@ -19,9 +19,9 @@ treated as "no filings".
 NO_CONSUMER_REASON = (
     "FilingEvent@v1 rows are consumed by gir_projector (EVENT nodes + AFFECTED_BY edges) and by "
     "material_change_detector.new_filings (kind sec_filing → the persistent wake); lane sec-filings-feed is "
-    "declared NEVER_SCHEDULED until the pkg-20260928-wave-2-enforcement-35c4 cron grant appends its crontab line"
+    "ACTIVE (crontab line appended 2026-09-27 22:44 ET under the pkg-20260928-wave-2-enforcement-35c4 cron grant)"
 )
-SCHEDULED_ENTRYPOINT = "cron (after the cron grant): 20 8,12,17,21 * * 1-5 scripts/sec_filings_feed.py --apply — NOT installed yet"
+SCHEDULED_ENTRYPOINT = "cron: 20 8,12,17,21 * * 1-5 scripts/sec_filings_feed.py --apply — installed 2026-09-27 22:44 ET"
 
 import argparse
 import datetime as _dt

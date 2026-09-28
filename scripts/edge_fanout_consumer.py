@@ -27,8 +27,8 @@ advances the bus cursor. Heartbeat: lane edge-fanout-consumer.
 NO_CONSUMER_REASON = (
     "EdgeFanoutWorkItem@v1 rows are consumed by gir_projector --incremental (kind reproject, via the dirty file) "
     "and by the reactive cycle once its routing is pointed at the fan-out (Wave 2 tranche 4); lane "
-    "edge-fanout-consumer is declared NEVER_SCHEDULED until the pkg-20260928-wave-2-enforcement-35c4 service "
-    "grant installs its timer"
+    "lane edge-fanout-consumer is ACTIVE (tradeai-edge-fanout-consumer.timer, every 5 min, installed 2026-09-27 "
+    "22:44 ET under the pkg-20260928-wave-2-enforcement-35c4 service grant)"
 )
 
 import argparse
