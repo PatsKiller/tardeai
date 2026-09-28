@@ -987,6 +987,7 @@ GATES = [
             "tests/test_wave3_cognition.py",
             "tests/test_wave4_unification.py",
             "tests/test_wave5_maturity.py",
+            "tests/test_m2_substrate_check.py",
         ],
     ),
     (
