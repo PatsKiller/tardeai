@@ -1,6 +1,6 @@
 ---
 Status: MEASURED
-as_of: 2026-09-28T10:59:00-04:00
+as_of: 2026-09-28T12:30:00-04:00 (pin timeline corrected; first measurement 10:58–11:00 ET)
 Measured at: served a328a88177833e4b121cf6fec6724f8fbfe2075c at 10:58 ET, then e2dcfce1afdd06535d21a489800aa171c5e7cb3b from 10:59 ET (another session promoted during Phase 0); code HEAD for inspection e2dcfce1a (origin/main = served after 10:59)
 Campaign: LIVEPROOF-20260928
 ---
@@ -49,3 +49,25 @@ At 10:59:24 ET a different session promoted `e2dcfce1a-main-exact-phase2-2026092
 - Read-only DB access exists through `db_adapter` (role `trade_ai`, no bypassrls) and the guard's read scopes; no write grant is used in Phase 0.
 - The permission classifier in this session refuses `gh pr merge` and guard grant minting; merges and grants are operator steps (recorded in every closeout since 2026-09-27).
 - The served release is one merge behind main; every "served" observation below names `a328a8817`, every code citation names `e2dcfce1a`.
+
+
+## Pin timeline (corrected 2026-09-28 12:30 ET — three promotions during the campaign)
+
+Read from `/home/johnclaw/trade-ai-releases/portfolio-server` (directory mtimes = `prepare`; CURRENT symlink mtime and
+`report_maturity_bar_m1_m5.py promoted_at` = `promote`). Every evidence row in this campaign names the pin that was
+served when it was taken; "served" never means "merged".
+
+| Release dir (prepare mtime, ET) | Promoted → CURRENT | Observed by this session | Notes |
+|---|---|---|---|
+| `f677855fa-…-20260927-224302` (09-27 22:43) | yes (predecessor) | no | last pin before the 09-28 waves |
+| `72ce23e0e-…-20260928-074513` (07:45) | not observed | no | prepared by another session |
+| `9309ffca7-…-075936 / -080924 / -081219` (07:59, 08:09, 08:12) | yes (the operator's repeated promote re-shipped the same SHA three times) | no | Waves 1–2 closeout |
+| `c1c531500-…-081744` (08:18) | yes | yes (Waves 3–5 live) | three cron-started daemons still run from this dir (LP-DEF-21) |
+| `a328a8817-…-101406` (10:14) | **yes, 14:14:47Z** | **yes — the 10:20 ET AXTI packet was produced on this pin**; M1–M5 14:59:23Z and the 12-gate 14:35:01Z rows belong here | merge of PR #1332 |
+| `e2dcfce1a-…-105924` (10:59) | **yes, 14:59:24Z** | yes — code HEAD for Phase 0 inspection; the 15:35:01Z 12-gate row belongs here | merge of PR #1337 (+ #1336 earnings set) |
+| `914dcb5ab-…-121052` (12:10) | **yes, 16:11:41Z** (symlink 12:11:42 ET) | yes — **served pin at 12:30 ET**; M1–M5 re-run 16:24:10Z belongs here | merge of PR #1342 (lifecycle lock) + #1338 #1340 #1341 |
+
+Served at the moment of each evidence row: 10:20 ET AXTI packet → `a328a8817`; 14:35Z 12-gate → `a328a8817`;
+14:59:23Z M1–M5 → `a328a8817`; 15:35Z 12-gate → `e2dcfce1a`; 16:24Z M1–M5 → `914dcb5ab`. PR #1339's code
+(`wt/live-proof-20260928`) is served on none of them: every C1/C4/C5 claim is INSTALLED-in-a-branch until a promote
+that names this PR's merge SHA.

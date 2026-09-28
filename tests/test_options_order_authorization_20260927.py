@@ -31,12 +31,14 @@ def _iso(dt):
 def _prop(**over):
     p = _proposal(**over)
     p.setdefault("options_thesis", {"pin": f"opt_{GUID}@v1", "missing_required": []})
-    # Quote freshness is recomputed by execution_readiness against the REAL clock (not the fixed
-    # NOW used for session math), so a fixed NOW made this suite a time bomb: it went red at
-    # 15:02Z on 2026-09-28 ("quote stale 181s > 120s") and would stay red forever.
-    p.setdefault("quotes_as_of", _iso(datetime.now(timezone.utc) - timedelta(seconds=30)))
-    if "chain_fetched_at" not in over:
-        p["chain_fetched_at"] = _iso(datetime.now(timezone.utc) - timedelta(seconds=60))
+    # Every fixture timestamp is anchored to the fixed test clock NOW (2026-09-28T15:00Z) and the
+    # freshness gate is evaluated ON that clock (_clock / _readiness_no_db(now=...)), so the
+    # suite is deterministic: it neither goes red when the wall clock passes 15:02Z (PR #1339 CI
+    # run 36442022000, "quote stale 1221s > 120s") nor depends on the wall clock at all (the
+    # #1340 interim repair stamped the quotes from datetime.now(), which could not exercise a
+    # 'stale on the confirm clock' case without sleeping).
+    p.setdefault("quotes_as_of", _iso(NOW - timedelta(seconds=30)))
+    p.setdefault("chain_fetched_at", _iso(NOW - timedelta(seconds=60)))
     p.setdefault("economics", {"collateral": 2500.0})
     return p
 
@@ -195,9 +197,7 @@ def test_read_buying_power_fails_closed_on_degraded_or_missing_reads():
 # ── the intent carries the authorization evidence; the order comes from the intent only ─────
 
 def test_intent_carries_the_authorization_evidence():
-    # build_intent(now=NOW) computes the ages against the FIXED NOW; pin the timestamps to it here
-    # (this test never reaches execution_readiness, which uses the real clock).
-    p = _prop(quotes_as_of=_iso(NOW - timedelta(seconds=30)), chain_fetched_at=_iso(NOW - timedelta(seconds=60)))
+    p = _prop()
     i = _intent(p)
     ev = i.meta.signal_evidence
     assert ev["proposal_pin"] == f"opt_{GUID}@v1" and ev["approved_strategy_guid"] == GUID
@@ -289,13 +289,23 @@ def test_stale_chain_is_refused_even_when_the_quote_is_fresh(tmp_path):
 
 def test_changed_quote_evidence_after_approval_is_refused(tmp_path):
     """Changed-evidence negative: the desk re-quoted after approval (a NEWER quotes_as_of, so not
-    a staleness refusal) and the approved intent's evidence no longer matches what the desk holds.
-    The contract refuses before binding."""
+    a staleness refusal on the injected clock) and now prices the spread 21% away from the
+    approved limit (the desk's own max_premium_change_pct is 15). The contract refuses before
+    binding; a re-quote INSIDE the tolerance is allowed (the order is built from the intent)."""
     p = _prop()
-    requoted = dict(p, quotes_as_of=_iso(NOW - timedelta(seconds=5)), premium=6.05, executable_credit=6.05)
+    requoted = dict(p, quotes_as_of=_iso(NOW - timedelta(seconds=5)), premium=5.00, executable_credit=5.00)
     res = _run_auth(_intent(p), proposal=requoted, store=_store(tmp_path))
     assert res["ok"] is False and res["_bind_calls"] == [], _codes(res)
-    assert _codes(res) & {"limit_changed", "quote_changed", "evidence_changed"}, _codes(res)
+    assert "limit_changed" in _codes(res) and "fresh_market_data" not in _codes(res), _codes(res)
+    inside = dict(p, quotes_as_of=_iso(NOW - timedelta(seconds=5)), premium=6.30, executable_credit=6.30)
+    ok = _run_auth(_intent(p), proposal=inside, store=_store(tmp_path))
+    assert ok["ok"] is True, ok["refusals"]
+    # and at the submit boundary: readiness that flipped to a hard block after binding is refused
+    rec = {"id": 1, "hashes": {}, "readiness_hash": "r0", "proposal_snapshot": {}, "used_at": None, "expires_at": None}
+    with mock.patch.object(ea, "fetch_approval", return_value=rec), mock.patch("brokers.kill_switches.is_blocked", return_value=(False, [])):
+        blocked = ea.revalidate_before_submit("i", current_readiness={"ok": False, "evidence_hash": "r1",
+                                                                     "hard_blocks": [{"code": "fresh_market_data"}]})
+    assert blocked["ok"] is False and blocked["reason"] == "readiness_changed_to_block"
 
 
 def test_changed_long_leg_after_approval_is_refused(tmp_path):

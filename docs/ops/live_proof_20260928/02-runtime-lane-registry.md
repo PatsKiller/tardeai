@@ -52,10 +52,10 @@ The historical figures (467 jobs / 90 timers / 188 unlocked jobs) should not be 
 | env assignments (SHELL, PROJ, PY, LLM_DEFER_OFFPEAK, TRADEAI_ENV, BLIND_REVIEW_LANES, CIO_DUAL_CHATGPT_CAP) | 7 |
 | **active cron jobs** | **469** |
 | commented lines that look like schedules | about 51 |
-| cron: strictly registered | 73 |
+| cron: strictly registered | 73 (67 lane-only + 6 that are also listed in `undeclared_baseline`) |
 | cron: inherited tranche 2026-09-28 | 107 |
-| cron: `undeclared_baseline` | 284 |
-| cron: unregistered and not in any baseline (masked by the bug) | 5 |
+| cron: `undeclared_baseline` only | 283 (baseline holds 515 entries, 468 cron-shaped; 225 no longer exist in the crontab) |
+| cron: unregistered and not in any baseline (masked by the bug; LP-DEF-19) | **6** (dated tranche 2026-09-28; corrected from 5 at 12:40 ET) |
 | cron: non-trade-ai entries included above | nyc-dof-auction rescan_tickets and run_pipeline; `~/.claude/sync-memory-to-drive.sh`; openclaw ops digests |
 | **user timer unit files** | **117** (93 enabled/active, 24 disabled/inactive) |
 | `list-timers --all` rows | 93 |
@@ -201,3 +201,17 @@ Two proxies from the SLA seed and the detector:
 - Crontab snapshot kept by the cron lane: `/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/crontab_snapshot.txt`
 - Served release now: `/home/johnclaw/trade-ai-releases/portfolio-server/e2dcfce1a-main-exact-phase2-20260928-105924`
 - Full raw per-line cron dump from this survey (same content as §7a–7d): `/home/johnclaw/.claude/projects/-home-johnclaw/77a6de60-3513-40ce-9220-25d684930e93/tool-results/b4zgdk0fe.txt`
+
+
+## 7. Hazard triage (2026-09-28 12:40 ET) — proposals, nothing changed
+
+Read-only classification of the hazards found in §0–§5. No timer was disabled, no daemon restarted, no unit edited under this campaign; every correction below is a separate grant-scoped change with its own read-back.
+
+| Hazard | Owner (proposed) | Effect today | Correction | Safety of the correction | Grant needed | Read-back that proves it |
+|---|---|---|---|---|---|---|
+| System-level `tradeai-continuous.timer` / `.service` runs Mon–Fri 04:00 from the DEV tree while lane row `tradeai-continuous` says PAUSED (LP-DEF-20) | platform ops (operator) | a scanner the registry believes is off runs daily on unreleased code; any alert or write it makes is unattributed to a pin | either `systemctl disable --now tradeai-continuous.timer` (system unit → sudo) or set the row ACTIVE with owner + output signal + `runs_from CURRENT` | disable: stops one daily run, no data loss (it is a scanner); activate: no change to behaviour, only truth | `service` (sudo) for disable; `config` for the row | `systemctl list-timers --all | grep tradeai-continuous` shows the intended state and the row matches; `check_lane_registry` clean |
+| 50 of 117 user timer units run from the DEV tree, not CURRENT (LP-DEF-22) | each lane's owner; migration by platform ops | work runs on whatever is checked out in the dev tree (which other sessions move); FF-after-deploy delivers, promote does not | per unit: change `WorkingDirectory`/`ExecStart` to CURRENT, `daemon-reload`, restart the timer only (not the service) | one unit at a time; a timer restart never kills a running service; restart-safety of each service checked first | `service` per batch | `systemctl --user show <unit> -p WorkingDirectory` = CURRENT; `02-runtime-lane-registry.csv runs_from` column updated |
+| 3 cron-started daemons pinned to old releases: `watch_directives_service.py`, `portfolio_live_monitor.py`, `schwab_stream_daemon.py` on `c1c531500`; callback poller + 3 watch-refresh workers on `a328a8817` (LP-DEF-21) | desk / market-data owners | a promote does not restart them, so served behaviour ≠ served pin for these paths; the broker stream daemon is broker-facing | add them to `TRADEAI_CURRENT_BOUND_UNITS` (or a post-promote restart list) after confirming each is restart-safe; restart individually, market-closed for `schwab_stream_daemon.py` | never mass-restart; the stream daemon only outside RTH and never under an open order | `service` + (for the stream daemon) explicit operator go | `/proc/<pid>/cwd` = CURRENT for each; `ps -o lstart` after the promote |
+| Duplicate schedulers (§5): exact `hermes_maturity_gates.py --snapshot` (cron 07:20 + timer 07:20), overlapping `watch_decision_scheduler.py --run`, `db_retention.py` on two trees, `hermes_external_feedback_loop.py`, `hermes_momentum_catalyst_researcher.py`, inline `cio_event_detector` ×3 on system python (LP-DEF-24) | each script's owner | double work, double LLM spend, interleaved writes without a flock on the timer side | keep one scheduler per job (proposed keeper: the cron line with flock, on CURRENT); retire the other by removing the line / disabling the timer | one job at a time; keep the flocked one | `cron` / `service` | `02-runtime-lane-registry.md §5` shrinks; `check_lane_registry` shows the retired line moved to RETIRED |
+| Missing receipts: lanes with `last_output_evidence MISSING` in the csv (e.g. `continuous.log`), 0 adjudicator verdicts, 0 advisory memory contexts in 24 h (LP-DEF-05/08) | lane owners | a lane can be "installed" and "fired" with no proof it produced anything; the boards cannot move | add the output signal named in the lane row (file/table + as_of) and a receipt on every fire; nothing to disable | additive | `config` (lane rows) | the next fire leaves the named artifact; `report_platform_conformance` lists it |
+| `contradiction-adjudicator.timer` 19:30 ET first natural fire | Wave 3 owner (this campaign) | none until it fires | observation opportunity only: read `contradiction_verdicts.jsonl` after 19:30 ET; never run by hand for proof | read-only | none | a row in `04-muted-and-replay-results.jsonl` with `served_sha` = the pin at 19:30 |

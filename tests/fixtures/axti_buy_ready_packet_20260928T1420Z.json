@@ -1,0 +1,278 @@
+{
+ "_fixture": "options_alternatives of data/runtime/buy_ready_packets/AXTI.json written 2026-09-28T14:20:23Z by cio_entry_state_runner on CURRENT=a328a8817 (immutable incident evidence; neighbours_rejected / greeks trimmed)",
+ "saved_at": "2026-09-28T14:20:23.002460+00:00",
+ "symbol": "AXTI",
+ "cio_verdict": {
+  "verdict": "APPROVE_OPTIONS_PREFERRED",
+  "token": "APPROVE",
+  "rationale": "Equity zone valid; elevated ATR/HV vs stop \u2014 prefer defined-risk options alt for capital efficiency; equity remains confirmable; formerly held \u2014 weigh fit vs prior book",
+  "portfolio_flags": []
+ },
+ "options_alternatives": {
+  "schema": "BuyReadyOptionsAlternatives@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "symbol": "AXTI",
+  "chain_source": "schwab_transport.get_option_chain (read-only)",
+  "chain_as_of": "2026-09-28T14:20:04+00:00",
+  "underlying": 73.32,
+  "skipped": [],
+  "stock_per_share": {
+   "capital": 73.32,
+   "max_loss_to_plan_stop": 14.82,
+   "breakeven": 73.32,
+   "value_at_target": 23.18,
+   "return_at_target_pct": 31.6148,
+   "return_at_plan_stop_pct": -20.2128,
+   "reward_risk": 1.5641
+  },
+  "notes": [
+   "Per-unit economics only (per contract / per share); never a position size."
+  ],
+  "status": "OK",
+  "iv_context": {
+   "current_iv_pct": 106.52,
+   "history_rows": 0,
+   "iv_rank": null,
+   "iv_rank_source": "unavailable",
+   "iv_percentile": null
+  },
+  "alternatives": [
+   {
+    "strategy": "debit_call_vertical",
+    "legs": [
+     {
+      "position": "long",
+      "right": "call",
+      "strike": 75.0,
+      "exp": "2027-01-15",
+      "dte": 109,
+      "delta": 0.597,
+      "bid": 16.2,
+      "ask": 17.1,
+      "mid": 16.65,
+      "iv": 111.683,
+      "oi": 422,
+      "volume": 348
+     },
+     {
+      "position": "short",
+      "right": "call",
+      "strike": 95.0,
+      "exp": "2027-01-15",
+      "dte": 109,
+      "delta": 0.448,
+      "bid": 10.6,
+      "ask": 11.3,
+      "mid": 10.95,
+      "iv": 112.27,
+      "oi": 100,
+      "volume": 0
+     }
+    ],
+    "per_contract": {
+     "capital": 570.0,
+     "max_loss": 570.0,
+     "max_gain": 1430.0,
+     "breakeven": 80.7,
+     "value_at_target_expiry": 2000.0,
+     "value_at_plan_stop_expiry": 0.0,
+     "return_at_target_pct": 250.8772,
+     "return_at_plan_stop_pct": -100.0,
+     "reward_risk": 2.5088
+    },
+    "greeks_source": "delta from chain; gamma/theta/vega Black-Scholes estimate from contract IV",
+    "pop_estimate": 0.329,
+    "pop_basis": "risk-neutral lognormal P(price above breakeven at expiry) from contract IV \u2014 estimate",
+    "liquidity": {
+     "pass": true,
+     "issues": [],
+     "bid_ask_spread_pct": 6.39
+    },
+    "earnings": {
+     "in_blackout": false,
+     "symbol": "AXTI",
+     "strategy": "debit_spread"
+    },
+    "score": 0.5218,
+    "qualified": true,
+    "disqualified_by": [],
+    "rank": 1
+   },
+   {
+    "strategy": "long_call",
+    "legs": [
+     {
+      "position": "long",
+      "right": "call",
+      "strike": 70.0,
+      "exp": "2027-01-15",
+      "dte": 109,
+      "delta": 0.634,
+      "bid": 18.2,
+      "ask": 19.2,
+      "mid": 18.7,
+      "iv": 105.966,
+      "oi": 1164,
+      "volume": 4
+     }
+    ],
+    "per_contract": {
+     "capital": 1870.0,
+     "max_loss": 1870.0,
+     "max_gain": null,
+     "breakeven": 88.7,
+     "value_at_target_expiry": 2650.0,
+     "value_at_plan_stop_expiry": 0.0,
+     "return_at_target_pct": 41.7112,
+     "return_at_plan_stop_pct": -100.0,
+     "reward_risk": 0.4171
+    },
+    "greeks_source": "delta from chain; gamma/theta/vega Black-Scholes estimate from contract IV",
+    "pop_estimate": 0.275,
+    "pop_basis": "risk-neutral lognormal P(price above breakeven at expiry) from contract IV \u2014 estimate",
+    "liquidity": {
+     "pass": true,
+     "oi": 1164,
+     "volume": 4,
+     "bid_ask_spread_pct": 5.35,
+     "mid": 18.7,
+     "issues": []
+    },
+    "earnings": {
+     "in_blackout": true,
+     "symbol": "AXTI",
+     "strategy": "long_call",
+     "next_earnings": "2026-10-29",
+     "days_to_earnings": 31,
+     "blackout_days": 14,
+     "reason": "Earnings 2026-10-29 in 31d \u2014 inside 14d blackout"
+    },
+    "score": 0.2087,
+    "qualified": false,
+    "disqualified_by": [
+     "EARNINGS_BLACKOUT (Earnings 2026-10-29 in 31d \u2014 inside 14d blackout)"
+    ],
+    "rank": 2
+   },
+   {
+    "strategy": "cash_secured_put",
+    "legs": [
+     {
+      "position": "short",
+      "right": "put",
+      "strike": 62.0,
+      "exp": "2026-11-06",
+      "dte": 39,
+      "delta": -0.258,
+      "bid": 4.3,
+      "ask": 6.3,
+      "mid": 5.3,
+      "iv": 116.394,
+      "oi": 0,
+      "volume": 0
+     }
+    ],
+    "per_contract": {
+     "capital": 6200.0,
+     "max_loss": 5670.0,
+     "max_gain": 530.0,
+     "breakeven": 56.7,
+     "effective_entry_if_assigned": 56.7,
+     "value_at_target_expiry": 530.0,
+     "value_at_plan_stop_expiry": 180.0,
+     "return_at_target_pct": 8.5484,
+     "return_at_plan_stop_pct": null,
+     "reward_risk": 0.0935
+    },
+    "greeks_source": "delta from chain; gamma/theta/vega Black-Scholes estimate from contract IV",
+    "pop_estimate": 0.6903,
+    "pop_basis": "risk-neutral lognormal P(price above breakeven at expiry) from contract IV \u2014 estimate",
+    "liquidity": {
+     "pass": false,
+     "oi": 0,
+     "volume": 0,
+     "bid_ask_spread_pct": 37.74,
+     "mid": 5.3,
+     "issues": [
+      "OI 0 < 50",
+      "volume 0 < 5",
+      "spread 37.7% > 12.0%"
+     ]
+    },
+    "earnings": {
+     "in_blackout": true,
+     "symbol": "AXTI",
+     "strategy": "cash_secured_put",
+     "next_earnings": "2026-10-29",
+     "days_to_earnings": 31,
+     "blackout_days": 14,
+     "reason": "Earnings 2026-10-29 in 31d \u2014 inside 14d blackout"
+    },
+    "score": 0.2013,
+    "qualified": false,
+    "disqualified_by": [
+     "LIQUIDITY: OI 0 < 50; volume 0 < 5; spread 37.7% > 12.0%",
+     "EARNINGS_BLACKOUT (Earnings 2026-10-29 in 31d \u2014 inside 14d blackout)"
+    ],
+    "rank": 3
+   },
+   {
+    "strategy": "leaps_call",
+    "legs": [
+     {
+      "position": "long",
+      "right": "call",
+      "strike": 60.0,
+      "exp": "2028-01-21",
+      "dte": 480,
+      "delta": 0.791,
+      "bid": 39.3,
+      "ask": 42.5,
+      "mid": 40.9,
+      "iv": 104.335,
+      "oi": 137,
+      "volume": 0
+     }
+    ],
+    "per_contract": {
+     "capital": 4090.0,
+     "max_loss": 4090.0,
+     "max_gain": null,
+     "breakeven": 100.9,
+     "value_at_target_expiry": 3650.0,
+     "value_at_plan_stop_expiry": 0.0,
+     "return_at_target_pct": -10.7579,
+     "return_at_plan_stop_pct": -100.0,
+     "reward_risk": -0.1076
+    },
+    "greeks_source": "delta from chain; gamma/theta/vega Black-Scholes estimate from contract IV",
+    "pop_estimate": 0.2058,
+    "pop_basis": "risk-neutral lognormal P(price above breakeven at expiry) from contract IV \u2014 estimate",
+    "liquidity": {
+     "pass": true,
+     "oi": 137,
+     "volume": 0,
+     "bid_ask_spread_pct": 7.82,
+     "mid": 40.9,
+     "issues": []
+    },
+    "earnings": {
+     "in_blackout": true,
+     "symbol": "AXTI",
+     "strategy": "long_call",
+     "next_earnings": "2026-10-29",
+     "days_to_earnings": 31,
+     "blackout_days": 14,
+     "reason": "Earnings 2026-10-29 in 31d \u2014 inside 14d blackout"
+    },
+    "score": 0.1245,
+    "qualified": false,
+    "disqualified_by": [
+     "EARNINGS_BLACKOUT (Earnings 2026-10-29 in 31d \u2014 inside 14d blackout)",
+     "BREAKEVEN_AT_OR_ABOVE_TARGET (BE 100.90 vs target 96.50)"
+    ],
+    "rank": 4
+   }
+  ]
+ }
+}

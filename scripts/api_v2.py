@@ -14136,7 +14136,18 @@ def _buy_ready_packet(symbol: str) -> dict:
         packet = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {"symbol": sym, "status": "NO_PACKET"}
-    return {"symbol": sym, "status": "OK", "saved_at": packet.get("saved_at"), "packet": packet}
+    # LP-DEF-02 (live-proof 2026-09-28): never the file verbatim. A packet whose earnings verdicts predate
+    # the running gate version (or whose age is unknown) is served as STALE_PRE_FIX with every unit
+    # un-qualified; the file itself is kept as superseded evidence. If the view cannot be built the
+    # alternatives are withheld rather than shown un-checked.
+    try:
+        from lib.buy_ready_options_alternatives import packet_view
+        return {"symbol": sym, **packet_view(packet)}
+    except Exception as exc:  # noqa: BLE001
+        withheld = {k: v for k, v in packet.items() if k != "options_alternatives"}
+        return {"symbol": sym, "status": "PACKET_UNVERIFIED", "saved_at": packet.get("saved_at"),
+                "stale": {"code": "PACKET_UNVERIFIED", "reason": f"staleness check unavailable ({type(exc).__name__})"},
+                "packet": withheld}
 
 
 def _symbol_timeline(symbol: str):
