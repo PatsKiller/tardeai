@@ -982,6 +982,7 @@ GATES = [
             "tests/test_memory_ring2.py",
             "tests/test_containment_cleared_state.py",
             "tests/test_indicator_engine_rate_limit.py",
+            "tests/test_research_write_path_and_fanout.py",
         ],
     ),
     (

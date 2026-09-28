@@ -158,6 +158,12 @@ def record_decision(res: dict) -> None:
     row = decision_row(res)
     if row:
         _execute(INSERT_SQL, row, fetch=None)
+        try:  # Wave 2 item 2: the review goes through the single write path (SHADOW until its policy row flips)
+            from lib import research_write_path as _rwp
+            _rwp.submit("options-cio-review", str(res.get("symbol") or (res.get("review") or {}).get("symbol") or ""), dict(res),
+                        research_id=str(res.get("decision_guid") or ""), trigger="options_cio_review")
+        except Exception:  # noqa: BLE001
+            pass
 
 
 def main(argv=None) -> int:

@@ -2643,6 +2643,25 @@
         "path": "data/governance/approval_packages.jsonl"
       },
       "note": "approval reminders at +4h/+12h and expiry (13 §6) — body lands in Wave 1 tranche 2 INSTALLED 2026-09-27 ~20:00 ET under pkg-20260927-cogx-w1-d9e1 (cron lines appended; timers enabled from CURRENT f65da1f66)."
+    },
+    {
+      "lane_id": "edge-fanout-consumer",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-edge-fanout-consumer.timer"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-09-27T22:10:00-04:00",
+      "state_reason": "unit files ship in config/systemd/user/; installation + enable is the pkg-20260928-wave-2-enforcement-35c4 service grant (items 3-4); flips to ACTIVE in the closeout PR once tradeai-edge-fanout-consumer.timer is enabled from CURRENT",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/edge_fanout_consumer.py + config/systemd/user/tradeai-edge-fanout-consumer.{service,timer} on the tranche 3 branch; the bus consumer id edge-fanout has no cursor row yet (cio_event_cursors.jsonl), so the lane has never run",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/edge_fanout_consumer_latest.json"
+      },
+      "note": "Wave 2 items 3-4 (07 §4): memory.delta / thesis.changed → GIR edge traversal (depth ≤ 3) → EdgeFanoutWorkItem@v1 (reproject / notify) + projector dirty file. Replaces the static AGENT_EVENT_ROUTING list for thesis changes once the reactive cycle reads the work items (tranche 4)."
     }
   ],
   "undeclared_baseline": [

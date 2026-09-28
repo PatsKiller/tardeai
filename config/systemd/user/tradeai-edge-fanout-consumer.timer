@@ -1,0 +1,12 @@
+[Unit]
+Description=Trade AI edge fan-out consumer every 5 minutes (lane edge-fanout-consumer)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+AccuracySec=1min
+Persistent=true
+Unit=tradeai-edge-fanout-consumer.service
+
+[Install]
+WantedBy=timers.target

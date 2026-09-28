@@ -1,7 +1,7 @@
 {
   "schema": "MemoryInfluencePolicy@v1",
   "authority": "READ_ONLY_ADVISORY",
-  "as_of": "2026-09-27T21:40:00-04:00",
+  "as_of": "2026-09-27T22:05:00-04:00",
   "_note": "08 §2 modes per surface × silo and 01 §2 Ring 2 modes per chokepoint. Every change to a row is an operator approval item (11 O-6). TRADEAI_INTELLIGENCE_MODE overrides everything (global kill switch back to SHADOW). MBI_BEHAVIOR is not a row here and never will be.",
   "ring2": {
     "default": "SHADOW",
@@ -28,5 +28,18 @@
   },
   "behaviour": {
     "note": "no row: MBI_BEHAVIOR = 0 is the unconditional raise in cio_instrument_record.py, not a policy value"
+  },
+  "write_path": {
+    "default": "SHADOW",
+    "adapters": {
+      "hermes-external": "LIVE",
+      "hermes-cio-worker": "LIVE",
+      "watchlist-agent": "SHADOW",
+      "analyst-research-intel": "SHADOW",
+      "advisory-desk-opinion": "SHADOW",
+      "options-cio-review": "SHADOW",
+      "aec-thesis-fact": "SHADOW"
+    },
+    "_note": "Wave 2 item 2 (pkg-20260928-wave-2-enforcement-35c4): research_write_path.submit per producer lane. LIVE = the result flows to research_thesis_delta.accept_research_result (the one writer); SHADOW = a WritePathReceipt@v1 records what would have flowed, thesis stores untouched. The two Hermes lanes already reached the writer before this row existed, so LIVE there changes only provenance (context_id / retrieval_receipt_id now stamped). Flip one lane at a time after its shadow receipts show sane classifications."
   }
 }

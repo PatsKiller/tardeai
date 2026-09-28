@@ -317,6 +317,15 @@ def run_cycle(
     # Fail-soft: a bitemporal schema/function miss must not abort the cycle after
     # AgentView/commitment/OUTCOME already landed (2026-09-20T05:00Z exit 1 left
     # narrator unrun while hour-bucket mint had succeeded).
+    try:  # Wave 2 item 2: the advisor's thesis claim goes through the single write path (SHADOW until its policy row flips)
+        try:
+            from lib import research_write_path as _rwp
+        except ImportError:
+            from scripts.lib import research_write_path as _rwp  # type: ignore
+        _rwp.submit("aec-thesis-fact", str(subject or "").replace("HELD:", ""), {"summary": advisor_summary[:2000], "claim": advisor_summary[:240],
+                    "classification": "NO_NEW_INFO"}, research_id=f"aec-cycle-{subject}", trigger="aec_cycle")
+    except Exception:  # noqa: BLE001
+        pass
     try:
         bitemporal_receipt = integrate_wake_envelope(
             {

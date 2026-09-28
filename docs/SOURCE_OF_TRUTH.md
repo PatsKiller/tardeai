@@ -1,7 +1,7 @@
 # Source of Truth — one declaration per domain
 
 **Rendered from `config/data_source_authority.json` by `scripts/render_source_of_truth.py`. Do not edit by hand.**
-Registry as of 2026-09-13 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 33 domains · 22 providers.
+Registry as of 2026-09-27T22:10:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 36 domains · 22 providers.
 
 One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.
 
@@ -83,6 +83,9 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | **platform_conformance** | derived | `governance/platform_conformance_latest.json` | `scripts/report_platform_conformance.py` | daily | 36h | — | native | — | — | `say_so` | operator 2026-09-27 |
 | **intelligence_gir_projection** | derived | `intelligence.gir_entity` · `runtime/gir_projection_dryrun.json` | `scripts/gir_projector.py` | batch (nightly) then incremental | 36h | — | native | — | — | `say_so` | operator 2026-09-27 |
 | **supervisor_breaches** | derived | `intelligence.breach` · `runtime/supervisor_breaches.jsonl` | `scripts/supervisor_breach_detector.py` | every 2 min once installed | 1h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **research_write_path_receipts** | derived | `cio/research_write_path_receipts.jsonl` | `scripts/lib/research_write_path.py` | per producer result | 24h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **edge_fanout_work_items** | derived | `cio/edge_fanout_work_items.jsonl` | `scripts/edge_fanout_consumer.py` | every 5 min (systemd timer, after the service grant) | 1h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **intelligence_research_index** | derived | `intelligence.research_index` | `scripts/lib/research_index_writer.py` | per accepted research delta | 168h | — | native | — | — | `say_so` | operator 2026-09-27 |
 
 ## Writer ceilings — stores not yet consolidated to one writer
 
@@ -131,6 +134,9 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **Operator approved reconnecting the operator desk to the data gap queue in session on 2026-09-13 ("yess reconect approved"); shipped in PR #998; the desk becomes a caller of the store's one write module** — 1 rows: domain `data_gaps`
 - **Operator asked in session on 2026-09-13 to connect chat memory recall per subject GUID ("yes connect chat memory recall per guid"); shipped in PR #1001 (branch feat/chat-memory-recall)** — 1 rows: domain `operator_conversation`
 - **ApprovalPackage pkg-20260927-cogx-w1-d9e1 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~18:50 ET); package docs/architecture/cognitive_transformation_20260927/ on PR #1304** — 7 rows: domain `intelligence_memory_contexts`, domain `intelligence_retrieval_receipts`, domain `supervisor_heartbeats`, domain `approval_packages`, domain `platform_conformance`, domain `intelligence_gir_projection`, domain `supervisor_breaches`
+- **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 2** — 1 rows: domain `research_write_path_receipts`
+- **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md items 3-4** — 1 rows: domain `edge_fanout_work_items`
+- **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 8** — 1 rows: domain `intelligence_research_index`
 
 ## Monitors
 
