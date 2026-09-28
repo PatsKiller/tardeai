@@ -166,6 +166,29 @@ def record_decision(res: dict) -> None:
             pass
 
 
+def acquire_lifecycle_lock(path: str):
+    """('acquired'|'inherited'|'held', fh). 'inherited' = an ancestor process (the crontab's
+    `flock -n path cmd`) already holds the lock on a descriptor we inherited, so this run IS
+    the locked run and must proceed. 'held' = some other process holds it; do not run."""
+    import fcntl
+    target = os.path.realpath(path)
+    fd_dir = Path("/proc/self/fd")
+    if fd_dir.exists():
+        for fd in fd_dir.iterdir():
+            try:
+                if os.path.realpath(os.readlink(str(fd))) == target:
+                    return "inherited", None
+            except OSError:
+                continue
+    fh = open(path, "a+")
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        fh.close()
+        return "held", None
+    return "acquired", fh
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Advance options theses one lifecycle step")
     ap.add_argument("--apply", action="store_true")
@@ -176,11 +199,13 @@ def main(argv=None) -> int:
     # 2026-09-27: a manual --apply pass raced the cron's pass on the same DELL guid (both
     # reviewed it in the same second). Take the same lock the crontab line uses; if it is
     # held, say so and exit 0 without touching the store.
-    import fcntl
-    lock_fh = open(a.lock, "a+")
-    try:
-        fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
+    # 2026-09-28: the crontab line ALREADY wraps this script in `flock -n <same path>`; the
+    # lock taken here (added 09-27 for manual runs) then conflicted with its own parent's lock
+    # and every scheduled pass printed "held by another run" and exited -- 57 skips, every
+    # thesis stuck at CREATED, no CIO decisions. flock(1) leaves its descriptor open in the
+    # child, so an ancestor's lock is visible in /proc/self/fd: inherit it instead of fighting it.
+    lock_state, lock_fh = acquire_lifecycle_lock(a.lock)
+    if lock_state == "held":
         print(json.dumps({"ok": False, "skipped": "lifecycle lock held by another run", "lock": a.lock}))
         return 0
     _load_env()

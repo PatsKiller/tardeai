@@ -835,7 +835,7 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
     _run_wait = sum(1 for t in scored if t.get("decision") == "WAIT")
     _run_nogo = len(scored) - _run_go - _run_wait
     try:
-        from screener_run_health import record_screener_run_finish, get_conn as _health_conn
+        from screener_run_health import record_screener_run_finish, get_conn as _health_conn, window_expected_min_symbols as _window_expected_min
         _hconn = _health_conn()
         _health_stats = {
             "symbols_scanned": len(scored),
@@ -846,6 +846,7 @@ def run_pipeline(root, run_label, date_str, use_llm=True, send_alerts=True, skip
             "normalized_rows": len(tickers),
             "deduped_symbols": len(scored),
             "expected_min_symbols": min_symbols,
+            "window_expected_min_symbols": _window_expected_min(run_label),   # 2026-09-28: window's own floor
             "target_symbols": 60,
             "source": "finviz",
             "screener_count": len(live.get("downloads", [])) if 'live' in dir() else 0,

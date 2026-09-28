@@ -31,7 +31,12 @@ def _iso(dt):
 def _prop(**over):
     p = _proposal(**over)
     p.setdefault("options_thesis", {"pin": f"opt_{GUID}@v1", "missing_required": []})
-    p.setdefault("quotes_as_of", _iso(NOW - timedelta(seconds=30)))
+    # Quote freshness is recomputed by execution_readiness against the REAL clock (not the fixed
+    # NOW used for session math), so a fixed NOW made this suite a time bomb: it went red at
+    # 15:02Z on 2026-09-28 ("quote stale 181s > 120s") and would stay red forever.
+    p.setdefault("quotes_as_of", _iso(datetime.now(timezone.utc) - timedelta(seconds=30)))
+    if "chain_fetched_at" not in over:
+        p["chain_fetched_at"] = _iso(datetime.now(timezone.utc) - timedelta(seconds=60))
     p.setdefault("economics", {"collateral": 2500.0})
     return p
 
@@ -190,7 +195,9 @@ def test_read_buying_power_fails_closed_on_degraded_or_missing_reads():
 # ── the intent carries the authorization evidence; the order comes from the intent only ─────
 
 def test_intent_carries_the_authorization_evidence():
-    p = _prop()
+    # build_intent(now=NOW) computes the ages against the FIXED NOW; pin the timestamps to it here
+    # (this test never reaches execution_readiness, which uses the real clock).
+    p = _prop(quotes_as_of=_iso(NOW - timedelta(seconds=30)), chain_fetched_at=_iso(NOW - timedelta(seconds=60)))
     i = _intent(p)
     ev = i.meta.signal_evidence
     assert ev["proposal_pin"] == f"opt_{GUID}@v1" and ev["approved_strategy_guid"] == GUID
