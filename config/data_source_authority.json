@@ -2039,7 +2039,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 2",
+        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 2",
         "scope": "WritePathReceipt@v1: what each producer lane handed (SHADOW: would have handed) to research_thesis_delta.accept_research_result, with memory provenance; appended only by the adapter"
       },
       "store": {
@@ -2082,7 +2082,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md items 3-4",
+        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md items 3-4",
         "scope": "EdgeFanoutWorkItem@v1: reproject / notify items derived from GIR edge traversal on memory.delta and thesis.changed; appended only by the consumer lane"
       },
       "store": {
@@ -2125,7 +2125,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 8",
+        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 8",
         "scope": "intelligence.research_index: deterministic answer index (thesis / catalysts / invalidation / bear_case → delta id) + per-URL/day citation index (canonical URL + extraction ref only; never page bodies)"
       },
       "store": {
@@ -2168,7 +2168,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 5",
+        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1321; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 5",
         "scope": "FilingEvent@v1: SEC 8-K / 10-Q / 10-K filings for tracked symbols from the free EDGAR submissions API; immutable events keyed on issuer + form + accession; appended only by the feed"
       },
       "store": {

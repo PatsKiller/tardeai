@@ -98,7 +98,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
-| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `736f44fab4e0` |
+| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `8d0643dd0de2` |
 | `docs/STAGING_VS_V2_BITEMPORAL_STATUS_REPORT.md` | Staging vs V2 bitemporal database — status report | review_required | OK | `809ec60535eb` |
 | `docs/STOP_METHODOLOGY.md` | Stop & Trailing-Stop Methodology (canonical) | review_required | OK | `5b9791931edc` |
 | `docs/STOP_SYSTEM_GAP_REPORT.md` | Trade AI v12 — Stop System Alignment / Gap Report | review_required | OK | `12d1dfe39ffb` |
@@ -1686,7 +1686,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COGNITIVE_MEMORY_PRODUCTION_RUNBOOK.md` | Cognitive memory in production: runbook | review_required | OK | `720ebe9b2fee` |
 | `docs/ops/COGX_WAVE1_APPROVAL_PACKAGE_2026-09-27.md` | COGX Wave 1 approval package — pkg-20260927-cogx-w1-d9e1 | review_required | OK | `07d135121c55` |
 | `docs/ops/COGX_WAVE1_OPERATOR_RUNBOOK_2026-09-27.md` | COGX Wave 1 — operator runbook: the commands only you can run | review_required | OK | `d2afff1dea8d` |
-| `docs/ops/COGX_WAVE1_STATUS_2026-09-27.md` | COGX Wave 1 · tranches 1–3 — foundations, shadow wiring, lane artifacts | review_required | OK | `986db0f3a453` |
+| `docs/ops/COGX_WAVE1_STATUS_2026-09-27.md` | COGX Wave 1 · tranches 1–3 — foundations, shadow wiring, lane artifacts | review_required | OK | `7edfc8bf7823` |
 | `docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md` | COGX Wave 2 approval package — pkg-20260928-wave-2-enforcement-35c4 | review_required | OK | `864f52aab6ed` |
 | `docs/ops/COMMAND_CENTER_MATURITY_TRUTH.md` | Command Center maturity truth (live runtime) | review_required | MISSING HEADER | `de97ccca2b56` |
 | `docs/ops/COMMS_GATEWAY_GO_LIVE_RUNBOOK.md` | Communications Gateway — Go-Live Runbook (single consolidated operator prompt) | review_required | OK | `7ded3894288a` |
