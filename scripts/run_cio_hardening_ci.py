@@ -2844,6 +2844,13 @@ GATES = [
         ["tests/test_momentum_scalp_proposal_contract_20260928.py"],
     ),
     (
+        # 2026-09-28 — scanner social overlay was silently dead (_execute without fetch
+        # returns True → 'bool' object is not iterable every live cycle) and source labels
+        # were alphabetical (ai_discovered outranked screener); fixed + priority from config.
+        "social_inject_source_priority_20260928",
+        ["tests/test_social_inject_and_source_priority_20260928.py"],
+    ),
+    (
         # 2026-09-28 — momentum-scalp lane alarm: the lane log said PASS for ten days while
         # Finviz was never refreshed; the health agent now reads the refresh receipt
         # (missing / killed / stale / failed) and flags a lane that only ever skips refresh.

@@ -10,6 +10,10 @@
 # Run scripts/finviz_registry_reconcile.py for the current three-way state.
 #
 # ⚠️  CRITICAL: finviz_url MUST use v=152 (custom view), NOT v=111 (overview).
+#
+# source_label_priority (2026-09-28): how a scanner row is LABELLED when several sources claim
+# the symbol (read by scripts/lib/source_priority.py for /api/v2/trade-ai). Not a filter.
+source_label_priority: [screener, social, ai_discovered, topic_research, portfolio, manual]
 # v=111 ignores &c= columns and silently returns only default fields (no RVOL, Gap, Float).
 # Column IDs: 25=Float, 61=Gap, 63=AvgVol, 64=RelVol, 65=Price, 66=Change, 67=Volume
 #
