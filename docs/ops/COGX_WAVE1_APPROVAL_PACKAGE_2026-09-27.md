@@ -1,7 +1,7 @@
 # COGX Wave 1 approval package — pkg-20260927-cogx-w1-d9e1
 
 ```
-Status:      ACTIVE (APPROVED all 14 items 2026-09-27 ~18:50 ET by typed reply in Claude Code: "APPROVE pkg-20260927-cogx-w1-d9e1 all, mine, start wave 1")
+Status:      VALIDATED (stage 6 passed 2026-09-28T00:15:32Z on served f65da1f66-main-exact-phase2-20260927-201057; record persistent-state/data/governance/approvals/pkg-20260927-cogx-w1-d9e1/post_deploy_validation_20260928T001532Z.json)
 as_of:       2026-09-27T18:28:50-04:00
 Measured at: 8f2a178d5 / served 8f2a178d5-main-exact-phase2-20260927-171004
 Authority:   READ_ONLY_ADVISORY. This file is the durable artifact for the first ApprovalPackage@v1 until the
@@ -88,8 +88,8 @@ No buttons yet: the package callback handler is itself a Wave 1 deliverable; you
 | Guard grants | Claude requested ×4 (release-write and service COMBINED with the other live campaigns), operator approved by button | release-write, service, cron, db-write, 4 h each |
 | Deploy | Claude: `prepare` + `promote` of exact main `ab37b9e1e` under `TRADEAI_RELEASE_CAMPAIGN=cognitive-transformation-20260927`; desk bot restarted | CURRENT = `ab37b9e1e-main-exact-phase2-20260927-195452`; dev tree fast-forwarded |
 | I-4 / O-2 cron lanes | Claude | 2 lines appended (backup `crontab-20260927T235720Z-pre-cogx-w1.txt`), 1,063 lines |
-| I-4 / O-2 systemd lanes | **operator** — the classifier blocked Claude's first-runs batch as a production deploy, and enabling the timers would run the same jobs | pending: install + enable the two timers |
-| First runs (SLA seed `--apply`, projector `--apply`, conformance `--write`, detector `--write`) | **operator** (same reason) | pending; runbook step 6 |
+| I-4 / O-2 systemd lanes | operator (installed + enabled 19:59 ET) | both timers active; detector paused 20:00–20:12 ET for hotfix #1308, then 25 breach rows on its first run |
+| First runs | operator 19:58–19:59 ET | SLA 153 rows; projection 141,295 / 5,804 / 250,078; conformance 45 UNMEASURED / 10 scored; detector 25 NO_OUTPUT (after hotfix) |
 | Item 13 embedding model | deferred to Wave 4 | — |
 
-Package remains EXECUTING until the operator's step 5a/6 outputs are recorded; then VALIDATED after stage-6 checks (served output signals observed).
+Package VALIDATED 2026-09-28T00:15Z: served pin, Wave 1 files, four lane output signals, conformance/breach/SLA artifacts under the state root, heartbeat files, intelligence schema rows (141,295 entities / 250,078 edges / 153 SLA) — all observed read-only by `scripts/cogx_post_deploy_validation.py`. The ledger row for this package (15 items APPROVED, chain verified) lives at persistent-state/data/governance/approval_packages.jsonl.
