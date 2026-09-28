@@ -2844,6 +2844,13 @@ GATES = [
         ["tests/test_momentum_scalp_proposal_contract_20260928.py"],
     ),
     (
+        # 2026-09-28 — pre-open window honesty: 0400/0700 run two screeners by design and
+        # were labelled UNIVERSE_TOO_SMALL every day; per-window floors + PREOPEN_WINDOW_BY_DESIGN
+        # (status/auto-proposal gate unchanged); unenriched injects → MANUAL_REVIEW, never scored.
+        "preopen_window_honesty_20260928",
+        ["tests/test_preopen_window_honesty_20260928.py"],
+    ),
+    (
         # 2026-09-28 — scanner social overlay was silently dead (_execute without fetch
         # returns True → 'bool' object is not iterable every live cycle) and source labels
         # were alphabetical (ai_discovered outranked screener); fixed + priority from config.
