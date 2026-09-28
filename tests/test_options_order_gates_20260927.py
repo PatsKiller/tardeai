@@ -305,8 +305,9 @@ def test_changed_long_leg_same_proposal_id_is_legs_changed(tmp_path):
     # a re-serialised but identical proposal (string strikes, extra keys) hashes the same
     same = dict(approved, long_strike="497.5", short_strike="522.50", reasoning="new text")
     assert ent.approval_pin(same)["approved_hash"] == ent.approval_pin(approved)["approved_hash"]
-    # and a legacy approval with no pin cannot ride through
-    assert "approval_pin_missing" in _codes(_gate(current, _store(tmp_path), row=_row(approved, pin=False)))
+    # and a legacy approval with no pin cannot ride through either: since 2026-09-27 it is
+    # pinned to the proposal_json it stored, so the changed leg is caught as legs_changed
+    assert "legs_changed" in _codes(_gate(current, _store(tmp_path), row=_row(approved, pin=False)))
 
 
 def test_engine_spread_id_names_the_long_leg():
