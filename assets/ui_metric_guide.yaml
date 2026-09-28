@@ -27,6 +27,99 @@ entries:
     why_it_matters: "A stale number can look current."
     interpretation: "Chips turn to watch when older than the surface's freshness rule."
     sources: ["surface freshness"]
+  position.unrealized_pnl:
+    label: "Unrealized P/L"
+    short: "Open profit or loss on this option leg at the current mark."
+    definition: "Mark minus average entry, times quantity and the contract multiplier, in dollars; PNL_UNKNOWN when the broker gave no usable mark."
+    why_it_matters: "It is the number the harvest and defend rules act on."
+    interpretation: "Read it with the profit-captured percentage: a large dollar gain that is a small share of the maximum is still maturing."
+    sources: ["options_positions_monitor"]
+  options.mark:
+    label: "Mark"
+    short: "The broker's current mark price for the contract."
+    definition: "Broker mark (usually the bid/ask midpoint) per contract, as of the monitoring snapshot."
+    why_it_matters: "Every P/L, moneyness and greek figure on the card is priced from it."
+    interpretation: "A stale or one-sided mark makes the whole card stale; check the quote time."
+    watch: "Marks outside market hours can be the last trade, not a live quote."
+    sources: ["schwab_positions"]
+  options.theta:
+    label: "Theta"
+    short: "Daily time decay of the contract value, in dollars per contract."
+    definition: "Model estimate of how much the option loses (or, for a short position, earns) per calendar day if nothing else moves."
+    why_it_matters: "Short premium strategies earn theta; long options pay it."
+    interpretation: "Compare theta to the remaining premium: decay accelerates in the last three weeks."
+    sources: ["options_positions_monitor"]
+  options.vega:
+    label: "Vega"
+    short: "Contract value change per one-point move in implied volatility."
+    definition: "Model sensitivity of the option price to a 1-point change in implied volatility, in dollars per contract."
+    why_it_matters: "A short-premium trade loses if IV rises after entry even when the stock is unchanged."
+    interpretation: "High vega with an earnings event ahead means the IV crush, not the move, decides the trade."
+    sources: ["options_positions_monitor"]
+  options.profit_captured_pct:
+    label: "Profit captured"
+    short: "Share of the maximum possible profit already earned."
+    definition: "Unrealized P/L divided by the maximum profit available at open, as a percentage."
+    why_it_matters: "The harvest rule closes winners once most of the premium is captured rather than holding for the last dollars."
+    interpretation: "Above the desk's harvest threshold the card says HARVEST; below it, time in trade is the cost."
+    benchmark: "Short-premium desks commonly take profits between 50% and 75% of maximum."
+    sources: ["options_positions_monitor"]
+  options.margin_usd:
+    label: "Margin"
+    short: "Buying power the broker holds against this position."
+    definition: "Broker maintenance requirement for the leg in dollars, with the status the monitor reports."
+    why_it_matters: "It is the capital the trade ties up; the return on it is the real yield."
+    interpretation: "UNKNOWN means the broker did not report a figure, not that it is zero."
+    sources: ["schwab_positions"]
+  options.moneyness:
+    label: "Moneyness"
+    short: "Whether the strike is in, at or out of the money against the current stock price."
+    definition: "ITM when exercise would have intrinsic value, OTM when it would not, ATM when the strike is near the price."
+    why_it_matters: "Short options that move ITM carry assignment risk; long options OTM near expiry expire worthless."
+    interpretation: "Read with the distance to the strike; a short put 2% OTM with 3 DTE is a different trade from one 15% OTM."
+    sources: ["options_positions_monitor"]
+  options.lifecycle_phase:
+    label: "Lifecycle"
+    short: "Where this position is in the desk's hold-harvest-defend cycle."
+    definition: "LET MATURE (still earning), HARVEST (take the profit), DEFEND (risk rules triggered) or MONITOR, set by the position monitor."
+    why_it_matters: "It is the desk's recommended posture; the action buttons follow it."
+    interpretation: "DEFEND names the rule that fired in the rationale; HARVEST is a profit rule, not a risk rule."
+    sources: ["options_positions_monitor"]
+  options.collateral:
+    label: "Collateral"
+    short: "Cash or buying power the trade requires to open."
+    definition: "Cash secured for a put, the spread width times contracts for a credit spread, or the shares held for a covered call."
+    why_it_matters: "The yield on the trade is the credit divided by this figure, not by the stock price."
+    interpretation: "Compare to account cash on the combined-exposure line; several ideas on one name commit collateral together."
+    sources: ["options_engine"]
+  options.insured_shares:
+    label: "Insured shares"
+    short: "How many of the shares held this put actually protects."
+    definition: "Contracts times 100, capped at the shares held; the remainder is uninsured."
+    why_it_matters: "A hedge on 100 of 130 shares leaves 30 shares fully exposed below the floor."
+    interpretation: "Read the floor value as the protected value only; the uninsured note states the rest."
+    sources: ["options_engine"]
+  options.spread_width:
+    label: "Width"
+    short: "Distance between the short and long strikes of a spread."
+    definition: "Short strike minus long strike, in dollars per share; times 100 per contract it is the most the spread can lose before credit."
+    why_it_matters: "Max loss is the width less the credit received; a wider spread is a bigger bet for a slightly bigger credit."
+    interpretation: "Credit as a share of width is the trade's risk price; the desk shows the ratio as loss-to-credit."
+    sources: ["options_engine"]
+  options.net_cost_if_assigned:
+    label: "Net cost if assigned"
+    short: "What you would pay per share if the put is assigned, after the premium."
+    definition: "Strike minus the premium collected per share, the effective purchase price on assignment."
+    why_it_matters: "A cash-secured put is a limit order to buy that pays you to wait; this is the price you are agreeing to."
+    interpretation: "Compare to today's price: the discount to spot is the cushion before the trade loses."
+    sources: ["options_engine"]
+  options.called_away_price:
+    label: "If called away"
+    short: "Effective sale price per share if the covered call is assigned."
+    definition: "Strike plus the premium collected per share."
+    why_it_matters: "It is the most you make on the shares while the call is open; upside above it is given up."
+    interpretation: "Compare to your cost basis and to the analyst targets: a strike below basis locks in a loss on assignment."
+    sources: ["options_engine"]
   options.alpaca_paper_only:
     label: "Alpaca Paper Only"
     short: "This route uses Alpaca simulated paper orders only."
@@ -45,7 +138,7 @@ entries:
   options.breakeven:
     label: "Breakeven"
     short: "Breakeven is the stock price needed at expiration to break even."
-    definition: "For a long call, breakeven is strike plus premium paid. Here, {symbol} would need to be around {strike} at expiration for the option to break even. The 0.0% means the stock needs to rise about 0.0% from the current reference price by expiration."
+    definition: "For a long option, breakeven is the strike plus the premium paid; for a short put it is the strike minus the credit. {symbol} needs to be beyond the breakeven at expiration for the trade to make money."
     why_it_matters: "For a long call, breakeven is strike plus premium paid."
     interpretation: "Compare breakeven to current price, earnings risk, time left, and your thesis."
     watch: "Compare breakeven to current price, earnings risk, time left, and your thesis."
@@ -53,8 +146,8 @@ entries:
   options.breakeven_move_pct:
     label: "Breakeven Move Pct"
     short: "Percent move the stock needs by expiration to reach breakeven."
-    definition: "The 0.0% figure compares breakeven to a reference spot price. It answers: how much does the stock still need to move by expiration just to get back to even on the trade?"
-    why_it_matters: "The 0.0% figure compares breakeven to a reference spot price."
+    definition: "The distance from today's price to the breakeven, as a percentage of today's price. It answers: how far does the stock still have to move by expiration just to get back to even on the trade?"
+    why_it_matters: "It compares the breakeven to the reference spot price; a large required move is the trade's headwind."
     interpretation: "Compare this move to typical volatility, earnings gaps, and your thesis timeline."
     watch: "Compare this move to typical volatility, earnings gaps, and your thesis timeline."
     sources: ["options_engine"]
@@ -182,8 +275,8 @@ entries:
   options.iv_history_building:
     label: "Iv History Building"
     short: "IV rank is not ready yet — history is still accumulating."
-    definition: "IV rank needs enough daily ATM-IV snapshots (about {dte} days). Only {dte} days are stored so far, so the desk reports honestly instead of guessing."
-    why_it_matters: "IV rank needs enough daily ATM-IV snapshots (about {dte} days)."
+    definition: "IV rank needs a history of daily at-the-money IV snapshots before it can say where today's IV sits in its range. Until enough days are stored the desk reports the gap honestly instead of guessing."
+    why_it_matters: "An IV rank without enough history is a guess, and premium richness is judged from it."
     interpretation: "Treat IV context as unavailable until history completes — rely on chain quotes."
     watch: "Treat IV context as unavailable until history completes — rely on chain quotes."
     sources: ["options_engine"]
@@ -310,8 +403,8 @@ entries:
   options.share_capital_pct:
     label: "Share Capital Pct"
     short: "This compares option cost to buying 100 shares."
-    definition: "Buying 100 shares of {symbol} would require much more cash. This option controls roughly 100 shares but uses about 0% of the cash needed to buy those shares outright. That is the stock-replacement idea."
-    why_it_matters: "Buying 100 shares of {symbol} would require much more cash."
+    definition: "Buying 100 shares of {symbol} outright would take far more cash. This option controls roughly 100 shares for a fraction of that; the percentage is the option's cost as a share of the 100-share cost."
+    why_it_matters: "Capital efficiency is the reason to use an option instead of shares; the same percentage is also the share of capital that can go to zero."
     interpretation: "Lower capital use does not mean lower risk. The option can still lose 100% of the debit paid."
     watch: "Lower capital use does not mean lower risk. The option can still lose 100% of the debit paid."
     sources: ["options_engine"]

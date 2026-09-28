@@ -987,6 +987,7 @@ GATES = [
             "tests/test_wave3_cognition.py",
             "tests/test_wave4_unification.py",
             "tests/test_wave5_maturity.py",
+            "tests/test_m2_substrate_check.py",
         ],
     ),
     (
@@ -2702,6 +2703,13 @@ GATES = [
         ["tests/test_ui_metric_guide.py", "tests/test_ui_insight.py"],
     ),
     (
+        # Reviewer 2026-09-28: combined same-symbol exposure includes the shares held (by account),
+        # reports options-only / shares / whole-position P/L per row and groups rows by expiration;
+        # the earnings gate blocks debit spreads and long puts and names its trigger.
+        "options_exposure_earnings_20260928",
+        ["tests/test_options_exposure_earnings_20260928.py"],
+    ),
+    (
         # 2026-09-27 -- protective puts / covered calls reconcile held shares and cost basis to
         # the holdings snapshot of record at preflight (fail closed on stale, missing, short,
         # changed); every CIO-packet yield names its denominator.
@@ -2827,6 +2835,37 @@ GATES = [
         # Session validators move under scripts/archive with a tripwire stub.
         "audit_finish_20260927",
         ["tests/test_audit_finish_20260927.py"],
+    ),
+    (
+        # 2026-09-28 — momentum-scalp proposal contract: the $3 momentum floor, the
+        # analyst gate and the shared 5% spread ceiling discarded every scalp GO since
+        # 2026-07-13; the strategy YAML now carries a paper-only proposal_contract.
+        "momentum_scalp_proposal_contract_20260928",
+        ["tests/test_momentum_scalp_proposal_contract_20260928.py"],
+    ),
+    (
+        # 2026-09-28 — momentum-scalp lane alarm: the lane log said PASS for ten days while
+        # Finviz was never refreshed; the health agent now reads the refresh receipt
+        # (missing / killed / stale / failed) and flags a lane that only ever skips refresh.
+        "momentum_scalp_refresh_alarm_20260928",
+        ["tests/test_momentum_scalp_refresh_alarm_20260928.py",
+         "tests/test_momentum_scalp_source_health.py"],
+    ),
+    (
+        # 2026-09-28 — momentum-scalp lane refresh: the */15 Finviz-refresh cron line was
+        # killed silently every quarter-hour (timeout 150 < stage 240, shared lock) and the
+        # lane had not refreshed since 09-18; the stage now clamps to an outer deadline,
+        # writes STARTED/DONE receipts and the */5 line refreshes when the receipt is stale.
+        "momentum_scalp_lane_refresh_20260928",
+        ["tests/test_momentum_scalp_lane_refresh_20260928.py"],
+    ),
+    (
+        # 2026-09-28 — lane registry: 107 host cron lines installed 09-27/28 with no lane
+        # row broke check_lane_registry on main; recorded as a dated inherited tranche
+        # with provenance (the original baseline is not grown) that the gate honours.
+        "lane_registry_inherited_tranche_20260928",
+        ["tests/test_lane_registry_inherited_tranche_20260928.py",
+         "tests/test_alarm_fires_reminder_and_supervisor_20260928.py"],
     ),
 ]
 

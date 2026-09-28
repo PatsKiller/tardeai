@@ -17,6 +17,15 @@ momentum_scalp_finviz_screen:
   cadence_minutes: 5
   window_et: {start: "06:00", end: "12:00"}
 
+  # --- Source refresh (2026-09-28) ---
+  # The */5 lane refreshes Finviz itself when the last DONE receipt is older than `if_older_min`
+  # (cron passes --refresh-if-older-min). Only the Tier-1 day_scalp screeners (assets/screeners.yaml)
+  # are refreshed — the full 45-screener --run took longer than the cron slot and was killed silently.
+  refresh:
+    if_older_min: 15
+    screener_ids: [prime_setups, watchlist_setups]
+    stage_timeout_s: 240
+
   # --- Tradeable momentum_scalp GO boundaries (mirror momentum_scalp.yaml screen_filters) ---
   tradeable:
     price:   {min: 1.0, max: 25.0, preferred_max: 10.0}

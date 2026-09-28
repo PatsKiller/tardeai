@@ -43,6 +43,17 @@ def test_options_insight_without_a_decision_reads_the_truth_flags():
     assert build_insight("options_proposal", rej)["tone"] == "danger"
 
 
+def test_block_dicts_read_their_reason_and_are_deduped():
+    p = {k: v for k, v in DELL.items() if k != "cio_decision"}
+    p["enterprise"] = {"blocks": [{"code": "thesis_required", "reason": "symbol thesis insufficient data", "gate": ["X"]},
+                                  "awaiting live quotes (market weekend): OI 0"]}
+    p["thesis_blocks"] = [{"code": "thesis_required", "reason": "symbol thesis insufficient data"}]
+    i = build_insight("options_proposal", p)
+    assert "{" not in " ".join(i["drivers"]) and "code" not in " ".join(i["drivers"])
+    assert i["drivers"].count("symbol thesis insufficient data") == 1
+    assert "awaiting live quotes (market weekend): OI 0" in i["drivers"]
+
+
 def test_thesis_insight_is_the_summary_sentence_with_stance_tone():
     t = {"symbol": "DELL", "thesis_stance": "watch", "thesis_state": "THIN", "substantiveness_grade": "B",
          "thesis_summary": "Dell's 8-K confirms the $95B backlog is a point-in-time figure. Fundamentals are exceptional.",
