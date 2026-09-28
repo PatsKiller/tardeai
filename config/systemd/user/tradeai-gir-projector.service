@@ -7,6 +7,7 @@ Type=oneshot
 WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
 Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT:%h/trade-ai-releases/portfolio-server/CURRENT/scripts
 Environment=MEMORY_BEHAVIOR_INFLUENCE=0
+Environment=TRADEAI_GIR_DB_SOURCES=1
 EnvironmentFile=-/run/user/%U/tradeai/env
 EnvironmentFile=-%h/.config/tradeai/cio-operator-live.env
 ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/gir_projector.py --incremental --apply --state %h/trade-ai-releases/persistent-state/data/runtime/gir_projector_state.json

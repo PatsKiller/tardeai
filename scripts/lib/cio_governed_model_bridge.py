@@ -320,6 +320,14 @@ def resolve_model_policy(process_id: str, task_type: str = "") -> dict[str, Any]
         "hermes_golden_judge": "FAST",
     }
     policy_name = process_policy_map.get(process_id)
+    try:  # Wave 4 O-W4-3: the ONE chooser observes (shadow) — disagreement with this map is a receipt, not a change
+        try:
+            from model_chooser import apply as _choose_apply  # type: ignore
+        except ImportError:
+            from scripts.lib.model_chooser import apply as _choose_apply  # type: ignore
+        _choose_apply(process_id, "deepseek-flash" if policy_name in (None, "FAST") else "deepseek-pro", purpose=task_type, site="governed_model_bridge")
+    except Exception:  # noqa: BLE001
+        pass
     if policy_name is None:
         return None  # Unknown process → fail closed
     base = POLICY_RESOLUTION.get(policy_name, POLICY_RESOLUTION["FAST"])

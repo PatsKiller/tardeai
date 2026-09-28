@@ -1107,6 +1107,20 @@ def gate_and_generate(
     if _r2["decision"] == "ALLOW_MISS":
         meta["memory_context_miss"] = True
 
+    # Wave 4 O-W4-3: ONE model chooser. shadow (default) keeps the caller's lane and records disagreements;
+    # advise/enforce (TRADEAI_MODEL_CHOOSER) let the chooser pick among the process's allowed lanes only.
+    try:
+        try:
+            from model_chooser import apply as _choose_apply  # type: ignore
+        except ImportError:
+            from scripts.lib.model_chooser import apply as _choose_apply  # type: ignore
+        _use_lane, _choice = _choose_apply(process_id, lane, purpose=task_summary, site="gate_and_generate")
+        meta["model_chooser"] = {k: _choice.get(k) for k in ("lane", "policy", "model", "mode", "disagree", "reason")}
+        if _use_lane and _use_lane != lane:
+            lane = _use_lane
+    except Exception:  # noqa: BLE001
+        pass
+
     is_deepseek_lane = lane.startswith("deepseek") or lane in (
         "fast", "fast_think", "pro", "pro_think", "pro_max",
     )

@@ -244,6 +244,9 @@ def build(root: Path, *, now: _dt.datetime | None = None, env: dict | None = Non
                 n += 1
         pj.counts["filing_events"] = n; pj.counts["filing_events_unresolved"] = unresolved
 
+    # 4c. decisions and actions (Wave 4 O-W4-4; 07 §3) → DEC:<id> / ACT:<id>, edges DECIDED_ON / CAUSED_BY / TRIGGERED
+    _project_decisions_and_actions(pj, data, sec_for)
+
     # 5. contradiction candidates (streamed, capped)
     c_p = data / "cio" / "research_contradiction_candidates.jsonl"
     # Wave 3 O-W3-3: verdicts close pairs; the SEC envelope carries the net state (open / resolved)
@@ -320,6 +323,112 @@ def build(root: Path, *, now: _dt.datetime | None = None, env: dict | None = Non
     return pj
 
 
+def _project_decisions_and_actions(pj: "Projection", data: Path, sec_for) -> None:
+    """Options thesis decisions (file), CIO decisions (Postgres, read-only when reachable) and the action
+    ledger (file) become graph nodes so the fan-out reaches open decisions. Fail-soft per source."""
+    n_dec = n_act = unresolved = 0
+    # a. options thesis decisions: OPTIONS_THESIS_DECISION events; position_guid → symbol via the version rows
+    ot = data / "cio" / "options_theses.jsonl"
+    if ot.exists():
+        pos_sym: dict[str, str] = {}
+        decs: list[dict] = []
+        with ot.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                et = r.get("event_type")
+                if et == "OPTIONS_THESIS_VERSION" and r.get("position_guid") and r.get("symbol"):
+                    pos_sym[r["position_guid"]] = str(r["symbol"]).upper()
+                elif et == "OPTIONS_THESIS_DECISION" and r.get("decision_guid"):
+                    decs.append(r)
+        for r in decs:
+            dg = f"DEC:{r['decision_guid']}"
+            pj.entity(dg, "DECISION", "DECISION", "options_theses", r["decision_guid"])
+            pj.envelope(dg, memory={"outcome": r.get("outcome"), "confidence": r.get("confidence"), "reviewed_pin": r.get("reviewed_pin"), "kind": "options_thesis_review"},
+                        history={"recorded_at": r.get("recorded_at"), "supersedes": r.get("supersedes")},
+                        lineage={"produced_by": "options_thesis_lifecycle", "position_guid": r.get("position_guid")},
+                        ownership={"writer": "scripts/options_thesis_lifecycle.py", "registry_row": "options_theses"},
+                        freshness={"as_of": r.get("recorded_at"), "state": "CURRENT"}, confidence={"basis": "DECLARED", "score": None})
+            sec = sec_for(pos_sym.get(r.get("position_guid")))
+            if sec:
+                pj.edge(dg, sec, "DECIDED_ON", "options_theses", r["decision_guid"], r.get("recorded_at"))
+            else:
+                unresolved += 1
+            if r.get("supersedes"):
+                pj.edge(dg, f"DEC:{r['supersedes']}", "SUPERSEDES", "options_theses", r["decision_guid"], r.get("recorded_at"))
+            n_dec += 1
+    # b. cio_decisions (Postgres) — read-only, opt-in (TRADEAI_GIR_DB_SOURCES=1: set in the systemd unit;
+    #    tests and ad-hoc dry runs never touch a database by accident)
+    try:
+        if str(os.environ.get("TRADEAI_GIR_DB_SOURCES", "0")).lower() not in ("1", "true", "on"):
+            raise RuntimeError("GIR_DB_SOURCES_OFF")
+        import db_adapter  # type: ignore
+        conn = db_adapter._get_conn()
+        with conn.cursor() as cur:
+            cur.execute("BEGIN READ ONLY")
+            cur.execute("SELECT decision_id, symbol, action, action_class, status, created_at, expires_at, confidence_calibrated "
+                        "FROM cio_decisions WHERE created_at > now() - interval '90 days' ORDER BY created_at DESC LIMIT 5000")
+            rows = cur.fetchall()
+        conn.rollback()
+        for did, sym, action, acls, status, created, expires, conf in rows:
+            dg = f"DEC:{did}"
+            pj.entity(dg, "DECISION", "DECISION", "cio_decisions", did)
+            pj.envelope(dg, memory={"action": action, "action_class": acls, "status": status, "kind": "cio_decision"},
+                        history={"created_at": created, "expires_at": expires},
+                        lineage={"produced_by": acls or "cio_decision_engine"}, ownership={"writer": "cio_decisions", "registry_row": "cio_decisions"},
+                        freshness={"as_of": created, "state": "CURRENT" if status in ("proposed", "approved", "open") else "STALE"},
+                        confidence={"basis": "CALIBRATED" if conf is not None else "UNKNOWN", "score": float(conf) if conf is not None else None})
+            sec = sec_for(sym)
+            if sec:
+                pj.edge(dg, sec, "DECIDED_ON", "cio_decisions", did, created)
+            else:
+                unresolved += 1
+            n_dec += 1
+        pj.counts["cio_decisions_rows"] = len(rows)
+    except Exception as exc:  # noqa: BLE001
+        pj.counts["cio_decisions_unavailable"] = type(exc).__name__
+    # c. action ledger: CIO_ACTION_CREATED → ACT:<id>; CAUSED_BY DEC / RUN; TRIGGERED SEC when a symbol is named
+    al = data / "cio" / "cio_action_ledger.jsonl"
+    if al.exists():
+        with al.open("r", encoding="utf-8") as fh:
+            for i, line in enumerate(fh):
+                if i >= 60_000:
+                    pj.counts["actions_capped_at"] = 60_000; break
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if r.get("event_type") != "CIO_ACTION_CREATED":
+                    continue
+                pl = r.get("payload") or {}
+                aid = pl.get("cio_action_id") or r.get("stream_id")
+                if not aid:
+                    continue
+                ag = f"ACT:{aid}"
+                pj.entity(ag, "DECISION", "ACTION", "cio_action_ledger", aid)
+                pj.envelope(ag, memory={"title": pl.get("title"), "status": pl.get("status"), "priority": pl.get("priority"), "domain": pl.get("domain")},
+                            history={"occurred_at": r.get("occurred_at")}, lineage={"produced_by": r.get("actor_id"), "origin_run_id": pl.get("origin_run_id")},
+                            ownership={"writer": "scripts/lib/cio_action_ledger.py", "registry_row": "cio_action_ledger"},
+                            freshness={"as_of": r.get("occurred_at"), "state": "CURRENT" if pl.get("status") == "OPEN" else "STALE"})
+                if pl.get("cio_decision_id"):
+                    pj.edge(ag, f"DEC:{pl['cio_decision_id']}", "CAUSED_BY", "cio_action_ledger", aid, r.get("occurred_at"))
+                if pl.get("origin_run_id"):
+                    pj.edge(ag, f"RUN:{pl['origin_run_id']}", "CAUSED_BY", "cio_action_ledger", aid, r.get("occurred_at"))
+                syms = list(pl.get("affected_symbols") or [])
+                if not syms and isinstance(pl.get("title"), str):
+                    tok = pl["title"].split()[-1] if pl["title"].split() else ""
+                    if tok.isalpha() and tok.isupper() and 1 <= len(tok) <= 5:
+                        syms = [tok]
+                for s in syms:
+                    sec = sec_for(s)
+                    if sec:
+                        pj.edge(ag, sec, "TRIGGERED", "cio_action_ledger", f"{aid}:{s}", r.get("occurred_at"))
+                n_act += 1
+    pj.counts["decisions_projected"] = n_dec; pj.counts["actions_projected"] = n_act; pj.counts["decision_symbol_unresolved"] = unresolved
+
+
 def _source_fingerprints(root: Path, env: dict) -> dict:
     """mtime+size of every source file — the incremental trigger (a bus consumer arrives with memory.delta in Wave 2)."""
     data = root / "data"
@@ -334,6 +443,8 @@ def _source_fingerprints(root: Path, env: dict) -> dict:
         "gir_projector_dirty": data / "runtime" / "gir_projector_dirty.json",
         "sec_filing_events": data / "cio" / "sec_filing_events.jsonl",
         "contradiction_verdicts": data / "cio" / "contradiction_verdicts.jsonl",
+        "options_theses": data / "cio" / "options_theses.jsonl",
+        "cio_action_ledger": data / "cio" / "cio_action_ledger.jsonl",
     }
     out = {}
     for k, p in srcs.items():

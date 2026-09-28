@@ -1,7 +1,7 @@
 {
   "schema": "DataSourceAuthority@v2",
   "authority": "READ_ONLY_ADVISORY",
-  "as_of": "2026-09-27T23:20:00-04:00",
+  "as_of": "2026-09-27T23:55:00-04:00",
   "_why": "One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.",
   "_rules": [
     "Every domain has exactly one writer. Anything else that writes the store is a defect.",
@@ -2213,7 +2213,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #TBD-W3T1; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-1",
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-1",
         "scope": "CognitiveCheckpoint@v1 / ResumeReceipt@v1 per agent (working + episodic memory); appended only by cognitive_checkpoint via the façade commit; no authority"
       },
       "store": {
@@ -2256,7 +2256,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #TBD-W3T1; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-2",
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-2",
         "scope": "LessonPromotion@v1 — the ONE queue from every lesson source into procedural memory; QUEUED by the CLI, PROMOTED/REFUTED/RETIRED only by an operator reply"
       },
       "store": {
@@ -2298,7 +2298,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #TBD-W3T1; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-3",
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-3",
         "scope": "ContradictionVerdict@v1 — paid-judge verdicts over research contradiction candidates; advisory rows; appended only by the adjudicator lane"
       },
       "store": {
@@ -2334,6 +2334,131 @@
         }
       ],
       "_writer_note": "Wave 3 O-W3-3. Spend: process cap $0.50/day (llm_process_registry) AND Tier-2 policy (TRADEAI_TIER2_*: $2/day, off-peak, deepseek) checked before every call. The candidate store keeps its writer (research_thesis_delta → research_contradiction)."
+    },
+    {
+      "domain": "agent_registry",
+      "class": "manual",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-27",
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 4 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 4 item O-W4-2",
+        "scope": "AgentRegistry@v1 — the ONE agent registry (canonical ids, aliases, lanes, bus events, model caller); edited by PR only; routing from it is SHADOW until TRADEAI_AGENT_REGISTRY_ROUTING=1"
+      },
+      "store": {
+        "file": "config/agent_registry.json"
+      },
+      "writer": "scripts/lib/agent_registry.py",
+      "cadence": "per PR",
+      "stale_after_hours": 8760,
+      "projection": null,
+      "required_fields": [
+        "agent_id",
+        "aliases",
+        "status"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Wave 4 O-W4-2: supersedes 12 hard-coded agent lists (config/agents.json, agents.yaml, agent_runtime*.json, cio_event_bus.AGENT_EVENT_ROUTING, persistent_agent_wake.KNOWN_AGENTS, …) — kept, never deleted; tests/test_wave4_unification.py fails when a hard-coded id is not an alias here. The file is edited by PR only; scripts/lib/agent_registry.py is its sole reader/owner (no runtime writer exists)."
+    },
+    {
+      "domain": "model_chooser_receipts",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-27",
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 4 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 4 item O-W4-3",
+        "scope": "ModelChoice@v1 receipts — what the ONE chooser would have picked vs what the caller picked (gate_and_generate, governed bridge); shadow by default"
+      },
+      "store": {
+        "file": "runtime/model_chooser_receipts.jsonl"
+      },
+      "writer": "scripts/lib/model_chooser.py",
+      "cadence": "per disagreeing LLM call",
+      "stale_after_hours": 48,
+      "projection": null,
+      "required_fields": [
+        "process_id",
+        "lane",
+        "used_lane",
+        "mode"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Wave 4 O-W4-3: TRADEAI_MODEL_CHOOSER=shadow|advise|enforce. The chooser only ever picks among a process's declared allowed_lanes; it never introduces a paid provider."
+    },
+    {
+      "domain": "supervisor_ladder_receipts",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-27",
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 4 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 4 item O-W4-5",
+        "scope": "SupervisorLadderReceipt@v1 (L4 would-page / paged, L5 proposals) and OrchestrationProposal@v1 (governance/orchestration_proposals.jsonl, live only); the L1–L3 ladder stays detect + record + enqueue"
+      },
+      "store": {
+        "file": "runtime/supervisor_ladder_receipts.jsonl"
+      },
+      "writer": "scripts/supervisor_breach_detector.py",
+      "cadence": "per detector run (3 min)",
+      "stale_after_hours": 1,
+      "projection": null,
+      "required_fields": [
+        "breach_id",
+        "lane_id",
+        "level",
+        "mode"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Wave 4 O-W4-5: L4 pages through telegram_alert (ops-exempt 'STOP HEALTH' signature, one per breach via alert_transition) and L5 writes a proposal ONLY with --ladder; the installed timer runs without it (shadow). Also fixes the L3 call (enqueue_escalations(policy, findings) with severity) that had silently never enqueued."
     }
   ]
 }
