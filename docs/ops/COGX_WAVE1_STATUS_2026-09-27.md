@@ -153,6 +153,12 @@ Operator ran `docs/ops/COGX_WAVE2_T3_T4_OPERATOR_HANDOFF_2026-09-27.md` 2026-09-
 
 Still open for the operator: flip 1 semantics (row is SHADOW); package items 7 (sudoers) and 9 (M2 cutover apply); LIVE flips for the four SHADOW write-path adapters after their receipts show sane classifications.
 
+## Waves 3–5 package SENT (2026-09-27 22:53 ET)
+
+`pkg-20260928-waves-3-5-cognition-unification-maturity-80f2` — 18 items (spec `docs/ops/COGX_WAVE3_5_PACKAGE_SPEC.json`), created in the live ledger, sent as two chunks (Telegram 54509 / 54511), SUBMITTED (ledger 31 rows, chain ok). Finding: the inline approve/deny buttons fail (HTTP 400) for this package id because `pkgapprove:<id>` is 68 bytes and Telegram caps callback data at 64 — the typed reply (`APPROVE <pkg> all`) is the approval route; a short-id alias for buttons is a Wave 3 fix on the callback handler. Building starts immediately in SHADOW; each item deploys under its own scope after the reply.
+
+Detector first cycle after tranche 4 (23:00 ET): 5 `MaterialChange` rows of kind `sec_filing` (ADBE, SPCX, CSWC ×2, GSIT — the high-severity filings on tracked names). `[VERIFIED]`
+
 ## What is NOT in Wave 1 yet (after the operator runbook)
 - The `memory.delta` bus consumer (Wave 2) — until then the projector is hourly-incremental by source fingerprint.
 - The operator steps in the runbook: credential rotation, roles + migration, merge + deploy, grants, lane install, first real runs.
