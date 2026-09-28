@@ -141,7 +141,13 @@ def test_queue_lane_is_ok_without_a_ledger(tmp_path):
 
 
 def test_lane_hint_names_the_cause(tmp_path):
-    import research_lane_health as rlh
+    # Two modules are named research_lane_health (scripts/ and scripts/lib/). When another test file
+    # in the same gate imports the lib copy first, the bare import resolves to a module without
+    # fix_hint (main-red 2026-09-28). Load the scripts/ copy by path so the test is order-independent.
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location("research_lane_health_scripts", ROOT / "scripts" / "research_lane_health.py")
+    rlh = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(rlh)
     hint = rlh.fix_hint({"lane": "cio-hermes-queue", "firing": ["failure_rate_24h:6/7"],
                          "dominant_class": "provider_error", "by_class": {"provider_error": 6}})
     assert "replays" in hint and "CAUSE NOT DIAGNOSED" not in hint

@@ -584,6 +584,11 @@ def find_undeclared(reg: dict[str, Any], found: dict[str, Any]) -> list[dict[str
         if sched.get("match"):
             declared.add(str(sched["match"]))
     baseline = set(reg.get("undeclared_baseline") or [])
+    # Dated inherited tranches (2026-09-28): lines installed on the host by other work with no
+    # lane row, recorded WITH provenance instead of growing the original baseline. Same contract:
+    # they are debt, they only shrink, and a line is removed once it is declared as a lane.
+    for tranche in reg.get("inherited_tranches") or []:
+        baseline.update(str(x) for x in (tranche.get("lines") or []))
 
     out: list[dict[str, Any]] = []
     for unit in found.get("systemd") or []:

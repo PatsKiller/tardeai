@@ -103,6 +103,10 @@ def main() -> int:
                 send_telegram(x["text"], bypass_router=True)
             sent = True
         except Exception as exc:  # noqa: BLE001
+            # C3 (no swallowed alarms): a failed reminder send is recorded on the durable ledger,
+            # not only on stderr — the NOTE rows below carry sent=False, this row carries WHY.
+            led.append({"event": "SEND_FAILED", "error": f"{type(exc).__name__}: {str(exc)[:200]}",
+                        "actions": len(actions), "at": now.isoformat()})
             print(f"send failed: {type(exc).__name__}: {exc}", file=sys.stderr)
     if (a.send or a.record) and actions:
         record(led, actions, sent=sent)
