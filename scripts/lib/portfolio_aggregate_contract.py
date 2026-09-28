@@ -214,8 +214,16 @@ def build_account_observations(
             obs, obs_source = fallback, "holdings.data_as_of"
 
         divergence = None
+        summary_stale = None
         if obs and summary_as_of and _obs_key(obs) != _obs_key(summary_as_of):
-            divergence = f"positions say {obs} ({obs_source}); account_summaries.as_of says {summary_as_of}"
+            # 2026-09-28: account_summaries.as_of is an UNMAINTAINED mirror (see the docstring). When it
+            # is merely OLDER than the maintained position rows that is staleness of the mirror, not two
+            # clocks disagreeing — it was rendered as "1 clock divergence" on the header every day.
+            # Only a summary NEWER than the positions is a real divergence worth the operator's eye.
+            if _obs_key(summary_as_of) < _obs_key(obs):
+                summary_stale = f"account_summaries.as_of {summary_as_of} predates positions {obs} ({obs_source}); mirror not maintained"
+            else:
+                divergence = f"positions say {obs} ({obs_source}); account_summaries.as_of says {summary_as_of}"
 
         value = _num(row.get("total_value")) or 0.0
         # An account holding nothing contributes nothing, and cannot date the
@@ -237,6 +245,7 @@ def build_account_observations(
                 "position_row_count": len(rows),
                 "summary_as_of": summary_as_of or None,
                 "observation_divergence": divergence,
+                "summary_as_of_stale": summary_stale,
                 "valuation_time": str(row.get("last_repriced") or "").strip(),
                 "reported_total_as_of": str(row.get("reported_total_as_of") or "").strip(),
                 "reported_total_value": row.get("reported_total_value"),

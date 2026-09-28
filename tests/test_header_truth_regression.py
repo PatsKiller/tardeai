@@ -155,12 +155,17 @@ def test_the_two_copies_of_the_position_clock_are_both_published(clock_aggregate
     assert row["position_observation_time"] == "2026-09-04"
     assert row["position_observation_source"] == "holdings.broker_position_as_of"
     assert row["summary_as_of"] == "2026-07-17"
-    assert row["observation_divergence"] is not None
-    assert "2026-09-04" in row["observation_divergence"]
-    assert "2026-07-17" in row["observation_divergence"]
+    # 2026-09-28: an account_summaries.as_of OLDER than the maintained position rows is the
+    # unmaintained mirror being stale, not two clocks disagreeing. Both copies are still published
+    # and named; the staleness is its own field and does NOT count as an observation divergence
+    # (it rendered as "1 clock divergence" on the header every day).
+    assert row["observation_divergence"] is None
+    assert row["summary_as_of_stale"] is not None
+    assert "2026-09-04" in row["summary_as_of_stale"]
+    assert "2026-07-17" in row["summary_as_of_stale"]
 
     reported = {d["account"] for d in clock_aggregate["observation_divergences"]}
-    assert "schwab_rollover_ira" in reported
+    assert "schwab_rollover_ira" not in reported
 
 
 def test_the_dominant_account_reports_every_clock_separately(clock_aggregate: dict) -> None:
@@ -400,10 +405,12 @@ def test_a_degraded_quote_aggregate_states_its_extent() -> None:
     """
     from lib.quote_selection_contract import project_quote_selection
 
+    # 2026-09-28: a mutual fund's cached NAV is its price, not a fallback — one NAV row among 19
+    # vendor-priced symbols is SELECTED with the NAV count stated; a real fallback row degrades.
     q = project_quote_selection(
         reprice_source="finviz_live",
         last_repriced="2026-09-04 15:00:02 ET",
-        source_counts={"finviz": 19, "price_cache_nav": 1},
+        source_counts={"finviz": 19, "yahoo_cache_fallback": 1},
         has_any_price=True,
     )
     assert q["status"] == "DEGRADED"
@@ -411,7 +418,14 @@ def test_a_degraded_quote_aggregate_states_its_extent() -> None:
     assert q["covered_symbols"] == 19
     assert q["degraded_symbol_count"] == 1
     assert q["coverage_pct"] == 95.0
-    assert q["symbols_by_source"] == {"finviz": 19, "price_cache_nav": 1}
+    assert q["symbols_by_source"] == {"finviz": 19, "yahoo_cache_fallback": 1}
+    nav = project_quote_selection(
+        reprice_source="finviz_live",
+        last_repriced="2026-09-04 15:00:02 ET",
+        source_counts={"finviz": 19, "price_cache_nav": 1},
+        has_any_price=True,
+    )
+    assert nav["status"] == "SELECTED" and nav["nav_marked_symbols"] == 1 and nav["coverage_pct"] == 100.0
     # The session is separable from the observation instant.
     assert q["session_date"] == "2026-09-04"
     assert q["selected_observation_time"] == "2026-09-04 15:00:02 ET"
@@ -421,7 +435,8 @@ def test_total_vendor_failure_does_not_read_like_one_stale_row() -> None:
     """The distinction the bare DEGRADED label could not make."""
     from lib.quote_selection_contract import project_quote_selection
 
-    one_bad = project_quote_selection(reprice_source="finviz_live", source_counts={"finviz": 19, "price_cache_nav": 1})
+    one_bad = project_quote_selection(reprice_source="finviz_live", source_counts={"finviz": 19, "yahoo_cache_fallback": 1})
+    # NAV-only with NOTHING vendor-priced is total vendor failure, not twenty fund marks.
     all_bad = project_quote_selection(reprice_source="finviz_live", source_counts={"price_cache_nav": 20})
     assert one_bad["status"] == all_bad["status"] == "DEGRADED"
     # Same verdict, and now plainly different situations.

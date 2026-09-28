@@ -5,10 +5,12 @@ deltas that could include reconciliation corrections (e.g. wrong share counts).
 This module aligns 1D with market day, flags outlier snapshot dates, and sanitizes
 drawdown series.
 """
+
 from __future__ import annotations
 
 import json
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +37,27 @@ def _f(val: Any, default: float = 0.0) -> float:
         return default
 
 
+def _finviz_pcts(portfolio: dict) -> dict[str, float]:
+    given = portfolio.get("_finviz_day_pct")
+    if isinstance(given, dict):
+        return {str(k).upper(): float(v) for k, v in given.items() if v is not None}
+    path = Path(__file__).resolve().parents[1] / "data" / "portfolios" / "state" / "finviz_quote_cache.json"
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    out: dict[str, float] = {}
+    if not isinstance(raw, dict):
+        return out
+    for key, row in raw.items():
+        if isinstance(row, dict) and row.get("change_pct") is not None:
+            try:
+                out[str(key).upper()] = float(row["change_pct"])
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
 def _day_pct(change: float, end_value: float) -> float:
     base = end_value - change
     return (change / base * 100) if base else 0.0
@@ -47,23 +70,30 @@ def portfolio_market_day(portfolio: dict | None) -> dict | None:
     totals = portfolio.get("portfolio_totals") or {}
     current = _f(totals.get("total_value"))
     if current <= 0:
-        current = sum(
-            _f(h.get("market_value"))
-            for h in (portfolio.get("holdings") or [])
-            if not h.get("is_loan")
-        )
+        current = sum(_f(h.get("market_value")) for h in (portfolio.get("holdings") or []) if not h.get("is_loan"))
     if current <= 0:
         return None
 
-    change = totals.get("day_change")
-    pct = totals.get("day_change_pct")
-    if change is None:
-        change = sum(
-            _f(h.get("day_change"))
-            for h in (portfolio.get("holdings") or [])
-            if not h.get("is_loan")
+    holdings = [h for h in (portfolio.get("holdings") or []) if not h.get("is_loan") and not h.get("is_cash")]
+    change = None
+    if holdings:
+        try:
+            from lib.book_map_rows import holding_day_dollars
+        except ImportError:
+            from scripts.lib.book_map_rows import holding_day_dollars
+        today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+        pcts = _finviz_pcts(portfolio)
+        change = round(
+            sum(
+                holding_day_dollars(h, today=today, finviz_day_pct=pcts.get(str(h.get("symbol") or "").upper()))[0]
+                for h in holdings
+            ),
+            2,
         )
+    if change is None:
+        change = totals.get("day_change")
     change = round(_f(change), 2)
+    pct = None if holdings else totals.get("day_change_pct")
     if pct is None:
         pct = round(_day_pct(change, current), 4)
     else:
@@ -89,12 +119,24 @@ def account_market_days(portfolio: dict | None) -> dict[str, dict]:
 
     by_acct_change: dict[str, float] = {}
     by_acct_value: dict[str, float] = {}
+    by_acct_resolved: dict[str, float] = {}
+    try:
+        from lib.book_map_rows import holding_day_dollars
+    except ImportError:
+        from scripts.lib.book_map_rows import holding_day_dollars
+    today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    pcts = _finviz_pcts(portfolio)
     for h in portfolio.get("holdings") or []:
         if h.get("is_loan"):
             continue
         acct = str(h.get("account") or "unknown")
-        by_acct_change[acct] = by_acct_change.get(acct, 0.0) + _f(h.get("day_change"))
         by_acct_value[acct] = by_acct_value.get(acct, 0.0) + _f(h.get("market_value"))
+        if h.get("is_cash"):
+            continue
+        sym = str(h.get("symbol") or "").upper()
+        dollars, _basis = holding_day_dollars(h, today=today, finviz_day_pct=pcts.get(sym))
+        by_acct_resolved[acct] = by_acct_resolved.get(acct, 0.0) + dollars
+        by_acct_change[acct] = by_acct_change.get(acct, 0.0) + _f(h.get("day_change"))
 
     accounts = set(summaries) | set(by_acct_value)
     for acct in accounts:
@@ -102,8 +144,10 @@ def account_market_days(portfolio: dict | None) -> dict[str, dict]:
         cv = _f(summ.get("total_value")) or by_acct_value.get(acct, 0.0)
         if cv <= 0:
             continue
-        chg = summ.get("day_change")
-        pct = summ.get("day_change_pct")
+        chg = by_acct_resolved.get(acct)
+        pct = None
+        if chg is None:
+            chg = summ.get("day_change")
         if chg is None:
             chg = by_acct_change.get(acct, 0.0)
         chg = round(_f(chg), 2)
@@ -273,13 +317,15 @@ def sanitize_snapshot_totals(
             continue
         trim = corrections.get(d, 0.0)
         val = round(raw - trim, 2)
-        points.append({
-            "date": d,
-            "value": val,
-            "raw_value": raw,
-            "phantom_trim": trim,
-            "corrected": trim > 0,
-        })
+        points.append(
+            {
+                "date": d,
+                "value": val,
+                "raw_value": raw,
+                "phantom_trim": trim,
+                "corrected": trim > 0,
+            }
+        )
     return points
 
 
@@ -298,13 +344,15 @@ def compute_drawdown_series(
         if v > peak:
             peak = v
         dd = round((v - peak) / peak * 100, 2) if peak > 0 else 0.0
-        out.append({
-            "date": pt["date"],
-            "value": round(v, 0),
-            "raw_value": round(_f(pt.get("raw_value")), 0),
-            "drawdown": dd,
-            "corrected": bool(pt.get("corrected")),
-        })
+        out.append(
+            {
+                "date": pt["date"],
+                "value": round(v, 0),
+                "raw_value": round(_f(pt.get("raw_value")), 0),
+                "drawdown": dd,
+                "corrected": bool(pt.get("corrected")),
+            }
+        )
     return out
 
 
@@ -385,9 +433,7 @@ def holding_write_sanity_issues(
             continue
         sym = nh.get("symbol") or key.split(":")[0]
         acct = nh.get("account") or ""
-        issues.append(
-            f"{sym}@{acct}: MV {mv0:,.0f}→{mv1:,.0f} ({drift:.1f}%) without trade"
-        )
+        issues.append(f"{sym}@{acct}: MV {mv0:,.0f}→{mv1:,.0f} ({drift:.1f}%) without trade")
     return issues
 
 
