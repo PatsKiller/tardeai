@@ -3051,11 +3051,17 @@ def process_jobs(limit: int = 10):
         try:
             from lib import intelligence_client as _ic
             _ic_ctx = _ic.shadow_open(f"watchlist-agent-{agent}", [str(symbol or "")], "RESEARCH", agent_id=str(agent),
-                                      question={"text": str(note or request_type or ""), "question_class": "thesis", "horizon": str(request_type or "job")})
+                                      question={"text": str(note or request_type or ""), "question_class": "thesis", "horizon": str(request_type or "job")},
+                                      surface="watchlists")
         except Exception:  # noqa: BLE001
             _ic_ctx = None
         # Build context and prompt
         context = _get_context(conn, symbol)
+        try:  # Wave 3 O-W3-4: under ADVISORY+ the agent SEES memory as a named section (never merged into evidence)
+            if _ic_ctx and _ic_ctx.get("advisory_block"):
+                context = dict(context); context["text"] = str(context.get("text") or "") + "\n\n" + _ic_ctx["advisory_block"]
+        except Exception:  # noqa: BLE001
+            pass
 
         # Maria: ONE governed FAST call (call-count contract). Two-pass retained but unused.
         if agent == "maria":

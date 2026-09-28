@@ -2689,6 +2689,25 @@
         "path": "data/runtime/sec_filings_feed_latest.json"
       },
       "note": "Wave 2 item 5 (02 §2 Market class): free EDGAR submissions feed → FilingEvent@v1 (append-only JSONL) → EVENT nodes + AFFECTED_BY edges in the GIR (projector) and MaterialChange kind sec_filing via the detector (the Market owner). One request per symbol per run, fair-access User-Agent."
+    },
+    {
+      "lane_id": "contradiction-adjudicator",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-contradiction-adjudicator.timer"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-09-27T23:20:00-04:00",
+      "state_reason": "unit files ship in config/systemd/user/; installation + enable is the pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 service grant (item O-W3-3); flips to ACTIVE in the closeout PR once the timer is enabled from CURRENT",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/contradiction_adjudicator.py on the Wave 3 tranche 1 branch; data/cio/contradiction_verdicts.jsonl does not exist in persistent-state, so no verdict has ever been written",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/contradiction_adjudicator_latest.json"
+      },
+      "note": "Wave 3 O-W3-3 (07 §5, 03 §6): paid judge (deepseek-flash FAST, process contradiction_adjudicator $0.50/day + Tier-2 policy $2/day off-peak) over ResearchContradictionCandidate@v1 → ContradictionVerdict@v1; verdicts close pairs in the façade and the GIR envelope. 129,547 candidates were all CANDIDATE when this lane was written."
     }
   ],
   "undeclared_baseline": [

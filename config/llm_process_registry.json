@@ -1206,6 +1206,34 @@
       "registered_by": "platform-due-diligence-20260927",
       "registered_at": "2026-09-27T16:30:00Z",
       "notes": "Operator 2026-09-27 approved turning it back on. Hard cap $0.25/day and 150 calls/day; the global LLM_GLOBAL_DAILY_USD_CAP still binds. The shim now logs each refusal instead of returning an empty string silently."
+    },
+    {
+      "id": "contradiction_adjudicator",
+      "name": "Contradiction Adjudicator (Wave 3 paid judge)",
+      "category": "Research",
+      "lane_policy": "deepseek_only",
+      "default_mode": "automated",
+      "description": "Wave 3 item O-W3-3 (pkg-20260928-waves-3-5-cognition-unification-maturity-80f2): adjudicates ResearchContradictionCandidate@v1 pairs into ContradictionVerdict@v1 (LEFT | RIGHT | BOTH_STALE | NOT_A_CONTRADICTION | UNRESOLVED) with a rationale and the evidence refs it relied on. Advisory rows only; the thesis writer stays research_thesis_delta. Runs under the Tier-2 paid-judge policy (tiered_validation.tier2_denial: $2/day cap, off-peak only) in addition to this cap. No tools. No fallback.",
+      "allowed_lanes": [
+        "fast",
+        "deepseek-flash"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 6000,
+      "max_output_tokens": 600,
+      "daily_soft_cap": 60,
+      "daily_cost_cap_usd": 0.5,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true,
+      "dedupe_policy": "request_id_only",
+      "circuit_breaker": true,
+      "registered_by": "cogx-wave3-t1",
+      "registered_at": "2026-09-28T03:05:00Z",
+      "notes": "11 \u00a7B-1: \u2264 $0.50/day inside the $2 Tier-2 cap. ~4k in \u00d7 ~300 out per pair \u2248 $0.001; the lane judges at most 60 pairs/day, newest subjects first (research_contradiction_consumer.digest)."
     }
   ],
   "default_deepseek_policy": "FAST",

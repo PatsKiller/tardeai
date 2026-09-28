@@ -984,6 +984,7 @@ GATES = [
             "tests/test_indicator_engine_rate_limit.py",
             "tests/test_research_write_path_and_fanout.py",
             "tests/test_sec_filings_feed.py",
+            "tests/test_wave3_cognition.py",
         ],
     ),
     (

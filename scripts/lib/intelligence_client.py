@@ -204,6 +204,8 @@ class Loaders:
     research_objects: Callable[[str], list[dict]] | None = None      # symbol -> ResearchObject rows (window)
     hermes_completed: Callable[[str], dict | None] | None = None     # fingerprint -> completed request/result
     hermes_results: Callable[[str], list[dict]] | None = None        # symbol -> completed result rows (window)
+    lessons: Callable[[str], list[dict]] | None = None             # symbol -> PROMOTED procedures (Wave 3 O-W3-2)
+    verdict_ids: Callable[[], set] | None = None                   # adjudicated candidate ids (Wave 3 O-W3-3)
     now: Callable[[], _dt.datetime] = field(default=_now)
     release_sha: str | None = None
 
@@ -280,13 +282,40 @@ def default_loaders(root: Path | None = None, env: dict | None = None) -> Loader
         store = CIOThesisStore(event_path=cio / "cio_theses.jsonl", projection_path=cio / "cio_theses_projection.json")
         return store.get_current(symbol_thesis_id(symbol))
 
+    _verdict_cache: dict = {}
+
+    def verdict_ids() -> set:
+        """Candidate ids with a verdict other than UNRESOLVED (contradiction_verdicts.jsonl); cached per loaders."""
+        if "ids" in _verdict_cache:
+            return _verdict_cache["ids"]
+        ids: set = set()
+        vp = _cio_dir(root, env) / "contradiction_verdicts.jsonl"
+        try:
+            with vp.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        r = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if r.get("candidate_id") and str(r.get("verdict") or "UNRESOLVED") != "UNRESOLVED":
+                        ids.add(r["candidate_id"])
+        except OSError:
+            pass
+        _verdict_cache["ids"] = ids
+        return ids
+
+    def lessons(symbol: str) -> list[dict]:
+        return _lib("lesson_promotion").promoted(root, env, symbol=symbol)
+
     def contradictions(symbol: str) -> list[dict]:
         # Streams the candidates file; does not load 128k rows into memory (consumer.load_candidates does).
+        # Wave 3: adjudicated pairs (a verdict other than UNRESOLVED) are no longer open.
         path = _cio_dir(root, env) / "research_contradiction_candidates.jsonl"
         sym = symbol.upper()
         out: list[dict] = []
         if not path.exists():
             return out
+        judged = verdict_ids()
         max_lines = int(env.get("TRADEAI_CONTRADICTION_SCAN_MAX_LINES", "400000"))
         with path.open("r", encoding="utf-8") as fh:
             for i, line in enumerate(fh):
@@ -301,7 +330,7 @@ def default_loaders(root: Path | None = None, env: dict | None = None) -> Loader
                 if row.get("schema") != "ResearchContradictionCandidate@v1":
                     continue
                 if str(row.get("left_symbol", "")).upper() == sym or str(row.get("right_symbol", "")).upper() == sym:
-                    if row.get("status", "CANDIDATE") == "CANDIDATE":
+                    if row.get("status", "CANDIDATE") == "CANDIDATE" and row.get("candidate_id") not in judged:
                         out.append(row)
         return out
 
@@ -333,7 +362,7 @@ def default_loaders(root: Path | None = None, env: dict | None = None) -> Loader
 
     return Loaders(resolve_subject=resolve_subject, resolve_guid=resolve_guid, facts=facts, instrument=instrument, thesis=thesis,
                    contradictions=contradictions, research_objects=research_objects,
-                   hermes_completed=hermes_completed, hermes_results=hermes_results,
+                   hermes_completed=hermes_completed, hermes_results=hermes_results, lessons=lessons, verdict_ids=verdict_ids,
                    release_sha=env.get("TRADEAI_RELEASE_SHA"))
 
 
@@ -456,8 +485,18 @@ def open_context(actor: dict, purpose: str, subjects: Iterable[str], *, as_of: s
             res = loaders.facts(symbols, guids) or {}
             rows = list(res.get("supporting") or res.get("records") or []) + list(res.get("counter_memory") or res.get("counter") or [])
             conflicts = {c.get("memory_id") for c in (res.get("conflicts") or []) if isinstance(c, dict)}
+            # Wave 3 finding (first ADVISORY render, V): the provider search returns nearest memories, not the
+            # subject's — XLB / XAR / DELL / BOOK case summaries came back for V. A fact that names neither a
+            # requested symbol nor a requested GUID is not the subject's fact; it is counted, not carried.
+            want_syms = {str(s).upper() for s in symbols}
+            want_guids = {str(g).split(":", 1)[-1] for g in guids if g}
+            off_subject = 0
             for r in rows:
                 if not isinstance(r, dict):
+                    continue
+                r_syms = {str(s).upper() for s in (r.get("symbols") or [])}
+                if (r_syms or r.get("subject_guid")) and not (r_syms & want_syms) and str(r.get("subject_guid") or "") not in want_guids:
+                    off_subject += 1
                     continue
                 age = _age_hours(r.get("as_of") or r.get("created_at"), now)
                 exp = _parse_ts(r.get("expires_at"))
@@ -472,6 +511,7 @@ def open_context(actor: dict, purpose: str, subjects: Iterable[str], *, as_of: s
                     "retrieval_status": res.get("retrieval_status"),
                 })
             ctx["fact_ids"] = [f["fact_id"] for f in ctx["facts"] if f.get("fact_id")]
+            ctx["facts_off_subject"] = off_subject
         except Exception as exc:  # noqa: BLE001
             failed_classes.append("facts"); degraded.append(f"FACTS_UNAVAILABLE:{type(exc).__name__}")
 
@@ -531,6 +571,18 @@ def open_context(actor: dict, purpose: str, subjects: Iterable[str], *, as_of: s
                 ctx["open_contradictions_truncated"] = True
         except Exception as exc:  # noqa: BLE001
             failed_classes.append("contradictions"); degraded.append(f"CONTRADICTIONS_UNAVAILABLE:{type(exc).__name__}")
+
+    # lessons (Wave 3 O-W3-2): PROMOTED procedures only; a machine-ratified KB row is not one. Fail-soft.
+    if symbols and loaders.lessons is not None:
+        try:
+            seen_l: set = set()
+            for sym in symbols:
+                for l in loaders.lessons(sym) or []:
+                    if l.get("procedure_id") and l["procedure_id"] not in seen_l:
+                        seen_l.add(l["procedure_id"]); ctx["lessons"].append(l)
+            ctx["lessons_state"] = "PROMOTED_PRESENT" if ctx["lessons"] else "NONE_PROMOTED"
+        except Exception as exc:  # noqa: BLE001
+            degraded.append(f"LESSONS_UNAVAILABLE:{type(exc).__name__}")
 
     ctx["failed_classes"] = failed_classes
     ctx["degraded"] = bool(degraded)
@@ -768,8 +820,14 @@ def commit(ctx: dict, outcome: dict, *, deltas: Iterable[dict] = (), confidence_
     hits = _scan_behavior(payload)
     if hits:
         raise BehaviorWriteRefused(f"commit named behaviour fields {hits}; MBI_BEHAVIOR = 0")
-    infl = {"consulted": bool(ctx.get("facts") or ctx.get("beliefs") or ctx.get("thesis")),
+    infl = {"consulted": bool(ctx.get("facts") or ctx.get("beliefs") or ctx.get("thesis") or ctx.get("lessons")),
             "changed_decision": False, "mode": ctx.get("mode", "SHADOW")}
+    if ctx.get("surface"):  # Wave 3 O-W3-4: the influence ladder per surface (08 §2–§4)
+        try:
+            infl.update(_lib("memory_influence").influence_for(ctx, str(ctx["surface"]), rendered=bool(ctx.get("advisory_rendered")), env=env,
+                                                               changed_decision=bool((influence or {}).get("changed_decision"))))
+        except Exception:  # noqa: BLE001
+            pass
     if influence:
         infl.update({k: influence[k] for k in ("consulted", "changed_decision", "mode") if k in influence})
     row = {
@@ -788,6 +846,9 @@ def commit(ctx: dict, outcome: dict, *, deltas: Iterable[dict] = (), confidence_
         # bus never saw one. Monitors stay silent.
         if deltas or str(ctx.get("purpose") or "").upper() != "MONITOR":
             _emit_memory_delta(ctx, row, env)
+        # Wave 3 O-W3-1: every non-monitor commit leaves a CognitiveCheckpoint@v1 (working + episodic layer).
+        if str(ctx.get("purpose") or "").upper() != "MONITOR":
+            _auto_checkpoint(ctx, outcome, root, env)
     ctx["committed_at"] = row["committed_at"]
     ctx["influence"] = infl
     return row
@@ -800,7 +861,8 @@ def commit(ctx: dict, outcome: dict, *, deltas: Iterable[dict] = (), confidence_
 # ─────────────────────────────────────────────────────────────────────────────
 
 def shadow_open(lane_id: str, subjects: Iterable[str], purpose: str = "RESEARCH", *, agent_id: str | None = None,
-                question: dict | None = None, root: Path | None = None, env: dict | None = None) -> dict | None:
+                question: dict | None = None, surface: str | None = None, root: Path | None = None,
+                env: dict | None = None) -> dict | None:
     """open_context in SHADOW and, when a question is given, observe the ladder as the caller's own
     generation (receipt generated=True, reason SHADOW_CALLER). Returns the context or None."""
     try:
@@ -815,6 +877,28 @@ def shadow_open(lane_id: str, subjects: Iterable[str], purpose: str = "RESEARCH"
             mode = "SHADOW"
         try:
             ctx = open_context({"lane_id": lane_id, "agent_id": agent_id}, purpose, subs, mode=mode, root=root, env=env)
+            if question:
+                ctx["question"] = dict(question)
+            if surface:  # Wave 3 O-W3-4: the surface's influence mode decides whether the model SEES memory
+                ctx["surface"] = surface
+                try:
+                    mi = _lib("memory_influence")
+                    ctx["influence_mode"] = mi.mode_for(surface, env)
+                    ctx["advisory_block"] = mi.render(surface, ctx, env)
+                    ctx["advisory_rendered"] = bool(ctx["advisory_block"])
+                    ctx["advisory_would_render"] = bool(mi.advisory_block(ctx))
+                except Exception:  # noqa: BLE001
+                    ctx["advisory_block"] = ""; ctx["advisory_rendered"] = False
+            try:  # Wave 3 O-W3-1: thought continuity — the last checkpoint for this agent is attached (no authority)
+                ck = _lib("cognitive_checkpoint")
+                if agent_id:
+                    res = ck.restore(str(agent_id), lane_id=lane_id, root=root, env=env, write_receipt=False)
+                    if res:
+                        ctx["resumed_from"] = (res.get("checkpoint") or {}).get("checkpoint_id")
+                        ctx["resume"] = {"next_action": res.get("next_action"), "waiting_open": len(res.get("waiting_open") or []),
+                                         "commitments_open": len(res.get("commitments_open") or [])}
+            except Exception:  # noqa: BLE001
+                pass
         except MemoryUnavailable:
             if mode == "ENFORCED":
                 raise
@@ -878,6 +962,30 @@ def shadow_commit(ctx: dict | None, outcome: dict, *, root: Path | None = None, 
     finally:
         if _CURRENT_CTX.get() is ctx:
             set_current_context(None)
+
+
+def _auto_checkpoint(ctx: dict, outcome: dict, root: Path | None, env: dict) -> None:
+    """Minimal checkpoint from what the context knows; agents that pass richer cognitive fields via
+    ctx["checkpoint"] (considered / waiting_on / next_action / intent) get them recorded. Fail-soft."""
+    try:
+        ck = _lib("cognitive_checkpoint")
+        actor = ctx.get("actor") or {}
+        agent = actor.get("agent_id") or actor.get("lane_id") or "unknown"
+        extra = ctx.get("checkpoint") if isinstance(ctx.get("checkpoint"), dict) else {}
+        ref = str(outcome.get("ref") or ctx.get("context_id") or "")
+        kind = str(outcome.get("kind") or "").upper()
+        task_ref = extra.get("task_ref") or ("WAKE:" + ref if kind == "DECIDED" and ref else ("RUN:" + ref if kind == "RESEARCHED" and ref else "CTX:" + ref))
+        q = ctx.get("question") if isinstance(ctx.get("question"), dict) else {}
+        ck.write(str(agent), lane_id=actor.get("lane_id"), task_ref=task_ref,
+                 subjects=[s.get("guid") or s.get("symbol") for s in ctx.get("subjects") or [] if isinstance(s, dict)],
+                 context_id=ctx.get("context_id"), intent=extra.get("intent") or {"purpose": ctx.get("purpose"), "question": q.get("text")},
+                 considered=extra.get("considered") or [], waiting_on=extra.get("waiting_on") or [],
+                 commitments_open=extra.get("commitments_open") or [], next_action=extra.get("next_action"),
+                 provisional_view=extra.get("provisional_view") or (outcome.get("ref") if kind in ("ADVISED", "DECIDED") else None),
+                 resumed_from=ctx.get("resumed_from"), release_sha=actor.get("release_sha"), boot_id=actor.get("boot_id"),
+                 root=root, env=env)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def _emit_memory_delta(ctx: dict, row: dict, env: dict) -> None:

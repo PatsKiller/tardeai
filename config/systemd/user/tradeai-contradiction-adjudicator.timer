@@ -1,0 +1,11 @@
+[Unit]
+Description=Trade AI contradiction adjudicator daily 19:30 local (inside the paid-work window; DeepSeek off-peak)
+
+[Timer]
+OnCalendar=*-*-* 19:30:00
+AccuracySec=5min
+Persistent=false
+Unit=tradeai-contradiction-adjudicator.service
+
+[Install]
+WantedBy=timers.target

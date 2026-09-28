@@ -181,7 +181,10 @@ class HermesWorker:
             _q0 = _qs[0] if _qs and isinstance(_qs[0], dict) else {}
             _ic_ctx = _ic.shadow_open("hermes-cio-worker", [str(request.get("symbol") or (request.get("subject") or {}).get("symbol") or "")],
                                       "RESEARCH", agent_id=self.worker_id,
-                                      question={"text": _q0.get("text") or "", "question_class": "thesis", "fingerprint": request.get("fingerprint")})
+                                      question={"text": _q0.get("text") or "", "question_class": "thesis", "fingerprint": request.get("fingerprint")},
+                                      surface="research")
+            if _ic_ctx and _ic_ctx.get("advisory_block") and isinstance(request.get("prompt_context"), dict):
+                request["prompt_context"]["memory_advisory"] = _ic_ctx["advisory_block"]  # Wave 3 O-W3-4 (ADVISORY+ only)
         except Exception:  # noqa: BLE001
             _ic_ctx = None
         t0 = time.time()
