@@ -2703,6 +2703,13 @@ GATES = [
         ["tests/test_ui_metric_guide.py", "tests/test_ui_insight.py"],
     ),
     (
+        # 2026-09-28: the lifecycle script self-deadlocked against the crontab's own flock
+        # (57 skipped passes, every options thesis stuck at CREATED). An ancestor's lock is
+        # inherited from /proc/self/fd, a foreign holder is still refused.
+        "options_lifecycle_inherited_lock_20260928",
+        ["tests/test_lifecycle_inherited_lock_20260928.py"],
+    ),
+    (
         # Reviewer 2026-09-28: combined same-symbol exposure includes the shares held (by account),
         # reports options-only / shares / whole-position P/L per row and groups rows by expiration;
         # the earnings gate blocks debit spreads and long puts and names its trigger.
