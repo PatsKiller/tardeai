@@ -47,13 +47,20 @@ def governance_dir(root: Path | None = None, env: dict | None = None) -> Path:
         return Path(env["TRADEAI_GOVERNANCE_DIR"])
     if env.get("TRADEAI_STATE_ROOT"):
         return Path(env["TRADEAI_STATE_ROOT"]) / "data" / "governance"
-    try:
-        from canonical_store_registry import production_state_root  # type: ignore
-        p = Path(production_state_root())
-        if p.exists():
-            return p / "data" / "governance"
-    except Exception:  # noqa: BLE001
-        pass
+    for modname in ("canonical_store_registry", "scripts.lib.canonical_store_registry", "lib.canonical_store_registry"):
+        try:
+            mod = __import__(modname, fromlist=["production_state_root"])
+            p = Path(mod.production_state_root())
+            if p.exists():
+                return p / "data" / "governance"
+            break
+        except Exception:  # noqa: BLE001 — import shape differs per entrypoint; fall through
+            continue
+    # Last resort: the well-known persistent-state root (the same fallback lane_registry.state_root uses).
+    # Found 2026-09-27: the CLI's import order made the registry import fail and the ledger landed in the release.
+    well_known = Path.home() / "trade-ai-releases" / "persistent-state"
+    if well_known.exists():
+        return well_known / "data" / "governance"
     base = Path(root) if root else Path(env.get("TRADEAI_ROOT") or Path.cwd())
     return base / "data" / "governance"
 

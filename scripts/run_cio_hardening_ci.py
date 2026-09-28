@@ -978,6 +978,7 @@ GATES = [
             "tests/test_approval_package_ledger.py",
             "tests/test_gir_projector_and_breach_detector.py",
             "tests/test_approval_package_reminder.py",
+            "tests/test_memory_compliance.py",
         ],
     ),
     (
@@ -2668,6 +2669,13 @@ GATES = [
         "options_order_authorization_20260927",
         ["tests/test_options_order_authorization_20260927.py",
          "tests/test_options_broker_gates_20260927.py"],
+    ),
+    (
+        # 2026-09-27 -- protective puts / covered calls reconcile held shares and cost basis to
+        # the holdings snapshot of record at preflight (fail closed on stale, missing, short,
+        # changed); every CIO-packet yield names its denominator.
+        "options_hedge_recon_yield_labels_20260927",
+        ["tests/test_options_hedge_recon_yield_labels_20260927.py"],
     ),
     (
         # 2026-09-27 -- options order gates (operator work order, PR 3): the submit-mode risk

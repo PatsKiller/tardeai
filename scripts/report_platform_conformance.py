@@ -200,9 +200,26 @@ def main() -> int:
     print(json.dumps(head, indent=1))
     for s in rep["silos"]:
         print(f"{s['state']:<14} {s['silo_id']:<24} lanes={s['lanes']:<3} active={s['active_lanes']:<3} score={s['score']} unmeasured={','.join(s['unmeasured'])}")
+    # MemoryCompliance@v1 (01 §6) is computed by this same lane and written beside the conformance report.
+    try:
+        import memory_compliance  # type: ignore
+        import supervisor_heartbeat as _hb  # type: ignore
+        cio_dir = Path(os.environ.get("TRADEAI_CIO_DIR") or root / "data" / "cio")
+        mc = memory_compliance.build(
+            contexts_path=Path(os.environ.get("TRADEAI_MEMORY_CONTEXTS_PATH") or cio_dir / "memory_contexts.jsonl"),
+            receipts_path=Path(os.environ.get("TRADEAI_RETRIEVAL_RECEIPTS_PATH") or cio_dir / "retrieval_receipts.jsonl"),
+            heartbeats=_hb.read_all(root=root), ring1_baseline=_load_json(root / "config" / "memory_chokepoint_baseline.json", {}),
+            now=_dt.datetime.now(_dt.timezone.utc))
+        print(json.dumps({"memory_compliance": {k: mc["totals"][k] for k in ("contexts_opened", "contexts_committed", "retrieval_receipts", "lanes_with_contexts", "duplicate_generation_shadow")}}))
+    except Exception as exc:  # noqa: BLE001
+        mc = {"schema": "MemoryCompliance@v1", "error": f"{type(exc).__name__}: {exc}"[:200]}
     if a.write:
         from approval_package import governance_dir  # type: ignore
         out = Path(a.out) if a.out else governance_dir(root) / "platform_conformance_latest.json"
+        mcp = out.parent / "memory_compliance_latest.json"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        tmpm = mcp.with_suffix(".json.tmp"); tmpm.write_text(json.dumps(mc, indent=1, default=str) + "\n", encoding="utf-8"); os.replace(tmpm, mcp)
+        print(f"wrote {mcp}")
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(".json.tmp"); tmp.write_text(json.dumps(rep, indent=1) + "\n", encoding="utf-8"); os.replace(tmp, out)
         print(f"wrote {out}")

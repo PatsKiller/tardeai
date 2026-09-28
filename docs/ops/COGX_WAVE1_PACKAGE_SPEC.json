@@ -1,0 +1,176 @@
+{
+ "package_id": "pkg-20260927-cogx-w1-d9e1",
+ "campaign": "cognitive-transformation-20260927",
+ "wave": "Wave 1 · Foundations",
+ "summary": "Wave 1 of the cognitive transformation package (PR #1304): façade in shadow, Ring 1 linter, intelligence schema, heartbeat/SLA/conformance v0, approval ledger, projector, breach detector.",
+ "pr": 1305,
+ "sha": "ab37b9e1efc0b5fd1fb34433a0e19e663e9a486c",
+ "reviews": {
+  "architecture": "docs/architecture/cognitive_transformation_20260927/ (PROPOSED, PR #1304)",
+  "infrastructure": "migrations/2026_09_27_intelligence_v1.sql lab proof (PR #1305)",
+  "security": "11 §1.2 S-1..S-4 (PR #1304)"
+ },
+ "items": [
+  {
+   "item_id": "O-1",
+   "category": "OPERATOR",
+   "title": "Adopt the cognitive transformation package as the active roadmap",
+   "why": "supersedes 09-27 §12 waves 1–5",
+   "rule": "AGENTS §22 (a blueprint is not a grant)",
+   "rollback": "revert the header diffs on PR #1304",
+   "scopes_needed": []
+  },
+  {
+   "item_id": "O-2a",
+   "category": "OPERATOR",
+   "title": "lane platform-conformance-audit, nightly 02:30 (cron)",
+   "why": "05 §4",
+   "rule": "AGENTS §17 new cron",
+   "rollback": "disable the crontab line",
+   "scopes_needed": [
+    "cron"
+   ]
+  },
+  {
+   "item_id": "O-2b",
+   "category": "OPERATOR",
+   "title": "lane supervisor-breach-detector, every 2 min (systemd)",
+   "why": "06 §5",
+   "rule": "AGENTS §17 new systemd entry",
+   "rollback": "systemctl --user disable --now the timer",
+   "scopes_needed": [
+    "service"
+   ]
+  },
+  {
+   "item_id": "O-2c",
+   "category": "OPERATOR",
+   "title": "lane gir-projector, hourly incremental (systemd)",
+   "why": "02 §5",
+   "rule": "AGENTS §17 new systemd entry",
+   "rollback": "systemctl --user disable --now the timer",
+   "scopes_needed": [
+    "service"
+   ]
+  },
+  {
+   "item_id": "O-2d",
+   "category": "OPERATOR",
+   "title": "lane approval-package-reminder, hourly (cron)",
+   "why": "13 §6",
+   "rule": "AGENTS §17 new cron",
+   "rollback": "disable the crontab line",
+   "scopes_needed": [
+    "cron"
+   ]
+  },
+  {
+   "item_id": "O-3a",
+   "category": "OPERATOR",
+   "title": "writer: intelligence_client façade → consumption receipts + agent checkpoints",
+   "why": "01 §3",
+   "rule": "AGENTS §17 + DataSourceAuthority@v2 row",
+   "rollback": "DSA row → REVOKED; façade reads only",
+   "scopes_needed": []
+  },
+  {
+   "item_id": "O-3b",
+   "category": "OPERATOR",
+   "title": "writer: GIR projector → schema intelligence (projection only, zero authority)",
+   "why": "02 §5",
+   "rule": "AGENTS §17 + DSA row",
+   "rollback": "DSA row → REVOKED; stop the timer",
+   "scopes_needed": [
+    "db-write"
+   ]
+  },
+  {
+   "item_id": "O-3c",
+   "category": "OPERATOR",
+   "title": "writer: supervisor heartbeat + SLA tables",
+   "why": "06 §3",
+   "rule": "AGENTS §17 + DSA row",
+   "rollback": "DSA row → REVOKED",
+   "scopes_needed": [
+    "db-write"
+   ]
+  },
+  {
+   "item_id": "O-3d",
+   "category": "OPERATOR",
+   "title": "writer: approval-package ledger (append-only, hash-chained)",
+   "why": "13 §3",
+   "rule": "AGENTS §17 + DSA row",
+   "rollback": "DSA row → REVOKED",
+   "scopes_needed": []
+  },
+  {
+   "item_id": "S-3",
+   "category": "SECURITY",
+   "title": "RLS tenant policy on the intelligence schema (same as memory_r10_m2)",
+   "why": "02 §5",
+   "rule": "least privilege",
+   "rollback": "down.sql drops the policies",
+   "scopes_needed": []
+  },
+  {
+   "item_id": "S-4",
+   "category": "SECURITY",
+   "title": "verify Telegram from_id against the operator allowlist (operator: 'mine')",
+   "why": "13 §6",
+   "rule": "approvals are authority",
+   "rollback": "env TRADEAI_OPERATOR_FROM_IDS unset → allowed chat ids",
+   "scopes_needed": []
+  },
+  {
+   "item_id": "I-3",
+   "category": "INFRA",
+   "title": "rotation lanes for checkpoints, contradiction candidates, advisory KB",
+   "why": "12 IN-4",
+   "rule": "growth; archive with tripwire",
+   "rollback": "stop the lane",
+   "scopes_needed": [
+    "cron"
+   ]
+  },
+  {
+   "item_id": "I-4",
+   "category": "INFRA",
+   "title": "install 2–4 user units via the install script",
+   "why": "12 IN-9",
+   "rule": "AGENTS §10 a deploy does not install units",
+   "rollback": "uninstall the units",
+   "scopes_needed": [
+    "service"
+   ]
+  },
+  {
+   "item_id": "P-1",
+   "category": "SOFTWARE",
+   "title": "Ollama model nomic-embed-text (local) — approved; sequenced to Wave 4",
+   "why": "03 step 7",
+   "rule": "12 SW-1",
+   "rollback": "ollama rm",
+   "scopes_needed": []
+  },
+  {
+   "item_id": "B-4",
+   "category": "BUDGET",
+   "title": "Wave 1 effort ≈ 14 agent-days; no new paid lane",
+   "why": "09 §3",
+   "rule": "operator",
+   "rollback": "stop the wave",
+   "scopes_needed": []
+  }
+ ],
+ "decision_record": {
+  "text": "APPROVE pkg-20260927-cogx-w1-d9e1 all, mine, start wave 1",
+  "who": "operator",
+  "via": "typed (Claude Code)",
+  "at": "2026-09-27T18:50:00-04:00",
+  "telegram_message_ids": [
+   "54472",
+   "54473"
+  ]
+ }
+}
