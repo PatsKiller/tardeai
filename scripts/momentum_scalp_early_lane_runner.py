@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -40,6 +41,17 @@ SCRIPTS = ROOT / "scripts"
 WINDOW = {"start": "06:00", "end": "12:00"}      # full strategy window, ET, trading days
 FINVIZ_TIMEOUT = 240
 STAGE_TIMEOUT = 300
+#: 2026-09-28 (plan "Momentum scalps: why none arrive", root cause 2): the cron line that was
+#: supposed to refresh Finviz ran `timeout 150` around a stage allowed 240 s, so it was killed
+#: silently every quarter-hour while holding the lane lock — the lane had not refreshed since
+#: 2026-09-18. The refresh now (a) honours an OUTER deadline (env MOMENTUM_SCALP_OUTER_DEADLINE_S
+#: or --deadline-s, set by cron a little below its `timeout`), (b) runs only the scalp screeners
+#: (config `refresh.screener_ids`) instead of all 45, and (c) writes a durable receipt BEFORE and
+#: AFTER the stage so a killed run is visible as STARTED-without-DONE.
+OUTER_DEADLINE_ENV = "MOMENTUM_SCALP_OUTER_DEADLINE_S"
+REFRESH_RECEIPT_ENV = "MOMENTUM_SCALP_REFRESH_RECEIPT"
+REFRESH_RECEIPT_NAME = "momentum_scalp_refresh_receipt.json"
+DEADLINE_HEADROOM_S = 15
 
 
 def now_et(stamp: str | None = None) -> datetime:
@@ -84,14 +96,131 @@ def _py() -> str:
 
 # ── Stages (each returns a JSON-able summary) ───────────────────────────────────────────────
 
-def stage_finviz_scan(dry_run: bool) -> dict:
-    """Finviz source refresh — reuses the throttle-safe finviz_screener_runner. Source rows only."""
+def _served_data_root() -> Path:
+    """Where receipts live: the served persistent-state data root from data_source_authority.json
+    (never a hard-coded host path); falls back to this tree's data/ when the registry is absent."""
+    try:
+        reg = json.loads((ROOT / "config" / "data_source_authority.json").read_text())
+        root = (reg.get("served_from") or {}).get("root")
+        if root:
+            return Path(root)
+    except Exception:
+        pass
+    return ROOT / "data"
+
+
+def refresh_receipt_path() -> Path:
+    override = os.environ.get(REFRESH_RECEIPT_ENV, "").strip()
+    if override:
+        return Path(override)
+    return _served_data_root() / "runtime" / REFRESH_RECEIPT_NAME
+
+
+def write_refresh_receipt(state: str, **fields) -> dict:
+    """Durable, atomic. STARTED before the slow stage; DONE/FAILED after. Never raises."""
+    rec = {"schema": "MomentumScalpRefreshReceipt@v1", "state": state,
+           "at": (datetime.now(_ET) if _ET else datetime.now()).isoformat(),
+           "pid": os.getpid(), **fields}
+    try:
+        path = refresh_receipt_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(rec, default=str))
+        os.replace(tmp, path)
+    except Exception as exc:  # a receipt failure must never kill the lane
+        rec["receipt_error"] = str(exc)
+    return rec
+
+
+def read_refresh_receipt() -> dict | None:
+    try:
+        return json.loads(refresh_receipt_path().read_text())
+    except Exception:
+        return None
+
+
+def refresh_age_min(now: datetime | None = None, receipt: dict | None = None) -> float | None:
+    """Minutes since the last DONE refresh; None when there is no DONE receipt."""
+    rec = receipt if receipt is not None else read_refresh_receipt()
+    if not rec or rec.get("state") != "DONE":
+        return None
+    try:
+        done_at = datetime.fromisoformat(str(rec.get("at")))
+    except Exception:
+        return None
+    now = now or (datetime.now(_ET) if _ET else datetime.now())
+    if done_at.tzinfo is None and now.tzinfo is not None:
+        done_at = done_at.replace(tzinfo=now.tzinfo)
+    if done_at.tzinfo is not None and now.tzinfo is None:
+        now = now.replace(tzinfo=done_at.tzinfo)
+    return max(0.0, (now - done_at).total_seconds() / 60.0)
+
+
+def outer_deadline_s(cli_value: float | None = None) -> float | None:
+    """Seconds the whole run may take (cron `timeout` minus headroom). None = unbounded."""
+    raw = cli_value if cli_value is not None else os.environ.get(OUTER_DEADLINE_ENV, "")
+    try:
+        v = float(raw)
+    except (TypeError, ValueError):
+        return None
+    return v if v > 0 else None
+
+
+def stage_timeout(stage_default: int, deadline_s: float | None, started_monotonic: float | None) -> int:
+    """Clamp a stage timeout so it ends before the outer deadline (with headroom)."""
+    if deadline_s is None:
+        return int(stage_default)
+    elapsed = 0.0 if started_monotonic is None else max(0.0, time.monotonic() - started_monotonic)
+    remaining = deadline_s - elapsed - DEADLINE_HEADROOM_S
+    return int(max(1, min(stage_default, remaining)))
+
+
+def refresh_screener_ids(config_path: Path | None = None) -> list[str]:
+    """Scalp screeners to refresh (config `refresh.screener_ids`); empty = full runner (legacy)."""
+    path = config_path or (ROOT / "config" / "finviz_momentum_scalp_screen.yaml")
+    try:
+        import yaml
+        cfg = yaml.safe_load(path.read_text()) or {}
+        ids = ((cfg.get("momentum_scalp_finviz_screen") or {}).get("refresh") or {}).get("screener_ids") or []
+        return [str(x) for x in ids]
+    except Exception:
+        return []
+
+
+_ROWS_RE = re.compile(r"(\d+)\s+(?:rows|tickers|symbols)")
+
+
+def stage_finviz_scan(dry_run: bool, deadline_s: float | None = None, started_monotonic: float | None = None,
+                      screener_ids: list[str] | None = None) -> dict:
+    """Finviz source refresh — reuses the throttle-safe finviz_screener_runner. Source rows only.
+
+    Runs one `--screener <id>` call per scalp screener (config) so the refresh fits the cron slot;
+    with no ids configured it falls back to the full `--run`. Writes STARTED/DONE|FAILED receipts.
+    """
     s = {"stage": "finviz_scan", "ran": not dry_run}
     if dry_run:
-        s.update(ok=True, reason="dry_run_no_refresh"); return s
-    r = _run([_py(), str(SCRIPTS / "finviz_screener_runner.py"), "--run"], timeout=FINVIZ_TIMEOUT)
-    s.update(ok=(r["rc"] == 0), latency_ms=r["latency_ms"], rc=r["rc"],
-             reason="finviz_screener_runner --run", stderr=r["stderr_tail"])
+        s.update(ok=True, reason="dry_run_no_refresh")
+        return s
+    ids = refresh_screener_ids() if screener_ids is None else list(screener_ids)
+    write_refresh_receipt("STARTED", screener_ids=ids, deadline_s=deadline_s)
+    results, rows_total, rc_worst = [], 0, 0
+    runner = str(SCRIPTS / "finviz_screener_runner.py")
+    calls = [[_py(), runner, "--screener", sid] for sid in ids] or [[_py(), runner, "--run"]]
+    for cmd in calls:
+        t_out = stage_timeout(FINVIZ_TIMEOUT, deadline_s, started_monotonic)
+        r = _run(cmd, timeout=t_out)
+        rc_worst = max(rc_worst, int(r["rc"]))
+        m = _ROWS_RE.search(r.get("stdout_tail") or "")
+        if m:
+            rows_total += int(m.group(1))
+        results.append({"cmd": cmd[-2:], "rc": r["rc"], "latency_ms": r["latency_ms"], "timeout_s": t_out,
+                        "stderr": r["stderr_tail"]})
+    ok = rc_worst == 0
+    write_refresh_receipt("DONE" if ok else "FAILED", rc=rc_worst, rows=rows_total, screener_ids=ids,
+                          calls=len(calls))
+    s.update(ok=ok, rc=rc_worst, latency_ms=sum(x["latency_ms"] for x in results), rows=rows_total,
+             reason=("finviz_screener_runner --screener x%d" % len(ids)) if ids else "finviz_screener_runner --run",
+             calls=results)
     return s
 
 
