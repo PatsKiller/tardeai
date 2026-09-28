@@ -15826,6 +15826,7 @@ def _portfolio_book_map(query=None):
         pass
     from datetime import datetime
     from zoneinfo import ZoneInfo
+
     try:
         from lib.book_map_rows import cash_total as _book_cash_total, shape_book_row as _shape_book_row
     except ImportError:

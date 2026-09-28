@@ -5,6 +5,7 @@ deltas that could include reconciliation corrections (e.g. wrong share counts).
 This module aligns 1D with market day, flags outlier snapshot dates, and sanitizes
 drawdown series.
 """
+
 from __future__ import annotations
 
 import json
@@ -69,11 +70,7 @@ def portfolio_market_day(portfolio: dict | None) -> dict | None:
     totals = portfolio.get("portfolio_totals") or {}
     current = _f(totals.get("total_value"))
     if current <= 0:
-        current = sum(
-            _f(h.get("market_value"))
-            for h in (portfolio.get("holdings") or [])
-            if not h.get("is_loan")
-        )
+        current = sum(_f(h.get("market_value")) for h in (portfolio.get("holdings") or []) if not h.get("is_loan"))
     if current <= 0:
         return None
 
@@ -86,10 +83,13 @@ def portfolio_market_day(portfolio: dict | None) -> dict | None:
             from scripts.lib.book_map_rows import holding_day_dollars
         today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
         pcts = _finviz_pcts(portfolio)
-        change = round(sum(
-            holding_day_dollars(h, today=today, finviz_day_pct=pcts.get(str(h.get("symbol") or "").upper()))[0]
-            for h in holdings
-        ), 2)
+        change = round(
+            sum(
+                holding_day_dollars(h, today=today, finviz_day_pct=pcts.get(str(h.get("symbol") or "").upper()))[0]
+                for h in holdings
+            ),
+            2,
+        )
     if change is None:
         change = totals.get("day_change")
     change = round(_f(change), 2)
@@ -317,13 +317,15 @@ def sanitize_snapshot_totals(
             continue
         trim = corrections.get(d, 0.0)
         val = round(raw - trim, 2)
-        points.append({
-            "date": d,
-            "value": val,
-            "raw_value": raw,
-            "phantom_trim": trim,
-            "corrected": trim > 0,
-        })
+        points.append(
+            {
+                "date": d,
+                "value": val,
+                "raw_value": raw,
+                "phantom_trim": trim,
+                "corrected": trim > 0,
+            }
+        )
     return points
 
 
@@ -342,13 +344,15 @@ def compute_drawdown_series(
         if v > peak:
             peak = v
         dd = round((v - peak) / peak * 100, 2) if peak > 0 else 0.0
-        out.append({
-            "date": pt["date"],
-            "value": round(v, 0),
-            "raw_value": round(_f(pt.get("raw_value")), 0),
-            "drawdown": dd,
-            "corrected": bool(pt.get("corrected")),
-        })
+        out.append(
+            {
+                "date": pt["date"],
+                "value": round(v, 0),
+                "raw_value": round(_f(pt.get("raw_value")), 0),
+                "drawdown": dd,
+                "corrected": bool(pt.get("corrected")),
+            }
+        )
     return out
 
 
@@ -429,9 +433,7 @@ def holding_write_sanity_issues(
             continue
         sym = nh.get("symbol") or key.split(":")[0]
         acct = nh.get("account") or ""
-        issues.append(
-            f"{sym}@{acct}: MV {mv0:,.0f}→{mv1:,.0f} ({drift:.1f}%) without trade"
-        )
+        issues.append(f"{sym}@{acct}: MV {mv0:,.0f}→{mv1:,.0f} ({drift:.1f}%) without trade")
     return issues
 
 

@@ -3,6 +3,7 @@
 Cash is not a tile. A zero day_change is replaced by today's broker_day_pl
 when that stamp exists. A row with no price and no value is unpriced.
 """
+
 from __future__ import annotations
 
 from datetime import datetime
@@ -61,11 +62,11 @@ def holding_day_dollars(row: dict, *, today: str, finviz_day_pct: float | None =
         finviz_day_pct=finviz_day_pct,
     )
     day = round(float(day or 0), 2)
-    basis = "finviz_day_pct" if (
-        finviz_day_pct is not None
-        and abs(float(row.get("day_change") or 0)) < 0.005
-        and abs(day) >= 0.005
-    ) else None
+    basis = (
+        "finviz_day_pct"
+        if (finviz_day_pct is not None and abs(float(row.get("day_change") or 0)) < 0.005 and abs(day) >= 0.005)
+        else None
+    )
     if abs(day) < 0.005 and row.get("broker_day_pl") is not None and et_date(row.get("broker_day_pl_at")) == today:
         try:
             broker = round(float(row.get("broker_day_pl")), 2)
