@@ -895,11 +895,74 @@ def persist(cur, changes: list[dict], *, apply: bool) -> dict:
     }
 
 
+def new_filings(syms: dict[str, dict], *, feed_path: "Path | None" = None, now: "datetime | None" = None) -> tuple[list[dict], dict]:
+    """A HIGH-severity SEC filing (8-K Items 1.01 / 1.03 / 2.01 / 2.02 / 4.02) against a tracked name,
+    observed by the filings feed inside the window (Wave 2 item 5). The feed is the free EDGAR lane
+    (scripts/sec_filings_feed.py → data/cio/sec_filing_events.jsonl); this detector is the declared
+    Market owner, so filings enter the wake here and nowhere else. 10-Q/10-K are medium: recorded as
+    events in the graph, never a material change on their own."""
+    from datetime import datetime as _dtc, timezone as _tz, timedelta as _td
+    now = now or _dtc.now(_tz.utc)
+    path = feed_path or (Path(os.getenv("TRADEAI_STATE_ROOT") or _state_root_for_feed()) / "data" / "cio" / "sec_filing_events.jsonl")
+    stats = {"fired": 0, "below_severity": 0, "outside_window": 0, "untracked": 0, "rows": 0}
+    out: list[dict] = []
+    cutoff = now - _td(hours=NEW_HOURS)
+    try:
+        fh = path.open(encoding="utf-8")
+    except OSError:
+        return out, {**stats, "feed": "absent"}
+    with fh:
+        for line in fh:
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if r.get("schema") != "FilingEvent@v1":
+                continue
+            stats["rows"] += 1
+            sym = str(r.get("symbol") or "").upper()
+            if sym not in syms:
+                stats["untracked"] += 1; continue
+            if r.get("severity") != "high":
+                stats["below_severity"] += 1; continue
+            try:
+                observed = _dtc.fromisoformat(str(r.get("observed_at")).replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if observed < cutoff:
+                stats["outside_window"] += 1; continue
+            out.append({
+                "symbol": sym, "kind": "sec_filing",
+                "magnitude": float(SEVERITY_WEIGHT.get(r.get("catalyst_type"), 2.0)),
+                "baseline": 0.0, "observed_value": 1.0,
+                "observed_at": str(r.get("filed_at")) + "T00:00:00+00:00",
+                "universe_reason": "+".join(sorted((syms.get(sym) or {}).get("reasons", ["?"]))),
+                "precedence": (syms.get(sym) or {}).get("precedence", 10),
+                "evidence": {"event_guid": r.get("event_guid"), "form": r.get("form"), "items": r.get("items"),
+                             "catalyst_type": r.get("catalyst_type"), "accession": r.get("accession"), "sec_url": r.get("sec_url"),
+                             "source": "sec_edgar", "feed": "sec_filing_events"},
+            })
+            stats["fired"] += 1
+    return out, stats
+
+
+def _state_root_for_feed() -> Path:
+    try:
+        from scripts.lib.cio_paths import production_state_root
+        return Path(production_state_root())
+    except Exception:  # noqa: BLE001
+        return ROOT
+
+
+#: magnitude of a filing change by catalyst type (only HIGH severity types reach here)
+SEVERITY_WEIGHT = {"earnings": 3.0, "merger_acquisition": 3.0, "restatement": 3.0, "bankruptcy": 3.5, "material_agreement": 2.5}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--kind", choices=["price_excursion", "catalyst_new",
-                                       "news_burst", "sector_move"])
+                                       "news_burst", "sector_move", "sec_filing"])
     args = ap.parse_args()
 
     conn = _db()
@@ -927,6 +990,8 @@ def main() -> int:
         c, s = sector_moves(cur, syms, contributors); changes += c; stats["sector_move"] = s
     if args.kind in (None, "news_burst"):
         c, s = news_bursts(cur, syms); changes += c; stats["news_burst"] = s
+    if args.kind in (None, "sec_filing"):
+        c, s = new_filings(syms); changes += c; stats["sec_filing"] = s
 
     changes.sort(key=lambda x: (-(x.get("precedence") or 0), -(x["magnitude"] or 0)))
     for c in changes[:25]:

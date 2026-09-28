@@ -121,6 +121,20 @@ Notes: (1) a probe `memory.delta` event (source `probe`, LOW) was written to the
 
 **Deploy needs (operator):** release-write (merged SHA, campaign), a service grant to install + enable `tradeai-edge-fanout-consumer.timer` from CURRENT, `seed_supervisor_sla.py --apply` (db-write) for the new lane's SLA row. LIVE flips for the four SHADOW adapters are later one-line policy PRs after their receipts show sane classifications.
 
+## Wave 2 · tranche 4 — SEC filings feed → EVENT nodes → material changes (branch wt/cogx-w2-t4-20260927, stacked on tranche 3)
+
+Package item 5. Operator 2026-09-27 21:48 ET: "and build 4 … then push 3 and 4 live".
+
+| Deliverable | Where | Proof |
+|---|---|---|
+| `scripts/sec_filings_feed.py` — free EDGAR submissions API (fair-access User-Agent, 0.15 s spacing, one request per symbol per run, ticker→CIK map cached 7 days); every 8-K / 10-Q / 10-K inside the window becomes an immutable `FilingEvent@v1` keyed `uuid5(issuer_guid \| FILING_<form> \| accession)` (a sibling listing names the same event); identity resolved through the registry (unresolved → skipped and counted); append-only JSONL deduped on event_guid; UNAVAILABLE counted, never read as "no filings" | `data/cio/sec_filing_events.jsonl`, `data/runtime/sec_filings_feed_latest.json`, heartbeat lane `sec-filings-feed` | live dry run (no writes) NOC, DELL, LDOS, BAH, 45 d: 4 fetched, 6 events, 2 high — DELL 2026-09-01 8-K Item 2.02 (the EX-99.1 filing the options desk cited) and DELL 2026-09-15 Item 1.01 `[VERIFIED 02:19Z]` |
+| GIR: source 4b projects each row to `EVENT:<guid>` (class MARKET, kind EVENT, freshness IMMUTABLE) with `EVENT —AFFECTED_BY→ SEC:<security_guid>`; the feed file is an incremental-trigger source | `gir_projector.py` | test (3 nodes, 2 edges, 1 unresolved counted) |
+| Wake entry: `material_change_detector.new_filings` — HIGH-severity filings (Items 1.01 / 1.03 / 2.01 / 2.02 / 4.02) on tracked names observed inside `NEW_HOURS` → `MaterialChange@v1` kind `sec_filing` (magnitude by catalyst type, precedence from the universe). The detector stays the single Market owner (02 §2); 10-Q/10-K are graph events only. Finding it fixes: today only Item 2.01 filings could reach the wake, indirectly via `catalyst_events` weights — earnings 8-Ks were dropped | `material_change_detector.py` (`--kind sec_filing` added) | test (fired 1 / untracked 1 / below severity 2 / outside window 1; deterministic change_guid) |
+| Governance | lane row `sec-filings-feed` (cron 08:20/12:20/17:20/21:20 ET market days, NEVER_SCHEDULED until the cron grant), DSA row `sec_filing_events` (provider `sec_edgar`, approval pkg 35c4 item 5), crontab line in `docs/ops/COGX_WAVE2_CRONTAB_LINES.txt`, source-of-truth re-rendered, CI gate += `tests/test_sec_filings_feed.py`, dark-contract reasons | validators green |
+| Fix carried from tranche 3 | `edge_fanout_consumer.state_root` / `sec_filings_feed.state_root` resolve through `canonical_store_registry.production_state_root` (the consumer's first dry run only worked because cwd was CURRENT) | first feed dry run from the worktree resolved 0/4 identities until the root was pinned |
+
+**Deploy needs (operator):** release-write (merged SHA), cron grant to append the one crontab line, `seed_supervisor_sla.py --apply` for the lane's SLA row, then one `sec_filings_feed.py --apply` from CURRENT and a projector `--apply` so the first EVENT nodes exist before the next detector cycle.
+
 ## What is NOT in Wave 1 yet (after the operator runbook)
 - The `memory.delta` bus consumer (Wave 2) — until then the projector is hourly-incremental by source fingerprint.
 - The operator steps in the runbook: credential rotation, roles + migration, merge + deploy, grants, lane install, first real runs.

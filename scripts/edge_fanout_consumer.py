@@ -62,10 +62,10 @@ def state_root(env: dict) -> Path:
     if env.get("TRADEAI_STATE_ROOT"):
         return Path(env["TRADEAI_STATE_ROOT"])
     try:
-        from cio_paths import production_state_root  # type: ignore
+        from canonical_store_registry import production_state_root  # type: ignore
         return Path(production_state_root())
     except Exception:  # noqa: BLE001
-        return Path.cwd()
+        return Path.home() / "trade-ai-releases" / "persistent-state"
 
 
 def _guid_of(subject: str) -> str | None:
