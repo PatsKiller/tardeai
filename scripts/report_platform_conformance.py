@@ -4,7 +4,7 @@
 Five standards per silo (identity, memory, research, worker, monitoring). In v0 only what has data
 is scored; everything else is UNMEASURED, and the UNMEASURED count is the first number printed —
 it is the governance-debt baseline (05 §8). Nothing is remediated. Dry-run prints; ``--write`` writes
-``data/governance/platform_conformance_latest.json`` (tmp+replace) with every query it ran.
+``platform_conformance_latest.json`` under the governance dir (state root, never the release dir; tmp+replace) with every query it ran.
 
 Inputs (all repo/persistent-state files, no Postgres in v0):
   config/lane_registry.json, config/platform_silos.json,
@@ -201,7 +201,8 @@ def main() -> int:
     for s in rep["silos"]:
         print(f"{s['state']:<14} {s['silo_id']:<24} lanes={s['lanes']:<3} active={s['active_lanes']:<3} score={s['score']} unmeasured={','.join(s['unmeasured'])}")
     if a.write:
-        out = Path(a.out) if a.out else root / "data" / "governance" / "platform_conformance_latest.json"
+        from approval_package import governance_dir  # type: ignore
+        out = Path(a.out) if a.out else governance_dir(root) / "platform_conformance_latest.json"
         out.parent.mkdir(parents=True, exist_ok=True)
         tmp = out.with_suffix(".json.tmp"); tmp.write_text(json.dumps(rep, indent=1) + "\n", encoding="utf-8"); os.replace(tmp, out)
         print(f"wrote {out}")

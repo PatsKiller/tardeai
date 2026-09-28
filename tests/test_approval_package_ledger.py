@@ -85,3 +85,9 @@ def test_render_message_is_markdown_safe_and_single_chunk():
     assert text.count("*") == 2 and "_" not in text and "NEEDS-LOCAL" in text
     assert "APPROVE pkg-test-w1-0004 all" in text and len(ap.chunks(text)) == 1
     assert "sha 8f2a178d5" in text and "PR #1304" in text
+
+
+def test_governance_dir_prefers_state_root_over_release_dir(tmp_path):
+    assert ap.governance_dir(tmp_path, {"TRADEAI_GOVERNANCE_DIR": str(tmp_path / "g")}) == tmp_path / "g"
+    assert ap.governance_dir(tmp_path, {"TRADEAI_STATE_ROOT": str(tmp_path / "st")}) == tmp_path / "st" / "data" / "governance"
+    assert ap.ledger_path(tmp_path, {"TRADEAI_STATE_ROOT": str(tmp_path / "st")}).name == "approval_packages.jsonl"
