@@ -137,7 +137,7 @@ def test_detector_is_schedule_aware_on_a_weekend():
 
 
 def test_cron_schedule_last_and_next_fire():
-    import cron_schedule as cs
+    import cron_last_fire as cs
     sunday = dt.datetime(2026, 9, 27, 20, 30)
     assert cs.last_fire("*/15 9-16 * * 1-5", sunday) == dt.datetime(2026, 9, 25, 16, 45)
     assert cs.next_fire("30 7 * * 1-5", sunday) == dt.datetime(2026, 9, 28, 7, 30)

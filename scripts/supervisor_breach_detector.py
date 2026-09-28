@@ -73,7 +73,7 @@ def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> 
     cad_h = lane.get("expected_cadence_hours")
     if sched.get("kind") == "cron" and expr:
         try:
-            import cron_schedule  # type: ignore
+            import cron_last_fire as cron_schedule  # type: ignore
             # the most recent fire that has had max_run to finish: a run still in progress is not a miss
             local_ref = (now - _dt.timedelta(seconds=max_run_s)).astimezone()
             lf = cron_schedule.last_fire(expr, local_ref.replace(tzinfo=None))

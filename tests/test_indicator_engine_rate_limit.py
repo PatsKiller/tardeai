@@ -9,6 +9,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+pytest.importorskip("pandas"); pytest.importorskip("yfinance")  # CI installs only pytest + pyyaml
 import indicator_engine as ie  # noqa: E402
 
 
