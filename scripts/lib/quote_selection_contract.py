@@ -383,6 +383,12 @@ def project_quote_selection(
             nav_marked_symbols += int(n or 0)
             continue
         fallback_rows[s] = fallback_rows.get(s, 0) + int(n or 0)
+    primary_rows = sum(int(n or 0) for src, n in (source_counts or {}).items()
+                       if str(src or "").lower() in ("finviz", "finviz_elite", "finviz_live", "finviz_afterhours"))
+    if nav_marked_symbols and primary_rows == 0:
+        # Nothing priced by the vendor at all: NAV-only is total vendor failure, not a fund mark.
+        fallback_rows["price_cache_nav"] = fallback_rows.get("price_cache_nav", 0) + nav_marked_symbols
+        nav_marked_symbols = 0
     fallback_used = bool(fallback_rows)
 
     # A missing/empty repricer source means we cannot name the selected vendor.

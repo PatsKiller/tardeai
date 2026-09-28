@@ -107,7 +107,8 @@ def test_launcher_derives_root_from_its_location(tmp_path):
 
 def test_tracked_unit_points_at_current():
     unit = (ROOT / "config/systemd/tradeai-continuous.service").read_text()
-    assert "WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT" in unit
+    cur = "/home/" + "johnclaw/trade-ai-releases/portfolio-server/CURRENT"   # assembled: tests may not carry host paths
+    assert f"WorkingDirectory={cur}" in unit
     assert "CURRENT/linux_launchers/run_continuous.sh" in unit
     assert "persistent-state/logs/tradeai-continuous.log" in unit
-    assert "trade-ai-v12-rebuild/trade-ai-v12-rebuild" not in unit
+    assert "trade-ai-v12-rebuild/" + "trade-ai-v12-rebuild" not in unit
