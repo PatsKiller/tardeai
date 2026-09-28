@@ -1,7 +1,7 @@
 {
   "schema": "DataSourceAuthority@v2",
   "authority": "READ_ONLY_ADVISORY",
-  "as_of": "2026-09-27T23:55:00-04:00",
+  "as_of": "2026-09-28T00:20:00-04:00",
   "_why": "One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.",
   "_rules": [
     "Every domain has exactly one writer. Anything else that writes the store is a defect.",
@@ -2459,6 +2459,132 @@
         }
       ],
       "_writer_note": "Wave 4 O-W4-5: L4 pages through telegram_alert (ops-exempt 'STOP HEALTH' signature, one per breach via alert_transition) and L5 writes a proposal ONLY with --ladder; the installed timer runs without it (shadow). Also fixes the L3 call (enqueue_escalations(policy, findings) with severity) that had silently never enqueued."
+    },
+    {
+      "domain": "maturity_scores",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-27",
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 5 item O-W5-4",
+        "scope": "MaturityScore@v1 — nine-domain scores from receipts only, written by the independent lane; never by a session"
+      },
+      "store": {
+        "file": "governance/maturity_scores.jsonl"
+      },
+      "writer": "scripts/maturity_remeasure.py",
+      "cadence": "weekly (cron, after the cron grant)",
+      "stale_after_hours": 336,
+      "projection": null,
+      "required_fields": [
+        "as_of",
+        "overall",
+        "domains",
+        "scorer"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Wave 5 O-W5-4. Rules are fixed in the script (cumulative proof ladders per domain); evidence counters are embedded in every row so a reader can re-derive the score."
+    },
+    {
+      "domain": "conformance_gate_receipts",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-27",
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 5 item O-W5-2",
+        "scope": "ConformanceGateReceipt@v1 — verdict of the conformance gate on every promote (warn by default; block under TRADEAI_CONFORMANCE_GATE=block; overrides recorded)"
+      },
+      "store": {
+        "file": "governance/conformance_gate_receipts.jsonl"
+      },
+      "writer": "scripts/conformance_gate.py",
+      "cadence": "per promote",
+      "stale_after_hours": 720,
+      "projection": null,
+      "required_fields": [
+        "ts",
+        "verdict",
+        "allow",
+        "mode"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Wave 5 O-W5-2 (05 §4). Invoked from cio_phase2_exact_main_deploy.sh cmd_promote (dev-tree check, like every deploy check) before activate_release."
+    },
+    {
+      "domain": "supervisor_recoveries",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-27",
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 5 item O-W5-3",
+        "scope": "Recovery@v1 — self-heal decisions (L1 --user unit restart, L2 alternate start); executed only under --heal, shadow rows otherwise; system units never touched"
+      },
+      "store": {
+        "file": "runtime/supervisor_recoveries.jsonl"
+      },
+      "writer": "scripts/supervisor_breach_detector.py",
+      "cadence": "per detector run",
+      "stale_after_hours": 1,
+      "projection": null,
+      "required_fields": [
+        "breach_id",
+        "lane_id",
+        "level",
+        "executed"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Wave 5 O-W5-3 (06 §5–§6): 2 attempts per 10 min per lane; the lane's own systemd unit only (class A); S-W4-1 sudoers is needed only for system units, which this never restarts."
     }
   ]
 }

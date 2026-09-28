@@ -723,15 +723,24 @@ def run_ladder(ctx: dict, question: dict, loaders: Loaders, *, now: _dt.datetime
     ver_refs = [th.get("pin") or f"{th.get('thesis_id')}@v{th.get('version')}"] if th.get("thesis_id") else []
     ladder.append(_step(6, f"VERSION:{th.get('thesis_id')}", "cio_theses.supersedes", bool(ver_refs), ver_refs, t0))
 
-    # 7 semantic — not installed until the embedding table + local model (12 SW-1)
+    # 7 semantic — local embeddings (Wave 5 I-W5-1): nearest refs for the subject when the model is installed
     t0 = time.perf_counter()
-    ladder.append(_step(7, f"EMB:{qclass}", "intelligence.embedding", False, [], t0, "not_installed"))
+    sem_refs: list = []
+    sem_note = "not_installed"
+    try:
+        emb = _lib("embedding_index")
+        if emb.enabled(os.environ):
+            sem_refs = [r.get("ref") for r in emb.semantic(str(question.get("text") or ""), subject_guid=guid, k=5) if r.get("distance", 1.0) <= 0.25]
+            sem_note = "hit" if sem_refs else "miss"
+    except Exception:  # noqa: BLE001
+        sem_note = "not_installed"
+    ladder.append(_step(7, f"EMB:{qclass}", "intelligence.embedding", bool(sem_refs), sem_refs, t0, sem_note))
 
     if hit1_fresh or hit2_fresh:
         decision = "HIT_FRESH"
     elif hit1 or hit2:
         decision = "HIT_STALE"
-    elif hit3 or hit5:
+    elif hit3 or hit5 or sem_refs:
         decision = "HIT_PARTIAL"
     else:
         decision = "MISS"

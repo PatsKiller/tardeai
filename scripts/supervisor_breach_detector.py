@@ -169,6 +169,71 @@ def _read_only_db_query():
     return q
 
 
+L1_MAX_PER_WINDOW = 2       # 06 §5 L1: 2 attempts per 10 min per lane
+L1_WINDOW_S = 600
+L1_KINDS = ("SILENT", "NO_OUTPUT", "HUNG")
+
+
+def _self_heal_l1_l2(rows: list[dict], lanes: list[dict], sla_by_lane: dict, now, runtime_dir: Path, *, live: bool) -> dict:
+    """L1: `systemctl --user restart <unit>` for a systemd-scheduled lane in breach (class A: its unit is the lane
+    registry's own scheduler expression; system units and cron lanes are never touched — S-W4-1 sudoers is for
+    those). L2: `systemctl --user start <alternate>` when the SLA row declares one. Every decision is a
+    Recovery@v1 row (data/runtime/supervisor_recoveries.jsonl); shadow rows carry executed=false."""
+    import subprocess
+    by_id = {l.get("lane_id"): l for l in lanes}
+    rec_p = runtime_dir / "supervisor_recoveries.jsonl"
+    recent: dict[str, int] = {}
+    try:
+        cutoff = (now - _dt.timedelta(seconds=L1_WINDOW_S)).isoformat()
+        with rec_p.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if r.get("executed") and str(r.get("ts") or "") >= cutoff:
+                    recent[r.get("lane_id")] = recent.get(r.get("lane_id"), 0) + 1
+    except OSError:
+        pass
+    out = {"l1_candidates": 0, "l1_executed": 0, "l2_candidates": 0, "l2_executed": 0, "mode": "live" if live else "shadow"}
+    rec_p.parent.mkdir(parents=True, exist_ok=True)
+    for r in rows:
+        lane = by_id.get(r.get("lane_id")) or {}
+        sched = lane.get("scheduler") or {}
+        unit = str(sched.get("expression") or "") if sched.get("kind") == "systemd" else ""
+        alt = (sla_by_lane.get(r.get("lane_id")) or {}).get("alternate")
+        if r.get("kind") not in L1_KINDS:
+            continue
+        row = {"schema": "Recovery@v1", "ts": now.isoformat(), "breach_id": r.get("breach_id"), "lane_id": r.get("lane_id"), "kind": r.get("kind"),
+               "mode": out["mode"], "executed": False}
+        if unit and unit.endswith((".timer", ".service")) and lane.get("state") == "ACTIVE":
+            out["l1_candidates"] += 1
+            svc = unit[:-len(".timer")] + ".service" if unit.endswith(".timer") else unit
+            row.update({"level": 1, "action": f"systemctl --user restart {svc}", "would_execute": recent.get(r.get("lane_id"), 0) < L1_MAX_PER_WINDOW})
+            if live and row["would_execute"]:
+                try:
+                    cp = subprocess.run(["systemctl", "--user", "restart", svc], capture_output=True, text=True, timeout=60)
+                    row.update({"executed": True, "rc": cp.returncode, "stderr": (cp.stderr or "")[:200]})
+                    out["l1_executed"] += 1
+                except Exception as exc:  # noqa: BLE001
+                    row.update({"executed": False, "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
+        elif alt:
+            out["l2_candidates"] += 1
+            row.update({"level": 2, "action": f"systemctl --user start {alt}", "would_execute": True})
+            if live:
+                try:
+                    cp = subprocess.run(["systemctl", "--user", "start", str(alt)], capture_output=True, text=True, timeout=60)
+                    row.update({"executed": True, "rc": cp.returncode})
+                    out["l2_executed"] += 1
+                except Exception as exc:  # noqa: BLE001
+                    row.update({"executed": False, "error": f"{type(exc).__name__}:{str(exc)[:120]}"})
+        else:
+            continue
+        with rec_p.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+    return out
+
+
 L4_AFTER_S = 3 * 3600      # a breach still OPEN this long after detection pages the operator (06 §5 L4)
 L5_RECURRENCES = 3         # the same lane × kind three times in 7 days → orchestration-change proposal (06 §5 L5)
 
@@ -257,6 +322,7 @@ def main() -> int:
     ap.add_argument("--write", action="store_true")
     ap.add_argument("--enqueue-escalations", action="store_true", help="L3: append to the health agent's escalation queue (off by default)")
     ap.add_argument("--ladder", action="store_true", help="L4/L5 live: page the operator / write the orchestration proposal (default: shadow receipts only)")
+    ap.add_argument("--heal", action="store_true", help="L1/L2 live: restart the lane's --user unit / start its alternate (default: shadow Recovery rows)")
     a = ap.parse_args()
     root = Path(a.root)
     env = os.environ
@@ -330,6 +396,13 @@ def main() -> int:
                 print(f"L3: {len(findings)} escalation(s) enqueued")
             except Exception as exc:  # noqa: BLE001
                 print(f"L3 enqueue unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
+        # Wave 5 O-W5-3: self-healing L1 (systemctl --user restart of the lane's own unit) and L2 (start the SLA row's
+        # alternate). SHADOW unless --heal: what WOULD be restarted is a Recovery@v1 row with executed=false.
+        try:
+            heal = _self_heal_l1_l2(rows, reg.get("lanes", []), sla_by_lane, now, runtime_dir, live=bool(getattr(a, "heal", False)))
+            print(f"self-heal L1/L2: {heal}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"self-heal skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
         # Wave 4 O-W4-5: ladder L4 (operator page) and L5 (orchestration-change proposal). SHADOW unless --ladder:
         # what WOULD be paged / proposed is recorded on data/runtime/supervisor_ladder_receipts.jsonl.
         try:
