@@ -15156,6 +15156,7 @@ def _compute_trade_ai():
                 t["sources_all"] = _all
             if ss or ws:
                 from lib.source_priority import pick_primary_source as _pick
+
                 t["source"] = _pick(_all)
                 if t["source"] == "social":
                     t["source_detail"] = ", ".join(str(s) for s in (ss or [])[:2]) if ss else ""
