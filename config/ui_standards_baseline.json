@@ -1,0 +1,2134 @@
+{
+ "schema": "UiStandardsBaseline@v1",
+ "rules": [
+  "hex",
+  "font",
+  "radius",
+  "shadow",
+  "guide"
+ ],
+ "updated_at": "2026-09-28",
+ "files": {
+  "components/ATMControlPanel.tsx": {
+   "hex": 24,
+   "font": 8,
+   "radius": 9,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ActionButton.tsx": {
+   "hex": 1,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/AdminConfirmModal.tsx": {
+   "hex": 5,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/AdvisorChangesPanel.tsx": {
+   "hex": 7,
+   "font": 3,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/AgentConsensusPanel.tsx": {
+   "hex": 0,
+   "font": 3,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/AgentSoulEditor.tsx": {
+   "hex": 5,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/AllocationPanel.tsx": {
+   "hex": 18,
+   "font": 2,
+   "radius": 18,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/AlpacaLiveReadPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/AnalystReviews.tsx": {
+   "hex": 9,
+   "font": 2,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/AskAgents.tsx": {
+   "hex": 10,
+   "font": 5,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/BacktestPanel.tsx": {
+   "hex": 36,
+   "font": 53,
+   "radius": 38,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/BrokerAccountPicker.tsx": {
+   "hex": 6,
+   "font": 4,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/BrokerDiligenceStrip.tsx": {
+   "hex": 0,
+   "font": 9,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/BrokerIntelPanel.tsx": {
+   "hex": 6,
+   "font": 3,
+   "radius": 8,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/BrokerOrders.tsx": {
+   "hex": 150,
+   "font": 62,
+   "radius": 35,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/BrokerPromoteModal.tsx": {
+   "hex": 10,
+   "font": 9,
+   "radius": 20,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/BrokerProposalCard.tsx": {
+   "hex": 9,
+   "font": 19,
+   "radius": 16,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/BrokerProposalCardV4.tsx": {
+   "hex": 3,
+   "font": 18,
+   "radius": 14,
+   "shadow": 2,
+   "guide": 0
+  },
+  "components/BrokerProposals.tsx": {
+   "hex": 9,
+   "font": 5,
+   "radius": 20,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/BrokerRouteConfirmModal.tsx": {
+   "hex": 6,
+   "font": 5,
+   "radius": 7,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/CentralIntelligencePages.tsx": {
+   "hex": 13,
+   "font": 5,
+   "radius": 7,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/CloudLlmRunButtons.tsx": {
+   "hex": 6,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/CsvUpload.tsx": {
+   "hex": 4,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/DataSourceHealth.tsx": {
+   "hex": 6,
+   "font": 4,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/DecisionPacketBand.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/DeskAutomationBar.tsx": {
+   "hex": 0,
+   "font": 3,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/DetailDrawer.tsx": {
+   "hex": 24,
+   "font": 7,
+   "radius": 9,
+   "shadow": 1,
+   "guide": 1
+  },
+  "components/DiscoveryPanel.tsx": {
+   "hex": 24,
+   "font": 4,
+   "radius": 8,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/DividendsPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 13,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/EnsembleValidationCard.tsx": {
+   "hex": 21,
+   "font": 0,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/EntryDeskDiligenceStrip.tsx": {
+   "hex": 5,
+   "font": 11,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/EntryDeskRow.tsx": {
+   "hex": 14,
+   "font": 21,
+   "radius": 8,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/EvidenceBlock.tsx": {
+   "hex": 7,
+   "font": 2,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ExecutionCoachPanel.tsx": {
+   "hex": 9,
+   "font": 11,
+   "radius": 7,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ExecutionHypothesesPanel.tsx": {
+   "hex": 5,
+   "font": 2,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ExecutionPathsStrip.tsx": {
+   "hex": 4,
+   "font": 1,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ExecutionStatePanel.tsx": {
+   "hex": 14,
+   "font": 6,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/FibChartModal.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/FibConfluencePanel.tsx": {
+   "hex": 8,
+   "font": 6,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/FinvizEnrichmentPanel.tsx": {
+   "hex": 5,
+   "font": 2,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/FinvizSectorPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ForecastPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/GradingAuditMethodology.tsx": {
+   "hex": 0,
+   "font": 5,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/HermesClosedLoopPanel.tsx": {
+   "hex": 205,
+   "font": 87,
+   "radius": 93,
+   "shadow": 2,
+   "guide": 0
+  },
+  "components/HermesDiscoveryInbox.tsx": {
+   "hex": 0,
+   "font": 3,
+   "radius": 12,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/HermesPanel.tsx": {
+   "hex": 78,
+   "font": 12,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/HermesQualitySpotCheck.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/HermesSoulEditor.tsx": {
+   "hex": 13,
+   "font": 1,
+   "radius": 7,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/HoldingProtectionActions.tsx": {
+   "hex": 13,
+   "font": 2,
+   "radius": 33,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/HoldingReportLinks.tsx": {
+   "hex": 8,
+   "font": 1,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/HoldingsCard.tsx": {
+   "hex": 10,
+   "font": 17,
+   "radius": 14,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/HoldingsDetailPanel.tsx": {
+   "hex": 15,
+   "font": 5,
+   "radius": 29,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/HoldingsSideDrawer.tsx": {
+   "hex": 0,
+   "font": 1,
+   "radius": 1,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/HoldingsTableView.tsx": {
+   "hex": 6,
+   "font": 8,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/InferenceLayersPanel.tsx": {
+   "hex": 20,
+   "font": 2,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/InsiderActivity.tsx": {
+   "hex": 3,
+   "font": 2,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/IntelligenceWorkflow.tsx": {
+   "hex": 12,
+   "font": 3,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/LlmRoutingModal.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ManualExecutionLog.tsx": {
+   "hex": 8,
+   "font": 8,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ManualExecutionModal.tsx": {
+   "hex": 8,
+   "font": 3,
+   "radius": 7,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/MetricChipTooltip.tsx": {
+   "hex": 3,
+   "font": 2,
+   "radius": 1,
+   "shadow": 1,
+   "guide": 2
+  },
+  "components/MetricStrip.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/OpenClawPanel.tsx": {
+   "hex": 7,
+   "font": 1,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/OpenTradesIntelligence.tsx": {
+   "hex": 11,
+   "font": 0,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/OperatorInboxPanel.tsx": {
+   "hex": 6,
+   "font": 5,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/OptionChainPanel.tsx": {
+   "hex": 4,
+   "font": 3,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/OptionPositionCard.tsx": {
+   "hex": 5,
+   "font": 10,
+   "radius": 15,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/OptionPositionCardV4.tsx": {
+   "hex": 1,
+   "font": 6,
+   "radius": 11,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/OptionProposalCard.tsx": {
+   "hex": 6,
+   "font": 15,
+   "radius": 17,
+   "shadow": 0,
+   "guide": 2
+  },
+  "components/OptionProposalCardV4.tsx": {
+   "hex": 2,
+   "font": 17,
+   "radius": 18,
+   "shadow": 0,
+   "guide": 35
+  },
+  "components/OptionReviewBar.tsx": {
+   "hex": 4,
+   "font": 5,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/OptionValidateButton.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/OptionsNovicePanel.tsx": {
+   "hex": 21,
+   "font": 16,
+   "radius": 12,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/OptionsTip.tsx": {
+   "hex": 1,
+   "font": 1,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/OptionsTrendsPanel.tsx": {
+   "hex": 6,
+   "font": 8,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/PipelineControlTower.tsx": {
+   "hex": 21,
+   "font": 6,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/PortfolioDeskHealth.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/PositionDecisionCard.tsx": {
+   "hex": 56,
+   "font": 15,
+   "radius": 35,
+   "shadow": 1,
+   "guide": 9
+  },
+  "components/PositionDecisionCardV4.tsx": {
+   "hex": 38,
+   "font": 16,
+   "radius": 34,
+   "shadow": 2,
+   "guide": 0
+  },
+  "components/PreflightChangedPanel.tsx": {
+   "hex": 5,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/PrivateProxyCard.tsx": {
+   "hex": 0,
+   "font": 8,
+   "radius": 7,
+   "shadow": 0,
+   "guide": 8
+  },
+  "components/ProAnalystPill.tsx": {
+   "hex": 9,
+   "font": 3,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ProposalDeskStrip.tsx": {
+   "hex": 0,
+   "font": 2,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ProposalLaneGateStrip.tsx": {
+   "hex": 1,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ProposalLifecycleTimeline.tsx": {
+   "hex": 2,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ProposalQueueSummaryBar.tsx": {
+   "hex": 0,
+   "font": 2,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ProposalSourceBadges.tsx": {
+   "hex": 5,
+   "font": 2,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ProposalStrategyBadge.tsx": {
+   "hex": 1,
+   "font": 1,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ProtectionOutcomesPanel.tsx": {
+   "hex": 28,
+   "font": 12,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ProtectionPanel.tsx": {
+   "hex": 12,
+   "font": 6,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ProtectionProposalCard.tsx": {
+   "hex": 0,
+   "font": 4,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/QueueHealthPanel.tsx": {
+   "hex": 7,
+   "font": 5,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/RedeployEventModal.tsx": {
+   "hex": 0,
+   "font": 9,
+   "radius": 7,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/RedeployPanel.tsx": {
+   "hex": 0,
+   "font": 7,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ResearchTopicsModal.tsx": {
+   "hex": 14,
+   "font": 1,
+   "radius": 12,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ReturnsPanel.tsx": {
+   "hex": 14,
+   "font": 15,
+   "radius": 8,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ScalpSetupsPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ScalpStopMonitorCard.tsx": {
+   "hex": 22,
+   "font": 4,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ScalpStrategyModal.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/SchwabAccountsMonitor.tsx": {
+   "hex": 61,
+   "font": 14,
+   "radius": 7,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/SchwabJournal.tsx": {
+   "hex": 21,
+   "font": 12,
+   "radius": 11,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/SchwabMonitor.tsx": {
+   "hex": 9,
+   "font": 1,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ScreenerConfigModal.tsx": {
+   "hex": 48,
+   "font": 9,
+   "radius": 27,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/SecretsManager.tsx": {
+   "hex": 18,
+   "font": 5,
+   "radius": 13,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ShadowBatchButton.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ShadowStrategyButton.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ShareReconciliationModal.tsx": {
+   "hex": 0,
+   "font": 2,
+   "radius": 8,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/SharedIntelligenceBridge.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/SizingTable.tsx": {
+   "hex": 0,
+   "font": 3,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/SnapTradeCredsModal.tsx": {
+   "hex": 26,
+   "font": 2,
+   "radius": 5,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/SpendPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 6
+  },
+  "components/StateCard.tsx": {
+   "hex": 3,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/StatusBadge.tsx": {
+   "hex": 3,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/StopIntelligencePanel.tsx": {
+   "hex": 4,
+   "font": 3,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/StopKindPill.tsx": {
+   "hex": 6,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/StopManagement.tsx": {
+   "hex": 10,
+   "font": 7,
+   "radius": 27,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/StrategyPlanner.tsx": {
+   "hex": 7,
+   "font": 3,
+   "radius": 7,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/SymbolJourneyPanel.tsx": {
+   "hex": 12,
+   "font": 6,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 13
+  },
+  "components/SynthesizedReportCard.tsx": {
+   "hex": 24,
+   "font": 5,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/TaxPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/TechnicalAssessmentCard.tsx": {
+   "hex": 0,
+   "font": 1,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/TerminalChip.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/ThesisValidityBar.tsx": {
+   "hex": 10,
+   "font": 0,
+   "radius": 7,
+   "shadow": 2,
+   "guide": 0
+  },
+  "components/ThresholdProposalModal.tsx": {
+   "hex": 20,
+   "font": 2,
+   "radius": 10,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/TickerLinks.tsx": {
+   "hex": 2,
+   "font": 2,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/TimeExitProposals.tsx": {
+   "hex": 8,
+   "font": 1,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/ToSWatchlists.tsx": {
+   "hex": 1,
+   "font": 0,
+   "radius": 9,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/TradeAIPanel.tsx": {
+   "hex": 4,
+   "font": 1,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/TradeReplayChart.tsx": {
+   "hex": 44,
+   "font": 8,
+   "radius": 12,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/TradingCommandTriage.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/TradingDeskHealth.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/TradingSymbolChart.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/WatchTruthAuditPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/WatchlistCard.tsx": {
+   "hex": 1,
+   "font": 6,
+   "radius": 7,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/WatchlistCardV4.tsx": {
+   "hex": 0,
+   "font": 12,
+   "radius": 3,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/WatchlistProposeModal.tsx": {
+   "hex": 9,
+   "font": 9,
+   "radius": 16,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/cio/CioBrainPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 8
+  },
+  "components/cio/SymbolThesisCard.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/BookStanceStrip.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/DefenseDetails.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/ExecutionPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/InverseStoplightRail.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/LadderTrack.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/OptionsLifecycleStrip.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/RecommendationsRail.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 16,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/ReviewConsole.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/RotationBoards.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/RotationPlanPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/SectorLeadersCard.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/SectorLeadersPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/redesign/CashAlternatives.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/defense/redesign/DefenseRedesign.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/health/CoderDispatchLedger.tsx": {
+   "hex": 25,
+   "font": 13,
+   "radius": 7,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/home/BookTreemap.tsx": {
+   "hex": 1,
+   "font": 4,
+   "radius": 6,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/home/HomeTrustRender.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/home/MajorNewsGrid.tsx": {
+   "hex": 3,
+   "font": 7,
+   "radius": 8,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/home/MarketMoversBoard.tsx": {
+   "hex": 1,
+   "font": 4,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/intelligence/IntelligenceNewsTab.tsx": {
+   "hex": 4,
+   "font": 2,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/intelligence/IntelligenceResearchTab.tsx": {
+   "hex": 8,
+   "font": 7,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/intelligence/IntelligenceRotationTab.tsx": {
+   "hex": 22,
+   "font": 3,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/intelligence/IntelligenceSourcesTab.tsx": {
+   "hex": 7,
+   "font": 13,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/options/OptionsLifecycleView.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 14,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/primitives/cardPrimitives.tsx": {
+   "hex": 4,
+   "font": 0,
+   "radius": 3,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/reentry/AuthoritativeExitUniverse.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reentry/ReEntryAlertArmModal.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reentry/ReEntryAnalystEvidence.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reentry/ReEntryAnalystLookthroughBoard.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reentry/ReEntryClassificationOverlay.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/reentry/ReEntryCommandHeader.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reentry/ReEntryCurrentIntelligence.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reentry/ReEntryEvidenceContractPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reentry/ReEntryExitDetailLedger.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reentry/ReEntryExitWorkbench.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reentry/ReEntryHelpGuide.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reentry/ReEntryMiniChart.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reentry/ReEntryResistanceBoard.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reentry/ReEntryRotationWorkspace.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/ActionDeck.tsx": {
+   "hex": 7,
+   "font": 1,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/AlertAnalyticsBand.tsx": {
+   "hex": 0,
+   "font": 1,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/AlertSettingsModal.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/AnalystActionModal.tsx": {
+   "hex": 9,
+   "font": 1,
+   "radius": 5,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/reports/AnalystReportViewer.tsx": {
+   "hex": 56,
+   "font": 11,
+   "radius": 18,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/AnalystReportsPanel.tsx": {
+   "hex": 23,
+   "font": 6,
+   "radius": 17,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/ArchiveListItem.tsx": {
+   "hex": 8,
+   "font": 5,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/ArchiveReader.tsx": {
+   "hex": 22,
+   "font": 6,
+   "radius": 8,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/BriefSectionPanels.tsx": {
+   "hex": 10,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/DocxDownloads.tsx": {
+   "hex": 3,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/MorningCommandStrip.tsx": {
+   "hex": 5,
+   "font": 1,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/PriorityActionBoard.tsx": {
+   "hex": 19,
+   "font": 5,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/ProspectusBatchPanel.tsx": {
+   "hex": 18,
+   "font": 6,
+   "radius": 11,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/ReportCoverageStrip.tsx": {
+   "hex": 1,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/ReportLibrary.tsx": {
+   "hex": 1,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/ReportSearch.tsx": {
+   "hex": 4,
+   "font": 1,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/ReportsArchive.tsx": {
+   "hex": 30,
+   "font": 7,
+   "radius": 14,
+   "shadow": 0,
+   "guide": 7
+  },
+  "components/reports/StructuredBrief.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/reports/SystemRollupTab.tsx": {
+   "hex": 0,
+   "font": 1,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/risk/DrawdownChart.tsx": {
+   "hex": 3,
+   "font": 2,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/risk/GreeksOverview.tsx": {
+   "hex": 5,
+   "font": 4,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/risk/OptionMoneynessBar.tsx": {
+   "hex": 6,
+   "font": 3,
+   "radius": 4,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/risk/OptionsPnLProfile.tsx": {
+   "hex": 5,
+   "font": 6,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/risk/PositionSizingRiskBar.tsx": {
+   "hex": 5,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/risk/RiskContributionBars.tsx": {
+   "hex": 8,
+   "font": 3,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/risk/RiskGauge.tsx": {
+   "hex": 3,
+   "font": 1,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/risk/RiskHealthStrip.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/risk/RiskHeatmapGrid.tsx": {
+   "hex": 3,
+   "font": 2,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/risk/ThesisValidityGauge.tsx": {
+   "hex": 2,
+   "font": 1,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/rockville/CioDailyPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/rockville/WatchCardV2.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 8,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/rotation/ActionableSectorDecisionBoard.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 2,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/tradeinview/AdvancedReportsPanel.tsx": {
+   "hex": 1,
+   "font": 4,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/AiCritiqueInsightsPanel.tsx": {
+   "hex": 4,
+   "font": 4,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/AiTradeCritique.tsx": {
+   "hex": 9,
+   "font": 5,
+   "radius": 7,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/BehavioralPanel.tsx": {
+   "hex": 8,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/BulkTagModal.tsx": {
+   "hex": 7,
+   "font": 0,
+   "radius": 6,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/tradeinview/ByTickerPanel.tsx": {
+   "hex": 6,
+   "font": 5,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/CostsPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/CsvImportPanel.tsx": {
+   "hex": 4,
+   "font": 3,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/ExitIntelligencePanel.tsx": {
+   "hex": 6,
+   "font": 3,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/JournalVocabPicker.tsx": {
+   "hex": 5,
+   "font": 0,
+   "radius": 6,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/tradeinview/ManualEntryPanel.tsx": {
+   "hex": 4,
+   "font": 1,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/MonteCarloPanel.tsx": {
+   "hex": 10,
+   "font": 7,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/OptionsJournalPanel.tsx": {
+   "hex": 5,
+   "font": 3,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/ReportingAuditPanel.tsx": {
+   "hex": 10,
+   "font": 4,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/SavedFilterBar.tsx": {
+   "hex": 3,
+   "font": 4,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/SessionRecapPanel.tsx": {
+   "hex": 4,
+   "font": 4,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/StopContextPanel.tsx": {
+   "hex": 2,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/TagChipGrid.tsx": {
+   "hex": 5,
+   "font": 0,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/TaggingQueuePanel.tsx": {
+   "hex": 58,
+   "font": 5,
+   "radius": 45,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/tradeinview/TradeCompareReplay.tsx": {
+   "hex": 0,
+   "font": 2,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/TradeInViewDetail.tsx": {
+   "hex": 14,
+   "font": 1,
+   "radius": 13,
+   "shadow": 1,
+   "guide": 0
+  },
+  "components/tradeinview/TradeLogTable.tsx": {
+   "hex": 3,
+   "font": 1,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/TradeReportReadiness.tsx": {
+   "hex": 5,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "components/tradeinview/ZellaScoreCard.tsx": {
+   "hex": 3,
+   "font": 2,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/brokerThesis.ts": {
+   "hex": 4,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/cloudLlmRun.ts": {
+   "hex": 7,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/defenseRedesign.ts": {
+   "hex": 11,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/exitLadder.ts": {
+   "hex": 2,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/holdingsRowModel.ts": {
+   "hex": 8,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/holdingsTerminalTokens.ts": {
+   "hex": 14,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/operatorDecisionCard.ts": {
+   "hex": 4,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/optionsCardSemantics.ts": {
+   "hex": 6,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/proposalCardAction.ts": {
+   "hex": 3,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/proposalDeskTheme.ts": {
+   "hex": 1,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/proposalLabels.ts": {
+   "hex": 5,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/proposalRouting.ts": {
+   "hex": 4,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/terminalCardTheme.ts": {
+   "hex": 0,
+   "font": 2,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/terminalHubChrome.ts": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/watchTokens.ts": {
+   "hex": 0,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/watchlistCardAction.ts": {
+   "hex": 16,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/watchlistCardTokens.ts": {
+   "hex": 11,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/watchlistCardV4.ts": {
+   "hex": 2,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/watchlistTerminalTokens.ts": {
+   "hex": 12,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "lib/watchlistVolatility.ts": {
+   "hex": 5,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/ActiveTraderConfigTab.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 8,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/ActiveTraderHub.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/AdvisorChangesHub.tsx": {
+   "hex": 8,
+   "font": 3,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/AdvisoryDeskHub.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 14,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/AgentRuntimeHub.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 10,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/AgentsHub.tsx": {
+   "hex": 11,
+   "font": 21,
+   "radius": 13,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/CioHub.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 24,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/ClosedLoopPanel.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/CommunicationsHub.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/ConsumptionHub.tsx": {
+   "hex": 24,
+   "font": 4,
+   "radius": 15,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/HealthHub.tsx": {
+   "hex": 3,
+   "font": 0,
+   "radius": 20,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/HermesHub.tsx": {
+   "hex": 129,
+   "font": 61,
+   "radius": 69,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/HomeHub.tsx": {
+   "hex": 77,
+   "font": 24,
+   "radius": 19,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/IntelligenceHub.tsx": {
+   "hex": 1,
+   "font": 0,
+   "radius": 0,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/JournalHub.tsx": {
+   "hex": 144,
+   "font": 65,
+   "radius": 65,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/ManualTosDesk.tsx": {
+   "hex": 16,
+   "font": 4,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/MaturityPanels.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/OpsAutonomyDashboard.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 8,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/OptionsHub.tsx": {
+   "hex": 42,
+   "font": 1,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/PortfolioHub.tsx": {
+   "hex": 86,
+   "font": 12,
+   "radius": 33,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/PullbackMacdHub.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 7
+  },
+  "pages/ReEntryPageV2.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/ReEntryPageV3.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/RecommendationIntelligence.tsx": {
+   "hex": 42,
+   "font": 12,
+   "radius": 13,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/RedeployDesk.tsx": {
+   "hex": 1,
+   "font": 0,
+   "radius": 22,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/RedeployDeskIntegrated.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 1,
+   "guide": 0
+  },
+  "pages/RemediationDashboard.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/ReportsHub.tsx": {
+   "hex": 1,
+   "font": 0,
+   "radius": 10,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/ResearchIntelligenceHub.tsx": {
+   "hex": 41,
+   "font": 11,
+   "radius": 41,
+   "shadow": 1,
+   "guide": 0
+  },
+  "pages/RetirementHub.tsx": {
+   "hex": 11,
+   "font": 6,
+   "radius": 6,
+   "shadow": 0,
+   "guide": 5
+  },
+  "pages/RiskHub.tsx": {
+   "hex": 44,
+   "font": 20,
+   "radius": 26,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/RotationIntelligence.tsx": {
+   "hex": 125,
+   "font": 53,
+   "radius": 32,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/SchwabReauthHub.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 13,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/ScreenerFindsHub.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/SectorsHub.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 3,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/StrategyHub.tsx": {
+   "hex": 56,
+   "font": 23,
+   "radius": 11,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/SymbolIntelligencePage.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 11,
+   "shadow": 0,
+   "guide": 14
+  },
+  "pages/SystemHub.tsx": {
+   "hex": 99,
+   "font": 56,
+   "radius": 46,
+   "shadow": 1,
+   "guide": 0
+  },
+  "pages/TradingHub.tsx": {
+   "hex": 93,
+   "font": 55,
+   "radius": 59,
+   "shadow": 0,
+   "guide": 4
+  },
+  "pages/WatchDiscovery.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/WatchIntelligenceUnified.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 13,
+   "shadow": 0,
+   "guide": 5
+  },
+  "pages/WatchLegacy.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/WatchlistHub.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 35,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/WatchlistIntelligenceBoard.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 11,
+   "shadow": 0,
+   "guide": 7
+  },
+  "pages/WatchpoolHub.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/activeTrader.css": {
+   "hex": 48,
+   "font": 0,
+   "radius": 17,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/control-plane/r22/controlPlaneChrome.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 2,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/control-plane/r23/ControlPlaneFrame.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 5,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/control-plane/r23/NotificationsPage.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 1,
+   "shadow": 0,
+   "guide": 0
+  },
+  "pages/control-plane/r24/controlPlaneChrome.tsx": {
+   "hex": 0,
+   "font": 0,
+   "radius": 4,
+   "shadow": 0,
+   "guide": 0
+  }
+ }
+}

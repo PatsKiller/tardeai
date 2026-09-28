@@ -5,28 +5,35 @@
  * census is the acceptance gate.
  *
  * DEPRECATION MAP (v2/v3 ad-hoc palette → semantic replacement):
- *   #a855f7 (purple accents)        → T.extIntel.hermes (muted, badges only) or BB.text2
- *   #2dd4bf (teal one-offs)         → T.link or BB.text2
- *   #a78bfa (violet chips)          → T.extIntel.hermes
- *   #7dd3fc (sky chips)             → T.link
- *   #10a37f (openai green)          → T.extIntel.gpt (badge only)
- *   #ffa726 / #fbbf24 / #f5c76a /
- *   #eab308 / #fb923c (ambers/orange)→ BB.amber (attention) or BB.orange (warm metric)
- *   #34d399 / #86efac (soft greens) → BB.green / T.greenSoft
- *   #f87171 (soft red)              → BB.red
- *   #60a5fa / #93c5fd / #2563eb /
- *   #dbeafe (blues)                 → T.link (links/drills only, never data color)
- *   #64748b / #94a3b8 / #cbd5e1 /
- *   #f8fafc (slates)                → BB.text3 / text2 / text1 / text0
- *   #d8b4fe                         → T.extIntel.hermes
- *   purple-tinted dark shell family (#0f1117 #171923 #1a192b #1e2130 #232640
- *   #2d3148) → BB.bg / BB.bgPanel / BB.bgShift / BB.border — ONE dark ground.
+ *   hex-a855f7 (purple accents)        → T.extIntel.hermes (muted, badges only) or BB.text2
+ *   hex-2dd4bf (teal one-offs)         → T.link or BB.text2
+ *   hex-a78bfa (violet chips)          → T.extIntel.hermes
+ *   hex-7dd3fc (sky chips)             → T.link
+ *   hex-10a37f (openai green)          → T.extIntel.gpt (badge only)
+ *   hex-ffa726 / hex-fbbf24 / hex-f5c76a /
+ *   hex-eab308 / hex-fb923c (ambers/orange)→ BB.amber (attention) or BB.orange (warm metric)
+ *   hex-34d399 / hex-86efac (soft greens) → BB.green / T.greenSoft
+ *   hex-f87171 (soft red)              → BB.red
+ *   hex-60a5fa / hex-93c5fd / hex-2563eb /
+ *   hex-dbeafe (blues)                 → T.link (links/drills only, never data color)
+ *   hex-64748b / hex-94a3b8 / hex-cbd5e1 /
+ *   hex-f8fafc (slates)                → BB.text3 / text2 / text1 / text0
+ *   hex-d8b4fe                         → T.extIntel.hermes
+ *   purple-tinted dark shell family (hex-0f1117 hex-171923 hex-1a192b hex-1e2130 hex-232640
+ *   hex-2d3148) → BB.bg / BB.bgPanel / BB.bgShift / BB.border — ONE dark ground.
  *
  * Type scale is LOCKED to 10/11/12/14/18/24. Nothing below 10 in Watch pages;
  * density comes from row padding on the 4px grid, not glyph shrinkage.
  */
 import type { CSSProperties } from 'react'
 import { BB, numStyle, terminalButton, terminalSigned } from './watchlistTerminalTokens'
+import { BRAND, TOKENS, toneVars } from './designTokens'
+
+// PR1 (2026-09-27): this file is now a COMPATIBILITY FACADE over src/lib/designTokens.ts +
+// src/styles/tokens.css. Every colour below is a semantic var() so it follows the theme; the
+// names are kept so the 60+ importers keep working while pages convert. New code imports
+// designTokens directly. No hex may live here (scripts/check_ui_standards.mjs).
+export { BRAND, TOKENS, toneVars }
 
 export { BB, numStyle, terminalButton, terminalSigned }
 export { terminalRail, terminalVerdictColor, terminalVerdictBg, terminalRrColor } from './watchlistTerminalTokens'
@@ -34,20 +41,20 @@ export { hubTitle, hubSubtitle, hubTab, hubPanel, hubStrip, hubFilterSelect, hub
 
 export const T = {
   /** Links / drill affordances only — never a data color. */
-  link: '#60a5fa',
+  link: 'var(--info-color)',
   greenSoft: 'rgba(34, 197, 94, 0.55)',
   /** External-intel brand tints — ONE muted tint each, badges only, defined nowhere else. */
   extIntel: {
-    hermes: '#a78bfa',
-    gpt: '#10a37f',
-    grok: '#7dd3fc',
+    hermes: 'var(--ai-color)',
+    gpt: 'var(--ai-color)',
+    grok: 'var(--ai-color)',
   },
   heldBadge: {
     background: 'rgba(34, 197, 94, 0.12)',
-    color: '#22c55e',
+    color: 'var(--success-color)',
     border: '1px solid rgba(34, 197, 94, 0.35)',
   },
-  focusRing: '0 0 0 2px rgba(255, 176, 0, 0.55)',
+  focusRing: 'var(--focus-ring)',
 } as const
 
 /** Rail semantics (A3): the 3px left spine every row-like element carries. */
@@ -55,7 +62,7 @@ export const RAIL = {
   favorable: BB.green,   // positive outcome / ready / winning
   attention: BB.amber,   // near-stop, overdue, needs-review, caution
   breach: BB.red,        // conflict / breach / underperforming
-  neutral: '#334155',    // slate — nothing notable
+  neutral: 'var(--neutral-border)',    // slate — nothing notable
 } as const
 export type RailState = keyof typeof RAIL
 
@@ -75,31 +82,30 @@ export const DASH = { data: 12, row: 12.5, section: 14, panel: 16, verdict: 22, 
  * existing palette has no value for. Everything else in that spec maps to an
  * existing BB/T token BY VALUE — never by name:
  *
- *   --bg0  #0a0e1a -> BB.bgPanel     --t0  #f8fafc -> BB.text0
- *   --bg1  #111827 -> BB.bgShift     --t1  #e2e8f0 -> BB.text1
- *   --line #1e293b -> BB.border      --t2  #94a3b8 -> BB.text3   <- NOT BB.text2
- *   --green/red/amber -> BB.*        --blue #60a5fa -> T.link
+ *   --bg0  hex-0a0e1a -> BB.bgPanel     --t0  hex-f8fafc -> BB.text0
+ *   --bg1  hex-111827 -> BB.bgShift     --t1  hex-e2e8f0 -> BB.text1
+ *   --line hex-1e293b -> BB.border      --t2  hex-94a3b8 -> BB.text3   <- NOT BB.text2
+ *   --green/red/amber -> BB.*        --blue hex-60a5fa -> T.link
  *
- * The --t2 line is the trap: BB.text2 is #cbd5e1 and appears nowhere in the
+ * The --t2 line is the trap: BB.text2 is hex-cbd5e1 and appears nowhere in the
  * mockup. A name-based mapping is wrong by one shade on every muted label,
  * which is the same class of error that derailed the previous attempt.
  *
- * NOT defined here, deliberately: the mockup's --bg2 (#161d2e) and --purple
- * (#a855f7) are declared in its :root but referenced ZERO times in its markup
+ * NOT defined here, deliberately: the mockup's --bg2 (hex-161d2e) and --purple
+ * (hex-a855f7) are declared in its :root but referenced ZERO times in its markup
  * or CSS. --purple is additionally a hex the design system already deprecates
- * in favour of T.extIntel.hermes (#a78bfa). Adding either would be dead weight.
+ * in favour of T.extIntel.hermes (hex-a78bfa). Adding either would be dead weight.
  */
 export const DD = {
   /** inset / sunken surface — footers, gap cells, progress-bar troughs */
-  sunk: '#0d121f',
+  sunk: 'var(--bg-0)',
   /** emphasized border — buttons, table section rules */
-  line2: '#2a3750',
+  line2: 'var(--border-color)',
   /** dim metadata — table headers, .dim, the unknown-value class */
-  t3: '#64748b',
+  t3: 'var(--text-3)',
 } as const
 
-/** v8.5c — LLM provider brand colors for the oversight pills (ONLY place hexes live). */
-export const BRAND = { anthropic: '#D97757', openai: '#10A37F', xai: '#B8C2CC', deepseek: '#3B82F6' } as const
+/** v8.5c — LLM provider brand colors: now in designTokens.BRAND (re-exported above). */
 
 /** Right-aligned tabular numeric cell (A2: one mono stack). */
 export const numCell: CSSProperties = {
@@ -183,7 +189,7 @@ export function focusStyle(focused: boolean): CSSProperties {
  *  Exact stops here so every heat surface (treemap, news grid) shares one ramp. */
 export function heatRamp(pct: number | null | undefined): string {
   const p = Math.max(-3, Math.min(3, Number(pct ?? 0)))
-  if (!Number.isFinite(p) || p === 0) return '#41464e'
+  if (!Number.isFinite(p) || p === 0) return 'var(--bg-3)'
   // interpolate darkness by |p|/3 between slate and the deep end
   const t = Math.abs(p) / 3
   const mix = (a: number[], b: number[]) => a.map((x, i) => Math.round(x + (b[i] - x) * t))
