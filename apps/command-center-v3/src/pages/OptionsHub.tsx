@@ -6,6 +6,10 @@ import { type OptionProposal } from '../components/OptionProposalCard'
 import { type OptionPosition } from '../components/OptionPositionCard'
 import OptionProposalCardV4 from '../components/OptionProposalCardV4'
 import OptionPositionCardV4 from '../components/OptionPositionCardV4'
+import OptionProposalCardV5 from '../components/OptionProposalCardV5'
+import OptionPositionCardV5 from '../components/OptionPositionCardV5'
+import UiV5Toggle from '../components/UiV5Toggle'
+import { useUiV5 } from '../lib/uiV5'
 import OptionReviewBar from '../components/OptionReviewBar'
 import ManualExecutionModal, { type ManualExecSeed } from '../components/ManualExecutionModal'
 import ManualExecutionLog from '../components/ManualExecutionLog'
@@ -76,8 +80,10 @@ export default function OptionsHub({ onDrill }: Props) {
   const [pendingIntent, setPendingIntent] = useState<string | null>(null)
   const [execMsg, setExecMsg] = useState<string | null>(null)
   const [manualSeed, setManualSeed] = useState<ManualExecSeed | null>(null)
-  const ProposalCard = OptionProposalCardV4
-  const PositionCard = OptionPositionCardV4
+  // PR4 (2026-09-28): the redesigned cards render only behind ui_v5; v4 stays the fallback.
+  const [uiV5] = useUiV5()
+  const ProposalCard = uiV5 ? OptionProposalCardV5 : OptionProposalCardV4
+  const PositionCard = uiV5 ? OptionPositionCardV5 : OptionPositionCardV4
 
   const q = useMemo(() => {
     const p = new URLSearchParams()
@@ -621,6 +627,7 @@ export default function OptionsHub({ onDrill }: Props) {
             </div>
           )}
 
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}><UiV5Toggle /></div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
             {shownProps.map(p => (
               <ProposalCard
@@ -707,6 +714,7 @@ export default function OptionsHub({ onDrill }: Props) {
               </div>
             </div>
           )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 6 }}><UiV5Toggle /></div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
             {posList.map(p => (
               <PositionCard
