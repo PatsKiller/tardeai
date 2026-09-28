@@ -783,7 +783,10 @@ def commit(ctx: dict, outcome: dict, *, deltas: Iterable[dict] = (), confidence_
     }
     if write_receipt:
         _append(contexts_path(root, env), row)
-        if deltas:
+        # Wave 2 item 3: every non-monitor commit is a memory touch the graph fans out from (07 §4);
+        # Wave 1 emitted only when deltas were attached, and no producer attaches deltas yet, so the
+        # bus never saw one. Monitors stay silent.
+        if deltas or str(ctx.get("purpose") or "").upper() != "MONITOR":
             _emit_memory_delta(ctx, row, env)
     ctx["committed_at"] = row["committed_at"]
     ctx["influence"] = infl
@@ -890,6 +893,7 @@ def _emit_memory_delta(ctx: dict, row: dict, env: dict) -> None:
                                             "lane_id": (ctx.get("actor") or {}).get("lane_id"),
                                             "subjects": [s.get("guid") for s in ctx.get("subjects", []) if s.get("guid")],
                                             "delta_count": row.get("delta_count", 0), "payload_sha256": row.get("payload_sha256"),
+                                            "purpose": ctx.get("purpose"), "outcome_kind": (row.get("outcome") or {}).get("kind") if isinstance(row.get("outcome"), dict) else None,
                                             "mode": ctx.get("mode"), "authority": "READ_ONLY_ADVISORY"},
                            source="intelligence_client", priority="LOW")
     except Exception:  # noqa: BLE001

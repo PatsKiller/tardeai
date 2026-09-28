@@ -276,6 +276,8 @@ def _source_fingerprints(root: Path, env: dict) -> dict:
         "holdings_snapshot": data / "cio" / "holdings_snapshot_latest.json",
         "research_contradiction_candidates": data / "cio" / "research_contradiction_candidates.jsonl",
         "ticker_research_graph": data / "cio" / "ticker_research_graph.jsonl",
+        # Wave 2 item 3: the edge-fanout consumer marks subjects dirty (memory.delta / thesis.changed)
+        "gir_projector_dirty": data / "runtime" / "gir_projector_dirty.json",
     }
     out = {}
     for k, p in srcs.items():
@@ -284,6 +286,18 @@ def _source_fingerprints(root: Path, env: dict) -> dict:
         except OSError:
             out[k] = None
     return out
+
+
+def _consume_dirty(path: Path, now: _dt.datetime) -> None:
+    """Mark the fan-out dirty file consumed (never deleted); the fingerprint then matches until the consumer writes again."""
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if d.get("consumed_at"):
+        return
+    d["consumed_at"] = now.isoformat(); d["consumed_subjects"] = len(d.get("subjects") or [])
+    tmp = path.with_suffix(".json.tmp"); tmp.write_text(json.dumps(d, indent=1) + "\n", encoding="utf-8"); os.replace(tmp, path)
 
 
 def incremental_needed(root: Path, state_path: Path, env: dict) -> tuple[bool, dict, dict]:
@@ -360,6 +374,7 @@ def main() -> int:
                 print("heartbeat:", _hb.beat("gir-projector", conn=_conn, success=True, output_signal=True, work_done=applied["entities"]).get("pg"))
             except Exception as exc:  # noqa: BLE001
                 print(f"heartbeat pg skipped: {type(exc).__name__}")
+            _consume_dirty(root / "data" / "runtime" / "gir_projector_dirty.json", pj.now)
             state_p.parent.mkdir(parents=True, exist_ok=True)
             state_p.write_text(json.dumps({"schema": "GirProjectorState@v1", "as_of": pj.now.isoformat(), "applied": applied,
                                            "sources": _source_fingerprints(root, os.environ)}, indent=1) + "\n", encoding="utf-8")

@@ -217,6 +217,29 @@ def build_research_thesis_delta(
     }
 
 
+
+def _index_delta(delta: dict[str, Any], symbol: str) -> dict[str, Any]:
+    try:
+        try:
+            import research_index_writer as riw  # type: ignore
+        except ImportError:
+            from scripts.lib import research_index_writer as riw  # type: ignore
+        guid = None
+        try:
+            try:
+                import intelligence_client as ic  # type: ignore
+            except ImportError:
+                from scripts.lib import intelligence_client as ic  # type: ignore
+            ent = ic.default_loaders().resolve_subject(symbol)
+            guid = (ent or {}).get("security_guid") or (ent or {}).get("guid")
+        except Exception:  # noqa: BLE001
+            guid = None
+        if not guid:
+            return {"pg": "skipped", "reason": "IDENTITY_UNRESOLVED"}
+        return riw.index_delta(delta, subject_guid=str(guid))
+    except Exception as exc:  # noqa: BLE001
+        return {"pg": "error", "error": f"{type(exc).__name__}:{str(exc)[:120]}"}
+
 def _append_delta(delta: dict[str, Any], root: Path | str | None) -> bool:
     path = delta_path(root)
     if latest_delta(delta.get("symbol") or "", root=root) and any(
@@ -421,6 +444,9 @@ def accept_research_result(
     appended = _append_delta(delta, root)
     if not appended:
         return {"ok": True, "duplicate": True, "delta": delta, "version_published": False, "authority": AUTHORITY}
+    # Wave 2 item 8 (pkg-20260928-wave-2-enforcement-35c4): deterministic + citation index rows for the
+    # accepted delta (03 §3 steps 1 and 5). Fail-soft; the delta row above is canonical.
+    delta["research_index"] = _index_delta(delta, symbol)
 
     contradiction_result = None
     try:
