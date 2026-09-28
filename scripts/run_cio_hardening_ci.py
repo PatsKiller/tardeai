@@ -2630,7 +2630,9 @@ GATES = [
         # (with url + date) and the options CIO packet (with real per-leg liquidity,
         # fundamentals and the RPO-is-not-backlog note); web queries keep "AI" and ask sec.gov.
         "sec_filing_documents_20260927",
-        ["tests/test_sec_filing_documents_20260927.py"],
+        ["tests/test_sec_filing_documents_20260927.py",
+         # --since-days: one-off wider 8-K window (DELL Q1 FY27 release on 2026-05-28)
+         "tests/test_sec_ingest_since_days_20260927.py"],
     ),
     (
         # 2026-09-27 -- options fill truth (reviewer work order): credit spreads priced from an
