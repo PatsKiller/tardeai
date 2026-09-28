@@ -2828,6 +2828,13 @@ GATES = [
         "audit_finish_20260927",
         ["tests/test_audit_finish_20260927.py"],
     ),
+    (
+        # 2026-09-28 — lane registry: 107 host cron lines installed 09-27/28 with no lane
+        # row broke check_lane_registry on main; recorded as a dated inherited tranche
+        # with provenance (the original baseline is not grown) that the gate honours.
+        "lane_registry_inherited_tranche_20260928",
+        ["tests/test_lane_registry_inherited_tranche_20260928.py"],
+    ),
 ]
 
 
