@@ -164,7 +164,19 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Advance options theses one lifecycle step")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--proposals", default=str(ROOT / "data" / "portfolios" / "state" / "options_proposals.json"))
+    ap.add_argument("--lock", default="/tmp/options_thesis_lifecycle.lock",
+                    help="the scheduler's flock path; a manual run must not race the :07/:22/:37/:52 cron")
     a = ap.parse_args(argv)
+    # 2026-09-27: a manual --apply pass raced the cron's pass on the same DELL guid (both
+    # reviewed it in the same second). Take the same lock the crontab line uses; if it is
+    # held, say so and exit 0 without touching the store.
+    import fcntl
+    lock_fh = open(a.lock, "a+")
+    try:
+        fcntl.flock(lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        print(json.dumps({"ok": False, "skipped": "lifecycle lock held by another run", "lock": a.lock}))
+        return 0
     _load_env()
     from lib.options_cio_review import review
     from lib.options_thesis import OptionsThesisStore

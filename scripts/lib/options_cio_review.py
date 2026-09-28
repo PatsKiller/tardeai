@@ -252,6 +252,21 @@ def validate(review: Any, facts: dict[str, Any]) -> tuple[bool, list[str]]:
     return (not errs), errs
 
 
+def _release_lane_completion(resp: Any) -> bool:
+    """Forget the governed lane's 'completed' mark for a rejected answer; never raises."""
+    key = resp.get("evidence_hash") if isinstance(resp, dict) else None
+    if not key:
+        return False
+    try:
+        try:
+            from lib.agent_flash_governance import release_completed
+        except ImportError:
+            from scripts.lib.agent_flash_governance import release_completed  # type: ignore
+        return bool(release_completed(str(key)))
+    except Exception:  # noqa: BLE001
+        return False
+
+
 def _default_llm(prompt: str, *, symbol: str, job_key: str, max_tokens: int = 2500) -> dict[str, Any]:
     try:
         from llm_router import get_llm_response  # type: ignore
@@ -302,16 +317,21 @@ def review(p: dict[str, Any], *, mode: str, llm_fn: Optional[Callable[[str], Any
         return {**base, "status": "DEDUPE_SKIPPED", "reason": router_err[:200], "model": meta, "raw_head": head}
     if isinstance(resp, dict) and resp.get("success") is False and not text:
         return {**base, "status": "LLM_ERROR", "reason": (router_err or "empty response")[:200], "model": meta}
+    def _rejected(status: str, errors: list) -> dict:
+        # The lane recorded this evidence key as answered; the answer was unusable, so let
+        # the same key be asked again (the attempt-suffixed job key is the belt to this brace).
+        released = _release_lane_completion(resp)
+        return {**base, "status": status, "errors": errors, "model": meta, "raw_head": head,
+                "lane_completion_released": released}
     if text.count("{") > text.count("}"):
-        return {**base, "status": "TRUNCATED", "errors": [f"response cut off at {len(text)} chars (unclosed JSON)"],
-                "model": meta, "raw_head": head}
+        return _rejected("TRUNCATED", [f"response cut off at {len(text)} chars (unclosed JSON)"])
     try:
         r = br._parse_json(raw)
     except (ValueError, TypeError) as exc:
-        return {**base, "status": "INVALID", "errors": [f"unparseable: {exc}"], "model": meta, "raw_head": head}
+        return _rejected("INVALID", [f"unparseable: {exc}"])
     ok, errs = validate(r, facts)
     if not ok:
-        return {**base, "status": "INVALID", "errors": errs, "model": meta, "raw_head": head}
+        return _rejected("INVALID", errs)
     return {**base, "status": "OK", "review": r, "model": meta,
             "decision_guid": f"dec_{uuid.uuid4()}"}
 

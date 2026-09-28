@@ -253,6 +253,23 @@ def mark_completed(evidence_key: str) -> None:
         _save_dedupe(cache)
 
 
+def release_completed(evidence_key: str) -> bool:
+    """Forget a completion the CONSUMER rejected (2026-09-27: the lane marks an evidence
+    key completed when the provider answered, but the options CIO review found the answer
+    unparseable / untraceable; the dedupe then handed back an empty answer for the same key
+    forever). Returns True when a completion was forgotten."""
+    if not evidence_key:
+        return False
+    with _DEDUPE_LOCK:
+        had = evidence_key in _DEDUPE_CACHE
+        _DEDUPE_CACHE.pop(evidence_key, None)
+        cache = _load_dedupe()
+        had = had or evidence_key in cache
+        cache.pop(evidence_key, None)
+        _save_dedupe(cache)
+    return had
+
+
 def circuit_open() -> bool:
     return time.time() < float(_CIRCUIT.get("open_until") or 0)
 
@@ -409,7 +426,7 @@ def governed_flash_call(
     if already_completed(ekey):
         return {
             "success": False,
-            "error": "DEDUPE_SKIP: identical evidence already completed successfully",
+            "error": "DEDUPE_SKIP: identical evidence already answered by the provider (consumer may release_completed)",
             "provider": "deepseek",
             "model_used": FLASH_MODEL,
             "dedupe": True,

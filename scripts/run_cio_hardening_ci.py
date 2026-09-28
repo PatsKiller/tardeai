@@ -2674,6 +2674,13 @@ GATES = [
          "tests/test_options_broker_gates_20260927.py"],
     ),
     (
+        # 2026-09-27 wave 3 -- researched-watchlist lane reads catalysts from catalyst_events and
+        # logs a failing read; a rejected CIO review releases the lane's dedupe mark; a manual
+        # lifecycle run takes the scheduler's lock; submit re-reads buying power.
+        "wave3_lane_dedupe_lock_bp_20260927",
+        ["tests/test_wave3_lane_dedupe_lock_bp_20260927.py"],
+    ),
+    (
         # 2026-09-27 -- protective puts / covered calls reconcile held shares and cost basis to
         # the holdings snapshot of record at preflight (fail closed on stale, missing, short,
         # changed); every CIO-packet yield names its denominator.

@@ -245,8 +245,16 @@ def request_2fa(intent) -> dict:
     return approval_service.request_approval(intent)
 
 
-def submit(account_key: str, order_spec: dict, intent) -> dict:
+def submit(account_key: str, order_spec: dict, intent, *, buying_power_reader=None) -> dict:
+    """The submit boundary. Buying power is re-read HERE too (the second read the proof
+    document listed as the remaining gap): place_order's own readiness pass reads it from the
+    intent's evidence, so the number it sees is from this call, not from confirm seconds
+    earlier. A failed read leaves it None and readiness fails closed."""
     import schwab_transport
+    ev = (getattr(getattr(intent, "meta", None), "signal_evidence", None) or {})
+    bp, as_of = read_buying_power(account_key, reader=buying_power_reader)
+    ev["buying_power"], ev["buying_power_as_of"] = bp, as_of
+    ev["buying_power_read_at"] = "submit"
     return schwab_transport.place_order(account_key, order_spec, intent, kind="options")
 
 
