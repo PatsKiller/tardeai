@@ -22,8 +22,13 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import market_quote_provider as mqp  # noqa: E402
 import auto_proposal_generator as apg  # noqa: E402
+
+# CI has no psycopg2 (cio-hardening installs pytest+pyyaml only). The real market_quote_provider
+# imports session13_db -> psycopg2 at module load, so the liquidity tests inject a stub module
+# instead of importing it: _liquidity_prescreen does `from market_quote_provider import ...`
+# lazily, which resolves through sys.modules.
+import types  # noqa: E402
 
 COVERS = ["scripts/auto_proposal_generator.py", "config/strategies/momentum_scalp.yaml"]
 
@@ -113,8 +118,10 @@ def test_catalyst_required_by_contract():
 
 
 def _patch_quotes(monkeypatch, spread):
-    monkeypatch.setattr(mqp, "check_fresh_quote", lambda symbol, strategy_id=None: {"ok": True})
-    monkeypatch.setattr(mqp, "get_best_quote", lambda symbol: {"spread_pct": spread, "last_price": 2.0, "day_volume": 3_000_000})
+    stub = types.ModuleType("market_quote_provider")
+    stub.check_fresh_quote = lambda symbol, strategy_id=None: {"ok": True}
+    stub.get_best_quote = lambda symbol: {"spread_pct": spread, "last_price": 2.0, "day_volume": 3_000_000}
+    monkeypatch.setitem(sys.modules, "market_quote_provider", stub)
 
 
 def test_seven_percent_spread_passes_scalp_contract_but_fails_shared_rules(monkeypatch):
