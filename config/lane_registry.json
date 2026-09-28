@@ -2643,6 +2643,52 @@
         "path": "data/governance/approval_packages.jsonl"
       },
       "note": "approval reminders at +4h/+12h and expiry (13 §6) — body lands in Wave 1 tranche 2 INSTALLED 2026-09-27 ~20:00 ET under pkg-20260927-cogx-w1-d9e1 (cron lines appended; timers enabled from CURRENT f65da1f66)."
+    },
+    {
+      "lane_id": "edge-fanout-consumer",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "systemd",
+        "expression": "tradeai-edge-fanout-consumer.timer"
+      },
+      "expected_cadence_hours": 0.0833,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-09-27T22:10:00-04:00",
+      "state_reason": "unit files ship in config/systemd/user/; installation + enable is the pkg-20260928-wave-2-enforcement-35c4 service grant (items 3-4); flips to ACTIVE in the closeout PR once tradeai-edge-fanout-consumer.timer is enabled from CURRENT",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/edge_fanout_consumer.py + config/systemd/user/tradeai-edge-fanout-consumer.{service,timer} on the tranche 3 branch; the bus consumer id edge-fanout has no cursor row yet (cio_event_cursors.jsonl), so the lane has never run",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/edge_fanout_consumer_latest.json"
+      },
+      "note": "Wave 2 items 3-4 (07 §4): memory.delta / thesis.changed → GIR edge traversal (depth ≤ 3) → EdgeFanoutWorkItem@v1 (reproject / notify) + projector dirty file. Replaces the static AGENT_EVENT_ROUTING list for thesis changes once the reactive cycle reads the work items (tranche 4)."
+    },
+    {
+      "lane_id": "sec-filings-feed",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "20 8,12,17,21 * * 1-5 sec_filings_feed.py --apply",
+        "match": "sec_filings_feed.py"
+      },
+      "expected_cadence_hours": 6.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-09-27T22:30:00-04:00",
+      "state_reason": "crontab line ships in docs/ops/COGX_WAVE2_CRONTAB_LINES.txt; appending it is the pkg-20260928-wave-2-enforcement-35c4 cron grant (item 5); flips to ACTIVE in the closeout PR once the line is in the user crontab",
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/sec_filings_feed.py on the tranche 4 branch; data/cio/sec_filing_events.jsonl does not exist in persistent-state yet, so the lane has never produced output",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/sec_filings_feed_latest.json"
+      },
+      "note": "Wave 2 item 5 (02 §2 Market class): free EDGAR submissions feed → FilingEvent@v1 (append-only JSONL) → EVENT nodes + AFFECTED_BY edges in the GIR (projector) and MaterialChange kind sec_filing via the detector (the Market owner). One request per symbol per run, fair-access User-Agent."
     }
   ],
   "undeclared_baseline": [

@@ -215,6 +215,35 @@ def build(root: Path, *, now: _dt.datetime | None = None, env: dict | None = Non
                 unresolved += 1
         pj.counts["holdings_symbol_unresolved"] = unresolved
 
+    # 4b. SEC filing events (Wave 2 item 5) → MARKET:EVENT nodes; EVENT —AFFECTED_BY→ SEC
+    fe_p = data / "cio" / "sec_filing_events.jsonl"
+    if fe_p.exists():
+        n = unresolved = 0
+        with fe_p.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if r.get("schema") != "FilingEvent@v1" or not r.get("event_guid"):
+                    continue
+                ev = f"EVENT:{r['event_guid']}"
+                pj.entity(ev, "MARKET", "EVENT", "sec_filing_events", r.get("accession"))
+                pj.envelope(ev, memory={"form": r.get("form"), "items": r.get("items"), "catalyst_type": r.get("catalyst_type"),
+                                        "severity": r.get("severity"), "symbol": r.get("symbol"), "sec_url": r.get("sec_url")},
+                            history={"filed_at": r.get("filed_at"), "observed_at": r.get("observed_at")},
+                            lineage={"produced_by": "sec_filings_feed", "source": r.get("source"), "accession": r.get("accession")},
+                            ownership={"writer": "scripts/sec_filings_feed.py", "registry_row": "sec_filing_events"},
+                            freshness={"as_of": r.get("filed_at"), "state": "IMMUTABLE"},
+                            confidence={"basis": "DECLARED", "score": 0.95})
+                sec = f"SEC:{r['subject_guid']}" if r.get("subject_guid") else sec_for(r.get("symbol"))
+                if sec:
+                    pj.edge(ev, sec, "AFFECTED_BY", "sec_filing_events", r.get("event_guid"), r.get("filed_at"))
+                else:
+                    unresolved += 1
+                n += 1
+        pj.counts["filing_events"] = n; pj.counts["filing_events_unresolved"] = unresolved
+
     # 5. contradiction candidates (streamed, capped)
     c_p = data / "cio" / "research_contradiction_candidates.jsonl"
     if c_p.exists():
@@ -276,6 +305,9 @@ def _source_fingerprints(root: Path, env: dict) -> dict:
         "holdings_snapshot": data / "cio" / "holdings_snapshot_latest.json",
         "research_contradiction_candidates": data / "cio" / "research_contradiction_candidates.jsonl",
         "ticker_research_graph": data / "cio" / "ticker_research_graph.jsonl",
+        # Wave 2 item 3: the edge-fanout consumer marks subjects dirty (memory.delta / thesis.changed)
+        "gir_projector_dirty": data / "runtime" / "gir_projector_dirty.json",
+        "sec_filing_events": data / "cio" / "sec_filing_events.jsonl",
     }
     out = {}
     for k, p in srcs.items():
@@ -284,6 +316,18 @@ def _source_fingerprints(root: Path, env: dict) -> dict:
         except OSError:
             out[k] = None
     return out
+
+
+def _consume_dirty(path: Path, now: _dt.datetime) -> None:
+    """Mark the fan-out dirty file consumed (never deleted); the fingerprint then matches until the consumer writes again."""
+    try:
+        d = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if d.get("consumed_at"):
+        return
+    d["consumed_at"] = now.isoformat(); d["consumed_subjects"] = len(d.get("subjects") or [])
+    tmp = path.with_suffix(".json.tmp"); tmp.write_text(json.dumps(d, indent=1) + "\n", encoding="utf-8"); os.replace(tmp, path)
 
 
 def incremental_needed(root: Path, state_path: Path, env: dict) -> tuple[bool, dict, dict]:
@@ -360,6 +404,7 @@ def main() -> int:
                 print("heartbeat:", _hb.beat("gir-projector", conn=_conn, success=True, output_signal=True, work_done=applied["entities"]).get("pg"))
             except Exception as exc:  # noqa: BLE001
                 print(f"heartbeat pg skipped: {type(exc).__name__}")
+            _consume_dirty(root / "data" / "runtime" / "gir_projector_dirty.json", pj.now)
             state_p.parent.mkdir(parents=True, exist_ok=True)
             state_p.write_text(json.dumps({"schema": "GirProjectorState@v1", "as_of": pj.now.isoformat(), "applied": applied,
                                            "sources": _source_fingerprints(root, os.environ)}, indent=1) + "\n", encoding="utf-8")

@@ -3266,6 +3266,12 @@ def process_jobs(limit: int = 10):
             print(f"  [recovery] {symbol}: rolled back poisoned transaction")
 
         cur.execute("UPDATE watchlist_agent_jobs SET status='completed', completed_at=now(), result_id=%s WHERE id=%s", (result_id, job_id))
+        try:  # Wave 2 item 2: every agent result goes through the single write path (SHADOW until its policy row flips)
+            from lib import research_write_path as _rwp
+            _rwp.submit(f"watchlist-agent-{agent}", str(symbol or ""), dict(parsed or {}), research_id=str(result_id), ctx=_ic_ctx,
+                        trigger=f"watchlist_agent:{request_type}")
+        except Exception:  # noqa: BLE001
+            pass
         try:
             if _ic_ctx:
                 _ic.shadow_commit(_ic_ctx, {"kind": "RESEARCHED", "ref": result_id, "recommendation": str((parsed or {}).get("recommendation") or "")[:40]})

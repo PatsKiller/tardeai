@@ -704,6 +704,16 @@ def generate_row_opinion(
         }
         _save_opinion_cache(opinion_cache)
 
+    try:  # Wave 2 item 2: the opinion goes through the single write path (SHADOW until its policy row flips)
+        try:
+            from lib import research_write_path as _rwp
+        except ImportError:
+            from scripts.lib import research_write_path as _rwp  # type: ignore
+        if not validated.get("llm_rejected"):
+            _rwp.submit("advisory-desk-opinion", str(row.get("symbol") or ""), dict(validated), research_id=str(row.get("advisory_row_hash") or ""),
+                        ctx=_ic_ctx, trigger="advisory_row_opinion")
+    except Exception:  # noqa: BLE001
+        pass
     try:
         if _ic_ctx:
             _ic.shadow_commit(_ic_ctx, {"kind": "ADVISED", "ref": str(row.get("advisory_row_hash") or ""),

@@ -1,7 +1,7 @@
 {
   "schema": "DataSourceAuthority@v2",
   "authority": "READ_ONLY_ADVISORY",
-  "as_of": "2026-09-13",
+  "as_of": "2026-09-27T22:30:00-04:00",
   "_why": "One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.",
   "_rules": [
     "Every domain has exactly one writer. Anything else that writes the store is a defect.",
@@ -2032,6 +2032,180 @@
           "expected_seconds": 0
         }
       ]
+    },
+    {
+      "domain": "research_write_path_receipts",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-27",
+        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 2",
+        "scope": "WritePathReceipt@v1: what each producer lane handed (SHADOW: would have handed) to research_thesis_delta.accept_research_result, with memory provenance; appended only by the adapter"
+      },
+      "store": {
+        "file": "cio/research_write_path_receipts.jsonl"
+      },
+      "writer": "scripts/lib/research_write_path.py",
+      "cadence": "per producer result",
+      "stale_after_hours": 24,
+      "projection": null,
+      "required_fields": [
+        "receipt_id",
+        "lane_id",
+        "symbol",
+        "mode",
+        "outcome"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Wave 2 item 2: six producer adapters (external lanes, watchlist agents, analyst/research-intel, advisory opinion, options review, AEC thesis fact) route through ONE write path; per-lane SHADOW/LIVE rows in config/memory_influence_policy.json write_path.adapters. The thesis stores keep their single writer (research_thesis_delta.py)."
+    },
+    {
+      "domain": "edge_fanout_work_items",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-27",
+        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md items 3-4",
+        "scope": "EdgeFanoutWorkItem@v1: reproject / notify items derived from GIR edge traversal on memory.delta and thesis.changed; appended only by the consumer lane"
+      },
+      "store": {
+        "file": "cio/edge_fanout_work_items.jsonl"
+      },
+      "writer": "scripts/edge_fanout_consumer.py",
+      "cadence": "every 5 min (systemd timer, after the service grant)",
+      "stale_after_hours": 1,
+      "projection": null,
+      "required_fields": [
+        "item_id",
+        "kind",
+        "subject_guid",
+        "source_event_id",
+        "idempotency_key"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Wave 2 items 3-4 (07 §4). Also writes data/runtime/gir_projector_dirty.json (the projector's incremental trigger). Reads intelligence.gir_edge read-only. Consumers: gir_projector --incremental (reproject); the reactive cycle (notify) in tranche 4."
+    },
+    {
+      "domain": "intelligence_research_index",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-27",
+        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 8",
+        "scope": "intelligence.research_index: deterministic answer index (thesis / catalysts / invalidation / bear_case → delta id) + per-URL/day citation index (canonical URL + extraction ref only; never page bodies)"
+      },
+      "store": {
+        "table": "intelligence.research_index"
+      },
+      "writer": "scripts/lib/research_index_writer.py",
+      "cadence": "per accepted research delta",
+      "stale_after_hours": 168,
+      "projection": null,
+      "required_fields": [
+        "subject_guid",
+        "question_class",
+        "horizon",
+        "answer_ref",
+        "answered_at"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 5
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Wave 2 item 8 (03 §3 steps 1 and 5). Called from research_thesis_delta.accept_research_result after the canonical delta row is appended; fail-soft (no DSN / no schema → skipped). Kill switch TRADEAI_RESEARCH_INDEX=0. Rebuildable from research_thesis_deltas.jsonl."
+    },
+    {
+      "domain": "sec_filing_events",
+      "class": "ingested",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-09-27",
+        "reference": "ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1321; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 5",
+        "scope": "FilingEvent@v1: SEC 8-K / 10-Q / 10-K filings for tracked symbols from the free EDGAR submissions API; immutable events keyed on issuer + form + accession; appended only by the feed"
+      },
+      "store": {
+        "file": "cio/sec_filing_events.jsonl"
+      },
+      "writer": "scripts/sec_filings_feed.py",
+      "cadence": "4× on market days (cron, after the cron grant)",
+      "stale_after_hours": 30,
+      "projection": null,
+      "required_fields": [
+        "event_guid",
+        "subject_guid",
+        "symbol",
+        "form",
+        "accession",
+        "filed_at",
+        "severity"
+      ],
+      "primary_provider": "sec_edgar",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 8,
+          "expected_seconds": 60
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Wave 2 item 5. Consumers: gir_projector (EVENT:<guid> MARKET nodes, EVENT —AFFECTED_BY→ SEC edges) and material_change_detector.new_filings (HIGH severity → MaterialChange kind sec_filing; the detector stays the single Market owner). catalyst_events keeps its own sec_edgar writer (sec_fundamentals_ingest) for headlines; this feed is the event identity."
     }
   ]
 }

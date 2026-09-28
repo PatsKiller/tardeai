@@ -202,6 +202,14 @@ def reconcile_accepted_research(symbol, rid, parsed, prompt_context, args):
         "model": args.model,
         "prompt_context": prompt_context,
     })
+    try:
+        try:
+            import research_write_path as _rwp
+        except ImportError:
+            from scripts.lib import research_write_path as _rwp  # type: ignore
+        _rwp.record_passthrough(f"hermes-external-{args.lane}", symbol, result, research_id=str(rid), trigger="research_completion")
+    except Exception:  # noqa: BLE001
+        pass
     return reassess_on_research_completed(
         {
             "plan_id": f"external_research_{rid}",
@@ -746,6 +754,15 @@ def main():
          str(raw)[:16000], research_guid, prior_research_guid))
     rid = cur.fetchone()[0]; c.commit(); c.close()
     print(f"\nstored hermes_external_research id={rid} status={status}")
+    try:  # Wave 2 item 2: provenance rides on the result into the single write path
+        try:
+            import research_write_path as _rwp
+        except ImportError:
+            from scripts.lib import research_write_path as _rwp  # type: ignore
+        if isinstance(parsed, dict):
+            _rwp.stamp_provenance(parsed, _ic_ctx)
+    except Exception:  # noqa: BLE001
+        pass
     try:
         if _ic_ctx:
             _ic.shadow_commit(_ic_ctx, {"kind": "RESEARCHED", "ref": f"hermes_external_research:{rid}", "status": status})

@@ -235,6 +235,17 @@ class HermesWorker:
                 )
                 raise HermesWorkerError(vwhy)
 
+            try:  # Wave 2 item 2: provenance rides on the result into the single write path
+                try:
+                    import research_write_path as _rwp
+                except ImportError:
+                    from scripts.lib import research_write_path as _rwp  # type: ignore
+                if isinstance(result, dict):
+                    _rwp.stamp_provenance(result, _ic_ctx)
+                    _rwp.record_passthrough("hermes-cio-worker", str(request.get("symbol") or (request.get("subject") or {}).get("symbol") or ""),
+                                            result, research_id=str(rid), ctx=_ic_ctx, trigger="hermes_worker")
+            except Exception:  # noqa: BLE001
+                pass
             stored = self.store.mark_completed(rid, result)
             if isinstance(stored, dict) and stored.get("result"):
                 result = stored["result"]
