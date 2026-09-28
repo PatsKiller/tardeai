@@ -2213,7 +2213,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #TBD-W3T1; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-1",
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-1",
         "scope": "CognitiveCheckpoint@v1 / ResumeReceipt@v1 per agent (working + episodic memory); appended only by cognitive_checkpoint via the façade commit; no authority"
       },
       "store": {
@@ -2256,7 +2256,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #TBD-W3T1; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-2",
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-2",
         "scope": "LessonPromotion@v1 — the ONE queue from every lesson source into procedural memory; QUEUED by the CLI, PROMOTED/REFUTED/RETIRED only by an operator reply"
       },
       "store": {
@@ -2298,7 +2298,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-09-27",
-        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #TBD-W3T1; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-3",
+        "reference": "ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-3",
         "scope": "ContradictionVerdict@v1 — paid-judge verdicts over research contradiction candidates; advisory rows; appended only by the adjudicator lane"
       },
       "store": {
