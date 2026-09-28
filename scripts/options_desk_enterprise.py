@@ -1444,6 +1444,21 @@ def preflight_desk_gate(
                 refusals.append(_refusal("not_approved", why, status=row.get("status")))
     approval = ((row or {}).get("meta") or {}).get("approval") if isinstance((row or {}).get("meta"), dict) else None
     approval = approval if isinstance(approval, dict) else {}
+    derived_pin = False
+    if row and row.get("status") == "approved" and not approval.get("approved_hash"):
+        # Operator 2026-09-27: a row approved before the pin existed is pinned to what it
+        # STORED -- the proposal_json the reviewer looked at, and reviewed_at as approved_at.
+        # No re-approval for its own sake; the TTL then says honestly whether it is still good.
+        stored = row.get("proposal_json")
+        if isinstance(stored, str):
+            try:
+                stored = json.loads(stored)
+            except ValueError:
+                stored = None
+        if isinstance(stored, dict) and stored:
+            approval = dict(approval_pin(stored), approved_at=approval.get("approved_at") or row.get("reviewed_at"),
+                            reviewer=row.get("reviewer"), derived_from="proposal_json+reviewed_at")
+            derived_pin = True
 
     if row and row.get("status") == "approved":
         # 2. expiry
@@ -1451,7 +1466,7 @@ def preflight_desk_gate(
         ttl_min = float(cfg.get("approval_ttl_minutes") or 240)
         if approved_at is None:
             refusals.append(_refusal("approval_pin_missing",
-                                     "approval carries no pin (approved before order gates existed); re-approve"))
+                                     "approval carries no pin and no stored proposal/review time; re-approve"))
         elif (now - approved_at).total_seconds() > ttl_min * 60:
             refusals.append(_refusal("approval_expired",
                                      f"approved {_iso(approved_at)} is older than {ttl_min:g} min; re-approve",
@@ -1580,6 +1595,7 @@ def preflight_desk_gate(
         "quote_age_seconds": proposal.get("quote_age_seconds"),
         "chain_age_seconds": proposal.get("chain_age_seconds"),
         "hedge_reconciliation": hedge,
+        "approval_pin_derived": derived_pin,
         "refusals": refusals,
     }
 

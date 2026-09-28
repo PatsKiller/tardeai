@@ -16846,7 +16846,11 @@ def _defense_cc_queue_trade(body=None):
     try:
         import options_desk_enterprise as _ent
 
-        _cc_blocks = _ent.evaluate_hard_risk_blocks(proposal, mode="submit") or []
+        # Operator 2026-09-27: queue time is ELIGIBILITY, not the order gate. The submit /
+        # preflight modes fail closed on inputs a card cannot carry (buying power, quote
+        # and chain age, session), so every CC row landed QUEUED_BLOCKED and could never be
+        # approved. Those checks run, fail-closed, at preflight_desk_gate and at confirm.
+        _cc_blocks = _ent.evaluate_hard_risk_blocks(proposal, mode="live") or []
     except Exception as _ce:
         _cc_blocks = [
             {
