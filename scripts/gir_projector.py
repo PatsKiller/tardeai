@@ -215,6 +215,35 @@ def build(root: Path, *, now: _dt.datetime | None = None, env: dict | None = Non
                 unresolved += 1
         pj.counts["holdings_symbol_unresolved"] = unresolved
 
+    # 4b. SEC filing events (Wave 2 item 5) → MARKET:EVENT nodes; EVENT —AFFECTED_BY→ SEC
+    fe_p = data / "cio" / "sec_filing_events.jsonl"
+    if fe_p.exists():
+        n = unresolved = 0
+        with fe_p.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if r.get("schema") != "FilingEvent@v1" or not r.get("event_guid"):
+                    continue
+                ev = f"EVENT:{r['event_guid']}"
+                pj.entity(ev, "MARKET", "EVENT", "sec_filing_events", r.get("accession"))
+                pj.envelope(ev, memory={"form": r.get("form"), "items": r.get("items"), "catalyst_type": r.get("catalyst_type"),
+                                        "severity": r.get("severity"), "symbol": r.get("symbol"), "sec_url": r.get("sec_url")},
+                            history={"filed_at": r.get("filed_at"), "observed_at": r.get("observed_at")},
+                            lineage={"produced_by": "sec_filings_feed", "source": r.get("source"), "accession": r.get("accession")},
+                            ownership={"writer": "scripts/sec_filings_feed.py", "registry_row": "sec_filing_events"},
+                            freshness={"as_of": r.get("filed_at"), "state": "IMMUTABLE"},
+                            confidence={"basis": "DECLARED", "score": 0.95})
+                sec = f"SEC:{r['subject_guid']}" if r.get("subject_guid") else sec_for(r.get("symbol"))
+                if sec:
+                    pj.edge(ev, sec, "AFFECTED_BY", "sec_filing_events", r.get("event_guid"), r.get("filed_at"))
+                else:
+                    unresolved += 1
+                n += 1
+        pj.counts["filing_events"] = n; pj.counts["filing_events_unresolved"] = unresolved
+
     # 5. contradiction candidates (streamed, capped)
     c_p = data / "cio" / "research_contradiction_candidates.jsonl"
     if c_p.exists():
@@ -278,6 +307,7 @@ def _source_fingerprints(root: Path, env: dict) -> dict:
         "ticker_research_graph": data / "cio" / "ticker_research_graph.jsonl",
         # Wave 2 item 3: the edge-fanout consumer marks subjects dirty (memory.delta / thesis.changed)
         "gir_projector_dirty": data / "runtime" / "gir_projector_dirty.json",
+        "sec_filing_events": data / "cio" / "sec_filing_events.jsonl",
     }
     out = {}
     for k, p in srcs.items():

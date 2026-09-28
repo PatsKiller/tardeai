@@ -1,7 +1,7 @@
 # Source of Truth — one declaration per domain
 
 **Rendered from `config/data_source_authority.json` by `scripts/render_source_of_truth.py`. Do not edit by hand.**
-Registry as of 2026-09-27T22:10:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 36 domains · 22 providers.
+Registry as of 2026-09-27T22:30:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 37 domains · 22 providers.
 
 One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.
 
@@ -86,6 +86,7 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | **research_write_path_receipts** | derived | `cio/research_write_path_receipts.jsonl` | `scripts/lib/research_write_path.py` | per producer result | 24h | — | native | — | — | `say_so` | operator 2026-09-27 |
 | **edge_fanout_work_items** | derived | `cio/edge_fanout_work_items.jsonl` | `scripts/edge_fanout_consumer.py` | every 5 min (systemd timer, after the service grant) | 1h | — | native | — | — | `say_so` | operator 2026-09-27 |
 | **intelligence_research_index** | derived | `intelligence.research_index` | `scripts/lib/research_index_writer.py` | per accepted research delta | 168h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **sec_filing_events** | ingested | `cio/sec_filing_events.jsonl` | `scripts/sec_filings_feed.py` | 4× on market days (cron, after the cron grant) | 30h | — | sec_edgar | — | — | `say_so` | operator 2026-09-27 |
 
 ## Writer ceilings — stores not yet consolidated to one writer
 
@@ -137,6 +138,7 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 2** — 1 rows: domain `research_write_path_receipts`
 - **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md items 3-4** — 1 rows: domain `edge_fanout_work_items`
 - **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1319; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 8** — 1 rows: domain `intelligence_research_index`
+- **ApprovalPackage pkg-20260928-wave-2-enforcement-35c4 (typed reply 'APPROVE … all', Claude Code 2026-09-27 ~21:00 ET); PR #1321; decision record docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md item 5** — 1 rows: domain `sec_filing_events`
 
 ## Monitors
 
