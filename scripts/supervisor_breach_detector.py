@@ -218,7 +218,17 @@ def main() -> int:
                 fh.write(json.dumps(r, sort_keys=True, default=str) + "\n")
         latest = runtime_dir / "supervisor_breach_detector_latest.json"
         tmp = latest.with_suffix(".json.tmp"); tmp.write_text(json.dumps({**summary, "new_rows": len(new)}, indent=1, default=str) + "\n"); os.replace(tmp, latest)
-        hbmod.beat("supervisor-breach-detector", success=True, output_signal=True, work_done=len(rows), root=root, env=env)
+        # item 10 (pkg-20260928-wave-2-enforcement-35c4): upsert the beat into intelligence.heartbeat when reachable
+        _conn = None
+        try:
+            import db_adapter  # type: ignore
+            _conn = db_adapter._get_conn()
+            with _conn.cursor() as _c:
+                _c.execute("SET app.tenant_id = 'tradeai:tenant:primary'")
+        except Exception:  # noqa: BLE001
+            _conn = None
+        hb_row = hbmod.beat("supervisor-breach-detector", conn=_conn, success=True, output_signal=True, work_done=len(rows), root=root, env=env)
+        print(f"heartbeat: file + pg={hb_row.get('pg')}")
         print(f"wrote {len(new)} new breach rows; latest → {latest}")
         if a.enqueue_escalations and new:
             try:

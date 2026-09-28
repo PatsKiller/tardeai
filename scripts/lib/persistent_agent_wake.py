@@ -1046,7 +1046,12 @@ class WakeEngine:
                                       "DECIDE", agent_id=agent_id, question=None)
             if _ic_ctx:
                 wake["intelligence_context_id"] = _ic_ctx.get("context_id")
-        except Exception:  # noqa: BLE001 — shadow never touches the wake
+        except Exception as exc:  # noqa: BLE001 — shadow never touches the wake
+            if type(exc).__name__ == "MemoryUnavailable":
+                # Wave 2 item 1: this lane is ENFORCED and memory is unreachable — HOLD the wake.
+                # The runner records outcome=error with this detail and the dispatcher retries the lease;
+                # the REFUSED row (disposition HOLD_MEMORY_UNAVAILABLE) is already on the memory-contexts ledger.
+                raise
             _ic_ctx = None
         wake["lifecycle_state"] = "LOADED"
         wake["provenance"]["inputs"] = list(wake["provenance"].get("inputs") or []) + [

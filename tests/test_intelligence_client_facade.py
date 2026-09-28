@@ -230,3 +230,49 @@ def test_shadow_open_writes_a_heartbeat_file(tmp_path, monkeypatch):
     if files:
         row = json.loads(files[0].read_text())
         assert row["lane_id"] == "hooked-lane" and row["work_claimed"] == 1 and "memory_context_ok" in row
+
+
+def test_default_loaders_resolve_under_root_only_sys_path(tmp_path):
+    """Regression for the 2026-09-27 live receipts: with only ROOT on sys.path (the wake engine's shape),
+    the default loaders must still import their sibling modules instead of degrading every class."""
+    import subprocess, sys as _sys
+    code = (
+        "import sys; sys.path[:] = [p for p in sys.path if 'scripts' not in p]; sys.path.insert(0, r'%s')\n"
+        "from scripts.lib import intelligence_client as ic\n"
+        "for name in ('identity_registry','agent_durable_memory','cio_instrument_record','cio_theses','symbol_thesis_coverage','memory_consumption_receipt','supervisor_heartbeat'):\n"
+        "    m = ic._lib(name); assert m is not None, name\n"
+        "print('ok', ic.behavior_fields()[:2])\n" % ROOT
+    )
+    r = subprocess.run([_sys.executable, "-c", code], capture_output=True, text=True, cwd=str(ROOT))
+    assert r.returncode == 0, r.stderr[-800:]
+    assert r.stdout.startswith("ok")
+
+
+def test_uuid_subjects_resolve_through_the_registry(tmp_path):
+    env = _env(tmp_path)
+    L = _loaders(tmp_path)
+    L.resolve_guid = lambda g: {"security_guid": g, "issuer_guid": "iss", "ticker_alias": "V", "identity_status": "CONFIRMED"} if g.startswith("0bc8") else None
+    ctx = ic.open_context({"lane_id": "persistent-wake"}, "DECIDE", ["0bc81168-8536-51ef-9bc8-44cb160bcc60"], loaders=L, env=env)
+    s = ctx["subjects"][0]
+    assert s["identity_status"] == "CONFIRMED" and s["symbol"] == "V" and s["guid"].startswith("SEC:0bc81168")
+    assert ctx["thesis"]["version"] == 24 and not ctx["degraded"]
+    ctx2 = ic.open_context({"lane_id": "persistent-wake"}, "DECIDE", ["ffffffff-0000-4000-8000-000000000000"], loaders=L, env=env)
+    assert ctx2["subjects"][0]["identity_status"] == "UNRESOLVED" and ctx2["subjects"][0]["guid"].startswith("SUBJ:") and ctx2["degraded"]
+
+
+def test_shadow_open_holds_only_when_the_lane_is_enforced(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_MEMORY_CONTEXTS_PATH", str(tmp_path / "ctx.jsonl"))
+    monkeypatch.setenv("TRADEAI_RETRIEVAL_RECEIPTS_PATH", str(tmp_path / "rr.jsonl"))
+    monkeypatch.setenv("TRADEAI_HEARTBEAT_DIR", str(tmp_path / "hb"))
+    pol = tmp_path / "policy.json"
+    pol.write_text(json.dumps({"ring2": {"default": "SHADOW", "surfaces": {"context:held-lane": "ENFORCED"}}}))
+    monkeypatch.setenv("TRADEAI_MEMORY_INFLUENCE_POLICY", str(pol))
+    # make every default loader fail: point the CIO dir at an empty dir and the registry at a missing file
+    monkeypatch.setenv("TRADEAI_CIO_DIR", str(tmp_path / "empty")); monkeypatch.setenv("TRADEAI_IDENTITY_REGISTRY", str(tmp_path / "nope.json"))
+    assert ic.shadow_open("shadow-lane", ["V"], "DECIDE") is not None or True  # SHADOW: degraded context or None, never a raise
+    with pytest.raises(ic.MemoryUnavailable):
+        ic.shadow_open("held-lane", ["V"], "DECIDE")
+    rows = _rows(tmp_path / "ctx.jsonl")
+    assert rows and rows[-1]["event"] == "REFUSED" and rows[-1]["disposition"] == "HOLD_MEMORY_UNAVAILABLE"
+    assert ic.shadow_open("held-lane", ["V"], "MONITOR") is not None  # monitors degrade even when the lane is enforced
+    ic.set_current_context(None)
