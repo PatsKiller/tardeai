@@ -15824,29 +15824,34 @@ def _portfolio_book_map(query=None):
                 stop_state[(sym, p.get("account"))] = "no_stop"
     except Exception:
         pass
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    try:
+        from lib.book_map_rows import cash_total as _book_cash_total, shape_book_row as _shape_book_row
+    except ImportError:
+        from scripts.lib.book_map_rows import cash_total as _book_cash_total, shape_book_row as _shape_book_row
+    today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    holdings = h.get("holdings") or []
     rows = []
-    for r in h.get("holdings", []):
+    for r in holdings:
         if r.get("is_cash") or not r.get("symbol"):
             continue
         sym = str(r["symbol"]).upper()
         rows.append(
-            {
-                "symbol": sym,
-                "account": r.get("account"),
-                "value": round(float(r.get("market_value") or 0), 2),
-                "day_change": round(float(r.get("day_change") or 0), 2),
-                "day_change_pct": r.get("day_change_pct"),
-                "weight_pct": r.get("portfolio_pct"),
-                "sector": sect.get(sym) or "Unclassified",
-                "stop": stop_state.get((sym, r.get("account"))),
-                "delisted": bool(r.get("delisted")) or None,
-            }
+            _shape_book_row(
+                r,
+                sector=sect.get(sym) or "Unclassified",
+                stop=stop_state.get((sym, r.get("account"))),
+                today=today,
+            )
         )
     out = {
         "ok": True,
         "as_of": h.get("as_of"),
         "rows": rows,
-        "total_value": round(sum(x["value"] for x in rows), 2),
+        "cash_total": _book_cash_total(holdings),
+        "securities_only": True,
+        "total_value": round(sum(x["value"] for x in rows if not x.get("unpriced")), 2),
         "total_day_change": round(sum(x["day_change"] for x in rows), 2),
         "__etag__": etag,
     }
