@@ -1,0 +1,168 @@
+/* Command Center v3 design tokens (PR1, 2026-09-27) — THE only place a colour literal lives
+   (mirrored for TypeScript in src/lib/designTokens.ts). Semantic names only:
+
+     success  = positive outcome / ready / winning        (green)
+     warning  = watch / caution / needs review            (yellow-amber)
+     danger   = risk / breach / loss / error              (red)
+     info     = informational / links / neutral emphasis  (blue)
+     ai       = AI-sourced insight or decision            (purple)
+     neutral  = nothing notable                           (slate)
+
+   Every tone has -color (text/stroke on a page background), -bg (soft fill) and -border.
+   Both themes must pass WCAG 2.1 AA (scripts/check_token_contrast.mjs runs in the build):
+   text-0..3 on bg-0..3 >= 4.5:1, tone -color on bg-0..2 >= 4.5:1, tone -color on its own
+   -bg >= 4.5:1. Type scale is locked to 10/11/12/14/18/24 (nothing below 10). Spacing is
+   the 4-point grid. Legacy names (--green, --bg0, ...) are aliased in index.css until every
+   consumer is converted; new code uses the semantic names only. */
+
+:root,
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg-0: #0f1117;
+  --bg-1: #171923;
+  --bg-2: #1e2130;
+  --bg-3: #262a3d;
+  --border-color: #2d3148;
+  --border-subtle: #232640;
+
+  --text-0: #eef0f6;
+  --text-1: #c9cdda;
+  --text-2: #9ea6ba;
+  --text-3: #8d95ab;
+
+  --success-color: #34d27a;
+  --success-bg: rgba(34, 197, 94, 0.14);
+  --success-border: rgba(34, 197, 94, 0.38);
+  --warning-color: #f5b83d;
+  --warning-bg: rgba(245, 158, 11, 0.14);
+  --warning-border: rgba(245, 158, 11, 0.40);
+  --danger-color: #f26d6d;
+  --danger-bg: rgba(239, 68, 68, 0.14);
+  --danger-border: rgba(239, 68, 68, 0.40);
+  --info-color: #7db4ff;
+  --info-bg: rgba(96, 165, 250, 0.14);
+  --info-border: rgba(96, 165, 250, 0.40);
+  --ai-color: #c4a6ff;
+  --ai-bg: rgba(168, 85, 247, 0.16);
+  --ai-border: rgba(168, 85, 247, 0.42);
+  --neutral-color: #a2abc0;
+  --neutral-bg: rgba(148, 163, 184, 0.12);
+  --neutral-border: rgba(148, 163, 184, 0.32);
+
+  --primary-color: #7db4ff;
+  --secondary-color: #a2abc0;
+  --focus-ring: 0 0 0 2px rgba(125, 180, 255, 0.55);
+
+  --chart-1: #7db4ff;
+  --chart-2: #34d27a;
+  --chart-3: #f5b83d;
+  --chart-4: #c4a6ff;
+  --chart-5: #f26d6d;
+  --chart-6: #5fd3d3;
+}
+
+[data-theme="light"] {
+  color-scheme: light;
+
+  --bg-0: #ffffff;
+  --bg-1: #f6f7fb;
+  --bg-2: #eef0f5;
+  --bg-3: #e3e6ee;
+  --border-color: #d5d9e3;
+  --border-subtle: #e6e9f0;
+
+  --text-0: #0f172a;
+  --text-1: #1f2937;
+  --text-2: #3f4a5f;
+  --text-3: #58627a;
+
+  --success-color: #137236;
+  --success-bg: rgba(19, 114, 54, 0.08);
+  --success-border: rgba(19, 114, 54, 0.35);
+  --warning-color: #8f5106;
+  --warning-bg: rgba(143, 81, 6, 0.10);
+  --warning-border: rgba(143, 81, 6, 0.38);
+  --danger-color: #b91c1c;
+  --danger-bg: rgba(185, 28, 28, 0.10);
+  --danger-border: rgba(185, 28, 28, 0.35);
+  --info-color: #1d4ed8;
+  --info-bg: rgba(29, 78, 216, 0.10);
+  --info-border: rgba(29, 78, 216, 0.35);
+  --ai-color: #6d28d9;
+  --ai-bg: rgba(109, 40, 217, 0.10);
+  --ai-border: rgba(109, 40, 217, 0.35);
+  --neutral-color: #4b5568;
+  --neutral-bg: rgba(75, 85, 104, 0.10);
+  --neutral-border: rgba(75, 85, 104, 0.30);
+
+  --primary-color: #1d4ed8;
+  --secondary-color: #4b5568;
+  --focus-ring: 0 0 0 2px rgba(29, 78, 216, 0.45);
+
+  --chart-1: #1d4ed8;
+  --chart-2: #137236;
+  --chart-3: #8f5106;
+  --chart-4: #6d28d9;
+  --chart-5: #b91c1c;
+  --chart-6: #0f766e;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --bg-0: #ffffff; --bg-1: #f6f7fb; --bg-2: #eef0f5; --bg-3: #e3e6ee;
+    --border-color: #d5d9e3; --border-subtle: #e6e9f0;
+    --text-0: #0f172a; --text-1: #1f2937; --text-2: #3f4a5f; --text-3: #58627a;
+    --success-color: #137236; --success-bg: rgba(19, 114, 54, 0.08); --success-border: rgba(19, 114, 54, 0.35);
+    --warning-color: #8f5106; --warning-bg: rgba(143, 81, 6, 0.10); --warning-border: rgba(143, 81, 6, 0.38);
+    --danger-color: #b91c1c; --danger-bg: rgba(185, 28, 28, 0.10); --danger-border: rgba(185, 28, 28, 0.35);
+    --info-color: #1d4ed8; --info-bg: rgba(29, 78, 216, 0.10); --info-border: rgba(29, 78, 216, 0.35);
+    --ai-color: #6d28d9; --ai-bg: rgba(109, 40, 217, 0.10); --ai-border: rgba(109, 40, 217, 0.35);
+    --neutral-color: #4b5568; --neutral-bg: rgba(75, 85, 104, 0.10); --neutral-border: rgba(75, 85, 104, 0.30);
+    --primary-color: #1d4ed8; --secondary-color: #4b5568; --focus-ring: 0 0 0 2px rgba(29, 78, 216, 0.45);
+    --chart-1: #1d4ed8; --chart-2: #137236; --chart-3: #8f5106; --chart-4: #6d28d9; --chart-5: #b91c1c; --chart-6: #0f766e;
+  }
+}
+
+/* Theme-independent scales */
+:root {
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-7: 32px; --space-8: 40px;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-pill: 999px;
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.20);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.28);
+  --shadow-3: 0 12px 32px rgba(0, 0, 0, 0.36);
+
+  /* Locked type scale: xs is for chips only. */
+  --font-xs: 10px; --font-sm: 11px; --font-base: 12px; --font-md: 14px; --font-lg: 18px; --font-xl: 24px;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, Consolas, monospace;
+}
+
+/* Bloomberg-style terminal skin: same semantic names, tighter chrome, amber primary. */
+.cc-terminal-ui {
+  --bg-0: #0a0e1a;
+  --bg-1: #0f172a;
+  --bg-2: #111827;
+  --bg-3: #172033;
+  --border-color: #1e293b;
+  --border-subtle: #182235;
+  --text-0: #f8fafc;
+  --text-1: #e2e8f0;
+  --text-2: #c3cbd8;
+  --text-3: #9aa5b8;
+  --primary-color: #ffb000;
+  --warning-color: #ffb000;
+  --warning-bg: rgba(255, 176, 0, 0.14);
+  --warning-border: rgba(255, 176, 0, 0.40);
+  --focus-ring: 0 0 0 2px rgba(255, 176, 0, 0.55);
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 6px;
+}

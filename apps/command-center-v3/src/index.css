@@ -1,3 +1,5 @@
+@import './styles/tokens.css';
+
 :root {
   --bg0: #0f1117;
   --bg1: #171923;
