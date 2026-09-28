@@ -578,7 +578,20 @@ def main():
 
     _load_env()
     question = redact(args.question)
+    # Wave 3 O-W3-4: the memory context opens BEFORE the prompt is built so the research surface can render it
+    _ic_ctx = None
+    try:
+        import intelligence_client as _ic
+        _ic_ctx = _ic.shadow_open(f"hermes-external-{args.lane}", [str(args.symbol or "")], "RESEARCH",
+                                  question={"text": question, "question_class": "thesis"}, surface="research")
+    except Exception:  # noqa: BLE001
+        _ic_ctx = None
     ctx = canonical_prompt_context(args.symbol, question)
+    try:
+        if _ic_ctx and _ic_ctx.get("advisory_block"):
+            ctx["memory_advisory"] = _ic_ctx["advisory_block"]
+    except Exception:  # noqa: BLE001
+        pass
     from lib.research_data_quality import assess_prompt_context
     input_quality = assess_prompt_context(ctx)
     ctx["research_data_quality"] = input_quality
@@ -673,13 +686,6 @@ def main():
         return
 
     # COGX W1 shadow: retrieval ladder before the external lane (receipt only)
-    _ic_ctx = None
-    try:
-        import intelligence_client as _ic
-        _ic_ctx = _ic.shadow_open(f"hermes-external-{args.lane}", [str(args.symbol or "")], "RESEARCH",
-                                  question={"text": question, "question_class": "thesis"})
-    except Exception:  # noqa: BLE001
-        _ic_ctx = None
     status, parsed, raw = "sent", {}, ""
     try:
         raw = call_external(args.lane, args.model, prompt, max_tokens=max_out or 4096)

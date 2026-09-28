@@ -1,0 +1,20 @@
+[Unit]
+Description=Trade AI contradiction adjudicator (paid judge, Tier-2 capped; advisory verdicts only)
+After=network.target postgresql.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/trade-ai-releases/portfolio-server/CURRENT
+Environment=PYTHONPATH=%h/trade-ai-releases/portfolio-server/CURRENT:%h/trade-ai-releases/portfolio-server/CURRENT/scripts
+Environment=MEMORY_BEHAVIOR_INFLUENCE=0
+EnvironmentFile=-/run/user/%U/tradeai/env
+EnvironmentFile=-%h/.config/tradeai/cio-operator-live.env
+EnvironmentFile=-%h/.config/tradeai/agent_runtime_overrides.env
+ExecStart=%h/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/contradiction_adjudicator.py --apply --max-pairs 20
+Nice=15
+TimeoutStartSec=20min
+# READ_ONLY_ADVISORY — appends data/cio/contradiction_verdicts.jsonl; spend under process cap $0.50/day
+# AND the Tier-2 policy ($2/day, off-peak, deepseek). Approval: pkg …-80f2 item O-W3-3.
+
+[Install]
+WantedBy=default.target

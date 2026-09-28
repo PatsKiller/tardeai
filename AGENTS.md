@@ -1491,6 +1491,9 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 | **edge_fanout_work_items** | derived | `cio/edge_fanout_work_items.jsonl` | `scripts/edge_fanout_consumer.py` | every 5 min (systemd timer, after the service grant) | 1h | — | native | — | — | `say_so` | operator 2026-09-27 |
 | **intelligence_research_index** | derived | `intelligence.research_index` | `scripts/lib/research_index_writer.py` | per accepted research delta | 168h | — | native | — | — | `say_so` | operator 2026-09-27 |
 | **sec_filing_events** | ingested | `cio/sec_filing_events.jsonl` | `scripts/sec_filings_feed.py` | 4× on market days (cron, after the cron grant) | 30h | — | sec_edgar | — | — | `say_so` | operator 2026-09-27 |
+| **agent_checkpoints** | derived | `cio/agent_checkpoints/<agent_id>.jsonl` | `scripts/lib/cognitive_checkpoint.py` | per non-monitor commit | 48h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **lesson_promotions** | derived | `cio/lesson_promotions.jsonl` | `scripts/lib/lesson_promotion.py` | weekly batch (operator CLI) | 336h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **contradiction_verdicts** | derived | `cio/contradiction_verdicts.jsonl` | `scripts/contradiction_adjudicator.py` | daily (systemd timer, after the service grant) | 48h | — | deepseek | — | — | `say_so` | operator 2026-09-27 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 §0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an

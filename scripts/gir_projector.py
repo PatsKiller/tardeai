@@ -246,6 +246,19 @@ def build(root: Path, *, now: _dt.datetime | None = None, env: dict | None = Non
 
     # 5. contradiction candidates (streamed, capped)
     c_p = data / "cio" / "research_contradiction_candidates.jsonl"
+    # Wave 3 O-W3-3: verdicts close pairs; the SEC envelope carries the net state (open / resolved)
+    verdicts: dict[str, str] = {}
+    v_p = data / "cio" / "contradiction_verdicts.jsonl"
+    if v_p.exists():
+        with v_p.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                try:
+                    r = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if r.get("schema") == "ContradictionVerdict@v1" and r.get("candidate_id"):
+                    verdicts[r["candidate_id"]] = str(r.get("verdict") or "UNRESOLVED")
+    contra_by_sec: dict[str, dict] = {}
     if c_p.exists():
         n = 0
         with c_p.open("r", encoding="utf-8") as fh:
@@ -260,12 +273,24 @@ def build(root: Path, *, now: _dt.datetime | None = None, env: dict | None = Non
                     continue
                 cg = f"CONTRA:{r.get('candidate_id')}"
                 pj.entity(cg, "RISK", "CONTRADICTION", "research_contradiction_candidates", r.get("candidate_id"))
+                vd = verdicts.get(r.get("candidate_id"))
+                resolved = bool(vd) and vd != "UNRESOLVED"
+                if vd:
+                    pj.envelope(cg, memory={"verdict": vd}, contradictions={"state": "RESOLVED" if resolved else "OPEN"},
+                                lineage={"produced_by": "contradiction_adjudicator"}, freshness={"state": "CURRENT"})
                 for sym in {r.get("left_symbol"), r.get("right_symbol")}:
                     sec = sec_for(sym)
                     if sec:
                         pj.edge(cg, sec, "CONTRADICTS", "research_contradiction_candidates", r.get("candidate_id"))
+                        agg = contra_by_sec.setdefault(sec, {"open": 0, "resolved": 0})
+                        agg["resolved" if resolved else "open"] += 1
                 n += 1
         pj.counts["contradictions_projected"] = n
+        pj.counts["contradictions_resolved"] = sum(a["resolved"] for a in contra_by_sec.values())
+        for sec, agg in contra_by_sec.items():
+            env_row = pj.envelopes.get(sec)
+            if env_row is not None:
+                env_row["contradictions"] = {"state": "OPEN" if agg["open"] else "RESOLVED", "open": agg["open"], "resolved": agg["resolved"]}
     # 6. ticker research graph → RESEARCH:ARTIFACT entities keyed by artifact id, re-keyed to SEC: by symbol
     #    (the rows carry ticker_guid only; the registry key is attached HERE, projection-side)
     g_p = data / "cio" / "ticker_research_graph.jsonl"
@@ -308,6 +333,7 @@ def _source_fingerprints(root: Path, env: dict) -> dict:
         # Wave 2 item 3: the edge-fanout consumer marks subjects dirty (memory.delta / thesis.changed)
         "gir_projector_dirty": data / "runtime" / "gir_projector_dirty.json",
         "sec_filing_events": data / "cio" / "sec_filing_events.jsonl",
+        "contradiction_verdicts": data / "cio" / "contradiction_verdicts.jsonl",
     }
     out = {}
     for k, p in srcs.items():
