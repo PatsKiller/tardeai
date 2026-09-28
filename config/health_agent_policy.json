@@ -418,6 +418,12 @@
       "hermes_analyst_coverage.log"
     ]
   },
+  "momentum_scalp_refresh": {
+    "_comment": "2026-09-28: the momentum-scalp lane's Finviz REFRESH receipt (STARTED/DONE/FAILED, written by momentum_scalp_early_lane_runner). stale_min: DONE older than this in-window is a warning (critical at 3x); killed_after_min: STARTED with no DONE for this long means the run was killed.",
+    "enabled": true,
+    "stale_min": 20,
+    "killed_after_min": 10
+  },
   "lane_ownership": {
     "_comment": "2026-09-28: collectors that OWN the momentum-scalp lane's truth — GO→proposal conversion, underfilled-run streaks for real reasons, social-overlay failures.",
     "enabled": true,

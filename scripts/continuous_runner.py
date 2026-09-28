@@ -71,6 +71,10 @@ RVOL_8X_THRESHOLD     = 8.0
 MANUAL_LANE_STATUSES = ("SQUEEZE", "HIGH_RVOL", "MICRO_FLOAT", "MOMENTUM_RUNNER", "LOW_PRICE")
 
 
+
+#: 2026-09-28 — social-overlay failures per process (the 0700 runs logged one every live cycle for weeks).
+_SOCIAL_INJECT_ERRORS: list = []
+
 def is_manual_lane_row(row: dict) -> bool:
     """True when the live pass deliberately routed this row to human review."""
     return bool(
@@ -341,7 +345,7 @@ def _build_live_alert(triggers: List[Dict], time_str: str, market: Dict) -> str:
                 elif _verdict == "DOWNGRADE":
                     critic_line = f"\n  \u26a0\ufe0f Critic: *DOWNGRADE* — _{_reasoning}_"
                 elif _verdict == "CONFIRM":
-                    critic_line = f"\n  \u2705 Critic: CONFIRM"
+                    critic_line = "\n  \u2705 Critic: CONFIRM"
             except Exception:
                 pass
 
@@ -463,7 +467,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
             FROM scalp_scan_results
             WHERE scanned_at > NOW() - INTERVAL '4 hours'
             ORDER BY symbol, scanned_at DESC
-        """) or []
+        """, fetch="all") or []   # 2026-09-28: without fetch, _execute returns True → 'bool' object is not iterable (silent for weeks)
         _injected = 0
         _scouts = 0
         for sr in _social:
@@ -508,7 +512,12 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
             print(f"  [live] +{_injected} route-aware social candidates injected "
                   f"({_scouts} large-float scouts / manual-review)")
     except Exception as e:
-        print(f"  [live] social inject warning: {e}")
+        # A dead overlay is a finding, not a footnote: record it where the run summary can see it.
+        print(f"  [live] social inject ERROR: {e}")
+        try:
+            _SOCIAL_INJECT_ERRORS.append({"run": run_label, "error": f"{type(e).__name__}: {e}"[:200]})
+        except Exception:  # noqa: BLE001  # ALARM-DELIVERY-DECLARED: in-memory counter only; the print above is the log line
+            pass
 
     market: Dict = {}
     try:
@@ -684,7 +693,7 @@ def run_live_cycle(root: Path, run_label: str, date_str: str,
             send_telegram(msg)
         except Exception: pass
     else:
-        print(f"  [live] no changes  -- alerts suppressed")
+        print("  [live] no changes  -- alerts suppressed")
 
     # Refresh dashboard (no PDF/DOCX)
     try:
@@ -711,11 +720,11 @@ def run_full_cycle(root: Path, run_label: str, date_str: str) -> None:
     cmd = [sys.executable, str(root/"scripts"/"trade_ai_orchestrator.py"),
            "--run-label", run_label, "--date", date_str, "--skip-market-check",
            "--allow-underfilled"]
-    print(f"  [FULL] Launching complete pipeline...")
+    print("  [FULL] Launching complete pipeline...")
     try:
         subprocess.run(cmd, env=os.environ.copy(), timeout=2700)  # 45 min hard limit
     except subprocess.TimeoutExpired:
-        print(f"  [FULL]            Pipeline timed out after 45 min  -- killing and continuing")
+        print("  [FULL]            Pipeline timed out after 45 min  -- killing and continuing")
     except Exception as e:
         print(f"  [FULL]            Pipeline error: {e}")
 
@@ -850,9 +859,9 @@ def main() -> int:
     start_min = _hm_to_min(SCHEDULE[0][0])
 
     print(f"\n{'='*60}")
-    print(f"  Trade AI v12  -- Advanced Continuous Runner")
-    print(f"  Schedule: 4 --6 AM (30min)   * 6 --9 AM (15min)   * 9 --10 AM (10min)   * 10 --11 AM (15min)")
-    print(f"  Startup FULL run: fires immediately on launch")
+    print("  Trade AI v12  -- Advanced Continuous Runner")
+    print("  Schedule: 4 --6 AM (30min)   * 6 --9 AM (15min)   * 9 --10 AM (10min)   * 10 --11 AM (15min)")
+    print("  Startup FULL run: fires immediately on launch")
     print(f"  Full anchors at: {', '.join(sorted(HOURLY_FULL_ANCHORS))}")
     print(f"  Self-terminates at {end_hm}")
     print(f"{'='*60}\n")
@@ -865,7 +874,7 @@ def main() -> int:
     print(f"\n[STARTUP] {_startup_now.strftime('%H:%M:%S')}  -- immediate FULL run (label={_startup_label})")
     try:
         run_full_cycle(root, _startup_label, _startup_date)
-        print(f"[STARTUP] Complete")
+        print("[STARTUP] Complete")
     except Exception as _e:
         import traceback as _tb
         print(f"[STARTUP] ERROR: {_e}")

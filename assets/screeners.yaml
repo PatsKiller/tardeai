@@ -10,6 +10,10 @@
 # Run scripts/finviz_registry_reconcile.py for the current three-way state.
 #
 # ⚠️  CRITICAL: finviz_url MUST use v=152 (custom view), NOT v=111 (overview).
+#
+# source_label_priority (2026-09-28): how a scanner row is LABELLED when several sources claim
+# the symbol (read by scripts/lib/source_priority.py for /api/v2/trade-ai). Not a filter.
+source_label_priority: [screener, social, ai_discovered, topic_research, portfolio, manual]
 # v=111 ignores &c= columns and silently returns only default fields (no RVOL, Gap, Float).
 # Column IDs: 25=Float, 61=Gap, 63=AvgVol, 64=RelVol, 65=Price, 66=Change, 67=Volume
 #
@@ -43,32 +47,45 @@ storage:
 # AM: momentum + quality pullback + earnings
 # PM: breakout confirmation + volume continuation + dividend/recovery
 run_windows:
+  # expected_min_symbols (2026-09-28): the window's OWN floor. 0400/0700/1730 run two Tier-1 screeners
+  # by design, so 15–25 symbols is normal there; the global floor of 40 still gates auto-proposals.
+  # Below the window floor the reason is UNIVERSE_TOO_SMALL; between window floor and 40 it is
+  # PREOPEN_WINDOW_BY_DESIGN (read by scripts/screener_run_health.py).
   '0400':
     label: pre_market_initial
+    expected_min_symbols: 15
     active_screeners: [prime_setups, watchlist_setups]
   '0700':
     label: pre_market_update
+    expected_min_symbols: 20
     active_screeners: [prime_setups, watchlist_setups]
   '0900':
     label: open_prep_final
+    expected_min_symbols: 40
     active_screeners: [prime_setups, watchlist_setups, oversold_quality, post_earnings_gappers, earnings_catalyst_pre]
   '1000':
     label: first_hour_read
+    expected_min_symbols: 40
     active_screeners: [prime_setups, watchlist_setups, quality_pullback, speculative_growth_breakouts, dividend_value_pullback, sector_leadership_rs, defense_aerospace, core_growth_compounders]
   '1200':
     label: midday_refresh
+    expected_min_symbols: 40
     active_screeners: [pm_breakout_confirmation, pm_volume_continuation, quality_pullback, high_yield_bdc_income, bond_income_defensive]
   '1400':
     label: afternoon_check
+    expected_min_symbols: 40
     active_screeners: [pm_breakout_confirmation, pm_volume_continuation, speculative_growth_breakouts, dividend_value_pullback, earnings_catalyst_pre]
   '1600':
     label: close_read
+    expected_min_symbols: 40
     active_screeners: [pm_volume_continuation, quality_pullback, defensive_quality, oversold_quality, core_index_etfs]
   '1730':
     label: post_close
+    expected_min_symbols: 15
     active_screeners: [prime_setups, watchlist_setups]
   'test-fix':
     label: test_run
+    expected_min_symbols: 0
     active_screeners: [prime_setups, watchlist_setups]
 
 # ── Screeners ────────────────────────────────────────────────────────

@@ -3115,11 +3115,17 @@ def generate_proposals(force: bool = False) -> dict:
     try:
         from lib.options_exposure import combined_exposure
         _shares = {}
+        _shares_acct: dict = {}
         for _h in holdings:
             if not _h.get("is_cash") and _h.get("symbol"):
                 _k = str(_h["symbol"]).upper()
-                _shares[_k] = round(_shares.get(_k, 0.0) + _f(_h.get("shares") or _h.get("quantity")), 3)
-        _combo = combined_exposure(all_p + _archived, cash_by_account=cash_map, shares_by_symbol=_shares)
+                _n = _f(_h.get("shares") or _h.get("quantity"))
+                _shares[_k] = round(_shares.get(_k, 0.0) + _n, 3)
+                _a = str(_h.get("account") or _h.get("account_key") or "")
+                if _a:
+                    _shares_acct.setdefault(_k, {})[_a] = round(_shares_acct.get(_k, {}).get(_a, 0.0) + _n, 3)
+        _combo = combined_exposure(all_p + _archived, cash_by_account=cash_map, shares_by_symbol=_shares,
+                                   shares_by_symbol_account=_shares_acct)
         for _p in all_p:
             _c = _combo.get(str(_p.get("symbol") or "").upper())
             if _c:

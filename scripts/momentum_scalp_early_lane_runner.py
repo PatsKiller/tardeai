@@ -187,7 +187,7 @@ def refresh_screener_ids(config_path: Path | None = None) -> list[str]:
         return []
 
 
-_ROWS_RE = re.compile(r"(\d+)\s+(?:rows|tickers|symbols)")
+_ROWS_RE = re.compile(r"(\d+)\s+(?:found|rows|tickers|symbols)")   # runner prints "<id>: N found, M NEW"
 
 
 def stage_finviz_scan(dry_run: bool, deadline_s: float | None = None, started_monotonic: float | None = None,
@@ -210,9 +210,7 @@ def stage_finviz_scan(dry_run: bool, deadline_s: float | None = None, started_mo
         t_out = stage_timeout(FINVIZ_TIMEOUT, deadline_s, started_monotonic)
         r = _run(cmd, timeout=t_out)
         rc_worst = max(rc_worst, int(r["rc"]))
-        m = _ROWS_RE.search(r.get("stdout_tail") or "")
-        if m:
-            rows_total += int(m.group(1))
+        rows_total += sum(int(x) for x in _ROWS_RE.findall(r.get("stdout_tail") or ""))
         results.append({"cmd": cmd[-2:], "rc": r["rc"], "latency_ms": r["latency_ms"], "timeout_s": t_out,
                         "stderr": r["stderr_tail"]})
     ok = rc_worst == 0

@@ -1842,7 +1842,38 @@ def collect_pipeline_freshness() -> list[dict]:
     return out
 
 
-def _assess_momentum_scalp_scan(log_age_min, last_status, failed_stages, log_exists, in_window) -> dict:
+def _skipped_refresh_span_min(lines, now) -> float | None:
+    """Pure (2026-09-28): minutes the lane has reported `skipped_finviz_refresh*` on EVERY run, measured
+    from the oldest consecutive skipped line to `now`. None when the latest run refreshed (or no runs).
+    Only lines whose finviz_scan stage never ran count; a run with ran=true resets the streak."""
+    oldest = None
+    for ln in reversed([x.strip() for x in lines if x.strip().startswith("{")]):
+        try:
+            j = json.loads(ln)
+        except Exception:
+            continue
+        st = next((x for x in (j.get("stages") or []) if x.get("stage") == "finviz_scan"), None)
+        if st is None:
+            continue
+        if st.get("ran"):
+            break
+        if not str(st.get("reason") or "").startswith("skipped_finviz_refresh"):
+            break
+        oldest = j.get("generated_at") or oldest
+    if not oldest:
+        return None
+    try:
+        from datetime import datetime as _dt
+        t0 = _dt.fromisoformat(str(oldest))
+        if t0.tzinfo is None and getattr(now, "tzinfo", None) is not None:
+            t0 = t0.replace(tzinfo=now.tzinfo)
+        return max(0.0, (now - t0).total_seconds() / 60.0)
+    except Exception:
+        return None
+
+
+def _assess_momentum_scalp_scan(log_age_min, last_status, failed_stages, log_exists, in_window,
+                                skipped_refresh_min=None) -> dict:
     """Pure: decide whether the momentum_scalp Finviz 5-min early lane is healthy. Schedule-aware —
     only judges DURING the 06:00-12:00 ET window (no off-hours/weekend false alarms). Returns a dict
     {finding: bool, type, severity, message} or {finding: False}."""
@@ -1858,6 +1889,10 @@ def _assess_momentum_scalp_scan(log_age_min, last_status, failed_stages, log_exi
         return {"finding": True, "type": "momentum_scalp_finviz_scan_stale", "severity": sev,
                 "message": f"momentum_scalp Finviz 5-min scan last ran {log_age_min:.0f} min ago "
                            f"(cron is */5) during the 06:00-12:00 ET window — re-running the early lane"}
+    if skipped_refresh_min is not None and skipped_refresh_min > 30:
+        return {"finding": True, "type": "momentum_scalp_refresh_never_runs", "severity": "warning",
+                "message": f"momentum_scalp early lane has reported skipped_finviz_refresh on every run for "
+                           f"{skipped_refresh_min:.0f} min in-window — it is PASSing on borrowed scan rows"}
     if last_status in ("PARTIAL", "FAIL") or failed_stages:
         return {"finding": True, "type": "momentum_scalp_early_lane_error", "severity": "warning",
                 "message": f"momentum_scalp early lane last run status={last_status} "
@@ -1879,6 +1914,7 @@ def collect_momentum_scalp_source_health() -> list[dict]:
         log_exists = log.exists()
         age_min = (_file_age_h(log) or 0) * 60 if log_exists else None
         last_status, failed_stages = None, None
+        skipped_refresh_min = None
         if log_exists:
             try:
                 tail = log.read_text(errors="replace").strip().splitlines()
@@ -1889,15 +1925,84 @@ def collect_momentum_scalp_source_health() -> list[dict]:
                         last_status = j.get("status")
                         failed_stages = j.get("failed_stages")
                         break
+                skipped_refresh_min = _skipped_refresh_span_min(tail[-80:], t)
             except Exception:
                 pass
-        a = _assess_momentum_scalp_scan(age_min, last_status, failed_stages, log_exists, in_window)
+        a = _assess_momentum_scalp_scan(age_min, last_status, failed_stages, log_exists, in_window,
+                                        skipped_refresh_min=skipped_refresh_min)
         if a.get("finding"):
             out.append(_f("pipeline_freshness", a["type"], a["severity"], a["message"],
                           surfaced="Trading hub · momentum scalp early lane"))
     except Exception as e:
         out.append(_f("pipeline_freshness", "momentum_scalp_source_monitor_error", "info",
                       f"momentum scalp source monitor failed: {str(e)[:80]}"))
+    return out
+
+
+def _assess_refresh_receipt(age_min, state, in_window, threshold_min, started_age_min=None,
+                            killed_after_min=10) -> dict:
+    """Pure (2026-09-28, plan root cause 2/5): judge the momentum-scalp Finviz REFRESH receipt.
+
+    The lane's own log said PASS for ten days while it never refreshed Finviz (the refresh line was
+    killed silently). The receipt is written BEFORE and AFTER the slow stage, so:
+      - no receipt at all in-window            -> warning momentum_scalp_refresh_missing
+      - STARTED with no DONE for > killed_after -> warning momentum_scalp_refresh_killed
+      - DONE older than threshold in-window     -> warning; critical at 3x
+      - FAILED                                  -> warning momentum_scalp_refresh_failed
+    Off-window: silent (no weekend/evening floods)."""
+    if not in_window:
+        return {"finding": False, "reason": "off_window"}
+    if state is None:
+        return {"finding": True, "type": "momentum_scalp_refresh_missing", "severity": "warning",
+                "message": "momentum_scalp Finviz refresh has NO receipt during the 06:00-12:00 ET window — "
+                           "the lane is not refreshing its source (or PR-2 is not yet in CURRENT)"}
+    if state == "STARTED":
+        if started_age_min is not None and started_age_min > killed_after_min:
+            return {"finding": True, "type": "momentum_scalp_refresh_killed", "severity": "warning",
+                    "message": f"momentum_scalp Finviz refresh STARTED {started_age_min:.0f} min ago and never finished — "
+                               f"the run was killed (cron timeout / lock) before DONE"}
+        return {"finding": False, "reason": "in_progress"}
+    if state == "FAILED":
+        return {"finding": True, "type": "momentum_scalp_refresh_failed", "severity": "warning",
+                "message": "momentum_scalp Finviz refresh last attempt FAILED (finviz_screener_runner rc!=0)"}
+    if age_min is not None and age_min > threshold_min:
+        sev = "critical" if age_min > threshold_min * 3 else "warning"
+        return {"finding": True, "type": "momentum_scalp_refresh_stale", "severity": sev,
+                "message": f"momentum_scalp Finviz refresh last DONE {age_min:.0f} min ago (>{threshold_min}m) during "
+                           f"the 06:00-12:00 ET window — scan rows are borrowed, not refreshed"}
+    return {"finding": False, "reason": "fresh"}
+
+
+def collect_momentum_scalp_refresh_age() -> list[dict]:
+    """Owns the question the lane log could not answer: did the lane REFRESH Finviz recently?"""
+    out: list[dict] = []
+    cfg = (_POLICY.get("momentum_scalp_refresh") or {})
+    if not cfg.get("enabled", True):
+        return out
+    try:
+        sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+        import momentum_scalp_early_lane_runner as lane
+        t = lane.now_et()
+        in_window = lane.is_trading_day(t) and lane.in_window(t)
+        rec = lane.read_refresh_receipt()
+        state = (rec or {}).get("state")
+        age_min = lane.refresh_age_min(t, rec) if rec else None
+        started_age = None
+        if rec and state == "STARTED":
+            try:
+                from datetime import datetime as _dt
+                at = _dt.fromisoformat(str(rec.get("at")))
+                started_age = max(0.0, (t - at).total_seconds() / 60.0)
+            except Exception:
+                started_age = None
+        a = _assess_refresh_receipt(age_min, state, in_window, float(cfg.get("stale_min", 20)),
+                                    started_age_min=started_age, killed_after_min=float(cfg.get("killed_after_min", 10)))
+        if a.get("finding"):
+            out.append(_f("pipeline_freshness", a["type"], a["severity"], a["message"],
+                          surfaced="Trading hub · momentum scalp early lane", receipt=rec or {}))
+    except Exception as e:
+        out.append(_f("pipeline_freshness", "momentum_scalp_refresh_monitor_error", "info",
+                      f"momentum scalp refresh monitor failed: {str(e)[:80]}"))
     return out
 
 
@@ -3829,6 +3934,7 @@ COLLECTORS = [
     collect_go_to_proposal_conversion,
     collect_underfilled_streak,
     collect_social_inject_errors,
+    collect_momentum_scalp_refresh_age,
     collect_momentum_scalp_multi_source_health,
     collect_scalp_catalyst_health,
     collect_infra_optimization_health,

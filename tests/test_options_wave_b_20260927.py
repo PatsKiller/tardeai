@@ -37,7 +37,8 @@ def test_two_dell_puts_are_one_correlated_bet_with_combined_scenarios():
     down30 = next(r for r in c["scenarios"] if r["move_pct"] == -30)
     px = 563.0 * 0.7
     want = ((21.57 - (490 - px)) + (8.1 - (522.5 - px) + (497.5 - px))) * 100
-    assert abs(down30["combined_pl_at_expiry"] - round(want, 2)) < 0.02
+    assert abs(down30["options_only_pl"] - round(want, 2)) < 0.02
+    assert down30["shares_pl"] == 0.0 and down30["whole_position_pl"] == down30["options_only_pl"]  # 0 shares held
     assert "same bet" in c["note"]
     assert combined_exposure([dict(CSP)], cash_by_account={}) == {}  # a lone idea gets no block
 
