@@ -722,6 +722,13 @@ def shadow_open(lane_id: str, subjects: Iterable[str], purpose: str = "RESEARCH"
         ctx = open_context({"lane_id": lane_id, "agent_id": agent_id}, purpose, subs, mode="SHADOW", root=root, env=env)
         if question:
             observe_generation(ctx, question, root=root, env=env)
+        # Every hooked producer beats (06 §3): file fallback only, never Postgres from here, never raises.
+        try:
+            from supervisor_heartbeat import beat  # type: ignore
+            beat(lane_id, work_claimed=1, memory_context_ok=not ctx.get("degraded"),
+                 degraded_reasons=list(ctx.get("degraded_reasons") or [])[:5], root=root, env=env)
+        except Exception:  # noqa: BLE001
+            pass
         return ctx
     except Exception:  # noqa: BLE001 — shadow never raises into a producer
         return None
