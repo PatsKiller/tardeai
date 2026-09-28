@@ -2836,6 +2836,14 @@ GATES = [
         ["tests/test_momentum_scalp_proposal_contract_20260928.py"],
     ),
     (
+        # 2026-09-28 — momentum-scalp lane refresh: the */15 Finviz-refresh cron line was
+        # killed silently every quarter-hour (timeout 150 < stage 240, shared lock) and the
+        # lane had not refreshed since 09-18; the stage now clamps to an outer deadline,
+        # writes STARTED/DONE receipts and the */5 line refreshes when the receipt is stale.
+        "momentum_scalp_lane_refresh_20260928",
+        ["tests/test_momentum_scalp_lane_refresh_20260928.py"],
+    ),
+    (
         # 2026-09-28 — lane registry: 107 host cron lines installed 09-27/28 with no lane
         # row broke check_lane_registry on main; recorded as a dated inherited tranche
         # with provenance (the original baseline is not grown) that the gate honours.
