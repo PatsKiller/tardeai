@@ -15149,13 +15149,19 @@ def _compute_trade_ai():
             ws = wi_sources.get(sym)
             # Check if live social sentiment shows activity
             has_social = (t.get("social_reddit", 0) or 0) > 0 or (t.get("social_stocktwits", 0) or 0) >= 10
-            if ss:
-                t["source"] = "social"
-                t["source_detail"] = ", ".join(str(s) for s in ss[:2]) if ss else ""
-            elif ws:
-                src = ws[0] if ws else "screener"
-                t["source"] = src
-                t["source_detail"] = ", ".join(ws[:2]) if len(ws) > 1 else ""
+            # 2026-09-28: label by declared priority (assets/screeners.yaml source_label_priority),
+            # not alphabetically — screener beats social beats ai_discovered; every source stays visible.
+            _all = sorted({str(x) for x in (ws or [])} | ({"social"} if ss else set()))
+            if _all:
+                t["sources_all"] = _all
+            if ss or ws:
+                from lib.source_priority import pick_primary_source as _pick
+                t["source"] = _pick(_all)
+                if t["source"] == "social":
+                    t["source_detail"] = ", ".join(str(s) for s in (ss or [])[:2]) if ss else ""
+                else:
+                    others = [x for x in _all if x != t["source"]]
+                    t["source_detail"] = ", ".join(others[:2])
             elif has_social:
                 # Finviz screener pick with social activity
                 parts = []
