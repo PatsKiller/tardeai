@@ -68,9 +68,9 @@ critique cycle, the next operator turn (M3) is the operator's. Nothing in this c
 |---|---|---|---|---|---|---|
 | 14:35:01 | `a328a8817` | PASS 28,680 | FAIL **0 / 28,680** | FAIL **0 / 28,680** | FAIL **78 / 28,680** | 8 NOT_YET_MEASURED |
 | 15:35:01 | `e2dcfce1a` | PASS 29,221 | FAIL **0 / 29,221** | FAIL **0 / 29,221** | FAIL **78 / 29,221** | 8 NOT_YET_MEASURED |
-| 16:35 (due) | `914dcb5ab` | — | — | — | — | not yet written at 16:26Z; read after the fire, never re-run by hand |
+| 16:35:01 | `914dcb5ab` | PASS 29,867 | FAIL **0 / 29,867** | FAIL **0 / 29,867** | FAIL **78 / 29,867** | 8 NOT_YET_MEASURED (natural fire, read at 16:35:21Z) |
 
-The population grew by 541 actions in the hour; provenance, review and independent-score coverage did not move. The
+The population grew by 541 then 646 actions per hour; provenance, review and independent-score coverage did not move (78 scored, fixed, on three pins). The
 `a328a8817` denominators stay on the board as the campaign's opening measurement.
 
 ## D. What this campaign may change
