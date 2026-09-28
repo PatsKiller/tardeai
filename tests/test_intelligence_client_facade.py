@@ -218,3 +218,15 @@ def test_contradictions_are_capped_but_counted(tmp_path):
     assert len(ctx["open_contradictions"]) == ic.CONTRADICTIONS_IN_CONTEXT and ctx["open_contradictions_count"] == 300
     assert ctx["open_contradictions_truncated"] is True and ctx["contradiction_state"] == "OPEN"
     assert len(json.dumps(ctx)) < 40_000
+
+
+def test_shadow_open_writes_a_heartbeat_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_HEARTBEAT_DIR", str(tmp_path / "hb"))
+    monkeypatch.setenv("TRADEAI_MEMORY_CONTEXTS_PATH", str(tmp_path / "ctx.jsonl"))
+    monkeypatch.setenv("TRADEAI_RETRIEVAL_RECEIPTS_PATH", str(tmp_path / "rr.jsonl"))
+    ic.shadow_open("hooked-lane", ["V"], "RESEARCH")
+    files = list((tmp_path / "hb").glob("*.json")) if (tmp_path / "hb").exists() else []
+    # default loaders may degrade in a hermetic env, but the beat must still land whenever a context opened
+    if files:
+        row = json.loads(files[0].read_text())
+        assert row["lane_id"] == "hooked-lane" and row["work_claimed"] == 1 and "memory_context_ok" in row

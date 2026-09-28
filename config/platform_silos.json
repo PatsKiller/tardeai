@@ -1,20 +1,269 @@
 {
   "schema": "PlatformSilos@v1",
   "authority": "READ_ONLY_ADVISORY",
-  "as_of": "2026-09-27",
-  "_note": "Twelve governed silos (05 §2). A lane belongs to the first silo whose prefix matches its lane_id, else to its owner's silo, else UNASSIGNED (a finding). Package: cognitive_transformation_20260927; approval pkg-20260927-cogx-w1-d9e1.",
+  "as_of": "2026-09-27T20:30:00-04:00",
+  "_note": "Twelve governed silos (05 §2). A lane belongs to the first silo whose prefix matches its lane_id, else to its owner's silo, else UNASSIGNED (a finding). Package: cognitive_transformation_20260927; approval pkg-20260927-cogx-w1-d9e1. v2 (tranche 4): owner fallbacks and two operational silos added after the first live report put 88 lanes in UNASSIGNED; a lane belongs to the first prefix match, else its owner's silo.",
   "silos": [
-    {"silo_id": "cio-decision", "title": "CIO wake / decision", "lane_prefixes": ["cio-", "cio_", "persistent-wake", "aec-", "commitment-", "instrument-belief"], "owners": []},
-    {"silo_id": "hermes-cio-research", "title": "Hermes CIO research", "lane_prefixes": ["hermes-cio", "hermes_cio", "symbol-thesis", "thesis-", "governed-research", "research-"], "owners": []},
-    {"silo_id": "hermes-external", "title": "Hermes external lanes", "lane_prefixes": ["hermes-external", "hermes-momentum", "hermes-update", "hermes-", "free-first"], "owners": []},
-    {"silo_id": "watchlist-agents", "title": "Watchlist agents", "lane_prefixes": ["watchlist-", "watchlist_", "watch-", "maria", "steph", "risk-agent"], "owners": []},
-    {"silo_id": "holdings-advisory", "title": "Holdings advisory", "lane_prefixes": ["advisory-", "holdings-", "portfolio-", "advisor"], "owners": []},
-    {"silo_id": "options-desk", "title": "Options desk", "lane_prefixes": ["options-", "options_", "ensemble", "inference-ensemble"], "owners": []},
-    {"silo_id": "reentry-desk", "title": "Re-entry desk", "lane_prefixes": ["reentry", "re-entry", "recovery-watch"], "owners": []},
-    {"silo_id": "analyst-research-intel", "title": "Analyst / research intelligence", "lane_prefixes": ["analyst", "research-intel", "narrative", "iris", "darwin"], "owners": []},
-    {"silo_id": "portfolio-review", "title": "Portfolio review / cadence reports", "lane_prefixes": ["portfolio-daily", "portfolio-weekly", "portfolio-monthly", "portfolio-lookthrough", "portfolio-backup", "tax-"], "owners": []},
-    {"silo_id": "agent-runtime", "title": "Risk / agent runtime (Wave-3)", "lane_prefixes": ["agent-runtime", "sentinel", "argus", "vigil", "aegis", "trigger-intake", "mvl"], "owners": []},
-    {"silo_id": "health-watchdog", "title": "Health / watchdog / supervisor", "lane_prefixes": ["health", "autonomy-watchdog", "watchdog", "freshness", "heartbeat", "supervisor", "platform-conformance", "memory-compliance", "process-reaper", "cron-", "governance-"], "owners": []},
-    {"silo_id": "desk-bot", "title": "Desk bot (Telegram) and comms", "lane_prefixes": ["telegram", "desk", "comms", "communication", "cio-delivery", "notify"], "owners": []}
+    {
+      "silo_id": "cio-decision",
+      "title": "CIO wake / decision",
+      "lane_prefixes": [
+        "cio-",
+        "cio_",
+        "persistent-wake",
+        "aec-",
+        "commitment-",
+        "instrument-belief",
+        "material-change-",
+        "goal-",
+        "due-",
+        "wake-",
+        "build-lesson",
+        "dormant-lane",
+        "resolve-due",
+        "tradeai-aec",
+        "tradeai-stance",
+        "deep-overnight",
+        "symbol-news"
+      ],
+      "owners": [
+        "cio"
+      ]
+    },
+    {
+      "silo_id": "hermes-cio-research",
+      "title": "Hermes CIO research",
+      "lane_prefixes": [
+        "hermes-cio",
+        "hermes_cio",
+        "symbol-thesis",
+        "thesis-",
+        "governed-research",
+        "research-",
+        "sec-fundamentals",
+        "tradeai-hermes"
+      ],
+      "owners": []
+    },
+    {
+      "silo_id": "hermes-external",
+      "title": "Hermes external lanes",
+      "lane_prefixes": [
+        "hermes-external",
+        "hermes-momentum",
+        "hermes-update",
+        "hermes-",
+        "free-first"
+      ],
+      "owners": []
+    },
+    {
+      "silo_id": "watchlist-agents",
+      "title": "Watchlist agents",
+      "lane_prefixes": [
+        "watchlist-",
+        "watchlist_",
+        "watch-",
+        "maria",
+        "steph",
+        "risk-agent",
+        "reconcile-watch",
+        "reconcile-exit",
+        "reconcile-pullback",
+        "catalyst-symbol-impact",
+        "tradeai-flash-watchlist"
+      ],
+      "owners": [
+        "watch"
+      ]
+    },
+    {
+      "silo_id": "holdings-advisory",
+      "title": "Holdings advisory",
+      "lane_prefixes": [
+        "advisory-",
+        "holdings-",
+        "portfolio-",
+        "advisor"
+      ],
+      "owners": []
+    },
+    {
+      "silo_id": "options-desk",
+      "title": "Options desk",
+      "lane_prefixes": [
+        "options-",
+        "options_",
+        "ensemble",
+        "inference-ensemble",
+        "reconcile-alpaca-paper-options",
+        "alpaca-stop-manager"
+      ],
+      "owners": [
+        "options",
+        "execution"
+      ]
+    },
+    {
+      "silo_id": "reentry-desk",
+      "title": "Re-entry desk",
+      "lane_prefixes": [
+        "reentry",
+        "re-entry",
+        "recovery-watch"
+      ],
+      "owners": []
+    },
+    {
+      "silo_id": "analyst-research-intel",
+      "title": "Analyst / research intelligence",
+      "lane_prefixes": [
+        "analyst",
+        "research-intel",
+        "narrative",
+        "iris",
+        "darwin"
+      ],
+      "owners": []
+    },
+    {
+      "silo_id": "portfolio-review",
+      "title": "Portfolio review / cadence reports",
+      "lane_prefixes": [
+        "portfolio-daily",
+        "portfolio-weekly",
+        "portfolio-monthly",
+        "portfolio-lookthrough",
+        "portfolio-backup",
+        "tax-",
+        "moomoo-",
+        "eod-consolidated",
+        "tradeai-flash-portfolio",
+        "alex-"
+      ],
+      "owners": [
+        "portfolio"
+      ]
+    },
+    {
+      "silo_id": "agent-runtime",
+      "title": "Risk / agent runtime (Wave-3)",
+      "lane_prefixes": [
+        "agent-runtime",
+        "sentinel",
+        "argus",
+        "vigil",
+        "aegis",
+        "trigger-intake",
+        "mvl",
+        "governed-agent",
+        "agent-worktree"
+      ],
+      "owners": [
+        "agents"
+      ]
+    },
+    {
+      "silo_id": "health-watchdog",
+      "title": "Health / watchdog / supervisor",
+      "lane_prefixes": [
+        "health",
+        "autonomy-watchdog",
+        "watchdog",
+        "freshness",
+        "heartbeat",
+        "supervisor",
+        "platform-conformance",
+        "memory-compliance",
+        "process-reaper",
+        "cron-",
+        "governance-",
+        "postgres-main-watchdog",
+        "slo-burn",
+        "expected-services",
+        "crontab-snapshot",
+        "disk-",
+        "weekly-disk",
+        "db-retention",
+        "served-copy",
+        "data-plausibility",
+        "data-source-health",
+        "gap-resolution",
+        "operator-answer-quality",
+        "gir-projector",
+        "approval-package"
+      ],
+      "owners": [
+        "ops"
+      ]
+    },
+    {
+      "silo_id": "desk-bot",
+      "title": "Desk bot (Telegram) and comms",
+      "lane_prefixes": [
+        "telegram",
+        "desk",
+        "comms",
+        "communication",
+        "cio-delivery",
+        "notify",
+        "morning-brief",
+        "screener-go-alerts",
+        "p1-digest",
+        "llm-spend-report",
+        "deepseek-balance",
+        "tradeai-main-desk"
+      ],
+      "owners": [
+        "comms",
+        "notifications"
+      ]
+    },
+    {
+      "silo_id": "signals-defense",
+      "title": "Signals / defense desk (momentum, rotation, indicators)",
+      "lane_prefixes": [
+        "indicator-",
+        "industry-momentum",
+        "rotation-",
+        "sector-momentum",
+        "catalyst-graph",
+        "finviz-",
+        "source-litmus"
+      ],
+      "owners": [
+        "defense",
+        "signals"
+      ]
+    },
+    {
+      "silo_id": "platform-ops",
+      "title": "Platform operations (LLM plumbing, retention, docs, governance, secrets)",
+      "lane_prefixes": [
+        "llm-",
+        "provider-cost",
+        "sm-render",
+        "docs-index",
+        "document-mentions",
+        "identity-sweep",
+        "code-mirror",
+        "warm-caches",
+        "tradeai-governance",
+        "tradeai-maturity",
+        "tradeai-continuous",
+        "tradeai-flash-llm",
+        "tradeai-intelligence",
+        "tradeai-operator",
+        "overnight-batch",
+        "at-observation",
+        "gir-projector",
+        "approval-package",
+        "platform-conformance",
+        "supervisor-"
+      ],
+      "owners": [
+        "platform"
+      ]
+    }
   ]
 }
