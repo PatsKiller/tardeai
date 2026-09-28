@@ -16,7 +16,7 @@ READ_ONLY_ADVISORY; nothing here sizes or orders (MBI_BEHAVIOR=0)."""
 from __future__ import annotations
 
 NO_CONSUMER_REASON = (
-    "BuyReadyPacketIndex@v1 is read by apps/command-center-v3 EntryAlertsLane (GET /api/v2/buy-ready/packets); "
+    "BuyReadyPacketIndex@v2 is read by apps/command-center-v3 EntryAlertsLane (GET /api/v2/buy-ready/packets); "
     "the index is a projection over BuyReadyInstitutionalPacket@v2 files written by cio_entry_state_runner"
 )
 
@@ -25,7 +25,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-SCHEMA = "BuyReadyPacketIndex@v1"
+SCHEMA = "BuyReadyPacketIndex@v2"
 STATE_ORDER = {"BUY_READY": 0, "ENTRY_NEAR": 1, "WATCH": 2}
 
 
@@ -82,6 +82,75 @@ def desk_disposition(symbol: str, proposals: list[dict[str, Any]], dropped: list
     return {"status": "not_in_desk_universe", "reason": "the options desk did not scan this symbol on its last run"}
 
 
+KNOWN_STRATEGIES = frozenset({"long_call", "long_put", "debit_call_vertical", "debit_put_vertical", "debit_spread",
+                              "credit_spread", "cash_secured_put", "covered_call", "protective_put", "leaps_call"})
+PACKET_UNVERIFIED = "PACKET_UNVERIFIED"
+
+
+def _packet_view(packet: dict[str, Any], now: datetime) -> Optional[dict[str, Any]]:
+    """The shared read-side verdict (lib.buy_ready_options_alternatives.packet_view, live-proof
+    2026-09-28). None when that build does not carry it — the caller then fails closed."""
+    try:
+        from lib.buy_ready_options_alternatives import packet_view  # type: ignore
+    except ImportError:
+        try:
+            from scripts.lib.buy_ready_options_alternatives import packet_view  # type: ignore
+        except ImportError:
+            return None
+    try:
+        return packet_view(packet, now=now)
+    except Exception as exc:  # noqa: BLE001 -- a view that cannot be built is withheld, never shown unchecked
+        return {"status": PACKET_UNVERIFIED, "stale": {"code": PACKET_UNVERIFIED, "reason": f"view failed ({type(exc).__name__})"},
+                "gate_version": None, "packet": None}
+
+
+def _unit_is_current_and_qualified(a: dict[str, Any]) -> bool:
+    """A stored ``qualified: True`` is not proof (reviewer 2026-09-28). A unit counts only when the
+    view left it qualified AND it names a known strategy AND it carries an earnings verdict object
+    whose in_blackout is exactly False AND that verdict is stamped with a gate_version."""
+    if a.get("qualified") is not True or a.get("superseded"):
+        return False
+    if str(a.get("strategy") or "") not in KNOWN_STRATEGIES:
+        return False
+    earn = a.get("earnings")
+    if not isinstance(earn, dict) or earn.get("in_blackout") is not False:
+        return False
+    if not (earn.get("gate_version") or a.get("gate_version")):
+        return False
+    return True
+
+
+def options_verdict(packet: dict[str, Any], *, now: datetime) -> dict[str, Any]:
+    """What the lane may say about the packet's options alternatives. Fail closed:
+    STALE_PRE_FIX / PACKET_UNVERIFIED → qualified_count 0 and no OK status, whatever the file claims."""
+    alt = packet.get("options_alt") or {}
+    alts_raw = packet.get("options_alternatives") or {}
+    claimed = {"status": alt.get("status") or alts_raw.get("status"),
+               "qualified": [a.get("strategy") for a in (alts_raw.get("alternatives") or []) if a.get("qualified") is True]}
+    view = _packet_view(packet, now)
+    if view is None:
+        return {"status": PACKET_UNVERIFIED, "reason": "this build cannot verify stored verdicts (packet_view absent) — alternatives withheld",
+                "qualified_count": 0, "considered": len(alts_raw.get("alternatives") or []), "gate_version": None,
+                "evaluated_at": alts_raw.get("generated_at") or alts_raw.get("chain_as_of"), "stale": {"code": PACKET_UNVERIFIED},
+                "claimed": claimed, "strategy": None, "detail": alt.get("detail")}
+    status = str(view.get("status") or PACKET_UNVERIFIED)
+    valts = ((view.get("packet") or {}).get("options_alternatives") or {}) if isinstance(view.get("packet"), dict) else {}
+    units = valts.get("alternatives") or []
+    qualified = [a for a in units if _unit_is_current_and_qualified(a)] if status == "OK" else []
+    if status == "OK":
+        out_status = "OPTIONS_ALT_OK" if qualified else (str(valts.get("status") or alt.get("status") or "NONE_QUALIFIED"))
+        if out_status in ("OK", "OPTIONS_ALT_OK") and not qualified:
+            out_status = "NONE_QUALIFIED"
+        reason = None if qualified else (alt.get("reason") or valts.get("status") or "NONE_QUALIFIED")
+    else:
+        out_status, reason = status, str((view.get("stale") or {}).get("reason") or status)
+    return {"status": out_status, "reason": reason, "qualified_count": len(qualified),
+            "qualified": [a.get("strategy") for a in qualified], "considered": len(units) or len(alts_raw.get("alternatives") or []),
+            "gate_version": view.get("gate_version"), "evaluated_at": view.get("generated_at") or view.get("as_of"),
+            "stale": view.get("stale"), "claimed": claimed,
+            "strategy": (qualified[0].get("strategy") if qualified else None), "detail": alt.get("detail")}
+
+
 def index_packet(packet: dict[str, Any], *, proposals: list[dict[str, Any]], dropped: list[dict[str, Any]],
                  now: datetime) -> dict[str, Any]:
     eq = packet.get("equity") or {}
@@ -97,7 +166,7 @@ def index_packet(packet: dict[str, Any], *, proposals: list[dict[str, Any]], dro
     rr_plan = _f(eq.get("rr"))
     rr_plan_entry = hi
     rr_quote = reward_risk(target, price, stop)
-    qualified = [a for a in (alts.get("alternatives") or []) if a.get("qualified")]
+    oa_verdict = options_verdict(packet, now=now)   # not `verdict`: that name is the CIO verdict block above
     return {
         "symbol": sym,
         "state": str(eq.get("state") or packet.get("state") or "").upper() or None,
@@ -113,9 +182,9 @@ def index_packet(packet: dict[str, Any], *, proposals: list[dict[str, Any]], dro
         "catalyst": eq.get("catalyst"),
         "cio_verdict": {"verdict": verdict.get("verdict"), "token": verdict.get("token"), "rationale": verdict.get("rationale")},
         "cio_review": {"status": review.get("status"), "mode": review.get("mode"), "as_of": review.get("as_of")},
-        "options_alt": {"status": alt.get("status") or alts.get("status"), "reason": alt.get("reason"), "detail": alt.get("detail"),
-                        "strategy": alt.get("strategy"), "qualified_count": len(qualified),
-                        "considered": len(alts.get("alternatives") or []), "chain_as_of": alts.get("chain_as_of")},
+        # never the file's own claim: the verdict goes through packet_view (STALE_PRE_FIX / PACKET_UNVERIFIED
+        # fail closed) and a unit counts only when current, known and earnings-cleared with a gate stamp
+        "options_alt": {**oa_verdict, "chain_as_of": alts.get("chain_as_of")},
         "desk": desk_disposition(sym, proposals, dropped),
         "authority": "READ_ONLY_ADVISORY",
     }

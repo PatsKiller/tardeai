@@ -5,6 +5,7 @@
 import { useApi } from '../../hooks/useApi'
 import { RADIUS, SHADOW, TOKENS, TYPE, numStyle, toneVars, type Tone } from '../../lib/designTokens'
 import { Chip, ChipRow, Collapsible, Metric, MetricRow, ShowMore } from '../primitives'
+import { optionsAltChip, type OptionsAltVerdict } from '../../lib/entryAlerts'
 
 type Row = {
   symbol: string; state: string | null; plan_source?: string | null; saved_at?: string | null; packet_age_h?: number | null
@@ -14,7 +15,7 @@ type Row = {
   catalyst?: string | null
   cio_verdict: { verdict?: string | null; token?: string | null; rationale?: string | null }
   cio_review: { status?: string | null; mode?: string | null; as_of?: string | null }
-  options_alt: { status?: string | null; reason?: string | null; detail?: string | null; strategy?: string | null; qualified_count: number; considered: number; chain_as_of?: string | null }
+  options_alt: OptionsAltVerdict & { chain_as_of?: string | null }
   desk: { status: string; proposal_id?: string | null; strategy?: string | null; approvable?: boolean | null; severity?: string | null; reason?: string | null; entry_state?: string | null }
 }
 type Index = { schema: string; as_of: string; count: number; counts: Record<string, number>; rows: Row[]; stale: Array<{ symbol: string; state: string | null; packet_age_h: number | null }>; max_age_h: number; errors: string[]; note: string }
@@ -46,7 +47,9 @@ function AlertCard({ r }: { r: Row }) {
   const t = toneVars(tone)
   const zoneLabel = r.zone.position === 'in_zone' ? 'in zone' : r.zone.position === 'above' ? `${r.zone.distance_pct}% above zone` : r.zone.position === 'below' ? `${r.zone.distance_pct}% below zone` : 'zone unknown'
   const alt = r.options_alt
-  const altTone: Tone = alt.qualified_count > 0 ? 'success' : alt.status ? 'warning' : 'neutral'
+  // repair 2026-09-28: the chip state comes from the server verdict only (STALE_PRE_FIX / PACKET_UNVERIFIED
+  // are warnings that say re-evaluate); a file's legacy qualified flag is never a green badge
+  const chip = optionsAltChip(alt)
   return (
     <article data-testid="entry-alert-card" style={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderLeft: `3px solid ${t.color}`, borderRadius: RADIUS.md, boxShadow: SHADOW[1], padding: '10px 14px', minWidth: 0 }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
@@ -66,9 +69,8 @@ function AlertCard({ r }: { r: Row }) {
         <Metric guideKey="entry.rr_at_quote" label="R:R at quote" value={r.rr_at_quote != null ? `${r.rr_at_quote.toFixed(2)}:1` : 'withheld'} tone={r.rr_at_quote != null && r.rr_plan != null && r.rr_at_quote < r.rr_plan ? 'warning' : undefined} provenance={r.rr_at_quote_entry != null ? `at ${$(r.rr_at_quote_entry)} (now)` : 'price not above stop'} />
       </MetricRow>
       <ChipRow style={{ marginTop: 8 }}>
-        <Chip tone={altTone} guideKey="entry.options_alt" title={alt.detail || undefined}>
-          options: {alt.qualified_count > 0 ? `${alt.qualified_count} qualified` : String(alt.reason || alt.status || 'not scanned').toLowerCase().replace(/_/g, ' ')}{alt.considered ? ` · ${alt.considered} considered` : ''}
-        </Chip>
+        <Chip tone={chip.tone} guideKey="entry.options_alt" title={chip.title || undefined} data-testid="entry-alert-options-chip">{chip.label}</Chip>
+        {alt.gate_version && <Chip tone="neutral" variant="outline" title={alt.evaluated_at ? `evaluated ${alt.evaluated_at}` : undefined}>gate {alt.gate_version}</Chip>}
         <DeskChip d={r.desk} symbol={r.symbol} />
       </ChipRow>
       {alt.detail && <div style={{ marginTop: 4, fontSize: TYPE.xs, color: TOKENS.text[3] }}>{alt.detail}</div>}

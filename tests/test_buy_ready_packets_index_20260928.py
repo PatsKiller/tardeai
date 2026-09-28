@@ -45,7 +45,7 @@ def test_index_lists_states_in_priority_with_zone_and_both_ratios(tmp_path):
     proposals = [{"id": "opt_axti_1", "symbol": "AXTI", "strategy": "long_call", "approvable": False, "severity": "blocked"}]
     dropped = [{"symbol": "PEW", "entry_state": "BUY_READY", "reason": "EDGE_BELOW", "edge_attempted": True}]
     out = index_packets(d, proposals=proposals, dropped=dropped, now=NOW)
-    assert out["schema"] == "BuyReadyPacketIndex@v1" and out["count"] == 2 and out["counts"] == {"BUY_READY": 1, "ENTRY_NEAR": 1}
+    assert out["schema"] == "BuyReadyPacketIndex@v2" and out["count"] == 2 and out["counts"] == {"BUY_READY": 1, "ENTRY_NEAR": 1}
     assert [r["symbol"] for r in out["rows"]] == ["PEW", "AXTI"]                      # BUY_READY first
     assert out["stale"][0]["symbol"] == "OLD" and out["errors"] == ["junk.json: JSONDecodeError"]
     pew, axti = out["rows"]
@@ -54,7 +54,9 @@ def test_index_lists_states_in_priority_with_zone_and_both_ratios(tmp_path):
     assert pew["desk"] == {"status": "not_built", "reason": "EDGE_BELOW", "entry_state": "BUY_READY", "detail": {"edge_attempted": True}}
     assert axti["zone"] == {"position": "above", "distance_pct": 11.1} and axti["rr_at_quote"] == 1.25 and axti["rr_plan"] == 4.07
     assert axti["desk"]["status"] == "proposal" and axti["desk"]["proposal_id"] == "opt_axti_1"
-    assert pew["options_alt"]["status"] == "OPTIONS_ALT_NONE" and pew["options_alt"]["qualified_count"] == 0 and pew["options_alt"]["considered"] == 1
+    # repair 2026-09-28: the file's own status is never served; on a build without packet_view the verdict fails closed
+    assert pew["options_alt"]["status"] in ("PACKET_UNVERIFIED", "STALE_PRE_FIX") and pew["options_alt"]["qualified_count"] == 0
+    assert pew["options_alt"]["considered"] == 1 and pew["options_alt"]["claimed"]["status"] == "OPTIONS_ALT_NONE"
     assert pew["packet_age_h"] == 4.5 and pew["catalyst"] == "Topline beat" and pew["cio_verdict"]["token"] == "MODIFY"
 
 
