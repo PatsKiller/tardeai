@@ -2728,6 +2728,26 @@
         "path": "data/governance/maturity_latest.json"
       },
       "note": "Wave 5 O-W5-4 (09 §W5, AGENTS §15): the independent scorer — nine domains from receipts only, fixed rules, producer ≠ reviewer ≠ scorer. The 4.7 claim is this lane's output, never a session's."
+    },
+    {
+      "lane_id": "finviz-momentum-scalp-early-lane",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 6-11 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 280 env MOMENTUM_SCALP_OUTER_DEADLINE_S=260 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply --refresh-if-older-min 15 --sync-signals --generate-proposals --run-validation-fast-path --submit-validation >> logs/finviz_momentum_scalp_scan.log 2>&1",
+        "match": "scripts/run_finviz_momentum_scalp_scan.py"
+      },
+      "expected_cadence_hours": 0.084,
+      "state": "ACTIVE",
+      "state_since": "2026-09-28",
+      "state_reason": "Declared 2026-09-28 (plan 'Momentum scalps: why none arrive', root cause 2). Was two inherited-baseline lines sharing one lock: the */15 refresh line ran `timeout 150` around a 240 s Finviz stage and was killed silently every quarter-hour, so the lane had not refreshed Finviz since 2026-09-18 while reporting PASS on borrowed scan rows. The lane now refreshes itself when its DONE receipt is older than 15 min (--refresh-if-older-min) under an outer deadline; the */15 line is retired. The installed cron line changes only under an operator cron grant; `match` covers the pre- and post-edit text.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/runtime/momentum_scalp_refresh_receipt.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "persistent-state/logs/finviz_momentum_scalp_scan.log 2026-09-28: 20 runs, every one reason=skipped_finviz_refresh, none at quarter-hours; momentum_scalp_early_lane_runner.py FINVIZ_TIMEOUT=240 vs crontab `timeout 150`; tests/test_momentum_scalp_lane_refresh_20260928.py.",
+      "note": "Every 5 min 06:00-12:00 ET: Finviz scalp-screen refresh (if receipt >15 min old) -> signal sync -> proposal gen -> validation fast path (paper sandbox)."
     }
   ],
   "undeclared_baseline": [
@@ -2748,7 +2768,6 @@
     "*/15 10-20 * * * /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_watchlist_agent_jobs_offpeak.sh >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/watchlist_agent_jobs_offpeak.log 2>&1  # TRADEAI_BULK_DEEPSEEK 10:00-20:59 America/New_York",
     "*/15 4-16 * * 1-5 cd $PROJ && bash $PROJ/linux_launchers/run_rotation_autopilot.sh cron >> logs/rotation_autopilot.log 2>&1",
     "*/15 4-19 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/tradeai_atm.lock bash scripts/market_day_gate.sh $PY scripts/atm_auto_approver.py >> logs/atm.log 2>&1",
-    "*/15 6-11 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 150 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply >> logs/finviz_momentum_scalp_scan.log 2>&1",
     "*/15 6-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/finviz_market_movers.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/finviz_market_movers.py\" >> logs/finviz_market_movers.log 2>&1  # Home v2 WS-A: Finviz signal board (throttled). 06:00-close every 15min — premarket coverage added 2026-07-28 so the TradeAI top-gainer injection is fresh during the 6am-noon scalp window",
     "*/15 6-17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/eligible_prewarm.lock .venv/bin/python -c \"import sys;sys.path.insert(0,'scripts');import reporting_engine as r;r.eligible_report_payload(use_cache=False)\" >> logs/eligible_prewarm.log 2>&1  # R0: pre-warm analyst /eligible cache out of request path",
     "*/15 6-19 * * 1-5 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_governed_agent_flash_market.sh >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/governed_agent_flash_market.log 2>&1 # TRADEAI_GOVERNED_WORKER market-15m-v2",
@@ -2800,7 +2819,6 @@
     "*/5 * * * * cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/hermes_event_feeder.lock $PY scripts/hermes_score_event_feeder.py --apply >> logs/hermes_event_feeder.log 2>&1",
     "*/5 15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/options_lifecycle.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/options_lifecycle_run.py\" >> logs/options_lifecycle.log 2>&1",
     "*/5 6-11 * * 1-5 cd $PROJ && bash $PROJ/scripts/run_scalp_shadow_logger.sh >> logs/scalp_shadow_logger.log 2>&1",
-    "*/5 6-11 * * 1-5 cd $PROJ && flock -n /tmp/tradeai_finviz_momentum_scalp.lock timeout 200 $PY scripts/run_finviz_momentum_scalp_scan.py --window early --apply --skip-finviz-refresh --sync-signals --generate-proposals --run-validation-fast-path --submit-validation >> logs/finviz_momentum_scalp_scan.log 2>&1",
     "*/5 6-17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/moomoo_opend_health.lock .venv/bin/python scripts/moomoo/opend_health.py --alert >> logs/moomoo_opend_health.log 2>&1  # probes unit+port+quote round-trip; quote is the real gate (port binds before login)",
     "*/5 9-15 * * 1-5 /usr/bin/flock -n /tmp/tradeai_quote_refresh.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_scheduled_quote_refresh.sh --mode pending --limit 50 >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/proactive_quote_refresh_cron.log 2>&1",
     "*/5 9-16 * * 1-5 /usr/bin/flock -n /tmp/tradeai_broker_autocal.lock /usr/bin/bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/run_broker_queue_autocal.sh >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/broker_queue_autocal_cron.log 2>&1",

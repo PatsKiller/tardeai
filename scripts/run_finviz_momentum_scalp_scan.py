@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time as _time
 import os
 import sys
 from datetime import datetime
@@ -62,6 +63,12 @@ def main() -> int:
     ap.add_argument("--submit-validation", action="store_true", help="sandbox validation submit")
     ap.add_argument("--skip-finviz-refresh", action="store_true",
                     help="run handoff stages only (fast) — used by health auto-remediation to unstick the lane")
+    ap.add_argument("--refresh-if-older-min", type=float, default=None,
+                    help="refresh Finviz only when the last DONE refresh receipt is older than N minutes "
+                         "(one cron line, one lock; replaces the killed */15 refresh line — 2026-09-28)")
+    ap.add_argument("--deadline-s", type=float, default=None,
+                    help="outer deadline in seconds (default env MOMENTUM_SCALP_OUTER_DEADLINE_S); "
+                         "stage timeouts are clamped so the run ends before cron's `timeout` kills it")
     ap.add_argument("--ignore-window", action="store_true", help="run outside 06:00-12:00 ET")
     ap.add_argument("--now", type=str, help="override ET now (ISO) for testing")
     args = ap.parse_args()
@@ -91,10 +98,23 @@ def main() -> int:
 
     # Stage 1 — Finviz source refresh (throttle-safe; source rows only). Skippable for a fast
     # downstream-only unstick (health auto-remediation).
+    deadline = lane.outer_deadline_s(args.deadline_s)
+    started = _time.monotonic()
+    rep["deadline_s"] = deadline
     if args.skip_finviz_refresh:
         rep["stages"].append({"stage": "finviz_scan", "ran": False, "ok": True, "reason": "skipped_finviz_refresh"})
+    elif args.refresh_if_older_min is not None:
+        age = lane.refresh_age_min()
+        if age is not None and age < args.refresh_if_older_min:
+            rep["stages"].append({"stage": "finviz_scan", "ran": False, "ok": True,
+                                  "reason": f"skipped_finviz_refresh_fresh (age={age:.1f}m < {args.refresh_if_older_min:g}m)",
+                                  "refresh_age_min": round(age, 1)})
+        else:
+            st = lane.stage_finviz_scan(dry_run=not apply, deadline_s=deadline, started_monotonic=started)
+            st["refresh_age_min_before"] = None if age is None else round(age, 1)
+            rep["stages"].append(st)
     else:
-        rep["stages"].append(lane.stage_finviz_scan(dry_run=not apply))
+        rep["stages"].append(lane.stage_finviz_scan(dry_run=not apply, deadline_s=deadline, started_monotonic=started))
     # Stage 2-4 — optional handoff.
     if sync:
         rep["stages"].append(lane.stage_signal_sync(dry_run=not apply))
