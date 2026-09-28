@@ -2703,6 +2703,13 @@ GATES = [
         ["tests/test_ui_metric_guide.py", "tests/test_ui_insight.py"],
     ),
     (
+        # Reviewer 2026-09-28: a failed Schwab chain call must never look like an empty chain;
+        # HTTP status typed before json(), error payloads typed, one expiration pinned, rows carry
+        # two_sided/spread_pct so a one-sided quote is never called "Mid".
+        "options_chain_truth_20260928",
+        ["tests/test_option_chain_truth_20260928.py"],
+    ),
+    (
         # Reviewer 2026-09-28: combined same-symbol exposure includes the shares held (by account),
         # reports options-only / shares / whole-position P/L per row and groups rows by expiration;
         # the earnings gate blocks debit spreads and long puts and names its trigger.
