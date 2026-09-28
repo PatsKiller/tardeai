@@ -55,6 +55,7 @@
     "scripts/lib/pipeline_liveness.py": 1,
     "scripts/lib/research_memory_bridge.py": 3,
     "scripts/lib/research_prompt_context.py": 3,
+    "scripts/m2_substrate_check.py": 1,
     "scripts/options_memory_projector.py": 1,
     "scripts/remediate_pipeline_failures.py": 1,
     "scripts/remediate_scalp_go_dark.py": 1,
@@ -93,5 +94,5 @@
     "tests/test_r10_m3_memory_consolidation.py": 1,
     "tests/test_research_durable_store.py": 1
   },
-  "total": 137
+  "total": 138
 }

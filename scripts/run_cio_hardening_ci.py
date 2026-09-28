@@ -987,6 +987,7 @@ GATES = [
             "tests/test_wave3_cognition.py",
             "tests/test_wave4_unification.py",
             "tests/test_wave5_maturity.py",
+            "tests/test_m2_substrate_check.py",
         ],
     ),
     (
@@ -2848,6 +2849,13 @@ GATES = [
         # (status/auto-proposal gate unchanged); unenriched injects → MANUAL_REVIEW, never scored.
         "preopen_window_honesty_20260928",
         ["tests/test_preopen_window_honesty_20260928.py"],
+    ),
+    (
+        # 2026-09-28 — scanner social overlay was silently dead (_execute without fetch
+        # returns True → 'bool' object is not iterable every live cycle) and source labels
+        # were alphabetical (ai_discovered outranked screener); fixed + priority from config.
+        "social_inject_source_priority_20260928",
+        ["tests/test_social_inject_and_source_priority_20260928.py"],
     ),
     (
         # 2026-09-28 — momentum-scalp lane alarm: the lane log said PASS for ten days while
