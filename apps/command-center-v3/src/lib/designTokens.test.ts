@@ -1,5 +1,11 @@
 // PR1 (2026-09-27): semantic token helpers are pure and theme-following (plain node, runs in npm build).
-import assert from 'node:assert'
+// No node:assert: CI's tsc has no @types/node, and the other lib tests use a local check too.
+function fail(msg: string): never { throw new Error(msg) }
+const assert = Object.assign((c: unknown, m = 'assertion failed') => { if (!c) fail(m) }, {
+  equal: (a: unknown, b: unknown, m = '') => { if (a !== b) fail(`${m} expected ${String(b)} got ${String(a)}`) },
+  ok: (c: unknown, m = 'assertion failed') => { if (!c) fail(m) },
+  deepEqual: (a: unknown, b: unknown, m = '') => { if (JSON.stringify(a) !== JSON.stringify(b)) fail(`${m} ${JSON.stringify(a)} != ${JSON.stringify(b)}`) },
+})
 import { TONES, toneVars, toneFromVerdict, chipStyle, TOKENS, RADIUS, SHADOW, TYPE, CHART_HEX } from './designTokens.ts'
 
 assert.deepEqual([...TONES], ['success', 'warning', 'danger', 'info', 'ai', 'neutral'])
