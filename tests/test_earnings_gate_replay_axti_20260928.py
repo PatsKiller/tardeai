@@ -88,7 +88,9 @@ def test_candidate_refuses_the_mapped_and_the_raw_id_with_earnings_blackout(monk
         r = _gate_on_incident_clock("AXTI", dte=109, strategy=strategy)
         assert r["in_blackout"] is True and r["trigger"] == "expires_after_earnings", r
         assert r["strategy"] == "debit_spread" and r["strategy_raw"] == strategy
-        assert r["gate_version"] == ode.EARNINGS_GATE_VERSION and r["evaluated_at"].startswith("2026-09-28")
+        assert r["gate_version"] == ode.EARNINGS_GATE_VERSION and r["as_of"] == "2026-09-28" and r["replay"] is True
+        assert r["evaluated_at"] and not r["evaluated_at"].startswith("2026-09-28T00:00:00")   # wall clock, never faked
+        assert ode.earnings_verdict_status(r, max_age_s=10**9)[1].startswith("REPLAY_VERDICT")  # never reusable live
         assert r["event_date"] == EARNINGS and r["days_to_earnings"] == 31 and r["dte"] == 109
 
 
@@ -182,3 +184,81 @@ def test_preflight_recomputes_the_cached_pre_fix_verdict(monkeypatch):
     earn = [b for b in blocks if "earnings" in str(b.get("code", ""))]
     assert earn, blocks
     assert earn[0].get("cached_verdict_superseded", "").startswith("STALE_PRE_FIX") or "STALE_PRE_FIX" in json.dumps(earn[0])
+
+
+# ── reviewer 2026-09-28 findings 1, 3, 4, 7 ──────────────────────────────────────────────────
+
+def test_no_gate_or_broken_gate_disqualifies_at_build_time():
+    """Finding 1: `blackout_fn=None` used to yield in_blackout None -> qualified True before any view ran."""
+    out = boa.build_alternatives(AXTI_PLAN, axti_chain(), held=False, liquidity_fn=_liq_ok, blackout_fn=None,
+                                 chain_as_of=INCIDENT_NOW.isoformat())
+    assert out["alternatives"] and not any(a["qualified"] for a in out["alternatives"])
+    assert all(a["earnings"]["trigger"] == "gate_unavailable" for a in out["alternatives"])
+
+    def broken(sym, *, dte, strategy):
+        raise RuntimeError("calendar down")
+    out = boa.build_alternatives(AXTI_PLAN, axti_chain(), held=False, liquidity_fn=_liq_ok, blackout_fn=broken)
+    assert not any(a["qualified"] for a in out["alternatives"]) and all(a["earnings"]["trigger"] == "gate_error" for a in out["alternatives"])
+
+    def no_verdict(sym, *, dte, strategy):
+        return {"in_blackout": None}
+    out = boa.build_alternatives(AXTI_PLAN, axti_chain(), held=False, liquidity_fn=_liq_ok, blackout_fn=no_verdict)
+    assert not any(a["qualified"] for a in out["alternatives"])
+
+
+def test_gate_vocabulary_fingerprint_is_pinned_to_the_version():
+    """Finding 4: editing BLOCKING / NON_BLOCKING / ALIASES without bumping EARNINGS_GATE_VERSION fails here."""
+    assert ode.earnings_gate_vocab_fingerprint() == ode.EARNINGS_GATE_VOCAB_SHA, (
+        "the earnings-gate vocabulary changed: bump EARNINGS_GATE_VERSION and set EARNINGS_GATE_VOCAB_SHA to "
+        + ode.earnings_gate_vocab_fingerprint())
+    assert ode.EARNINGS_GATE_VERSION == "2026-09-28.2"
+
+
+def test_old_gate_fixture_matches_a328a8817_when_history_is_available():
+    """Finding 3: the fixture's verbatim claim is machine-checked against git history when the object exists
+    (skipped on a shallow clone)."""
+    import subprocess
+    import pytest
+    r = subprocess.run(["git", "-C", str(ROOT), "show", "a328a8817:scripts/options_desk_enterprise.py"], capture_output=True, text=True)
+    if r.returncode != 0:
+        pytest.skip("a328a8817 not in this clone's history")
+    old_src = r.stdout
+    assert 'BLOCKING_STRATEGIES = frozenset({"covered_call", "cash_secured_put", "credit_spread", "long_call"})' in old_src
+    assert 'EARNINGS_UNKNOWN = "UNKNOWN"' in old_src and old_gate.EARNINGS_UNKNOWN == "UNKNOWN"
+    old_fn = next(n for n in ast.walk(ast.parse(old_src)) if isinstance(n, ast.FunctionDef) and n.name == "earnings_blackout_check")
+    fix_src = (ROOT / "tests" / "fixtures" / "earnings_gate_a328a8817.py").read_text(encoding="utf-8")
+    fix_fn = next(n for n in ast.walk(ast.parse(fix_src)) if isinstance(n, ast.FunctionDef) and n.name == "earnings_blackout_check")
+
+    def decision_lines(fn):
+        # the body statements after the docstring, with the injected `today` line normalised back
+        out = []
+        for st in fn.body[1:]:
+            txt = ast.unparse(st)
+            out.append(txt.replace("today = today or date.today()", "today = date.today()"))
+        return out
+    assert decision_lines(fix_fn) == decision_lines(old_fn)
+
+
+def test_preflight_keeps_a_stale_block_verdict_blocking(monkeypatch):
+    """Finding 7: a stale verdict that says BLOCK still blocks (re-stamped), even if the live gate would now clear."""
+    _cal(monkeypatch, value="")   # live gate: no scheduled event -> would clear
+    stale_block = {"in_blackout": True, "symbol": "AXTI", "strategy": "long_call", "next_earnings": "2026-10-29",
+                   "days_to_earnings": 31, "blackout_days": 14, "reason": "Earnings 2026-10-29 in 31d — inside 14d blackout"}
+    proposal = {"symbol": "AXTI", "strategy": "long_call", "dte": 109, "contracts": 1,
+                "enterprise": {"earnings": stale_block, "liquidity": {"pass": True, "issues": []}}}
+    blocks = ode.evaluate_hard_risk_blocks(proposal, mode="preflight", cfg=ode.load_desk_config())
+    earn = [b for b in blocks if b.get("code") == "earnings_blackout"]
+    assert earn and "STALE_PRE_FIX" in json.dumps(earn[0])
+
+
+def test_preflight_recomputes_when_the_cached_verdict_is_for_another_strategy_or_dte(monkeypatch):
+    """Finding 5: a CURRENT verdict for a different strategy/dte is not reused."""
+    _cal(monkeypatch)
+    monkeypatch.setattr(ode, "date", type("D", (date,), {"today": classmethod(lambda cls: INCIDENT_DATE)}))
+    current_other = ode.earnings_blackout_check("AXTI", dte=7, strategy="protective_put")   # clear, CURRENT, but for a hedge at 7 DTE
+    assert current_other["in_blackout"] is False
+    proposal = {"symbol": "AXTI", "strategy": "debit_spread", "dte": 109, "contracts": 1,
+                "enterprise": {"earnings": current_other, "liquidity": {"pass": True, "issues": []}}}
+    blocks = ode.evaluate_hard_risk_blocks(proposal, mode="preflight", cfg=ode.load_desk_config())
+    earn = [b for b in blocks if b.get("code") == "earnings_blackout"]
+    assert earn and "PROPOSAL_MISMATCH" in json.dumps(earn[0])

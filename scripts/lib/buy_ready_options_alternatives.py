@@ -193,12 +193,19 @@ class _Ctx:
             return {"pass": False, "issues": [f"liquidity gate error {type(exc).__name__}"]}
 
     def blackout(self, dte: int, strategy: str) -> dict[str, Any]:
+        # Reviewer 2026-09-28 (finding 1): no gate is not "no event". A missing or broken earnings
+        # check disqualifies the unit at BUILD time, before any alert or review can see it.
         if self.blackout_fn is None:
-            return {"in_blackout": None, "note": "earnings check not supplied"}
+            return {"in_blackout": True, "trigger": "gate_unavailable", "reason": "earnings check not supplied"}
         try:
-            return dict(self.blackout_fn(self.symbol, dte=dte, strategy=strategy))
+            out = dict(self.blackout_fn(self.symbol, dte=dte, strategy=strategy))
         except Exception as exc:  # noqa: BLE001 — fail closed like the enterprise gate
-            return {"in_blackout": True, "reason": f"earnings check error {type(exc).__name__}"}
+            return {"in_blackout": True, "trigger": "gate_error", "reason": f"earnings check error {type(exc).__name__}"}
+        if out.get("in_blackout") is not False:
+            out["in_blackout"] = True
+            out.setdefault("trigger", "gate_unknown")
+            out.setdefault("reason", "earnings check returned no verdict")
+        return out
 
 
 def _long_call_economics(ctx: _Ctx, c: dict[str, Any]) -> dict[str, Any]:
@@ -345,6 +352,22 @@ def _finish(ctx: _Ctx, strategy: str, legs: list[dict[str, Any]], econ: dict[str
         "why_this_expiry": why_expiry,
         "neighbours_rejected": neighbours,
     }
+
+
+def _gate_version_of(blackout_fn) -> Optional[str]:
+    if blackout_fn is None:
+        return None
+    try:
+        import options_desk_enterprise as ode  # type: ignore
+    except ImportError:
+        try:
+            from scripts import options_desk_enterprise as ode  # type: ignore
+        except ImportError:
+            return None
+    mod = getattr(blackout_fn, "__module__", "") or ""
+    if mod.endswith("options_desk_enterprise") or getattr(blackout_fn, "gate_version", None):
+        return getattr(blackout_fn, "gate_version", None) or ode.EARNINGS_GATE_VERSION
+    return None
 
 
 def build_alternatives(
@@ -500,7 +523,9 @@ def build_alternatives(
     for i, a in enumerate(ranked, 1):
         a["rank"] = i
     base["alternatives"] = ranked
-    base["gate_version"] = next((a.get("gate_version") for a in ranked if a.get("gate_version")), None)
+    # gate_version from any verdict, else from the gate module itself (so an empty / NONE block is not
+    # mislabelled STALE_PRE_FIX on read — reviewer 2026-09-28 finding 6)
+    base["gate_version"] = next((a.get("gate_version") for a in ranked if a.get("gate_version")), None) or _gate_version_of(blackout_fn)
     base["status"] = "OK" if any(a["qualified"] for a in ranked) else ("NONE_QUALIFIED" if ranked else "NONE")
     base["notes"].append("Per-unit economics only (per contract / per share); never a position size.")
     return base
@@ -630,15 +655,15 @@ def staleness(alts: Optional[dict[str, Any]], *, now: Optional[datetime] = None,
     the gate stamped verdicts) or differs from the running gate, when generated_at / chain_as_of are
     missing or unparseable (age unknown -> fail closed), or when the chain is older than ``max_age_s``.
     """
-    if not isinstance(alts, dict) or not alts:
-        return None
+    if not isinstance(alts, dict) or not alts or not alts.get("alternatives"):
+        return None   # nothing was qualified, so nothing can be stale-qualified
     if current_gate_version is None or max_age_s is None:
         try:
             import options_desk_enterprise as ode  # type: ignore
         except ImportError:
             from scripts import options_desk_enterprise as ode  # type: ignore
         current_gate_version = current_gate_version or ode.EARNINGS_GATE_VERSION
-        max_age_s = max_age_s if max_age_s is not None else float(ode.load_desk_config().get("earnings_verdict_max_age_s") or 0)
+        max_age_s = max_age_s if max_age_s is not None else float(ode.load_desk_config().get("buy_ready_block_max_age_s") or 0)
     gv = alts.get("gate_version")
     gen = alts.get("generated_at") or alts.get("chain_as_of")
     base = {"gate_version_cached": gv, "gate_version_current": current_gate_version,
@@ -650,9 +675,11 @@ def staleness(alts: Optional[dict[str, Any]], *, now: Optional[datetime] = None,
     ts = _parse_iso(gen)
     if ts is None:
         return {"code": "STALE_UNKNOWN_AGE", "reason": "generated_at / chain_as_of missing or unparseable — age unknown, fail closed", **base}
+    if not max_age_s or float(max_age_s) <= 0:
+        return {"code": "STALE_UNKNOWN_AGE", "reason": "no positive buy_ready_block_max_age_s configured — fail closed", **base}
     age = ((now or datetime.now(timezone.utc)) - ts).total_seconds()
-    if age < 0 or (max_age_s and age > max_age_s):
-        return {"code": "STALE_CHAIN", "reason": f"stored block is {age:.0f}s old > {max_age_s:.0f}s", "age_s": round(age), **base}
+    if age < 0 or age > float(max_age_s):
+        return {"code": "STALE_CHAIN", "reason": f"stored block is {age:.0f}s old > {float(max_age_s):.0f}s", "age_s": round(age), **base}
     return None
 
 

@@ -17,7 +17,7 @@ from datetime import date
 from typing import Optional
 
 BLOCKING_STRATEGIES = frozenset({"covered_call", "cash_secured_put", "credit_spread", "long_call"})
-EARNINGS_UNKNOWN = "__EARNINGS_UNKNOWN__"
+EARNINGS_UNKNOWN = "UNKNOWN"   # a328a8817 line 34, verbatim
 _EARNINGS_LAST_ERROR = ""
 
 

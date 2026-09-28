@@ -61,6 +61,16 @@ def canonical_strategy(strategy: str) -> str:
 # 2026-09-28.1 = PR #1336 seven ids + named triggers (unstamped); 2026-09-28.2 = LP-DEF-01 aliases +
 # fail-closed unknown ids + stamping.
 EARNINGS_GATE_VERSION = "2026-09-28.2"
+# Reviewer 2026-09-28 (finding 4): the version is hand-maintained, so tests/test_earnings_gate_replay_axti_20260928.py
+# pins this fingerprint of the three vocabularies to the version literal — editing a set without bumping
+# EARNINGS_GATE_VERSION (and this constant) fails CI instead of silently re-trusting cached verdicts.
+EARNINGS_GATE_VOCAB_SHA = "f332ec4a78b6"
+
+
+def earnings_gate_vocab_fingerprint() -> str:
+    payload = {"blocking": sorted(BLOCKING_STRATEGIES), "non_blocking": sorted(NON_BLOCKING_STRATEGIES),
+               "aliases": sorted(STRATEGY_ALIASES.items())}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
 
 
 def earnings_verdict_status(verdict: Optional[dict], *, now: Optional[datetime] = None,
@@ -73,6 +83,8 @@ def earnings_verdict_status(verdict: Optional[dict], *, now: Optional[datetime] 
     """
     if not isinstance(verdict, dict) or not verdict:
         return False, "NO_VERDICT"
+    if verdict.get("replay") or verdict.get("as_of"):
+        return False, "REPLAY_VERDICT (computed with as_of; never reusable on a live path)"
     gv = verdict.get("gate_version")
     if not gv:
         return False, "STALE_PRE_FIX (no gate_version; computed before the 2026-09-28 gate fix)"
@@ -88,8 +100,10 @@ def earnings_verdict_status(verdict: Optional[dict], *, now: Optional[datetime] 
     except ValueError:
         return False, f"STALE_UNKNOWN_AGE (unparseable evaluated_at {str(at)[:40]!r})"
     limit = float(max_age_s if max_age_s is not None else load_desk_config().get("earnings_verdict_max_age_s") or 0)
+    if limit <= 0:
+        return False, "STALE_UNKNOWN_AGE (no positive earnings_verdict_max_age_s configured — fail closed)"
     age = ((now or _now()) - ts).total_seconds()
-    if age < 0 or (limit and age > limit):
+    if age < 0 or age > limit:
         return False, f"STALE_VERDICT (evaluated {age:.0f}s ago > {limit:.0f}s)"
     return True, "CURRENT"
 
@@ -149,6 +163,8 @@ def load_desk_config() -> dict:
     cfg.setdefault("max_bid_ask_spread_pct", float(os.getenv("OPTIONS_MAX_SPREAD_PCT", "12.0")))
     # LP-DEF-04: a stored earnings verdict older than this is recomputed (tracks the 6 h calendar cache).
     cfg.setdefault("earnings_verdict_max_age_s", int(os.getenv("OPTIONS_EARNINGS_VERDICT_MAX_AGE_S", "21600")))
+    # LP-DEF-02: a stored BUY_READY alternatives block older than this is served STALE_CHAIN.
+    cfg.setdefault("buy_ready_block_max_age_s", int(os.getenv("OPTIONS_BUY_READY_BLOCK_MAX_AGE_S", "21600")))
     cfg.setdefault("require_chain_for_live", os.getenv("OPTIONS_REQUIRE_CHAIN_LIVE", "1") == "1")
     cfg.setdefault("max_net_delta_pct", float(os.getenv("OPTIONS_MAX_NET_DELTA_PCT", "35.0")))
     cfg.setdefault("max_symbol_notional_pct", float(os.getenv("OPTIONS_MAX_SYMBOL_NOTIONAL_PCT", "25.0")))
@@ -240,6 +256,9 @@ def evaluate_hard_risk_blocks(
     # with its status), a stale verdict that says CLEAR is never trusted and is recomputed.
     cached = ent.get("earnings")
     usable, verdict_status = earnings_verdict_status(cached, max_age_s=cfg.get("earnings_verdict_max_age_s"))
+    if usable and (int(cached.get("dte") or -1) != dte
+                   or canonical_strategy(cached.get("strategy_raw") or cached.get("strategy")) != canonical_strategy(strat)):
+        usable, verdict_status = False, "PROPOSAL_MISMATCH (cached verdict was computed for another strategy/dte)"
     if usable:
         blackout = dict(cached)
     elif isinstance(cached, dict) and cached.get("in_blackout"):
@@ -570,7 +589,10 @@ def earnings_blackout_check(symbol: str, *, dte: int, strategy: str, blackout_da
     out.setdefault("strategy", canonical_strategy(raw))
     out["strategy_raw"] = raw
     out["gate_version"] = EARNINGS_GATE_VERSION
-    out["evaluated_at"] = (_now() if as_of is None else datetime.combine(as_of, datetime.min.time(), tzinfo=timezone.utc)).isoformat()
+    out["evaluated_at"] = _now().isoformat()           # always the wall clock: when it was computed
+    if as_of is not None:                              # a replay is marked so it can never be reused live
+        out["as_of"] = as_of.isoformat()
+        out["replay"] = True
     out.setdefault("event_date", out.get("next_earnings"))
     out.setdefault("dte", dte)
     return out
