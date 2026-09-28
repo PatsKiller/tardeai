@@ -137,6 +137,28 @@ Package item 5. Operator 2026-09-27 21:48 ET: "and build 4 … then push 3 and 4
 
 **Deploy needs (operator):** release-write (merged SHA), cron grant to append the one crontab line, `seed_supervisor_sla.py --apply` for the lane's SLA row, then one `sec_filings_feed.py --apply` from CURRENT and a projector `--apply` so the first EVENT nodes exist before the next detector cycle.
 
+## Wave 2 · tranches 3 + 4 LIVE — closeout (branch wt/cogx-w2-closeout-20260927)
+
+Operator ran `docs/ops/COGX_WAVE2_T3_T4_OPERATOR_HANDOFF_2026-09-27.md` 2026-09-27 22:43–22:45 ET: #1319 merged `37a06db39`, #1321 merged `f677855fa`, CURRENT = `f677855fa-main-exact-phase2-20260927-224302`. `[VERIFIED 22:52 ET]`
+
+| Proof | Value |
+|---|---|
+| `tradeai-edge-fanout-consumer.timer` | enabled, first run 22:44:04 ET: 35 work items (13 reproject / 22 notify → 8 accounts, 4 beliefs, 10 cio contradiction notices, 3 sibling listings), `pg: true`; second run 22:45 found 0 new events (cursor advanced) |
+| `sec-filings-feed` first `--apply` (45 d) | 67 symbols, 51 fetched, 49 `FilingEvent@v1` (10 high — DELL 09-01 earnings + 09-15 material agreement, ADBE 09-10 earnings, CSWC ×2, SPCX, GSIT, SIBN, GOVX, P), 15 no CIK (funds / ETFs), 1 unresolved identity, 0 unavailable; crontab line present (1) |
+| GIR after projector `--apply` | 49 `MARKET:EVENT` nodes, 49 `AFFECTED_BY` edges in `intelligence.gir_entity` / `gir_edge`; 142,211 entities / 251,680 edges total |
+| SLA rows (`seed_supervisor_sla --apply`) | `edge-fanout-consumer` max_silence 600 s; `sec-filings-feed` 64,800 s |
+| Lane rows | both flipped NEVER_SCHEDULED → ACTIVE in this PR with the evidence above |
+| Write-path receipts | `research_write_path_receipts.jsonl` not yet created at 22:52 ET — no producer has run on the new release yet; expected on the next Hermes / watchlist / advisory cycle |
+| Detector `--kind sec_filing` | first cycle after promote is the 23:00 ET `*/30` run; `stats.sec_filing.fired` expected > 0 (10 high-severity events inside `NEW_HOURS` by observed_at) |
+
+Still open for the operator: flip 1 semantics (row is SHADOW); package items 7 (sudoers) and 9 (M2 cutover apply); LIVE flips for the four SHADOW write-path adapters after their receipts show sane classifications.
+
+## Waves 3–5 package SENT (2026-09-27 22:53 ET)
+
+`pkg-20260928-waves-3-5-cognition-unification-maturity-80f2` — 18 items (spec `docs/ops/COGX_WAVE3_5_PACKAGE_SPEC.json`), created in the live ledger, sent as two chunks (Telegram 54509 / 54511), SUBMITTED (ledger 31 rows, chain ok). Finding: the inline approve/deny buttons fail (HTTP 400) for this package id because `pkgapprove:<id>` is 68 bytes and Telegram caps callback data at 64 — the typed reply (`APPROVE <pkg> all`) is the approval route; a short-id alias for buttons is a Wave 3 fix on the callback handler. Building starts immediately in SHADOW; each item deploys under its own scope after the reply.
+
+Detector first cycle after tranche 4 (23:00 ET): 5 `MaterialChange` rows of kind `sec_filing` (ADBE, SPCX, CSWC ×2, GSIT — the high-severity filings on tracked names). `[VERIFIED]`
+
 ## What is NOT in Wave 1 yet (after the operator runbook)
 - The `memory.delta` bus consumer (Wave 2) — until then the projector is hourly-incremental by source fingerprint.
 - The operator steps in the runbook: credential rotation, roles + migration, merge + deploy, grants, lane install, first real runs.

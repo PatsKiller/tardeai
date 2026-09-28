@@ -1,0 +1,189 @@
+{
+  "campaign": "cognitive-transformation-20260927",
+  "wave": "Waves 3–5 · Cognition, Unification, Maturity",
+  "summary": "Operator 2026-09-27 22:55 ET: \"do rest of waves now\". One package for the three remaining waves so building can proceed while each item's deploy waits on its scope. Wave 3 makes memory cognitive (checkpoints, lessons → procedural memory, contradiction adjudication, influence → ADVISORY). Wave 4 unifies (one worker contract, one agent registry, one model chooser, graph-native decisions/actions, ladder L4–L5, influence → WEIGHTED on advice). Wave 5 closes (ENFORCED where the divergence budget holds, conformance gate on promotion, self-healing L1/L2, independent 4.7 re-measurement, local embeddings for ladder step 7). MBI_BEHAVIOR stays 0 throughout: memory reaches cognition and advice, never the broker.",
+  "reviews": {
+    "architecture": "package docs 01/04/06/07/08/09 (PR #1304, live)",
+    "infrastructure": "12 §SW-1 (local embedding model) — the only install",
+    "security": "S-W4-1 sudoers allowlist (carried from W2 item 7); no new credentials"
+  },
+  "items": [
+    {
+      "item_id": "O-W3-1",
+      "category": "OPERATOR",
+      "title": "Cognitive checkpoints: CognitiveCheckpoint@v1 per agent (working + episodic layers) written at every wake / worker cycle end and restored at the next start — restart = thought continuity; new writer of data/cio/cognitive_checkpoints.jsonl (DSA row)",
+      "why": "04 §3",
+      "rule": "§17 new writer of an authoritative store",
+      "rollback": "TRADEAI_COGNITIVE_CHECKPOINT=0 — no writes, no restores; agents re-read files as today",
+      "scopes_needed": []
+    },
+    {
+      "item_id": "O-W3-2",
+      "category": "OPERATOR",
+      "title": "Lessons → procedural memory: promotion queue (LessonPromotion@v1) fed by post-mortems / outcome lifecycle / self-repair; a promoted lesson becomes a ratified_lessons entry consumed by research prompts and the wake; promotion needs an operator APPROVE on this gate (batched weekly) — SHADOW until then (queue only)",
+      "why": "04 §4",
+      "rule": "§17 new writer; operator ratifies",
+      "rollback": "empty the ratified set (one policy row); queue keeps accumulating",
+      "scopes_needed": []
+    },
+    {
+      "item_id": "O-W3-3",
+      "category": "OPERATOR",
+      "title": "Contradiction adjudication lane (contradiction-adjudicator): paid judge over research_contradiction_candidates under the EXISTING Tier-2 $2/day cap and the off-peak rule; writes ContradictionVerdict@v1 and the contradiction_state on the GIR entity; new systemd timer (service grant)",
+      "why": "07 §5, 03 §6",
+      "rule": "§17 new scheduled job + new writer",
+      "rollback": "disable the timer; verdicts are advisory rows only",
+      "scopes_needed": [
+        "service",
+        "db-write"
+      ]
+    },
+    {
+      "item_id": "O-W3-4",
+      "category": "OPERATOR",
+      "title": "Memory influence SHADOW → ADVISORY on two surfaces: research prompts (memory block rendered into build_research_prompt_context for Hermes lanes) and watchlist agent prompts — the model SEES memory; decisions still recorded, divergence measured (MemoryShadowMeasure@v1); per-surface policy rows",
+      "why": "08 §2–§3",
+      "rule": "§17 influence-ladder flip (operator-only)",
+      "rollback": "policy row back to SHADOW (one line) or TRADEAI_INTELLIGENCE_MODE=SHADOW",
+      "scopes_needed": []
+    },
+    {
+      "item_id": "B-W3-1",
+      "category": "BUDGET",
+      "title": "Adjudication judge spend inside the existing Tier-2 $2/day cap (deepseek-flash first, off-peak); no new paid lane; expected net spend DOWN because retrieval precedes generation",
+      "why": "12 §B",
+      "rule": "budget",
+      "rollback": "cap already enforced by llm_consumption",
+      "scopes_needed": []
+    },
+    {
+      "item_id": "O-W4-1",
+      "category": "OPERATOR",
+      "title": "Worker contract on the remaining lanes: LeaseCoordinator + AgentHeartbeat + one status vocabulary (QUEUED/LEASED/RUNNING/DONE/FAILED/ABANDONED) across the five queue styles; each migrated lane keeps its store, gains lease + heartbeat",
+      "why": "06 §3",
+      "rule": "§13 architectural standard",
+      "rollback": "per-lane env switch back to the old claim path",
+      "scopes_needed": []
+    },
+    {
+      "item_id": "O-W4-2",
+      "category": "OPERATOR",
+      "title": "One agent registry (config/agent_registry.json, AgentRegistry@v1) superseding the scattered agent lists; bus routing (AGENT_EVENT_ROUTING) and wake agent ids read it; the fan-out work items route by it",
+      "why": "07 §4, 05 §2",
+      "rule": "§14 supersede never delete",
+      "rollback": "the old lists stay in place until the closeout PR marks them superseded",
+      "scopes_needed": []
+    },
+    {
+      "item_id": "O-W4-3",
+      "category": "OPERATOR",
+      "title": "One model chooser: llm_consumption.gate_and_generate and the governed bridge both call the same choose_model(process, purpose, budget_state) — declared lanes → models in one config; no per-caller model strings",
+      "why": "09 §model routing",
+      "rule": "§13 standard; §17 model-lane policy is operator-owned",
+      "rollback": "config maps every process to its current model (no behaviour change until an operator edits a row)",
+      "scopes_needed": []
+    },
+    {
+      "item_id": "O-W4-4",
+      "category": "OPERATOR",
+      "title": "Graph-native decisions and actions: DEC:<guid> (cio_decisions, options thesis decisions) and ACT:<id> (action ledger) nodes with DECIDED_ON / CAUSED_BY / TRIGGERED edges in the GIR projector; the fan-out reaches open decisions",
+      "why": "07 §3",
+      "rule": "projection only (zero authority)",
+      "rollback": "projector source switch",
+      "scopes_needed": [
+        "db-write"
+      ]
+    },
+    {
+      "item_id": "O-W4-5",
+      "category": "OPERATOR",
+      "title": "Supervisory ladder L4 (operator page through the ops-exempt Telegram path when L1–L3 fail) and L5 (orchestration-change proposal as an ApprovalPackage item) in the breach detector; L1 restart executes only under the S-W4-1 sudoers allowlist",
+      "why": "06 §4–§6",
+      "rule": "§17 new operator surface",
+      "rollback": "ladder_max back to 3 in the SLA rows",
+      "scopes_needed": []
+    },
+    {
+      "item_id": "O-W4-6",
+      "category": "OPERATOR",
+      "title": "Memory influence ADVISORY → WEIGHTED on the options CIO review and CIO advice surfaces: memory facts weight the ADVICE ranking/wording; never sizing, orders, stops or weights (MBI_BEHAVIOR = 0 unchanged); per-surface rows after the ADVISORY divergence measure is inside budget",
+      "why": "08 §3",
+      "rule": "§17 influence-ladder flip; §2 rail",
+      "rollback": "policy row back to ADVISORY",
+      "scopes_needed": []
+    },
+    {
+      "item_id": "S-W4-1",
+      "category": "SECURITY",
+      "title": "sudoers allowlist for supervisor L1 actions (carried from W2 item 7, still NEEDS_LOCAL): systemctl --user restart of named lanes only; no system units; the detector never restarts anything without it",
+      "why": "06 §5",
+      "rule": "local-only; never granted remotely",
+      "rollback": "remove the sudoers line",
+      "scopes_needed": [
+        "NEEDS_LOCAL"
+      ]
+    },
+    {
+      "item_id": "O-W5-1",
+      "category": "OPERATOR",
+      "title": "ENFORCED influence on the surfaces whose WEIGHTED divergence stayed inside the budget for 14 days (per-surface rows; each flip its own approval reply)",
+      "why": "08 §4",
+      "rule": "§17 influence-ladder flip",
+      "rollback": "row back to WEIGHTED; global TRADEAI_INTELLIGENCE_MODE=SHADOW",
+      "scopes_needed": []
+    },
+    {
+      "item_id": "O-W5-2",
+      "category": "OPERATOR",
+      "title": "Conformance gate on promotion: cio_phase2_exact_main_deploy.sh refuses promote when the latest PlatformConformance@v1 report has a silo below its floor (operator override env for emergencies, logged)",
+      "why": "05 §4",
+      "rule": "deploy protocol change (§16)",
+      "rollback": "TRADEAI_CONFORMANCE_GATE=0",
+      "scopes_needed": [
+        "release-write"
+      ]
+    },
+    {
+      "item_id": "O-W5-3",
+      "category": "OPERATOR",
+      "title": "Self-healing orchestration: L1 auto-restart (under S-W4-1) and L2 alternate-lane dispatch executed by the detector for lanes whose SLA row declares an alternate; every action a Breach@v1 → Recovery@v1 pair on the ledger",
+      "why": "06 §6",
+      "rule": "§17 new scheduled behaviour",
+      "rollback": "ladder_max 3 in the SLA rows; sudoers line removed",
+      "scopes_needed": [
+        "service"
+      ]
+    },
+    {
+      "item_id": "O-W5-4",
+      "category": "OPERATOR",
+      "title": "Independent maturity re-measurement lane (maturity-remeasure, weekly): scores the nine domains from receipts only (producer ≠ reviewer ≠ scorer), writes MaturityScore@v1 and the closeout table; the 4.7 claim is this lane's output, never a session's",
+      "why": "09 §W5, AGENTS §15",
+      "rule": "§17 new cron",
+      "rollback": "disable the cron; scores are advisory",
+      "scopes_needed": [
+        "cron"
+      ]
+    },
+    {
+      "item_id": "I-W5-1",
+      "category": "INFRA",
+      "title": "Local embedding model for ladder step 7 (semantic): Ollama pull of one small embedding model (nomic-embed-text or bge-small), rows into intelligence.embedding (pgvector present); no cloud embeddings; disk ≈ 300 MB",
+      "why": "03 §3 step 7, 12 SW-1",
+      "rule": "§17 install (operator runs the pull)",
+      "rollback": "ollama rm <model>; ladder step 7 reports not_installed again",
+      "scopes_needed": [
+        "NEEDS_LOCAL"
+      ]
+    },
+    {
+      "item_id": "B-W5-1",
+      "category": "BUDGET",
+      "title": "No new paid lane in Waves 4–5; embeddings local; the re-measurement lane is free",
+      "why": "12 §B",
+      "rule": "budget",
+      "rollback": "n/a",
+      "scopes_needed": []
+    }
+  ]
+}
