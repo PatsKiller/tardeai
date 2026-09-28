@@ -212,3 +212,6 @@ apps/command-center-v3/build-meta.json
 
 # 2026-09-14: weekly report archive written by scripts/reports_portal.py (generated output, not source).
 /archive/weekly/
+
+# UI audit screenshots (PNGs live in Drive/CI artifacts; only manifest.json is committed)
+apps/command-center-v3/e2e/screenshots/ui-audit/**/*.png

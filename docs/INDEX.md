@@ -918,6 +918,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/design/SCALED_EXITS_PAPER_EXECUTOR_DESIGN.md` | Scaled Exits for the Paper Executor — Design Spec (SX) | current_phase_keep | OK | `b54bec742f6e` |
 | `docs/design/STOP_MANAGEMENT_V2_DESIGN.md` | Stop Management v2 — Design Document | current_phase_keep | OK | `1c76aa250f41` |
 | `docs/design/SYMBOL_THESIS_UNIVERSE_DESIGN.md` | Living Symbol Thesis + Universe Intelligence (design) | current_phase_keep | OK | `e9e6d5d7b523` |
+| `docs/design/UI_AUDIT_2026-09.md` | Command Center v3 — UI/UX Design Audit and Redesign Direction | current_phase_keep | OK | `f9c1e0472a0e` |
+| `docs/design/audit/ui_metrics_2026-09.md` | UI audit metrics (2026-09-28) | current_phase_keep | MISSING HEADER | `690f7711d14a` |
 | `docs/design/signal_freshness_audit_2026-05-15/AUDIT_FINDINGS.md` | Signal Freshness & Persistence Audit — 2026-05-15 | current_phase_keep | OK | `37b40d420965` |
 | `docs/design/watchlist-intelligence-v3/CECO_REVIEW_AUTHORIZATION_AUDIT.md` | CECO Maria/CIO authorization audit (read-only) | current_phase_keep | OK | `ddc0930b8e69` |
 | `docs/design/watchlist-intelligence-v3/DATA_BROKER_WATCH_CONSUMERS.md` | Data Broker — Watch Intelligence consumers | current_phase_keep | OK | `fcf79773358a` |
@@ -2199,10 +2201,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ui_redesign/OPS_PIPELINE_HEALTH_REVIEW.md` | Ops / Pipeline / Health Page Family Review | review_required | OK | `73c71509b897` |
 | `docs/ui_redesign/PAGE_FAMILY_CONSOLIDATION_REVIEW.md` | Page Family Consolidation Review | review_required | OK | `93821df86de4` |
 | `docs/ui_redesign/README_DESIGN_HANDOFF.md` | Trade AI Command Center v2 -- UI/UX Design Handoff Package | review_required | OK | `edfac8b57e43` |
-| `docs/ui_redesign/REDESIGN_TARGETS.md` | Redesign Targets | review_required | OK | `2a283a86aded` |
+| `docs/ui_redesign/REDESIGN_TARGETS.md` | Redesign Targets | review_required | OK | `8e8f7adc407e` |
 | `docs/ui_redesign/SCREENSHOT_INDEX.md` | Screenshot Index | review_required | OK | `5334e9c132e9` |
 | `docs/ui_redesign/SELF_IMPROVEMENT_PAGE_ENHANCEMENT_NOTES.md` | Self-Improvement Page Enhancement Notes | review_required | OK | `4add423f9373` |
-| `docs/ui_redesign/UI_REDESIGN_BACKLOG.md` | UI Redesign Backlog | review_required | OK | `7388431686e4` |
+| `docs/ui_redesign/UI_REDESIGN_BACKLOG.md` | UI Redesign Backlog | review_required | OK | `f62447332caa` |
 | `docs/ui_redesign/UX_ISSUES_OBSERVED.md` | UX Issues Observed | review_required | OK | `aa796a5dae5b` |
 | `docs/ui_redesign/designer_workspace/DESIGNER_MISSING_FILES_REPORT.md` | Designer Missing Files Report | review_required | OK | `7378498badaa` |
 | `docs/ui_redesign/designer_workspace/designed_replacements/phase1_5_ui_primitives/ActionButton.tsx.REPLACEMENT.md` | New Component: ActionButton.tsx | review_required | OK | `9b1fb23a876c` |
