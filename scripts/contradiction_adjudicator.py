@@ -19,7 +19,7 @@ selects and prints; ``--apply`` calls the judge and appends verdicts. Heartbeat:
 NO_CONSUMER_REASON = (
     "ContradictionVerdict@v1 rows are read by intelligence_client.open_context (net open contradictions), "
     "gir_projector (entity contradictions envelope) and the conformance report; lane contradiction-adjudicator "
-    "is declared NEVER_SCHEDULED until the pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 service grant installs its timer"
+    "is ACTIVE (tradeai-contradiction-adjudicator.timer, daily 19:30 local, installed 2026-09-28 08:18 ET under the pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 service grant)"
 )
 
 import argparse
