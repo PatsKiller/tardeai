@@ -979,7 +979,12 @@ GATES = [
             "tests/test_gir_projector_and_breach_detector.py",
             "tests/test_approval_package_reminder.py",
             "tests/test_memory_compliance.py",
+<<<<<<< HEAD
             "tests/test_memory_ring2.py",
+=======
+            "tests/test_containment_cleared_state.py",
+            "tests/test_indicator_engine_rate_limit.py",
+>>>>>>> origin/main
         ],
     ),
     (
@@ -2660,6 +2665,23 @@ GATES = [
         # unchanged and still refuses a number that is not in the facts.
         "cio_packet_derived_ratios_20260927",
         ["tests/test_cio_packet_derived_ratios_20260927.py"],
+    ),
+    (
+        # 2026-09-27 -- options order-authorization contract (execution-engineering grant):
+        # the order is built from the 2FA'd intent only, the evidence-bound approval is
+        # created at confirm, freshness is recomputed from the intent's timestamps (absent
+        # fails closed regardless of source), buying power is read and gated, and changed
+        # legs / account / quantity / limit / proposal version after approval fail closed.
+        "options_order_authorization_20260927",
+        ["tests/test_options_order_authorization_20260927.py",
+         "tests/test_options_broker_gates_20260927.py"],
+    ),
+    (
+        # 2026-09-27 -- protective puts / covered calls reconcile held shares and cost basis to
+        # the holdings snapshot of record at preflight (fail closed on stale, missing, short,
+        # changed); every CIO-packet yield names its denominator.
+        "options_hedge_recon_yield_labels_20260927",
+        ["tests/test_options_hedge_recon_yield_labels_20260927.py"],
     ),
     (
         # 2026-09-27 -- options order gates (operator work order, PR 3): the submit-mode risk

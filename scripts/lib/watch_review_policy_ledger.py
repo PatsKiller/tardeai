@@ -129,6 +129,12 @@ def containment_required_ok() -> tuple[bool, str]:
         st = evaluate_containment_state()
         if st.get("status") == STATUS_ACTIVE:
             return True, "containment_active"
+        try:
+            from lib.agent_jobs_containment import containment_cleared
+        except ImportError:  # pragma: no cover
+            from scripts.lib.agent_jobs_containment import containment_cleared  # type: ignore
+        if containment_cleared():
+            return True, "containment_cleared_by_operator"
         return False, f"containment_not_active:{st.get('status')}"
     except Exception as e:
         return False, f"containment_check_failed:{e}"

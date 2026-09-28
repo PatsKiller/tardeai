@@ -147,8 +147,17 @@ def build_facts(p: dict[str, Any], *, memory: Optional[dict[str, Any]] = None,
         "strike_distance_from_spot_pct": abs(_pct(strike, spot) or 0) or None,
         "breakeven_distance_from_spot_pct": abs(_pct(p.get("breakeven"), spot) or 0) or None,
         "premium_pct_of_strike": round(100.0 * float(prem) / float(strike), 2) if prem and strike else None,
+        # Reviewer 2026-09-27: "8.3% annualized yield" annualised the $6.35 credit against the
+        # $520 SHORT STRIKE. Each denominator answers a different question, so every yield is
+        # labelled with its denominator and none is an expected return (see ev_* for that).
+        "annualized_yield_on_strike_pct": (round(100.0 * float(prem) / float(strike) * 365.0 / max(int(dte), 1), 1)
+                                           if prem and strike and dte else None),
         "annualized_yield_pct": (round(100.0 * float(prem) / float(strike) * 365.0 / max(int(dte), 1), 1)
                                  if prem and strike and dte else None),
+        "yield_denominators_note": ("annualized_yield_on_strike_pct = credit / short strike x 365/dte; "
+                                    "annualized_return_on_risk_pct = credit / max loss x 365/dte; "
+                                    "credit_pct_of_width = credit / spread width. None is an expected return: "
+                                    "expected P/L is the model figure in the economics block."),
         "desk_floor_min_pop_pct": 52, "desk_floor_min_edge": 62,
     }
     # 2026-09-27: the DELL review derived "max loss / credit = 2.15" (1365 / 635) and the
@@ -170,6 +179,8 @@ def build_facts(p: dict[str, Any], *, memory: Optional[dict[str, Any]] = None,
         if credit is not None:
             derived["credit_pct_of_width"] = round(100.0 * credit / width, 1)
             derived["max_loss_per_share"] = round(width - credit, 2)
+            if dte:
+                derived["annualized_yield_on_width_pct"] = round(100.0 * credit / width * 365.0 / max(int(dte), 1), 1)
         derived["long_strike_vs_spot_pct"] = _pct(lk, spot) if spot else None
         for k in ("executable_credit", "mid_credit", "credit_haircut", "credit_basis", "max_loss_at_mid", "breakeven_at_mid"):
             if p.get(k) is not None:

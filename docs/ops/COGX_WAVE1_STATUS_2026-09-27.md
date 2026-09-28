@@ -46,6 +46,7 @@ Package:     docs/architecture/cognitive_transformation_20260927/ (PR #1304); ap
 | Unit files for the two systemd lanes + the two cron lines | `config/systemd/user/tradeai-supervisor-breach-detector.{service,timer}`, `tradeai-gir-projector.{service,timer}`, `docs/ops/COGX_WAVE1_CRONTAB_LINES.txt`; lane rows now name their schedulers | validators green |
 | Operator runbook: every command only the operator can run, in order, with expected outputs and rollbacks | `docs/ops/COGX_WAVE1_OPERATOR_RUNBOOK_2026-09-27.md` | — |
 
+<<<<<<< HEAD
 ## Wave 2 · tranche 1 — Ring 2 in SHADOW (branch wt/cogx-w2-t1-20260927)
 
 | Deliverable | Where | Proof |
@@ -59,6 +60,27 @@ Package:     docs/architecture/cognitive_transformation_20260927/ (PR #1304); ap
 | Process-current context (`set_current_context`) so the seven hooks thread ids without touching every call site | `intelligence_client` | test |
 
 Wave 2 approval items are drafted in `docs/ops/COGX_WAVE2_PACKAGE_SPEC.json` (11 items: the mode flips per surface, six adapter writers, `memory.delta` consumer lane, filings feed, identity sources, sudoers for L1, citation index, M2 cutover, PG heartbeats, effort). Nothing is enforced until the operator flips a policy row.
+=======
+## Findings fixed (operator: "fix findings", 2026-09-27 evening) `[VERIFIED by triage; fixes in this PR]`
+
+**25 NO_OUTPUT breaches → 2 broken jobs, 15 wrong signals, 6 weekday lanes judged on a Sunday, 2 not yet due.**
+
+| Root cause | Fix |
+|---|---|
+| The detector never queried the database, so every `db_max` lane read as silent | `supervisor_breach_detector` passes a read-only `db_query` (BEGIN READ ONLY … ROLLBACK) to `observe_signal` |
+| The detector judged "3 × cadence" every day, so weekday/market-hours lanes breached every weekend | `scripts/lib/cron_schedule.py` (dependency-free 5-field cron parser); NO_OUTPUT now means "the last scheduled fire that had `max_run` to finish produced nothing"; `active_days` extends the cadence window; a declared `first_due` (e.g. `llm-spend-report-monthly` → 2026-10-01) is honoured |
+| Signals that only move when the lane has work (outbox, lineage, candidates, notified_at) | pointed at the real per-run artifact (`cio_defer_revisit_last.json`, `logs/identity_sweep.log`, `logs/material_change_notify.log`, `logs/advisory_lessons.log`, dormant-lane consumers' own log); `cio-delivery` keeps its pinned outbox with a 24 h cadence; new signal kind `systemd_result` (last successful exit of a oneshot unit) for future use |
+| Five signals pointed at absolute dev-tree log paths, stale since the crontab `PROJ` moved to CURRENT at 10:45 ET | made state-root-relative (`logs/…`): options thesis lifecycle, options memory projector, options runtime export, both alpaca stop managers |
+| `instrument-belief-writer` signal read a count (`written_beliefs`) instead of a timestamp | key → `as_of` |
+| `governed-agent-flash-market` still ACTIVE though its crontab line was retired (W0-7) | RETIRED with evidence |
+| **JOB_BROKEN** `watch-review-workers`: every run refused `CONTAINMENT_REQUIRED:containment_not_active` since the operator's 09-15 "agents clear" archived the containment flag | `agent_jobs_containment.containment_cleared()` (the W0-1 precedent) and the watch-review policy gate honours the operator-cleared tripwire |
+| **JOB_BROKEN** `indicator-cache-refresh`: 0 of ~800 symbols updated on three weekdays — yfinance "Too Many Requests" on every call, no backoff | `indicator_engine._history_with_backoff`: throttle, exponential backoff, and a run-level cooldown after 5 consecutive refusals (env-tunable) |
+
+**19 unresolvable symbols → three causes, no hand-built map (AGENTS §7).**
+- AIFF, GLND, HASI, SDOT: Schwab evidence (CUSIP + description) arrived with Saturday's sweep, after Friday's mint → the Monday 05:50 mint promotes them to CONFIRMED. Nothing to change; verify Monday.
+- ABOVE, BLD, CXMT, EKSO: asked Schwab, `broker_returned_no_identifier`; the sweep's resume skips recorded misses. Re-ask is a sweep option (`--no-resume`), left to the Saturday lane or the operator.
+- BOOK (53 artifacts), DYNC, EUDA, FUBO, IRTC, RIBB, STLN, SVCC, WBTN, YHNA, YXT: never entered the registry because the mint's symbol sources were holdings, watchlist and decision tables only. `mint_identity_registry._intelligence_surface_rows()` adds the symbol-thesis projection and the ticker research graph as additive sources; the Monday mint registers them UNRESOLVED and the Saturday sweep asks Schwab.
+>>>>>>> origin/main
 
 ## What is NOT in Wave 1 yet (after the operator runbook)
 - The `memory.delta` bus consumer (Wave 2) — until then the projector is hourly-incremental by source fingerprint.

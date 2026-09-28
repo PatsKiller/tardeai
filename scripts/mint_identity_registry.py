@@ -198,6 +198,51 @@ def _identifier_rows() -> list[dict]:
     return rows
 
 
+def _intelligence_surface_rows() -> list[dict]:
+    """Symbols the intelligence surfaces already reason about but no decision table carries.
+
+    Found 2026-09-27 (cognitive transformation, Wave 1 findings): 16 living symbol theses and
+    83 ticker-research-graph artifacts named symbols with NO registry entity at all — the mint
+    never saw them, so the Schwab sweep never asked, so nothing could confirm them. These are
+    additive symbol SOURCES only: the entity is minted UNRESOLVED like any other and reaches
+    CONFIRMED solely through a durable identifier (AGENTS.md §7: no hand-built map).
+
+    Reads the persistent-state files the surfaces write; a missing file contributes nothing.
+    """
+    rows: list[dict] = []
+    try:
+        from pathlib import Path as _P
+        import json as _json
+        import os as _os
+        state = _P(_os.environ.get("TRADEAI_STATE_ROOT") or (_P.home() / "trade-ai-releases" / "persistent-state"))
+        cio = _P(_os.environ.get("TRADEAI_CIO_DIR") or state / "data" / "cio")
+        proj = cio / "cio_theses_projection.json"
+        if proj.exists():
+            cur = (_json.loads(proj.read_text(encoding="utf-8")).get("current") or {})
+            for tid, rec in cur.items():
+                if not str(tid).startswith("symbol_") or not isinstance(rec, dict):
+                    continue
+                sym = normalize_symbol(rec.get("symbol") or str(tid)[len("symbol_"):])
+                if sym:
+                    rows.append({"symbol": sym, "source": "symbol_thesis"})
+        graph = cio / "ticker_research_graph.jsonl"
+        if graph.exists():
+            seen: set[str] = set()
+            with graph.open("r", encoding="utf-8") as fh:
+                for line in fh:
+                    try:
+                        r = _json.loads(line)
+                    except _json.JSONDecodeError:
+                        continue
+                    sym = normalize_symbol(r.get("symbol") or r.get("ticker") or "")
+                    if sym and sym not in seen:
+                        seen.add(sym)
+                        rows.append({"symbol": sym, "source": "ticker_research_graph"})
+    except Exception:
+        return rows
+    return rows
+
+
 def _broker_reference_rows() -> list[dict]:
     """Durable identifiers swept from the broker's instrument reference.
 
@@ -217,7 +262,7 @@ def collect_rows() -> list[dict]:
     """Holdings first: a held position's richer row should win the merge."""
     merged: dict[str, dict] = {}
     for row in (_holdings_rows() + _watchlist_rows() + _decision_surface_rows()
-                + _identifier_rows() + _broker_reference_rows()):
+                + _intelligence_surface_rows() + _identifier_rows() + _broker_reference_rows()):
         sym = row["symbol"]
         if sym in merged:
             for k, v in row.items():

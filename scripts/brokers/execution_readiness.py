@@ -42,6 +42,22 @@ def _gate(code: str, ok: bool, reason: str, *, severity: str = "hard",
     }
 
 
+def _age_from(ts: Any, fallback_age: Any) -> float | None:
+    """Seconds since ``ts`` (ISO / epoch) as of now; else the supplied age number; else None."""
+    if ts not in (None, ""):
+        try:
+            from brokers.quote_time import quote_age_seconds
+            a = quote_age_seconds(ts)
+            if a is not None:
+                return float(a)
+        except Exception:
+            pass
+    try:
+        return None if fallback_age is None else float(fallback_age)
+    except (TypeError, ValueError):
+        return None
+
+
 def _global_live_allowed() -> dict:
     """Delegate to execution_guard standing-lock logic (env OR session OR standing DB unlock)."""
     try:
@@ -259,24 +275,50 @@ def evaluate_execution_readiness(
         except Exception as e:
             _collect(_gate("risk_preflight_hard_pass", False, f"risk_preflight_error:{e}"))
 
-    # Market data freshness (options)
+    # Market data freshness (options). Order-authorization contract (2026-09-27): ages are
+    # RECOMPUTED from the quote / chain timestamps carried on the intent as of now, so a
+    # submit minutes after preflight sees the real age; a bare age number is used only when
+    # no timestamp exists; absent both -> fail closed REGARDLESS of a named data source.
     if asset_class == "option":
-        quote_age = ev.get("quote_age_seconds")
-        chain_age = ev.get("chain_age_seconds")
+        quote_age = _age_from(ev.get("quotes_as_of"), ev.get("quote_age_seconds"))
+        chain_age = _age_from(ev.get("chain_fetched_at"), ev.get("chain_age_seconds"))
         data_src = ev.get("data_source") or (intent_or_proposal.get("data_source") if isinstance(intent_or_proposal, dict) else None)
         max_quote = 120
         max_chain = 300
-        if quote_age is None and data_src is None:
-            _collect(_gate("fresh_market_data", False, "quote freshness unknown — fail closed"))
-        elif quote_age is not None and float(quote_age) > max_quote:
-            _collect(_gate("fresh_market_data", False, f"quote stale {quote_age}s > {max_quote}s"))
+        if quote_age is None:
+            _collect(_gate("fresh_market_data", False, "quote freshness unknown — fail closed"
+                          + (f" (source {data_src} named, no quote timestamp)" if data_src else "")))
+        elif float(quote_age) > max_quote:
+            _collect(_gate("fresh_market_data", False, f"quote stale {float(quote_age):.0f}s > {max_quote}s"))
         elif data_src in ("bs_estimate", "yfinance", "fallback"):
             _collect(_gate("fresh_market_data", False, f"live path requires broker chain not {data_src}"))
+        elif data_src is None:
+            _collect(_gate("fresh_market_data", False, "quote source unknown — fail closed"))
         else:
             _collect(_gate("fresh_market_data", True, "market data within tolerance",
                           snapshot={"quote_age": quote_age, "chain_age": chain_age, "source": data_src}))
-        if chain_age is not None and float(chain_age) > max_chain:
-            _collect(_gate("option_chain_fresh", False, f"chain stale {chain_age}s"))
+        if chain_age is None:
+            _collect(_gate("option_chain_fresh", False, "chain age unknown — fail closed"))
+        elif float(chain_age) > max_chain:
+            _collect(_gate("option_chain_fresh", False, f"chain stale {float(chain_age):.0f}s"))
+        # Buying power (options): must be present, fresh and sufficient for the collateral
+        # the order commits. Absent = unknown = blocked; it is a broker read the desk
+        # cannot make, so a layer that did not read it cannot submit.
+        bp = ev.get("buying_power")
+        bp_age = _age_from(ev.get("buying_power_as_of"), None)
+        need = ev.get("collateral_required")
+        max_bp_age = 900
+        if bp is None:
+            _collect(_gate("buying_power_sufficient", False, "buying power unknown — fail closed"))
+        elif bp_age is None or float(bp_age) > max_bp_age:
+            _collect(_gate("buying_power_sufficient", False,
+                          f"buying power read is {'undated' if bp_age is None else f'{float(bp_age):.0f}s old'} > {max_bp_age}s — re-read"))
+        elif need is not None and float(bp) < float(need):
+            _collect(_gate("buying_power_sufficient", False,
+                          f"buying power ${float(bp):,.0f} < collateral ${float(need):,.0f}"))
+        else:
+            _collect(_gate("buying_power_sufficient", True, "buying power covers the order",
+                          snapshot={"buying_power": bp, "collateral_required": need, "age_s": bp_age}))
 
     # 2FA — operator confirmation gate. Classification is mode-dependent (P0-4):
     #   submit            → missing 2FA is a HARD block (submit readiness)

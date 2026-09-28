@@ -211,7 +211,7 @@ def validate_row(row: dict[str, Any]) -> list[str]:
 #: Matched against crontab it was never found, so the lane reported ORPHANED
 #: permanently while its output was 0.21h old against a 24h cadence.
 SCHEDULER_KINDS = ("cron", "systemd", "event", "none")
-OUTPUT_SIGNAL_KINDS = ("file_mtime", "json_key", "db_max", "none")
+OUTPUT_SIGNAL_KINDS = ("file_mtime", "json_key", "db_max", "systemd_result", "none")
 
 
 def validate_registry(reg: dict[str, Any]) -> list[str]:
@@ -274,6 +274,29 @@ def observe_signal(sig: dict[str, Any], *, root: Optional[Path] = None,
             return {"last_output_at": ts, "readable": True,
                     "detail": str(p) + ("" if ts else " (absent)")}
 
+        if kind == "systemd_result":
+            # A oneshot service whose only per-run artifact is its journal: last SUCCESSFUL exit.
+            # Found 2026-09-27: cio-delivery and advisory-lessons-reflect write files only when they
+            # have work, so a file signal reads "silent" on a healthy idle worker.
+            import subprocess as _sp
+            unit = str(sig.get("unit") or "")
+            if not unit:
+                return {"last_output_at": None, "readable": False, "detail": "systemd_result needs unit"}
+            try:
+                out = _sp.run(["systemctl", "--user", "show", unit, "-p", "Result", "-p", "ExecMainExitTimestamp"],
+                              capture_output=True, text=True, timeout=10).stdout
+            except Exception as exc:  # noqa: BLE001
+                return {"last_output_at": None, "readable": False, "detail": f"systemctl failed: {type(exc).__name__}"}
+            props = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+            if props.get("Result") != "success":
+                return {"last_output_at": None, "readable": True, "detail": f"{unit} Result={props.get('Result')!r}"}
+            raw = props.get("ExecMainExitTimestamp", "").strip()
+            try:
+                from datetime import datetime as _dtc
+                ts = _dtc.strptime(" ".join(raw.split()[1:3]), "%Y-%m-%d %H:%M:%S").astimezone(timezone.utc) if raw else None
+            except Exception:  # noqa: BLE001
+                ts = None
+            return {"last_output_at": ts, "readable": bool(ts), "detail": f"{unit} success at {raw or 'unknown'}"}
         if kind == "json_key":
             p = Path(str(sig.get("path") or ""))
             if not p.is_absolute():
