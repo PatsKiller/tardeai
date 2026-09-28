@@ -24,7 +24,12 @@ STATE_DIR = PROJECT_ROOT / "data" / "portfolios" / "state"
 DESK_RUNTIME = PROJECT_ROOT / "data" / "runtime" / "options_desk_enterprise.json"
 
 SHORT_STRATEGIES = frozenset({"covered_call", "cash_secured_put", "credit_spread"})
-BLOCKING_STRATEGIES = frozenset({"covered_call", "cash_secured_put", "credit_spread", "long_call"})
+# Reviewer 2026-09-28: the alert path checks spreads as "debit_spread" and long puts as
+# "long_put"; neither was in this set, so a debit spread expiring after earnings was marked
+# qualified while the long call beside it was blocked. Directional and short-premium entries
+# all block; hedges (protective_put) and the paper-lab ATM/deep-ITM canaries do not.
+BLOCKING_STRATEGIES = frozenset({"covered_call", "cash_secured_put", "credit_spread", "long_call",
+                                 "debit_spread", "long_put", "leaps_call"})
 
 # Sentinel: the earnings provider could not answer. NEVER equal to "" (no
 # scheduled earnings) — event gates must treat these two cases differently.
@@ -444,6 +449,15 @@ def earnings_blackout_check(
     in_window = 0 <= days_to <= days
     expires_before_earn = dte >= days_to > 0
     in_blackout = in_window or expires_before_earn
+    # Reviewer 2026-09-28: one reason string said "inside 14d blackout" for earnings 24-38 days
+    # away; the real trigger was that the option's life spans the event. Name the trigger.
+    if in_window:
+        trigger, reason = "blackout_window", f"Earnings {earn_dt} in {days_to}d — within the {days}d pre-earnings blackout"
+    elif expires_before_earn:
+        trigger, reason = "expires_after_earnings", (f"Earnings {earn_dt} in {days_to}d falls inside this option's life "
+                                                     f"({dte} DTE) — event risk before expiry")
+    else:
+        trigger, reason = None, ""
     return {
         "in_blackout": in_blackout,
         "symbol": sym,
@@ -451,10 +465,9 @@ def earnings_blackout_check(
         "next_earnings": earn_dt.isoformat(),
         "days_to_earnings": days_to,
         "blackout_days": days,
-        "reason": (
-            f"Earnings {earn_dt} in {days_to}d — inside {days}d blackout"
-            if in_blackout else ""
-        ),
+        "dte": dte,
+        "trigger": trigger,
+        "reason": reason,
     }
 
 
