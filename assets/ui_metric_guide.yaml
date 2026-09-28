@@ -1,0 +1,1086 @@
+# Metric guide (PR3, 2026-09-27) — THE source of every metric tooltip in the Command Center.
+# Served at GET /api/v2/ui/metric-guide; keys are generated into
+# apps/command-center-v3/src/lib/metricGuide.keys.generated.ts (scripts/gen_metric_guide_keys.mjs).
+# Fields: label, short, definition, why_it_matters, interpretation, benchmark, watch, warning, unit, sources.
+# {placeholders} are filled by the frontend from values already in the payload (AGENTS §13).
+version: 1
+as_of: "2026-09-28"
+entries:
+  cio.conviction:
+    label: "Conviction"
+    short: "How strongly the house thesis takes a position."
+    definition: "Thesis confidence and stance from the symbol thesis on file."
+    why_it_matters: "Low conviction with strong fundamentals means the evidence is thin, not that the name is bad."
+    interpretation: "Pair with the research count; THIN theses are marked."
+    sources: ["symbol_thesis"]
+  cio.decision:
+    label: "CIO decision"
+    short: "The latest recorded CIO review outcome for this idea."
+    definition: "APPROVE, MONITOR_ONLY, MORE_RESEARCH or REJECT, with confidence, from the options lifecycle review."
+    why_it_matters: "An order needs APPROVE; MONITOR_ONLY is not approval."
+    interpretation: "Read the reasoning and concerns on the card; a decision older than the recheck window is re-reviewed."
+    sources: ["options_thesis_lifecycle"]
+  freshness.as_of:
+    label: "As of"
+    short: "When this number was last computed, in ET."
+    definition: "Every operator-facing field carries its own as_of and provenance (AGENTS §13)."
+    why_it_matters: "A stale number can look current."
+    interpretation: "Chips turn to watch when older than the surface's freshness rule."
+    sources: ["surface freshness"]
+  options.alpaca_paper_only:
+    label: "Alpaca Paper Only"
+    short: "This route uses Alpaca simulated paper orders only."
+    definition: "Alpaca paper sends a simulated limit order — no live broker execution. Outcomes feed the validation ledger after fill, close, and reconciliation."
+    why_it_matters: "Alpaca paper sends a simulated limit order — no live broker execution."
+    interpretation: "Confirm paper fill status before treating results as validated."
+    watch: "Confirm paper fill status before treating results as validated."
+    sources: ["options_engine"]
+  options.annualized_yield_on_strike_pct:
+    label: "Annualized yield on strike"
+    short: "Credit ÷ short strike, annualized by days to expiry."
+    definition: "credit / short strike × 365 / dte. One of several yield denominators; not an expected return."
+    why_it_matters: "The denominator changes the answer: on width or on max loss the same trade reads very differently."
+    interpretation: "Compare like with like; the expected P/L in the economics block is the model estimate."
+    sources: ["options_cio_review.build_facts"]
+  options.breakeven:
+    label: "Breakeven"
+    short: "Breakeven is the stock price needed at expiration to break even."
+    definition: "For a long call, breakeven is strike plus premium paid. Here, {symbol} would need to be around {strike} at expiration for the option to break even. The 0.0% means the stock needs to rise about 0.0% from the current reference price by expiration."
+    why_it_matters: "For a long call, breakeven is strike plus premium paid."
+    interpretation: "Compare breakeven to current price, earnings risk, time left, and your thesis."
+    watch: "Compare breakeven to current price, earnings risk, time left, and your thesis."
+    sources: ["options_engine"]
+  options.breakeven_move_pct:
+    label: "Breakeven Move Pct"
+    short: "Percent move the stock needs by expiration to reach breakeven."
+    definition: "The 0.0% figure compares breakeven to a reference spot price. It answers: how much does the stock still need to move by expiration just to get back to even on the trade?"
+    why_it_matters: "The 0.0% figure compares breakeven to a reference spot price."
+    interpretation: "Compare this move to typical volatility, earnings gaps, and your thesis timeline."
+    watch: "Compare this move to typical volatility, earnings gaps, and your thesis timeline."
+    sources: ["options_engine"]
+  options.conviction:
+    label: "Conviction"
+    short: "Desk conviction score for the underlying idea."
+    definition: "Conviction summarizes how strongly research or watchlist signals support the symbol. Higher conviction can lift edge ranking — it is advisory input, not order permission."
+    why_it_matters: "Conviction summarizes how strongly research or watchlist signals support the symbol."
+    interpretation: "Conviction can change when new research or price action arrives."
+    watch: "Conviction can change when new research or price action arrives."
+    sources: ["options_engine"]
+  options.credit_basis:
+    label: "Credit basis"
+    short: "Whether the credit shown is executable (sell the short leg at its bid, buy the long leg at its ask) or a leg midpoint."
+    definition: "A credit spread has two quotes. The executable credit is short bid minus long ask, the credit a marketable limit at the displayed quotes would receive. The midpoint credit averages each leg and is not a fill."
+    why_it_matters: "The desk once advertised the midpoint ($8.10 on DELL) while crossing the quotes paid $6.35; on ETON the midpoint was a credit and the executable price a debit."
+    interpretation: "Use the executable figure for max profit, max loss and breakeven; treat the midpoint as an upper bound."
+    benchmark: "Haircut from mid to executable under 15% of the mid on liquid names; over 25% means the quote is not tradeable."
+    watch: "A closed-market quote inflates the haircut; revalidate at the open."
+    sources: ["options_economics.spread_quote"]
+  options.delta:
+    label: "Delta"
+    short: "Delta estimates how stock-like the option is."
+    definition: "A delta of 0.30 means the option may move about $0.30 for each $1 move in the stock, before other factors change. Higher delta usually means the option behaves more like owning shares. Deep in-the-money calls often have higher delta."
+    why_it_matters: "A delta of 0.30 means the option may move about $0.30 for each $1 move in the stock, before other factors change."
+    interpretation: "If delta drops, the option may become less stock-like and more speculative."
+    watch: "If delta drops, the option may become less stock-like and more speculative."
+    sources: ["options_engine"]
+  options.delta_proxy:
+    label: "Delta Proxy"
+    short: "Delta is estimated from moneyness because the chain had no greeks."
+    definition: "When the option chain does not carry live greeks, the desk uses a proxy based on how far in- or out-of-the-money the strike is. Treat this as a rough stock-likeness estimate — confirm on the chain before sizing."
+    why_it_matters: "When the option chain does not carry live greeks, the desk uses a proxy based on how far in- or out-of-the-money the strike is."
+    interpretation: "Open the chain for a live delta quote before paper or manual review."
+    watch: "Open the chain for a live delta quote before paper or manual review."
+    sources: ["options_engine"]
+  options.dte:
+    label: "Dte"
+    short: "Days to expiration — time left before the contract expires."
+    definition: "{dte} days remain until expiration. Theta (time decay) often accelerates in the final two weeks, which matters for long calls and debits."
+    why_it_matters: "{dte} days remain until expiration."
+    interpretation: "Watch theta, earnings dates, and whether your thesis needs more time."
+    watch: "Watch theta, earnings dates, and whether your thesis needs more time."
+    sources: ["options_engine"]
+  options.dte_bucket:
+    label: "Dte Bucket"
+    short: "This option expires in the longer-term bucket, around {dte} days."
+    definition: "The scanner groups expirations into buckets like 60d, 90d, and 180d so you can compare short-term vs longer-term versions of the same idea. A {dte}d option gives the trade more time to work, but it may cost more and still loses value as time passes."
+    why_it_matters: "The scanner groups expirations into buckets like 60d, 90d, and 180d so you can compare short-term vs longer-term versions of the same idea."
+    interpretation: "Watch DTE, theta decay, liquidity, and whether the original thesis is still valid."
+    watch: "Watch DTE, theta decay, liquidity, and whether the original thesis is still valid."
+    sources: ["options_engine"]
+  options.earnings_before_expiry:
+    label: "Earnings Before Expiry"
+    short: "An earnings report is scheduled before this option expires."
+    definition: "Earnings can cause large overnight gaps that bypass breakeven math. The desk flags this so you can review event risk explicitly — it is disclosed, not hidden."
+    why_it_matters: "Earnings can cause large overnight gaps that bypass breakeven math."
+    interpretation: "Compare implied move, historical gaps, and whether you want event exposure."
+    watch: "Compare implied move, historical gaps, and whether you want event exposure."
+    warning: "Earnings gaps can exceed modeled breakeven moves."
+    sources: ["options_engine"]
+  options.edge:
+    label: "Edge"
+    short: "Composite quality score from POP, IV, R:R, and conviction."
+    definition: "Edge ranks proposals on the desk. Standard gate is about 62; income sleeve names may use a lower floor. Higher edge means the idea passed more quality checks — still review before action."
+    why_it_matters: "Edge ranks proposals on the desk."
+    interpretation: "Edge does not replace chain review, thesis check, or risk limits."
+    watch: "Edge does not replace chain review, thesis check, or risk limits."
+    sources: ["options_engine"]
+  options.ev:
+    label: "Ev"
+    short: "Model expected P/L at expiration — wins AND losses, not credit × POP."
+    definition: "Integrated over a lognormal price range at the same implied volatility the desk used for POP, with zero drift. For a fairly priced option it is close to zero: collecting premium is not free money. Until 2026-09-27 this chip showed credit × POP, which ignored the losing outcomes."
+    why_it_matters: "Integrated over a lognormal price range at the same implied volatility the desk used for POP, with zero drift."
+    interpretation: "Model estimate only. Use it with max loss, net cost if assigned, and a live Schwab validation."
+    watch: "Model estimate only. Use it with max loss, net cost if assigned, and a live Schwab validation."
+    sources: ["options_engine"]
+  options.event_confidence:
+    label: "Event Confidence"
+    short: "Confidence in the earnings date and event metadata."
+    definition: "Event confidence reflects how reliable the earnings calendar and stored history are. Low confidence means treat event lines as review-only."
+    why_it_matters: "Event confidence reflects how reliable the earnings calendar and stored history are."
+    interpretation: "Verify earnings date on an external calendar before event trades."
+    watch: "Verify earnings date on an external calendar before event trades."
+    sources: ["options_engine"]
+  options.floor_value:
+    label: "Floor after premium"
+    short: "Value the insured shares cannot fall below, net of the premium paid."
+    definition: "(strike − premium) × insured shares."
+    why_it_matters: "It is the number the insurance actually guarantees."
+    interpretation: "Read it against your cost basis, not only the mark."
+    sources: ["options_economics"]
+  options.hedged_max_loss_from_mark:
+    label: "Max loss (hedged shares)"
+    short: "What the insured shares can lose from today's mark, premium included, before the put floor holds."
+    definition: "(mark − (strike − premium)) × insured shares."
+    why_it_matters: "A protective put card is insurance on held stock; the put's own premium is not the position's max loss."
+    interpretation: "Compare with the loss to the floor from your cost basis, which is usually larger."
+    watch: "Shares beyond the insured count are unhedged."
+    sources: ["options_economics"]
+  options.historical_move:
+    label: "Historical Move"
+    short: "Average absolute post-earnings move from stored history."
+    definition: "Historical move averages past earnings reactions on record. Thin sample counts mean less confidence — the desk reports sample size honestly."
+    why_it_matters: "Historical move averages past earnings reactions on record."
+    interpretation: "Few samples or stale events deserve extra caution."
+    watch: "Few samples or stale events deserve extra caution."
+    sources: ["options_engine"]
+  options.implied_move:
+    label: "Implied Move"
+    short: "Market-implied expected move into the event (from ATM straddle)."
+    definition: "Implied move comes from the ATM straddle mid at the event expiration when available. It is what options are pricing for earnings — not a forecast."
+    why_it_matters: "Implied move comes from the ATM straddle mid at the event expiration when available."
+    interpretation: "Compare implied move to historical earnings gaps and breakeven."
+    watch: "Compare implied move to historical earnings gaps and breakeven."
+    sources: ["options_engine"]
+  options.iv:
+    label: "Iv"
+    short: "Implied volatility (IV) is the market’s estimate of future price swings."
+    definition: "Higher IV usually means options cost more. IV on the card may come from the chain mid or a desk snapshot — compare to historical range when IV rank is available."
+    why_it_matters: "Higher IV usually means options cost more."
+    interpretation: "Watch IV into earnings and whether you are paying up for event risk."
+    watch: "Watch IV into earnings and whether you are paying up for event risk."
+    sources: ["options_engine"]
+  options.iv_history_building:
+    label: "Iv History Building"
+    short: "IV rank is not ready yet — history is still accumulating."
+    definition: "IV rank needs enough daily ATM-IV snapshots (about {dte} days). Only {dte} days are stored so far, so the desk reports honestly instead of guessing."
+    why_it_matters: "IV rank needs enough daily ATM-IV snapshots (about {dte} days)."
+    interpretation: "Treat IV context as unavailable until history completes — rely on chain quotes."
+    watch: "Treat IV context as unavailable until history completes — rely on chain quotes."
+    sources: ["options_engine"]
+  options.iv_rank:
+    label: "Iv Rank"
+    short: "IV rank shows where current implied volatility sits vs its 52-week range."
+    definition: "IV rank 50% means ATM implied vol is higher than 50% of the past year's readings. Higher rank often means richer option prices (you pay more for calls / collect more for credits)."
+    why_it_matters: "IV rank 50% means ATM implied vol is higher than 50% of the past year's readings."
+    interpretation: "Rich IV can mean pay-up risk; cheap IV can mean less premium cushion."
+    watch: "Rich IV can mean pay-up risk; cheap IV can mean less premium cushion."
+    sources: ["options_engine"]
+  options.live_eligible_false:
+    label: "Live Eligible False"
+    short: "This row is not eligible for live broker execution."
+    definition: "Live Path B requires enterprise.live_eligible (spread, open interest, volume, not BS-estimate-only) plus per-order 2FA. Educational paper-model rows never go live. Paper validation n/30 does not unlock Schwab."
+    why_it_matters: "Live Path B requires enterprise.live_eligible (spread, open interest, volume, not BS-estimate-only) plus per-order 2FA."
+    interpretation: "Read the block reasons on the card — usually spread, OI, volume, or educational paper."
+    watch: "Read the block reasons on the card — usually spread, OI, volume, or educational paper."
+    sources: ["options_engine"]
+  options.loss_to_credit_ratio:
+    label: "Loss : credit"
+    short: "Max loss divided by the credit received."
+    definition: "For a defined-risk credit spread, (width − credit) ÷ credit."
+    why_it_matters: "It is the number of winning trades one full loss erases."
+    interpretation: "Above 3 needs a probability of profit well over 75% to break even over many trades."
+    benchmark: "Desk floor: return on risk ≥ 25% (ratio ≤ 4)."
+    sources: ["options_cio_review.build_facts"]
+  options.max_gain:
+    label: "Max Gain"
+    short: "Best-case profit if the trade works as modeled."
+    definition: "Max profit is the ceiling under the desk model — spreads cap gains at the long leg; short premium keeps credit if options expire worthless. Actual fills and early closes can differ."
+    why_it_matters: "Max profit is the ceiling under the desk model — spreads cap gains at the long leg; short premium keeps credit if options expire worthless."
+    interpretation: "Do not assume max profit is likely — review POP and breakeven instead."
+    watch: "Do not assume max profit is likely — review POP and breakeven instead."
+    sources: ["options_engine"]
+  options.max_loss:
+    label: "Max Loss"
+    short: "Worst-case loss if the trade goes against you."
+    definition: "For defined-risk spreads, max loss is usually the net debit or spread width minus credit. For long options, max loss is often the premium paid. For covered calls, stock downside can exceed the credit collected."
+    why_it_matters: "For defined-risk spreads, max loss is usually the net debit or spread width minus credit."
+    interpretation: "Compare max loss to portfolio risk limits and thesis conviction."
+    watch: "Compare max loss to portfolio risk limits and thesis conviction."
+    sources: ["options_engine"]
+  options.max_profit:
+    label: "Max Profit"
+    short: "Best-case profit if the trade works as modeled."
+    definition: "Max profit is the ceiling under the desk model — spreads cap gains at the long leg; short premium keeps credit if options expire worthless. Actual fills and early closes can differ."
+    why_it_matters: "Max profit is the ceiling under the desk model — spreads cap gains at the long leg; short premium keeps credit if options expire worthless."
+    interpretation: "Do not assume max profit is likely — review POP and breakeven instead."
+    watch: "Do not assume max profit is likely — review POP and breakeven instead."
+    sources: ["options_engine"]
+  options.net_credit:
+    label: "Net Credit"
+    short: "Net cash collected to open the spread package."
+    definition: "Net credit is short-leg premium minus long-leg cost. You keep it if the spread expires worthless, but assignment or defense can change outcomes."
+    why_it_matters: "Net credit is short-leg premium minus long-leg cost."
+    interpretation: "Watch short-strike distance, margin, and event gap risk."
+    watch: "Watch short-strike distance, margin, and event gap risk."
+    sources: ["options_engine"]
+  options.net_debit:
+    label: "Net Debit"
+    short: "Net cash paid to open the spread package."
+    definition: "Net debit is long-leg cost minus short-leg credit for multi-leg trades. It is usually close to max loss on defined-risk debit spreads."
+    why_it_matters: "Net debit is long-leg cost minus short-leg credit for multi-leg trades."
+    interpretation: "Confirm package mid, slippage, and leg liquidity on the chain."
+    watch: "Confirm package mid, slippage, and leg liquidity on the chain."
+    sources: ["options_engine"]
+  options.no_live_path:
+    label: "No Live Path"
+    short: "No live broker execution path exists for this row."
+    definition: "Blocked from live broker execution. Desk Path B needs enterprise liquidity gates + per-order 2FA — paper validation does not unlock live."
+    why_it_matters: "Blocked from live broker execution."
+    interpretation: "Use paper lab or manual review for educational rows; Path B stays 2FA-only when live_eligible clears."
+    watch: "Use paper lab or manual review for educational rows; Path B stays 2FA-only when live_eligible clears."
+    sources: ["options_engine"]
+  options.oi:
+    label: "Oi"
+    short: "Open interest counts outstanding contracts at this strike."
+    definition: "Higher open interest often means more liquidity and tighter markets. Very low OI can mean wider bid/ask spreads and harder fills — especially important before paper or manual tickets."
+    why_it_matters: "Higher open interest often means more liquidity and tighter markets."
+    interpretation: "Pair OI with volume to see if the strike is actively traded."
+    watch: "Pair OI with volume to see if the strike is actively traded."
+    sources: ["options_engine"]
+  options.paper_validation:
+    label: "Paper Validation"
+    short: "Paper-lab outcome ledger (advisory only)."
+    definition: "{validation_message}"
+    why_it_matters: "{validation_message}."
+    interpretation: "Lab credit applies only after fill, close, and outcome reconciliation. Desk Path B strategies ignore this as a live gate."
+    watch: "Lab credit applies only after fill, close, and outcome reconciliation. Desk Path B strategies ignore this as a live gate."
+    sources: ["options_engine"]
+  options.pkg_slippage:
+    label: "Pkg Slippage"
+    short: "Estimated slippage if each leg fills at the ask/bid instead of mid."
+    definition: "Package slippage models worse-than-mid fills on every leg. Real fills may be better or worse — use it as a conservative liquidity warning."
+    why_it_matters: "Package slippage models worse-than-mid fills on every leg."
+    interpretation: "Wide leg spreads increase slippage — review live quotes."
+    watch: "Wide leg spreads increase slippage — review live quotes."
+    sources: ["options_engine"]
+  options.pop:
+    label: "Pop"
+    short: "Probability of profit at expiration under the desk model."
+    definition: "POP estimates how often the trade finishes profitable if held to expiration. It is a model output, not a guarantee — thesis, earnings, and early management can change outcomes."
+    why_it_matters: "POP estimates how often the trade finishes profitable if held to expiration."
+    interpretation: "Compare POP to breakeven distance, max loss, and your hold plan."
+    watch: "Compare POP to breakeven distance, max loss, and your hold plan."
+    sources: ["options_engine"]
+  options.premium:
+    label: "Premium"
+    short: "Premium is the quoted price for one option contract."
+    definition: "Premium is usually shown per share; one contract covers 100 shares, so multiply by 100 for total cash. For debits you pay premium; for credits you collect it. Confirm the live bid/ask on the chain before sizing."
+    why_it_matters: "Premium is usually shown per share; one contract covers 100 shares, so multiply by 100 for total cash."
+    interpretation: "Watch bid/ask width, mid vs last, and whether the quote is stale."
+    watch: "Watch bid/ask width, mid vs last, and whether the quote is stale."
+    sources: ["options_engine"]
+  options.rr:
+    label: "Rr"
+    short: "Reward-to-risk ratio: max gain divided by max loss."
+    definition: "R:R compares upside to downside on defined-risk trades. Higher is generally better, but a high R:R with low POP may still be a low-quality idea. Spreads and credits use package economics."
+    why_it_matters: "R:R compares upside to downside on defined-risk trades."
+    interpretation: "Read R:R together with POP, breakeven, and liquidity."
+    watch: "Read R:R together with POP, breakeven, and liquidity."
+    sources: ["options_engine"]
+  options.share_capital_pct:
+    label: "Share Capital Pct"
+    short: "This compares option cost to buying 100 shares."
+    definition: "Buying 100 shares of {symbol} would require much more cash. This option controls roughly 100 shares but uses about 0% of the cash needed to buy those shares outright. That is the stock-replacement idea."
+    why_it_matters: "Buying 100 shares of {symbol} would require much more cash."
+    interpretation: "Lower capital use does not mean lower risk. The option can still lose 100% of the debit paid."
+    watch: "Lower capital use does not mean lower risk. The option can still lose 100% of the debit paid."
+    sources: ["options_engine"]
+  options.spread_pct:
+    label: "Spread Pct"
+    short: "Bid/ask spread as a percent of the mid price."
+    definition: "A wide spread means the quoted mid may not be what you actually fill at. The desk flags wide spreads because slippage can eat edge on entry and exit."
+    why_it_matters: "A wide spread means the quoted mid may not be what you actually fill at."
+    interpretation: "Review live quotes before sizing — wide spreads deserve smaller size or limits."
+    watch: "Review live quotes before sizing — wide spreads deserve smaller size or limits."
+    sources: ["options_engine"]
+  options.strike:
+    label: "Strike"
+    short: "The strike is the price where the option contract is anchored."
+    definition: "For a call option, the strike is the price where the contract gives you the right to buy 100 shares at expiration. Compare the strike to the current stock price to see how far in- or out-of-the-money the contract is."
+    why_it_matters: "For a call option, the strike is the price where the contract gives you the right to buy 100 shares at expiration."
+    interpretation: "Compare the strike to spot price, breakeven, delta, and liquidity."
+    watch: "Compare the strike to spot price, breakeven, delta, and liquidity."
+    sources: ["options_engine"]
+  options.thesis:
+    label: "Thesis"
+    short: "Where the underlying idea came from on the desk."
+    definition: "Thesis source links the option idea to watchlist conviction, holdings, or scanner context. It explains why this symbol surfaced — not whether the trade is guaranteed to work."
+    why_it_matters: "Thesis source links the option idea to watchlist conviction, holdings, or scanner context."
+    interpretation: "Re-check thesis if price action, news, or earnings change the story."
+    watch: "Re-check thesis if price action, news, or earnings change the story."
+    sources: ["options_engine"]
+  options.total_credit:
+    label: "Total Credit"
+    short: "Total cash you would collect if the trade fills."
+    definition: "Total credit = premium per share × 100 × number of contracts. Credit strategies keep this if the trade works, but assignment or defense can change the outcome. Review max loss and margin requirements."
+    why_it_matters: "Total credit = premium per share × 100 × number of contracts."
+    interpretation: "Watch assignment risk, margin, and whether credit matches your risk budget."
+    watch: "Watch assignment risk, margin, and whether credit matches your risk budget."
+    sources: ["options_engine"]
+  options.total_debit:
+    label: "Total Debit"
+    short: "Total cash you would pay if the trade fills."
+    definition: "Total debit = premium per share × 100 × number of contracts. This is the maximum you can lose on many long-option trades (excluding fees). Review before any paper or manual ticket."
+    why_it_matters: "Total debit = premium per share × 100 × number of contracts."
+    interpretation: "Confirm contracts, limit price, and account cash available."
+    watch: "Confirm contracts, limit price, and account cash available."
+    sources: ["options_engine"]
+  options.ui.actions.close_roll:
+    label: "Close Roll"
+    short: "Close or roll this leg — advisory until you confirm at broker."
+    definition: "Close or roll this leg — advisory until you confirm at broker."
+    why_it_matters: "Close or roll this leg — advisory until you confirm at broker."
+    interpretation: "Close or roll this leg — advisory until you confirm at broker."
+    sources: ["options desk UI"]
+  options.ui.actions.hold:
+    label: "Hold"
+    short: "Dismiss — keep watching this proposal on desk."
+    definition: "Dismiss — keep watching this proposal on desk."
+    why_it_matters: "Dismiss — keep watching this proposal on desk."
+    interpretation: "Dismiss — keep watching this proposal on desk."
+    sources: ["options desk UI"]
+  options.ui.actions.manual_log:
+    label: "Manual Log"
+    short: "Log that you executed this trade manually at your broker."
+    definition: "Log that you executed this trade manually at your broker."
+    why_it_matters: "Log that you executed this trade manually at your broker."
+    interpretation: "Log that you executed this trade manually at your broker."
+    sources: ["options desk UI"]
+  options.ui.actions.preflight_locked:
+    label: "Preflight Locked"
+    short: "Execution locked — run options_pilot_arm.py --approve on server."
+    definition: "Execution locked — run options_pilot_arm.py --approve on server."
+    why_it_matters: "Execution locked — run options_pilot_arm.py --approve on server."
+    interpretation: "Execution locked — run options_pilot_arm.py --approve on server."
+    sources: ["options desk UI"]
+  options.ui.actions.preflight_manual:
+    label: "Preflight Manual"
+    short: "Manual execution at broker — use Executed manually to log."
+    definition: "Manual execution at broker — use Executed manually to log."
+    why_it_matters: "Manual execution at broker — use Executed manually to log."
+    interpretation: "Manual execution at broker — use Executed manually to log."
+    sources: ["options desk UI"]
+  options.ui.actions.review_chain:
+    label: "Review Chain"
+    short: "Open Schwab option chain for live quotes before sizing."
+    definition: "Open Schwab option chain for live quotes before sizing."
+    why_it_matters: "Open Schwab option chain for live quotes before sizing."
+    interpretation: "Open Schwab option chain for live quotes before sizing."
+    sources: ["options desk UI"]
+  options.ui.filters.all:
+    label: "All"
+    short: "Clear type/side/pair filters."
+    definition: "Clear type/side/pair filters."
+    why_it_matters: "Clear type/side/pair filters."
+    interpretation: "Clear type/side/pair filters."
+    sources: ["options desk UI"]
+  options.ui.filters.buy:
+    label: "Buy"
+    short: "Debit strategies — you pay premium (long calls, protective puts)."
+    definition: "Debit strategies — you pay premium (long calls, protective puts)."
+    why_it_matters: "Debit strategies — you pay premium (long calls, protective puts)."
+    interpretation: "Debit strategies — you pay premium (long calls, protective puts)."
+    sources: ["options desk UI"]
+  options.ui.filters.calls:
+    label: "Calls"
+    short: "Call options only — bullish or covered-call income."
+    definition: "Call options only — bullish or covered-call income."
+    why_it_matters: "Call options only — bullish or covered-call income."
+    interpretation: "Call options only — bullish or covered-call income."
+    sources: ["options desk UI"]
+  options.ui.filters.clear:
+    label: "Clear"
+    short: "Reset all proposal filters."
+    definition: "Reset all proposal filters."
+    why_it_matters: "Reset all proposal filters."
+    interpretation: "Reset all proposal filters."
+    sources: ["options desk UI"]
+  options.ui.filters.conviction:
+    label: "Conviction"
+    short: "Ideas on high-conviction watchlist names you do not fully own."
+    definition: "Ideas on high-conviction watchlist names you do not fully own."
+    why_it_matters: "Ideas on high-conviction watchlist names you do not fully own."
+    interpretation: "Ideas on high-conviction watchlist names you do not fully own."
+    sources: ["options desk UI"]
+  options.ui.filters.directional:
+    label: "Directional"
+    short: "Long calls (and long puts) — defined-risk bullish/bearish bets."
+    definition: "Long calls (and long puts) — defined-risk bullish/bearish bets."
+    why_it_matters: "Long calls (and long puts) — defined-risk bullish/bearish bets."
+    interpretation: "Long calls (and long puts) — defined-risk bullish/bearish bets."
+    sources: ["options desk UI"]
+  options.ui.filters.edge:
+    label: "Edge"
+    short: "Minimum composite quality score (POP + IV + R:R + conviction)."
+    definition: "Minimum composite quality score (POP + IV + R:R + conviction)."
+    why_it_matters: "Minimum composite quality score (POP + IV + R:R + conviction)."
+    interpretation: "Minimum composite quality score (POP + IV + R:R + conviction)."
+    sources: ["options desk UI"]
+  options.ui.filters.force_scan:
+    label: "Force Scan"
+    short: "Bypass 10m cache — regenerate proposals from live chains."
+    definition: "Bypass 10m cache — regenerate proposals from live chains."
+    why_it_matters: "Bypass 10m cache — regenerate proposals from live chains."
+    interpretation: "Bypass 10m cache — regenerate proposals from live chains."
+    sources: ["options desk UI"]
+  options.ui.filters.hedge:
+    label: "Hedge"
+    short: "Protective puts on large owned positions."
+    definition: "Protective puts on large owned positions."
+    why_it_matters: "Protective puts on large owned positions."
+    interpretation: "Protective puts on large owned positions."
+    sources: ["options desk UI"]
+  options.ui.filters.income:
+    label: "Income"
+    short: "Covered calls, cash-secured puts, and credit spreads — premium collection strategies."
+    definition: "Covered calls, cash-secured puts, and credit spreads — premium collection strategies."
+    why_it_matters: "Covered calls, cash-secured puts, and credit spreads — premium collection strategies."
+    interpretation: "Covered calls, cash-secured puts, and credit spreads — premium collection strategies."
+    sources: ["options desk UI"]
+  options.ui.filters.live_eligible:
+    label: "Live Eligible"
+    short: "Passed enterprise gates (liquidity, earnings blackout, chain confirmed) — eligible after desk approval."
+    definition: "Passed enterprise gates (liquidity, earnings blackout, chain confirmed) — eligible after desk approval."
+    why_it_matters: "Passed enterprise gates (liquidity, earnings blackout, chain confirmed) — eligible after desk approval."
+    interpretation: "Passed enterprise gates (liquidity, earnings blackout, chain confirmed) — eligible after desk approval."
+    sources: ["options desk UI"]
+  options.ui.filters.pop:
+    label: "Pop"
+    short: "Minimum probability of profit at expiration (%)."
+    definition: "Minimum probability of profit at expiration (%)."
+    why_it_matters: "Minimum probability of profit at expiration (%)."
+    interpretation: "Minimum probability of profit at expiration (%)."
+    sources: ["options desk UI"]
+  options.ui.filters.portfolio:
+    label: "Portfolio"
+    short: "Ideas on names you already hold (covered calls, protective puts)."
+    definition: "Ideas on names you already hold (covered calls, protective puts)."
+    why_it_matters: "Ideas on names you already hold (covered calls, protective puts)."
+    interpretation: "Ideas on names you already hold (covered calls, protective puts)."
+    sources: ["options desk UI"]
+  options.ui.filters.pos_calls:
+    label: "Pos Calls"
+    short: "Open call positions only."
+    definition: "Open call positions only."
+    why_it_matters: "Open call positions only."
+    interpretation: "Open call positions only."
+    sources: ["options desk UI"]
+  options.ui.filters.pos_long:
+    label: "Pos Long"
+    short: "Long / bought options (debit paid)."
+    definition: "Long / bought options (debit paid)."
+    why_it_matters: "Long / bought options (debit paid)."
+    interpretation: "Long / bought options (debit paid)."
+    sources: ["options desk UI"]
+  options.ui.filters.pos_puts:
+    label: "Pos Puts"
+    short: "Open put positions only."
+    definition: "Open put positions only."
+    why_it_matters: "Open put positions only."
+    interpretation: "Open put positions only."
+    sources: ["options desk UI"]
+  options.ui.filters.pos_short:
+    label: "Pos Short"
+    short: "Short / sold options (premium collected)."
+    definition: "Short / sold options (premium collected)."
+    why_it_matters: "Short / sold options (premium collected)."
+    interpretation: "Short / sold options (premium collected)."
+    sources: ["options desk UI"]
+  options.ui.filters.pos_ticker:
+    label: "Pos Ticker"
+    short: "Filter open legs by underlying symbol."
+    definition: "Filter open legs by underlying symbol."
+    why_it_matters: "Filter open legs by underlying symbol."
+    interpretation: "Filter open legs by underlying symbol."
+    sources: ["options desk UI"]
+  options.ui.filters.pos_working:
+    label: "Pos Working"
+    short: "Legs still on plan — not flagged for defend/roll."
+    definition: "Legs still on plan — not flagged for defend/roll."
+    why_it_matters: "Legs still on plan — not flagged for defend/roll."
+    interpretation: "Legs still on plan — not flagged for defend/roll."
+    sources: ["options desk UI"]
+  options.ui.filters.puts:
+    label: "Puts"
+    short: "Put options only — CSP, protective puts, or spreads."
+    definition: "Put options only — CSP, protective puts, or spreads."
+    why_it_matters: "Put options only — CSP, protective puts, or spreads."
+    interpretation: "Put options only — CSP, protective puts, or spreads."
+    sources: ["options desk UI"]
+  options.ui.filters.refresh:
+    label: "Refresh"
+    short: "Reload cached proposals and positions from server."
+    definition: "Reload cached proposals and positions from server."
+    why_it_matters: "Reload cached proposals and positions from server."
+    interpretation: "Reload cached proposals and positions from server."
+    sources: ["options desk UI"]
+  options.ui.filters.sell:
+    label: "Sell"
+    short: "Short premium / sell-to-open ideas (you collect credit)."
+    definition: "Short premium / sell-to-open ideas (you collect credit)."
+    why_it_matters: "Short premium / sell-to-open ideas (you collect credit)."
+    interpretation: "Short premium / sell-to-open ideas (you collect credit)."
+    sources: ["options desk UI"]
+  options.ui.filters.showing:
+    label: "Showing"
+    short: "Count after filters vs total on desk."
+    definition: "Count after filters vs total on desk."
+    why_it_matters: "Count after filters vs total on desk."
+    interpretation: "Count after filters vs total on desk."
+    sources: ["options desk UI"]
+  options.ui.filters.single_leg:
+    label: "Single Leg"
+    short: "One contract per idea (CC, CSP, long call, protective put)."
+    definition: "One contract per idea (CC, CSP, long call, protective put)."
+    why_it_matters: "One contract per idea (CC, CSP, long call, protective put)."
+    interpretation: "One contract per idea (CC, CSP, long call, protective put)."
+    sources: ["options desk UI"]
+  options.ui.filters.spread_pairs:
+    label: "Spread Pairs"
+    short: "Two-leg credit spreads with short/long strike pair (e.g. $172.5/$165)."
+    definition: "Two-leg credit spreads with short/long strike pair (e.g. $172.5/$165)."
+    why_it_matters: "Two-leg credit spreads with short/long strike pair (e.g. $172.5/$165)."
+    interpretation: "Two-leg credit spreads with short/long strike pair (e.g. $172.5/$165)."
+    sources: ["options desk UI"]
+  options.ui.filters.spreads:
+    label: "Spreads"
+    short: "Multi-leg credit spreads (bull put verticals)."
+    definition: "Multi-leg credit spreads (bull put verticals)."
+    why_it_matters: "Multi-leg credit spreads (bull put verticals)."
+    interpretation: "Multi-leg credit spreads (bull put verticals)."
+    sources: ["options desk UI"]
+  options.ui.filters.strategy:
+    label: "Strategy"
+    short: "Exact strategy type from the options engine."
+    definition: "Exact strategy type from the options engine."
+    why_it_matters: "Exact strategy type from the options engine."
+    interpretation: "Exact strategy type from the options engine."
+    sources: ["options desk UI"]
+  options.ui.filters.ticker:
+    label: "Ticker"
+    short: "Filter by underlying symbol (e.g. RTX, V)."
+    definition: "Filter by underlying symbol (e.g. RTX, V)."
+    why_it_matters: "Filter by underlying symbol (e.g. RTX, V)."
+    interpretation: "Filter by underlying symbol (e.g. RTX, V)."
+    sources: ["options desk UI"]
+  options.ui.filters.tier_a:
+    label: "Tier A"
+    short: "Desk tier A — edge ≥72, priority routing."
+    definition: "Desk tier A — edge ≥72, priority routing."
+    why_it_matters: "Desk tier A — edge ≥72, priority routing."
+    interpretation: "Desk tier A — edge ≥72, priority routing."
+    sources: ["options desk UI"]
+  options.ui.filters.tier_b:
+    label: "Tier B"
+    short: "Desk tier B — edge ≥62."
+    definition: "Desk tier B — edge ≥62."
+    why_it_matters: "Desk tier B — edge ≥62."
+    interpretation: "Desk tier B — edge ≥62."
+    sources: ["options desk UI"]
+  options.ui.filters.tier_c:
+    label: "Tier C"
+    short: "Below tier B threshold — review carefully."
+    definition: "Below tier B threshold — review carefully."
+    why_it_matters: "Below tier B threshold — review carefully."
+    interpretation: "Below tier B threshold — review carefully."
+    sources: ["options desk UI"]
+  options.ui.filters.validate_all:
+    label: "Validate All"
+    short: "Queue the Aegis model review (Grok + ChatGPT over OAuth, plus DeepSeek) for each proposal card."
+    definition: "Queue the Aegis model review (Grok + ChatGPT over OAuth, plus DeepSeek) for each proposal card."
+    why_it_matters: "Queue the Aegis model review (Grok + ChatGPT over OAuth, plus DeepSeek) for each proposal card."
+    interpretation: "Queue the Aegis model review (Grok + ChatGPT over OAuth, plus DeepSeek) for each proposal card."
+    sources: ["options desk UI"]
+  options.ui.greeks.footnote:
+    label: "Footnote"
+    short: "Delta from Schwab chain when available. Theta is estimated from DTE decay."
+    definition: "Delta from Schwab chain when available. Theta is estimated from DTE decay."
+    why_it_matters: "Delta from Schwab chain when available. Theta is estimated from DTE decay."
+    interpretation: "Delta from Schwab chain when available. Theta is estimated from DTE decay."
+    sources: ["options desk UI"]
+  options.ui.greeks.long_delta:
+    label: "Long Delta"
+    short: "Delta from long (bought) legs."
+    definition: "Delta from long (bought) legs."
+    why_it_matters: "Delta from long (bought) legs."
+    interpretation: "Delta from long (bought) legs."
+    sources: ["options desk UI"]
+  options.ui.greeks.net_delta:
+    label: "Net Delta"
+    short: "Net share-equivalent delta — directional exposure of the options book."
+    definition: "Net share-equivalent delta — directional exposure of the options book."
+    why_it_matters: "Net share-equivalent delta — directional exposure of the options book."
+    interpretation: "Net share-equivalent delta — directional exposure of the options book."
+    sources: ["options desk UI"]
+  options.ui.greeks.short_delta:
+    label: "Short Delta"
+    short: "Delta from short (sold) legs."
+    definition: "Delta from short (sold) legs."
+    why_it_matters: "Delta from short (sold) legs."
+    interpretation: "Delta from short (sold) legs."
+    sources: ["options desk UI"]
+  options.ui.greeks.theta:
+    label: "Theta"
+    short: "Estimated daily time decay (advisory — not live chain theta)."
+    definition: "Estimated daily time decay (advisory — not live chain theta)."
+    why_it_matters: "Estimated daily time decay (advisory — not live chain theta)."
+    interpretation: "Estimated daily time decay (advisory — not live chain theta)."
+    sources: ["options desk UI"]
+  options.ui.greeks.title:
+    label: "Title"
+    short: "Aggregated greeks across all open option legs on this account."
+    definition: "Aggregated greeks across all open option legs on this account."
+    why_it_matters: "Aggregated greeks across all open option legs on this account."
+    interpretation: "Aggregated greeks across all open option legs on this account."
+    sources: ["options desk UI"]
+  options.ui.header.desk:
+    label: "Desk"
+    short: "Systematic options proposals from your portfolio + conviction signals. Refreshes every ~10 min market hours."
+    definition: "Systematic options proposals from your portfolio + conviction signals. Refreshes every ~10 min market hours."
+    why_it_matters: "Systematic options proposals from your portfolio + conviction signals. Refreshes every ~10 min market hours."
+    interpretation: "Systematic options proposals from your portfolio + conviction signals. Refreshes every ~10 min market hours."
+    sources: ["options desk UI"]
+  options.ui.header.execution_advisory:
+    label: "Execution Advisory"
+    short: "Proposals are ideas only until pilot arm + desk approval + 2FA."
+    definition: "Proposals are ideas only until pilot arm + desk approval + 2FA."
+    why_it_matters: "Proposals are ideas only until pilot arm + desk approval + 2FA."
+    interpretation: "Proposals are ideas only until pilot arm + desk approval + 2FA."
+    sources: ["options desk UI"]
+  options.ui.header.execution_armed:
+    label: "Execution Armed"
+    short: "Live Schwab submit unlocked via options_pilot_arm — still requires desk approval + per-order 2FA."
+    definition: "Live Schwab submit unlocked via options_pilot_arm — still requires desk approval + per-order 2FA."
+    why_it_matters: "Live Schwab submit unlocked via options_pilot_arm — still requires desk approval + per-order 2FA."
+    interpretation: "Live Schwab submit unlocked via options_pilot_arm — still requires desk approval + per-order 2FA."
+    sources: ["options desk UI"]
+  options.ui.header.need_action:
+    label: "Need Action"
+    short: "Open legs where monitor recommends roll, close, or defend — not advisory-only."
+    definition: "Open legs where monitor recommends roll, close, or defend — not advisory-only."
+    why_it_matters: "Open legs where monitor recommends roll, close, or defend — not advisory-only."
+    interpretation: "Open legs where monitor recommends roll, close, or defend — not advisory-only."
+    sources: ["options desk UI"]
+  options.ui.header.novice:
+    label: "Novice"
+    short: "Shows plain-English explanations, risk flags, and confirm modals before preflight."
+    definition: "Shows plain-English explanations, risk flags, and confirm modals before preflight."
+    why_it_matters: "Shows plain-English explanations, risk flags, and confirm modals before preflight."
+    interpretation: "Shows plain-English explanations, risk flags, and confirm modals before preflight."
+    sources: ["options desk UI"]
+  options.ui.header.quality_gate:
+    label: "Quality Gate"
+    short: "Standard proposals need edge ≥62 and POP ≥52%. Income sleeve names (V/SCHD/LMT) use relaxed floor 52."
+    definition: "Standard proposals need edge ≥62 and POP ≥52%. Income sleeve names (V/SCHD/LMT) use relaxed floor 52."
+    why_it_matters: "Standard proposals need edge ≥62 and POP ≥52%. Income sleeve names (V/SCHD/LMT) use relaxed floor 52."
+    interpretation: "Standard proposals need edge ≥62 and POP ≥52%. Income sleeve names (V/SCHD/LMT) use relaxed floor 52."
+    sources: ["options desk UI"]
+  options.ui.header.updated:
+    label: "Updated"
+    short: "Last proposal scan timestamp (UTC/local per browser)."
+    definition: "Last proposal scan timestamp (UTC/local per browser)."
+    why_it_matters: "Last proposal scan timestamp (UTC/local per browser)."
+    interpretation: "Last proposal scan timestamp (UTC/local per browser)."
+    sources: ["options desk UI"]
+  options.ui.novice.banner:
+    label: "Banner"
+    short: "Collapsible primer on how this desk works and what each strategy means."
+    definition: "Collapsible primer on how this desk works and what each strategy means."
+    why_it_matters: "Collapsible primer on how this desk works and what each strategy means."
+    interpretation: "Collapsible primer on how this desk works and what each strategy means."
+    sources: ["options desk UI"]
+  options.ui.novice.toggle:
+    label: "Toggle"
+    short: "Shows plain-English explanations, risk flags, strike distance, and confirm modals."
+    definition: "Shows plain-English explanations, risk flags, strike distance, and confirm modals."
+    why_it_matters: "Shows plain-English explanations, risk flags, strike distance, and confirm modals."
+    interpretation: "Shows plain-English explanations, risk flags, strike distance, and confirm modals."
+    sources: ["options desk UI"]
+  options.ui.novice.what_if:
+    label: "What If"
+    short: "Scenario guide — what happens if the stock moves up, down, or stays flat."
+    definition: "Scenario guide — what happens if the stock moves up, down, or stays flat."
+    why_it_matters: "Scenario guide — what happens if the stock moves up, down, or stays flat."
+    interpretation: "Scenario guide — what happens if the stock moves up, down, or stays flat."
+    sources: ["options desk UI"]
+  options.ui.overview.avg_edge:
+    label: "Avg Edge"
+    short: "Mean edge score across current proposal set."
+    definition: "Mean edge score across current proposal set."
+    why_it_matters: "Mean edge score across current proposal set."
+    interpretation: "Mean edge score across current proposal set."
+    sources: ["options desk UI"]
+  options.ui.overview.avg_pop:
+    label: "Avg Pop"
+    short: "Mean probability of profit across proposals."
+    definition: "Mean probability of profit across proposals."
+    why_it_matters: "Mean probability of profit across proposals."
+    interpretation: "Mean probability of profit across proposals."
+    sources: ["options desk UI"]
+  options.ui.overview.income_cc:
+    label: "Income Cc"
+    short: "Covered call proposals — income on owned shares."
+    definition: "Covered call proposals — income on owned shares."
+    why_it_matters: "Covered call proposals — income on owned shares."
+    interpretation: "Covered call proposals — income on owned shares."
+    sources: ["options desk UI"]
+  options.ui.overview.itm_otm:
+    label: "Itm Otm"
+    short: "In-the-money vs out-of-the-money open legs."
+    definition: "In-the-money vs out-of-the-money open legs."
+    why_it_matters: "In-the-money vs out-of-the-money open legs."
+    interpretation: "In-the-money vs out-of-the-money open legs."
+    sources: ["options desk UI"]
+  options.ui.overview.needs_action:
+    label: "Needs Action"
+    short: "Positions flagged roll/close/defend by monitor."
+    definition: "Positions flagged roll/close/defend by monitor."
+    why_it_matters: "Positions flagged roll/close/defend by monitor."
+    interpretation: "Positions flagged roll/close/defend by monitor."
+    sources: ["options desk UI"]
+  options.ui.overview.open_positions:
+    label: "Open Positions"
+    short: "Option legs held on linked Schwab accounts."
+    definition: "Option legs held on linked Schwab accounts."
+    why_it_matters: "Option legs held on linked Schwab accounts."
+    interpretation: "Option legs held on linked Schwab accounts."
+    sources: ["options desk UI"]
+  options.ui.overview.philosophy:
+    label: "Philosophy"
+    short: "Desk excludes low-edge noise. Monitor refreshes 5–15m market hours."
+    definition: "Desk excludes low-edge noise. Monitor refreshes 5–15m market hours."
+    why_it_matters: "Desk excludes low-edge noise. Monitor refreshes 5–15m market hours."
+    interpretation: "Desk excludes low-edge noise. Monitor refreshes 5–15m market hours."
+    sources: ["options desk UI"]
+  options.ui.overview.proposal_count:
+    label: "Proposal Count"
+    short: "Ideas on desk after quality gates and strategy slots."
+    definition: "Ideas on desk after quality gates and strategy slots."
+    why_it_matters: "Ideas on desk after quality gates and strategy slots."
+    interpretation: "Ideas on desk after quality gates and strategy slots."
+    sources: ["options desk UI"]
+  options.ui.overview.put_plays:
+    label: "Put Plays"
+    short: "All put-related proposals (CSP, protective, spreads)."
+    definition: "All put-related proposals (CSP, protective, spreads)."
+    why_it_matters: "All put-related proposals (CSP, protective, spreads)."
+    interpretation: "All put-related proposals (CSP, protective, spreads)."
+    sources: ["options desk UI"]
+  options.ui.overview.unrealized_pnl:
+    label: "Unrealized Pnl"
+    short: "Sum of mark-to-market P/L on open option legs."
+    definition: "Sum of mark-to-market P/L on open option legs."
+    why_it_matters: "Sum of mark-to-market P/L on open option legs."
+    interpretation: "Sum of mark-to-market P/L on open option legs."
+    sources: ["options desk UI"]
+  options.ui.position.action_required:
+    label: "Action Required"
+    short: "Alerts from position monitor — assignment or roll risk."
+    definition: "Alerts from position monitor — assignment or roll risk."
+    why_it_matters: "Alerts from position monitor — assignment or roll risk."
+    interpretation: "Alerts from position monitor — assignment or roll risk."
+    sources: ["options desk UI"]
+  options.ui.position.expiry_pnl:
+    label: "Expiry Pnl"
+    short: "Payoff curve at expiration across underlying prices."
+    definition: "Payoff curve at expiration across underlying prices."
+    why_it_matters: "Payoff curve at expiration across underlying prices."
+    interpretation: "Payoff curve at expiration across underlying prices."
+    sources: ["options desk UI"]
+  options.ui.position.greeks_panel:
+    label: "Greeks Panel"
+    short: "Book-level delta and estimated theta from open legs."
+    definition: "Book-level delta and estimated theta from open legs."
+    why_it_matters: "Book-level delta and estimated theta from open legs."
+    interpretation: "Book-level delta and estimated theta from open legs."
+    sources: ["options desk UI"]
+  options.ui.position.lifecycle:
+    label: "Lifecycle"
+    short: "LET MATURE = hold toward expiry. HARVEST = take profit. DEFEND = roll/close risk."
+    definition: "LET MATURE = hold toward expiry. HARVEST = take profit. DEFEND = roll/close risk."
+    why_it_matters: "LET MATURE = hold toward expiry. HARVEST = take profit. DEFEND = roll/close risk."
+    interpretation: "LET MATURE = hold toward expiry. HARVEST = take profit. DEFEND = roll/close risk."
+    sources: ["options desk UI"]
+  options.ui.position.maturity_box:
+    label: "Maturity Box"
+    short: "Dynamic guidance on sell now vs let contract mature — updates each monitor pass."
+    definition: "Dynamic guidance on sell now vs let contract mature — updates each monitor pass."
+    why_it_matters: "Dynamic guidance on sell now vs let contract mature — updates each monitor pass."
+    interpretation: "Dynamic guidance on sell now vs let contract mature — updates each monitor pass."
+    sources: ["options desk UI"]
+  options.ui.position.moneyness:
+    label: "Moneyness"
+    short: "ITM = in the money. OTM = out of the money. ATM = at the strike."
+    definition: "ITM = in the money. OTM = out of the money. ATM = at the strike."
+    why_it_matters: "ITM = in the money. OTM = out of the money. ATM = at the strike."
+    interpretation: "ITM = in the money. OTM = out of the money. ATM = at the strike."
+    sources: ["options desk UI"]
+  options.ui.position.recommended:
+    label: "Recommended"
+    short: "Monitor recommendation from live mark, POP, and DTE rules."
+    definition: "Monitor recommendation from live mark, POP, and DTE rules."
+    why_it_matters: "Monitor recommendation from live mark, POP, and DTE rules."
+    interpretation: "Monitor recommendation from live mark, POP, and DTE rules."
+    sources: ["options desk UI"]
+  options.ui.position.status:
+    label: "Status"
+    short: "WORKING = on plan. ACTION = roll/close recommended."
+    definition: "WORKING = on plan. ACTION = roll/close recommended."
+    why_it_matters: "WORKING = on plan. ACTION = roll/close recommended."
+    interpretation: "WORKING = on plan. ACTION = roll/close recommended."
+    sources: ["options desk UI"]
+  options.ui.proposal.desk_tier:
+    label: "Desk Tier"
+    short: "Enterprise desk tier: A (≥72 edge), B (≥62), C (below)."
+    definition: "Enterprise desk tier: A (≥72 edge), B (≥62), C (below)."
+    why_it_matters: "Enterprise desk tier: A (≥72 edge), B (≥62), C (below)."
+    interpretation: "Enterprise desk tier: A (≥72 edge), B (≥62), C (below)."
+    sources: ["options desk UI"]
+  options.ui.proposal.dte:
+    label: "Dte"
+    short: "Days to expiration — theta decay accelerates under ~14 DTE."
+    definition: "Days to expiration — theta decay accelerates under ~14 DTE."
+    why_it_matters: "Days to expiration — theta decay accelerates under ~14 DTE."
+    interpretation: "Days to expiration — theta decay accelerates under ~14 DTE."
+    sources: ["options desk UI"]
+  options.ui.proposal.live_blocked:
+    label: "Live Blocked"
+    short: "Enterprise block — earnings blackout, thin liquidity, or BS-only estimate."
+    definition: "Enterprise block — earnings blackout, thin liquidity, or BS-only estimate."
+    why_it_matters: "Enterprise block — earnings blackout, thin liquidity, or BS-only estimate."
+    interpretation: "Enterprise block — earnings blackout, thin liquidity, or BS-only estimate."
+    sources: ["options desk UI"]
+  options.ui.proposal.live_ok:
+    label: "Live Ok"
+    short: "Passed enterprise gates — still needs desk approval before live submit."
+    definition: "Passed enterprise gates — still needs desk approval before live submit."
+    why_it_matters: "Passed enterprise gates — still needs desk approval before live submit."
+    interpretation: "Passed enterprise gates — still needs desk approval before live submit."
+    sources: ["options desk UI"]
+  options.ui.proposal.recommended:
+    label: "Recommended"
+    short: "Suggested broker action for this proposal."
+    definition: "Suggested broker action for this proposal."
+    why_it_matters: "Suggested broker action for this proposal."
+    interpretation: "Suggested broker action for this proposal."
+    sources: ["options desk UI"]
+  options.ui.proposal.spread_pair:
+    label: "Spread Pair"
+    short: "Credit spread strike pair: short leg / long leg (defined risk width)."
+    definition: "Credit spread strike pair: short leg / long leg (defined risk width)."
+    why_it_matters: "Credit spread strike pair: short leg / long leg (defined risk width)."
+    interpretation: "Credit spread strike pair: short leg / long leg (defined risk width)."
+    sources: ["options desk UI"]
+  options.ui.review.aegis:
+    label: "Aegis"
+    short: "Local Aegis covered-call screening (rules + gemma) — catalyst and verdict context."
+    definition: "Local Aegis covered-call screening (rules + gemma) — catalyst and verdict context."
+    why_it_matters: "Local Aegis covered-call screening (rules + gemma) — catalyst and verdict context."
+    interpretation: "Local Aegis covered-call screening (rules + gemma) — catalyst and verdict context."
+    sources: ["options desk UI"]
+  options.ui.review.ensemble:
+    label: "Ensemble"
+    short: "Multi-LLM quality review: Grok OAuth + ChatGPT OAuth + local Gemma. Advisory only."
+    definition: "Multi-LLM quality review: Grok OAuth + ChatGPT OAuth + local Gemma. Advisory only."
+    why_it_matters: "Multi-LLM quality review: Grok OAuth + ChatGPT OAuth + local Gemma. Advisory only."
+    interpretation: "Multi-LLM quality review: Grok OAuth + ChatGPT OAuth + local Gemma. Advisory only."
+    sources: ["options desk UI"]
+  options.ui.review.reviewed_by:
+    label: "Reviewed By"
+    short: "Sources that screened this proposal before it reached your desk."
+    definition: "Sources that screened this proposal before it reached your desk."
+    why_it_matters: "Sources that screened this proposal before it reached your desk."
+    interpretation: "Sources that screened this proposal before it reached your desk."
+    sources: ["options desk UI"]
+  options.ui.review.worker:
+    label: "Worker"
+    short: "Background worker processes ensemble jobs — refresh card to see verdict."
+    definition: "Background worker processes ensemble jobs — refresh card to see verdict."
+    why_it_matters: "Background worker processes ensemble jobs — refresh card to see verdict."
+    interpretation: "Background worker processes ensemble jobs — refresh card to see verdict."
+    sources: ["options desk UI"]
+  options.ui.tabs.overview:
+    label: "Overview"
+    short: "Desk KPIs: edge averages, income vs puts mix, open P/L, ITM/OTM counts."
+    definition: "Desk KPIs: edge averages, income vs puts mix, open P/L, ITM/OTM counts."
+    why_it_matters: "Desk KPIs: edge averages, income vs puts mix, open P/L, ITM/OTM counts."
+    interpretation: "Desk KPIs: edge averages, income vs puts mix, open P/L, ITM/OTM counts."
+    sources: ["options desk UI"]
+  options.ui.tabs.positions:
+    label: "Positions"
+    short: "Unified open options: Schwab live legs plus Alpaca paper / monitored lifecycle positions with route badges."
+    definition: "Unified open options: Schwab live legs plus Alpaca paper / monitored lifecycle positions with route badges."
+    why_it_matters: "Unified open options: Schwab live legs plus Alpaca paper / monitored lifecycle positions with route badges."
+    interpretation: "Unified open options: Schwab live legs plus Alpaca paper / monitored lifecycle positions with route badges."
+    sources: ["options desk UI"]
+  options.ui.tabs.proposals:
+    label: "Proposals"
+    short: "Ranked trade ideas that passed quality gates — not yet executed."
+    definition: "Ranked trade ideas that passed quality gates — not yet executed."
+    why_it_matters: "Ranked trade ideas that passed quality gates — not yet executed."
+    interpretation: "Ranked trade ideas that passed quality gates — not yet executed."
+    sources: ["options desk UI"]
+  options.ui.tabs.trends:
+    label: "Trends"
+    short: "IV term structure, put/call skew, strike×DTE surface, and snapshot history from live Schwab chains."
+    definition: "IV term structure, put/call skew, strike×DTE surface, and snapshot history from live Schwab chains."
+    why_it_matters: "IV term structure, put/call skew, strike×DTE surface, and snapshot history from live Schwab chains."
+    interpretation: "IV term structure, put/call skew, strike×DTE surface, and snapshot history from live Schwab chains."
+    sources: ["options desk UI"]
+  options.ui.trends.back_iv:
+    label: "Back Iv"
+    short: "ATM implied vol at the furthest expiry in the term structure."
+    definition: "ATM implied vol at the furthest expiry in the term structure."
+    why_it_matters: "ATM implied vol at the furthest expiry in the term structure."
+    interpretation: "ATM implied vol at the furthest expiry in the term structure."
+    sources: ["options desk UI"]
+  options.ui.trends.front_iv:
+    label: "Front Iv"
+    short: "ATM implied vol at the nearest expiry (≥7 DTE)."
+    definition: "ATM implied vol at the nearest expiry (≥7 DTE)."
+    why_it_matters: "ATM implied vol at the nearest expiry (≥7 DTE)."
+    interpretation: "ATM implied vol at the nearest expiry (≥7 DTE)."
+    sources: ["options desk UI"]
+  options.ui.trends.history:
+    label: "History"
+    short: "Front IV over time from options_chain_snapshots (built on each view)."
+    definition: "Front IV over time from options_chain_snapshots (built on each view)."
+    why_it_matters: "Front IV over time from options_chain_snapshots (built on each view)."
+    interpretation: "Front IV over time from options_chain_snapshots (built on each view)."
+    sources: ["options desk UI"]
+  options.ui.trends.iv_rank:
+    label: "Iv Rank"
+    short: "52-week IV rank from desk proposal when symbol is on the desk."
+    definition: "52-week IV rank from desk proposal when symbol is on the desk."
+    why_it_matters: "52-week IV rank from desk proposal when symbol is on the desk."
+    interpretation: "52-week IV rank from desk proposal when symbol is on the desk."
+    sources: ["options desk UI"]
+  options.ui.trends.refresh:
+    label: "Refresh"
+    short: "Reload live chain + persist IV snapshot for history chart."
+    definition: "Reload live chain + persist IV snapshot for history chart."
+    why_it_matters: "Reload live chain + persist IV snapshot for history chart."
+    interpretation: "Reload live chain + persist IV snapshot for history chart."
+    sources: ["options desk UI"]
+  options.ui.trends.research:
+    label: "Research"
+    short: "Per-symbol ideas staged by options_research_bridge for Hermes/TradeAI."
+    definition: "Per-symbol ideas staged by options_research_bridge for Hermes/TradeAI."
+    why_it_matters: "Per-symbol ideas staged by options_research_bridge for Hermes/TradeAI."
+    interpretation: "Per-symbol ideas staged by options_research_bridge for Hermes/TradeAI."
+    sources: ["options desk UI"]
+  options.ui.trends.skew:
+    label: "Skew"
+    short: "Average put IV minus call IV at ATM strikes (%)."
+    definition: "Average put IV minus call IV at ATM strikes (%)."
+    why_it_matters: "Average put IV minus call IV at ATM strikes (%)."
+    interpretation: "Average put IV minus call IV at ATM strikes (%)."
+    sources: ["options desk UI"]
+  options.ui.trends.skew_chart:
+    label: "Skew Chart"
+    short: "Put minus call IV at each expiry — downside fear gauge."
+    definition: "Put minus call IV at each expiry — downside fear gauge."
+    why_it_matters: "Put minus call IV at each expiry — downside fear gauge."
+    interpretation: "Put minus call IV at each expiry — downside fear gauge."
+    sources: ["options desk UI"]
+  options.ui.trends.spot:
+    label: "Spot"
+    short: "Underlying price from chain or technical snapshot."
+    definition: "Underlying price from chain or technical snapshot."
+    why_it_matters: "Underlying price from chain or technical snapshot."
+    interpretation: "Underlying price from chain or technical snapshot."
+    sources: ["options desk UI"]
+  options.ui.trends.surface:
+    label: "Surface"
+    short: "Heatmap of IV% by strike and days-to-expiration (±12% moneyness)."
+    definition: "Heatmap of IV% by strike and days-to-expiration (±12% moneyness)."
+    why_it_matters: "Heatmap of IV% by strike and days-to-expiration (±12% moneyness)."
+    interpretation: "Heatmap of IV% by strike and days-to-expiration (±12% moneyness)."
+    sources: ["options desk UI"]
+  options.ui.trends.symbol:
+    label: "Symbol"
+    short: "Underlying to load live vol analytics from Schwab option chain."
+    definition: "Underlying to load live vol analytics from Schwab option chain."
+    why_it_matters: "Underlying to load live vol analytics from Schwab option chain."
+    interpretation: "Underlying to load live vol analytics from Schwab option chain."
+    sources: ["options desk UI"]
+  options.ui.trends.symbol_chip:
+    label: "Symbol Chip"
+    short: "Desk symbol from proposals, holdings, or open legs."
+    definition: "Desk symbol from proposals, holdings, or open legs."
+    why_it_matters: "Desk symbol from proposals, holdings, or open legs."
+    interpretation: "Desk symbol from proposals, holdings, or open legs."
+    sources: ["options desk UI"]
+  options.ui.trends.term_chart:
+    label: "Term Chart"
+    short: "ATM implied volatility across expirations — richness vs calendar."
+    definition: "ATM implied volatility across expirations — richness vs calendar."
+    why_it_matters: "ATM implied volatility across expirations — richness vs calendar."
+    interpretation: "ATM implied volatility across expirations — richness vs calendar."
+    sources: ["options desk UI"]
+  options.ui.trends.term_slope:
+    label: "Term Slope"
+    short: "Back IV minus front IV — positive = backwardation (near-term fear)."
+    definition: "Back IV minus front IV — positive = backwardation (near-term fear)."
+    why_it_matters: "Back IV minus front IV — positive = backwardation (near-term fear)."
+    interpretation: "Back IV minus front IV — positive = backwardation (near-term fear)."
+    sources: ["options desk UI"]
+  options.volume:
+    label: "Volume"
+    short: "Volume is how many contracts traded today at this strike."
+    definition: "Volume shows near-term activity. A strike with OI but no volume may still be liquid if the market is open — but zero activity can mean stale quotes."
+    why_it_matters: "Volume shows near-term activity."
+    interpretation: "Compare volume to OI and check live bid/ask on the chain."
+    watch: "Compare volume to OI and check live bid/ask on the chain."
+    sources: ["options_engine"]
+  position.unrealized_pct:
+    label: "Unrealized P/L %"
+    short: "Gain or loss versus cost basis, before fees and tax."
+    definition: "(mark − basis) ÷ basis."
+    why_it_matters: "It is the operator's number; the mark-based figures on cards are not."
+    interpretation: "Compare with the plan's stop and target distances."
+    sources: ["holdings snapshot"]
+  sentiment.score:
+    label: "Sentiment score"
+    short: "Quick read of the house view on this name, 0 to 100."
+    definition: "A server-computed blend of the thesis stance, the latest CIO decision and research freshness. The frontend never computes it."
+    why_it_matters: "It is the one-glance answer before the details."
+    interpretation: "Above 65 leans positive, 35 to 65 is watch, below 35 leans risk; the tone chip carries the same meaning."
+    sources: ["ticker_cio_view"]
+  watch.rr:
+    label: "Reward : risk"
+    short: "Distance to target divided by distance to stop."
+    definition: "From the re-entry or watch plan levels."
+    why_it_matters: "Below 1 the plan risks more than it can make."
+    interpretation: "The desk floor is 0.3 for premium-selling, higher for directional entries."
+    sources: ["watch desk"]

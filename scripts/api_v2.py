@@ -35169,6 +35169,17 @@ def _watch_alerts_post(body=None):
     }
 
 
+def _ui_metric_guide(query=None):
+    """GET /api/v2/ui/metric-guide — the metric guide (assets/ui_metric_guide.yaml): what each
+    metric is, why it matters, how to read it, a benchmark. Server-supplied so the frontend
+    never composes help text (AGENTS §13). Cached by file mtime; read-only."""
+    try:
+        from lib.ui_metric_guide import load as _load_guide
+    except ImportError:
+        from scripts.lib.ui_metric_guide import load as _load_guide  # type: ignore
+    return _load_guide()
+
+
 def _ui_prefs_get(query=None):
     """GET /api/v2/ui/prefs?key=K — Watch Desk v4 (B1): tiny server-side prefs store
     (ui_prefs key/value jsonb). Server-side because the operator works desktop+phone
@@ -47127,6 +47138,7 @@ ROUTES = {
     "/api/v2/watch/sectors": _watch_sectors,
     "/api/v2/watch/alerts/list": _watch_alerts_list,
     "/api/v2/ui/prefs/get": _ui_prefs_get,
+    "/api/v2/ui/metric-guide": _ui_metric_guide,
     "/api/v2/sectors/monitor": _sectors_monitor,
     "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,
     "/api/v2/hermes/curate-top20": _hermes_curate_top20_status,

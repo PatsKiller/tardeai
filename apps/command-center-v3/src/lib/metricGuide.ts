@@ -21,8 +21,9 @@ export type MetricGuideEntry = {
   unit?: string
   sources?: string[]
 }
-/** Widened to string until PR3 generates the key union from the YAML. */
-export type MetricGuideKey = string
+import type { MetricGuideKey as GeneratedKey } from './metricGuide.keys.generated'
+/** Generated from assets/ui_metric_guide.yaml (scripts/gen_metric_guide_keys.mjs); a typo fails tsc. */
+export type MetricGuideKey = GeneratedKey
 
 const REGISTRY: Record<string, MetricGuideEntry> = {}
 let VERSION = 'local'

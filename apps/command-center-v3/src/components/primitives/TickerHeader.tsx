@@ -5,9 +5,10 @@ import type { CSSProperties, ReactNode } from 'react'
 import { TOKENS, TYPE, type Tone } from '../../lib/designTokens'
 import { Chip, ChipRow } from './Chip'
 import { Metric } from './Metric'
+import type { MetricGuideKey } from '../../lib/metricGuide'
 
 export type TickerIdentity = { symbol: string; name?: string | null; sector?: string | null; industry?: string | null; market_cap?: string | number | null; exchange?: string | null }
-export type StatusChip = { label: string; tone: Tone; guideKey?: string }
+export type StatusChip = { label: string; tone: Tone; guideKey?: MetricGuideKey }
 export type Sentiment = { score: number; label?: string; tone: Tone; as_of?: string | null; provenance?: string | null }
 
 function fmtCap(v: string | number | null | undefined): string | null {
