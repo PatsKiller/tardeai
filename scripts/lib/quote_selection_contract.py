@@ -372,9 +372,15 @@ def project_quote_selection(
 
     # Fallback used when any per-row source is a non-primary fallback hint.
     fallback_rows: dict[str, int] = {}
+    nav_marked_symbols = 0
     for src, n in (source_counts or {}).items():
         s = str(src or "").lower()
         if not s or s in ("finviz", "finviz_elite", "finviz_live", "finviz_afterhours"):
+            continue
+        if s == "price_cache_nav":
+            # 2026-09-28: a mutual fund has no live quote; its cached NAV IS its price. Counting it as a
+            # fallback made the header read "9/10 symbols DEGRADED" every pre-market for one fund.
+            nav_marked_symbols += int(n or 0)
             continue
         fallback_rows[s] = fallback_rows.get(s, 0) + int(n or 0)
     fallback_used = bool(fallback_rows)
@@ -456,6 +462,7 @@ def project_quote_selection(
             )
             or None
         ),
+        "nav_marked_symbols": nav_marked_symbols,
         "freshness": primary_freshness,
         "status": status,
         "quality": quality,
