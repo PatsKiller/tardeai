@@ -2829,6 +2829,13 @@ GATES = [
         ["tests/test_audit_finish_20260927.py"],
     ),
     (
+        # 2026-09-28 — momentum-scalp proposal contract: the $3 momentum floor, the
+        # analyst gate and the shared 5% spread ceiling discarded every scalp GO since
+        # 2026-07-13; the strategy YAML now carries a paper-only proposal_contract.
+        "momentum_scalp_proposal_contract_20260928",
+        ["tests/test_momentum_scalp_proposal_contract_20260928.py"],
+    ),
+    (
         # 2026-09-28 — momentum-scalp lane refresh: the */15 Finviz-refresh cron line was
         # killed silently every quarter-hour (timeout 150 < stage 240, shared lock) and the
         # lane had not refreshed since 09-18; the stage now clamps to an outer deadline,

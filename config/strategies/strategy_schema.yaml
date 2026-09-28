@@ -73,3 +73,11 @@ performance_context:
     min_profit_factor: 1.25
     min_win_rate: 0.5
   notes: Populated nightly by scripts/paper_performance_governance.py. Used by LLM prompts to evaluate proposal context.
+
+# Optional per-strategy GENERATION contract (auto_proposal_generator, 2026-09-28). All keys optional.
+proposal_contract:
+  hard_min_price: "float >= 1.0; overrides the 3.0 momentum default for this strategy only"
+  require_analyst_coverage: "bool, default true; false is recorded as ANALYST_WAIVED_BY_CONTRACT"
+  require_catalyst: "bool, default false; true -> SKIPPED_NO_CATALYST when neither catalyst text nor catalyst_verified"
+  liquidity_prescreen: "dict merged over shared_risk_rules.liquidity_prescreen for this strategy"
+  target_account: "accounts.account_label; must be mode=paper, else SKIPPED_ACCOUNT_NOT_PAPER"
