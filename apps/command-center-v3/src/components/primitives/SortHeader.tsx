@@ -2,6 +2,7 @@
 import type { CSSProperties, ReactNode } from 'react'
 import { TOKENS, TYPE } from '../../lib/designTokens'
 import type { SortDir, SortState } from '../../lib/tableSort'
+import type { MetricGuideKey } from '../../lib/metricGuide'
 import { MetricGuide } from './Tooltip'
 
 export function SortHeader({ sortKey, sort, onToggle, firstDir = 'desc', guideKey, align = 'left', children, style }: {
@@ -9,7 +10,7 @@ export function SortHeader({ sortKey, sort, onToggle, firstDir = 'desc', guideKe
   sort: SortState
   onToggle: (key: string, firstDir?: SortDir) => void
   firstDir?: SortDir
-  guideKey?: string
+  guideKey?: MetricGuideKey
   align?: 'left' | 'right'
   children: ReactNode
   style?: CSSProperties

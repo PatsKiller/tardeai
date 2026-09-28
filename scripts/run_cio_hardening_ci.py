@@ -2692,6 +2692,13 @@ GATES = [
         ["tests/test_options_queue_eligibility_legacy_pins_20260927.py"],
     ),
     (
+        # 2026-09-27 -- Command Center redesign PR3: the metric guide (assets/ui_metric_guide.yaml,
+        # GET /api/v2/ui/metric-guide, generated key union) and server-supplied insight lines
+        # (scripts/lib/ui_insight.py) -- help text and takeaways are API-supplied (AGENTS 13).
+        "ui_metric_guide_insight_20260927",
+        ["tests/test_ui_metric_guide.py", "tests/test_ui_insight.py"],
+    ),
+    (
         # 2026-09-27 -- protective puts / covered calls reconcile held shares and cost basis to
         # the holdings snapshot of record at preflight (fail closed on stale, missing, short,
         # changed); every CIO-packet yield names its denominator.

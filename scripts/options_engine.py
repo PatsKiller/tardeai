@@ -2899,6 +2899,14 @@ def _stamp_truth_flags(p: dict) -> None:
         p["plain_english"] = explain(p)
     except Exception:
         p["plain_english"] = None
+    # Insight first (redesign PR3, 2026-09-27): the card's takeaway is decided HERE, from the
+    # CIO decision / truth flags / plain English already on the card, never in the frontend.
+    try:
+        from lib.ui_insight import build_insight
+        p["insight"] = build_insight("options_proposal", p)
+    except Exception as _ie:  # noqa: BLE001
+        p["insight"] = {"schema": "UiInsight@v1", "headline": "No takeaway available.", "tone": "neutral",
+                        "drivers": [], "source": "rule", "as_of": None, "provenance": f"ui_insight:{type(_ie).__name__}"}
 
 
 def _income_screen_summary() -> dict:
