@@ -206,6 +206,19 @@ Governance: 3 DSA rows (`agent_registry` manual/PR-only, `model_chooser_receipts
 
 Governance: lane row `maturity-remeasure`, 3 DSA rows (`maturity_scores`, `conformance_gate_receipts`, `supervisor_recoveries`), crontab line appended to `docs/ops/COGX_WAVE2_CRONTAB_LINES.txt`, CI gate += `tests/test_wave5_maturity.py` (6). Deploy needs: release-write; cron grant (one line); the projector unit re-install from Wave 4.
 
+## M2 bitemporal substrate check (branch wt/m2-substrate-check-20260928) `[VERIFIED 2026-09-28 ~10:40 ET]`
+
+Operator pasted a third-party "Bitemporal Memory Substrate v2" harness. It assumed columns (`entity_type`, `is_single_valued`, `version_guid`), a `save_bitemporal_fact_version` signature and a `CONTRADICTED_BY` edge that do not exist here; all five of its cases errored before any assertion. `scripts/m2_substrate_check.py` is that harness wired to the schema on disk (`memory_r10_m2`: the `@v` names are views over `memory_identity` / `memory_fact_version` / `adjudication_receipt` / `provenance_edge`; single-valued = `temporal_policy = 'SINGLE_VALUED_CURRENT'` under the GiST exclusion; writes through `write_fact_version`).
+
+| Mode | Result |
+|---|---|
+| `--shadow` on `m2_shadow_test` (one transaction, rolled back; rows before = after = 0) | 7/7 PASS — exclusion (23P01 on the single-valued overlap; 2 rows under GAPS_ALLOWED), closure (prior row `audit`, tx closed, `supersedes` chain), immutability (object / valid_period / closed-row updates and both deletes refused with P0001; a `confidence` change on a CURRENT row is allowed **by design** of `block_bitemporal_manipulation`), agent-role privileges (`m2_agent`: no bypassrls, UPDATE/DELETE → 42501), adjudication receipt + provenance edge through the real columns and the `@v` views, identity spine (canonical-key dedup, tenant split, security_guid carried), RLS-as-agent (existing `adversarial_rls_suite`: 0 leakage) |
+| `--parity` production (`trade_ai`, no bypassrls, read-only) vs shadow | **PARITY_OK, 0 drift** across view + base columns, the three function bodies, triggers, constraints and RLS shape |
+| Production RLS | all six base tables: enabled, FORCED, one `tenant_id = current_setting('app.tenant_id')` policy |
+| Production rows, tenant `tradeai:tenant:primary` (base = view) | identities 91, fact versions 445, adjudication receipts 177, provenance edges 10 |
+
+**Correction of my own earlier claim (2026-09-28 morning):** I reported "zero RLS policies on the four production views" and "views empty while base tables populated". Both were probe artifacts — views carry no policies by design (the base tables do, forced), and the rows were hidden because that session had not set `app.tenant_id`. The parity mode measures both correctly and finds nothing. The repo's own 200-case matrix (`tests/test_bitemporal_correctness.py`) passed 223/223 on the shadow the same morning.
+
 ## What is NOT in Wave 1 yet (after the operator runbook)
 - The `memory.delta` bus consumer (Wave 2) — until then the projector is hourly-incremental by source fingerprint.
 - The operator steps in the runbook: credential rotation, roles + migration, merge + deploy, grants, lane install, first real runs.
