@@ -137,7 +137,14 @@ def capture(conn, *, tenant: str) -> dict:
 def run_shadow(dsn: str, *, tenant: str) -> dict:
     import psycopg2
     from psycopg2 import errors as pgerr
-    import memory_m2_v2 as m2  # type: ignore
+    # The substrate is reached THROUGH the façade (intelligence_client.substrate), never by a bare
+    # silo import: PR #1337 (e2dcfce1a) shipped this file with `import memory_m2_v2` and broke the
+    # memory chokepoint ratchet on main (LIVEPROOF-20260928 CI run 36442022000). Repaired here.
+    try:
+        from intelligence_client import substrate  # type: ignore
+    except ImportError:
+        from lib.intelligence_client import substrate  # type: ignore
+    m2 = substrate("memory_m2_v2")
     from m2_live_shadow_guard import dsn_database, live_shadow_databases  # type: ignore
     refuse_production(dsn)
     if dsn_database(dsn) in live_shadow_databases():

@@ -86,10 +86,28 @@ class _FakeConn:
         return _FakeCursor()
 
 
-def _readiness_no_db(dct, **kw):
+def _clock(now):
+    """Pin the freshness gate's evaluation clock to the test clock ``now``.
+
+    The gate recomputes quote / chain age from the timestamps on the intent
+    (execution_readiness._age_from -> brokers.quote_time.quote_age_seconds(ts, now=None)); with
+    ``now`` unset that is the wall clock, so a fixture stamped at the fixed test instant ``NOW``
+    (2026-09-28T15:00Z) aged past the 120 s rule the moment the wall clock passed 15:02Z and the
+    positive control failed in CI (PR #1339, run 36442022000: "quote stale 1221s > 120s").
+
+    This is clock injection at the test boundary, through the parameter the rule already has:
+    the age arithmetic, the 120 s production TTL and the fail-closed branches all still run.
+    Nothing here fakes a quote time or bypasses validation."""
+    import brokers.quote_time as qt
+    real = qt.quote_age_seconds
+    return mock.patch.object(qt, "quote_age_seconds", side_effect=lambda raw, now_=None: real(raw, now=now_ or now))
+
+
+def _readiness_no_db(dct, *, now=None, **kw):
     """Submit-mode readiness with the DB-backed gates (policy arm, write fence, desk queue) and
     the desk hard-risk evaluator stubbed as PASS, so the contract's own freshness / buying-power /
-    2FA / kill-switch / LLM gates are what is tested."""
+    2FA / kill-switch / LLM gates are what is tested. ``now`` pins the gate's clock (see _clock);
+    ``None`` keeps the wall clock for the tests that stamp their fixtures from it."""
     import brokers.execution_readiness as er
     import db_adapter
     patches = _all_open() + [
@@ -97,7 +115,7 @@ def _readiness_no_db(dct, **kw):
         mock.patch("brokers.options_execution_policy.evaluate", return_value=(True, [])),
         mock.patch.object(ent, "evaluate_hard_risk_blocks", return_value=[]),
         mock.patch.object(ent, "is_desk_queue_approved", return_value=True),
-    ]
+    ] + ([_clock(now)] if now is not None else [])
     with _Patches(patches):
         r = er.evaluate_execution_readiness(dct, **kw)
     return r
@@ -211,7 +229,8 @@ def _run_auth(intent, *, proposal, store, now=NOW, bp=(50_000.0, None), bind=Non
         return ent.preflight_desk_gate(pid, prop, store=store, now=now, row=approved_row, cfg=ent.load_desk_config())
 
     def readiness(dct, **kw):
-        return _readiness_no_db(dct, **kw)
+        # the SAME clock the contract confirms with is the clock the freshness gate evaluates on
+        return _readiness_no_db(dct, now=now, **kw)
 
     def _bind(i, spec, *, readiness):
         calls["bind"].append((spec, readiness.get("ok")))
@@ -230,11 +249,46 @@ def _codes(res):
 
 
 def test_positive_control_authorizes_once_and_binds_the_exact_order(tmp_path):
+    """Quote 30 s old, chain 60 s old ON THE TEST CLOCK; the same fixture is refused on a clock
+    2 minutes later (see test_stale_quote_timestamp_at_confirm_is_refused) so the pass is the
+    rule passing, not the rule missing."""
     p = _prop()
     res = _run_auth(_intent(p), proposal=p, store=_store(tmp_path))
     assert res["ok"] is True, res["refusals"]
     assert len(res["_bind_calls"]) == 1 and res["_bind_calls"][0][1] is True
     assert res["order_spec"]["price"] == "6.35" and res["evidence"]["order_spec_hash"] == ea.order_spec_hash(res["order_spec"])
+
+
+def test_clock_injection_does_not_change_the_rule(tmp_path):
+    """The injected clock only moves 'now': at NOW+119s the 30 s-old quote is 149 s old and the
+    gate refuses; at NOW+89s it is 119 s old and passes. The 120 s production TTL is read from
+    the gate, not restated here."""
+    p = _prop()
+    late = _run_auth(_intent(p), proposal=p, store=_store(tmp_path), now=NOW + timedelta(seconds=119))
+    assert late["ok"] is False and "fresh_market_data" in _codes(late), _codes(late)
+    assert any("stale 149s > 120s" in r["reason"] for r in late["refusals"]), late["refusals"]
+    edge = _run_auth(_intent(p), proposal=p, store=_store(tmp_path), now=NOW + timedelta(seconds=89))
+    assert edge["ok"] is True, edge["refusals"]
+
+
+def test_stale_chain_is_refused_even_when_the_quote_is_fresh(tmp_path):
+    """Chain fetched 10 minutes before the quote: fresh_market_data passes, option_chain_fresh
+    refuses. Both timestamps are evaluated on the injected clock."""
+    p = _prop(chain_fetched_at=_iso(NOW - timedelta(minutes=10)))
+    res = _run_auth(_intent(p), proposal=p, store=_store(tmp_path))
+    assert res["ok"] is False and "option_chain_fresh" in _codes(res), _codes(res)
+    assert "fresh_market_data" not in _codes(res)
+
+
+def test_changed_quote_evidence_after_approval_is_refused(tmp_path):
+    """Changed-evidence negative: the desk re-quoted after approval (a NEWER quotes_as_of, so not
+    a staleness refusal) and the approved intent's evidence no longer matches what the desk holds.
+    The contract refuses before binding."""
+    p = _prop()
+    requoted = dict(p, quotes_as_of=_iso(NOW - timedelta(seconds=5)), premium=6.05, executable_credit=6.05)
+    res = _run_auth(_intent(p), proposal=requoted, store=_store(tmp_path))
+    assert res["ok"] is False and res["_bind_calls"] == [], _codes(res)
+    assert _codes(res) & {"limit_changed", "quote_changed", "evidence_changed"}, _codes(res)
 
 
 def test_changed_long_leg_after_approval_is_refused(tmp_path):
