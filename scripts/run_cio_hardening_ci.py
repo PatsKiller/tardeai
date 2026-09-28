@@ -2843,6 +2843,14 @@ GATES = [
         ["tests/test_social_inject_and_source_priority_20260928.py"],
     ),
     (
+        # 2026-09-28 — momentum-scalp lane alarm: the lane log said PASS for ten days while
+        # Finviz was never refreshed; the health agent now reads the refresh receipt
+        # (missing / killed / stale / failed) and flags a lane that only ever skips refresh.
+        "momentum_scalp_refresh_alarm_20260928",
+        ["tests/test_momentum_scalp_refresh_alarm_20260928.py",
+         "tests/test_momentum_scalp_source_health.py"],
+    ),
+    (
         # 2026-09-28 — momentum-scalp lane refresh: the */15 Finviz-refresh cron line was
         # killed silently every quarter-hour (timeout 150 < stage 240, shared lock) and the
         # lane had not refreshed since 09-18; the stage now clamps to an outer deadline,
