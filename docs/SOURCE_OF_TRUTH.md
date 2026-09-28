@@ -148,12 +148,9 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-1** — 1 rows: domain `agent_checkpoints`
 - **ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-2** — 1 rows: domain `lesson_promotions`
 - **ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326; decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 3 item O-W3-3** — 1 rows: domain `contradiction_verdicts`
-<<<<<<< HEAD
 - **ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 4 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 4 item O-W4-2** — 1 rows: domain `agent_registry`
 - **ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 4 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 4 item O-W4-3** — 1 rows: domain `model_chooser_receipts`
 - **ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 4 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 4 item O-W4-5** — 1 rows: domain `supervisor_ladder_receipts`
-=======
->>>>>>> wt/cogx-w3-t1-20260927
 
 ## Monitors
 
