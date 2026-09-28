@@ -431,7 +431,7 @@ def build_alternatives(
                     for n in _neighbours(rows, short) if n["dte"] == short["dte"]]
             alts.append(_finish(
                 ctx, "debit_call_vertical", [_leg(long_leg, "long"), _leg(short, "short")], econ, pop, liq,
-                ctx.blackout(long_leg["dte"], "debit_spread"), g,
+                ctx.blackout(long_leg["dte"], "debit_call_vertical"), g,
                 f"long {long_leg['strike']:.2f} (delta {long_leg.get('delta')}, closest to "
                 f"{cfg['vertical_long_delta_target']}) / short {short['strike']:.2f} (the liquid strike nearest the plan "
                 f"target {ctx.target:.2f}) caps the payoff where the plan expects to exit",
@@ -455,7 +455,7 @@ def build_alternatives(
                                     else "expiry outside or further from the LEAPS horizon")
                 for n in _neighbours(rows, lp)]
         alts.append(_finish(
-            ctx, "leaps_call", [_leg(lp, "long")], econ, pop, ctx.liquidity(lp), ctx.blackout(lp["dte"], "long_call"),
+            ctx, "leaps_call", [_leg(lp, "long")], econ, pop, ctx.liquidity(lp), ctx.blackout(lp["dte"], "leaps_call"),
             g,
             f"{lp['strike']:.2f} call: delta {lp.get('delta')} ≥ {cfg['leaps_min_delta']} behaves like stock with a "
             "fixed maximum loss",

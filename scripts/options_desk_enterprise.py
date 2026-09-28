@@ -30,6 +30,25 @@ SHORT_STRATEGIES = frozenset({"covered_call", "cash_secured_put", "credit_spread
 # all block; hedges (protective_put) and the paper-lab ATM/deep-ITM canaries do not.
 BLOCKING_STRATEGIES = frozenset({"covered_call", "cash_secured_put", "credit_spread", "long_call",
                                  "debit_spread", "long_put", "leaps_call"})
+# Live-proof 2026-09-28 (LP-DEF-01): the gate used to be allow-by-omission — any strategy string outside
+# BLOCKING_STRATEGIES passed silently, which is how "debit_call_vertical" (the id the alternatives module
+# emits) could be marked qualified while the long call beside it was blocked. Now: known hedges / paper-lab
+# canaries are listed explicitly, producer vocabularies map through STRATEGY_ALIASES, and an UNKNOWN id
+# fails closed (in_blackout=True, trigger=unknown_strategy) so a new producer can never bypass the event
+# rule by naming a strategy the gate has not met.
+NON_BLOCKING_STRATEGIES = frozenset({"protective_put", "deep_itm_call", "atm_call", "atm_put",
+                                     "earnings_put_debit_spread", "earnings_put_credit_spread"})
+STRATEGY_ALIASES = {
+    "debit_call_vertical": "debit_spread", "call_debit_spread": "debit_spread", "debit_call_spread": "debit_spread",
+    "put_debit_spread": "debit_spread", "debit_put_spread": "debit_spread",
+    "short_put": "cash_secured_put", "csp": "cash_secured_put", "leaps": "leaps_call", "leap_call": "leaps_call",
+    "credit_put_spread": "credit_spread", "credit_call_spread": "credit_spread", "bull_put_spread": "credit_spread",
+}
+
+
+def canonical_strategy(strategy: str) -> str:
+    s = str(strategy or "").strip().lower()
+    return STRATEGY_ALIASES.get(s, s)
 
 # Sentinel: the earnings provider could not answer. NEVER equal to "" (no
 # scheduled earnings) — event gates must treat these two cases differently.
@@ -390,7 +409,7 @@ def earnings_calendar(symbols: List[str]) -> Dict[str, str]:
     return {s: _EARNINGS_CACHE.get(s, "") for s in syms}
 
 
-def earnings_blackout_check(
+def _earnings_blackout_check_impl(
     symbol: str,
     *,
     dte: int,
@@ -401,8 +420,15 @@ def earnings_blackout_check(
     cfg = load_desk_config()
     days = int(blackout_days or cfg.get("earnings_blackout_days") or 14)
     sym = (symbol or "").upper()
+    raw_strategy = strategy
+    strategy = canonical_strategy(strategy)
+    if strategy in NON_BLOCKING_STRATEGIES:
+        return {"in_blackout": False, "symbol": sym, "strategy": strategy, "strategy_raw": raw_strategy}
     if strategy not in BLOCKING_STRATEGIES:
-        return {"in_blackout": False, "symbol": sym, "strategy": strategy}
+        # FAIL CLOSED on a vocabulary the gate has not met (LP-DEF-01, 2026-09-28).
+        return {"in_blackout": True, "symbol": sym, "strategy": strategy, "strategy_raw": raw_strategy,
+                "trigger": "unknown_strategy",
+                "reason": f"strategy {raw_strategy!r} is not in the earnings gate's vocabulary — blocked until it is classified"}
     cal = earnings_calendar([sym])
     earn_raw = cal.get(sym) or ""
     if earn_raw == EARNINGS_UNKNOWN:
@@ -470,6 +496,18 @@ def earnings_blackout_check(
         "reason": reason,
     }
 
+
+
+def earnings_blackout_check(symbol: str, *, dte: int, strategy: str, blackout_days: Optional[int] = None) -> dict:
+    """Return blackout status for short premium / directional entries near earnings.
+
+    Public entry: resolves producer vocabularies (STRATEGY_ALIASES), fails closed on an unknown id, and stamps
+    ``strategy`` (canonical) + ``strategy_raw`` (as the caller said it) on every result (LP-DEF-01)."""
+    raw = strategy
+    out = dict(_earnings_blackout_check_impl(symbol, dte=dte, strategy=strategy, blackout_days=blackout_days))
+    out.setdefault("strategy", canonical_strategy(raw))
+    out["strategy_raw"] = raw
+    return out
 
 def liquidity_gate(contract: dict, *, cfg: Optional[dict] = None) -> dict:
     """Hard liquidity check on a chain contract."""

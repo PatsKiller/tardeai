@@ -988,6 +988,8 @@ GATES = [
             "tests/test_wave4_unification.py",
             "tests/test_wave5_maturity.py",
             "tests/test_m2_substrate_check.py",
+            "tests/test_earnings_gate_vocabulary_20260928.py",
+            "tests/test_lane_registry_bare_schedule_20260928.py",
         ],
     ),
     (

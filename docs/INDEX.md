@@ -1822,6 +1822,12 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/litmus/LITMUS_LANES_2026-09-01.md` | Litmus A — lanes | review_required | OK | `c8b2f9b12275` |
 | `docs/ops/litmus/LITMUS_MONEY_2026-09-01.md` | Litmus · B money | review_required | OK | `97edd2be6a93` |
 | `docs/ops/litmus/LITMUS_WAKE_2026-09-01.md` | Litmus · E wake | review_required | OK | `abf36821e5af` |
+| `docs/ops/live_proof_20260928/00-served-baseline.md` | 00 — Served baseline (read-only, Phase 0.1) | review_required | OK | `7f703c6aa78c` |
+| `docs/ops/live_proof_20260928/02-runtime-lane-registry.md` | 02-runtime-lane-registry: host survey, 2026-09-28, about 10:55–11:05 EDT (read-only) | review_required | OK | `8cf65e1c9c6c` |
+| `docs/ops/live_proof_20260928/03-maturity-board.md` | 03 — Maturity board (history preserved; served re-measurement) | review_required | OK | `e0dbf5bd553e` |
+| `docs/ops/live_proof_20260928/05-defects-and-dispositions.md` | 05 — Defects and dispositions | review_required | OK | `a00292307234` |
+| `docs/ops/live_proof_20260928/06-changes-and-promotion.md` | 06 — Changes and promotion | review_required | OK | `01a0345f82e4` |
+| `docs/ops/live_proof_20260928/07-operator-summary.md` | 07 — Operator summary (redacted) | review_required | OK | `f3d9d90e2768` |
 | `docs/ops/openclaw_stage2_soul_patch_20260923.md` | OpenClaw Maria SOUL / skill patch — Stage 2 (specialist honesty) | review_required | OK | `d0a83ec99d47` |
 | `docs/ops/provider-spend-attribution/README.md` | Provider spend attribution | review_required | OK | `df44cfc4ee62` |
 | `docs/ops/telegram_channel_diligence_20260916/00_EXECUTIVE_SUMMARY.md` | Telegram Channel Diligence — Executive Summary | review_required | OK | `19050e08a848` |
