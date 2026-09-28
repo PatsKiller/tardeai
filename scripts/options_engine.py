@@ -739,31 +739,44 @@ def _researched_watchlist_rows(limit: int = 120) -> List[dict]:
         from db_adapter import _execute, USE_DB
         if not USE_DB:
             return []
+        # 2026-09-27: this query selected wi.catalyst_headline / wi.catalyst_at, columns
+        # watchlist_items never had; the error was swallowed below and the lane contributed
+        # 0 of ~2,700 eligible names to the desk since 09-25. Catalysts live in
+        # catalyst_events (latest headline per symbol); the failure is now logged, not hidden.
         rows = _execute(
             """SELECT DISTINCT ON (upper(wi.symbol))
                       upper(wi.symbol) AS symbol,
                       rc.latest_recommendation AS card_rec,
                       fs.recommendation AS synth_rec,
                       wi.hermes_composite_score,
-                      wi.catalyst_headline,
-                      wi.catalyst_at,
+                      ce.headline AS catalyst_headline,
+                      ce.published_at AS catalyst_at,
                       rc.updated_at AS research_card_at,
                       fs.updated_at AS synthesis_at
                  FROM watchlist_items wi
                  LEFT JOIN watchlist_research_cards rc ON upper(rc.symbol) = upper(wi.symbol)
                  LEFT JOIN watchlist_final_synthesis fs ON upper(fs.symbol) = upper(wi.symbol)
+                 LEFT JOIN LATERAL (
+                      SELECT headline, published_at FROM catalyst_events c
+                       WHERE upper(c.symbol) = upper(wi.symbol)
+                       ORDER BY c.published_at DESC NULLS LAST, c.created_at DESC
+                       LIMIT 1
+                 ) ce ON TRUE
                 WHERE wi.status IN ('active', 'researched')
                   AND wi.symbol ~ '^[A-Z][A-Z0-9.\\-]{0,9}$'
-                  AND (rc.symbol IS NOT NULL OR fs.symbol IS NOT NULL OR wi.catalyst_headline IS NOT NULL)
+                  AND (rc.symbol IS NOT NULL OR fs.symbol IS NOT NULL OR ce.headline IS NOT NULL)
                 ORDER BY upper(wi.symbol), GREATEST(
                   COALESCE(fs.updated_at, 'epoch'::timestamp),
                   COALESCE(rc.updated_at, 'epoch'::timestamp),
-                  COALESCE(wi.catalyst_at, 'epoch'::timestamp)
+                  COALESCE(ce.published_at, 'epoch'::timestamptz)
                 ) DESC NULLS LAST
                 LIMIT %s""",
             (int(limit),), fetch="all",
         ) or []
-    except Exception:
+    except Exception as e:  # noqa: BLE001 -- a lane that cannot read says so
+        print(f"[options_engine] researched-watchlist lane unavailable: {type(e).__name__}: {str(e)[:160]}", file=sys.stderr)
+        INCOME_SCREEN_DROPS.append({"symbol": "*", "strategy": "*", "reason": "RESEARCH_LANE_UNAVAILABLE",
+                                    "detail": f"{type(e).__name__}: {str(e)[:160]}"})
         return []
     out: List[dict] = []
     for row in rows:

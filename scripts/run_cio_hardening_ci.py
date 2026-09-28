@@ -2676,6 +2676,13 @@ GATES = [
          "tests/test_options_broker_gates_20260927.py"],
     ),
     (
+        # 2026-09-27 wave 3 -- researched-watchlist lane reads catalysts from catalyst_events and
+        # logs a failing read; a rejected CIO review releases the lane's dedupe mark; a manual
+        # lifecycle run takes the scheduler's lock; submit re-reads buying power.
+        "wave3_lane_dedupe_lock_bp_20260927",
+        ["tests/test_wave3_lane_dedupe_lock_bp_20260927.py"],
+    ),
+    (
         # 2026-09-27 -- Defense CC queue evaluates queue-time eligibility (mode live), the
         # fail-closed gates run at preflight/confirm; queue rows approved before the pin
         # existed are pinned to their stored proposal_json + reviewed_at.
