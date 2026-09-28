@@ -48,3 +48,28 @@ Existing broker suites on the served release (`tests/test_execution_readiness.py
 ## What this does not prove
 - Live behaviour of the Schwab client, Telegram delivery, or the DB write fence: all faked.
 - Anything on the `active_trader` path (out of the grant's scope).
+
+
+---
+
+## Order-authorization contract (built under the operator's execution-engineering grant, 2026-09-27 evening)
+
+The four connected fixes above are now one contract, `options_order_pilot.confirm_authorization`, run **after the operator's 2FA is fully approved and before submit** by both `/api/v2/options/confirm` and `intent_submit_router` (the same shape the protective-stop path already used). Nothing in it contacts the broker's order endpoint.
+
+| Reviewer requirement | Where | Proof (`tests/test_options_order_authorization_20260927.py`) |
+|---|---|---|
+| Build the submitted order from the exact 2FA'd intent, never the proposals cache | `options_order_pilot.order_from_intent` (legs, contracts, limit from the intent; `spec_from_intent` is now an alias with no cache overlay) | `test_order_is_built_from_the_intent_and_ignores_the_cache`; #1302's former strict xfail now passes |
+| Create and verify the evidence-bound approval for that exact order | `bind_options_authorization` → `evidence_approval.create_order_evidence_approval(intent, order_spec, readiness_snapshot, quote_snapshot)`; `place_order`'s `revalidate_before_submit` then pins `order_spec_hash` + `readiness_hash` | `test_no_order_without_its_exact_evidence_bound_authorization`, `test_positive_control_authorizes_once_and_binds_the_exact_order` |
+| Missing quote age fails regardless of data source; timestamps carried on the intent | `authorization_evidence` puts `quotes_as_of`, `chain_fetched_at`, `data_source`, `market_session` on the intent; `execution_readiness` recomputes the ages from those timestamps at evaluation time (a stored age number is never trusted); absent → `fresh_market_data` / `option_chain_fresh` fail closed | `test_absent_quote_timestamp_fails_closed_even_with_a_named_source`, `test_quote_age_is_recomputed_from_the_timestamp_at_submit_time`; #1302's second strict xfail now passes |
+| Buying power read and validated at preflight (and re-read at confirm) | `read_buying_power` (Schwab account read; degraded/missing → None); `execution_readiness` gate `buying_power_sufficient`: absent, undated or > 900 s old, or below `collateral_required` → fail closed | `test_buying_power_absent_undated_stale_fails_closed` (5 cases), `test_buying_power_below_collateral_blocks_and_enough_passes`, `test_read_buying_power_fails_closed_on_degraded_or_missing_reads`, `test_buying_power_changes_at_confirm_are_refused` |
+| Changed legs / account / quantity / limit / proposal version after approval fail closed | desk approval pin (`legs_changed`, includes account), `quantity_changed`, `limit_changed` (validate's `max_premium_change_pct` tolerance), `proposal_version_changed` (pin), `thesis_abandoned`, `proposal_missing`; `place_order` refuses an intent whose `account_key` differs (AST-verified) | `test_changed_long_leg_after_approval_is_refused`, `test_changed_quantity_or_limit_after_approval_is_refused`, `test_changed_account_is_refused_at_submit_boundary`, `test_changed_proposal_version_is_refused`, `test_archived_thesis_and_missing_proposal_are_refused` |
+| Stale quote at confirm | readiness at confirm recomputes the age as of now | `test_stale_quote_timestamp_at_confirm_is_refused` |
+| Confirm handler and router refuse before submit | `api_v2` confirm: not fully approved → no contract, no submit; contract refusal → `{"mode":"blocked","stage":"authorization","broker_submitted":false}`; only the contract's order submits, once. Router options branch: same (AST-verified order) | `test_api_confirm_refuses_before_submit_when_the_contract_refuses`, `test_router_options_branch_runs_the_contract_before_submit` |
+| Hedge shares and basis reconciled at preflight | desk layer, PR #1309 (`reconcile_hedge_holdings`, step 9 of the desk gate, also run by the contract at confirm) | `tests/test_options_hedge_recon_yield_labels_20260927.py` |
+
+**Preflight** (`/api/v2/options/preflight`) additionally reads buying power, builds the intent with the authorization evidence, and runs preflight-mode readiness before `authorize` and 2FA, returning the operator-required steps.
+
+**Still not proven / remaining gaps**
+- The live Schwab account read, Telegram delivery and DB write fence are faked in every test. The first real options submit will be the first end-to-end run; it must be a 1-lot under operator supervision.
+- `place_order` (schwab_transport) re-runs readiness with the intent's evidence, so buying power there is the value re-read at confirm seconds earlier, not a second broker read inside the submit function itself.
+- The equity/protective-stop path is untouched by this contract.

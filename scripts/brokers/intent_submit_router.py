@@ -109,8 +109,13 @@ def submit_fully_approved(intent_id: str) -> dict:
                 from brokers import options_order_pilot as oop
                 ointent = oop.load_intent(iid)
                 if ointent is not None:
-                    order_spec = oop.spec_from_intent(ointent)
-                    res = oop.submit(acct, order_spec, ointent)
+                    auth = oop.confirm_authorization(ointent)
+                    if not auth.get("ok"):
+                        return {"ok": False, "mode": "blocked", "stage": "authorization", "broker_submitted": False,
+                                "refusals": auth.get("refusals") or [],
+                                "error": "Trade AI blocked submit before Schwab: " + "; ".join(
+                                    str(r.get("reason") or r.get("code")) for r in (auth.get("refusals") or [])[:3])}
+                    res = oop.submit(acct, auth["order_spec"], ointent)
                 else:
                     return {"ok": False, "error": f"unsupported intent type for auto-submit (strategy_id={marker!r})"}
             except Exception:

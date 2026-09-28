@@ -54224,12 +54224,41 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             from brokers.execution_guard import authorize, ExecutionBlocked
 
             held_qty, _ = _protective_holding_truth(account_key, proposal.get("underlying") or proposal.get("symbol"))
-            intent = oop.build_intent(account_key, proposal, held_qty=held_qty)
+            # Order-authorization contract (2026-09-27): the intent carries everything the
+            # authorization binds to (proposal pin, desk approval pin, quote/chain timestamps,
+            # data source, collateral) plus the broker's buying power read NOW.
+            _bp, _bp_as_of = oop.read_buying_power(account_key)
+            intent = oop.build_intent(
+                account_key, proposal, held_qty=held_qty, buying_power=_bp, buying_power_as_of=_bp_as_of
+            )
+            from brokers.execution_readiness import evaluate_execution_readiness as _ready
+
+            _pre = _ready(
+                {
+                    "intent_id": intent.intent_id,
+                    "correlation_id": intent.correlation_id,
+                    "account_key": account_key,
+                    "signal_evidence": getattr(getattr(intent, "meta", None), "signal_evidence", None) or {},
+                },
+                asset_class="option",
+                broker="schwab",
+                account_key=account_key,
+                mode="preflight",
+            )
+            if not _pre.get("ok"):
+                return 200, {
+                    "ok": False,
+                    "mode": "blocked",
+                    "gate": "execution_readiness",
+                    "refusals": _pre.get("hard_blocks") or [],
+                    "operator_required_steps": _pre.get("operator_required_steps"),
+                    "proposal_id": proposal_id,
+                }
             dec = authorize(intent, "submit")
             if not dec.allowed:
                 return 200, {"ok": False, "mode": "blocked", "error": dec.reason, "proposal": proposal}
             req = oop.request_2fa(intent)
-            spec = oop.build_order_spec(proposal)
+            spec = oop.order_from_intent(intent)
             return 200, {
                 "ok": True,
                 "mode": "awaiting_approval",
@@ -54238,6 +54267,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 "order_spec_preview": spec,
                 "approval": req,
                 "proposal": proposal,
+                "readiness": {"mode": _pre.get("mode"), "operator_required_steps": _pre.get("operator_required_steps")},
+                "buying_power": {"value": _bp, "as_of": _bp_as_of},
             }
         except ExecutionBlocked as e:
             return 200, {"ok": False, "error": str(e)}
@@ -54263,9 +54294,23 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if not cr.get("fully_approved"):
                 return 200, {"ok": True, "stage": "confirm", "fully_approved": False}
             acct = intent.account_key
-            order_spec = oop.spec_from_intent(intent)
-            res = oop.submit(acct, order_spec, intent)
-            return 200, {"ok": True, "stage": "submit", "result": res}
+            # Order-authorization contract (2026-09-27): re-check the desk (proposal version,
+            # approval pin, lifecycle, validation, liquidity, hard blocks), re-read buying
+            # power, run submit-mode readiness with freshness recomputed from the intent's
+            # timestamps, and bind the evidence approval to the EXACT order built from the
+            # intent -- before submit. Nothing here contacts the broker's order endpoint.
+            auth = oop.confirm_authorization(intent)
+            if not auth.get("ok"):
+                return 200, {
+                    "ok": False,
+                    "mode": "blocked",
+                    "stage": "authorization",
+                    "broker_submitted": False,
+                    "refusals": auth.get("refusals") or [],
+                    "intent_id": intent_id,
+                }
+            res = oop.submit(acct, auth["order_spec"], intent)
+            return 200, {"ok": True, "stage": "submit", "result": res, "evidence": auth.get("evidence")}
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:200]}
 

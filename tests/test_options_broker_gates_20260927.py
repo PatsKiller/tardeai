@@ -244,18 +244,22 @@ def test_c_single_use_and_expiry_are_enforced_at_revalidation():
 
 # ── (d) legs pinned? ─────────────────────────────────────────────────────────────────────────
 
-def test_d_options_preflight_creates_no_evidence_bound_approval_so_submit_fails_closed():
+def test_d_options_intent_without_a_confirm_bound_approval_fails_closed_at_submit():
     """options_order_pilot.request_2fa -> approval_service.request_approval writes trade_approvals rows
     only; create_order_evidence_approval is called by the protective-stop and router paths, never by the
     options preflight. place_order then demands an evidence-bound approval and fails closed. Safe -- and
     it means the options route cannot submit at all today (functional defect, reported)."""
+    # Since 2026-09-27 the evidence approval is bound at CONFIRM (after 2FA) by
+    # options_order_pilot.confirm_authorization -> bind_options_authorization, mirroring the
+    # protective-stop router path; preflight itself still creates none (there is nothing
+    # approved yet), and an intent that never went through confirm still fails closed:
     src = (ROOT / "scripts" / "api_v2.py").read_text(encoding="utf-8")
     tree = ast.parse(src)
     block = next(n for n in ast.walk(tree) if isinstance(n, ast.If)
                  and '"/api/v2/options/preflight"' in ast.get_source_segment(src, n.test))
     assert "create_order_evidence_approval" not in ast.get_source_segment(src, block)
     pilot = (ROOT / "scripts" / "brokers" / "options_order_pilot.py").read_text(encoding="utf-8")
-    assert "create_order_evidence_approval" not in pilot and "create_evidence_approval" not in pilot
+    assert "create_order_evidence_approval" in pilot
     from brokers import evidence_approval as ea
     with mock.patch.object(ea, "fetch_approval", return_value=None):
         rev = ea.revalidate_before_submit("options-intent", current_readiness={"ok": True, "evidence_hash": "x"})
@@ -278,9 +282,8 @@ def test_d_order_spec_hash_pins_legs_when_an_evidence_approval_exists():
     assert absent["reason"] == "order_spec_bundle_unavailable_fail_closed"
 
 
-@pytest.mark.xfail(strict=True, reason="GAP: spec_from_intent prefers the proposals cache over the 2FA'd intent; "
-                                       "a long leg or premium changed in the cache after preflight reaches the order")
 def test_d_spec_from_intent_must_build_from_the_approved_intent_not_the_cache(monkeypatch, tmp_path):
+    """Closed 2026-09-27 (order-authorization contract): the order is built from the intent only."""
     import json
     import options_engine as oe
     from brokers import options_order_pilot as oop
@@ -316,9 +319,8 @@ def _ready_option(ev, **top):
                                             asset_class="option", account_key="schwab_taxable", mode="submit")
 
 
-@pytest.mark.xfail(strict=True, reason="GAP: execution_readiness.fresh_market_data treats a MISSING quote age as fresh "
-                                       "whenever a data_source is named; only 'both unknown' fails closed")
 def test_e_missing_quote_age_with_a_named_data_source_must_still_fail_closed():
+    """Closed 2026-09-27 (order-authorization contract): absent quote age fails closed regardless of source."""
     gate = _ready_option({"data_source": "schwab_chain"})["gate_results"]["fresh_market_data"]
     assert gate["ok"] is False
 
@@ -336,15 +338,20 @@ def test_e_stale_or_unknown_quote_age_fails_closed_and_a_fresh_chain_quote_passe
     assert old_chain["gate_results"]["option_chain_fresh"]["ok"] is False
 
 
-def test_e_build_intent_carries_no_quote_age_so_submit_readiness_fails_closed_today():
-    """The options intent's signal_evidence has neither quote_age_seconds nor data_source, so
-    place_order's readiness step reports 'quote freshness unknown -- fail closed' for every options
-    order. Safe, and another reason the route cannot submit today (functional defect, reported)."""
-    intent = _intent()
+def test_e_build_intent_carries_quote_timestamps_and_readiness_recomputes_the_age():
+    """Closed 2026-09-27 (order-authorization contract): the intent carries quotes_as_of /
+    chain_fetched_at / data_source; readiness recomputes the age from them at submit time and
+    an intent built from a proposal WITHOUT timestamps still fails closed."""
+    intent = _intent()   # DELL fixture: no quote timestamps on the proposal
     ev = intent.meta.signal_evidence
-    assert "quote_age_seconds" not in ev and "data_source" not in ev
+    assert "quotes_as_of" in ev and ev["quote_age_seconds"] is None and ev["data_source"] == "schwab_chain"
     gate = _ready_option(ev)["gate_results"]["fresh_market_data"]
     assert gate["ok"] is False and "unknown" in gate["reason"]
+    import datetime as dt
+    fresh = _intent(dict(DELL, quotes_as_of=dt.datetime.now(dt.timezone.utc).isoformat(),
+                         chain_fetched_at=dt.datetime.now(dt.timezone.utc).isoformat()))
+    assert fresh.meta.signal_evidence["quote_age_seconds"] is not None
+    assert _ready_option(fresh.meta.signal_evidence)["gate_results"]["fresh_market_data"]["ok"] is True
 
 
 def test_e_quote_time_parser_never_guesses_and_ages_correctly():
