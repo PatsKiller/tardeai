@@ -104,13 +104,15 @@ def is_fund(cur, symbol: str) -> bool:
         str(r.get("quote_type") or "").upper() in ("ETF", "MUTUALFUND")
 
 
-def ingest_documents(conn, sym: str, cik: str, filings: list, *, fetch_json=None, fetch_text=None) -> dict:
+def ingest_documents(conn, sym: str, cik: str, filings: list, *, fetch_json=None, fetch_text=None,
+                     since_days: int = 45, max_docs: int = 3) -> dict:
     """Fetch + store EX-99.1 for in-window 8-K 2.02/7.01 filings. Own transaction; never raises."""
     from lib import sec_filing_documents as sfd
     try:
         with conn.cursor() as cur:
             docs = sfd.fetch_documents_for_filings(sym, cik, filings, skip=lambda acc, ex: sfd.stored(cur, acc, ex),
-                                                   fetch_json=fetch_json, fetch_text=fetch_text)
+                                                   fetch_json=fetch_json, fetch_text=fetch_text,
+                                                   since_days=since_days, max_docs=max_docs)
             for d in docs:
                 sfd.upsert(cur, d)
         conn.commit()
@@ -124,6 +126,9 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="SEC company facts -> sec_xbrl")
     ap.add_argument("--symbols", default="")
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--since-days", type=int, default=45,
+                    help="8-K window for catalyst events and EX-99.1 documents (default 45; a one-off "
+                         "wider window backfills an earlier quarter's release, e.g. DELL Q1 FY27 on 2026-05-28)")
     a = ap.parse_args(argv)
     _load_env()
     import psycopg2
@@ -161,7 +166,7 @@ def main(argv=None) -> int:
                 # a new high-severity 8-K files a thesis re-synthesis request.
                 from lib import sec_filing_events as sfe
                 filings = sfe.filings_from_submissions(cik, sec.get_submissions(cik))
-                events = sfe.events_from_filings(sym, filings)
+                events = sfe.events_from_filings(sym, filings, since_days=int(a.since_days))
                 step["filing_events"] = len(events)
                 if a.apply and events:
                     with conn.cursor() as cur:
@@ -179,7 +184,8 @@ def main(argv=None) -> int:
                 # $60.9B orders were in the filing the house held only as a headline).
                 # Idempotent on (accession, exhibit); a missing table is reported, not fatal.
                 if a.apply:
-                    step.update(ingest_documents(conn, sym, cik, filings))
+                    step.update(ingest_documents(conn, sym, cik, filings, since_days=int(a.since_days),
+                                                 max_docs=(3 if int(a.since_days) <= 45 else 6)))
             except Exception as exc:  # noqa: BLE001
                 conn.rollback()
                 step.update(status="ERROR", error=f"{type(exc).__name__}: {str(exc)[:160]}")
