@@ -4,6 +4,7 @@ import ReEntryAnalystEvidence from '../components/reentry/ReEntryAnalystEvidence
 import ReEntryAnalystLookthroughBoard from '../components/reentry/ReEntryAnalystLookthroughBoard'
 import ReEntryClassificationOverlay from '../components/reentry/ReEntryClassificationOverlay'
 import ReEntryCurrentIntelligence, { parseLane } from '../components/reentry/ReEntryCurrentIntelligence'
+import EntryAlertsLane from '../components/reentry/EntryAlertsLane'
 import ReEntryEvidenceContractPanel from '../components/reentry/ReEntryEvidenceContractPanel'
 import ReEntryExitDetailLedger from '../components/reentry/ReEntryExitDetailLedger'
 import ReEntryExitWorkbench from '../components/reentry/ReEntryExitWorkbench'
@@ -31,6 +32,8 @@ export default function ReEntryPageV4() {
       <ReEntryHelpGuide compact />
       <ReEntryClassificationOverlay />
       <ReEntryEvidenceContractPanel />
+      {/* 2026-09-28: the Telegram BUY_READY / ENTRY_NEAR packets had no page; this lane is theirs. */}
+      <EntryAlertsLane />
       <ReEntryCurrentIntelligence
         lane={lane}
         onLaneChange={onLaneChange}

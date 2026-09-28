@@ -2710,6 +2710,13 @@ GATES = [
         ["tests/test_option_chain_truth_20260928.py"],
     ),
     (
+        # 2026-09-28: the Telegram BUY_READY / ENTRY_NEAR packets get one list endpoint and a lane on
+        # the Re-Entry page: zone position, plan R:R vs R:R at quote (entry price stated), options
+        # alternative outcome, and a desk disposition (proposal | not built: reason | not scanned).
+        "reentry_entry_alerts_lane_20260928",
+        ["tests/test_buy_ready_packets_index_20260928.py"],
+    ),
+    (
         # 2026-09-28: the lifecycle script self-deadlocked against the crontab's own flock
         # (57 skipped passes, every options thesis stuck at CREATED). An ancestor's lock is
         # inherited from /proc/self/fd, a foreign holder is still refused.
