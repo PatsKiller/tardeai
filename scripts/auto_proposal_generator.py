@@ -288,6 +288,90 @@ def _load_shared_risk_rules() -> dict:
     return {}
 
 
+# ---------------------------------------------------------------------------
+# Proposal contract (2026-09-28). A strategy YAML may carry a `proposal_contract` block that
+# adjusts GENERATION gates for THAT strategy only. Absent block = legacy behaviour everywhere.
+#   hard_min_price            float, >= 1.0 (absolute floor); default 3.0 for momentum strategies
+#   require_analyst_coverage  bool, default True; False records ANALYST_WAIVED_BY_CONTRACT
+#   require_catalyst          bool, default False; True skips a signal with no catalyst text/verified
+#   liquidity_prescreen       dict merged OVER shared_risk_rules.liquidity_prescreen for this strategy
+#   target_account            account_label the proposal is bound to; must be mode='paper' or the
+#                             proposal is SKIPPED_ACCOUNT_NOT_PAPER (never routed).
+# ---------------------------------------------------------------------------
+_MOMENTUM_STRATEGIES = {'momentum_scalp', 'gap_and_go', 'earnings_catalyst',
+                        'screener', 'speculative_growth', 'earnings_post_momentum'}
+ABSOLUTE_MIN_PRICE = 1.0
+
+
+def _proposal_contract(cfg: dict) -> dict:
+    block = (cfg or {}).get("proposal_contract") or {}
+    return block if isinstance(block, dict) else {}
+
+
+def _contract_hard_min_price(strategy_id: str, cfg: dict) -> float:
+    default = 3.0 if strategy_id in _MOMENTUM_STRATEGIES else ABSOLUTE_MIN_PRICE
+    raw = _proposal_contract(cfg).get("hard_min_price")
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(ABSOLUTE_MIN_PRICE, value)
+
+
+def _contract_requires_analyst(cfg: dict) -> bool:
+    return bool(_proposal_contract(cfg).get("require_analyst_coverage", True))
+
+
+def _contract_requires_catalyst(cfg: dict) -> bool:
+    return bool(_proposal_contract(cfg).get("require_catalyst", False))
+
+
+def _signal_has_catalyst(signal: dict) -> bool:
+    if signal.get("catalyst_verified"):
+        return True
+    return bool(str(signal.get("catalyst") or "").strip())
+
+
+def _contract_liquidity_rules(shared_rules: dict, cfg: dict) -> dict:
+    """shared liquidity_prescreen with the strategy's contract overrides merged on top."""
+    override = _proposal_contract(cfg).get("liquidity_prescreen")
+    if not isinstance(override, dict) or not override:
+        return shared_rules or {}
+    merged = dict(shared_rules or {})
+    merged["liquidity_prescreen"] = {**((shared_rules or {}).get("liquidity_prescreen") or {}), **override}
+    return merged
+
+
+def _contract_target_account(cfg: dict) -> str | None:
+    acct = _proposal_contract(cfg).get("target_account")
+    return str(acct).strip() if acct else None
+
+
+def _account_mode(conn, account_label: str) -> str | None:
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT mode FROM accounts WHERE account_label = %s", (account_label,))
+            row = cur.fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    return (row[0] if not isinstance(row, dict) else row.get("mode")) or None
+
+
+def resolve_contract_target_account(conn, cfg: dict) -> tuple:
+    """(target_account | None, skip_reason | None). A contract may bind ONLY a paper account."""
+    acct = _contract_target_account(cfg)
+    if not acct:
+        return None, None
+    mode = _account_mode(conn, acct)
+    if mode != "paper":
+        return None, f"SKIPPED_ACCOUNT_NOT_PAPER ({acct}: mode={mode or 'unknown'})"
+    return acct, None
+
+
 def _validate_against_strategy_criteria(strategy_id: str, signal: dict) -> tuple:
     """Hard-validate a signal against its strategy YAML criteria.
     Returns (passes: bool, fail_reason: str, fallback_strategy: str|None).
@@ -324,10 +408,11 @@ def _validate_against_strategy_criteria(strategy_id: str, signal: dict) -> tuple
     max_float = float(filters.get('max_float_m', 99999))
     min_gap = float(filters.get('min_gap_pct', 0))
 
-    # Hard safety floors (cannot be overridden by config)
-    _MOMENTUM_STRATEGIES = {'momentum_scalp', 'gap_and_go', 'earnings_catalyst',
-                            'screener', 'speculative_growth', 'earnings_post_momentum'}
-    _hard_min_price = 3.0 if strategy_id in _MOMENTUM_STRATEGIES else 1.0
+    # Hard safety floors. Momentum strategies default to $3.00 (4ea3ce329, 2026-05-15). A strategy
+    # may declare its own floor in `proposal_contract.hard_min_price` (operator decision 2026-09-28:
+    # momentum_scalp paper proposals use $1.00 — the screen admits $1–25 and every sub-$3 GO since
+    # July was discarded here). The absolute floor is $1.00 regardless of config.
+    _hard_min_price = _contract_hard_min_price(strategy_id, cfg)
     if min_price < _hard_min_price:
         min_price = _hard_min_price
 
@@ -1075,9 +1160,12 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         "setup_description": signal.get("setup_description"),
         "source_run_label": signal.get("scan_run_label"),
         "auto_execution_label": auto_context.get("execution_label", "manual") if auto_context else "manual",
-        # Unified queue — broker-agnostic at creation; routing set at promote/approve
+        # Unified queue — broker-agnostic at creation; routing set at promote/approve — UNLESS the
+        # strategy contract binds a PAPER account (momentum_scalp → tradeai_automated), so the fast
+        # path / ATM can resolve it instead of deferring with account_resolution_missing.
         "origin": "auto",
-        "routing_state": "unassigned",
+        "routing_state": "assigned" if signal.get("_contract_target_account") else "unassigned",
+        "target_account": signal.get("_contract_target_account"),
         "equity_at_proposal": (sizing.get("sizing_basis") or {}).get("equity"),
         "sizing_basis": json.dumps({
             **(sizing.get("sizing_basis") or {}),
@@ -1423,7 +1511,7 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                     log.info(f"  {sym}: liquidity prescreen bypassed via force "
                              f"({sid}, dry_run={dry_run}, execution_label={execution_label})")
             else:
-                liq_ok, liq_reason = _liquidity_prescreen(sym, shared_rules, sid)
+                liq_ok, liq_reason = _liquidity_prescreen(sym, _contract_liquidity_rules(shared_rules, _load_strategy_config(sid)), sid)
                 if not liq_ok:
                     _defer = liq_reason.startswith("DEFER_LIQUIDITY_UNKNOWN")
                     _dcode = "DEFER_LIQUIDITY_UNKNOWN" if _defer else "SKIPPED_LIQUIDITY"
@@ -1436,8 +1524,24 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                     stats["details"].append({"symbol": sym, "decision": _dcode, "reason": reason})
                     continue
 
-            # 2f. Analyst gate — equities need rating + price target (ETFs exempt).
-            if not force:
+            # 2e2. Proposal contract: catalyst requirement (momentum_scalp: catalyst is the conviction).
+            _contract_cfg = _load_strategy_config(sid)
+            if _contract_requires_catalyst(_contract_cfg) and not _signal_has_catalyst(sig):
+                stats["proposals_skipped"] += 1
+                reason = "SKIPPED_NO_CATALYST (contract requires a stated or verified catalyst)"
+                log.info(f"  {sym}: {reason}")
+                if not dry_run:
+                    record_decision(conn, run_label, sig, "SKIPPED_NO_CATALYST", ["contract.require_catalyst"], None, None, None)
+                stats["details"].append({"symbol": sym, "decision": "SKIPPED_NO_CATALYST", "reason": reason})
+                continue
+
+            # 2f. Analyst gate — equities need rating + price target (ETFs exempt). A strategy contract
+            # may waive it (momentum_scalp paper: small caps have no coverage); the waiver is RECORDED.
+            if not force and not _contract_requires_analyst(_contract_cfg):
+                log.info(f"  {sym}: ANALYST_WAIVED_BY_CONTRACT ({sid})")
+                stats["details"].append({"symbol": sym, "decision": "ANALYST_WAIVED_BY_CONTRACT", "reason": f"{sid} proposal_contract.require_analyst_coverage=false"})
+                sig["_analyst_waived_by_contract"] = True
+            elif not force:
                 try:
                     from analyst_coverage import check_analyst_gate
                     _an_ok, _an_reason, _an_snap = check_analyst_gate(conn, sym, fetch_if_missing=True)
@@ -1544,6 +1648,16 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                 stats["details"].append({"symbol": sym, "decision": "WOULD_CREATE", "strategy_id": sid,
                                          "shares": sizing["adjusted_shares"], "dollar_risk": sizing["adjusted_dollar_risk"]})
             else:
+                _tgt_acct, _tgt_skip = resolve_contract_target_account(conn, _load_strategy_config(sid))
+                if _tgt_skip:
+                    stats["proposals_skipped"] += 1
+                    log.info(f"  {sym}: {_tgt_skip}")
+                    if not dry_run:
+                        record_decision(conn, run_label, sig, "SKIPPED_ACCOUNT_NOT_PAPER", [_tgt_skip], None, None, None)
+                    stats["details"].append({"symbol": sym, "decision": "SKIPPED_ACCOUNT_NOT_PAPER", "reason": _tgt_skip})
+                    continue
+                if _tgt_acct:
+                    sig["_contract_target_account"] = _tgt_acct
                 proposal_id = create_auto_proposal(conn, sig, sizing, rg, auto_run_id, proposal_cols,
                                                    auto_context={"execution_label": execution_label})
                 conn.commit()

@@ -32,6 +32,20 @@ screen_filters:
   min_score: 40
   aplus_score: 48
 
+# Proposal contract (operator decision 2026-09-28, plan "Momentum scalps: why none arrive"):
+# GENERATION gates for THIS strategy only. Every GO since 2026-07-13 was discarded by the code-level
+# $3.00 momentum floor, the analyst-coverage gate and the 5% shared spread ceiling — none of which fit
+# a $1–25 / float ≤20M / RVOL ≥5 micro-cap scalp. Paper (alpaca tradeai_automated) only.
+proposal_contract:
+  hard_min_price: 1.0                 # matches screen_filters.min_price; absolute code floor is $1.00
+  require_analyst_coverage: false     # small caps have none; recorded per proposal as ANALYST_WAIVED_BY_CONTRACT
+  require_catalyst: true              # catalyst is the conviction (setup_qualification.catalyst_present)
+  liquidity_prescreen:
+    max_spread_pct: 8.0               # scalp names run 5–8%; the execution layer stays the tight backstop
+    min_day_volume_shares: 1000000    # = screen_filters.min_volume
+    min_dollar_day_volume: 250000
+  target_account: tradeai_automated   # must be mode=paper in `accounts`, else SKIPPED_ACCOUNT_NOT_PAPER
+
 # Intraday scalp execution (operator 2026-06-26): the strategy was generating 104 proposals → 0
 # conversions because the 9h TTL + slow approval cadence outran the scalp window. Fast-path fixes it.
 intraday_execution:
