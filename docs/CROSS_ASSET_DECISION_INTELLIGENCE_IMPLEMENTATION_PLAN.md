@@ -6,7 +6,7 @@ Measured at: repo `wt/cross-asset-decision-intel` @ base `86e228273` + this prog
 Canonical repo path: `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md`  
 Authority: Operator directive 2026-09-29 — Plan → Build → Test → Validate → Shadow → Readiness  
 Supersedes: none (new program)  
-See also: `docs/CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md`, `docs/CROSS_ASSET_DECISION_INTELLIGENCE_BACKLOG.md`, `docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md`, `scripts/lib/options_decision_packet_v2.py`, `scripts/lib/agent_decision_payload.py`, `scripts/lib/options_strategy_matrix.py`, `scripts/missed_opportunity_policy.py`
+See also: `docs/CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md`, `docs/CROSS_ASSET_DECISION_INTELLIGENCE_PRODUCTION_BILL.md`, `docs/CROSS_ASSET_DECISION_INTELLIGENCE_BACKLOG.md`, `docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md`, `scripts/lib/options_decision_packet_v2.py`, `scripts/lib/agent_decision_payload.py`, `scripts/lib/options_strategy_matrix.py`, `scripts/missed_opportunity_policy.py`
 
 ---
 

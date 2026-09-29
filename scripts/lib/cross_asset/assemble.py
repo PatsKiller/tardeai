@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from .expression_router import route_expressions
+from .security_research_spine import load_latest as load_spine
 from .symbol_decision_object import attach_audit, new_symbol_decision
 
 
@@ -17,6 +18,8 @@ def assemble_symbol_decision(
     cio: dict[str, Any] | None = None,
     options_packet: dict[str, Any] | None = None,
     route: bool = True,
+    spine_path=None,
+    prefer_shared_spine: bool = True,
 ) -> dict[str, Any]:
     prov = provenance or {}
     hermes = hermes_result or {}
@@ -24,14 +27,40 @@ def assemble_symbol_decision(
     sig = signal or {}
     cio_in = cio or {}
 
+    # CIO-owned shared spine wins over silo-local copies when present.
+    shared = None
+    if prefer_shared_spine:
+        shared = load_spine(symbol, path=spine_path)
+        if shared is None and hermes:
+            # Caller may pass Hermes before spine upsert; still assemble.
+            shared = None
+
     subject = (
-        prov.get("subject_guid")
+        (shared or {}).get("subject_guid")
+        or prov.get("subject_guid")
         or hermes.get("subject_guid")
         or cio_in.get("subject_guid")
     )
     issuer = prov.get("issuer_guid") or hermes.get("issuer_guid")
 
     obj = new_symbol_decision(symbol, subject_guid=subject, issuer_guid=issuer)
+
+    if shared and (shared.get("thesis") or {}).get("summary") and not hermes.get("summary"):
+        # Promote shared spine thesis into hermes-shaped fields for one path below.
+        hermes = {
+            **hermes,
+            "summary": (shared.get("thesis") or {}).get("summary"),
+            "thesis_stance": (shared.get("thesis") or {}).get("stance"),
+            "confidence": (shared.get("thesis") or {}).get("conviction"),
+            "result_id": (shared.get("latest_hermes") or {}).get("result_id"),
+            "research_id": (shared.get("latest_hermes") or {}).get("research_id"),
+            "status": (shared.get("latest_hermes") or {}).get("status") or "completed",
+            "subject_guid": shared.get("subject_guid"),
+            "as_of": shared.get("as_of"),
+        }
+        obj["cio_state"]["product_refs"] = list(obj["cio_state"].get("product_refs") or []) + [
+            "security_research_spine"
+        ]
 
     # Research / thesis from Hermes result when present
     if hermes:
@@ -83,10 +112,14 @@ def assemble_symbol_decision(
         "fired_at": sig.get("fired_at") or sig.get("ts"),
     }
 
-    # CIO passthrough
+    # CIO passthrough (preserve spine provenance refs)
+    product_refs = list(cio_in.get("product_refs") or [])
+    if shared and "security_research_spine" not in product_refs:
+        if (shared.get("thesis") or {}).get("summary") or shared.get("latest_hermes"):
+            product_refs.append("security_research_spine")
     obj["cio_state"] = {
         "situation_ids": list(cio_in.get("situation_ids") or []),
-        "product_refs": list(cio_in.get("product_refs") or []),
+        "product_refs": product_refs,
         "advisory_stance": cio_in.get("advisory_stance"),
     }
 
