@@ -10,9 +10,9 @@ See also: docs/architecture/CIO_AS_IS_2026-09-29-1840.md
 
 # Honest maturity assessment — persistent agent across silos
 
-## Overall rating: **38 / 100 — D+**
+## Overall rating: **42 / 100 — D+** (uplift from #1361 promote + controlled canary)
 
-Rails and several AEC loops are real. OBSERVED end-to-end “research once / one GUID / every desk sees it” is **not**. Shared spine = library LIVE + hermetic hooks on PR; identity registry = PASS; judgment-store GUID carriage = FAIL/PARTIAL.
+Rails and several AEC loops are real. OBSERVED end-to-end “research once / one GUID / every desk sees it” is **not**. Shared spine = LIVE on CURRENT `9fd05da81` with controlled_canary NFLX (registry GUID, all five silos same summary); organic Hermes path still pending. Identity registry = PASS; judgment-store GUID carriage = FAIL/PARTIAL.
 
 ---
 
@@ -22,15 +22,15 @@ Rails and several AEC loops are real. OBSERVED end-to-end “research once / one
 |---|---:|---|
 | Identity registry authority | 85 | 10,887 GUIDs; issuer ~49% |
 | GUID carriage into stores | 18 | Hermes 5–13%; theses/IR/watch 0% |
-| Shared SecurityResearchSpine | 30 | Library+flag; organic E2E not OBSERVED |
+| Shared SecurityResearchSpine | 42 | LIVE + controlled_canary; organic Hermes E2E pending |
 | Hermes research lane | 55 | Proven; stamp decay |
-| Desk consumers (opt/watch/reentry/hold) | 25 | Code on #1361; not promoted/OBSERVED |
+| Desk consumers (opt/watch/reentry/hold) | 40 | Promoted; view_for_silo canary identical; organic desk UI path pending |
 | Commitments / wakes | 70 | ★ proven-unattended |
 | Judgment / independent scoring | 15 | Empty / dark |
 | Council synthesis | 10 | UNWIRED |
 | Notification / receipt | 45 | DIGEST★; receipt partial |
 | Outcome loop | 55 | ★ partial |
-| **Weighted lifecycle** | **38** | D+ |
+| **Weighted lifecycle** | **42** | D+ / approaching C- |
 
 ---
 
