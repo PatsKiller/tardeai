@@ -2961,6 +2961,12 @@ GATES = [
         ["tests/test_alert_chrome_stopwords_20260929.py"],
     ),
     (
+        # 2026-09-29 — NFLX: thin llm_curation + Hermes queue must open a pending
+        # so try_fulfill can deliver the completed thesis (not answered-only).
+        "interim_plus_hermes_queue_20260929",
+        ["tests/test_interim_plus_hermes_queue_20260929.py"],
+    ),
+    (
         # 2026-09-29 — an operator "watchlist and research" ask is monitored and
         # researched. Owed names sort first, keep a reserve outside the shared
         # external budget, and count as WATCH membership. The watchlist add
