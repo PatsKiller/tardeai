@@ -2974,6 +2974,12 @@ GATES = [
         "operator_watch_research_20260929",
         ["tests/test_operator_watch_research_20260929.py"],
     ),
+    (
+        # 2026-09-29 — Cross-Asset Decision Intelligence Phase 1–3 scaffold:
+        # SymbolDecisionObject, expression router, shadow hooks, missed ledger.
+        "cross_asset_decision_intel_20260929",
+        ["tests/test_cross_asset_symbol_decision_object_20260929.py"],
+    ),
 ]
 
 
