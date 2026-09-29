@@ -2947,6 +2947,13 @@ GATES = [
         "book_map_day_pl_20260928",
         ["tests/test_book_map_rows_20260928.py"],
     ),
+    (
+        # 2026-09-29 — options proposal cache: a non-force read outside REGULAR
+        # serves the last snapshot at any age. The regular session still rebuilds
+        # a snapshot older than 10 minutes. force=1 still rebuilds.
+        "options_proposal_cache_cadence_20260929",
+        ["tests/test_options_proposal_cache_cadence_20260929.py"],
+    ),
 ]
 
 
