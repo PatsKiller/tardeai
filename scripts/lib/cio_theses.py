@@ -411,6 +411,12 @@ class CIOThesisStore:
         self._append_event(et, tid, payload, actor_id=actor_id)
         if notify:
             _notify_thesis_publish(tid, next_ver, summary)
+        # Multi-producer spine: thesis is shared security memory, not Hermes-only.
+        try:
+            from scripts.lib.cross_asset.hooks import notify_thesis_published
+            notify_thesis_published(payload)
+        except Exception:
+            pass
         return dict(self._current[tid])
 
     def get_current(self, thesis_id: str = DEFAULT_THESIS_ID) -> Optional[dict[str, Any]]:

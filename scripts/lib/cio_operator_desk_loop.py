@@ -3687,9 +3687,14 @@ def _curate_from_evidence_core(operator_text: str, evidence: dict[str, Any]) -> 
 def _emit_telegram_desk_payload(intent: dict[str, Any], result: dict[str, Any]) -> None:
     """DecisionPayload@v1 when a Telegram desk reply states a decision. Fail-soft.
 
-    Freeform already emits in ``answer_freeform_with_flash``. Meta / deferred
-    replies do not state a decision. Reentry answers do.
+    Also persists operator Q&A onto SecurityResearchSpine for each named security
+    (full lifecycle memory — not Hermes-only).
     """
+    try:
+        from scripts.lib.cross_asset.hooks import notify_operator_desk_result
+        notify_operator_desk_result(intent, result)
+    except Exception:
+        pass
     try:
         if result.get("kind") != "answered":
             return
@@ -5052,6 +5057,21 @@ def try_fulfill_pending_replies(
                 "fulfilled_ts": _now(),
                 "authority": AUTHORITY,
             })
+            # Full lifecycle: operator follow-up (Hermes joined) lands on shared spine.
+            try:
+                from scripts.lib.cross_asset.hooks import notify_operator_desk_result
+                notify_operator_desk_result(
+                    intent if isinstance(intent, dict) else {},
+                    {
+                        "kind": "answered",
+                        "text": answer_text[:800],
+                        "pending_id": row.get("pending_id"),
+                        "reply_source": "pending_fulfilled",
+                    },
+                    operator_text=str(row.get("operator_text") or ""),
+                )
+            except Exception:
+                pass
             fulfilled += 1
         except Exception:
             failed += 1
