@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from scripts.lib.cross_asset.assemble import assemble_symbol_decision  # noqa: E402
+from scripts.lib.cross_asset.missed_opportunity_ledger import record_if_missed  # noqa: E402
 from scripts.lib.cross_asset.persistence import append_symbol_decision  # noqa: E402
 from scripts.lib.cross_asset.symbol_decision_object import validate_symbol_decision  # noqa: E402
 
@@ -28,6 +29,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--dry-run", action="store_true", help="Print only; no ledger write")
     ap.add_argument("--apply-ledger", action="store_true", help="Append to symbol_decisions.jsonl")
     ap.add_argument("--ledger", default="", help="Optional ledger path override")
+    ap.add_argument(
+        "--chosen-family",
+        default="shares",
+        help="Baseline expression the house actually took (for missed-opportunity ledger)",
+    )
     args = ap.parse_args(argv)
 
     symbols = [s.strip().upper() for s in args.symbols.split(",") if s.strip()]
@@ -39,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
     for sym in symbols:
         obj = assemble_symbol_decision(sym, signal={"kind": args.signal, "lane": "shadow_cycle"}, route=True)
         check = validate_symbol_decision(obj)
+        miss = record_if_missed(obj, chosen_family=args.chosen_family, root=ROOT) if args.apply_ledger and not args.dry_run else {"recorded": False, "skipped": True}
         row = {
             "symbol": sym,
             "ok": check["ok"],
@@ -48,6 +55,7 @@ def main(argv: list[str] | None = None) -> int:
                 {"family": c.get("family"), "status": c.get("status"), "blocks": c.get("blocks")}
                 for c in ((obj.get("expression_comparison") or {}).get("ranked") or [])
             ],
+            "missed_opportunity": miss,
         }
         if args.apply_ledger and not args.dry_run:
             path = Path(args.ledger) if args.ledger else None

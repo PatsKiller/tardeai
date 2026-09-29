@@ -6,6 +6,12 @@ Usage:
 """
 from __future__ import annotations
 
+# CLI-only until Phase 9 scheduler owns a continuous replay consumer.
+NO_CONSUMER_REASON = (
+    "CrossAssetHistoricalReplayMetrics@v1 is emitted by this CLI only until "
+    "CADI Phase 9 wires a scheduled consumer; refuse invented counterfactuals without archives."
+)
+
 import argparse
 import json
 import sys
