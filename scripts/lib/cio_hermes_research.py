@@ -1105,6 +1105,22 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
         out_ok = {"ok": True, "result_id": result.get("result_id"), "result": result}
         if lineage_id:
             out_ok["lineage_id"] = lineage_id
+        # CADI-011: CIO-owned SecurityResearchSpine — fail-soft; never block Hermes complete.
+        try:
+            from scripts.lib.cross_asset.hooks import notify_hermes_result_completed
+            _spine_root = Path(os.getenv("TRADEAI_ROOT") or Path(__file__).resolve().parents[2])
+            spine_note = notify_hermes_result_completed(result, root=_spine_root)
+            if isinstance(spine_note, dict):
+                out_ok["security_research_spine"] = {
+                    "ok": bool(spine_note.get("ok")),
+                    "skipped": spine_note.get("skipped"),
+                    "reason": spine_note.get("reason") or spine_note.get("error"),
+                }
+        except Exception as _spine_exc:  # noqa: BLE001
+            out_ok["security_research_spine"] = {
+                "ok": False,
+                "error": f"{type(_spine_exc).__name__}:{_spine_exc}"[:120],
+            }
         try:
             from scripts.lib.cio_lineage import record_hermes_completion
             # Upserts envelope: specialist_artifact_id = Hermes result_id (honest).

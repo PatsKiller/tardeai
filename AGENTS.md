@@ -1215,7 +1215,20 @@ Canonical program docs (read before adding research surfaces):
 4. Add a hermetic test that two silos see the same summary for one fixture
 ```
 
-Structural guard (extend, do not weaken): `tests/test_security_research_spine_20260929.py`.
+Structural guard (extend, do not weaken): `tests/test_security_research_spine_20260929.py`
+and `tests/test_cadi_spine_hooks_20260929.py` (CADI-011/012 wiring grep + hermetic upsert/overlay).
+
+### Wiring status (honest — do not inflate)
+
+| Layer | Status |
+|---|---|
+| Library (`SecurityResearchSpine`, `view_for_silo`, `upsert_from_hermes`) | LIVE on CURRENT (Bill A/B) |
+| Flag `CROSS_ASSET_SPINE=1` | production path enabled when set on services |
+| CADI-011 Hermes → spine | **code wired** (`hooks.notify_hermes_result_completed`); hermetic PASS; OBSERVED only after promote + live Hermes complete |
+| CADI-012 desk consumers | **code wired** (`thesis_fields` overlay, options `spine_rows_for_root`, reentry overlay); hermetic PASS; organic “every desk sees it” OBSERVED only after the same promote + canary |
+
+Do **not** claim OBSERVED_LIVE for end-to-end shared research until a real Hermes
+completion appends the spine ledger and options/watch/reentry reads show the same summary.
 
 ## Research lanes — current state, and what must stay on
 

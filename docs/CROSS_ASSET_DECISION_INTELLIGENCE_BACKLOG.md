@@ -95,6 +95,34 @@ Authority: `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md`
 - **Risk:** Low
 - **Required reviewer:** CIO Ops Architect
 
+### CADI-011 — DONE (hermetic)
+- **Title:** Hermes complete → shared spine upsert
+- **Purpose:** Organic producer: when Hermes stamps a completed result, append
+  `SecurityResearchSpine` (gated by `CROSS_ASSET_SPINE` / `CROSS_ASSET_SHADOW`).
+- **Files:** `scripts/lib/cross_asset/hooks.py`, `scripts/lib/cio_hermes_research.py`
+- **Changes:** `notify_hermes_result_completed` fail-soft after `_persist_stamped_result`
+- **Tests:** `tests/test_cadi_spine_hooks_20260929.py`
+- **Honesty:** hermetic ≠ OBSERVED until promote + live Hermes complete with flag on
+
+### CADI-012 — DONE (hermetic)
+- **Title:** Desk consumers prefer shared spine
+- **Purpose:** Options / watch / reentry / holdings see the same CIO thesis.
+- **Files:** `hooks.overlay_thesis_fields_from_spine`, `symbol_thesis_attach.thesis_fields_for_symbol`,
+  `options_engine._research_universe_rows` / `_reentry_research_rows`
+- **Changes:** overlay on thesis attach; spine rows first in options universe merge; reentry overlay
+- **Tests:** `tests/test_cadi_spine_hooks_20260929.py` (+ spine unit file)
+- **Honesty:** wiring proven hermetically; organic E2E needs Bill C live canary
+
+### CADI-013
+- **Title:** Spine coverage metric
+- **Purpose:** % of researched symbols with POPULATED spine
+- **Status:** open
+
+### CADI-014
+- **Title:** CC API spine read
+- **Purpose:** `GET /api/v2/research/spine/{symbol}`
+- **Status:** open
+
 ---
 
 ## Order of execution
@@ -102,4 +130,6 @@ Authority: `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md`
 1. CADI-001 → 002 → 003 → 004 → 005 → 008 (ship Phase 1–3 core)  
 2. CADI-006 → 007 → 009  
 3. CADI-010 continuous updates  
-4. UI (Phase 7) deferred until shadow metrics exist — ticket reserved as CADI-011 later.
+4. CADI-011 → 012 (producer/consumer hooks) — **landed hermetic 2026-09-29**  
+5. CADI-013 → 014; UI deferred until shadow metrics exist  
+6. Organic OBSERVED canary after promote + `CROSS_ASSET_SPINE=1`  

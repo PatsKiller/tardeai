@@ -43,15 +43,22 @@ That is `SecurityResearchSpine@v1` (`scripts/lib/cross_asset/security_research_s
 ### Bill C — Enable shared spine (this is the transparency bill)
 **Grant:** `config-write` (or service restart after env)  
 **Set:** `CROSS_ASSET_SPINE=1` on portfolio-server + CIO telegram  
-**Wire:** Hermes research COMPLETE → `upsert_from_hermes` (hook in producer — ticket CADI-011)  
+**Wire:** Hermes research COMPLETE → `upsert_from_hermes` via
+`scripts/lib/cross_asset/hooks.notify_hermes_result_completed` from
+`cio_hermes_research._persist_stamped_result` (**CADI-011 landed**).  
+**Read:** `thesis_fields_for_symbol` overlays spine; options `_research_universe_rows`
+merges `spine_rows_for_root` first; reentry overlays spine summary (**CADI-012 landed**).  
 **Prove:** for NFLX (or any symbol), `view_for_silo` returns identical thesis for options/watch/reentry/holdings  
 
 **Pass criteria for Bill C:**
 1. One Hermes result creates one spine row.  
 2. Options universe merge includes `cio_research` lane from spine (tested).  
-3. Watch / reentry / holdings callers use `view_for_silo` (code wired — CADI-012).  
+3. Watch / reentry / holdings callers prefer spine via `thesis_fields_for_symbol` overlay + options universe merge (CADI-012).  
 4. No silo invents a private thesis when spine is POPULATED.  
 
+**Honesty:** hermetic PASS ≠ OBSERVED. Organic “research once, every desk sees it”
+requires promote of the CADI-011/012 PR + `CROSS_ASSET_SPINE=1` on live services +
+one completed Hermes result that appends the spine ledger.
 ### Bill D — Shadow expression ranking (optional same week)
 **Set:** `CROSS_ASSET_SHADOW=1`  
 **Prove:** SymbolDecisionObject ledger grows; no broker calls  
@@ -77,12 +84,12 @@ Only when **all** true:
 
 ## Immediate next engineering tickets
 
-| ID | Work |
-|---|---|
-| CADI-011 | Hook Hermes complete → `upsert_from_hermes` when `CROSS_ASSET_SPINE=1` |
-| CADI-012 | Replace silo-local thesis reads in options/watch/reentry/holdings with `view_for_silo` |
-| CADI-013 | Coverage metric: % of researched symbols with spine |
-| CADI-014 | CC API `GET /api/v2/research/spine/{symbol}` |
+| ID | Work | Status |
+|---|---|---|
+| CADI-011 | Hook Hermes complete → `upsert_from_hermes` when `CROSS_ASSET_SPINE=1` | **DONE** (hooks + `_persist_stamped_result`) — hermetic; OBSERVED after promote |
+| CADI-012 | Options/watch/reentry/holdings prefer spine (`overlay` / `spine_rows_for_root`) | **DONE** — hermetic; OBSERVED after promote |
+| CADI-013 | Coverage metric: % of researched symbols with spine | open |
+| CADI-014 | CC API `GET /api/v2/research/spine/{symbol}` | open |
 
 ---
 
