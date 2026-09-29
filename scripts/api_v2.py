@@ -37043,49 +37043,28 @@ def _watch_directive_create(body):
             _ident = {}
     # ── SERVICE-AT-CREATION (operator caught 2026-06-12: CIFR added 22:47, servicer cron is
     # market-hours-only → ticker sat invisible until 09:00). Ticker directives now run through the
-    # SAME real evaluation engine (directive_promotion.promote_directive_lead).
-    #
-    # 2026-09-29: sync Finviz enrich regularly exceeds OpenClaw's 45s HTTP timeout, so the skill
-    # reported "Failed: NFLX(timed out)" while the directive WAS saved. Cap the wait; finish
-    # promote in a daemon thread so the HTTP response returns the directive_id immediately.
+    # SAME real evaluation engine (directive_promotion.promote_directive_lead). The
+    # OpenClaw client stops at 45s, and Finviz enrichment can outlast that, so the
+    # call returns inside a budget with the directive id and leaves a slow enrich
+    # running (DEFERRED_TO_CRON). Sector/trend directives still discover via the
+    # cron. Failure here never loses the directive — the cron remains the safety net.
     serviced = None
     if kind == "ticker" and did:
-        import threading as _threading
+        try:
+            import sys as _sys
 
-        _promo_holder: dict = {}
+            _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+            import directive_promotion as _dp
 
-        def _run_promote() -> None:
-            try:
-                import sys as _sys
-
-                _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
-                import directive_promotion as _dp
-
-                res = _dp.promote_directive_lead(
-                    (spec.get("symbol") or "").upper(), did, f"directive:{label}", "operator", auto=True
-                )
-                _promo_holder["res"] = res
-                from lib.writers.watch_directives_writer import touch_watch_directive_serviced as _wd_touch
-
-                _wd_touch(_db_query, did, source="operator_api")
-            except Exception as e:
-                _promo_holder["err"] = str(e)[:140]
-
-        _t = _threading.Thread(target=_run_promote, name=f"wd-promote-{did}", daemon=True)
-        _t.start()
-        _t.join(4.0)  # hard budget for the HTTP path; enrichment may continue in background
-        if "res" in _promo_holder:
-            res = _promo_holder["res"]
+            res = _dp.promote_directive_lead_bounded(
+                (spec.get("symbol") or "").upper(), did, f"directive:{label}", "operator", auto=True
+            )
             serviced = {"status": res.get("status"), "detail": str(res)[:200]}
-        elif "err" in _promo_holder:
-            serviced = {"status": "DEFERRED_TO_CRON", "detail": _promo_holder["err"]}
-        elif _t.is_alive():
-            serviced = {
-                "status": "QUEUED_ASYNC",
-                "detail": "directive saved; promote/enrich still running (OpenClaw must not treat HTTP timeout as add-failed)",
-            }
-        else:
-            serviced = {"status": "DEFERRED_TO_CRON", "detail": "promote returned no result"}
+            from lib.writers.watch_directives_writer import touch_watch_directive_serviced as _wd_touch
+
+            _wd_touch(_db_query, did, source="operator_api")
+        except Exception as e:
+            serviced = {"status": "DEFERRED_TO_CRON", "detail": str(e)[:140]}
     # ── ROUTE TO BOTH (operator 2026-06-20: "make all route properly to trends and research both"): a
     # trend directive feeds TICKER DISCOVERY only — but knowledge themes (Roth/Medicaid/sector theses)
     # need the KNOWLEDGE-research pipeline too. Mirror every trend directive into topic_monitor (owner

@@ -309,6 +309,16 @@ def _financial_senses_receipts(symbol: str, root: Path) -> list[dict[str, Any]]:
     return out
 
 
+def _operator_watch_memberships(symbol: str, memberships) -> list:
+    """Operator watch directives are WATCH research membership, fail-soft."""
+    raw = list(memberships or [])
+    try:
+        from scripts.lib.operator_watch_research import annotate_operator_watch, lookup_operator_watch
+        return annotate_operator_watch(raw, lookup_operator_watch(symbol))
+    except Exception:
+        return [str(m) for m in raw if str(m or "").strip()]
+
+
 def build_research_prompt_context(
     symbol: str,
     *,
@@ -356,7 +366,7 @@ def build_research_prompt_context(
             "sector": sector,
             "industry": current_public.get("industry"),
         },
-        "memberships": list(fields.get("memberships") or []),
+        "memberships": _operator_watch_memberships(sym, fields.get("memberships")),
         "portfolio_role": fields.get("portfolio_role"),
         "standing_thesis": {
             "thesis_id": fields.get("symbol_thesis_id"),

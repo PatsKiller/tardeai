@@ -2966,6 +2966,14 @@ GATES = [
         "interim_plus_hermes_queue_20260929",
         ["tests/test_interim_plus_hermes_queue_20260929.py"],
     ),
+    (
+        # 2026-09-29 — an operator "watchlist and research" ask is monitored and
+        # researched. Owed names sort first, keep a reserve outside the shared
+        # external budget, and count as WATCH membership. The watchlist add
+        # returns inside the client timeout while a slow enrich finishes.
+        "operator_watch_research_20260929",
+        ["tests/test_operator_watch_research_20260929.py"],
+    ),
 ]
 
 
