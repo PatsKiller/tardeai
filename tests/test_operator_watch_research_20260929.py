@@ -46,6 +46,20 @@ def test_owed_research_keeps_a_dollar_reserve_after_the_sweep_cap():
     assert research_reserve_config(cfg, "NFLX", query=boom) is cfg
 
 
+def test_held_reservation_reaches_the_deepseek_budget_check():
+    from scripts.lib.deepseek_client import _held_reservation_id
+
+    try:
+        from lib.provider_cost.context import cost_attribution
+    except ImportError:
+        from scripts.lib.provider_cost.context import cost_attribution
+
+    assert _held_reservation_id("7") == "7"
+    assert _held_reservation_id(None) in (None, "")
+    with cost_attribution(reservation_id="42"):
+        assert _held_reservation_id(None) == "42"
+
+
 def test_operator_watch_is_a_research_membership():
     assert annotate_operator_watch(["HELD"], True) == ["HELD", "WATCH"]
     assert annotate_operator_watch(["watchlist"], True) == ["watchlist"]
