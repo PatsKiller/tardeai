@@ -67,7 +67,7 @@ Authority: Implementation Plan + Backlog CADI-*
 
 | Date | Suite | Result | Commit |
 |---|---|---|---|
-| 2026-09-29 | unit CADI (8 tests) | **8 passed** | _(set on commit)_ |
+| 2026-09-29 | unit CADI (8 tests) | **8 passed** | bc9b38c1d |
 | 2026-09-29 | shadow dry-run NFLX buy | ok=true top=shares ranked=4 | CLI |
 | 2026-09-29 | historical 30/60/90 | INSUFFICIENT_DATA (honest) | `/tmp/cadi_hist_metrics.json` |
 | 2026-09-29 | broker import grep on cross_asset | clean | — |

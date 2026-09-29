@@ -203,7 +203,7 @@ Operator approval; feature flag; rollback pin.
 ### Phase 1 — Canonical SymbolDecisionObject
 Status: COMPLETE  
 Date: 2026-09-29  
-Commit: _(set on commit)_  
+Commit: bc9b38c1d  
 Files changed: `scripts/lib/cross_asset/symbol_decision_object.py`, `persistence.py`, `assemble.py`, tests, docs  
 Tests passed: 8/8 hermetic (`test_cross_asset_symbol_decision_object_20260929.py`)
 
