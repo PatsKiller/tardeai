@@ -113,7 +113,15 @@ export default function OptionProposalCardV5(props: Props) {
         identity={{ symbol: p.symbol, sector: p.sector, industry: p.industry }}
         status={chips.map(c => ({ label: c.label, tone: c.tone, guideKey: c.guideKey }))}
         asOf={x.freshness_as_of || x.generated_at}
-        right={x.id ? <OptionValidateButton proposalId={String(x.id)} /> : undefined}
+        right={(
+          <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button type="button" data-testid="open-chain" onClick={() => onAction('review_chain', p.id)}
+              style={{ fontFamily: 'inherit', fontSize: TYPE.sm, fontWeight: 800, padding: '5px 11px', borderRadius: RADIUS.sm, cursor: 'pointer', background: toneVars('info').bg, color: TOKENS.info, border: `1px solid ${toneVars('info').border}` }}>
+              Open Schwab chain
+            </button>
+            {x.id ? <OptionValidateButton proposalId={String(x.id)} /> : null}
+          </span>
+        )}
       >
         <div style={{ ...numStyle, marginTop: 4, fontSize: TYPE.base, fontWeight: 700, color: TOKENS.text[1] }}>{proposalContractLine(x)}</div>
         {liq.length > 0 && (
@@ -155,7 +163,11 @@ export default function OptionProposalCardV5(props: Props) {
             </button>
           </MetricGuide>
         )}
-        {x.execution_note && <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3], fontStyle: 'italic', minWidth: 0 }}>{x.execution_note}</span>}
+        {/* 2026-09-28 (reviewer): "ARMED" beside BLOCKED read as readiness. On a blocked idea the route note
+            says what the route is and that this idea is not eligible; the ARMED wording is kept for eligible ideas only. */}
+        {x.execution_note && (x.approvable === false || x.enterprise_blocked
+          ? <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3], fontStyle: 'italic', minWidth: 0 }}>Broker route: {x.execution_label || 'open'} · this idea is not eligible until its blocks clear.</span>
+          : <span style={{ fontSize: TYPE.xs, color: TOKENS.text[3], fontStyle: 'italic', minWidth: 0 }}>{x.execution_note}</span>)}
       </div>
 
       <div style={{ marginTop: 10 }} onClick={e => e.stopPropagation()}>

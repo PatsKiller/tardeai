@@ -128,9 +128,9 @@ export function proposalHeroMetrics(p: AnyRow): MetricSpec[] {
     value: money(econ.credit_total ?? p.premium_total), tone: isCredit ? 'success' : 'neutral', meta: basis,
   })
   out.push({ guideKey: 'options.max_loss', label: p.max_loss_label || 'Max loss', value: money(econ.max_loss_total ?? p.max_loss), tone: 'warning' })
-  out.push({ guideKey: 'options.pop', label: 'POP', value: pct(p.pop_pct, 1) })
+  out.push({ guideKey: 'options.pop', label: 'POP', value: pct(p.pop_pct, 1), meta: 'modeled' })
   const edge = p.display_edge_score ?? p.edge_score
-  out.push({ guideKey: 'options.edge', label: 'Edge', value: edge != null ? String(Math.round(Number(edge))) : '—', tone: p.edge_severity ? severityTone(p.edge_severity) : undefined })
+  out.push({ guideKey: 'options.edge', label: 'Edge', value: edge != null ? String(Math.round(Number(edge))) : '—', tone: p.edge_severity ? severityTone(p.edge_severity) : undefined, meta: 'model score, not a decision' })
   return out
 }
 

@@ -423,5 +423,12 @@
     "enabled": true,
     "stale_min": 20,
     "killed_after_min": 10
+  },
+  "lane_ownership": {
+    "_comment": "2026-09-28: collectors that OWN the momentum-scalp lane's truth — GO→proposal conversion, underfilled-run streaks for real reasons, social-overlay failures.",
+    "enabled": true,
+    "conversion_window_days": 5,
+    "underfilled_streak": 3,
+    "social_inject_errors": 3
   }
 }

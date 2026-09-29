@@ -52,6 +52,8 @@ OUTER_DEADLINE_ENV = "MOMENTUM_SCALP_OUTER_DEADLINE_S"
 REFRESH_RECEIPT_ENV = "MOMENTUM_SCALP_REFRESH_RECEIPT"
 REFRESH_RECEIPT_NAME = "momentum_scalp_refresh_receipt.json"
 DEADLINE_HEADROOM_S = 15
+#: a */5 cron grid + receipt stamped ~20 s into the run reads 14.5–14.7 min at the 15-min mark; due within this slack.
+REFRESH_GRID_TOLERANCE_MIN = 0.75
 
 
 def now_et(stamp: str | None = None) -> datetime:

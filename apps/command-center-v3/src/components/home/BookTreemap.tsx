@@ -7,7 +7,7 @@ import { squarify } from '../../lib/bookTreemapLayout.ts'
 // Home v2 WS-B: operator book as Finviz-style treemap.
 // Freshness (2026-07-26): always show holdings.json as_of; amber lag when behind live prices.
 
-interface Row { symbol: string; account?: string; value: number; day_change: number; day_change_pct?: number; weight_pct?: number; sector: string; stop?: string }
+interface Row { symbol: string; account?: string; value: number; day_change: number; day_change_pct?: number; weight_pct?: number; sector: string; stop?: string; unpriced?: boolean; day_change_basis?: string }
 interface Rect { x: number; y: number; w: number; h: number; row?: Row; group?: string }
 
 
@@ -52,7 +52,7 @@ export default function BookTreemap({ onDrillSymbol }: { onDrillSymbol?: (symbol
   const W = 560, H = 340, HEAD = 13
 
   const rects = useMemo<Rect[]>(() => {
-    let rows: Row[] = data?.rows || []
+    let rows: Row[] = (data?.rows || []).filter((r: Row) => !r.unpriced)
     if (!rows.length) return []
     if (groupBy === 'sector') {
       const by = new Map<string, Row>()
@@ -99,7 +99,9 @@ export default function BookTreemap({ onDrillSymbol }: { onDrillSymbol?: (symbol
           aria-label={session.aria}
           title={session.aria}
         >
-          · holdings.json {data.as_of ? `session ${String(data.as_of)}` : 'session UNDATED'} · ${Math.round(data.total_value).toLocaleString()} · day{' '}
+          · securities, cash excluded · ${Math.round(data.total_value).toLocaleString()}
+          {data.cash_total != null ? ` · cash $${Math.round(Number(data.cash_total)).toLocaleString()}` : ''}
+          {' · '}holdings.json {data.as_of ? `session ${String(data.as_of)}` : 'session UNDATED'} · day{' '}
           <b style={{ color: data.total_day_change >= 0 ? BB.green : BB.red }}>
             {data.total_day_change >= 0 ? '+' : ''}${Math.round(data.total_day_change).toLocaleString()}
           </b>
@@ -149,6 +151,11 @@ export default function BookTreemap({ onDrillSymbol }: { onDrillSymbol?: (symbol
           </div>
         )}
       </div>
+      {(data.rows || []).some((r: Row) => r.unpriced) && (
+        <div style={{ marginTop: 6, fontSize: TYPE.sm, color: BB.text3 }}>
+          Unpriced, not drawn: {(data.rows as Row[]).filter(r => r.unpriced).map(r => r.symbol).join(', ')}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 10, marginTop: 6, fontSize: 8.5, color: BB.text3, alignItems: 'center', flexWrap: 'wrap' }}>
         <span>heat: −3%</span>
         {[-3, -1.5, 0, 1.5, 3].map(p => <span key={p} style={{ width: 18, height: 8, background: heatRamp(p), display: 'inline-block', borderRadius: 1 }} />)}

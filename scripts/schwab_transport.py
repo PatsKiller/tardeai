@@ -697,6 +697,38 @@ def _get_hash(account_key):
 
 
 # ── READ METHODS — degraded/NOT_PROVEN without a live client; live reads NOT_PROVEN until cred-in ──
+def _http_error_status(fn_name, code, resp, account_key=None):
+    """Typed, redacted status for a non-2xx broker response (never a fake 'ok')."""
+    import re as _re
+    msg = ""
+    try:
+        body = resp.json()
+        if isinstance(body, dict):
+            msg = str(body.get("message") or body.get("error") or (body.get("errors") or [{}])[0].get("message", "") or "")[:160]
+    except Exception:
+        try:
+            msg = (resp.text or "")[:120]
+        except Exception:
+            msg = ""
+    msg = _re.sub(r"\d{6,}", "<num>", msg)
+    if code in (401, 403):
+        status, why = "needs_reauth", "Schwab rejected the login token (HTTP %d) -- renew the Schwab link" % code
+        try:
+            import schwab_token_manager as tm
+            tm.record_auth_failure(why, account_key=account_key, source=f"transport:{fn_name}")
+        except Exception:
+            pass
+    elif code == 404:
+        status, why = "not_found", "Schwab has no such symbol/contract (HTTP 404)"
+    elif code == 429:
+        status, why = "rate_limited", "Schwab rate limit (HTTP 429) -- retry in a minute"
+    elif code >= 500:
+        status, why = "broker_error", "Schwab server error (HTTP %d)" % code
+    else:
+        status, why = "error", "Schwab HTTP %d" % code
+    return {"status": status, "http_status": code, "error": why + (f": {msg}" if msg else ""), "source": f"transport:{fn_name}"}
+
+
 def _read(account_key, fn_name, normalize, *args, **kwargs):
     client, err = build_client(account_key)
     if err:
@@ -704,6 +736,11 @@ def _read(account_key, fn_name, normalize, *args, **kwargs):
     _rate_acquire()
     try:
         resp = getattr(client, fn_name)(*args, **kwargs)
+        # 2026-09-28: a 401/403/429/5xx body used to be json()'d and normalized into an
+        # apparently successful empty result. Check the HTTP status first; type the failure.
+        code = getattr(resp, "status_code", None)
+        if code is not None and int(code) >= 400:
+            return _http_error_status(fn_name, int(code), resp, account_key)
         data = resp.json() if hasattr(resp, "json") else resp
         return normalize(data)
     except Exception as e:
@@ -949,10 +986,23 @@ def normalize_option_chain(raw):
     if not isinstance(raw, dict):
         return {"status": "error", "error": "unexpected chain payload type"}
     from datetime import datetime as _dt, timezone as _tz
+    # 2026-09-28: an error object ({"errors": [...]}, {"message": ...}) or a payload without the
+    # two expiration maps used to normalize into status=ok with zero expirations. Type it.
+    if "callExpDateMap" not in raw and "putExpDateMap" not in raw:
+        emsg = raw.get("message") or raw.get("error") or ((raw.get("errors") or [{}])[0].get("message") if isinstance(raw.get("errors"), list) else None)
+        if emsg or raw.get("errors") or raw.get("fault"):
+            return {"status": "broker_error_payload", "error": str(emsg or raw.get("errors") or raw.get("fault"))[:200]}
+        return {"status": "error", "error": f"unexpected chain payload shape (keys: {', '.join(sorted(str(k) for k in raw)[:8])})"}
     out = {"status": "ok", "symbol": raw.get("symbol"), "underlying_price": (raw.get("underlyingPrice") or
            (raw.get("underlying") or {}).get("last")), "expirations": [],
+           "underlying_quote_time": None,
            # Fill truth (2026-09-27): when this chain was read, so a card can say how old its quotes are.
            "fetched_at": _dt.now(_tz.utc).isoformat()}
+    try:
+        _uq = (raw.get("underlying") or {}).get("quoteTime")
+        out["underlying_quote_time"] = _dt.fromtimestamp(float(_uq) / 1000.0, tz=_tz.utc).isoformat() if _uq else None
+    except (TypeError, ValueError, OSError):
+        pass
     def _ms_iso(v):
         try:
             return _dt.fromtimestamp(float(v) / 1000.0, tz=_tz.utc).isoformat() if v else None
@@ -963,9 +1013,16 @@ def normalize_option_chain(raw):
         for exp, strikes in (side_map or {}).items():
             for strike, contracts in (strikes or {}).items():
                 c = (contracts or [{}])[0]
+                _bid, _ask = c.get("bid"), c.get("ask")
+                _two = bool(_bid and _ask and float(_bid) > 0 and float(_ask) > float(_bid))
+                _mid = (float(_bid) + float(_ask)) / 2 if _two else None
                 rows.append({"exp": exp.split(":")[0], "strike": float(strike), "side": side,
-                             "bid": c.get("bid"), "ask": c.get("ask"), "last": c.get("last"),
+                             "bid": _bid, "ask": _ask, "last": c.get("last"),
                              "mark": c.get("mark"),
+                             "two_sided": _two,
+                             "spread_pct": (round(100.0 * (float(_ask) - float(_bid)) / _mid, 1) if _two and _mid else None),
+                             "symbol": c.get("symbol"), "multiplier": c.get("multiplier"),
+                             "nonstandard": bool(c.get("nonStandard")) or None,
                              "iv": c.get("volatility"), "delta": c.get("delta"),
                              "oi": c.get("openInterest"), "volume": c.get("totalVolume"),
                              "dte": c.get("daysToExpiration"),
@@ -982,16 +1039,37 @@ def normalize_option_chain(raw):
                                    "total_call_oi": sum(r["oi"] or 0 for r in rs if r["side"] == "call"),
                                    "total_put_oi": sum(r["oi"] or 0 for r in rs if r["side"] == "put"),
                                    "strikes": sorted(rs, key=lambda r: (r["side"], r["strike"]))})
+    if not out["expirations"]:
+        out["status"] = "empty"
+        out["error"] = "Schwab returned no listed contracts for this request (symbol may not be optionable, or the expiration/strike window is empty)"
     return out
 
 
-def get_option_chain(symbol, strike_count=8, account_key=None):
-    """READ-ONLY option chain (near-the-money by default). No order surface."""
+def get_option_chain(symbol, strike_count=8, account_key=None, expiration=None, contract_type=None):
+    """READ-ONLY option chain (near-the-money by default). No order surface.
+
+    2026-09-28: `expiration` (YYYY-MM-DD) pins the request to one expiration date (from_date =
+    to_date) so a proposal's exact contract is in the answer instead of the nearest four dates;
+    `contract_type` 'call'|'put' halves the payload; strike_count is capped at 40."""
     account_key = account_key or _default_account_key()
     if not account_key:
         return {"status": "needs_account_link"}
-    return _read(account_key, "get_option_chain", normalize_option_chain, symbol.upper(),
-                 strike_count=strike_count, include_underlying_quote=True)
+    kw = {"strike_count": max(1, min(int(strike_count or 8), 40)), "include_underlying_quote": True}
+    if expiration:
+        from datetime import date as _date
+        try:
+            d = _date.fromisoformat(str(expiration)[:10])
+        except ValueError:
+            return {"status": "error", "error": f"expiration must be YYYY-MM-DD, got {expiration!r}"}
+        kw["from_date"] = d
+        kw["to_date"] = d
+    if contract_type in ("call", "put"):
+        try:
+            from schwab.client import Client
+            kw["contract_type"] = Client.Options.ContractType.CALL if contract_type == "call" else Client.Options.ContractType.PUT
+        except ImportError:  # CI installs no broker SDK (cio-hardening: pytest + pyyaml only); the string form is what the enum carries
+            kw["contract_type"] = contract_type.upper()
+    return _read(account_key, "get_option_chain", normalize_option_chain, symbol.upper(), **kw)
 
 
 def get_option_expirations(symbol, account_key=None):

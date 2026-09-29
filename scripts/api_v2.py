@@ -14155,6 +14155,25 @@ def _buy_ready_packet(symbol: str) -> dict:
         }
 
 
+def _buy_ready_packets_index(query=None):
+    """GET /api/v2/buy-ready/packets — every saved entry-state packet (BUY_READY / ENTRY_NEAR …) in one
+    list for the Re-Entry page's "Entry alerts" lane, with price vs zone, plan R:R and R:R at quote,
+    the options-alternative outcome and the options-desk disposition. READ-ONLY (2026-09-28)."""
+    from lib.buy_ready_packets_index import index_packets
+
+    proposals: list = []
+    dropped: list = []
+    try:
+        cache = json.loads(
+            (PROJECT_ROOT / "data" / "portfolios" / "state" / "options_proposals.json").read_text(encoding="utf-8")
+        )
+        proposals = list(cache.get("proposals") or [])
+        dropped = list(cache.get("entry_directional_dropped") or [])
+    except Exception:  # noqa: BLE001 -- the desk cache is optional context; the lane still lists the packets
+        pass
+    return _json_clean(index_packets(BUY_READY_PACKET_DIR, proposals=proposals, dropped=dropped))
+
+
 def _symbol_timeline(symbol: str):
     """GET /api/v2/symbol/{symbol}/timeline — unified symbol timeline."""
     sym = symbol.upper()
@@ -15840,29 +15859,49 @@ def _portfolio_book_map(query=None):
                 stop_state[(sym, p.get("account"))] = "no_stop"
     except Exception:
         pass
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    try:
+        from lib.book_map_rows import cash_total as _book_cash_total, shape_book_row as _shape_book_row
+    except ImportError:
+        from scripts.lib.book_map_rows import cash_total as _book_cash_total, shape_book_row as _shape_book_row
+    today = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    holdings = h.get("holdings") or []
+    try:
+        _fv_cache = _load_json(PROJECT_ROOT / "data" / "portfolios" / "state" / "finviz_quote_cache.json") or {}
+    except Exception:
+        _fv_cache = {}
+    if not isinstance(_fv_cache, dict):
+        _fv_cache = {}
     rows = []
-    for r in h.get("holdings", []):
+    for r in holdings:
         if r.get("is_cash") or not r.get("symbol"):
             continue
         sym = str(r["symbol"]).upper()
+        _fv_pct = None
+        _fv_row = _fv_cache.get(sym)
+        if isinstance(_fv_row, dict) and _fv_row.get("change_pct") is not None:
+            try:
+                _fv_pct = float(_fv_row["change_pct"])
+            except (TypeError, ValueError):
+                _fv_pct = None
         rows.append(
-            {
-                "symbol": sym,
-                "account": r.get("account"),
-                "value": round(float(r.get("market_value") or 0), 2),
-                "day_change": round(float(r.get("day_change") or 0), 2),
-                "day_change_pct": r.get("day_change_pct"),
-                "weight_pct": r.get("portfolio_pct"),
-                "sector": sect.get(sym) or "Unclassified",
-                "stop": stop_state.get((sym, r.get("account"))),
-                "delisted": bool(r.get("delisted")) or None,
-            }
+            _shape_book_row(
+                r,
+                sector=sect.get(sym) or "Unclassified",
+                stop=stop_state.get((sym, r.get("account"))),
+                today=today,
+                finviz_day_pct=_fv_pct,
+            )
         )
     out = {
         "ok": True,
         "as_of": h.get("as_of"),
         "rows": rows,
-        "total_value": round(sum(x["value"] for x in rows), 2),
+        "cash_total": _book_cash_total(holdings),
+        "securities_only": True,
+        "total_value": round(sum(x["value"] for x in rows if not x.get("unpriced")), 2),
         "total_day_change": round(sum(x["day_change"] for x in rows), 2),
         "__etag__": etag,
     }
@@ -39976,8 +40015,25 @@ def _schwab_option_chain(query=None):
     if not sym:
         return {"status": "error", "error": "symbol required"}
     import schwab_transport
+    import uuid as _uuid
 
-    return _json_clean(schwab_transport.get_option_chain(sym, strike_count=min(int(g("strikes", 8) or 8), 20)))
+    # 2026-09-28 (reviewer): the drawer could not show a proposal's exact contract -- 12 near-
+    # market strikes on the nearest four dates. `expiration` pins one date; strikes cap 40;
+    # `side` halves the payload; the request and a trace id ride back with the answer.
+    try:
+        strikes = max(1, min(int(g("strikes", 12) or 12), 40))
+    except (TypeError, ValueError):
+        strikes = 12
+    expiration = (g("expiration") or "").strip() or None
+    side = (g("side") or "").strip().lower() or None
+    trace = _uuid.uuid4().hex[:12]
+    out = schwab_transport.get_option_chain(
+        sym, strike_count=strikes, expiration=expiration, contract_type=side if side in ("call", "put") else None
+    )
+    if isinstance(out, dict):
+        out.setdefault("request", {"symbol": sym, "strikes": strikes, "expiration": expiration, "side": side})
+        out.setdefault("trace_id", trace)
+    return _json_clean(out)
 
 
 _OPTIONS_ENGINE_MTIME = [0.0]
@@ -47162,6 +47218,7 @@ ROUTES = {
     "/api/v2/watch/alerts/list": _watch_alerts_list,
     "/api/v2/ui/prefs/get": _ui_prefs_get,
     "/api/v2/ui/metric-guide": _ui_metric_guide,
+    "/api/v2/buy-ready/packets": _buy_ready_packets_index,
     "/api/v2/sectors/monitor": _sectors_monitor,
     "/api/v2/hermes/external-intel-map": _hermes_external_intel_map,
     "/api/v2/hermes/curate-top20": _hermes_curate_top20_status,

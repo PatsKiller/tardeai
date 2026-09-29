@@ -2705,6 +2705,28 @@ GATES = [
         ["tests/test_ui_metric_guide.py", "tests/test_ui_insight.py"],
     ),
     (
+        # Reviewer 2026-09-28: a failed Schwab chain call must never look like an empty chain;
+        # HTTP status typed before json(), error payloads typed, one expiration pinned, rows carry
+        # two_sided/spread_pct so a one-sided quote is never called "Mid".
+        "options_chain_truth_20260928",
+        ["tests/test_option_chain_truth_20260928.py"],
+    ),
+    (
+        # 2026-09-28: the Telegram BUY_READY / ENTRY_NEAR packets get one list endpoint and a lane on
+        # the Re-Entry page: zone position, plan R:R vs R:R at quote (entry price stated), options
+        # alternative outcome, and a desk disposition (proposal | not built: reason | not scanned).
+        "reentry_entry_alerts_lane_20260928",
+        ["tests/test_buy_ready_packets_index_20260928.py"],
+    ),
+    (
+        # Failed acceptance 2026-09-28 (490735fba rolled back): the index served a pre-fix AXTI packet as
+        # OPTIONS_ALT_OK / qualified 1 from the file's own flag. Verdicts now go through packet_view
+        # (STALE_PRE_FIX) or fail closed (PACKET_UNVERIFIED); a unit counts only when current, known,
+        # earnings-cleared and gate-stamped; the single-symbol handler is the live-proof hunk.
+        "buy_ready_packet_verdict_20260928",
+        ["tests/test_buy_ready_packet_verdict_20260928.py"],
+    ),
+    (
         # 2026-09-28: the lifecycle script self-deadlocked against the crontab's own flock
         # (57 skipped passes, every options thesis stuck at CREATED). An ancestor's lock is
         # inherited from /proc/self/fd, a foreign holder is still refused.
@@ -2861,6 +2883,26 @@ GATES = [
         ["tests/test_momentum_scalp_proposal_contract_20260928.py"],
     ),
     (
+        # 2026-09-28 — GO alerts carry delivery evidence (provider message id; accepted_no_id
+        # is not "sent"; a held GO reports whether the CIO review was enqueued) and three
+        # collectors own the scalp lane: GO→proposal conversion, underfilled streaks for
+        # real reasons, social-inject failures.
+        "go_alerts_and_lane_collectors_20260928",
+        ["tests/test_go_alerts_and_lane_collectors_20260928.py",
+         "tests/test_screener_go_alerts_delivery_20260914.py",
+         "tests/test_cio_telegram_stance_gate_20260918.py"],
+    ),
+    (
+        # 2026-09-28 — execution truth: market_cap_usd beside the millions field; expired
+        # proposals leave the blocked queue; a stale summary mirror is not a clock divergence;
+        # a fund's cached NAV is not a degraded quote; extended-hours provider declared;
+        # continuous runner derives its root (unit pinned to CURRENT).
+        "execution_truth_20260928",
+        ["tests/test_execution_truth_20260928.py",
+         "tests/test_quote_selection_contract.py",
+         "tests/test_portfolio_aggregate_contract.py"],
+    ),
+    (
         # 2026-09-28 — pre-open window honesty: 0400/0700 run two screeners by design and
         # were labelled UNIVERSE_TOO_SMALL every day; per-window floors + PREOPEN_WINDOW_BY_DESIGN
         # (status/auto-proposal gate unchanged); unenriched injects → MANUAL_REVIEW, never scored.
@@ -2897,6 +2939,13 @@ GATES = [
         "lane_registry_inherited_tranche_20260928",
         ["tests/test_lane_registry_inherited_tranche_20260928.py",
          "tests/test_alarm_fires_reminder_and_supervisor_20260928.py"],
+    ),
+    (
+        # 2026-09-28 — home book map. A zero day_change uses today's broker_day_pl.
+        # Cash is reported beside the map and is not a tile. Unpriced rows stay
+        # in the payload and are not drawn.
+        "book_map_day_pl_20260928",
+        ["tests/test_book_map_rows_20260928.py"],
     ),
 ]
 

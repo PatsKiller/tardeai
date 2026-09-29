@@ -5,16 +5,19 @@ Description=TradeAI Continuous Scanner
 # ready. Gate on the mount and retry on failure instead of silently missing a day.
 After=network-online.target
 Wants=network-online.target
-RequiresMountsFor=/home/johnclaw/trade-ai-v12-rebuild
+RequiresMountsFor=/home/johnclaw/trade-ai-releases
 StartLimitIntervalSec=1800
 StartLimitBurst=3
 
 [Service]
 Type=simple
 User=johnclaw
-WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
+# 2026-09-28: run from the served release like every cron lane (audit C-02); logs to persistent-state.
+WorkingDirectory=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT
 Environment=PYTHONUNBUFFERED=1
-ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_continuous.sh
+ExecStart=/bin/bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/linux_launchers/run_continuous.sh
+StandardOutput=append:/home/johnclaw/trade-ai-releases/persistent-state/logs/tradeai-continuous.log
+StandardError=inherit
 # Normal end-of-day shutdown exits 0 (never restarted); early crashes retry.
 Restart=on-failure
 RestartSec=120
