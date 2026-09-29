@@ -123,7 +123,13 @@ def main() -> int:
     for c in candidates:
         sym = c["symbol"]
         old = watch.get(sym, {})
-        watch[sym] = {**old, **c, "last_seen": now_iso(), "added_at": old.get("added_at") or now_iso(), "review_status": "active_ai_candidate"}
+        merged = {**old, **c, "last_seen": now_iso(), "added_at": old.get("added_at") or now_iso(), "review_status": "active_ai_candidate"}
+        try:
+            from scripts.lib.identity_carriage import stamp_security_fields
+            merged = stamp_security_fields(merged, symbol=sym)
+        except Exception:
+            pass
+        watch[sym] = merged
 
     out_candidates = {"generated_at": now_iso(), "candidates": candidates, "count": len(candidates)}
     out_watch = {"generated_at": now_iso(), "watchlist": sorted(watch.values(), key=lambda x: (x.get("bucket", ""), -float(x.get("score") or 0), x.get("symbol", "")))}

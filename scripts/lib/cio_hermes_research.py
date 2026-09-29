@@ -1027,6 +1027,28 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
         for key, val in ident.items():
             if val is not None:
                 result.setdefault(key, val)
+        # Identity 4/5: stamp from registry when missing; drop only forbidden junk.
+        # Do not overwrite an existing research_identity stamp (incl. hermetic stubs).
+        try:
+            from scripts.lib.identity_carriage import (
+                is_forbidden_guid,
+                resolve_security_identity,
+            )
+            sym = str(result.get("symbol") or req_meta.get("symbol") or "").upper()
+            if sym and is_forbidden_guid(result.get("subject_guid"), symbol=sym):
+                result["subject_guid"] = None
+            if sym and not result.get("subject_guid"):
+                env = resolve_security_identity(sym)
+                if env.get("subject_guid"):
+                    result["subject_guid"] = env["subject_guid"]
+                    if env.get("issuer_guid"):
+                        result.setdefault("issuer_guid", env["issuer_guid"])
+                    result.pop("identity_stamp_miss", None)
+                elif env.get("identity_lookup") == "LOOKUP_FAILED":
+                    result["identity_stamp_miss"] = True
+                    result["identity_lookup_reason"] = env.get("identity_lookup_reason")
+        except Exception:
+            pass
         for key, val in _lineage_for_research(research_id, req_meta).items():
             result.setdefault(key, val)
 

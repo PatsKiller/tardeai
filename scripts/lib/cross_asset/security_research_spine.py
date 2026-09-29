@@ -83,6 +83,14 @@ def validate_spine(obj: dict[str, Any]) -> dict[str, Any]:
         errors.append("symbol_required")
     if not isinstance(obj.get("contributions"), list):
         errors.append("contributions_must_be_list")
+    # Identity 4/5: SECURITY spines must carry a registry UUID (not smoke/ticker).
+    try:
+        from scripts.lib.identity_carriage import is_registry_guid
+        sg = obj.get("subject_guid")
+        if sg is not None and not is_registry_guid(sg):
+            errors.append("subject_guid_must_be_registry_uuid")
+    except Exception:
+        pass
     return {"ok": not errors, "errors": errors}
 
 
@@ -192,29 +200,54 @@ def upsert_from_hermes(
     subject_guid: str | None = None,
 ) -> dict[str, Any]:
     """CIO/Hermes write path: merge Hermes result into spine and persist."""
-    prior = load_latest(symbol, path=path, root=root) or empty_spine(
-        symbol, subject_guid=subject_guid or hermes_result.get("subject_guid")
-    )
-    summary = hermes_result.get("summary") or hermes_result.get("recommendation")
+    from scripts.lib.identity_carriage import is_registry_guid, resolve_security_identity, stamp_security_fields
+
+    sym = str(symbol or "").upper().strip()
+    hermes = dict(hermes_result or {})
+    # Resolve registry GUID — refuse smoke/non-UUID for SECURITY spines.
+    cand = subject_guid or hermes.get("subject_guid")
+    if not is_registry_guid(cand):
+        env = resolve_security_identity(sym, root=root)
+        cand = env.get("subject_guid")
+        if env.get("issuer_guid"):
+            hermes.setdefault("issuer_guid", env["issuer_guid"])
+    if not is_registry_guid(cand):
+        return {
+            "ok": False,
+            "error": "subject_guid_required_registry_uuid",
+            "symbol": sym,
+            "identity_stamp_miss": True,
+        }
+    hermes["subject_guid"] = cand
+    prior = load_latest(sym, path=path, root=root) or empty_spine(sym, subject_guid=cand)
+    if not is_registry_guid(prior.get("subject_guid")):
+        prior = dict(prior)
+        prior["subject_guid"] = cand
+    summary = hermes.get("summary") or hermes.get("recommendation")
     spine = contribute(
         prior,
         silo="hermes",
         kind="research_result",
         summary=str(summary)[:800] if summary else None,
-        artifact_id=hermes_result.get("result_id"),
-        refs=[x for x in [hermes_result.get("research_id"), hermes_result.get("result_id")] if x],
+        artifact_id=hermes.get("result_id"),
+        refs=[x for x in [hermes.get("research_id"), hermes.get("result_id")] if x],
         thesis_patch={
-            "stance": hermes_result.get("thesis_stance"),
+            "stance": hermes.get("thesis_stance"),
             "summary": str(summary)[:1200] if summary else None,
-            "conviction": hermes_result.get("confidence"),
+            "conviction": hermes.get("confidence"),
             "state": "POPULATED" if summary else "INSUFFICIENT_DATA",
-            "invalidation": list(hermes_result.get("research_gaps_remaining") or [])[:12],
+            "invalidation": list(hermes.get("research_gaps_remaining") or [])[:12],
         },
-        hermes=hermes_result,
+        hermes=hermes,
     )
-    if subject_guid or hermes_result.get("subject_guid"):
-        spine["subject_guid"] = subject_guid or hermes_result.get("subject_guid")
+    spine["subject_guid"] = cand
+    if hermes.get("issuer_guid"):
+        spine["issuer_guid"] = hermes.get("issuer_guid")
+    spine = stamp_security_fields(spine, symbol=sym, root=root)
     spine = contribute(spine, silo="cio", kind="accepted_into_spine", summary="CIO-owned spine updated from Hermes")
+    v = validate_spine(spine)
+    if not v.get("ok"):
+        return {"ok": False, "error": "validate_spine_failed", "errors": v.get("errors"), "spine": spine}
     wr = append_spine(spine, path=path, root=root)
     return {"ok": bool(wr.get("ok")), "spine": spine, "write": wr}
 

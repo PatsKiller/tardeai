@@ -16,12 +16,26 @@ from scripts.lib.cross_asset.hooks import (
 )
 from scripts.lib.cross_asset.security_research_spine import default_path, upsert_from_hermes
 
+REG = "ecb5ba89-96c6-536c-ba76-89e468a81bf1"
+
 
 @pytest.fixture()
 def spine_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("CROSS_ASSET_SPINE", "1")
     monkeypatch.delenv("CROSS_ASSET_SHADOW", raising=False)
     (tmp_path / "data" / "cio").mkdir(parents=True)
+
+    def _resolve(symbol, *, root=None):
+        return {
+            "symbol": str(symbol or "").upper(),
+            "subject_guid": REG,
+            "issuer_guid": None,
+            "security_guid": REG,
+            "identity_status": "CONFIRMED",
+            "identity_lookup": "RESOLVED",
+        }
+
+    monkeypatch.setattr("scripts.lib.identity_carriage.resolve_security_identity", _resolve)
     return tmp_path
 
 
@@ -33,7 +47,7 @@ def test_cadi011_hermes_notify_upserts_when_flag_on(spine_env: Path):
         "status": "completed",
         "summary": "Hooked Hermes thesis for all desks.",
         "confidence": 0.71,
-        "subject_guid": "guid-nflx-hook",
+        "subject_guid": REG,
     }
     out = notify_hermes_result_completed(result, root=spine_env)
     assert out.get("ok") is True
@@ -43,6 +57,7 @@ def test_cadi011_hermes_notify_upserts_when_flag_on(spine_env: Path):
     text = ledger.read_text(encoding="utf-8")
     assert "Hooked Hermes thesis" in text
     assert "NFLX" in text
+    assert REG in text
 
 
 def test_cadi011_skipped_when_spine_flag_off(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -66,7 +81,7 @@ def test_cadi012_overlay_prefers_spine_summary(spine_env: Path):
             "summary": "Shared spine summary wins.",
             "thesis_stance": "HOLD",
             "confidence": 0.55,
-            "subject_guid": "g-ov",
+            "subject_guid": REG,
         },
         root=spine_env,
     )
@@ -91,7 +106,7 @@ def test_cadi012_spine_rows_for_options(spine_env: Path):
             "research_id": "res_opt",
             "status": "completed",
             "summary": "Options desk shared thesis.",
-            "subject_guid": "g-opt",
+            "subject_guid": REG,
         },
         root=spine_env,
     )
