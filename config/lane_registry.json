@@ -2754,6 +2754,7 @@
     "*/10 * * * * cd $PROJ && flock -n /tmp/tradeai_escalation_handler.lock $PY scripts/claude_escalation_handler.py --tier1-only >> logs/claude_escalation.log 2>&1",
     "*/10 12-15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_options_monitor.sh  # noon-close (was 10-15): protect morning scalp GPU window — operator 2026-07-17",
     "*/5 11-15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/linux_launchers/run_options_monitor.sh  # 11:00-15:55 ET every 5m after the scalp GPU window; no overnight chain pull — operator 2026-09-29",
+    "*/5 11-15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/linux_launchers/run_options_monitor.sh  # 11:00-15:55 ET every 5m after the scalp GPU window; no overnight chain pull — operator 2026-09-29",
     "*/10 4-11 * * 1-5 cd $PROJ && flock -n /tmp/hermes_news_bridge.lock $PY scripts/hermes_news_bridge.py >> logs/hermes_news_bridge.log 2>&1",
     "*/10 4-11 * * 1-5 cd $PROJ && flock -n /tmp/news_to_catalyst.lock $PY scripts/news_to_catalyst.py >> logs/news_to_catalyst.log 2>&1",
     "*/10 4-19 * * 1-5 cd $PROJ && timeout 10m $PY scripts/proposal_enrichment_loop.py --run --limit 15 >> logs/proposal_enrichment.log 2>&1",
@@ -3276,7 +3277,6 @@
       "recorded_by": "plan 'Momentum scalps: why none arrive' (session 0192azxXaexnV4yt3sM2mjja); full `crontab -l` expressions via lane_registry.find_undeclared, 2026-09-28 ~09:25 ET",
       "lines": [
         "*/10 12-15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/linux_launchers/run_options_monitor.sh  # noon-close (was 10-15): protect morning scalp GPU window — operator 2026-07-17",
-        "*/5 11-15 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/linux_launchers/run_options_monitor.sh  # 11:00-15:55 ET every 5m after the scalp GPU window; no overnight chain pull — operator 2026-09-29",
         "*/10 4-19 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/auto_enrichment_runner.py --limit 40 >> logs/auto_enrichment.log 2>&1",
         "*/10 6-20 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/tradeai_hermes_gov_warm.lock $PY scripts/hermes_governance_api.py --warm >> logs/hermes_governance_warm.log 2>&1  # pre-warm Hermes governance panel cache",
         "*/10 9-16 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/defense_fills.lock bash -c \"set -a; . ./.env; set +a; $PY -c \\\"import sys; sys.path.insert(0,'scripts'); from db_adapter import _get_conn; import defense_execution as d; c=_get_conn(); r=d.poll_fills(c.cursor()); c.commit(); print(r) if r['open'] else None\\\"\" >> logs/defense_fills.log 2>&1  # Defense v7 WS-FILL: 10-min intent fill poller (RTH)",
