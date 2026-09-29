@@ -112,7 +112,24 @@ def _operator_text(raw: Any) -> str | None:
     return s
 
 
-def thesis_fields_for_symbol(symbol: str, *, root: Path | str | None = None) -> dict[str, Any]:
+def _infer_spine_silo(memberships: list | None, *, held: bool = False) -> str:
+    """Map book context to SecurityResearchSpine consumer silo (CADI-012)."""
+    mems = {str(m).lower() for m in (memberships or [])}
+    if held or "held" in mems or "holdings" in mems:
+        return "holdings"
+    if "reentry" in mems or "exit" in mems or "former" in mems:
+        return "reentry"
+    if "watch" in mems or "watchlist" in mems:
+        return "watchlist"
+    return "cio"
+
+
+def thesis_fields_for_symbol(
+    symbol: str,
+    *,
+    root: Path | str | None = None,
+    silo: str | None = None,
+) -> dict[str, Any]:
     """Return book-attachable thesis projection for one symbol."""
     root = _root(root)
     try:
@@ -199,21 +216,31 @@ def thesis_fields_for_symbol(symbol: str, *, root: Path | str | None = None) -> 
         "financial_action": False,
     }
     # CADI-012: shared spine wins over silo-local CIO thesis copies when POPULATED.
+    silo_tag = silo or _infer_spine_silo(
+        out.get("memberships") or cov.get("memberships"),
+        held=bool(uni.get("held")),
+    )
     try:
         from scripts.lib.cross_asset.hooks import overlay_thesis_fields_from_spine
-        out = overlay_thesis_fields_from_spine(out, sym, root=root, silo="cio")
+        out = overlay_thesis_fields_from_spine(out, sym, root=root, silo=silo_tag)
     except Exception:
         pass
     return out
 
 
-def attach_thesis(row: dict[str, Any], *, root: Path | str | None = None) -> dict[str, Any]:
+def attach_thesis(
+    row: dict[str, Any],
+    *,
+    root: Path | str | None = None,
+    silo: str | None = None,
+) -> dict[str, Any]:
     """Copy row and merge thesis_* fields (non-destructive)."""
     out = dict(row)
     sym = str(row.get("symbol") or "").upper()
     if not sym:
         return out
-    fields = thesis_fields_for_symbol(sym, root=root)
+    silo_tag = silo or row.get("spine_silo") or row.get("silo")
+    fields = thesis_fields_for_symbol(sym, root=root, silo=silo_tag if isinstance(silo_tag, str) else None)
     out["thesis"] = fields
     # Flatten commonly consumed keys for book UIs
     for k in (
