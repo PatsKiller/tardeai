@@ -241,8 +241,126 @@ def coverage_row(obj: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def link_symbol_sources(records: Iterable[Mapping[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Join source records by symbol without silently resolving conflicts."""
+    joined: dict[str, dict[str, Any]] = {}
+    for record in records:
+        symbol = str(record.get("symbol") or "").strip().upper()
+        if not symbol:
+            continue
+        row = joined.setdefault(symbol, {"symbol": symbol, "sources": [], "conflicts": []})
+        row["sources"].append({
+            "source": record.get("source") or "unknown",
+            "source_id": record.get("source_id"),
+            "as_of": record.get("as_of"),
+        })
+        for field in ("security_guid", "signal", "stance", "thesis_version"):
+            value = record.get(field)
+            if value in (None, ""):
+                continue
+            prior = row.get(field)
+            if prior not in (None, "", value):
+                row["conflicts"].append({"field": field, "prior": prior, "new": value})
+                row["identity_status"] = "CONFLICTED"
+            elif prior in (None, ""):
+                row[field] = value
+    for row in joined.values():
+        row.setdefault("identity_status", "CONFIRMED" if row.get("security_guid") else "UNRESOLVED")
+    return joined
+
+
+def _fact_blockers(facts: Mapping[str, Any]) -> list[str]:
+    blocks: list[str] = []
+    if facts.get("contract_available") is False:
+        blocks.append("CONTRACT_UNAVAILABLE")
+    if facts.get("quote_age_minutes") is not None and float(facts["quote_age_minutes"]) > 30:
+        blocks.append("QUOTE_STALE")
+    if facts.get("liquid") is False:
+        blocks.append("LIQUIDITY")
+    if facts.get("open_interest") is not None and float(facts["open_interest"]) < 50:
+        blocks.append("OPEN_INTEREST")
+    if facts.get("spread_pct") is not None and float(facts["spread_pct"]) > 12:
+        blocks.append("SPREAD")
+    if facts.get("earnings_before_expiry") is True:
+        blocks.append("EARNINGS")
+    if facts.get("position_size_ok") is False:
+        blocks.append("POSITION_SIZE")
+    return blocks
+
+
+def evaluate_expressions(
+    obj: Mapping[str, Any], facts_by_structure: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Apply hard facts to candidates; no pricing or order side effects occur."""
+    rows: list[dict[str, Any]] = []
+    for candidate in (obj.get("expression_comparison") or {}).get("candidates") or []:
+        structure = str(candidate.get("structure") or "")
+        facts = dict(facts_by_structure.get(structure) or {})
+        blockers = _fact_blockers(facts) if structure not in {
+            "shares", "sell_shares", "trim_shares", "reduce_shares", "no_action"
+        } else []
+        if facts.get("thesis_complete") is False:
+            blockers.append("THESIS_INCOMPLETE")
+        if facts.get("cio_approved") is False and facts.get("cio_required") is True:
+            blockers.append("CIO_REVIEW")
+        expected_return = facts.get("expected_return")
+        capital = facts.get("capital_required")
+        risk = facts.get("maximum_risk")
+        score = facts.get("score")
+        if score is None and expected_return is not None and capital not in (None, 0):
+            score = round(float(expected_return) / abs(float(capital)) * 100, 6)
+        rows.append({
+            "structure": structure,
+            "state": "BLOCKED" if blockers else ("SCORED" if score is not None else "UNSCORED"),
+            "blockers": list(dict.fromkeys(blockers)),
+            "score": score,
+            "expected_return": expected_return,
+            "capital_required": capital,
+            "maximum_risk": risk,
+            "facts_as_of": facts.get("as_of"),
+        })
+    ranked = sorted(
+        (row for row in rows if row["state"] == "SCORED"),
+        key=lambda row: float(row["score"]), reverse=True,
+    )
+    winner = ranked[0]["structure"] if ranked else None
+    return {
+        "candidates": rows,
+        "winner": winner,
+        "decision": "SHADOW_RECOMMENDATION" if winner else "NO_WINNER",
+        "why": "Highest supplied score among unblocked candidates." if winner else "No unblocked scored candidate.",
+    }
+
+
+def apply_expression_evaluation(
+    obj: Mapping[str, Any], facts_by_structure: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """Return a copied object with a computed comparison and refreshed digest."""
+    updated = json.loads(json.dumps(obj))
+    updated["expression_comparison"] = evaluate_expressions(updated, facts_by_structure)
+    updated["object_digest"] = digest(updated)
+    return updated
+
+
+def replay_events(
+    events: Iterable[Mapping[str, Any]], *, identity_by_symbol: Mapping[str, Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Replay frozen events in timestamp order without looking ahead."""
+    ordered = sorted(events, key=lambda row: (str(row.get("observed_at") or ""), str(row.get("event_id") or "")))
+    output: list[dict[str, Any]] = []
+    for event in ordered:
+        symbol = str(event.get("symbol") or "").upper()
+        identity = identity_by_symbol.get(symbol)
+        if identity is None:
+            raise ValueError(f"replay_identity_missing:{symbol}")
+        output.append(build_decision_object(event=event, identity=identity))
+    return output
+
+
 __all__ = [
     "AppendOnlyDecisionStore", "AUTHORITY", "EXPRESSION_MATRIX", "SCHEMA", "SIGNALS",
-    "build_decision_object", "build_event", "candidate_expressions", "coverage_row",
-    "digest", "normalize_identity", "normalize_signal", "validate_decision_object",
+    "apply_expression_evaluation", "build_decision_object", "build_event",
+    "candidate_expressions", "coverage_row", "digest", "evaluate_expressions",
+    "link_symbol_sources", "normalize_identity", "normalize_signal", "replay_events",
+    "validate_decision_object",
 ]

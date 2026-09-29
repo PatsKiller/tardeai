@@ -7,10 +7,13 @@ import pytest
 
 from scripts.lib.cross_asset_decision import (
     AppendOnlyDecisionStore,
+    apply_expression_evaluation,
     build_decision_object,
     build_event,
     candidate_expressions,
     coverage_row,
+    link_symbol_sources,
+    replay_events,
     validate_decision_object,
 )
 
@@ -74,3 +77,37 @@ def test_coverage_row_proves_comparison_denominator():
     assert row["expected_count"] == 3
     assert row["generated_count"] == 3
     assert row["state"] == "COVERED"
+
+
+def test_source_linking_marks_conflicts_instead_of_picking_a_winner():
+    linked = link_symbol_sources([
+        {"symbol": "abc", "source": "watchlist", "signal": "BUY", "security_guid": "s1"},
+        {"symbol": "ABC", "source": "cio", "signal": "HOLD", "security_guid": "s1"},
+    ])
+    assert linked["ABC"]["identity_status"] == "CONFLICTED"
+    assert linked["ABC"]["conflicts"][0]["field"] == "signal"
+
+
+def test_expression_evaluation_blocks_hard_risk_and_ranks_unblocked_candidates():
+    obj = _decision("BUY")
+    evaluated = apply_expression_evaluation(obj, {
+        "shares": {"score": 5},
+        "cash_secured_put": {"score": 9, "liquid": False},
+        "long_call": {"score": 7, "liquid": True, "open_interest": 100},
+        "bull_call_spread": {"score": 8, "liquid": True, "open_interest": 100},
+    })
+    assert evaluated["expression_comparison"]["winner"] == "bull_call_spread"
+    csp = next(x for x in evaluated["expression_comparison"]["candidates"] if x["structure"] == "cash_secured_put")
+    assert csp["state"] == "BLOCKED"
+    assert "LIQUIDITY" in csp["blockers"]
+
+
+def test_replay_is_sorted_and_requires_identity_without_future_data():
+    events = [
+        build_event(symbol="ABC", signal="HOLD", source="later", observed_at="2026-09-02T00:00:00+00:00"),
+        build_event(symbol="ABC", signal="BUY", source="earlier", observed_at="2026-09-01T00:00:00+00:00"),
+    ]
+    out = replay_events(events, identity_by_symbol={"ABC": {"symbol": "ABC"}})
+    assert [x["signal_state"]["action"] for x in out] == ["BUY", "HOLD"]
+    with pytest.raises(ValueError, match="replay_identity_missing"):
+        replay_events(events, identity_by_symbol={})
