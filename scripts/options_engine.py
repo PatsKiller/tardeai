@@ -804,9 +804,42 @@ def _reentry_research_rows(limit: int = 120) -> List[dict]:
     try:
         from lib.options_research_universe import reentry_research_rows
         snapshot = _load_json(PROJECT_ROOT / "data" / "runtime" / "reentry_decision_desk_latest.json") or {}
-        return reentry_research_rows(snapshot)[:limit]
+        rows = reentry_research_rows(snapshot)[:limit]
     except Exception:
-        return []
+        rows = []
+    # Overlay shared spine summaries onto reentry rows (CADI-012).
+    try:
+        from lib.cross_asset.hooks import overlay_thesis_fields_from_spine
+    except Exception:
+        try:
+            from scripts.lib.cross_asset.hooks import overlay_thesis_fields_from_spine
+        except Exception:
+            return rows
+    out = []
+    for row in rows:
+        sym = str(row.get("symbol") or "").upper()
+        if not sym:
+            out.append(row)
+            continue
+        fields = overlay_thesis_fields_from_spine(
+            {"thesis_summary": row.get("summary"), "thesis_state": row.get("research_status")},
+            sym,
+            root=PROJECT_ROOT,
+            silo="reentry",
+        )
+        enriched = dict(row)
+        if fields.get("security_research_spine") and fields.get("thesis_summary"):
+            enriched["summary"] = fields["thesis_summary"]
+            enriched["research_status"] = "researched"
+            enriched.setdefault("source_lanes", [])
+            lanes = set(enriched.get("source_lanes") or [])
+            lanes.add("cio_research")
+            lanes.add("security_research_spine")
+            enriched["source_lanes"] = sorted(lanes)
+            if fields.get("source_refs"):
+                enriched["research_artifact_id"] = fields["source_refs"][0]
+        out.append(enriched)
+    return out
 
 
 def _research_universe_rows() -> List[dict]:
@@ -814,6 +847,16 @@ def _research_universe_rows() -> List[dict]:
     from lib.options_research_universe import merge_research_rows
 
     rows: List[dict] = []
+    # CADI-012: CIO spine first so merge_research_rows first-wins keeps shared thesis.
+    try:
+        from lib.cross_asset.hooks import spine_rows_for_root
+        rows.extend(spine_rows_for_root(PROJECT_ROOT))
+    except Exception:
+        try:
+            from scripts.lib.cross_asset.hooks import spine_rows_for_root
+            rows.extend(spine_rows_for_root(PROJECT_ROOT))
+        except Exception:
+            pass
     rows.extend(_high_conviction_symbols())
     rows.extend(_watchlist_buy_conviction_rows())
     rows.extend(_researched_watchlist_rows())

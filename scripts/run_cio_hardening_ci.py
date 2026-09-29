@@ -2981,6 +2981,7 @@ GATES = [
         [
             "tests/test_cross_asset_symbol_decision_object_20260929.py",
             "tests/test_security_research_spine_20260929.py",
+            "tests/test_cadi_spine_hooks_20260929.py",
         ],
     ),
 ]

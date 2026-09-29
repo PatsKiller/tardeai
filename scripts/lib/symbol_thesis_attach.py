@@ -151,7 +151,7 @@ def thesis_fields_for_symbol(symbol: str, *, root: Path | str | None = None) -> 
                 extra[k] = thesis["extra"][k]
 
     gaps = list(cov.get("research_gaps") or [])
-    return {
+    out = {
         "symbol": sym,
         "symbol_thesis_id": cov.get("thesis_id"),
         "symbol_thesis_version": cov.get("thesis_pin") or cov.get("thesis_version"),
@@ -198,6 +198,13 @@ def thesis_fields_for_symbol(symbol: str, *, root: Path | str | None = None) -> 
         "authority": "READ_ONLY_ADVISORY",
         "financial_action": False,
     }
+    # CADI-012: shared spine wins over silo-local CIO thesis copies when POPULATED.
+    try:
+        from scripts.lib.cross_asset.hooks import overlay_thesis_fields_from_spine
+        out = overlay_thesis_fields_from_spine(out, sym, root=root, silo="cio")
+    except Exception:
+        pass
+    return out
 
 
 def attach_thesis(row: dict[str, Any], *, root: Path | str | None = None) -> dict[str, Any]:
