@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -422,6 +423,78 @@ def promote_directive_lead(symbol, directive_id, reason, source_system, conn=Non
         if should_commit:
             conn.rollback()
         raise
+
+
+#: OpenClaw's watchlist client gives up at 45s. Finviz enrichment inside
+#: promote can sit on the shared throttle for minutes, so the directive row
+#: exists while the client reports a timeout. Return inside this budget and
+#: let the promote finish; the servicer cron is the same safety net.
+DEFAULT_CREATE_PROMOTE_BUDGET_S = 20.0
+_promote_inflight_lock = threading.Lock()
+_promote_inflight: set[tuple] = set()
+
+
+def _create_promote_budget_s(budget_s):
+    if budget_s is not None:
+        try:
+            return max(0.0, float(budget_s))
+        except (TypeError, ValueError):
+            return DEFAULT_CREATE_PROMOTE_BUDGET_S
+    raw = os.environ.get("DIRECTIVE_CREATE_PROMOTE_BUDGET_S", "")
+    try:
+        return max(0.0, float(raw)) if str(raw).strip() else DEFAULT_CREATE_PROMOTE_BUDGET_S
+    except ValueError:
+        return DEFAULT_CREATE_PROMOTE_BUDGET_S
+
+
+def promote_directive_lead_bounded(symbol, directive_id, reason, source_system, *,
+                                   budget_s=None, auto=True, actor="operator"):
+    """promote_directive_lead, but the caller gets a result inside budget_s.
+
+    A slow enrich keeps running. The directive row belongs to the caller and
+    is not removed here. A second call for the same directive while the first
+    is still running returns DEFERRED_TO_CRON without starting another enrich.
+    """
+    budget = _create_promote_budget_s(budget_s)
+    key = (str(directive_id), str(symbol or "").upper())
+    with _promote_inflight_lock:
+        if key in _promote_inflight:
+            return {
+                "status": "DEFERRED_TO_CRON",
+                "registered": False,
+                "evaluated": False,
+                "detail": "promote already running",
+                "deferred": True,
+            }
+        _promote_inflight.add(key)
+
+    box: dict = {}
+
+    def _run():
+        try:
+            box["res"] = promote_directive_lead(
+                symbol, directive_id, reason, source_system, auto=auto, actor=actor,
+            )
+        except Exception as exc:
+            box["err"] = exc
+        finally:
+            with _promote_inflight_lock:
+                _promote_inflight.discard(key)
+
+    thread = threading.Thread(target=_run, name=f"promote-{directive_id}", daemon=True)
+    thread.start()
+    thread.join(budget)
+    if thread.is_alive():
+        return {
+            "status": "DEFERRED_TO_CRON",
+            "registered": False,
+            "evaluated": False,
+            "detail": "enrichment still running; directive kept for the servicer",
+            "deferred": True,
+        }
+    if "err" in box:
+        raise box["err"]
+    return box.get("res") or {}
 
 
 if __name__ == "__main__":
