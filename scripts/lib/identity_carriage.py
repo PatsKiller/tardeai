@@ -23,13 +23,27 @@ _FORBIDDEN_GUIDS = frozenset({
 })
 
 
+def is_forbidden_guid(value: Any, *, symbol: str | None = None) -> bool:
+    """True for smoke/ticker/subject_key junk — not for hermetic stub guids."""
+    if value is None:
+        return False
+    s = str(value).strip()
+    if not s:
+        return False
+    if s.lower() in _FORBIDDEN_GUIDS:
+        return True
+    if ":" in s:  # subject_key / tradeai:entity:*
+        return True
+    if symbol and s.upper() == str(symbol).strip().upper():
+        return True
+    return False
+
+
 def is_registry_guid(value: Any) -> bool:
     if value is None:
         return False
     s = str(value).strip()
-    if not s or s.lower() in _FORBIDDEN_GUIDS:
-        return False
-    if ":" in s:  # subject_key / tradeai:entity:* / HELD:SYM
+    if not s or is_forbidden_guid(s):
         return False
     return bool(_UUID_RE.match(s))
 
