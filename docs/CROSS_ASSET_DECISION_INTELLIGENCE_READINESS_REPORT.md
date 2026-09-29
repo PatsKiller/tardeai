@@ -105,3 +105,4 @@ We **cannot** yet prove EV superiority across shares vs options with chain econo
 | Test plan | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md` |
 | Code | `scripts/lib/cross_asset/*`, `scripts/ops/run_cross_asset_*.py` |
 | Tests | `tests/test_cross_asset_symbol_decision_object_20260929.py` |
+| Commits | `bc9b38c1d` + `1a406daa5` on `wt/cross-asset-decision-intel` |
