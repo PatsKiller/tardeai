@@ -224,6 +224,21 @@ def _emit_chat_event(
         return
 
 
+def _held_reservation_id(explicit: str | None) -> str | None:
+    """The reservation gate_and_generate already took, when this call did not repeat it."""
+    if explicit not in (None, ""):
+        return explicit
+    try:
+        try:
+            from lib.provider_cost.context import current_attribution
+        except ImportError:
+            from scripts.lib.provider_cost.context import current_attribution
+        held = current_attribution().get("reservation_id")
+    except Exception:
+        return explicit
+    return str(held) if held not in (None, "") else explicit
+
+
 def chat(
     *,
     policy: str | None = None,
@@ -329,6 +344,10 @@ def chat(
         body["response_format"] = {"type": "json_object"}
 
     # AGENTS.md §9.2: budget check BEFORE the call. Never fail open.
+    # A reservation already held by gate_and_generate is the budget decision.
+    # The nested llm_lane attribution does not repeat the id as an argument,
+    # so read it from the context or a full sweep cap denies the send.
+    reservation_id = _held_reservation_id(reservation_id)
     budget_reason: str | None = None
     try:
         try:

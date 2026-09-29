@@ -930,6 +930,13 @@ def run(mode, apply, budget, *, run_id: str | None = None):
         for d in due:
             d["reentry_ready_near"] = bool((uni.get(d["symbol"]) or {}).get("reentry_ready_near"))
         ordered = due
+        # Operator "watch and research" names stay on this run even when the
+        # shared external budget is already spent, up to a small reserve.
+        try:
+            from operator_watch_research import fetch_operator_research_owed, pin_operator_research
+            ordered = pin_operator_research(ordered, fetch_operator_research_owed(_q))
+        except Exception as exc:
+            print(f"[scheduler] operator_watch_research_unavailable={type(exc).__name__}")
 
     print(f"[scheduler] mode={mode} due={len(ordered)} external_budget={budget} apply={apply} "
           f"thesis_driven={thesis_driven_enabled()} rag_first={rag_first_enabled()} "
@@ -965,8 +972,12 @@ def run(mode, apply, budget, *, run_id: str | None = None):
     done = 0
     ext_rot = 0
     cap_hit = False
+    operator_reserved = 0
     for item in ordered:
         sym, tier = item["symbol"], item["tier"]
+        if item.get("operator_research_owed") and tier in ("T2-INCUB", "T3-COLD"):
+            tier = "T1-WATCH"
+            item["tier"] = tier
         all_lanes = lanes_for(tier)
         thesis_gap = gap_by_sym.get(sym)
         reentry_ready_near = bool(item.get("reentry_ready_near") or (uni.get(sym) or {}).get("reentry_ready_near"))
@@ -1026,7 +1037,14 @@ def run(mode, apply, budget, *, run_id: str | None = None):
             raise RuntimeError("POLICY_LOCAL_GENERATIVE_FORBIDDEN")
         # external lanes: budgeted; skip-gate decides execute vs SKIP_* when enabled.
         for lane in ext_lanes:
-            if spent >= budget:
+            from operator_watch_research import external_slot as _external_slot
+            slot = _external_slot(
+                owed=bool(item.get("operator_research_owed")),
+                spent=spent,
+                budget=budget,
+                reserved_used=operator_reserved,
+            )
+            if slot == "blocked":
                 print(f"[scheduler] external budget {budget} spent at {done} symbols — externals roll to next run (local still queued)")
                 ext_lanes = []
                 _account(
@@ -1064,7 +1082,10 @@ def run(mode, apply, budget, *, run_id: str | None = None):
                     print(f"[scheduler] SKIPPED_BUDGET at {sym} — stopping remaining externals this run")
                     cap_hit = True
                 time.sleep(1)
-            spent += 1
+            if slot == "reserve":
+                operator_reserved += 1
+            else:
+                spent += 1
         if apply and tier == "T0-HOLD":
             surface_holding_event(sym)
         done += 1

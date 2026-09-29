@@ -1225,9 +1225,21 @@ def gate_and_generate(
         if require_global and (gcap is None or gcap <= 0):
             raise RuntimeError("COST_CONFIGURATION_INVALID: global daily USD cap required")
 
+        # The sweep cap can be full by afternoon. An operator watch that still
+        # owes research keeps a small reserve. The global daily cap still binds.
+        reserve_cfg = cfg
+        try:
+            try:
+                from operator_watch_research import research_reserve_config
+            except ImportError:
+                from scripts.lib.operator_watch_research import research_reserve_config
+            reserve_cfg = research_reserve_config(cfg, meta.get("symbol"))
+        except Exception:
+            reserve_cfg = cfg
+
         reservation_id = reserve_projected_cost(
             process_id, projected, model_id=model_id,
-            process_config=cfg,
+            process_config=reserve_cfg,
             # Smoke may omit global when env unset (gcap=None); non-smoke required gcap above.
             global_cap=gcap,
             metadata={
