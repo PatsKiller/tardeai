@@ -3770,11 +3770,19 @@ def _resolve_blocking_gaps(
             continue
         row = res.to_dict()
         row["desk_domain"] = domain
+        # A thin llm_curation / search "partial" can coexist with a slow Hermes
+        # queue (eta_seconds). Both must surface: answered for the interim reply,
+        # queued so the desk opens a pending and try_fulfill can deliver when
+        # Hermes lands. 2026-09-29 NFLX: partial+queued was classified answered-only,
+        # so opr_* never entered pending_replies and the completed thesis never
+        # came back to the operator.
         if res.answered or (res.outcome == "partial" and res.answer is not None):
             answered.append(row)
-        elif res.eta_seconds is not None:
+        if res.eta_seconds is not None:
             queued.append(row)
-        else:
+        elif not (
+            res.answered or (res.outcome == "partial" and res.answer is not None)
+        ):
             denied.append(row)
 
     etas = [int(r["eta_seconds"]) for r in queued if r.get("eta_seconds") is not None]
@@ -4283,6 +4291,9 @@ def handle_operator_desk_question(
                     })
                     blocking = []
                 else:
+                    # Interim thin answer (often llm_curation) — if Hermes was ALSO
+                    # queued, do NOT return here: fall through so a pending opens and
+                    # try_fulfill can deliver the completed thesis (NFLX 2026-09-29).
                     result.update({
                         "kind": "answered",
                         "pending_id": None,
@@ -4290,8 +4301,16 @@ def handle_operator_desk_question(
                         "reply_source": "gap_resolver:" + str(resolver_summary["answered"][0].get("vector")),
                         "model": resolver_summary["answered"][0].get("model"),
                     })
-                    _emit_telegram_desk_payload(intent, result)
-                    return result
+                    if resolver_summary.get("queued"):
+                        result["research_queued"] = True
+                        eta_seconds = resolver_summary.get("eta_seconds") or eta_seconds or 1800
+                        eta_text = resolver_summary.get("eta_text") or (
+                            f"≈ {max(1, int(round(int(eta_seconds) / 60.0)))} min"
+                        )
+                        # keep `blocking` set → pending path below
+                    else:
+                        _emit_telegram_desk_payload(intent, result)
+                        return result
             elif resolver_summary.get("queued"):
                 eta_seconds = resolver_summary.get("eta_seconds")
                 eta_text = resolver_summary.get("eta_text")
@@ -4401,9 +4420,14 @@ def handle_operator_desk_question(
             # test_gap_resolver negative controls pin that.
             buy_eta_seconds = 1800 if buy_first and not eta_seconds else None
             effective_eta = eta_seconds if eta_seconds is not None else buy_eta_seconds
+            interim_plus_queue = bool(
+                result.get("research_queued") and resolver_summary and resolver_summary.get("queued")
+            )
+            if effective_eta is None and interim_plus_queue:
+                effective_eta = 1800
             effective_eta_text = eta_text
-            if effective_eta_text is None and buy_eta_seconds is not None:
-                effective_eta_text = f"≈ {max(1, int(round(buy_eta_seconds / 60.0)))} min"
+            if effective_eta_text is None and effective_eta is not None:
+                effective_eta_text = f"≈ {max(1, int(round(int(effective_eta) / 60.0)))} min"
             pending_row: dict[str, Any] = {
                 "pending_id": pending_id,
                 "status": "open",
@@ -4416,7 +4440,8 @@ def handle_operator_desk_question(
                 "blocking_gaps": blocking,
                 "authority": AUTHORITY,
                 "kind": (
-                    "buy_perspective_research_first" if buy_first else "blocking_gap"
+                    "interim_plus_hermes_queue" if interim_plus_queue
+                    else ("buy_perspective_research_first" if buy_first else "blocking_gap")
                 ),
             }
             if effective_eta is not None:
@@ -4447,6 +4472,25 @@ def handle_operator_desk_question(
                 if effective_eta_text else
                 "Queued into the controlled gap pipeline. "
             )
+            # Thin interim (llm_curation) + Hermes already queued: keep interim,
+            # open pending, return — do not replace with a hollow "queued only" lead.
+            if interim_plus_queue and (result.get("text") or "").strip():
+                text_body = (
+                    str(result.get("text")).rstrip()
+                    + "\n\n"
+                    + queued_line
+                    + f"Pending `{pending_id}` — I'll follow up when desk research lands."
+                )
+                result.update({
+                    "kind": "deferred",
+                    "pending_id": pending_id,
+                    "eta_seconds": effective_eta,
+                    "research_queued": True,
+                    "text": text_body,
+                    "reply_source": result.get("reply_source") or "gap_resolver:interim_plus_queue",
+                })
+                _emit_telegram_desk_payload(intent, result)
+                return result
             research_only = all(g.get("domain") == "hermes_research" for g in blocking)
             # Buy/perspective with thin/stale house facts: NEVER lead with a hollow
             # DeepSeek essay (live 2026-09-22 operator paste). Lead with pending.
