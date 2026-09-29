@@ -131,7 +131,7 @@ This follow-up does neither. The flag stays as it was.
 
 `scripts/check_release_pin_integrity.py` compares a release directory's build stamp, `git HEAD`, and the blobs of five paths. It does not checkout or merge.
 
-Hermetic tests: `tests/test_check_release_pin_integrity.py`, 3 passed (clean match, HEAD moved with stamp bytes kept, tampered file).
+Hermetic tests: `tests/test_check_release_pin_integrity.py`, 3 passed (clean match, HEAD moved with stamp bytes kept, tampered file). The first remote `cio-hardening` run failed because that file was not on the CI allowlist (`tests/test_ci_test_coverage_gate.py`, run 36511932034). The corrective commit registers it on the existing `release_pin_and_validator` gate. That registration is not a served install, and this document does not call the second run green until GitHub says so.
 
 Live read-only run against the served directory, stamp `25afedb35`:
 
@@ -141,7 +141,7 @@ Live read-only run against the served directory, stamp `25afedb35`:
 
 That run is detection, not a served install. The script is **FIX_READY_UNSERVED** until this PR is merged and a release actually contains it. Merging the PR does not put it on the portfolio-server process.
 
-No other product file was edited. F-02, the arm, the schema, and the cron table were left alone.
+The corrective commit also edits `scripts/run_cio_hardening_ci.py` so the new test is collected. F-02, the arm, the schema, and the cron table were left alone.
 
 ---
 
@@ -220,3 +220,23 @@ Telegram was not sent. A same-timestamp alert-versus-queue comparison was not ma
 2. **Backup privilege.** Authorize a dump role that can copy `FORCE` row-level security tables (`memory_r10_m2.adjudication_receipt` failed every night 21–27 Sep; `intelligence.embedding` failed on 28 Sep), then verify a restore. Do not treat a re-run of `run_pg_backup.sh` as protection.
 3. **Schema.** Do not promote `agentic_runtime` into production `trade_ai` to change the gate board.
 4. **#1339.** Do not fast-forward the live tree onto it. A later promote is a new release directory, a green cio-hardening, and a new observation window.
+
+---
+
+## 11. Closeout mail
+
+The operator recipient is the address already set in `scripts/email_notifier.py`. The mechanism is `gog` 0.12.0 `gmail send` on that same account. This is not a resend of the 21:41 ET audit (`1a0ead357fe6e329`).
+
+Sent after the report commit `e2f29d4dc` was opened as PR #1351. Gmail accepted the message. The attached markdown is that commit, so it does not contain this section.
+
+| Field | Value |
+|---|---|
+| Status | SENT (labels `UNREAD`, `SENT`, and `INBOX` on a later get) |
+| message id | `1a0eaf4807b36fef` |
+| thread id | `1a0eaf4807b36fef` |
+| Date header | Tue, 29 Sep 2026 02:18:07 +0000 |
+| UTC | 2026-09-29T02:18:07Z |
+| ET | 2026-09-28 22:18:07 EDT |
+| Subject | Trade AI audit follow-up 2026-09-28 — pin still 25afedb35 — arm decision |
+
+An attempted send is not this row. The row is a Gmail message id that a later get returned with label `SENT`.
