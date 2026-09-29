@@ -9,6 +9,7 @@ from scripts.lib.operator_watch_research import (
     fetch_operator_research_owed,
     lookup_operator_watch,
     pin_operator_research,
+    research_reserve_config,
 )
 
 
@@ -24,6 +25,25 @@ def test_owed_query_returns_symbols_and_fails_soft():
         raise RuntimeError("db")
 
     assert fetch_operator_research_owed(boom) == set()
+
+
+def test_owed_research_keeps_a_dollar_reserve_after_the_sweep_cap():
+    def query(sql, params):
+        assert params[-1] == "NFLX"
+        assert "watch_directives" in sql
+        return [{"symbol": "NFLX"}]
+
+    cfg = {"daily_cost_cap_usd": 0.30, "daily_soft_cap": 600}
+    bumped = research_reserve_config(cfg, "nflx", query=query)
+    assert bumped["daily_cost_cap_usd"] == 0.35
+    assert cfg["daily_cost_cap_usd"] == 0.30
+    assert research_reserve_config(cfg, "NFLX", query=lambda *_a, **_k: []) is cfg
+    assert research_reserve_config(cfg, "", query=query) is cfg
+
+    def boom(*_a, **_k):
+        raise RuntimeError("db")
+
+    assert research_reserve_config(cfg, "NFLX", query=boom) is cfg
 
 
 def test_operator_watch_is_a_research_membership():

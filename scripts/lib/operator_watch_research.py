@@ -13,6 +13,9 @@ COUNTING_RESEARCH_STATUSES = ("promoted", "reviewed", "staged")
 COUNTING_EXTERNAL_STATUSES = ("complete", "ok", "sent", "success")
 OPERATOR_RESEARCH_RESERVE = 10
 OPERATOR_RESEARCH_SCORE = 1_000_000.0
+# The sweep's $0.30 process cap is often full by afternoon. This extra,
+# still inside the global daily cap, is only for a name that still owes research.
+OPERATOR_RESEARCH_USD_RESERVE = 0.05
 
 OWED_SQL = """
 SELECT DISTINCT UPPER(d.spec->>'symbol') AS symbol
@@ -70,6 +73,59 @@ def fetch_operator_research_owed(query) -> set[str]:
     except Exception:
         return set()
     return {sym for sym in (_symbol_of(r) for r in rows) if sym}
+
+
+def symbol_research_owed(symbol: str, query=None) -> bool:
+    """True when this symbol is an operator watch that still has no research row."""
+    sym = str(symbol or "").upper().strip()
+    if not sym:
+        return False
+    if query is None:
+        try:
+            from db_adapter import _execute
+
+            query = lambda sql, params=(): _execute(sql, params, fetch="all") or []
+        except Exception:
+            return False
+    try:
+        rows = (
+            query(
+                OWED_SQL + "\n  AND UPPER(d.spec->>'symbol') = %s\n",
+                (
+                    list(OPERATOR_ACTORS),
+                    list(COUNTING_RESEARCH_STATUSES),
+                    list(COUNTING_EXTERNAL_STATUSES),
+                    sym,
+                ),
+            )
+            or []
+        )
+    except Exception:
+        return False
+    return bool(rows)
+
+
+def cap_for_operator_research(cfg: dict, *, reserve: float = OPERATOR_RESEARCH_USD_RESERVE) -> dict:
+    """Copy of the process cap with the operator-research reserve added. Does not mutate cfg."""
+    out = dict(cfg or {})
+    try:
+        base = float(out.get("daily_cost_cap_usd") or 0)
+    except (TypeError, ValueError):
+        return out
+    if base <= 0:
+        return out
+    out["daily_cost_cap_usd"] = base + float(reserve)
+    return out
+
+
+def research_reserve_config(cfg, symbol, *, query=None):
+    """Use the reserve only while this symbol's operator research is still owed."""
+    try:
+        if not symbol_research_owed(symbol, query=query):
+            return cfg
+        return cap_for_operator_research(cfg)
+    except Exception:
+        return cfg
 
 
 def lookup_operator_watch(symbol: str, query=None) -> bool:
