@@ -328,6 +328,7 @@ path. No production store, broker, scheduler, or live endpoint was touched.
 | 2026-09-29 | COMPLETE | Phase 1 committed at `4e39b4103`; targeted tests and static checks passed. |
 | 2026-09-29 | COMPLETE | Phase 2 identity linking, Phase 3 routing, Phase 5 coverage accounting, and Phase 6 deterministic ranking primitives committed at `511d8dda2`; 9 tests passed. |
 | 2026-09-29 | COMPLETE | Offline replay command committed at `1d440dd23`; 10 tests passed. This is a replay primitive, not historical production validation. |
+| 2026-09-29 | COMPLETE | Deterministic shadow runner committed at `f1d5b1546`; 11 tests passed. This is offline shadow mode, not continuous production shadow mode. |
 
 ## Post-baseline implementation status
 
@@ -340,7 +341,7 @@ path. No production store, broker, scheduler, or live endpoint was touched.
 | 5 Missed-opportunity ledger | COMPLETE — initial coverage row | `511d8dda2`; denominator test | Durable ledger producer and source reconciliation |
 | 6 Cross-asset ranking | COMPLETE — deterministic fact-gated ranking | `511d8dda2`; blocked candidates excluded | Quantitative model calibration and outcome joins |
 | 7 UI integration | NOT STARTED | No runtime/API/UI change | API projection, UI, route tests |
-| 8 Shadow mode | NOT STARTED | Offline replay only | Continuous scheduler-backed shadow run |
+| 8 Shadow mode | COMPLETE — offline harness | `f1d5b1546`; idempotent shadow receipt and no-action assertion | Continuous scheduler-backed shadow run |
 | 9 Production validation | NOT STARTED | No historical production source replayed | 30/60/90-day replay metrics |
 | 10 Go-live | NOT READY | Cannot recommend before phases 4, 7, 8, 9 | Independent readiness review |
 

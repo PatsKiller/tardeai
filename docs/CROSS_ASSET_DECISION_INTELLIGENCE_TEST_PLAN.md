@@ -129,3 +129,14 @@ Evidence:
 
 Not yet evidenced: live scheduler consumption, API/UI integration, and 30/60/90-day
 production-history replay.
+
+## Shadow harness record
+
+Status: COMPLETE — offline only
+Date: 2026-09-29
+Commit: `f1d5b1546dea3aa6c2d3c3dc4884978600891fdb`
+
+The harness runs a frozen event batch, writes to an explicit caller-selected
+JSONL path, returns `SHADOW_ONLY`, sets `financial_action=false`, and treats a
+duplicate evaluation as `DUPLICATE_IGNORED`. It is not a scheduler installation
+and has no broker or order path.
