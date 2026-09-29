@@ -10,6 +10,7 @@ import { renderSetupCounts } from '../lib/setupRunSummary'
 // about one run — the header said healthy while the panel said UNDERFILLED.
 import { runHealthReasonCodes, reasonCodeOneLiner, runHealthLabel } from '../lib/runHealth'
 import { BB, T, TYPE, numStyle, rowRail } from '../lib/watchTokens'
+import { RADIUS } from '../lib/designTokens'
 import type { DrillContext } from './DetailDrawer'
 import AlertsCenterModal from './AlertsCenterModal'
 
@@ -612,7 +613,7 @@ export default function MetricStrip({ onDrill }: Props) {
         data-testid="alerts-center-chip"
         onClick={() => setAlertsOpen(true)}
         title="Alerts Center — Entry packets · Telegram outbound · SETUPS latest run (advisory)"
-        style={{ marginLeft: 'auto', padding: '4px 12px', borderRadius: 6, fontSize: TYPE.xs, fontWeight: 700, cursor: 'pointer',
+        style={{ marginLeft: 'auto', padding: '4px 12px', borderRadius: RADIUS.sm, fontSize: TYPE.xs, fontWeight: 700, cursor: 'pointer',
           background: 'rgba(59,130,246,.14)', color: T.link, marginRight: 8 }}
       >
         ⚑ ALERTS

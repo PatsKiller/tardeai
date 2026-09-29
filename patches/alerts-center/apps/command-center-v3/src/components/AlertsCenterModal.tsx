@@ -13,6 +13,7 @@ import {
   type KindFilter,
 } from '../lib/alertsCenter'
 import { BB, T, TYPE } from '../lib/watchTokens'
+import { RADIUS, SHADOW } from '../lib/designTokens'
 
 const FILTERS: Array<{ id: KindFilter; label: string }> = [
   { id: 'all', label: 'All' },
@@ -92,9 +93,9 @@ export default function AlertsCenterModal({ open, onClose }: { open: boolean; on
         role="dialog"
         aria-label="Alerts Center"
         style={{
-          background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 12,
+          background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: RADIUS.lg,
           width: 'min(960px, 96vw)', height: 'min(640px, 92vh)', display: 'flex', flexDirection: 'column',
-          boxShadow: '0 12px 40px rgba(0,0,0,.45)',
+          boxShadow: SHADOW[3],
         }}
       >
         <header style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
@@ -108,10 +109,10 @@ export default function AlertsCenterModal({ open, onClose }: { open: boolean; on
             placeholder="Search symbols or titles  (/ focuses · Esc closes)"
             style={{
               marginLeft: 'auto', width: 280, maxWidth: '40vw', background: 'var(--bg2)', color: 'var(--text0)',
-              border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', fontSize: 12,
+              border: '1px solid var(--border)', borderRadius: RADIUS.sm, padding: '6px 10px', fontSize: 12,
             }}
           />
-          <button type="button" onClick={onClose} style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text2)', borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 11 }}>Close</button>
+          <button type="button" onClick={onClose} style={{ background: 'transparent', border: '1px solid var(--border)', color: 'var(--text2)', borderRadius: RADIUS.sm, padding: '4px 10px', cursor: 'pointer', fontSize: 11 }}>Close</button>
         </header>
 
         <div style={{ display: 'flex', gap: 6, padding: '8px 14px', borderBottom: '1px solid var(--border)' }}>
@@ -196,12 +197,12 @@ export default function AlertsCenterModal({ open, onClose }: { open: boolean; on
                 )}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
                   <button type="button" data-testid="alerts-primary-link" onClick={() => go(selected.href)}
-                    style={{ background: T.link, color: 'var(--text0)', border: 0, borderRadius: 6, padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                    style={{ background: T.link, color: 'var(--text0)', border: 0, borderRadius: RADIUS.sm, padding: '8px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                     Open primary surface →
                   </button>
                   {selected.dossierHref && (
                     <button type="button" onClick={() => go(selected.dossierHref!)}
-                      style={{ background: 'var(--bg2)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}>
+                      style={{ background: 'var(--bg2)', color: 'var(--text1)', border: '1px solid var(--border)', borderRadius: RADIUS.sm, padding: '8px 12px', fontSize: 12, cursor: 'pointer' }}>
                       Symbol dossier
                     </button>
                   )}
