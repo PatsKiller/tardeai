@@ -2954,6 +2954,12 @@ GATES = [
         "options_proposal_cache_cadence_20260929",
         ["tests/test_options_proposal_cache_cadence_20260929.py"],
     ),
+    (
+        # 2026-09-29 — READY ENTRY ALERT chrome must never resolve ENTRY/ALERT as
+        # tickers (Telegram footers / Symbol Intelligence ALERT dossier).
+        "alert_chrome_stopwords_20260929",
+        ["tests/test_alert_chrome_stopwords_20260929.py"],
+    ),
 ]
 
 
