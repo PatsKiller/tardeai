@@ -29,6 +29,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 PROJ = Path(__file__).resolve().parents[1]
 NO_CONSUMER_REASON = (
@@ -41,6 +42,7 @@ sys.path.insert(0, str(PROJ / "scripts"))
 
 SCHEMA = "Breach@v1"
 KINDS = ("SILENT", "HUNG", "BACKLOG", "FAILING", "NO_OUTPUT", "MEMORY_UNREACHABLE", "SLO_MISS", "UNGOVERNED")
+SCHEDULE_TZ = ZoneInfo("America/New_York")
 
 
 def _parse(ts):
@@ -66,7 +68,7 @@ def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> 
 
     cron lanes: the most recent scheduled fire ≤ now (5-field expression), so a weekday-only or
     market-hours lane is not judged over a weekend (2026-09-27 triage: 6 false breaches). Other
-    lanes: 3 × cadence (min 15 min), extended by any declared inactive days ending today.
+    lanes: 3 × cadence (min 15 min); inactive days are not due days.
     """
     sched = lane.get("scheduler") or {}
     expr = str(sched.get("expression") or "")
@@ -75,7 +77,7 @@ def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> 
         try:
             import cron_last_fire as cron_schedule  # type: ignore
             # the most recent fire that has had max_run to finish: a run still in progress is not a miss
-            local_ref = (now - _dt.timedelta(seconds=max_run_s)).astimezone()
+            local_ref = (now - _dt.timedelta(seconds=max_run_s)).astimezone(SCHEDULE_TZ)
             lf = cron_schedule.last_fire(expr, local_ref.replace(tzinfo=None))
             local_now = local_ref
             if lf is not None:
@@ -88,14 +90,11 @@ def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> 
     limit_s = max(3 * float(cad_h) * 3600, 900)
     days = lane.get("active_days")
     if isinstance(days, (list, tuple)) and days:
-        # extend the window by the inactive days that end today (Mon=0 .. Sun=6)
-        # Use the caller's explicit observation timezone. astimezone() without
-        # a zone consults the audit host and can turn Sunday UTC into Monday,
-        # inventing a missed market-day run on a worker in another timezone.
-        d = now.date(); extra = 0
-        while d.weekday() not in days and extra < 7:
-            extra += 1; d -= _dt.timedelta(days=1)
-        limit_s += extra * 86400
+        # These lane schedules are in Eastern market time. Extending a 45 min
+        # cadence by two days still flags Friday's last output on Sunday night;
+        # no output is due on an inactive day, regardless of the clock hour.
+        if now.astimezone(SCHEDULE_TZ).weekday() not in days:
+            return None, "inactive_day:America/New_York"
     return now - _dt.timedelta(seconds=limit_s), f"cadence:{cad_h}h×3"
 
 

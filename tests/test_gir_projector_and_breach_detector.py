@@ -135,6 +135,14 @@ def test_detector_is_schedule_aware_on_a_weekend():
     assert ("weekday-cron", "NO_OUTPUT") not in kinds and ("weekday-days", "NO_OUTPUT") not in kinds and ("monthly-not-due", "NO_OUTPUT") not in kinds
     assert ("every-5-missed", "NO_OUTPUT") in kinds
 
+    # It is Monday in UTC but still Sunday evening at the Eastern schedule.
+    eastern_sunday = dt.datetime(2026, 9, 28, 0, 30, tzinfo=dt.timezone.utc)
+    late = {(r["lane_id"], r["kind"]) for r in bd.detect(
+        lanes=lanes, sla_by_lane=sla, heartbeats={}, observe=observe,
+        now=eastern_sunday)}
+    assert ("weekday-cron", "NO_OUTPUT") not in late
+    assert ("weekday-days", "NO_OUTPUT") not in late
+
 
 def test_cron_schedule_last_and_next_fire():
     import cron_last_fire as cs
