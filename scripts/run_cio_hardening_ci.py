@@ -2954,6 +2954,12 @@ GATES = [
         "options_proposal_cache_cadence_20260929",
         ["tests/test_options_proposal_cache_cadence_20260929.py"],
     ),
+    (
+        # 2026-09-29 — cross-asset decision intelligence Phase 1: canonical
+        # signal-to-expression contract and append-only shadow store.
+        "cross_asset_decision_intelligence_phase1_20260929",
+        ["tests/test_cross_asset_decision_intelligence.py"],
+    ),
 ]
 
 
