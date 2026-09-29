@@ -43,6 +43,7 @@ import {
   type PrimeDisplay,
   type SafetyStatusBadge,
 } from '../lib/optionsCardSemantics'
+import { rewardRiskPresentation } from '../lib/optionsDeskTruth'
 import type { OptionProposal } from './OptionProposalCard'
 
 // Option Proposal Card v4 — options-desk member of the card-v4 family (2026-07-04).
@@ -1232,10 +1233,10 @@ export default function OptionProposalCardV4({
           />
           <HeroMetricChip
             metricKey="rr"
-            label="R:R"
+            label={rewardRiskPresentation(p).label}
             value={p.risk_reward != null ? p.risk_reward.toFixed(2) : '—'}
             context={metricCtx}
-            color={termSignal(p.risk_reward != null && p.risk_reward >= 0.3 ? WL.signal.teal : WL.text.primary, terminalUi)}
+            color={termSignal(rewardRiskPresentation(p).success ? WL.signal.teal : WL.text.primary, terminalUi)}
           />
           <HeroMetricChip metricKey="dte" label="DTE" value={p.dte ?? '—'} context={metricCtx} />
           <span title={[tone.label, p.aegis_note].filter(Boolean).join(' — ') || PROPOSAL.recommended} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginLeft: 'auto', cursor: 'help' }}>
