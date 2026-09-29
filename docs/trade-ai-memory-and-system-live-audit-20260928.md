@@ -800,7 +800,21 @@ Hermetic fixtures named in the work order (stale options verdict, unknown strate
 
 ### 9.7 Email
 
-The operator recipient in `scripts/email_notifier.py` is the configured address, and the mechanism is `gog gmail send` on that account. Delivery evidence is appended after send. If send fails, this section stays `EMAIL_PENDING` and the reason is the tool error, not a guessed address.
+The operator recipient is the address already set in `scripts/email_notifier.py`. The mechanism is `gog` 0.12.0 `gmail send` on that same account, with the keyring file that script already reads. No address was invented.
+
+Sent after this report was committed as `f36951b36` and opened as PR #1350. Gmail accepted the message.
+
+| Field | Value |
+|---|---|
+| Status | SENT (labels `SENT` and `INBOX` on a later get) |
+| message id | `1a0ead357fe6e329` |
+| thread id | `1a0ead357fe6e329` |
+| Date header | Mon, 28 Sep 2026 21:41:53 -0400 |
+| UTC | 2026-09-29T01:41:53Z |
+| Subject | Trade AI live audit 2026-09-28 — pin 25afedb35 — HTTP stalled |
+| Body | Concise verdict plus the PR link. The sanitized markdown was attached. |
+
+An attempted send is not this row. The row is a Gmail message id that a later get returned with label `SENT`.
 
 ---
 
