@@ -17,6 +17,7 @@ from .security_research_spine import (
     CONSUMER_SILOS,
     empty_spine,
     upsert_from_hermes,
+    upsert_research_memory,
     view_for_silo,
     spine_rows_for_options_universe,
 )
@@ -34,6 +35,7 @@ __all__ = [
     "CONSUMER_SILOS",
     "empty_spine",
     "upsert_from_hermes",
+    "upsert_research_memory",
     "view_for_silo",
     "spine_rows_for_options_universe",
 ]

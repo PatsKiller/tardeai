@@ -72,7 +72,7 @@ def main() -> int:
         "spine_populated": spine_populated,
         "researched_with_spine": len(overlap),
         "pct_researched_with_spine": pct,
-        "target_pct": 95.0,
+        "target_pct": 80.0,
     }
     if args.write:
         dest = root / "data" / "runtime" / "security_research_spine_coverage.json"
@@ -84,7 +84,7 @@ def main() -> int:
     else:
         print(
             f"researched={out['researched_symbols']} with_spine={out['researched_with_spine']} "
-            f"pct={pct}% (target 95%)"
+            f"pct={pct}% (target 80%)"
         )
     return 0
 

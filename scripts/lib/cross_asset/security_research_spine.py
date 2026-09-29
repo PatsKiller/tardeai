@@ -59,9 +59,11 @@ def empty_spine(symbol: str, *, subject_guid: str | None = None) -> dict[str, An
             "conviction": None,
             "invalidation": [],
         },
-        "contributions": [],  # {silo, artifact_id, kind, summary, ts, refs}
+        "contributions": [],  # {silo, artifact_id, kind, summary, ts, refs, tags}
+        "tags": [],  # union of contribution tags (multi-producer memory)
         "by_silo": {s: {"last_read_at": None, "last_write_at": None} for s in sorted(CONSUMER_SILOS)},
         "latest_hermes": {"research_id": None, "result_id": None, "status": None, "as_of": None},
+        "latest_operator": {"pending_id": None, "kind": None, "as_of": None},
         "transparency": {
             "shared_across_silos": True,
             "note": "All consumer silos MUST read this spine; do not fork private thesis copies",
@@ -94,6 +96,37 @@ def validate_spine(obj: dict[str, Any]) -> dict[str, Any]:
     return {"ok": not errors, "errors": errors}
 
 
+# Multi-tag vocabulary for shared security memory (not Hermes-only).
+KNOWN_TAGS = frozenset({
+    "hermes",
+    "operator_qa",
+    "operator_ask",
+    "operator_deferred",
+    "thesis",
+    "llm_research",
+    "desk",
+    "watchlist",
+    "options",
+    "holdings",
+    "reentry",
+    "lifecycle",
+    "backfill",
+    "canary",
+})
+
+
+def _normalize_tags(tags: Iterable[str] | None) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for raw in tags or []:
+        t = str(raw or "").strip().lower().replace(" ", "_")
+        if not t or t in seen:
+            continue
+        seen.add(t)
+        out.append(t[:48])
+    return out[:24]
+
+
 def contribute(
     spine: dict[str, Any],
     *,
@@ -102,13 +135,16 @@ def contribute(
     summary: str | None = None,
     artifact_id: str | None = None,
     refs: list[str] | None = None,
+    tags: Iterable[str] | None = None,
     thesis_patch: dict[str, Any] | None = None,
     hermes: dict[str, Any] | None = None,
+    operator: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Append a contribution from a silo; optional thesis/hermes upgrade."""
+    """Append a contribution from any producer silo; optional thesis/hermes/operator upgrade."""
     out = deepcopy(spine)
     silo_n = str(silo or "unknown").strip().lower()
     ts = _now()
+    tag_list = _normalize_tags(tags)
     out["contributions"] = list(out.get("contributions") or [])
     out["contributions"].append({
         "silo": silo_n,
@@ -116,10 +152,17 @@ def contribute(
         "summary": (summary or "")[:800] or None,
         "artifact_id": artifact_id,
         "refs": list(refs or [])[:20],
+        "tags": tag_list,
         "ts": ts,
     })
     out["contributions"] = out["contributions"][-100:]
+    # Union tags onto the spine tip so readers can filter without scanning history.
+    prior_tags = _normalize_tags(out.get("tags") or [])
+    merged_tags = _normalize_tags([*prior_tags, *tag_list])
+    out["tags"] = merged_tags
     by = dict(out.get("by_silo") or {})
+    if silo_n not in by and silo_n:
+        by[silo_n] = {"last_read_at": None, "last_write_at": None}
     slot = dict(by.get(silo_n) or {"last_read_at": None, "last_write_at": None})
     slot["last_write_at"] = ts
     by[silo_n] = slot
@@ -136,6 +179,13 @@ def contribute(
             "result_id": hermes.get("result_id"),
             "status": hermes.get("status"),
             "as_of": hermes.get("as_of") or hermes.get("completed_ts") or ts,
+        }
+    if operator:
+        out["latest_operator"] = {
+            "pending_id": operator.get("pending_id"),
+            "kind": operator.get("kind"),
+            "as_of": operator.get("as_of") or ts,
+            "reply_source": operator.get("reply_source"),
         }
     out["as_of"] = ts
     return out
@@ -191,26 +241,39 @@ def load_latest(
     return latest
 
 
-def upsert_from_hermes(
+def upsert_research_memory(
     symbol: str,
-    hermes_result: dict[str, Any],
     *,
+    silo: str,
+    kind: str,
+    summary: str | None = None,
+    artifact_id: str | None = None,
+    refs: list[str] | None = None,
+    tags: Iterable[str] | None = None,
+    thesis_patch: dict[str, Any] | None = None,
+    hermes: dict[str, Any] | None = None,
+    operator: dict[str, Any] | None = None,
+    subject_guid: str | None = None,
+    issuer_guid: str | None = None,
     path: Path | None = None,
     root: Path | None = None,
-    subject_guid: str | None = None,
 ) -> dict[str, Any]:
-    """CIO/Hermes write path: merge Hermes result into spine and persist."""
+    """Generic multi-producer write: Hermes, operator Q, thesis, LLM research, desk.
+
+    Requires a registry UUID subject_guid (resolved from symbol when omitted).
+    Tags accumulate on the spine tip for full-lifecycle memory across producers.
+    """
     from scripts.lib.identity_carriage import is_registry_guid, resolve_security_identity, stamp_security_fields
 
     sym = str(symbol or "").upper().strip()
-    hermes = dict(hermes_result or {})
-    # Resolve registry GUID — refuse smoke/non-UUID for SECURITY spines.
-    cand = subject_guid or hermes.get("subject_guid")
+    if not sym:
+        return {"ok": False, "error": "symbol_required"}
+    cand = subject_guid
+    iss = issuer_guid
     if not is_registry_guid(cand):
         env = resolve_security_identity(sym, root=root)
         cand = env.get("subject_guid")
-        if env.get("issuer_guid"):
-            hermes.setdefault("issuer_guid", env["issuer_guid"])
+        iss = iss or env.get("issuer_guid")
     if not is_registry_guid(cand):
         return {
             "ok": False,
@@ -218,19 +281,62 @@ def upsert_from_hermes(
             "symbol": sym,
             "identity_stamp_miss": True,
         }
-    hermes["subject_guid"] = cand
     prior = load_latest(sym, path=path, root=root) or empty_spine(sym, subject_guid=cand)
     if not is_registry_guid(prior.get("subject_guid")):
         prior = dict(prior)
         prior["subject_guid"] = cand
-    summary = hermes.get("summary") or hermes.get("recommendation")
+    tag_list = _normalize_tags(tags)
     spine = contribute(
         prior,
+        silo=silo,
+        kind=kind,
+        summary=str(summary)[:800] if summary else None,
+        artifact_id=artifact_id,
+        refs=list(refs or [])[:20],
+        tags=tag_list,
+        thesis_patch=thesis_patch,
+        hermes=hermes,
+        operator=operator,
+    )
+    spine["subject_guid"] = cand
+    if iss:
+        spine["issuer_guid"] = iss
+    spine = stamp_security_fields(spine, symbol=sym, root=root)
+    spine = contribute(
+        spine,
+        silo="cio",
+        kind="accepted_into_spine",
+        summary=f"CIO-owned spine updated from {silo}:{kind}",
+        tags=["lifecycle"],
+    )
+    v = validate_spine(spine)
+    if not v.get("ok"):
+        return {"ok": False, "error": "validate_spine_failed", "errors": v.get("errors"), "spine": spine}
+    wr = append_spine(spine, path=path, root=root)
+    return {"ok": bool(wr.get("ok")), "spine": spine, "write": wr, "symbol": sym, "tags": spine.get("tags")}
+
+
+def upsert_from_hermes(
+    symbol: str,
+    hermes_result: dict[str, Any],
+    *,
+    path: Path | None = None,
+    root: Path | None = None,
+    subject_guid: str | None = None,
+    tags: Iterable[str] | None = None,
+) -> dict[str, Any]:
+    """CIO/Hermes write path: merge Hermes result into spine and persist."""
+    hermes = dict(hermes_result or {})
+    summary = hermes.get("summary") or hermes.get("recommendation")
+    tag_list = _normalize_tags(list(tags or []) + ["hermes"])
+    return upsert_research_memory(
+        symbol,
         silo="hermes",
         kind="research_result",
         summary=str(summary)[:800] if summary else None,
         artifact_id=hermes.get("result_id"),
         refs=[x for x in [hermes.get("research_id"), hermes.get("result_id")] if x],
+        tags=tag_list,
         thesis_patch={
             "stance": hermes.get("thesis_stance"),
             "summary": str(summary)[:1200] if summary else None,
@@ -239,17 +345,11 @@ def upsert_from_hermes(
             "invalidation": list(hermes.get("research_gaps_remaining") or [])[:12],
         },
         hermes=hermes,
+        subject_guid=subject_guid or hermes.get("subject_guid"),
+        issuer_guid=hermes.get("issuer_guid"),
+        path=path,
+        root=root,
     )
-    spine["subject_guid"] = cand
-    if hermes.get("issuer_guid"):
-        spine["issuer_guid"] = hermes.get("issuer_guid")
-    spine = stamp_security_fields(spine, symbol=sym, root=root)
-    spine = contribute(spine, silo="cio", kind="accepted_into_spine", summary="CIO-owned spine updated from Hermes")
-    v = validate_spine(spine)
-    if not v.get("ok"):
-        return {"ok": False, "error": "validate_spine_failed", "errors": v.get("errors"), "spine": spine}
-    wr = append_spine(spine, path=path, root=root)
-    return {"ok": bool(wr.get("ok")), "spine": spine, "write": wr}
 
 
 def view_for_silo(
@@ -282,7 +382,9 @@ def view_for_silo(
         "symbol": viewed.get("symbol"),
         "subject_guid": viewed.get("subject_guid"),
         "thesis": viewed.get("thesis"),
+        "tags": list(viewed.get("tags") or []),
         "latest_hermes": viewed.get("latest_hermes"),
+        "latest_operator": viewed.get("latest_operator"),
         "contribution_count": len(viewed.get("contributions") or []),
         "transparency": viewed.get("transparency"),
         "authority": AUTHORITY,

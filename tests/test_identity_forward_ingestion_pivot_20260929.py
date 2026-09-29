@@ -219,15 +219,22 @@ def test_pivot_publish_communication_stamps_from_body(registry, monkeypatch: pyt
 def test_forward_pivot_source_gates_remain_wired():
     """Grep gate: producers must keep calling stamp helpers (not backfill-only)."""
     root = Path(__file__).resolve().parents[1]
-    checks = {
+    text_hooks = (root / "scripts/lib/cross_asset/hooks.py").read_text(encoding="utf-8")
+    assert "notify_hermes_result_completed" in text_hooks
+    assert "notify_operator_desk_result" in text_hooks
+    assert "notify_thesis_published" in text_hooks
+    assert "upsert_research_memory" in (
+        root / "scripts/lib/cross_asset/security_research_spine.py"
+    ).read_text(encoding="utf-8")
+    for rel, needle in {
         "scripts/lib/cio_instrument_record.py": "stamp_security_fields",
         "scripts/lib/cio_theses.py": "stamp_security_fields",
         "scripts/lib/cio_hermes_research.py": "resolve_security_identity",
         "scripts/lib/cross_asset/security_research_spine.py": "is_registry_guid",
         "scripts/proactive_discovery.py": "stamp_security_fields",
         "scripts/lib/comms/client.py": "_stamp_subject_identity",
-        "scripts/lib/cross_asset/hooks.py": "notify_hermes_result_completed",
-    }
-    for rel, needle in checks.items():
+        "scripts/lib/cio_operator_desk_loop.py": "notify_operator_desk_result",
+        "scripts/lib/cio_theses.py": "notify_thesis_published",
+    }.items():
         text = (root / rel).read_text(encoding="utf-8")
         assert needle in text, f"{rel} missing forward stamp pivot {needle}"

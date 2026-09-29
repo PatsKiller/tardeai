@@ -15,10 +15,20 @@ def shadow_enabled() -> bool:
 
 
 def spine_write_enabled() -> bool:
-    """Shared spine writes: on when shadow is on OR CROSS_ASSET_SPINE=1 (production path)."""
+    """Shared spine writes default ON — multi-producer security memory.
+
+    Set CROSS_ASSET_SPINE=0 to disable. CROSS_ASSET_SHADOW=1 also enables
+    (and additionally assembles SymbolDecisionObject).
+    """
     if shadow_enabled():
         return True
-    return str(os.environ.get("CROSS_ASSET_SPINE", "0")).strip() in {"1", "true", "TRUE", "yes"}
+    # Default ON: operator Q / Hermes / thesis / LLM research must persist.
+    return str(os.environ.get("CROSS_ASSET_SPINE", "1")).strip().lower() not in {
+        "0",
+        "false",
+        "off",
+        "no",
+    }
 
 
 def maybe_reevaluate_on_research_complete(
