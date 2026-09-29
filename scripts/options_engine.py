@@ -2931,6 +2931,40 @@ def _market_session_now() -> Optional[str]:
         return None
 
 
+# A page read inside the regular session may rebuild a snapshot older than this.
+# Outside REGULAR the chain is the close: serve it. The daytime cron is the pull.
+# force=1 (Force scan, and run_options_monitor) still rebuilds.
+_PROPOSAL_CACHE_TTL_S = 600
+
+
+def proposal_cache_serves(
+    cached: dict,
+    *,
+    now: datetime,
+    session: Optional[str],
+    force: bool = False,
+) -> bool:
+    """True when a stored snapshot should be returned instead of reading chains.
+
+    Regular session: serve a snapshot younger than 10 minutes.
+    Any other known session (pre-market, after-hours, closed, weekend): serve
+    the last snapshot at any age. An unknown session keeps the 10-minute rule.
+    """
+    if force or not isinstance(cached, dict) or not cached.get("generated_at"):
+        return False
+    if session and session != "REGULAR":
+        return True
+    try:
+        gen = datetime.fromisoformat(str(cached["generated_at"]).replace("Z", "+00:00"))
+        if gen.tzinfo is None:
+            gen = gen.replace(tzinfo=timezone.utc)
+        now_aw = now if now.tzinfo else now.replace(tzinfo=timezone.utc)
+        age = (now_aw - gen).total_seconds()
+    except (TypeError, ValueError):
+        return False
+    return age < _PROPOSAL_CACHE_TTL_S
+
+
 def _universe_census(holdings, convictions, scored_rows, listed) -> dict:
     from lib.options_universe_census import build_universe_census
     return build_universe_census(
@@ -2945,21 +2979,16 @@ def _universe_census(holdings, convictions, scored_rows, listed) -> dict:
 def generate_proposals(force: bool = False) -> dict:
     """Full proposal pass with quality filter."""
     cached = _load_json(PROPOSALS_CACHE)
-    if not force and cached.get("generated_at"):
-        try:
-            age = (_now() - datetime.fromisoformat(cached["generated_at"].replace("Z", "+00:00"))).total_seconds()
-            if age < 600:
-                if not cached.get("universe_census"):
-                    from lib.options_universe_census import build_universe_census
-                    cached = dict(cached)
-                    cached["universe_census"] = build_universe_census(
-                        listed=cached.get("proposals") or [],
-                        scored=len(cached.get("proposals") or []),
-                        inputs_recorded=False,
-                    )
-                return cached
-        except Exception:
-            pass
+    if proposal_cache_serves(cached, now=_now(), session=_market_session_now(), force=force):
+        if not cached.get("universe_census"):
+            from lib.options_universe_census import build_universe_census
+            cached = dict(cached)
+            cached["universe_census"] = build_universe_census(
+                listed=cached.get("proposals") or [],
+                scored=len(cached.get("proposals") or []),
+                inputs_recorded=False,
+            )
+        return cached
 
     INCOME_SCREEN_DROPS.clear()
     _CHAIN_CACHE.clear()

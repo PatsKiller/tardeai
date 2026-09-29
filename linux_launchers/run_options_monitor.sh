@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Options monitor — proposals + open-position refresh (market hours).
-# Cron: every 10 min 9:35–16:05 ET weekdays (see crontab_backup.txt).
+# Day pull: every 5 min 11:00–15:55 ET weekdays, plus the 16:05 close.
+# 9:30–11:00 stays empty so this does not share the scalp GPU window.
+# Overnight there is no chain cron. A non-force read outside the regular
+# session serves the last snapshot (proposal_cache_serves).
 set -euo pipefail
 PROJECT_ROOT="${HOME}/trade-ai-v12-rebuild/trade-ai-v12-rebuild"
 cd "$PROJECT_ROOT"
