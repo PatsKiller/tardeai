@@ -42,7 +42,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/COST_MODEL.md` | Trade AI v12 -- Cloud Operating Cost Model | review_required | OK | `4de73e25bfea` |
 | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_BACKLOG.md` | Cross-Asset Decision Intelligence — Executable Backlog | review_required | OK | `0a3f29de65ed` |
 | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md` | Cross-Asset Decision Intelligence — Master Implementation Plan | review_required | OK | `f8561824a8a9` |
-| `docs/CROSS_ASSET_DECISION_INTELLIGENCE_PRODUCTION_BILL.md` | Production bill — what “READY” means for Cross-Asset Decision Intelligence | review_required | OK | `3d71eb7522fb` |
+| `docs/CROSS_ASSET_DECISION_INTELLIGENCE_PRODUCTION_BILL.md` | Production bill — what “READY” means for Cross-Asset Decision Intelligence | review_required | OK | `1e05d112de54` |
 | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md` | Cross-Asset Decision Intelligence — Readiness Report | review_required | OK | `a57bf20350e4` |
 | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md` | Cross-Asset Decision Intelligence — Test Plan | review_required | OK | `e4481cfa8888` |
 | `docs/CURRENT_EXECUTION_STATE.md` | Current Execution State | review_required | OK | `5233c7dcd2e0` |
