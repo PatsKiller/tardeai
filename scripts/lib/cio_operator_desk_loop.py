@@ -5057,6 +5057,21 @@ def try_fulfill_pending_replies(
                 "fulfilled_ts": _now(),
                 "authority": AUTHORITY,
             })
+            # Full lifecycle: operator follow-up (Hermes joined) lands on shared spine.
+            try:
+                from scripts.lib.cross_asset.hooks import notify_operator_desk_result
+                notify_operator_desk_result(
+                    intent if isinstance(intent, dict) else {},
+                    {
+                        "kind": "answered",
+                        "text": answer_text[:800],
+                        "pending_id": row.get("pending_id"),
+                        "reply_source": "pending_fulfilled",
+                    },
+                    operator_text=str(row.get("operator_text") or ""),
+                )
+            except Exception:
+                pass
             fulfilled += 1
         except Exception:
             failed += 1

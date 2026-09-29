@@ -148,5 +148,9 @@ def test_source_gates_multi_producer_wired():
     assert "notify_thesis_published" in (root / "scripts/lib/cross_asset/hooks.py").read_text()
     assert "upsert_research_memory" in (root / "scripts/lib/cross_asset/security_research_spine.py").read_text()
     assert "notify_operator_desk_result" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
+    assert "pending_fulfilled" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
     assert "notify_thesis_published" in (root / "scripts/lib/cio_theses.py").read_text()
     assert "upsert_from_hermes" in (root / "scripts/ops/backfill_security_research_spine.py").read_text()
+    assert "CROSS_ASSET_SPINE=1" in (
+        root / "config/systemd/user/tradeai-hermes-cio-worker.service"
+    ).read_text()
