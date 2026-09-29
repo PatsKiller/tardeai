@@ -294,13 +294,61 @@ Owner: operator/CIO governance. Dependencies: all prior phases and independent r
 | CA-009 | Command Center surface | Show cross-asset comparison and blockers | `apps/command-center-v3/src/...` | TypeScript/UI tests | Medium | frontend |
 | CA-010 | Readiness evidence | Generate metrics and recommendation | `scripts/cross_asset_readiness.py`, docs | evidence reconciliation | Medium | QA/CIO |
 
-## Phase 1 initial implementation record
+## Phase 1 implementation record
 
-Status: IN PROGRESS — baseline documents created; code not yet changed.
+Status: COMPLETE
+Date: 2026-09-29
+Commit: `4e39b4103193784950377d8c00a5fc1d05c096fd`
+Files changed:
+
+- `scripts/lib/cross_asset_decision.py`
+- `tests/test_cross_asset_decision_intelligence.py`
+- `scripts/run_cio_hardening_ci.py`
+- `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md`
+- `docs/CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md`
+
+Tests passed:
+
+- `python3 -m pytest -q tests/test_cross_asset_decision_intelligence.py` — 6 passed
+- `python3 -m py_compile scripts/lib/cross_asset_decision.py tests/test_cross_asset_decision_intelligence.py`
+- Ruff via `/home/johnclaw/tradeai-wt-comms-gateway-phase0/.venv/bin/ruff` — passed
+- `python3 scripts/check_test_coverage.py --fail-on-new` — new tests 0, registered by CI
+- `git diff --check` — passed
+
+Evidence: the Phase 1 module is broker-free, sets `financial_action=false`,
+fails closed on unknown signals and identity mismatch, generates the required
+comparison candidates, and writes idempotently to an explicit append-only shadow
+path. No production store, broker, scheduler, or live endpoint was touched.
 
 ## Change log
 
 | Date | Status | Evidence |
 |---|---|---|
 | 2026-09-29 | BASELINE | This document created before implementation at local HEAD `5ba5d99e`. |
+| 2026-09-29 | COMPLETE | Phase 1 committed at `4e39b4103`; targeted tests and static checks passed. |
+| 2026-09-29 | COMPLETE | Phase 2 identity linking, Phase 3 routing, Phase 5 coverage accounting, and Phase 6 deterministic ranking primitives committed at `511d8dda2`; 9 tests passed. |
+| 2026-09-29 | COMPLETE | Offline replay command committed at `1d440dd23`; 10 tests passed. This is a replay primitive, not historical production validation. |
 
+## Post-baseline implementation status
+
+| Phase | Status | Commit / evidence | Remaining work |
+|---|---|---|---|
+| 1 Canonical object | COMPLETE | `4e39b4103`; contract/store tests | Production projection integration |
+| 2 Identity linking | COMPLETE — library slice | `511d8dda2`; conflict-preserving join tests | Connect every live source and identity registry |
+| 3 Options routing | COMPLETE — library slice | `511d8dda2`; 15-signal matrix and hard-block tests | Integrate with live signal producers and options facts |
+| 4 Event reevaluation | NOT COMPLETE | Event envelope/replay primitives only | Register event producers and a governed consumer lane |
+| 5 Missed-opportunity ledger | COMPLETE — initial coverage row | `511d8dda2`; denominator test | Durable ledger producer and source reconciliation |
+| 6 Cross-asset ranking | COMPLETE — deterministic fact-gated ranking | `511d8dda2`; blocked candidates excluded | Quantitative model calibration and outcome joins |
+| 7 UI integration | NOT STARTED | No runtime/API/UI change | API projection, UI, route tests |
+| 8 Shadow mode | NOT STARTED | Offline replay only | Continuous scheduler-backed shadow run |
+| 9 Production validation | NOT STARTED | No historical production source replayed | 30/60/90-day replay metrics |
+| 10 Go-live | NOT READY | Cannot recommend before phases 4, 7, 8, 9 | Independent readiness review |
+
+## Scope boundary and blocker
+
+The local API socket was unavailable from this execution environment (`curl` to
+localhost:7777 failed with `Operation not permitted`) and the current crontab
+was unreadable (`Permission denied`). Therefore the new replay command has been
+validated only on caller-supplied fixtures. I will not claim live signal
+coverage, continuous shadow mode, historical metrics, or production readiness
+without those observable inputs.

@@ -98,3 +98,34 @@ prove no future observation is read.
 - `reports/cross_asset_decision_intelligence/` replay and shadow receipts
 - append-only shadow evaluation receipt with input/output hashes
 
+## Phase 1 execution record
+
+Status: COMPLETE
+Date: 2026-09-29
+Commit: `4e39b4103193784950377d8c00a5fc1d05c096fd`
+
+Evidence:
+
+- 6/6 Phase 1 tests passed.
+- Python compilation passed.
+- Ruff passed on changed Python files.
+- New test was registered in the CIO hardening gate; coverage reported 0 new unlisted tests.
+- Diff hygiene passed.
+
+## Extended implementation record
+
+Status: COMPLETE for offline contract/routing/replay slice
+Date: 2026-09-29
+Commits: `511d8dda2da78925fa987b9b40fd4ca957bf07ac`, `1d440dd2382555541aad60cae21e740f41c47b9b`
+
+Evidence:
+
+- 10/10 cross-asset tests passed.
+- Source conflicts fail visibly instead of selecting a winner silently.
+- Hard liquidity, OI, spread, earnings, quote-age, and position-size facts block candidates.
+- Unblocked scored candidates are ranked deterministically.
+- Offline replay sorts events by observation time and requires identity coverage.
+- Replay writes only the explicitly requested output path.
+
+Not yet evidenced: live scheduler consumption, API/UI integration, and 30/60/90-day
+production-history replay.
