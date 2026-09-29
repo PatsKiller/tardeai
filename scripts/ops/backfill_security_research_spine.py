@@ -11,6 +11,11 @@ Usage:
 """
 from __future__ import annotations
 
+NO_CONSUMER_REASON = (
+    "ops CLI; operator/agent invokes for researched→spine coverage catch-up; "
+    "not imported by runtime producers"
+)
+
 import argparse
 import json
 import os

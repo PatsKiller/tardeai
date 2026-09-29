@@ -5,6 +5,11 @@ READ_ONLY_ADVISORY. Writes runtime JSON for dashboards; never trades.
 """
 from __future__ import annotations
 
+NO_CONSUMER_REASON = (
+    "ops CLI / dashboard metric writer; operator or agent invokes; "
+    "runtime JSON under data/runtime/ is the consumer artifact"
+)
+
 import argparse
 import json
 import sys
