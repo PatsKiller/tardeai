@@ -183,7 +183,8 @@ export function visibleProposalActions(p: AnyRow, armed: boolean, buttons?: Arra
         : locked ? 'options.ui.actions.preflight_locked'
           : manualOnly && exec ? 'options.ui.actions.preflight_manual'
             : exec ? 'options.ui.proposal.recommended' : undefined
-    return { action: b.action, label: b.label, locked, primary: exec, guideKey }
+    const label = b.action === 'hold' && /^pass$/i.test(String(b.label || '')) ? 'Skip' : b.label
+    return { action: b.action, label, locked, primary: exec, guideKey }
   })
 }
 

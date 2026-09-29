@@ -125,7 +125,7 @@ export const NOVICE = {
 } as const
 
 export const ACTIONS = {
-  hold: 'Dismiss — keep watching this proposal on desk.',
+  hold: 'Skip this idea. It stays on the desk. This button is not a quality-gate pass.',
   reviewChain: 'Open Schwab option chain for live quotes before sizing.',
   preflightLocked: 'Execution locked — run options_pilot_arm.py --approve on server.',
   preflightManual: 'Manual execution at broker — use Executed manually to log.',

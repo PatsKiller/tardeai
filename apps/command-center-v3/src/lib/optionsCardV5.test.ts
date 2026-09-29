@@ -66,6 +66,7 @@ eq('fallback without flags = objective', proposalInsight({ ...DELL, insight: und
 
 const acts = visibleProposalActions(DELL, false)
 eq('BLOCKED packet hides the execution button', acts.map(a => a.action), ['review_chain', 'hold'])
+eq('hold Pass reads Skip', acts.map(a => a.label), ['View Chain', 'Skip'])
 eq('review/hold guide keys', acts.map(a => a.guideKey), ['options.ui.actions.review_chain', 'options.ui.actions.hold'])
 const open = visibleProposalActions({ ...DELL, options_decision_packet: { state: 'READY' } }, false)
 eq('unarmed auto route locks execution', open.map(a => [a.action, a.locked, a.guideKey]), [['sell_credit_spread', true, 'options.ui.actions.preflight_locked'], ['review_chain', false, 'options.ui.actions.review_chain'], ['hold', false, 'options.ui.actions.hold']])

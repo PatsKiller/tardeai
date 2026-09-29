@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { isCardBlocked } from '../lib/optionsCardSemantics'
+import { armedDeskLine, armedOverviewLine, coveredCallFunnelCounts, funnelNameText, optionsDeskPersonLine, packageLeadIds } from '../lib/optionsDeskTruth'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { type OptionProposal } from '../components/OptionProposalCard'
@@ -127,8 +128,8 @@ export default function OptionsHub({ onDrill }: Props) {
   const { data: execStatus } = useApi<any>('/api/v2/options/execution/status', 120_000)
   // Stage B: advisory paper-validation gate progress (deep_itm_call) — header strip
   const { data: validation } = useApi<any>('/api/v2/options/validation', 300_000)
-  // Stage 1 holdings funnel — resolve_chain=1 so CC eligible matches Intent (INTENT_BYPASS)
-  // and Ideas; resolve_chain=0 understates (e.g. V EDGE_BELOW vs INTENT_BYPASS). No IV widen.
+  // resolve_chain=1 rewrites drop reasons after a chain read. Cleared gates is CC_ELIGIBLE
+  // only; INTENT_BYPASS stays a separate count. No IV widen.
   const { data: holdingsFunnel } = useApi<any>('/api/v2/options/holdings-funnel?resolve_chain=1', 300_000)
   const deskPathBRows: any[] = Array.isArray(validation?.desk_path_b_strategies)
     ? validation.desk_path_b_strategies.filter((s: any) => s?.ok)
@@ -141,6 +142,7 @@ export default function OptionsHub({ onDrill }: Props) {
     : Array.isArray(holdingsFunnel?.data?.rows)
       ? holdingsFunnel.data.rows
       : []
+  const funnelCounts = coveredCallFunnelCounts(funnelRows, funnelSummary?.cc_by_status)
 
   const propList: Proposal[] = Array.isArray(proposals?.proposals) ? proposals.proposals : []
   const proposalSymbols = useMemo(
@@ -168,6 +170,7 @@ export default function OptionsHub({ onDrill }: Props) {
     if (flagFilter) base = base.filter(p => ((p as any).flags || []).some((f: any) => f.key === flagFilter))
     return base
   }, [propList, showBlocked, flagFilter])
+  const packageLeads = useMemo(() => packageLeadIds(shownProps), [shownProps])
   // Counts for the status pills, from every card the desk returned.
   const flagCounts = useMemo(() => {
     const c: Record<string, number> = {}
@@ -397,22 +400,18 @@ export default function OptionsHub({ onDrill }: Props) {
             )}
             {execStatus && (
               <Tip
-                tip={execStatus.armed_for_execution ? HEADER.executionArmed : HEADER.executionAdvisory}
-                style={{ color: execStatus.armed_for_execution ? '#22c55e' : '#f59e0b' }}
+                tip={execStatus.armed_for_execution
+                  ? (liveEligibleCount > 0 ? HEADER.executionArmed : 'The broker route is open. No card on this page is eligible, so nothing here is a submit.')
+                  : HEADER.executionAdvisory}
+                style={{ color: execStatus.armed_for_execution && liveEligibleCount > 0 ? '#22c55e' : '#f59e0b' }}
               >
-                {' '}· {execStatus.armed_for_execution ? 'broker route open: you place each order (2FA)' : 'advisory only'} ⓘ
+                {' '}· {armedDeskLine(!!execStatus?.armed_for_execution, liveEligibleCount)} ⓘ
               </Tip>
             )}
           </div>
         </div>
         <div style={{ fontSize: 12, lineHeight: 1.45, color: BB.text2, marginTop: 8, maxWidth: 720 }}>
-          {(() => {
-            const rows = propList as any[]
-            const blocked = rows.filter(r => r.options_decision_packet?.state === 'BLOCKED' || isCardBlocked(r)).length
-            const review = rows.filter(r => r.options_decision_packet?.state === 'REVIEW_REQUIRED' || r.recommendation_comparison?.comparison?.preferred_structure === 'neither').length
-            const ready = rows.filter(r => r.options_decision_packet?.state === 'ELIGIBLE_FOR_OPERATOR_REVIEW').length
-            return `Needs a person: ${ready} for operator review, ${review} refused or incomplete, ${blocked} blocked. ${posList.length} open strategies. A model score is not a CIO decision. Outcomes are not validated from this screen.`
-          })()}
+          {optionsDeskPersonLine(propList as any[], posList.length)}
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <div className="hub-tabs">
@@ -446,7 +445,7 @@ export default function OptionsHub({ onDrill }: Props) {
             </span>
           ))}
           {execStatus?.armed_for_execution && (
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e' }}>broker route open · operator places orders (2FA)</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: liveEligibleCount === 0 ? BB.amber : BB.green }}>{armedDeskLine(true, liveEligibleCount)}</span>
           )}
         </div>
       )}
@@ -593,17 +592,23 @@ export default function OptionsHub({ onDrill }: Props) {
               <div style={{ fontSize: TYPE.sm, fontWeight: 700, color: T.link, marginBottom: 6 }}>Holdings options funnel ⓘ</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
                 <span>Scanned <b style={{ color: 'var(--text0)' }}>{funnelSummary.holdings_scanned ?? '—'}</b></span>
-                <span>CC eligible <b style={{ color: BB.green }}>{funnelSummary.cc_eligible ?? 0}</b></span>
+                <span>Cleared gates <b style={{ color: BB.green }}>{funnelCounts.cleared.count}</b></span>
+                <span>Intent, IV floor only <b style={{ color: BB.amber }}>{funnelCounts.intentIvOnly.count}</b></span>
                 <span>Need ≥100 sh <b style={{ color: BB.amber }}>{funnelSummary.cc_need_100_shares ?? 0}</b></span>
                 <span>IV below floor <b style={{ color: BB.red }}>{funnelSummary.cc_iv_below ?? 0}</b></span>
                 <span>Edge below <b style={{ color: BB.red }}>{funnelSummary.cc_edge_below ?? 0}</b></span>
                 <span>No chain <b style={{ color: 'var(--text3)' }}>{funnelSummary.cc_no_chain ?? 0}</b></span>
               </div>
               <div style={{ fontSize: TYPE.xs, color: 'var(--text3)', lineHeight: 1.45 }}>
-                Portfolio sleeve counts only covered_call + protective_put ideas that cleared gates.
-                Intent CC: {(funnelSummary.intent_cc || []).join(', ') || '—'}.
+                Cleared gates counts covered-call rows with status CC_ELIGIBLE.
+                Intent, IV floor only counts INTENT_BYPASS and is not a cleared trade.
+                Intent names: {(funnelSummary.intent_cc || []).join(', ') || '—'}.
                 Unprotected chips on Trading are stop gaps — not “no covered call.”
                 {posList.length > 0 ? ` · ${posList.length} open leg(s) — use Open Options / Lifecycle for sell vs hold + P&L.` : ''}
+              </div>
+              <div style={{ marginTop: 6, fontSize: TYPE.xs, color: 'var(--text2)' }}>
+                <div>Cleared gates: {funnelNameText(funnelCounts.cleared)}</div>
+                <div>Intent, IV floor only: {funnelNameText(funnelCounts.intentIvOnly)}</div>
               </div>
               {funnelRows.filter((r: any) => ['IV_BELOW_FLOOR', 'EDGE_BELOW', 'NO_CHAIN', 'NEED_100_SHARES'].includes(r?.cc?.status)).slice(0, 8).length > 0 && (
                 <div style={{ marginTop: 8, fontSize: TYPE.xs, color: 'var(--text2)' }}>
@@ -635,7 +640,7 @@ export default function OptionsHub({ onDrill }: Props) {
               <div style={{ fontSize: 12, color: 'var(--text3)' }}>
                 No proposals passed quality gates (edge ≥62, POP ≥52%, IV rank).
                 {funnelSummary
-                  ? ` Holdings funnel: ${funnelSummary.cc_need_100_shares ?? 0} need ≥100 shares, ${funnelSummary.cc_iv_below ?? 0} IV below floor, ${funnelSummary.cc_eligible ?? 0} CC-eligible — not a dead desk.`
+                  ? ` Holdings funnel: ${funnelSummary.cc_need_100_shares ?? 0} need ≥100 shares, ${funnelSummary.cc_iv_below ?? 0} IV below floor, ${funnelCounts.cleared.count} cleared the covered-call gates, ${funnelCounts.intentIvOnly.count} cleared only the intent IV floor.`
                   : ' Use Force scan — fallback tier surfaces income-sleeve CCs when chain is thin.'}
                 {' '}View Chain on any card still hits live Schwab; Sell actions require ARMED + per-order 2FA.
               </div>
@@ -648,6 +653,7 @@ export default function OptionsHub({ onDrill }: Props) {
               <ProposalCard
                 key={p.id}
                 proposal={p}
+                packageLead={packageLeads.has(String(p.id))}
                 novice={novice}
                 armed={!!execStatus?.armed_for_execution}
 
@@ -782,9 +788,7 @@ export default function OptionsHub({ onDrill }: Props) {
               Proposals below edge {proposals?.quality_gate?.min_edge_score ?? 62}, POP {proposals?.quality_gate?.min_pop_pct ?? 52}%,
               or IV rank {proposals?.quality_gate?.min_iv_rank ?? 20}% are excluded (fallback floor {proposals?.quality_gate?.relaxed_edge_floor ?? 52}).
               Monitoring refreshes every 5–15 minutes during market hours.
-              {execStatus?.armed_for_execution
-                ? ' Execution ARMED — preflight + per-order 2FA required.'
-                : ' Execution advisory until options_pilot_arm --approve.'}
+              {armedOverviewLine(!!execStatus?.armed_for_execution, liveEligibleCount)}
             </div>
 
           </div>

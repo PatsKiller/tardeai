@@ -150,6 +150,12 @@ export function primeDisplayLabel(score?: number | null, verdict?: string | null
   }
 }
 
+/** "Pass" on a hold button reads as a quality-gate result. The action is skip. */
+function displayHoldLabel(action: string, label: string | undefined): string {
+  if (action === 'hold' && /^pass$/i.test(String(label || ''))) return 'Skip'
+  return String(label || '')
+}
+
 export function sanitizeActionButtons(p: OptionProposal): { action: string; label: string }[] {
   if (isCardBlocked(p as any)) {
     const reviewLabel = isPaperModelRow(p as any) ? 'Review Paper Guards' : 'Review Block Reason'
@@ -157,14 +163,14 @@ export function sanitizeActionButtons(p: OptionProposal): { action: string; labe
       { action: 'review_chain', label: 'View Chain' },
       { action: 'review_block_reason', label: reviewLabel },
       { action: 'rerun_review', label: 'Rerun Review' },
-      { action: 'hold', label: 'Pass' },
+      { action: 'hold', label: 'Skip' },
     ]
   }
-  const raw = p.action_buttons || []
+  const raw = (p.action_buttons || []).map(b => ({ ...b, label: displayHoldLabel(b.action, b.label) }))
   const filtered = raw.filter(b => !EXEC_TRADE_ACTIONS.has(b.action) || !isCardBlocked(p as any))
   return filtered.length ? filtered : [
     { action: 'review_chain', label: 'View Chain' },
-    { action: 'hold', label: 'Pass' },
+    { action: 'hold', label: 'Skip' },
   ]
 }
 
