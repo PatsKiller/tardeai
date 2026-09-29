@@ -14,6 +14,7 @@ from scripts.lib.cross_asset_decision import (
     coverage_row,
     link_symbol_sources,
     replay_events,
+    run_shadow,
     validate_decision_object,
 )
 
@@ -125,3 +126,15 @@ def test_replay_cli_writes_only_the_requested_shadow_output(tmp_path, monkeypatc
                                       "--identities", str(identities_path), "--output", str(output_path)])
     assert cross_asset_replay.main() == 0
     assert len(output_path.read_text(encoding="utf-8").splitlines()) == 1
+
+
+def test_shadow_run_is_idempotent_and_never_authorizes_financial_action(tmp_path):
+    event = build_event(symbol="ABC", signal="BUY", source="fixture", observed_at="2026-09-01T00:00:00+00:00")
+    store = AppendOnlyDecisionStore(tmp_path / "shadow.jsonl")
+    kwargs = {"identity_by_symbol": {"ABC": {"symbol": "ABC"}}, "store": store}
+    first = run_shadow([event], **kwargs)
+    second = run_shadow([event], **kwargs)
+    assert first["appended"] == 1
+    assert second["duplicates"] == 1
+    assert first["financial_action"] is False
+    assert first["state"] == "SHADOW_ONLY"

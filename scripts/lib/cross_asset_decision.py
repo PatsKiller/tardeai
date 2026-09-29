@@ -357,10 +357,36 @@ def replay_events(
     return output
 
 
+def run_shadow(
+    events: Iterable[Mapping[str, Any]], *, identity_by_symbol: Mapping[str, Mapping[str, Any]],
+    store: AppendOnlyDecisionStore,
+) -> dict[str, Any]:
+    """Run a frozen event batch in shadow mode and persist only advisory rows."""
+    decisions = replay_events(events, identity_by_symbol=identity_by_symbol)
+    appended = 0
+    duplicates = 0
+    coverage: list[dict[str, Any]] = []
+    for decision in decisions:
+        result = store.append(decision)
+        appended += result == "APPENDED"
+        duplicates += result == "DUPLICATE_IGNORED"
+        coverage.append(coverage_row(decision))
+    return {
+        "schema": "CrossAssetShadowReceipt@v1",
+        "authority": AUTHORITY,
+        "financial_action": False,
+        "events": len(decisions),
+        "appended": appended,
+        "duplicates": duplicates,
+        "coverage": coverage,
+        "state": "SHADOW_ONLY",
+    }
+
+
 __all__ = [
     "AppendOnlyDecisionStore", "AUTHORITY", "EXPRESSION_MATRIX", "SCHEMA", "SIGNALS",
     "apply_expression_evaluation", "build_decision_object", "build_event",
     "candidate_expressions", "coverage_row", "digest", "evaluate_expressions",
-    "link_symbol_sources", "normalize_identity", "normalize_signal", "replay_events",
+    "link_symbol_sources", "normalize_identity", "normalize_signal", "replay_events", "run_shadow",
     "validate_decision_object",
 ]
