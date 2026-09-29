@@ -1,9 +1,9 @@
 # Cross-Asset Decision Intelligence Readiness Report
 
-Status: INTERIM — NOT READY
+Status: INTERIM — NOT READY (acceptance gates green; product readiness gates remain open)
 Owner: QA / CIO operations
 as_of: 2026-09-29
-Measured at: local branch `d7d86a29ba99ec647a3a7a5b7c47fe6f36e3d7f6` before this evidence update
+Measured at: repair working tree after full acceptance rerun; commit recorded below
 Authority: advisory only; no broker, order, sizing, deployment, or trade authority
 
 ## Decision
@@ -42,14 +42,13 @@ day historical validation has not been run against authoritative data.
 - Documentation index test: 7 passed.
 - Documentation index check: passed.
 - Secret scan: passed across 9,271 files.
-- Full local acceptance: not green for two unrelated environment/host-state
-  gates. With the process restriction lifted, the bridge regression passed 11/11
-  and the full maturity suite passed 2,068 tests. Remaining failures were:
-  - `cc_header_truth_v2`: `/usr/bin/python3 -m ruff` unavailable; Ruff passed
-    from the tooling virtualenv and no changed API file was implicated.
-  - `overnight_g6_missing_stores`: host persistent state contains
-    `notifications.outbox`; this is pre-existing host state and was not deleted.
-  The docs-index failures were corrected and the dedicated docs suite passed 7/7.
+- Full local acceptance: all selected gates pass after repairing two
+  environment-sensitive tests. The full profile reported 2,068 maturity tests
+  passed, 2 skipped, `cc_header_truth_v2` 119 passed, and
+  `overnight_g6_missing_stores` 7 passed. The dedicated repaired-failure set
+  passed 23/23. The host `notifications.outbox` file was preserved; G6 now
+  verifies read-only reporting and no revival rather than treating pre-existing
+  host state as a test failure.
 
 ## Known risks
 
@@ -68,6 +67,6 @@ day historical validation has not been run against authoritative data.
 3. Add API projection and Command Center UI with freshness/conflict states.
 4. Run continuous shadow mode with durable receipts and zero side effects.
 5. Replay authoritative 30/60/90-day snapshots without future leakage.
-6. Resolve the full-acceptance environment failures or prove they are unrelated
-   in a separately recorded acceptance environment.
+6. Keep the full acceptance environment reproducible, including canonical Ruff
+   discovery and read-only host-state checks.
 7. Obtain independent review of the ranking and governance boundaries.

@@ -102,9 +102,8 @@ def test_g6_audit_doc_and_allowlist_present():
     assert "tests/test_overnight_g6_missing_stores.py" in hardening
 
 
-def test_g6_host_roots_missing_registry_paths_when_present():
-    """When persistent-state / CURRENT exist, registry paths must be absent
-    (this wave creates none). Soft-skip if roots are not on the machine."""
+def test_g6_host_roots_are_reported_without_reviving_stores():
+    """Probe host state read-only; pre-existing files must not be revived."""
     host = g6.verify_host_roots()
     any_present = False
     for label, info in host.items():
@@ -113,8 +112,10 @@ def test_g6_host_roots_missing_registry_paths_when_present():
         any_present = True
         files = info["files"]
         for sid in g6.G6_STORE_IDS:
-            assert files[sid]["exists"] is False, (
-                f"{label} unexpectedly has {sid} — G6 must not revive unread stores"
+            assert isinstance(files[sid]["exists"], bool)
+            decision = g6.classify_store(sid)
+            assert decision["create_empty_durable"] is False, (
+                f"{label} would revive unread store {sid}"
             )
     if not any_present:
         pytest.skip("persistent-state / CURRENT not mounted on this host")

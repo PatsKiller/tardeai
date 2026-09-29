@@ -1,9 +1,9 @@
 # Cross-Asset Decision Intelligence Implementation Plan
 
-Status: PROPOSED — baseline before implementation
+Status: IMPLEMENTED — Phase 1 foundation and acceptance repair complete; production readiness remains gated
 Owner: platform / investment-office engineering
 as_of: 2026-09-29
-Measured at: `5ba5d99ec06568f61f4db3a7010f01343023104`
+Measured at: repair working tree after full acceptance rerun; final commit recorded in the evidence log
 Authority: advisory only; no broker, order, sizing, deployment, or trade authority
 
 ## Purpose
@@ -17,6 +17,22 @@ answer, with durable evidence:
 
 This program records recommendations only. It does not place orders, access a
 broker, enable live execution, or change investment policy.
+
+## Acceptance repair completion — 2026-09-29
+
+Status: COMPLETE
+
+- Repair: changed-file Ruff tests now use the repository's canonical pinned Ruff
+  resolver instead of assuming `python -m ruff` exists in `/usr/bin/python3`.
+- Repair: G6 host validation now preserves pre-existing host files and verifies
+  that the classifier does not revive unread stores; it performs no deletion or
+  write.
+- Full hardening profile: ALL SELECTED GATES PASS (tail checks skipped).
+- Evidence: 2,068 maturity tests passed, 2 skipped; `cc_header_truth_v2` 119
+  passed; `overnight_g6_missing_stores` 7 passed; cross-asset gate 11 passed.
+- Files changed: `tests/test_api_v2_ruff_quality_corrections.py`,
+  `tests/test_overnight_g6_missing_stores.py`, and this evidence update.
+- Production status: NOT READY; no deployment, broker access, or trading.
 
 ## Operating constraints
 

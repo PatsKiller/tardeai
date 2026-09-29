@@ -1,9 +1,9 @@
 # Cross-Asset Decision Intelligence Test Plan
 
-Status: PROPOSED — baseline before implementation
+Status: ACTIVE — Phase 1 and acceptance repair validated; production validation remains open
 Owner: QA / platform intelligence
 as_of: 2026-09-29
-Measured at: `5ba5d99ec06568f61f4db3a7010f01343023104`
+Measured at: repair working tree after full acceptance rerun; final commit recorded in the evidence log
 
 ## Test policy
 
@@ -97,6 +97,17 @@ prove no future observation is read.
 - `docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md`
 - `reports/cross_asset_decision_intelligence/` replay and shadow receipts
 - append-only shadow evaluation receipt with input/output hashes
+
+## Acceptance repair evidence — 2026-09-29
+
+Status: COMPLETE
+
+- Repaired-failure tests: 23 passed.
+- Cross-asset phase-1 tests: 11 passed.
+- Full hardening profile: all selected gates passed; tail checks were skipped by
+  the invocation and remain a separate docs-index check.
+- Host-state preservation: the pre-existing `notifications.outbox` artifact was
+  not removed or rewritten.
 
 ## Phase 1 execution record
 
