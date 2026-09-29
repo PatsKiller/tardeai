@@ -329,6 +329,7 @@ path. No production store, broker, scheduler, or live endpoint was touched.
 | 2026-09-29 | COMPLETE | Phase 2 identity linking, Phase 3 routing, Phase 5 coverage accounting, and Phase 6 deterministic ranking primitives committed at `511d8dda2`; 9 tests passed. |
 | 2026-09-29 | COMPLETE | Offline replay command committed at `1d440dd23`; 10 tests passed. This is a replay primitive, not historical production validation. |
 | 2026-09-29 | COMPLETE | Deterministic shadow runner committed at `f1d5b1546`; 11 tests passed. This is offline shadow mode, not continuous production shadow mode. |
+| 2026-09-29 | VALIDATED WITH OPEN ENVIRONMENT GATES | Full acceptance rerun completed; cross-asset gate passed, bridge passed under permitted test environment, 2,068 maturity tests passed. Two unrelated gates remain open: system Ruff availability and pre-existing `notifications.outbox` host state. |
 
 ## Post-baseline implementation status
 

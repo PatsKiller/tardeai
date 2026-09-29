@@ -3,7 +3,7 @@
 Status: INTERIM — NOT READY
 Owner: QA / CIO operations
 as_of: 2026-09-29
-Measured at: local branch `f1d5b1546dea3aa6c2d3c3dc4884978600891fdb`
+Measured at: local branch `d7d86a29ba99ec647a3a7a5b7c47fe6f36e3d7f6` before this evidence update
 Authority: advisory only; no broker, order, sizing, deployment, or trade authority
 
 ## Decision
@@ -42,12 +42,14 @@ day historical validation has not been run against authoritative data.
 - Documentation index test: 7 passed.
 - Documentation index check: passed.
 - Secret scan: passed across 9,271 files.
-- Full local acceptance: not green in this environment. It reported 2 bridge
-  `PermissionError` setup errors from sandbox process-boundary restrictions and
-  documentation-index failures caused by untracked docs before the index was
-  regenerated. The dedicated docs test passed after regeneration. The full
-  wrapper was stopped before a clean final aggregate because it continued into
-  unrelated long-running gates.
+- Full local acceptance: not green for two unrelated environment/host-state
+  gates. With the process restriction lifted, the bridge regression passed 11/11
+  and the full maturity suite passed 2,068 tests. Remaining failures were:
+  - `cc_header_truth_v2`: `/usr/bin/python3 -m ruff` unavailable; Ruff passed
+    from the tooling virtualenv and no changed API file was implicated.
+  - `overnight_g6_missing_stores`: host persistent state contains
+    `notifications.outbox`; this is pre-existing host state and was not deleted.
+  The docs-index failures were corrected and the dedicated docs suite passed 7/7.
 
 ## Known risks
 
