@@ -988,6 +988,8 @@ GATES = [
             "tests/test_wave4_unification.py",
             "tests/test_wave5_maturity.py",
             "tests/test_m2_substrate_check.py",
+            "tests/test_earnings_gate_vocabulary_20260928.py",
+            "tests/test_lane_registry_bare_schedule_20260928.py",
         ],
     ),
     (
@@ -2730,6 +2732,14 @@ GATES = [
         # inherited from /proc/self/fd, a foreign holder is still refused.
         "options_lifecycle_inherited_lock_20260928",
         ["tests/test_lifecycle_inherited_lock_20260928.py"],
+    ),
+    (
+        # LIVEPROOF-20260928 (LP-DEF-01/02/04): AXTI 10:20 ET incident replay on a fixed clock — the
+        # a328a8817 gate (verbatim fixture) qualified the MAPPED value "debit_spread"; the candidate
+        # refuses it, fails closed on unknown event data / ids, serves the stored packet STALE_PRE_FIX
+        # and recomputes cached pre-fix verdicts at preflight.
+        "earnings_gate_replay_axti_20260928",
+        ["tests/test_earnings_gate_replay_axti_20260928.py"],
     ),
     (
         # Reviewer 2026-09-28: combined same-symbol exposure includes the shares held (by account),

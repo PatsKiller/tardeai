@@ -30,6 +30,82 @@ SHORT_STRATEGIES = frozenset({"covered_call", "cash_secured_put", "credit_spread
 # all block; hedges (protective_put) and the paper-lab ATM/deep-ITM canaries do not.
 BLOCKING_STRATEGIES = frozenset({"covered_call", "cash_secured_put", "credit_spread", "long_call",
                                  "debit_spread", "long_put", "leaps_call"})
+# Live-proof 2026-09-28 (LP-DEF-01, corrected 12:30 ET). The 10:20 ET AXTI escape, traced from the saved
+# packet and the a328a8817 source: buy_ready_options_alternatives MAPPED its own id debit_call_vertical to
+# "debit_spread" BEFORE calling this gate (a328a8817 line 434), and "debit_spread" was not yet in
+# BLOCKING_STRATEGIES (PR #1336 added it at 14:47Z, 27 minutes after the alert), so the allow-by-omission
+# branch returned in_blackout=False for the mapped value. The raw id was NOT what the gate saw at 10:20.
+# The raw-id gap (a producer naming a strategy the gate has never met) is the SAME class of defect and is
+# closed here too: known hedges / paper-lab canaries are listed explicitly, producer vocabularies map
+# through STRATEGY_ALIASES, and an UNKNOWN id fails closed (in_blackout=True, trigger=unknown_strategy).
+# Every verdict is stamped with EARNINGS_GATE_VERSION + evaluated_at so a cached verdict from an older
+# gate can be recognised and refused at read and preflight time (LP-DEF-02 / LP-DEF-04).
+NON_BLOCKING_STRATEGIES = frozenset({"protective_put", "deep_itm_call", "atm_call", "atm_put",
+                                     "earnings_put_debit_spread", "earnings_put_credit_spread"})
+STRATEGY_ALIASES = {
+    "debit_call_vertical": "debit_spread", "call_debit_spread": "debit_spread", "debit_call_spread": "debit_spread",
+    "put_debit_spread": "debit_spread", "debit_put_spread": "debit_spread",
+    "short_put": "cash_secured_put", "csp": "cash_secured_put", "leaps": "leaps_call", "leap_call": "leaps_call",
+    "credit_put_spread": "credit_spread", "credit_call_spread": "credit_spread", "bull_put_spread": "credit_spread",
+}
+
+
+def canonical_strategy(strategy: str) -> str:
+    s = str(strategy or "").strip().lower()
+    return STRATEGY_ALIASES.get(s, s)
+
+
+# Bump on ANY change to BLOCKING_STRATEGIES / NON_BLOCKING_STRATEGIES / STRATEGY_ALIASES / the trigger
+# logic. A cached verdict whose gate_version differs (or is missing: every verdict before 2026-09-28 12:30 ET)
+# is STALE_PRE_FIX and must be recomputed, never trusted. History: (unstamped) allow-by-omission, 4 ids;
+# 2026-09-28.1 = PR #1336 seven ids + named triggers (unstamped); 2026-09-28.2 = LP-DEF-01 aliases +
+# fail-closed unknown ids + stamping.
+EARNINGS_GATE_VERSION = "2026-09-28.2"
+# Reviewer 2026-09-28 (finding 4): the version is hand-maintained, so tests/test_earnings_gate_replay_axti_20260928.py
+# pins this fingerprint of the three vocabularies to the version literal — editing a set without bumping
+# EARNINGS_GATE_VERSION (and this constant) fails CI instead of silently re-trusting cached verdicts.
+EARNINGS_GATE_VOCAB_SHA = "f332ec4a78b6"
+
+
+def earnings_gate_vocab_fingerprint() -> str:
+    payload = {"blocking": sorted(BLOCKING_STRATEGIES), "non_blocking": sorted(NON_BLOCKING_STRATEGIES),
+               "aliases": sorted(STRATEGY_ALIASES.items())}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:12]
+
+
+def earnings_verdict_status(verdict: Optional[dict], *, now: Optional[datetime] = None,
+                            max_age_s: Optional[float] = None) -> Tuple[bool, str]:
+    """Is a stored earnings verdict still usable? (False, reason) means RECOMPUTE — never reuse.
+
+    Fails closed on anything unknown: no dict, no gate_version, a gate_version other than the running
+    one, no evaluated_at, an unparseable evaluated_at, or an evaluated_at older than ``max_age_s``
+    (default: the desk's ``earnings_verdict_max_age_s``, which tracks the 6 h earnings-calendar cache).
+    """
+    if not isinstance(verdict, dict) or not verdict:
+        return False, "NO_VERDICT"
+    if verdict.get("replay") or verdict.get("as_of"):
+        return False, "REPLAY_VERDICT (computed with as_of; never reusable on a live path)"
+    gv = verdict.get("gate_version")
+    if not gv:
+        return False, "STALE_PRE_FIX (no gate_version; computed before the 2026-09-28 gate fix)"
+    if gv != EARNINGS_GATE_VERSION:
+        return False, f"STALE_PRE_FIX (gate_version {gv} != {EARNINGS_GATE_VERSION})"
+    at = verdict.get("evaluated_at")
+    if not at:
+        return False, "STALE_UNKNOWN_AGE (no evaluated_at)"
+    try:
+        ts = datetime.fromisoformat(str(at).replace("Z", "+00:00"))
+        if ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)
+    except ValueError:
+        return False, f"STALE_UNKNOWN_AGE (unparseable evaluated_at {str(at)[:40]!r})"
+    limit = float(max_age_s if max_age_s is not None else load_desk_config().get("earnings_verdict_max_age_s") or 0)
+    if limit <= 0:
+        return False, "STALE_UNKNOWN_AGE (no positive earnings_verdict_max_age_s configured — fail closed)"
+    age = ((now or _now()) - ts).total_seconds()
+    if age < 0 or age > limit:
+        return False, f"STALE_VERDICT (evaluated {age:.0f}s ago > {limit:.0f}s)"
+    return True, "CURRENT"
 
 # Sentinel: the earnings provider could not answer. NEVER equal to "" (no
 # scheduled earnings) — event gates must treat these two cases differently.
@@ -85,6 +161,10 @@ def load_desk_config() -> dict:
     cfg.setdefault("min_open_interest", int(os.getenv("OPTIONS_MIN_OI", "50")))
     cfg.setdefault("min_volume", int(os.getenv("OPTIONS_MIN_VOLUME", "5")))
     cfg.setdefault("max_bid_ask_spread_pct", float(os.getenv("OPTIONS_MAX_SPREAD_PCT", "12.0")))
+    # LP-DEF-04: a stored earnings verdict older than this is recomputed (tracks the 6 h calendar cache).
+    cfg.setdefault("earnings_verdict_max_age_s", int(os.getenv("OPTIONS_EARNINGS_VERDICT_MAX_AGE_S", "21600")))
+    # LP-DEF-02: a stored BUY_READY alternatives block older than this is served STALE_CHAIN.
+    cfg.setdefault("buy_ready_block_max_age_s", int(os.getenv("OPTIONS_BUY_READY_BLOCK_MAX_AGE_S", "21600")))
     cfg.setdefault("require_chain_for_live", os.getenv("OPTIONS_REQUIRE_CHAIN_LIVE", "1") == "1")
     cfg.setdefault("max_net_delta_pct", float(os.getenv("OPTIONS_MAX_NET_DELTA_PCT", "35.0")))
     cfg.setdefault("max_symbol_notional_pct", float(os.getenv("OPTIONS_MAX_SYMBOL_NOTIONAL_PCT", "25.0")))
@@ -168,8 +248,26 @@ def evaluate_hard_risk_blocks(
     ent = proposal.get("enterprise") or {}
     liq = ent.get("liquidity") or proposal.get("liquidity") or {}
 
-    # Earnings blackout
-    blackout = ent.get("earnings") or earnings_blackout_check(sym, dte=dte, strategy=strat)
+    # Earnings blackout. LP-DEF-04 (live-proof 2026-09-28): a verdict cached on the proposal
+    # (``enterprise.earnings``) is reused ONLY when earnings_verdict_status says it came from the
+    # running gate version and is fresh; anything else (no stamp = computed before the gate fix,
+    # older gate, unknown or stale age) is recomputed against the live gate and the block names why.
+    # Direction matters: a stale verdict that says BLOCK still blocks (fail closed; it is re-stamped
+    # with its status), a stale verdict that says CLEAR is never trusted and is recomputed.
+    cached = ent.get("earnings")
+    usable, verdict_status = earnings_verdict_status(cached, max_age_s=cfg.get("earnings_verdict_max_age_s"))
+    if usable and (int(cached.get("dte") or -1) != dte
+                   or canonical_strategy(cached.get("strategy_raw") or cached.get("strategy")) != canonical_strategy(strat)):
+        usable, verdict_status = False, "PROPOSAL_MISMATCH (cached verdict was computed for another strategy/dte)"
+    if usable:
+        blackout = dict(cached)
+    elif isinstance(cached, dict) and cached.get("in_blackout"):
+        blackout = dict(cached)
+        blackout["cached_verdict_status"] = verdict_status
+    else:
+        blackout = earnings_blackout_check(sym, dte=dte, strategy=strat)
+        if cached:
+            blackout["cached_verdict_superseded"] = verdict_status
     if blackout.get("in_blackout"):
         # Preserve the SPECIFIC refusal (EARNINGS_TIMESTAMP_UNKNOWN /
         # EARNINGS_TIMESTAMP_INVALID) as the top-level code. Flattening every
@@ -390,19 +488,25 @@ def earnings_calendar(symbols: List[str]) -> Dict[str, str]:
     return {s: _EARNINGS_CACHE.get(s, "") for s in syms}
 
 
-def earnings_blackout_check(
+def _earnings_blackout_check_impl(
     symbol: str,
     *,
     dte: int,
     strategy: str,
-    blackout_days: Optional[int] = None,
-) -> dict:
+    blackout_days: Optional[int] = None, as_of: Optional[date] = None) -> dict:
     """Return blackout status for short premium / directional entries near earnings."""
     cfg = load_desk_config()
     days = int(blackout_days or cfg.get("earnings_blackout_days") or 14)
     sym = (symbol or "").upper()
+    raw_strategy = strategy
+    strategy = canonical_strategy(strategy)
+    if strategy in NON_BLOCKING_STRATEGIES:
+        return {"in_blackout": False, "symbol": sym, "strategy": strategy, "strategy_raw": raw_strategy}
     if strategy not in BLOCKING_STRATEGIES:
-        return {"in_blackout": False, "symbol": sym, "strategy": strategy}
+        # FAIL CLOSED on a vocabulary the gate has not met (LP-DEF-01, 2026-09-28).
+        return {"in_blackout": True, "symbol": sym, "strategy": strategy, "strategy_raw": raw_strategy,
+                "trigger": "unknown_strategy",
+                "reason": f"strategy {raw_strategy!r} is not in the earnings gate's vocabulary — blocked until it is classified"}
     cal = earnings_calendar([sym])
     earn_raw = cal.get(sym) or ""
     if earn_raw == EARNINGS_UNKNOWN:
@@ -443,7 +547,7 @@ def earnings_blackout_check(
             "reason": (f"Earnings value {str(earn_raw)[:40]!r} is not a usable date "
                        f"({e}) — {strategy} fails closed on unparseable event timing"),
         }
-    today = date.today()
+    today = as_of or date.today()   # injectable so an incident can be replayed on its own clock
     days_to = (earn_dt - today).days
     # Block if earnings falls before expiration or within blackout window
     in_window = 0 <= days_to <= days
@@ -470,6 +574,28 @@ def earnings_blackout_check(
         "reason": reason,
     }
 
+
+
+def earnings_blackout_check(symbol: str, *, dte: int, strategy: str, blackout_days: Optional[int] = None,
+                            as_of: Optional[date] = None) -> dict:
+    """Return blackout status for short premium / directional entries near earnings.
+
+    Public entry: resolves producer vocabularies (STRATEGY_ALIASES), fails closed on an unknown id, and stamps
+    on every result: ``strategy`` (canonical), ``strategy_raw`` (as the caller said it), ``gate_version``,
+    ``evaluated_at``, ``event_date`` and ``dte`` (LP-DEF-01/02/04). ``as_of`` pins the evaluation date for
+    replays; production callers leave it unset."""
+    raw = strategy
+    out = dict(_earnings_blackout_check_impl(symbol, dte=dte, strategy=strategy, blackout_days=blackout_days, as_of=as_of))
+    out.setdefault("strategy", canonical_strategy(raw))
+    out["strategy_raw"] = raw
+    out["gate_version"] = EARNINGS_GATE_VERSION
+    out["evaluated_at"] = _now().isoformat()           # always the wall clock: when it was computed
+    if as_of is not None:                              # a replay is marked so it can never be reused live
+        out["as_of"] = as_of.isoformat()
+        out["replay"] = True
+    out.setdefault("event_date", out.get("next_earnings"))
+    out.setdefault("dte", dte)
+    return out
 
 def liquidity_gate(contract: dict, *, cfg: Optional[dict] = None) -> dict:
     """Hard liquidity check on a chain contract."""

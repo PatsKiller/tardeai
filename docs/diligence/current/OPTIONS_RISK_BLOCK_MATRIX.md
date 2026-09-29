@@ -1,6 +1,6 @@
 # Options Hard-Risk Block Matrix
 
-_Generated: 2026-09-27T22:05:09.436466+00:00_  
+_Generated: 2026-09-28T16:32:58.191617+00:00_  
 _Source: `python3 tests/test_options_hard_risk_blocks_matrix.py` over `tests/fixtures/options_risk_blocks/_fixtures.json`_
 
 Each row is a hard block enforced on the live options path by `options_desk_enterprise.evaluate_hard_risk_blocks`. Codes are a stable contract.
@@ -9,7 +9,7 @@ Modes: `live` blocks also apply to the desk's live-eligibility render; `submit` 
 
 | Block code | Severity | Source | Verified reason (sample) | Snapshot keys | Mode |
 |------------|----------|--------|--------------------------|---------------|------|
-| `earnings_blackout` | hard | options_desk_enterprise | earnings in 3d | in_blackout, reason | live |
+| `earnings_blackout` | hard | options_desk_enterprise | earnings in 3d | in_blackout, reason, cached_verdict_status | live |
 | `ex_dividend_cc_risk` | hard | options_desk_enterprise | ex-dividend within DTE for covered call | ex_div | live |
 | `bs_estimate_only` | hard | options_desk_enterprise | Black-Scholes-only estimate — live chain required | data_source | live |
 | `no_resolved_occ` | hard | options_desk_enterprise | no resolved OCC contract on proposal | — | live |

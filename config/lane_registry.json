@@ -3382,6 +3382,22 @@
         "55 7 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/monitoring/classifier_health_check.py >> logs/classifier_health.log 2>&1",
         "@reboot sleep 60 && cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && systemctl --user start trade-ai-lab-moomoo-opend.service >> logs/moomoo_opend_health.log 2>&1  # belt-and-braces: systemd linger already autostarts it, this covers a failed/disabled unit"
       ]
+    },
+    {
+      "added": "2026-09-28",
+      "count": 6,
+      "reason": "LP-DEF-19 (LIVEPROOF-20260928, PR #1339): six cron lines that the lane-registry gate had silently DECLARED because two lanes carry a bare schedule ('5 * * * *', '30 2 * * *') as their scheduler.expression and find_undeclared used every expression as a substring pattern. With the bare-schedule fix (lane_registry._BARE_CRON_SCHEDULE) they surface as unregistered; recorded here as dated debt, not as declared lanes. Every line is DEBT: declare a lane (owner, cadence, output signal) and remove it.",
+      "recorded_by": "LIVEPROOF-20260928 Phase 0 (session 77a6de60), full `crontab -l` expressions via lane_registry.find_undeclared, 2026-09-28 ~11:10 ET; count corrected 5 -> 6 at 12:40 ET (system_health_agent.py line was omitted from the survey text)",
+      "lines": [
+        "30 2 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/populate_performance_context.py --apply >> logs/perf_context.log 2>&1",
+        "*/5 * * * * bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/cleanup_stale_locks.sh",
+        "*/5 9-20 * * 1-5 cd $PROJ && $PY scripts/system_health_agent.py --apply --verbose >> logs/system_health_agent.log 2>&1",
+        "5 * * * * bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/safe_flock.sh /tmp/drive_sync.lock bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/sync-docs-to-drive.sh >> /home/johnclaw/logs/drive-sync.log 2>&1",
+        "*/15 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /usr/bin/flock -n /tmp/health_agent.lock $PY scripts/health_agent.py >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/health_agent_cron.log 2>&1",
+        "*/5 * * * * ( curl -s -m 60 -H \"Accept-Encoding: gzip\" -o /dev/null \"http://127.0.0.1:7777/api/v2/trade-ai\" ; curl -s -m 60 -H \"Accept-Encoding: gzip\" -o /dev/null \"http://127.0.0.1:7777/api/v2/trade-ai/scanner\" ) >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/trade_ai_prewarm.log 2>&1  # pre-warm trade-ai serialized/gzip body cache so a server restart never cold-serves the scanner (500-loop 2026-07-17)"
+      ],
+      "date": "2026-09-28",
+      "source": "LIVEPROOF-20260928 LP-DEF-19: five cron lines masked by the bare-schedule substring bug in find_undeclared; recorded as debt with provenance, not declared"
     }
   ]
 }

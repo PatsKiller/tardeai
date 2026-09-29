@@ -1,0 +1,197 @@
+kind,name_or_expression,script,schedule,registered_lane_id_or_UNREGISTERED,state,last_fire_evidence,last_output_evidence,consumer_if_known
+cron,send_morning_brief.py,send_morning_brief.py,30 7 * * 1-5,morning-brief-0730,ACTIVE,log morning_brief.log@0928-0730,morning_brief.log@0928-0730,?
+cron,portfolio_orchestrator.py,portfolio_orchestrator.py,15 7 * * 1-5,portfolio-ai-analyst,ACTIVE,log portfolio_orchestrator.log@0928-0730,ai_analysis_cache.json@0928-0716,?
+cron,indicator_cache_refresh.py,indicator_cache_refresh.py,45 5 * * 1-5,indicator-cache-refresh,ACTIVE,log indicator_refresh.log@0928-0551,db:indicator_confluence_cache(unqueried),?
+cron,portfolio_live_monitor.py,portfolio_live_monitor.py,*/20 9-16 * * 1-5,portfolio-live-monitor,ACTIVE,log portfolio_live_monitor.log@0928-0900 (resident proc on c1c531500),price_cache.json@0927-1900,?
+cron,portfolio_repricer.py && holdings_reconcile.py,portfolio_repricer.py,10 16 * * 1-5,portfolio-repricer,ACTIVE,log portfolio_repricer_postclose.log@MISSING,holdings.json@0928-1100,?
+cron,"hermes_top20_external_intel.py --top 20 --lanes grok,chatgpt --apply",hermes_top20_external_intel.py,5 */2 * * *,hermes-top20-external-intel,ACTIVE,log hermes_top20.log@0928-1013,none,?
+cron,alpaca_stop_manager.py --apply,alpaca_stop_manager.py,7-59/20 9-16 * * 1-5,alpaca-stop-manager-rth,ACTIVE,log alpaca_stop_manager_cron.log@0928-1047,same@0928-1047,?
+cron,warm_caches.py,warm_caches.py,*/8 * * * *,warm-caches,ACTIVE,log warm_caches.log@0928-1101,rotation_summary_cache.json@0928-1101,?
+cron,run_rotation_autopilot.sh cron,run_rotation_autopilot.sh,*/15 4-16 * * 1-5,rotation-autopilot,ACTIVE,log rotation_autopilot.log@0928-1100,rotation_autopilot_latest.json@0928-1102,?
+cron,portfolio_repricer.py,portfolio_repricer.py,*/15 9-16 * * 1-5,portfolio-repricer,ACTIVE,log portfolio_repricer_intraday.log@0928-1100,holdings.json@0928-1100,?
+cron,research_scheduler.py --mode holdings --budget 70,research_scheduler.py,5 9 * * 1-5,research-scheduler-holdings,ACTIVE,log research_scheduler.log@0928-0922,research_trigger_ledger.jsonl@0928-0921,?
+cron,research_scheduler.py --mode priority --budget 40 (via llm_priority_guard.sh),research_scheduler.py,0 10-16 * * 1-5,research-scheduler-priority-hourly,ACTIVE,log research_scheduler.log@0928-0922,research_trigger_ledger.jsonl@0928-0921,?
+cron,research_scheduler.py --mode watchlist --budget 50,research_scheduler.py,30 20 * * 1-5,research-scheduler-watchlist-2030,ACTIVE,log research_scheduler.log@0928-0922,research_trigger_ledger.jsonl@0928-0921,?
+cron,research_scheduler.py --mode incubator --budget 30,research_scheduler.py,0 19 * * 0,research-scheduler-incubator-sun-1900,ACTIVE,log research_scheduler.log@0928-0922,research_trigger_ledger.jsonl@0928-0921,?
+cron,run_finviz_momentum_scalp_scan.py --window early --apply,run_finviz_momentum_scalp_scan.py,*/5 6-11 * * 1-5,finviz-momentum-scalp-early-lane,ACTIVE,log finviz_momentum_scalp_scan.log@0928-1100,momentum_scalp_refresh_receipt.json@0928-1100,?
+cron,alpaca_stop_manager.py --repair-oco --apply,alpaca_stop_manager.py,*/15 4-10 * * 1-5,alpaca-stop-manager-oco-repair,ACTIVE,log alpaca_stop_manager_repair.log@0928-1045,same@0928-1045,?
+cron,reconcile_alpaca_paper_options.sh,reconcile_alpaca_paper_options.sh,0 10-15 * * 1-5,reconcile-alpaca-paper-options,ACTIVE,nolog,alpaca_paper_options_reconcile.log@0928-1100,?
+cron,reconcile_exit_advisory_outcomes.py,reconcile_exit_advisory_outcomes.py,0 9 * * 0,reconcile-exit-advisory-outcomes,ACTIVE,log exit_outcomes.log@0927-0900,same,?
+cron,reconcile_pullback_outcomes.py,reconcile_pullback_outcomes.py,45 9 * * 0,reconcile-pullback-outcomes,ACTIVE,log pullback_outcomes.log@0927-0945,same,?
+cron,reconcile_watch_outcomes.py,reconcile_watch_outcomes.py,50 9 * * 0,reconcile-watch-outcomes,ACTIVE,log watch_outcomes.log@0927-0951,same,?
+cron,sector_momentum_engine.py,sector_momentum_engine.py,25 17 * * 1-5,sector-momentum-engine,ACTIVE,log sector_momentum.log@MISSING,sector_momentum_latest.json@0928-0952,?
+cron,finviz_industry_groups.py,finviz_industry_groups.py,30 12 * * 1-5,industry-momentum-groups,ACTIVE,log industry_momentum.log@MISSING,industry_momentum_latest.json@0928-1103,?
+cron,finviz_industry_groups.py --close,finviz_industry_groups.py,18 16 * * 1-5,industry-momentum-groups,ACTIVE,log industry_momentum.log@MISSING,industry_momentum_latest.json@0928-1103,?
+cron,moomoo_live_read_sync.py,moomoo_live_read_sync.py,*/15 9-16 * * 1-5,moomoo-live-read-sync,ACTIVE,log moomoo_live_read_sync.log@0928-1100,moomoo_taxable_live.json@0928-1100,?
+cron,run_watch_review_workers.py --role maria,run_watch_review_workers.py,"5 16 * * 1,3,5",watch-review-workers,ACTIVE,log watch_review_maria.log@MISSING,watch_review_maria.log@MISSING,?
+cron,run_watch_review_workers.py --role cio,run_watch_review_workers.py,"20 16 * * 1,3,5",watch-review-workers,ACTIVE,log watch_review_cio.log@MISSING,watch_review_maria.log@MISSING,?
+cron,cio_wake_dispatch_entrypoint.py,cio_wake_dispatch_entrypoint.py,*/5 * * * *,cio-wake-dispatch,ACTIVE,log cio_wake_dispatcher.log@0928-1104,wake_record_consult.json@0928-1100,?
+cron,resolve_due_checkpoints.py --apply,resolve_due_checkpoints.py,20 * * * *,resolve-due-checkpoints,ACTIVE,log resolve_due_checkpoints.log@0928-1020,outcome_observations.jsonl@0928-0820,?
+cron,build_lesson_candidates.py --apply,build_lesson_candidates.py,40 6 * * *,build-lesson-candidates,ACTIVE,log build_lesson_candidates.log@0928-0640,lesson_candidates.jsonl@0928-0640,?
+cron,p1_digest_sender.py --send,p1_digest_sender.py,0 */4 * * *,p1-digest-delivery,ACTIVE,log p1_digest.log@0928-0800,p1_digest_watermark.json@0928-0800,?
+cron,backfill_document_mentions.py --all --limit 4000 --apply,backfill_document_mentions.py,25 * * * *,document-mentions-backfill,ACTIVE,log document_mentions.log@0928-0749,db:document_mentions(unqueried),?
+cron,prune_document_mentions.py --apply,prune_document_mentions.py,40 4 * * *,document-mentions-prune,ACTIVE,log document_mentions_prune.log@0928-0440,none,?
+cron,db_retention.py,db_retention.py,10 4 * * *,db-retention,ACTIVE,log db_retention.log@0928-0410,none,?   [DUP with db-retention.timer on $DEV]
+cron,backfill_subject_identity.py --all --apply,backfill_subject_identity.py,*/30 * * * *,identity-sweep-stage0,ACTIVE,log identity_sweep.log@0928-1100,same,?
+cron,material_change_detector.py --apply,material_change_detector.py,*/30 * * * *,material-change-detector-stage1,ACTIVE,log material_change_detect.log@0928-1100,material_change_detector_health.json@0928-1100,?
+cron,notify_material_change.py --apply,notify_material_change.py,7-59/15 * * * *,material-change-notifier-stage2,ACTIVE,log material_change_notify.log@0928-1052,same,?
+cron,hermes_external_feedback_loop.py --apply --max-rows 2000,hermes_external_feedback_loop.py,15 * * * *,hermes-usefulness-backfill,ACTIVE,log usefulness_backfill.log@0928-1016,none,?   [DUP-ish with hermes-external-feedback.timer]
+cron,due_diligence_questions.py --apply --route,due_diligence_questions.py,*/20 * * * *,due-diligence-questions,ACTIVE,log due_diligence_questions.log@0928-1102,db:due_diligence_questions(unqueried),?
+cron,wake_selection_feed.py --out-dir …,wake_selection_feed.py,55 * * * *,wake-selection-feed,ACTIVE,log wake_selection_feed.log@0928-1055,material_changes.jsonl@0928-1055,?
+cron,run_persistent_wake.py --agent-id cio,run_persistent_wake.py,0 * * * *,persistent-wake-hourly,ACTIVE,log persistent_wake.log@0928-1100 hb(persistent-wake)@14:00Z,wakes.jsonl@0928-1100,?
+cron,run_governed_research_producer.py --targets-file …,run_governed_research_producer.py,45 * * * *,governed-research-producer,ACTIVE,log governed_research_producer.log@0928-1045,research_producer_health.json@0928-1045,?
+cron,screener_go_alerts.py --send,screener_go_alerts.py,*/15 9-16 * * 1-5,screener-go-alerts,ACTIVE,log screener_go_alerts.log@0928-1100,screener_go_alerts_last_run.json@0928-1100,?
+cron,llm_spend_report.py --period daily --send,llm_spend_report.py,5 7 * * *,llm-spend-report-daily,ACTIVE,log llm_spend_report.log@0928-0710,llm_spend_report_last_daily.json@0928-0705,?
+cron,llm_spend_report.py --period weekly --send,llm_spend_report.py,10 7 * * 1,llm-spend-report-weekly,ACTIVE,log llm_spend_report.log@0928-0710,llm_spend_report_last_weekly.json@0928-0710,?
+cron,llm_spend_report.py --period monthly --send,llm_spend_report.py,15 7 1 * *,llm-spend-report-monthly,ACTIVE,log llm_spend_report.log@0928-0710,llm_spend_report_last_monthly.json@MISSING,?
+cron,cio_bridge_watchdog.py --apply,cio_bridge_watchdog.py,*/5 * * * *,cio-bridge-watchdog,ACTIVE,log cio_bridge_watchdog.log@0928-1100,cio_bridge_watchdog.json@0928-1100,?
+cron,deepseek_balance_snapshot.py --apply,deepseek_balance_snapshot.py,50 * * * *,deepseek-balance-snapshot,ACTIVE,log deepseek_balance_snapshot.log@0928-1050,deepseek_balance_history.jsonl@0928-1050,?
+cron,catalyst_symbol_impact_writer.py --apply,catalyst_symbol_impact_writer.py,"20 7,12,17 * * 1-5",catalyst-symbol-impact,ACTIVE,log catalyst_symbol_impact.log@0928-0720,catalyst_symbol_impact_last_run.json@0928-0720,?
+cron,cio_entry_state_runner.py --apply,cio_entry_state_runner.py,*/10 9-16 * * 1-5,cio-entry-state,ACTIVE,log cio_entry_state.log@0928-1100,cio_entry_state_last_run.json@0928-1100,?
+cron,watch_goods_consistency_check.py --apply-proposal-backfill,watch_goods_consistency_check.py,"40 8,12,16 * * 1-5",watch-goods-consistency,ACTIVE,log watch_goods_consistency.log@0928-0840,watch_goods_consistency_last_run.json@0928-0840,?
+cron,build_catalyst_graph.py --apply,build_catalyst_graph.py,10 6 * * 1-5,catalyst-graph,ACTIVE,log build_catalyst_graph.log@0928-0610,catalyst_graph_latest.json@0928-0610,?
+cron,report_goal_loop_baseline.py --json,report_goal_loop_baseline.py,20 * * * *,goal-loop-baseline,ACTIVE,log goal_loop_baseline.log@0928-1020,goal_loop_baseline.jsonl@0928-1020,?
+cron,cio_gate_measurement_bridge.py --write-measurements,cio_gate_measurement_bridge.py,35 * * * *,goal-gate-bridge,ACTIVE,log goal_gate_bridge.log@0928-1035,agent_gate_measurements.json@0928-1035,?
+cron,run_goal_pilot_material_change.py,run_goal_pilot_material_change.py,40 * * * *,goal-pilot-material-change,ACTIVE,log goal_pilot_material_change.log@0928-1040,goal_pilot_material_change.jsonl@0928-1040,?
+cron,run_dormant_lane_consumers.py,run_dormant_lane_consumers.py,50 * * * *,dormant-lane-consumers,ACTIVE,log dormant_lane_consumers.log@0928-1050,same,?
+cron,hermes_universe_history_retention.py --apply,hermes_universe_history_retention.py,25 3 * * *,hermes-universe-history-retention,ACTIVE,log …retention.log@0928-0325,…_last_run.json@0928-0325,?
+cron,check_llm_provider_health.py,check_llm_provider_health.py,20 * * * *,llm-provider-health,ACTIVE,log llm_provider_health.log@0928-1020,llm_provider_health.json@0928-1020,?
+cron,drain_llm_deferred.py,drain_llm_deferred.py,"10 10,13,16,19 * * *",llm-deferred-drain,ACTIVE,log llm_deferred_drain.log@0928-1011,llm_deferred_drain.json@0928-1011,?
+cron,sync_code_mirror_to_drive.sh --apply,sync_code_mirror_to_drive.sh,35 * * * *,code-mirror-drive-sync,ACTIVE,log code-mirror-drive-sync.log@0928-1037,code-mirror-drive-sync-last.json@0928-1037,?
+cron,drain_cio_stance_classification.py --apply,drain_cio_stance_classification.py,"20 7,19 * * 1-5",cio-stance-classification-drain,ACTIVE,log …drain.log@0928-0720,cio_stance_classification_receipts.jsonl@0925-1920 (stale),?
+cron,notify_material_change.py --digest --apply,notify_material_change.py,15 16 * * *,material-change-digest,ACTIVE,log material_change_digest.log@0927-1615,db:material_changes(unqueried),?
+cron,sweep_commitment_outcomes.py --apply,sweep_commitment_outcomes.py,20 18 * * *,commitment-outcome-sweep,ACTIVE,log …@0927-1820,commitment_outcomes.jsonl@0927-1820,?
+cron,write_instrument_beliefs.py --apply,write_instrument_beliefs.py,50 18 * * *,instrument-belief-writer,ACTIVE,log …@0927-1850,instrument_belief_latest.json@0927-1850,?
+cron,options_thesis_lifecycle.py --apply,options_thesis_lifecycle.py,"7,22,37,52 * * * *",options-thesis-lifecycle,ACTIVE,log …@0928-1052,same,?
+cron,options_memory_projector.py --apply,options_memory_projector.py,"9,24,39,54 * * * *",options-memory-projector,ACTIVE,log …@0928-1054,same,?
+cron,export_options_runtime_snapshot.py --apply,export_options_runtime_snapshot.py,3 * * * *,options-runtime-export,ACTIVE,log …@0928-1103,same,?
+cron,crontab -l > …crontab_snapshot.txt.tmp && mv,inline,*/20 * * * *,crontab-snapshot-for-health-agent,ACTIVE,nolog,crontab_snapshot.txt@0928-1100,health-agent
+cron,symbol_news_curation_monitor.py --apply,symbol_news_curation_monitor.py,27 * * * *,symbol-news-curation-monitor,ACTIVE,log …@0928-1027,symbol_news_curation_sla.json@0928-1027,?
+cron,sec_fundamentals_ingest.py --apply,sec_fundamentals_ingest.py,30 21 * * *,sec-fundamentals-ingest,ACTIVE,log …@0927-2131,same,?
+cron,report_platform_conformance.py --write,report_platform_conformance.py,30 2 * * *,platform-conformance-audit,ACTIVE,log platform_conformance.log@MISSING,platform_conformance_latest.json@0927-1959,?
+cron,approval_package_reminder.py --send --record,approval_package_reminder.py,5 * * * *,approval-package-reminder,ACTIVE,log approval_package_reminder.log@MISSING,approval_packages.jsonl@0928-0305,?
+cron,sec_filings_feed.py --apply,sec_filings_feed.py,"20 8,12,17,21 * * 1-5",sec-filings-feed,ACTIVE,log sec_filings_feed.log@0928-0820 hb@12:20Z,sec_filings_feed_latest.json@0928-0820,?
+cron,maturity_remeasure.py --write,maturity_remeasure.py,40 6 * * 1,maturity-remeasure,NEVER_SCHEDULED (DRIFT: line is active),log maturity_remeasure.log@MISSING hb@12:18Z,maturity_latest.json@0928-0818,?
+cron,populate_performance_context.py --apply,populate_performance_context.py,30 2 * * *,UNREGISTERED(NEW),-,log perf_context.log@0928-0230,-,?
+cron,cleanup_stale_locks.sh,cleanup_stale_locks.sh,*/5 * * * *,UNREGISTERED(NEW),-,nolog,-,?
+cron,sync-docs-to-drive.sh,sync-docs-to-drive.sh,5 * * * *,UNREGISTERED(NEW),-,log drive-sync.log@0928-1005,-,?
+cron,health_agent.py,health_agent.py,*/15 * * * *,UNREGISTERED(NEW),-,log health_agent_cron.log@0928-1045,-,?
+cron,( curl -s -m 60 … prewarm ),inline curl,*/5 * * * *,UNREGISTERED(NEW),-,log trade_ai_prewarm.log@0927-1050 (stale ~24h),-,?
+timer,aegis-overnight.timer,scripts/aegis_overnight.py,*-*-* 20:00,UNREGISTERED(baseline),-,trig 09-27 20:00 ok/0,-,?
+timer,aegis-surveillance.timer,scripts/aegis_surveillance.py,Mon..Fri 08:00,UNREGISTERED(baseline),-,trig 09-28 08:00 ok/0,-,?
+timer,at-observation-01-closeout.timer,~/.local/state/trade-ai-lab/moomoo/…/autoclose_session_01.py,2026-07-27 10:12,at-observation-01-closeout,RETIRED (DRIFT: timer enabled),never,none,?
+timer,at-observation-01.timer,~/worktrees/active-trader-next/scripts/run_active_trader_premarket_observation.py,2026-07-27 06:55,at-observation-01,RETIRED (DRIFT: timer enabled),never,none,?
+timer,db-retention.timer,scripts/db_retention.py,Sun 03:00,UNREGISTERED(baseline),-,trig 09-27 03:00 ok/0,-,?
+timer,hermes-advisory-cache-worker.timer,$CUR/scripts/hermes_advisory_cache_worker.py,09..19:00 NY,UNREGISTERED(baseline),-,trig 09-28 11:01 ok/0,-,?
+timer,hermes-autonomous-loop.timer,$CUR/scripts/hermes_autonomous_loop.py,hourly :10 (Asia/Shanghai set),hermes-autonomous-loop,PAUSED,never,hermes-autonomous-loop.log@MISSING,?
+timer,hermes-backlog-health-check.timer,scripts/hermes_backlog_health_check.py,06:45 UTC,UNREGISTERED(baseline),-,trig 09-28 02:45 ok/0,-,?
+timer,hermes-deep-research-local.timer,$CUR/scripts/hermes_deep_research_local.py,22..05:35 NY,UNREGISTERED(baseline),-,trig 09-28 05:35 ok/0,-,?
+timer,hermes-embedding-promotion-review.timer,scripts/hermes_embedding_promotion_reviewer.py,08:15 UTC,UNREGISTERED(baseline),-,trig 09-28 04:16 ok/0,-,?
+timer,hermes-external-feedback.timer,$CUR/scripts/hermes_external_feedback_loop.py --model deepseek-v4-flash,04:00,UNREGISTERED(baseline),-,trig 09-28 04:05 ok/0,-,?
+timer,hermes-librarian-backlog-loop.timer,scripts/hermes_autonomous_librarian_backlog_loop.py,07:45 UTC,UNREGISTERED(baseline),-,trig 09-28 03:46 ok/0,-,?
+timer,hermes-librarian-retention.timer,scripts/run_hermes_librarian_retention.py,05:10,hermes-librarian-retention,ACTIVE,trig 09-28 05:11 ok/0,none,?
+timer,hermes-momentum-catalyst-morning.timer,scripts/hermes_momentum_catalyst_researcher.py --max-tickers 5,Mon..Fri 08-15 every 15m NY,hermes-momentum-catalyst-morning,ACTIVE,trig 09-28 11:00 ok/0,catalyst_momentum_last_run.json@0928-1030,?
+timer,hermes-observation-check.timer,scripts/hermes_observation_check.py,06:30 UTC,UNREGISTERED(baseline),-,trig 09-28 02:31 ok/0,-,?
+timer,hermes-shadow-scorer.timer,scripts/strategy_learning_shadow_scorer.py,"Mon..Fri 10,14,18 NY",UNREGISTERED(baseline),-,trig 09-28 10:01 ok/0,-,?
+timer,hermes-source-discovery-dryrun.timer,scripts/hermes_scheduled_source_discovery_dryrun.py,07:15 UTC,UNREGISTERED(baseline),-,trig 09-28 03:15 ok/0,-,?
+timer,hermes-update-check.timer,scripts/check_hermes_update_available.py,Mon 03:00,hermes-update-check,ACTIVE,trig 09-28 03:09 ok/0,hermes_update_status.json@0928-0309,?
+timer,high-llm-execution-worker.timer,scripts/high_llm_execution_worker.py,14:00,UNREGISTERED(baseline),-,trig 09-27 14:03 ok/0,-,?
+timer,launchpadlib-cache-clean.timer,find,OnStartup 5min,UNREGISTERED(baseline),-,trig 09-27 17:10 ok/0,-,?
+timer,mcporter-token-refresh.timer,~/.config/mcporter/refresh_token.sh,OnBoot 5min,UNREGISTERED(baseline),-,trig 09-28 10:31 FAILED exit 1,-,?
+timer,portfolio-backup.timer,$DEV/linux_launchers/run_pg_backup.sh,02:00,portfolio-backup,NEVER_SCHEDULED,never,MISSING,?
+timer,portfolio-daily.timer,$DEV/linux_launchers/run_portfolio.sh,Mon..Fri 07:00,portfolio-daily,NEVER_SCHEDULED,never,MISSING,?
+timer,portfolio-lookthrough.timer,$DEV/linux_launchers/run_lookthrough.sh,Sun 01..07 06:00,portfolio-lookthrough,NEVER_SCHEDULED,never,MISSING,?
+timer,portfolio-monthly.timer,$DEV/linux_launchers/run_portfolio_monthly.sh,01 07:05,portfolio-monthly,NEVER_SCHEDULED,never,MISSING,?
+timer,portfolio-price-cache.timer,$DEV/linux_launchers/run_price_cache.sh,Sun 19:00,portfolio-price-cache,ACTIVE,trig 09-27 19:00 ok/0,price_cache.json@0927-1900,?
+timer,portfolio-weekly.timer,$DEV/linux_launchers/run_portfolio_weekly.sh,Sun 20:00,portfolio-weekly,NEVER_SCHEDULED,never,MISSING,?
+timer,recovery-watch.timer,scripts/recovery_watch_daily.py,Mon..Fri 07:30,UNREGISTERED(baseline),-,trig 09-28 07:30 ok/0,-,?
+timer,snap.firmware-updater.firmware-notifier.timer,/usr/bin/snap,00:00,UNREGISTERED(baseline),-,trig 09-28 09:00 FAILED 255,-,?
+timer,systemd-tmpfiles-clean.timer,systemd-tmpfiles,OnStartup 5min,UNREGISTERED(baseline),-,never,-,?
+timer,trade-ai-news-monitor.timer,scripts/trade_ai_news_monitor.py,Mon..Fri 09:00 (+more),UNREGISTERED(baseline),-,trig 09-28 11:00 ok/0,-,?
+timer,tradeai-advisory-lessons-reflect.timer,$CUR/scripts/advisory_lessons.py,19:40,advisory-lessons-reflect,ACTIVE,trig 09-27 19:40 ok/0,advisory_lessons.log@0927-1940,?
+timer,tradeai-advisory-notif-broker.timer,$CUR/scripts/advisory_notification_broker.py,hourly,UNREGISTERED(baseline),-,trig 09-28 11:00 ok/0,-,?
+timer,tradeai-advisory-outcome-scorer.timer,$CUR/scripts/advisory_outcome_scorer.py,18:30,advisory-outcome-scorer,ACTIVE,trig 09-27 18:30 ok/0,advisory_outcomes.jsonl@0927-1833,?
+timer,tradeai-advisory-shadow-seed.timer,$CUR/scripts/advisory_shadow_seed.py,19:45,advisory-shadow-seed,ACTIVE,trig 09-27 19:45 ok/0,agent_tool_traces.jsonl@0927-1945,?
+timer,tradeai-advisory-shadow-session.timer,scripts/advisory_shadow_session.py,Mon..Fri 09:15,UNREGISTERED(baseline),-,trig 09-28 09:15 ok/0,-,?
+timer,tradeai-aec-command-center-cycle.timer,scripts/aec_command_center_cycle.py,hourly,tradeai-aec-command-center-cycle,ACTIVE,trig 09-28 11:00 ok/0,aec_agent_bus.jsonl@0928-1100,?
+timer,tradeai-agent-runtime-health.timer,-m scripts.agent_runtime.health_monitor,OnBoot 2min (+interval),agent-runtime-health,ACTIVE,trig 09-28 10:57 ok/0,agent-runtime-health.json@0928-1057,?
+timer,tradeai-agent-runtime-producer.timer,-m scripts.agent_runtime.trigger_producer,every 2min,UNREGISTERED(baseline),-,trig 09-28 11:00 ok/0,-,?
+timer,tradeai-agent-runtime@aegis.timer,-m …agents.run_once --agent aegis,every 5min,UNREGISTERED(baseline),-,trig 09-28 11:00 ok/0,-,?
+timer,tradeai-agent-runtime@alex.timer,run_once alex,every 5min,UNREGISTERED(baseline),-,trig 09-28 10:57 ok/0,-,?
+timer,tradeai-agent-runtime@argus.timer,run_once argus,every 30min,UNREGISTERED(baseline),-,trig 09-28 10:31 ok/0,-,?
+timer,tradeai-agent-runtime@atlas.timer,run_once atlas,every 15min,UNREGISTERED(baseline),-,never,-,?
+timer,tradeai-agent-runtime@concierge.timer,run_once concierge,every 5min,UNREGISTERED(baseline),-,never,-,?
+timer,tradeai-agent-runtime@darwin.timer,run_once darwin,hourly,UNREGISTERED(baseline),-,trig 09-28 11:00 ok/0,-,?
+timer,tradeai-agent-runtime@hermes.timer,run_once hermes,every 5min,UNREGISTERED(baseline),-,never,-,?
+timer,tradeai-agent-runtime@iris.timer,run_once iris,every 5min,UNREGISTERED(baseline),-,trig 09-28 11:00 ok/0,-,?
+timer,tradeai-agent-runtime@maria.timer,run_once maria,every 5min,UNREGISTERED(baseline),-,trig 09-28 11:00 ok/0 (hb watchlist-agent-maria 14:47Z),-,?
+timer,tradeai-agent-runtime@morgan.timer,run_once morgan,every 5min,UNREGISTERED(baseline),-,trig 09-28 10:57 ok/0,-,?
+timer,tradeai-agent-runtime@pulse.timer,run_once pulse,every 5min,UNREGISTERED(baseline),-,never,-,?
+timer,tradeai-agent-runtime@reflection.timer,run_once reflection,Mon..Fri 21:30,UNREGISTERED(baseline),-,trig 09-25 21:30 ok/0,-,?
+timer,tradeai-agent-runtime@risk_agent.timer,run_once risk_agent,every 30min,UNREGISTERED(baseline),-,trig 09-28 11:00 ok/0 (hb 14:47Z),-,?
+timer,tradeai-agent-runtime@sentinel.timer,run_once sentinel,every 5min,UNREGISTERED(baseline),-,trig 09-28 10:56 ok/0,-,?
+timer,tradeai-agent-runtime@steph.timer,run_once steph,every 5min,UNREGISTERED(baseline),-,trig 09-28 11:01 ok/0 (hb 14:47Z),-,?
+timer,tradeai-agent-runtime@tax_agent.timer,run_once tax_agent,Mon..Fri 17:00,UNREGISTERED(baseline),-,"trig 09-25 17:01 ok/0 (hb 14:00Z today, so not from this timer)",-,?
+timer,tradeai-agent-runtime@vega.timer,run_once vega,every 5min,UNREGISTERED(baseline),-,trig 09-28 11:00 ok/0,-,?
+timer,tradeai-agent-worktree-retention.timer,scripts/agent_worktree_retention.py,04:40,agent-worktree-retention,ACTIVE,trig 09-28 04:50 ok/0,agent_worktree_retention_receipts.jsonl@0928-0450,?
+timer,tradeai-autonomy-watchdog.timer,$CUR/scripts/autonomy_watchdog.py,OnBoot 2min (+interval),autonomy-watchdog,ACTIVE,trig 09-28 10:57 ok/0,watchdog_state.json@0928-1057,?
+timer,tradeai-backup-enforcer.timer,scripts/backup_enforcer.py,hourly,UNREGISTERED(baseline),-,trig 09-28 11:00 ok/0,-,?
+timer,tradeai-cio-defer-revisit.timer,scripts/cio_defer_revisit.py,OnBoot 5min (+interval),cio-defer-revisit,ACTIVE,trig 09-28 10:26 ok/0,cio_defer_revisit_last.json@0928-1026,?
+timer,tradeai-cio-delivery.timer,scripts/cio_delivery_worker.py,OnBoot 2min (+interval),cio-delivery,ACTIVE,trig 09-28 10:57 ok/0,operator_notification_outbox.jsonl@0928-1028,?
+timer,tradeai-cio-desk-memo-regen.timer,scripts/lib/cio_desk_synthesis.py,17:45 NY,cio-desk-memo-regen,ACTIVE,trig 09-27 17:45 ok/0,cio_desk_note_latest.md@0928-0906,?
+timer,tradeai-cio-material-scan.timer,scripts/cio_material_scan.py,OnBoot 3min (+interval),cio-material-scan,ACTIVE,trig 09-28 11:00 ok/0,cio_material_scan_last.json@0928-1100,?
+timer,tradeai-cio-memory-shadow-measure.timer,scripts/run_memory_shadow_measure.py,06:20,cio-memory-shadow-measure,ACTIVE,trig 09-28 06:20 ok/0,memory_shadow_measure_latest.json@0928-0621,?
+timer,tradeai-cio-nightly-reflection.timer,$CUR/scripts/lib/cio_nightly_reflection.py,21:50,cio-nightly-reflection,ACTIVE,trig 09-27 21:50 ok/0,cio_reflection_candidates.jsonl@0927-2150,?
+timer,tradeai-cio-reactive.timer,scripts/cio_reactive_cycle.py,every ~2min,"cio-reactive-cycle,cio-wake-turn-effects",ACTIVE,trig 09-28 11:01 activating,cio_reactive_cycle_last.json@0928-1059;wake_turn_effects.jsonl@0928-1055,?
+timer,tradeai-continuous.timer (USER),$DEV/linux_launchers/run_continuous.sh,Mon..Fri 04:00,tradeai-continuous,PAUSED,never,logs/continuous.log@MISSING,?
+timer,tradeai-contradiction-adjudicator.timer,scripts/contradiction_adjudicator.py,19:30,contradiction-adjudicator,NEVER_SCHEDULED (DRIFT: timer enabled),never,contradiction_adjudicator_latest.json@MISSING,?
+timer,tradeai-data-plausibility.timer,scripts/data_plausibility_monitor.py,06:20,data-plausibility-audit,ACTIVE,trig 09-28 06:20 success/exit1,data_plausibility_last_run.json@0928-0620,?
+timer,tradeai-data-source-health.timer,scripts/check_data_source_health.py,hourly :27,data-source-health-audit,ACTIVE,trig 09-28 10:27 success/exit1,data_source_health_last_run.json@0928-1027,?
+timer,tradeai-disk-hygiene-enforcer.timer,scripts/disk_hygiene_enforcer.py,04:15,disk-hygiene-enforcer,ACTIVE,trig 09-28 04:16 ok/0,none,?
+timer,tradeai-disk-pressure-guard.timer,scripts/disk_pressure_guard.py,OnBoot 10min (+interval),disk-pressure-guard,ACTIVE,trig 09-28 10:51 ok/0,disk_pressure_guard_receipts.jsonl@0928-1051,?
+timer,tradeai-due-checkpoints.timer,$CUR/scripts/process_due_checkpoints.py,17:10,due-checkpoints,ACTIVE (cadence 1h vs daily timer),trig 09-27 17:10 ok/0,outcome_checkpoints.jsonl@0928-1101,?
+timer,tradeai-edge-fanout-consumer.timer,scripts/edge_fanout_consumer.py,OnBoot 5min (+interval),edge-fanout-consumer,ACTIVE,trig 09-28 10:57 ok/0 hb 14:57Z,edge_fanout_consumer_latest.json@0928-1057,?
+timer,tradeai-eod-consolidated-close.timer,scripts/eod_consolidated_close_sync.py,Mon..Fri 17:15,eod-consolidated-close-sync,ACTIVE,trig 09-25 17:15 ok/0,…last_run.json@0925-1716,?
+timer,tradeai-expected-services.timer,scripts/check_expected_services.py,hourly :12,expected-services-audit,ACTIVE,trig 09-28 10:12 success/exit1,expected_services_last_run.json@0928-1012,?
+timer,tradeai-finviz-view-contracts.timer,scripts/check_finviz_view_contracts.py,Mon..Fri 06:05,finviz-view-contracts,ACTIVE,trig 09-28 06:06 ok/0,…last_run.json@0928-0606,?
+timer,tradeai-flash-llm-intelligence.timer,~/tradeai-wt-cursor-guardrails/scripts/flash_cadence_runner.py,Mon..Fri 07:20,tradeai-flash-llm-intelligence,PAUSED,never,MISSING,?
+timer,tradeai-flash-portfolio-risk-hourly.timer,~/tradeai-wt-cursor-guardrails/…/flash_cadence_runner.py,Mon..Fri 07..19:05,tradeai-flash-portfolio-risk-hourly,NEVER_SCHEDULED,never,MISSING,?
+timer,tradeai-flash-portfolio-risk-weekend.timer,~/tradeai-wt-cursor-guardrails/…/flash_cadence_runner.py,"Sat,Sun 10:00",tradeai-flash-portfolio-risk-weekend,NEVER_SCHEDULED,never,MISSING,?
+timer,tradeai-flash-watchlist-daily.timer,~/tradeai-wt-cursor-guardrails/…/flash_cadence_runner.py,Mon..Fri 09:30,tradeai-flash-watchlist-daily,PAUSED,never,MISSING,?
+timer,tradeai-free-first-circulation.timer,$CUR/scripts/run_free_first_circulation.sh,hourly :23 NY,free-first-circulation,ACTIVE,trig 09-28 10:24 ok/0,free_first_last_run.json@0928-1037,?
+timer,tradeai-gap-resolution.timer,scripts/check_gap_resolution.py,":07,:37",gap-resolution-audit,ACTIVE,trig 09-28 10:37 success/exit1,gap_resolution_last_run.json@0928-1037,?
+timer,tradeai-gir-projector.timer,scripts/gir_projector.py,OnBoot 10min (+interval),gir-projector,ACTIVE,trig 09-28 11:01 activating hb 14:02Z,gir_projector_state.json@0928-1002,?
+timer,tradeai-governance-facts.timer,./scripts/run_scheduled_system_facts.sh,Mon..Fri 07:40,tradeai-governance-facts,NEVER_SCHEDULED,never,MISSING,?
+timer,tradeai-governance-pipeline.timer,$DEV/scripts/pipelines/run_governance_pipeline.sh,Mon..Fri 07:40,governance-pipeline,ACTIVE,trig 09-28 07:40 ok/0,governance_pipeline_last_run.json@0928-0740,?
+timer,tradeai-governance-status.timer,scripts/report_governance_status.py,Mon..Fri 07:50,tradeai-governance-status,NEVER_SCHEDULED,never,MISSING,?
+timer,tradeai-hermes-cio-worker.timer,scripts/hermes_cio_worker.py,every 15min,UNREGISTERED(baseline),-,"trig 09-28 11:00 ok/0 (hb hermes-cio-worker stale 13:45Z, last_success null)",-,?
+timer,tradeai-hermes-research-remediation.timer,scripts/hermes_research_quality_remediation.py,07:45,tradeai-hermes-research-remediation,PAUSED,never,MISSING,?
+timer,tradeai-holdings-agent-enqueue.timer,scripts/enqueue_holdings_agent_opinions.py,Mon..Fri 08:30,holdings-agent-enqueue,ACTIVE,trig 09-28 08:30 ok/0,holdings_agent_enqueue_latest.json@0928-0830,?
+timer,tradeai-intelligence-remediation.timer,scripts/intelligence_remediation.py,08:15,tradeai-intelligence-remediation,PAUSED,never,MISSING,?
+timer,tradeai-iris-taxonomy.timer,scripts/iris_taxonomy_agent.py,07:00,UNREGISTERED(baseline),-,never,-,?
+timer,tradeai-main-desk-free-llm-weekly.timer,~/tradeai-wt-cursor-guardrails/scripts/main_desk_free_llm_weekly.py,Sun 18:15,tradeai-main-desk-free-llm-weekly,PAUSED,never,MISSING,?
+timer,tradeai-maturity-board.timer,$DEV/scripts/run_scheduled_maturity_control_board.sh,Mon..Fri 07:55,tradeai-maturity-board,NEVER_SCHEDULED,never,MISSING,?
+timer,tradeai-maturity-feeds.timer,scripts/hermes_maturity_gates.py --snapshot,07:20,UNREGISTERED(baseline),-,trig 09-28 07:20 ok/0,-,?
+timer,tradeai-operator-answer-quality.timer,scripts/check_operator_answer_quality.py,":22,:52",operator-answer-quality-audit,ACTIVE,trig 09-28 10:52 ok/0,…last_run.json@0928-1052,?
+timer,tradeai-operator-readiness.timer,scripts/report_operator_readiness_summary.py,Mon..Fri 08:00,tradeai-operator-readiness,RETIRED,never,MISSING,?
+timer,tradeai-portfolio-backup-cadence.timer,$CUR/scripts/pipelines/run_portfolio_maintenance_pipeline.sh,02:30,portfolio-backup-cadence,ACTIVE,trig 09-28 02:30 ok/0,…backup_last_run.json@0928-0230,?
+timer,tradeai-portfolio-daily-cadence.timer,$DEV/scripts/pipelines/run_portfolio_maintenance_pipeline.sh,Mon..Fri 07:30,portfolio-daily-cadence,ACTIVE,trig 09-28 07:30 ok/0,…daily_last_run.json@0928-0740,?
+timer,tradeai-portfolio-lookthrough-cadence.timer,$DEV/…/run_portfolio_maintenance_pipeline.sh,Sun 01..07 06:30,portfolio-lookthrough-cadence,ACTIVE,trig 09-06 06:30 ok/0,…lookthrough_last_run.json@0906-0630,?
+timer,tradeai-portfolio-monthly-cadence.timer,$DEV/…/run_portfolio_maintenance_pipeline.sh,01 07:35,portfolio-monthly-cadence,ACTIVE,trig 09-26 18:46 ok/0,…monthly_last_run.json@0926-1932,?
+timer,tradeai-portfolio-weekly-cadence.timer,$DEV/…/run_portfolio_maintenance_pipeline.sh,Sun 20:30,portfolio-weekly-cadence,ACTIVE,trig 09-27 20:30 ok/0,…weekly_last_run.json@0927-2040,?
+timer,tradeai-postgres-main-watchdog.timer,scripts/remediate_postgres_main.py,OnBoot 3min (+interval),postgres-main-watchdog,ACTIVE,trig 09-28 10:57 ok/0,postgres_main_remediate.jsonl@0928-1057,?
+timer,tradeai-provider-cost-reconcile.timer,$CUR/linux_launchers/run_provider_cost_daily.sh,06:40,provider-cost-reconcile,ACTIVE,trig 09-28 06:40 ok/0,latest_reconciliation.json@0928-0640,?
+timer,tradeai-research-lane-health.timer,scripts/research_lane_health.py,OnBoot 2min (+interval),research-lane-health,ACTIVE,trig 09-28 10:50 ok/0,research_lane_health.json@0928-1050,?
+timer,tradeai-served-copy-split.timer,scripts/check_served_copy_split.py,hourly :42,served-copy-split-audit,ACTIVE,trig 09-28 10:42 ok/0,…last_run.json@0928-1042,?
+timer,tradeai-slo-burn-rate.timer,scripts/report_slo_burn_rate.py,OnBoot 12min (+interval),slo-burn-rate,ACTIVE,trig 09-28 10:16 ok/0,slo_burn_rate_last.json@0928-1016,?
+timer,tradeai-sm-render.timer,scripts/secrets/render_env.py,OnBoot 2min (+interval),sm-render,ACTIVE,trig 09-28 06:44 ok/0,sm_render_state.json@0928-1100,?
+timer,tradeai-source-litmus.timer,scripts/source_litmus_vs_yahoo.py,Tue..Sat 07:45,source-litmus-vs-yahoo,ACTIVE,trig 09-26 07:46 ok/0,source_litmus_last_run.json@0926-0746,?
+timer,tradeai-stance-organic-observe-early.timer,$DEV/scripts/report_organic_stance_hold.py,06:35,tradeai-stance-organic-observe-early,ACTIVE,trig 09-28 06:35 ok/0,organic_stance_hold_observe.json@0928-0905,?
+timer,tradeai-stance-organic-observe.timer,$DEV/scripts/report_organic_stance_hold.py,09:05,tradeai-stance-organic-observe,ACTIVE,trig 09-28 09:05 ok/0,organic_stance_hold_observe.json@0928-0905,?
+timer,tradeai-supervisor-breach-detector.timer,scripts/supervisor_breach_detector.py,OnBoot 3min (+interval ~2-4min),supervisor-breach-detector,ACTIVE,trig 09-28 11:01 ok/0 hb 15:01Z,supervisor_breach_detector_latest.json@0928-1101,?
+timer,tradeai-tax-lots-rebuild.timer,scripts/rebuild_tax_lots_from_transactions.py,07:15,tax-lots-rebuild,ACTIVE,trig 09-28 07:15 ok/0,tax_lots_rebuild_latest.json@0928-0715,?
+timer,tradeai-watch-decision-scheduler.timer,$CUR/scripts/watch_decision_scheduler.py --run,"Mon..Fri 09:35/11:00/13:30/15:45; Sat,Sun 09:00/14:00",UNREGISTERED(baseline),-,trig 09-28 11:00 ok/0,-,?
+timer,tradeai-weekly-disk-cleanup.timer,scripts/weekly_disk_cleanup_notify.py,Sun 06:30,weekly-disk-cleanup,ACTIVE,trig 09-27 06:33 ok/0,weekly_disk_cleanup_receipts.jsonl@0927-0633,?
+timer,ubuntu-insights-collect.timer,/usr/bin/ubuntu-insights,OnBoot 5min,UNREGISTERED(baseline),-,trig 09-12 17:07 success/exit1,-,?
+timer,ubuntu-insights-upload.timer,/usr/bin/ubuntu-insights,OnBoot 8min,UNREGISTERED(baseline),-,trig 09-26 17:10 ok/0,-,?
+timer(system),tradeai-continuous.timer,$DEV/linux_launchers/run_continuous.sh → continuous_runner.py --project-root . (flock /run/lock/tradeai-continuous.lock),Mon..Fri 04:00,"registry row ""tradeai-continuous"" targets the USER timer and says PAUSED → effectively UNREGISTERED/DRIFT",running since 04:00:01 EDT (PID 1029862),logs/continuous.log not found,?,

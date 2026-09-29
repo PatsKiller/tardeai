@@ -569,6 +569,9 @@ def evaluate_lane(row: dict[str, Any], *, now: Optional[datetime] = None,
     return out
 
 
+_BARE_CRON_SCHEDULE = re.compile(r"^\s*(?:[\d*/,\-]+\s+){4}[\d*/,\-]+\s*$")
+
+
 def find_undeclared(reg: dict[str, Any], found: dict[str, Any]) -> list[dict[str, Any]]:
     """Scheduled jobs with no registry row, minus the inherited-debt baseline.
 
@@ -579,8 +582,12 @@ def find_undeclared(reg: dict[str, Any], found: dict[str, Any]) -> list[dict[str
     declared: set[str] = set()
     for row in reg.get("lanes") or []:
         sched = row.get("scheduler") or {}
-        if sched.get("expression"):
-            declared.add(str(sched["expression"]))
+        expr = str(sched.get("expression") or "")
+        # Live-proof 2026-09-28 (LP-DEF-19): a bare cron schedule ("5 * * * *") is not a pattern — as a
+        # substring it declared every line that happened to share the minute field and hid five
+        # unregistered crons. A lane whose expression is only a schedule must name its script in `match`.
+        if expr and not _BARE_CRON_SCHEDULE.match(expr):
+            declared.add(expr)
         if sched.get("match"):
             declared.add(str(sched["match"]))
     baseline = set(reg.get("undeclared_baseline") or [])

@@ -240,6 +240,31 @@ def _lib(name: str):
     raise ImportError(f"{name}: {type(last).__name__}: {last}")
 
 
+def substrate(name: str = "memory_m2_v2"):
+    """The ONE sanctioned door to the bitemporal substrate (memory_r10_m2) for tooling that must
+    exercise the substrate itself: the substrate check (scripts/m2_substrate_check.py), migration
+    verifiers, parity reports. Returns the silo module through the façade so the memory
+    chokepoint ratchet (scripts/check_memory_chokepoint.py) stays a single-file allowlist: callers
+    depend on the façade, never on the silo by name.
+
+    Regression this closes (LIVEPROOF-20260928, CI run 36442022000 on PR #1339): PR #1337
+    (e2dcfce1a) shipped scripts/m2_substrate_check.py with a bare ``import memory_m2_v2`` inside
+    run_shadow, so main itself failed test_memory_chokepoint_ratchet from that SHA onward. The
+    fix is this accessor, not an allowlist entry.
+
+    Only substrate modules are reachable: anything outside SUBSTRATE_MODULES is refused, so this
+    cannot become a generic back door to every memory silo. Read/write authority is unchanged:
+    the returned module carries its own tenant, RLS and live-shadow guards.
+    """
+    if name not in SUBSTRATE_MODULES:
+        raise ImportError(f"substrate({name!r}): not a substrate module; allowed {sorted(SUBSTRATE_MODULES)}")
+    return _lib(name)
+
+
+SUBSTRATE_MODULES = frozenset({"memory_m2_v2", "m2_live_shadow_guard", "memory_m2_benchmark", "memory_namespace",
+                               "adjudication_receipt"})
+
+
 def default_loaders(root: Path | None = None, env: dict | None = None) -> Loaders:
     """Wrap the existing readers. Imports are lazy so a missing module degrades one class, not all."""
     env = os.environ if env is None else env
@@ -1021,4 +1046,4 @@ __all__ = ["open_context", "retrieve_or_generate", "run_ladder", "commit", "Load
            "MemoryUnavailable", "BehaviorWriteRefused", "contexts_path", "retrieval_receipts_path",
            "resolve_mode", "is_namespaced", "behavior_fields", "SCHEMA_CONTEXT", "SCHEMA_RETRIEVAL",
            "SCHEMA_COMMIT", "PURPOSES", "MODES", "DECISIONS", "shadow_open", "observe_generation", "shadow_commit",
-           "set_current_context", "current_context_id", "current_retrieval_receipt_id"]
+           "set_current_context", "current_context_id", "current_retrieval_receipt_id", "substrate", "SUBSTRATE_MODULES"]

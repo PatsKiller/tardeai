@@ -193,12 +193,19 @@ class _Ctx:
             return {"pass": False, "issues": [f"liquidity gate error {type(exc).__name__}"]}
 
     def blackout(self, dte: int, strategy: str) -> dict[str, Any]:
+        # Reviewer 2026-09-28 (finding 1): no gate is not "no event". A missing or broken earnings
+        # check disqualifies the unit at BUILD time, before any alert or review can see it.
         if self.blackout_fn is None:
-            return {"in_blackout": None, "note": "earnings check not supplied"}
+            return {"in_blackout": True, "trigger": "gate_unavailable", "reason": "earnings check not supplied"}
         try:
-            return dict(self.blackout_fn(self.symbol, dte=dte, strategy=strategy))
+            out = dict(self.blackout_fn(self.symbol, dte=dte, strategy=strategy))
         except Exception as exc:  # noqa: BLE001 — fail closed like the enterprise gate
-            return {"in_blackout": True, "reason": f"earnings check error {type(exc).__name__}"}
+            return {"in_blackout": True, "trigger": "gate_error", "reason": f"earnings check error {type(exc).__name__}"}
+        if out.get("in_blackout") is not False:
+            out["in_blackout"] = True
+            out.setdefault("trigger", "gate_unknown")
+            out.setdefault("reason", "earnings check returned no verdict")
+        return out
 
 
 def _long_call_economics(ctx: _Ctx, c: dict[str, Any]) -> dict[str, Any]:
@@ -324,6 +331,12 @@ def _finish(ctx: _Ctx, strategy: str, legs: list[dict[str, Any]], econ: dict[str
         disq.append(f"BREAKEVEN_AT_OR_ABOVE_TARGET (BE {be:.2f} vs target {ctx.target:.2f})")
     return {
         "strategy": strategy,
+        "strategy_gate": earn.get("strategy"),          # what the earnings gate evaluated (canonical id)
+        "expiration": (legs[0].get("exp") if legs else None),
+        "dte": (legs[0].get("dte") if legs else None),
+        "event_date": earn.get("next_earnings") or earn.get("event_date"),
+        "gate_version": earn.get("gate_version"),
+        "disqualification_reason": "; ".join(disq) or None,
         "legs": legs,
         "per_contract": econ,
         "greeks_per_share": greeks,
@@ -339,6 +352,22 @@ def _finish(ctx: _Ctx, strategy: str, legs: list[dict[str, Any]], econ: dict[str
         "why_this_expiry": why_expiry,
         "neighbours_rejected": neighbours,
     }
+
+
+def _gate_version_of(blackout_fn) -> Optional[str]:
+    if blackout_fn is None:
+        return None
+    try:
+        import options_desk_enterprise as ode  # type: ignore
+    except ImportError:
+        try:
+            from scripts import options_desk_enterprise as ode  # type: ignore
+        except ImportError:
+            return None
+    mod = getattr(blackout_fn, "__module__", "") or ""
+    if mod.endswith("options_desk_enterprise") or getattr(blackout_fn, "gate_version", None):
+        return getattr(blackout_fn, "gate_version", None) or ode.EARNINGS_GATE_VERSION
+    return None
 
 
 def build_alternatives(
@@ -358,6 +387,7 @@ def build_alternatives(
     base: dict[str, Any] = {
         "schema": SCHEMA, "authority": AUTHORITY, "symbol": ctx.symbol,
         "chain_source": chain_source or None, "chain_as_of": chain_as_of,
+        "generated_at": now_iso(), "gate_version": None,   # gate_version filled from the first verdict below
         "underlying": ctx.spot, "alternatives": [], "skipped": [],
         "stock_per_share": None, "notes": [],
     }
@@ -431,7 +461,7 @@ def build_alternatives(
                     for n in _neighbours(rows, short) if n["dte"] == short["dte"]]
             alts.append(_finish(
                 ctx, "debit_call_vertical", [_leg(long_leg, "long"), _leg(short, "short")], econ, pop, liq,
-                ctx.blackout(long_leg["dte"], "debit_spread"), g,
+                ctx.blackout(long_leg["dte"], "debit_call_vertical"), g,
                 f"long {long_leg['strike']:.2f} (delta {long_leg.get('delta')}, closest to "
                 f"{cfg['vertical_long_delta_target']}) / short {short['strike']:.2f} (the liquid strike nearest the plan "
                 f"target {ctx.target:.2f}) caps the payoff where the plan expects to exit",
@@ -455,7 +485,7 @@ def build_alternatives(
                                     else "expiry outside or further from the LEAPS horizon")
                 for n in _neighbours(rows, lp)]
         alts.append(_finish(
-            ctx, "leaps_call", [_leg(lp, "long")], econ, pop, ctx.liquidity(lp), ctx.blackout(lp["dte"], "long_call"),
+            ctx, "leaps_call", [_leg(lp, "long")], econ, pop, ctx.liquidity(lp), ctx.blackout(lp["dte"], "leaps_call"),
             g,
             f"{lp['strike']:.2f} call: delta {lp.get('delta')} ≥ {cfg['leaps_min_delta']} behaves like stock with a "
             "fixed maximum loss",
@@ -493,6 +523,9 @@ def build_alternatives(
     for i, a in enumerate(ranked, 1):
         a["rank"] = i
     base["alternatives"] = ranked
+    # gate_version from any verdict, else from the gate module itself (so an empty / NONE block is not
+    # mislabelled STALE_PRE_FIX on read — reviewer 2026-09-28 finding 6)
+    base["gate_version"] = next((a.get("gate_version") for a in ranked if a.get("gate_version")), None) or _gate_version_of(blackout_fn)
     base["status"] = "OK" if any(a["qualified"] for a in ranked) else ("NONE_QUALIFIED" if ranked else "NONE")
     base["notes"].append("Per-unit economics only (per contract / per share); never a position size.")
     return base
@@ -597,6 +630,92 @@ def load_cached(symbol: str, cache_dir: Optional[Path] = None) -> Optional[dict[
         return json.loads(((cache_dir or CACHE_DIR) / f"{symbol.upper()}.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+
+
+STALE_PRE_FIX = "STALE_PRE_FIX"
+
+
+def _parse_iso(v: Any) -> Optional[datetime]:
+    if not v:
+        return None
+    try:
+        ts = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+
+def staleness(alts: Optional[dict[str, Any]], *, now: Optional[datetime] = None,
+              current_gate_version: Optional[str] = None, max_age_s: Optional[float] = None) -> Optional[dict[str, Any]]:
+    """Why a STORED alternatives block may no longer be trusted, or None when it is current.
+
+    LP-DEF-02 (live-proof 2026-09-28): the AXTI packet written at 14:20:23Z on release a328a8817 still
+    showed ``debit_call_vertical qualified=True`` after the earnings gate was fixed, and every reader
+    returned the file verbatim. A stored block is stale when its gate_version is missing (computed before
+    the gate stamped verdicts) or differs from the running gate, when generated_at / chain_as_of are
+    missing or unparseable (age unknown -> fail closed), or when the chain is older than ``max_age_s``.
+    """
+    if not isinstance(alts, dict) or not alts or not alts.get("alternatives"):
+        return None   # nothing was qualified, so nothing can be stale-qualified
+    if current_gate_version is None or max_age_s is None:
+        try:
+            import options_desk_enterprise as ode  # type: ignore
+        except ImportError:
+            from scripts import options_desk_enterprise as ode  # type: ignore
+        current_gate_version = current_gate_version or ode.EARNINGS_GATE_VERSION
+        max_age_s = max_age_s if max_age_s is not None else float(ode.load_desk_config().get("buy_ready_block_max_age_s") or 0)
+    gv = alts.get("gate_version")
+    gen = alts.get("generated_at") or alts.get("chain_as_of")
+    base = {"gate_version_cached": gv, "gate_version_current": current_gate_version,
+            "generated_at": alts.get("generated_at"), "chain_as_of": alts.get("chain_as_of")}
+    if not gv:
+        return {"code": STALE_PRE_FIX, "reason": "no gate_version on the stored verdicts (computed before the 2026-09-28 earnings-gate fix)", **base}
+    if gv != current_gate_version:
+        return {"code": STALE_PRE_FIX, "reason": f"stored gate_version {gv} != running {current_gate_version}", **base}
+    ts = _parse_iso(gen)
+    if ts is None:
+        return {"code": "STALE_UNKNOWN_AGE", "reason": "generated_at / chain_as_of missing or unparseable — age unknown, fail closed", **base}
+    if not max_age_s or float(max_age_s) <= 0:
+        return {"code": "STALE_UNKNOWN_AGE", "reason": "no positive buy_ready_block_max_age_s configured — fail closed", **base}
+    age = ((now or datetime.now(timezone.utc)) - ts).total_seconds()
+    if age < 0 or age > float(max_age_s):
+        return {"code": "STALE_CHAIN", "reason": f"stored block is {age:.0f}s old > {float(max_age_s):.0f}s", "age_s": round(age), **base}
+    return None
+
+
+def packet_view(packet: Optional[dict[str, Any]], *, now: Optional[datetime] = None, **kw) -> dict[str, Any]:
+    """The READ-SIDE view of a saved BUY_READY packet: never the file verbatim.
+
+    Returns a COPY with ``status`` OK or the stale code; a stale ``options_alternatives`` block has every
+    unit forced to ``qualified: False`` with the stale reason prepended to ``disqualified_by`` and
+    ``superseded: True`` set, while the original verdicts are kept under ``original`` (the packet on
+    disk is immutable incident evidence and is never rewritten). ``as_of`` / ``generated_at`` /
+    ``gate_version`` are surfaced at the top so a card can show them (LP-DEF-02).
+    """
+    if not isinstance(packet, dict):
+        return {"status": "NO_PACKET", "packet": None}
+    view = json.loads(json.dumps(packet, default=str))
+    alts = view.get("options_alternatives")
+    stale = staleness(alts, now=now, **kw) if isinstance(alts, dict) else None
+    if stale is not None:
+        original = {"status": alts.get("status"), "qualified": [a.get("strategy") for a in alts.get("alternatives") or [] if a.get("qualified")]}
+        for a in alts.get("alternatives") or []:
+            a["qualified"] = False
+            a["disqualified_by"] = [f"{stale['code']} ({stale['reason']})"] + list(a.get("disqualified_by") or [])
+            a["disqualification_reason"] = "; ".join(a["disqualified_by"])
+        alts["status"] = stale["code"]
+        alts["superseded"] = True
+        alts["stale"] = stale
+        alts["original"] = original
+    return {
+        "status": stale["code"] if stale else "OK",
+        "saved_at": view.get("saved_at"),
+        "generated_at": (alts or {}).get("generated_at") if isinstance(alts, dict) else None,
+        "as_of": (alts or {}).get("chain_as_of") if isinstance(alts, dict) else None,
+        "gate_version": (alts or {}).get("gate_version") if isinstance(alts, dict) else None,
+        "stale": stale,
+        "packet": view,
+    }
 
 
 __all__ = ["SCHEMA", "build_alternatives", "bs_greeks", "config", "flatten_chain", "iv_context",
