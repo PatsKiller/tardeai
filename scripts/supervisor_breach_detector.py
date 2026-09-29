@@ -89,7 +89,10 @@ def _expected_since(lane: dict, now: _dt.datetime, max_run_s: float = 900.0) -> 
     days = lane.get("active_days")
     if isinstance(days, (list, tuple)) and days:
         # extend the window by the inactive days that end today (Mon=0 .. Sun=6)
-        d = now.astimezone().date(); extra = 0
+        # Use the caller's explicit observation timezone. astimezone() without
+        # a zone consults the audit host and can turn Sunday UTC into Monday,
+        # inventing a missed market-day run on a worker in another timezone.
+        d = now.date(); extra = 0
         while d.weekday() not in days and extra < 7:
             extra += 1; d -= _dt.timedelta(days=1)
         limit_s += extra * 86400

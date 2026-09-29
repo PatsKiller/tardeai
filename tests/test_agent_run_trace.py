@@ -186,8 +186,10 @@ def test_append_persists_no_secrets(tmp_path):
     assert "[REDACTED]" in raw
 
 
-def test_append_fail_soft_bad_path():
-    assert not append_trace(build_trace(trace_id="t", wake_id="w", agent="a", role="r"), path="/nonexistent_dir_zz/x.jsonl")
+def test_append_fail_soft_bad_path(tmp_path):
+    parent = tmp_path / "parent-is-a-file"
+    parent.write_text("not a directory")
+    assert not append_trace(build_trace(trace_id="t", wake_id="w", agent="a", role="r"), path=parent / "x.jsonl")
 
 
 def test_stable_trace_digest():

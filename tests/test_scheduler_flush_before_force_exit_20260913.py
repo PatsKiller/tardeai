@@ -22,6 +22,8 @@ import subprocess
 import sys
 import textwrap
 
+import pytest
+
 
 def _run(body: str) -> subprocess.CompletedProcess:
     """Run a snippet in a child whose stdout is a PIPE, not a tty.
@@ -111,9 +113,11 @@ def test_reaps_its_own_children_before_exiting():
     whose ExecMainStatus was 0.
     """
     r = _run("""
-        import os, sys, time
+        import glob, os, sys, time
         sys.path.insert(0, {root!r})
         from scripts.watch_decision_scheduler import _force_exit, _own_children
+        if not glob.glob('/proc/self/task/*/children'):
+            raise SystemExit(77)  # proc children interface not mounted in this runner
         for _ in range(2):
             if os.fork() == 0:
                 time.sleep(120)
@@ -122,11 +126,34 @@ def test_reaps_its_own_children_before_exiting():
         print("SPAWNED", len(kids))
         _force_exit(0)
     """.format(root=_root()))
+    if r.returncode == 77:
+        pytest.skip("/proc/self/task/*/children unavailable; test on served Linux host")
     assert r.returncode == 0
     assert "SPAWNED 2" in r.stdout, r.stdout
 
     # If they had been orphaned they would still be alive; _force_exit reaped
     # them, so nothing is left holding the pipe open.
+    assert "SPAWNED 2" in r.stdout
+
+
+def test_reaps_known_children_without_a_proc_mount():
+    """The kill/wait behavior stays tested in workers that hide proc children."""
+    r = _run("""
+        import os, sys, time
+        sys.path.insert(0, {root!r})
+        import scripts.watch_decision_scheduler as w
+        kids = []
+        for _ in range(2):
+            pid = os.fork()
+            if pid == 0:
+                time.sleep(120)
+                os._exit(0)
+            kids.append(pid)
+        w._own_children = lambda: kids
+        print("SPAWNED", len(kids))
+        w._force_exit(0)
+    """.format(root=_root()))
+    assert r.returncode == 0
     assert "SPAWNED 2" in r.stdout
 
 
