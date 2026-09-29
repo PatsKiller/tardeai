@@ -111,3 +111,17 @@ def test_replay_is_sorted_and_requires_identity_without_future_data():
     assert [x["signal_state"]["action"] for x in out] == ["BUY", "HOLD"]
     with pytest.raises(ValueError, match="replay_identity_missing"):
         replay_events(events, identity_by_symbol={})
+
+
+def test_replay_cli_writes_only_the_requested_shadow_output(tmp_path, monkeypatch):
+    events_path = tmp_path / "events.jsonl"
+    identities_path = tmp_path / "identities.json"
+    output_path = tmp_path / "shadow" / "decisions.jsonl"
+    event = build_event(symbol="ABC", signal="BUY", source="fixture", observed_at="2026-09-01T00:00:00+00:00")
+    events_path.write_text(json.dumps(event) + "\n", encoding="utf-8")
+    identities_path.write_text(json.dumps({"ABC": {"symbol": "ABC"}}), encoding="utf-8")
+    from scripts import cross_asset_replay
+    monkeypatch.setattr("sys.argv", ["cross_asset_replay.py", "--events", str(events_path),
+                                      "--identities", str(identities_path), "--output", str(output_path)])
+    assert cross_asset_replay.main() == 0
+    assert len(output_path.read_text(encoding="utf-8").splitlines()) == 1
