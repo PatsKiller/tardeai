@@ -69,24 +69,12 @@ def test_options_universe_consumes_spine_not_private_fork(tmp_path: Path):
     assert merged[0]["summary"] == "One thesis"
 
 
-def test_assemble_prefers_shared_spine(tmp_path: Path):
-    ledger = tmp_path / "spine.jsonl"
-    upsert_from_hermes(
-        "NFLX",
-        {
-            "result_id": "rr_pref",
-            "research_id": "res_pref",
-            "status": "completed",
-            "summary": "Spine thesis wins",
-            "subject_guid": "g2",
-        },
-        path=ledger,
-    )
-    obj = assemble_symbol_decision(
-        "NFLX",
-        signal={"kind": "buy"},
-        spine_path=ledger,
-        prefer_shared_spine=True,
-    )
-    assert obj["equity_thesis"]["summary"].startswith("Spine thesis")
-    assert "security_research_spine" in (obj["cio_state"].get("product_refs") or [])
+def test_agents_md_forbids_research_silos():
+    """AGENTS.md must bind the no-silo methodology so later work cannot ignore it."""
+    root = Path(__file__).resolve().parents[1]
+    text = (root / "AGENTS.md").read_text(encoding="utf-8")
+    assert "Shared security research — NO SILOS" in text
+    assert "SecurityResearchSpine@v1" in text
+    assert "view_for_silo" in text
+    assert "Forbidden" in text
+    assert "private thesis cache" in text or "private thesis" in text

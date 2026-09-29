@@ -3,7 +3,13 @@
 as_of: 2026-09-29  
 Authority: Operator requirement — one security, one research spine, all silos transparent  
 
-## What you already approved
+## Shared security research — methodology (binding)
+
+See **AGENTS.md → “Shared security research — NO SILOS (CRITICAL PATH, CIO-owned)”**.
+
+That section is the house rule: CIO owns `SecurityResearchSpine@v1`; options / holdings /
+watchlists / re-entry **read** via `view_for_silo`; they must not invent private thesis stores.
+This production bill only sequences *how* that methodology reaches live (A→E).
 
 | Approval | Meaning |
 |---|---|
