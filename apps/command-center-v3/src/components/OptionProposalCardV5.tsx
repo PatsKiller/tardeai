@@ -14,6 +14,7 @@ import { Chip, ChipRow, Collapsible, Metric, MetricGuide, MetricRow, ShowMore, T
 import { RADIUS, SHADOW, TOKENS, TYPE, numStyle, toneVars } from '../lib/designTokens'
 import { fmt$ } from '../lib/format'
 import { sanitizeActionButtons, allowsManualLog, liquidityWarnings } from '../lib/optionsCardSemantics'
+import { floorCallouts } from '../lib/optionsDeskTruth'
 import {
   fmtIso, proposalContractLine, proposalDetailMetrics, proposalHeroMetrics, proposalInsight, proposalStatusChips,
   visibleProposalActions, type ActionSpec, type MetricSpec,
@@ -29,6 +30,8 @@ type Props = {
   onDrill?: () => void
   onManualLog?: () => void
   reviewBar?: ReactNode
+  /** First card of a symbol shows the shared scenario table. Later cards point at it. */
+  packageLead?: boolean
 }
 
 const label: CSSProperties = { color: TOKENS.text[1], fontWeight: 800 }
@@ -58,7 +61,7 @@ function ActionButton({ a, onClick }: { a: ActionSpec; onClick: () => void }) {
 }
 
 export default function OptionProposalCardV5(props: Props) {
-  const { proposal: p, armed, novice, onAction, onDrill, onManualLog, reviewBar } = props
+  const { proposal: p, armed, novice, onAction, onDrill, onManualLog, reviewBar, packageLead = true } = props
   const x = p as OptionProposal & Record<string, any>
   const [showAllDetail, setShowAllDetail] = useState(false)
   if (x.educational_paper_model) return <OptionProposalCardV4 {...props} />
@@ -141,6 +144,7 @@ export default function OptionProposalCardV5(props: Props) {
       <MetricRow style={{ marginTop: 10 }}>
         {hero.map(m => <MetricFrom key={m.guideKey} m={m} size="md" values={guideValues} />)}
       </MetricRow>
+      {floorCallouts(x).map(t => <div key={t} style={{ marginTop: 6, color: TOKENS.warning, fontSize: TYPE.sm, fontWeight: 700 }}>{t}</div>)}
       {detail.length > 0 && (
         <MetricRow style={{ marginTop: 8, gap: '6px 14px' }}>
           {(showAllDetail ? detail : detail.slice(0, 4)).map(m => <MetricFrom key={m.guideKey} m={m} size="sm" values={guideValues} />)}
@@ -211,7 +215,12 @@ export default function OptionProposalCardV5(props: Props) {
                 ))}
               </div>
             )}
-            {combined && (
+            {combined && !packageLead && (
+              <div data-testid="options-combined-exposure-pointer" style={{ ...line, marginTop: 6 }}>
+                Same-symbol package is on the first {p.symbol} card. The expiries differ, so there is no single at-expiry payoff.
+              </div>
+            )}
+            {combined && packageLead && (
               <div data-testid="options-combined-exposure" style={{ marginTop: 6 }}>
                 <div style={line}><span style={{ ...label, color: combined.correlated ? TOKENS.warning : TOKENS.text[1] }}>Same-symbol ideas ({(combined.ideas || []).length}).</span> <span style={dim}>{combined.note}</span></div>
                 <div style={line}>Committed together {$(combined.capital_committed_total)}{combined.account_cash != null ? ` · account cash ${$(combined.account_cash)}${combined.committed_pct_of_cash != null ? ` (${combined.committed_pct_of_cash}% of it)` : ''}` : ''}{combined.shares_held ? ` · ${combined.shares_held} ${combined.symbol} shares already held` : ''}</div>

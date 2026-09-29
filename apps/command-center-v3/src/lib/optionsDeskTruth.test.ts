@@ -1,7 +1,8 @@
 // node src/lib/optionsDeskTruth.test.ts
 import { isCardBlocked, sanitizeActionButtons } from './optionsCardSemantics.ts'
 import {
-  coveredCallFunnelCounts, funnelNameText, optionsDeskPersonLine, rewardRiskPresentation,
+  armedDeskLine, armedOverviewLine, blockedRouteNote, coveredCallFunnelCounts, floorCallouts,
+  funnelNameText, optionsDeskPersonLine, packageLeadIds, rewardRiskPresentation,
 } from './optionsDeskTruth.ts'
 
 let failed = 0
@@ -49,6 +50,23 @@ eq('blocked hold button says Skip', blockedButtons.find(b => b.action === 'hold'
 const remapped = sanitizeActionButtons({ action_buttons: [{ action: 'hold', label: 'Pass' }, { action: 'review_chain', label: 'View Chain' }] } as never)
 eq('server Pass label is remapped', remapped.find(b => b.action === 'hold')?.label, 'Skip')
 ok('isCardBlocked still sees enterprise blocks', isCardBlocked(blockedThesis as never))
+
+eq('package table stays on the first card of a symbol', [...packageLeadIds([
+  { id: 'a', symbol: 'SPCX', combined_exposure: { symbol: 'SPCX' } },
+  { id: 'b', symbol: 'SPCX', combined_exposure: { symbol: 'SPCX' } },
+  { id: 'c', symbol: 'XAR', combined_exposure: { symbol: 'XAR' } },
+])], ['a', 'c'])
+const armedNote = 'Live Schwab options path ARMED — use preflight + per-order 2FA before submit. Manual hedge — size to shares held.'
+const blockedNote = blockedRouteNote(armedNote, true) || ''
+ok('blocked route drops the submit invitation', !/before submit/i.test(blockedNote) && blockedNote.includes('not eligible'))
+ok('blocked route keeps the hedge sizing note', blockedNote.includes('Manual hedge'))
+eq('open route note is unchanged', blockedRouteNote(armedNote, false), armedNote)
+eq('empty desk does not invite an order', armedDeskLine(true, 0), 'broker route open · no card on this page is eligible')
+ok('overview with no eligible card does not say the book is ready', armedOverviewLine(true, 0).includes('No proposal on this desk is eligible'))
+eq('wide quote names the 12% cap', floorCallouts({ strategy: 'cash_secured_put', legs_liquidity: [{ spread_pct: 40 }] }), ['Widest quote is 40.0% wide. The desk cap stays 12%.'])
+eq('credit spread under 0.25 names the floor', floorCallouts({ strategy: 'credit_spread', risk_reward: 0.08 }), ['Reward/risk 0.08 is under the 0.25 credit-spread floor. The floor is unchanged.'])
+eq('cash-secured put is not judged by the credit-spread floor', floorCallouts({ strategy: 'cash_secured_put', risk_reward: 0.08 }), [])
+eq('spread text in a block is read', floorCallouts({ enterprise: { blocks: [{ reason: 'spread 63.6% > 12.0%' }] } })[0], 'Widest quote is 63.6% wide. The desk cap stays 12%.')
 
 if (failed) throw new Error(`optionsDeskTruth: ${failed} failed`)
 console.log('optionsDeskTruth ok')

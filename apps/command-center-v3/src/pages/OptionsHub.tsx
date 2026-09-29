@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { isCardBlocked } from '../lib/optionsCardSemantics'
-import { coveredCallFunnelCounts, funnelNameText, optionsDeskPersonLine } from '../lib/optionsDeskTruth'
+import { armedDeskLine, armedOverviewLine, coveredCallFunnelCounts, funnelNameText, optionsDeskPersonLine, packageLeadIds } from '../lib/optionsDeskTruth'
 import { useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { type OptionProposal } from '../components/OptionProposalCard'
@@ -170,6 +170,7 @@ export default function OptionsHub({ onDrill }: Props) {
     if (flagFilter) base = base.filter(p => ((p as any).flags || []).some((f: any) => f.key === flagFilter))
     return base
   }, [propList, showBlocked, flagFilter])
+  const packageLeads = useMemo(() => packageLeadIds(shownProps), [shownProps])
   // Counts for the status pills, from every card the desk returned.
   const flagCounts = useMemo(() => {
     const c: Record<string, number> = {}
@@ -399,10 +400,12 @@ export default function OptionsHub({ onDrill }: Props) {
             )}
             {execStatus && (
               <Tip
-                tip={execStatus.armed_for_execution ? HEADER.executionArmed : HEADER.executionAdvisory}
-                style={{ color: execStatus.armed_for_execution ? '#22c55e' : '#f59e0b' }}
+                tip={execStatus.armed_for_execution
+                  ? (liveEligibleCount > 0 ? HEADER.executionArmed : 'The broker route is open. No card on this page is eligible, so nothing here is a submit.')
+                  : HEADER.executionAdvisory}
+                style={{ color: execStatus.armed_for_execution && liveEligibleCount > 0 ? '#22c55e' : '#f59e0b' }}
               >
-                {' '}· {execStatus.armed_for_execution ? 'broker route open: you place each order (2FA)' : 'advisory only'} ⓘ
+                {' '}· {armedDeskLine(!!execStatus?.armed_for_execution, liveEligibleCount)} ⓘ
               </Tip>
             )}
           </div>
@@ -442,7 +445,7 @@ export default function OptionsHub({ onDrill }: Props) {
             </span>
           ))}
           {execStatus?.armed_for_execution && (
-            <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e' }}>broker route open · operator places orders (2FA)</span>
+            <span style={{ fontSize: 10, fontWeight: 700, color: liveEligibleCount === 0 ? BB.amber : BB.green }}>{armedDeskLine(true, liveEligibleCount)}</span>
           )}
         </div>
       )}
@@ -650,6 +653,7 @@ export default function OptionsHub({ onDrill }: Props) {
               <ProposalCard
                 key={p.id}
                 proposal={p}
+                packageLead={packageLeads.has(String(p.id))}
                 novice={novice}
                 armed={!!execStatus?.armed_for_execution}
 
@@ -784,9 +788,7 @@ export default function OptionsHub({ onDrill }: Props) {
               Proposals below edge {proposals?.quality_gate?.min_edge_score ?? 62}, POP {proposals?.quality_gate?.min_pop_pct ?? 52}%,
               or IV rank {proposals?.quality_gate?.min_iv_rank ?? 20}% are excluded (fallback floor {proposals?.quality_gate?.relaxed_edge_floor ?? 52}).
               Monitoring refreshes every 5–15 minutes during market hours.
-              {execStatus?.armed_for_execution
-                ? ' Execution ARMED — preflight + per-order 2FA required.'
-                : ' Execution advisory until options_pilot_arm --approve.'}
+              {armedOverviewLine(!!execStatus?.armed_for_execution, liveEligibleCount)}
             </div>
 
           </div>

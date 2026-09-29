@@ -86,6 +86,88 @@ export function optionsDeskPersonLine(rows: PersonRow[] | undefined, openStrateg
   return `Needs a person: ${ready} ready for operator review. ${blocked} blocked.${thesisPart} ${openStrategies} open strategies. A model score is not a CIO decision. Outcomes are not validated from this screen.`
 }
 
+/** Existing desk rules. Display only — do not lower either number in this module. */
+export const DESK_SPREAD_CAP_PCT = 12
+export const CREDIT_SPREAD_RR_FLOOR = 0.25
+
+type FloorInput = {
+  strategy?: string
+  risk_reward?: number | null
+  legs_liquidity?: Array<{ spread_pct?: number | null }>
+  enterprise?: { blocks?: Array<{ reason?: string } | string> }
+  thesis_blocks?: Array<{ reason?: string }>
+  recommendation_comparison?: { comparison?: { reward_to_risk?: number | null } }
+}
+
+function spreadReadings(p: FloorInput): number[] {
+  const out: number[] = []
+  for (const leg of p.legs_liquidity || []) {
+    const n = Number(leg?.spread_pct)
+    if (Number.isFinite(n)) out.push(n)
+  }
+  const blobs = [
+    ...(p.enterprise?.blocks || []).map(b => (typeof b === 'string' ? b : b?.reason)),
+    ...(p.thesis_blocks || []).map(b => b?.reason),
+  ]
+  for (const text of blobs) {
+    const m = String(text || '').match(/spread\s+([\d.]+)%\s*>\s*([\d.]+)%/i)
+    if (m) out.push(Number(m[1]))
+  }
+  return out.filter(n => Number.isFinite(n))
+}
+
+/** Name a breach of the existing caps. A cash-secured put is not relabeled as a credit spread. */
+export function floorCallouts(p: FloorInput): string[] {
+  const out: string[] = []
+  const spreads = spreadReadings(p)
+  const worst = spreads.length ? Math.max(...spreads) : null
+  if (worst != null && worst > DESK_SPREAD_CAP_PCT) {
+    out.push(`Widest quote is ${worst.toFixed(1)}% wide. The desk cap stays ${DESK_SPREAD_CAP_PCT}%.`)
+  }
+  const strategy = String(p.strategy || '')
+  const creditSpread = strategy === 'credit_spread' || strategy.endsWith('_credit_spread')
+  const raw = p.risk_reward ?? p.recommendation_comparison?.comparison?.reward_to_risk
+  const rr = raw == null ? null : Number(raw)
+  if (creditSpread && rr != null && Number.isFinite(rr) && rr < CREDIT_SPREAD_RR_FLOOR) {
+    out.push(`Reward/risk ${rr.toFixed(2)} is under the ${CREDIT_SPREAD_RR_FLOOR} credit-spread floor. The floor is unchanged.`)
+  }
+  return out
+}
+
+/** First card per symbol keeps the shared scenario table. Later cards point at it. */
+export function packageLeadIds(rows: Array<{ id?: string; symbol?: string; combined_exposure?: { symbol?: string } | null }> | undefined): Set<string> {
+  const seen = new Set<string>()
+  const leads = new Set<string>()
+  for (const p of rows || []) {
+    if (!p?.combined_exposure) continue
+    const key = String(p.combined_exposure.symbol || p.symbol || '').toUpperCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    if (p.id) leads.add(String(p.id))
+  }
+  return leads
+}
+
+/** A blocked card keeps the route fact and drops the submit invitation. */
+export function blockedRouteNote(note: string | undefined, blocked: boolean): string | undefined {
+  if (!note) return note
+  if (!blocked) return note
+  const hedge = /manual hedge/i.test(note) ? ' Manual hedge — size to shares held.' : ''
+  return `Broker route is open. This idea is not eligible until its blocks clear.${hedge}`
+}
+
+export function armedDeskLine(armed: boolean, liveEligible: number): string {
+  if (!armed) return 'advisory only'
+  if (liveEligible <= 0) return 'broker route open · no card on this page is eligible'
+  return 'broker route open: you place each order (2FA)'
+}
+
+export function armedOverviewLine(armed: boolean, liveEligible: number): string {
+  if (!armed) return ' Execution advisory until options_pilot_arm --approve.'
+  if (liveEligible <= 0) return ' Broker route is open. No proposal on this desk is eligible.'
+  return ' Broker route is open. Preflight and per-order 2FA are required before any submit.'
+}
+
 /** Hedge payoff ratio is not a credit R:R, and a blocked card does not paint the chip as a pass. */
 export function rewardRiskPresentation(p: RewardRiskInput): { label: string; success: boolean } {
   const hedge = String(p?.strategy || '') === 'protective_put'

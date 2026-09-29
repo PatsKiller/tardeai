@@ -43,7 +43,7 @@ import {
   type PrimeDisplay,
   type SafetyStatusBadge,
 } from '../lib/optionsCardSemantics'
-import { rewardRiskPresentation } from '../lib/optionsDeskTruth'
+import { blockedRouteNote, floorCallouts, rewardRiskPresentation } from '../lib/optionsDeskTruth'
 import type { OptionProposal } from './OptionProposalCard'
 
 // Option Proposal Card v4 — options-desk member of the card-v4 family (2026-07-04).
@@ -410,10 +410,13 @@ export default function OptionProposalCardV4({
   onDrill,
   onManualLog,
   reviewBar,
+  packageLead = true,
 }: {
   proposal: OptionProposal
   armed?: boolean
   novice?: boolean
+  /** First card of a symbol shows the shared scenario table. Later cards point at it. */
+  packageLead?: boolean
   onAction: (action: string, id: string) => void
   /** Stage 3: operator actions for the Alpaca paper lane (fetches live in the hub). */
   onAlpacaAction?: (action: AlpacaLaneAction, proposalId: string, payload?: { exitPremium?: number }) => Promise<AlpacaActionResult>
@@ -850,6 +853,7 @@ export default function OptionProposalCardV4({
           >
             <div style={{ color: BB.text1, fontWeight: 700 }}>{p.symbol} {String(opt.structure || p.strategy || 'option').replace(/_/g, ' ')}{acct ? ` · ${acct}` : ''}{when ? ` · ${when}` : ''}{strikes ? ` · ${strikes}` : ''}{spot ? ` · ${spot}` : ''}</div>
             <div style={{ marginTop: 4, color: refuse ? BB.red : BB.text1, fontWeight: 700 }}>{verdict}{rr != null ? ` Reward/risk ${rr}.` : ''}{pop ? ` POP ${pop}.` : ''}</div>
+            {floorCallouts(p).map(t => <div key={t} style={{ marginTop: 4, color: BB.amber, fontWeight: 700 }}>{t}</div>)}
             <div style={{ marginTop: 4 }}>{stock.maximum_loss_model}</div>
             {/* 2026-09-26: the committee memo below states the CIO status; this line contradicted it. */}
             {!(p as any).committee_memo && <div style={{ marginTop: 4, color: BB.text1 }}>CIO {oversight.review_status || 'unreviewed'}. {ensembleRunning ? 'Aegis is still running. That is not a CIO decision.' : 'A model score is not a CIO decision.'}</div>}
@@ -894,7 +898,12 @@ export default function OptionProposalCardV4({
                     <>
                       <div style={{ fontWeight: 900, color: BB.text1 }}>CIO view on file · {v.symbol}</div>
                       {v.thesis && line('Thesis.', `${v.thesis.pin} · ${String(v.thesis.stance || v.thesis.state || '').toLowerCase()} · last reviewed ${ago(v.thesis.last_reviewed)}${v.thesis.next_review_at ? ` · next ${String(v.thesis.next_review_at).slice(0, 16)}` : ''}`)}
-                      {v.thesis?.summary && line('Summary.', v.thesis.summary)}
+                      {v.thesis?.summary && (
+                        <details style={{ marginTop: 4 }}>
+                          <summary style={{ cursor: 'pointer', fontWeight: 700, color: BB.text1 }}>Thesis summary</summary>
+                          <div style={{ marginTop: 3, color: BB.text2 }}>{v.thesis.summary}</div>
+                        </details>
+                      )}
                       {v.latest_decision && line('Latest decision.', `${v.latest_decision.recommendation} · ${v.latest_decision.source} · ${ago(v.latest_decision.at)} · ${v.latest_decision.decision_id}`)}
                       {v.change_since_previous && line('Changed.', `${v.change_since_previous.previous} → ${v.change_since_previous.current}`)}
                       {line('Research on file.', `${v.research?.count ?? 0} runs · last completed ${ago(v.research?.last_completed)}`)}
@@ -933,7 +942,12 @@ export default function OptionProposalCardV4({
                       ))}
                     </div>
                   )}
-                  {(p as any).combined_exposure && (() => {
+                  {(p as any).combined_exposure && !packageLead && (
+                    <div data-testid="options-combined-exposure-pointer" style={{ marginTop: 6, color: BB.text2 }}>
+                      Same-symbol package is on the first {p.symbol} card. The expiries differ, so there is no single at-expiry payoff.
+                    </div>
+                  )}
+                  {(p as any).combined_exposure && packageLead && (() => {
                     const c = (p as any).combined_exposure
                     return (
                       <div data-testid="options-combined-exposure" style={{ marginTop: 6 }}>
@@ -977,9 +991,14 @@ export default function OptionProposalCardV4({
                           </span>
                           {(p as any).fundamentals.gross_margin_pct != null && <span style={{ color: BB.text2 }}> · gross margin {(p as any).fundamentals.gross_margin_pct}%</span>}
                           {(p as any).fundamentals.operating_margin_pct != null && <span style={{ color: BB.text2 }}> · operating margin {(p as any).fundamentals.operating_margin_pct}%</span>}
-                          {((p as any).fundamentals.lines || []).map((ln: string, i: number) => (
-                            <div key={i} style={{ color: BB.text2, marginLeft: 10 }}>{ln}</div>
-                          ))}
+                          {((p as any).fundamentals.lines || []).length > 0 && (
+                            <details style={{ marginTop: 4 }}>
+                              <summary style={{ cursor: 'pointer', color: BB.text2 }}>Reported lines</summary>
+                              {((p as any).fundamentals.lines || []).map((ln: string, i: number) => (
+                                <div key={i} style={{ color: BB.text2, marginLeft: 10 }}>{ln}</div>
+                              ))}
+                            </details>
+                          )}
                           {(p as any).fundamentals.filing_url && (
                             <a href={(p as any).fundamentals.filing_url} target="_blank" rel="noreferrer" style={{ color: BB.text1, textDecoration: 'underline', marginLeft: 10 }}>SEC filing →</a>
                           )}
@@ -1004,11 +1023,16 @@ export default function OptionProposalCardV4({
                         CIO decision: {String(dec.outcome).replace(/_/g, ' ')} · {String(dec.confidence || '').toLowerCase()} confidence
                       </b>
                       <span style={{ color: BB.text3 }}> · {dec.decision_guid} · {ago(dec.at)}</span>
-                      {dec.review?.reasoning && line('Reasoning.', dec.review.reasoning)}
-                      {dec.review?.concerns?.length > 0 && line('Concerns.', dec.review.concerns.join('; '))}
-                      {dec.review?.assumptions_challenged?.length > 0 && line('Challenged.', dec.review.assumptions_challenged.join('; '))}
-                      {dec.review?.evidence_for?.length > 0 && line('For.', dec.review.evidence_for.join('; '))}
-                      {dec.review?.evidence_against?.length > 0 && line('Against.', dec.review.evidence_against.join('; '))}
+                      {(dec.review?.reasoning || dec.review?.concerns?.length || dec.review?.assumptions_challenged?.length || dec.review?.evidence_for?.length || dec.review?.evidence_against?.length) && (
+                        <details style={{ marginTop: 4 }}>
+                          <summary style={{ cursor: 'pointer', fontWeight: 700, color: BB.text1 }}>CIO reasoning</summary>
+                          {dec.review?.reasoning && line('Reasoning.', dec.review.reasoning)}
+                          {dec.review?.concerns?.length > 0 && line('Concerns.', dec.review.concerns.join('; '))}
+                          {dec.review?.assumptions_challenged?.length > 0 && line('Challenged.', dec.review.assumptions_challenged.join('; '))}
+                          {dec.review?.evidence_for?.length > 0 && line('For.', dec.review.evidence_for.join('; '))}
+                          {dec.review?.evidence_against?.length > 0 && line('Against.', dec.review.evidence_against.join('; '))}
+                        </details>
+                      )}
                       {dec.outcome === 'APPROVE' && <div style={{ marginTop: 3, color: BB.text2 }}>Your confirmation is still required; sizing and 2FA are yours.</div>}
                       {(() => {
                         // 2026-09-26 (operator): MORE_RESEARCH is an assignment with deliverables and a deadline.
@@ -1604,7 +1628,7 @@ export default function OptionProposalCardV4({
             padding: terminalUi ? '5px 10px' : undefined,
           }}>
             <span title="Execution route — not data source" style={{ fontSize: terminalUi ? 9 : 9.5, color: terminalUi ? BB.text3 : WL.text.dim, fontStyle: 'italic', lineHeight: 1.4, minWidth: 0 }}>
-              {p.execution_note || route.label}
+              {blockedRouteNote(p.execution_note, blocked) || route.label}
             </span>
             {showManualLog && (
               <button type="button" title={ACTIONS.manualLog} onClick={onManualLog} style={terminalUi ? terminalButton('secondary') : { fontSize: 10, fontWeight: 800, padding: '5px 11px', borderRadius: 6, border: '1px solid rgba(148,163,184,.3)', background: 'transparent', color: WL.text.secondary, cursor: 'help', flexShrink: 0 }}>
