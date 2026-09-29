@@ -76,6 +76,8 @@ def _traded_symbols(root: Path, *, hermes_days: int = 30) -> set[str]:
                 ts = str(row.get("completed_ts") or row.get("as_of") or "")
                 try:
                     dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+                    if dt.tzinfo is None:
+                        dt = dt.replace(tzinfo=timezone.utc)
                 except Exception:
                     dt = None
                 if dt is None or dt >= cutoff:
@@ -109,9 +111,82 @@ def main() -> int:
         "spine_unresolved": 0,
         "samples": [],
     }
-    ir_path = root / "data" / "cio" / "instrument_records.jsonl"
+    ir_path = root / "data" / "cio" / "cio_instrument_records.jsonl"
     store = InstrumentRecordStore(ir_path)
     spine_path = root / "data" / "cio" / "security_research_spine.jsonl"
+    report["watch_stamped"] = 0
+    report["watch_already"] = 0
+    report["watch_unresolved"] = 0
+
+    # Watchlist durable maps (personal + AI)
+    for rel in (
+        "data/portfolios/state/watchlist.json",
+        "data/portfolios/state/ai_watchlist.json",
+    ):
+        path = root / rel
+        raw = _load_json(path)
+        if raw is None:
+            continue
+        changed = False
+        if isinstance(raw, dict) and isinstance(raw.get("watchlist"), list):
+            new_list = []
+            for row in raw["watchlist"]:
+                if not isinstance(row, dict):
+                    new_list.append(row)
+                    continue
+                sym = str(row.get("symbol") or "").upper()
+                if not sym or sym not in set(universe):
+                    new_list.append(row)
+                    continue
+                env = resolve_security_identity(sym, root=root)
+                if not is_registry_guid(env.get("subject_guid")):
+                    report["watch_unresolved"] += 1
+                    new_list.append(row)
+                    continue
+                if is_registry_guid(row.get("subject_guid")):
+                    report["watch_already"] += 1
+                    new_list.append(row)
+                    continue
+                report["watch_stamped"] += 1
+                if apply:
+                    row = dict(row)
+                    row["subject_guid"] = env["subject_guid"]
+                    if env.get("issuer_guid"):
+                        row["issuer_guid"] = env["issuer_guid"]
+                    row["identity_backfill"] = "traded_universe_20260929"
+                    changed = True
+                new_list.append(row)
+            if apply and changed:
+                raw = dict(raw)
+                raw["watchlist"] = new_list
+                path.write_text(json.dumps(raw, indent=2, default=str) + "\n", encoding="utf-8")
+        elif isinstance(raw, dict):
+            # ticker-keyed map
+            for sym in list(raw.keys()):
+                if not isinstance(sym, str) or sym not in set(universe):
+                    continue
+                val = raw[sym]
+                if not isinstance(val, dict):
+                    val = {"symbol": sym}
+                env = resolve_security_identity(sym, root=root)
+                if not is_registry_guid(env.get("subject_guid")):
+                    report["watch_unresolved"] += 1
+                    continue
+                if is_registry_guid(val.get("subject_guid")):
+                    report["watch_already"] += 1
+                    continue
+                report["watch_stamped"] += 1
+                if apply:
+                    val = dict(val)
+                    val["symbol"] = sym
+                    val["subject_guid"] = env["subject_guid"]
+                    if env.get("issuer_guid"):
+                        val["issuer_guid"] = env["issuer_guid"]
+                    val["identity_backfill"] = "traded_universe_20260929"
+                    raw[sym] = val
+                    changed = True
+            if apply and changed:
+                path.write_text(json.dumps(raw, indent=2, default=str) + "\n", encoding="utf-8")
 
     for sym in universe:
         env = resolve_security_identity(sym, root=root)
