@@ -432,13 +432,16 @@ export default function OptionProposalCardV4({
   const safetyBadge: SafetyStatusBadge | null = safetyStatusBadge(ext)
   const cashflowLabel = String(ext.cashflow_label || optionCashflowLabel(p.strategy, p.side))
   const isCredit = ext.cashflow_is_credit === true || (ext.cashflow_is_credit == null && cashflowIsCredit(p.strategy, p.side))
+  const twoSided = Number(ext.bid) > 0 && Number(ext.ask) >= Number(ext.bid)
+  const missingSingleLegQuote = p.data_source === 'schwab_chain' && p.short_strike == null && p.long_strike == null && !twoSided
+  const midEstimate = !missingSingleLegQuote && (ext.credit_basis === 'midpoint' || (!ext.credit_basis && p.data_source === 'schwab_chain'))
   const cfColor = cashflowColor(isCredit)
   const actionButtons = sanitizeActionButtons(p)
   const route = executionRouteBadge(ext)
   const liqWarnings = liquidityWarnings(p)
   const displayEdgeRaw = ext.display_edge_score ?? p.edge_score
   // Operator 2026-09-27: status first. "POSITIVE"/READY beside BLOCKED was the edge score talking.
-  const blockedCard = (p as any).approvable === false || !!(p as any).enterprise_blocked
+  const blockedCard = blocked || ext.approvable !== true || p.enterprise?.live_eligible !== true
   const severityForCard = blockedCard ? 'blocked' : (p.severity || (displayEdgeRaw && Number(displayEdgeRaw) >= 75 ? 'positive' : 'info'))
   const tone = heroTone(severityForCard)
   const { verdict, urgency } = proposalVerdictFromSeverity(severityForCard)
@@ -450,7 +453,7 @@ export default function OptionProposalCardV4({
   const edgeColorRaw = edge == null ? WL.text.dim : edge >= 72 ? WL.signal.teal : edge >= 50 ? WL.signal.amber : WL.signal.red
   const edgeColor = termSignal(edgeColorRaw, terminalUi)
   const ds = p.data_source === 'schwab_chain'
-    ? { label: 'Schwab chain', c: WL.signal.teal, tip: 'Live bid/ask mid from Schwab option chain.' }
+    ? { label: 'Schwab chain', c: WL.text.secondary, tip: 'Quote source only. Midpoint is an estimate, not a fill or an approval; verify age and both sides.' }
     : p.data_source === 'bs_estimate'
       ? { label: 'BS estimate', c: WL.signal.amber, tip: 'Premium estimated via Black-Scholes — confirm on chain before sizing.' }
       : null
@@ -468,7 +471,8 @@ export default function OptionProposalCardV4({
   const strippedReasoning = p.reasoning
     ? (p.reasoning.replace(/\s*·\s*Aegis:[^·]+/g, '').replace(/\s*Aegis:[^·]+/g, '').trim() || p.reasoning)
     : ''
-  const whyLine = composeWhy([strippedReasoning])
+  const refusal = Array.isArray(ext.flags) ? ext.flags.find((f: any) => f?.key === 'NOT_APPROVABLE') as { label?: string } | undefined : undefined
+  const whyLine = blockedCard ? (refusal?.label || 'Not approvable: review the recorded blocks') : composeWhy([strippedReasoning])
 
   const manualOnly = p.execution_mode === 'manual' || p.broker === 'fidelity' || !p.auto_eligible
   const showManualLog = !!onManualLog && allowsManualLog(ext)
@@ -1205,7 +1209,7 @@ export default function OptionProposalCardV4({
           </span>
           <MetricChipTooltip
             metricKey={isCredit ? 'total_credit' : 'total_debit'}
-            label={p.premium_total != null ? fmt$(p.premium_total) : '—'}
+            label={missingSingleLegQuote ? 'Quote unverified' : p.premium_total != null ? `${fmt$(p.premium_total)}${midEstimate ? ' mid est.' : ''}` : '—'}
             context={metricCtx}
             style={{ flexShrink: 0 }}
             valueStyle={{ ...ns, fontSize: terminalUi ? 12 : 13.5, fontWeight: 800, color: terminalUi ? (isCredit ? BB.green : BB.text0) : cfColor }}
@@ -1215,7 +1219,7 @@ export default function OptionProposalCardV4({
               const packet = (p as any).options_decision_packet
               const preferred = (p as any).recommendation_comparison?.comparison?.preferred_structure
               const state = packet?.state
-              const hide = preferred === 'neither' || state === 'BLOCKED' || state === 'REVIEW_REQUIRED' || packet?.readiness?.cta === 'none'
+              const hide = blockedCard || preferred === 'neither' || state === 'BLOCKED' || state === 'REVIEW_REQUIRED' || packet?.readiness?.cta === 'none'
               return !(hide && EXEC_ACTIONS.has(b.action))
             }).map((b, i) => {
               const execLocked = EXEC_ACTIONS.has(b.action) && !armed && !manualOnly
@@ -1554,8 +1558,8 @@ export default function OptionProposalCardV4({
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: terminalUi ? 4 : 7 }}>
               <Metric label="Spot" value={`$${fmtNum(p.underlying_price, 2)}`} context={metricCtx} terminal={terminalUi} />
               <Metric label="Strike" value={`$${fmtNum(p.strike, p.strike < 50 ? 2 : 0)}`} context={metricCtx} terminal={terminalUi} />
-              <Metric label={(p as any).credit_basis === 'executable' ? 'Credit (executable)' : (p as any).credit_basis === 'midpoint' ? 'Credit (midpoint est.)' : 'Premium'} value={p.premium != null ? fmt$(p.premium, 2) : '—'} color={isCredit ? WL.price.up : WL.text.primary} metricKey="premium" context={metricCtx} terminal={terminalUi} />
-              <Metric label={cashflowLabel} value={fmt$(p.premium_total)} color={cfColor} metricKey={isCredit ? 'total_credit' : 'total_debit'} context={metricCtx} terminal={terminalUi} />
+              <Metric label={missingSingleLegQuote ? 'Premium unverified' : (p as any).credit_basis === 'executable' ? 'Credit (executable)' : midEstimate ? 'Premium (mid est.)' : 'Premium'} value={missingSingleLegQuote ? '—' : p.premium != null ? fmt$(p.premium, 2) : '—'} color={isCredit ? WL.price.up : WL.text.primary} metricKey="premium" context={metricCtx} terminal={terminalUi} />
+              <Metric label={`${cashflowLabel}${missingSingleLegQuote ? ' unverified' : midEstimate ? ' (mid est.)' : ''}`} value={missingSingleLegQuote ? '—' : fmt$(p.premium_total)} color={cfColor} metricKey={isCredit ? 'total_credit' : 'total_debit'} context={metricCtx} terminal={terminalUi} />
               <Metric label={(p as any).breakeven_label || 'Breakeven'} value={p.breakeven != null ? `$${fmtNum(p.breakeven, 2)}` : '—'} context={metricCtx} terminal={terminalUi} />
               <Metric label="Max profit" value={fmtMoneyish(p.max_profit)} color={WL.price.up} context={metricCtx} terminal={terminalUi} />
               {p.strategy === 'covered_call' ? (
@@ -1575,7 +1579,7 @@ export default function OptionProposalCardV4({
               {(p as any).option_max_loss != null && (
                 <Metric label="Put alone: max loss" value={fmt$((p as any).option_max_loss)} context={metricCtx} terminal={terminalUi} />
               )}
-              <Metric label="IV rank" value={p.iv_rank != null ? `${p.iv_rank}%` : '—'} context={metricCtx} terminal={terminalUi} />
+              <Metric label={(p as any).iv_rank_source === 'history' ? 'IV rank' : 'IV/price proxy'} value={p.iv_rank != null ? `${p.iv_rank}%` : '—'} context={metricCtx} terminal={terminalUi} />
               <Metric label="Contracts" value={p.contracts ?? '—'} context={metricCtx} terminal={terminalUi} />
               {p.delta != null && <Metric label="Delta" value={p.delta.toFixed(2)} context={metricCtx} terminal={terminalUi} />}
               {p.oi != null && <Metric label="OI" value={fmtNum(p.oi, 0)} context={metricCtx} terminal={terminalUi} />}
