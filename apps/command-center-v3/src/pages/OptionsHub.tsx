@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { isCardBlocked } from '../lib/optionsCardSemantics'
 import { armedDeskLine, armedOverviewLine, coveredCallFunnelCounts, funnelNameText, optionsDeskPersonLine, packageLeadIds } from '../lib/optionsDeskTruth'
 import { useSearchParams } from 'react-router-dom'
@@ -67,10 +67,8 @@ export default function OptionsHub({ onDrill }: Props) {
   const [liveOnly, setLiveOnly] = useState(false)
   // 2026-09-26 (operator): filter on the card's honest status pills.
   const [flagFilter, setFlagFilter] = useState<string | null>(null)
-  // When Live eligible is 0, auto-show Blocked so the desk is not blank (2026-09-25).
-  // Operator can still hide via the Blocked chip.
+  // Blocked research remains available on demand; it is not an action queue.
   const [showBlocked, setShowBlocked] = useState(false)
-  const [blockedAutoShown, setBlockedAutoShown] = useState(false)
   const [minPop, setMinPop] = useState(0)
   const [minEdge, setMinEdge] = useState(0)
   const [posSymbolFilter, setPosSymbolFilter] = useState('')
@@ -150,26 +148,21 @@ export default function OptionsHub({ onDrill }: Props) {
     [propList],
   )
   // Schwab Path B Ideas only — Alpaca / educational paper rows filtered out of the Hub.
-  const isBlockedProp = (p: any) => isCardBlocked(p)
+  const isBlockedProp = (p: any) => isCardBlocked(p) || p.approvable !== true || p.enterprise?.live_eligible !== true
   const blockedCount = useMemo(() => propList.filter(isBlockedProp).length, [propList])
-  const liveEligibleCount = Number(proposals?.filter_facets?.live_eligible ?? 0)
-  useEffect(() => {
-    if (blockedAutoShown) return
-    if (liveEligibleCount === 0 && blockedCount > 0) {
-      setShowBlocked(true)
-      setBlockedAutoShown(true)
-    }
-  }, [liveEligibleCount, blockedCount, blockedAutoShown])
+  const liveEligibleCount = propList.length - blockedCount
   const shownProps = useMemo(() => {
     let base = propList.filter(p =>
       !p.educational_paper_model
       && !(p as any).paper_only
       && String(p.broker || '').toLowerCase() !== 'alpaca'
     )
-    if (!showBlocked && !flagFilter) base = base.filter(p => !isBlockedProp(p))
+    if (!showBlocked) base = base.filter(p => !isBlockedProp(p))
     if (flagFilter) base = base.filter(p => ((p as any).flags || []).some((f: any) => f.key === flagFilter))
     return base
   }, [propList, showBlocked, flagFilter])
+  const reviewProps = shownProps.filter(p => !isBlockedProp(p))
+  const blockedProps = shownProps.filter(isBlockedProp)
   const packageLeads = useMemo(() => packageLeadIds(shownProps), [shownProps])
   // Counts for the status pills, from every card the desk returned.
   const flagCounts = useMemo(() => {
@@ -352,6 +345,27 @@ export default function OptionsHub({ onDrill }: Props) {
     }
   }
 
+  const proposalCard = (p: Proposal) => (
+    <ProposalCard
+      key={p.id}
+      proposal={p}
+      packageLead={packageLeads.has(String(p.id))}
+      novice={novice}
+      armed={!!execStatus?.armed_for_execution}
+      onAction={(a, id) => handleAction(a, id, p)}
+      onManualLog={() => setManualSeed({ symbol: p.symbol, account: p.account, options_proposal_id: p.id, execution_type: 'option' })}
+      onDrill={() => onDrill({
+        title: `${p.symbol} ${p.strategy.replace(/_/g, ' ')}`,
+        subtitle: `$${p.strike} · ${p.dte} DTE · ${p.expiration ?? ''}`,
+        endpoint: `/api/v2/options/proposals`,
+        rows: [p],
+        subjectType: 'options_proposal',
+        subjectKey: p.id,
+      })}
+      reviewBar={<OptionReviewBar proposal={p} autoRequest />}
+    />
+  )
+
   return (
     <div>
       <div className="hub-title-row" style={{ marginBottom: 14 }}>
@@ -481,9 +495,19 @@ export default function OptionsHub({ onDrill }: Props) {
 
       {tab === 'Proposals' && (
         <>
-          <div style={{ marginBottom: 14 }}>
-            <ManualExecutionLog mode="option" borderColor="#a855f7" />
+          <div style={{ ...panel, marginBottom: 14, borderLeft: `4px solid ${liveEligibleCount > 0 ? BB.green : BB.amber}` }} data-testid="options-attention-summary">
+            <b style={{ color: 'var(--text0)' }}>{liveEligibleCount} live eligible from this limited scan</b>
+            {' · '}{blockedCount} blocked{flagCounts.THESIS_INCOMPLETE ? ` · ${flagCounts.THESIS_INCOMPLETE} incomplete theses` : ''}.
+            {' '}An eligible idea still needs an operator decision, a fresh preflight, and per-order 2FA.
+            {' '}Options execution: {execStatus ? (execStatus.armed_for_execution ? 'armed' : 'disarmed') : 'status unverified'}.
+            {blockedCount > 0 && <button type="button" onClick={() => { if (showBlocked && (flagFilter === 'NOT_APPROVABLE' || flagFilter === 'THESIS_INCOMPLETE')) setFlagFilter(null); setShowBlocked(v => !v) }} style={{ ...SEL, marginLeft: 10, cursor: 'pointer' }}>
+              {showBlocked ? 'Hide blocked research' : `Review ${blockedCount} blocked idea${blockedCount === 1 ? '' : 's'}`}
+            </button>}
           </div>
+          <details style={{ ...panel, marginBottom: 14 }}>
+            <summary style={{ cursor: 'pointer', fontWeight: 700 }}>Manual execution log</summary>
+            <div style={{ marginTop: 10 }}><ManualExecutionLog mode="option" borderColor="#a855f7" /></div>
+          </details>
           <div style={{ ...panel, marginBottom: 14 }}>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', marginBottom: 10 }}>
               <input
@@ -564,7 +588,7 @@ export default function OptionsHub({ onDrill }: Props) {
                 ['UPSIDE', 'Upside', 'You pay premium for leveraged upside (long call).', BB.green],
                 ['CLOSED_MARKET_CHAIN', 'Chain read closed', 'Quotes were read while the market was closed; re-check prices at the open.', BB.amber],
               ] as [string, string, string, string][]).filter(([k]) => (flagCounts[k] || 0) > 0).map(([k, label, tip, color]) =>
-                facetChip(tip, label, flagCounts[k], flagFilter === k, () => setFlagFilter(f => f === k ? null : k), color))}
+                facetChip(tip, label, flagCounts[k], flagFilter === k, () => { setFlagFilter(f => f === k ? null : k); if (k === 'NOT_APPROVABLE' || k === 'THESIS_INCOMPLETE') setShowBlocked(true) }, color))}
             </div>
             <TipSection tip="Portfolio sleeve = holdings-based. Conviction = watchlist names. Tiers from enterprise desk scoring.">SLEEVE &amp; DESK</TipSection>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -574,7 +598,7 @@ export default function OptionsHub({ onDrill }: Props) {
               {facetChip(FILTERS.tierB, 'Tier B', propFacets.by_tier?.B, tierFilter === 'B', () => setTierFilter(t => t === 'B' ? '' : 'B'), '#60a5fa')}
               {facetChip(FILTERS.tierC, 'Tier C', propFacets.by_tier?.C, tierFilter === 'C', () => setTierFilter(t => t === 'C' ? '' : 'C'), 'var(--text3)')}
               {facetChip(FILTERS.liveEligible, 'Live eligible', propFacets.live_eligible, liveOnly, () => setLiveOnly(v => !v), '#22c55e')}
-              {blockedCount > 0 && facetChip('Blocked = enterprise liquidity/spread/OI/BS-estimate or an incomplete options thesis. Schwab Path B only. Auto-shown when Live eligible is 0.', `Blocked`, blockedCount, showBlocked, () => setShowBlocked(v => !v), '#ef4444')}
+              {blockedCount > 0 && facetChip('Blocked ideas are research and refusals. Open them to inspect their reasons; none is ready for an order.', `Blocked`, blockedCount, showBlocked, () => setShowBlocked(v => !v), '#ef4444')}
               <Tip tip={FILTERS.showing} style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
                 Showing {propCount}{propFacets.total != null && propCount !== propFacets.total ? ` of ${propFacets.total}` : ''} ⓘ
               </Tip>
@@ -588,8 +612,8 @@ export default function OptionsHub({ onDrill }: Props) {
           )}
 
           {funnelSummary && (
-            <div title="Owned-book funnel: named drop reasons for covered calls / protective puts. Does not widen IV or intent gates." style={{ ...panel, marginBottom: 12, borderLeft: `4px solid ${T.link}`, fontSize: TYPE.sm, color: 'var(--text2)', cursor: 'help' }}>
-              <div style={{ fontSize: TYPE.sm, fontWeight: 700, color: T.link, marginBottom: 6 }}>Holdings options funnel ⓘ</div>
+            <details title="Owned-book funnel: named drop reasons for covered calls / protective puts. Does not widen IV or intent gates." style={{ ...panel, marginBottom: 12, borderLeft: `4px solid ${T.link}`, fontSize: TYPE.sm, color: 'var(--text2)' }}>
+              <summary style={{ fontSize: TYPE.sm, fontWeight: 700, color: T.link, marginBottom: 6, cursor: 'pointer' }}>Holdings options funnel · {funnelSummary.holdings_scanned ?? '—'} scanned · {funnelCounts.cleared.count} cleared gates</summary>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginBottom: 6 }}>
                 <span>Scanned <b style={{ color: 'var(--text0)' }}>{funnelSummary.holdings_scanned ?? '—'}</b></span>
                 <span>Cleared gates <b style={{ color: BB.green }}>{funnelCounts.cleared.count}</b></span>
@@ -632,7 +656,7 @@ export default function OptionsHub({ onDrill }: Props) {
                   {funnelSummary.fractional_residue.count} fractional leftover(s) worth ${Number(funnelSummary.fractional_residue.market_value || 0).toLocaleString()} ({(funnelSummary.fractional_residue.positions || []).map((r: any) => r.symbol).join(', ')}) — held by the broker after a sale or dividend reinvest; not option candidates.
                 </div>
               )}
-            </div>
+            </details>
           )}
 
           {propList.length === 0 && !propLoading && !propError && (
@@ -648,29 +672,16 @@ export default function OptionsHub({ onDrill }: Props) {
           )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center', marginBottom: 6 }}><NoviceToggle on={novice} onChange={v => { setNovice(v); setNoviceMode(v) }} /><UiV5Toggle /></div>
+          <div style={{ fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Operator attention · {reviewProps.length} card{reviewProps.length === 1 ? '' : 's'} in this view</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
-            {shownProps.map(p => (
-              <ProposalCard
-                key={p.id}
-                proposal={p}
-                packageLead={packageLeads.has(String(p.id))}
-                novice={novice}
-                armed={!!execStatus?.armed_for_execution}
-
-                onAction={(a, id) => handleAction(a, id, p)}
-                onManualLog={() => setManualSeed({ symbol: p.symbol, account: p.account, options_proposal_id: p.id, execution_type: 'option' })}
-                onDrill={() => onDrill({
-                  title: `${p.symbol} ${p.strategy.replace(/_/g, ' ')}`,
-                  subtitle: `$${p.strike} · ${p.dte} DTE · ${p.expiration ?? ''}`,
-                  endpoint: `/api/v2/options/proposals`,
-                  rows: [p],
-                  subjectType: 'options_proposal',
-                  subjectKey: p.id,
-                })}
-                reviewBar={<OptionReviewBar proposal={p} autoRequest />}
-              />
-            ))}
+            {reviewProps.map(proposalCard)}
           </div>
+          {blockedProps.length > 0 && <>
+            <div style={{ fontWeight: 700, color: BB.amber, margin: '18px 0 8px' }}>Blocked research · {blockedProps.length} card{blockedProps.length === 1 ? '' : 's'} · no order action</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
+              {blockedProps.map(proposalCard)}
+            </div>
+          </>}
         </>
       )}
 

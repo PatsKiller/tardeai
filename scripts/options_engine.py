@@ -2834,6 +2834,28 @@ def _not_approvable_reason(p: dict, tb: list, ent: dict) -> str:
     """The real reason a card is not approvable (2026-09-27): every thesis-stage block
     used to read "thesis incomplete", so HOOD -- thesis complete, CIO REJECT -- said
     "thesis incomplete"."""
+    # A pending model review is a later prerequisite. Name a deterministic veto
+    # first so a blocked quote or earnings event never reads like a review queue.
+    hard = [b for b in (ent.get("blocks") or [])
+            if not isinstance(b, dict) or (b.get("code") != "awaiting_cio_decision"
+            and not str(b.get("code") or "").startswith("thesis_"))]
+    hard_codes = {str(b.get("code") or "").lower() for b in hard if isinstance(b, dict)}
+    hard_text = " ".join(str(b.get("reason") if isinstance(b, dict) else b) for b in hard).lower()
+    if "earnings_timestamp_unknown" in hard_codes or "earnings_timestamp_invalid" in hard_codes:
+        return "earnings date unverified"
+    if "earnings_blackout" in hard_codes:
+        return "earnings event blocks review"
+    if hard_codes.intersection({"spread_too_wide", "oi_below_threshold", "volume_below_threshold",
+                                "liquidity_gate", "liquidity_unknown", "bs_estimate_only"}):
+        return "option quote/liquidity failed"
+    if "no_resolved_occ" in hard_codes:
+        return "option contract unverified"
+    if "daily leveraged fund" in hard_text:
+        return "leveraged fund policy"
+    if "awaiting live quotes" in hard_text:
+        return "awaiting live quotes"
+    if hard:
+        return "enterprise block"
     codes = [str(b.get("code") if isinstance(b, dict) else "") for b in tb]
     reasons = " ".join(str(b.get("reason") if isinstance(b, dict) else b) for b in tb).upper()
     if "awaiting_cio_decision" in codes:
@@ -2844,11 +2866,6 @@ def _not_approvable_reason(p: dict, tb: list, ent: dict) -> str:
         return "awaiting CIO decision"
     if any(c.startswith("thesis_") for c in codes):
         return "thesis incomplete"
-    blocks = " ".join(str(b) for b in (ent.get("blocks") or []))
-    if "daily leveraged fund" in blocks:
-        return "leveraged fund policy"
-    if "awaiting live quotes" in blocks:
-        return "awaiting live quotes"
     return "enterprise block"
 
 

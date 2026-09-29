@@ -68,11 +68,25 @@ def test_a_config_that_tries_to_enable_the_locked_flag_shows_a_delta(tmp_path, m
 # ── schedulers ───────────────────────────────────────────────────────────────
 
 
-def test_scheduler_truth_distinguishes_the_failure_modes():
+def test_scheduler_truth_distinguishes_the_failure_modes(monkeypatch):
+    # The source contract is tested with a deterministic systemd snapshot.
+    # A CI worker may have no user bus or installed timers at all.
+    monkeypatch.setattr(et, "_systemctl", lambda *args: "live.timer enabled\noff.timer disabled\n")
+    def fake_show(names, properties):
+        if "NextElapseUSecRealtime" in properties:
+            return {
+                "live.timer": {"Unit": "live.service", "ActiveState": "active", "NextElapseUSecMonotonic": "42", "LastTriggerUSec": "n/a"},
+                "off.timer": {"Unit": "off.service", "ActiveState": "inactive", "LastTriggerUSec": "n/a"},
+            }
+        return {"live.service": {"Result": "exit-code", "ExecMainStatus": "1"}, "off.service": {"Result": "success"}}
+    monkeypatch.setattr(et, "_show", fake_show)
     rep = et.scheduler_truth()
     assert rep["schema"] == "SchedulerTruth@v1"
-    assert rep["timer_unit_files"] >= 1
+    assert rep["timer_unit_files"] == 2
     assert rep["timers_inspected"] == rep["timer_unit_files"]
+    assert rep["disabled_timers"] == ["off.timer"]
+    assert rep["timers_with_failed_last_run"] == ["live.timer"]
+    assert "live.timer" not in rep["enabled_timers_with_no_next_elapse"]
     for key in (
         "disabled_timers",
         "enabled_timers_with_no_next_elapse",

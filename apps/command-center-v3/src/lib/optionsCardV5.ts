@@ -94,12 +94,12 @@ export function proposalStatusChips(p: AnyRow): ChipSpec[] {
   out.push({ label: strategyLabel(p.strategy), tone: 'info' })
   if (p.account_display || p.account) out.push({ label: String(p.account_display || p.account).replace(/_/g, ' '), tone: 'neutral' })
   if (p.desk_tier) out.push({ label: `Tier ${p.desk_tier}`, tone: 'neutral', guideKey: 'options.ui.proposal.desk_tier' })
-  if (p.data_source === 'schwab_chain') out.push({ label: 'Schwab chain', tone: 'success', title: 'Live bid/ask from the Schwab option chain' })
+  if (p.data_source === 'schwab_chain') out.push({ label: 'Schwab chain', tone: 'neutral', title: 'Quote source only; midpoint is not a fill or approval. Verify quote age and both sides.' })
   else if (p.data_source === 'bs_estimate') out.push({ label: 'BS estimate', tone: 'warning', title: 'Premium estimated by Black-Scholes; confirm on the chain' })
   if (p.market_session && p.market_session !== 'REGULAR') out.push({ label: String(p.market_session).replace(/_/g, ' ').toLowerCase(), tone: 'neutral' })
   const ent = p.enterprise || {}
-  if (ent.live_eligible === true) out.push({ label: 'live eligible', tone: 'success', guideKey: 'options.ui.proposal.live_ok' })
-  else if (ent.live_eligible === false) out.push({ label: 'not live eligible', tone: 'warning', guideKey: 'options.ui.proposal.live_blocked' })
+  if (ent.live_eligible === true && p.approvable === true) out.push({ label: 'live eligible', tone: 'success', guideKey: 'options.ui.proposal.live_ok' })
+  else out.push({ label: 'not live eligible', tone: 'warning', guideKey: 'options.ui.proposal.live_blocked' })
   if (p.educational_paper_model) out.push({ label: 'paper lab', tone: 'warning', guideKey: 'options.alpaca_paper_only' })
   for (const f of (p.flags || []) as Array<{ key?: string; label?: string; tone?: string }>) {
     if (!f?.label) continue
@@ -113,10 +113,15 @@ export function proposalStatusChips(p: AnyRow): ChipSpec[] {
 export function proposalHeroMetrics(p: AnyRow): MetricSpec[] {
   const econ = p.economics || {}
   const isCredit = p.cashflow_is_credit === true || (p.cashflow_is_credit == null && p.net_credit != null) || /covered_call|cash_secured_put|credit_spread|short_/.test(String(p.strategy))
-  const basis = p.credit_basis ? `credit basis: ${p.credit_basis}` : undefined
+  const twoSided = Number.isFinite(Number(p.bid)) && Number(p.bid) > 0 && Number.isFinite(Number(p.ask)) && Number(p.ask) >= Number(p.bid)
+  const missingSingleLegQuote = p.data_source === 'schwab_chain' && p.short_strike == null && p.long_strike == null && !twoSided
+  const isMidEstimate = !missingSingleLegQuote && (p.credit_basis === 'midpoint' || (!p.credit_basis && p.data_source === 'schwab_chain'))
+  const quoteSides = twoSided
+    ? `; bid ${fmt$(Number(p.bid), 2)} / ask ${fmt$(Number(p.ask), 2)} per share` : ''
+  const basis = missingSingleLegQuote ? 'no valid two-sided quote; amount withheld' : isMidEstimate ? `midpoint estimate, not a fill${quoteSides}` : p.credit_basis ? `credit basis: ${p.credit_basis}` : undefined
   const out: MetricSpec[] = []
   if (p.strategy === 'protective_put') {
-    out.push({ guideKey: 'options.total_debit', label: 'Cost', value: money(econ.option_cost_total ?? p.premium_total), tone: 'neutral' })
+    out.push({ guideKey: 'options.total_debit', label: missingSingleLegQuote ? 'Cost unverified' : isMidEstimate ? 'Cost (mid est.)' : 'Cost', value: missingSingleLegQuote ? '—' : money(econ.option_cost_total ?? p.premium_total), tone: 'neutral', meta: basis })
     out.push({ guideKey: 'options.hedged_max_loss_from_mark', label: 'Hedged max loss', value: money(econ.hedged_max_loss_from_mark), tone: 'warning' })
     out.push({ guideKey: 'options.floor_value', label: 'Floor', value: money(econ.floor_value_after_premium ?? p.floor_value) })
     out.push({ guideKey: 'options.insured_shares', label: 'Insured', value: econ.insured_shares != null ? `${num(econ.insured_shares)} sh${econ.uninsured_shares ? ` (+${num(econ.uninsured_shares)} not)` : ''}` : '—' })
@@ -124,8 +129,8 @@ export function proposalHeroMetrics(p: AnyRow): MetricSpec[] {
   }
   out.push({
     guideKey: isCredit ? 'options.total_credit' : 'options.total_debit',
-    label: isCredit ? 'Credit' : 'Debit',
-    value: money(econ.credit_total ?? p.premium_total), tone: isCredit ? 'success' : 'neutral', meta: basis,
+    label: `${isCredit ? 'Credit' : 'Debit'}${missingSingleLegQuote ? ' unverified' : isMidEstimate ? ' (mid est.)' : ''}`,
+    value: missingSingleLegQuote ? '—' : money(econ.credit_total ?? p.premium_total), tone: isCredit && !missingSingleLegQuote ? 'success' : 'neutral', meta: basis,
   })
   out.push({ guideKey: 'options.max_loss', label: p.max_loss_label || 'Max loss', value: money(econ.max_loss_total ?? p.max_loss), tone: 'warning' })
   out.push({ guideKey: 'options.pop', label: 'POP', value: pct(p.pop_pct, 1), meta: 'modeled' })
@@ -138,11 +143,13 @@ export function proposalHeroMetrics(p: AnyRow): MetricSpec[] {
 export function proposalDetailMetrics(p: AnyRow): MetricSpec[] {
   const econ = p.economics || {}
   const out: MetricSpec[] = []
-  const ev = econ.expected_pl_at_expiry ?? p.expected_value
+  // The economics producer deliberately sets this to null on unusable quotes.
+  // Never resurrect an older expected_value from a cached proposal.
+  const ev = econ.expected_pl_at_expiry
   if (ev != null) out.push({ guideKey: 'options.ev', label: 'Expected P/L', value: signed$(ev), tone: 'neutral', meta: econ.ev_caveat ? 'model estimate' : undefined })
   // The % distance to breakeven is NOT computed here (§13): plain_english.breakeven_line carries it.
   if (p.breakeven != null) out.push({ guideKey: 'options.breakeven', label: p.breakeven_label || 'Breakeven', value: `$${price(p.breakeven)}` })
-  if (p.iv_rank != null) out.push({ guideKey: 'options.iv_rank', label: 'IV rank', value: num(p.iv_rank) })
+  if (p.iv_rank != null) out.push({ guideKey: 'options.iv_rank', label: p.iv_rank_source === 'history' ? 'IV rank' : 'IV/price proxy', value: num(p.iv_rank), meta: p.iv_rank_source === 'history' ? undefined : 'historical IV rank not verified on this card' })
   const rr = p.reward_to_risk ?? p.risk_reward
   if (rr != null) out.push({ guideKey: 'options.rr', label: 'R:R', value: Number(rr).toFixed(2) })
   if (econ.collateral != null) out.push({ guideKey: 'options.collateral', label: 'Collateral', value: money(econ.collateral) })
@@ -157,14 +164,17 @@ export function proposalDetailMetrics(p: AnyRow): MetricSpec[] {
 /** The takeaway: the server insight; else server sentences already on the row. */
 export function proposalInsight(p: AnyRow): UiInsight {
   const i = p.insight
-  if (i && typeof i === 'object' && i.headline) return i as UiInsight
   const pe = p.plain_english || {}
   const memo = p.committee_memo || {}
   const flags = (p.flags || []) as Array<{ key?: string; label?: string }>
   const notOk = flags.find(f => f?.key === 'NOT_APPROVABLE')
-  const head = notOk?.label || pe.objective || memo.plain_summary || p.recommended_action || 'No takeaway on file for this idea.'
   const drivers = [...((p.thesis_blocks || []) as Array<{ reason?: string }>).map(b => b?.reason).filter(Boolean),
     ...(((p.enterprise || {}).blocks || []) as Array<{ reason?: string } | string>).map(b => (typeof b === 'string' ? b : b?.reason)).filter(Boolean)] as string[]
+  if (notOk || p.approvable === false) {
+    return { headline: notOk?.label || 'Not approvable: blocked by the desk', tone: severityTone('blocked', flags), drivers: drivers.slice(0, 4), source: 'rule', as_of: p.generated_at || null, provenance: 'desk truth flags' }
+  }
+  if (i && typeof i === 'object' && i.headline) return i as UiInsight
+  const head = pe.objective || memo.plain_summary || p.recommended_action || 'No takeaway on file for this idea.'
   return { headline: String(head), tone: severityTone(p.severity, flags), drivers: drivers.slice(0, 4), source: 'rule', as_of: p.generated_at || null, provenance: notOk ? 'desk truth flags' : 'plain_english' }
 }
 
@@ -173,7 +183,9 @@ export function visibleProposalActions(p: AnyRow, armed: boolean, buttons?: Arra
   const packet = p.options_decision_packet || {}
   const preferred = p.recommendation_comparison?.comparison?.preferred_structure
   const state = packet.state
-  const hide = preferred === 'neither' || state === 'BLOCKED' || state === 'REVIEW_REQUIRED' || packet.readiness?.cta === 'none'
+  const hide = p.approvable !== true || p.enterprise?.live_eligible !== true || (p.enterprise?.blocks || []).length > 0
+    || (p.flags || []).some((f: { key?: string }) => f.key === 'NOT_APPROVABLE')
+    || preferred === 'neither' || state === 'BLOCKED' || state === 'REVIEW_REQUIRED' || packet.readiness?.cta === 'none'
   const manualOnly = p.execution_mode === 'manual' || p.broker === 'fidelity' || !p.auto_eligible
   return (buttons || p.action_buttons || []).filter((b: { action: string }) => !(hide && EXEC_ACTIONS.has(b.action))).map((b: { action: string; label: string }) => {
     const exec = EXEC_ACTIONS.has(b.action)

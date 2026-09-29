@@ -450,7 +450,10 @@ def test_the_gate_bridge_must_not_write_a_git_tracked_file_on_a_schedule():
     The flag is fine by hand; it must not be on a schedule until the bridge
     writes to the production state root like every other hourly receipt.
     """
+    import shutil
     import subprocess
+    if shutil.which("crontab") is None:
+        pytest.skip("host crontab unavailable; installed schedule needs a served-host check")
     out = subprocess.run(["crontab", "-l"], capture_output=True, text=True).stdout
     offenders = [ln for ln in out.splitlines()
                  if ln.strip() and not ln.lstrip().startswith("#")
@@ -458,6 +461,14 @@ def test_the_gate_bridge_must_not_write_a_git_tracked_file_on_a_schedule():
     assert not offenders, (
         "a scheduled --update-catalog writes a git-tracked file hourly and will "
         f"block every deploy: {offenders}")
+
+
+def test_gate_bridge_declared_schedule_never_updates_the_tracked_catalog():
+    """The source-side declaration is checked even when no host cron exists."""
+    registry = json.loads((ROOT / "config/lane_registry.json").read_text())
+    rows = registry.get("lanes", registry) if isinstance(registry, dict) else registry
+    bridge = next(row for row in rows if row.get("lane_id") == "goal-gate-bridge")
+    assert "--update-catalog" not in bridge["scheduler"]["expression"]
 
 
 def _load_sgp(name: str):

@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import shutil
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -83,12 +84,18 @@ def test_the_checker_can_go_red(tmp_path):
         f"    return requests.post(f'https://{host}/bot{{tok}}/sendMessage',\n"
         "                         json={'chat_id': cid, 'text': 'probe'})\n"
     )
-    planted = ROOT / "scripts" / "_pytest_chokepoint_probe.py"
+    # Use a throwaway tree so parallel CI scans never see an adversarial probe.
+    checker = tmp_path / "scripts" / CHECKER.name
+    checker.parent.mkdir(parents=True)
+    shutil.copy2(CHECKER, checker)
+    baseline = tmp_path / "config" / BASELINE.name
+    baseline.parent.mkdir(parents=True)
+    shutil.copy2(BASELINE, baseline)
+    planted = tmp_path / "scripts" / "_pytest_chokepoint_probe.py"
     planted.write_text(probe, encoding="utf-8")
-    try:
-        r = _run()
-        assert r.returncode != 0, (
-            "a new undeclared bypass did NOT fail the ratchet -- the guard is vacuous\n"
-            f"stdout:\n{r.stdout[-2000:]}")
-    finally:
-        planted.unlink(missing_ok=True)
+    r = subprocess.run([sys.executable, str(checker)], cwd=tmp_path,
+                       capture_output=True, text=True, timeout=300)
+    assert r.returncode != 0, (
+        "a new undeclared bypass did NOT fail the ratchet -- the guard is vacuous\n"
+        f"stdout:\n{r.stdout[-2000:]}")
+    assert "_pytest_chokepoint_probe.py" in r.stdout

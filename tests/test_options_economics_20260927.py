@@ -85,6 +85,21 @@ def test_block_reasons_name_the_real_blocker():
     assert oeng._not_approvable_reason({}, [{"code": "thesis_missing_catalysts"}], {}) == "thesis incomplete"
     assert oeng._not_approvable_reason({}, [], {"blocks": ["awaiting live quotes (market weekend): OI 0 < 50"]}) \
         == "awaiting live quotes"
+    # A pending CIO review cannot be the leading reason when a deterministic
+    # event or quote gate already prevents that review from proceeding.
+    pending = {"code": "awaiting_cio_decision", "reason": "CIO decision pending"}
+    assert oeng._not_approvable_reason({}, [pending], {"blocks": [
+        {"code": "earnings_blackout", "reason": "earnings inside contract"}, pending,
+    ]}) == "earnings event blocks review"
+    assert oeng._not_approvable_reason({}, [pending], {"blocks": [
+        {"code": "spread_too_wide", "reason": "spread 145% > 12%"}, pending,
+    ]}) == "option quote/liquidity failed"
+    assert oeng._not_approvable_reason({}, [pending], {"blocks": [
+        {"code": "EARNINGS_TIMESTAMP_UNKNOWN", "reason": "provider unavailable"}, pending,
+    ]}) == "earnings date unverified"
+    assert oeng._not_approvable_reason({}, [pending], {"blocks": [
+        {"code": "UNCLASSIFIED_VETO", "reason": "unknown hard refusal"}, pending,
+    ]}) == "enterprise block"
 
 
 def test_desk_never_marks_a_blocked_card_approvable(monkeypatch):

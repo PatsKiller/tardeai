@@ -79,13 +79,15 @@ def test_the_gate_is_green_on_this_tree():
 def test_the_gate_still_fails_on_a_new_dark_contract(tmp_path, monkeypatch):
     """A guard that can only pass is not a guard."""
     g = _guard()
-    probe = ROOT / "scripts/lib/_dark_guard_probe_tmp.py"
+    # A shared-tree probe races parallel CI suites scanning scripts/.
+    monkeypatch.setattr(g, "REPO", tmp_path)
+    monkeypatch.setattr(g, "SCRIPTS", tmp_path / "scripts")
+    probe = tmp_path / "scripts/lib/_dark_guard_probe_tmp.py"
+    probe.parent.mkdir(parents=True)
     probe.write_text('SCHEMA = "ProbeContract@v1"\n', encoding="utf-8")
-    try:
-        new = {r["module"] for r in g.audit()["new"]}
-        assert "scripts/lib/_dark_guard_probe_tmp.py" in new
-    finally:
-        probe.unlink()
+    new = {r["module"] for r in g.audit()["new"]}
+    assert "scripts/lib/_dark_guard_probe_tmp.py" in new
+    probe.unlink()
     assert g.audit()["new"] == []
 
 
