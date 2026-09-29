@@ -103,9 +103,7 @@ The six `memory_r10_m2` tables are owned by `trade_ai` with `FORCE ROW LEVEL SEC
 
 Newest full dump remains `trade_ai_20260919_134639.sql.gz`, 3449666593 bytes, mtime 2026-09-19 14:06:44 ET. A byte-identical hold copy is at `~/db_backups/hold-prerecovery/trade_ai_20260919_134639.sql.gz` (`cmp` matched). The enforcer glob is non-recursive, so that subdirectory survives `max_count: 1`. No restore has been run. The hold file is not a verified backup.
 
-The role that can fix the next dump is a superuser-created login with `BYPASSRLS` (Postgres 17 also has `pg_read_all_data`). Giving `BYPASSRLS` to `trade_ai` itself would let the current script succeed and would also bypass row-level security for the application. Use a separate dump role. Put its password only in the operator environment, not in git. Then dump, restore into a scratch database, read one row count from `memory_r10_m2.adjudication_receipt` and one from `intelligence.embedding`, and drop the scratch database. A new file without that restore is not protection.
-
-Re-running `linux_launchers/run_pg_backup.sh` as `trade_ai` repeats the failure. The 02:30 ET cadence still calls that script from the served release.
+Section 7 is the authentication inspection. No new login was created. `BYPASSRLS` was not granted to `trade_ai`. Re-running `linux_launchers/run_pg_backup.sh` as `trade_ai` repeats the failure. The 02:30 ET cadence still calls that script from the served release.
 
 ---
 
@@ -128,3 +126,43 @@ An active `release-write` grant names #1339, SHA `f306b5e6dadce417ba68ae33eba009
 Current `CURRENT` is still `25afedb35-main-exact-phase2-20260928-173440`. Build-meta `git_sha` is `25afedb355108e11aa664c495081939aaaeb33b4`. The release directory git HEAD can still differ from that stamp. After a later exact promote of `f306b5e6d`, the proof is a new PID, build-meta showing that SHA, the pin checker exiting 0, and a natural packet saved after the promote with a current gate version. A merged pull request is not that proof.
 
 Portfolio-server restarted itself again at 2026-09-28 22:50:58 ET (`NRestarts` 6, memory peak 1.6G, no OOM line). PID 723294 from the follow-up is gone. Same content SHA.
+
+The proposal timeout and the #1339 prepare stay behind a restore-tested dump. They were not started in the 23:56 ET inspection.
+
+---
+
+## 7. Backup identity inspection (2026-09-29T03:56Z)
+
+The backup service is the user unit `tradeai-portfolio-backup-cadence.service`. It runs as `johnclaw`, with `WorkingDirectory` `CURRENT`, and starts `scripts/pipelines/run_portfolio_maintenance_pipeline.sh --cadence backup --apply`. That calls `linux_launchers/run_pg_backup.sh`. The script reads `DB_USER` from the rebuild `.env` and runs `pg_dump -h $DB_HOST -U $DB_USER`. The live session address is `127.0.0.1/32`, so this is TCP password authentication, not a local peer. The timer next fires 2026-09-29 02:30 ET. The last fire, 2026-09-28 02:30 ET, exited 0 at the unit while the pg step failed.
+
+Login roles on this cluster: `postgres` (superuser, `BYPASSRLS`), `trade_ai`, `trade_ai_shadow_ro`, and `m2_agent`. The last three have `rolbypassrls` false and are not superuser. `trade_ai` is a member of `intelligence_reader` and `intelligence_writer` only. No role name contains backup or dump. `.pgpass` has one identity, `localhost:5432:trade_ai:trade_ai`. Bitwarden Secrets Manager project `trade-ai-prod` has 128 secrets; the database keys are `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, and `DB_PASSWORD`. There is no backup-role secret.
+
+`pg_hba.conf` is mode 640 and not readable here. The server log shows the lines that matched real connections:
+
+| Line | Rule |
+|---|---|
+| 118 | `local all postgres peer` |
+| 125 | `host all all 127.0.0.1/32 scram-sha-256` |
+
+A socket login as `postgres` from `johnclaw` fails peer authentication. That is the managed local superuser. It can take a complete dump, because a superuser bypasses row-level security. This session cannot become that OS user. No system unit other than `postgresql@17-main` is a Postgres backup. The user cadence cannot use the peer identity.
+
+`SET row_security = off` then `SELECT 1 ... LIMIT 0` fails on both `memory_r10_m2.adjudication_receipt` and `intelligence.embedding` with `query would be affected by row-level security policy`. That is the `pg_dump` failure. With row security left on, `trade_ai` sees `COUNT(*) = 0` on both tables. Zero is the application-visible count, not proof the tables are empty. A restore check that connects as `trade_ai` would report zero even after a complete restore. Counts have to be taken as `postgres`.
+
+A new login is not required for a one-shot dump. The database administrator, from a terminal on this host, can dump and restore with the existing peer identity. Put the new file under `~/db_backups/hold-prerecovery/` so the hourly enforcer, which keeps one `trade_ai_*.sql.gz` in the top directory, does not delete the September 19 file. Replace `TIMESTAMP` with the UTC time.
+
+```bash
+sudo -u postgres pg_dump -d trade_ai --format=plain --no-owner --no-acl \
+  | gzip -9 > ~/db_backups/hold-prerecovery/trade_ai_manual_TIMESTAMP.sql.gz
+sudo -u postgres createdb trade_ai_restore_check
+gunzip -c ~/db_backups/hold-prerecovery/trade_ai_manual_TIMESTAMP.sql.gz \
+  | sudo -u postgres psql -d trade_ai_restore_check -v ON_ERROR_STOP=1
+sudo -u postgres psql -d trade_ai_restore_check -c \
+  'SELECT COUNT(*) FROM memory_r10_m2.adjudication_receipt'
+sudo -u postgres psql -d trade_ai_restore_check -c \
+  'SELECT COUNT(*) FROM intelligence.embedding'
+sudo -u postgres dropdb trade_ai_restore_check
+```
+
+Compare those counts to the same two queries against `trade_ai` as `postgres`, not as `trade_ai`.
+
+The nightly unit still cannot use that peer identity. After a restore proof, the unattended job needs a design the administrator applies. `BYPASSRLS` is not limited to `pg_dump`; it bypasses every row-security policy for that role. Do not grant it to `trade_ai`. A separate role, if chosen, should be `LOGIN`, `NOSUPERUSER`, `NOCREATEDB`, `NOCREATEROLE`, `NOREPLICATION`, `NOINHERIT`, `CONNECTION LIMIT 2`, `default_transaction_read_only = on`, `GRANT CONNECT` on `trade_ai` only, `GRANT pg_read_all_data`, and no write grant. Its password belongs in Bitwarden project `trade-ai-prod` under new keys, then `scripts/secrets/render_env.py --now`. It does not belong in git. The served `run_pg_backup.sh` passes `-U "$DB_USER"`, so the 02:30 job keeps failing until the launcher the unit actually executes uses the dump identity. This session did not edit that launcher and did not create the role.
