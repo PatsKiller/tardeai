@@ -18,6 +18,7 @@ Date: 2026-09-30
 | CIO-OBS-007 | Shared Spine degradation had no root-cause explanation | Writer/reader graph flags were counted but not surfaced as findings | Added `CIO-SPINE-001` with stale-reader and duplicate-alias details, owner, fix, and residual risk | Direct projection retest; observability unit tests | FIXED_VALIDATED | Repository-wide reader migration is still required to remove compatibility drift |
 | CIO-OBS-008 | Intentional compatibility aliases were misclassified as runtime graph failures | The inventory treated migration aliases as active stale readers and duplicate projections | Compatibility aliases are now reported as migration metadata; only real graph defects remain runtime flags | Inventory/observability tests; direct projection retest | FIXED_VALIDATED | Legacy aliases remain until the migration is complete, but no active stale reader was found |
 | CIO-OBS-009 | Operator-required remediation lacked an explicit page workflow | Findings named external dependencies but did not provide a guided operator handoff | Added an observability action modal linking policy ratification, plan disposition, and evidence workflows; added policy confirmation modal before recording values | Frontend design/UI/contrast/build checks passed | FIXED_VALIDATED | Operator must still provide policy values and dispositions |
+| CIO-OBS-010 | PostgreSQL fallback was active | The configured PostgreSQL 17 main cluster on `127.0.0.1:5432` was stopped; the application correctly fell back to JSON | Started the existing `postgresql@17-main` service; verified `trade_ai` read-only connection and CIO projection | `DB_OK ('trade_ai', 'trade_ai', 5432)`; elevated CIO projection retest completed | FIXED_VALIDATED | Hermes has separate provider/cap failures; no database fallback was observed in the elevated retest |
 
 ## Accepted limitations / external dependencies
 
@@ -26,7 +27,7 @@ Date: 2026-09-30
 | CIO-EXT-001 | Browser validation requires the served CIO runtime and live API | Runtime/release operator | Run CIO browser acceptance against the served build | EXTERNAL_DEPENDENCY |
 | CIO-EXT-002 | Policy-required state cannot be resolved by the UI | Primary operator | Ratify missing policy fields through the governed policy workflow | EXTERNAL_DEPENDENCY |
 | CIO-EXT-003 | Memory influence remains zero until evidence-backed lessons are ratified and promoted | CIO learning governance | Execute the existing governed maturation/promotion process | EXTERNAL_DEPENDENCY |
-| CIO-EXT-004 | PostgreSQL is unavailable in the current environment; read-only projections use the existing JSON fallback | Runtime/database operator | Restore the PostgreSQL service/configuration, then rerun the CIO projection checks | EXTERNAL_DEPENDENCY |
+| CIO-EXT-004 | PostgreSQL was unavailable before remediation | Runtime/database operator | Completed: restored the existing PostgreSQL 17 main service and verified the configured connection | RESOLVED |
 
 ## Validation evidence
 
@@ -39,6 +40,7 @@ Date: 2026-09-30
 - Compatibility audit found no active stale readers; registry aliases are now informational migration metadata.
 - Operator workflow UI build: passed design guard, UI standards, contrast, TypeScript, and Vite build.
 - Remaining external actions are explicitly routed in-page: policy ratification, open-plan disposition, and PostgreSQL runtime restoration.
+- PostgreSQL restoration evidence: configured main cluster is accepting connections on `127.0.0.1:5432`; database `trade_ai` and role `trade_ai` verified by read-only query.
 - Command Center v3 build: passed design guard, UI standards, contrast, TypeScript, and Vite production build.
 - No broker, trading, order, or capital mutation was performed.
 
