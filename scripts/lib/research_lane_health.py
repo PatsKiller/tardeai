@@ -164,7 +164,10 @@ def evaluate_lane(
     min_n = error_rate_min_n()
     if judged >= min_n and rate >= thr:
         firing.append(f"error_rate_24h:{rate}>={thr:g}")
-    if skip_24h > 0:
+    # Budget throttle with concurrent successes is expected cost-cap behavior — do not
+    # fail the lane (that pinned platform health critical while deepseek still delivered).
+    # Fail only when the lane produced zero successes and was entirely throttled.
+    if skip_24h > 0 and ok_24h == 0:
         firing.append(f"budget_throttled:{skip_24h}/{attempts_24h}")
     return {
         "lane": lane,

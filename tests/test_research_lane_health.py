@@ -94,7 +94,11 @@ def test_error_rate_fires_when_streak_is_zero():
 
 
 def test_skipped_budget_is_throttle_not_lane_broken():
-    """441 COST_CAP rows must not look like a 33% broken lane once rewritten."""
+    """441 COST_CAP rows must not look like a 33% broken lane once rewritten.
+
+    Concurrent successes + some SKIPPED_BUDGET is expected cost-cap behavior —
+    do not fail the lane (that falsely pinned platform health critical).
+    """
     now = datetime(2026, 8, 22, tzinfo=timezone.utc)
     newest = [{"recommendation": "Hold SCHD", "created_at": now}]
     last_24h = (
@@ -113,10 +117,28 @@ def test_skipped_budget_is_throttle_not_lane_broken():
     assert row["error_24h"] == 0
     assert row["skipped_budget_24h"] == 5
     assert row["error_rate_24h"] == 0.0
-    assert row["ok"] is False
-    assert "budget_throttled:5/14" in row["firing"]
+    assert row["ok"] is True
+    assert "budget_throttled:5/14" not in row["firing"]
     assert not any(x.startswith("error_rate_24h:") for x in row["firing"])
     assert not any(x.startswith("zero_non_error_") for x in row["firing"])
+
+
+def test_skipped_budget_zero_success_still_fails_lane():
+    now = datetime(2026, 8, 22, tzinfo=timezone.utc)
+    newest = [
+        {"recommendation": "[SKIPPED_BUDGET] COST_CAP", "created_at": now},
+    ]
+    last_24h = [{"recommendation": "[SKIPPED_BUDGET] COST_CAP"}] * 5
+    row = evaluate_lane(
+        "deepseek",
+        newest_first=newest,
+        last_24h=last_24h,
+        silence=True,
+        streak_n=5,
+        now=now,
+    )
+    assert row["ok"] is False
+    assert "budget_throttled:5/5" in row["firing"]
 
 
 def test_chatgpt_24h_zero_ok_fires():

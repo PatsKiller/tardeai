@@ -62,24 +62,24 @@ def measure(root: Path) -> dict:
         with_llm += 1
         src = str(llm.get("source") or "unknown")
         by_source[src] += 1
-        tip_tags = set(str(t).lower() for t in (row.get("tags") or []))
-        contrib_tags: set[str] = set()
-        for c in row.get("contributions") or []:
-            if not isinstance(c, dict):
-                continue
-            for t in c.get("tags") or []:
-                contrib_tags.add(str(t).lower())
-        excluded = bool(tip_tags & _EXCLUDE) or bool(contrib_tags & _EXCLUDE)
-        # Prefer contribution-level: canary/backfill on the LLM contrib only
+        # Organic vs canary/backfill is decided on the LATEST LLM contribution only.
+        # Tip-level tags accumulate (a prior canary must not permanently poison a later
+        # organic desk/gap stamp on the same symbol).
         llm_contrib_excluded = False
+        saw_llm_contrib = False
         for c in reversed(list(row.get("contributions") or [])):
             if not isinstance(c, dict):
                 continue
             tags = set(str(t).lower() for t in (c.get("tags") or []))
             if "llm_research" in tags or "llm_curation" in tags or "llm_flash" in tags:
+                saw_llm_contrib = True
                 llm_contrib_excluded = bool(tags & _EXCLUDE)
                 break
-        if llm_contrib_excluded or ("canary" in tip_tags and "llm_curation" in tip_tags):
+        if not saw_llm_contrib:
+            # Fall back to tip tags only when contributions lack LLM tags
+            tip_tags = set(str(t).lower() for t in (row.get("tags") or []))
+            llm_contrib_excluded = bool(tip_tags & _EXCLUDE)
+        if llm_contrib_excluded:
             canary_or_backfill += 1
         else:
             organic += 1

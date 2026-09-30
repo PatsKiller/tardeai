@@ -165,3 +165,28 @@ def test_organic_metric_separates_canary(registry, spine_on, tmp_path: Path):
     m = measure(tmp_path)
     assert m["organic_latest_llm"] == 0
     assert m["canary_or_backfill_latest_llm"] == 1
+
+
+def test_organic_metric_latest_contrib_wins_over_prior_canary(registry, spine_on, tmp_path: Path):
+    from scripts.lib.cross_asset.hooks import notify_llm_curation
+    from scripts.ops.spine_llm_organic_metric import measure
+
+    notify_llm_curation(
+        ["NFLX"],
+        text="prior canary",
+        source="llm_curation",
+        model="canary",
+        root=tmp_path,
+        extra_tags=["canary"],
+    )
+    notify_llm_curation(
+        ["NFLX"],
+        text="later organic desk stamp",
+        source="llm_curation",
+        model="deepseek-flash",
+        root=tmp_path,
+    )
+    m = measure(tmp_path)
+    assert m["organic_latest_llm"] == 1
+    assert m["canary_or_backfill_latest_llm"] == 0
+    assert "NFLX" in m["organic_symbols_sample"]
