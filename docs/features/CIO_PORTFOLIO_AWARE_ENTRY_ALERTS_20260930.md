@@ -25,6 +25,29 @@ The same portfolio-aware facts are projected into:
 - the Re-Entry page's Entry Alerts lane; and
 - saved `BuyReadyInstitutionalPacket@v2` projections.
 
+## Telegram CIO decision-card contract
+
+CIO entry alerts, watchlist entry alerts, and pending CIO-review follow-ups use
+the shared `cio_entry_alert()` layout in `scripts/lib/telegram_rich.py` when
+`TELEGRAM_RICH_ALERTS` is enabled. The visible card is intentionally compact:
+
+- CIO view and next action;
+- current price, entry zone, stop, target, and current/ideal R:R;
+- a stop-to-target price strip and deterministic display-only risk/reward gauges;
+- held/new-position context, portfolio facts when available, and `Sizing: not provided`;
+- catalyst, options status, CIO verdict, and quick-link buttons.
+
+Thesis detail, opposing evidence, option rejection reasons, provenance, and the
+advisory disclaimer are placed in Telegram's expandable evidence block. Emoji
+markers provide the stoplight channel because Telegram does not support text
+colors. Missing values render as `—` or `unavailable`; the card never invents
+probability, expected value, liquidity, or sizing.
+
+The existing `CIO entry —` routing sentinel, stance gate, primary-symbol scoping,
+chart preview, and plain-text fallback remain intact. The CIO-only transport uses
+the same rendered HTML card with its existing authorization and deduplication
+controls.
+
 ## Decision language
 
 | Situation | Action label |
@@ -81,7 +104,7 @@ review and cannot populate the CIO commentary field.
 
 The implementation was validated with:
 
-- 39 focused Python tests covering entry rendering, institutional packets, and
+- 78 focused Python tests covering entry rendering, institutional packets, and
   the Entry Alerts index;
 - Ruff on changed Python files;
 - TypeScript compilation for Command Center v3;

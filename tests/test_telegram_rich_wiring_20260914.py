@@ -290,3 +290,35 @@ def test_material_change_notice_sends_rich_through_the_gateway(monkeypatch, rich
     assert accepted and seen["body"] == rich["text"]
     assert seen["reply_markup"] == rich["reply_markup"] and seen["link_preview_options"]
     assert seen["message_class"] == "ops"
+
+
+def test_cio_entry_card_has_executive_sections_and_expandable_evidence(rich):
+    payload = rich.cio_entry_alert({
+        "symbol": "DXCM", "state": "ENTRY_NEAR", "held": True,
+        "price": 85.99, "entry_low": 82.80, "entry_high": 84.00,
+        "stop": 80.40, "target": 94.00, "rr_at_current_price": 1.43,
+        "rr_at_ideal_entry": 2.78, "cio_stance": "HUMAN_REVIEW",
+        "catalyst": "Danske Bank & <research>", "options_status": "NONE_QUALIFIED",
+        "options_reasons": ["BREAKEVEN_AT_OR_ABOVE_TARGET"],
+        "first_hard_block": "Earnings blackout", "thesis": "CGM demand",
+    }).render()
+    text = payload["text"]
+    for section in ("CIO VIEW", "PRICE SETUP", "RISK / REWARD", "POSITION IMPACT", "CATALYST",
+                    "OPTIONS REVIEW", "CIO VERDICT"):
+        assert f"<b>{section}</b>" in text
+    assert "Existing position" in text and "STOP" in text and "ENTRY ZONE" in text
+    assert "&amp; &lt;research&gt;" in text
+    assert "BREAKEVEN_AT_OR_ABOVE_TARGET" in text
+    assert "CIO review: unreviewed" in text
+    assert "<blockquote expandable>" in text
+    assert len(text) <= 4096
+    assert payload["reply_markup"]["inline_keyboard"]
+
+
+def test_cio_entry_card_preserves_missing_facts_and_never_invents_sizing(rich):
+    text = rich.cio_entry_alert({"symbol": "DXCM", "state": "ENTRY_NEAR", "held": False,
+                                 "price": 85.99, "entry_low": 82.8, "entry_high": 84.0,
+                                 "stop": 80.4, "target": 94.0}).render()["text"]
+    assert "Sizing: not provided" in text
+    assert "unavailable" in text
+    assert "probability" not in text.lower()
