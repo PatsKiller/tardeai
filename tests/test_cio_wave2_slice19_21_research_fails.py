@@ -43,6 +43,7 @@ E_PROVIDER = ('bridge HTTP 500: {"error": {"code": "PROVIDER_ERROR", "message": 
     (E_429, COST_CAP),
     (E_500_RESERVATION, COST_CAP),
     (E_EXEC, EXECUTION_LANGUAGE),
+    ("execution_language:do not establish", EXECUTION_LANGUAGE),
     (E_TRUNC, TRUNCATED),
     (E_PROVIDER, PROVIDER_ERROR),
     ("questions_required", SCHEMA_INVALID),
