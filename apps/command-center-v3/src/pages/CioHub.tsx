@@ -2061,7 +2061,7 @@ function EvidenceCommsSubnav({ active, onSelect }: { active: string; onSelect: (
           aria-selected={active === item.id}
           onClick={() => onSelect(item.id)}
           style={{
-            padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)',
+            padding: '5px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
             background: active === item.id ? 'var(--accent-dim)' : 'transparent',
             color: active === item.id ? 'var(--accent)' : 'var(--text2)',
             cursor: 'pointer', fontSize: 11, fontWeight: active === item.id ? 700 : 500,

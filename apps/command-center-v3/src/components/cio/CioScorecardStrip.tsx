@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { RADIUS } from '../../lib/designTokens'
 import { cioLabel } from '../../lib/cioLabels'
 
 export type ScorecardMetric = {
@@ -108,7 +109,7 @@ export default function CioScorecardStrip({ data, loading, error, onTileClick }:
               style={{
                 textAlign: 'left',
                 padding: '12px 14px',
-                borderRadius: 8,
+                borderRadius: RADIUS.md,
                 border: '1px solid var(--border)',
                 background: 'var(--bg2)',
                 cursor: onTileClick ? 'pointer' : 'default',

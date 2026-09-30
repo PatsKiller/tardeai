@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import type { ScorecardTile, ScorecardEvidenceRef } from './CioScorecardStrip'
+import { RADIUS, SHADOW } from '../../lib/designTokens'
 import { cioLabel } from '../../lib/cioLabels'
 
 type Props = {
@@ -69,9 +70,9 @@ export default function CioEvidenceModal({ tile, onClose, onOpenTab }: Props) {
           overflow: 'auto',
           background: 'var(--bg1)',
           border: '1px solid var(--border)',
-          borderRadius: 12,
+          borderRadius: RADIUS.lg,
           padding: 20,
-          boxShadow: '0 24px 64px rgba(0,0,0,.45)',
+          boxShadow: SHADOW[3],
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -86,7 +87,7 @@ export default function CioEvidenceModal({ tile, onClose, onOpenTab }: Props) {
             aria-label="Close"
             style={{
               border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text1)',
-              borderRadius: 6, padding: '4px 10px', cursor: 'pointer', fontSize: 12,
+              borderRadius: RADIUS.sm, padding: '4px 10px', cursor: 'pointer', fontSize: 12,
             }}
           >
             Close
@@ -98,7 +99,7 @@ export default function CioEvidenceModal({ tile, onClose, onOpenTab }: Props) {
         {metrics.length > 0 ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 10, marginTop: 16 }}>
             {metrics.map((m) => (
-              <div key={m.key || m.label || String(m.value)} style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--bg2)' }}>
+              <div key={m.key || m.label || String(m.value)} style={{ padding: '10px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.md, background: 'var(--bg2)' }}>
                 <div style={{ color: 'var(--text3)', font: '700 9px/1.2 var(--mono)', textTransform: 'uppercase' }}>{m.label || cioLabel(m.key)}</div>
                 <div style={{ color: 'var(--text0)', font: '700 15px/1.2 var(--sans)', marginTop: 4 }}>
                   {m.value == null || m.value === '' ? '—' : String(m.value)}
@@ -153,7 +154,7 @@ export default function CioEvidenceModal({ tile, onClose, onOpenTab }: Props) {
                 onClick={() => { d.action(); onClose() }}
                 style={{
                   border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--accent)',
-                  fontSize: 12, padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
+                  fontSize: 12, padding: '6px 12px', borderRadius: RADIUS.sm, cursor: 'pointer',
                 }}
               >
                 {d.label}
@@ -165,7 +166,7 @@ export default function CioEvidenceModal({ tile, onClose, onOpenTab }: Props) {
                 onClick={onClose}
                 style={{
                   border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--accent)',
-                  fontSize: 12, padding: '6px 12px', borderRadius: 6, textDecoration: 'none',
+                  fontSize: 12, padding: '6px 12px', borderRadius: RADIUS.sm, textDecoration: 'none',
                 }}
               >
                 Related surface

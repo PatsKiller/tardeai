@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import { useApi } from '../../hooks/useApi'
+import { RADIUS } from '../../lib/designTokens'
 
 type Brain = {
   as_of?: string
@@ -70,7 +71,7 @@ export default function CioJudgmentBand({ onPolicyClick, blockersTop }: Props) {
         </Link>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 0, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 0, border: '1px solid var(--border)', borderRadius: RADIUS.md, overflow: 'hidden', marginBottom: 16 }}>
         {[
           { label: 'Portfolio', value: money(portfolio.total_portfolio_value_usd), note: portfolio.truth_quality },
           { label: 'Observed cash', value: money(portfolio.observed_cash_usd), note: portfolio.investable_cash_status },
@@ -116,7 +117,7 @@ export default function CioJudgmentBand({ onPolicyClick, blockersTop }: Props) {
               onClick={onPolicyClick}
               style={{
                 border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--accent)',
-                fontSize: 11, padding: '4px 10px', borderRadius: 6, cursor: 'pointer',
+                fontSize: 11, padding: '4px 10px', borderRadius: RADIUS.sm, cursor: 'pointer',
               }}
             >
               Policy / ratify →
