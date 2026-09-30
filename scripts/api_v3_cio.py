@@ -1229,6 +1229,12 @@ def get_cio_home() -> dict[str, Any]:
     )
     home["ok"] = True
     stamp_decision_identity(home, capital_plan)
+    # Thin attention stamp for GET /cio/scorecard (disk-only; never nests home).
+    try:
+        from scripts.lib.cio_scorecard import stamp_home_attention
+        stamp_home_attention(home, root=PROJECT_ROOT)
+    except Exception:
+        pass
     return home
 
 

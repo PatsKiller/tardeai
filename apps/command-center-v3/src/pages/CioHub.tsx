@@ -1106,7 +1106,14 @@ function UniverseThesesPanel() {
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>
         Living theses for the material universe. Advisory only. Merged on protected main (PR 397).
       </div>
-      {loading && <div style={muted}>Loading universe &amp; theses…</div>}
+      {loading && !data && (
+        <div data-testid="cio-universe-theses-loading" style={muted}>
+          Loading universe &amp; theses… (advisory books below are independent)
+        </div>
+      )}
+      {loading && data && (
+        <div style={{ ...muted, fontSize: 11 }}>Refreshing universe theses…</div>
+      )}
       {(error || payloadError) && (
         <div data-testid="cio-universe-theses-error" style={{ color: 'var(--amber)', fontSize: 13 }}>
           {missingApi
@@ -1959,6 +1966,9 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           />
           <CioJudgmentBand
             blockersTop={scorecard?.blockers_top}
+            scorecardNote={scorecard?.note}
+            healthSummary={scorecard?.health_summary}
+            pin={scorecard?.pin}
             onPolicyClick={() => selectTab('capital-policy')}
           />
         </div>

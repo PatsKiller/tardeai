@@ -2,6 +2,10 @@
 
 Aggregates existing collectors into Overview tiles (working vs not).
 Never invents investable cash, never claims OBSERVED for canary/absent data.
+
+IMPORTANT: get_cio_scorecard must stay FAST and must NOT call get_cio_home /
+get_cio_brain_v1. Those are multi-second builders; nesting them under the
+single-threaded portfolio-server wedges every feed (503 / "server busy").
 """
 from __future__ import annotations
 
@@ -147,8 +151,19 @@ def _hermes_tile(root: Path) -> dict[str, Any]:
     ok_hq = bool((hermes_q or {}).get("ok", True)) if hermes_q else None
     firing = list((deepseek or {}).get("firing") or []) + list((hermes_q or {}).get("firing") or [])
     cov_fire = list((coverage or {}).get("firing") or [])
+    # Live lane JSON often parks 24h counts on coverage-stall (thesis-flat
+    # monitor), while deepseek itself only carries ok/firing. Prefer deepseek
+    # counts when present; fall back to coverage-stall so the tile matches the
+    # verdict string (deepseek_ok_24h=N) instead of lying at 0.
     ok_24 = int((deepseek or {}).get("non_error_24h") or 0)
     attempts = int((deepseek or {}).get("attempts_24h") or 0)
+    if ok_24 == 0 and attempts == 0 and coverage:
+        ok_24 = int(
+            (coverage or {}).get("non_error_24h")
+            or (coverage or {}).get("deepseek_ok_24h")
+            or 0
+        )
+        attempts = int((coverage or {}).get("attempts_24h") or ok_24 or 0)
     metrics = [
         {"label": "DeepSeek ok 24h", "value": ok_24},
         {"label": "Attempts 24h", "value": attempts},
@@ -214,26 +229,20 @@ def _spine_tile(root: Path) -> dict[str, Any]:
             organic = {}
     org_n = int(organic.get("organic_latest_llm") or 0) if organic else 0
     canary_n = int(organic.get("canary_or_backfill_latest_llm") or 0) if organic else 0
+    tips = int(organic.get("spine_symbols") or organic.get("tips") or 0) if organic else 0
     with_llm = int(organic.get("tips_with_latest_llm") or 0) if organic else 0
-    tips = int(organic.get("spine_symbols") or 0) if organic else 0
-    spine_path = root / "data" / "cio" / "security_research_spine.jsonl"
-    if tips == 0 and spine_path.is_file():
-        try:
-            tips = sum(1 for _ in spine_path.open(encoding="utf-8", errors="ignore") if _.strip())
-        except OSError:
-            tips = 0
     metrics = [
         {"label": "Spine tips", "value": tips},
         {"label": "Organic LLM", "value": org_n},
         {"label": "Canary/backfill LLM", "value": canary_n},
     ]
-    evidence = [{"kind": "organic_metric", "sample": (organic or {}).get("organic_symbols_sample") or []}]
-    if tips == 0 and with_llm == 0 and not organic:
+    evidence = [{"kind": "organic_metric", "path": "data/runtime/spine_llm_organic.json", "sample": (organic or {}).get("organic_symbols_sample")}]
+    if not organic:
         return _tile(
             id="shared_spine",
             title="Shared spine",
             status="dark",
-            verdict="Security research spine not observed on this host.",
+            verdict="Organic LLM volume metric absent — spine not scored as live.",
             metrics=metrics,
             href="/v3/cio?tab=research",
         )
@@ -242,7 +251,7 @@ def _spine_tile(root: Path) -> dict[str, Any]:
             id="shared_spine",
             title="Shared spine",
             status="working",
-            verdict=f"Organic LLM volume OBSERVED ({org_n}); canary/backfill={canary_n}; tips≈{tips}.",
+            verdict=f"Organic LLM volume {org_n} (tips with LLM={with_llm}; canary/backfill={canary_n} separate).",
             metrics=metrics,
             evidence_refs=evidence,
             href="/v3/cio?tab=research",
@@ -334,8 +343,8 @@ def _decisions_tile(home: dict[str, Any] | None) -> dict[str, Any]:
 
 def _outcomes_tile(brain: dict[str, Any] | None) -> dict[str, Any]:
     brain = brain or {}
-    cockpit = brain.get("learning_cockpit") or {}
     learning = brain.get("learning") or {}
+    cockpit = brain.get("learning_cockpit") or {}
     outcomes = learning.get("outcomes") or cockpit.get("outcomes") or {}
     due = int(cockpit.get("outcomes_due") or outcomes.get("due") or outcomes.get("outcomes_due") or 0)
     matured = int(outcomes.get("matured") or cockpit.get("matured_outcomes") or 0)
@@ -348,15 +357,17 @@ def _outcomes_tile(brain: dict[str, Any] | None) -> dict[str, Any]:
         {"label": "Matured", "value": matured},
         {"label": "MBI", "value": influence},
     ]
-    if not brain:
-        return _tile(
-            id="outcomes_learning",
-            title="Outcomes / learning",
-            status="dark",
-            verdict="Brain projection unavailable — outcomes not scored.",
-            metrics=metrics,
-            href="/v3/cio?tab=evidence-comms",
-        )
+    if not brain or (not learning and not cockpit and "_serving" not in brain and "learning" not in brain):
+        # Light path often only has _serving — outcomes stay dark honestly.
+        if not learning and not cockpit:
+            return _tile(
+                id="outcomes_learning",
+                title="Outcomes / learning",
+                status="dark",
+                verdict="Learning projection not loaded on the light scorecard path — open Full brain for detail.",
+                metrics=metrics,
+                href="/v3/cio?tab=evidence-comms&sub=full-brain",
+            )
     if due > 100 and matured == 0:
         return _tile(
             id="outcomes_learning",
@@ -365,7 +376,7 @@ def _outcomes_tile(brain: dict[str, Any] | None) -> dict[str, Any]:
             verdict=f"{due} outcomes due; matured={matured}; memory influence stays {influence} (non-authoritative).",
             metrics=metrics,
             working=None,
-            href="/v3/cio?tab=evidence-comms",
+            href="/v3/cio?tab=evidence-comms&sub=full-brain",
         )
     return _tile(
         id="outcomes_learning",
@@ -373,7 +384,7 @@ def _outcomes_tile(brain: dict[str, Any] | None) -> dict[str, Any]:
         status="working" if matured or due == 0 else "degraded",
         verdict=f"Due={due} · matured={matured} · frozen={frozen} · influence={influence} (lessons stay candidates).",
         metrics=metrics,
-        href="/v3/cio?tab=evidence-comms",
+        href="/v3/cio?tab=evidence-comms&sub=full-brain",
     )
 
 
@@ -459,6 +470,143 @@ def _blockers_top(brain: dict[str, Any] | None, limit: int = 6) -> list[str]:
     return out
 
 
+def _light_serving(root: Path) -> dict[str, Any]:
+    """Pin metadata without building the full brain projection."""
+    source = None
+    for p in (
+        root / "SOURCE_COMMIT",
+        root / "BUILD_SHA",
+        root / "GIT_SHA",
+    ):
+        try:
+            if p.is_file():
+                source = p.read_text(encoding="utf-8").strip()[:40]
+                break
+        except OSError:
+            continue
+    current_link = Path.home() / "trade-ai-releases" / "portfolio-server" / "CURRENT"
+    current_sha = None
+    try:
+        resolved = current_link.resolve()
+        name = resolved.name
+        current_sha = name.split("-")[0] if name else None
+        sc = resolved / "SOURCE_COMMIT"
+        if sc.is_file():
+            current_sha = sc.read_text(encoding="utf-8").strip()[:40] or current_sha
+    except OSError:
+        pass
+    pin_match = None
+    if source and current_sha:
+        pin_match = source[:12] == current_sha[:12]
+    return {
+        "loaded_pin_sha": source,
+        "current_pin_sha": current_sha,
+        "pin_match": pin_match,
+    }
+
+
+def stamp_home_attention(home: dict[str, Any] | None, *, root: Path | None = None) -> None:
+    """Best-effort write of a thin home attention slice for the light scorecard.
+
+    Called after get_cio_home builds successfully. Never raises. Never nests
+    get_cio_home / get_cio_brain — this is a side-effect stamp only.
+    """
+    if not isinstance(home, dict) or not home.get("ok", True):
+        return
+    try:
+        root = Path(root) if root else Path(__file__).resolve().parents[2]
+        now = home.get("cio_now") or home.get("now") or {}
+        if not isinstance(now, dict):
+            now = {}
+        attn = now.get("attention") if isinstance(now.get("attention"), dict) else {}
+        if not attn and isinstance(home.get("attention"), dict):
+            attn = home["attention"]
+        decision_count = int(now.get("decision_count") or 0)
+        if not decision_count:
+            decs = now.get("decisions")
+            if isinstance(decs, list):
+                decision_count = len(decs)
+        material = int(
+            attn.get("material_today")
+            or now.get("material_today_count")
+            or home.get("material_today_count")
+            or 0
+        )
+        open_plans = int(
+            attn.get("open_plans")
+            or now.get("open_plans_count")
+            or home.get("open_plans_count")
+            or 0
+        )
+        slice_doc = {
+            "ok": True,
+            "as_of": home.get("as_of") or _now_iso(),
+            "source": "stamp_home_attention",
+            "cio_now": {
+                "decision_count": decision_count,
+                "material_today_count": material,
+                "open_plans_count": open_plans,
+                "attention": {
+                    "material_today": material,
+                    "open_plans": open_plans,
+                    "investment_decisions": attn.get("investment_decisions", decision_count),
+                },
+            },
+        }
+        path = root / "data" / "runtime" / "cio_home_attention.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(slice_doc, separators=(",", ":")), encoding="utf-8")
+    except Exception:
+        return
+
+
+def _light_home(root: Path) -> dict[str, Any]:
+    """Optional attention snapshot from disk — never rebuilds CIO home."""
+    for rel in (
+        "data/runtime/cio_home_attention.json",
+        "data/cio/cio_home_attention.json",
+        "data/runtime/cio_scorecard_home_slice.json",
+    ):
+        doc = _read_json(root / rel)
+        if isinstance(doc, dict) and doc:
+            if "ok" not in doc:
+                doc = {**doc, "ok": True}
+            return doc
+    return {"ok": False}
+
+
+def _light_brain(root: Path) -> dict[str, Any]:
+    """Learning/outcomes slice from disk + serving pin — never rebuilds brain."""
+    brain: dict[str, Any] = {"_serving": _light_serving(root)}
+    for rel in (
+        "data/runtime/cio_brain_learning_slice.json",
+        "data/cio/cio_brain_learning_slice.json",
+        "data/runtime/learning_cockpit.json",
+    ):
+        doc = _read_json(root / rel)
+        if isinstance(doc, dict) and doc:
+            if "learning" in doc or "learning_cockpit" in doc:
+                brain.update({k: doc[k] for k in ("learning", "learning_cockpit", "memory_behavior_influence", "operator_value", "capital_situation") if k in doc})
+            else:
+                brain["learning_cockpit"] = doc
+            break
+    return brain
+
+
+def _light_health(root: Path) -> dict[str, Any] | None:
+    """File-only health snapshot — no DB connect (can hang under wedge)."""
+    for path in (
+        root / "data" / "portfolios" / "state" / "health_agent_status.json",
+        root / "data" / "runtime" / "health_agent_latest.json",
+        root / "data" / "runtime" / "health_agent_status.json",
+        Path.home() / "trade-ai-releases" / "persistent-state" / "data" / "portfolios" / "state" / "health_agent_status.json",
+    ):
+        snap = _read_json(path)
+        if isinstance(snap, dict) and (snap.get("overall_score") is not None or snap.get("status")):
+            return snap
+    return None
+
+
 def build_scorecard(
     *,
     root: Path | None = None,
@@ -501,79 +649,26 @@ def build_scorecard(
         },
         "judgment_href": "/v3/cio?tab=overview",
         "note": "Ops scorecard from live receipts/lanes; gap walls are not success signals.",
+        "path": "light",
     }
 
 
 def get_cio_scorecard(*, root: Path | None = None) -> dict[str, Any]:
-    """Live aggregation for GET /api/v3/cio/scorecard."""
-    root = Path(root) if root else Path(__file__).resolve().parents[2]
-    home: dict[str, Any] | None = None
-    brain: dict[str, Any] | None = None
-    health: dict[str, Any] | None = None
-    try:
-        from scripts import api_v3_cio as cio
-        try:
-            home = cio.get_cio_home()
-        except Exception:
-            home = {"ok": False}
-        try:
-            brain = cio.get_cio_brain_v1()
-        except Exception:
-            brain = {}
-    except Exception:
-        home, brain = {"ok": False}, {}
-    try:
-        # Prefer same sources Health hub uses so "1 crit" cannot silently diverge.
-        candidates = [
-            root / "data" / "portfolios" / "state" / "health_agent_status.json",
-            root / "data" / "runtime" / "health_agent_latest.json",
-            root / "data" / "runtime" / "health_agent_status.json",
-        ]
-        for path in candidates:
-            snap = _read_json(path)
-            if isinstance(snap, dict) and (snap.get("overall_score") is not None or snap.get("status")):
-                health = snap
-                break
-        if health is None:
-            # Optional DB snapshot — fail-soft if psycopg/env unavailable
-            try:
-                import os
-                import psycopg2
-                import psycopg2.extras
+    """Live aggregation for GET /api/v3/cio/scorecard.
 
-                dsn = os.environ.get("DATABASE_URL") or os.environ.get("TRADEAI_DSN")
-                if dsn:
-                    with psycopg2.connect(dsn) as conn:
-                        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-                            cur.execute(
-                                "SELECT overall_score, status, findings, captured_at "
-                                "FROM health_agent_snapshots ORDER BY captured_at DESC LIMIT 1"
-                            )
-                            row = cur.fetchone()
-                            if row:
-                                findings = row.get("findings") or []
-                                if isinstance(findings, str):
-                                    try:
-                                        findings = json.loads(findings)
-                                    except Exception:
-                                        findings = []
-                                crit = sum(
-                                    1
-                                    for f in (findings if isinstance(findings, list) else [])
-                                    if isinstance(f, dict)
-                                    and str(f.get("severity") or "").lower() == "critical"
-                                )
-                                health = {
-                                    "overall_score": row.get("overall_score"),
-                                    "status": row.get("status"),
-                                    "counts": {"critical": crit},
-                                    "captured_at": str(row.get("captured_at") or ""),
-                                }
-            except Exception:
-                health = None
-    except Exception:
-        health = None
+    Disk/runtime collectors only. Never nests get_cio_home / get_cio_brain_v1.
+    """
+    root = Path(root) if root else Path(__file__).resolve().parents[2]
+    home = _light_home(root)
+    brain = _light_brain(root)
+    health = _light_health(root)
     return build_scorecard(root=root, home=home, brain=brain, health=health)
 
 
-__all__ = ["build_scorecard", "get_cio_scorecard", "SCHEMA", "AUTHORITY"]
+__all__ = [
+    "build_scorecard",
+    "get_cio_scorecard",
+    "stamp_home_attention",
+    "SCHEMA",
+    "AUTHORITY",
+]
