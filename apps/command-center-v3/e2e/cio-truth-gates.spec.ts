@@ -46,6 +46,10 @@ test.describe('CIO financial truth and feedback gates', () => {
           attention: { investment_decisions: 1, workflow_actions: 0, open_plans: 0, material_today: 1 },
         },
         operator_trust: {},
+        opportunities: {
+          watch: [], reentry: [], rotation: [], research_gaps: [],
+          watch_total: 0, reentry_total: 0,
+        },
       }),
     }))
     await page.route('**/api/v3/cio/scorecard*', route => route.fulfill({

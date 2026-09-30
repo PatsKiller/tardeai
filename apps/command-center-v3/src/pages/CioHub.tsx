@@ -1337,7 +1337,14 @@ function InvestmentBooksPanel() {
   </div>
 }
 
-function OpportunitiesSection({ opp, books }: { opp: Opportunities; books?: ReentryBookLabels }) {
+function OpportunitiesSection({ opp, books }: { opp?: Opportunities | null; books?: ReentryBookLabels }) {
+  if (!opp) {
+    return (
+      <div data-testid="opportunities-section" style={{ color: 'var(--text3)', fontSize: 12 }}>
+        Opportunities surface unavailable in this snapshot.
+      </div>
+    )
+  }
   const list = (items: { symbol: string; signal: string; source: string }[]) =>
     items.length === 0 ? <Empty text="None." /> : (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
