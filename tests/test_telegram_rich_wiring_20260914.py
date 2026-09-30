@@ -322,3 +322,29 @@ def test_cio_entry_card_preserves_missing_facts_and_never_invents_sizing(rich):
     assert "Sizing: not provided" in text
     assert "unavailable" in text
     assert "probability" not in text.lower()
+
+
+def test_cio_entry_card_normalizes_option_blocks_and_gauges(rich):
+    text = rich.cio_entry_alert({
+        "symbol": "ALLE", "state": "BUY_READY", "held": False,
+        "company": "Allegion plc", "sector": "Industrials",
+        "price": 154.58, "entry_low": 152.80, "entry_high": 154.80,
+        "stop": 149.90, "target": 174.60,
+        "rr_at_current_price": 4.28, "rr_at_ideal_entry": 4.04,
+        "options_status": "NONE_QUALIFIED",
+        "options_reasons": ["BREAKEVEN_AT_OR_ABOVE_TARGET", "EARNINGS_BLACKOUT"],
+        "thesis": ["PE MISSING — thesis not on house file", "catalyst: Analyst upgrade"],
+        "cio_stance": "HUMAN_REVIEW",
+    }).render()["text"]
+    assert "Allegion plc · Industrials" in text
+    assert "Risk to stop $4.68" in text and "Reward to target $20.02" in text
+    assert "BREAKEVEN_AT_OR_ABOVE_TARGET · EARNINGS_BLACKOUT" in text
+    assert "PE MISSING — thesis not on house file · catalyst: Analyst upgrade" in text
+    assert "['PE MISSING" not in text
+    assert "What kills the idea: No hard block recorded — review incomplete" in text
+
+
+def test_cio_entry_card_never_calls_missing_hard_block_identified(rich):
+    text = rich.cio_entry_alert({"symbol": "DXCM", "state": "ENTRY_NEAR", "held": False}).render()["text"]
+    assert "What kills the idea: No hard block recorded — review incomplete" in text
+    assert "not identified" not in text.lower()
