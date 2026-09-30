@@ -27,6 +27,7 @@ Routes:
   POST /api/v3/cio/decision/{decision_id}/disposition — governed operator feedback
   GET /api/v3/cio/brain/maturity-contract — canonical L0-L7 contract
   GET /api/v3/cio/brain — consolidated CIOBrainSnapshot@v1 projection
+  GET /api/v3/cio/scorecard — ops scorecard tiles (working vs not) for Overview
   GET /api/v3/cio/brain/policy — OperatorInvestmentPolicy@v1
   POST /api/v3/cio/brain/policy/ratify — explicit operator policy ratification
   GET /api/v3/cio/brain/portfolio-state — deterministic PortfolioState@v1
@@ -2365,6 +2366,23 @@ def get_cio_dashboard() -> dict[str, Any]:
 
 def get_cio_snapshot() -> dict[str, Any]:
     return {"ok": True, "as_of": _now_iso(), "snapshot": _cio_snapshot_data()}
+
+
+def get_cio_scorecard() -> dict[str, Any]:
+    """GET /api/v3/cio/scorecard — Overview ops tiles (working vs not). Fail-soft."""
+    try:
+        from scripts.lib.cio_scorecard import get_cio_scorecard as _build
+        return _build(root=PROJECT_ROOT)
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": type(e).__name__,
+            "detail": str(e)[:200],
+            "authority": "READ_ONLY_ADVISORY",
+            "as_of": _now_iso(),
+            "tiles": [],
+            "schema": "CIOScorecard@v1",
+        }
 
 
 def get_cio_actions() -> dict[str, Any]:

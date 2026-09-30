@@ -89,6 +89,15 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
 .cio-brain__source strong { color: var(--text1); font: 500 11px/1.4 var(--mono); overflow-wrap: anywhere; }
 
 @media (max-width: 900px) {
+  [data-testid="cio-scorecard-strip"] > div:nth-child(2) { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  [data-testid="cio-judgment-band"] > div:nth-child(2),
+  [data-testid="cio-judgment-band"] > div:nth-child(3) { grid-template-columns: 1fr !important; }
+}
+@media (max-width: 640px) {
+  [data-testid="cio-scorecard-strip"] > div:nth-child(2) { grid-template-columns: 1fr !important; }
+}
+
+@media (max-width: 900px) {
   .cio-brain__columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 

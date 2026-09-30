@@ -4,21 +4,24 @@ import { useApi } from '../hooks/useApi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
 import { SymbolThesisCard, type SymbolThesisCardPayload } from '../components/cio/SymbolThesisCard'
 import CioBrainPanel from '../components/cio/CioBrainPanel'
+import CioScorecardStrip, { type ScorecardPayload, type ScorecardTile } from '../components/cio/CioScorecardStrip'
+import CioJudgmentBand from '../components/cio/CioJudgmentBand'
+import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
+import {
+  CIO_HUB_TABS,
+  CIO_HUB_TAB_LABEL,
+  resolveCioHubTab,
+  resolveEvidenceSubtab,
+  type CioHubTab,
+} from '../lib/cioHubTabs'
 
 /**
- * /v3/cio — the private investment office home (Phase 8).
+ * /v3/cio — private investment office desk.
  *
- * Decision-first, evidence-later. Six sections:
- *   CIO NOW · UNIVERSE & THESES · CAPITAL PLAN · PORTFOLIO POSTURE · OPPORTUNITIES · REPORT · EVIDENCE
- *
- * UX rules enforced here:
- *   - dollars before percentages when discussing action
- *   - plain-English labels (no snake_case in primary views)
- *   - no model/process telemetry above the fold (that lives in EVIDENCE)
- *   - stale/missing evidence is muted, never red (red = negative investment judgment)
- *   - render state never implies a model ran when it did not
+ * Five tabs: Overview (scorecard + judgment) · Decisions · Research · Capital & Policy · Evidence & Comms.
+ * Legacy ?tab= values alias into this set. READ_ONLY_ADVISORY; no invented cash/policy.
  */
 
 interface Props { onDrill?: (ctx: any) => void }
@@ -283,24 +286,9 @@ type DispositionRec = {
 }
 type DispositionMap = Record<string, DispositionRec>
 
-const TABS = ['cio-brain', 'cio-now', 'operator-policy', 'universe-theses', 'investment-books', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
-type Tab = typeof TABS[number]
-
-const TAB_LABEL: Record<Tab, string> = {
-  'cio-brain': 'CIO BRAIN',
-  'cio-now': 'CIO NOW',
-  'operator-policy': 'OPERATOR POLICY',
-  'universe-theses': 'UNIVERSE & THESES',
-  'investment-books': 'INVESTMENT BOOKS',
-  'capital-plan': 'CAPITAL PLAN',
-  posture: 'PORTFOLIO POSTURE',
-  opportunities: 'OPPORTUNITIES',
-  report: 'REPORT',
-  evidence: 'EVIDENCE / AUDIT',
-  'notification-gate': 'NOTIFICATION GATE',
-  'telegram-receipts': 'TELEGRAM RECEIPTS',
-  'senses-evidence': 'SENSES EVIDENCE',
-}
+const TABS = CIO_HUB_TABS
+type Tab = CioHubTab
+const TAB_LABEL = CIO_HUB_TAB_LABEL
 
 function fmtUsd(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -1839,19 +1827,34 @@ function OperatorPolicyPanel() {
   )
 }
 
-export default function CioHub({ onDrill }: Props) {
+export default function CioHub({ onDrill: _onDrill }: Props) {
   const [sp, setSp] = useSearchParams()
   const planId = (sp.get('plan') || '').trim()
-  const tabParam = (sp.get('tab') || '').trim() as Tab
-  const initialTab: Tab = TABS.includes(tabParam) ? tabParam : 'cio-brain'
+  const tabRaw = (sp.get('tab') || '').trim()
+  const subRaw = (sp.get('sub') || '').trim()
+  const initialTab = resolveCioHubTab(tabRaw)
   const [tab, setTab] = useState<Tab>(initialTab)
+  const [evidenceSub, setEvidenceSub] = useState<string>(subRaw || resolveEvidenceSubtab(tabRaw) || 'report')
   const [dispositions, setDispositions] = useState<DispositionMap>({})
   const [legacyUnversioned, setLegacyUnversioned] = useState<DispositionMap>({})
+  const [evidenceTile, setEvidenceTile] = useState<ScorecardTile | null>(null)
   const { data, loading, error } = useApi<Home>('/api/v3/cio/home')
+  const { data: scorecard, loading: scorecardLoading, error: scorecardError } = useApi<ScorecardPayload>('/api/v3/cio/scorecard')
 
   useEffect(() => {
-    if (TABS.includes(tabParam)) setTab(tabParam)
-  }, [tabParam])
+    const resolved = resolveCioHubTab(tabRaw)
+    setTab(resolved)
+    const fromAlias = resolveEvidenceSubtab(tabRaw)
+    if (subRaw) setEvidenceSub(subRaw)
+    else if (fromAlias) setEvidenceSub(fromAlias)
+    // Normalize legacy tab query params to the new 5-tab set
+    if (tabRaw && tabRaw !== resolved) {
+      const next = new URLSearchParams(sp)
+      next.set('tab', resolved)
+      if (fromAlias && !subRaw) next.set('sub', fromAlias)
+      setSp(next, { replace: true })
+    }
+  }, [tabRaw, subRaw]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetch('/api/v3/cio/dispositions', { cache: 'no-store' })
@@ -1896,10 +1899,16 @@ export default function CioHub({ onDrill }: Props) {
       .catch(() => { /* keep last state; no fake success */ })
   }, [])
 
-  const selectTab = (t: Tab) => {
+  const selectTab = (t: Tab, sub?: string) => {
     setTab(t)
     const next = new URLSearchParams(sp)
     next.set('tab', t)
+    if (sub) {
+      setEvidenceSub(sub)
+      next.set('sub', sub)
+    } else if (t !== 'evidence-comms') {
+      next.delete('sub')
+    }
     setSp(next, { replace: true })
   }
 
@@ -1913,7 +1922,6 @@ export default function CioHub({ onDrill }: Props) {
         {home?.as_of && <span style={{ color: 'var(--text3)', marginLeft: 12 }}>As of {formatAsOfET(home.as_of)}</span>}
       </div>
 
-      {/* Tab nav */}
       <nav style={{ display: 'flex', gap: 6, margin: '14px 0 20px', flexWrap: 'wrap' }} aria-label="Office sections" role="tablist">
         {TABS.map(t => (
           <button
@@ -1934,55 +1942,134 @@ export default function CioHub({ onDrill }: Props) {
         ))}
       </nav>
 
-      {loading && !home && (
-        <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }} data-testid="cio-home-loading">
-          Loading office home…
-        </div>
-      )}
-      {error && !home && (
-        <div style={{ padding: '12px 0', color: 'var(--amber)', fontSize: 13 }} data-testid="cio-home-error">
-          Office home unavailable: {String(error)}
+      {tab === 'overview' && (
+        <div role="tabpanel" aria-label={TAB_LABEL.overview} data-testid="cio-overview">
+          <CioScorecardStrip
+            data={scorecard}
+            loading={scorecardLoading}
+            error={scorecardError ? String(scorecardError) : null}
+            onTileClick={(tile) => setEvidenceTile(tile)}
+          />
+          <CioJudgmentBand
+            blockersTop={scorecard?.blockers_top}
+            onPolicyClick={() => selectTab('capital-policy')}
+          />
         </div>
       )}
 
-      {tab === 'universe-theses' && (
-        <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
+      {tab === 'decisions' && (
+        <div role="tabpanel" aria-label={TAB_LABEL.decisions}>
+          {loading && !home && (
+            <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }} data-testid="cio-home-loading">
+              Loading office home…
+            </div>
+          )}
+          {error && !home && (
+            <div style={{ padding: '12px 0', color: 'var(--amber)', fontSize: 13 }} data-testid="cio-home-error">
+              Office home unavailable: {String(error)}
+            </div>
+          )}
+          {home && (
+            <>
+              <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />
+              <div style={{ marginTop: 28 }}>
+                <OpportunitiesSection opp={home.opportunities} books={home.reentry_books} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'research' && (
+        <div role="tabpanel" aria-label={TAB_LABEL.research}>
           <AgentResearchOpsStrip />
           <UniverseThesesPanel />
+          <div style={{ marginTop: 28 }}>
+            <InvestmentBooksPanel />
+          </div>
         </div>
       )}
 
-      {tab === 'investment-books' && <InvestmentBooksPanel />}
-
-      {tab === 'cio-brain' && <CioBrainPanel />}
-
-      {tab === 'operator-policy' && <OperatorPolicyPanel />}
-
-      {(tab === 'notification-gate' || tab === 'telegram-receipts' || tab === 'senses-evidence') && (
-        <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
-          {tab === 'notification-gate' && <NotificationGatePanel />}
-          {tab === 'telegram-receipts' && <TelegramReceiptsPanel />}
-          {tab === 'senses-evidence' && <SensesEvidencePanel />}
+      {tab === 'capital-policy' && (
+        <div role="tabpanel" aria-label={TAB_LABEL['capital-policy']}>
+          <OperatorPolicyPanel />
+          {home && (
+            <>
+              <div style={{ marginTop: 28 }}>
+                <CapitalPlanSection cp={home.capital_plan} />
+              </div>
+              <div style={{ marginTop: 28 }}>
+                <PostureSection posture={home.posture} />
+              </div>
+            </>
+          )}
+          {!home && loading && (
+            <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading capital plan…</div>
+          )}
         </div>
       )}
 
-      {home && tab !== 'cio-brain' && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && tab !== 'investment-books' && tab !== 'operator-policy' && tab !== 'universe-theses' && (
-        <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
-          {tab === 'cio-now' && <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />}
-          {tab === 'capital-plan' && <CapitalPlanSection cp={home.capital_plan} />}
-          {tab === 'posture' && <PostureSection posture={home.posture} />}
-          {tab === 'opportunities' && <OpportunitiesSection opp={home.opportunities} books={home.reentry_books} />}
-          {tab === 'report' && <ReportSection report={home.report} />}
-          {tab === 'evidence' && <EvidenceSection evidence={home.evidence} />}
+      {tab === 'evidence-comms' && (
+        <div role="tabpanel" aria-label={TAB_LABEL['evidence-comms']}>
+          <EvidenceCommsSubnav
+            active={evidenceSub}
+            onSelect={(sub) => selectTab('evidence-comms', sub)}
+          />
+          {evidenceSub === 'report' && home && <ReportSection report={home.report} />}
+          {evidenceSub === 'audit' && home && <EvidenceSection evidence={home.evidence} />}
+          {evidenceSub === 'notification-gate' && <NotificationGatePanel />}
+          {evidenceSub === 'telegram-receipts' && <TelegramReceiptsPanel />}
+          {evidenceSub === 'senses-evidence' && <SensesEvidencePanel />}
+          {evidenceSub === 'full-brain' && <CioBrainPanel />}
+          {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (
+            <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading evidence…</div>
+          )}
         </div>
       )}
 
-      {/* Deep-linked plan detail (specialist/evidence workspace) */}
       {planId && (
         <div style={{ marginTop: 24 }}>
           <PlanDetailPanel planId={planId} />
         </div>
       )}
+
+      <CioEvidenceModal
+        tile={evidenceTile}
+        onClose={() => setEvidenceTile(null)}
+        onOpenTab={(t, sub) => selectTab(resolveCioHubTab(t), sub)}
+      />
+    </div>
+  )
+}
+
+function EvidenceCommsSubnav({ active, onSelect }: { active: string; onSelect: (sub: string) => void }) {
+  const items: { id: string; label: string }[] = [
+    { id: 'report', label: 'Report' },
+    { id: 'audit', label: 'Audit / evidence' },
+    { id: 'notification-gate', label: 'Notification gate' },
+    { id: 'telegram-receipts', label: 'Telegram receipts' },
+    { id: 'senses-evidence', label: 'Senses' },
+    { id: 'full-brain', label: 'Full brain' },
+  ]
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }} role="tablist" aria-label="Evidence subsections">
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          role="tab"
+          aria-selected={active === item.id}
+          onClick={() => onSelect(item.id)}
+          style={{
+            padding: '5px 10px', borderRadius: 6, border: '1px solid var(--border)',
+            background: active === item.id ? 'var(--accent-dim)' : 'transparent',
+            color: active === item.id ? 'var(--accent)' : 'var(--text2)',
+            cursor: 'pointer', fontSize: 11, fontWeight: active === item.id ? 700 : 500,
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
     </div>
   )
 }
