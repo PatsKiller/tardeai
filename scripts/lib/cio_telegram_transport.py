@@ -308,6 +308,7 @@ def send_cio_message(
     ok_any = False
     errors: list[str] = []
     message_ids: list[Any] = []
+    message_refs: list[dict[str, Any]] = []
     for cid in cio_chat_ids():
         try:
             # Default plain text: Markdown parse_mode eats underscores in
@@ -325,6 +326,7 @@ def send_cio_message(
                 mid = (resp.get("response") or {}).get("result", {}).get("message_id")
                 if mid is not None:
                     message_ids.append(mid)
+                    message_refs.append({"chat_ref": _chat_ref(cid), "message_id": mid})
             else:
                 errors.append(f"chat={cid}:status={resp.get('status_code')}")
         except Exception as e:
@@ -335,10 +337,61 @@ def send_cio_message(
         result["delivered"] = True
         result["reason"] = "sent"
         result["message_ids"] = message_ids
+        result["message_refs"] = message_refs
     else:
         result["reason"] = "send_failed"
         result["errors"] = errors[:5]
+    _append_send_receipt(result, kind=kind, decision_id=decision_id)
     return result
+
+
+def _chat_ref(chat_id: Any) -> str:
+    """Stable non-reversible reference to a destination chat (the id itself stays in config)."""
+    return hashlib.sha256(str(chat_id).encode("utf-8")).hexdigest()[:12]
+
+
+def _append_send_receipt(result: dict[str, Any], *, kind: str, decision_id: Optional[str]) -> None:
+    """Every CIO desk send attempt leaves a durable receipt WITH the Telegram message ids.
+
+    Measured 2026-09-28/30: data/cio/cio_telegram_receipts.jsonl had not been written since
+    2026-08-30 although the desk sent daily — only the alex decision path wrote receipts, and
+    this transport returned message ids that every other caller dropped. The 10:20 ET AXTI
+    ENTRY_NEAR alert therefore had no message id to attach a correction to. Best-effort: a
+    receipt write never changes the send result.
+    """
+    try:
+        from scripts.lib.cio_production_eligibility import cio_state_root, guard_test_cio_write
+    except ImportError:
+        try:
+            from lib.cio_production_eligibility import cio_state_root, guard_test_cio_write  # type: ignore
+        except ImportError:
+            return
+    try:
+        explicit = os.environ.get("CIO_TELEGRAM_RECEIPT_PATH")
+        path = guard_test_cio_write(Path(explicit) if explicit else
+                                    (cio_state_root() / "data" / "cio" / "cio_telegram_receipts.jsonl"))
+        row = {
+            "schema": "CIOTelegramSendReceipt@v1",
+            "source": "cio_telegram_transport.send_cio_message",
+            "channel": "telegram_cio",
+            "general_channel": False,
+            "kind": kind,
+            "decision_id": decision_id,
+            "dedupe_key": result.get("dedupe_key"),
+            "ok": bool(result.get("delivered")),
+            "status": "sent" if result.get("delivered") else "failed",
+            "reason": result.get("reason"),
+            "delivered_at": datetime.now(timezone.utc).isoformat() if result.get("delivered") else None,
+            "attempted_at": datetime.now(timezone.utc).isoformat(),
+            "message_ids": list(result.get("message_ids") or []),
+            "message_refs": list(result.get("message_refs") or []),
+            "errors": list(result.get("errors") or [])[:5],
+        }
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, default=str) + "\n")
+    except Exception:  # noqa: BLE001 — receipts are evidence, never a reason to fail a send
+        return
 
 
 def notify_thesis_published(
