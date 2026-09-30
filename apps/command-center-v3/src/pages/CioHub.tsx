@@ -933,14 +933,20 @@ function AgentResearchOpsStrip() {
       {error && <div style={{ color: 'var(--amber)', fontSize: 13 }}>Research ops unavailable: {String(error)}</div>}
       {data && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
-          <Stat label="Queued" value={String(q.queued ?? '—')} />
-          <Stat label="Created today" value={String(q.created_today ?? '—')} />
-          <Stat label="Completed today" value={String(q.completed_today ?? '—')} />
-          <Stat label="Failed today" value={String(q.failed_today ?? '—')} />
-          <Stat label="Oldest queued" value={q.oldest_queued ? String(q.oldest_queued).slice(0, 16) : '—'} />
-          <Stat label="Global cap" value={String(data.global_cap_status ?? '—')} />
-          <Stat label="Maria queued" value={String((q.by_agent && q.by_agent.maria) ?? '—')} />
-          <Stat label="Stale/superseded" value={String(q.stale_or_superseded ?? '—')} />
+          <Stat label="Queued" value={String(q.queued ?? '—')} help="Actionable jobs waiting for a worker now. Zero means no research is waiting in the live queue." />
+          <Stat label="Created today" value={String(q.created_today ?? '—')} help="Jobs created since the database session day began; this is demand, not backlog." />
+          <Stat label="Completed today" value={String(q.completed_today ?? '—')} help="Jobs completed since the database session day began. Compare with Created today for same-day throughput." />
+          <Stat label="Failed today" value={String(q.failed_today ?? '—')} help="Jobs that failed or were skipped today. Failed work is not silently re-queued; the failure class below names why." />
+          <Stat label="Oldest queued" value={q.oldest_queued ? String(q.oldest_queued).slice(0, 16) : '—'} sub={q.oldest_queued_age_minutes != null ? `${q.oldest_queued_age_minutes} min old` : undefined} help="Creation timestamp and age of the oldest currently queued job. No value means the actionable queue is empty." />
+          <Stat label="Global cap" value={String(data.global_cap_status ?? '—')} help="Worker spend-cap state only: CONFIGURED, MISSING, or EXHAUSTED. The cap value itself is intentionally hidden." />
+          <Stat label="Maria queued" value={String((q.by_agent && q.by_agent.maria) ?? '—')} help="Actionable queued work assigned to Maria. It excludes completed, failed, deferred, and superseded jobs." />
+          <Stat label="Stale/superseded" value={String(q.stale_or_superseded ?? '—')} help="Historical deferred or superseded rows retained for audit. They are not actionable backlog and are not auto-requeued." />
+        </div>
+      )}
+      {data && (
+        <div style={{ fontSize: 12, color: 'var(--text2)' }} data-testid="cio-research-queue-semantics">
+          Queue semantics: actionable={String(q.actionable_queue ?? q.queued ?? '—')}; priority={Object.entries(q.by_priority || {}).map(([k, v]) => `${k}=${v}`).join(' · ') || 'not exposed by this deployment'}; oldest age={q.oldest_queued_age_minutes != null ? `${q.oldest_queued_age_minutes} min` : 'none'}.
+          {' '}Priority is the stored producer priority, not a model score; failed jobs require deliberate remediation before re-queue.
         </div>
       )}
       {data?.dominant_failure_class && (

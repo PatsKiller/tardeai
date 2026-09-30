@@ -576,6 +576,16 @@ def get_agent_research_ops() -> dict[str, Any]:
         oldest_at = None
         if oldest:
             oldest_at = str(oldest[0] if not isinstance(oldest, dict) else list(oldest.values())[0])
+        oldest_age_minutes = None
+        try:
+            age = _execute(
+                "SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at))) / 60 FROM watchlist_agent_jobs WHERE status='queued'",
+                fetch="one",
+            )
+            if age and age[0] is not None:
+                oldest_age_minutes = round(float(age[0]), 1)
+        except Exception:
+            oldest_age_minutes = None
         agents = _execute(
             """SELECT requested_agent, COUNT(*) FROM watchlist_agent_jobs
                WHERE status='queued' GROUP BY requested_agent""",
@@ -587,6 +597,22 @@ def get_agent_research_ops() -> dict[str, Any]:
                 by_agent[str(list(row.values())[0])] = int(list(row.values())[1] or 0)
             else:
                 by_agent[str(row[0])] = int(row[1] or 0)
+        by_priority: dict[str, int] = {}
+        try:
+            priority_rows = _execute(
+                """SELECT COALESCE(priority, 'unspecified'), COUNT(*)
+                   FROM watchlist_agent_jobs WHERE status='queued'
+                   GROUP BY 1 ORDER BY 1""",
+                fetch="all",
+            ) or []
+            for row in priority_rows:
+                if isinstance(row, dict):
+                    by_priority[str(list(row.values())[0])] = int(list(row.values())[1] or 0)
+                else:
+                    by_priority[str(row[0])] = int(row[1] or 0)
+        except Exception:
+            # Keep the endpoint available on older queue schemas without priority.
+            by_priority = {}
         created = _execute(
             "SELECT COUNT(*) FROM watchlist_agent_jobs WHERE created_at >= CURRENT_DATE",
             fetch="one",
@@ -667,7 +693,9 @@ def get_agent_research_ops() -> dict[str, Any]:
             "queued": queued,
             "by_status": by_status,
             "by_agent": by_agent,
+            "by_priority": by_priority,
             "oldest_queued": oldest_at,
+            "oldest_queued_age_minutes": oldest_age_minutes,
             "created_today": _count_cell(created),
             "completed_today": _count_cell(completed),
             "failed_today": _count_cell(failed),
