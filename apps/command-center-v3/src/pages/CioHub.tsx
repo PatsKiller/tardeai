@@ -1959,6 +1959,9 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           />
           <CioJudgmentBand
             blockersTop={scorecard?.blockers_top}
+            scorecardNote={scorecard?.note}
+            healthSummary={scorecard?.health_summary}
+            pin={scorecard?.pin}
             onPolicyClick={() => selectTab('capital-policy')}
           />
         </div>
