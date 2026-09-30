@@ -1223,6 +1223,10 @@ def adjudicate_reentry(
         thesis = thesis_fields_for_symbol(symbol, root=row.get("_product_root"))
     except Exception:
         thesis = {"thesis_state": "INSUFFICIENT_DATA", "has_current_symbol_thesis": False}
+    # Shared-spine storage uses POPULATED; operator decision surfaces use the
+    # governed thesis vocabulary. Keep the storage state out of re-entry cards.
+    if thesis.get("thesis_state") == "POPULATED":
+        thesis["thesis_state"] = "CURRENT"
 
     why_exited = thesis.get("why_exited")
     if why_exited in (None, "", "DATA_UNAVAILABLE"):

@@ -38,6 +38,11 @@ def _transferson_denominators(root: Path) -> dict[str, Any]:
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 
+
+def _operator_thesis_state(value: Any) -> Any:
+    """Expose the operator-card vocabulary, not the spine storage vocabulary."""
+    return "CURRENT" if value == "POPULATED" else value
+
 # Category / aggregate labels that leaked into the symbol column. Not tickers —
 # exclude from material cards or bucket OTHER (CUSIP bucketing stays separate).
 NON_TICKER_SYMBOLS = frozenset({
@@ -176,8 +181,8 @@ def build_universe_theses_projection(
             "bucket": _membership_bucket(r),
             "portfolio_role": (r.get("portfolio_role") or {}).get("portfolio_role"),
             "portfolio_role_source": (r.get("portfolio_role") or {}).get("source"),
-            "thesis_state": r.get("coverage_state"),
-            "mint_state": r.get("coverage_state"),
+            "thesis_state": _operator_thesis_state(r.get("coverage_state")),
+            "mint_state": _operator_thesis_state(r.get("coverage_state")),
             "stance": r.get("thesis_stance"),
             "confidence": None,
             "last_reviewed": None,
@@ -298,7 +303,7 @@ def build_symbol_thesis_card(
         "portfolio_role": fields.get("portfolio_role"),
         "portfolio_role_source": fields.get("portfolio_role_source"),
         "portfolio_role_provenance": fields.get("portfolio_role_provenance"),
-        "thesis_state": fields.get("thesis_state"),
+        "thesis_state": _operator_thesis_state(fields.get("thesis_state")),
         "thesis_stance": fields.get("thesis_stance"),
         "thesis_confidence": fields.get("thesis_confidence"),
         "last_reviewed": fields.get("last_reviewed"),
