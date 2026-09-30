@@ -2960,6 +2960,12 @@ GATES = [
         "cross_asset_decision_intelligence_phase1_20260929",
         ["tests/test_cross_asset_decision_intelligence.py"],
     ),
+    (
+        # 2026-09-30 — CIO Desk observability: executive health contract,
+        # fail-closed status calculation, and remediation evidence projection.
+        "cio_desk_observability_20260930",
+        ["tests/test_cio_observability.py"],
+    ),
 ]
 
 

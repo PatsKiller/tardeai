@@ -676,6 +676,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/audits/CENSUS_PART2_COMMAND_CENTER_2026-08-30.md` | CENSUS PART 2 — The Command Center / operator surface | review_required | OK | `a01d2b2b3eee` |
 | `docs/audits/CENSUS_PART5_LEVEL_SET.md` | CENSUS_PART5_LEVEL_SET.md | review_required | OK | `2b8c85d465e2` |
 | `docs/audits/CIO_DARK_CONTRACTS_2026-09-01.md` | CIO dark contracts — re-measurement, 2026-09-01 | review_required | OK | `89415d2bc04c` |
+| `docs/audits/CIO_DESK_OBSERVABILITY_REMEDIATION_2026-09-30.md` | CIO Desk Observability Remediation Ledger | review_required | OK | `54ce4b794aa7` |
 | `docs/audits/CIO_DILIGENCE_GAP_REGISTER.md` | CIO Diligence Gap Register | review_required | OK | `bda3d68b2c3f` |
 | `docs/audits/CIO_OUTCOME_EDGE_CENSUS_2026-09-01.md` | CIO OUTCOME EDGE — census of `OutcomeCheckpoint@v1` | review_required | OK | `fd38d03fdae0` |
 | `docs/audits/CIO_PIPELINE_DIAGRAM_VERIFICATION_2026-08-27.md` | Is the CIO pipeline diagram the true state? — measured verification | review_required | OK | `91e849bb4976` |

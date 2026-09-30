@@ -4,6 +4,7 @@ import { useApi } from '../hooks/useApi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
 import { SymbolThesisCard, type SymbolThesisCardPayload } from '../components/cio/SymbolThesisCard'
 import CioBrainPanel from '../components/cio/CioBrainPanel'
+import CioObservabilityPanel from '../components/cio/CioObservabilityPanel'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
 
@@ -1912,6 +1913,8 @@ export default function CioHub({ onDrill }: Props) {
         Alex · Chief Investment Officer · READ_ONLY_ADVISORY
         {home?.as_of && <span style={{ color: 'var(--text3)', marginLeft: 12 }}>As of {formatAsOfET(home.as_of)}</span>}
       </div>
+
+      <CioObservabilityPanel />
 
       {/* Tab nav */}
       <nav style={{ display: 'flex', gap: 6, margin: '14px 0 20px', flexWrap: 'wrap' }} aria-label="Office sections" role="tablist">

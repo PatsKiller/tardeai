@@ -14,6 +14,7 @@ Routes:
   GET /api/v3/cio/thesis        — Active desk@vN thesis
   GET /api/v3/cio/universe-theses — UNIVERSE & THESES projection (read-only)
   GET /api/v3/cio/agent-research-ops — queue/provider/spend ops strip (no secrets)
+  GET /api/v3/cio/observability — CIO-only executive health and workflow projection
   GET /api/v3/cio/symbol-thesis/{SYM} — per-symbol thesis card + history
   GET /api/v3/cio/intelligence/{SYM} — SymbolIntelligence + feedback journal
   POST /api/v3/cio/intelligence/{SYM}/feedback — OperatorTickerFeedback@v1
@@ -666,6 +667,20 @@ def get_agent_research_ops() -> dict[str, Any]:
         out["error"] = type(e).__name__
         out["detail"] = str(e)[:200]
     return out
+
+
+def get_cio_observability() -> dict[str, Any]:
+    """Build the read-only CIO Desk health/workflow projection."""
+    from scripts.lib.cio_observability import build_observability
+
+    home = get_cio_home()
+    brain = get_cio_brain_v1()
+    research_ops = get_agent_research_ops()
+    data_health = get_data_health_v1()
+    return build_observability(
+        home=home, brain=brain, research_ops=research_ops,
+        data_health=data_health,
+    )
 
 
 def get_universe_theses() -> dict[str, Any]:
