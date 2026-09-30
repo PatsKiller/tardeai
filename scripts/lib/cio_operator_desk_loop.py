@@ -1215,14 +1215,81 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
             from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
 
             th = thesis_fields_for_symbol(sym, root=PROJECT_ROOT) or {}
-            if th.get("has_current_symbol_thesis") or th.get("thesis_state"):
+            if th.get("has_current_symbol_thesis") or th.get("thesis_state") or th.get("security_research_spine"):
                 facts["theses"][sym] = {
                     "thesis_state": th.get("thesis_state"),
                     "portfolio_role": th.get("portfolio_role"),
                     "thesis_summary": (th.get("thesis_summary") or "")[:400] or None,
                     "why_owned_or_watched": (th.get("why_owned_or_watched") or "")[:300] or None,
                     "symbol_thesis_version": th.get("symbol_thesis_version"),
+                    # SLA / spine honesty for the answerer.
+                    "fresh": th.get("fresh"),
+                    "sla_days": th.get("sla_days"),
+                    "thesis_age_days": th.get("thesis_age_days"),
+                    "spine_as_of": th.get("spine_as_of"),
+                    "spine_fresh": th.get("spine_fresh"),
+                    "spine_sla_days": th.get("spine_sla_days"),
+                    "security_research_spine": bool(th.get("security_research_spine")),
+                    "spine_tags": list(th.get("spine_tags") or [])[:12],
+                    "latest_llm": th.get("latest_llm"),
                 }
+                llm = th.get("latest_llm")
+                if isinstance(llm, dict) and (llm.get("source") or llm.get("model")):
+                    facts.setdefault("latest_llm", {})[sym] = {
+                        "source": llm.get("source"),
+                        "model": llm.get("model"),
+                        "kind": llm.get("kind"),
+                        "as_of": llm.get("as_of"),
+                        "owner": "cio",
+                        "note": llm.get("note") or "curation_not_fact_source",
+                    }
+                if th.get("fresh") is False or th.get("spine_fresh") is False:
+                    soft_gaps.append({
+                        "domain": "symbol_thesis_sla",
+                        "symbol": sym,
+                        "field": "fresh",
+                        "reason": (
+                            f"{sym} thesis/spine past class SLA "
+                            f"(age={th.get('thesis_age_days') or th.get('spine_age_days')}d "
+                            f"sla={th.get('sla_days') or th.get('spine_sla_days')}d) — "
+                            "do not claim currency; refresh or label STALE"
+                        ),
+                        "gap_type": "research",
+                    })
+                    # Librarian residual: best-effort Hermes enqueue on SLA breach.
+                    try:
+                        from scripts.lib.cross_asset.spine_sla_enqueue import (
+                            enqueue_spine_sla_breaches,
+                        )
+                        enqueue_spine_sla_breaches(
+                            [sym],
+                            root=PROJECT_ROOT,
+                            apply=True,
+                            operator_text=(
+                                f"Spine SLA breach for {sym} — refresh house research (READ_ONLY)."
+                            ),
+                        )
+                    except Exception:
+                        pass
+                # Active operator asks on the shared spine (persist until thesis changes).
+                try:
+                    from scripts.lib.cross_asset.security_research_spine import view_for_silo
+                    spine_view = view_for_silo(sym, "cio", root=PROJECT_ROOT) or {}
+                    asks = list(spine_view.get("operator_asks") or [])
+                    if asks:
+                        facts.setdefault("operator_asks", {})[sym] = asks[:5]
+                    tip_llm = spine_view.get("latest_llm")
+                    if isinstance(tip_llm, dict) and (tip_llm.get("source") or tip_llm.get("model")):
+                        facts.setdefault("latest_llm", {}).setdefault(sym, {
+                            "source": tip_llm.get("source"),
+                            "model": tip_llm.get("model"),
+                            "kind": tip_llm.get("kind"),
+                            "as_of": tip_llm.get("as_of"),
+                            "owner": "cio",
+                            "note": tip_llm.get("note") or "curation_not_fact_source",
+                        })
+                except Exception:
+                    pass
             else:
                 soft_gaps.append({
                     "domain": "symbol_thesis", "symbol": sym, "field": "thesis",
@@ -1233,7 +1300,6 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
                 "domain": "symbol_thesis", "symbol": sym, "field": "thesis",
                 "reason": f"{sym} thesis attach failed", "gap_type": "research",
             })
-
     # The freeform path had the SAME defect as the reentry composer: it put the
     # global pipeline counters into TRADE_AI_FACTS, so the model was handed
     # "2502 rows exist somewhere" as a fact about whatever was asked. Fixing
@@ -3687,9 +3753,14 @@ def _curate_from_evidence_core(operator_text: str, evidence: dict[str, Any]) -> 
 def _emit_telegram_desk_payload(intent: dict[str, Any], result: dict[str, Any]) -> None:
     """DecisionPayload@v1 when a Telegram desk reply states a decision. Fail-soft.
 
-    Freeform already emits in ``answer_freeform_with_flash``. Meta / deferred
-    replies do not state a decision. Reentry answers do.
+    Also persists operator Q&A onto SecurityResearchSpine for each named security
+    (full lifecycle memory — not Hermes-only).
     """
+    try:
+        from scripts.lib.cross_asset.hooks import notify_operator_desk_result
+        notify_operator_desk_result(intent, result)
+    except Exception:
+        pass
     try:
         if result.get("kind") != "answered":
             return
@@ -3770,11 +3841,19 @@ def _resolve_blocking_gaps(
             continue
         row = res.to_dict()
         row["desk_domain"] = domain
+        # A thin llm_curation / search "partial" can coexist with a slow Hermes
+        # queue (eta_seconds). Both must surface: answered for the interim reply,
+        # queued so the desk opens a pending and try_fulfill can deliver when
+        # Hermes lands. 2026-09-29 NFLX: partial+queued was classified answered-only,
+        # so opr_* never entered pending_replies and the completed thesis never
+        # came back to the operator.
         if res.answered or (res.outcome == "partial" and res.answer is not None):
             answered.append(row)
-        elif res.eta_seconds is not None:
+        if res.eta_seconds is not None:
             queued.append(row)
-        else:
+        elif not (
+            res.answered or (res.outcome == "partial" and res.answer is not None)
+        ):
             denied.append(row)
 
     etas = [int(r["eta_seconds"]) for r in queued if r.get("eta_seconds") is not None]
@@ -3799,6 +3878,50 @@ def _resolve_blocking_gaps(
         "eta_text": eta_text,
         "receipt": receipt,
     }
+
+
+def _stamp_gap_resolver_llm_onto_spine(
+    resolver_summary: dict[str, Any] | None,
+    intent: dict[str, Any] | None,
+) -> None:
+    """When gap resolver answered via llm_curation, stamp tip even if desk skipped _curate_from_evidence."""
+    if not isinstance(resolver_summary, dict):
+        return
+    try:
+        from scripts.lib.cross_asset.hooks import notify_llm_curation
+    except Exception:
+        return
+    for r in resolver_summary.get("answered") or []:
+        if not isinstance(r, dict):
+            continue
+        vec = str(r.get("vector") or "")
+        ans = r.get("answer") if isinstance(r.get("answer"), dict) else {}
+        src = str(ans.get("source") or "")
+        if vec != "llm_curation" and src != "llm_curation":
+            continue
+        syms = []
+        subj = str(r.get("subject") or "").upper().strip()
+        if subj and subj not in ("BOOK", ""):
+            syms.append(subj)
+        for s in (intent or {}).get("symbols") or []:
+            su = str(s).upper().strip()
+            if su and su not in syms:
+                syms.append(su)
+        if not syms:
+            continue
+        text = str(ans.get("text") or r.get("detail") or "")[:800]
+        if not text.strip():
+            continue
+        try:
+            notify_llm_curation(
+                syms,
+                text=text,
+                source="llm_curation",
+                model=ans.get("model") or r.get("model"),
+                curated_from=list(ans.get("curated_from") or [])[:8] or None,
+            )
+        except Exception:
+            pass
 
 
 def _format_resolved_answer(summary: dict[str, Any], *, intent: dict[str, Any]) -> str:
@@ -3937,6 +4060,39 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     """The branch's answer, then the dossier; a pill says who wrote each part."""
     cur = _curate_from_evidence_core(operator_text, evidence)
     avail = (evidence or {}).get("available") or {}
+    # Stamp LLM-produced curation onto shared spine (CIO-owned; tagged; not tip thesis).
+    try:
+        src = str(cur.get("source") or "")
+        llm_sources = {
+            "deepseek_flash",
+            "freeform_flash",
+            "llm_curation",
+            "subject_flash",
+        }
+        if src in llm_sources or src.startswith("llm_"):
+            syms = [str(s).upper() for s in (avail.get("subject_symbols") or []) if s]
+            if not syms:
+                cards = avail.get("reentry_symbol_cards") or {}
+                if isinstance(cards, dict):
+                    syms = [str(s).upper() for s in cards.keys() if s]
+            if not syms:
+                theses = avail.get("theses") or evidence.get("theses") or {}
+                if isinstance(theses, dict):
+                    syms = [str(s).upper() for s in theses.keys() if s]
+            if not syms:
+                intent = evidence.get("intent") or {}
+                if isinstance(intent, dict):
+                    syms = [str(s).upper() for s in (intent.get("symbols") or []) if s]
+            if syms:
+                from scripts.lib.cross_asset.hooks import notify_llm_curation
+                notify_llm_curation(
+                    syms,
+                    text=str(cur.get("text") or "")[:800],
+                    source=src,
+                    model=cur.get("model"),
+                )
+    except Exception:
+        pass
     dossier = avail.get("subject_dossier_text")
     src = str(cur.get("source") or "")
     if not dossier or src in ("runtime_meta", "unclear_clarifier"):
@@ -4283,6 +4439,9 @@ def handle_operator_desk_question(
                     })
                     blocking = []
                 else:
+                    # Interim thin answer (often llm_curation) — if Hermes was ALSO
+                    # queued, do NOT return here: fall through so a pending opens and
+                    # try_fulfill can deliver the completed thesis (NFLX 2026-09-29).
                     result.update({
                         "kind": "answered",
                         "pending_id": None,
@@ -4290,8 +4449,17 @@ def handle_operator_desk_question(
                         "reply_source": "gap_resolver:" + str(resolver_summary["answered"][0].get("vector")),
                         "model": resolver_summary["answered"][0].get("model"),
                     })
-                    _emit_telegram_desk_payload(intent, result)
-                    return result
+                    _stamp_gap_resolver_llm_onto_spine(resolver_summary, intent)
+                    if resolver_summary.get("queued"):
+                        result["research_queued"] = True
+                        eta_seconds = resolver_summary.get("eta_seconds") or eta_seconds or 1800
+                        eta_text = resolver_summary.get("eta_text") or (
+                            f"≈ {max(1, int(round(int(eta_seconds) / 60.0)))} min"
+                        )
+                        # keep `blocking` set → pending path below
+                    else:
+                        _emit_telegram_desk_payload(intent, result)
+                        return result
             elif resolver_summary.get("queued"):
                 eta_seconds = resolver_summary.get("eta_seconds")
                 eta_text = resolver_summary.get("eta_text")
@@ -4401,9 +4569,14 @@ def handle_operator_desk_question(
             # test_gap_resolver negative controls pin that.
             buy_eta_seconds = 1800 if buy_first and not eta_seconds else None
             effective_eta = eta_seconds if eta_seconds is not None else buy_eta_seconds
+            interim_plus_queue = bool(
+                result.get("research_queued") and resolver_summary and resolver_summary.get("queued")
+            )
+            if effective_eta is None and interim_plus_queue:
+                effective_eta = 1800
             effective_eta_text = eta_text
-            if effective_eta_text is None and buy_eta_seconds is not None:
-                effective_eta_text = f"≈ {max(1, int(round(buy_eta_seconds / 60.0)))} min"
+            if effective_eta_text is None and effective_eta is not None:
+                effective_eta_text = f"≈ {max(1, int(round(int(effective_eta) / 60.0)))} min"
             pending_row: dict[str, Any] = {
                 "pending_id": pending_id,
                 "status": "open",
@@ -4416,7 +4589,8 @@ def handle_operator_desk_question(
                 "blocking_gaps": blocking,
                 "authority": AUTHORITY,
                 "kind": (
-                    "buy_perspective_research_first" if buy_first else "blocking_gap"
+                    "interim_plus_hermes_queue" if interim_plus_queue
+                    else ("buy_perspective_research_first" if buy_first else "blocking_gap")
                 ),
             }
             if effective_eta is not None:
@@ -4447,6 +4621,25 @@ def handle_operator_desk_question(
                 if effective_eta_text else
                 "Queued into the controlled gap pipeline. "
             )
+            # Thin interim (llm_curation) + Hermes already queued: keep interim,
+            # open pending, return — do not replace with a hollow "queued only" lead.
+            if interim_plus_queue and (result.get("text") or "").strip():
+                text_body = (
+                    str(result.get("text")).rstrip()
+                    + "\n\n"
+                    + queued_line
+                    + f"Pending `{pending_id}` — I'll follow up when desk research lands."
+                )
+                result.update({
+                    "kind": "deferred",
+                    "pending_id": pending_id,
+                    "eta_seconds": effective_eta,
+                    "research_queued": True,
+                    "text": text_body,
+                    "reply_source": result.get("reply_source") or "gap_resolver:interim_plus_queue",
+                })
+                _emit_telegram_desk_payload(intent, result)
+                return result
             research_only = all(g.get("domain") == "hermes_research" for g in blocking)
             # Buy/perspective with thin/stale house facts: NEVER lead with a hollow
             # DeepSeek essay (live 2026-09-22 operator paste). Lead with pending.
@@ -5008,6 +5201,21 @@ def try_fulfill_pending_replies(
                 "fulfilled_ts": _now(),
                 "authority": AUTHORITY,
             })
+            # Full lifecycle: operator follow-up (Hermes joined) lands on shared spine.
+            try:
+                from scripts.lib.cross_asset.hooks import notify_operator_desk_result
+                notify_operator_desk_result(
+                    intent if isinstance(intent, dict) else {},
+                    {
+                        "kind": "answered",
+                        "text": answer_text[:800],
+                        "pending_id": row.get("pending_id"),
+                        "reply_source": "pending_fulfilled",
+                    },
+                    operator_text=str(row.get("operator_text") or ""),
+                )
+            except Exception:
+                pass
             fulfilled += 1
         except Exception:
             failed += 1

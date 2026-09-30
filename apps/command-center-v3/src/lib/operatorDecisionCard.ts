@@ -325,9 +325,19 @@ export function buildOperatorPresentation(opts: {
       ]
       primaryCta = 'Review Event Risk'
     } else {
-      headline = 'Position management first'
+      const addReady = timing === 'READY' || timing === 'BREAKOUT_CONFIRMATION'
+      const waitingForZone = timing === 'WAIT_FOR_PULLBACK' || timing === 'EXTENDED' || timing === 'RANGE_BOUND'
+      headline = addReady
+        ? 'Already owned — add decision required'
+        : waitingForZone
+          ? 'Already owned — wait for preferred entry zone'
+          : 'Already owned — hold existing position'
       whyLines = [
-        'You already hold this symbol — lead with hold / add / trim / hedge, not a new starter allocation',
+        addReady
+          ? 'You already hold this symbol — any purchase adds to existing exposure'
+          : waitingForZone
+            ? 'Current price is less attractive than the planned accumulation zone — do not chase'
+            : 'You already hold this symbol — manage the existing position before considering an add',
         swMech ? `Swing context: ${swMech.summary}` : 'No active swing plan',
       ]
       primaryCta = 'Review Position'

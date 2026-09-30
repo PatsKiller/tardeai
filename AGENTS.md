@@ -1164,6 +1164,72 @@ capacity, it is that built capacity goes unused. `tests/test_identity_memory_mod
 the structural guard — every identity/memory module must have a production consumer or be declared
 `KNOWN_DARK`. **That list may shrink and must never grow.**
 
+## Shared security research — NO SILOS (CRITICAL PATH, CIO-owned)
+
+**Operator binding 2026-09-29.** Research about a security must be transparent across
+options, holdings, watchlists, re-entry, Hermes, Aegis, and cross-asset routing.
+The CIO / advisor desk **owns** the shared memory. Building a private thesis cache
+inside one silo is a defect — the same class of failure as hand-rolling a ticker map
+when the identity registry already exists.
+
+Canonical program docs (read before adding research surfaces):
+
+- `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md`
+- `docs/CROSS_ASSET_DECISION_INTELLIGENCE_PRODUCTION_BILL.md` (Bill C = transparency to prod)
+- `docs/CROSS_ASSET_DECISION_INTELLIGENCE_BACKLOG.md`
+- Code: `scripts/lib/cross_asset/security_research_spine.py` (`SecurityResearchSpine@v1`)
+- Decision object: `scripts/lib/cross_asset/symbol_decision_object.py` (`SymbolDecisionObject@v1`)
+
+### Methodology (non-negotiable)
+
+1. **One security → one spine.** Key by `subject_guid` when known; always carry `symbol`.
+   Identity rules above still apply (`issuer_guid` / `subject_guid` — never invent a second map).
+2. **Owner is `cio`.** Hermes and silos **contribute**; they do not fork a competing thesis store.
+3. **Write path:** Hermes (or desk) research COMPLETE → `upsert_from_hermes` /
+   `contribute(...)` → append `data/cio/security_research_spine.jsonl`
+   (enable with `CROSS_ASSET_SPINE=1` on live; shadow may use `CROSS_ASSET_SHADOW=1`).
+4. **Read path for every silo:** `view_for_silo(symbol, silo)` —
+   silos = `cio`, `hermes`, `options_desk`, `watchlist`, `reentry`, `holdings`,
+   `cross_asset`, `aegis`. Same thesis payload for all.
+5. **Options desk** must merge spine rows via `spine_rows_for_options_universe` into
+   `options_research_universe.merge_research_rows` — do not qualify a name from a
+   watchlist-only private memo when the spine already holds CIO research.
+6. **SymbolDecisionObject** assemble **prefers** the shared spine over silo-local copies
+   (`prefer_shared_spine=True`).
+7. **Expression ranking** (shares vs call vs CSP vs spreads) is a *consumer* of the spine,
+   not a second research store. Shadow-only until Production Bill E.
+
+### Forbidden (will be rejected in review)
+
+- A new `*_thesis.json` / per-desk research cache that is not a contribution into the spine.
+- Options / re-entry / watchlist inventing stance or summary when spine `thesis.state == POPULATED`.
+- “Temporary” silo research “just for this feature” — temporary becomes permanent here.
+- Promoting EV / trade routing as READY while silos still read private research copies.
+
+### Before you build research for a desk
+
+```text
+1. Does SecurityResearchSpine already hold this subject? → view_for_silo
+2. If empty → enqueue Hermes / desk research that upserts the spine (CIO-owned)
+3. Only then render options / watch / reentry / holdings UX from the spine view
+4. Add a hermetic test that two silos see the same summary for one fixture
+```
+
+Structural guard (extend, do not weaken): `tests/test_security_research_spine_20260929.py`
+and `tests/test_cadi_spine_hooks_20260929.py` (CADI-011/012 wiring grep + hermetic upsert/overlay).
+
+### Wiring status (honest — do not inflate)
+
+| Layer | Status |
+|---|---|
+| Library (`SecurityResearchSpine`, `view_for_silo`, `upsert_from_hermes`) | LIVE on CURRENT (Bill A/B) |
+| Flag `CROSS_ASSET_SPINE=1` | production path enabled when set on services |
+| CADI-011 Hermes → spine | **code wired** (`hooks.notify_hermes_result_completed`); hermetic PASS; OBSERVED only after promote + live Hermes complete |
+| CADI-012 desk consumers | **code wired** (`thesis_fields` overlay, options `spine_rows_for_root`, reentry overlay); hermetic PASS; organic “every desk sees it” OBSERVED only after the same promote + canary |
+
+Do **not** claim OBSERVED_LIVE for end-to-end shared research until a real Hermes
+completion appends the spine ledger and options/watch/reentry reads show the same summary.
+
 ## Research lanes — current state, and what must stay on
 
 **Audited 2026-09-06.** A lane that fires and produces nothing reports success, so this table

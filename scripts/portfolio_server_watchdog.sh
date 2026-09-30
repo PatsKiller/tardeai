@@ -23,6 +23,24 @@ log() { echo "[$(date -u '+%Y-%m-%d %H:%M:%S UTC')] $1" >> "$LOG"; }
 # can confirm the watchdog itself is alive without spamming the action log.
 touch "/home/johnclaw/logs/.portfolio_watchdog_heartbeat" 2>/dev/null || true
 
+# Cron does not reliably inherit the user systemd bus environment.  Treat a bus
+# lookup failure as UNKNOWN, never as "inactive": killing a healthy server on
+# that ambiguity creates the orphan/restart/inotify exhaustion loop this
+# watchdog is meant to prevent.
+systemd_state() {
+  local runtime_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  local bus="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${runtime_dir}/bus}"
+  local state rc
+  state=$(XDG_RUNTIME_DIR="$runtime_dir" DBUS_SESSION_BUS_ADDRESS="$bus" \
+    systemctl --user is-active portfolio-server.service 2>/dev/null)
+  rc=$?
+  case "$rc:$state" in
+    0:active) echo active ;;
+    3:inactive|3:failed|3:deactivating|3:activating) echo inactive ;;
+    *) log "systemd state lookup unavailable (rc=$rc state=${state:-empty}) — refusing orphan action"; echo unknown ;;
+  esac
+}
+
 ok=0
 for i in $(seq 1 "$FAILS"); do
   if curl -s -o /dev/null --max-time "$TIMEOUT" "$URL" 2>/dev/null; then
@@ -33,7 +51,11 @@ done
 
 if [ "$ok" = "1" ]; then
   # Healthy orphan (systemd inactive but :7777 serving) — do NOT kill; that caused adopt churn.
-  if ! systemctl --user is-active --quiet portfolio-server.service 2>/dev/null; then
+  state=$(systemd_state)
+  if [ "$state" = "unknown" ]; then
+    exit 0
+  fi
+  if [ "$state" = "inactive" ]; then
     _opid=$(pgrep -f "$PROC" | head -1)
     [ -n "$_opid" ] && log "HEALTHY orphan pid $_opid (systemd inactive) — leaving up; restart manually when convenient"
   fi
@@ -53,7 +75,12 @@ if [ -z "$pid" ]; then
   fi
   exit 0
 fi
-if ! systemctl --user is-active --quiet portfolio-server.service 2>/dev/null; then
+state=$(systemd_state)
+if [ "$state" = "unknown" ]; then
+  log "UNRESPONSIVE with pid $pid but systemd ownership is unknown — refusing kill; escalate."
+  exit 0
+fi
+if [ "$state" = "inactive" ]; then
   log "UNRESPONSIVE with orphan pid $pid (systemd inactive) — killing orphan and starting service"
   kill -TERM "$pid" 2>/dev/null || true
   sleep 3

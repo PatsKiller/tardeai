@@ -46,15 +46,19 @@ test.describe('CIO financial truth and feedback gates', () => {
           attention: { investment_decisions: 1, workflow_actions: 0, open_plans: 0, material_today: 1 },
         },
         operator_trust: {},
+        opportunities: {
+          watch: [], reentry: [], rotation: [], research_gaps: [],
+          watch_total: 0, reentry_total: 0,
+        },
       }),
     }))
+    await page.route('**/api/v3/cio/scorecard*', route => route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify({ ok: true, tiles: [], schema: 'CIOScorecard@v1' }),
+    }))
 
-    // CioHub.tsx defaults to the 'cio-brain' tab when no `?tab=` param is
-    // set (CioHub.tsx:1703); the decision card only renders under 'cio-now'
-    // (CioNowSection, CioHub.tsx:1827). This spec never actually ran until
-    // Fix H3 wired it into CI — without this param it fails 100% of the
-    // time waiting on a card that's never mounted.
-    await page.goto('/v3/cio?tab=cio-now')
+    // Decision cards live on Decisions (legacy ?tab=cio-now aliases here).
+    await page.goto('/v3/cio?tab=decisions')
     const card = page.getByTestId('cio-decision-card')
     await expect(card).toBeVisible()
     await expect(card.getByTestId('cio-sizing-suppressed')).toContainText('DATA CONFLICT')

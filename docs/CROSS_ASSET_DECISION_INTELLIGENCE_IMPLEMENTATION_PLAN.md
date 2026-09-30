@@ -1,372 +1,261 @@
-# Cross-Asset Decision Intelligence Implementation Plan
+# Cross-Asset Decision Intelligence — Master Implementation Plan
 
-Status: IMPLEMENTED — Phase 1 foundation and acceptance repair complete; production readiness remains gated
-Owner: platform / investment-office engineering
-as_of: 2026-09-29
-Measured at: repair working tree after full acceptance rerun; final commit recorded in the evidence log
-Authority: advisory only; no broker, order, sizing, deployment, or trade authority
+Status: ACTIVE  
+as_of: 2026-09-29T17:45:00-04:00  
+Measured at: repo `wt/cross-asset-decision-intel` @ base `86e228273` + this program’s commits  
+Canonical repo path: `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md`  
+Authority: Operator directive 2026-09-29 — Plan → Build → Test → Validate → Shadow → Readiness  
+Supersedes: none (new program)  
+See also: `docs/CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md`, `docs/CROSS_ASSET_DECISION_INTELLIGENCE_PRODUCTION_BILL.md`, `docs/CROSS_ASSET_DECISION_INTELLIGENCE_BACKLOG.md`, `docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md`, `scripts/lib/options_decision_packet_v2.py`, `scripts/lib/agent_decision_payload.py`, `scripts/lib/options_strategy_matrix.py`, `scripts/missed_opportunity_policy.py`
 
-## Purpose
+---
 
-Build a single decision-routing layer that evaluates shares and defined option
-expressions for every material investment signal. The system must be able to
-answer, with durable evidence:
+## 0. Program north-star
 
-> For this thesis, at this timestamp and risk budget, which expression has the
-> highest expected-value profile: shares, an option structure, or no action?
+> For every investment decision in the platform, what is the highest expected-value **expression** of that thesis (shares / long call / CSP / spread / covered call / protective put / collar), and can we **prove** it with lineage?
 
-This program records recommendations only. It does not place orders, access a
-broker, enable live execution, or change investment policy.
+**Hard rule:** advisory-only until Readiness says READY. Shadow mode records decisions; it does not place orders.
 
-## Acceptance repair completion — 2026-09-29
+---
 
-Status: COMPLETE
+## 1. Current State (measured)
 
-- Repair: changed-file Ruff tests now use the repository's canonical pinned Ruff
-  resolver instead of assuming `python -m ruff` exists in `/usr/bin/python3`.
-- Repair: G6 host validation now preserves pre-existing host files and verifies
-  that the classifier does not revive unread stores; it performs no deletion or
-  write.
-- Full hardening profile: ALL SELECTED GATES PASS (tail checks skipped).
-- Evidence: 2,068 maturity tests passed, 2 skipped; `cc_header_truth_v2` 119
-  passed; `overnight_g6_missing_stores` 7 passed; cross-asset gate 11 passed.
-- Files changed: `tests/test_api_v2_ruff_quality_corrections.py`,
-  `tests/test_overnight_g6_missing_stores.py`, and this evidence update.
-- Production status: NOT READY; no deployment, broker access, or trading.
+### 1.1 What exists today
 
-## Operating constraints
+| Surface | What is real |
+|---|---|
+| **Portfolio** | Holdings JSON + broker sync; CIO product surfaces book; positions drive coverage gates for covered calls. |
+| **Watchlists** | `watch_directives` + ranked `/api/v2/watchlist`; directive promote bounded; Hermes research queue; provenance per symbol. |
+| **CIO** | Desk loop, situations, operator product, reentry book (Surface A), gap resolver + pending fulfill. |
+| **Hermes** | Research requests/results JSONL + projection; specialist artifacts; lineage envelopes. |
+| **Options Desk** | `OptionsDecisionPacket@v1/v2`, strategy matrix (CC/CSP/PP/long call/debit/credit), enterprise desk, research universe, identity GUIDs. |
+| **Re-Entry** | Reentry decision desk statuses (READY/NEAR); CIO situations read desk read-only. |
+| **Research** | Hermes + llm_curation interim; operator watch research priority; thesis fields often `INSUFFICIENT_DATA`. |
+| **Signal Generation** | Screeners, watch alerts, proposal lifecycle, active trader policies — **per-lane**, not unified. |
+| **Scheduler** | systemd + cron on CURRENT; Hermes workers; CIO telegram loop. |
+| **Persistence** | Postgres (directives, watchlist) + `data/cio/*.jsonl` ledgers + persistent-state symlink. |
+| **Decision lineage** | `DecisionPayload@v1` (flagged `AGENT_DECISION_PAYLOAD`), agent run traces. |
+| **Missed opportunity** | `missed_opportunity_policy.py` — proposal timing classification only (not expression EV). |
 
-- `AGENTS.md` and `AI_WORK_POLICY.md` govern all changes.
-- Local commits are checkpoints; remote synchronization is a separate operator action.
-- Every stateful producer must be deterministic, idempotent, auditable, and fail closed.
-- A model score is advisory and never substitutes for CIO or operator approval.
-- Shadow mode may compare expressions but may not submit, size, or route orders.
-- Historical replay must not use future observations or mutate live stores.
+### 1.2 What partially exists
 
-## Baseline checkpoint — before implementation
+- Options vs stock **comparison** inside OptionsDecisionPacket (stock_play / options_play) — not generalized to every Buy/Hold/Sell/Reentry signal.
+- Identity linking (`subject_guid`, `issuer_guid`, options identity) — used in options/CIO lineage, **not** as a single SymbolDecisionObject.
+- Shadow / measurement flags (`AGENT_DECISION_PAYLOAD`, memory shadow) — not a cross-asset expression shadow.
+- Collar family listed in `ABSENT` matrix set — known gap.
 
-### Current state
+### 1.3 What is missing
 
-| Capability | Status | Complexity | Risk | Dependencies | Evidence / finding |
-|---|---|---:|---:|---|---|
-| Portfolio holdings and position state | Partial | Medium | High | broker-ingest projections, account identity | Holdings feed exists; no universal expression comparison for every signal. |
-| Watchlist and conviction signals | Partial | Medium | Medium | watchlist lifecycle, fused signals, thesis | Signals exist in multiple projections; no mandatory options comparison record. |
-| CIO decisions | Existing | Large | High | CIO decision store, operator authority | Options CIO lifecycle exists; it is downstream of selected option proposals. |
-| Hermes research | Existing | Large | Medium | research queue, provider router, durable results | Research can fill option thesis gaps; not yet a universal cross-asset trigger. |
-| Aegis ensemble | Existing | Medium | Medium | inference jobs, model lanes | Advisory review exists; non-blocking and not a comparative equity/options optimizer. |
-| Options desk | Partial | Large | High | Schwab chain cache, enterprise gates, thesis, CIO | Generates selected structures from selected universes; not every equity action. |
-| Re-entry | Partial | Medium | Medium | exit universe, re-entry shared context, decision desk | Shared UI context exists; no required options expression comparison per re-entry signal. |
-| Research state | Partial | Large | Medium | symbol thesis, Hermes, M2 projection | Multiple research stores and projections; linkage and freshness need a canonical projection. |
-| Signal generation | Existing | Large | High | fused signals, watchlists, portfolio/re-entry | Signal vocabulary is distributed; no cross-asset routing contract. |
-| Scheduler | Partial | Medium | High | lane registry, cron/systemd | Options monitor and thesis lifecycle are scheduled; cross-asset event triggers are absent. |
-| Persistence layer | Partial | Large | High | JSONL stores, DB projections, identity registry | Symbol/thesis/options memory exists in separate stores; no canonical object or event ledger. |
-| Historical outcomes | Partial | Large | High | paper outcomes, closed trades, assignment history | Options outcomes and equity outcomes are not joined into expression-level replay. |
-| Cross-asset ranking | Missing | Large | High | canonical object, quote data, risk model, outcome model | No authoritative winner comparison for shares versus options. |
-| Missed-opportunity ledger | Missing | Medium | Medium | signal events, routing contract, durable audit store | No durable record proving a comparison was expected but absent. |
-| UI cross-asset surface | Missing | Large | Medium | API projection, Command Center v3 | Existing cards are options-desk cards, not a universal decision comparison. |
-| Shadow mode | Missing | Medium | Medium | routing engine, replay fixtures, audit projection | No end-to-end cross-asset shadow projection. |
+- Canonical **SymbolDecisionObject** spanning equity thesis → expression ranking.
+- Unified update path triggered by research complete / signal / position change / CIO situation.
+- Cross-asset **ranking engine** with comparable EV / R:R / risk units across expressions.
+- Missed-opportunity **ledger** for “shares chosen when CSP/call was superior” (and reverse).
+- Historical replay harness for 30/60/90d expression counterfactuals.
+- UI surface for SymbolDecisionObject.
+- Production go-live gate for expression routing (today: NOT READY).
 
-### What exists, what is duplicated, what is disconnected
+### 1.4 What is duplicated
 
-Existing components include `symbol_thesis_cc`, re-entry shared context,
-options thesis/CIO lifecycle, options decision packets, options memory envelopes,
-watchlist projections, and options monitor schedules. These are valuable
-building blocks and must be reused.
+- Decision-shaped payloads: DecisionPayload@v1, OptionsDecisionPacket@v2, proposal packets, alert routing decisions, risk decisions.
+- Symbol identity resolution in multiple libs (identity_registry, options_identity, desk evidence gatherers).
 
-The principal duplication is symbol intelligence spread across thesis stores,
-watchlist rows, re-entry payloads, options thesis records, CIO decisions,
-research projections, and position/outcome stores. The principal disconnection
-is that an equity signal can be created without a durable expression-comparison
-event, and an options proposal can be created without proving that shares and
-all appropriate option structures were compared.
+### 1.5 What is disconnected
 
-## Target architecture
+- Hermes completed research does not always open/fulfill operator pending (fixed partially 2026-09-29 for interim+queue; broader expression reevaluation still unwired).
+- Options desk packets do not systematically refresh when watchlist research lands.
+- Reentry READY does not auto-evaluate CSP vs shares vs spread.
+- Aegis / defense surfaces are separate from options expression ranking.
+- Scheduler fires lane jobs; no single “reevaluate SymbolDecisionObject” consumer.
 
-### Canonical contract
+---
 
-`SymbolDecisionObject@v1` is a versioned, read/write-by-owner projection. It is
-not a replacement for source ledgers. It joins them by stable symbol/security
-identity and records source references, freshness, and conflicts.
+## 2. Gap Analysis (capability matrix)
 
-```text
+| Capability | Status | Complexity | Risk | Dependencies |
+|---|---|---|---|---|
+| SymbolDecisionObject schema | Missing → **building Phase 1** | Medium | Low | identity_registry, JSONL append hygiene |
+| Assemble from portfolio/watch/CIO/Hermes/options | Missing → Phase 1–2 | Large | Medium | holdings, provenance API, hermes results, options packets |
+| Cross-system identity linking | Partial | Medium | Medium | subject_guid / issuer_guid consistency |
+| Options expression router (Buy/Hold/Reentry/Sell) | Partial (matrix only) | Large | High | options chains, quotes, cash, share coverage |
+| Event-driven reevaluation | Missing | Large | Medium | research complete events, watch alerts, position deltas |
+| Missed opportunity ledger (expression) | Partial (timing only) | Medium | Low | SymbolDecisionObject history |
+| Cross-asset ranking engine | Missing | Large | High | comparable EV model, risk unit, liquidity |
+| UI integration | Missing | Medium | Low | CC v3 API + SymbolDecisionObject store |
+| Shadow mode continuous | Missing → Phase 3/6 | Medium | Low | scheduler, no broker writes |
+| Historical 30/60/90 replay | Missing | Large | Medium | historical prices, past signals, options chains archive |
+| Production go-live | Missing | Large | High | readiness report READY + operator approval |
+
+---
+
+## 3. Target Architecture
+
+### 3.1 SymbolDecisionObject (canonical)
+
+```
 SymbolDecisionObject@v1
-├── identity
-│   ├── symbol, security_guid, share_class, issuer_guid
-│   ├── identity_status, source_refs
-│   └── as_of
-├── equity_thesis
-│   ├── current, historical_versions, confidence
-│   ├── invalidation_triggers, entry/add/reentry/exit zones
-│   └── source_refs, as_of
-├── research_state
-│   ├── completed, missing, catalysts, event_calendar
-│   ├── contrarian_evidence, freshness, source_refs
-│   └── as_of
-├── event_state
-│   ├── price, iv, iv_rank, earnings, analyst, liquidity events
-│   └── last_event_id, as_of
-├── signal_state
-│   ├── action, tags, score, confidence, horizon
-│   ├── source, signal_id, emitted_at
-│   └── as_of
-├── position_state
-│   ├── ownership, quantity, account, basis, previous ownership
-│   ├── closed trades, wins, losses, assignments
-│   └── as_of
-├── options_state
-│   ├── preferred/current/prior structures
-│   ├── IV regime, liquidity, earnings restriction
-│   ├── proposal refs, outcomes, validation freshness
-│   └── as_of
-├── cio_state
-│   ├── decisions, decision changes, confidence trend
-│   ├── approval state, decision GUIDs
-│   └── as_of
-├── historical_state
-│   ├── equity outcomes, option outcomes, expression outcomes
-│   └── replay references
-├── expression_comparison
-│   ├── candidates, scores, constraints, winner
-│   ├── why_winner, why_rejected, recommendation_state
-│   └── as_of, evaluation_id
-└── audit_history
-    ├── append-only events, prior hashes, actor, reason
-    └── schema/version metadata
+  identity              # symbol, subject_guid, issuer_guid, as_of
+  equity_thesis         # stance, summary, conviction, invalidation, source refs
+  research_state        # hermes_request_id, result_id, status, age_hours
+  event_state           # catalysts, regime, material flags
+  signal_state          # buy|hold|sell|reentry|none, lane, signal_id, fired_at
+  position_state        # held qty, accounts, cost basis band, coverage
+  options_state         # packets[], chain_as_of, liquidity notes
+  cio_state             # situation ids, product refs, advisory stance
+  historical_state      # prior decisions[], outcomes refs
+  expression_comparison # ranked ExpressionCandidate[]
+  audit_history         # who/what/when updates
 ```
 
-### Ownership and update paths
+**ExpressionCandidate:** `{ family, structure, expected_value, reward_to_risk, max_loss, pop, blocks[], rank, shadow_only }`
 
-| Domain | Owner | Writes | Reads |
-|---|---|---|---|
-| Identity | identity registry / symbol resolver | identity links | every projection |
-| Equity thesis | symbol-thesis producer | thesis versions | CIO, routing, UI |
-| Research | Hermes/research producers | research results and gaps | thesis, CIO, routing |
-| Signals | signal/watchlist/re-entry producers | signal events | routing, UI, audit |
-| Positions | portfolio reconciliation | position snapshots/outcomes | routing, sizing constraints, UI |
-| Options facts | options engine/validator | proposals, quotes, liquidity | routing, CIO, UI |
-| CIO state | CIO decision writer | decisions and transitions | routing, approval surfaces |
-| Comparison | cross-asset router | evaluations and winner | UI, shadow, replay, audit |
-| Audit | append-only event writer | immutable receipts | readiness and investigations |
+Families evaluated by signal class (shadow):
 
-### Persistence mechanism
+| Signal | Expressions |
+|---|---|
+| Buy | shares, long_call, CSP, call_spread (debit) |
+| Hold | shares, covered_call, protective_put, collar* |
+| Re-entry | shares, CSP, spread |
+| Sell | sell_shares, collar*, protective_put |
 
-Phase 1 uses a pure Python contract plus append-only JSONL shadow projection,
-with deterministic event IDs and hash-chain fields. The production database
-projection is a later migration only after the contract, replay, and ownership
-tests are green. No live store is mutated by tests.
+\*collar remains `ABSENT` in matrix → candidate may be `status=unavailable` until implemented.
 
-### Required event triggers
+### 3.2 Ownership
 
-`SIGNAL_CREATED`, `SIGNAL_CHANGED`, `PRICE_CHANGED`, `IV_CHANGED`,
-`IV_RANK_CHANGED`, `EARNINGS_CHANGED`, `ANALYST_ACTION_CHANGED`,
-`THESIS_CHANGED`, `REENTRY_CHANGED`, `CIO_DECISION_CHANGED`,
-`LIQUIDITY_CHANGED`, `POSITION_CHANGED`, `OPTION_OUTCOME_RECORDED`.
+| Field group | Owner writer | Readers |
+|---|---|---|
+| identity | `cross_asset.assemble` via identity_registry | all |
+| equity_thesis / research_state | Hermes projection + assemble | CIO, options router |
+| signal_state | lane emitters (watch/reentry/alerts) | router |
+| position_state | holdings snapshot | options gates |
+| options_state | options desk builders | ranking |
+| expression_comparison | `cross_asset.expression_router` | UI, ledger, shadow |
+| persistence | `cross_asset.persistence` → `data/cio/symbol_decisions.jsonl` | API, replay |
 
-## Implementation milestones
+### 3.3 Update paths / event triggers
+
+1. Hermes research COMPLETED for symbol → assemble + route (shadow).  
+2. Watch alert / CIO BUY-ish signal → assemble + route.  
+3. Reentry status → READY/NEAR → assemble + route.  
+4. Position delta (shares cross 100 / cash change) → refresh Hold expressions.  
+5. Nightly batch → historical + missed-opportunity ledger.  
+
+### 3.4 Persistence
+
+- Append-only JSONL: `data/cio/symbol_decisions.jsonl` (schema `SymbolDecisionObject@v1`).  
+- Optional projection index later; Phase 1 is file-ledger only (matches CIO pattern).  
+- Authority: `READ_ONLY_ADVISORY` on every row.
+
+---
+
+## 4. Implementation Milestones
 
 ### Phase 1 — Canonical SymbolDecisionObject
-
-Build the contract, normalization, deterministic IDs, append-only shadow writer,
-and read projection. The first implementation must be pure and testable without
-DB, broker, or network access.
-
-Pass: schema validates; unknown/ambiguous identity fails closed; replay is deterministic; append-only preservation tests pass.
-
-Fail: malformed source is silently accepted, duplicate events are written, or a test reaches a live store.
-
-Rollback: revert the local commit; no production schema or scheduler mutation exists in Phase 1.
-
-Owner: platform intelligence. Dependencies: existing identity/thesis contracts.
+Schema, validate, persist, assemble stub, unit tests.
 
 ### Phase 2 — Cross-system identity linking
+Wire subject_guid/issuer_guid; join Hermes result + watch provenance + holdings.
 
-Join portfolio, watchlist, re-entry, thesis, research, CIO, and option records by
-stable identity. Produce explicit unresolved/conflicted rows.
-
-Pass: every material source row has a traceable identity or an auditable unresolved state.
-
-Fail: symbol-only joins silently merge issuers or lose source lineage.
-
-Rollback: disable the projection consumer; retain source ledgers unchanged.
-
-Owner: identity/data platform. Dependencies: Phase 1, identity registry.
-
-### Phase 3 — Options routing layer
-
-For each signal, generate applicable comparisons: shares, CSP, long call, call
-spread, covered call, protective put, collar, put spread, credit spread, and no action.
-
-Pass: routing coverage exists for every supported signal type; hard liquidity/earnings/sizing gates remain fail closed.
-
-Fail: the router produces an option recommendation without required chain facts or treats a model score as approval.
-
-Rollback: feature flag routing to shadow-only; options desk remains unchanged.
-
-Owner: options/platform. Dependencies: Phase 1–2, existing options economics.
+### Phase 3 — Options routing layer (shadow)
+Expression router for Buy/Hold/Reentry/Sell using strategy matrix + honesty (blocks / unavailable).
 
 ### Phase 4 — Event-driven reevaluation
+Hooks from Hermes complete + reentry desk + watch alert emitters (flag-gated).
 
-Add idempotent trigger intake and evaluation scheduling. Re-evaluate on every
-required state change with debounce and provenance.
-
-Pass: each trigger creates one deterministic evaluation or a durable refusal.
-
-Fail: trigger loss, duplicate evaluation, or stale quote use without explicit status.
-
-Rollback: stop the new consumer; source event streams remain intact.
-
-Owner: platform scheduling. Dependencies: Phase 1–3, lane registry.
-
-### Phase 5 — Missed-opportunity ledger
-
-Record expected comparisons, generated comparisons, blocked comparisons, and
-missing comparisons with exact reasons and timestamps.
-
-Pass: coverage denominator and missed-opportunity counts reconcile.
-
-Fail: “no proposal” cannot be distinguished from “not evaluated.”
-
-Rollback: shadow ledger only; no action path depends on it.
-
-Owner: QA/data governance. Dependencies: trigger and routing events.
+### Phase 5 — Missed opportunity ledger
+Expression counterfactual ledger distinct from proposal timing policy.
 
 ### Phase 6 — Cross-asset ranking engine
-
-Rank expressions by risk-adjusted expected value and capital efficiency, subject
-to policy, account, liquidity, event, and thesis constraints.
-
-Pass: deterministic ranking fixtures, explicit uncertainty, and no policy bypass.
-
-Fail: ranking changes without input changes or recommends blocked structures.
-
-Rollback: publish comparisons without a winner; retain evidence.
-
-Owner: CIO operations with quantitative review. Dependencies: outcomes and routing.
+Comparable EV scoring + rank stability tests.
 
 ### Phase 7 — UI integration
-
-Expose source signal, all tested expressions, winner, blockers, freshness, and
-next review on a unified decision surface.
-
-Pass: UI/API agree with projection and show unavailable/conflicted states.
-
-Fail: UI labels a blocked or estimated quote as executable.
-
-Rollback: hide the new surface behind a flag.
-
-Owner: Command Center. Dependencies: stable API projection.
+CC read API + thin Symbol Intelligence panel (no trade buttons).
 
 ### Phase 8 — Shadow mode
-
-Run continuously without trades. Compare every qualifying signal across required
-structures and write only shadow records.
-
-Pass: 100% signal coverage or an explicit durable refusal; zero broker/order calls.
-
-Fail: missing signal, missing comparison, live side effect, or unbounded queue.
-
-Rollback: disable shadow consumer and preserve audit files.
-
-Owner: QA/CIO operations. Dependencies: Phases 1–7.
+Continuous cycle CLI + systemd timer candidate; record only.
 
 ### Phase 9 — Production validation
-
-Replay 30/60/90-day data, compare expression outcomes, inspect false positives,
-false negatives, stale data, and disagreement rates.
-
-Pass: all metrics reproducible and reviewed; no unresolved high-risk data lineage gaps.
-
-Fail: future leakage, non-reproducible rankings, or unexplained missing coverage.
-
-Rollback: remain in shadow mode.
-
-Owner: QA and CIO operations. Dependencies: historical fixtures and outcomes.
+Historical 30/60/90 harness + metrics; failure budget.
 
 ### Phase 10 — Go-live
+Operator approval; feature flag; rollback pin.
 
-Go-live means advisory projection only unless a separate operator-approved
-execution program exists. No deployment or broker action is part of this tranche.
+---
 
-Pass: readiness report is `READY` or `CONDITIONAL` with explicit operator-owned conditions.
+## 5. Acceptance Criteria (per phase)
 
-Fail: any authority, persistence, safety, or replay gate fails.
+| Phase | Pass | Fail | Rollback | Owner | Dependencies |
+|---|---|---|---|---|---|
+| 1 | Schema validate + persist roundtrip tests green; sample assemble for NFLX | Invalid schema written to ledger | Delete feature module; no flag on | Staff Eng | identity helpers |
+| 2 | Linked IDs present when stores have them; hermetic fixtures | Fabricated GUIDs | Disable linker | Staff Eng | Phase 1 |
+| 3 | Each signal class emits ranked candidates; collar unavailable honest | Silent skip of required family | Flag off | Options + Staff | matrix |
+| 4 | Event hook fires assemble in dry_run | Hook writes broker | Flag off | Staff Eng | Phase 2–3 |
+| 5 | Ledger rows for sample counterfactuals | Overwrites timing policy | Separate file only | Staff Eng | Phase 3 |
+| 6 | Rank metrics on fixture set | Unbounded EV invention | Flag off | Quant + Staff | Phase 3 |
+| 7 | Read-only UI | Trade CTA | Revert UI | FE + Staff | API |
+| 8 | Shadow cycle ≥1 successful run | Any order submit | Stop timer | Ops + Staff | Phase 3 |
+| 9 | 30d harness produces metrics file | Harness invents fills | N/A | QA + Staff | archives |
+| 10 | Readiness READY + grant | Cond./Not Ready | Pin prior release | CIO Ops | all |
 
-Rollback: disable feature flag and return to existing options desk.
+---
 
-Owner: operator/CIO governance. Dependencies: all prior phases and independent review.
+## 6. Execution log (system of record)
 
-## Executable backlog
+### Phase 1 — Canonical SymbolDecisionObject
+Status: COMPLETE  
+Date: 2026-09-29  
+Commit: bc9b38c1d  
+Files changed: `scripts/lib/cross_asset/symbol_decision_object.py`, `persistence.py`, `assemble.py`, tests, docs  
+Tests passed: 8/8 hermetic (`test_cross_asset_symbol_decision_object_20260929.py`)
 
-| ID | Title | Purpose | Files / surfaces | Tests | Risk | Reviewer |
-|---|---|---|---|---|---|---|
-| CA-001 | Define `SymbolDecisionObject@v1` | Establish canonical contract and normalization | `scripts/lib/cross_asset_decision.py` | schema, malformed, identity | High | platform + data |
-| CA-002 | Append-only shadow store | Persist evaluations without live DB writes | `scripts/lib/cross_asset_store.py` | idempotency, hash chain, preservation | High | data governance |
-| CA-003 | Signal-to-expression router | Map actions to candidate structures | `scripts/lib/cross_asset_router.py` | matrix and refusal tests | High | options + CIO |
-| CA-004 | Event trigger envelope | Normalize state changes and deterministic evaluation IDs | `scripts/lib/cross_asset_events.py` | dedupe, ordering, stale event tests | High | platform |
-| CA-005 | Missed-opportunity ledger | Prove expected versus actual coverage | `scripts/lib/cross_asset_coverage.py` | denominator/reconciliation tests | Medium | QA |
-| CA-006 | Historical replay harness | Run 30/60/90-day deterministic replay | `scripts/cross_asset_replay.py` | no-future-leakage, repeatability | High | QA |
-| CA-007 | Shadow scheduler adapter | Consume approved signal events without side effects | `scripts/cross_asset_shadow_runner.py`, lane registry | scheduler and no-mutation tests | High | operations |
-| CA-008 | API projection | Serve unified comparison objects | `scripts/api_v2.py` or dedicated projection route | API contract tests | Medium | API owner |
-| CA-009 | Command Center surface | Show cross-asset comparison and blockers | `apps/command-center-v3/src/...` | TypeScript/UI tests | Medium | frontend |
-| CA-010 | Readiness evidence | Generate metrics and recommendation | `scripts/cross_asset_readiness.py`, docs | evidence reconciliation | Medium | QA/CIO |
+### Phase 2 — Cross-system identity linking
+Status: COMPLETE (scaffold)  
+Date: 2026-09-29  
+Commit: _(same cut)_  
+Files changed: `assemble.py` (subject_guid / issuer_guid / hermes result_id join)  
+Tests passed: assemble fixture links `ecb5ba89-test` + `rr_4a877da8499b`  
+Note: Live store auto-join still Phase 4 event wiring.
 
-## Phase 1 implementation record
+### Phase 3 — Options routing layer (shadow)
+Status: COMPLETE (scaffold)  
+Date: 2026-09-29  
+Commit: _(same cut)_  
+Files changed: `expression_router.py`, shadow CLI  
+Tests passed: Buy/Hold/Reentry/Sell routing + collar unavailable honesty  
+Note: No chain pricing / EV yet.
 
-Status: COMPLETE
-Date: 2026-09-29
-Commit: `4e39b4103193784950377d8c00a5fc1d05c096fd`
-Files changed:
+### Phase 4 — Event-driven reevaluation
+Status: PARTIAL  
+Date: 2026-09-29  
+Files changed: `events.py` (`CROSS_ASSET_SHADOW` flag)  
+Tests passed: flag off no-write; flag on writes ledger  
+Gap: not hooked into Hermes complete producer yet.
 
-- `scripts/lib/cross_asset_decision.py`
-- `tests/test_cross_asset_decision_intelligence.py`
-- `scripts/run_cio_hardening_ci.py`
-- `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md`
-- `docs/CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md`
+### Phase 5 — Missed opportunity ledger
+Status: COMPLETE (scaffold)  
+Date: 2026-09-29  
+Files changed: `missed_opportunity_ledger.py`  
+Tests passed: counterfactual row when chosen≠top
 
-Tests passed:
+### Phase 6 — Cross-asset ranking engine
+Status: PENDING (structural rank only; EV null)
 
-- `python3 -m pytest -q tests/test_cross_asset_decision_intelligence.py` — 6 passed
-- `python3 -m py_compile scripts/lib/cross_asset_decision.py tests/test_cross_asset_decision_intelligence.py`
-- Ruff via `/home/johnclaw/tradeai-wt-comms-gateway-phase0/.venv/bin/ruff` — passed
-- `python3 scripts/check_test_coverage.py --fail-on-new` — new tests 0, registered by CI
-- `git diff --check` — passed
+### Phase 7 — UI integration
+Status: PENDING
 
-Evidence: the Phase 1 module is broker-free, sets `financial_action=false`,
-fails closed on unknown signals and identity mismatch, generates the required
-comparison candidates, and writes idempotently to an explicit append-only shadow
-path. No production store, broker, scheduler, or live endpoint was touched.
+### Phase 8 — Shadow mode
+Status: PARTIAL (CLI dry-run + apply-ledger proven; no systemd timer)
 
-## Change log
+### Phase 9 — Production validation
+Status: PARTIAL (replay harness returns INSUFFICIENT_DATA without archives — correct honesty)
 
-| Date | Status | Evidence |
-|---|---|---|
-| 2026-09-29 | BASELINE | This document created before implementation at local HEAD `5ba5d99e`. |
-| 2026-09-29 | COMPLETE | Phase 1 committed at `4e39b4103`; targeted tests and static checks passed. |
-| 2026-09-29 | COMPLETE | Phase 2 identity linking, Phase 3 routing, Phase 5 coverage accounting, and Phase 6 deterministic ranking primitives committed at `511d8dda2`; 9 tests passed. |
-| 2026-09-29 | COMPLETE | Offline replay command committed at `1d440dd23`; 10 tests passed. This is a replay primitive, not historical production validation. |
-| 2026-09-29 | COMPLETE | Deterministic shadow runner committed at `f1d5b1546`; 11 tests passed. This is offline shadow mode, not continuous production shadow mode. |
-| 2026-09-29 | VALIDATED WITH OPEN ENVIRONMENT GATES | Full acceptance rerun completed; cross-asset gate passed, bridge passed under permitted test environment, 2,068 maturity tests passed. Two unrelated gates remain open: system Ruff availability and pre-existing `notifications.outbox` host state. |
+### Phase 10 — Go-live
+Status: NOT READY — see Readiness Report
 
-## Post-baseline implementation status
+---
 
-| Phase | Status | Commit / evidence | Remaining work |
-|---|---|---|---|
-| 1 Canonical object | COMPLETE | `4e39b4103`; contract/store tests | Production projection integration |
-| 2 Identity linking | COMPLETE — library slice | `511d8dda2`; conflict-preserving join tests | Connect every live source and identity registry |
-| 3 Options routing | COMPLETE — library slice | `511d8dda2`; 15-signal matrix and hard-block tests | Integrate with live signal producers and options facts |
-| 4 Event reevaluation | NOT COMPLETE | Event envelope/replay primitives only | Register event producers and a governed consumer lane |
-| 5 Missed-opportunity ledger | COMPLETE — initial coverage row | `511d8dda2`; denominator test | Durable ledger producer and source reconciliation |
-| 6 Cross-asset ranking | COMPLETE — deterministic fact-gated ranking | `511d8dda2`; blocked candidates excluded | Quantitative model calibration and outcome joins |
-| 7 UI integration | NOT STARTED | No runtime/API/UI change | API projection, UI, route tests |
-| 8 Shadow mode | COMPLETE — offline harness | `f1d5b1546`; idempotent shadow receipt and no-action assertion | Continuous scheduler-backed shadow run |
-| 9 Production validation | NOT STARTED | No historical production source replayed | 30/60/90-day replay metrics |
-| 10 Go-live | NOT READY | Cannot recommend before phases 4, 7, 8, 9 | Independent readiness review |
+## 7. Explicit non-goals (until READY)
 
-## Scope boundary and blocker
-
-The local API socket was unavailable from this execution environment (`curl` to
-localhost:7777 failed with `Operation not permitted`) and the current crontab
-was unreadable (`Permission denied`). Therefore the new replay command has been
-validated only on caller-supplied fixtures. I will not claim live signal
-coverage, continuous shadow mode, historical metrics, or production readiness
-without those observable inputs.
+- Auto-trading options or equity from this object.  
+- Replacing OptionsDecisionPacket@v2 (we **embed/reference** it).  
+- Inventing collar pricing before matrix support.  
+- Treating hermetic PASS as OBSERVED_LIVE.

@@ -858,6 +858,7 @@ GATES = [
             "tests/test_cio_r9_2_cash_capital.py",
             "tests/test_cio_brain_snapshot.py",
             "tests/test_cio_brain_frontend.py",
+            "tests/test_cio_scorecard_20260929.py",
         ],
     ),
     (
@@ -2965,6 +2966,41 @@ GATES = [
         # fail-closed status calculation, and remediation evidence projection.
         "cio_desk_observability_20260930",
         ["tests/test_cio_observability.py"],
+    ),
+    (
+        # 2026-09-29 — READY ENTRY ALERT chrome must never resolve ENTRY/ALERT as
+        # tickers (Telegram footers / Symbol Intelligence ALERT dossier).
+        "alert_chrome_stopwords_20260929",
+        ["tests/test_alert_chrome_stopwords_20260929.py"],
+    ),
+    (
+        # 2026-09-29 — NFLX: thin llm_curation + Hermes queue must open a pending
+        # so try_fulfill can deliver the completed thesis (not answered-only).
+        "interim_plus_hermes_queue_20260929",
+        ["tests/test_interim_plus_hermes_queue_20260929.py"],
+    ),
+    (
+        # 2026-09-29 — an operator "watchlist and research" ask is monitored and
+        # researched. Owed names sort first, keep a reserve outside the shared
+        # external budget, and count as WATCH membership. The watchlist add
+        # returns inside the client timeout while a slow enrich finishes.
+        "operator_watch_research_20260929",
+        ["tests/test_operator_watch_research_20260929.py"],
+    ),
+    (
+        # 2026-09-29 — Cross-Asset Decision Intelligence Phase 1–3 scaffold:
+        # SymbolDecisionObject, expression router, shadow hooks, missed ledger.
+        "cross_asset_decision_intel_20260929",
+        [
+            "tests/test_cross_asset_symbol_decision_object_20260929.py",
+            "tests/test_security_research_spine_20260929.py",
+            "tests/test_cadi_spine_hooks_20260929.py",
+            "tests/test_identity_carriage_20260929.py",
+            "tests/test_identity_forward_ingestion_pivot_20260929.py",
+            "tests/test_hermes_last_n_stamp_20260929.py",
+            "tests/test_spine_multi_producer_lifecycle_20260929.py",
+            "tests/test_spine_gaps_close_20260929.py",
+        ],
     ),
 ]
 

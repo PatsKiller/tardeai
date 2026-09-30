@@ -13,6 +13,8 @@ type Row = {
   zone: { position: string; distance_pct: number | null }
   rr_plan?: number | null; rr_plan_entry?: number | null; rr_at_quote?: number | null; rr_at_quote_entry?: number | null
   catalyst?: string | null
+  ownership_context?: { held?: boolean; shares?: number | null; pct_of_total_book?: number | null; pct_of_invested_capital?: number | null; ips_single_name_limit_pct?: number | null }
+  decision_action?: string | null; first_hard_block?: string | null; time_horizon?: string | number | null
   cio_verdict: { verdict?: string | null; token?: string | null; rationale?: string | null }
   cio_review: { status?: string | null; mode?: string | null; as_of?: string | null }
   options_alt: OptionsAltVerdict & { chain_as_of?: string | null }
@@ -50,10 +52,19 @@ function AlertCard({ r }: { r: Row }) {
   // repair 2026-09-28: the chip state comes from the server verdict only (STALE_PRE_FIX / PACKET_UNVERIFIED
   // are warnings that say re-evaluate); a file's legacy qualified flag is never a green badge
   const chip = optionsAltChip(alt)
+  const owned = Boolean(r.ownership_context?.held)
+  const action = String(r.decision_action || (owned ? (r.state === 'BUY_READY' ? 'ADD_DECISION_REQUIRED' : 'WAIT_FOR_ENTRY_ZONE') : '')).toUpperCase()
+  const actionLabel = action === 'ADD_DECISION_REQUIRED'
+    ? 'add decision required'
+    : action === 'HOLD_EXISTING_POSITION'
+      ? 'hold existing position'
+      : action === 'WAIT_FOR_ENTRY_ZONE'
+        ? 'wait for preferred entry zone'
+        : 'new-position review'
   return (
     <article data-testid="entry-alert-card" style={{ background: TOKENS.bg[1], border: `1px solid ${TOKENS.border}`, borderLeft: `3px solid ${t.color}`, borderRadius: RADIUS.md, boxShadow: SHADOW[1], padding: '10px 14px', minWidth: 0 }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
-        <a href={`/v3/watch/intelligence/${encodeURIComponent(r.symbol)}`} style={{ fontSize: TYPE.lg, fontWeight: 900, color: TOKENS.text[0], textDecoration: 'none' }}>{r.symbol}</a>
+        <a href={`/v3/watch/intelligence/${encodeURIComponent(r.symbol)}`} style={{ fontSize: TYPE.lg, fontWeight: 900, color: TOKENS.text[0], textDecoration: 'none' }}>{owned ? `${r.symbol} already owned` : r.symbol}</a>
         <ChipRow>
           <Chip tone={tone} guideKey="entry.state">{String(r.state || 'unknown').replace(/_/g, ' ')}</Chip>
           <Chip tone={ZONE_TONE[r.zone.position] || 'neutral'} guideKey="entry.zone">{zoneLabel}</Chip>
@@ -62,6 +73,12 @@ function AlertCard({ r }: { r: Row }) {
         </ChipRow>
         <span style={{ marginLeft: 'auto', fontSize: TYPE.xs, color: TOKENS.text[3] }}>alert {age(r.packet_age_h)} · quote {age(r.quote_age_h)}</span>
       </div>
+      <div style={{ marginTop: 7, fontSize: TYPE.sm, fontWeight: 800, color: owned ? TOKENS.warning : TOKENS.text[1] }}>
+        {owned ? `${actionLabel}${r.ownership_context?.shares != null ? ` · ${r.ownership_context.shares} shares` : ''}` : actionLabel}
+      </div>
+      {owned && <div style={{ marginTop: 3, fontSize: TYPE.xs, color: TOKENS.text[2] }}>
+        This is not a new position. Any purchase adds exposure{r.ownership_context?.pct_of_total_book != null ? ` · ${r.ownership_context.pct_of_total_book}% of total portfolio` : ''}{r.ownership_context?.pct_of_invested_capital != null ? ` · ${r.ownership_context.pct_of_invested_capital}% invested assets` : ''}.
+      </div>}
       <MetricRow style={{ marginTop: 8 }}>
         <Metric guideKey="entry.zone" label="Price" value={$(r.price)} provenance={`zone ${$(r.entry_low)}–${$(r.entry_high)}`} />
         <Metric guideKey="watch.rr" label="Stop / target" value={`${$(r.stop)} / ${$(r.target)}`} />
@@ -74,7 +91,8 @@ function AlertCard({ r }: { r: Row }) {
         <DeskChip d={r.desk} symbol={r.symbol} />
       </ChipRow>
       {alt.detail && <div style={{ marginTop: 4, fontSize: TYPE.xs, color: TOKENS.text[3] }}>{alt.detail}</div>}
-      {r.catalyst && <ShowMore lines={1} style={{ marginTop: 6, fontSize: TYPE.sm, color: TOKENS.text[2] }}>Catalyst: {r.catalyst}</ShowMore>}
+      <ShowMore lines={1} style={{ marginTop: 6, fontSize: TYPE.sm, color: TOKENS.text[2] }}>Catalyst: {r.catalyst || 'unavailable'}</ShowMore>
+      <div style={{ marginTop: 4, fontSize: TYPE.xs, color: r.first_hard_block ? TOKENS.warning : TOKENS.text[3] }}>What kills the idea: {r.first_hard_block || 'no hard block recorded'}</div>
     </article>
   )
 }

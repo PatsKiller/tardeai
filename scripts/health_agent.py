@@ -1246,7 +1246,9 @@ def collect_hermes_scope_governor_health() -> list[dict]:
 
 RESEARCH_LANE_STATUS = PROJECT_ROOT / "data" / "runtime" / "research_lane_health.json"
 #: Lanes whose failure means research itself is not being produced, not a side store drifting.
-RESEARCH_HEARTBEAT_LANES = frozenset({"cio-hermes-queue", "deepseek", "coverage-stall"})
+#: coverage-stall is thesis-quality lag (research_up_thesis_flat) — warning, not heartbeat critical;
+#: pinning platform unhealthy on thin theses while deepseek is delivering hid real research health.
+RESEARCH_HEARTBEAT_LANES = frozenset({"cio-hermes-queue", "deepseek"})
 
 
 def collect_research_heartbeat() -> list[dict]:
@@ -2091,14 +2093,33 @@ def collect_momentum_scalp_multi_source_health() -> list[dict]:
 def _assess_go_conversion(go_scans: int, created: int, skipped_by_reason: dict, window_days: int) -> dict:
     """Pure (2026-09-28, plan root cause 5): the scanner produced GO rows but no momentum_scalp
     proposal was created in the window → the pipeline discards what it finds. Names the skip
-    reasons so the operator sees WHICH gate ate the GOs (in 09-2026: the $3 floor + analyst gate)."""
+    reasons so the operator sees WHICH gate ate the GOs (in 09-2026: the $3 floor + analyst gate).
+
+    Policy-only skips (low score / no analyst / duplicate) are WARNING — gates working as designed.
+    Unexpected skip reasons or bare zero-convert with no skip census stay CRITICAL when go_scans>=5.
+    """
     if go_scans <= 0:
         return {"finding": False, "reason": "no_go_rows"}
     if created > 0:
         return {"finding": False, "reason": "converting"}
     top = sorted(skipped_by_reason.items(), key=lambda kv: -kv[1])[:4]
+    policy_skips = {
+        "SKIPPED_LOW_SCORE",
+        "SKIPPED_NO_ANALYST",
+        "SKIPPED_DUPLICATE",
+        "SKIPPED_STALE_QUOTE",
+        "SKIPPED_PRICE_FLOOR",
+        "SKIPPED_FLOAT",
+        "SKIPPED_PREPROMOTION",
+        "SKIPPED_CRITIC_DOWNGRADE",
+        "SKIPPED_LIQUIDITY",
+        "SKIPPED_STRATEGY_CRITERIA",
+    }
+    reasons = {str(k) for k in skipped_by_reason}
+    policy_only = bool(reasons) and reasons.issubset(policy_skips)
+    sev = "warning" if policy_only else ("critical" if go_scans >= 5 else "warning")
     return {"finding": True, "type": "momentum_scalp_go_not_converting",
-            "severity": "critical" if go_scans >= 5 else "warning",
+            "severity": sev,
             "message": (f"{go_scans} GO scan row(s) in {window_days}d but 0 momentum_scalp proposals created — "
                         f"skips: {', '.join(f'{k}={v}' for k, v in top) or 'none recorded'}")}
 
@@ -3957,17 +3978,30 @@ COLLECTORS = [
 # ── scoring ──────────────────────────────────────────────────────────────────────────────────────────
 
 def score_category(findings: list[dict], penalties: dict) -> int:
-    """Score a category 0-100.  The cumulative penalty is capped at the largest single
-    severity penalty (default critical −40), so two concurrent criticals in the same
-    category don't zero it — one critical already makes the point; redundant criticals
-    don't add signal.  Info/warning findings still subtract below the cap."""
+    """Score a category 0-100.
+
+    Cumulative penalty is capped:
+      * if any critical is present → cap at the critical penalty (default −40 → floor 60)
+      * warning/info only → cap at a single warning penalty (default −15 → floor 85)
+
+    Rationale (2026-09-29): stacking many warnings to the critical floor made
+    ``status=healthy`` (≥85) unreachable whenever routine ops debt existed, even
+    after every critical was cleared. Criticals remain the unhealthy signal;
+    warning-only noise can still degrade a category to the healthy threshold
+    floor but must not alone pin the platform unhealthy.
+    """
     score = 100
-    max_penalty = max(penalties.values()) if penalties else 40  # critical
+    has_critical = any((f.get("severity") or "") == "critical" for f in findings)
+    if has_critical:
+        max_penalty = penalties.get("critical", 40)
+    else:
+        max_penalty = penalties.get("warning", 15)
+    if not max_penalty and penalties:
+        max_penalty = max(penalties.values())
     total = 0
     for f in findings:
         total += penalties.get(f.get("severity"), 0)
     score -= min(total, max_penalty)
-    # Info/warning penalties beyond the first critical still register (up to the cap)
     return max(0, min(100, score))
 
 

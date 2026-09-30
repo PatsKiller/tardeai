@@ -146,6 +146,7 @@ class RichMessage:
     marker: str = ""  # leading emoji (colour by marker, not by text)
     symbols: list[str] = field(default_factory=list)
     facts: list[str] = field(default_factory=list)  # one line of key numbers each (plain text)
+    sections: list[tuple[str, list[str]]] = field(default_factory=list)
     why: Optional[str] = None  # short reason -> quote
     evidence: list[str] = field(default_factory=list)  # deep context -> expandable quote
     sources: list[tuple[str, str]] = field(default_factory=list)  # (label, https url)
@@ -175,6 +176,18 @@ class RichMessage:
         if symbols and not single:
             parts.append(build_outbound_links(symbols[:3], surface=self.primary_surface))
         parts.extend(esc(f) for f in self.facts if f)
+        for heading, lines in self.sections:
+            clean_heading = esc(heading).upper()
+            rendered = [f"<b>{clean_heading}</b>"]
+            for line in lines:
+                if not line:
+                    continue
+                if line.startswith("__CODE__:"):
+                    rendered.append(f"<code>{esc(line[9:])}</code>")
+                else:
+                    rendered.append(esc(line))
+            if len(rendered) > 1:
+                parts.append("\n".join(rendered))
         if self.why:
             parts.append(f"<blockquote>{esc(self.why)}</blockquote>")
         tail: list[str] = []
@@ -319,6 +332,146 @@ def entry_alert(item: dict[str, Any]) -> RichMessage:
     )
 
 
+def _card_money(value: Any) -> str:
+    try:
+        return f"${float(value):,.2f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _card_ratio(value: Any) -> str:
+    try:
+        return f"{float(value):.2f}"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _card_pct(value: Any) -> str:
+    try:
+        return f"{float(value):+.1f}%"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _card_text(value: Any, *, limit: int = 240) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple, set)):
+        value = " · ".join(str(x).strip() for x in value if str(x).strip())
+    return " ".join(str(value).split()).strip()[:limit].rstrip("+").rstrip()
+
+
+def _card_bar(value: Any, *, inverse: bool = False) -> str:
+    """Display-only ten-cell gauge; missing facts stay unavailable."""
+    try:
+        n = max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return "□□□□□□□□□□ unavailable"
+    filled = max(0, min(10, round(n * 10)))
+    label = "elevated" if inverse and n >= 0.6 else "moderate" if inverse else "attractive" if n >= 0.6 else "limited"
+    return f"{'■' * filled}{'□' * (10 - filled)} {label}"
+
+
+def cio_entry_alert(item: dict[str, Any]) -> RichMessage:
+    """Compact CIO decision card shared by entry, watchlist and review producers.
+
+    Values are copied from the supplied packet. This formatter does not calculate
+    investment claims beyond deterministic distance/gauge presentation.
+    """
+    sym = str(item.get("symbol") or "").upper()
+    state = str(item.get("state") or item.get("status") or "ENTRY").upper()
+    held = item.get("held")
+    hard_block = item.get("first_hard_block") or item.get("invalidation")
+    stance = str(item.get("cio_stance") or item.get("cio_action") or "HUMAN REVIEW").replace("_", " ").upper()
+    if hard_block and state in {"BLOCKED", "INVALIDATED"}:
+        marker = "🔴"
+    elif held is True:
+        marker = "🟡"
+    elif state in {"BUY_READY", "READY"}:
+        marker = "🟢"
+    elif "NEAR" in state or "REVIEW" in stance or stance in {"WATCH", "RESEARCH MORE"}:
+        marker = "🟡"
+    else:
+        marker = "⚪"
+
+    price = item.get("price")
+    low, high = item.get("entry_low", item.get("zone_low")), item.get("entry_high", item.get("zone_high"))
+    stop, target = item.get("stop"), item.get("target")
+    ideal_rr = item.get("rr_at_ideal_entry", item.get("rr", item.get("ideal_rr")))
+    current_rr = item.get("rr_at_current_price", item.get("current_rr"))
+    try:
+        risk = (float(price) - float(stop)) if price is not None and stop is not None else None
+        reward = (float(target) - float(price)) if price is not None and target is not None else None
+        total = risk + reward if risk is not None and reward is not None else None
+        risk_fraction = min(1.0, max(0.0, risk / total)) if total and risk is not None else None
+        reward_fraction = min(1.0, max(0.0, reward / total)) if total and reward is not None else None
+    except (TypeError, ValueError, ZeroDivisionError):
+        risk_fraction = reward_fraction = None
+
+    price_note = item.get("price_note") or ("inside entry zone" if state in {"BUY_READY", "READY"} else None)
+    position = "Existing position" if held is True else "New position" if held is False else "Position status unavailable"
+    next_action = item.get("next_action") or ("Hold existing; decide whether to add or wait" if held is True else "Review before allocating capital")
+    catalyst = _card_text(item.get("catalyst")) or "Unavailable — research gap"
+    options_status = _card_text(item.get("options_status") or item.get("options_summary")) or "Not evaluated"
+    option_reasons = [_card_text(x, limit=180) for x in (item.get("options_reasons") or []) if _card_text(x)]
+    if option_reasons:
+        options_status += "\nReasons: " + " · ".join(option_reasons[:3])
+    review_status = item.get("cio_review_status") or ("REVIEWED" if item.get("cio_review_id") else "UNREVIEWED")
+    evidence = [str(x) for x in (item.get("evidence") or []) if x]
+    evidence.extend(_card_text(x) for x in (item.get("options_reasons") or []) if _card_text(x))
+    evidence.extend(str(x) for x in (item.get("exit_ladder") or []) if x)
+    if item.get("invalidation"):
+        evidence.append(f"Invalidation: {item['invalidation']}")
+    if item.get("thesis"):
+        evidence.append(f"Thesis: {_card_text(item['thesis'])}")
+    if item.get("opposing_case"):
+        evidence.append(f"Strongest opposing line: {item['opposing_case']}")
+    evidence.extend(["CIO review id: " + str(item["cio_review_id"])] if item.get("cio_review_id") else ["CIO review: unreviewed"])
+    evidence.append("Advisory only — nothing queued, nothing executed; no order, size or stop is created from this alert.")
+
+    company = _card_text(item.get("company"), limit=100)
+    sector = _card_text(item.get("sector"), limit=80)
+    identity = " · ".join(x for x in (company, sector) if x)
+    thesis = _card_text(item.get("thesis"), limit=220)
+    hard_block_display = _card_text(hard_block, limit=220) or "No hard block recorded — review incomplete"
+    time_horizon = _card_text(item.get("time_horizon") or item.get("dte"), limit=80)
+    sections = [
+        ("CIO VIEW", [f"{marker} {state.replace('_', ' ')}", f"{marker} {stance}",
+                       f"Review: {review_status}", f"Next action: {next_action}"]),
+        ("IDENTITY", [identity or f"{sym} · identity data unavailable"]),
+        ("PRICE SETUP", [
+            f"Price {_card_money(price)}" + (f" · {price_note}" if price_note else ""),
+            f"Entry zone {_card_money(low)}–{_card_money(high)} · stop {_card_money(stop)} · target {_card_money(target)}",
+            f"R:R current {_card_ratio(current_rr)} · ideal-zone {_card_ratio(ideal_rr)}"
+            + (f" · distance {_card_pct(item.get('distance_pct'))}" if item.get("distance_pct") is not None else ""),
+            f"__CODE__:STOP  ─  ENTRY ZONE  ─  CURRENT  ─  TARGET\n          {_card_money(stop)}     {_card_money(low)}–{_card_money(high)}     {_card_money(price)}     {_card_money(target)}",
+        ]),
+        ("RISK / REWARD", [
+            f"Risk to stop {_card_money(risk)} · {_card_bar(risk_fraction, inverse=True)}",
+            f"Reward to target {_card_money(reward)} · {_card_bar(reward_fraction)}",
+            f"Expected value: {_card_text(item.get('expected_value')) or 'not provided'}",
+        ]),
+        ("POSITION IMPACT", [position, f"Shares / weight: {item.get('shares') or '—'} / {item.get('portfolio_weight') or '—'}",
+                              f"Capital impact: {item.get('capital_impact') or 'unavailable'}", "Sizing: not provided"]),
+        ("CATALYST", [catalyst]),
+        ("THESIS", [thesis or "Not provided — research required"]),
+        ("OPTIONS REVIEW", [str(options_status)[:300]]),
+        ("CIO VERDICT", [f"{marker} {stance}", f"What kills the idea: {hard_block_display}",
+                         f"Time horizon: {time_horizon or 'not provided'}"]),
+    ]
+    return RichMessage(
+        marker=marker,
+        title=f"CIO ENTRY ALERT — {sym} · {position}",
+        symbols=[sym] if sym else [],
+        sections=sections,
+        evidence=evidence,
+        sources=[(str(label), str(url)) for label, url in (item.get("sources") or [])],
+        chart_symbol=sym or None,
+        pills=["🟢 Trade-AI data"] + held_pill(held),
+        primary_surface="trading",
+    )
+
+
 def material_change(items: list[dict[str, Any]]) -> RichMessage:
     lines: list[str] = []
     sources: list[tuple[str, str]] = []
@@ -368,6 +521,7 @@ __all__ = [
     "cc_symbol_url",
     "cc_trading_url",
     "chart_image_url",
+    "cio_entry_alert",
     "desk_answer",
     "entry_alert",
     "finviz_url",

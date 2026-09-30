@@ -151,6 +151,21 @@ def new_record(kind: str, name: str, **fields: Any) -> dict[str, Any]:
     }
     rec.update({k: v for k, v in fields.items() if v is not None})
     rec["subject_key"] = key
+    # Identity 4/5: registry GUID beside subject_key (alias). Lookup only.
+    kind_u = str(kind or "").strip().upper()
+    name_u = str(name or "").strip().upper()
+    if kind_u in {"HELD", "EXIT", "WATCH"} and name_u:
+        if not rec.get("symbols"):
+            rec["symbols"] = [name_u]
+        try:
+            from scripts.lib.identity_carriage import stamp_security_fields
+            stamped = stamp_security_fields(rec, symbol=name_u, root=fields.get("_root"))
+            for k in ("subject_guid", "issuer_guid", "security_guid", "identity_status", "identity_lookup"):
+                if stamped.get(k) is not None:
+                    rec[k] = stamped[k]
+        except Exception:
+            pass
+    rec.pop("_root", None)
     return rec
 
 
@@ -699,8 +714,9 @@ def load_instrument_record_for_wake(
 ) -> dict[str, Any]:
     """RO tip load for a wake. Never raises for missing store/subject.
 
-    Prefers ``subject_key_hint``, then ``subject_guid`` (may already be a
-    ``KIND:NAME`` key), then symbol probes ``HELD|EXIT|WATCH|SECTOR:SYM``.
+    Prefers ``subject_key_hint``, then a registry ``subject_guid`` match on
+    stored records, then ``subject_guid`` if it is already a ``KIND:NAME`` key,
+    then symbol probes ``HELD|EXIT|WATCH|SECTOR:SYM``.
     """
     base: dict[str, Any] = {
         "ok": False,
@@ -711,6 +727,25 @@ def load_instrument_record_for_wake(
         "memory_behavior_influence": MBI_BEHAVIOR,
         "schema": "InstrumentRecordWake@v1",
     }
+    # Prefer true registry GUID join when the tip store carries subject_guid.
+    guid_probe = str(subject_guid or "").strip()
+    if guid_probe and ":" not in guid_probe and len(guid_probe) >= 32:
+        try:
+            store = _store_for_root(root)
+            for rec in store.all():
+                if not isinstance(rec, dict):
+                    continue
+                if str(rec.get("subject_guid") or "") == guid_probe:
+                    return {
+                        **base,
+                        "ok": True,
+                        "record": dict(rec),
+                        "status": "OK",
+                        "subject_key": rec.get("subject_key"),
+                        "subject_guid": guid_probe,
+                    }
+        except Exception:
+            pass
     probe = subject_key_hint or subject_guid or symbol
     keys = _candidate_keys(probe)
     if not keys:

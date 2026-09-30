@@ -298,6 +298,31 @@ def gather_options_house_facts(
         "source": "options_desk_latest_cache",
         "live_chain": False,
     }
+    # Attach shared SecurityResearchSpine tip (CIO-owned) for named symbols.
+    if syms:
+        spine_by: dict[str, Any] = {}
+        try:
+            from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
+            from pathlib import Path
+            root = Path(__file__).resolve().parents[2]
+            for sym in syms[:8]:
+                th = thesis_fields_for_symbol(sym, root=root, silo="options_desk") or {}
+                if th.get("security_research_spine") or th.get("thesis_summary") or th.get("latest_llm"):
+                    spine_by[sym] = {
+                        "security_research_spine": bool(th.get("security_research_spine")),
+                        "thesis_summary": (th.get("thesis_summary") or "")[:400] or None,
+                        "fresh": th.get("fresh"),
+                        "spine_fresh": th.get("spine_fresh"),
+                        "spine_tags": list(th.get("spine_tags") or [])[:12],
+                        "latest_llm": th.get("latest_llm"),
+                        "operator_asks": list(th.get("operator_asks") or [])[:3] or None,
+                    }
+                    if sym in per and isinstance(per[sym], dict):
+                        per[sym]["spine"] = spine_by[sym]
+        except Exception:
+            spine_by = {}
+        if spine_by:
+            out["security_research_spine"] = spine_by
     # Slice B — scoped options memory (does not flip global MBI).
     if syms:
         try:
@@ -956,9 +981,14 @@ def build_buy_ready_packet(
         "stop": result.get("stop"),
         "target": result.get("target"),
         "rr": result.get("rr"),
+        "rr_at_ideal_entry": result.get("rr_at_ideal_entry", result.get("rr")),
+        "rr_at_current_price": result.get("rr_at_current_price") if result.get("rr_at_current_price") is not None
+        else (compare.get("stock_per_share") or {}).get("reward_risk_at_quote"),
+        "first_hard_block": result.get("first_hard_block") or (result.get("reasons") or [None])[0],
         "plan_source": result.get("plan_source") or ev.get("plan_source"),
         "distance_pct": result.get("distance_pct"),
         "catalyst": result.get("catalyst") or ev.get("catalyst"),
+        "time_horizon": result.get("time_horizon") or ev.get("time_horizon"),
     }
     port = portfolio if portfolio is not None else ev.get("portfolio_facts")
     if port is None:
@@ -978,6 +1008,41 @@ def build_buy_ready_packet(
         "cio_verdict": None,  # filled below
         "cio_review": cio_review if cio_review is not None else ev.get("cio_review"),
     }
+    # The runner's held flag is the authoritative transition input; portfolio facts add
+    # concentration detail when the snapshot is available, but an unavailable snapshot
+    # must not erase the known ownership state.
+    held = bool(port.get("held")) or bool(result.get("held") or ev.get("held"))
+    state = str(result.get("state") or "")
+    hard_block = equity.get("first_hard_block")
+    if held and hard_block:
+        decision_action = "HOLD_EXISTING_POSITION"
+    elif held and state == "BUY_READY":
+        decision_action = "ADD_DECISION_REQUIRED"
+    elif held:
+        decision_action = "WAIT_FOR_ENTRY_ZONE"
+    elif state == "BUY_READY":
+        decision_action = "REVIEW_NEW_POSITION"
+    else:
+        decision_action = "WAIT_FOR_ENTRY_ZONE"
+    packet["ownership_context"] = {
+        "held": held,
+        "shares": port.get("held_units_total") if held else 0.0,
+        "position_value": port.get("name_market_value") if held else 0.0,
+        "pct_of_total_book": port.get("pct_of_total_book"),
+        "pct_of_invested_capital": port.get("pct_of_invested_capital"),
+        "ips_single_name_limit_pct": (port.get("ips_limits") or {}).get("max_single_position_pct"),
+        "decision_action": decision_action,
+        "is_new_position": not held,
+    }
+    packet["decision_action"] = decision_action
+    packet["first_hard_block"] = hard_block
+    packet["catalyst_status"] = "AVAILABLE" if equity.get("catalyst") else "UNAVAILABLE"
+    packet["time_horizon"] = equity.get("time_horizon") or struct.get("dte")
+    packet["stock_play"] = equity
+    packet["options_play"] = alt
+    review = packet.get("cio_review")
+    packet["cio_review_status"] = "REVIEWED" if review and review.get("review_id") else "UNREVIEWED"
+    packet["cio_review_id"] = review.get("review_id") if isinstance(review, dict) else None
     packet["cio_verdict"] = default_cio_verdict(packet)
     return packet
 
@@ -996,23 +1061,51 @@ def format_buy_ready_packet_lines(
     struct = packet.get("structure_indicators") or {}
     former = packet.get("former_holding") or {}
     verdict = packet.get("cio_verdict") or {}
+    port = packet.get("portfolio_risk") or {}
+    ownership = packet.get("ownership_context") or {}
     sym = packet.get("symbol") or eq.get("symbol") or "?"
     state = eq.get("state") or "?"
 
     lines: list[str] = []
+    action_labels = {
+        "ADD_DECISION_REQUIRED": "add decision required",
+        "HOLD_EXISTING_POSITION": "hold existing position",
+        "WAIT_FOR_ENTRY_ZONE": "wait for preferred entry zone",
+        "REVIEW_NEW_POSITION": "new position review",
+    }
+    action = packet.get("decision_action") or "WAIT_FOR_ENTRY_ZONE"
+    if ownership.get("held"):
+        lines.append("Book: already held")
+        shares = ownership.get("shares")
+        shares_text = f"{shares:g} shares" if isinstance(shares, (int, float)) else "shares"
+        lines.append(f"{sym} already owned: {action_labels.get(action, action.replace('_', ' ').lower())} ({shares_text})")
+        bits = []
+        if ownership.get("pct_of_total_book") is not None:
+            bits.append(f"{ownership['pct_of_total_book']}% of total portfolio")
+        if ownership.get("pct_of_invested_capital") is not None:
+            bits.append(f"{ownership['pct_of_invested_capital']}% of invested assets")
+        if ownership.get("ips_single_name_limit_pct") is not None:
+            bits.append(f"IPS limit {ownership['ips_single_name_limit_pct']:g}%")
+        lines.append("Portfolio context: " + (" · ".join(bits) if bits else "position facts available") + ".")
+        lines.append("This is not a new position. Any purchase would add to existing exposure.")
+        lines.append("Decision: add here, wait for the preferred entry zone, or hold existing shares.")
+    else:
+        lines.append("Portfolio context: not held — this is a new-position review.")
     if for_cio:
         cap_bit = f" ({cap_label})" if cap_label else ""
         lines.append(
             f"Entry state {state} for {sym}{cap_bit}: price {_money(eq.get('price'))}, "
             f"zone {_money(eq.get('entry_low'))}–{_money(eq.get('entry_high'))}, "
             f"stop {_money(eq.get('stop'))}, target {_money(eq.get('target'))}, "
-            f"R:R {eq.get('rr')}. Plan source {eq.get('plan_source') or 'unknown'}."
+            f"R:R ideal {eq.get('rr_at_ideal_entry')} · current {eq.get('rr_at_current_price')}. "
+            f"Plan source {eq.get('plan_source') or 'unknown'}."
         )
     else:
         lines.append(
-            f"Equity: {_money(eq.get('price'))} · zone {_money(eq.get('entry_low'))}–"
+            f"Stock play: {_money(eq.get('price'))} · zone {_money(eq.get('entry_low'))}–"
             f"{_money(eq.get('entry_high'))} · stop {_money(eq.get('stop'))} · "
-            f"target {_money(eq.get('target'))} · R:R {eq.get('rr')}"
+            f"target {_money(eq.get('target'))} · R:R ideal {eq.get('rr_at_ideal_entry')} · "
+            f"current {eq.get('rr_at_current_price')}"
         )
 
     # P8 thesis
@@ -1023,6 +1116,9 @@ def format_buy_ready_packet_lines(
         + (f" · {thesis.get('sector')}" if thesis.get("sector") else "")
         + (f" · catalyst {str(thesis.get('catalyst'))[:80]}" if thesis.get("catalyst") else "")
     )
+
+    lines.append(f"Catalyst: {str(eq.get('catalyst'))[:120] if eq.get('catalyst') else 'unavailable'}")
+    lines.append(f"What kills the idea: {packet.get('first_hard_block') or 'no hard block recorded'}")
 
     # Options alternatives (chain-ranked, per contract) or the desk-cache fallback
     status = alt.get("status") or "OPTIONS_ALT_NONE"
@@ -1055,14 +1151,14 @@ def format_buy_ready_packet_lines(
         pop = p.get("pop_pct")
         pop_bit = f" · POP {pop}%" if pop is not None else ""
         lines.append(
-            f"Options alt{paper}: {alt.get('strategy')} strike {_money(p.get('strike'))}"
+            f"Options play{paper}: {alt.get('strategy')} strike {_money(p.get('strike'))}"
             f" · debit/credit {_money(p.get('premium_total'))}{pop_bit} (desk cache)"
         )
         if alt.get("preference_note"):
             lines.append(alt["preference_note"])
     else:
         lines.append(
-            f"Options alt: none suitable ({alt.get('reason') or 'NONE'})"
+            f"Options play: none suitable ({alt.get('reason') or 'NONE'})"
             f"{(' — ' + str(alt.get('detail') or '')) if alt.get('detail') else ''}"
         )
 
@@ -1089,26 +1185,9 @@ def format_buy_ready_packet_lines(
             + (f" · at target {ret:+.0f}%" if ret is not None else "")
         )
 
-    # Portfolio facts (flags only)
-    port = packet.get("portfolio_risk") or {}
-    if port.get("status") == "OK":
-        if port.get("held"):
-            lim = (port.get("ips_limits") or {}).get("max_single_position_pct")
-            lines.append(
-                f"Book: already held ({port.get('held_units_total'):g} units) · {port.get('pct_of_total_book')}% of book"
-                f" · {port.get('pct_of_invested_capital')}% of invested"
-                + (f" · IPS single-name limit {lim:g}%" if lim is not None else "")
-                + (" · flags " + ", ".join(f for f in port.get("flags") or [] if f != "ADD_TO_EXISTING_POSITION")
-                   if [f for f in port.get("flags") or [] if f != "ADD_TO_EXISTING_POSITION"] else "")
-            )
-        else:
-            lines.append("Book: not held — this would be a new position")
-        ob = port.get("options_book") or {}
-        if ob.get("leg_count") is not None:
-            lines.append(f"  options book: {ob.get('leg_count')} open legs · net delta {ob.get('net_delta_shares')} sh-equiv"
-                         f" · cash {str(port.get('cash_state') or '').split(' ')[0]}")
-    else:
-        lines.append("Book: portfolio facts unavailable")
+    ob = port.get("options_book") or {}
+    if ob.get("leg_count") is not None:
+        lines.append(f"Options exposure: {ob.get('leg_count')} open legs · net delta {ob.get('net_delta_shares')} sh-equiv")
 
     if former.get("note") and former.get("note") != "no former-holding flag on evidence":
         lines.append(f"Book context: {former['note']}")
@@ -1120,9 +1199,9 @@ def format_buy_ready_packet_lines(
         except ImportError:
             from lib.buy_ready_cio_review import format_review_lines  # type: ignore  # noqa: PLC0415
         lines.extend(format_review_lines(review))
-    lines.append(
-        f"House-rule verdict: {verdict.get('verdict') or '—'} — {verdict.get('rationale') or ''}"
-    )
+    lines.append(f"CIO review: {packet.get('cio_review_status', 'UNREVIEWED')}"
+                 + (f" · {packet.get('cio_review_id')}" if packet.get('cio_review_id') else ""))
+    lines.append(f"House-rule verdict: {verdict.get('verdict') or '—'} — {verdict.get('rationale') or ''}")
     lines.append(packet.get("path_b") or PATH_B_CHROME)
     return lines
 

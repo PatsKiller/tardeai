@@ -602,8 +602,8 @@ def _alert(sym, p, urg, price) -> bool:
         # 2026-09-14 operator: ticker bold and linked to its Command Center page, the chart on top,
         # sources as real links. The plain text above stays the fallback.
         try:
-            from lib.telegram_rich import entry_alert
-            rich = entry_alert(_entry_item(sym, p, urg, price, held=_held(sym))).render()
+            from lib.telegram_rich import cio_entry_alert
+            rich = cio_entry_alert(_entry_item(sym, p, urg, price, held=_held(sym))).render()
         except Exception as exc:  # noqa: BLE001 -- formatting must never cost the alert
             print(f"  rich entry layout unavailable ({type(exc).__name__}); sending plain text")
     extra = ({"reply_markup": rich["reply_markup"], "link_preview_options": rich["link_preview_options"]}
@@ -621,10 +621,26 @@ def _alert(sym, p, urg, price) -> bool:
     if not g.send:
         print(f"  {sym}: entry alert held ({g.held_reason})")
         return False
+    # 2026-09-29: scope Comms Editor footer to the alert's symbol so chrome
+    # words (ALERT/ENTRY) and residual body bleed never become deep-link tickers.
+    token = None
+    reset_primary = None
     try:
+        try:
+            from lib.comms_editor import set_primary_symbols, reset_primary_symbols as _reset
+        except ImportError:
+            from scripts.lib.comms_editor import set_primary_symbols, reset_primary_symbols as _reset  # type: ignore
+        reset_primary = _reset
+        token = set_primary_symbols([str(sym).upper()])
         return bool(send_telegram(g.text, **extra))
     except Exception:
         return False
+    finally:
+        if token is not None and reset_primary is not None:
+            try:
+                reset_primary(token)
+            except Exception:
+                pass
 
 
 def _held(sym: str) -> Optional[bool]:
@@ -644,7 +660,13 @@ def _entry_item(sym, p, urg, price, held: Optional[bool] = None) -> dict:
         "price": price, "zone_low": p.get("entry_zone_low"), "zone_high": p.get("entry_zone_high"),
         "stop": p.get("stop_price"), "target": p.get("target_price"), "rr": p.get("risk_reward"),
         "why": str(p.get("entry_thesis") or "")[:280] or None,
+        "thesis": str(p.get("entry_thesis") or "")[:280] or None,
         "invalidation": str(p.get("invalidation") or "")[:200] or None,
+        "first_hard_block": str(p.get("invalidation") or "")[:200] or None,
+        "catalyst": p.get("catalyst") or p.get("catalyst_summary") or "unavailable",
+        "next_action": "Review entry before allocating capital" if urg != "ready" else "Review BUY_READY setup",
+        "cio_review_status": "UNREVIEWED",
+        "options_status": "not evaluated",
         "advice": f"{prop.get('tag', 'WAIT')} — {str(prop.get('sizing_rationale', ''))[:100]}".rstrip(" —"),
         "exit_ladder": [f"{s['label']} ${s['px']} — {s['action']}" for s in (lad.get("steps") or [])],
         "held": held,

@@ -37043,10 +37043,11 @@ def _watch_directive_create(body):
             _ident = {}
     # ── SERVICE-AT-CREATION (operator caught 2026-06-12: CIFR added 22:47, servicer cron is
     # market-hours-only → ticker sat invisible until 09:00). Ticker directives now run through the
-    # SAME real evaluation engine (directive_promotion.promote_directive_lead) synchronously, so the
-    # symbol appears in the watchlist immediately, 24/7. Sector/trend directives still discover via
-    # the cron (they are searches, not single symbols). Failure here never loses the directive —
-    # the cron remains the safety net.
+    # SAME real evaluation engine (directive_promotion.promote_directive_lead). The
+    # OpenClaw client stops at 45s, and Finviz enrichment can outlast that, so the
+    # call returns inside a budget with the directive id and leaves a slow enrich
+    # running (DEFERRED_TO_CRON). Sector/trend directives still discover via the
+    # cron. Failure here never loses the directive — the cron remains the safety net.
     serviced = None
     if kind == "ticker" and did:
         try:
@@ -37055,7 +37056,7 @@ def _watch_directive_create(body):
             _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
             import directive_promotion as _dp
 
-            res = _dp.promote_directive_lead(
+            res = _dp.promote_directive_lead_bounded(
                 (spec.get("symbol") or "").upper(), did, f"directive:{label}", "operator", auto=True
             )
             serviced = {"status": res.get("status"), "detail": str(res)[:200]}
@@ -52965,6 +52966,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if method == "GET":
                 if p == "brain":
                     return 200, _cio.get_cio_brain_v1()
+                if p == "scorecard":
+                    return 200, _cio.get_cio_scorecard()
                 if p in ("", "dashboard"):
                     return 200, _cio.get_cio_dashboard()
                 if p == "home":

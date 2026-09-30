@@ -5,22 +5,25 @@ import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
 import { SymbolThesisCard, type SymbolThesisCardPayload } from '../components/cio/SymbolThesisCard'
 import CioBrainPanel from '../components/cio/CioBrainPanel'
 import CioObservabilityPanel from '../components/cio/CioObservabilityPanel'
+import CioScorecardStrip, { type ScorecardPayload, type ScorecardTile } from '../components/cio/CioScorecardStrip'
+import CioJudgmentBand from '../components/cio/CioJudgmentBand'
+import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
 import { RADIUS, SHADOW } from '../lib/designTokens'
+import {
+  CIO_HUB_TABS,
+  CIO_HUB_TAB_LABEL,
+  resolveCioHubTab,
+  resolveEvidenceSubtab,
+  type CioHubTab,
+} from '../lib/cioHubTabs'
 
 /**
- * /v3/cio — the private investment office home (Phase 8).
+ * /v3/cio — private investment office desk.
  *
- * Decision-first, evidence-later. Six sections:
- *   CIO NOW · UNIVERSE & THESES · CAPITAL PLAN · PORTFOLIO POSTURE · OPPORTUNITIES · REPORT · EVIDENCE
- *
- * UX rules enforced here:
- *   - dollars before percentages when discussing action
- *   - plain-English labels (no snake_case in primary views)
- *   - no model/process telemetry above the fold (that lives in EVIDENCE)
- *   - stale/missing evidence is muted, never red (red = negative investment judgment)
- *   - render state never implies a model ran when it did not
+ * Five tabs: Overview (scorecard + judgment) · Decisions · Research · Capital & Policy · Evidence & Comms.
+ * Legacy ?tab= values alias into this set. READ_ONLY_ADVISORY; no invented cash/policy.
  */
 
 interface Props { onDrill?: (ctx: any) => void }
@@ -285,24 +288,9 @@ type DispositionRec = {
 }
 type DispositionMap = Record<string, DispositionRec>
 
-const TABS = ['cio-brain', 'cio-now', 'operator-policy', 'universe-theses', 'investment-books', 'capital-plan', 'posture', 'opportunities', 'report', 'evidence', 'notification-gate', 'telegram-receipts', 'senses-evidence'] as const
-type Tab = typeof TABS[number]
-
-const TAB_LABEL: Record<Tab, string> = {
-  'cio-brain': 'CIO BRAIN',
-  'cio-now': 'CIO NOW',
-  'operator-policy': 'OPERATOR POLICY',
-  'universe-theses': 'UNIVERSE & THESES',
-  'investment-books': 'INVESTMENT BOOKS',
-  'capital-plan': 'CAPITAL PLAN',
-  posture: 'PORTFOLIO POSTURE',
-  opportunities: 'OPPORTUNITIES',
-  report: 'REPORT',
-  evidence: 'EVIDENCE / AUDIT',
-  'notification-gate': 'NOTIFICATION GATE',
-  'telegram-receipts': 'TELEGRAM RECEIPTS',
-  'senses-evidence': 'SENSES EVIDENCE',
-}
+const TABS = CIO_HUB_TABS
+type Tab = CioHubTab
+const TAB_LABEL = CIO_HUB_TAB_LABEL
 
 function fmtUsd(n: number | null | undefined): string {
   if (n == null) return '—'
@@ -943,12 +931,10 @@ function AgentResearchOpsStrip() {
           <Stat label="Stale/superseded" value={String(q.stale_or_superseded ?? '—')} help="Historical deferred or superseded rows retained for audit. They are not actionable backlog and are not auto-requeued." />
         </div>
       )}
-      {data && (
-        <div style={{ fontSize: 12, color: 'var(--text2)' }} data-testid="cio-research-queue-semantics">
-          Queue semantics: actionable={String(q.actionable_queue ?? q.queued ?? '—')}; priority={Object.entries(q.by_priority || {}).map(([k, v]) => `${k}=${v}`).join(' · ') || 'not exposed by this deployment'}; oldest age={q.oldest_queued_age_minutes != null ? `${q.oldest_queued_age_minutes} min` : 'none'}.
-          {' '}Priority is the stored producer priority, not a model score; failed jobs require deliberate remediation before re-queue.
-        </div>
-      )}
+      {data && <div style={{ fontSize: 12, color: 'var(--text2)' }} data-testid="cio-research-queue-semantics">
+        Queue semantics: actionable={String(q.actionable_queue ?? q.queued ?? '—')}; priority={Object.entries(q.by_priority || {}).map(([k, v]) => `${k}=${v}`).join(' · ') || 'not exposed by this deployment'}; oldest age={q.oldest_queued_age_minutes != null ? `${q.oldest_queued_age_minutes} min` : 'none'}.{' '}
+        Priority is the stored producer priority, not a model score; failed jobs require deliberate remediation before re-queue.
+      </div>}
       {data?.dominant_failure_class && (
         <div style={{ fontSize: 12, color: 'var(--amber)' }} data-testid="cio-research-failure-class">
           Dominant failure: {String(data.dominant_failure_class)}
@@ -1126,7 +1112,14 @@ function UniverseThesesPanel() {
       <div style={{ fontSize: 12, color: 'var(--text3)' }}>
         Living theses for the material universe. Advisory only. Merged on protected main (PR 397).
       </div>
-      {loading && <div style={muted}>Loading universe &amp; theses…</div>}
+      {loading && !data && (
+        <div data-testid="cio-universe-theses-loading" style={muted}>
+          Loading universe &amp; theses… (advisory books below are independent)
+        </div>
+      )}
+      {loading && data && (
+        <div style={{ ...muted, fontSize: 11 }}>Refreshing universe theses…</div>
+      )}
       {(error || payloadError) && (
         <div data-testid="cio-universe-theses-error" style={{ color: 'var(--amber)', fontSize: 13 }}>
           {missingApi
@@ -1357,7 +1350,14 @@ function InvestmentBooksPanel() {
   </div>
 }
 
-function OpportunitiesSection({ opp, books }: { opp: Opportunities; books?: ReentryBookLabels }) {
+function OpportunitiesSection({ opp, books }: { opp?: Opportunities | null; books?: ReentryBookLabels }) {
+  if (!opp) {
+    return (
+      <div data-testid="opportunities-section" style={{ color: 'var(--text3)', fontSize: 12 }}>
+        Opportunities surface unavailable in this snapshot.
+      </div>
+    )
+  }
   const list = (items: { symbol: string; signal: string; source: string }[]) =>
     items.length === 0 ? <Empty text="None." /> : (
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
@@ -1796,11 +1796,7 @@ function OperatorPolicyPanel() {
   }
 
   const openFieldManager = (name: string) => {
-    setFieldName(name)
-    setTextValue('')
-    setRangeMin('')
-    setRangeMax('')
-    setManageField(name)
+    setFieldName(name); setTextValue(''); setRangeMin(''); setRangeMax(''); setManageField(name)
   }
 
   const meta = manageField ? (POLICY_FIELD_META[manageField] || { purpose: policyLabel(manageField), guidance: 'Enter the operator-defined value for this policy field.', input: selected?.kind === 'range_pct' ? 'range' : 'text' }) : null
@@ -1808,12 +1804,10 @@ function OperatorPolicyPanel() {
 
   const renderManagedInput = () => {
     if (!meta) return null
-    if (meta.input === 'range') return (
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-        <label style={muted}>Minimum<input autoFocus type="number" min="0" max="100" value={rangeMin} onChange={e => setRangeMin(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
-        <label style={muted}>Maximum<input type="number" min="0" max="100" value={rangeMax} onChange={e => setRangeMax(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
-      </div>
-    )
+    if (meta.input === 'range') return <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+      <label style={muted}>Minimum<input autoFocus type="number" min="0" max="100" value={rangeMin} onChange={e => setRangeMin(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
+      <label style={muted}>Maximum<input type="number" min="0" max="100" value={rangeMax} onChange={e => setRangeMax(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
+    </div>
     if (meta.input === 'select') return <label style={muted}>Select criterion<select autoFocus value={textValue} onChange={e => setTextValue(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, background: 'var(--bg0)', color: 'var(--text0)' }}><option value="">Choose a criterion…</option>{meta.options?.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
     return <label style={muted}>{meta.input === 'object' ? 'JSON value' : meta.input === 'list' ? 'Comma-separated values' : meta.input === 'money' ? 'Amount ($)' : 'Policy value'}<textarea autoFocus rows={meta.input === 'object' || meta.input === 'text' ? 4 : 2} value={textValue} onChange={e => setTextValue(e.target.value)} placeholder={meta.input === 'object' ? '{"core": {"min": 0, "max": 10}}' : undefined} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box', resize: 'vertical' }} /></label>
   }
@@ -1826,11 +1820,8 @@ function OperatorPolicyPanel() {
       if (meta?.input === 'money') value = Number(textValue)
       if (meta?.input === 'list') value = textValue.split(',').map(v => v.trim()).filter(Boolean)
       if (meta?.input === 'object') value = JSON.parse(textValue)
-      setPending({ fieldName: manageField, value })
-      setManageField(null)
-    } catch (error: any) {
-      setMessage(String(error?.message || error))
-    }
+      setPending({ fieldName: manageField, value }); setManageField(null)
+    } catch (error: any) { setMessage(String(error?.message || error)) }
   }
 
   const confirm = async () => {
@@ -1923,53 +1914,57 @@ function OperatorPolicyPanel() {
           </div>
         ))}
       </section>
-      {manageField && meta && (
-        <div role="dialog" aria-modal="true" data-testid="cio-policy-field-manager" style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.68)', display: 'grid', placeItems: 'center', padding: 20 }}>
-          <div style={{ width: 'min(620px, 100%)', maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg1)', border: '1px solid var(--border)', padding: 20, boxShadow: SHADOW[2] }}>
-            <div style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 800 }}>CUSTOM POLICY MANAGER</div>
-            <h2 style={{ margin: '6px 0 8px', color: 'var(--text0)', fontSize: 18 }}>{meta.purpose}</h2>
-            <div style={{ color: 'var(--text2)', fontSize: 12, lineHeight: 1.5 }}>{meta.guidance}</div>
-            {selected?.value != null && <div style={{ marginTop: 10, padding: 10, background: 'var(--bg0)', color: 'var(--text2)', fontSize: 11 }}>Current recorded value: <code>{JSON.stringify(selected.value)}</code></div>}
-            {observedClaims.length > 0 && <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--amber)', color: 'var(--text2)', fontSize: 11 }}>Existing conflicting evidence (draft only): {observedClaims.map(c => `${c.source}: ${JSON.stringify(c.value)}`).join(' · ')}. The operator must choose the final value.</div>}
-            <div style={{ marginTop: 14 }}>{renderManagedInput()}</div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
-              <button type="button" onClick={() => setManageField(null)} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Cancel</button>
-              <button type="button" onClick={reviewManagedValue} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer' }}>Review and continue</button>
-            </div>
-          </div>
+      {manageField && meta && <div role="dialog" aria-modal="true" data-testid="cio-policy-field-manager" style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.68)', display: 'grid', placeItems: 'center', padding: 20 }}>
+        <div style={{ width: 'min(620px, 100%)', maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg1)', border: '1px solid var(--border)', padding: 20, boxShadow: SHADOW[2] }}>
+          <div style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 800 }}>CUSTOM POLICY MANAGER</div>
+          <h2 style={{ margin: '6px 0 8px', color: 'var(--text0)', fontSize: 18 }}>{meta.purpose}</h2>
+          <div style={{ color: 'var(--text2)', fontSize: 12, lineHeight: 1.5 }}>{meta.guidance}</div>
+          {selected?.value != null && <div style={{ marginTop: 10, padding: 10, background: 'var(--bg0)', color: 'var(--text2)', fontSize: 11 }}>Current recorded value: <code>{JSON.stringify(selected.value)}</code></div>}
+          {observedClaims.length > 0 && <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--amber)', color: 'var(--text2)', fontSize: 11 }}>Existing conflicting evidence (draft only): {observedClaims.map(c => `${c.source}: ${JSON.stringify(c.value)}`).join(' · ')}. The operator must choose the final value.</div>}
+          <div style={{ marginTop: 14 }}>{renderManagedInput()}</div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}><button type="button" onClick={() => setManageField(null)} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Cancel</button><button type="button" onClick={reviewManagedValue} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer' }}>Review and continue</button></div>
         </div>
-      )}
-      {pending && (
-        <div role="dialog" aria-modal="true" data-testid="cio-policy-confirmation-modal" style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.62)', display: 'grid', placeItems: 'center', padding: 20 }}>
-          <div style={{ width: 'min(520px, 100%)', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: RADIUS.md, padding: 20, boxShadow: SHADOW[2] }}>
-            <div style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 800 }}>OPERATOR RATIFICATION</div>
-            <h2 style={{ margin: '6px 0 12px', color: 'var(--text0)', fontSize: 18 }}>Confirm {policyLabel(pending.fieldName)}</h2>
-            <div style={{ color: 'var(--text1)', fontSize: 12, lineHeight: 1.5 }}>This app will append an operator-confirmed policy receipt. The agent cannot infer, approve, or undo this value.</div>
-            <pre style={{ whiteSpace: 'pre-wrap', padding: 10, margin: '12px 0', background: 'var(--bg0)', borderRadius: RADIUS.sm, color: 'var(--text0)', fontSize: 12 }}>{JSON.stringify(pending.value, null, 2)}</pre>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button type="button" onClick={() => setPending(null)} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Cancel</button>
-              <button type="button" onClick={confirm} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Saving…' : 'Confirm and record'}</button>
-            </div>
-          </div>
+      </div>}
+      {pending && <div role="dialog" aria-modal="true" data-testid="cio-policy-confirmation-modal" style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.62)', display: 'grid', placeItems: 'center', padding: 20 }}>
+        <div style={{ width: 'min(520px, 100%)', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: RADIUS.md, padding: 20, boxShadow: SHADOW[2] }}>
+          <div style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 800 }}>OPERATOR RATIFICATION</div><h2 style={{ margin: '6px 0 12px', color: 'var(--text0)', fontSize: 18 }}>Confirm {policyLabel(pending.fieldName)}</h2>
+          <div style={{ color: 'var(--text1)', fontSize: 12, lineHeight: 1.5 }}>This app will append an operator-confirmed policy receipt. The agent cannot infer, approve, or undo this value.</div>
+          <pre style={{ whiteSpace: 'pre-wrap', padding: 10, margin: '12px 0', background: 'var(--bg0)', borderRadius: RADIUS.sm, color: 'var(--text0)', fontSize: 12 }}>{JSON.stringify(pending.value, null, 2)}</pre>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}><button type="button" onClick={() => setPending(null)} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Cancel</button><button type="button" onClick={confirm} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Saving…' : 'Confirm and record'}</button></div>
         </div>
-      )}
+      </div>}
     </div>
   )
 }
 
-export default function CioHub({ onDrill }: Props) {
+export default function CioHub({ onDrill: _onDrill }: Props) {
   const [sp, setSp] = useSearchParams()
   const planId = (sp.get('plan') || '').trim()
-  const tabParam = (sp.get('tab') || '').trim() as Tab
-  const initialTab: Tab = TABS.includes(tabParam) ? tabParam : 'cio-brain'
+  const tabRaw = (sp.get('tab') || '').trim()
+  const subRaw = (sp.get('sub') || '').trim()
+  const initialTab = resolveCioHubTab(tabRaw)
   const [tab, setTab] = useState<Tab>(initialTab)
+  const [evidenceSub, setEvidenceSub] = useState<string>(subRaw || resolveEvidenceSubtab(tabRaw) || 'report')
   const [dispositions, setDispositions] = useState<DispositionMap>({})
   const [legacyUnversioned, setLegacyUnversioned] = useState<DispositionMap>({})
+  const [evidenceTile, setEvidenceTile] = useState<ScorecardTile | null>(null)
   const { data, loading, error } = useApi<Home>('/api/v3/cio/home')
+  const { data: scorecard, loading: scorecardLoading, error: scorecardError } = useApi<ScorecardPayload>('/api/v3/cio/scorecard')
 
   useEffect(() => {
-    if (TABS.includes(tabParam)) setTab(tabParam)
-  }, [tabParam])
+    const resolved = resolveCioHubTab(tabRaw)
+    setTab(resolved)
+    const fromAlias = resolveEvidenceSubtab(tabRaw)
+    if (subRaw) setEvidenceSub(subRaw)
+    else if (fromAlias) setEvidenceSub(fromAlias)
+    // Normalize legacy tab query params to the new 5-tab set
+    if (tabRaw && tabRaw !== resolved) {
+      const next = new URLSearchParams(sp)
+      next.set('tab', resolved)
+      if (fromAlias && !subRaw) next.set('sub', fromAlias)
+      setSp(next, { replace: true })
+    }
+  }, [tabRaw, subRaw]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetch('/api/v3/cio/dispositions', { cache: 'no-store' })
@@ -2014,10 +2009,16 @@ export default function CioHub({ onDrill }: Props) {
       .catch(() => { /* keep last state; no fake success */ })
   }, [])
 
-  const selectTab = (t: Tab) => {
+  const selectTab = (t: Tab, sub?: string) => {
     setTab(t)
     const next = new URLSearchParams(sp)
     next.set('tab', t)
+    if (sub) {
+      setEvidenceSub(sub)
+      next.set('sub', sub)
+    } else if (t !== 'evidence-comms') {
+      next.delete('sub')
+    }
     setSp(next, { replace: true })
   }
 
@@ -2033,7 +2034,6 @@ export default function CioHub({ onDrill }: Props) {
 
       <CioObservabilityPanel />
 
-      {/* Tab nav */}
       <nav style={{ display: 'flex', gap: 6, margin: '14px 0 20px', flexWrap: 'wrap' }} aria-label="Office sections" role="tablist">
         {TABS.map(t => (
           <button
@@ -2054,55 +2054,137 @@ export default function CioHub({ onDrill }: Props) {
         ))}
       </nav>
 
-      {loading && !home && (
-        <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }} data-testid="cio-home-loading">
-          Loading office home…
-        </div>
-      )}
-      {error && !home && (
-        <div style={{ padding: '12px 0', color: 'var(--amber)', fontSize: 13 }} data-testid="cio-home-error">
-          Office home unavailable: {String(error)}
+      {tab === 'overview' && (
+        <div role="tabpanel" aria-label={TAB_LABEL.overview} data-testid="cio-overview">
+          <CioScorecardStrip
+            data={scorecard}
+            loading={scorecardLoading}
+            error={scorecardError ? String(scorecardError) : null}
+            onTileClick={(tile) => setEvidenceTile(tile)}
+          />
+          <CioJudgmentBand
+            blockersTop={scorecard?.blockers_top}
+            scorecardNote={scorecard?.note}
+            healthSummary={scorecard?.health_summary}
+            pin={scorecard?.pin}
+            onPolicyClick={() => selectTab('capital-policy')}
+          />
         </div>
       )}
 
-      {tab === 'universe-theses' && (
-        <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
+      {tab === 'decisions' && (
+        <div role="tabpanel" aria-label={TAB_LABEL.decisions}>
+          {loading && !home && (
+            <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }} data-testid="cio-home-loading">
+              Loading office home…
+            </div>
+          )}
+          {error && !home && (
+            <div style={{ padding: '12px 0', color: 'var(--amber)', fontSize: 13 }} data-testid="cio-home-error">
+              Office home unavailable: {String(error)}
+            </div>
+          )}
+          {home && (
+            <>
+              <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />
+              <div style={{ marginTop: 28 }}>
+                <OpportunitiesSection opp={home.opportunities} books={home.reentry_books} />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {tab === 'research' && (
+        <div role="tabpanel" aria-label={TAB_LABEL.research}>
           <AgentResearchOpsStrip />
           <UniverseThesesPanel />
+          <div style={{ marginTop: 28 }}>
+            <InvestmentBooksPanel />
+          </div>
         </div>
       )}
 
-      {tab === 'investment-books' && <InvestmentBooksPanel />}
-
-      {tab === 'cio-brain' && <CioBrainPanel />}
-
-      {tab === 'operator-policy' && <OperatorPolicyPanel />}
-
-      {(tab === 'notification-gate' || tab === 'telegram-receipts' || tab === 'senses-evidence') && (
-        <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
-          {tab === 'notification-gate' && <NotificationGatePanel />}
-          {tab === 'telegram-receipts' && <TelegramReceiptsPanel />}
-          {tab === 'senses-evidence' && <SensesEvidencePanel />}
+      {tab === 'capital-policy' && (
+        <div role="tabpanel" aria-label={TAB_LABEL['capital-policy']}>
+          <OperatorPolicyPanel />
+          {home && (
+            <>
+              <div style={{ marginTop: 28 }}>
+                <CapitalPlanSection cp={home.capital_plan} />
+              </div>
+              <div style={{ marginTop: 28 }}>
+                <PostureSection posture={home.posture} />
+              </div>
+            </>
+          )}
+          {!home && loading && (
+            <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading capital plan…</div>
+          )}
         </div>
       )}
 
-      {home && tab !== 'cio-brain' && tab !== 'notification-gate' && tab !== 'telegram-receipts' && tab !== 'senses-evidence' && tab !== 'investment-books' && tab !== 'operator-policy' && tab !== 'universe-theses' && (
-        <div role="tabpanel" aria-label={TAB_LABEL[tab]}>
-          {tab === 'cio-now' && <CioNowSection home={home} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />}
-          {tab === 'capital-plan' && <CapitalPlanSection cp={home.capital_plan} />}
-          {tab === 'posture' && <PostureSection posture={home.posture} />}
-          {tab === 'opportunities' && <OpportunitiesSection opp={home.opportunities} books={home.reentry_books} />}
-          {tab === 'report' && <ReportSection report={home.report} />}
-          {tab === 'evidence' && <EvidenceSection evidence={home.evidence} />}
+      {tab === 'evidence-comms' && (
+        <div role="tabpanel" aria-label={TAB_LABEL['evidence-comms']}>
+          <EvidenceCommsSubnav
+            active={evidenceSub}
+            onSelect={(sub) => selectTab('evidence-comms', sub)}
+          />
+          {evidenceSub === 'report' && home && <ReportSection report={home.report} />}
+          {evidenceSub === 'audit' && home && <EvidenceSection evidence={home.evidence} />}
+          {evidenceSub === 'notification-gate' && <NotificationGatePanel />}
+          {evidenceSub === 'telegram-receipts' && <TelegramReceiptsPanel />}
+          {evidenceSub === 'senses-evidence' && <SensesEvidencePanel />}
+          {evidenceSub === 'full-brain' && <CioBrainPanel />}
+          {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (
+            <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading evidence…</div>
+          )}
         </div>
       )}
 
-      {/* Deep-linked plan detail (specialist/evidence workspace) */}
       {planId && (
         <div style={{ marginTop: 24 }}>
           <PlanDetailPanel planId={planId} />
         </div>
       )}
+
+      <CioEvidenceModal
+        tile={evidenceTile}
+        onClose={() => setEvidenceTile(null)}
+        onOpenTab={(t, sub) => selectTab(resolveCioHubTab(t), sub)}
+      />
+    </div>
+  )
+}
+
+function EvidenceCommsSubnav({ active, onSelect }: { active: string; onSelect: (sub: string) => void }) {
+  const items: { id: string; label: string }[] = [
+    { id: 'report', label: 'Report' },
+    { id: 'audit', label: 'Audit / evidence' },
+    { id: 'notification-gate', label: 'Notification gate' },
+    { id: 'telegram-receipts', label: 'Telegram receipts' },
+    { id: 'senses-evidence', label: 'Senses' },
+    { id: 'full-brain', label: 'Full brain' },
+  ]
+  return (
+    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }} role="tablist" aria-label="Evidence subsections">
+      {items.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          role="tab"
+          aria-selected={active === item.id}
+          onClick={() => onSelect(item.id)}
+          style={{
+            padding: '5px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)',
+            background: active === item.id ? 'var(--accent-dim)' : 'transparent',
+            color: active === item.id ? 'var(--accent)' : 'var(--text2)',
+            cursor: 'pointer', fontSize: 11, fontWeight: active === item.id ? 700 : 500,
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
     </div>
   )
 }

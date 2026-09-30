@@ -180,8 +180,12 @@ def index_packet(packet: dict[str, Any], *, proposals: list[dict[str, Any]], dro
         "rr_plan": rr_plan, "rr_plan_entry": rr_plan_entry,
         "rr_at_quote": rr_quote, "rr_at_quote_entry": price,
         "catalyst": eq.get("catalyst"),
+        "ownership_context": packet.get("ownership_context") or {"held": bool((packet.get("portfolio_risk") or {}).get("held"))},
+        "decision_action": packet.get("decision_action"),
+        "first_hard_block": packet.get("first_hard_block") or eq.get("first_hard_block"),
+        "time_horizon": packet.get("time_horizon") or eq.get("time_horizon"),
         "cio_verdict": {"verdict": verdict.get("verdict"), "token": verdict.get("token"), "rationale": verdict.get("rationale")},
-        "cio_review": {"status": review.get("status"), "mode": review.get("mode"), "as_of": review.get("as_of")},
+        "cio_review": {"status": packet.get("cio_review_status") or review.get("status"), "mode": review.get("mode"), "as_of": review.get("as_of"), "review_id": packet.get("cio_review_id")},
         # never the file's own claim: the verdict goes through packet_view (STALE_PRE_FIX / PACKET_UNVERIFIED
         # fail closed) and a unit counts only when current, known and earnings-cleared with a gate stamp
         "options_alt": {**oa_verdict, "chain_as_of": alts.get("chain_as_of")},

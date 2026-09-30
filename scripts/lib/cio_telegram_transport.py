@@ -238,6 +238,7 @@ def send_cio_message(
     decision_id: Optional[str] = None,
     reply_markup: Optional[dict[str, Any]] = None,
     parse_mode: Optional[str] = None,
+    link_preview_options: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Send via CIO-only bot/allowlist. Never uses general Maria credentials.
 
@@ -317,6 +318,7 @@ def send_cio_message(
                 token=token, chat_id=cid, text=text,
                 reply_markup=reply_markup,
                 parse_mode=parse_mode,
+                link_preview_options=link_preview_options,
             )
             if resp.get("ok"):
                 ok_any = True

@@ -1027,6 +1027,28 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
         for key, val in ident.items():
             if val is not None:
                 result.setdefault(key, val)
+        # Identity 4/5: stamp from registry when missing; drop only forbidden junk.
+        # Do not overwrite an existing research_identity stamp (incl. hermetic stubs).
+        try:
+            from scripts.lib.identity_carriage import (
+                is_forbidden_guid,
+                resolve_security_identity,
+            )
+            sym = str(result.get("symbol") or req_meta.get("symbol") or "").upper()
+            if sym and is_forbidden_guid(result.get("subject_guid"), symbol=sym):
+                result["subject_guid"] = None
+            if sym and not result.get("subject_guid"):
+                env = resolve_security_identity(sym)
+                if env.get("subject_guid"):
+                    result["subject_guid"] = env["subject_guid"]
+                    if env.get("issuer_guid"):
+                        result.setdefault("issuer_guid", env["issuer_guid"])
+                    result.pop("identity_stamp_miss", None)
+                elif env.get("identity_lookup") == "LOOKUP_FAILED":
+                    result["identity_stamp_miss"] = True
+                    result["identity_lookup_reason"] = env.get("identity_lookup_reason")
+        except Exception:
+            pass
         for key, val in _lineage_for_research(research_id, req_meta).items():
             result.setdefault(key, val)
 
@@ -1105,6 +1127,22 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
         out_ok = {"ok": True, "result_id": result.get("result_id"), "result": result}
         if lineage_id:
             out_ok["lineage_id"] = lineage_id
+        # CADI-011: CIO-owned SecurityResearchSpine — fail-soft; never block Hermes complete.
+        try:
+            from scripts.lib.cross_asset.hooks import notify_hermes_result_completed
+            _spine_root = Path(os.getenv("TRADEAI_ROOT") or Path(__file__).resolve().parents[2])
+            spine_note = notify_hermes_result_completed(result, root=_spine_root)
+            if isinstance(spine_note, dict):
+                out_ok["security_research_spine"] = {
+                    "ok": bool(spine_note.get("ok")),
+                    "skipped": spine_note.get("skipped"),
+                    "reason": spine_note.get("reason") or spine_note.get("error"),
+                }
+        except Exception as _spine_exc:  # noqa: BLE001
+            out_ok["security_research_spine"] = {
+                "ok": False,
+                "error": f"{type(_spine_exc).__name__}:{_spine_exc}"[:120],
+            }
         try:
             from scripts.lib.cio_lineage import record_hermes_completion
             # Upserts envelope: specialist_artifact_id = Hermes result_id (honest).

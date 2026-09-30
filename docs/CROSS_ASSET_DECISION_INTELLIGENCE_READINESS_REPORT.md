@@ -1,72 +1,108 @@
-# Cross-Asset Decision Intelligence Readiness Report
+# Cross-Asset Decision Intelligence — Readiness Report
 
-Status: INTERIM — NOT READY (acceptance gates green; product readiness gates remain open)
-Owner: QA / CIO operations
-as_of: 2026-09-29
-Measured at: repair working tree after full acceptance rerun; commit recorded below
-Authority: advisory only; no broker, order, sizing, deployment, or trade authority
+Status: ACTIVE  
+as_of: 2026-09-29T17:55:00-04:00  
+Measured at: worktree `wt/cross-asset-decision-intel` after Phase 1–3 scaffold + hermetic green  
+Authority: Operator program 2026-09-29  
+See also: Implementation Plan, Test Plan, Backlog
 
-## Decision
+---
 
-**Go-live recommendation: NOT READY.**
+## Architecture Complete
 
-The contract, identity conflict handling, routing primitives, deterministic
-ranking, offline replay, and offline shadow harness are implemented and tested.
-The system is not ready for production because the routing layer is not yet
-connected to every live signal producer, the API/UI are not integrated, the
-continuous scheduler-backed shadow run is not installed or proven, and 30/60/90
-day historical validation has not been run against authoritative data.
+**NO** (scaffold only through Phase 3 expression router; Phases 4–10 incomplete)
 
-## Gate status
+Completed:
+- SymbolDecisionObject@v1 schema + validator + JSONL persistence
+- Assemble from Hermes/provenance/holdings/signal/CIO/options packet snapshots
+- Shadow expression router for Buy/Hold/Reentry/Sell with honest `collar` unavailable
+- Flag-gated research-complete hook (`CROSS_ASSET_SHADOW`)
+- Missed-opportunity expression ledger
+- Historical replay CLI that refuses invented counterfactuals (`INSUFFICIENT_DATA`)
+- Shadow cycle CLI (dry-run / apply-ledger)
 
-| Gate | Result | Evidence |
-|---|---|---|
-| Architecture contract | PASS — Phase 1 slice | `4e39b4103` |
-| Identity linking | PASS — library slice | `511d8dda2` |
-| Options routing | PASS — offline matrix | `511d8dda2` |
-| Event reevaluation | NOT COMPLETE | No governed live consumer lane |
-| Missed-opportunity accounting | PASS — initial coverage row | `511d8dda2` |
-| Ranking | PASS — deterministic fact-gated ranking | `511d8dda2` |
-| UI/API integration | NOT COMPLETE | No runtime surface change |
-| Offline shadow harness | PASS | `f1d5b1546`; 11 tests |
-| Continuous shadow mode | NOT COMPLETE | Scheduler not installed/observed |
-| Historical 30/60/90 replay | NOT RUN | Runtime/API/database data unavailable |
-| Production recommendation | NOT READY | Required gates remain open |
+Not complete:
+- Live event wiring into Hermes/watch/reentry producers (stub only)
+- Chain-priced EV / comparable ranking engine
+- UI
+- Continuous shadow systemd
+- 30/60/90d archive-backed replay with metrics that answer “would options have been superior?”
 
-## Tests and metrics
+---
 
-- Cross-asset targeted tests: 11 passed.
-- Python compilation: passed.
-- Ruff on changed Python: passed.
-- New test registration: 0 unlisted tests.
-- Documentation index test: 7 passed.
-- Documentation index check: passed.
-- Secret scan: passed across 9,271 files.
-- Full local acceptance: all selected gates pass after repairing two
-  environment-sensitive tests. The full profile reported 2,068 maturity tests
-  passed, 2 skipped, `cc_header_truth_v2` 119 passed, and
-  `overnight_g6_missing_stores` 7 passed. The dedicated repaired-failure set
-  passed 23/23. The host `notifications.outbox` file was preserved; G6 now
-  verifies read-only reporting and no revival rather than treating pre-existing
-  host state as a test failure.
+## Tests Passed
 
-## Known risks
+**8 / 8** hermetic (`tests/test_cross_asset_symbol_decision_object_20260929.py`)
 
-- The comparison engine currently receives caller-supplied facts; it is not yet
-  the authoritative consumer of live portfolio/watchlist/CIO/research events.
-- A score is only as trustworthy as its supplied facts; no production calibrated
-  expected-value model is claimed by this tranche.
-- No historical outcome metrics exist for this feature.
-- The local API socket was unavailable from the sandbox and the host crontab was
-  unreadable, so live cadence and runtime coverage were not independently proven.
+Evidence: `/tmp/cadi_pytest.txt` — `8 passed in 0.27s`  
+Gate registered: `cross_asset_decision_intel_20260929` in `run_cio_hardening_ci.py`
 
-## Required before readiness can change
+## Failed Tests
 
-1. Connect canonical identity and signal producers.
-2. Register and observe the event-consumer lane.
-3. Add API projection and Command Center UI with freshness/conflict states.
-4. Run continuous shadow mode with durable receipts and zero side effects.
-5. Replay authoritative 30/60/90-day snapshots without future leakage.
-6. Keep the full acceptance environment reproducible, including canonical Ruff
-   discovery and read-only host-state checks.
-7. Obtain independent review of the ranking and governance boundaries.
+**0** (current suite)
+
+---
+
+## Historical Validation Results
+
+| Window | data_quality | signals_evaluated | options_superior_rate |
+|---|---|---|---|
+| 30d | INSUFFICIENT_DATA | 0 | null |
+| 60d | INSUFFICIENT_DATA | 0 | null |
+| 90d | INSUFFICIENT_DATA | 0 | null |
+
+Artifact: `/tmp/cadi_hist_metrics.json` (regenerate via `scripts/ops/run_cross_asset_historical_replay.py`)
+
+**Honesty:** Without signal/price/chain archives, the harness correctly refuses to invent superiority metrics.
+
+---
+
+## Known Risks
+
+1. Expression `expected_value` is null — ranking is structural order, not EV.  
+2. Collar remains unavailable (matrix ABSENT).  
+3. Shadow flag default OFF — no continuous reevaluation in production yet.  
+4. Assembled objects from live stores not yet wired; fixtures prove shape only.  
+5. Promoting this module without EV model would create false confidence in “top_family”.
+
+---
+
+## Technical Debt
+
+- Duplicate decision payload families still coexist (DecisionPayload@v1, OptionsDecisionPacket@v2, SymbolDecisionObject@v1) — intentional adapter stage.  
+- No Postgres projection for SymbolDecisionObject.  
+- No CC UI.  
+- Historical archives not defined/contracted.
+
+---
+
+## Go-Live Recommendation
+
+### **NOT READY**
+
+**Reasoning:** The program asked whether the system can answer “highest expected-value expression of that thesis, and can we prove it?” Today we can:
+- enumerate candidate expressions honestly,
+- persist a canonical object,
+- run shadow dry-runs,
+- refuse fake historical superiority claims.
+
+We **cannot** yet prove EV superiority across shares vs options with chain economics, continuous shadow evidence, or 30/60/90d counterfactuals. Production routing on this scaffold would over-claim.
+
+### Conditional path to READY
+1. Wire Phase 4 events + run shadow ≥14 days with ledger growth metrics.  
+2. Implement Phase 6 EV using real chains; keep advisory.  
+3. Land archives + Phase 9 metrics with non-null superiority rates on a defined universe.  
+4. Operator review of Readiness READY + feature flag grant.
+
+---
+
+## Auditable trail (this cut)
+
+| Artifact | Path |
+|---|---|
+| Plan | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md` |
+| Backlog | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_BACKLOG.md` |
+| Test plan | `docs/CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md` |
+| Code | `scripts/lib/cross_asset/*`, `scripts/ops/run_cross_asset_*.py` |
+| Tests | `tests/test_cross_asset_symbol_decision_object_20260929.py` |
+| Commits | `bc9b38c1d` + `1a406daa5` on `wt/cross-asset-decision-intel` |

@@ -1,153 +1,73 @@
-# Cross-Asset Decision Intelligence Test Plan
+# Cross-Asset Decision Intelligence — Test Plan
 
-Status: ACTIVE — Phase 1 and acceptance repair validated; production validation remains open
-Owner: QA / platform intelligence
-as_of: 2026-09-29
-Measured at: repair working tree after full acceptance rerun; final commit recorded in the evidence log
+Status: ACTIVE  
+as_of: 2026-09-29  
+Authority: Implementation Plan + Backlog CADI-*  
 
-## Test policy
+## Unit Tests
 
-All tests are local, deterministic, network-free, broker-free, and isolated from
-live stores. Every stateful producer requires behaviour, refusal, and
-preservation-on-failure coverage. Historical tests use frozen fixtures and must
-prove no future observation is read.
+| ID | Case | Pass |
+|---|---|---|
+| U1 | `new_symbol_decision` has all field groups | keys present |
+| U2 | `validate_symbol_decision` rejects missing identity.symbol | raises/returns ok=False |
+| U3 | persist + load_latest roundtrip | equal symbol |
+| U4 | assemble NFLX fixture sets research_state from Hermes result | result_id linked |
+| U5 | Buy signal routes shares+long_call+CSP+debit_spread | four families |
+| U6 | Hold routes covered_call+protective_put; collar unavailable | honest status |
+| U7 | Reentry routes shares+CSP+spread | three families |
+| U8 | Sell routes sell_shares+protective_put; collar unavailable | honest |
+| U9 | Shadow flag off → event hook no ledger write | no file growth |
+| U10 | Missed opportunity when chosen≠top | ledger row |
 
-## Unit tests
+## Integration Tests
 
-- `SymbolDecisionObject@v1` required fields, enums, timestamps, and versioning.
-- Identity normalization, unresolved identity, conflicting identity, and alias handling.
-- Signal normalization for BUY, STRONG_BUY, ADD, ADD_ON_PULLBACK, REENTRY,
-  ENTRY_NEAR, CONVICTION, HOLD, MONITOR, HEDGE, SELL, TRIM, REDUCE, EXIT.
-- Expression candidate generation and unsupported-structure refusal.
-- Deterministic evaluation IDs and stable ranking ties.
-- Explicit unavailable/stale data propagation.
+| ID | Case | Pass |
+|---|---|---|
+| I1 | Shadow cycle dry-run over 2 symbols returns ranked objects | ok |
+| I2 | Assemble with empty stores still validates | incomplete but valid |
 
-## Integration tests
+## Scheduler Tests
 
-- Portfolio + watchlist + re-entry + thesis records produce one joined object.
-- Source disagreement produces a conflict state rather than silent precedence.
-- Options proposal facts enter the comparison without creating an approval.
-- CIO and Hermes references remain traceable to source IDs.
-- Aegis advisory output cannot become CIO approval.
+| ID | Case | Pass |
+|---|---|---|
+| S1 | CLI exit 0 dry-run | documented; timer not installed until Phase 8 READY |
 
-## Scheduler tests
+## Persistence Tests
 
-- Trigger intake is idempotent.
-- Duplicate events do not create duplicate evaluations.
-- Out-of-order events preserve latest valid state and record the conflict.
-- Scheduler refusal is durable and observable.
-- Lane registry entry names owner, cadence, state, and output store.
+| ID | Case | Pass |
+|---|---|---|
+| P1 | Append never truncates prior rows | line count +1 |
+| P2 | Corrupt line skipped on load_latest | no raise |
 
-## Persistence tests
+## CIO / Research / Options / Re-entry / Watchlist
 
-- Append-only writes and hash-chain continuity.
-- Replay from empty store reproduces the same projection.
-- Corrupt row fails closed without truncating prior rows.
-- Failed write preserves the prior valid projection.
-- Tests cannot write production state roots or live M2.
+| ID | Case | Pass |
+|---|---|---|
+| C1 | cio_state passthrough on assemble | equals fixture |
+| R1 | hermes result_id / research_id on research_state | linked |
+| O1 | options_state embeds packet schema name when provided | OptionsDecisionPacket@v2 |
+| E1 | reentry signal_kind drives CSP candidates | present |
+| W1 | watch provenance → identity.subject_guid when present | linked |
 
-## CIO and research tests
+## Historical Replay
 
-- Missing thesis creates research work, not an approval.
-- `MORE_RESEARCH` schedules a follow-up at 24 hours.
-- `MONITOR_ONLY` schedules a 24-hour re-review.
-- `REJECT` remains final.
-- Hermes completion changes the next evaluation and cites the research ID.
-- Aegis disagreement is visible but non-authoritative.
+| ID | Case | Pass |
+|---|---|---|
+| H1 | 30d with no archive → metrics `data_quality=INSUFFICIENT_DATA` | honest |
+| H2 | 60d/90d same honesty path until archives wired | honest |
 
-## Option-routing tests
+## Regression
 
-- BUY: shares/CSP/long call/bull call spread comparison.
-- HOLD: shares/covered call/protective put/collar comparison.
-- REENTRY: shares/CSP/spread comparison.
-- HEDGE: protective put/put spread/collar comparison.
-- SELL/TRIM: sell/collar/protective structure comparison.
-- Liquidity, OI, spread, earnings, IV, position-size, and quote-age gates fail closed.
-- Estimated quotes cannot become live-eligible.
-- No candidate is ranked as winner if it is hard-blocked.
+| ID | Case | Pass |
+|---|---|---|
+| G1 | Existing options_strategy_matrix tests unaffected | green |
+| G2 | No broker import in cross_asset package | grep gate |
 
-## Re-entry and watchlist tests
+## Evidence log
 
-- Re-entry event links to prior ownership and exit evidence.
-- ENTRY_NEAR and ADD_ON_PULLBACK route to the expected comparison set.
-- WATCH/MONITOR produces a review/no-action comparison rather than an implicit buy.
-- Watchlist membership changes trigger reevaluation.
-
-## Historical replay tests
-
-- 30-, 60-, and 90-day fixtures replay with no future leakage.
-- Same input snapshot produces byte-equivalent output.
-- Missing source rows are counted as missing coverage.
-- Outcomes are joined only after their observation timestamp.
-- Historical comparisons do not mutate live stores.
-
-## Regression and acceptance gates
-
-- Existing options, CIO, research, re-entry, watchlist, identity, and authority suites remain green.
-- New tests are registered in `scripts/run_cio_hardening_ci.py` and `scripts/check_test_coverage.py`.
-- Changed Python files pass Ruff directly.
-- `git diff --check` passes.
-- `scripts/check_no_secrets.py --tree` passes.
-- Relevant local acceptance passes; environment-dependent failures are recorded, not hidden.
-
-## Evidence artifacts
-
-- `docs/CROSS_ASSET_DECISION_INTELLIGENCE_IMPLEMENTATION_PLAN.md`
-- `docs/CROSS_ASSET_DECISION_INTELLIGENCE_TEST_PLAN.md`
-- `docs/CROSS_ASSET_DECISION_INTELLIGENCE_READINESS_REPORT.md`
-- `reports/cross_asset_decision_intelligence/` replay and shadow receipts
-- append-only shadow evaluation receipt with input/output hashes
-
-## Acceptance repair evidence — 2026-09-29
-
-Status: COMPLETE
-
-- Repaired-failure tests: 23 passed.
-- Cross-asset phase-1 tests: 11 passed.
-- Full hardening profile: all selected gates passed; tail checks were skipped by
-  the invocation and remain a separate docs-index check.
-- Host-state preservation: the pre-existing `notifications.outbox` artifact was
-  not removed or rewritten.
-
-## Phase 1 execution record
-
-Status: COMPLETE
-Date: 2026-09-29
-Commit: `4e39b4103193784950377d8c00a5fc1d05c096fd`
-
-Evidence:
-
-- 6/6 Phase 1 tests passed.
-- Python compilation passed.
-- Ruff passed on changed Python files.
-- New test was registered in the CIO hardening gate; coverage reported 0 new unlisted tests.
-- Diff hygiene passed.
-
-## Extended implementation record
-
-Status: COMPLETE for offline contract/routing/replay slice
-Date: 2026-09-29
-Commits: `511d8dda2da78925fa987b9b40fd4ca957bf07ac`, `1d440dd2382555541aad60cae21e740f41c47b9b`
-
-Evidence:
-
-- 10/10 cross-asset tests passed.
-- Source conflicts fail visibly instead of selecting a winner silently.
-- Hard liquidity, OI, spread, earnings, quote-age, and position-size facts block candidates.
-- Unblocked scored candidates are ranked deterministically.
-- Offline replay sorts events by observation time and requires identity coverage.
-- Replay writes only the explicitly requested output path.
-
-Not yet evidenced: live scheduler consumption, API/UI integration, and 30/60/90-day
-production-history replay.
-
-## Shadow harness record
-
-Status: COMPLETE — offline only
-Date: 2026-09-29
-Commit: `f1d5b1546dea3aa6c2d3c3dc4884978600891fdb`
-
-The harness runs a frozen event batch, writes to an explicit caller-selected
-JSONL path, returns `SHADOW_ONLY`, sets `financial_action=false`, and treats a
-duplicate evaluation as `DUPLICATE_IGNORED`. It is not a scheduler installation
-and has no broker or order path.
+| Date | Suite | Result | Commit |
+|---|---|---|---|
+| 2026-09-29 | unit CADI (8 tests) | **8 passed** | bc9b38c1d |
+| 2026-09-29 | shadow dry-run NFLX buy | ok=true top=shares ranked=4 | CLI |
+| 2026-09-29 | historical 30/60/90 | INSUFFICIENT_DATA (honest) | `/tmp/cadi_hist_metrics.json` |
+| 2026-09-29 | broker import grep on cross_asset | clean | — |

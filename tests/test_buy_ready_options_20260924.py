@@ -31,7 +31,9 @@ from lib import buy_ready_options_alternatives as boa  # noqa: E402
 from lib import buy_ready_portfolio_facts as bpf  # noqa: E402
 from lib import cio_options_fluency as fl  # noqa: E402
 
-BEHAVIOR_FIELDS = ("recommended_delta_usd", "size_usd", "shares", "qty", "order",
+# Observational ownership facts (ownership_context.shares) are not sizing. The
+# stock plan's stop is a quoted thesis level, like equity.stop, not an order stop.
+BEHAVIOR_FIELDS = ("recommended_delta_usd", "size_usd", "qty", "order",
                    "stop", "limit", "target_weight_pct", "trade", "execution")
 V_PLAN = {"symbol": "V", "price": 367.53, "entry_low": 364.50, "entry_high": 369.00,
           "stop": 357.50, "target": 410.00}
@@ -265,7 +267,7 @@ def test_the_packet_carries_no_sizing_keys_and_no_dollar_capital_hint(book):
     pkt = v_packet(book, review={"status": "OK", "agent": "alex", "review": RECORDED_REVIEW})
     offenders = [p for p in _walk_keys(pkt) if p[-1] in BEHAVIOR_FIELDS
                  # the plan's own price level, not an instruction: equity.stop
-                 and p not in (("equity", "stop"),)]
+                 and p not in (("equity", "stop"), ("stock_play", "stop"))]
     assert offenders == []
     blob = json.dumps(pkt, default=str)
     for banned in ("illustrative_100_shares", "shares_hint", "contracts_hint", "size_basis"):

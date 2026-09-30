@@ -61,6 +61,9 @@ def evaluate(ev: dict, *, today: date | None = None) -> dict:
     rr = None
     if ref_entry and stop is not None and target is not None and ref_entry > stop:
         rr = round((target - ref_entry) / (ref_entry - stop), 2)
+    rr_at_current = None
+    if price is not None and stop is not None and target is not None and price > stop:
+        rr_at_current = round((target - price) / (price - stop), 2)
     blocked: list[str] = []
     if price is None:
         blocked.append("no current price")
@@ -101,7 +104,10 @@ def evaluate(ev: dict, *, today: date | None = None) -> dict:
     else:
         state = "NOT_YET"
     return {
-        "symbol": sym, "state": state, "reasons": blocked, "distance_pct": distance_pct, "rr": rr,
+        "symbol": sym, "state": state, "reasons": blocked,
+        "first_hard_block": blocked[0] if blocked else None,
+        "distance_pct": distance_pct, "rr": rr, "rr_at_ideal_entry": rr,
+        "rr_at_current_price": rr_at_current,
         "price": price, "entry_low": lo, "entry_high": hi, "stop": stop, "target": target,
         "atr": atr,
         "quality_state": ev.get("quality_state"), "cio_action": cio_action or None,
@@ -144,7 +150,11 @@ def _identity_text(ev: dict) -> str:
 
 def render_operator(result: dict, ev: dict) -> str:
     """Plain operator text. Header is the routing sentinel ('CIO entry —'); no WAIT/AVOID wording."""
-    head = "🟢 CIO entry — BUY READY" if result["state"] == "BUY_READY" else "🟡 CIO entry — getting close"
+    held = bool(result.get("held"))
+    if held:
+        head = "🟡 CIO entry — already owned: add decision required"
+    else:
+        head = "🟢 CIO entry — BUY READY" if result["state"] == "BUY_READY" else "🟡 CIO entry — getting close"
     where = ("price is inside the entry zone" if result["state"] == "BUY_READY"
              else f"price is {result['distance_pct']:+.1f}% from the top of the entry zone")
     lines = [f"{head}: {result['symbol']}"]
@@ -158,17 +168,20 @@ def render_operator(result: dict, ev: dict) -> str:
     cap = _cap_text(ev)
     if cap:
         lines.append(cap)
+    if held:
+        lines.append("Portfolio context: already held — this is not a new position.")
+        lines.append("Decision: add here, wait for the preferred entry zone, or hold existing shares.")
     lines += [
         f"Price {_money(result['price'])} · {where}",
         f"Zone {_money(result['entry_low'])}–{_money(result['entry_high'])} · stop {_money(result['stop'])} · "
-        f"target {_money(result['target'])} · R:R {result['rr']}",
+        f"target {_money(result['target'])} · R:R ideal {result.get('rr_at_ideal_entry', result.get('rr'))} · "
+        f"current {result.get('rr_at_current_price')}",
     ]
-    if result.get("catalyst"):
-        lines.append(f"Catalyst: {str(result['catalyst'])[:160]}")
+    lines.append(f"Catalyst: {str(result['catalyst'])[:160] if result.get('catalyst') else 'unavailable'}")
     if result.get("cio_action"):
         lines.append(f"CIO view: {result['cio_action'].replace('_', ' ').title()}")
-    if result.get("held"):
-        lines.append("Already held — this would be an add.")
+    if result.get("first_hard_block"):
+        lines.append(f"What kills the idea: {result['first_hard_block']}")
     # Stage 1D — institutional equity + options packet (BUY_READY and ENTRY_NEAR).
     if result.get("state") in ("BUY_READY", "ENTRY_NEAR"):
         packet_block = _institutional_packet_block(result, ev, for_cio=False)

@@ -381,6 +381,28 @@ class CIOThesisStore:
             "updated_ts": ts,
             "authority": "READ_ONLY_ADVISORY",
         }
+        # Identity 4/5: stamp registry GUIDs for linked securities (lookup only).
+        try:
+            from scripts.lib.identity_carriage import linked_subject_guids, stamp_security_fields
+            linked = list(payload.get("linked_symbols") or [])
+            if linked:
+                primary = stamp_security_fields(
+                    {"symbol": linked[0]},
+                    symbol=linked[0],
+                    require_resolved=True,
+                )
+                if primary.get("subject_guid"):
+                    payload["subject_guid"] = primary["subject_guid"]
+                    if primary.get("issuer_guid"):
+                        payload["issuer_guid"] = primary["issuer_guid"]
+                    payload["identity_status"] = primary.get("identity_status")
+                else:
+                    payload["identity_stamp_miss"] = True
+                guids = linked_subject_guids(linked)
+                if guids:
+                    payload["linked_subject_guids"] = guids
+        except Exception:
+            pass
         if extra and isinstance(extra, dict):
             for k, v in extra.items():
                 if k not in payload and v is not None:
@@ -389,6 +411,12 @@ class CIOThesisStore:
         self._append_event(et, tid, payload, actor_id=actor_id)
         if notify:
             _notify_thesis_publish(tid, next_ver, summary)
+        # Multi-producer spine: thesis is shared security memory, not Hermes-only.
+        try:
+            from scripts.lib.cross_asset.hooks import notify_thesis_published
+            notify_thesis_published(payload)
+        except Exception:
+            pass
         return dict(self._current[tid])
 
     def get_current(self, thesis_id: str = DEFAULT_THESIS_ID) -> Optional[dict[str, Any]]:

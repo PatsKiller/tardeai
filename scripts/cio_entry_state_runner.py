@@ -177,7 +177,7 @@ def alerted_today(cur, keys: list[str]) -> set[str]:
     return {row[0] for row in cur.fetchall()}
 
 
-def operator_send(text: str, *, primary_symbols: list[str] | None = None) -> dict:
+def operator_send(text: str | dict, *, primary_symbols: list[str] | None = None) -> dict:
     """The one operator send path (alert and digest). Routes IMMEDIATE as cio_entry_state.
 
     ``primary_symbols`` scopes Communications Editor footer chrome to the active
@@ -195,7 +195,9 @@ def operator_send(text: str, *, primary_symbols: list[str] | None = None) -> dic
             reset_primary_symbols = _reset
             token = set_primary_symbols(primary_symbols)
         from telegram_alert import send_telegram
-        return {"operator": bool(send_telegram(text, message_class="operator_alert"))}
+        payload = text if isinstance(text, dict) else {"text": text}
+        kwargs = {k: payload[k] for k in ("reply_markup", "link_preview_options") if payload.get(k)}
+        return {"operator": bool(send_telegram(payload.get("text", ""), message_class="operator_alert", **kwargs))}
     except Exception as exc:
         return {"operator": False, "operator_error": f"{type(exc).__name__}: {str(exc)[:120]}"}
     finally:
@@ -338,7 +340,6 @@ def follow_up_pending_reviews(cur, evidence: dict) -> list[dict]:
         rows = [json.loads(x) for x in REVIEW_PENDING.read_text(encoding="utf-8").splitlines() if x.strip()]
     except (OSError, ValueError):
         return []
-    from lib.buy_ready_cio_review import format_review_lines
     now = datetime.now(timezone.utc)
     keep, out = [], []
     latest: dict[str, dict] = {}
@@ -359,9 +360,8 @@ def follow_up_pending_reviews(cur, evidence: dict) -> list[dict]:
             row = decision_row(review)
             if row:
                 cur.execute(INSERT_SQL, row)
-            text = "\n".join([f"CIO review — {sym} ({r.get('state')})"] + format_review_lines(review)
-                              + [ces.ADVISORY_FOOTER])
-            out.append({"symbol": sym, "follow_up": "sent", **operator_send(text, primary_symbols=[sym])})
+            payload = cio_card_payload(r["result"], ev, review=review)
+            out.append({"symbol": sym, "follow_up": "sent", **operator_send(payload, primary_symbols=[sym])})
             save_packet(r["result"], ev)
         else:
             keep.append(r)
@@ -373,14 +373,14 @@ def follow_up_pending_reviews(cur, evidence: dict) -> list[dict]:
 def send_alerts(result: dict, evidence: dict) -> dict:
     out = {"cio_desk": False, "cio_bus": False}
     sym = str(result.get("symbol") or "").upper()
-    out.update(operator_send(
-        stamp_cio_stance(ces.render_operator(result, evidence), [result["symbol"]]),
-        primary_symbols=[sym] if sym else None,
-    ))
+    operator_payload = cio_card_payload(result, evidence)
+    operator_payload["text"] = stamp_cio_stance(operator_payload["text"], [result["symbol"]])
+    out.update(operator_send(operator_payload, primary_symbols=[sym] if sym else None))
     try:
         from scripts.lib.cio_telegram_transport import send_cio_message
-        r = send_cio_message(ces.render_cio(result, evidence), subject=f"Entry state {result['symbol']}",
-                             kind="cio_advisory", dedupe_key=ces.transition_key(result))
+        r = send_cio_message(operator_payload["text"], subject="", kind="cio_advisory",
+                             dedupe_key=ces.transition_key(result), reply_markup=operator_payload.get("reply_markup"),
+                             parse_mode="HTML", link_preview_options=operator_payload.get("link_preview_options"))
         # send_cio_message returns {"delivered": bool, "reason": str, "deduped": bool, ...}. Reading
         # "sent"/"ok" recorded every desk message as failed on the first live run (2026-09-15 12:30).
         r = r or {}
@@ -403,6 +403,54 @@ def send_alerts(result: dict, evidence: dict) -> dict:
     except Exception as exc:
         out["cio_bus_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
     return out
+
+
+def _card_option_reasons(alternatives: dict | None, alt: dict | None) -> list[str]:
+    """Expose actual option gate facts; never invent a rejection reason."""
+    out: list[str] = []
+    source = alternatives if isinstance(alternatives, dict) else {}
+    out.extend(str(x) for x in (source.get("notes") or []) if x)
+    out.extend(str(x) for x in (alt or {}).get("notes", []) if x)
+    if (alt or {}).get("detail"):
+        out.append(str(alt["detail"]))
+    for row in source.get("alternatives") or []:
+        out.extend(str(x) for x in (row.get("disqualified_by") or []) if x)
+    return list(dict.fromkeys(out))[:5]
+
+
+def cio_card_payload(result: dict, evidence: dict, *, review: dict | None = None) -> dict:
+    """Build the shared Telegram CIO card from the canonical entry packet facts."""
+    from lib.telegram_rich import cio_entry_alert
+    item = {**(evidence or {}), **(result or {})}
+    try:
+        from lib.cio_options_fluency import build_buy_ready_packet
+        packet = build_buy_ready_packet(result, {**evidence, "held": result.get("held"),
+                                                  "plan_source": result.get("plan_source")})
+        eq = packet.get("equity") or {}
+        item.update({"price": eq.get("price", item.get("price")),
+                     "entry_low": eq.get("entry_low", item.get("entry_low")),
+                     "entry_high": eq.get("entry_high", item.get("entry_high")),
+                     "stop": eq.get("stop", item.get("stop")),
+                     "target": eq.get("target", item.get("target")),
+                     "rr_at_ideal_entry": eq.get("reward_risk_worst_in_zone", result.get("rr")),
+                     "rr_at_current_price": eq.get("reward_risk_at_quote", result.get("rr_at_current_price")),
+                     "distance_pct": eq.get("distance_pct", result.get("distance_pct")),
+                     "time_horizon": eq.get("time_horizon") or packet.get("time_horizon") or result.get("time_horizon"),
+                     "first_hard_block": packet.get("first_hard_block") or item.get("first_hard_block"),
+                     "catalyst": (packet.get("thesis_indicators") or {}).get("catalyst") or result.get("catalyst"),
+                     "options_status": (packet.get("options_alternatives") or {}).get("status") or "not evaluated",
+                     "options_reasons": _card_option_reasons(packet.get("options_alternatives"), packet.get("options_alt")),
+                     "thesis": (packet.get("thesis_indicators") or {}).get("drivers", []),
+                     "capital_impact": (eq.get("capital") and f"{eq.get('capital')} per share") or "unavailable"})
+        alts = (packet.get("options_alternatives") or {}).get("alternatives") or []
+        if alts:
+            item["options_summary"] = str(alts[0].get("strategy") or "option alternative")
+    except Exception as exc:  # noqa: BLE001 -- card must degrade to canonical entry facts
+        item.setdefault("options_status", f"unavailable ({type(exc).__name__})")
+    item["cio_review_status"] = (review or evidence.get("cio_review") or {}).get("status") if isinstance((review or evidence.get("cio_review")), dict) else None
+    item["cio_review_id"] = (review or evidence.get("cio_review") or {}).get("decision_id") if isinstance((review or evidence.get("cio_review")), dict) else None
+    item["next_action"] = "CIO review follow-up received" if review else item.get("next_action")
+    return cio_entry_alert(item).render()
 
 
 def main() -> int:
