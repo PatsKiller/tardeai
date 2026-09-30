@@ -49,7 +49,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/CURSOR_CLOUD_PLAIN_ENGLISH_STARTER_GUIDE.md` | Cursor Cloud Plain-English Starter Guide | review_required | OK | `c7ab9524a7e1` |
 | `docs/DAILY_OPS_LOG.md` | DAILY_OPS_LOG.md | review_required | OK | `80578251dbf0` |
 | `docs/DASHBOARD_AUDIT_WORKFLOW.md` | Dashboard Visual Audit — Operator Workflow | review_required | OK | `4f878d49e6a9` |
-| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `74b05b6bc2d9` |
+| `docs/DOCUMENTATION_INDEX.md` | Trade AI v12 — Documentation Index | review_required | OK | `8cc2fedef6cc` |
 | `docs/ENGINEERING_HARD_RULES.md` | Engineering Hard Rules (enforced) | review_required | OK | `c9798da3d1f2` |
 | `docs/ENGINE_ROOM_V1.md` | Engine Room v1 — Plumbing & Intake Hardening (2026-07-16) | review_required | OK | `c13ce7b7e784` |
 | `docs/EXECUTIVE_ARCHITECTURE_OVERVIEW.md` | Trade AI v12 — Executive Architecture Overview | review_required | OK | `84fd22510408` |
@@ -992,6 +992,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/diligence/current/TEST_EVIDENCE.md` | Test Evidence | review_required | OK | `16101d5caded` |
 | `docs/diligence/current/VALIDATION_TAXONOMY_AUDIT.md` | Validation Taxonomy Audit | review_required | OK | `c4d648f98e32` |
 | `docs/evidence/DEFENSE_SECTORS_RECONCILIATION_2026-07-26.md` | Defense/Sectors Production Reconciliation (Lane C) | review_required | OK | `78404d5eadf6` |
+| `docs/features/CIO_PORTFOLIO_AWARE_ENTRY_ALERTS_20260930.md` | CIO Portfolio-Aware Entry Alerts | review_required | OK | `d699e0193262` |
 | `docs/features/PORTFOLIO_REENTRY_DESK.md` | Portfolio Re-Entry Intelligence | review_required | OK | `37641ce48db4` |
 | `docs/features/PORTFOLIO_REENTRY_OPERATOR_GUIDE.md` | Portfolio Re-Entry and Rotation Intelligence — Operator Guide | review_required | OK | `8f24c213e510` |
 | `docs/features/PORTFOLIO_REENTRY_REQUIREMENTS_v2.md` | Portfolio Re-Entry — Requirements Contract v2 | review_required | OK | `937860c28dcf` |

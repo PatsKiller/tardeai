@@ -69,3 +69,22 @@ def test_desk_disposition_is_exactly_one_of_three():
 def test_missing_directory_is_empty_not_an_error(tmp_path):
     out = index_packets(tmp_path / "nowhere", now=NOW)
     assert out["count"] == 0 and out["rows"] == [] and out["errors"] == []
+
+
+def test_index_preserves_portfolio_aware_action_context(tmp_path):
+    d = tmp_path / "pk"; d.mkdir()
+    packet = _packet("AXTI", "ENTRY_NEAR", 78.17, 71.5, 74.5, 67.5, 96.5, 3.14,
+                     (NOW - timedelta(hours=1)).isoformat())
+    packet.update({"decision_action": "WAIT_FOR_ENTRY_ZONE", "first_hard_block": None,
+                   "time_horizon": None,
+                   "ownership_context": {"held": True, "shares": 100.0,
+                                          "pct_of_total_book": 0.62,
+                                          "pct_of_invested_capital": 2.18,
+                                          "ips_single_name_limit_pct": 8.0},
+                   "cio_review_status": "UNREVIEWED", "cio_review_id": None})
+    (d / "AXTI.json").write_text(json.dumps(packet))
+    row = index_packets(d, now=NOW)["rows"][0]
+    assert row["ownership_context"]["held"] is True
+    assert row["ownership_context"]["shares"] == 100.0
+    assert row["decision_action"] == "WAIT_FOR_ENTRY_ZONE"
+    assert row["cio_review"]["status"] == "UNREVIEWED"

@@ -127,6 +127,7 @@ Drive mirror: **Trade_AI_Docs_v2** (`1Zxc20B5Xo24RGZ1Pow1-uW6ldASQJHiR`) via `sc
 | `docs/OPTIONS_STRATEGY_PIPELINE.md` | Alpaca paper strategy lane — **training only** | Active (training only) |
 | `docs/runbooks/OPTIONS_FIRST_POSITION_ACCEPTANCE.md` | First-position runbook; Alpaca path is training only, live goes through the desk flow | Active (training-only note 2026-09-26) |
 | `docs/audits/OPTIONS_DESK_EXECUTIVE_AUDIT_2026-09-25.md` | Executive audit + **resolution addendum 2026-09-26** | Active |
+| `docs/features/CIO_PORTFOLIO_AWARE_ENTRY_ALERTS_20260930.md` | Held-position-aware CIO entry alerts: add/wait/hold decision, stock-vs-options context, hard blocks, and review status | Implemented locally — pending merge/deploy |
 | `docs/audits/OPTIONS_DESK_ARCHITECTURE_MAP_2026-09-25.md` · `OPTIONS_DESK_GOVERNANCE_MEMORY_AUDIT_2026-09-25.md` · `OPTIONS_DESK_STAGES_2_5_2026-09-25.md` · `OPTIONS_DESK_RECOMMENDATION_SPEC_2026-09-25.md` | 2026-09-25 audit set (findings unchanged; see addendum) | Active |
 | `docs/diligence/current/OPTIONS_RISK_BLOCK_MATRIX.md` | Generated risk-block matrix | Generated |
 | `docs/plan-options-desk-holdings-strategies-20260924.md` | 2026-09-24 plan | Historical (superseded 2026-09-26 by options-module.md) |

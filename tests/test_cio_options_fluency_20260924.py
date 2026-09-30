@@ -113,6 +113,10 @@ def test_v_buy_ready_institutional_packet():
     # never mistaken for the CIO review (buy_ready_cio_review) that now answers.
     assert "House-rule verdict:" in lines
     assert "Path B" in lines or "2FA" in lines
+    assert packet["ownership_context"]["held"] is True
+    assert packet["decision_action"] == "ADD_DECISION_REQUIRED"
+    assert packet["cio_review_status"] == "UNREVIEWED"
+    assert "already owned" in lines.lower()
 
 
 def test_axti_entry_near_vol_prefers_options():
