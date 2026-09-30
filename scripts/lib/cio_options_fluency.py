@@ -1075,6 +1075,7 @@ def format_buy_ready_packet_lines(
     }
     action = packet.get("decision_action") or "WAIT_FOR_ENTRY_ZONE"
     if ownership.get("held"):
+        lines.append("Book: already held")
         shares = ownership.get("shares")
         shares_text = f"{shares:g} shares" if isinstance(shares, (int, float)) else "shares"
         lines.append(f"{sym} already owned: {action_labels.get(action, action.replace('_', ' ').lower())} ({shares_text})")
@@ -1123,7 +1124,7 @@ def format_buy_ready_packet_lines(
     status = alt.get("status") or "OPTIONS_ALT_NONE"
     ranked = ((packet.get("options_alternatives") or {}).get("alternatives") or []) if alt.get("source") == "chain" else []
     if status == "OPTIONS_ALT_OK" and ranked:
-        lines.append("Options play (per contract, ranked):")
+        lines.append("Options alternatives (per contract, ranked):")
         for a in ranked[:3]:
             legs = a.get("legs") or []
             pc = a.get("per_contract") or {}
