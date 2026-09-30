@@ -1246,7 +1246,9 @@ def collect_hermes_scope_governor_health() -> list[dict]:
 
 RESEARCH_LANE_STATUS = PROJECT_ROOT / "data" / "runtime" / "research_lane_health.json"
 #: Lanes whose failure means research itself is not being produced, not a side store drifting.
-RESEARCH_HEARTBEAT_LANES = frozenset({"cio-hermes-queue", "deepseek", "coverage-stall"})
+#: coverage-stall is thesis-quality lag (research_up_thesis_flat) — warning, not heartbeat critical;
+#: pinning platform unhealthy on thin theses while deepseek is delivering hid real research health.
+RESEARCH_HEARTBEAT_LANES = frozenset({"cio-hermes-queue", "deepseek"})
 
 
 def collect_research_heartbeat() -> list[dict]:

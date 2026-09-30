@@ -73,7 +73,12 @@ def classify_failure(error: Any) -> dict[str, Any]:
         # Catches BOTH the 429 COST_CAP_EXCEEDED and the 500 RESERVATION_FAILED
         # whose message is "COST_CAP_EXCEEDED: daily request cap".
         cls = COST_CAP
-    elif low.startswith("execution language") or "execution language not allowed" in low:
+    elif (
+        low.startswith("execution language")
+        or low.startswith("execution_language")
+        or "execution language not allowed" in low
+        or "execution_language:" in low
+    ):
         cls = EXECUTION_LANGUAGE
     elif "truncated" in low or "incomplete" in low:
         cls = TRUNCATED
