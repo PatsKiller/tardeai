@@ -151,10 +151,8 @@ def _hermes_tile(root: Path) -> dict[str, Any]:
     ok_hq = bool((hermes_q or {}).get("ok", True)) if hermes_q else None
     firing = list((deepseek or {}).get("firing") or []) + list((hermes_q or {}).get("firing") or [])
     cov_fire = list((coverage or {}).get("firing") or [])
-    # Live lane JSON often parks 24h counts on coverage-stall (thesis-flat
-    # monitor), while deepseek itself only carries ok/firing. Prefer deepseek
-    # counts when present; fall back to coverage-stall so the tile matches the
-    # verdict string (deepseek_ok_24h=N) instead of lying at 0.
+    # Prefer deepseek lane counts; fall back to coverage-stall; then to
+    # agent-research-ops daily flash counters when lane monitors wipe counters.
     ok_24 = int((deepseek or {}).get("non_error_24h") or 0)
     attempts = int((deepseek or {}).get("attempts_24h") or 0)
     if ok_24 == 0 and attempts == 0 and coverage:
@@ -164,6 +162,14 @@ def _hermes_tile(root: Path) -> dict[str, Any]:
             or 0
         )
         attempts = int((coverage or {}).get("attempts_24h") or ok_24 or 0)
+    if ok_24 == 0 and attempts == 0:
+        ops = _read_json(root / "data" / "runtime" / "agent_research_ops_latest.json") or {}
+        if isinstance(ops, dict):
+            flash = ops.get("flash_first") if isinstance(ops.get("flash_first"), dict) else {}
+            actual = flash.get("provider_actual_today") if isinstance(flash.get("provider_actual_today"), dict) else {}
+            ok_24 = int(actual.get("deepseek") or ops.get("completed_today") or 0)
+            attempted = flash.get("provider_attempted_today") if isinstance(flash.get("provider_attempted_today"), dict) else {}
+            attempts = int(attempted.get("deepseek-flash") or ops.get("created_today") or ok_24 or 0)
     metrics = [
         {"label": "DeepSeek ok 24h", "value": ok_24},
         {"label": "Attempts 24h", "value": attempts},
@@ -199,7 +205,7 @@ def _hermes_tile(root: Path) -> dict[str, Any]:
             working=None,
             href="/v3/cio?tab=research",
         )
-    if ok_24 > 0 or ok_hq is True:
+    if ok_24 > 0:
         return _tile(
             id="hermes_research",
             title="Hermes / research",
@@ -207,6 +213,19 @@ def _hermes_tile(root: Path) -> dict[str, Any]:
             verdict=f"Research lanes ok — DeepSeek non-error 24h={ok_24}.",
             metrics=metrics,
             evidence_refs=evidence,
+            href="/v3/cio?tab=research",
+        )
+    if ok_hq is True and ok_ds is not False:
+        # Lane flags green but no 24h success counter on disk — do not paint
+        # "working" with zeros (that lied when coverage-stall was wiped).
+        return _tile(
+            id="hermes_research",
+            title="Hermes / research",
+            status="degraded",
+            verdict="Research lane monitors ok, but no DeepSeek 24h success count is stamped on disk yet.",
+            metrics=metrics,
+            evidence_refs=evidence,
+            working=None,
             href="/v3/cio?tab=research",
         )
     return _tile(
@@ -505,6 +524,139 @@ def _light_serving(root: Path) -> dict[str, Any]:
     }
 
 
+def stamp_brain_judgment(brain: dict[str, Any] | None, *, root: Path | None = None) -> None:
+    """Best-effort thin judgment slice for Overview — never rebuilds brain.
+
+    Written after get_cio_brain_v1 succeeds so Overview can render posture /
+    recommendation / market context without nesting /cio/brain (server wedge).
+    """
+    if not isinstance(brain, dict) or not brain.get("ok", True):
+        return
+    try:
+        root = Path(root) if root else Path(__file__).resolve().parents[2]
+        ov = brain.get("operator_value") if isinstance(brain.get("operator_value"), dict) else {}
+        thesis = brain.get("portfolio_thesis") if isinstance(brain.get("portfolio_thesis"), dict) else {}
+        capital = brain.get("capital_plan") if isinstance(brain.get("capital_plan"), dict) else {}
+        situation = brain.get("capital_situation") if isinstance(brain.get("capital_situation"), dict) else {}
+        portfolio = brain.get("portfolio_state") if isinstance(brain.get("portfolio_state"), dict) else {}
+        market = brain.get("market_context") if isinstance(brain.get("market_context"), dict) else {}
+        fields = market.get("fields") if isinstance(market.get("fields"), dict) else {}
+
+        def _field(name: str) -> dict[str, Any]:
+            raw = fields.get(name)
+            if isinstance(raw, dict):
+                return {
+                    "value": raw.get("value"),
+                    "state": raw.get("state"),
+                    "as_of": raw.get("as_of"),
+                }
+            return {"value": raw, "state": None, "as_of": None}
+
+        blockers: list[str] = []
+        for src in (
+            ov.get("uncertainty") or [],
+            situation.get("blockers") or [],
+            (ov.get("missing_policy") or [])[:3],
+            brain.get("unresolved_conflicts") or [],
+        ):
+            if not isinstance(src, list):
+                continue
+            for item in src:
+                s = str(item or "").strip()
+                if s and s not in blockers:
+                    blockers.append(s)
+                if len(blockers) >= 8:
+                    break
+            if len(blockers) >= 8:
+                break
+
+        slice_doc = {
+            "ok": True,
+            "as_of": brain.get("as_of") or _now_iso(),
+            "source": "stamp_brain_judgment",
+            "portfolio_state": {
+                "total_portfolio_value_usd": portfolio.get("total_portfolio_value_usd"),
+                "observed_cash_usd": portfolio.get("observed_cash_usd"),
+                "investable_cash_usd": portfolio.get("investable_cash_usd"),
+                "truth_quality": portfolio.get("truth_quality"),
+                "investable_cash_status": portfolio.get("investable_cash_status"),
+            },
+            "portfolio_thesis": {
+                "current_posture": thesis.get("current_posture"),
+                "state": thesis.get("state"),
+                "core_thesis": thesis.get("core_thesis"),
+            },
+            "capital_plan": {
+                "stance": capital.get("stance"),
+                "next_review": capital.get("next_review"),
+            },
+            "capital_situation": {
+                "conclusion": situation.get("conclusion"),
+                "blockers": list(situation.get("blockers") or [])[:8],
+            },
+            "operator_value": {
+                "current_recommendation": ov.get("current_recommendation"),
+                "why": ov.get("why"),
+                "what_happens_next": ov.get("what_happens_next"),
+                "uncertainty": list(ov.get("uncertainty") or [])[:8],
+                "missing_policy": list(ov.get("missing_policy") or [])[:8],
+            },
+            "market_context": {
+                "fields": {
+                    "regime": _field("regime"),
+                    "vix_close": _field("vix_close"),
+                    "breadth": _field("breadth"),
+                    "valuation": _field("valuation"),
+                }
+            },
+            "blockers_top": blockers[:6],
+        }
+        path = root / "data" / "runtime" / "cio_brain_judgment.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(slice_doc, separators=(",", ":"), default=str), encoding="utf-8")
+        # Also keep a learning/outcomes slice for the outcomes tile when brain is built.
+        learning = brain.get("learning") if isinstance(brain.get("learning"), dict) else None
+        cockpit = brain.get("learning_cockpit") if isinstance(brain.get("learning_cockpit"), dict) else None
+        if learning or cockpit:
+            learn_path = root / "data" / "runtime" / "cio_brain_learning_slice.json"
+            learn_doc = {
+                "ok": True,
+                "as_of": slice_doc["as_of"],
+                "source": "stamp_brain_judgment",
+                "memory_behavior_influence": brain.get("memory_behavior_influence") or 0,
+            }
+            if learning:
+                learn_doc["learning"] = {
+                    "outcomes": learning.get("outcomes"),
+                    "feedback": learning.get("feedback"),
+                }
+            if cockpit:
+                learn_doc["learning_cockpit"] = {
+                    k: cockpit.get(k)
+                    for k in (
+                        "outcomes_due",
+                        "matured_outcomes",
+                        "frozen_outcomes",
+                        "outcomes",
+                    )
+                    if k in cockpit
+                }
+            learn_path.write_text(json.dumps(learn_doc, separators=(",", ":"), default=str), encoding="utf-8")
+    except Exception:
+        return
+
+
+def _light_judgment(root: Path) -> dict[str, Any] | None:
+    for rel in (
+        "data/runtime/cio_brain_judgment.json",
+        "data/cio/cio_brain_judgment.json",
+    ):
+        doc = _read_json(root / rel)
+        if isinstance(doc, dict) and doc:
+            return doc
+    return None
+
+
 def stamp_home_attention(home: dict[str, Any] | None, *, root: Path | None = None) -> None:
     """Best-effort write of a thin home attention slice for the light scorecard.
 
@@ -613,6 +765,7 @@ def build_scorecard(
     home: dict[str, Any] | None = None,
     brain: dict[str, Any] | None = None,
     health: dict[str, Any] | None = None,
+    judgment: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Pure-ish builder. Callers may inject home/brain/health for hermetic tests."""
     root = Path(root) if root else Path(__file__).resolve().parents[2]
@@ -626,6 +779,21 @@ def build_scorecard(
     ]
     working_n = sum(1 for t in tiles if t.get("status") == "working")
     blocked_n = sum(1 for t in tiles if t.get("status") in ("blocked", "dark"))
+    health_data = ((health or {}).get("data") or health or {}) if isinstance(health, dict) else {}
+    if not isinstance(health_data, dict):
+        health_data = {}
+    counts = health_data.get("counts") if isinstance(health_data.get("counts"), dict) else {}
+    crit = int((counts or {}).get("critical") or 0)
+    if crit == 0:
+        findings = health_data.get("findings") or []
+        if isinstance(findings, list):
+            crit = sum(1 for f in findings if isinstance(f, dict) and str(f.get("severity") or "").lower() == "critical")
+    health_counts = dict(counts or {})
+    health_counts["critical"] = crit
+    judgment = judgment if isinstance(judgment, dict) else None
+    blockers = _blockers_top(brain)
+    if judgment and not blockers:
+        blockers = list(judgment.get("blockers_top") or [])[:6]
     return {
         "ok": True,
         "schema": SCHEMA,
@@ -640,13 +808,14 @@ def build_scorecard(
             "blocked_or_dark": blocked_n,
             "tile_count": len(tiles),
         },
-        "blockers_top": _blockers_top(brain),
+        "blockers_top": blockers,
         "pin": (brain or {}).get("_serving") or {},
         "health_summary": {
-            "status": ((health or {}).get("data") or health or {}).get("status") if isinstance(health, dict) else None,
-            "overall_score": ((health or {}).get("data") or health or {}).get("overall_score") if isinstance(health, dict) else None,
-            "counts": ((health or {}).get("data") or health or {}).get("counts") if isinstance(health, dict) else None,
+            "status": health_data.get("status"),
+            "overall_score": health_data.get("overall_score"),
+            "counts": health_counts if health_data else None,
         },
+        "judgment": judgment,
         "judgment_href": "/v3/cio?tab=overview",
         "note": "Ops scorecard from live receipts/lanes; gap walls are not success signals.",
         "path": "light",
@@ -662,13 +831,15 @@ def get_cio_scorecard(*, root: Path | None = None) -> dict[str, Any]:
     home = _light_home(root)
     brain = _light_brain(root)
     health = _light_health(root)
-    return build_scorecard(root=root, home=home, brain=brain, health=health)
+    judgment = _light_judgment(root)
+    return build_scorecard(root=root, home=home, brain=brain, health=health, judgment=judgment)
 
 
 __all__ = [
     "build_scorecard",
     "get_cio_scorecard",
     "stamp_home_attention",
+    "stamp_brain_judgment",
     "SCHEMA",
     "AUTHORITY",
 ]

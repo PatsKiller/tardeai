@@ -26,7 +26,7 @@ eq('five tabs', [...CIO_HUB_TABS], [
 eq('null → overview', resolveCioHubTab(null), 'overview')
 eq('empty → overview', resolveCioHubTab(''), 'overview')
 eq('overview', resolveCioHubTab('overview'), 'overview')
-eq('cio-brain → overview', resolveCioHubTab('cio-brain'), 'overview')
+eq('cio-brain → evidence-comms', resolveCioHubTab('cio-brain'), 'evidence-comms')
 eq('cio-now → decisions', resolveCioHubTab('cio-now'), 'decisions')
 eq('opportunities → decisions', resolveCioHubTab('opportunities'), 'decisions')
 eq('universe-theses → research', resolveCioHubTab('universe-theses'), 'research')

@@ -39,6 +39,7 @@ export type ScorecardPayload = {
   health_summary?: { status?: string | null; overall_score?: number | null; counts?: { critical?: number } | null }
   pin?: Record<string, unknown>
   note?: string
+  judgment?: Record<string, any> | null
 }
 
 const STATUS_COLOR: Record<string, string> = {
