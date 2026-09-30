@@ -67,7 +67,7 @@ export default function CioEvidenceModal({ tile, onClose, onOpenTab }: Props) {
           width: 'min(720px, 100%)',
           maxHeight: 'calc(100vh - 96px)',
           overflow: 'auto',
-          background: 'var(--bg1, #0f172a)',
+          background: 'var(--bg1)',
           border: '1px solid var(--border)',
           borderRadius: 12,
           padding: 20,
