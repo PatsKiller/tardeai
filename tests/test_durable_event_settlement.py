@@ -62,7 +62,9 @@ def test_persist_event_settlement_pg_issues_durable_update(monkeypatch):
         delivery_owner="gateway",
         gateway_mode="CANARY",
     )
-    (stmt,) = conn.cursor_obj.statements
+    # 2026-09-30: the events stamp is followed by the matching outbox status advance.
+    stmt, outbox = conn.cursor_obj.statements
+    assert "UPDATE communication_outbox" in outbox["sql"]
     assert "UPDATE communication_events" in stmt["sql"]
     assert "provider_message_id" in stmt["sql"]
     assert "provider_settlement_state" in stmt["sql"]
@@ -86,7 +88,9 @@ def test_persist_event_settlement_pg_failed_state(monkeypatch):
     conn = FakeConn()
     monkeypatch.setattr("db_adapter._get_conn", lambda: conn)
     _persist_event_settlement_pg("evt-2", status="FAILED", provider_message_id=None, settled_at=None)
-    (stmt,) = conn.cursor_obj.statements
+    # 2026-09-30: the events stamp is followed by the matching outbox status advance.
+    stmt, outbox = conn.cursor_obj.statements
+    assert "UPDATE communication_outbox" in outbox["sql"]
     assert stmt["params"][2] == "FAILED"
 
 
@@ -94,7 +98,9 @@ def test_persist_event_settlement_pg_legacy_state(monkeypatch):
     conn = FakeConn()
     monkeypatch.setattr("db_adapter._get_conn", lambda: conn)
     _persist_event_settlement_pg("evt-3", status="LEGACY_DELIVERED", provider_message_id=None, settled_at=None)
-    (stmt,) = conn.cursor_obj.statements
+    # 2026-09-30: the events stamp is followed by the matching outbox status advance.
+    stmt, outbox = conn.cursor_obj.statements
+    assert "UPDATE communication_outbox" in outbox["sql"]
     assert stmt["params"][2] == "UNKNOWN_LEGACY"
 
 

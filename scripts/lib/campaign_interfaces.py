@@ -74,7 +74,7 @@ EFFECT_KINDS = frozenset({"none", "changed_question", "changed_priority",
                           "changed_view", "changed_commitment"})
 PARENT_KINDS = frozenset({"wake", "comm_event", "research_object", "commitment", "outcome"})
 RETENTION_CLASSES = frozenset({"operational_90d", "evidence_2y", "permanent"})
-PROVIDER_SETTLEMENT_STATES = frozenset({"UNSETTLED", "SETTLED", "FAILED", "UNKNOWN_LEGACY"})
+PROVIDER_SETTLEMENT_STATES = frozenset({"UNSETTLED", "SETTLED", "FAILED", "UNKNOWN_LEGACY", "SUPPRESSED", "WITHDRAWN"})
 DELIVERY_OWNERS = frozenset({"gateway", "legacy"})
 GATEWAY_MODES = frozenset({"OFF", "SHADOW", "CANARY", "ACTIVE"})
 CURATION_KINDS = frozenset({"deterministic", "llm_curated"})

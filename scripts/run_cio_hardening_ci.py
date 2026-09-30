@@ -197,6 +197,7 @@ GATES = [
             # Grok-closure Phase 3: settlement truth is durable on the EVENT
             # row (re-read after ack shows SETTLED, not just the memory mirror).
             "tests/test_durable_event_settlement.py",
+            "tests/test_comms_settlement_terminal_states_20260930.py",
             # Lane I: inbound operator event -> correlation -> consumption receipt.
             "tests/test_inbound_event_normalizer.py",
             "tests/test_inbound_consumption.py",

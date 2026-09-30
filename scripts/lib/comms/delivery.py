@@ -400,6 +400,41 @@ def _assert_transition(current: str, new_status: str) -> None:
         raise DeliveryGateError(f"status_transition_illegal:{current}->{new_status}")
 
 
+#: Delivery status -> communication_events.provider_settlement_state. Measured 2026-09-30:
+#: 7,158 of 7,366 UNSETTLED events in 7 days were SUPPRESSED deliveries — terminal by the
+#: delivery state machine, but with no settlement mapping they stayed UNSETTLED forever and
+#: made "unsettled" useless as a signal. SUPPRESSED and the withdrawn statuses now settle.
+#: The two new states need migrations/2026_09_30_comms_settlement_terminal_states.sql; until
+#: it is applied the UPDATE retries without the state (the old behaviour), never failing.
+SETTLEMENT_SUPPRESSED = "SUPPRESSED"
+SETTLEMENT_WITHDRAWN = "WITHDRAWN"
+
+
+def settlement_state_for(status: str, provider_message_id: str | None) -> str | None:
+    """Pure mapping; None means 'leave the settlement state as it is'."""
+    st = (status or "").strip().upper()
+    if st in ("SENT", "DELIVERED", "ACKNOWLEDGED") and provider_message_id:
+        return "SETTLED"
+    if st in ("FAILED", "BOUNCED"):
+        return "FAILED"
+    if st == "LEGACY_DELIVERED":
+        return "UNKNOWN_LEGACY"
+    if st == "SUPPRESSED":
+        return SETTLEMENT_SUPPRESSED
+    if st in ("EXPIRED", "CANCELLED"):
+        return SETTLEMENT_WITHDRAWN
+    return None
+
+
+#: Delivery status -> communication_outbox.status (the outbox CHECK already allows these).
+_OUTBOX_STATUS = {
+    "RESERVED": "reserved", "SENDING": "sending", "SENT": "sent", "DELIVERED": "delivered",
+    "ACKNOWLEDGED": "acknowledged", "FAILED": "failed", "BOUNCED": "bounced",
+    "SUPPRESSED": "suppressed", "EXPIRED": "expired", "CANCELLED": "cancelled",
+    "UNKNOWN": "unknown", "LEGACY_DELIVERED": "unknown",
+}
+
+
 def _persist_event_settlement_pg(
     event_id: str,
     *,
@@ -408,8 +443,10 @@ def _persist_event_settlement_pg(
     settled_at: datetime | None,
     delivery_owner: str | None = None,
     gateway_mode: str | None = None,
+    channel: str | None = None,
 ) -> None:
-    """Best-effort durable stamp onto communication_events settlement columns."""
+    """Best-effort durable stamp onto communication_events settlement columns, and the
+    matching communication_outbox row's status (which nothing advanced past 'recorded')."""
     if not event_id:
         return
     try:
@@ -418,21 +455,11 @@ def _persist_event_settlement_pg(
         return
     st = (status or "").strip().upper()
     now = settled_at or datetime.now(timezone.utc)
-    state = None
-    if st in ("SENT", "DELIVERED", "ACKNOWLEDGED") and provider_message_id:
-        state = "SETTLED"
-    elif st in ("FAILED", "BOUNCED"):
-        state = "FAILED"
-    elif st == "LEGACY_DELIVERED":
-        state = "UNKNOWN_LEGACY"
-    if state is None and not delivery_owner and not gateway_mode:
+    state = settlement_state_for(st, provider_message_id)
+    outbox_status = _OUTBOX_STATUS.get(st)
+    if state is None and not delivery_owner and not gateway_mode and not outbox_status:
         return
-    conn = None
-    try:
-        conn = _get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            """
+    sql = """
             UPDATE communication_events
                SET provider_message_id = COALESCE(%s, provider_message_id),
                    provider_settled_at = COALESCE(%s, provider_settled_at),
@@ -440,16 +467,34 @@ def _persist_event_settlement_pg(
                    delivery_owner = COALESCE(%s, delivery_owner),
                    gateway_mode_at_dispatch = COALESCE(%s, gateway_mode_at_dispatch)
              WHERE event_id = %s
-            """,
-            (
-                provider_message_id,
-                now if state else None,
-                state,
-                delivery_owner,
-                gateway_mode,
-                str(event_id),
-            ),
-        )
+            """
+    conn = None
+    try:
+        conn = _get_conn()
+        cur = conn.cursor()
+        try:
+            cur.execute(sql, (provider_message_id, now if state else None, state,
+                              delivery_owner, gateway_mode, str(event_id)))
+        except Exception as exc:  # noqa: BLE001
+            # Pre-migration database: the CHECK does not know SUPPRESSED/WITHDRAWN yet.
+            # Keep every other stamp (the pre-2026-09-30 behaviour) rather than lose them all.
+            if state not in (SETTLEMENT_SUPPRESSED, SETTLEMENT_WITHDRAWN) or "check" not in str(exc).lower():
+                raise
+            conn.rollback()
+            cur = conn.cursor()
+            cur.execute(sql, (provider_message_id, None, None, delivery_owner, gateway_mode, str(event_id)))
+        if outbox_status:
+            cur.execute(
+                """
+                UPDATE communication_outbox
+                   SET status = %s,
+                       attempt_count = attempt_count + CASE WHEN %s IN ('sent','failed','bounced') THEN 1 ELSE 0 END,
+                       updated_at = now()
+                 WHERE event_id = %s
+                   AND (%s::text IS NULL OR channel = %s)
+                """,
+                (outbox_status, outbox_status, str(event_id), channel, channel),
+            )
         conn.commit()
     except Exception:
         try:
@@ -500,6 +545,9 @@ def _mirror_event_settlement(
                     target["provider_coordinates"] = coords
             elif st == "LEGACY_DELIVERED":
                 target["provider_settlement_state"] = "UNKNOWN_LEGACY"
+                target["provider_settled_at"] = now
+            elif settlement_state_for(st, provider_message_id) in (SETTLEMENT_SUPPRESSED, SETTLEMENT_WITHDRAWN):
+                target["provider_settlement_state"] = settlement_state_for(st, provider_message_id)
                 target["provider_settled_at"] = now
             if delivery_owner:
                 target["delivery_owner"] = delivery_owner
@@ -608,6 +656,7 @@ def settle_delivery(
             settled_at=updated.completed_at or updated.sent_at or now,
             delivery_owner=delivery_owner,
             gateway_mode=gateway_mode,
+            channel=updated.channel,
         )
         return updated
 
@@ -701,6 +750,7 @@ def settle_delivery(
                 settled_at=result.completed_at or result.sent_at or now,
                 delivery_owner=delivery_owner,
                 gateway_mode=gateway_mode,
+                channel=result.channel,
             )
             return result
     except DeliveryGateError:

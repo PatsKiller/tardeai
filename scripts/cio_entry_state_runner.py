@@ -385,6 +385,11 @@ def send_alerts(result: dict, evidence: dict) -> dict:
         # "sent"/"ok" recorded every desk message as failed on the first live run (2026-09-15 12:30).
         r = r or {}
         out["cio_desk"] = bool(r.get("delivered"))
+        # Keep the Telegram ids with the transition key: a later correction must be able to
+        # reply to the exact message (the 2026-09-28 10:20 AXTI alert had none on record).
+        out["cio_desk_dedupe_key"] = r.get("dedupe_key")
+        if r.get("message_refs"):
+            out["cio_desk_message_refs"] = r.get("message_refs")
         if not out["cio_desk"]:
             out["cio_desk_reason"] = "deduped" if r.get("deduped") else (r.get("reason") or "not delivered")
     except Exception as exc:
