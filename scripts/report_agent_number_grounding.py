@@ -197,6 +197,36 @@ def evaluate_slo(report: dict[str, Any], slo_path: Path | None = None) -> dict[s
     return out
 
 
+def rescore(rows: Iterable[tuple[str, Any]]) -> dict[str, Any]:
+    """Re-run the CURRENT checker on stored rows that carry their supplied text. Pure; never writes.
+
+    Before/after verdict counts per agent. Rows written before 2026-09-30 carry only a hash
+    and are counted as ``not_rescorable``, never guessed."""
+    from lib.agent_number_grounding import (  # noqa: PLC0415
+        _answer_texts, check_grounding, supplied_text_from_record,
+    )
+    out: dict[str, Any] = {"agents": {}, "not_rescorable": 0, "rescored": 0}
+    for agent, full in rows:
+        if isinstance(full, str):
+            try:
+                full = json.loads(full)
+            except ValueError:
+                continue
+        rep = (full or {}).get("number_grounding") if isinstance(full, dict) else None
+        if not isinstance(rep, dict) or not rep.get("verdict"):
+            continue
+        text = supplied_text_from_record(rep)
+        if text is None:
+            out["not_rescorable"] += 1
+            continue
+        new = check_grounding(_answer_texts(full), text)["verdict"]
+        a = out["agents"].setdefault(agent or "?", {"before": {}, "after": {}})
+        a["before"][rep["verdict"]] = a["before"].get(rep["verdict"], 0) + 1
+        a["after"][new] = a["after"].get(new, 0) + 1
+        out["rescored"] += 1
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--days", type=int, default=7)
@@ -212,7 +242,15 @@ def main() -> int:
         default=None,
         help="override path to agent_number_grounding_slo.json",
     )
+    ap.add_argument(
+        "--rescore",
+        action="store_true",
+        help="re-run the current checker on stored rows that carry their supplied text (read-only)",
+    )
     args = ap.parse_args()
+    if args.rescore:
+        print(json.dumps(rescore(fetch(args.days)), indent=2))
+        return 0
     report = summarize(fetch(args.days))
     report["days"] = args.days
     slo_eval = None
