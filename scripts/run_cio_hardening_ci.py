@@ -858,6 +858,7 @@ GATES = [
             "tests/test_cio_r9_2_cash_capital.py",
             "tests/test_cio_brain_snapshot.py",
             "tests/test_cio_brain_frontend.py",
+            "tests/test_cio_scorecard_20260929.py",
         ],
     ),
     (

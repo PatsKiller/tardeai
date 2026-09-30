@@ -52966,6 +52966,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             if method == "GET":
                 if p == "brain":
                     return 200, _cio.get_cio_brain_v1()
+                if p == "scorecard":
+                    return 200, _cio.get_cio_scorecard()
                 if p in ("", "dashboard"):
                     return 200, _cio.get_cio_dashboard()
                 if p == "home":

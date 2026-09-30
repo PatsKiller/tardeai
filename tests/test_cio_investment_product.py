@@ -183,9 +183,9 @@ def test_entrypoint_wires_synthesis():
 
 def test_cc_tab():
     hub = (Path(__file__).resolve().parent.parent / "apps/command-center-v3/src/pages/CioHub.tsx").read_text()
-    assert "investment-books" in hub
+    assert "investment-books" in hub or "InvestmentBooksPanel" in hub
     assert "cio-investment-books" in hub
-    assert "INVESTMENT BOOKS" in hub
+    assert "Research" in hub  # 5-tab IA: books live under Research
     assert "cio-what-changed" in hub
 
 

@@ -30,7 +30,7 @@ const ROUTES: Array<{ path: string; slug: string; tabs?: string[] }> = [
   { path: '/risk', slug: 'risk', tabs: ['Exposure', 'Correlation', 'Regime', 'Recovery'] },
   { path: '/active-trader', slug: 'active-trader' },
   { path: '/journal', slug: 'journal' },
-  { path: '/cio', slug: 'cio', tabs: ['CIO Brain', 'CIO Now', 'Operator Policy', 'Universe Theses', 'Investment Books', 'Capital Plan', 'Posture', 'Opportunities', 'Report', 'Evidence', 'Notification Gate', 'Telegram Receipts', 'Senses Evidence'] },
+  { path: '/cio', slug: 'cio', tabs: ['Overview', 'Decisions', 'Research', 'Capital & Policy', 'Evidence & Comms'] },
   { path: '/advisory', slug: 'advisory' },
   { path: '/redeploy', slug: 'redeploy' },
   { path: '/rotation', slug: 'rotation' },
