@@ -1,7 +1,7 @@
 {
   "schema": "AgentNumberGroundingSLO@v1",
-  "as_of": "2026-09-18",
-  "status": "PROPOSED",
+  "as_of": "2026-09-30",
+  "status": "RATIFIED",
   "authority": "READ_ONLY_ADVISORY — operator ratifies floors; agent does not loosen enforce",
   "mode_required": "enforce",
   "windows": {
@@ -14,11 +14,22 @@
   },
   "runtime_thresholds_env": {
     "AGENT_NUMBER_GROUNDING_MIN_UNSUPPORTED": 2,
-    "AGENT_NUMBER_GROUNDING_MAX_SHARE": 0.20
+    "AGENT_NUMBER_GROUNDING_MAX_SHARE": 0.2
   },
   "measure_command": "python3 scripts/report_agent_number_grounding.py --days 7 --json --check-slo",
   "notes": [
     "Live rate not measured by agents when DB secrets are hook-blocked.",
     "Exit 0 when insufficient results (below min_results_for_slo) — report UNKNOWN, do not invent green."
-  ]
+  ],
+  "ratified": {
+    "at": "2026-09-30",
+    "by": "operator (instruction 'fix': ratify the 0.15 grounding target)",
+    "baseline_at_ratification": "7-day soft_unsupported_share 0.186 (252/1,355) FAIL, mostly rows scored before the #1377 checker fix went live 2026-09-30 22:20Z",
+    "enforcement": "per-answer demotion unchanged (enforce, 2 / 0.20); the SLO itself is measured daily and reported, it does not block any answer"
+  },
+  "schedule": {
+    "lane_id": "agent-number-grounding-slo",
+    "cron": "40 18 * * *",
+    "receipt": "data/runtime/agent_number_grounding_slo_last_run.json"
+  }
 }
