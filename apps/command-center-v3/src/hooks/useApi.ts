@@ -49,6 +49,37 @@ export type UseApiOptions = { enabled?: boolean }
 // serialize/gzip, which is where the CPU actually went. Keyed by path.
 const _etags = new Map<string, string>()
 
+// The portfolio server is intentionally a small single-process service. A hub
+// mount can otherwise start 9–12 requests in the same render tick, turning a
+// healthy backend into a burst of 503s/timeouts. Keep the browser-side fan-out
+// bounded while preserving FIFO ordering and the existing last-good semantics.
+const MAX_ACTIVE_API_REQUESTS = 3
+let _activeApiRequests = 0
+type ApiRequestTask<T> = {
+  run: () => Promise<T>
+  resolve: (value: T | PromiseLike<T>) => void
+  reject: (reason?: unknown) => void
+}
+const _apiRequestQueue: ApiRequestTask<unknown>[] = []
+
+function drainApiRequestQueue() {
+  while (_activeApiRequests < MAX_ACTIVE_API_REQUESTS && _apiRequestQueue.length > 0) {
+    const task = _apiRequestQueue.shift()!
+    _activeApiRequests += 1
+    void task.run().then(task.resolve, task.reject).finally(() => {
+      _activeApiRequests -= 1
+      drainApiRequestQueue()
+    })
+  }
+}
+
+function scheduleApiRequest<T>(run: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    _apiRequestQueue.push({ run, resolve, reject } as ApiRequestTask<unknown>)
+    drainApiRequestQueue()
+  })
+}
+
 // Exponential backoff with jitter: 1s → 2s → 4s … cap 30s. A retry hammer over
 // a busy single-process server just keeps it busy.
 function backoffMs(attempt: number): number {
@@ -136,7 +167,6 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           : path.includes('universe-theses')
             ? 90_000
             : 30_000
-      const timer = setTimeout(() => controller.abort(), timeoutMs)
       // Initial load only — interval polls keep last data without blanking the UI
       if (dataRef.current == null) setLoading(true)
       try {
@@ -145,8 +175,15 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         const url = `${path}${sep}_=${Date.now()}`
         const etag = _etags.get(path)
         const headers: Record<string, string> = etag ? { 'If-None-Match': etag } : {}
-        const r = await fetch(url, { signal: controller.signal, cache: 'no-store', headers })
-        clearTimeout(timer)
+        let timer: ReturnType<typeof setTimeout> | undefined
+        const r = await scheduleApiRequest(async () => {
+          timer = setTimeout(() => controller.abort(), timeoutMs)
+          try {
+            return await fetch(url, { signal: controller.signal, cache: 'no-store', headers })
+          } finally {
+            if (timer) clearTimeout(timer)
+          }
+        })
         if (r.status === 304) {
           // Snapshot unchanged — the retained body is still the last-good body.
           // Transport receipt advances; the DATA clock does not. Consumers keep
@@ -238,7 +275,6 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         clearFailing()
         retries = 0
       } catch (e: any) {
-        clearTimeout(timer)
         if (cancelled) return
         const outcome = classifyError(e)
         setError(outcome.message)
