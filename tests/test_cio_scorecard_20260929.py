@@ -119,3 +119,57 @@ def test_hermes_blocked_when_queue_not_ok(tmp_path: Path):
     out = build_scorecard(root=tmp_path, home={"ok": True}, brain={}, health=None)
     hermes = next(t for t in out["tiles"] if t["id"] == "hermes_research")
     assert hermes["status"] == "blocked"
+
+
+def test_hermes_reads_coverage_stall_24h_counts(tmp_path: Path):
+    """Live lane JSON parks deepseek_ok_24h on coverage-stall, not deepseek."""
+    runtime = tmp_path / "data" / "runtime"
+    runtime.mkdir(parents=True)
+    (runtime / "research_lane_health.json").write_text(
+        json.dumps(
+            {
+                "lanes": {
+                    "deepseek": {"ok": True, "firing": []},
+                    "cio-hermes-queue": {"ok": True, "firing": []},
+                    "coverage-stall": {
+                        "ok": False,
+                        "firing": ["research_up_thesis_flat:deepseek_ok_24h=73,thesis_substantive=7/21"],
+                        "non_error_24h": 73,
+                        "attempts_24h": 73,
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    out = build_scorecard(root=tmp_path, home={"ok": True}, brain={}, health=None)
+    hermes = next(t for t in out["tiles"] if t["id"] == "hermes_research")
+    assert hermes["status"] == "degraded"
+    by_label = {m["label"]: m["value"] for m in hermes["metrics"]}
+    assert by_label["DeepSeek ok 24h"] == 73
+    assert by_label["Attempts 24h"] == 73
+
+
+def test_decisions_tile_from_attention_stamp(tmp_path: Path):
+    from scripts.lib.cio_scorecard import get_cio_scorecard, stamp_home_attention
+
+    stamp_home_attention(
+        {
+            "ok": True,
+            "as_of": "2026-09-30T12:00:00+00:00",
+            "cio_now": {
+                "decision_count": 3,
+                "material_today_count": 3,
+                "open_plans_count": 914,
+                "attention": {"material_today": 3, "open_plans": 914},
+            },
+        },
+        root=tmp_path,
+    )
+    out = get_cio_scorecard(root=tmp_path)
+    dec = next(t for t in out["tiles"] if t["id"] == "decisions")
+    assert dec["status"] == "working"
+    by_label = {m["label"]: m["value"] for m in dec["metrics"]}
+    assert by_label["Decisions"] == 3
+    assert by_label["Material today"] == 3
+    assert by_label["Open plans"] == 914

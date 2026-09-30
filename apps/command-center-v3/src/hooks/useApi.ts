@@ -125,11 +125,17 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
       // options/proposals + monitor: Schwab chain scan can take 60–90s on a cold
       // generate_proposals; the default 30s AbortError was mislabeled "server busy"
       // while the single-threaded :7777 was still honestly working (2026-09-25).
+      // universe-theses builds living coverage over ~80 symbols (~4–8s warm,
+      // longer under a busy single-thread :7777). The default 30s abort +
+      // retry loop left Research stuck on "Loading universe…" while sibling
+      // books already rendered from lighter endpoints.
       const timeoutMs = path.includes('broker-proposals')
         ? 15_000
         : (path.includes('/options/proposals') || path.includes('/options/monitor'))
           ? 120_000
-          : 30_000
+          : path.includes('universe-theses')
+            ? 90_000
+            : 30_000
       const timer = setTimeout(() => controller.abort(), timeoutMs)
       // Initial load only — interval polls keep last data without blanking the UI
       if (dataRef.current == null) setLoading(true)

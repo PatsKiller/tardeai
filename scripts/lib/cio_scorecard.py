@@ -151,8 +151,19 @@ def _hermes_tile(root: Path) -> dict[str, Any]:
     ok_hq = bool((hermes_q or {}).get("ok", True)) if hermes_q else None
     firing = list((deepseek or {}).get("firing") or []) + list((hermes_q or {}).get("firing") or [])
     cov_fire = list((coverage or {}).get("firing") or [])
+    # Live lane JSON often parks 24h counts on coverage-stall (thesis-flat
+    # monitor), while deepseek itself only carries ok/firing. Prefer deepseek
+    # counts when present; fall back to coverage-stall so the tile matches the
+    # verdict string (deepseek_ok_24h=N) instead of lying at 0.
     ok_24 = int((deepseek or {}).get("non_error_24h") or 0)
     attempts = int((deepseek or {}).get("attempts_24h") or 0)
+    if ok_24 == 0 and attempts == 0 and coverage:
+        ok_24 = int(
+            (coverage or {}).get("non_error_24h")
+            or (coverage or {}).get("deepseek_ok_24h")
+            or 0
+        )
+        attempts = int((coverage or {}).get("attempts_24h") or ok_24 or 0)
     metrics = [
         {"label": "DeepSeek ok 24h", "value": ok_24},
         {"label": "Attempts 24h", "value": attempts},
@@ -494,6 +505,61 @@ def _light_serving(root: Path) -> dict[str, Any]:
     }
 
 
+def stamp_home_attention(home: dict[str, Any] | None, *, root: Path | None = None) -> None:
+    """Best-effort write of a thin home attention slice for the light scorecard.
+
+    Called after get_cio_home builds successfully. Never raises. Never nests
+    get_cio_home / get_cio_brain — this is a side-effect stamp only.
+    """
+    if not isinstance(home, dict) or not home.get("ok", True):
+        return
+    try:
+        root = Path(root) if root else Path(__file__).resolve().parents[2]
+        now = home.get("cio_now") or home.get("now") or {}
+        if not isinstance(now, dict):
+            now = {}
+        attn = now.get("attention") if isinstance(now.get("attention"), dict) else {}
+        if not attn and isinstance(home.get("attention"), dict):
+            attn = home["attention"]
+        decision_count = int(now.get("decision_count") or 0)
+        if not decision_count:
+            decs = now.get("decisions")
+            if isinstance(decs, list):
+                decision_count = len(decs)
+        material = int(
+            attn.get("material_today")
+            or now.get("material_today_count")
+            or home.get("material_today_count")
+            or 0
+        )
+        open_plans = int(
+            attn.get("open_plans")
+            or now.get("open_plans_count")
+            or home.get("open_plans_count")
+            or 0
+        )
+        slice_doc = {
+            "ok": True,
+            "as_of": home.get("as_of") or _now_iso(),
+            "source": "stamp_home_attention",
+            "cio_now": {
+                "decision_count": decision_count,
+                "material_today_count": material,
+                "open_plans_count": open_plans,
+                "attention": {
+                    "material_today": material,
+                    "open_plans": open_plans,
+                    "investment_decisions": attn.get("investment_decisions", decision_count),
+                },
+            },
+        }
+        path = root / "data" / "runtime" / "cio_home_attention.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(slice_doc, separators=(",", ":")), encoding="utf-8")
+    except Exception:
+        return
+
+
 def _light_home(root: Path) -> dict[str, Any]:
     """Optional attention snapshot from disk — never rebuilds CIO home."""
     for rel in (
@@ -599,4 +665,10 @@ def get_cio_scorecard(*, root: Path | None = None) -> dict[str, Any]:
     return build_scorecard(root=root, home=home, brain=brain, health=health)
 
 
-__all__ = ["build_scorecard", "get_cio_scorecard", "SCHEMA", "AUTHORITY"]
+__all__ = [
+    "build_scorecard",
+    "get_cio_scorecard",
+    "stamp_home_attention",
+    "SCHEMA",
+    "AUTHORITY",
+]
