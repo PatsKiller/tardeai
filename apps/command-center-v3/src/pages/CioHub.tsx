@@ -7,6 +7,7 @@ import CioBrainPanel from '../components/cio/CioBrainPanel'
 import CioObservabilityPanel from '../components/cio/CioObservabilityPanel'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
+import { RADIUS, SHADOW } from '../lib/designTokens'
 
 /**
  * /v3/cio — the private investment office home (Phase 8).
@@ -1726,6 +1727,7 @@ function OperatorPolicyPanel() {
   const [rangeMax, setRangeMax] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
+  const [pending, setPending] = useState<{ fieldName: string; value: unknown } | null>(null)
 
   const load = useCallback(() => {
     fetch('/api/v3/cio/brain/policy', { cache: 'no-store' })
@@ -1750,18 +1752,28 @@ function OperatorPolicyPanel() {
       if (selected.kind === 'money') value = Number(textValue)
       if (selected.kind === 'list') value = textValue.split(',').map(v => v.trim()).filter(Boolean)
       if (selected.kind === 'object') value = JSON.parse(textValue)
+      setPending({ fieldName, value })
+    } catch (error: any) {
+      setMessage(String(error?.message || error))
+    }
+  }
+
+  const confirm = async () => {
+    if (!pending) return
+    try {
       setBusy(true); setMessage(null)
       const response = await fetch('/api/v3/cio/brain/policy/ratify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ field_name: fieldName, value, operator_identity_class: 'OPERATOR' }),
+        body: JSON.stringify({ field_name: pending.fieldName, value: pending.value, operator_identity_class: 'OPERATOR' }),
       })
       const result = await response.json()
       if (!response.ok || !result?.ok) throw new Error(result?.detail || result?.error || `HTTP ${response.status}`)
       setPolicy(result.policy)
-      setFieldName(result.policy.missing_fields?.[0] || fieldName)
+      setFieldName(result.policy.missing_fields?.[0] || pending.fieldName)
       setTextValue(''); setRangeMin(''); setRangeMax('')
-      setMessage(`${policyLabel(fieldName)} confirmed`)
+      setPending(null)
+      setMessage(`${policyLabel(pending.fieldName)} confirmed`)
     } catch (error: any) {
       setMessage(String(error?.message || error))
     } finally {
@@ -1821,7 +1833,7 @@ function OperatorPolicyPanel() {
               <input type={selected?.kind === 'money' ? 'number' : 'text'} value={textValue} onChange={e => setTextValue(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} />
             </label>
           )}
-          <button type="button" onClick={submit} disabled={busy} style={{ padding: '9px 14px', borderRadius: 6, border: '1px solid var(--accent)', background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Confirming…' : 'Confirm'}</button>
+          <button type="button" onClick={submit} disabled={busy} style={{ padding: '9px 14px', borderRadius: 6, border: '1px solid var(--accent)', background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Confirming…' : 'Review confirmation'}</button>
         </div>
         {message && <div role="status" style={{ ...muted, marginTop: 8 }}>{message}</div>}
       </section>
@@ -1836,6 +1848,20 @@ function OperatorPolicyPanel() {
           </div>
         ))}
       </section>
+      {pending && (
+        <div role="dialog" aria-modal="true" data-testid="cio-policy-confirmation-modal" style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.62)', display: 'grid', placeItems: 'center', padding: 20 }}>
+          <div style={{ width: 'min(520px, 100%)', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: RADIUS.md, padding: 20, boxShadow: SHADOW[2] }}>
+            <div style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 800 }}>OPERATOR RATIFICATION</div>
+            <h2 style={{ margin: '6px 0 12px', color: 'var(--text0)', fontSize: 18 }}>Confirm {policyLabel(pending.fieldName)}</h2>
+            <div style={{ color: 'var(--text1)', fontSize: 12, lineHeight: 1.5 }}>This app will append an operator-confirmed policy receipt. The agent cannot infer, approve, or undo this value.</div>
+            <pre style={{ whiteSpace: 'pre-wrap', padding: 10, margin: '12px 0', background: 'var(--bg0)', borderRadius: RADIUS.sm, color: 'var(--text0)', fontSize: 12 }}>{JSON.stringify(pending.value, null, 2)}</pre>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <button type="button" onClick={() => setPending(null)} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Cancel</button>
+              <button type="button" onClick={confirm} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: busy ? 'wait' : 'pointer' }}>{busy ? 'Saving…' : 'Confirm and record'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

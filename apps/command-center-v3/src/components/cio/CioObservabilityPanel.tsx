@@ -1,4 +1,5 @@
 import { useApi } from '../../hooks/useApi'
+import { useState } from 'react'
 import { RADIUS, TYPE } from '../../lib/designTokens'
 
 type Domain = {
@@ -14,7 +15,7 @@ type Observability = {
   scorecards?: Domain[]
   workflows?: { id: string; label: string; status: string; throughput?: number | null }[]
   recommendation_funnel?: { id: string; label: string; count: number }[]
-  findings?: { issue_id: string; severity: string; title: string; root_cause: string; status: string; component: string; residual_risk?: string | null }[]
+  findings?: { issue_id: string; severity: string; title: string; root_cause: string; status: string; component: string; fix?: string | null; residual_risk?: string | null; external_dependency?: string | null }[]
   policy?: { status?: string; missing_fields?: string[]; missing_count?: number; blocked?: boolean }
 }
 
@@ -30,8 +31,33 @@ function StatusPill({ status }: { status?: string }) {
   return <span style={{ color: tone(status), border: `1px solid ${tone(status)}`, borderRadius: RADIUS.pill, padding: '2px 7px', fontSize: TYPE.xs, fontWeight: 800 }}>{status || 'BLOCKED'}</span>
 }
 
+function OperatorActionModal({ finding, onClose }: { finding: NonNullable<Observability['findings']>[number]; onClose: () => void }) {
+  const policy = finding.issue_id === 'CIO-POLICY-001'
+  const plans = finding.issue_id === 'CIO-DECISIONS-001'
+  const href = policy ? '/v3/cio?tab=operator-policy' : plans ? '/v3/cio?tab=cio-now' : '/v3/cio?tab=evidence'
+  const action = policy ? 'Review and ratify policy fields' : plans ? 'Review and disposition open plans' : 'Open evidence and runtime details'
+  return (
+    <div role="dialog" aria-modal="true" data-testid="cio-operator-action-modal" style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.62)', display: 'grid', placeItems: 'center', padding: 20 }}>
+      <div style={{ width: 'min(560px, 100%)', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: RADIUS.md, padding: 20, boxShadow: 'var(--shadow-2)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'start' }}>
+          <div><div style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 800 }}>{finding.issue_id} · OPERATOR ACTION REQUIRED</div><h2 style={{ margin: '6px 0 0', color: 'var(--text0)', fontSize: 18 }}>{finding.title}</h2></div>
+          <button type="button" onClick={onClose} aria-label="Close operator action" style={{ border: 0, background: 'transparent', color: 'var(--text2)', fontSize: 20, cursor: 'pointer' }}>×</button>
+        </div>
+        <div style={{ color: 'var(--text1)', fontSize: 12, lineHeight: 1.5, marginTop: 14 }}><strong>Why:</strong> {finding.root_cause}</div>
+        {finding.fix && <div style={{ color: 'var(--text1)', fontSize: 12, lineHeight: 1.5, marginTop: 8 }}><strong>Workflow:</strong> {finding.fix}</div>}
+        {finding.external_dependency && <div style={{ color: 'var(--amber)', fontSize: 11, marginTop: 10 }}>Requires: {finding.external_dependency}</div>}
+        <div style={{ display: 'flex', gap: 8, marginTop: 18, justifyContent: 'flex-end' }}>
+          <button type="button" onClick={onClose} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Close</button>
+          <a href={href} onClick={onClose} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, textDecoration: 'none' }}>{action}</a>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function CioObservabilityPanel() {
   const { data, loading, error } = useApi<Observability>('/api/v3/cio/observability')
+  const [actionFinding, setActionFinding] = useState<NonNullable<Observability['findings']>[number] | null>(null)
   if (loading && !data) return <div data-testid="cio-observability-loading" style={{ color: 'var(--text2)', padding: '10px 0' }}>Loading CIO operations…</div>
   if (error && !data) return <div data-testid="cio-observability-error" style={{ color: 'var(--red)', padding: '10px 0' }}>CIO operations unavailable: {String(error)}</div>
   const overall = data?.overall || {}
@@ -82,10 +108,11 @@ export default function CioObservabilityPanel() {
         <div style={{ border: '1px solid var(--border)', borderRadius: RADIUS.md, padding: 12, background: 'var(--bg2)' }} data-testid="cio-findings">
           <div style={{ color: 'var(--text0)', fontWeight: 800, fontSize: 12, marginBottom: 8 }}>Remediation and validation</div>
           {!findings.length && <div style={{ color: 'var(--green)', fontSize: 10 }}>No open findings.</div>}
-          {findings.slice(0, 6).map(finding => <div key={finding.issue_id} style={{ borderBottom: '1px solid var(--border-subtle)', padding: '6px 0' }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 10 }}><strong>{finding.issue_id} · {finding.title}</strong><StatusPill status={finding.status === 'FIXED_VALIDATED' ? 'WORKING' : 'DEGRADED'} /></div><div style={{ color: 'var(--text3)', fontSize: 10, marginTop: 3 }}>{finding.root_cause}</div></div>)}
+          {findings.slice(0, 6).map(finding => <div key={finding.issue_id} style={{ borderBottom: '1px solid var(--border-subtle)', padding: '6px 0' }}><div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: 10, alignItems: 'center' }}><strong>{finding.issue_id} · {finding.title}</strong><StatusPill status={finding.status === 'FIXED_VALIDATED' ? 'WORKING' : 'DEGRADED'} /></div><div style={{ color: 'var(--text3)', fontSize: 10, marginTop: 3 }}>{finding.root_cause}</div>{finding.status !== 'FIXED_VALIDATED' && <button type="button" onClick={() => setActionFinding(finding)} style={{ marginTop: 6, padding: '4px 8px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>Open operator workflow</button>}</div>)}
         </div>
       </div>
       <div style={{ color: 'var(--text3)', fontSize: 10 }}>Policy: {fmt(data?.policy?.status)} · Missing fields: {data?.policy?.missing_count ?? 0} · Financial action: false</div>
+      {actionFinding && <OperatorActionModal finding={actionFinding} onClose={() => setActionFinding(null)} />}
     </section>
   )
 }

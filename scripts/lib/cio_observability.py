@@ -190,6 +190,16 @@ def build_observability(*, home: dict[str, Any] | None,
                                  evidence=["/api/v3/cio/brain/policy"],
                                  residual_risk="Capital recommendations remain gated",
                                  external_dependency="Primary operator ratification"))
+    open_plans = _count(cio_now.get("open_plans_count"))
+    if open_plans:
+        findings.append(_finding(
+            "CIO-DECISIONS-001", "MEDIUM", "Open advisory plans require disposition",
+            f"CIO home reports {open_plans} open plan(s); the plans are durable operator work and are not auto-closed",
+            "EXTERNAL_DEPENDENCY", "CIO decision lifecycle",
+            fix="Operator must acknowledge, defer, complete, reject, or re-run each open plan",
+            evidence=["/api/v3/cio/home", "/api/v3/cio/plans"],
+            residual_risk="Decision backlog remains visible until governed disposition",
+            external_dependency="Operator plan disposition"))
     graph_flags = data_health.get("graph_flags") or []
     if graph_flags:
         stale = [f for f in graph_flags if f.get("flag") == "STALE_READER"]

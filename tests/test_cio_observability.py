@@ -1,6 +1,7 @@
 """CIO Desk observability projection is read-only, truthful, and fail-closed."""
 
 from scripts.lib.cio_observability import build_observability
+from scripts.lib.data_store_inventory import writer_reader_graph
 
 
 def _inputs():
@@ -74,3 +75,9 @@ def test_shared_spine_flags_have_root_cause_finding():
     finding = next(row for row in out["findings"] if row["issue_id"] == "CIO-SPINE-001")
     assert "legacy.json" in finding["root_cause"]
     assert "duplicate current-projection aliases" in finding["root_cause"]
+
+
+def test_registry_compatibility_aliases_are_not_runtime_failures():
+    graph = writer_reader_graph()
+    assert graph["flags"] == []
+    assert any(row["store_id"] == "cio.product.current" for row in graph["compatibility_aliases"])

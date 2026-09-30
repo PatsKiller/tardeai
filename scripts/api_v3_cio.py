@@ -2176,6 +2176,7 @@ def get_data_health_v1() -> dict[str, Any]:
             "schema": "DataHealthDashboard@v1",
             "inventory": inv,
             "graph_flags": graph.get("flags"),
+            "compatibility_aliases": graph.get("compatibility_aliases") or [],
             "gui_is_projection": True,
             "authority": AUTHORITY_ADVISORY,
             "memory_behavior_influence": 0,
