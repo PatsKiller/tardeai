@@ -42,8 +42,5 @@ eq('sub cio-brain', resolveEvidenceSubtab('cio-brain'), 'full-brain')
 eq('sub evidence', resolveEvidenceSubtab('evidence'), 'audit')
 eq('sub overview null', resolveEvidenceSubtab('overview'), null)
 
-if (failed) {
-  console.error(`cioHubTabs.test.ts: ${failed} failed`)
-  process.exit(1)
-}
+if (failed) throw new Error(`cioHubTabs.test.ts: ${failed} failed`)
 console.log('cioHubTabs.test.ts: ok')
