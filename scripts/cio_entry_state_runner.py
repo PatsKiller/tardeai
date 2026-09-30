@@ -405,19 +405,6 @@ def send_alerts(result: dict, evidence: dict) -> dict:
     return out
 
 
-def _card_option_reasons(alternatives: dict | None, alt: dict | None) -> list[str]:
-    """Expose the actual option gate facts on the card; never invent a reason."""
-    out: list[str] = []
-    source = alternatives if isinstance(alternatives, dict) else {}
-    out.extend(str(x) for x in (source.get("notes") or []) if x)
-    out.extend(str(x) for x in (alt or {}).get("notes", []) if x)
-    if (alt or {}).get("detail"):
-        out.append(str(alt["detail"]))
-    for row in source.get("alternatives") or []:
-        out.extend(str(x) for x in (row.get("disqualified_by") or []) if x)
-    return list(dict.fromkeys(out))[:5]
-
-
 def cio_card_payload(result: dict, evidence: dict, *, review: dict | None = None) -> dict:
     """Build the shared Telegram CIO card from the canonical entry packet facts."""
     from lib.telegram_rich import cio_entry_alert
@@ -434,12 +421,9 @@ def cio_card_payload(result: dict, evidence: dict, *, review: dict | None = None
                      "target": eq.get("target", item.get("target")),
                      "rr_at_ideal_entry": eq.get("reward_risk_worst_in_zone", result.get("rr")),
                      "rr_at_current_price": eq.get("reward_risk_at_quote", result.get("rr_at_current_price")),
-                     "distance_pct": eq.get("distance_pct", result.get("distance_pct")),
-                     "time_horizon": eq.get("time_horizon") or packet.get("time_horizon") or result.get("time_horizon"),
-                     "first_hard_block": packet.get("first_hard_block") or item.get("first_hard_block"),
                      "catalyst": (packet.get("thesis_indicators") or {}).get("catalyst") or result.get("catalyst"),
                      "options_status": (packet.get("options_alternatives") or {}).get("status") or "not evaluated",
-                     "options_reasons": _card_option_reasons(packet.get("options_alternatives"), packet.get("options_alt")),
+                     "options_reasons": (packet.get("options_alternatives") or {}).get("notes") or [],
                      "thesis": (packet.get("thesis_indicators") or {}).get("drivers", []),
                      "capital_impact": (eq.get("capital") and f"{eq.get('capital')} per share") or "unavailable"})
         alts = (packet.get("options_alternatives") or {}).get("alternatives") or []

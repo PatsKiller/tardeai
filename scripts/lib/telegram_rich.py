@@ -346,24 +346,6 @@ def _card_ratio(value: Any) -> str:
         return "—"
 
 
-def _card_pct(value: Any) -> str:
-    """Format a supplied percentage without turning missing data into a claim."""
-    try:
-        return f"{float(value):+.1f}%"
-    except (TypeError, ValueError):
-        return "—"
-
-
-def _card_text(value: Any, *, limit: int = 240) -> str:
-    """Flatten model/list evidence for Telegram; never leak Python repr syntax."""
-    if value is None:
-        return ""
-    if isinstance(value, (list, tuple, set)):
-        value = " · ".join(str(x).strip() for x in value if str(x).strip())
-    text = " ".join(str(value).split()).strip()
-    return text[:limit].rstrip("+").rstrip()
-
-
 def _card_bar(value: Any, *, inverse: bool = False) -> str:
     """Display-only ten-cell gauge; missing facts stay unavailable."""
     try:
@@ -405,68 +387,47 @@ def cio_entry_alert(item: dict[str, Any]) -> RichMessage:
     try:
         risk = (float(price) - float(stop)) if price is not None and stop is not None else None
         reward = (float(target) - float(price)) if price is not None and target is not None else None
-        # The gauge compares the planned loss and planned gain with one another.
-        # A price-relative gauge made a 3% stop render as "zero risk" and a 13%
-        # target render as "limited reward", which was visually misleading.
-        total = risk + reward if risk is not None and reward is not None else None
-        risk_fraction = min(1.0, max(0.0, risk / total)) if total and risk is not None else None
-        reward_fraction = min(1.0, max(0.0, reward / total)) if total and reward is not None else None
+        risk_fraction = min(1.0, max(0.0, risk / float(price))) if risk is not None and float(price) else None
+        reward_fraction = min(1.0, max(0.0, reward / float(price))) if reward is not None and float(price) else None
     except (TypeError, ValueError, ZeroDivisionError):
         risk_fraction = reward_fraction = None
 
     price_note = item.get("price_note") or ("inside entry zone" if state in {"BUY_READY", "READY"} else None)
     position = "Existing position" if held is True else "New position" if held is False else "Position status unavailable"
     next_action = item.get("next_action") or ("Hold existing; decide whether to add or wait" if held is True else "Review before allocating capital")
-    catalyst = _card_text(item.get("catalyst")) or "Unavailable — research gap"
-    options_status = _card_text(item.get("options_status") or item.get("options_summary")) or "Not evaluated"
-    option_reasons = [_card_text(x, limit=180) for x in (item.get("options_reasons") or []) if _card_text(x)]
-    if option_reasons:
-        options_status += "\nReasons: " + " · ".join(option_reasons[:3])
+    catalyst = item.get("catalyst") or "unavailable"
+    options_status = item.get("options_status") or item.get("options_summary") or "not evaluated"
     review_status = item.get("cio_review_status") or ("REVIEWED" if item.get("cio_review_id") else "UNREVIEWED")
     evidence = [str(x) for x in (item.get("evidence") or []) if x]
-    evidence.extend(_card_text(x) for x in (item.get("options_reasons") or []) if _card_text(x))
+    evidence.extend(str(x) for x in (item.get("options_reasons") or []) if x)
     evidence.extend(str(x) for x in (item.get("exit_ladder") or []) if x)
     if item.get("invalidation"):
         evidence.append(f"Invalidation: {item['invalidation']}")
     if item.get("thesis"):
-        evidence.append(f"Thesis: {_card_text(item['thesis'])}")
+        evidence.append(f"Thesis: {item['thesis']}")
     if item.get("opposing_case"):
         evidence.append(f"Strongest opposing line: {item['opposing_case']}")
     evidence.extend(["CIO review id: " + str(item["cio_review_id"])] if item.get("cio_review_id") else ["CIO review: unreviewed"])
     evidence.append("Advisory only — nothing queued, nothing executed; no order, size or stop is created from this alert.")
 
-    company = _card_text(item.get("company"), limit=100)
-    sector = _card_text(item.get("sector"), limit=80)
-    identity = " · ".join(x for x in (company, sector) if x)
-    thesis = _card_text(item.get("thesis"), limit=220)
-    hard_block_text = _card_text(hard_block, limit=220)
-    hard_block_display = hard_block_text or "No hard block recorded — review incomplete"
-    current_distance = item.get("distance_pct")
-    time_horizon = _card_text(item.get("time_horizon") or item.get("dte"), limit=80)
-
     sections = [
         ("CIO VIEW", [f"{marker} {state.replace('_', ' ')}", f"{marker} {stance}",
                        f"Review: {review_status}", f"Next action: {next_action}"]),
-        ("IDENTITY", [identity or f"{sym} · identity data unavailable"]),
         ("PRICE SETUP", [
             f"Price {_card_money(price)}" + (f" · {price_note}" if price_note else ""),
             f"Entry zone {_card_money(low)}–{_card_money(high)} · stop {_card_money(stop)} · target {_card_money(target)}",
-            f"R:R current {_card_ratio(current_rr)} · ideal-zone {_card_ratio(ideal_rr)}"
-            + (f" · distance {_card_pct(current_distance)}" if current_distance is not None else ""),
+            f"R:R current {_card_ratio(current_rr)} · ideal {_card_ratio(ideal_rr)}",
             f"__CODE__:STOP  ─  ENTRY ZONE  ─  CURRENT  ─  TARGET\n          {_card_money(stop)}     {_card_money(low)}–{_card_money(high)}     {_card_money(price)}     {_card_money(target)}",
         ]),
         ("RISK / REWARD", [
-            f"Risk to stop {_card_money(risk)} · {_card_bar(risk_fraction, inverse=True)}",
-            f"Reward to target {_card_money(reward)} · {_card_bar(reward_fraction)}",
-            f"Expected value: {_card_text(item.get('expected_value')) or 'not provided'}",
+            f"Risk to stop  {_card_bar(risk_fraction, inverse=True)}",
+            f"Reward to target  {_card_bar(reward_fraction)}",
         ]),
-        ("POSITION IMPACT", [position, f"Shares / weight: {item.get('shares') if item.get('shares') is not None else '—'} / {item.get('portfolio_weight') if item.get('portfolio_weight') is not None else '—'}",
+        ("POSITION IMPACT", [position, f"Shares / weight: {item.get('shares') or '—'} / {item.get('portfolio_weight') or '—'}",
                               f"Capital impact: {item.get('capital_impact') or 'unavailable'}", "Sizing: not provided"]),
-        ("CATALYST", [catalyst]),
-        ("THESIS", [thesis or "Not provided — research required"]),
+        ("CATALYST", [str(catalyst)[:300]]),
         ("OPTIONS REVIEW", [str(options_status)[:300]]),
-        ("CIO VERDICT", [f"{marker} {stance}", f"What kills the idea: {hard_block_display}",
-                         f"Time horizon: {time_horizon or 'not provided'}"]),
+        ("CIO VERDICT", [f"{marker} {stance}", f"{hard_block and 'Hard block: ' + str(hard_block) or 'What kills the idea: not identified'}"]),
     ]
     return RichMessage(
         marker=marker,
