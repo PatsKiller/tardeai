@@ -64,9 +64,14 @@ def empty_spine(symbol: str, *, subject_guid: str | None = None) -> dict[str, An
         "by_silo": {s: {"last_read_at": None, "last_write_at": None} for s in sorted(CONSUMER_SILOS)},
         "latest_hermes": {"research_id": None, "result_id": None, "status": None, "as_of": None},
         "latest_operator": {"pending_id": None, "kind": None, "as_of": None},
+        "latest_llm": {"source": None, "model": None, "kind": None, "as_of": None},
+        # Active operator asks remain until a thesis_publish clears/archives them.
+        "operator_asks": [],
         "transparency": {
             "shared_across_silos": True,
-            "note": "All consumer silos MUST read this spine; do not fork private thesis copies",
+            "note": "All consumer silos MUST read this spine; do not fork private thesis copies. "
+                    "LLM curation is CIO-owned contribution (tags llm_research/llm_curation); "
+                    "never a fact source and never replaces house thesis tip.",
         },
     }
 
@@ -104,14 +109,20 @@ KNOWN_TAGS = frozenset({
     "operator_deferred",
     "thesis",
     "llm_research",
+    "llm_curation",
+    "llm_flash",
+    "deepseek",
+    "ollama",
     "desk",
     "watchlist",
     "options",
     "holdings",
     "reentry",
+    "aegis",
     "lifecycle",
     "backfill",
     "canary",
+    "stale_sla",
 })
 
 
@@ -139,8 +150,9 @@ def contribute(
     thesis_patch: dict[str, Any] | None = None,
     hermes: dict[str, Any] | None = None,
     operator: dict[str, Any] | None = None,
+    llm: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Append a contribution from any producer silo; optional thesis/hermes/operator upgrade."""
+    """Append a contribution from any producer silo; optional thesis/hermes/operator/llm upgrade."""
     out = deepcopy(spine)
     silo_n = str(silo or "unknown").strip().lower()
     ts = _now()
@@ -154,6 +166,8 @@ def contribute(
         "refs": list(refs or [])[:20],
         "tags": tag_list,
         "ts": ts,
+        "model": (llm or {}).get("model") if llm else None,
+        "owner": "cio",
     })
     out["contributions"] = out["contributions"][-100:]
     # Union tags onto the spine tip so readers can filter without scanning history.
@@ -187,6 +201,43 @@ def contribute(
             "as_of": operator.get("as_of") or ts,
             "reply_source": operator.get("reply_source"),
         }
+        # Persist operator asks until thesis changes (not last-write tip wipe).
+        asks = list(out.get("operator_asks") or [])
+        ask_row = {
+            "pending_id": operator.get("pending_id"),
+            "kind": operator.get("kind") or kind,
+            "text": (summary or operator.get("text") or "")[:800] or None,
+            "reply_source": operator.get("reply_source"),
+            "ts": ts,
+            "status": "active",
+        }
+        # Dedupe by pending_id when present.
+        pid = str(ask_row.get("pending_id") or "")
+        if pid:
+            asks = [a for a in asks if str((a or {}).get("pending_id") or "") != pid]
+        asks.append(ask_row)
+        out["operator_asks"] = asks[-50:]
+    if llm:
+        out["latest_llm"] = {
+            "source": llm.get("source"),
+            "model": llm.get("model"),
+            "kind": llm.get("kind") or kind,
+            "as_of": llm.get("as_of") or ts,
+            "note": llm.get("note") or "curation_not_fact_source",
+        }
+    # Thesis publish closes active operator asks (memory retained in contributions).
+    if kind in {"thesis_publish", "thesis_backfill"} or "thesis" in tag_list:
+        archived = []
+        still = []
+        for a in list(out.get("operator_asks") or []):
+            if not isinstance(a, dict):
+                continue
+            if a.get("status") == "active":
+                archived.append({**a, "status": "closed_by_thesis", "closed_ts": ts})
+            else:
+                still.append(a)
+        if archived:
+            out["operator_asks"] = (still + archived)[-50:]
     out["as_of"] = ts
     return out
 
@@ -253,6 +304,7 @@ def upsert_research_memory(
     thesis_patch: dict[str, Any] | None = None,
     hermes: dict[str, Any] | None = None,
     operator: dict[str, Any] | None = None,
+    llm: dict[str, Any] | None = None,
     subject_guid: str | None = None,
     issuer_guid: str | None = None,
     path: Path | None = None,
@@ -262,6 +314,8 @@ def upsert_research_memory(
 
     Requires a registry UUID subject_guid (resolved from symbol when omitted).
     Tags accumulate on the spine tip for full-lifecycle memory across producers.
+    LLM rows are CIO-owned contributions; pass thesis_patch=None so curation
+    never replaces the house tip thesis.
     """
     from scripts.lib.identity_carriage import is_registry_guid, resolve_security_identity, stamp_security_fields
 
@@ -297,6 +351,7 @@ def upsert_research_memory(
         thesis_patch=thesis_patch,
         hermes=hermes,
         operator=operator,
+        llm=llm,
     )
     spine["subject_guid"] = cand
     if iss:
@@ -375,20 +430,52 @@ def view_for_silo(
     viewed = mark_read(spine, silo) if silo else spine
     if persist_read_receipt:
         append_spine(viewed, path=path, root=root)
+    # Spine SLA currency (CLASS_SLA_DAYS vs tip as_of) — librarian/desk honesty gate.
+    currency: dict[str, Any] = {"fresh": None, "age_days": None, "sla_days": None}
+    try:
+        from datetime import datetime, timezone
+        from scripts.lib.symbol_thesis_coverage import stale_days_for
+
+        sla_days = int(stale_days_for(str(viewed.get("symbol") or symbol), {}, {}, root=root))
+        currency["sla_days"] = sla_days
+        as_of = str(viewed.get("as_of") or "")
+        if as_of:
+            tip_dt = datetime.fromisoformat(as_of.replace("Z", "+00:00"))
+            if tip_dt.tzinfo is None:
+                tip_dt = tip_dt.replace(tzinfo=timezone.utc)
+            age = (datetime.now(timezone.utc) - tip_dt).total_seconds() / 86400.0
+            currency["age_days"] = round(age, 2)
+            currency["fresh"] = age <= float(sla_days)
+            currency["refuse_fresh_claim"] = not currency["fresh"]
+    except Exception:
+        pass
+    tags = list(viewed.get("tags") or [])
+    if currency.get("fresh") is False and "stale_sla" not in tags:
+        tags = tags + ["stale_sla"]
     return {
         "ok": True,
         "found": True,
         "silo": silo,
         "symbol": viewed.get("symbol"),
         "subject_guid": viewed.get("subject_guid"),
+        "owner": viewed.get("owner") or "cio",
         "thesis": viewed.get("thesis"),
-        "tags": list(viewed.get("tags") or []),
+        "tags": tags,
         "latest_hermes": viewed.get("latest_hermes"),
         "latest_operator": viewed.get("latest_operator"),
+        "latest_llm": viewed.get("latest_llm"),
+        "operator_asks": [
+            a for a in (viewed.get("operator_asks") or [])
+            if isinstance(a, dict) and a.get("status") == "active"
+        ],
         "contribution_count": len(viewed.get("contributions") or []),
         "transparency": viewed.get("transparency"),
         "authority": AUTHORITY,
         "as_of": viewed.get("as_of"),
+        "currency": currency,
+        "spine_fresh": currency.get("fresh"),
+        "spine_sla_days": currency.get("sla_days"),
+        "spine_age_days": currency.get("age_days"),
     }
 
 

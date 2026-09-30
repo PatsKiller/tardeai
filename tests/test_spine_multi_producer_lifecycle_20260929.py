@@ -133,26 +133,87 @@ def test_spine_write_gated_when_flag_off(registry, monkeypatch: pytest.MonkeyPat
     assert out.get("reason") == "CROSS_ASSET_SPINE_off"
 
 
+def test_notify_llm_curation_tags_and_owner(registry, spine_on, tmp_path: Path):
+    from scripts.lib.cross_asset.hooks import notify_llm_curation, notify_thesis_published
+    from scripts.lib.cross_asset.security_research_spine import view_for_silo
+
+    # Seed a house thesis tip first so LLM does not become the tip thesis.
+    notify_thesis_published(
+        {
+            "thesis_id": "sym-nflx",
+            "thesis_version": "sym-nflx@v1",
+            "summary": "House thesis: concentration watch",
+            "linked_symbols": ["NFLX"],
+            "subject_guid": REG,
+            "stance": "WATCH",
+        },
+        root=tmp_path,
+    )
+    out = notify_llm_curation(
+        ["NFLX"],
+        text="LLM rewrite of gathered evidence on NFLX — not a fact.",
+        source="llm_curation",
+        model="deepseek-chat",
+        curated_from=["brave_hits", "hermes_partial"],
+        root=tmp_path,
+    )
+    assert out.get("ok") is True
+    assert out.get("owner") == "cio"
+    assert "llm_curation" in (out.get("tags") or [])
+    assert "llm_research" in (out.get("tags") or [])
+    assert "deepseek" in (out.get("tags") or [])
+    v = view_for_silo("NFLX", "cio", root=tmp_path)
+    assert v.get("found") is True
+    assert v.get("owner") == "cio"
+    assert "llm_curation" in (v.get("tags") or [])
+    assert "llm_research" in (v.get("tags") or [])
+    llm = v.get("latest_llm") or {}
+    assert llm.get("source") == "llm_curation"
+    assert llm.get("model") == "deepseek-chat"
+    # Tip thesis remains house, not LLM rewrite.
+    assert "House thesis" in str((v.get("thesis") or {}).get("summary") or "")
+    assert "LLM rewrite" not in str((v.get("thesis") or {}).get("summary") or "")
+
+
+def test_notify_llm_flash_tag(registry, spine_on, tmp_path: Path):
+    from scripts.lib.cross_asset.hooks import notify_llm_curation
+    from scripts.lib.cross_asset.security_research_spine import view_for_silo
+
+    notify_llm_curation(
+        ["NFLX"],
+        text="Flash answer on NFLX.",
+        source="deepseek_flash",
+        model="deepseek-flash",
+        root=tmp_path,
+    )
+    v = view_for_silo("NFLX", "aegis", root=tmp_path)
+    tags = set(v.get("tags") or [])
+    assert {"llm_research", "llm_flash", "deepseek", "lifecycle"} <= tags
+    assert (v.get("latest_llm") or {}).get("source") == "deepseek_flash"
+
+
 def test_source_gates_multi_producer_wired():
     root = Path(__file__).resolve().parents[1]
-    checks = {
-        "scripts/lib/cross_asset/security_research_spine.py": "upsert_research_memory",
-        "scripts/lib/cross_asset/hooks.py": "notify_operator_desk_result",
-        "scripts/lib/cross_asset/hooks.py": "notify_thesis_published",
-        "scripts/lib/cio_operator_desk_loop.py": "notify_operator_desk_result",
-        "scripts/lib/cio_theses.py": "notify_thesis_published",
-        "scripts/ops/backfill_security_research_spine.py": "upsert_from_hermes",
-    }
-    # dict literal overwrites duplicate keys — check explicitly
     assert "notify_operator_desk_result" in (root / "scripts/lib/cross_asset/hooks.py").read_text()
     assert "notify_thesis_published" in (root / "scripts/lib/cross_asset/hooks.py").read_text()
+    assert "notify_llm_curation" in (root / "scripts/lib/cross_asset/hooks.py").read_text()
     assert "upsert_research_memory" in (root / "scripts/lib/cross_asset/security_research_spine.py").read_text()
     assert "notify_operator_desk_result" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
+    assert "notify_llm_curation" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
+    assert "notify_llm_curation" in (root / "scripts/lib/gap_resolver.py").read_text()
     assert "pending_fulfilled" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
     assert "notify_thesis_published" in (root / "scripts/lib/cio_theses.py").read_text()
     assert "upsert_from_hermes" in (root / "scripts/ops/backfill_security_research_spine.py").read_text()
-    # Live Hermes unit enables the spine flag via drop-in (not Environment= in the unit
-    # file — secret scanner blocks committing Environment=CROSS_ASSET_* lines).
+    assert 'view_for_silo(sym, "aegis"' in (root / "scripts/aegis_synthesis.py").read_text()
+    assert "latest_llm" in (root / "scripts/aegis_synthesis.py").read_text()
+    assert "operator_asks" in (
+        root / "scripts/lib/cross_asset/security_research_spine.py"
+    ).read_text()
+    assert "symbol_thesis_sla" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
+    assert "spine_fresh" in (root / "scripts/lib/cross_asset/hooks.py").read_text()
+    assert "refuse_fresh_claim" in (
+        root / "scripts/lib/cross_asset/security_research_spine.py"
+    ).read_text()
     assert "spine_write_enabled" in (
         root / "scripts/lib/cross_asset/events.py"
     ).read_text()
