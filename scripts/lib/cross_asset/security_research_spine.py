@@ -64,6 +64,8 @@ def empty_spine(symbol: str, *, subject_guid: str | None = None) -> dict[str, An
         "by_silo": {s: {"last_read_at": None, "last_write_at": None} for s in sorted(CONSUMER_SILOS)},
         "latest_hermes": {"research_id": None, "result_id": None, "status": None, "as_of": None},
         "latest_operator": {"pending_id": None, "kind": None, "as_of": None},
+        # Active operator asks remain until a thesis_publish clears/archives them.
+        "operator_asks": [],
         "transparency": {
             "shared_across_silos": True,
             "note": "All consumer silos MUST read this spine; do not fork private thesis copies",
@@ -187,6 +189,35 @@ def contribute(
             "as_of": operator.get("as_of") or ts,
             "reply_source": operator.get("reply_source"),
         }
+        # Persist operator asks until thesis changes (not last-write tip wipe).
+        asks = list(out.get("operator_asks") or [])
+        ask_row = {
+            "pending_id": operator.get("pending_id"),
+            "kind": operator.get("kind") or kind,
+            "text": (summary or operator.get("text") or "")[:800] or None,
+            "reply_source": operator.get("reply_source"),
+            "ts": ts,
+            "status": "active",
+        }
+        # Dedupe by pending_id when present.
+        pid = str(ask_row.get("pending_id") or "")
+        if pid:
+            asks = [a for a in asks if str((a or {}).get("pending_id") or "") != pid]
+        asks.append(ask_row)
+        out["operator_asks"] = asks[-50:]
+    # Thesis publish closes active operator asks (memory retained in contributions).
+    if kind in {"thesis_publish", "thesis_backfill"} or "thesis" in tag_list:
+        archived = []
+        still = []
+        for a in list(out.get("operator_asks") or []):
+            if not isinstance(a, dict):
+                continue
+            if a.get("status") == "active":
+                archived.append({**a, "status": "closed_by_thesis", "closed_ts": ts})
+            else:
+                still.append(a)
+        if archived:
+            out["operator_asks"] = (still + archived)[-50:]
     out["as_of"] = ts
     return out
 
@@ -385,6 +416,10 @@ def view_for_silo(
         "tags": list(viewed.get("tags") or []),
         "latest_hermes": viewed.get("latest_hermes"),
         "latest_operator": viewed.get("latest_operator"),
+        "operator_asks": [
+            a for a in (viewed.get("operator_asks") or [])
+            if isinstance(a, dict) and a.get("status") == "active"
+        ],
         "contribution_count": len(viewed.get("contributions") or []),
         "transparency": viewed.get("transparency"),
         "authority": AUTHORITY,

@@ -119,16 +119,14 @@ def notify_operator_desk_result(
                     artifact_id=result.get("pending_id"),
                     refs=[x for x in [result.get("pending_id"), result.get("reply_source")] if x],
                     tags=tags,
-                    thesis_patch={
-                        "summary": summary,
-                        "state": "POPULATED" if summary else "INSUFFICIENT_DATA",
-                    }
-                    if kind == "answered" and summary
-                    else None,
+                    # Do NOT patch tip thesis from operator text — that overwrote
+                    # house research. Operator asks live in operator_asks until thesis changes.
+                    thesis_patch=None,
                     operator={
                         "pending_id": result.get("pending_id"),
                         "kind": kind,
                         "reply_source": result.get("reply_source"),
+                        "text": summary,
                     },
                     root=root_p,
                 )
