@@ -230,3 +230,17 @@ def test_an_unreadable_star_store_fails_quiet_not_loud():
             raise RuntimeError("no such table")
 
     assert r.starred_symbols(Boom()) == set()
+
+
+def test_held_alert_leads_with_add_decision_and_quote_rr():
+    from scripts.lib import cio_entry_state as ces
+
+    ev = {"symbol": "AXTI", "price": 78.17, "entry_low": 71.5, "entry_high": 74.5,
+          "stop": 67.5, "target": 96.5, "held": True, "catalyst": None}
+    result = ces.evaluate(ev)
+    text = ces.render_operator(result, ev)
+    assert result["rr"] == 3.14
+    assert result["rr_at_current_price"] == 1.72
+    assert text.startswith("🟡 CIO entry — already owned: add decision required: AXTI")
+    assert "not a new position" in text
+    assert "Catalyst: unavailable" in text
