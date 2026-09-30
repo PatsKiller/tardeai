@@ -243,6 +243,12 @@ def main() -> int:
         help="override path to agent_number_grounding_slo.json",
     )
     ap.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="also write the JSON report (with the SLO verdict) to this file atomically: the lane's run receipt",
+    )
+    ap.add_argument(
         "--rescore",
         action="store_true",
         help="re-run the current checker on stored rows that carry their supplied text (read-only)",
@@ -257,6 +263,14 @@ def main() -> int:
     if args.check_slo:
         slo_eval = evaluate_slo(report, args.slo_config)
         report["slo"] = slo_eval
+    if args.out is not None:
+        from datetime import datetime, timezone  # noqa: PLC0415
+        report["measured_at"] = datetime.now(timezone.utc).isoformat()
+        out_path = args.out if args.out.is_absolute() else PROJ / args.out
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = out_path.with_suffix(out_path.suffix + ".tmp")
+        tmp.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+        tmp.replace(out_path)
     if args.json:
         print(json.dumps(report, indent=2))
     else:

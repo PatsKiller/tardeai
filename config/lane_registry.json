@@ -2753,6 +2753,22 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "persistent-state/logs/finviz_momentum_scalp_scan.log 2026-09-28: 20 runs, every one reason=skipped_finviz_refresh, none at quarter-hours; momentum_scalp_early_lane_runner.py FINVIZ_TIMEOUT=240 vs crontab `timeout 150`; tests/test_momentum_scalp_lane_refresh_20260928.py.",
       "note": "Every 5 min 06:00-12:00 ET: Finviz scalp-screen refresh (if receipt >15 min old) -> signal sync -> proposal gen -> validation fast path (paper sandbox)."
+    },
+    {
+      "lane_id": "agent-number-grounding-slo",
+      "owner": "platform",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "40 18 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/report_agent_number_grounding.py --days 7 --check-slo --out data/runtime/agent_number_grounding_slo_last_run.json >> logs/agent_number_grounding_slo.log 2>&1",
+        "match": "scripts/report_agent_number_grounding.py --days 7 --check-slo"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/agent_number_grounding_slo_last_run.json"
+      },
+      "note": "Daily measurement of the RATIFIED agent number-grounding SLO (config/agent_number_grounding_slo.json, ratified 2026-09-30). Read-only DB query; writes one JSON receipt; exits 1 on breach (logged, never blocks an answer). No LLM spend."
     }
   ],
   "undeclared_baseline": [

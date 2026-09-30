@@ -55,3 +55,15 @@ def test_slo_fail_when_above_floor(tmp_path):
 
 def test_slo_config_exists():
     assert (ROOT / "config" / "agent_number_grounding_slo.json").is_file()
+
+
+def test_the_ratified_slo_is_scheduled_with_a_receipt():
+    """Ratified 2026-09-30: a target nobody measures is decoration, so it has a lane and a receipt."""
+    import json as _json
+    root = Path(__file__).resolve().parents[1]
+    slo = _json.loads((root / "config" / "agent_number_grounding_slo.json").read_text(encoding="utf-8"))
+    assert slo["status"] == "RATIFIED" and slo["floors"]["max_soft_unsupported_share"] == 0.15
+    lanes = {l["lane_id"]: l for l in _json.loads((root / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]}
+    lane = lanes["agent-number-grounding-slo"]
+    assert lane["state"] == "ACTIVE" and lane["output_signal"]["path"] == slo["schedule"]["receipt"]
+    assert "--check-slo" in lane["scheduler"]["expression"] and "--out" in lane["scheduler"]["expression"]
