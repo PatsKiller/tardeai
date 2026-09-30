@@ -469,7 +469,9 @@ def classify_research_failure_message(message: str | None) -> str:
         return "LLM_GLOBAL_DAILY_USD_CAP_EXHAUSTED"
     if "cost_cap_exceeded" in low:
         return "COST_CAP_EXCEEDED"
-    if "invalid_symbol" in low or "skipped: not found" in low:
+    if "model_pi_guard" in low or "prompt/secret exfiltration" in low:
+        return "MODEL_PI_GUARD_REFUSAL"
+    if "invalid_symbol" in low or "skipped: not found" in low or "1-char" in low or "ambiguous" in low:
         return "INVALID_SYMBOL"
     if "data gap" in low or "data_gap" in low:
         return "DATA_GAP_SKIP"
@@ -527,6 +529,16 @@ def get_agent_research_ops() -> dict[str, Any]:
     """
     cap_raw = str(os.environ.get("LLM_GLOBAL_DAILY_USD_CAP") or "").strip()
     cap_status = "CONFIGURED" if cap_raw else "MISSING"
+    if cap_status == "MISSING":
+        # The host cap file is canonical for worker processes. Dashboard
+        # requests often do not inherit the worker's environment, so do not
+        # report a false MISSING state when the governed cap is present.
+        try:
+            from scripts.lib.llm_spend import configured_global_cap
+            if (configured_global_cap() or 0) > 0:
+                cap_status = "CONFIGURED"
+        except Exception:
+            pass
     out: dict[str, Any] = {
         "ok": True,
         "as_of": _now_iso(),

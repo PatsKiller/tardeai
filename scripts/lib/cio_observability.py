@@ -97,8 +97,30 @@ def build_observability(*, home: dict[str, Any] | None,
     policy_blocked = str(policy.get("status") or "").upper() in {"POLICY_REQUIRED", "BLOCKED"}
     policy_blocker = ", ".join(str(x) for x in (policy.get("missing_fields") or [])[:4]) or None
     research_available = bool(research_ops) and bool(research_ops.get("ok")) and "error" not in queue
-    research_failures = _count(queue.get("failed_today"))
-    research_stale = _count(queue.get("stale_or_superseded")) > 0
+    raw_research_failures = _count(queue.get("failed_today"))
+    failure_classes = research_ops.get("failure_classes_today") or {}
+    # Invalid symbols and PI-guard refusals are controlled fail-closed
+    # outcomes: they prove the gates are working, not that Hermes is down.
+    # Keep raw counts visible, but only provider/config failures degrade the
+    # operational scorecard.
+    non_operational_failure_classes = {"INVALID_SYMBOL", "MODEL_PI_GUARD_REFUSAL"}
+    if failure_classes:
+        research_failures = sum(
+            _count(n) for name, n in failure_classes.items()
+            if name not in non_operational_failure_classes
+        )
+        if str(research_ops.get("global_cap_status") or "").upper() == "CONFIGURED":
+            research_failures -= sum(
+                _count(n) for name, n in failure_classes.items()
+                if name in {"LLM_GLOBAL_DAILY_USD_CAP_MISSING", "LLM_GLOBAL_DAILY_USD_CAP_EXHAUSTED"}
+            )
+        research_failures = max(0, research_failures)
+    else:
+        research_failures = raw_research_failures
+    # deferred/superseded is historical backlog telemetry, not proof that a
+    # currently active research job is stale. A producer may provide an
+    # explicit stale_queued count when that distinction is known.
+    research_stale = _count(queue.get("stale_queued")) > 0
     decisions_available = bool(home) and bool(home.get("ok", True)) and isinstance(cio_now, dict)
     learning_available = bool(brain) and bool(brain.get("ok", True)) and isinstance(cockpit, dict)
     evidence_available = bool(evidence) or (bool(home) and bool(home.get("ok")))
@@ -125,7 +147,11 @@ def build_observability(*, home: dict[str, Any] | None,
             blocker=(research_ops.get("error") or research_ops.get("dominant_failure_class")),
             owner="Hermes / research queue", impact="Research-backed thesis and decision latency",
             metrics={"queued": _count(queue.get("queued")), "running": _count(by_status.get("running")),
-                     "completed": _count(queue.get("completed_today")), "failed": research_failures,
+                     "completed": _count(queue.get("completed_today")), "failed": raw_research_failures,
+                     "operational_failures": research_failures,
+                     "failure_classes": failure_classes,
+                     "global_cap_status": research_ops.get("global_cap_status"),
+                     "stale_queued": _count(queue.get("stale_queued")),
                      "stale_or_superseded": _count(queue.get("stale_or_superseded"))},
             drill=["/v3/cio?tab=universe-theses"],
         ),

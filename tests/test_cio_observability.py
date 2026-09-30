@@ -2,6 +2,7 @@
 
 from scripts.lib.cio_observability import build_observability
 from scripts.lib.data_store_inventory import writer_reader_graph
+from scripts.api_v3_cio import classify_research_failure_message
 
 
 def _inputs():
@@ -81,3 +82,25 @@ def test_registry_compatibility_aliases_are_not_runtime_failures():
     graph = writer_reader_graph()
     assert graph["flags"] == []
     assert any(row["store_id"] == "cio.product.current" for row in graph["compatibility_aliases"])
+
+
+def test_research_failure_classes_preserve_safety_and_data_root_causes():
+    assert classify_research_failure_message("model_pi_guard:sk-management") == "MODEL_PI_GUARD_REFUSAL"
+    assert classify_research_failure_message("Skipped: in symbol_profiles but 1-char — ambiguous") == "INVALID_SYMBOL"
+    assert classify_research_failure_message("LLM error: COST_CONFIGURATION_INVALID: global daily USD cap required") == "LLM_GLOBAL_DAILY_USD_CAP_MISSING"
+
+
+def test_controlled_research_refusals_do_not_fake_provider_degradation():
+    inputs = _inputs()
+    inputs["research_ops"]["global_cap_status"] = "CONFIGURED"
+    inputs["research_ops"]["failure_classes_today"] = {
+        "INVALID_SYMBOL": 5,
+        "MODEL_PI_GUARD_REFUSAL": 2,
+    }
+    inputs["research_ops"]["queue"]["failed_today"] = 7
+    inputs["research_ops"]["queue"]["stale_or_superseded"] = 0
+    out = build_observability(**inputs, now="2026-09-30T12:00:00+00:00")
+    research = next(s for s in out["scorecards"] if s["id"] == "hermes_/_research")
+    assert research["status"] == "WORKING"
+    assert research["metrics"]["failed"] == 7
+    assert research["metrics"]["operational_failures"] == 0

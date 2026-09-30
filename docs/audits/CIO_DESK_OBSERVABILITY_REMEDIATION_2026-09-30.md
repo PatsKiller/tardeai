@@ -19,6 +19,7 @@ Date: 2026-09-30
 | CIO-OBS-008 | Intentional compatibility aliases were misclassified as runtime graph failures | The inventory treated migration aliases as active stale readers and duplicate projections | Compatibility aliases are now reported as migration metadata; only real graph defects remain runtime flags | Inventory/observability tests; direct projection retest | FIXED_VALIDATED | Legacy aliases remain until the migration is complete, but no active stale reader was found |
 | CIO-OBS-009 | Operator-required remediation lacked an explicit page workflow | Findings named external dependencies but did not provide a guided operator handoff | Added an observability action modal linking policy ratification, plan disposition, and evidence workflows; added policy confirmation modal before recording values | Frontend design/UI/contrast/build checks passed | FIXED_VALIDATED | Operator must still provide policy values and dispositions |
 | CIO-OBS-010 | PostgreSQL fallback was active | The configured PostgreSQL 17 main cluster on `127.0.0.1:5432` was stopped; the application correctly fell back to JSON | Started the existing `postgresql@17-main` service; verified `trade_ai` read-only connection and CIO projection | `DB_OK ('trade_ai', 'trade_ai', 5432)`; elevated CIO projection retest completed | FIXED_VALIDATED | Hermes has separate provider/cap failures; no database fallback was observed in the elevated retest |
+| CIO-OBS-011 | Hermes showed a false cap/provider degradation | Workers and the CIO page only read the inherited cap environment; the canonical host cap file was present at `2.00`, and historical skipped/refused rows were counted as provider failures | Workers and CIO health now resolve the canonical cap file; controlled invalid-symbol/PI refusals and historical superseded rows remain visible but do not fake a live provider outage | 7 Hermes observability tests; live projection: cap `CONFIGURED`, operational failures `0`, Hermes `WORKING` | FIXED_VALIDATED | One historical cap-missing event remains in today’s audit counts; it is not a current configuration failure |
 
 ## Accepted limitations / external dependencies
 
@@ -41,6 +42,7 @@ Date: 2026-09-30
 - Operator workflow UI build: passed design guard, UI standards, contrast, TypeScript, and Vite build.
 - Remaining external actions are explicitly routed in-page: policy ratification, open-plan disposition, and PostgreSQL runtime restoration.
 - PostgreSQL restoration evidence: configured main cluster is accepting connections on `127.0.0.1:5432`; database `trade_ai` and role `trade_ai` verified by read-only query.
+- Hermes restoration evidence: canonical cap resolves to `CONFIGURED`; live scorecard is `WORKING` with `operational_failures=0`; raw invalid-symbol and PI-guard events remain disclosed.
 - Command Center v3 build: passed design guard, UI standards, contrast, TypeScript, and Vite production build.
 - No broker, trading, order, or capital mutation was performed.
 
