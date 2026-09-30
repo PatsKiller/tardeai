@@ -1751,6 +1751,7 @@ GATES = [
             "tests/test_memory_prod_cutover_20260924.py",
             "tests/test_record_bridge_pin_soak.py",
             "tests/test_agent_number_grounding_slo_20260918.py",
+            "tests/test_agent_number_grounding_derivations_20260930.py",
             "tests/test_research_quality_escalate_20260918.py",
             # Main landed these without gating — coverage gate treated them as NEW.
             "tests/test_agent_router_trade_write_gate_20260918.py",

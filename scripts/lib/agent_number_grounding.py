@@ -89,6 +89,28 @@ _LEG_RE = {
 #: rate; AGENT_NUMBER_GROUNDING_MODE=record flags without changing anything.
 DEFAULT_MODE = "enforce"
 #: Tokens that look like numbers with a k/b suffix but name account types.
+#: Labelled current price anywhere in the prompt (scan, Hermes, quote blocks). The two
+#: positional anchors are the first dollar figures on a price line, which in the agent
+#: context is the "Recent prices:" series (daily closes), so the live price an agent
+#: actually reasons from was never an anchor (SNDK $1740.23, BE $288.635, MCK ~$866 on
+#: 2026-09-30). At most _LABELLED_ANCHOR_LIMIT extra anchors, and only from explicit labels.
+_LABELLED_PRICE_RE = re.compile(
+    r"(?i)\b(?:(?:current|last|live|latest)\s+(?:price|quote|px|trade)\b\s*(?:is|was|of|at|[:=@])?"
+    r"|price\s+now\b\s*(?:is|[:=@])?|price\b\s*(?:is|was|of|at|[:=@]))"
+    r"\s*\$\s?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)")
+_LABELLED_ANCHOR_LIMIT = 2
+#: Plan levels an agent measures distance to (stop, target, support, resistance, entry).
+_LEVEL_LINE_RE = re.compile(r"(?i)\b(stop|target|tgt|support|resistance|entry)\b")
+_LEVEL_LIMIT = 8
+#: Stop-rule percents ("Min 5%, max 15% distance") that give price × (1 − pct) levels.
+_STOP_PCT_LIMIT = 4
+#: Labelled money constants whose difference an agent reports ("IRMAA $103,000 − 22%
+#: ceiling $94,300 = $8,700 headroom"). Only lines naming a threshold-like quantity.
+_CONSTANT_LINE_RE = re.compile(r"(?i)\b(threshold|ceiling|bracket|irmaa|room|target|limit|cap|income|gap)\b")
+_CONSTANT_LIMIT = 6
+#: "float_m < 0.5" in a prompt means 0.5 million; an agent writing "0.5M" quotes it.
+_UNIT_NAME_RE = re.compile(r"(?i)\b[a-z][a-z0-9]*_(m|mm|k|b)\b[^0-9\n]{0,6}(\d+(?:\.\d+)?)")
+_UNIT_NAME_MULT = {"m": 1e6, "mm": 1e6, "k": 1e3, "b": 1e9}
 _ACCOUNT_TOKENS = frozenset({"401k", "403b", "457b", "401K", "403B", "457B"})
 _CONFIDENCE_WORDS = (
     "confidence", "conf ", "conf:", "conf=",
@@ -98,6 +120,12 @@ _CONFIDENCE_WORDS = (
 )
 
 _SUFFIX = {"k": 1e3, "m": 1e6, "b": 1e9}
+#: A rate unit after a slash ("$45,600/yr", "$1.20/sh") does not make the figure part of a
+#: code. Measured 2026-09-30: the old look-ahead rejected any number followed by "/", so the
+#: prompt's "$45,600/yr" was read as "$45" and every agent correctly quoting $45,600,
+#: $55,000 or $11,000 was flagged (about 40 of 255 soft rows in 7 days). A fraction such
+#: as "1/2" or a date "9/30" is still rejected: only these units are accepted.
+_RATE_UNITS = r"(?:yr|year|mo|month|wk|week|day|d|sh|share|contract|hr|hour|annum)"
 #: A minus sign counts as part of a code only when glued to a word or digit
 #: ("gpt-5.4", "2026-09-13"). After a space or colon it is a sign: "SMA20: -26.84%"
 #: must yield 26.84, or an agent correctly quoting it is flagged (dry run 2026-09-13).
@@ -107,7 +135,7 @@ _NUM_RE = re.compile(
     r"(?P<num>\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)"
     r"(?P<suffix>[kKmMbB](?![A-Za-z]))?"
     r"(?P<pct>\s?%)?"
-    r"(?![A-Za-z0-9_/]|\.\d|-[A-Za-z])"
+    r"(?![A-Za-z0-9_]|/(?!" + _RATE_UNITS + r"\b)|\.\d|-[A-Za-z])"
 )
 
 
@@ -168,12 +196,25 @@ def supplied_values(text: str) -> tuple[list[float], list[float]]:
     text_s = str(text or "")
     atr_explicit = bool(_ATR_EXPLICIT_RE.search(text_s))
     r_mult_context = atr_explicit or bool(_R_MULT_RE.search(text_s))
+    levels: list[float] = []
+    stop_pcts: list[float] = []
+    constants: list[float] = []
     for line in text_s.splitlines():
         price_line = bool(_PRICE_LINE_RE.search(line))
         atr_line = bool(_ATR_EXPLICIT_RE.search(line))
+        level_line = bool(_LEVEL_LINE_RE.search(line))
+        constant_line = bool(_CONSTANT_LINE_RE.search(line))
+        stop_line = "stop" in line.lower()
         for n in extract_numbers(line):
             v = n["value"]
             direct.update((v, v * 100.0, v / 100.0))
+            if n["is_pct"] and stop_line and 0 < v < 100 and v not in stop_pcts and len(stop_pcts) < _STOP_PCT_LIMIT:
+                stop_pcts.append(v)
+            if n["is_dollar"] and v > 0:
+                if level_line and v not in levels and len(levels) < _LEVEL_LIMIT:
+                    levels.append(v)
+                if constant_line and v not in constants and len(constants) < _CONSTANT_LIMIT:
+                    constants.append(v)
             # Only harvest ATR candidates from lines that name ATR.
             if atr_line and not n["is_pct"] and 0 < v < 200:
                 if v not in atr_candidates and len(atr_candidates) < 6:
@@ -184,8 +225,40 @@ def supplied_values(text: str) -> tuple[list[float], list[float]]:
                 dollars.append(v)
             if price_line and v not in anchors and len(anchors) < _ANCHOR_LIMIT:
                 anchors.append(v)
+    # Unit-named prompt constants ("float_m < 0.5") in the unit the agent writes (0.5M).
+    for um in _UNIT_NAME_RE.finditer(text_s):
+        try:
+            direct.add(float(um.group(2)) * _UNIT_NAME_MULT[um.group(1).lower()])
+        except (ValueError, KeyError):
+            pass
+    positional = list(anchors)
+    for lm in _LABELLED_PRICE_RE.finditer(text_s):
+        if len(anchors) >= len(positional) + _LABELLED_ANCHOR_LIMIT:
+            break
+        try:
+            v = float(lm.group(1).replace(",", ""))
+        except ValueError:
+            continue
+        if v > 0 and v not in anchors:
+            anchors.append(v)
+            direct.update((v, v * 100.0, v / 100.0))
+    labelled = anchors[len(positional):]
     derived: set[float] = set()
+    # Labelled anchors pair only with plan levels, not with every dollar figure: the
+    # all-pairs product is what makes a checker support anything by chance.
+    for a in labelled:
+        for b in levels:
+            if a != b:
+                derived.update((abs(a - b), abs(a - b) / b * 100.0, abs(a - b) / a * 100.0))
+    # Stop-rule levels: price × (1 − pct) and price × (1 + pct) ("5% minimum stop").
     for a in anchors:
+        for p in stop_pcts:
+            derived.update((a * (1 - p / 100.0), a * (1 + p / 100.0)))
+    # Differences between labelled money constants (headroom, gap).
+    for i, c1 in enumerate(constants):
+        for c2 in constants[i + 1:]:
+            derived.add(abs(c1 - c2))
+    for a in positional:
         for b in dollars:
             if a != b:
                 derived.update((abs(a - b), abs(a - b) / b * 100.0, abs(a - b) / a * 100.0))
@@ -201,7 +274,7 @@ def supplied_values(text: str) -> tuple[list[float], list[float]]:
     # than every pairwise ratio.
     if atr_explicit:
         for atr in atr_candidates:
-            for px in anchors[:_ANCHOR_LIMIT]:
+            for px in anchors:
                 if px > 0:
                     derived.add(atr / px * 100.0)
                     # Distance to an ATR-multiple stop, as a percent of price:
@@ -219,6 +292,24 @@ def supplied_values(text: str) -> tuple[list[float], list[float]]:
                 legs[name] = float(m.group(1))
             except ValueError:
                 pass
+    stops = []
+    for sm in _LEG_RE["stop"].finditer(text_s):
+        try:
+            sv = float(sm.group(1))
+        except ValueError:
+            continue
+        if sv > 0 and sv not in stops and len(stops) < 4:
+            stops.append(sv)
+    if atr_explicit:
+        for a in anchors:
+            for st_v in stops:
+                for atr in atr_candidates[:3]:
+                    if atr > 0 and a != st_v:
+                        derived.add(abs(a - st_v) / atr)
+    for a in labelled:
+        for st_v in stops:
+            if a > 0 and a != st_v:
+                derived.add(abs(a - st_v) / a * 100.0)
     if len(legs) == 3:
         e, st, tg = legs["entry"], legs["stop"], legs["target"]
         risk = e - st
@@ -343,6 +434,40 @@ def _answer_texts(parsed: dict[str, Any]) -> list[str]:
     return texts
 
 
+#: 2026-09-30: stored rows kept only a prompt hash, so the checker could never be re-run
+#: offline and every claim about "why this token was flagged" was inferred. The supplied
+#: text is now stored compressed beside the verdict (tunable cap; 0 disables).
+SUPPLIED_STORE_MAX_CHARS_ENV = "AGENT_NUMBER_GROUNDING_STORE_MAX_CHARS"
+
+
+def supplied_record(supplied_text: str) -> dict[str, Any]:
+    """sha256 always; the zlib+base64 text when the cap allows (the rescore input)."""
+    import base64
+    import hashlib
+    import zlib
+    raw = str(supplied_text or "")
+    out: dict[str, Any] = {"supplied_sha256": hashlib.sha256(raw.encode("utf-8")).hexdigest()}
+    cap = int(_env_float(SUPPLIED_STORE_MAX_CHARS_ENV, 60000))
+    if cap > 0 and len(raw) <= cap:
+        out["supplied_z"] = base64.b64encode(zlib.compress(raw.encode("utf-8"), 9)).decode("ascii")
+    elif cap > 0:
+        out["supplied_z_skipped"] = f"supplied text {len(raw)} chars > cap {cap}"
+    return out
+
+
+def supplied_text_from_record(report: dict[str, Any]) -> Optional[str]:
+    """Inverse of supplied_record; None when the row predates storage or was over the cap."""
+    import base64
+    import zlib
+    z = (report or {}).get("supplied_z")
+    if not z:
+        return None
+    try:
+        return zlib.decompress(base64.b64decode(z)).decode("utf-8")
+    except Exception:  # noqa: BLE001 — a damaged row is simply not rescorable
+        return None
+
+
 def apply_number_grounding(
     parsed: dict[str, Any],
     supplied_text: str,
@@ -358,6 +483,7 @@ def apply_number_grounding(
                         "reason": "the prompt text was not available to check against"}
     report = check_grounding(_answer_texts(parsed), supplied_text)
     report["mode"] = m
+    report.update(supplied_record(supplied_text))
     report["demoted"] = False
     # soft_unsupported is honesty-only (no demotion); ungrounded demotes in enforce.
     if report["verdict"] != "ungrounded" or m != "enforce":
