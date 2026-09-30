@@ -992,6 +992,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/diligence/current/TEST_EVIDENCE.md` | Test Evidence | review_required | OK | `16101d5caded` |
 | `docs/diligence/current/VALIDATION_TAXONOMY_AUDIT.md` | Validation Taxonomy Audit | review_required | OK | `c4d648f98e32` |
 | `docs/evidence/DEFENSE_SECTORS_RECONCILIATION_2026-07-26.md` | Defense/Sectors Production Reconciliation (Lane C) | review_required | OK | `78404d5eadf6` |
+| `docs/features/CIO_PORTFOLIO_AWARE_ENTRY_ALERTS_20260930.md` | CIO Portfolio-Aware Entry Alerts | review_required | OK | `6ef2c626824c` |
 | `docs/features/PORTFOLIO_REENTRY_DESK.md` | Portfolio Re-Entry Intelligence | review_required | OK | `37641ce48db4` |
 | `docs/features/PORTFOLIO_REENTRY_OPERATOR_GUIDE.md` | Portfolio Re-Entry and Rotation Intelligence — Operator Guide | review_required | OK | `8f24c213e510` |
 | `docs/features/PORTFOLIO_REENTRY_REQUIREMENTS_v2.md` | Portfolio Re-Entry — Requirements Contract v2 | review_required | OK | `937860c28dcf` |
