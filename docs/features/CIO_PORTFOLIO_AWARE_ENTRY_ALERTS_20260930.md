@@ -76,7 +76,8 @@ The alert and packet show, when the source provides it:
 - time horizon or DTE when available; and
 - CIO review status. The status is `UNREVIEWED` unless a review ID exists.
 
-Missing data stays missing. A deterministic house-rule verdict is not a CIO
+Shares and portfolio weight are observational context only; they never imply a
+recommended quantity. Missing data stays missing. A deterministic house-rule verdict is not a CIO
 review and cannot populate the CIO commentary field.
 
 ## Source lineage
