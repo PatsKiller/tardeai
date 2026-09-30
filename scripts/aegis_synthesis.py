@@ -139,6 +139,32 @@ def synthesize_symbol_briefs(symbols: list[str]) -> int:
         if not has_data:
             continue
 
+        # CADI: read CIO-owned SecurityResearchSpine (same tip every silo sees).
+        spine_block = ""
+        try:
+            from scripts.lib.cross_asset.security_research_spine import view_for_silo
+            from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
+            v = view_for_silo(sym, "aegis", root=PROJECT_ROOT) or {}
+            th = thesis_fields_for_symbol(sym, root=PROJECT_ROOT, silo="aegis") or {}
+            if v.get("found") or th.get("security_research_spine"):
+                tip = (v.get("thesis") or {}).get("summary") or th.get("thesis_summary") or ""
+                tags = ",".join(v.get("tags") or th.get("spine_tags") or [])
+                asks = v.get("operator_asks") or []
+                ask_bits = "; ".join(
+                    str((a or {}).get("text") or "")[:80] for a in asks[:3] if a
+                )
+                spine_block = (
+                    f"\nShared SecurityResearchSpine (CIO-owned, silo=aegis): "
+                    f"found={bool(v.get('found'))} fresh={th.get('fresh')} "
+                    f"sla_days={th.get('sla_days')} tags=[{tags}] "
+                    f"as_of={v.get('as_of') or th.get('spine_as_of')}\n"
+                    f"Tip thesis: {str(tip)[:400]}\n"
+                )
+                if ask_bits:
+                    spine_block += f"Active operator asks: {ask_bits}\n"
+        except Exception:
+            spine_block = ""
+
         # RAG pre-context for this symbol
         rag_block = ""
         try:
@@ -164,7 +190,7 @@ def synthesize_symbol_briefs(symbols: list[str]) -> int:
 Price: ${price}, RSI: {rsi}, SMA200: {sma200}%, Beta: {snap.get('beta','?')}, 52wk from high: {snap.get('pct_from_52wk_high','?')}%
 Social: {mentions} mentions, sentiment {sent_score}, spike={spike}
 Recent news: {news_titles or 'none'}
-{rag_block}
+{spine_block}{rag_block}
 {confluence_block}
 
 Answer in 3 short lines:

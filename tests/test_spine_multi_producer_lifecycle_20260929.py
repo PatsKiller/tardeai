@@ -151,6 +151,11 @@ def test_source_gates_multi_producer_wired():
     assert "pending_fulfilled" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
     assert "notify_thesis_published" in (root / "scripts/lib/cio_theses.py").read_text()
     assert "upsert_from_hermes" in (root / "scripts/ops/backfill_security_research_spine.py").read_text()
+    assert 'view_for_silo(sym, "aegis"' in (root / "scripts/aegis_synthesis.py").read_text()
+    assert "operator_asks" in (
+        root / "scripts/lib/cross_asset/security_research_spine.py"
+    ).read_text()
+    assert "symbol_thesis_sla" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
     # Live Hermes unit enables the spine flag via drop-in (not Environment= in the unit
     # file — secret scanner blocks committing Environment=CROSS_ASSET_* lines).
     assert "spine_write_enabled" in (

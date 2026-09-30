@@ -1215,14 +1215,42 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
             from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
 
             th = thesis_fields_for_symbol(sym, root=PROJECT_ROOT) or {}
-            if th.get("has_current_symbol_thesis") or th.get("thesis_state"):
+            if th.get("has_current_symbol_thesis") or th.get("thesis_state") or th.get("security_research_spine"):
                 facts["theses"][sym] = {
                     "thesis_state": th.get("thesis_state"),
                     "portfolio_role": th.get("portfolio_role"),
                     "thesis_summary": (th.get("thesis_summary") or "")[:400] or None,
                     "why_owned_or_watched": (th.get("why_owned_or_watched") or "")[:300] or None,
                     "symbol_thesis_version": th.get("symbol_thesis_version"),
+                    # SLA / spine honesty for the answerer (not a hard block yet).
+                    "fresh": th.get("fresh"),
+                    "sla_days": th.get("sla_days"),
+                    "thesis_age_days": th.get("thesis_age_days"),
+                    "spine_as_of": th.get("spine_as_of"),
+                    "security_research_spine": bool(th.get("security_research_spine")),
+                    "spine_tags": list(th.get("spine_tags") or [])[:12],
                 }
+                if th.get("fresh") is False:
+                    soft_gaps.append({
+                        "domain": "symbol_thesis_sla",
+                        "symbol": sym,
+                        "field": "fresh",
+                        "reason": (
+                            f"{sym} thesis/spine past class SLA "
+                            f"(age={th.get('thesis_age_days')}d sla={th.get('sla_days')}d) — "
+                            "do not claim currency; refresh or label STALE"
+                        ),
+                        "gap_type": "research",
+                    })
+                # Active operator asks on the shared spine (persist until thesis changes).
+                try:
+                    from scripts.lib.cross_asset.security_research_spine import view_for_silo
+                    spine_view = view_for_silo(sym, "cio", root=PROJECT_ROOT) or {}
+                    asks = list(spine_view.get("operator_asks") or [])
+                    if asks:
+                        facts.setdefault("operator_asks", {})[sym] = asks[:5]
+                except Exception:
+                    pass
             else:
                 soft_gaps.append({
                     "domain": "symbol_thesis", "symbol": sym, "field": "thesis",
