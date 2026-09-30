@@ -123,6 +123,8 @@ KNOWN_TAGS = frozenset({
     "backfill",
     "canary",
     "stale_sla",
+    "sector",
+    "sector_subject",
 })
 
 

@@ -298,6 +298,31 @@ def gather_options_house_facts(
         "source": "options_desk_latest_cache",
         "live_chain": False,
     }
+    # Attach shared SecurityResearchSpine tip (CIO-owned) for named symbols.
+    if syms:
+        spine_by: dict[str, Any] = {}
+        try:
+            from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
+            from pathlib import Path
+            root = Path(__file__).resolve().parents[2]
+            for sym in syms[:8]:
+                th = thesis_fields_for_symbol(sym, root=root, silo="options_desk") or {}
+                if th.get("security_research_spine") or th.get("thesis_summary") or th.get("latest_llm"):
+                    spine_by[sym] = {
+                        "security_research_spine": bool(th.get("security_research_spine")),
+                        "thesis_summary": (th.get("thesis_summary") or "")[:400] or None,
+                        "fresh": th.get("fresh"),
+                        "spine_fresh": th.get("spine_fresh"),
+                        "spine_tags": list(th.get("spine_tags") or [])[:12],
+                        "latest_llm": th.get("latest_llm"),
+                        "operator_asks": list(th.get("operator_asks") or [])[:3] or None,
+                    }
+                    if sym in per and isinstance(per[sym], dict):
+                        per[sym]["spine"] = spine_by[sym]
+        except Exception:
+            spine_by = {}
+        if spine_by:
+            out["security_research_spine"] = spine_by
     # Slice B — scoped options memory (does not flip global MBI).
     if syms:
         try:

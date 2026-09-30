@@ -287,6 +287,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_AS_IS_2026-09-29-1939.md` | CIO Persistent Agent — AS-IS (2026-09-29 19:39 ET) | review_required | OK | `07e2b102bc2b` |
 | `docs/architecture/CIO_AS_IS_2026-09-29-2004.md` | CIO Persistent Agent — AS-IS (2026-09-29 20:04 ET) | review_required | OK | `f0043af29a85` |
 | `docs/architecture/CIO_AS_IS_2026-09-29-2012.md` | CIO Persistent Agent — AS-IS (2026-09-29 20:12 ET) | review_required | OK | `b1eb14274b27` |
+| `docs/architecture/CIO_AS_IS_2026-09-29-2107.md` | CIO Persistent Agent — AS-IS (2026-09-29 21:07 ET) | review_required | OK | `14bdcf1ae7ff` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1352.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 13:52 ET | archive_superseded | OK | `c6fd02492610` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1401.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:01 ET | review_required | OK | `d3da6ba1132c` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1436.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:36 ET | review_required | OK | `a8e36ace8e6b` |
@@ -300,6 +301,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_FUTURE_2026-09-29-1939.md` | CIO Persistent Agent — FUTURE (full maturity) | review_required | OK | `b8ad2a758a8b` |
 | `docs/architecture/CIO_FUTURE_2026-09-29-2004.md` | CIO Persistent Agent — FUTURE (full maturity) | review_required | OK | `00675cf638ea` |
 | `docs/architecture/CIO_FUTURE_2026-09-29-2012.md` | CIO Persistent Agent — FUTURE (full maturity) | review_required | OK | `ad6fc7f36d99` |
+| `docs/architecture/CIO_FUTURE_2026-09-29-2107.md` | CIO Persistent Agent — FUTURE (2026-09-29 21:07 ET) | review_required | OK | `45ec50e87677` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `2abbbd77884e` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-final.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 final) | review_required | OK | `5b412d2266d6` |
@@ -317,6 +319,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_GAP_2026-09-29-1939.md` | CIO Persistent Agent — AS-IS vs FUTURE GAP (2026-09-29 19:39 ET) | review_required | OK | `b0e0d0b65c5d` |
 | `docs/architecture/CIO_GAP_2026-09-29-2004.md` | CIO Persistent Agent — AS-IS vs FUTURE GAP (2026-09-29 20:04 ET) | review_required | OK | `ebc9de082827` |
 | `docs/architecture/CIO_GAP_2026-09-29-2012.md` | CIO Persistent Agent — AS-IS vs FUTURE GAP (2026-09-29 20:12 ET) | review_required | OK | `50d7a846e726` |
+| `docs/architecture/CIO_GAP_2026-09-29-2107.md` | CIO Persistent Agent — GAP (2026-09-29 21:07 ET) | review_required | OK | `a9c72c2363e1` |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
 | `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | OK | `9a7681fff8f2` |
@@ -344,6 +347,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-20-1445.md` | Honest maturity assessment — 2026-09-20 14:45 ET (amended 2026-09-21) | review_required | OK | `24cd6d6edd4b` |
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-21-1905.md` | Where this actually stands — 2026-09-21, 19:05 ET | review_required | MISSING HEADER | `0d6be8ffe087` |
 | `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-29-1840.md` | Honest maturity assessment — persistent agent across silos | review_required | OK | `eca6fbcfb6d9` |
+| `docs/architecture/HONEST_MATURITY_ASSESSMENT_2026-09-29-2107.md` | Honest maturity assessment — residual gap closure (2026-09-29 21:07 ET) | review_required | OK | `f94bfafd05b8` |
 | `docs/architecture/HYBRID_EVIDENCE_REFRESH_AND_HERMES_BRIDGE_2026-08-23.md` | Hybrid Evidence Refresh and Hermes Bridge | review_required | OK | `9c55a507faab` |
 | `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-1600.md` | LLM Cost Governance AS-IS — 2026-09-20 16:00 ET | archive_superseded | OK | `c33d84747e79` |
 | `docs/architecture/LLM_COST_GOVERNANCE_AS_IS_2026-09-20-2100.md` | LLM Cost Governance AS-IS — 2026-09-20 21:00 ET | review_required | OK | `ae7ab963993b` |

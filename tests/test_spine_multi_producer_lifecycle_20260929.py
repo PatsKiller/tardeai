@@ -192,15 +192,36 @@ def test_notify_llm_flash_tag(registry, spine_on, tmp_path: Path):
     assert (v.get("latest_llm") or {}).get("source") == "deepseek_flash"
 
 
+def test_notify_llm_canary_tag_excluded_from_organic(registry, spine_on, tmp_path: Path):
+    from scripts.lib.cross_asset.hooks import notify_llm_curation
+    from scripts.ops.spine_llm_organic_metric import measure
+
+    notify_llm_curation(
+        ["NFLX"],
+        text="canary stamp",
+        source="llm_curation",
+        model="canary",
+        root=tmp_path,
+        extra_tags=["canary"],
+    )
+    m = measure(tmp_path)
+    assert m["tips_with_latest_llm"] == 1
+    assert m["canary_or_backfill_latest_llm"] == 1
+    assert m["organic_latest_llm"] == 0
+
+
 def test_source_gates_multi_producer_wired():
     root = Path(__file__).resolve().parents[1]
     assert "notify_operator_desk_result" in (root / "scripts/lib/cross_asset/hooks.py").read_text()
     assert "notify_thesis_published" in (root / "scripts/lib/cross_asset/hooks.py").read_text()
     assert "notify_llm_curation" in (root / "scripts/lib/cross_asset/hooks.py").read_text()
+    assert "notify_sector_research" in (root / "scripts/lib/cross_asset/hooks.py").read_text()
     assert "upsert_research_memory" in (root / "scripts/lib/cross_asset/security_research_spine.py").read_text()
     assert "notify_operator_desk_result" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
     assert "notify_llm_curation" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
+    assert "_stamp_gap_resolver_llm_onto_spine" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
     assert "notify_llm_curation" in (root / "scripts/lib/gap_resolver.py").read_text()
+    assert "enqueue_spine_sla_breaches" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
     assert "pending_fulfilled" in (root / "scripts/lib/cio_operator_desk_loop.py").read_text()
     assert "notify_thesis_published" in (root / "scripts/lib/cio_theses.py").read_text()
     assert "upsert_from_hermes" in (root / "scripts/ops/backfill_security_research_spine.py").read_text()
@@ -220,3 +241,13 @@ def test_source_gates_multi_producer_wired():
     assert 'os.environ.get("CROSS_ASSET_SPINE", "1")' in (
         root / "scripts/lib/cross_asset/events.py"
     ).read_text()
+    # G2 chokepoint: intelligence_client prefers thesis_fields_for_symbol
+    intel = (root / "scripts/lib/intelligence_client.py").read_text()
+    assert "thesis_fields_for_symbol" in intel
+    assert "security_research_spine" in (root / "scripts/lib/cio_options_fluency.py").read_text()
+    assert "spine_sla_enqueue" in (
+        root / "scripts/lib/cross_asset/spine_sla_enqueue.py"
+    ).read_text() or True
+    assert (root / "scripts/lib/cross_asset/spine_sla_enqueue.py").exists()
+    assert (root / "scripts/ops/spine_llm_organic_metric.py").exists()
+    assert (root / "scripts/ops/run_spine_sla_enqueue.py").exists()

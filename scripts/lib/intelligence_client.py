@@ -301,6 +301,19 @@ def default_loaders(root: Path | None = None, env: dict | None = None) -> Loader
         return out.get("record") if out and out.get("ok") else None
 
     def thesis(symbol: str) -> dict | None:
+        # Prefer shared SecurityResearchSpine overlay (CIO tip) over silo-local store copy.
+        try:
+            from scripts.lib.symbol_thesis_attach import thesis_fields_for_symbol
+            fields = thesis_fields_for_symbol(str(symbol), root=root)
+            if fields and (
+                fields.get("security_research_spine")
+                or fields.get("has_current_symbol_thesis")
+                or fields.get("thesis_summary")
+                or fields.get("thesis_state")
+            ):
+                return fields
+        except Exception:
+            pass
         CIOThesisStore = _lib("cio_theses").CIOThesisStore
         symbol_thesis_id = _lib("symbol_thesis_coverage").symbol_thesis_id
         cio = _cio_dir(root, env)
