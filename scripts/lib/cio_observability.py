@@ -172,7 +172,9 @@ def build_observability(*, home: dict[str, Any] | None,
             _status(available=bool(serving), blocked=bool(serving) and serving.get("pin_match") is False),
             value="PIN MATCH" if serving.get("pin_match") else "PIN UNVERIFIED",
             source="/api/v3/cio/brain", last_success=serving.get("process_started_at"),
-            cadence="served process", blocker="served pin mismatch" if serving.get("pin_match") is False else None,
+            cadence="served process",
+            blocker=("served pin mismatch" if serving.get("pin_match") is False
+                     else None if serving else "serving freshness envelope unavailable"),
             owner="Release/runtime platform", impact="Trust in the served CIO projection",
             metrics={"loaded_pin_sha": serving.get("loaded_pin_sha"), "current_pin_sha": serving.get("current_pin_sha")},
             drill=["/v3/cio?tab=evidence"],
@@ -188,6 +190,25 @@ def build_observability(*, home: dict[str, Any] | None,
                                  evidence=["/api/v3/cio/brain/policy"],
                                  residual_risk="Capital recommendations remain gated",
                                  external_dependency="Primary operator ratification"))
+    graph_flags = data_health.get("graph_flags") or []
+    if graph_flags:
+        stale = [f for f in graph_flags if f.get("flag") == "STALE_READER"]
+        duplicate = [f for f in graph_flags if f.get("flag") == "DUPLICATE_CURRENT_PROJECTION_ALIASES"]
+        details = []
+        if stale:
+            details.append("stale reader compatibility names: " + ", ".join(
+                sorted({name for row in stale for name in (row.get("filenames") or [])})))
+        if duplicate:
+            details.append("duplicate current-projection aliases: " + ", ".join(
+                sorted({str(row.get("store_id")) for row in duplicate})))
+        findings.append(_finding(
+            "CIO-SPINE-001", "MEDIUM", "Shared Spine graph has compatibility drift",
+            "; ".join(details) or "Writer/reader graph reports unresolved topology flags",
+            "ACCEPTED_LIMITATION", "persistence / identity spine",
+            fix="Migrate remaining readers to canonical store IDs, then remove legacy aliases",
+            evidence=["/api/v3/cio/brain/data-health"],
+            residual_risk="Legacy readers may resolve stale filenames or duplicate current projections",
+            external_dependency="Repository-wide reader migration"))
     if _count(cockpit.get("outcomes_due")) > 0 and _count((learning.get("outcomes") or {}).get("matured")) == 0:
         findings.append(_finding("CIO-LEARNING-001", "HIGH", "Outcomes due but none matured",
                                  "Due outcomes have not reached the maturation stage in the current projection",

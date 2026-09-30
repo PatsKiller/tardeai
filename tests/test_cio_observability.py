@@ -53,3 +53,24 @@ def test_missing_projection_fails_closed_without_mutation():
     assert out["overall"]["status"] == "BLOCKED"
     assert all(row["status"] == "BLOCKED" for row in out["scorecards"])
     assert out["financial_action"] is False
+
+
+def test_unverified_serving_envelope_is_explained():
+    inputs = _inputs()
+    inputs["brain"].pop("_serving")
+    out = build_observability(**inputs, now="2026-09-30T12:00:00+00:00")
+    platform = next(row for row in out["scorecards"] if row["id"] == "platform_/_pin")
+    assert platform["status"] == "BLOCKED"
+    assert platform["blocker"] == "serving freshness envelope unavailable"
+
+
+def test_shared_spine_flags_have_root_cause_finding():
+    inputs = _inputs()
+    inputs["data_health"]["graph_flags"] = [
+        {"store_id": "cio.product.current", "flag": "STALE_READER", "filenames": ["legacy.json"]},
+        {"store_id": "cio.product.current", "flag": "DUPLICATE_CURRENT_PROJECTION_ALIASES"},
+    ]
+    out = build_observability(**inputs, now="2026-09-30T12:00:00+00:00")
+    finding = next(row for row in out["findings"] if row["issue_id"] == "CIO-SPINE-001")
+    assert "legacy.json" in finding["root_cause"]
+    assert "duplicate current-projection aliases" in finding["root_cause"]

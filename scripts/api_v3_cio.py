@@ -46,11 +46,15 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SCRIPTS_ROOT = PROJECT_ROOT / "scripts"
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
 
 
 def _operator_policy_store() -> Path:
@@ -672,9 +676,22 @@ def get_agent_research_ops() -> dict[str, Any]:
 def get_cio_observability() -> dict[str, Any]:
     """Build the read-only CIO Desk health/workflow projection."""
     from scripts.lib.cio_observability import build_observability
+    from scripts.lib.current_pin_integrity import collect_process_freshness
 
     home = get_cio_home()
     brain = get_cio_brain_v1()
+    # The HTTP response wrapper stamps _serving after this function returns.
+    # The observability projection itself still needs the same read-only
+    # freshness evidence so its Platform / Pin scorecard is truthful when
+    # called directly or tested outside the HTTP wrapper.
+    if not isinstance(brain.get("_serving"), dict):
+        freshness = collect_process_freshness()
+        brain["_serving"] = {
+            "process_started_at": freshness.get("process_started_at"),
+            "loaded_pin_sha": freshness.get("loaded_pin_sha"),
+            "current_pin_sha": freshness.get("current_pin_sha"),
+            "pin_match": bool(freshness.get("ok")),
+        }
     research_ops = get_agent_research_ops()
     data_health = get_data_health_v1()
     return build_observability(
