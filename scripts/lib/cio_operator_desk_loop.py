@@ -1222,22 +1222,36 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
                     "thesis_summary": (th.get("thesis_summary") or "")[:400] or None,
                     "why_owned_or_watched": (th.get("why_owned_or_watched") or "")[:300] or None,
                     "symbol_thesis_version": th.get("symbol_thesis_version"),
-                    # SLA / spine honesty for the answerer (not a hard block yet).
+                    # SLA / spine honesty for the answerer.
                     "fresh": th.get("fresh"),
                     "sla_days": th.get("sla_days"),
                     "thesis_age_days": th.get("thesis_age_days"),
                     "spine_as_of": th.get("spine_as_of"),
+                    "spine_fresh": th.get("spine_fresh"),
+                    "spine_sla_days": th.get("spine_sla_days"),
                     "security_research_spine": bool(th.get("security_research_spine")),
                     "spine_tags": list(th.get("spine_tags") or [])[:12],
+                    "latest_llm": th.get("latest_llm"),
                 }
-                if th.get("fresh") is False:
+                llm = th.get("latest_llm")
+                if isinstance(llm, dict) and (llm.get("source") or llm.get("model")):
+                    facts.setdefault("latest_llm", {})[sym] = {
+                        "source": llm.get("source"),
+                        "model": llm.get("model"),
+                        "kind": llm.get("kind"),
+                        "as_of": llm.get("as_of"),
+                        "owner": "cio",
+                        "note": llm.get("note") or "curation_not_fact_source",
+                    }
+                if th.get("fresh") is False or th.get("spine_fresh") is False:
                     soft_gaps.append({
                         "domain": "symbol_thesis_sla",
                         "symbol": sym,
                         "field": "fresh",
                         "reason": (
                             f"{sym} thesis/spine past class SLA "
-                            f"(age={th.get('thesis_age_days')}d sla={th.get('sla_days')}d) — "
+                            f"(age={th.get('thesis_age_days') or th.get('spine_age_days')}d "
+                            f"sla={th.get('sla_days') or th.get('spine_sla_days')}d) — "
                             "do not claim currency; refresh or label STALE"
                         ),
                         "gap_type": "research",
@@ -1249,6 +1263,16 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
                     asks = list(spine_view.get("operator_asks") or [])
                     if asks:
                         facts.setdefault("operator_asks", {})[sym] = asks[:5]
+                    tip_llm = spine_view.get("latest_llm")
+                    if isinstance(tip_llm, dict) and (tip_llm.get("source") or tip_llm.get("model")):
+                        facts.setdefault("latest_llm", {}).setdefault(sym, {
+                            "source": tip_llm.get("source"),
+                            "model": tip_llm.get("model"),
+                            "kind": tip_llm.get("kind"),
+                            "as_of": tip_llm.get("as_of"),
+                            "owner": "cio",
+                            "note": tip_llm.get("note") or "curation_not_fact_source",
+                        })
                 except Exception:
                     pass
             else:
@@ -1261,7 +1285,6 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
                 "domain": "symbol_thesis", "symbol": sym, "field": "thesis",
                 "reason": f"{sym} thesis attach failed", "gap_type": "research",
             })
-
     # The freeform path had the SAME defect as the reentry composer: it put the
     # global pipeline counters into TRADE_AI_FACTS, so the model was handed
     # "2502 rows exist somewhere" as a fact about whatever was asked. Fixing
@@ -3978,6 +4001,39 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
     """The branch's answer, then the dossier; a pill says who wrote each part."""
     cur = _curate_from_evidence_core(operator_text, evidence)
     avail = (evidence or {}).get("available") or {}
+    # Stamp LLM-produced curation onto shared spine (CIO-owned; tagged; not tip thesis).
+    try:
+        src = str(cur.get("source") or "")
+        llm_sources = {
+            "deepseek_flash",
+            "freeform_flash",
+            "llm_curation",
+            "subject_flash",
+        }
+        if src in llm_sources or src.startswith("llm_"):
+            syms = [str(s).upper() for s in (avail.get("subject_symbols") or []) if s]
+            if not syms:
+                cards = avail.get("reentry_symbol_cards") or {}
+                if isinstance(cards, dict):
+                    syms = [str(s).upper() for s in cards.keys() if s]
+            if not syms:
+                theses = avail.get("theses") or evidence.get("theses") or {}
+                if isinstance(theses, dict):
+                    syms = [str(s).upper() for s in theses.keys() if s]
+            if not syms:
+                intent = evidence.get("intent") or {}
+                if isinstance(intent, dict):
+                    syms = [str(s).upper() for s in (intent.get("symbols") or []) if s]
+            if syms:
+                from scripts.lib.cross_asset.hooks import notify_llm_curation
+                notify_llm_curation(
+                    syms,
+                    text=str(cur.get("text") or "")[:800],
+                    source=src,
+                    model=cur.get("model"),
+                )
+    except Exception:
+        pass
     dossier = avail.get("subject_dossier_text")
     src = str(cur.get("source") or "")
     if not dossier or src in ("runtime_meta", "unclear_clarifier"):

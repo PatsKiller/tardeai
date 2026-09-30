@@ -843,6 +843,20 @@ def _v_llm_curation(gap: DataGap, entry: dict[str, Any], ctx: Context) -> Vector
         "as_of": _iso(ctx.now()),
         "note": "curation of gathered evidence; not a fact source",
     }
+    # Stamp onto SecurityResearchSpine — CIO-owned, tagged, never tip thesis.
+    try:
+        from scripts.lib.cross_asset.hooks import notify_llm_curation
+        syms = list(gap.symbols) or ([gap.subject] if gap.subject and gap.subject != "BOOK" else [])
+        if syms:
+            notify_llm_curation(
+                [str(s).upper() for s in syms if s],
+                text=text,
+                source="llm_curation",
+                model=model,
+                curated_from=sorted(evidence.keys()),
+            )
+    except Exception:
+        pass
     return VectorResult("partial", answer=answer, as_of=answer["as_of"], provider=provider, model=model,
                         detail=f"curated {len(evidence)} evidence keys")
 

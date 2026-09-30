@@ -153,15 +153,26 @@ def synthesize_symbol_briefs(symbols: list[str]) -> int:
                 ask_bits = "; ".join(
                     str((a or {}).get("text") or "")[:80] for a in asks[:3] if a
                 )
+                llm = v.get("latest_llm") or th.get("latest_llm") or {}
+                llm_bits = ""
+                if isinstance(llm, dict) and (llm.get("source") or llm.get("model")):
+                    llm_bits = (
+                        f"Latest LLM curation (CIO-owned, not a fact source): "
+                        f"source={llm.get('source')} model={llm.get('model')} "
+                        f"as_of={llm.get('as_of')}\n"
+                    )
                 spine_block = (
                     f"\nShared SecurityResearchSpine (CIO-owned, silo=aegis): "
                     f"found={bool(v.get('found'))} fresh={th.get('fresh')} "
-                    f"sla_days={th.get('sla_days')} tags=[{tags}] "
+                    f"spine_fresh={th.get('spine_fresh')} "
+                    f"sla_days={th.get('sla_days') or th.get('spine_sla_days')} tags=[{tags}] "
                     f"as_of={v.get('as_of') or th.get('spine_as_of')}\n"
                     f"Tip thesis: {str(tip)[:400]}\n"
                 )
                 if ask_bits:
                     spine_block += f"Active operator asks: {ask_bits}\n"
+                if llm_bits:
+                    spine_block += llm_bits
         except Exception:
             spine_block = ""
 

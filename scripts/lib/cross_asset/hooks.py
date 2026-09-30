@@ -49,10 +49,15 @@ def notify_research_contribution(
     refs: list[str] | None = None,
     tags: Iterable[str] | None = None,
     thesis_patch: dict[str, Any] | None = None,
+    llm: dict[str, Any] | None = None,
     subject_guid: str | None = None,
     root: Path | str | None = None,
 ) -> dict[str, Any]:
-    """Generic multi-producer spine write (LLM / desk / any research artifact)."""
+    """Generic multi-producer spine write (LLM / desk / any research artifact).
+
+    Owner is always CIO on the tip. LLM curation must pass thesis_patch=None
+    so model prose never replaces the house thesis tip.
+    """
     try:
         from scripts.lib.cross_asset.events import spine_write_enabled
         from scripts.lib.cross_asset.security_research_spine import upsert_research_memory
@@ -74,11 +79,65 @@ def notify_research_contribution(
             refs=refs,
             tags=tags,
             thesis_patch=thesis_patch,
+            llm=llm,
             subject_guid=subject_guid,
             root=root_p,
         )
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": f"{type(exc).__name__}:{exc}"[:160]}
+
+
+def notify_llm_curation(
+    symbols: list[str] | None,
+    *,
+    text: str | None,
+    source: str,
+    model: str | None = None,
+    curated_from: list[str] | None = None,
+    root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Stamp LLM curation / flash onto each named security — CIO-owned, tagged, not a fact source.
+
+    Tags: llm_research + llm_curation (or llm_flash) + provider (deepseek/ollama) + lifecycle.
+    Never patches tip thesis.
+    """
+    syms = [str(s).upper() for s in (symbols or []) if s]
+    if not syms or not (text or "").strip():
+        return {"ok": True, "skipped": True, "reason": "no_symbols_or_text"}
+    src = str(source or "llm_curation").strip().lower()
+    tags = ["llm_research", "lifecycle"]
+    if "flash" in src:
+        tags.append("llm_flash")
+    else:
+        tags.append("llm_curation")
+    model_l = str(model or "").lower()
+    if "deepseek" in src or "deepseek" in model_l:
+        tags.append("deepseek")
+    if "ollama" in src or "ollama" in model_l or "gemma" in model_l:
+        tags.append("ollama")
+    outs = []
+    for sym in syms[:12]:
+        outs.append(
+            notify_research_contribution(
+                sym,
+                silo="cio",
+                kind=f"llm_{src}"[:48],
+                summary=str(text)[:800],
+                artifact_id=f"llm:{src}:{model or 'unknown'}",
+                refs=[x for x in [src, model, *(curated_from or [])[:8]] if x],
+                tags=tags,
+                thesis_patch=None,
+                llm={
+                    "source": src,
+                    "model": model,
+                    "kind": "llm_curation",
+                    "note": "curation_of_gathered_evidence_not_a_fact_source",
+                },
+                root=root,
+            )
+        )
+    ok_n = sum(1 for o in outs if o.get("ok"))
+    return {"ok": ok_n > 0, "written": ok_n, "symbols": syms[:12], "owner": "cio", "tags": tags, "results": outs}
 
 
 def notify_operator_desk_result(
@@ -217,6 +276,42 @@ def overlay_thesis_fields_from_spine(
     out["spine_as_of"] = view.get("as_of")
     out["spine_silo"] = silo
     out["spine_tags"] = list(view.get("tags") or [])
+    out["latest_llm"] = view.get("latest_llm")
+    out["operator_asks"] = list(view.get("operator_asks") or [])
+    # Spine SLA: reuse symbol-thesis CLASS_SLA_DAYS against tip as_of.
+    try:
+        from datetime import datetime, timezone
+        from scripts.lib.symbol_thesis_coverage import stale_days_for
+
+        sla_days = int(stale_days_for(str(symbol), {}, {}, root=root_p))
+        out["spine_sla_days"] = sla_days
+        as_of = str(view.get("as_of") or "")
+        age_days = None
+        if as_of:
+            raw = as_of.replace("Z", "+00:00")
+            tip_dt = datetime.fromisoformat(raw)
+            if tip_dt.tzinfo is None:
+                tip_dt = tip_dt.replace(tzinfo=timezone.utc)
+            age_days = (datetime.now(timezone.utc) - tip_dt).total_seconds() / 86400.0
+        out["spine_age_days"] = round(age_days, 2) if age_days is not None else None
+        spine_fresh = age_days is None or age_days <= float(sla_days)
+        out["spine_fresh"] = spine_fresh
+        out["spine_sla_days"] = sla_days
+        # Librarian/desk hard honesty: stale spine tip ⇒ not fresh for answers.
+        if spine_fresh is False:
+            out["fresh"] = False
+            tags = list(out.get("spine_tags") or [])
+            if "stale_sla" not in tags:
+                tags.append("stale_sla")
+            out["spine_tags"] = tags
+            # Prefer spine age when overlay owns the tip.
+            if age_days is not None:
+                out["thesis_age_days"] = round(age_days, 2)
+            out["sla_days"] = sla_days
+        elif spine_fresh is True and out.get("fresh") is None:
+            out["fresh"] = True
+    except Exception:
+        out.setdefault("spine_fresh", None)
     return out
 
 

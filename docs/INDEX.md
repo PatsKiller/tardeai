@@ -313,7 +313,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_GAP_2026-09-20-1445.md` | CIO / AEC GAP — AS-IS vs FUTURE — 2026-09-20 14:45 ET (amended 2026-09-21) | review_required | OK | `c99951d0cdb9` |
 | `docs/architecture/CIO_GAP_2026-09-29-1840.md` | CIO Persistent Agent — AS-IS vs FUTURE GAP (2026-09-29 18:40 ET) | review_required | OK | `caa0bafa14cf` |
 | `docs/architecture/CIO_GAP_2026-09-29-1939.md` | CIO Persistent Agent — AS-IS vs FUTURE GAP (2026-09-29 19:39 ET) | review_required | OK | `b0e0d0b65c5d` |
-| `docs/architecture/CIO_GAP_2026-09-29-2004.md` | CIO Persistent Agent — AS-IS vs FUTURE GAP (2026-09-29 20:04 ET) | review_required | OK | `2b00edfb76e7` |
+| `docs/architecture/CIO_GAP_2026-09-29-2004.md` | CIO Persistent Agent — AS-IS vs FUTURE GAP (2026-09-29 20:04 ET) | review_required | OK | `ebc9de082827` |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
 | `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | OK | `9a7681fff8f2` |
