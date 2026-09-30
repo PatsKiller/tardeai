@@ -229,7 +229,11 @@ def run_cycle(
             # OUTCOME edge on the hourly timer (1h). The falsifier text still
             # names the 7d strategic-spine contradiction window; due_at is the
             # schedule-settlement clock so EXPIRED can land unattended.
-            due = when + timedelta(hours=1)
+            # Due at the TOP of the next hour, not now+1h. 2026-09-30: with due = when+1h a
+            # commitment minted at 14:00:02.1 was checked by the 15:00:00.5 fire, one second
+            # early, stayed INSUFFICIENT, and the hour after was superseded — 131 of 257
+            # minted commitments were orphaned without ever settling (about 12 a day).
+            due = when.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
             commitment = mint_commitment_from_view(
                 view.to_dict(),
                 due_at=due.isoformat().replace("+00:00", "Z"),

@@ -68,6 +68,11 @@ def is_cash_decision(decision: dict[str, Any]) -> bool:
     return False
 
 
+#: Declared entity types that are never price-resolvable (mirrors
+#: outcome_resolution.NON_SECURITY_ENTITY_TYPES minus cash, which has its own branch).
+NON_PRICE_ENTITY_TYPES = frozenset({"GOAL", "PORTFOLIO"})
+
+
 def canonical_checkpoint_subject(decision: dict[str, Any]) -> dict[str, Any]:
     """Stable subject for checkpoint identity. Never mints a security_guid.
 
@@ -93,8 +98,25 @@ def canonical_checkpoint_subject(decision: dict[str, Any]) -> dict[str, Any]:
             "scope": str(scope),
             "never_minted_security_guid": True,
         }
-    guid = identity_safe_subject(decision)
     lineage = decision_lineage_id(decision)
+    # A portfolio GOAL / PORTFOLIO decision has no price outcome. 2026-09-30: cio_run goal
+    # wakes passed entity_type GOAL, this function dropped it and stamped UNRESOLVED
+    # (subject freshness:BOOK), so 7,171 checkpoints in 7 days were scheduled to end as
+    # NOT_PRICE_RESOLVABLE/no_security_subject — indistinguishable from a real identity gap.
+    # Keeping the declared type lets the resolver label them entity_type_goal honestly.
+    declared = str(decision.get("entity_type") or "").upper()
+    if declared in NON_PRICE_ENTITY_TYPES:
+        scope = decision.get("subject_id") or decision.get("portfolio_scope") or lineage
+        return {
+            "entity_type": declared,
+            "subject_id": f"{declared}:{scope}",
+            "subject_guid": None,
+            "ticker_guid_is_not_security": True,
+            "lineage_id": lineage,
+            "subject_key": None,
+            "never_minted_security_guid": True,
+        }
+    guid = identity_safe_subject(decision)
     out = {
         "entity_type": "SECURITY" if guid else "UNRESOLVED",
         "subject_id": guid or f"UNRESOLVED:{lineage}",
@@ -189,7 +211,10 @@ def enrich_checkpoint(
     existing_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     now = now or _now()
-    ck = schedule_outcome_checkpoint(str(decision.get("decision_id") or ""), horizon, existing=existing_ids)
+    # plan_id was never passed, so every row said plan_binding "unbound" even when the decision
+    # (Hermes completions, cio_lineage.record_hermes_completion) carried its plan_id.
+    ck = schedule_outcome_checkpoint(str(decision.get("decision_id") or ""), horizon, existing=existing_ids,
+                                     plan_id=(str(decision.get("plan_id")) if decision.get("plan_id") else None))
     semantic = semantic_checkpoint_key(decision, horizon)
     subject = canonical_checkpoint_subject(decision)
     material_gen = checkpoint_material_generation(decision)

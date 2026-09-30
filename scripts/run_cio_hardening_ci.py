@@ -2416,6 +2416,7 @@ GATES = [
         "instrument_belief_20260925",
         [
             "tests/test_checkpoint_subject_binding_20260925.py",
+            "tests/test_outcome_settlement_20260930.py",
             "tests/test_outcome_resolution.py",
             "tests/test_cio_instrument_record.py",
             # Slice 2: beliefs on the record (rail + writer) and the mutation
