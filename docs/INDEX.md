@@ -286,6 +286,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_AS_IS_2026-09-29-1840.md` | CIO Persistent Agent — AS-IS (2026-09-29 18:40 ET) | review_required | OK | `6c45aa6eb26c` |
 | `docs/architecture/CIO_AS_IS_2026-09-29-1939.md` | CIO Persistent Agent — AS-IS (2026-09-29 19:39 ET) | review_required | OK | `07e2b102bc2b` |
 | `docs/architecture/CIO_AS_IS_2026-09-29-2004.md` | CIO Persistent Agent — AS-IS (2026-09-29 20:04 ET) | review_required | OK | `f0043af29a85` |
+| `docs/architecture/CIO_AS_IS_2026-09-29-2012.md` | CIO Persistent Agent — AS-IS (2026-09-29 20:12 ET) | review_required | OK | `b1eb14274b27` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1352.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 13:52 ET | archive_superseded | OK | `c6fd02492610` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1401.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:01 ET | review_required | OK | `d3da6ba1132c` |
 | `docs/architecture/CIO_FUTURE_2026-09-19-1436.md` | CIO / AEC FUTURE — full maturity target — 2026-09-19 14:36 ET | review_required | OK | `a8e36ace8e6b` |
@@ -298,6 +299,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_FUTURE_2026-09-29-1840.md` | CIO Persistent Agent — FUTURE (full maturity) | review_required | OK | `9d489f204e84` |
 | `docs/architecture/CIO_FUTURE_2026-09-29-1939.md` | CIO Persistent Agent — FUTURE (full maturity) | review_required | OK | `b8ad2a758a8b` |
 | `docs/architecture/CIO_FUTURE_2026-09-29-2004.md` | CIO Persistent Agent — FUTURE (full maturity) | review_required | OK | `00675cf638ea` |
+| `docs/architecture/CIO_FUTURE_2026-09-29-2012.md` | CIO Persistent Agent — FUTURE (full maturity) | review_required | OK | `ad6fc7f36d99` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY.md` | CIO Agent — FULL MATURITY TARGET | review_required | OK | `2abbbd77884e` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-ceiling.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 live ceiling) | review_required | OK | `2ffcc8e19322` |
 | `docs/architecture/CIO_FUTURE_STATE_FULL_MATURITY_2026-09-09-final.md` | CIO Agent — FULL MATURITY TARGET (2026-09-09 final) | review_required | OK | `5b412d2266d6` |
@@ -314,6 +316,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/CIO_GAP_2026-09-29-1840.md` | CIO Persistent Agent — AS-IS vs FUTURE GAP (2026-09-29 18:40 ET) | review_required | OK | `caa0bafa14cf` |
 | `docs/architecture/CIO_GAP_2026-09-29-1939.md` | CIO Persistent Agent — AS-IS vs FUTURE GAP (2026-09-29 19:39 ET) | review_required | OK | `b0e0d0b65c5d` |
 | `docs/architecture/CIO_GAP_2026-09-29-2004.md` | CIO Persistent Agent — AS-IS vs FUTURE GAP (2026-09-29 20:04 ET) | review_required | OK | `ebc9de082827` |
+| `docs/architecture/CIO_GAP_2026-09-29-2012.md` | CIO Persistent Agent — AS-IS vs FUTURE GAP (2026-09-29 20:12 ET) | review_required | OK | `50d7a846e726` |
 | `docs/architecture/COST_BASIS_FEED_CORRECTION_2026_06_05.md` | Cost Basis Feed Correction (2026-06-05) | review_required | OK | `971080919db9` |
 | `docs/architecture/DECISION_PACKET_OPERATOR_CARD_AND_RTH_REFRESH.md` | Decision Packet Operator Card + RTH Few-Hour Refresh | review_required | OK | `3e3ba446c94f` |
 | `docs/architecture/DECISION_PROVENANCE_MATRIX.md` | Decision provenance matrix — 2026-08-28 | review_required | OK | `9a7681fff8f2` |
