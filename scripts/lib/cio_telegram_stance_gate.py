@@ -424,12 +424,61 @@ def text_is_investment_shaped(text: str) -> bool:
     return bool(_INVESTMENT_BULL.search(t) or _INVESTMENT_BEAR.search(t))
 
 
-def infer_message_stance(text: str, symbol: str) -> Optional[str]:
-    """Stance asserted near ``symbol`` in the message, else whole-text investment shape."""
+#: Prose mode (agent chat replies, e.g. Maria). Measured 2026-09-30 by replaying Maria's 17
+#: distinct replies from 7 days through the gate: 6 would have been HELD, all false — the
+#: case-insensitive card vocabulary read "Watchlist add → FAILED", "I can go check" as a BUY,
+#: and the whole-text fallback then pinned that read on every name the reply mentioned. In
+#: prose a stance needs an upper-case card token (BUY, ADD, GO, …) or an explicit
+#: recommendation phrase NEAR the symbol, and there is no whole-text fallback.
+_PROSE_BULL_TOKEN = re.compile(r"\b(GO|A\+|BUY|STRONG\s+BUY|ADD(?:_ON_PULLBACK)?|ACCUMULATE|BULLISH|BUY_READY|ENTRY_NEAR)\b")
+_PROSE_BEAR_TOKEN = re.compile(r"\b(AVOID|SELL|EXIT|TRIM|REDUCE|DO NOT BUY|BEARISH)\b")
+_PROSE_BULL_PHRASE = re.compile(
+    r"(?i)\b(?:i(?:'d| would)|you (?:could|should|might)|(?:we )?recommend(?:ing)?|consider(?:ing)?|worth|time to|go ahead and)\s+"
+    r"(?:a\s+)?(?:buy(?:ing)?|add(?:ing)?|accumulat\w*|start(?:ing)? a (?:starter )?position|open(?:ing)? a position|initiat\w* a position)\b"
+    # An order shape that only makes sense as a buy ("Plan: buy-limit in zone"). Deliberately NOT
+    # "starter size": maria_outbound_gate records sizing language as a sizing flag on the receipt
+    # (tests/test_maria_outbound_gate_20260923.py), not as a stance. Nor "buy-the-dip / breakout":
+    # replayed 2026-09-30, Maria used it to ASK the operator's preference.
+    r"|\bbuy[- ]limit\b")
+_PROSE_BEAR_PHRASE = re.compile(
+    r"(?i)\b(?:i(?:'d| would)|you (?:could|should|might)|(?:we )?recommend(?:ing)?|consider(?:ing)?|time to)\s+"
+    r"(?:sell(?:ing)?|trim(?:ming)?|exit(?:ing)?|reduc\w*|avoid(?:ing)?)\b")
+
+
+def _prose_stance_in(window: str) -> Optional[str]:
+    bull = bool(_PROSE_BULL_TOKEN.search(window) or _PROSE_BULL_PHRASE.search(window))
+    bear = bool(_PROSE_BEAR_TOKEN.search(window) or _PROSE_BEAR_PHRASE.search(window))
+    if bull and not bear:
+        return "bullish"
+    if bear and not bull:
+        return "bearish"
+    return None
+
+
+def infer_message_stance(text: str, symbol: str, *, prose: bool = False, primary: bool = False) -> Optional[str]:
+    """Stance asserted near ``symbol`` in the message, else whole-text investment shape.
+
+    ``prose=True`` (agent chat replies): upper-case card tokens or explicit recommendation
+    phrases near the symbol only; no whole-text fallback. Cards and publishers keep the
+    original behaviour (``prose=False``)."""
     sym = (symbol or "").upper().strip()
     if not sym or sym in _STANCE_EXCLUDE_SYMBOLS:
         return None
     plain = re.sub(r"<[^>]+>", " ", text or "")
+    if prose:
+        for m in re.finditer(rf"(?<![A-Za-z0-9]){re.escape(sym)}(?![A-Za-z0-9])", plain):
+            said = _prose_stance_in(plain[max(0, m.start() - 80): m.end() + 80])
+            if said:
+                return said
+        # Agents name the ticker in a heading and make the suggestion paragraphs later
+        # ("If it clears your bar, small starter size"). Only an explicit recommendation
+        # PHRASE (never a bare token) counts, and only for the reply's primary subject.
+        if primary:
+            bull = bool(_PROSE_BULL_PHRASE.search(plain))
+            bear = bool(_PROSE_BEAR_PHRASE.search(plain))
+            if bull != bear:
+                return "bullish" if bull else "bearish"
+        return None
     for m in re.finditer(rf"(?<![A-Z]){re.escape(sym)}(?![A-Z])", plain, flags=re.I):
         window = plain[max(0, m.start() - 80): m.end() + 80]
         bull, bear = _INVESTMENT_BULL.search(window), _INVESTMENT_BEAR.search(window)
