@@ -233,12 +233,15 @@ def _apply_stance(
     """Gate each subject's window. Returns (text, stamp lines)."""
     width = stance_window()
     stamps: list[str] = []
-    for subj in subjects:
+    for idx, subj in enumerate(subjects):
         sym = subj["symbol"]
         window = _window(text, sym, width)
         if not window:
             continue
-        said = SG.infer_message_stance(window, sym)
+        said = SG.infer_message_stance(window, sym, prose=True)
+        if said is None and idx == 0:
+            # The primary subject may carry a recommendation made away from its ticker.
+            said = SG.infer_message_stance(text, sym, prose=True, primary=True)
         if said not in ("bullish", "bearish"):
             continue
         stores.append("cio_decisions (stance gate)")
@@ -282,7 +285,7 @@ def _apply_stance(
             new_text, changes = CE.rewrite_bullish_to_watch(text, [sym])
             if changes:
                 # Re-read the stance only (no second gate call, so no second hold row).
-                again = SG.infer_message_stance(_window(new_text, sym, width), sym)
+                again = SG.infer_message_stance(_window(new_text, sym, width), sym, prose=True)
                 if again != "bullish":
                     text = new_text
                     stamps.append(_stance_stamp(sym, verdict, "Action rewritten to WATCH"))
