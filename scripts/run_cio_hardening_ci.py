@@ -2986,6 +2986,7 @@ GATES = [
             "tests/test_identity_forward_ingestion_pivot_20260929.py",
             "tests/test_hermes_last_n_stamp_20260929.py",
             "tests/test_spine_multi_producer_lifecycle_20260929.py",
+            "tests/test_spine_gaps_close_20260929.py",
         ],
     ),
 ]

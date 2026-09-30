@@ -95,10 +95,12 @@ def notify_llm_curation(
     model: str | None = None,
     curated_from: list[str] | None = None,
     root: Path | str | None = None,
+    extra_tags: list[str] | None = None,
 ) -> dict[str, Any]:
     """Stamp LLM curation / flash onto each named security — CIO-owned, tagged, not a fact source.
 
     Tags: llm_research + llm_curation (or llm_flash) + provider (deepseek/ollama) + lifecycle.
+    Optional extra_tags: canary / backfill (excluded from organic remasure numerators).
     Never patches tip thesis.
     """
     syms = [str(s).upper() for s in (symbols or []) if s]
@@ -115,6 +117,10 @@ def notify_llm_curation(
         tags.append("deepseek")
     if "ollama" in src or "ollama" in model_l or "gemma" in model_l:
         tags.append("ollama")
+    for t in extra_tags or []:
+        tt = str(t or "").strip().lower()
+        if tt and tt not in tags:
+            tags.append(tt[:48])
     outs = []
     for sym in syms[:12]:
         outs.append(
@@ -138,6 +144,93 @@ def notify_llm_curation(
         )
     ok_n = sum(1 for o in outs if o.get("ok"))
     return {"ok": ok_n > 0, "written": ok_n, "symbols": syms[:12], "owner": "cio", "tags": tags, "results": outs}
+
+
+# Sector name → ETF proxy (single taxonomy; reused from watch_directives_service).
+_SECTOR_ETF_PROXY = {
+    "Technology": "XLK",
+    "Financials": "XLF",
+    "Financial": "XLF",
+    "Energy": "XLE",
+    "Healthcare": "XLV",
+    "Health Care": "XLV",
+    "Consumer Cyclical": "XLY",
+    "Consumer Disc.": "XLY",
+    "Consumer Discretionary": "XLY",
+    "Industrials": "XLI",
+    "Consumer Defensive": "XLP",
+    "Consumer Stapl.": "XLP",
+    "Consumer Staples": "XLP",
+    "Utilities": "XLU",
+    "Real Estate": "XLRE",
+    "Basic Materials": "XLB",
+    "Materials": "XLB",
+    "Communication Services": "XLC",
+    "Comm. Services": "XLC",
+}
+
+
+def sector_etf_proxy(sector_name: str) -> str | None:
+    raw = str(sector_name or "").strip()
+    if not raw:
+        return None
+    if raw.upper() in {v for v in _SECTOR_ETF_PROXY.values()}:
+        return raw.upper()
+    hit = _SECTOR_ETF_PROXY.get(raw) or _SECTOR_ETF_PROXY.get(raw.title())
+    if hit:
+        return hit
+    # Case-insensitive fallback
+    low = {k.lower(): v for k, v in _SECTOR_ETF_PROXY.items()}
+    return low.get(raw.lower())
+
+
+def notify_sector_research(
+    sector_name: str,
+    *,
+    summary: str | None,
+    kind: str = "sector_research",
+    refs: list[str] | None = None,
+    root: Path | str | None = None,
+) -> dict[str, Any]:
+    """Stamp sector memory onto the ETF proxy security tip (no SEC: ledger fork).
+
+    Tip subject_guid remains the ETF security registry UUID. Sector entity_guid
+    and canonical name land in contribution refs + tags sector/sector_subject.
+    """
+    try:
+        from scripts.lib.cross_asset.events import spine_write_enabled
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "skipped": True, "error": f"import:{type(exc).__name__}"}
+    if not spine_write_enabled():
+        return {"ok": True, "skipped": True, "reason": "CROSS_ASSET_SPINE_off"}
+    etf = sector_etf_proxy(sector_name)
+    if not etf:
+        return {"ok": False, "skipped": True, "reason": "no_etf_proxy", "sector": sector_name}
+    sector_guid = None
+    canonical = str(sector_name or "").strip()
+    try:
+        from scripts.lib.cio_narrative_subjects import resolve_subject
+        sub = resolve_subject("SECTOR", canonical) or {}
+        sector_guid = sub.get("guid") or sub.get("entity_guid") or sub.get("subject_guid")
+        canonical = str(sub.get("semantic_subject") or sub.get("canonical_name") or canonical)
+    except Exception:
+        try:
+            from scripts.lib.ticker_knowledge_graph import entity_guid
+            sector_guid = entity_guid("sector", canonical)
+        except Exception:
+            sector_guid = None
+    ref_list = [x for x in [canonical, sector_guid, *(refs or [])] if x]
+    return notify_research_contribution(
+        etf,
+        silo="cio",
+        kind=str(kind or "sector_research")[:48],
+        summary=(summary or f"Sector research: {canonical}")[:800],
+        artifact_id=f"sector:{canonical}:{etf}",
+        refs=ref_list[:20],
+        tags=["sector", "sector_subject", "lifecycle"],
+        thesis_patch=None,
+        root=root,
+    ) | {"etf_proxy": etf, "sector": canonical, "sector_guid": sector_guid}
 
 
 def notify_operator_desk_result(

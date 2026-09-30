@@ -1256,6 +1256,21 @@ def gather_freeform_context(intent: dict[str, Any]) -> dict[str, Any]:
                         ),
                         "gap_type": "research",
                     })
+                    # Librarian residual: best-effort Hermes enqueue on SLA breach.
+                    try:
+                        from scripts.lib.cross_asset.spine_sla_enqueue import (
+                            enqueue_spine_sla_breaches,
+                        )
+                        enqueue_spine_sla_breaches(
+                            [sym],
+                            root=PROJECT_ROOT,
+                            apply=True,
+                            operator_text=(
+                                f"Spine SLA breach for {sym} — refresh house research (READ_ONLY)."
+                            ),
+                        )
+                    except Exception:
+                        pass
                 # Active operator asks on the shared spine (persist until thesis changes).
                 try:
                     from scripts.lib.cross_asset.security_research_spine import view_for_silo
@@ -3865,6 +3880,50 @@ def _resolve_blocking_gaps(
     }
 
 
+def _stamp_gap_resolver_llm_onto_spine(
+    resolver_summary: dict[str, Any] | None,
+    intent: dict[str, Any] | None,
+) -> None:
+    """When gap resolver answered via llm_curation, stamp tip even if desk skipped _curate_from_evidence."""
+    if not isinstance(resolver_summary, dict):
+        return
+    try:
+        from scripts.lib.cross_asset.hooks import notify_llm_curation
+    except Exception:
+        return
+    for r in resolver_summary.get("answered") or []:
+        if not isinstance(r, dict):
+            continue
+        vec = str(r.get("vector") or "")
+        ans = r.get("answer") if isinstance(r.get("answer"), dict) else {}
+        src = str(ans.get("source") or "")
+        if vec != "llm_curation" and src != "llm_curation":
+            continue
+        syms = []
+        subj = str(r.get("subject") or "").upper().strip()
+        if subj and subj not in ("BOOK", ""):
+            syms.append(subj)
+        for s in (intent or {}).get("symbols") or []:
+            su = str(s).upper().strip()
+            if su and su not in syms:
+                syms.append(su)
+        if not syms:
+            continue
+        text = str(ans.get("text") or r.get("detail") or "")[:800]
+        if not text.strip():
+            continue
+        try:
+            notify_llm_curation(
+                syms,
+                text=text,
+                source="llm_curation",
+                model=ans.get("model") or r.get("model"),
+                curated_from=list(ans.get("curated_from") or [])[:8] or None,
+            )
+        except Exception:
+            pass
+
+
 def _format_resolved_answer(summary: dict[str, Any], *, intent: dict[str, Any]) -> str:
     """A vector answered. Say what, from where, and how old -- never as 'now'."""
     lines = ["🧠 *Alex · found it through a declared source*"]
@@ -4390,6 +4449,7 @@ def handle_operator_desk_question(
                         "reply_source": "gap_resolver:" + str(resolver_summary["answered"][0].get("vector")),
                         "model": resolver_summary["answered"][0].get("model"),
                     })
+                    _stamp_gap_resolver_llm_onto_spine(resolver_summary, intent)
                     if resolver_summary.get("queued"):
                         result["research_queued"] = True
                         eta_seconds = resolver_summary.get("eta_seconds") or eta_seconds or 1800
