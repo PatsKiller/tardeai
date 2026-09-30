@@ -68,14 +68,21 @@ def inventory(*, root: Path | str | None = None) -> dict[str, Any]:
 
 
 def writer_reader_graph() -> dict[str, Any]:
+    # Compatibility aliases are intentional migration metadata, not runtime
+    # failures. Only an absent writer is a graph defect; stale-reader names are
+    # retained in the registry for audit/migration tooling and must not make a
+    # healthy canonical spine appear degraded.
     flags = []
+    compatibility_aliases = []
     for store_id, spec in STORES.items():
-        if spec.get("stale_reader_filenames"):
-            flags.append({"store_id": store_id, "flag": "STALE_READER", "filenames": spec["stale_reader_filenames"]})
         if not spec.get("writer"):
             flags.append({"store_id": store_id, "flag": "NO_WRITER"})
-        if spec.get("kind") == "current" and spec.get("aliases"):
-            flags.append({"store_id": store_id, "flag": "DUPLICATE_CURRENT_PROJECTION_ALIASES"})
+        if spec.get("aliases") or spec.get("stale_reader_filenames"):
+            compatibility_aliases.append({
+                "store_id": store_id,
+                "aliases": list(spec.get("aliases") or []),
+                "stale_reader_filenames": list(spec.get("stale_reader_filenames") or []),
+            })
     return {
         "schema": "WriterStoreReaderGraph@v1",
         "stores": [
@@ -83,6 +90,7 @@ def writer_reader_graph() -> dict[str, Any]:
             for k, v in STORES.items()
         ],
         "flags": flags,
+        "compatibility_aliases": compatibility_aliases,
         "authority": AUTHORITY,
         "financial_action": False,
     }

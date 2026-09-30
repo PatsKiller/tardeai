@@ -52972,6 +52972,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_cio_dashboard()
                 if p == "home":
                     return 200, _cio.get_cio_home()
+                if p in ("observability", "operations", "ops"):
+                    return 200, _cio.get_cio_observability()
                 if p in ("brain/maturity-contract", "brain/maturity_contract"):
                     return 200, _cio.get_brain_maturity_contract()
                 if p == "brain/policy":

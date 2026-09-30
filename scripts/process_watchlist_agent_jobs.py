@@ -22,6 +22,17 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _SCRIPTS = Path(__file__).resolve().parent
 if str(_SCRIPTS) not in sys.path:
     sys.path.insert(0, str(_SCRIPTS))
+# Direct worker invocations do not always inherit the server's environment.
+# Resolve the governed host cap before importing/calling the Flash lane so the
+# canonical cap file is honored without silently inventing a default.
+if not str(os.environ.get("LLM_GLOBAL_DAILY_USD_CAP") or "").strip():
+    try:
+        from lib.llm_spend import configured_global_cap
+        _host_cap = configured_global_cap()
+        if _host_cap is not None and _host_cap > 0:
+            os.environ["LLM_GLOBAL_DAILY_USD_CAP"] = f"{_host_cap:.2f}"
+    except Exception:
+        pass
 from lib.watchlist_priority import (
     WATCHLIST_TOP_N, holdings_list, is_off_hours_et, job_priority_params,
     off_hours_scope_params, request_type_sla_params, sql_job_priority_case,

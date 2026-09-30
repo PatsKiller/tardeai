@@ -2956,6 +2956,18 @@ GATES = [
         ["tests/test_options_proposal_cache_cadence_20260929.py"],
     ),
     (
+        # 2026-09-29 — cross-asset decision intelligence Phase 1: canonical
+        # signal-to-expression contract and append-only shadow store.
+        "cross_asset_decision_intelligence_phase1_20260929",
+        ["tests/test_cross_asset_decision_intelligence.py"],
+    ),
+    (
+        # 2026-09-30 — CIO Desk observability: executive health contract,
+        # fail-closed status calculation, and remediation evidence projection.
+        "cio_desk_observability_20260930",
+        ["tests/test_cio_observability.py"],
+    ),
+    (
         # 2026-09-29 — READY ENTRY ALERT chrome must never resolve ENTRY/ALERT as
         # tickers (Telegram footers / Symbol Intelligence ALERT dossier).
         "alert_chrome_stopwords_20260929",

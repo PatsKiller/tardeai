@@ -22,14 +22,18 @@ ROOT = Path(__file__).resolve().parents[1]
 API = ROOT / "scripts" / "api_v2.py"
 sys.path.insert(0, str(ROOT / "scripts"))
 
+from lib.sop_toolchain import resolve_ruff_bin  # noqa: E402
+
 
 # ── Gate floor: the exact 16 findings must stay green ─────────────────────────
 
 
 def test_ruff_check_clean_on_api_v2():
     """The changed-file quality floor runs `ruff check` on every changed .py."""
+    ruff = resolve_ruff_bin(root=ROOT)
+    assert ruff is not None, "pinned Ruff is required for the changed-file quality floor"
     r = subprocess.run(
-        [sys.executable, "-m", "ruff", "check", str(API)],
+        [str(ruff), "check", str(API)],
         cwd=str(ROOT),
         capture_output=True,
         text=True,
@@ -39,8 +43,10 @@ def test_ruff_check_clean_on_api_v2():
 
 
 def test_ruff_format_check_clean_on_api_v2():
+    ruff = resolve_ruff_bin(root=ROOT)
+    assert ruff is not None, "pinned Ruff is required for the changed-file quality floor"
     r = subprocess.run(
-        [sys.executable, "-m", "ruff", "format", "--check", str(API)],
+        [str(ruff), "format", "--check", str(API)],
         cwd=str(ROOT),
         capture_output=True,
         text=True,

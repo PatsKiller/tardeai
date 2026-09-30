@@ -14,6 +14,7 @@ Routes:
   GET /api/v3/cio/thesis        — Active desk@vN thesis
   GET /api/v3/cio/universe-theses — UNIVERSE & THESES projection (read-only)
   GET /api/v3/cio/agent-research-ops — queue/provider/spend ops strip (no secrets)
+  GET /api/v3/cio/observability — CIO-only executive health and workflow projection
   GET /api/v3/cio/symbol-thesis/{SYM} — per-symbol thesis card + history
   GET /api/v3/cio/intelligence/{SYM} — SymbolIntelligence + feedback journal
   POST /api/v3/cio/intelligence/{SYM}/feedback — OperatorTickerFeedback@v1
@@ -46,11 +47,15 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+SCRIPTS_ROOT = PROJECT_ROOT / "scripts"
+if str(SCRIPTS_ROOT) not in sys.path:
+    sys.path.insert(0, str(SCRIPTS_ROOT))
 
 
 def _operator_policy_store() -> Path:
@@ -465,7 +470,9 @@ def classify_research_failure_message(message: str | None) -> str:
         return "LLM_GLOBAL_DAILY_USD_CAP_EXHAUSTED"
     if "cost_cap_exceeded" in low:
         return "COST_CAP_EXCEEDED"
-    if "invalid_symbol" in low or "skipped: not found" in low:
+    if "model_pi_guard" in low or "prompt/secret exfiltration" in low:
+        return "MODEL_PI_GUARD_REFUSAL"
+    if "invalid_symbol" in low or "skipped: not found" in low or "1-char" in low or "ambiguous" in low:
         return "INVALID_SYMBOL"
     if "data gap" in low or "data_gap" in low:
         return "DATA_GAP_SKIP"
@@ -523,6 +530,16 @@ def get_agent_research_ops() -> dict[str, Any]:
     """
     cap_raw = str(os.environ.get("LLM_GLOBAL_DAILY_USD_CAP") or "").strip()
     cap_status = "CONFIGURED" if cap_raw else "MISSING"
+    if cap_status == "MISSING":
+        # The host cap file is canonical for worker processes. Dashboard
+        # requests often do not inherit the worker's environment, so do not
+        # report a false MISSING state when the governed cap is present.
+        try:
+            from scripts.lib.llm_spend import configured_global_cap
+            if (configured_global_cap() or 0) > 0:
+                cap_status = "CONFIGURED"
+        except Exception:
+            pass
     out: dict[str, Any] = {
         "ok": True,
         "as_of": _now_iso(),
@@ -560,6 +577,16 @@ def get_agent_research_ops() -> dict[str, Any]:
         oldest_at = None
         if oldest:
             oldest_at = str(oldest[0] if not isinstance(oldest, dict) else list(oldest.values())[0])
+        oldest_age_minutes = None
+        try:
+            age = _execute(
+                "SELECT EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - MIN(created_at))) / 60 FROM watchlist_agent_jobs WHERE status='queued'",
+                fetch="one",
+            )
+            if age and age[0] is not None:
+                oldest_age_minutes = round(float(age[0]), 1)
+        except Exception:
+            oldest_age_minutes = None
         agents = _execute(
             """SELECT requested_agent, COUNT(*) FROM watchlist_agent_jobs
                WHERE status='queued' GROUP BY requested_agent""",
@@ -571,6 +598,22 @@ def get_agent_research_ops() -> dict[str, Any]:
                 by_agent[str(list(row.values())[0])] = int(list(row.values())[1] or 0)
             else:
                 by_agent[str(row[0])] = int(row[1] or 0)
+        by_priority: dict[str, int] = {}
+        try:
+            priority_rows = _execute(
+                """SELECT COALESCE(priority, 'unspecified'), COUNT(*)
+                   FROM watchlist_agent_jobs WHERE status='queued'
+                   GROUP BY 1 ORDER BY 1""",
+                fetch="all",
+            ) or []
+            for row in priority_rows:
+                if isinstance(row, dict):
+                    by_priority[str(list(row.values())[0])] = int(list(row.values())[1] or 0)
+                else:
+                    by_priority[str(row[0])] = int(row[1] or 0)
+        except Exception:
+            # Keep the endpoint available on older queue schemas without priority.
+            by_priority = {}
         created = _execute(
             "SELECT COUNT(*) FROM watchlist_agent_jobs WHERE created_at >= CURRENT_DATE",
             fetch="one",
@@ -651,7 +694,9 @@ def get_agent_research_ops() -> dict[str, Any]:
             "queued": queued,
             "by_status": by_status,
             "by_agent": by_agent,
+            "by_priority": by_priority,
             "oldest_queued": oldest_at,
+            "oldest_queued_age_minutes": oldest_age_minutes,
             "created_today": _count_cell(created),
             "completed_today": _count_cell(completed),
             "failed_today": _count_cell(failed),
@@ -667,6 +712,33 @@ def get_agent_research_ops() -> dict[str, Any]:
         out["error"] = type(e).__name__
         out["detail"] = str(e)[:200]
     return out
+
+
+def get_cio_observability() -> dict[str, Any]:
+    """Build the read-only CIO Desk health/workflow projection."""
+    from scripts.lib.cio_observability import build_observability
+    from scripts.lib.current_pin_integrity import collect_process_freshness
+
+    home = get_cio_home()
+    brain = get_cio_brain_v1()
+    # The HTTP response wrapper stamps _serving after this function returns.
+    # The observability projection itself still needs the same read-only
+    # freshness evidence so its Platform / Pin scorecard is truthful when
+    # called directly or tested outside the HTTP wrapper.
+    if not isinstance(brain.get("_serving"), dict):
+        freshness = collect_process_freshness()
+        brain["_serving"] = {
+            "process_started_at": freshness.get("process_started_at"),
+            "loaded_pin_sha": freshness.get("loaded_pin_sha"),
+            "current_pin_sha": freshness.get("current_pin_sha"),
+            "pin_match": bool(freshness.get("ok")),
+        }
+    research_ops = get_agent_research_ops()
+    data_health = get_data_health_v1()
+    return build_observability(
+        home=home, brain=brain, research_ops=research_ops,
+        data_health=data_health,
+    )
 
 
 def get_universe_theses() -> dict[str, Any]:
@@ -2151,6 +2223,7 @@ def get_data_health_v1() -> dict[str, Any]:
             "schema": "DataHealthDashboard@v1",
             "inventory": inv,
             "graph_flags": graph.get("flags"),
+            "compatibility_aliases": graph.get("compatibility_aliases") or [],
             "gui_is_projection": True,
             "authority": AUTHORITY_ADVISORY,
             "memory_behavior_influence": 0,
