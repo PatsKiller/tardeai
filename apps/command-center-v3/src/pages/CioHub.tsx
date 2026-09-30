@@ -1715,6 +1715,36 @@ type OperatorPolicyPayload = {
   legacy_conflicts: { field: string; claims: { value: unknown; source: string }[] }[]
 }
 
+type PolicyFieldMeta = {
+  purpose: string
+  guidance: string
+  input: 'range' | 'money' | 'select' | 'list' | 'object' | 'text'
+  options?: string[]
+}
+
+const POLICY_FIELD_META: Record<string, PolicyFieldMeta> = {
+  cash_target_range_pct: { purpose: 'Target cash allocation', guidance: 'Set the minimum, desired target, and maximum cash band. The range must reflect your liquidity policy.', input: 'range' },
+  minimum_liquidity_reserve_usd: { purpose: 'Liquidity floor', guidance: 'Cash that must remain available before any deployment plan is considered.', input: 'money' },
+  investable_cash_definition: { purpose: 'Investable cash definition', guidance: 'Describe which cash is actually deployable after reserves, earmarks, and account restrictions.', input: 'text' },
+  equity_range_pct: { purpose: 'Equity allocation band', guidance: 'Allowed minimum and maximum portfolio equity exposure.', input: 'range' },
+  fixed_income_range_pct: { purpose: 'Fixed-income allocation band', guidance: 'Allowed minimum and maximum fixed-income exposure.', input: 'range' },
+  alternatives_range_pct: { purpose: 'Alternatives allocation band', guidance: 'Allowed minimum and maximum alternatives exposure.', input: 'range' },
+  growth_objective: { purpose: 'Growth objective', guidance: 'Choose the governing growth objective for recommendations.', input: 'select', options: ['capital appreciation', 'balanced growth', 'preserve capital', 'no growth target'] },
+  income_objective: { purpose: 'Income objective', guidance: 'Choose the governing income objective.', input: 'select', options: ['maximize sustainable income', 'supplemental income', 'income is secondary', 'no income target'] },
+  capital_preservation_objective: { purpose: 'Capital-preservation objective', guidance: 'Define how strongly preservation constrains deployment and drawdown.', input: 'select', options: ['maximum preservation', 'preservation first', 'balanced', 'growth first'] },
+  time_horizon: { purpose: 'Investment time horizon', guidance: 'Select the horizon used when comparing risk and opportunity cost.', input: 'select', options: ['less than 3 years', '3–7 years', '7–15 years', '15+ years', 'indefinite'] },
+  withdrawal_needs: { purpose: 'Withdrawal needs', guidance: 'Describe expected withdrawals that constrain investable capital.', input: 'text' },
+  future_known_cash_requirements: { purpose: 'Known future cash requirements', guidance: 'List dated or recurring cash needs. Separate items with commas.', input: 'list' },
+  tax_constraints: { purpose: 'Tax constraints', guidance: 'List tax rules or account-specific restrictions the desk must honor.', input: 'list' },
+  account_location_constraints: { purpose: 'Account-location constraints', guidance: 'List account placement rules, such as taxable-only or IRA-only instruments.', input: 'list' },
+  concentration_hierarchy: { purpose: 'Concentration hierarchy', guidance: 'Define how single-name, sector, and sleeve concentration limits should be prioritized.', input: 'object' },
+  preferred_instruments: { purpose: 'Preferred instruments', guidance: 'List instruments or structures preferred by mandate.', input: 'list' },
+  excluded_instruments: { purpose: 'Excluded instruments', guidance: 'List instruments or structures that must not be recommended.', input: 'list' },
+  benchmark: { purpose: 'Benchmark', guidance: 'Enter the benchmark used for performance and opportunity-cost comparisons.', input: 'text' },
+  sleeve_ranges_pct: { purpose: 'Sleeve allocation bands', guidance: 'Enter a JSON object mapping sleeve names to {min,max} percentage bands.', input: 'object' },
+  risk_tolerance: { purpose: 'Risk tolerance', guidance: 'Select the governing tolerance for volatility, drawdown, and permanent-loss risk.', input: 'select', options: ['conservative', 'moderate', 'growth', 'aggressive'] },
+}
+
 function policyLabel(value: string): string {
   return value.replace(/_pct$/, ' (%)').replace(/_usd$/, ' ($)').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
 }
@@ -1728,6 +1758,7 @@ function OperatorPolicyPanel() {
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [pending, setPending] = useState<{ fieldName: string; value: unknown } | null>(null)
+  const [manageField, setManageField] = useState<string | null>(null)
 
   const load = useCallback(() => {
     fetch('/api/v3/cio/brain/policy', { cache: 'no-store' })
@@ -1753,6 +1784,44 @@ function OperatorPolicyPanel() {
       if (selected.kind === 'list') value = textValue.split(',').map(v => v.trim()).filter(Boolean)
       if (selected.kind === 'object') value = JSON.parse(textValue)
       setPending({ fieldName, value })
+    } catch (error: any) {
+      setMessage(String(error?.message || error))
+    }
+  }
+
+  const openFieldManager = (name: string) => {
+    setFieldName(name)
+    setTextValue('')
+    setRangeMin('')
+    setRangeMax('')
+    setManageField(name)
+  }
+
+  const meta = manageField ? (POLICY_FIELD_META[manageField] || { purpose: policyLabel(manageField), guidance: 'Enter the operator-defined value for this policy field.', input: selected?.kind === 'range_pct' ? 'range' : 'text' }) : null
+  const observedClaims = manageField ? policy?.legacy_conflicts.find(c => c.field === manageField)?.claims || [] : []
+
+  const renderManagedInput = () => {
+    if (!meta) return null
+    if (meta.input === 'range') return (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        <label style={muted}>Minimum<input autoFocus type="number" min="0" max="100" value={rangeMin} onChange={e => setRangeMin(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
+        <label style={muted}>Maximum<input type="number" min="0" max="100" value={rangeMax} onChange={e => setRangeMax(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
+      </div>
+    )
+    if (meta.input === 'select') return <label style={muted}>Select criterion<select autoFocus value={textValue} onChange={e => setTextValue(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, background: 'var(--bg0)', color: 'var(--text0)' }}><option value="">Choose a criterion…</option>{meta.options?.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
+    return <label style={muted}>{meta.input === 'object' ? 'JSON value' : meta.input === 'list' ? 'Comma-separated values' : meta.input === 'money' ? 'Amount ($)' : 'Policy value'}<textarea autoFocus rows={meta.input === 'object' || meta.input === 'text' ? 4 : 2} value={textValue} onChange={e => setTextValue(e.target.value)} placeholder={meta.input === 'object' ? '{"core": {"min": 0, "max": 10}}' : undefined} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box', resize: 'vertical' }} /></label>
+  }
+
+  const reviewManagedValue = () => {
+    if (!manageField || !selected) return
+    let value: unknown = textValue
+    try {
+      if (meta?.input === 'range') value = { min: Number(rangeMin), max: Number(rangeMax) }
+      if (meta?.input === 'money') value = Number(textValue)
+      if (meta?.input === 'list') value = textValue.split(',').map(v => v.trim()).filter(Boolean)
+      if (meta?.input === 'object') value = JSON.parse(textValue)
+      setPending({ fieldName: manageField, value })
+      setManageField(null)
     } catch (error: any) {
       setMessage(String(error?.message || error))
     }
@@ -1844,10 +1913,26 @@ function OperatorPolicyPanel() {
           <div key={name} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) 2fr auto', gap: 10, borderBottom: '1px solid var(--border)', padding: '8px 0', fontSize: 12 }}>
             <span style={{ color: 'var(--text1)' }}>{policyLabel(name)}</span>
             <span style={{ color: field.operator_confirmed ? 'var(--text0)' : 'var(--text3)' }}>{field.value == null ? 'POLICY REQUIRED' : typeof field.value === 'string' ? field.value : JSON.stringify(field.value)}</span>
-            <span style={{ color: field.operator_confirmed ? 'var(--green)' : 'var(--amber)' }}>{field.status}</span>
+            <span style={{ color: field.operator_confirmed ? 'var(--green)' : 'var(--amber)', display: 'flex', alignItems: 'center', gap: 8 }}>{field.status}<button type="button" onClick={() => openFieldManager(name)} style={{ padding: '4px 8px', border: '1px solid var(--border)', background: 'var(--bg0)', color: 'var(--accent)', cursor: 'pointer' }}>Manage</button></span>
           </div>
         ))}
       </section>
+      {manageField && meta && (
+        <div role="dialog" aria-modal="true" data-testid="cio-policy-field-manager" style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.68)', display: 'grid', placeItems: 'center', padding: 20 }}>
+          <div style={{ width: 'min(620px, 100%)', maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg1)', border: '1px solid var(--border)', padding: 20, boxShadow: SHADOW[2] }}>
+            <div style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 800 }}>CUSTOM POLICY MANAGER</div>
+            <h2 style={{ margin: '6px 0 8px', color: 'var(--text0)', fontSize: 18 }}>{meta.purpose}</h2>
+            <div style={{ color: 'var(--text2)', fontSize: 12, lineHeight: 1.5 }}>{meta.guidance}</div>
+            {selected?.value != null && <div style={{ marginTop: 10, padding: 10, background: 'var(--bg0)', color: 'var(--text2)', fontSize: 11 }}>Current recorded value: <code>{JSON.stringify(selected.value)}</code></div>}
+            {observedClaims.length > 0 && <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--amber)', color: 'var(--text2)', fontSize: 11 }}>Existing conflicting evidence (draft only): {observedClaims.map(c => `${c.source}: ${JSON.stringify(c.value)}`).join(' · ')}. The operator must choose the final value.</div>}
+            <div style={{ marginTop: 14 }}>{renderManagedInput()}</div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+              <button type="button" onClick={() => setManageField(null)} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Cancel</button>
+              <button type="button" onClick={reviewManagedValue} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer' }}>Review and continue</button>
+            </div>
+          </div>
+        </div>
+      )}
       {pending && (
         <div role="dialog" aria-modal="true" data-testid="cio-policy-confirmation-modal" style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.62)', display: 'grid', placeItems: 'center', padding: 20 }}>
           <div style={{ width: 'min(520px, 100%)', background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: RADIUS.md, padding: 20, boxShadow: SHADOW[2] }}>
