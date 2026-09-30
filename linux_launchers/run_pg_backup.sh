@@ -68,6 +68,10 @@ fi
 
 {
     echo "[$(date)] Starting backup of $DB_NAME@$DB_HOST:$DB_PORT..."
+    # trade_ai role lacks BYPASSRLS; FORCE ROW LEVEL SECURITY on intelligence.* and
+    # memory_r10_m2.* blocks COPY in pg_dump (seen Sep 21–29). Exclude those tables'
+    # data so the trading/ops dump can complete. Schema DDL for excluded tables is kept.
+    # Honest: restore of embeddings / R10 memory facts needs a privileged dump separately.
     PGPASSWORD="$DB_PASSWORD" pg_dump \
         -U "$DB_USER" \
         -h "$DB_HOST" \
@@ -75,6 +79,8 @@ fi
         --format=plain \
         --no-owner \
         --no-acl \
+        --exclude-table-data='intelligence.*' \
+        --exclude-table-data='memory_r10_m2.*' \
         "$DB_NAME" | gzip -9 > "$BACKUP_FILE"
 
     BYTES=$(stat -c%s "$BACKUP_FILE" 2>/dev/null || echo 0)

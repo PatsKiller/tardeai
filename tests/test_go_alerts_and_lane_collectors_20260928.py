@@ -100,10 +100,14 @@ def test_main_report_lists_deliveries_and_review_flags():
 def test_go_conversion_assessor():
     assert ha._assess_go_conversion(0, 0, {}, 5)["finding"] is False
     assert ha._assess_go_conversion(3, 1, {}, 5)["finding"] is False
+    # Policy-gate skips only → warning (gates working; not a silent pipeline death)
     a = ha._assess_go_conversion(6, 0, {"SKIPPED_STRATEGY_CRITERIA": 20, "SKIPPED_NO_ANALYST": 59}, 5)
-    assert a["type"] == "momentum_scalp_go_not_converting" and a["severity"] == "critical"
+    assert a["type"] == "momentum_scalp_go_not_converting" and a["severity"] == "warning"
     assert "SKIPPED_NO_ANALYST=59" in a["message"]
     assert ha._assess_go_conversion(2, 0, {}, 5)["severity"] == "warning"
+    # Unexpected skip reason with enough GO rows → still critical
+    b = ha._assess_go_conversion(6, 0, {"SKIPPED_UNKNOWN_BUG": 3, "SKIPPED_NO_ANALYST": 1}, 5)
+    assert b["severity"] == "critical"
 
 
 def test_go_conversion_collector_reads_db(monkeypatch):
