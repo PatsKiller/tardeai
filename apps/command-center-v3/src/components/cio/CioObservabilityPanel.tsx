@@ -92,7 +92,7 @@ export default function CioObservabilityPanel() {
 
       <div style={{ border: '1px solid var(--border)', borderRadius: RADIUS.md, padding: 12, background: 'var(--bg2)' }}>
         <div style={{ color: 'var(--text0)', fontWeight: 800, fontSize: 12, marginBottom: 10 }}>Live CIO workflow</div>
-        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', alignItems: 'stretch' }} data-testid="cio-workflow-graph">
+        <div className="cio-workflow-graph" style={{ display: 'flex', gap: 6, overflowX: 'auto', alignItems: 'stretch' }} data-testid="cio-workflow-graph">
           {(data?.workflows || []).map((node, index) => <div key={node.id} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <div style={{ minWidth: 112, border: `1px solid ${tone(node.status)}`, borderRadius: RADIUS.sm, padding: 8 }}><div style={{ color: 'var(--text0)', fontSize: TYPE.xs, fontWeight: 700 }}>{node.label}</div><div style={{ marginTop: 5 }}><StatusPill status={node.status} /></div><div style={{ color: 'var(--text3)', fontSize: TYPE.xs, marginTop: 4 }}>Throughput {fmt(node.throughput)}</div></div>
             {index < (data?.workflows?.length || 0) - 1 && <span style={{ color: 'var(--text3)' }}>→</span>}

@@ -2025,7 +2025,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
   const home = data
 
   return (
-    <div style={{ padding: '16px 24px', maxWidth: 1240 }} data-testid="cio-hub">
+    <div className="cio-hub" style={{ padding: '16px 24px', maxWidth: 1240 }} data-testid="cio-hub">
       <div style={hubTitle()}>CIO — Private Investment Office</div>
       <div style={hubSubtitle()}>
         Alex · Chief Investment Officer · READ_ONLY_ADVISORY
@@ -2034,7 +2034,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
 
       <CioObservabilityPanel />
 
-      <nav style={{ display: 'flex', gap: 6, margin: '14px 0 20px', flexWrap: 'wrap' }} aria-label="Office sections" role="tablist">
+      <nav className="cio-hub__tabs" style={{ display: 'flex', gap: 6, margin: '14px 0 20px', flexWrap: 'wrap' }} aria-label="Office sections" role="tablist">
         {TABS.map(t => (
           <button
             key={t}
