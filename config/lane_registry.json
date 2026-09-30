@@ -682,12 +682,17 @@
         "expression": "tradeai-due-checkpoints.timer"
       },
       "expected_cadence_hours": 1.0,
-      "state": "ACTIVE",
+      "state": "RETIRED",
       "output_signal": {
         "kind": "file_mtime",
         "path": "data/cio/outcome_checkpoints.jsonl"
       },
-      "note": "systemd process_due_checkpoints --persist; append-only checkpoint store."
+      "note": "RETIRED 2026-09-30 (operator decision, agent-gaps plan T4): process_due_checkpoints --persist resolved nothing — it never appends a checkpoint status row and wrote 8,129 {\"linked\": true} placeholder rows to outcome_observations.jsonl. The real resolver is the hourly cron lane resolve-due-checkpoints (resolve_due_checkpoints.py --apply). Timer disabled with systemctl --user disable --now; re-enable only with a real observation writer. Previous note: systemd process_due_checkpoints --persist; append-only checkpoint store.",
+      "state_reason": "Resolved nothing: process_due_checkpoints --persist never appends a checkpoint status row and wrote 8,129 placeholder {\"linked\": true} observations. Superseded by lane resolve-due-checkpoints (hourly cron, resolve_due_checkpoints.py --apply).",
+      "state_since": "2026-09-30",
+      "reason_confidence": "ESTABLISHED",
+      "superseded_by": "resolve-due-checkpoints",
+      "reason_evidence": "Read-only trace 2026-09-30: r17_checkpoint_binding.process_due_store iterates raw rows, returns event_not_occurred for null event-relative rows and persists realized_state={\"linked\": true}; it never appends a status row. outcome_observations.jsonl: 8,129 of 8,435 rows are these placeholders (source_refs ['due_processor']). Last run 2026-09-30 17:10 ET: n=19,561, observed=1,241, resolved 0. RESOLVED/NOT_PRICE_RESOLVABLE rows come only from resolve_due_checkpoints.py (cron 20 * * * *)."
     },
     {
       "lane_id": "cio-delivery",
