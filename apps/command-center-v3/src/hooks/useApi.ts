@@ -59,12 +59,14 @@ type ApiRequestTask<T> = {
   run: () => Promise<T>
   resolve: (value: T | PromiseLike<T>) => void
   reject: (reason?: unknown) => void
+  cancelled: boolean
 }
 const _apiRequestQueue: ApiRequestTask<unknown>[] = []
 
 function drainApiRequestQueue() {
   while (_activeApiRequests < MAX_ACTIVE_API_REQUESTS && _apiRequestQueue.length > 0) {
     const task = _apiRequestQueue.shift()!
+    if (task.cancelled) continue
     _activeApiRequests += 1
     void task.run().then(task.resolve, task.reject).finally(() => {
       _activeApiRequests -= 1
@@ -73,11 +75,23 @@ function drainApiRequestQueue() {
   }
 }
 
-function scheduleApiRequest<T>(run: () => Promise<T>): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    _apiRequestQueue.push({ run, resolve, reject } as ApiRequestTask<unknown>)
+function scheduleApiRequest<T>(run: () => Promise<T>): { promise: Promise<T>; cancel: () => void } {
+  let task!: ApiRequestTask<T>
+  const promise = new Promise<T>((resolve, reject) => {
+    task = { run, resolve, reject, cancelled: false }
+    _apiRequestQueue.push(task as ApiRequestTask<unknown>)
     drainApiRequestQueue()
   })
+  return {
+    promise,
+    cancel: () => {
+      if (task.cancelled) return
+      task.cancelled = true
+      const index = _apiRequestQueue.indexOf(task as ApiRequestTask<unknown>)
+      if (index >= 0) _apiRequestQueue.splice(index, 1)
+      task.reject(Object.assign(new Error('request cancelled'), { name: 'AbortError' }))
+    },
+  }
 }
 
 // Exponential backoff with jitter: 1s → 2s → 4s … cap 30s. A retry hammer over
@@ -136,8 +150,11 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
       }
     }
     let cancelled = false
+    let inFlight = false
     let retries = 0
     let slowRetryRef: ReturnType<typeof setTimeout> | undefined
+    const controllers = new Set<AbortController>()
+    const cancelQueued = new Set<() => void>()
     const clearFailing = () => { if (failingRef.current) { failingRef.current = false; _bumpFail(-1) } }
     const clearManual = () => {
       if (manualRef.current) {
@@ -148,8 +165,10 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
 
     const load = async () => {
       // A terminal outcome stands until an operator explicitly asks again.
-      if (terminalRef.current) return
+      if (terminalRef.current || inFlight) return
+      inFlight = true
       const controller = new AbortController()
+      controllers.add(controller)
       // broker-proposals: 15s hard timeout (P0 2026-07-14) — the endpoint is now bounded
       // server-side (quote budget + background autocal/summary); anything slower should
       // surface the error/Retry state instead of an endless "Loading broker queue…".
@@ -176,7 +195,7 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         const etag = _etags.get(path)
         const headers: Record<string, string> = etag ? { 'If-None-Match': etag } : {}
         let timer: ReturnType<typeof setTimeout> | undefined
-        const r = await scheduleApiRequest(async () => {
+        const scheduled = scheduleApiRequest(async () => {
           timer = setTimeout(() => controller.abort(), timeoutMs)
           try {
             return await fetch(url, { signal: controller.signal, cache: 'no-store', headers })
@@ -184,6 +203,9 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
             if (timer) clearTimeout(timer)
           }
         })
+        cancelQueued.add(scheduled.cancel)
+        const r = await scheduled.promise
+        cancelQueued.delete(scheduled.cancel)
         if (r.status === 304) {
           // Snapshot unchanged — the retained body is still the last-good body.
           // Transport receipt advances; the DATA clock does not. Consumers keep
@@ -305,6 +327,8 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
           setLoading(false)
           clearManual()
         }
+        controllers.delete(controller)
+        inFlight = false
       }
     }
     load()
@@ -315,6 +339,10 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
       clearTimeout(retryRef.current)
       clearTimeout(slowRetryRef)
       slowRetryRef = undefined
+      controllers.forEach(controller => controller.abort())
+      controllers.clear()
+      cancelQueued.forEach(cancel => cancel())
+      cancelQueued.clear()
       clearFailing()   // don't leave a stuck failure registered when this hook unmounts / path changes
     }
   }, [path, intervalMs, tick, enabled])
