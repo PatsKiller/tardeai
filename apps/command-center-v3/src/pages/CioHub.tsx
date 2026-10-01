@@ -11,6 +11,7 @@ import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
 import { RADIUS, SHADOW } from '../lib/designTokens'
+import { runManualCloud } from '../lib/cloudLlmRun'
 import {
   CIO_HUB_TABS,
   CIO_HUB_TAB_LABEL,
@@ -1726,18 +1727,19 @@ type PolicyFieldMeta = {
   guidance: string
   input: 'range' | 'money' | 'select' | 'list' | 'object' | 'text'
   options?: string[]
+  suggestions?: string[]
 }
 
 const POLICY_FIELD_META: Record<string, PolicyFieldMeta> = {
-  cash_target_range_pct: { purpose: 'Target cash allocation', guidance: 'Set the minimum, desired target, and maximum cash band. The range must reflect your liquidity policy.', input: 'range' },
-  minimum_liquidity_reserve_usd: { purpose: 'Liquidity floor', guidance: 'Cash that must remain available before any deployment plan is considered.', input: 'money' },
-  investable_cash_definition: { purpose: 'Investable cash definition', guidance: 'Describe which cash is actually deployable after reserves, earmarks, and account restrictions.', input: 'text' },
-  equity_range_pct: { purpose: 'Equity allocation band', guidance: 'Allowed minimum and maximum portfolio equity exposure.', input: 'range' },
-  fixed_income_range_pct: { purpose: 'Fixed-income allocation band', guidance: 'Allowed minimum and maximum fixed-income exposure.', input: 'range' },
-  alternatives_range_pct: { purpose: 'Alternatives allocation band', guidance: 'Allowed minimum and maximum alternatives exposure.', input: 'range' },
-  growth_objective: { purpose: 'Growth objective', guidance: 'Choose the governing growth objective for recommendations.', input: 'select', options: ['capital appreciation', 'balanced growth', 'preserve capital', 'no growth target'] },
-  income_objective: { purpose: 'Income objective', guidance: 'Choose the governing income objective.', input: 'select', options: ['maximize sustainable income', 'supplemental income', 'income is secondary', 'no income target'] },
-  capital_preservation_objective: { purpose: 'Capital-preservation objective', guidance: 'Define how strongly preservation constrains deployment and drawdown.', input: 'select', options: ['maximum preservation', 'preservation first', 'balanced', 'growth first'] },
+  cash_target_range_pct: { purpose: 'Target cash allocation', guidance: 'Set the minimum, desired target, and maximum cash band. The range must reflect your liquidity policy.', input: 'range', suggestions: ['Use a wider minimum during withdrawals or high volatility.', 'Keep min ≤ target ≤ max.'] },
+  minimum_liquidity_reserve_usd: { purpose: 'Liquidity floor', guidance: 'Cash that must remain available before any deployment plan is considered.', input: 'money', suggestions: ['Include known withdrawals and a contingency buffer.', 'Do not count earmarked cash as deployable.'] },
+  investable_cash_definition: { purpose: 'Investable cash definition', guidance: 'Describe which cash is actually deployable after reserves, earmarks, and account restrictions.', input: 'text', suggestions: ['Observed cash minus reserve and earmarks.', 'Name excluded account balances explicitly.'] },
+  equity_range_pct: { purpose: 'Equity allocation band', guidance: 'Allowed minimum and maximum portfolio equity exposure.', input: 'range', suggestions: ['Set the range to match risk tolerance, not the current allocation.', 'Document whether options count toward equity exposure.'] },
+  fixed_income_range_pct: { purpose: 'Fixed-income allocation band', guidance: 'Allowed minimum and maximum fixed-income exposure.', input: 'range', suggestions: ['Separate reserve cash from fixed income.', 'Include duration or credit limits in the notes if material.'] },
+  alternatives_range_pct: { purpose: 'Alternatives allocation band', guidance: 'Allowed minimum and maximum alternatives exposure.', input: 'range', suggestions: ['Define whether private assets, commodities, or crypto are included.', 'Use a conservative maximum when valuation is hard to verify.'] },
+  growth_objective: { purpose: 'Growth objective', guidance: 'Choose the governing growth objective for recommendations.', input: 'select', options: ['capital appreciation', 'balanced growth', 'preserve capital', 'no growth target'], suggestions: ['Choose the objective that governs trade-offs when evidence conflicts.'] },
+  income_objective: { purpose: 'Income objective', guidance: 'Choose the governing income objective.', input: 'select', options: ['maximize sustainable income', 'supplemental income', 'income is secondary', 'no income target'], suggestions: ['Use sustainable income, not headline yield, as the criterion.'] },
+  capital_preservation_objective: { purpose: 'Capital-preservation objective', guidance: 'Define how strongly preservation constrains deployment and drawdown.', input: 'select', options: ['maximum preservation', 'preservation first', 'balanced', 'growth first'], suggestions: ['This controls whether non-action is preferred when evidence is incomplete.'] },
   time_horizon: { purpose: 'Investment time horizon', guidance: 'Select the horizon used when comparing risk and opportunity cost.', input: 'select', options: ['less than 3 years', '3–7 years', '7–15 years', '15+ years', 'indefinite'] },
   withdrawal_needs: { purpose: 'Withdrawal needs', guidance: 'Describe expected withdrawals that constrain investable capital.', input: 'text' },
   future_known_cash_requirements: { purpose: 'Known future cash requirements', guidance: 'List dated or recurring cash needs. Separate items with commas.', input: 'list' },
@@ -1748,7 +1750,7 @@ const POLICY_FIELD_META: Record<string, PolicyFieldMeta> = {
   excluded_instruments: { purpose: 'Excluded instruments', guidance: 'List instruments or structures that must not be recommended.', input: 'list' },
   benchmark: { purpose: 'Benchmark', guidance: 'Enter the benchmark used for performance and opportunity-cost comparisons.', input: 'text' },
   sleeve_ranges_pct: { purpose: 'Sleeve allocation bands', guidance: 'Enter a JSON object mapping sleeve names to {min,max} percentage bands.', input: 'object' },
-  risk_tolerance: { purpose: 'Risk tolerance', guidance: 'Select the governing tolerance for volatility, drawdown, and permanent-loss risk.', input: 'select', options: ['conservative', 'moderate', 'growth', 'aggressive'] },
+  risk_tolerance: { purpose: 'Risk tolerance', guidance: 'Select the governing tolerance for volatility, drawdown, and permanent-loss risk.', input: 'select', options: ['conservative', 'moderate', 'growth', 'aggressive'], suggestions: ['Use the level you can maintain through a drawdown, not the level desired in a bull market.'] },
 }
 
 function policyLabel(value: string): string {
@@ -1765,6 +1767,8 @@ function OperatorPolicyPanel() {
   const [message, setMessage] = useState<string | null>(null)
   const [pending, setPending] = useState<{ fieldName: string; value: unknown } | null>(null)
   const [manageField, setManageField] = useState<string | null>(null)
+  const [llmBusy, setLlmBusy] = useState(false)
+  const [llmSuggestion, setLlmSuggestion] = useState<string | null>(null)
 
   const load = useCallback(() => {
     fetch('/api/v3/cio/brain/policy', { cache: 'no-store' })
@@ -1796,11 +1800,35 @@ function OperatorPolicyPanel() {
   }
 
   const openFieldManager = (name: string) => {
-    setFieldName(name); setTextValue(''); setRangeMin(''); setRangeMax(''); setManageField(name)
+    setFieldName(name); setTextValue(''); setRangeMin(''); setRangeMax(''); setLlmSuggestion(null); setManageField(name)
   }
 
   const meta = manageField ? (POLICY_FIELD_META[manageField] || { purpose: policyLabel(manageField), guidance: 'Enter the operator-defined value for this policy field.', input: selected?.kind === 'range_pct' ? 'range' : 'text' }) : null
   const observedClaims = manageField ? policy?.legacy_conflicts.find(c => c.field === manageField)?.claims || [] : []
+
+  const askDeepSeek = async () => {
+    if (!manageField || !meta) return
+    setLlmBusy(true); setLlmSuggestion(null)
+    try {
+      const result = await runManualCloud({
+        process_id: 'cio_policy_field_advisor',
+        lane: 'deepseek-flash',
+        task_summary: `Advisory suggestion for CIO policy field ${manageField}`,
+        prompt: [
+          'You are an advisory-only policy assistant. Do not ratify, approve, or invent facts.',
+          `Policy field: ${policyLabel(manageField)}`,
+          `Purpose: ${meta.purpose}`,
+          `Guidance: ${meta.guidance}`,
+          `Current value: ${JSON.stringify(selected?.value ?? null)}`,
+          `Existing conflicting claims: ${JSON.stringify(observedClaims)}`,
+          'Give concise candidate criteria, assumptions, and questions the operator must answer. Do not output an order or trade instruction.',
+        ].join('\n'),
+      })
+      setLlmSuggestion(result?.ok ? (result.text || 'DeepSeek returned no suggestion text.') : `DeepSeek unavailable: ${result?.error || result?.reason_code || 'request failed'}`)
+    } catch (error: any) {
+      setLlmSuggestion(`DeepSeek unavailable: ${String(error?.message || error)}`)
+    } finally { setLlmBusy(false) }
+  }
 
   const renderManagedInput = () => {
     if (!meta) return null
@@ -1918,7 +1946,10 @@ function OperatorPolicyPanel() {
         <div style={{ width: 'min(620px, 100%)', maxHeight: '90vh', overflowY: 'auto', background: 'var(--bg1)', border: '1px solid var(--border)', padding: 20, boxShadow: SHADOW[2] }}>
           <div style={{ color: 'var(--text3)', fontSize: 10, fontWeight: 800 }}>CUSTOM POLICY MANAGER</div>
           <h2 style={{ margin: '6px 0 8px', color: 'var(--text0)', fontSize: 18 }}>{meta.purpose}</h2>
-          <div style={{ color: 'var(--text2)', fontSize: 12, lineHeight: 1.5 }}>{meta.guidance}</div>
+          <div style={{ color: 'var(--text2)', fontSize: 12, lineHeight: 1.5 }} title="This explains what the field controls and what the operator should consider.">{meta.guidance} <span aria-label="Field guidance tooltip" title={meta.guidance} style={{ color: 'var(--accent)', cursor: 'help' }}>ⓘ</span></div>
+          {meta.suggestions?.length ? <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', background: 'var(--bg0)', color: 'var(--text2)', fontSize: 11 }}><strong title="Deterministic starting points only; nothing is applied automatically.">Suggested starting points ⓘ</strong><ul style={{ margin: '6px 0 0 18px', padding: 0 }}>{meta.suggestions.map(s => <li key={s} title="Advisory suggestion only — review against your actual circumstances.">{s}</li>)}</ul></div> : null}
+          <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><button type="button" onClick={() => void askDeepSeek()} disabled={llmBusy} title="Ask DeepSeek for advisory criteria and questions. It cannot ratify or save this policy." style={{ padding: '6px 10px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: llmBusy ? 'wait' : 'pointer' }}>{llmBusy ? 'Asking DeepSeek…' : 'Ask DeepSeek for help'}</button><span style={{ color: 'var(--text3)', fontSize: 11 }}>Advisory only · operator confirms the final value</span></div>
+          {llmSuggestion && <div role="status" style={{ marginTop: 10, padding: 10, borderLeft: '3px solid var(--accent)', background: 'var(--accent-dim)', color: 'var(--text1)', fontSize: 11, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}><strong>DeepSeek suggestion</strong><div style={{ marginTop: 5 }}>{llmSuggestion}</div></div>}
           {selected?.value != null && <div style={{ marginTop: 10, padding: 10, background: 'var(--bg0)', color: 'var(--text2)', fontSize: 11 }}>Current recorded value: <code>{JSON.stringify(selected.value)}</code></div>}
           {observedClaims.length > 0 && <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--amber)', color: 'var(--text2)', fontSize: 11 }}>Existing conflicting evidence (draft only): {observedClaims.map(c => `${c.source}: ${JSON.stringify(c.value)}`).join(' · ')}. The operator must choose the final value.</div>}
           <div style={{ marginTop: 14 }}>{renderManagedInput()}</div>
