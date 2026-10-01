@@ -8,6 +8,7 @@ import CioObservabilityPanel from '../components/cio/CioObservabilityPanel'
 import CioScorecardStrip, { type ScorecardPayload, type ScorecardTile } from '../components/cio/CioScorecardStrip'
 import CioJudgmentBand from '../components/cio/CioJudgmentBand'
 import CioEvidenceModal from '../components/cio/CioEvidenceModal'
+import CioDecisionLineagePanel from '../components/cio/CioDecisionLineagePanel'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
 import { RADIUS, SHADOW } from '../lib/designTokens'
@@ -64,6 +65,7 @@ type Decision = {
   domain?: string
   // Phase 5 — institutional card fields (render only when present)
   decision_id?: string | null
+  lineage_id?: string | null
   decision_input_digest?: string | null
   decision_evidence_digest?: string | null
   action?: string | null
@@ -597,6 +599,16 @@ function DecisionCard({ d, dispositions, legacyUnversioned, onAct }: {
           {d.counter_thesis && <div style={faint}><span style={{ color: 'var(--text2)' }}>Counter-thesis: </span>{d.counter_thesis}</div>}
           {!d.risk && !d.tax_note && !d.counter_thesis && <div style={faint}>No additional evidence attached.</div>}
         </div>
+      )}
+
+      {d.decision_id && (
+        <Link
+          to={`/v3/cio?tab=evidence-comms&sub=decision-lineage&decision=${encodeURIComponent(d.decision_id)}`}
+          style={{ display: 'inline-block', marginTop: 8, color: 'var(--accent)', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}
+          data-testid="cio-decision-lineage-link"
+        >
+          View CIO decision lineage →
+        </Link>
       )}
 
       <DecisionActions d={d} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />
@@ -1970,6 +1982,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
   const planId = (sp.get('plan') || '').trim()
   const tabRaw = (sp.get('tab') || '').trim()
   const subRaw = (sp.get('sub') || '').trim()
+  const decisionRaw = (sp.get('decision') || '').trim()
   const initialTab = resolveCioHubTab(tabRaw)
   const [tab, setTab] = useState<Tab>(initialTab)
   const [evidenceSub, setEvidenceSub] = useState<string>(subRaw || resolveEvidenceSubtab(tabRaw) || 'report')
@@ -2164,6 +2177,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'telegram-receipts' && <TelegramReceiptsPanel />}
           {evidenceSub === 'senses-evidence' && <SensesEvidencePanel />}
           {evidenceSub === 'full-brain' && <CioBrainPanel />}
+          {evidenceSub === 'decision-lineage' && <CioDecisionLineagePanel decisionId={decisionRaw || null} />}
           {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading evidence…</div>
           )}
@@ -2193,6 +2207,7 @@ function EvidenceCommsSubnav({ active, onSelect }: { active: string; onSelect: (
     { id: 'telegram-receipts', label: 'Telegram receipts' },
     { id: 'senses-evidence', label: 'Senses' },
     { id: 'full-brain', label: 'Full brain' },
+    { id: 'decision-lineage', label: 'Decision lineage' },
   ]
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }} role="tablist" aria-label="Evidence subsections">
