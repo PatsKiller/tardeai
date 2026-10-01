@@ -42,6 +42,7 @@ Routes:
   GET /api/v3/cio/brain/intelligence-lifecycle — projection of the persistent intelligence lifecycle
   GET /api/v3/cio/brain/model-performance — observational task→model metrics (no self-promotion)
   GET /api/v3/cio/operator-evidence — research/cognition/learning/coverage composition
+  GET /api/v3/cio/research-provenance — retrieved/used/rejected research projection
   POST /api/v3/cio/brain/feedback — linked operator feedback; no policy promotion
 """
 from __future__ import annotations
@@ -1445,6 +1446,7 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             direct_match,
             project_decision_lineage,
         )
+        from scripts.lib.cio_operator_evidence import build_research_provenance
 
         decision = dict(load_known_decision_catalog().get(did) or {})
         try:
@@ -1486,6 +1488,7 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             intelligence_records=intelligence_rows,
             checkpoint_records=checkpoint_rows,
             disposition_records=disposition_rows,
+            research_provenance=build_research_provenance(cio_root, decision_id=did),
             composition_as_of=_now_iso(),
         )
         return {"ok": True, "lineage": projection, "authority": AUTHORITY_ADVISORY}
@@ -2300,6 +2303,32 @@ def get_operator_evidence_v1() -> dict[str, Any]:
         return {
             "ok": False,
             "schema": "CIOOperatorEvidence@v1",
+            "error": type(exc).__name__,
+            "detail": str(exc)[:200],
+            "authority": AUTHORITY_ADVISORY,
+            "financial_action": False,
+            "mutation": False,
+        }
+
+
+def get_research_provenance_v1(decision_id: str | None = None) -> dict[str, Any]:
+    """Read-only CIO research provenance over canonical research products."""
+    try:
+        from scripts.lib.cio_operator_evidence import build_research_provenance
+
+        result = build_research_provenance(decision_id=decision_id)
+        result.update({
+            "ok": True,
+            "schema": "CIOResearchProvenance@v1",
+            "authority": AUTHORITY_ADVISORY,
+            "financial_action": False,
+            "mutation": False,
+        })
+        return result
+    except Exception as exc:
+        return {
+            "ok": False,
+            "schema": "CIOResearchProvenance@v1",
             "error": type(exc).__name__,
             "detail": str(exc)[:200],
             "authority": AUTHORITY_ADVISORY,

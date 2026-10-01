@@ -15,6 +15,7 @@ from typing import Any, Iterable
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "CIOOperatorEvidence@v1"
+RESEARCH_SCHEMA = "CIOResearchProvenance@v1"
 
 
 def _root() -> Path:
@@ -73,6 +74,9 @@ def _source_meta(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def _explicit_used(row: dict[str, Any]) -> bool:
+    status = str(row.get("status") or row.get("state") or row.get("event") or "").upper()
+    if status in {"USED", "USED_IN_JUDGMENT", "ADVISORY_USED", "CONSUMED"}:
+        return True
     for key in ("used_in_judgment", "used_in_decision", "advisory_use", "consumed_by", "consumption_receipt_id"):
         value = row.get(key)
         if value is True or (isinstance(value, (list, dict)) and bool(value)):
@@ -83,17 +87,127 @@ def _explicit_used(row: dict[str, Any]) -> bool:
 
 
 def _explicit_rejected(row: dict[str, Any]) -> bool:
-    status = str(row.get("status") or row.get("decision") or "").upper()
-    reason = row.get("rejection_reason") or row.get("reason_rejected") or row.get("rejected_reason")
-    return bool(reason) or status in {"REJECTED", "DISMISSED", "NOT_USED"}
+    status = str(row.get("status") or row.get("state") or row.get("event") or "").upper()
+    reason = (
+        row.get("rejection_reason")
+        or row.get("reason_rejected")
+        or row.get("rejected_reason")
+        or row.get("rejected_because")
+        or row.get("rejection_reasons")
+    )
+    # A generic request/producer ``reason`` is not a rejection receipt.  A
+    # research artifact is rejected only when the canonical row carries an
+    # explicit rejection field or a rejection state with a reason.
+    return bool(reason) and (status in {"REJECTED", "DISMISSED", "NOT_USED", "RESEARCH_REJECTED"} or any(
+        row.get(key) not in (None, "", [])
+        for key in ("rejection_reason", "reason_rejected", "rejected_reason", "rejected_because", "rejection_reasons")
+    ))
 
 
-def _artifact_status(row: dict[str, Any], *, result: bool) -> str:
+def _artifact_status(row: dict[str, Any], *, result: bool, source_name: str) -> str:
     if _explicit_used(row):
         return "USED_IN_JUDGMENT"
     if _explicit_rejected(row):
         return "REJECTED"
-    return "RETRIEVED" if result else "UNKNOWN"
+    retrieved = bool(
+        row.get("retrieved_at")
+        or row.get("retrieved_ts")
+        or row.get("retrieved") is True
+        or result
+        or source_name in {"web_evidence_provenance.jsonl", "security_research_spine.jsonl"}
+    )
+    return "RETRIEVED" if retrieved else "UNKNOWN"
+
+
+def _research_rows(path: Path) -> Iterable[dict[str, Any]]:
+    """Yield artifact-shaped rows from existing research products.
+
+    SecurityResearchSpine is a canonical projection whose contributions carry
+    artifact ids; the spine envelope itself is not a new artifact and must not
+    produce a synthetic ``UNKNOWN`` record.
+    """
+    for row in _rows(path):
+        if path.name == "security_research_spine.jsonl":
+            contributions = row.get("contributions")
+            if isinstance(contributions, list) and contributions:
+                for contribution in contributions:
+                    if not isinstance(contribution, dict):
+                        continue
+                    if not (contribution.get("artifact_id") or contribution.get("research_id") or contribution.get("refs")):
+                        continue
+                    yield {**row, **contribution, "symbol": contribution.get("symbol") or row.get("symbol")}
+                continue
+            if not (row.get("artifact_id") or row.get("research_id") or row.get("result_id")):
+                continue
+        yield row
+
+
+def _research_artifact(row: dict[str, Any], *, source_name: str) -> dict[str, Any] | None:
+    artifact_id = row.get("result_id") or row.get("research_id") or row.get("artifact_id") or row.get("id")
+    if not artifact_id:
+        return None
+    status = _artifact_status(
+        row,
+        result=source_name == "hermes_research_results.jsonl",
+        source_name=source_name,
+    )
+    entities = row.get("symbols") or row.get("affected_entities")
+    if isinstance(entities, str):
+        entities = [entities]
+    if not isinstance(entities, list):
+        entities = [row.get("symbol")] if row.get("symbol") else []
+    decision_ids = row.get("decision_ids") or row.get("decisions") or []
+    if isinstance(decision_ids, str):
+        decision_ids = [decision_ids]
+    if row.get("decision_id") and row.get("decision_id") not in decision_ids:
+        decision_ids = [*decision_ids, row.get("decision_id")]
+    return {
+        "artifact_id": str(artifact_id),
+        "research_id": row.get("research_id") or (str(artifact_id) if source_name == "hermes_research_results.jsonl" else None),
+        "status": status,
+        "source_type": row.get("source_type") or row.get("research_type") or row.get("provider") or source_name.removesuffix(".jsonl"),
+        "source": row.get("source") or row.get("publisher") or source_name,
+        "publisher": row.get("publisher") or row.get("source"),
+        "source_url": row.get("url") or row.get("source_url"),
+        "source_ref": row.get("source_ref") or row.get("source_store") or source_name,
+        "publication_date": row.get("publication_date") or row.get("published_at"),
+        "retrieved_at": row.get("retrieved_at") or row.get("retrieved_ts") or _stamp(row),
+        "source_as_of": row.get("source_as_of") or row.get("as_of") or _stamp(row),
+        "affected_entities": sorted({str(value) for value in entities if value not in (None, "")}),
+        "subject_guid": row.get("subject_guid") or row.get("issuer_guid"),
+        "research_run_id": row.get("research_run_id") or row.get("run_id") or row.get("research_run"),
+        "agent_model": row.get("agent_model") or row.get("model") or row.get("model_used") or row.get("provider"),
+        "relevance": row.get("relevance"),
+        "support_or_challenge": row.get("support_or_challenge") or row.get("stance"),
+        "reason_used_or_rejected": row.get("use_reason") or row.get("reason_used") or row.get("rejection_reason") or row.get("reason_rejected") or row.get("rejected_reason"),
+        "decision_id": row.get("decision_id") or row.get("cio_case_id"),
+        "decision_ids": sorted({str(value) for value in decision_ids if value not in (None, "")}),
+        "trace_id": row.get("trace_id") or row.get("trace"),
+        "lineage_id": row.get("lineage_id"),
+        "thesis_refs": row.get("thesis_refs") or row.get("refs") or [],
+        "evidence_class": row.get("evidence_class") or "RESEARCH_ARTIFACT",
+    }
+
+
+def _merge_research_artifact(existing: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
+    rank = {"UNKNOWN": 0, "RETRIEVED": 1, "REJECTED": 2, "USED_IN_JUDGMENT": 3}
+    if not existing:
+        return dict(candidate)
+    merged = dict(existing)
+    if rank.get(str(candidate.get("status")), 0) > rank.get(str(existing.get("status")), 0):
+        merged["status"] = candidate["status"]
+    for key, value in candidate.items():
+        if value in (None, "", []):
+            continue
+        if key in {"affected_entities", "decision_ids", "thesis_refs"}:
+            prior = existing.get(key) if isinstance(existing.get(key), list) else []
+            incoming = value if isinstance(value, list) else [value]
+            merged[key] = sorted({str(item) for item in [*prior, *incoming] if item not in (None, "")})
+        elif merged.get(key) in (None, ""):
+            merged[key] = value
+    if not merged.get("decision_id") and merged.get("decision_ids"):
+        merged["decision_id"] = merged["decision_ids"][0]
+    return merged
 
 
 def _research_provenance(root: Path) -> dict[str, Any]:
@@ -102,36 +216,21 @@ def _research_provenance(root: Path) -> dict[str, Any]:
         root / "web_evidence_provenance.jsonl",
         root / "security_research_spine.jsonl",
     ]
-    artifacts: list[dict[str, Any]] = []
+    by_artifact: dict[str, dict[str, Any]] = {}
     sources: list[dict[str, Any]] = []
     for path in paths:
         rows = _rows(path)
         sources.append({"source": path.name, **_source_meta(path, rows)})
-        for row in rows[-250:]:
-            artifact_id = row.get("result_id") or row.get("research_id") or row.get("artifact_id") or row.get("id")
-            # Spine rows are thesis records, not automatically research evidence.
-            if not artifact_id and path.name != "security_research_spine.jsonl":
+        for row in list(_research_rows(path))[-250:]:
+            artifact = _research_artifact(row, source_name=path.name)
+            if not artifact:
                 continue
-            status = _artifact_status(row, result=path.name == "hermes_research_results.jsonl")
-            artifacts.append({
-                "artifact_id": str(artifact_id or "UNKNOWN"),
-                "status": status,
-                "source_type": row.get("source_type") or row.get("provider") or path.stem,
-                "source": row.get("source") or row.get("publisher") or path.name,
-                "source_url": row.get("url") or row.get("source_url") or row.get("source_ref"),
-                "publication_date": row.get("publication_date") or row.get("published_at"),
-                "retrieved_at": _stamp(row),
-                "source_as_of": _stamp(row),
-                "affected_entities": row.get("symbols") or ([row.get("symbol")] if row.get("symbol") else []),
-                "relevance": row.get("relevance"),
-                "support_or_challenge": row.get("support_or_challenge") or row.get("stance"),
-                "reason_used_or_rejected": row.get("use_reason") or row.get("rejection_reason") or row.get("reason"),
-                "agent_model": row.get("model") or row.get("model_used") or row.get("provider"),
-                "decision_id": row.get("decision_id") or row.get("cio_case_id"),
-                "trace_id": row.get("trace_id") or row.get("run_id"),
-                "evidence_class": row.get("evidence_class") or "RESEARCH_ARTIFACT",
-            })
+            artifact_id = artifact["artifact_id"]
+            by_artifact[artifact_id] = _merge_research_artifact(by_artifact.get(artifact_id, {}), artifact)
+    artifacts = list(by_artifact.values())
+    artifacts.sort(key=lambda item: (str(item.get("retrieved_at") or ""), item["artifact_id"]), reverse=True)
     return {
+        "schema": RESEARCH_SCHEMA,
         "sources": sources,
         "artifacts": artifacts,
         "retrieved": [a for a in artifacts if a["status"] == "RETRIEVED"],
@@ -145,6 +244,40 @@ def _research_provenance(root: Path) -> dict[str, Any]:
         },
         "source_as_of": max((s["source_as_of"] for s in sources if s["source_as_of"]), default=None),
     }
+
+
+def build_research_provenance(root: Path | None = None, *, decision_id: str | None = None) -> dict[str, Any]:
+    """Build the additive research projection, optionally for one exact decision.
+
+    Filtering is by decision id only.  A shared symbol is not a join key because
+    historical decisions for that symbol must remain independently resolvable.
+    """
+    block = _research_provenance(root or _root())
+    did = str(decision_id or "").strip()
+    if did:
+        artifacts = [
+            artifact for artifact in block["artifacts"]
+            if artifact.get("decision_id") == did or did in (artifact.get("decision_ids") or [])
+        ]
+        block = {
+            **block,
+            "artifacts": artifacts,
+            "retrieved": [a for a in artifacts if a["status"] == "RETRIEVED"],
+            "used_in_judgment": [a for a in artifacts if a["status"] == "USED_IN_JUDGMENT"],
+            "rejected": [a for a in artifacts if a["status"] == "REJECTED"],
+            "unknown": [a for a in artifacts if a["status"] == "UNKNOWN"],
+            "counts": {
+                "retrieved": sum(a["status"] == "RETRIEVED" for a in artifacts),
+                "used_in_judgment": sum(a["status"] == "USED_IN_JUDGMENT" for a in artifacts),
+                "rejected": sum(a["status"] == "REJECTED" for a in artifacts),
+                "unknown": sum(a["status"] == "UNKNOWN" for a in artifacts),
+            },
+            "decision_id": did,
+        }
+    block["authority"] = AUTHORITY
+    block["financial_action"] = False
+    block["mutation"] = False
+    return block
 
 
 def _cognition(root: Path) -> dict[str, Any]:

@@ -39,6 +39,52 @@ def test_missing_receipt_is_not_rejected_or_used(tmp_path, monkeypatch):
     assert artifact.get("decision_id") is None
 
 
+def test_generic_research_reason_is_not_a_rejection_receipt(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_CIO_DIR", str(tmp_path))
+    _write(tmp_path / "hermes_research_results.jsonl", [{
+        "result_id": "res_request_reason",
+        "symbol": "AAA",
+        "reason": "operator_desk_research_need",
+        "created_at": "2026-10-01T10:00:00Z",
+    }])
+    result = build_operator_evidence(now="2026-10-01T13:00:00Z")
+    artifact = result["blocks"]["research"]["artifacts"][0]
+    assert artifact["status"] == "RETRIEVED"
+    assert artifact["reason_used_or_rejected"] is None
+
+
+def test_research_projection_preserves_metadata_and_exact_decision_filter(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_CIO_DIR", str(tmp_path))
+    _write(tmp_path / "web_evidence_provenance.jsonl", [
+        {
+            "artifact_id": "web_used",
+            "source_type": "filing",
+            "publisher": "Issuer",
+            "source_url": "https://example.test/filing",
+            "publication_date": "2026-09-30",
+            "retrieved_at": "2026-10-01T10:00:00Z",
+            "source_as_of": "2026-09-30T00:00:00Z",
+            "symbol": "AAA",
+            "research_run_id": "run-1",
+            "agent_model": "model-1",
+            "used_in_judgment": True,
+            "decision_id": "dec-1",
+            "trace_id": "trace-1",
+            "evidence_class": "PRIMARY_RESEARCH",
+        },
+        {"artifact_id": "web_other", "symbol": "AAA", "retrieved_at": "2026-10-01T11:00:00Z", "decision_id": "dec-2"},
+    ])
+    from scripts.lib.cio_operator_evidence import build_research_provenance
+
+    block = build_research_provenance(tmp_path, decision_id="dec-1")
+    assert block["schema"] == "CIOResearchProvenance@v1"
+    assert [a["artifact_id"] for a in block["artifacts"]] == ["web_used"]
+    assert block["artifacts"][0]["status"] == "USED_IN_JUDGMENT"
+    assert block["artifacts"][0]["source_as_of"] == "2026-09-30T00:00:00Z"
+    assert block["artifacts"][0]["research_run_id"] == "run-1"
+    assert block["artifacts"][0]["trace_id"] == "trace-1"
+
+
 def test_source_clock_does_not_advance_when_only_composition_changes(tmp_path, monkeypatch):
     monkeypatch.setenv("TRADEAI_CIO_DIR", str(tmp_path))
     _write(tmp_path / "hermes_research_results.jsonl", [{"result_id": "res_clock", "created_at": "2026-10-01T10:00:00Z"}])
@@ -69,3 +115,15 @@ def test_cio_operator_evidence_api_route_is_read_only():
     assert payload["schema"] == "CIOOperatorEvidence@v1"
     assert payload["authority"] == "READ_ONLY_ADVISORY"
     assert payload["financial_action"] is False
+
+
+def test_research_provenance_api_route_is_read_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_CIO_DIR", str(tmp_path))
+    import scripts.api_v2 as api_v2
+
+    status, payload = api_v2.handle("/api/v3/cio/research-provenance")
+    assert status == 200
+    assert payload["schema"] == "CIOResearchProvenance@v1"
+    assert payload["authority"] == "READ_ONLY_ADVISORY"
+    assert payload["financial_action"] is False
+    assert payload["mutation"] is False

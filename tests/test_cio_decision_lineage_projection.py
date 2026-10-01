@@ -195,3 +195,30 @@ def test_api_projection_resolves_by_exact_decision_id(tmp_path, monkeypatch):
     status, payload = api_v2.handle("/api/v3/cio/decision/dec_api_exact/lineage")
     assert status == 200
     assert payload["lineage"]["decision_id"] == "dec_api_exact"
+
+
+def test_lineage_exposes_additive_research_provenance_without_execution_authority():
+    research = {
+        "schema": "CIOResearchProvenance@v1",
+        "decision_id": "dec_research",
+        "counts": {"retrieved": 1, "used_in_judgment": 1, "rejected": 0, "unknown": 0},
+        "artifacts": [{"artifact_id": "res-1", "status": "USED_IN_JUDGMENT", "decision_id": "dec_research"}],
+    }
+    lineage = project_decision_lineage("dec_research", decision={"decision_id": "dec_research"}, research_provenance=research)
+    assert lineage["research_provenance"]["schema"] == "CIOResearchProvenance@v1"
+    assert lineage["research_provenance"]["artifacts"][0]["decision_id"] == "dec_research"
+    assert lineage["authority"] == "READ_ONLY_ADVISORY"
+    assert lineage["financial_action"] is False
+    assert lineage["mutation"] is False
+
+
+def test_frontend_research_provenance_has_required_operator_groups_and_links():
+    panel = (ROOT / "apps" / "command-center-v3" / "src" / "components" / "cio" / "CioOperatorEvidencePanel.tsx").read_text()
+    lineage_panel = (ROOT / "apps" / "command-center-v3" / "src" / "components" / "cio" / "CioDecisionLineagePanel.tsx").read_text()
+    assert "/api/v3/cio/research-provenance" in panel
+    assert "Evidence actually used" in panel
+    assert "Retrieved but not proven used" in panel
+    assert "Rejected with reason" in panel
+    assert "Open CIO decision" in panel
+    assert "Open security/thesis" in panel
+    assert "cio-lineage-research-provenance" in lineage_panel

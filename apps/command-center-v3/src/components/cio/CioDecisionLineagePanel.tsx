@@ -1,4 +1,5 @@
 import { useApi } from '../../hooks/useApi'
+import { Link } from 'react-router-dom'
 import { RADIUS } from '../../lib/designTokens'
 import { isCioLineageState, type CioLineageState } from '../../lib/cioDecisionLineage'
 
@@ -25,6 +26,11 @@ type Lineage = {
   authority?: string
   stages?: Record<string, Stage>
   decision?: Record<string, unknown> | null
+  research_provenance?: {
+    schema?: string
+    counts?: Record<string, number>
+    artifacts?: Array<{ artifact_id?: string; status?: string; decision_id?: string | null; affected_entities?: string[] }>
+  } | null
 }
 
 type Props = { decisionId?: string | null }
@@ -92,6 +98,14 @@ export default function CioDecisionLineagePanel({ decisionId }: Props) {
             <span>Schema: {lineage.schema || 'UNKNOWN'}</span><span>Lineage: {lineage.lineage_id || 'UNKNOWN'}</span><span>Authority: {lineage.authority || 'UNKNOWN'}</span>
           </div>
           <div style={{ marginTop: 8, color: 'var(--text3)', fontSize: 10 }}>Source as of {stamp(lineage.source_as_of)} · composed {stamp(lineage.composition_as_of)}</div>
+          {lineage.research_provenance && <details style={{ marginTop: 10, borderTop: '1px solid var(--border-subtle)', paddingTop: 8 }} data-testid="cio-lineage-research-provenance">
+            <summary style={{ cursor: 'pointer', color: 'var(--text1)', fontSize: 11, fontWeight: 800 }}>Research provenance · {lineage.research_provenance.schema || 'CIOResearchProvenance@v1'}</summary>
+            <div style={{ color: 'var(--text3)', fontSize: 10, lineHeight: 1.5, padding: '6px 0 0 14px' }}>
+              <div>Used {lineage.research_provenance.counts?.used_in_judgment ?? 0} · retrieved {lineage.research_provenance.counts?.retrieved ?? 0} · rejected {lineage.research_provenance.counts?.rejected ?? 0} · unknown {lineage.research_provenance.counts?.unknown ?? 0}</div>
+              <Link to={`/cio?tab=research&decision=${encodeURIComponent(lineage.decision_id || '')}`} style={{ color: 'var(--accent)' }}>Open full evidence groups</Link>
+              {(lineage.research_provenance.artifacts || []).slice(0, 8).map((artifact, index) => <div key={`${artifact.artifact_id}-${index}`}><span style={{ fontWeight: 800 }}>{artifact.status || 'UNKNOWN'}</span> · {artifact.artifact_id || 'UNKNOWN'}{artifact.affected_entities?.length ? ` · ${artifact.affected_entities.join(', ')}` : ''}</div>)}
+            </div>
+          </details>}
           <div style={{ display: 'grid', gap: 6, marginTop: 14 }}>
             {STAGES.map(([key, label], index) => {
               const stage = lineage.stages?.[key]

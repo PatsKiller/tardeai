@@ -133,6 +133,7 @@ def project_decision_lineage(
     intelligence_records: Iterable[dict[str, Any]] = (),
     checkpoint_records: Iterable[dict[str, Any]] = (),
     disposition_records: Iterable[dict[str, Any]] = (),
+    research_provenance: dict[str, Any] | None = None,
     composition_as_of: str | None = None,
 ) -> dict[str, Any]:
     """Compose one exact decision projection from canonical evidence rows."""
@@ -239,6 +240,10 @@ def project_decision_lineage(
         "lineage_id": lineage_id,
         "decision": d or None,
         "stages": stages,
+        # Additive projection only.  The research block is composed from the
+        # canonical research products; it is not a second store and does not
+        # make the frontend infer use or rejection.
+        "research_provenance": research_provenance,
         "source_refs": sorted(set(refs)),
         "source_as_of": min((s["source_as_of"] for s in stages.values() if s.get("source_as_of")), default=None),
         "composition_as_of": composed,
