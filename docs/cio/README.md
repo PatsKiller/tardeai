@@ -43,6 +43,23 @@ Expect mixed pin hygiene on older open plans, intermittent LLM deferral to templ
 
 For operator-facing host packet (pin + as_of snapshots): see [CIO_DESK_OPERATING_PACKET.md](./CIO_DESK_OPERATING_PACKET.md) (also mirrored to Google Drive when synced).
 
+### Current Command Center lineage surface (2026-10-01)
+
+The five-tab `/v3/cio` desk remains the operator investment-office view. The
+Control Plane remains the diagnostic/engineering view; these products are not
+merged. CIO decision cards with a canonical `decision_id` now link to
+Evidence & Comms → Decision lineage, which reads the GET-only
+`/api/v3/intelligence/lineages` surface and discloses missing lifecycle stages
+as `UNAVAILABLE`, `UNWIRED`, `NOT_RUN`, `NOT_APPLICABLE`, or `OUTCOME_PENDING`.
+
+This is a read-only advisory projection. It does not infer missing lineage,
+change truth stores, place orders, modify risk policy, or ratify operator policy.
+The implementation checkpoint is local until the governed remote sync and
+served-CURRENT browser/live proof are complete.
+
+See [CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md](./CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md)
+for the operator contract and validation record.
+
 ---
 
 ## Packet index
@@ -61,6 +78,7 @@ For operator-facing host packet (pin + as_of snapshots): see [CIO_DESK_OPERATING
 | [LEARNING_LOOP.md](./LEARNING_LOOP.md) | Dispositions → learning_log → enrichment bias; limits |
 | [ROADMAP_GAPS.md](./ROADMAP_GAPS.md) | Explicit missing product (aspirational only here) |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Track A vs Track B; where thesis is injected (and where not) |
+| [CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md](./CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md) | CIO-native decision lineage CTA, stage honesty, and validation record |
 
 ### Historical / phase notes (still useful)
 
