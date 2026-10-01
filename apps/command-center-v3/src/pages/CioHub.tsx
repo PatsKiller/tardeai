@@ -11,7 +11,7 @@ import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
 import { RADIUS, SHADOW } from '../lib/designTokens'
-import { runManualCloud } from '../lib/cloudLlmRun'
+import { DEEPSEEK_FLASH_SMOKE_PROCESS, runManualCloud } from '../lib/cloudLlmRun'
 import {
   CIO_HUB_TABS,
   CIO_HUB_TAB_LABEL,
@@ -1762,6 +1762,7 @@ function OperatorPolicyPanel() {
   const [fieldName, setFieldName] = useState('')
   const [textValue, setTextValue] = useState('')
   const [rangeMin, setRangeMin] = useState('')
+  const [rangeTarget, setRangeTarget] = useState('')
   const [rangeMax, setRangeMax] = useState('')
   const [busy, setBusy] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -1789,7 +1790,7 @@ function OperatorPolicyPanel() {
     if (!selected || !fieldName) return
     let value: unknown = textValue
     try {
-      if (selected.kind === 'range_pct') value = { min: Number(rangeMin), max: Number(rangeMax) }
+      if (selected.kind === 'range_pct') value = rangeHasTarget(fieldName) ? { min: Number(rangeMin), target: Number(rangeTarget), max: Number(rangeMax) } : { min: Number(rangeMin), max: Number(rangeMax) }
       if (selected.kind === 'money') value = Number(textValue)
       if (selected.kind === 'list') value = textValue.split(',').map(v => v.trim()).filter(Boolean)
       if (selected.kind === 'object') value = JSON.parse(textValue)
@@ -1800,18 +1801,19 @@ function OperatorPolicyPanel() {
   }
 
   const openFieldManager = (name: string) => {
-    setFieldName(name); setTextValue(''); setRangeMin(''); setRangeMax(''); setLlmSuggestion(null); setManageField(name)
+    setFieldName(name); setTextValue(''); setRangeMin(''); setRangeTarget(''); setRangeMax(''); setLlmSuggestion(null); setManageField(name)
   }
 
   const meta = manageField ? (POLICY_FIELD_META[manageField] || { purpose: policyLabel(manageField), guidance: 'Enter the operator-defined value for this policy field.', input: selected?.kind === 'range_pct' ? 'range' : 'text' }) : null
   const observedClaims = manageField ? policy?.legacy_conflicts.find(c => c.field === manageField)?.claims || [] : []
+  const rangeHasTarget = (name: string | null) => Boolean(name && (name === 'cash_target_range_pct' || (policy?.fields?.[name]?.value && typeof policy.fields[name].value === 'object' && 'target' in (policy.fields[name].value as Record<string, unknown>))))
 
   const askDeepSeek = async () => {
     if (!manageField || !meta) return
     setLlmBusy(true); setLlmSuggestion(null)
     try {
       const result = await runManualCloud({
-        process_id: 'cio_policy_field_advisor',
+        process_id: DEEPSEEK_FLASH_SMOKE_PROCESS,
         lane: 'deepseek-flash',
         task_summary: `Advisory suggestion for CIO policy field ${manageField}`,
         prompt: [
@@ -1832,8 +1834,9 @@ function OperatorPolicyPanel() {
 
   const renderManagedInput = () => {
     if (!meta) return null
-    if (meta.input === 'range') return <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+    if (meta.input === 'range') return <div style={{ display: 'grid', gridTemplateColumns: rangeHasTarget(manageField) ? '1fr 1fr 1fr' : '1fr 1fr', gap: 8 }}>
       <label style={muted}>Minimum<input autoFocus type="number" min="0" max="100" value={rangeMin} onChange={e => setRangeMin(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
+      {rangeHasTarget(manageField) && <label style={muted}>Target<input type="number" min="0" max="100" value={rangeTarget} onChange={e => setRangeTarget(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>}
       <label style={muted}>Maximum<input type="number" min="0" max="100" value={rangeMax} onChange={e => setRangeMax(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
     </div>
     if (meta.input === 'select') return <label style={muted}>Select criterion<select autoFocus value={textValue} onChange={e => setTextValue(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, background: 'var(--bg0)', color: 'var(--text0)' }}><option value="">Choose a criterion…</option>{meta.options?.map(option => <option key={option} value={option}>{option}</option>)}</select></label>
@@ -1844,7 +1847,7 @@ function OperatorPolicyPanel() {
     if (!manageField || !selected) return
     let value: unknown = textValue
     try {
-      if (meta?.input === 'range') value = { min: Number(rangeMin), max: Number(rangeMax) }
+      if (meta?.input === 'range') value = rangeHasTarget(manageField) ? { min: Number(rangeMin), target: Number(rangeTarget), max: Number(rangeMax) } : { min: Number(rangeMin), max: Number(rangeMax) }
       if (meta?.input === 'money') value = Number(textValue)
       if (meta?.input === 'list') value = textValue.split(',').map(v => v.trim()).filter(Boolean)
       if (meta?.input === 'object') value = JSON.parse(textValue)
@@ -1865,7 +1868,7 @@ function OperatorPolicyPanel() {
       if (!response.ok || !result?.ok) throw new Error(result?.detail || result?.error || `HTTP ${response.status}`)
       setPolicy(result.policy)
       setFieldName(result.policy.missing_fields?.[0] || pending.fieldName)
-      setTextValue(''); setRangeMin(''); setRangeMax('')
+      setTextValue(''); setRangeMin(''); setRangeTarget(''); setRangeMax('')
       setPending(null)
       setMessage(`${policyLabel(pending.fieldName)} confirmed`)
     } catch (error: any) {
@@ -1918,9 +1921,10 @@ function OperatorPolicyPanel() {
             </select>
           </label>
           {selected?.kind === 'range_pct' ? (
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <label style={muted}>Minimum<input type="number" min="0" max="100" value={rangeMin} onChange={e => setRangeMin(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
-              <label style={muted}>Maximum<input type="number" min="0" max="100" value={rangeMax} onChange={e => setRangeMax(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
+              <div style={{ display: 'grid', gridTemplateColumns: rangeHasTarget(fieldName) ? '1fr 1fr 1fr' : '1fr 1fr', gap: 8 }}>
+                <label style={muted}>Minimum<input type="number" min="0" max="100" value={rangeMin} onChange={e => setRangeMin(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
+                {rangeHasTarget(fieldName) && <label style={muted}>Target<input type="number" min="0" max="100" value={rangeTarget} onChange={e => setRangeTarget(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>}
+                <label style={muted}>Maximum<input type="number" min="0" max="100" value={rangeMax} onChange={e => setRangeMax(e.target.value)} style={{ display: 'block', width: '100%', marginTop: 5, padding: 8, boxSizing: 'border-box' }} /></label>
             </div>
           ) : (
             <label style={muted}>{selected?.kind === 'object' ? 'JSON value' : selected?.kind === 'list' ? 'Comma-separated values' : 'Value'}
