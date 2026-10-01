@@ -31,6 +31,7 @@ Routes:
   GET /api/v3/cio/scorecard — ops scorecard tiles (working vs not) for Overview
   GET /api/v3/cio/brain/policy — OperatorInvestmentPolicy@v1
   POST /api/v3/cio/brain/policy/ratify — explicit operator policy ratification
+  POST /api/v3/cio/brain/policy/advise — DeepSeek Flash advisory help for one field (server-built prompt)
   GET /api/v3/cio/brain/portfolio-state — deterministic PortfolioState@v1
   GET /api/v3/cio/brain/market-context — deterministic MarketContextState@v1
   GET /api/v3/cio/brain/seasonality — Python-computed SeasonalityState@v1
@@ -1799,6 +1800,18 @@ def get_operator_investment_policy() -> dict[str, Any]:
         repo_root=PROJECT_ROOT,
     )
     return {"ok": True, "policy": policy, "authority": AUTHORITY_ADVISORY}
+
+
+def post_operator_policy_field_advice(body: dict[str, Any] | None = None) -> dict[str, Any]:
+    """DeepSeek Flash advisory help for one policy field. Client sends only field_name;
+    the prompt is built server-side. Never ratifies or saves a value."""
+    from lib.cio_policy_field_advisor import advise
+
+    payload = body if isinstance(body, dict) else {}
+    policy = get_operator_investment_policy()["policy"]
+    result = advise(str(payload.get("field_name") or ""), policy)
+    result["authority"] = AUTHORITY_ADVISORY
+    return result
 
 
 def post_operator_investment_policy_ratification(body: dict[str, Any] | None = None) -> dict[str, Any]:

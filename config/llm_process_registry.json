@@ -209,6 +209,29 @@
       "advisory_only": true
     },
     {
+      "id": "cio_policy_field_advisor",
+      "name": "CIO Policy Field Advisor",
+      "category": "CIO",
+      "lane_policy": "deepseek_only",
+      "default_mode": "manual",
+      "description": "Operator-clicked advisory help in the CIO Capital Policy field manager. The server builds the prompt from the policy projection; the client sends only the field name. Advisory only. Cannot ratify or save policy. No tools. No fallback.",
+      "allowed_lanes": [
+        "deepseek-flash",
+        "fast"
+      ],
+      "deepseek_default_policy": "FAST",
+      "deepseek_allowed_policies": [
+        "FAST"
+      ],
+      "max_input_tokens": 2000,
+      "max_output_tokens": 600,
+      "daily_soft_cap": 30,
+      "daily_cost_cap_usd": 0.10,
+      "tools_allowed": false,
+      "fallback_allowed": false,
+      "advisory_only": true
+    },
+    {
       "id": "directive_keyword_enhancer",
       "name": "Directive Keyword Enhancer",
       "category": "Intel",
