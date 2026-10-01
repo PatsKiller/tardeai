@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+NO_CONSUMER_REASON = "Source-side CLI/report artifact; runtime API consumption is intentionally not claimed."
 SURFACES = {
     "CIO": ROOT / "apps/command-center-v3/src/pages/CioHub.tsx",
     "Advisory": ROOT / "apps/command-center-v3/src/pages/AdvisoryDeskHub.tsx",

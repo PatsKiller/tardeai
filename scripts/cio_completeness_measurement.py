@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+NO_CONSUMER_REASON = "Source-side acceptance artifact; live release consumption is intentionally not claimed."
 sys.path.insert(0, str(ROOT))
 
 from scripts.lib.cio_operator_evidence import build_operator_evidence  # noqa: E402
