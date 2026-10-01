@@ -799,7 +799,18 @@ function CapitalPlanSection({ cp }: { cp: CapitalPlan }) {
 }
 
 function PostureSection({ posture }: { posture: Posture }) {
-  const { thesis, concentration, risk_heat, sector_tilts, performance, income, tax_issues, constraints } = posture
+  // The desk must remain readable when an optional posture projection is absent
+  // or only partially populated. Missing posture evidence is not a reason to
+  // crash the entire CIO surface.
+  const source = posture || {} as Posture
+  const thesis = source.thesis || { stance: '', summary: null, principles: [] }
+  const concentration = source.concentration || { top_position: null, top_weight_pct: null, fire_pct: null }
+  const risk_heat = source.risk_heat || { max_drawdown_pct: null, sharpe: null, sortino: null }
+  const sector_tilts = source.sector_tilts || []
+  const performance = source.performance || { portfolio_cagr: null, benchmark_cagr: null, alpha_annualized: null, benchmark_label: null }
+  const income = source.income || { total_usd: null }
+  const tax_issues = source.tax_issues || []
+  const constraints = source.constraints || []
   return (
     <div data-testid="posture-section">
       <div style={card}>
@@ -854,9 +865,9 @@ function PostureSection({ posture }: { posture: Posture }) {
       {sector_tilts.length > 0 && (
         <div style={card}>
           <SectionTitle>Sector tilts</SectionTitle>
-          {posture.sector_target_honesty?.all_targets_placeholder && (
+          {source.sector_target_honesty?.all_targets_placeholder && (
             <div style={{ ...muted, marginBottom: 8 }} data-testid="sector-target-placeholder-note">
-              {posture.sector_target_honesty.note || 'Sector targets shown are placeholder / model defaults — not researched IPS targets.'}
+              {source.sector_target_honesty.note || 'Sector targets shown are placeholder / model defaults — not researched IPS targets.'}
             </div>
           )}
           <table style={{ width: '100%', borderCollapse: 'collapse' }} data-testid="sector-tilts">
