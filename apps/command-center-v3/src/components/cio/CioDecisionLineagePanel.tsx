@@ -103,7 +103,7 @@ export default function CioDecisionLineagePanel({ decisionId }: Props) {
             <div style={{ color: 'var(--text3)', fontSize: 10, lineHeight: 1.5, padding: '6px 0 0 14px' }}>
               <div>Used {lineage.research_provenance.counts?.used_in_judgment ?? 0} · retrieved {lineage.research_provenance.counts?.retrieved ?? 0} · rejected {lineage.research_provenance.counts?.rejected ?? 0} · unknown {lineage.research_provenance.counts?.unknown ?? 0}</div>
               <Link to={`/cio?tab=research&decision=${encodeURIComponent(lineage.decision_id || '')}`} style={{ color: 'var(--accent)' }}>Open full evidence groups</Link>
-              {(lineage.research_provenance.artifacts || []).slice(0, 8).map((artifact, index) => <div key={`${artifact.artifact_id}-${index}`}><span style={{ fontWeight: 800 }}>{artifact.status || 'UNKNOWN'}</span> · {artifact.artifact_id || 'UNKNOWN'}{artifact.affected_entities?.length ? ` · ${artifact.affected_entities.join(', ')}` : ''}</div>)}
+              {(lineage.research_provenance.artifacts || []).slice(0, 8).map((artifact, index) => <div key={`${artifact.artifact_id}-${index}`}><span style={{ fontWeight: 800 }}>{artifact.status || 'UNKNOWN'}</span> · {artifact.artifact_id || 'UNKNOWN'}{artifact.affected_entities?.length ? ` · ${artifact.affected_entities.join(', ')}` : ''} <Link to={`/cio?tab=research&decision=${encodeURIComponent(lineage.decision_id || '')}${artifact.artifact_id ? `&artifact=${encodeURIComponent(artifact.artifact_id)}` : ''}`} style={{ color: 'var(--accent)' }}>Open artifact</Link></div>)}
             </div>
           </details>}
           <div style={{ display: 'grid', gap: 6, marginTop: 14 }}>

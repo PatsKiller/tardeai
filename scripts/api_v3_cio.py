@@ -2316,7 +2316,7 @@ def get_research_provenance_v1(decision_id: str | None = None) -> dict[str, Any]
     try:
         from scripts.lib.cio_operator_evidence import build_research_provenance
 
-        result = build_research_provenance(decision_id=decision_id)
+        result = build_research_provenance(decision_id=decision_id, now=_now_iso())
         result.update({
             "ok": True,
             "schema": "CIOResearchProvenance@v1",

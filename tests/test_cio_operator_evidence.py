@@ -69,6 +69,7 @@ def test_research_projection_preserves_metadata_and_exact_decision_filter(tmp_pa
             "agent_model": "model-1",
             "used_in_judgment": True,
             "decision_id": "dec-1",
+            "thesis_refs": ["thesis-aaa-v3"],
             "trace_id": "trace-1",
             "evidence_class": "PRIMARY_RESEARCH",
         },
@@ -83,6 +84,26 @@ def test_research_projection_preserves_metadata_and_exact_decision_filter(tmp_pa
     assert block["artifacts"][0]["source_as_of"] == "2026-09-30T00:00:00Z"
     assert block["artifacts"][0]["research_run_id"] == "run-1"
     assert block["artifacts"][0]["trace_id"] == "trace-1"
+    assert block["artifacts"][0]["related_decisions"] == ["dec-1"]
+    assert block["artifacts"][0]["related_securities"] == ["AAA"]
+    assert block["artifacts"][0]["thesis_refs"] == ["thesis-aaa-v3"]
+    assert block["composition_as_of"]
+
+
+def test_research_decision_refs_preserve_exact_historical_links(tmp_path, monkeypatch):
+    monkeypatch.setenv("TRADEAI_CIO_DIR", str(tmp_path))
+    _write(tmp_path / "web_evidence_provenance.jsonl", [
+        {"artifact_id": "shared", "symbol": "AAA", "decision_refs": ["dec-old"], "retrieved_at": "2026-09-01T10:00:00Z"},
+        {"artifact_id": "shared", "symbol": "AAA", "decision_refs": ["dec-new"], "used_in_judgment": True, "retrieved_at": "2026-10-01T10:00:00Z"},
+    ])
+    from scripts.lib.cio_operator_evidence import build_research_provenance
+
+    old = build_research_provenance(tmp_path, decision_id="dec-old")
+    new = build_research_provenance(tmp_path, decision_id="dec-new")
+    assert [item["artifact_id"] for item in old["artifacts"]] == ["shared"]
+    assert [item["artifact_id"] for item in new["artifacts"]] == ["shared"]
+    assert old["artifacts"][0]["related_decisions"] == ["dec-new", "dec-old"]
+    assert new["artifacts"][0]["related_decisions"] == ["dec-new", "dec-old"]
 
 
 def test_source_clock_does_not_advance_when_only_composition_changes(tmp_path, monkeypatch):

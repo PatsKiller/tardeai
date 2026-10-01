@@ -156,11 +156,23 @@ def _research_artifact(row: dict[str, Any], *, source_name: str) -> dict[str, An
         entities = [entities]
     if not isinstance(entities, list):
         entities = [row.get("symbol")] if row.get("symbol") else []
-    decision_ids = row.get("decision_ids") or row.get("decisions") or []
+    decision_ids = (
+        row.get("decision_ids")
+        or row.get("decision_refs")
+        or row.get("decisions")
+        or row.get("consumed_by_decision_ids")
+        or []
+    )
     if isinstance(decision_ids, str):
         decision_ids = [decision_ids]
-    if row.get("decision_id") and row.get("decision_id") not in decision_ids:
-        decision_ids = [*decision_ids, row.get("decision_id")]
+    direct_decision_id = row.get("decision_id") or row.get("cio_case_id") or row.get("judgment_decision_id")
+    if direct_decision_id and direct_decision_id not in decision_ids:
+        decision_ids = [*decision_ids, direct_decision_id]
+    thesis_refs = row.get("thesis_refs") or row.get("thesis_ids") or row.get("refs") or []
+    if isinstance(thesis_refs, str):
+        thesis_refs = [thesis_refs]
+    decision_ids = sorted({str(value) for value in decision_ids if value not in (None, "")})
+    affected_entities = sorted({str(value) for value in entities if value not in (None, "")})
     return {
         "artifact_id": str(artifact_id),
         "research_id": row.get("research_id") or (str(artifact_id) if source_name == "hermes_research_results.jsonl" else None),
@@ -173,18 +185,21 @@ def _research_artifact(row: dict[str, Any], *, source_name: str) -> dict[str, An
         "publication_date": row.get("publication_date") or row.get("published_at"),
         "retrieved_at": row.get("retrieved_at") or row.get("retrieved_ts") or _stamp(row),
         "source_as_of": row.get("source_as_of") or row.get("as_of") or _stamp(row),
-        "affected_entities": sorted({str(value) for value in entities if value not in (None, "")}),
+        "affected_entities": affected_entities,
         "subject_guid": row.get("subject_guid") or row.get("issuer_guid"),
         "research_run_id": row.get("research_run_id") or row.get("run_id") or row.get("research_run"),
         "agent_model": row.get("agent_model") or row.get("model") or row.get("model_used") or row.get("provider"),
         "relevance": row.get("relevance"),
         "support_or_challenge": row.get("support_or_challenge") or row.get("stance"),
         "reason_used_or_rejected": row.get("use_reason") or row.get("reason_used") or row.get("rejection_reason") or row.get("reason_rejected") or row.get("rejected_reason"),
-        "decision_id": row.get("decision_id") or row.get("cio_case_id"),
-        "decision_ids": sorted({str(value) for value in decision_ids if value not in (None, "")}),
+        "decision_id": direct_decision_id,
+        "decision_ids": decision_ids,
         "trace_id": row.get("trace_id") or row.get("trace"),
         "lineage_id": row.get("lineage_id"),
-        "thesis_refs": row.get("thesis_refs") or row.get("refs") or [],
+        "thesis_refs": thesis_refs,
+        # Identifiers only: relationships remain resolved from existing stores.
+        "related_decisions": decision_ids,
+        "related_securities": affected_entities,
         "evidence_class": row.get("evidence_class") or "RESEARCH_ARTIFACT",
     }
 
@@ -199,7 +214,7 @@ def _merge_research_artifact(existing: dict[str, Any], candidate: dict[str, Any]
     for key, value in candidate.items():
         if value in (None, "", []):
             continue
-        if key in {"affected_entities", "decision_ids", "thesis_refs"}:
+        if key in {"affected_entities", "decision_ids", "thesis_refs", "related_decisions", "related_securities"}:
             prior = existing.get(key) if isinstance(existing.get(key), list) else []
             incoming = value if isinstance(value, list) else [value]
             merged[key] = sorted({str(item) for item in [*prior, *incoming] if item not in (None, "")})
@@ -236,6 +251,7 @@ def _research_provenance(root: Path) -> dict[str, Any]:
         "retrieved": [a for a in artifacts if a["status"] == "RETRIEVED"],
         "used_in_judgment": [a for a in artifacts if a["status"] == "USED_IN_JUDGMENT"],
         "rejected": [a for a in artifacts if a["status"] == "REJECTED"],
+        "unknown": [a for a in artifacts if a["status"] == "UNKNOWN"],
         "counts": {
             "retrieved": sum(a["status"] == "RETRIEVED" for a in artifacts),
             "used_in_judgment": sum(a["status"] == "USED_IN_JUDGMENT" for a in artifacts),
@@ -246,7 +262,12 @@ def _research_provenance(root: Path) -> dict[str, Any]:
     }
 
 
-def build_research_provenance(root: Path | None = None, *, decision_id: str | None = None) -> dict[str, Any]:
+def build_research_provenance(
+    root: Path | None = None,
+    *,
+    decision_id: str | None = None,
+    now: str | None = None,
+) -> dict[str, Any]:
     """Build the additive research projection, optionally for one exact decision.
 
     Filtering is by decision id only.  A shared symbol is not a join key because
@@ -277,6 +298,8 @@ def build_research_provenance(root: Path | None = None, *, decision_id: str | No
     block["authority"] = AUTHORITY
     block["financial_action"] = False
     block["mutation"] = False
+    block["composition_as_of"] = now or _now()
+    block["producer"] = "scripts.lib.cio_operator_evidence"
     return block
 
 

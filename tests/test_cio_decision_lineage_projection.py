@@ -221,4 +221,9 @@ def test_frontend_research_provenance_has_required_operator_groups_and_links():
     assert "Rejected with reason" in panel
     assert "Open CIO decision" in panel
     assert "Open security/thesis" in panel
+    assert "research-unknown-group" in panel
+    assert "decision_id=${encodeURIComponent(decisionId)}" in panel
+    assert "Open artifact" in lineage_panel
+    assert "Open thesis" in panel
+    assert "related_decisions" in panel
     assert "cio-lineage-research-provenance" in lineage_panel

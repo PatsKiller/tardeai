@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import type { ReactNode } from 'react'
 import { useApi } from '../../hooks/useApi'
 import { RADIUS } from '../../lib/designTokens'
@@ -31,6 +31,9 @@ type ResearchArtifact = {
   agent_model?: string | null
   decision_id?: string | null
   decision_ids?: string[]
+  related_decisions?: string[]
+  related_securities?: string[]
+  thesis_refs?: string[]
   trace_id?: string | null
   evidence_class?: string | null
 }
@@ -91,28 +94,32 @@ function ResearchPanel({ block }: { block?: ResearchBlock }) {
   const counts = block?.counts || {}
   const used = artifacts.filter(a => a.status === 'USED_IN_JUDGMENT')
   const rejected = artifacts.filter(a => a.status === 'REJECTED')
-  const retrieved = artifacts.filter(a => a.status === 'RETRIEVED' || a.status === 'UNKNOWN')
+  const retrieved = artifacts.filter(a => a.status === 'RETRIEVED')
+  const unknown = artifacts.filter(a => a.status === 'UNKNOWN' || !a.status)
 
   function ArtifactList({ rows, emptyText }: { rows: ResearchArtifact[]; emptyText: string }) {
     if (!rows.length) return <Empty text={emptyText} />
     return <div style={{ display: 'grid', gap: 6 }}>{rows.slice(0, 50).map((a, i) => {
-      const symbol = a.affected_entities?.[0]
-      const decisionId = a.decision_id || a.decision_ids?.[0]
-      const researchHref = `/research-intelligence?${symbol ? `symbol=${encodeURIComponent(symbol)}&` : ''}${decisionId ? `decision=${encodeURIComponent(decisionId)}&` : ''}artifact=${encodeURIComponent(a.artifact_id || '')}`
+      const symbols = a.related_securities?.length ? a.related_securities : (a.affected_entities || [])
+      const decisions = a.related_decisions?.length ? a.related_decisions : (a.decision_ids || (a.decision_id ? [a.decision_id] : []))
+      const thesisRefs = a.thesis_refs || []
+      const decisionId = decisions[0]
+      const researchHref = `/cio?tab=research${decisionId ? `&decision=${encodeURIComponent(decisionId)}` : ''}${a.artifact_id ? `&artifact=${encodeURIComponent(a.artifact_id)}` : ''}`
       return <details key={`${a.artifact_id}-${i}`} style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 6 }}>
         <summary style={{ cursor: 'pointer', fontSize: 11 }}><span style={{ color: tone(a.status), fontWeight: 800 }}>{a.status || 'UNKNOWN'}</span> · {a.artifact_id || 'UNKNOWN'} · {a.publisher || a.source || 'source unavailable'}</summary>
         <div style={{ color: 'var(--text3)', fontSize: 10, lineHeight: 1.5, padding: '6px 0 2px 14px' }}>
           <div>type {a.source_type || 'UNKNOWN'} · publisher {a.publisher || a.source || 'UNKNOWN'} · class {a.evidence_class || 'UNKNOWN'}</div>
           <div>published {stamp(a.publication_date)} · retrieved {stamp(a.retrieved_at)} · source_as_of {stamp(a.source_as_of)}</div>
-          <div>entities {(a.affected_entities || []).join(', ') || 'UNKNOWN'} · relevance {a.relevance ?? 'UNKNOWN'} · {a.support_or_challenge || 'classification UNKNOWN'}</div>
+          <div>entities {symbols.join(', ') || 'UNKNOWN'} · relevance {a.relevance ?? 'UNKNOWN'} · {a.support_or_challenge || 'classification UNKNOWN'}</div>
           <div>run {a.research_run_id || 'UNKNOWN'} · model {a.agent_model || 'UNKNOWN'} · trace {a.trace_id || 'UNKNOWN'} · ref {a.source_ref || 'UNKNOWN'}</div>
           {a.status === 'REJECTED' && <div style={{ color: 'var(--red)' }}>rejected because {a.reason_used_or_rejected || 'reason unavailable'}</div>}
           {a.status === 'RETRIEVED' && <div>use receipt {a.reason_used_or_rejected || 'not recorded'} · retrieval alone does not prove judgment use</div>}
           {a.status === 'UNKNOWN' && <div>use/rejection state UNKNOWN · no canonical receipt was found</div>}
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginTop: 3 }}>
             <Link to={researchHref} style={{ color: 'var(--accent)' }}>Open research artifact</Link>
-            {decisionId && <Link to={`/cio?tab=decisions&decision=${encodeURIComponent(decisionId)}`} style={{ color: 'var(--accent)' }}>Open CIO decision {decisionId}</Link>}
-            {symbol && <Link to={`/research-intelligence?symbol=${encodeURIComponent(symbol)}`} style={{ color: 'var(--accent)' }}>Open security/thesis {symbol}</Link>}
+            {decisions.map((id) => <Link key={id} to={`/cio?tab=decisions&decision=${encodeURIComponent(id)}`} style={{ color: 'var(--accent)' }}>Open CIO decision {id}</Link>)}
+            {symbols.map((symbol) => <Link key={symbol} to={`/research-intelligence?symbol=${encodeURIComponent(symbol)}`} style={{ color: 'var(--accent)' }}>Open security/thesis {symbol}</Link>)}
+            {thesisRefs.map((ref) => <Link key={ref} to={`/research-intelligence?q=${encodeURIComponent(ref)}`} style={{ color: 'var(--accent)' }}>Open thesis {ref}</Link>)}
             {a.source_url ? <a href={a.source_url} target="_blank" rel="noreferrer" style={{ color: 'var(--accent)' }}>Source</a> : null}
           </div>
         </div>
@@ -126,11 +133,12 @@ function ResearchPanel({ block }: { block?: ResearchBlock }) {
       {(['retrieved', 'used_in_judgment', 'rejected', 'unknown'] as const).map(k => <div key={k} style={{ border: '1px solid var(--border)', borderRadius: RADIUS.sm, padding: 8 }}><div style={{ color: 'var(--text3)', fontSize: 10 }}>{k.replace('_', ' ').toUpperCase()}</div><div style={{ color: tone(k === 'used_in_judgment' ? 'USED_IN_JUDGMENT' : k === 'rejected' ? 'REJECTED' : k.toUpperCase()), fontSize: 18, fontWeight: 800 }}>{counts[k] ?? 0}</div></div>)}
     </div>
     {!artifacts.length && <Empty text="No research artifacts are recorded in the canonical result stores; requests alone are not evidence." />}
-    {artifacts.length > 0 && <div style={{ display: 'grid', gap: 8 }}>
+    <div style={{ display: 'grid', gap: 8 }}>
       <details open data-testid="research-used-group"><summary style={{ cursor: 'pointer', fontSize: 11, fontWeight: 800 }}>Evidence actually used · {used.length}</summary><ArtifactList rows={used} emptyText="No artifact has a canonical receipt proving it was used in judgment." /></details>
-      <details data-testid="research-retrieved-group"><summary style={{ cursor: 'pointer', fontSize: 11, fontWeight: 800 }}>Retrieved but not proven used · {retrieved.length}</summary><ArtifactList rows={retrieved} emptyText="No retrieved-only or UNKNOWN research artifacts." /></details>
+      <details data-testid="research-retrieved-group"><summary style={{ cursor: 'pointer', fontSize: 11, fontWeight: 800 }}>Retrieved but not proven used · {retrieved.length}</summary><ArtifactList rows={retrieved} emptyText="No retrieved-only research artifacts." /></details>
       <details data-testid="research-rejected-group"><summary style={{ cursor: 'pointer', fontSize: 11, fontWeight: 800 }}>Rejected with reason · {rejected.length}</summary><ArtifactList rows={rejected} emptyText="No artifact has an explicit rejection receipt and reason." /></details>
-    </div>}
+      <details data-testid="research-unknown-group"><summary style={{ cursor: 'pointer', fontSize: 11, fontWeight: 800 }}>Provenance unknown · {unknown.length}</summary><ArtifactList rows={unknown} emptyText="No artifacts have an unknown provenance state." /></details>
+    </div>
   </Card>
 }
 
@@ -168,7 +176,11 @@ function CoveragePanel({ block }: { block?: CoverageBlock }) {
 }
 
 export default function CioOperatorEvidencePanel({ section = 'all' }: { section?: 'all' | 'research' }) {
-  const endpoint = section === 'research' ? '/api/v3/cio/research-provenance' : '/api/v3/cio/operator-evidence'
+  const [searchParams] = useSearchParams()
+  const decisionId = section === 'research' ? (searchParams.get('decision') || '').trim() : ''
+  const endpoint = section === 'research'
+    ? `/api/v3/cio/research-provenance${decisionId ? `?decision_id=${encodeURIComponent(decisionId)}` : ''}`
+    : '/api/v3/cio/operator-evidence'
   const { data, loading, error } = useApi<Payload & ResearchBlock>(endpoint, 60_000)
   if (loading && !data) return <div style={{ color: 'var(--text2)' }} data-testid="cio-operator-evidence-loading">Loading operator evidence…</div>
   if (error && !data) return <div style={{ color: 'var(--amber)' }} data-testid="cio-operator-evidence-error">Operator evidence unavailable: {String(error)}</div>
