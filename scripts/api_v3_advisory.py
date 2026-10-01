@@ -507,6 +507,39 @@ def _load_opinions_blob() -> dict[str, Any]:
     return {}
 
 
+def _dependency_clock(rows: list[dict[str, Any]], timestamps: dict[str, Any]) -> dict[str, Any]:
+    """Keep run-now synthesis freshness separate from dependency freshness."""
+    def latest(values: list[Any]) -> str | None:
+        clean = [str(value) for value in values if value not in (None, "", [])]
+        return max(clean) if clean else None
+
+    technicals: list[Any] = []
+    analysts: list[Any] = []
+    research: list[Any] = []
+    for row in rows:
+        wi = row.get("watch_intelligence") or {}
+        technicals.extend([
+            (wi.get("technicals") or {}).get("as_of"),
+            (wi.get("technicals") or {}).get("updated_at"),
+            (wi.get("quote") or {}).get("price_as_of"),
+        ])
+        analyst = row.get("expand", {}).get("analyst") if isinstance(row.get("expand"), dict) else None
+        analyst = analyst or row.get("analyst") or {}
+        analysts.extend([analyst.get("as_of"), analyst.get("target_as_of")])
+        prov = row.get("advisory_provenance") or {}
+        research.extend([prov.get("research_as_of"), prov.get("evidence_as_of")])
+        for item in (row.get("expand", {}).get("evidence_items") or []) if isinstance(row.get("expand"), dict) else []:
+            if isinstance(item, dict):
+                research.extend([item.get("retrieved_at"), item.get("published_at")])
+    return {
+        "advisory_synthesis": {"source_as_of": timestamps.get("synthesis"), "freshness": timestamps.get("synthesis_freshness"), "producer": "advisory_desk_synthesis"},
+        "technicals": {"source_as_of": latest(technicals), "freshness": "UNKNOWN" if not latest(technicals) else "OBSERVED", "producer": "watch_intelligence"},
+        "analyst_data": {"source_as_of": latest(analysts), "freshness": "UNKNOWN" if not latest(analysts) else "OBSERVED", "producer": "analyst_projection"},
+        "research": {"source_as_of": latest(research), "freshness": "UNKNOWN" if not latest(research) else "OBSERVED", "producer": "research_evidence"},
+        "durable_memory": {"source_as_of": timestamps.get("memory"), "freshness": timestamps.get("memory_freshness"), "producer": "durable_memory"},
+    }
+
+
 def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> dict[str, Any]:
     desk = _load_desk(force=force)
     opinions = desk.get("opinions") or _load_opinions_blob()
@@ -610,6 +643,7 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
         "reentry_universe": meta.get("reentry_universe_count"),
         "reentry_shown": by_class.get("closed_journal", 0),
     }
+    dependency_clocks = _dependency_clock(rows, timestamps)
     return {
         "ok": True,
         "as_of": data.get("computed_at") or _now_iso(),
@@ -624,6 +658,7 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
         "desk_freshness_state": desk.get("desk_freshness_state") or timestamps.get("facts_freshness"),
         "desk_health": health,
         "timestamps": timestamps,
+        "dependency_clocks": dependency_clocks,
         "price_clock": price_clock,
         "banners": banners,
         "metadata": meta,

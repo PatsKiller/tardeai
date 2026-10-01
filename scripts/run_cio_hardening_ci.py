@@ -885,6 +885,8 @@ GATES = [
             "tests/test_cio_decision_lineage_projection.py",
             # Operator evidence composition: research receipts, cognition, learning, coverage.
             "tests/test_cio_operator_evidence.py",
+            # Advisory run-now must disclose independent dependency clocks.
+            "tests/test_cio_advisory_dependency_clocks.py",
         ],
     ),
     # A failed producer must never overwrite good cached content. Registered here
