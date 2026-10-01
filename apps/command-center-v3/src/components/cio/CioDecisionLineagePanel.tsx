@@ -31,6 +31,14 @@ type Lineage = {
     counts?: Record<string, number>
     artifacts?: Array<{ artifact_id?: string; status?: string; decision_id?: string | null; affected_entities?: string[] }>
   } | null
+  institutional_cognition?: {
+    items?: Array<{ id?: string; kind?: string; state?: string; used?: boolean; changed_question_or_view?: boolean; contradictory?: boolean; summary?: string }>
+  } | null
+  learning?: {
+    settled_outcomes?: Array<{ outcome_id?: string; decision_id?: string; status?: string }>
+    pending_outcomes?: Array<{ outcome_id?: string; decision_id?: string; status?: string }>
+    maturity_state?: string | null
+  } | null
 }
 
 type Props = { decisionId?: string | null }
@@ -98,6 +106,21 @@ export default function CioDecisionLineagePanel({ decisionId }: Props) {
             <span>Schema: {lineage.schema || 'UNKNOWN'}</span><span>Lineage: {lineage.lineage_id || 'UNKNOWN'}</span><span>Authority: {lineage.authority || 'UNKNOWN'}</span>
           </div>
           <div style={{ marginTop: 8, color: 'var(--text3)', fontSize: 10 }}>Source as of {stamp(lineage.source_as_of)} · composed {stamp(lineage.composition_as_of)}</div>
+          {lineage.institutional_cognition && <details style={{ marginTop: 10, borderTop: '1px solid var(--border-subtle)', paddingTop: 8 }} data-testid="cio-lineage-institutional-cognition">
+            <summary style={{ cursor: 'pointer', color: 'var(--text1)', fontSize: 11, fontWeight: 800 }}>Institutional cognition for this decision · advisory only</summary>
+            <div style={{ color: 'var(--text3)', fontSize: 10, lineHeight: 1.5, padding: '6px 0 0 14px' }}>
+              Office truth remains canonical: prices, holdings, cash, broker state, orders, and risk limits. No cognition item changes financial truth.
+              {(lineage.institutional_cognition.items || []).length === 0 && <div>Decision-specific cognition receipt: UNKNOWN.</div>}
+              {(lineage.institutional_cognition.items || []).map((item, index) => <div key={`${item.id || item.kind}-${index}`}><span style={{ fontWeight: 800 }}>{item.state || 'UNKNOWN'}</span> · {item.kind || 'cognition'} · {item.summary || 'no summary'} · used {item.used ? 'PROVEN' : 'NOT_PROVEN'} · changed view {item.changed_question_or_view ? 'PROVEN' : 'NOT_PROVEN'}{item.contradictory ? ' · CONTRADICTORY' : ''}</div>)}
+            </div>
+          </details>}
+          {lineage.learning && <details style={{ marginTop: 10, borderTop: '1px solid var(--border-subtle)', paddingTop: 8 }} data-testid="cio-lineage-learning">
+            <summary style={{ cursor: 'pointer', color: 'var(--text1)', fontSize: 11, fontWeight: 800 }}>Learning / outcome links · {lineage.learning.maturity_state || 'UNKNOWN'}</summary>
+            <div style={{ color: 'var(--text3)', fontSize: 10, lineHeight: 1.5, padding: '6px 0 0 14px' }}>
+              {[(lineage.learning.settled_outcomes || []).map(row => ({ ...row, bucket: 'SETTLED' })), (lineage.learning.pending_outcomes || []).map(row => ({ ...row, bucket: 'PENDING' }))].flat().length === 0 && <div>Decision-specific outcome evidence: UNKNOWN.</div>}
+              {[(lineage.learning.settled_outcomes || []).map(row => ({ ...row, bucket: 'SETTLED' })), (lineage.learning.pending_outcomes || []).map(row => ({ ...row, bucket: 'PENDING' }))].flat().map((row, index) => <div key={`${row.outcome_id || 'outcome'}-${index}`}><span style={{ fontWeight: 800 }}>{row.bucket}</span> · {row.outcome_id || 'UNKNOWN'} · {row.status || 'UNKNOWN'} <Link to={`/cio?tab=evidence-comms&sub=decision-lineage&decision=${encodeURIComponent(lineage.decision_id || '')}`} style={{ color: 'var(--accent)' }}>Open lineage</Link></div>)}
+            </div>
+          </details>}
           {lineage.research_provenance && <details style={{ marginTop: 10, borderTop: '1px solid var(--border-subtle)', paddingTop: 8 }} data-testid="cio-lineage-research-provenance">
             <summary style={{ cursor: 'pointer', color: 'var(--text1)', fontSize: 11, fontWeight: 800 }}>Research provenance · {lineage.research_provenance.schema || 'CIOResearchProvenance@v1'}</summary>
             <div style={{ color: 'var(--text3)', fontSize: 10, lineHeight: 1.5, padding: '6px 0 0 14px' }}>

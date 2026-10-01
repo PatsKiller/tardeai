@@ -117,7 +117,10 @@ def test_learning_cockpit_cannot_self_promote() -> None:
     row = api.get_learning_cockpit_v1()
     assert row["gui_cannot_self_promote"] is True
     assert row["max_unattended_stage"] == "REVIEW_READY"
-    assert row["sample_lesson"]["status"] == "PROVISIONAL"
+    # The compatibility field may expose a durable lesson, but it must never
+    # manufacture one or invent an outcome id to fill an empty store.
+    assert row["sample_lesson"] is None or row["sample_lesson"].get("schema")
+    assert not (row["sample_lesson"] or {}).get("supporting_outcome_ids") == ["o1"]
     assert row["memory_behavior_influence"] == 0
 
 

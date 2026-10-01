@@ -8,6 +8,7 @@ type Envelope = {
   composition_as_of?: string | null
   producer?: string
   authority?: string
+  freshness?: string | null
 }
 
 type ResearchArtifact = {
@@ -40,7 +41,23 @@ type ResearchArtifact = {
 
 type ResearchBlock = Envelope & { schema?: string; artifacts?: ResearchArtifact[]; retrieved?: ResearchArtifact[]; used_in_judgment?: ResearchArtifact[]; rejected?: ResearchArtifact[]; unknown?: ResearchArtifact[]; counts?: Record<string, number> }
 type CognitionBlock = Envelope & { items?: Array<Record<string, any>>; office_truth_boundary?: string[] }
-type LearningBlock = Envelope & { settled_outcomes?: any[]; pending_outcomes?: any[]; beliefs?: any[]; lessons?: any[]; hypotheses?: any[]; experiments?: any[]; review_ready?: any[]; sample_size?: number }
+type LearningBlock = Envelope & {
+  settled_outcomes?: any[]
+  pending_outcomes?: any[]
+  beliefs?: any[]
+  lessons?: any[]
+  research_derived_lessons?: any[]
+  outcome_derived_lessons?: any[]
+  hypotheses?: any[]
+  experiments?: any[]
+  review_ready?: any[]
+  sample_size?: number | null
+  successful_count?: number | null
+  success_rate?: number | null
+  horizon?: string | null
+  calibration?: unknown
+  maturity_state?: string | null
+}
 type CoverageBlock = Envelope & { rows?: CoverageRow[]; counts?: Record<string, number> }
 type Blocks = { research?: ResearchBlock; institutional_cognition?: CognitionBlock; learning?: LearningBlock; capability_coverage?: CoverageBlock }
 
@@ -50,9 +67,13 @@ type CoverageRow = {
   producer?: string
   consumer?: string
   current_status?: string
+  state?: string
   durable_artifact?: string
   last_producer_event?: string | null
   reason?: string
+  last_produced_at?: string | null
+  last_consumed_at?: string | null
+  artifact_age?: number | null
 }
 
 type Payload = {
@@ -85,17 +106,20 @@ function Empty({ text }: { text: string }) {
 
 function Provenance({ block }: { block?: Envelope }) {
   return <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', color: 'var(--text3)', fontSize: 10 }}>
-    <span>source_as_of {stamp(block?.source_as_of)}</span><span>composition_as_of {stamp(block?.composition_as_of)}</span><span>producer {block?.producer || 'UNKNOWN'}</span>
+    <span>source_as_of {stamp(block?.source_as_of)}</span><span>composition_as_of {stamp(block?.composition_as_of)}</span><span>freshness {block?.freshness || 'UNKNOWN'}</span><span>producer {block?.producer || 'UNKNOWN'}</span>
   </div>
 }
 
 function ResearchPanel({ block }: { block?: ResearchBlock }) {
   const artifacts = block?.artifacts || []
   const counts = block?.counts || {}
-  const used = artifacts.filter(a => a.status === 'USED_IN_JUDGMENT')
-  const rejected = artifacts.filter(a => a.status === 'REJECTED')
-  const retrieved = artifacts.filter(a => a.status === 'RETRIEVED')
-  const unknown = artifacts.filter(a => a.status === 'UNKNOWN' || !a.status)
+  // Group membership is assigned by the backend receipt projection.  The
+  // frontend only renders those explicit groups and never upgrades a status
+  // by inspecting neighboring artifact fields.
+  const used = block?.used_in_judgment || []
+  const rejected = block?.rejected || []
+  const retrieved = block?.retrieved || []
+  const unknown = block?.unknown || []
 
   function ArtifactList({ rows, emptyText }: { rows: ResearchArtifact[]; emptyText: string }) {
     if (!rows.length) return <Empty text={emptyText} />
@@ -130,7 +154,7 @@ function ResearchPanel({ block }: { block?: ResearchBlock }) {
   return <Card title="Research provenance — found is not relied upon" testId="cio-research-provenance">
     <Provenance block={block} />
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 8, margin: '10px 0' }}>
-      {(['retrieved', 'used_in_judgment', 'rejected', 'unknown'] as const).map(k => <div key={k} style={{ border: '1px solid var(--border)', borderRadius: RADIUS.sm, padding: 8 }}><div style={{ color: 'var(--text3)', fontSize: 10 }}>{k.replace('_', ' ').toUpperCase()}</div><div style={{ color: tone(k === 'used_in_judgment' ? 'USED_IN_JUDGMENT' : k === 'rejected' ? 'REJECTED' : k.toUpperCase()), fontSize: 18, fontWeight: 800 }}>{counts[k] ?? 0}</div></div>)}
+      {(['retrieved', 'used_in_judgment', 'rejected', 'unknown'] as const).map(k => <div key={k} style={{ border: '1px solid var(--border)', borderRadius: RADIUS.sm, padding: 8 }}><div style={{ color: 'var(--text3)', fontSize: 10 }}>{k.replace('_', ' ').toUpperCase()}</div><div style={{ color: tone(k === 'used_in_judgment' ? 'USED_IN_JUDGMENT' : k === 'rejected' ? 'REJECTED' : k.toUpperCase()), fontSize: 18, fontWeight: 800 }}>{counts[k] == null ? 'UNKNOWN' : counts[k]}</div></div>)}
     </div>
     {!artifacts.length && <Empty text="No research artifacts are recorded in the canonical result stores; requests alone are not evidence." />}
     <div style={{ display: 'grid', gap: 8 }}>
@@ -153,15 +177,17 @@ function CognitionPanel({ block }: { block?: CognitionBlock }) {
 }
 
 function LearningPanel({ block }: { block?: LearningBlock }) {
+  const count = (value: unknown) => typeof value === 'number' ? String(value) : 'UNKNOWN'
   return <Card title="Learning / belief cockpit — no self-promotion" testId="cio-learning-cockpit">
     <Provenance block={block} />
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,minmax(0,1fr))', gap: 8, margin: '10px 0' }}>
-      <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>SETTLED</span><strong style={{ display: 'block', fontSize: 16 }}>{block?.settled_outcomes?.length ?? 0}</strong></div>
-      <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>PENDING</span><strong style={{ display: 'block', fontSize: 16 }}>{block?.pending_outcomes?.length ?? 0}</strong></div>
-      <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>SAMPLE SIZE</span><strong style={{ display: 'block', fontSize: 16 }}>{block?.sample_size ?? 0}</strong></div>
-      <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>REVIEW_READY</span><strong style={{ display: 'block', fontSize: 16 }}>{block?.review_ready?.length ?? 0}</strong></div>
+      <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>SETTLED</span><strong style={{ display: 'block', fontSize: 16 }}>{count(block?.settled_outcomes?.length)}</strong></div>
+      <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>PENDING</span><strong style={{ display: 'block', fontSize: 16 }}>{count(block?.pending_outcomes?.length)}</strong></div>
+      <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>SAMPLE SIZE</span><strong style={{ display: 'block', fontSize: 16 }}>{count(block?.sample_size)}</strong></div>
+      <div><span style={{ color: 'var(--text3)', fontSize: 10 }}>REVIEW_READY</span><strong style={{ display: 'block', fontSize: 16 }}>{count(block?.review_ready?.length)}</strong></div>
     </div>
-    <details><summary style={{ cursor: 'pointer', fontSize: 11 }}>Beliefs, lessons, hypotheses, experiments</summary><div style={{ color: 'var(--text3)', fontSize: 10, lineHeight: 1.5, padding: 8 }}>Beliefs {block?.beliefs?.length ?? 0} · lessons {block?.lessons?.length ?? 0} · hypotheses {block?.hypotheses?.length ?? 0} · experiments {block?.experiments?.length ?? 0}. Source outcome links are required; insufficient samples remain INSUFFICIENT_EVIDENCE. Promotion: NOT_PERFORMED.</div></details>
+    <div style={{ color: 'var(--text2)', fontSize: 11 }}>state {block?.maturity_state || 'UNKNOWN'} · successful {count(block?.successful_count)} · success rate {block?.success_rate == null ? 'UNKNOWN' : `${(block.success_rate * 100).toFixed(1)}%`} · horizon {block?.horizon || 'UNKNOWN'} · calibration {block?.calibration == null ? 'UNKNOWN' : 'RECORDED'}</div>
+    <details><summary style={{ cursor: 'pointer', fontSize: 11 }}>Beliefs, lessons, hypotheses, experiments</summary><div style={{ color: 'var(--text3)', fontSize: 10, lineHeight: 1.5, padding: 8 }}>Beliefs {count(block?.beliefs?.length)} · lessons {count(block?.lessons?.length)} · outcome-derived lessons {count(block?.outcome_derived_lessons?.length)} · research-derived lessons {count(block?.research_derived_lessons?.length)} · hypotheses {count(block?.hypotheses?.length)} · experiments {count(block?.experiments?.length)}. Backend evidence links determine maturity; insufficient samples remain INSUFFICIENT_EVIDENCE.</div></details>
   </Card>
 }
 
@@ -171,11 +197,11 @@ function CoveragePanel({ block }: { block?: CoverageBlock }) {
     <Provenance block={block} />
     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', margin: '8px 0', fontSize: 10 }}>{Object.entries(block?.counts || {}).map(([key, value]) => <span key={key} style={{ color: tone(key), fontWeight: 800 }}>{key} {String(value)}</span>)}</div>
     {!rows.length && <Empty text="Capability producer evidence unavailable; this is not a clean zero." />}
-    <div style={{ display: 'grid', gap: 5 }}>{rows.map((row: CoverageRow) => <details key={row.capability} style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 6 }}><summary style={{ cursor: 'pointer', fontSize: 11 }}><span style={{ color: tone(row.current_status), fontWeight: 800 }}>{row.current_status || 'UNKNOWN'}</span> · {row.capability}</summary><div style={{ color: 'var(--text3)', fontSize: 10, padding: '5px 0 2px 14px', lineHeight: 1.45 }}>producer {row.producer || 'UNKNOWN'} · consumer {row.consumer || 'UNKNOWN'}<br />artifact {row.durable_artifact || 'UNKNOWN'} · last producer {stamp(row.last_producer_event)}<br />{row.reason || 'No reason recorded.'}</div></details>)}</div>
+    <div style={{ display: 'grid', gap: 5 }}>{rows.map((row: CoverageRow) => { const state = row.state || row.current_status || 'UNKNOWN'; return <details key={row.capability} style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 6 }}><summary style={{ cursor: 'pointer', fontSize: 11 }}><span style={{ color: tone(state), fontWeight: 800 }}>{state}</span> · {row.capability}</summary><div style={{ color: 'var(--text3)', fontSize: 10, padding: '5px 0 2px 14px', lineHeight: 1.45 }}>contract {row.contract || 'UNKNOWN'} · producer {row.producer || 'UNKNOWN'} · consumer {row.consumer || 'UNKNOWN'}<br />artifact {row.durable_artifact || 'UNKNOWN'} · last produced {stamp(row.last_produced_at || row.last_producer_event)} · last consumed {stamp(row.last_consumed_at)} · age {row.artifact_age == null ? 'UNKNOWN' : `${row.artifact_age}s`}<br />{row.reason || 'No reason recorded.'}</div></details> })}</div>
   </Card>
 }
 
-export default function CioOperatorEvidencePanel({ section = 'all' }: { section?: 'all' | 'research' }) {
+export default function CioOperatorEvidencePanel({ section = 'all' }: { section?: 'all' | 'research' | 'cognition' | 'learning' | 'coverage' }) {
   const [searchParams] = useSearchParams()
   const decisionId = section === 'research' ? (searchParams.get('decision') || '').trim() : ''
   const endpoint = section === 'research'
@@ -189,6 +215,8 @@ export default function CioOperatorEvidencePanel({ section = 'all' }: { section?
   return <section data-testid="cio-operator-evidence" style={{ display: 'grid', gap: 12 }}>
     <div style={{ border: '1px solid var(--border)', borderRadius: RADIUS.md, padding: 12, background: 'var(--bg2)' }}><div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 800, letterSpacing: '.55px' }}>CIO OPERATOR EVIDENCE</div><div style={{ marginTop: 5, fontSize: 12, color: 'var(--text1)' }}>Research, cognition, learning, and runtime coverage joined for the investment-office operator. Control Plane remains diagnostic/engineering only.</div><Provenance block={data || undefined} /></div>
     {(section === 'all' || section === 'research') && <ResearchPanel block={research} />}
-    {section === 'all' && <><CognitionPanel block={blocks.institutional_cognition} /><LearningPanel block={blocks.learning} /><CoveragePanel block={blocks.capability_coverage} /></>}
+    {(section === 'all' || section === 'cognition') && <CognitionPanel block={blocks.institutional_cognition} />}
+    {(section === 'all' || section === 'learning') && <LearningPanel block={blocks.learning} />}
+    {(section === 'all' || section === 'coverage') && <CoveragePanel block={blocks.capability_coverage} />}
   </section>
 }

@@ -2192,6 +2192,9 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'senses-evidence' && <SensesEvidencePanel />}
           {evidenceSub === 'full-brain' && <CioBrainPanel />}
           {evidenceSub === 'operator-evidence' && <CioOperatorEvidencePanel />}
+          {evidenceSub === 'institutional-cognition' && <CioOperatorEvidencePanel section="cognition" />}
+          {evidenceSub === 'learning-cockpit' && <CioOperatorEvidencePanel section="learning" />}
+          {evidenceSub === 'capability-coverage' && <CioOperatorEvidencePanel section="coverage" />}
           {evidenceSub === 'decision-lineage' && <CioDecisionLineagePanel decisionId={decisionRaw || null} />}
           {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading evidence…</div>
@@ -2223,6 +2226,9 @@ function EvidenceCommsSubnav({ active, onSelect }: { active: string; onSelect: (
     { id: 'senses-evidence', label: 'Senses' },
     { id: 'full-brain', label: 'Full brain' },
     { id: 'operator-evidence', label: 'Operator evidence' },
+    { id: 'institutional-cognition', label: 'Institutional cognition' },
+    { id: 'learning-cockpit', label: 'Learning cockpit' },
+    { id: 'capability-coverage', label: 'Capability coverage' },
     { id: 'decision-lineage', label: 'Decision lineage' },
   ]
   return (

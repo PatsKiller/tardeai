@@ -1446,7 +1446,7 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             direct_match,
             project_decision_lineage,
         )
-        from scripts.lib.cio_operator_evidence import build_research_provenance
+        from scripts.lib.cio_operator_evidence import build_operator_evidence, build_research_provenance
 
         decision = dict(load_known_decision_catalog().get(did) or {})
         try:
@@ -1481,6 +1481,20 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
                 "authority": AUTHORITY_ADVISORY,
                 "financial_action": False,
             }
+        composition_as_of = _now_iso()
+        operator_evidence = build_operator_evidence(now=composition_as_of)
+        evidence_blocks = operator_evidence.get("blocks", {})
+        cognition_block = dict(evidence_blocks.get("institutional_cognition") or {})
+        cognition_block["items"] = [
+            item for item in cognition_block.get("items", []) if item.get("decision_id") == did
+        ]
+        learning_block = dict(evidence_blocks.get("learning") or {})
+        learning_block["settled_outcomes"] = [
+            row for row in learning_block.get("settled_outcomes", []) if row.get("decision_id") == did
+        ]
+        learning_block["pending_outcomes"] = [
+            row for row in learning_block.get("pending_outcomes", []) if row.get("decision_id") == did
+        ]
         projection = project_decision_lineage(
             did,
             decision=decision,
@@ -1489,7 +1503,9 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             checkpoint_records=checkpoint_rows,
             disposition_records=disposition_rows,
             research_provenance=build_research_provenance(cio_root, decision_id=did),
-            composition_as_of=_now_iso(),
+            institutional_cognition=cognition_block,
+            learning=learning_block,
+            composition_as_of=composition_as_of,
         )
         return {"ok": True, "lineage": projection, "authority": AUTHORITY_ADVISORY}
     except Exception as exc:
@@ -2246,13 +2262,14 @@ def get_model_performance_v1() -> dict[str, Any]:
 def get_learning_cockpit_v1() -> dict[str, Any]:
     """GUI projection of institutional learning. Cannot self-promote."""
     try:
-        from scripts.lib.cio_institutional_learning import (
-            PROMOTION_STAGES,
-            QUALITY_AXES,
-            lesson_candidate_v2,
-        )
+        from scripts.lib.cio_institutional_learning import PROMOTION_STAGES, QUALITY_AXES
         from scripts.lib.r17_checkpoint_binding import learning_cockpit_from_store
         store = learning_cockpit_from_store(PROJECT_ROOT)
+        lesson_rows = _read_jsonl(PROJECT_ROOT / "data" / "cio" / "lesson_candidates.jsonl")
+        # This is a compatibility field for older clients.  It may only expose
+        # a real durable lesson; the endpoint must never mint a sample lesson
+        # or an invented outcome id just to populate the cockpit.
+        sample_lesson = next((row for row in reversed(lesson_rows) if isinstance(row, dict)), None)
         return {
             "ok": True,
             "schema": "LearningCockpit@v1",
@@ -2273,6 +2290,7 @@ def get_learning_cockpit_v1() -> dict[str, Any]:
             "max_unattended_stage": "REVIEW_READY",
             "gui_cannot_self_promote": True,
             "provisional_not_displayed_as_rule": True,
+            "sample_lesson": sample_lesson,
             "evidence_classes": [
                 "LIVE",
                 "NATURAL_LONGITUDINAL",
@@ -2281,10 +2299,6 @@ def get_learning_cockpit_v1() -> dict[str, Any]:
                 "GOLDEN_SHADOW",
             ],
             "why_not_promoted": "PROMOTION_REQUIRES_SEPARATE_AUTHORITY",
-            "sample_lesson": lesson_candidate_v2(
-                scope="office", task_class="research_curation", statement="insufficient sample",
-                supporting_outcome_ids=["o1"], counterexamples=[], searched_counterexamples=False,
-            ),
             "authority": AUTHORITY_ADVISORY,
             "memory_behavior_influence": 0,
             "financial_action": False,

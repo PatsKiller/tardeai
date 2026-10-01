@@ -165,7 +165,8 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
 
     const load = async () => {
       // A terminal outcome stands until an operator explicitly asks again.
-      if (terminalRef.current || inFlight) return
+      if (terminalRef.current) return
+      if (inFlight) return
       inFlight = true
       const controller = new AbortController()
       controllers.add(controller)

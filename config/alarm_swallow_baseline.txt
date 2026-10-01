@@ -46,7 +46,7 @@ scripts/incubator_proposal_promoter.py 2
 scripts/interlock_parity_monitor.py 1
 scripts/lib/cio_operator_renderers.py 1
 scripts/lib/cio_plan_enrichment.py 1
-scripts/lib/cio_theses.py 1
+scripts/lib/cio_theses.py 0
 scripts/lib/gain_guardian_publish.py 1
 scripts/market_regime_classifier.py 1
 scripts/moomoo/opend_health.py 1

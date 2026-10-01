@@ -49,8 +49,11 @@ The five-tab `/v3/cio` desk remains the operator investment-office view. The
 Control Plane remains the diagnostic/engineering view; these products are not
 merged. CIO decision cards with a canonical `decision_id` now link to
 Evidence & Comms → Decision lineage, which reads the GET-only
-`/api/v3/intelligence/lineages` surface and discloses missing lifecycle stages
-as `UNAVAILABLE`, `UNWIRED`, `NOT_RUN`, `NOT_APPLICABLE`, or `OUTCOME_PENDING`.
+`/api/v3/cio/decision/{decision_id}/lineage` endpoint and returns the additive
+`CIODecisionLineage@v1` projection. Every required stage is keyed by the exact
+decision ID; missing state is backend-declared (`UNKNOWN`, `UNAVAILABLE`,
+`UNWIRED`, `NOT_RUN`, `NOT_APPLICABLE`, or `PENDING`) and is never inferred by
+React.
 
 This is a read-only advisory projection. It does not infer missing lineage,
 change truth stores, place orders, modify risk policy, or ratify operator policy.
@@ -63,9 +66,9 @@ for the operator contract and validation record.
 The CIO Evidence & Comms tab also exposes the read-only
 `CIOOperatorEvidence@v1` projection. It separates retrieved research from
 research proven used in judgment, keeps institutional cognition beside rather
-than inside `OFFICE_TRUTH`, shows learning/outcome maturity, and reports
-runtime-derived capability coverage. Source clocks and composition clocks are
-independent; missing receipts remain `UNKNOWN`.
+than inside `OFFICE_TRUTH`, shows learning/outcome maturity without creating
+outcomes, and reports producer/consumer runtime coverage. Source clocks and
+composition clocks are independent; missing receipts remain `UNKNOWN`.
 
 ---
 
@@ -87,6 +90,8 @@ independent; missing receipts remain `UNKNOWN`.
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Track A vs Track B; where thesis is injected (and where not) |
 | [CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md](./CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md) | CIO-native decision lineage CTA, stage honesty, and validation record |
 | [CIO_OPERATOR_EVIDENCE_SURFACE.md](./CIO_OPERATOR_EVIDENCE_SURFACE.md) | Research provenance, cognition, learning, and runtime capability coverage |
+| [CIO_API_CONTRACT_CENSUS.md](./CIO_API_CONTRACT_CENSUS.md) | Source-visible API census and runtime-unknown disclosure |
+| [CIO_COMPLETENESS_MEASUREMENT.md](./CIO_COMPLETENESS_MEASUREMENT.md) | Produced-versus-surfaced measurement and critical-edge counts |
 
 ### Historical / phase notes (still useful)
 

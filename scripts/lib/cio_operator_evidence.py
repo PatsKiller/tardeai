@@ -73,6 +73,45 @@ def _source_meta(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _freshness(source_as_of: str | None) -> str:
+    """Name freshness only when a source clock actually exists."""
+    return "OBSERVED" if source_as_of else "UNKNOWN"
+
+
+def _age_seconds(source_as_of: str | None, composition_as_of: str) -> int | None:
+    if not source_as_of:
+        return None
+    try:
+        source = datetime.fromisoformat(str(source_as_of).replace("Z", "+00:00"))
+        composed = datetime.fromisoformat(str(composition_as_of).replace("Z", "+00:00"))
+        if source.tzinfo is None:
+            source = source.replace(tzinfo=timezone.utc)
+        if composed.tzinfo is None:
+            composed = composed.replace(tzinfo=timezone.utc)
+        return max(0, int((composed - source).total_seconds()))
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
+def _row_refs(row: dict[str, Any], *keys: str) -> list[str]:
+    values: list[str] = []
+    for key in keys:
+        value = row.get(key)
+        if isinstance(value, str):
+            values.append(value)
+        elif isinstance(value, (list, tuple, set)):
+            values.extend(str(item) for item in value if item not in (None, ""))
+    return sorted({value for value in values if value.strip()})
+
+
+def _evidence_ids(row: dict[str, Any]) -> list[str]:
+    return _row_refs(
+        row,
+        "outcome_ids", "supporting_outcome_ids", "source_outcome_ids",
+        "evidence_refs", "evidence_ids", "outcome_id", "outcome_ref",
+    )
+
+
 def _explicit_used(row: dict[str, Any]) -> bool:
     status = str(row.get("status") or row.get("state") or row.get("event") or "").upper()
     if status in {"USED", "USED_IN_JUDGMENT", "ADVISORY_USED", "CONSUMED"}:
@@ -299,6 +338,7 @@ def build_research_provenance(
     block["financial_action"] = False
     block["mutation"] = False
     block["composition_as_of"] = now or _now()
+    block["freshness"] = _freshness(block.get("source_as_of"))
     block["producer"] = "scripts.lib.cio_operator_evidence"
     return block
 
@@ -316,25 +356,61 @@ def _cognition(root: Path) -> dict[str, Any]:
         rows = _rows(path)
         sources.append({"source": path.name, **_source_meta(path, rows)})
         for row in rows[-100:]:
+            retrieved = kind in {"memory_retrieval", "memory_context", "research_lineage"} and bool(
+                row.get("retrieval_receipt_id") or row.get("memory_ids") or row.get("has_context") or row.get("result_id")
+            )
+            used = _explicit_used(row)
+            changed = bool(
+                row.get("changed_question") is True
+                or row.get("changed_view") is True
+                or row.get("question_changed") is True
+                or row.get("view_changed") is True
+                or row.get("influence_receipt_id")
+            )
+            contradictory = bool(
+                row.get("contradictory") is True
+                or row.get("counter") is True
+                or row.get("contradiction_receipt_id")
+            )
             items.append({
                 "kind": kind,
                 "id": row.get("context_id") or row.get("retrieval_receipt_id") or row.get("memory_id") or row.get("feedback_id"),
-                "state": "USED" if _explicit_used(row) else ("RETRIEVED" if row.get("has_context") or row.get("memory_ids") else "AVAILABLE"),
+                "decision_id": row.get("decision_id") or row.get("judgment_decision_id"),
+                "availability": "AVAILABLE",
+                "state": "USED" if used else ("RETRIEVED" if retrieved else "AVAILABLE"),
+                "retrieved": retrieved,
+                "used": used,
+                "changed_question_or_view": changed,
+                "contradictory": contradictory,
                 "symbol": row.get("symbol") or ((row.get("symbols") or [None])[0] if isinstance(row.get("symbols"), list) else None),
                 "summary": row.get("summary") or row.get("query") or row.get("decision") or row.get("event"),
-                "contradictory": bool(row.get("contradictory") or row.get("counter")),
                 "source_ref": str(path),
                 "source_as_of": _stamp(row),
-                "evidence_class": "INSTITUTIONAL_COGNITION",
-                "influence": "PROVEN" if _explicit_used(row) else "NOT_PROVEN",
+                "evidence_class": row.get("evidence_class") or "INSTITUTIONAL_COGNITION",
+                "influence": "PROVEN" if used else "NOT_PROVEN",
             })
+    source_as_of = max((s["source_as_of"] for s in sources if s["source_as_of"]), default=None)
     return {
         "office_truth_boundary": ["price", "holdings", "cash", "orders", "broker_state", "risk_limits"],
         "items": items,
         "sources": sources,
-        "source_as_of": max((s["source_as_of"] for s in sources if s["source_as_of"]), default=None),
+        "source_as_of": source_as_of,
+        "freshness": _freshness(source_as_of),
         "memory_behavior_influence": 0,
         "authority": "NON_AUTHORITATIVE_CONTEXT",
+    }
+
+
+def _learning_row(row: dict[str, Any], *, origin: str) -> dict[str, Any]:
+    evidence_ids = _evidence_ids(row)
+    raw_status = str(row.get("promotion_stage") or row.get("status") or "UNKNOWN").upper()
+    return {
+        **row,
+        "evidence_ids": evidence_ids,
+        "evidence_state": "PROVEN" if evidence_ids else "INSUFFICIENT_EVIDENCE",
+        "origin": origin,
+        "outcome_ids": _row_refs(row, "outcome_ids", "supporting_outcome_ids", "outcome_id"),
+        "status": raw_status,
     }
 
 
@@ -345,83 +421,167 @@ def _learning(root: Path) -> dict[str, Any]:
         "lessons": root / "lesson_candidates.jsonl",
         "experiments": root / "shadow_experiments.jsonl",
         "hypotheses": root / "hypotheses.jsonl",
+        "hypothesis_candidates": root / "hypothesis_candidates.jsonl",
+        "operator_learning": root / "cio_operator_learning.jsonl",
+        "instrument_records": root / "cio_instrument_records.jsonl",
     }
     rows_by_kind = {kind: _rows(path) for kind, path in paths.items()}
     sources = [{"source": path.name, **_source_meta(path, rows_by_kind[kind])} for kind, path in paths.items()]
     outcomes = rows_by_kind["outcomes"]
-    settled = [r for r in outcomes if str(r.get("status") or "").upper() in {"OUTCOME_EVALUATED", "SETTLED", "SETTLED_OUTCOME"}]
+    settled_statuses = {"OUTCOME_EVALUATED", "SETTLED", "SETTLED_OUTCOME", "CONFIRMED", "REFUTED", "EXPIRED"}
+    settled = [r for r in outcomes if str(r.get("status") or r.get("outcome") or "").upper() in settled_statuses]
     pending = [r for r in outcomes if r not in settled]
-    lessons = rows_by_kind["lessons"]
+    settled_ids = sorted({str(r.get("outcome_id") or r.get("id")) for r in settled if r.get("outcome_id") or r.get("id")})
+    successful_statuses = {"SUCCESS", "POSITIVE", "CONFIRMED", "WIN", "SUPPORTED"}
+    successful_count = sum(1 for row in settled if str(row.get("result") or row.get("outcome") or row.get("status") or "").upper() in successful_statuses)
+    sample_size = len(settled_ids) if paths["outcomes"].is_file() else None
+    success_rate = (successful_count / sample_size) if sample_size else None
+
+    lessons_raw = rows_by_kind["lessons"] + [r for r in rows_by_kind["operator_learning"] if r.get("lesson_id") or r.get("statement")]
+    lessons = [_learning_row(row, origin=("RESEARCH_DERIVED" if str(row.get("lesson_provenance") or row.get("origin") or "").upper() == "RESEARCH_DERIVED" else "OUTCOME_DERIVED" if _evidence_ids(row) else "UNKNOWN")) for row in lessons_raw[-100:]]
+    hypotheses_raw = rows_by_kind["hypotheses"] + rows_by_kind["hypothesis_candidates"]
+    hypotheses = [_learning_row(row, origin=str(row.get("origin") or "UNKNOWN").upper()) for row in hypotheses_raw[-100:]]
+    experiments = rows_by_kind["experiments"][-100:]
+
+    beliefs: list[dict[str, Any]] = []
+    for record in rows_by_kind["instrument_records"]:
+        for belief in record.get("beliefs") or []:
+            if not isinstance(belief, dict):
+                continue
+            outcome_ids = _row_refs(belief, "outcome_ids", "outcome_id")
+            beliefs.append({
+                **belief,
+                "belief_id": belief.get("belief_id") or belief.get("belief_key"),
+                "outcome_ids": outcome_ids,
+                "sample_size": belief.get("sample_size") if belief.get("sample_size") is not None else len(outcome_ids),
+                "evidence_state": "PROVEN" if outcome_ids else "INSUFFICIENT_EVIDENCE",
+                "state": str(belief.get("status") or belief.get("state") or "UNKNOWN").upper(),
+            })
+    beliefs.extend({
+        "belief_id": row.get("belief_id"),
+        "outcome_ids": row["outcome_ids"],
+        "sample_size": row.get("sample_size"),
+        "success_rate": row.get("success_rate"),
+        "state": row.get("status") or "UNKNOWN",
+        "evidence_state": row["evidence_state"],
+    } for row in lessons if row.get("belief_id") and row.get("belief_id") not in {b.get("belief_id") for b in beliefs})
+
+    review_ready = [row for row in [*lessons, *hypotheses] if row.get("status") == "REVIEW_READY" and row.get("evidence_ids")]
+    maturity_state = "REVIEW_READY" if review_ready else "INSUFFICIENT_EVIDENCE" if not sample_size or sample_size < 5 else "OBSERVATION_ONLY"
+    source_as_of = max((s["source_as_of"] for s in sources if s["source_as_of"]), default=None)
     return {
-        "settled_outcomes": [{"outcome_id": r.get("outcome_id") or r.get("id"), "decision_id": r.get("decision_id"), "status": r.get("status"), "source_as_of": _stamp(r)} for r in settled[-100:]],
-        "pending_outcomes": [{"outcome_id": r.get("outcome_id") or r.get("id"), "decision_id": r.get("decision_id"), "status": r.get("status"), "source_as_of": _stamp(r)} for r in pending[-100:]],
-        "beliefs": [{"belief_id": r.get("belief_id"), "outcome_ids": r.get("outcome_ids") or [], "sample_size": r.get("sample_size"), "success_rate": r.get("success_rate"), "state": r.get("status") or "UNKNOWN"} for r in lessons[-100:] if r.get("belief_id") or r.get("outcome_ids")],
-        "lessons": lessons[-100:],
-        "hypotheses": rows_by_kind["hypotheses"][-100:],
-        "experiments": rows_by_kind["experiments"][-100:],
+        "settled_outcomes": [{"outcome_id": r.get("outcome_id") or r.get("id"), "decision_id": r.get("decision_id"), "status": r.get("status") or r.get("outcome"), "source_as_of": _stamp(r)} for r in settled[-100:]],
+        "pending_outcomes": [{"outcome_id": r.get("outcome_id") or r.get("id"), "decision_id": r.get("decision_id"), "status": r.get("status") or r.get("outcome"), "source_as_of": _stamp(r)} for r in pending[-100:]],
+        "beliefs": beliefs[-100:],
+        "lessons": lessons,
+        "research_derived_lessons": [row for row in lessons if row.get("origin") == "RESEARCH_DERIVED"],
+        "outcome_derived_lessons": [row for row in lessons if row.get("origin") == "OUTCOME_DERIVED"],
+        "hypotheses": hypotheses,
+        "experiments": experiments,
         "checkpoint_count": len(rows_by_kind["checkpoints"]),
-        "sample_size": len(set(str(r.get("outcome_id") or r.get("id")) for r in settled if r.get("outcome_id") or r.get("id"))),
-        "review_ready": [r for r in lessons + rows_by_kind["hypotheses"] if str(r.get("promotion_stage") or r.get("status") or "").upper() == "REVIEW_READY"],
+        "sample_size": sample_size,
+        "successful_count": successful_count if paths["outcomes"].is_file() else None,
+        "success_rate": success_rate,
+        "horizon": next((r.get("horizon") for r in [*beliefs, *lessons] if r.get("horizon")), None),
+        "calibration": next((r.get("calibration") for r in [*beliefs, *lessons] if r.get("calibration") is not None), None),
+        "maturity_state": maturity_state,
+        "review_ready": review_ready,
         "sources": sources,
-        "source_as_of": max((s["source_as_of"] for s in sources if s["source_as_of"]), default=None),
+        "source_as_of": source_as_of,
+        "freshness": _freshness(source_as_of),
         "memory_behavior_influence": 0,
         "self_promotion": False,
     }
 
 
-def _capability_coverage(root: Path) -> dict[str, Any]:
-    """Classify capabilities from producer artifacts, not React field absence."""
+def _capability_coverage(root: Path, *, composition_as_of: str | None = None) -> dict[str, Any]:
+    """Classify capabilities from observed producer/consumer artifacts.
+
+    A missing React field is never evidence of DARK.  DARK means a declared
+    producer exists but no runtime producer rows are observable; PARTIAL means
+    only one side of the producer/consumer edge is observable; LIVE requires an
+    explicit consumer reference as well as producer rows.
+    """
     specs = [
-        ("InstrumentRecord", "scripts.lib.cio_instrument_record", "data/cio/cio_instrument_records.jsonl", "persistent_wake", "PARTIAL"),
-        ("persistent memory", "scripts.lib.agent_durable_memory", "data/cio/aif_memory_retrievals.jsonl", "cio/advisory/hermes", "PARTIAL"),
-        ("specialist artifacts", "scripts.lib.cio_specialist_artifact", "data/cio/cio_specialist_artifacts.jsonl", "decision_lineage", "DARK"),
-        ("CIO council synthesis", "scripts.lib.cio_committee", "data/cio/cio_workflow_lineage.jsonl", "cio_home", "PARTIAL"),
-        ("judgment", "scripts.lib.cio_run", "data/cio/cio_workflow_lineage.jsonl", "cio_decisions", "PARTIAL"),
-        ("commitment", "scripts.lib.cio_action_ledger", "data/cio/cio_action_ledger.jsonl", "operator_disposition", "PARTIAL"),
-        ("outcome checkpoint", "scripts.lib.r17_checkpoint_binding", "data/cio/outcome_checkpoints.jsonl", "learning_cockpit", "PARTIAL"),
-        ("outcome settlement", "scripts.lib.cio_outcome_store", "data/cio/advisory_outcomes_v1.jsonl", "learning_cockpit", "PARTIAL"),
-        ("lesson", "scripts.lib.memory_consolidator", "data/cio/lesson_candidates.jsonl", "learning_cockpit", "PARTIAL"),
-        ("belief writer", "scripts.lib.cio_belief_writer", "data/cio/cio_instrument_records.jsonl", "persistent_wake", "PARTIAL"),
-        ("notification policy", "scripts.lib.cio_notification_signal", "data/cio/cio_notification_audit.jsonl", "notification_panel", "PARTIAL"),
-        ("delivery receipt", "scripts.lib.cio_delivery_mode", "data/cio/cio_telegram_receipts.jsonl", "telegram_receipts", "PARTIAL"),
-        ("Telegram lane", "scripts.lib.cio_alex_telegram", "data/cio/cio_telegram_receipts.jsonl", "telegram_receipts", "PARTIAL"),
-        ("operator feedback", "scripts.lib.cio_feedback_learning_v1", "data/cio/operator_ticker_feedback.jsonl", "decisions/advisory", "PARTIAL"),
-        ("external research", "scripts.lib.cio_hermes_research", "data/cio/hermes_research_results.jsonl", "research/lineage", "DARK"),
-        ("graph propagation", "scripts.lib.ticker_knowledge_graph", "data/cio/ticker_research_graph.jsonl", "research", "PARTIAL"),
+        ("InstrumentRecord", "scripts.lib.cio_instrument_record", "cio_instrument_records.jsonl", ("cio_wake_jobs.jsonl", "intelligence_lineages.jsonl")),
+        ("identity resolution", "scripts.lib.cio_identity", "security_research_spine.jsonl", ("cio_workflow_lineage.jsonl", "intelligence_lineages.jsonl")),
+        ("office truth", "scripts.lib.cio_current_truth", "cio_events.jsonl", ("cio_workflow_lineage.jsonl",)),
+        ("persistent cognition", "scripts.lib.agent_durable_memory", "memory_contexts.jsonl", ("intelligence_lineages.jsonl", "context_use_receipts.jsonl")),
+        ("memory retrieval", "scripts.lib.agent_durable_memory", "aif_memory_retrievals.jsonl", ("context_use_receipts.jsonl",)),
+        ("Hermes research", "scripts.lib.cio_hermes_research", "hermes_research_requests.jsonl", ("hermes_research_projection.json", "intelligence_lineages.jsonl")),
+        ("external research", "scripts.lib.cio_hermes_research", "security_research_spine.jsonl", ("intelligence_lineages.jsonl",)),
+        ("specialist artifacts", "scripts.lib.cio_specialist_artifact", "cio_specialist_artifacts.jsonl", ("cio_workflow_lineage.jsonl",)),
+        ("specialist disagreement", "scripts.lib.cio_specialist_artifact", "cio_workflow_lineage.jsonl", ("intelligence_lineages.jsonl",)),
+        ("CIO synthesis", "scripts.lib.cio_committee", "cio_workflow_lineage.jsonl", ("cio_plans.jsonl", "cio_production_cases.jsonl")),
+        ("judgment", "scripts.lib.cio_run", "cio_workflow_lineage.jsonl", ("cio_action_ledger.jsonl",)),
+        ("commitment", "scripts.lib.cio_action_ledger", "cio_action_ledger.jsonl", ("operator_notification_outbox.jsonl",)),
+        ("notification policy", "scripts.lib.cio_notification_signal", "cio_notification_audit.jsonl", ("operator_notification_outbox.jsonl",)),
+        ("delivery/outbox", "scripts.lib.cio_delivery_mode", "operator_notification_outbox.jsonl", ("cio_telegram_receipts.jsonl",)),
+        ("operator feedback", "scripts.lib.cio_feedback_learning_v1", "operator_ticker_feedback.jsonl", ("cio_workflow_lineage.jsonl",)),
+        ("outcome checkpoint", "scripts.lib.r17_checkpoint_binding", "outcome_checkpoints.jsonl", ("advisory_outcomes_v1.jsonl",)),
+        ("outcome settlement", "scripts.lib.cio_outcome_store", "advisory_outcomes_v1.jsonl", ("lesson_candidates.jsonl",)),
+        ("belief writer", "scripts.lib.cio_belief_writer", "cio_instrument_records.jsonl", ("memory_contexts.jsonl",)),
+        ("lesson", "scripts.lib.memory_consolidator", "lesson_candidates.jsonl", ("cio_operator_learning.jsonl",)),
+        ("hypothesis", "scripts.lib.cio_institutional_learning", "hypothesis_candidates.jsonl", ("shadow_experiments.jsonl",)),
+        ("graph propagation", "scripts.lib.ticker_knowledge_graph", "ticker_research_graph.jsonl", ("intelligence_lineages.jsonl",)),
+        ("canon retrieval", "scripts.lib.cio_canon", "canon_retrievals.jsonl", ("cio_workflow_lineage.jsonl",)),
+        ("historical analogue retrieval", "scripts.lib.cio_analogue_retrieval", "historical_analogues.jsonl", ("cio_workflow_lineage.jsonl",)),
     ]
+    composed = composition_as_of or _now()
     rows: list[dict[str, Any]] = []
-    for capability, producer, rel, consumer, dark_state in specs:
-        path = root / Path(rel).relative_to("data/cio")
-        records = _rows(path)
-        module_path = Path(__file__).resolve().parents[2] / (producer.replace(".", "/") + ".py")
-        if records:
-            state = "LIVE" if consumer else "PARTIAL"
-            reason = "durable producer and consumer evidence observed"
-        elif path.is_file():
+    repo_root = Path(__file__).resolve().parents[2]
+    for capability, producer, producer_name, consumer_names in specs:
+        producer_path = root / producer_name
+        producer_rows = _rows(producer_path)
+        consumer_rows_by_path = {name: _rows(root / name) for name in consumer_names}
+        consumer_rows = [row for values in consumer_rows_by_path.values() for row in values]
+        # A consumer row counts as direct only when it carries an explicit
+        # producer/source/artifact reference.  Store existence alone is not a
+        # proof that this capability was consumed.
+        producer_tokens = {producer_name, producer_name.removesuffix(".jsonl"), capability.lower()}
+        direct_consumers = [
+            row for row in consumer_rows
+            if any(token in " ".join(_row_refs(row, "source_ref", "source_refs", "producer", "producer_id", "input_ref", "input_refs", "artifact_id", "capability")).lower() for token in producer_tokens)
+        ]
+        module_path = repo_root / (producer.replace(".", "/") + ".py")
+        producer_declared = producer_path.is_file() or module_path.is_file()
+        if producer_rows and direct_consumers:
+            state = "LIVE"
+            reason = "timestamped producer rows and an explicit consumer reference were observed"
+        elif producer_rows or consumer_rows:
             state = "PARTIAL"
-            reason = "canonical artifact exists but no readable runtime rows"
-        elif module_path.is_file():
-            state = dark_state if dark_state in {"DARK", "PARTIAL"} else "UNWIRED"
-            reason = "producer exists; no durable runtime artifact observed"
+            reason = "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference"
+        elif producer_declared and consumer_names:
+            state = "DARK"
+            reason = "declared producer exists but no runtime producer or consumer evidence was observed"
+        elif producer_declared:
+            state = "UNWIRED"
+            reason = "declared producer has no declared consumer contract"
         else:
             state = "UNKNOWN"
-            reason = "producer and artifact could not be verified"
+            reason = "producer contract and runtime artifact could not be verified"
+        last_producer = _latest_stamp(producer_rows)
+        last_consumer = _latest_stamp(direct_consumers)
         rows.append({
             "capability": capability,
             "contract": producer,
             "producer": producer,
-            "consumer": consumer,
-            "last_producer_event": _latest_stamp(records),
-            "last_consumer_event": None,
-            "durable_artifact": str(path),
-            "artifact_age": None,
+            "consumer": ", ".join(consumer_names) if consumer_names else None,
+            "last_producer_event": last_producer,
+            "last_consumer_event": last_consumer,
+            "last_produced_at": last_producer,
+            "last_consumed_at": last_consumer,
+            "durable_artifact": str(producer_path),
+            "artifact_age": _age_seconds(last_producer, composed),
             "current_status": state,
+            "state": state,
             "reason": reason,
-            "source_sha": _source_sha(path),
+            "source_sha": _source_sha(producer_path),
             "evidence_class": "RUNTIME_ARTIFACT_CENSUS",
         })
-    counts = {state: sum(row["current_status"] == state for row in rows) for state in ("LIVE", "PARTIAL", "UNWIRED", "DARK", "UNKNOWN")}
-    return {"rows": rows, "counts": counts, "source_as_of": max((r["last_producer_event"] for r in rows if r["last_producer_event"]), default=None)}
+    counts = {state: sum(row["state"] == state for row in rows) for state in ("LIVE", "PARTIAL", "UNWIRED", "DARK", "UNKNOWN")}
+    source_as_of = max((r["last_produced_at"] for r in rows if r["last_produced_at"]), default=None)
+    return {"rows": rows, "counts": counts, "source_as_of": source_as_of, "freshness": _freshness(source_as_of)}
 
 
 def build_operator_evidence(*, now: str | None = None) -> dict[str, Any]:
@@ -430,11 +590,12 @@ def build_operator_evidence(*, now: str | None = None) -> dict[str, Any]:
     research = _research_provenance(root)
     cognition = _cognition(root)
     learning = _learning(root)
-    coverage = _capability_coverage(root)
+    coverage = _capability_coverage(root, composition_as_of=composed)
     blocks = {"research": research, "institutional_cognition": cognition, "learning": learning, "capability_coverage": coverage}
     for block in blocks.values():
         block["composition_as_of"] = composed
         block["producer"] = "scripts.lib.cio_operator_evidence"
+        block["freshness"] = block.get("freshness") or _freshness(block.get("source_as_of"))
         block["authority"] = AUTHORITY
     return {
         "ok": True,

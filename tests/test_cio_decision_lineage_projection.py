@@ -126,7 +126,9 @@ def test_frontend_uses_direct_route_and_does_not_infer_backend_state():
     assert "missing specialist" not in panel.lower()
     assert "specialist_artifacts" not in panel
     assert "framework_refs" not in panel
-    assert "outcome_id" not in panel
+    # Outcome identifiers may be rendered as exact backend links; the panel
+    # must not derive an outcome state from their absence.
+    assert "missing outcome" not in panel.lower()
     assert "`/cio?tab=evidence-comms" in helper
 
 
@@ -210,6 +212,29 @@ def test_lineage_exposes_additive_research_provenance_without_execution_authorit
     assert lineage["authority"] == "READ_ONLY_ADVISORY"
     assert lineage["financial_action"] is False
     assert lineage["mutation"] is False
+
+
+def test_exact_decision_lineage_carries_only_exact_cognition_and_learning_rows(tmp_path, monkeypatch):
+    import scripts.api_v3_cio as api
+
+    cio_root = tmp_path / "cio"
+    cio_root.mkdir()
+    (cio_root / "cio_workflow_lineage.jsonl").write_text(json.dumps({"decision_id": "dec-context", "record_type": "envelope"}) + "\n")
+    (cio_root / "memory_contexts.jsonl").write_text(
+        json.dumps({"context_id": "ctx-exact", "decision_id": "dec-context", "memory_ids": ["m1"]}) + "\n"
+        + json.dumps({"context_id": "ctx-other", "decision_id": "dec-other", "memory_ids": ["m2"]}) + "\n"
+    )
+    (cio_root / "advisory_outcomes_v1.jsonl").write_text(
+        json.dumps({"outcome_id": "out-exact", "decision_id": "dec-context", "status": "PENDING"}) + "\n"
+        + json.dumps({"outcome_id": "out-other", "decision_id": "dec-other", "status": "SETTLED"}) + "\n"
+    )
+    monkeypatch.setenv("TRADEAI_CIO_DIR", str(cio_root))
+    monkeypatch.setattr(api, "load_known_decision_catalog", lambda: {})
+    result = api.get_cio_decision_lineage("dec-context")
+    assert result["ok"] is True
+    assert [item["id"] for item in result["lineage"]["institutional_cognition"]["items"]] == ["ctx-exact"]
+    assert [row["outcome_id"] for row in result["lineage"]["learning"]["pending_outcomes"]] == ["out-exact"]
+    assert result["lineage"]["learning"]["settled_outcomes"] == []
 
 
 def test_frontend_research_provenance_has_required_operator_groups_and_links():
