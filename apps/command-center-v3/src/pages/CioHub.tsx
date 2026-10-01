@@ -603,13 +603,22 @@ function DecisionCard({ d, dispositions, legacyUnversioned, onAct }: {
       )}
 
       {d.decision_id && (
-        <Link
-          to={decisionLineageHref(d.decision_id)}
-          style={{ display: 'inline-block', marginTop: 8, color: 'var(--accent)', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}
-          data-testid="cio-decision-lineage-link"
-        >
-          View CIO decision lineage →
-        </Link>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
+          <Link
+            to={decisionLineageHref(d.decision_id)}
+            style={{ color: 'var(--accent)', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}
+            data-testid="cio-decision-lineage-link"
+          >
+            View CIO decision lineage →
+          </Link>
+          {d.symbol && <Link
+            to={`/research-intelligence?symbol=${encodeURIComponent(d.symbol)}&decision=${encodeURIComponent(d.decision_id)}`}
+            style={{ color: 'var(--text2)', fontSize: 12, fontWeight: 650, textDecoration: 'none' }}
+            data-testid="cio-decision-research-link"
+          >
+            Open research for {d.symbol} →
+          </Link>}
+        </div>
       )}
 
       <DecisionActions d={d} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />
@@ -1066,7 +1075,8 @@ function extrasFromIntelligence(body: any): Partial<SymbolThesisCardPayload> {
 
 function UniverseThesesPanel() {
   const { data, loading, error } = useApi<UniverseThesesPayload>('/api/v3/cio/universe-theses', 60_000)
-  const [sym, setSym] = useState('')
+  const [searchParams] = useSearchParams()
+  const [sym, setSym] = useState(() => searchParams.get('symbol') || '')
   const [intelExtras, setIntelExtras] = useState<Partial<SymbolThesisCardPayload>>({})
   const cardPath = sym ? `/api/v3/cio/symbol-thesis/${encodeURIComponent(sym)}` : ''
   const { data: card, loading: cardLoading, error: cardError } = useApi<any>(

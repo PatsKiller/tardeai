@@ -875,6 +875,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/ARCHITECTURE.md` | Architecture — Track A vs Track B | review_required | OK | `2dffd8834f47` |
 | `docs/cio/AUTHORITY.md` | Authority — READ_ONLY_ADVISORY | review_required | OK | `5ed5e4f198e6` |
 | `docs/cio/CATALYST_AND_HERMES.md` | Catalyst domain + Hermes research de-duplication | review_required | OK | `65dfcba21b19` |
+| `docs/cio/CIO_AGENT_RUNTIME_OPERATOR_SURFACE.md` | CIO Agent Runtime Operator Surface | review_required | MISSING HEADER | `f7f7d6fcb493` |
 | `docs/cio/CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md` | CIO Decision Lineage — Operator Surface | review_required | OK | `08f390bfd657` |
 | `docs/cio/CIO_DESK_OPERATING_PACKET.md` | Trade AI — CIO Desk Operating Packet | review_required | OK | `6d3c1e290b04` |
 | `docs/cio/CIO_NOTIFICATION_POLICY.md` | CIO Notification Policy — Signal over Spam | review_required | OK | `40a0bb623a7c` |
