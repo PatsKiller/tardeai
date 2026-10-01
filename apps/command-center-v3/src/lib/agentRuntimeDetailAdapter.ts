@@ -23,6 +23,9 @@ export interface AgentDetailView {
   role: 'producer' | 'reviewer' | 'scorer' | 'mixed' | 'none'
   runs: Array<{ runId: string; status: string; updatedAt: string }>
   artifacts: JoinedArtifact[]
+  lastRunAt: string | null
+  lastArtifactAt: string | null
+  retrievalCount: number | null
   counts: { produced: number; reviewed: number; scored: number; byVerdict: Record<string, number> }
   lessons: { total: number; byLifecycle: Record<string, number> }
   cases: { total: number; byType: Record<string, number> }
@@ -37,6 +40,7 @@ export function normalizeAgentId(raw: unknown): string {
 function emptyView(agentId: string, live: boolean, detail: string): AgentDetailView {
   return {
     live, agentId, role: 'none', runs: [], artifacts: [],
+    lastRunAt: null, lastArtifactAt: null, retrievalCount: null,
     counts: { produced: 0, reviewed: 0, scored: 0, byVerdict: {} },
     lessons: { total: 0, byLifecycle: {} }, cases: { total: 0, byType: {} }, detail,
   }
@@ -73,6 +77,9 @@ export async function resolveAgentRuntimeDetail(
   const artifactById = new Map<string, JoinedArtifact>()
   const engaged = new Set<string>()
   const runInfo: AgentDetailView['runs'] = []
+  let lastRunAt: string | null = null
+  let retrievalCount = 0
+  let sawRetrievalCount = false
 
   for (const run of runs.slice(0, 50)) {
     const runId = String(run.run_id ?? '')
@@ -83,6 +90,14 @@ export async function resolveAgentRuntimeDetail(
       getRows(baseUrl, `/api/v3/agent-runtime/runs/${runId}/scores`, fetchImpl),
     ])
     let touched = normalizeAgentId(run.agent_id) === agentId
+    if (touched) {
+      const runAt = String(run.updated_at ?? run.started_at ?? '')
+      if (runAt && (!lastRunAt || runAt > lastRunAt)) lastRunAt = runAt
+      if (run.retrieval_count !== undefined && run.retrieval_count !== null) {
+        retrievalCount += Number(run.retrieval_count) || 0
+        sawRetrievalCount = true
+      }
+    }
     for (const a of arts ?? []) {
       const aid = String(a.artifact_id ?? '')
       if (!aid || String(a.artifact_type ?? '') === '__run_event__') continue
@@ -131,10 +146,16 @@ export async function resolveAgentRuntimeDetail(
   const byType: Record<string, number> = {}
   for (const c of caseRows) { const k = String(c.case_type ?? 'UNKNOWN'); byType[k] = (byType[k] ?? 0) + 1 }
 
+  const artifactTimes = mine.map(a => a.createdAt || '').filter(Boolean).sort()
+  const lastArtifactAt = artifactTimes.length > 0 ? artifactTimes[artifactTimes.length - 1] : null
+
   return {
     live: true, agentId, role,
     runs: runInfo,
     artifacts: mine.slice(0, 40),
+    lastRunAt,
+    lastArtifactAt,
+    retrievalCount: sawRetrievalCount ? retrievalCount : null,
     counts: { produced, reviewed, scored, byVerdict },
     lessons: { total: lessonRows.length, byLifecycle },
     cases: { total: caseRows.length, byType },

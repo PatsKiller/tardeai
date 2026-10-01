@@ -41,6 +41,8 @@ Routes:
   GET /api/v3/cio/brain/learning-review — feedback patterns, outcomes, weekly review
   GET /api/v3/cio/brain/intelligence-lifecycle — projection of the persistent intelligence lifecycle
   GET /api/v3/cio/brain/model-performance — observational task→model metrics (no self-promotion)
+  GET /api/v3/cio/operator-evidence — research/cognition/learning/coverage composition
+  GET /api/v3/cio/research-provenance — retrieved/used/rejected research projection
   POST /api/v3/cio/brain/feedback — linked operator feedback; no policy promotion
 """
 from __future__ import annotations
@@ -1434,6 +1436,89 @@ def load_known_decision_catalog() -> dict[str, dict[str, Any]]:
         return {}
 
 
+def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
+    """GET-only CIODecisionLineage@v1 projection keyed by exact decision_id."""
+    did = str(decision_id or "").strip()
+    if not did:
+        return {"ok": False, "error": "decision_id_required", "authority": AUTHORITY_ADVISORY}
+    try:
+        from scripts.lib.cio_decision_lineage_projection import (
+            direct_match,
+            project_decision_lineage,
+        )
+        from scripts.lib.cio_operator_evidence import build_operator_evidence, build_research_provenance
+
+        decision = dict(load_known_decision_catalog().get(did) or {})
+        try:
+            import api_v2 as _v2
+
+            db_row = _v2._db_query(
+                "SELECT * FROM cio_decisions WHERE decision_id=%s ORDER BY created_at DESC LIMIT 1",
+                (did,),
+                fetch="one",
+            )
+            if isinstance(db_row, dict):
+                decision = {**db_row, **decision}
+        except Exception:
+            pass
+
+        cio_root = Path(os.getenv("TRADEAI_CIO_DIR") or PROJECT_ROOT / "data" / "cio")
+        workflow_rows = _read_jsonl(cio_root / "cio_workflow_lineage.jsonl")
+        intelligence_rows = _read_jsonl(cio_root / "intelligence_lineages.jsonl")
+        checkpoint_rows = _read_jsonl(cio_root / "outcome_checkpoints.jsonl")
+        disposition_rows = _read_jsonl(_DISPOSITION_PATH)
+        matched = (
+            direct_match(did, workflow_rows)
+            + direct_match(did, intelligence_rows)
+            + direct_match(did, checkpoint_rows)
+            + direct_match(did, disposition_rows)
+        )
+        if not decision and not matched:
+            return {
+                "ok": False,
+                "error": "decision_lineage_not_found",
+                "decision_id": did,
+                "authority": AUTHORITY_ADVISORY,
+                "financial_action": False,
+            }
+        composition_as_of = _now_iso()
+        operator_evidence = build_operator_evidence(now=composition_as_of)
+        evidence_blocks = operator_evidence.get("blocks", {})
+        cognition_block = dict(evidence_blocks.get("institutional_cognition") or {})
+        cognition_block["items"] = [
+            item for item in cognition_block.get("items", []) if item.get("decision_id") == did
+        ]
+        learning_block = dict(evidence_blocks.get("learning") or {})
+        learning_block["settled_outcomes"] = [
+            row for row in learning_block.get("settled_outcomes", []) if row.get("decision_id") == did
+        ]
+        learning_block["pending_outcomes"] = [
+            row for row in learning_block.get("pending_outcomes", []) if row.get("decision_id") == did
+        ]
+        projection = project_decision_lineage(
+            did,
+            decision=decision,
+            workflow_records=workflow_rows,
+            intelligence_records=intelligence_rows,
+            checkpoint_records=checkpoint_rows,
+            disposition_records=disposition_rows,
+            research_provenance=build_research_provenance(cio_root, decision_id=did),
+            institutional_cognition=cognition_block,
+            learning=learning_block,
+            composition_as_of=composition_as_of,
+        )
+        return {"ok": True, "lineage": projection, "authority": AUTHORITY_ADVISORY}
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": type(exc).__name__,
+            "detail": str(exc)[:200],
+            "decision_id": did,
+            "authority": AUTHORITY_ADVISORY,
+            "financial_action": False,
+        }
+
+
 def stamp_decision_identity(
     home: dict[str, Any] | None,
     capital_plan: dict[str, Any] | None,
@@ -2177,13 +2262,14 @@ def get_model_performance_v1() -> dict[str, Any]:
 def get_learning_cockpit_v1() -> dict[str, Any]:
     """GUI projection of institutional learning. Cannot self-promote."""
     try:
-        from scripts.lib.cio_institutional_learning import (
-            PROMOTION_STAGES,
-            QUALITY_AXES,
-            lesson_candidate_v2,
-        )
+        from scripts.lib.cio_institutional_learning import PROMOTION_STAGES, QUALITY_AXES
         from scripts.lib.r17_checkpoint_binding import learning_cockpit_from_store
         store = learning_cockpit_from_store(PROJECT_ROOT)
+        lesson_rows = _read_jsonl(PROJECT_ROOT / "data" / "cio" / "lesson_candidates.jsonl")
+        # This is a compatibility field for older clients.  It may only expose
+        # a real durable lesson; the endpoint must never mint a sample lesson
+        # or an invented outcome id just to populate the cockpit.
+        sample_lesson = next((row for row in reversed(lesson_rows) if isinstance(row, dict)), None)
         return {
             "ok": True,
             "schema": "LearningCockpit@v1",
@@ -2204,6 +2290,7 @@ def get_learning_cockpit_v1() -> dict[str, Any]:
             "max_unattended_stage": "REVIEW_READY",
             "gui_cannot_self_promote": True,
             "provisional_not_displayed_as_rule": True,
+            "sample_lesson": sample_lesson,
             "evidence_classes": [
                 "LIVE",
                 "NATURAL_LONGITUDINAL",
@@ -2212,16 +2299,56 @@ def get_learning_cockpit_v1() -> dict[str, Any]:
                 "GOLDEN_SHADOW",
             ],
             "why_not_promoted": "PROMOTION_REQUIRES_SEPARATE_AUTHORITY",
-            "sample_lesson": lesson_candidate_v2(
-                scope="office", task_class="research_curation", statement="insufficient sample",
-                supporting_outcome_ids=["o1"], counterexamples=[], searched_counterexamples=False,
-            ),
             "authority": AUTHORITY_ADVISORY,
             "memory_behavior_influence": 0,
             "financial_action": False,
         }
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "authority": AUTHORITY_ADVISORY}
+
+
+def get_operator_evidence_v1() -> dict[str, Any]:
+    """Read-only CIO evidence, cognition, learning, and capability coverage."""
+    try:
+        from scripts.lib.cio_operator_evidence import build_operator_evidence
+
+        return build_operator_evidence()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "schema": "CIOOperatorEvidence@v1",
+            "error": type(exc).__name__,
+            "detail": str(exc)[:200],
+            "authority": AUTHORITY_ADVISORY,
+            "financial_action": False,
+            "mutation": False,
+        }
+
+
+def get_research_provenance_v1(decision_id: str | None = None) -> dict[str, Any]:
+    """Read-only CIO research provenance over canonical research products."""
+    try:
+        from scripts.lib.cio_operator_evidence import build_research_provenance
+
+        result = build_research_provenance(decision_id=decision_id, now=_now_iso())
+        result.update({
+            "ok": True,
+            "schema": "CIOResearchProvenance@v1",
+            "authority": AUTHORITY_ADVISORY,
+            "financial_action": False,
+            "mutation": False,
+        })
+        return result
+    except Exception as exc:
+        return {
+            "ok": False,
+            "schema": "CIOResearchProvenance@v1",
+            "error": type(exc).__name__,
+            "detail": str(exc)[:200],
+            "authority": AUTHORITY_ADVISORY,
+            "financial_action": False,
+            "mutation": False,
+        }
 
 
 def get_data_health_v1() -> dict[str, Any]:

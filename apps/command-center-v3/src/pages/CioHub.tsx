@@ -8,6 +8,9 @@ import CioObservabilityPanel from '../components/cio/CioObservabilityPanel'
 import CioScorecardStrip, { type ScorecardPayload, type ScorecardTile } from '../components/cio/CioScorecardStrip'
 import CioJudgmentBand from '../components/cio/CioJudgmentBand'
 import CioEvidenceModal from '../components/cio/CioEvidenceModal'
+import CioDecisionLineagePanel from '../components/cio/CioDecisionLineagePanel'
+import CioOperatorEvidencePanel from '../components/cio/CioOperatorEvidencePanel'
+import { decisionLineageHref } from '../lib/cioDecisionLineage'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
 import { RADIUS, SHADOW } from '../lib/designTokens'
@@ -599,6 +602,25 @@ function DecisionCard({ d, dispositions, legacyUnversioned, onAct }: {
         </div>
       )}
 
+      {d.decision_id && (
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 8 }}>
+          <Link
+            to={decisionLineageHref(d.decision_id)}
+            style={{ color: 'var(--accent)', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}
+            data-testid="cio-decision-lineage-link"
+          >
+            View CIO decision lineage →
+          </Link>
+          {d.symbol && <Link
+            to={`/research-intelligence?symbol=${encodeURIComponent(d.symbol)}&decision=${encodeURIComponent(d.decision_id)}`}
+            style={{ color: 'var(--text2)', fontSize: 12, fontWeight: 650, textDecoration: 'none' }}
+            data-testid="cio-decision-research-link"
+          >
+            Open research for {d.symbol} →
+          </Link>}
+        </div>
+      )}
+
       <DecisionActions d={d} dispositions={dispositions} legacyUnversioned={legacyUnversioned} onAct={onAct} />
     </div>
   )
@@ -777,7 +799,18 @@ function CapitalPlanSection({ cp }: { cp: CapitalPlan }) {
 }
 
 function PostureSection({ posture }: { posture: Posture }) {
-  const { thesis, concentration, risk_heat, sector_tilts, performance, income, tax_issues, constraints } = posture
+  // The desk must remain readable when an optional posture projection is absent
+  // or only partially populated. Missing posture evidence is not a reason to
+  // crash the entire CIO surface.
+  const source = posture || {} as Posture
+  const thesis = source.thesis || { stance: '', summary: null, principles: [] }
+  const concentration = source.concentration || { top_position: null, top_weight_pct: null, fire_pct: null }
+  const risk_heat = source.risk_heat || { max_drawdown_pct: null, sharpe: null, sortino: null }
+  const sector_tilts = source.sector_tilts || []
+  const performance = source.performance || { portfolio_cagr: null, benchmark_cagr: null, alpha_annualized: null, benchmark_label: null }
+  const income = source.income || { total_usd: null }
+  const tax_issues = source.tax_issues || []
+  const constraints = source.constraints || []
   return (
     <div data-testid="posture-section">
       <div style={card}>
@@ -832,9 +865,9 @@ function PostureSection({ posture }: { posture: Posture }) {
       {sector_tilts.length > 0 && (
         <div style={card}>
           <SectionTitle>Sector tilts</SectionTitle>
-          {posture.sector_target_honesty?.all_targets_placeholder && (
+          {source.sector_target_honesty?.all_targets_placeholder && (
             <div style={{ ...muted, marginBottom: 8 }} data-testid="sector-target-placeholder-note">
-              {posture.sector_target_honesty.note || 'Sector targets shown are placeholder / model defaults — not researched IPS targets.'}
+              {source.sector_target_honesty.note || 'Sector targets shown are placeholder / model defaults — not researched IPS targets.'}
             </div>
           )}
           <table style={{ width: '100%', borderCollapse: 'collapse' }} data-testid="sector-tilts">
@@ -1053,7 +1086,8 @@ function extrasFromIntelligence(body: any): Partial<SymbolThesisCardPayload> {
 
 function UniverseThesesPanel() {
   const { data, loading, error } = useApi<UniverseThesesPayload>('/api/v3/cio/universe-theses', 60_000)
-  const [sym, setSym] = useState('')
+  const [searchParams] = useSearchParams()
+  const [sym, setSym] = useState(() => searchParams.get('symbol') || '')
   const [intelExtras, setIntelExtras] = useState<Partial<SymbolThesisCardPayload>>({})
   const cardPath = sym ? `/api/v3/cio/symbol-thesis/${encodeURIComponent(sym)}` : ''
   const { data: card, loading: cardLoading, error: cardError } = useApi<any>(
@@ -1970,6 +2004,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
   const planId = (sp.get('plan') || '').trim()
   const tabRaw = (sp.get('tab') || '').trim()
   const subRaw = (sp.get('sub') || '').trim()
+  const decisionRaw = (sp.get('decision') || '').trim()
   const initialTab = resolveCioHubTab(tabRaw)
   const [tab, setTab] = useState<Tab>(initialTab)
   const [evidenceSub, setEvidenceSub] = useState<string>(subRaw || resolveEvidenceSubtab(tabRaw) || 'report')
@@ -2128,6 +2163,9 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           <AgentResearchOpsStrip />
           <UniverseThesesPanel />
           <div style={{ marginTop: 28 }}>
+            <CioOperatorEvidencePanel section="research" />
+          </div>
+          <div style={{ marginTop: 28 }}>
             <InvestmentBooksPanel />
           </div>
         </div>
@@ -2164,6 +2202,11 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'telegram-receipts' && <TelegramReceiptsPanel />}
           {evidenceSub === 'senses-evidence' && <SensesEvidencePanel />}
           {evidenceSub === 'full-brain' && <CioBrainPanel />}
+          {evidenceSub === 'operator-evidence' && <CioOperatorEvidencePanel />}
+          {evidenceSub === 'institutional-cognition' && <CioOperatorEvidencePanel section="cognition" />}
+          {evidenceSub === 'learning-cockpit' && <CioOperatorEvidencePanel section="learning" />}
+          {evidenceSub === 'capability-coverage' && <CioOperatorEvidencePanel section="coverage" />}
+          {evidenceSub === 'decision-lineage' && <CioDecisionLineagePanel decisionId={decisionRaw || null} />}
           {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading evidence…</div>
           )}
@@ -2193,6 +2236,11 @@ function EvidenceCommsSubnav({ active, onSelect }: { active: string; onSelect: (
     { id: 'telegram-receipts', label: 'Telegram receipts' },
     { id: 'senses-evidence', label: 'Senses' },
     { id: 'full-brain', label: 'Full brain' },
+    { id: 'operator-evidence', label: 'Operator evidence' },
+    { id: 'institutional-cognition', label: 'Institutional cognition' },
+    { id: 'learning-cockpit', label: 'Learning cockpit' },
+    { id: 'capability-coverage', label: 'Capability coverage' },
+    { id: 'decision-lineage', label: 'Decision lineage' },
   ]
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }} role="tablist" aria-label="Evidence subsections">

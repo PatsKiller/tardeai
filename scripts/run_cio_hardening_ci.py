@@ -881,6 +881,15 @@ GATES = [
         [
             "tests/test_ci_test_coverage_gate.py",
             "tests/test_wake_turn_effect.py",
+            # Direct CIO decision lineage contract and basename-safe operator link.
+            "tests/test_cio_decision_lineage_projection.py",
+            # Operator evidence composition: research receipts, cognition, learning, coverage.
+            "tests/test_cio_operator_evidence.py",
+            # Advisory run-now must disclose independent dependency clocks.
+            "tests/test_cio_advisory_dependency_clocks.py",
+            # Source-side API census and produced-versus-surfaced measurement.
+            "tests/test_cio_api_contract_census.py",
+            "tests/test_cio_completeness_measurement.py",
         ],
     ),
     # A failed producer must never overwrite good cached content. Registered here

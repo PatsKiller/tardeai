@@ -3760,6 +3760,7 @@ def _emit_telegram_desk_payload(intent: dict[str, Any], result: dict[str, Any]) 
         from scripts.lib.cross_asset.hooks import notify_operator_desk_result
         notify_operator_desk_result(intent, result)
     except Exception:
+        # ALARM-DELIVERY-DECLARED: optional shared-spine projection must not block the operator reply.
         pass
     try:
         if result.get("kind") != "answered":
@@ -3777,6 +3778,7 @@ def _emit_telegram_desk_payload(intent: dict[str, Any], result: dict[str, Any]) 
             extra={"intent": iname, "reply_source": result.get("reply_source")},
         )
     except Exception:
+        # ALARM-DELIVERY-DECLARED: optional decision-payload projection is best-effort after reply delivery.
         pass
 
 
@@ -3921,6 +3923,7 @@ def _stamp_gap_resolver_llm_onto_spine(
                 curated_from=list(ans.get("curated_from") or [])[:8] or None,
             )
         except Exception:
+            # ALARM-DELIVERY-DECLARED: optional shared-spine projection is best-effort after research resolution.
             pass
 
 
@@ -4092,6 +4095,7 @@ def _curate_from_evidence(operator_text: str, evidence: dict[str, Any]) -> dict[
                     model=cur.get("model"),
                 )
     except Exception:
+        # ALARM-DELIVERY-DECLARED: optional curation projection is best-effort after the answer is formed.
         pass
     dossier = avail.get("subject_dossier_text")
     src = str(cur.get("source") or "")
@@ -5215,9 +5219,11 @@ def try_fulfill_pending_replies(
                     operator_text=str(row.get("operator_text") or ""),
                 )
             except Exception:
+                # ALARM-DELIVERY-DECLARED: optional lifecycle projection must not block pending fulfillment.
                 pass
             fulfilled += 1
         except Exception:
+            # ALARM-DELIVERY-DECLARED: failed-row count is the durable local outcome for this best-effort worker.
             failed += 1
     enter_row_scope(None, _lin_token)
     return {

@@ -92,10 +92,12 @@ def _notify_thesis_publish(thesis_id: str, version: int, summary: str) -> None:
         from scripts.lib.cio_telegram_transport import notify_thesis_published
         notify_thesis_published(thesis_id, version, summary)
     except Exception:
+        # ALARM-DELIVERY-DECLARED: thesis persistence is durable; CIO notification is optional and retried by its lane.
         try:
             from lib.cio_telegram_transport import notify_thesis_published  # type: ignore
             notify_thesis_published(thesis_id, version, summary)
         except Exception:
+            # ALARM-DELIVERY-DECLARED: compatibility import is optional; the durable thesis event remains authoritative.
             pass
 
 
@@ -402,6 +404,7 @@ class CIOThesisStore:
                 if guids:
                     payload["linked_subject_guids"] = guids
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shared-spine projection is best-effort after the thesis event is durable.
             pass
         if extra and isinstance(extra, dict):
             for k, v in extra.items():
@@ -416,6 +419,7 @@ class CIOThesisStore:
             from scripts.lib.cross_asset.hooks import notify_thesis_published
             notify_thesis_published(payload)
         except Exception:
+            # ALARM-DELIVERY-DECLARED: shared-spine projection is best-effort after the thesis event is durable.
             pass
         return dict(self._current[tid])
 

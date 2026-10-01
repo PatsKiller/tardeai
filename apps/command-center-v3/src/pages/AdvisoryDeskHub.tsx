@@ -575,6 +575,28 @@ function PriceClockStamp({ pc }: { pc?: any }) {
   )
 }
 
+function DependencyClockBoard({ clocks }: { clocks?: Record<string, any> }) {
+  const labels: Record<string, string> = {
+    advisory_synthesis: 'ADVISORY SYNTHESIS',
+    technicals: 'TECHNICALS',
+    analyst_data: 'ANALYST DATA',
+    research: 'RESEARCH',
+    durable_memory: 'DURABLE MEMORY',
+  }
+  return (
+    <div data-testid="advisory-dependency-clocks" style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 8, margin: '0 0 14px' }}>
+      <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700, letterSpacing: 0.3, marginBottom: 6 }}>INDEPENDENT DEPENDENCY CLOCKS</div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {Object.entries(labels).map(([key, label]) => {
+          const clock = clocks?.[key]
+          return <div key={key} style={{ minWidth: 145 }}><div style={{ fontSize: 10, color: 'var(--text3)' }}>{label}</div><div style={{ fontSize: 11, color: qualityTone(clock?.freshness) || 'var(--text2)', fontWeight: 650 }}>{clock?.freshness || 'UNKNOWN'}</div><div style={{ fontSize: 10, color: 'var(--text3)' }}>{clock?.source_as_of ? fmtWhen(clock.source_as_of) : 'source_as_of UNKNOWN'}</div></div>
+        })}
+      </div>
+      <div style={{ marginTop: 6, fontSize: 10, color: 'var(--amber)' }}>Run now rebuilds advisory synthesis; it does not refresh technicals, analyst data, research, or memory unless each clock advances independently.</div>
+    </div>
+  )
+}
+
 function classHeadline(r: DeskRow) {
   if (r.row_class === 'watchlist') {
     const wi = r.watch_intelligence
@@ -716,6 +738,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
         <Stamp label="FLASH OPINION" at={ts.flash} fresh={ts.flash_freshness} />
         <Stamp label="PRO SYNTHESIS" at={ts.synthesis} fresh={ts.synthesis_freshness} />
       </div>
+      <DependencyClockBoard clocks={data?.dependency_clocks} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', margin: '0 0 14px' }}>
         <div data-testid="advisory-next-run" style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', minWidth: 220 }}>

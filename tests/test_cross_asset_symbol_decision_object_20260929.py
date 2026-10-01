@@ -62,6 +62,7 @@ def test_assemble_links_hermes_result():
         signal={"kind": "buy", "lane": "test"},
         holdings_row={"shares": 0},
         options_packet={"schema": "OptionsDecisionPacket@v2", "cio": {"status": "unreviewed"}},
+        prefer_shared_spine=False,
     )
     assert obj["research_state"]["result_id"] == "rr_4a877da8499b"
     assert obj["identity"]["subject_guid"] == "ecb5ba89-test"
@@ -92,6 +93,10 @@ def test_buy_hold_reentry_sell_routing():
 
 def test_event_hook_flag_off(tmp_path: Path, monkeypatch):
     monkeypatch.delenv("CROSS_ASSET_SHADOW", raising=False)
+    # The shared SecurityResearchSpine is independently default-on; this test
+    # covers the SymbolDecisionObject shadow flag, so disable the spine writer
+    # explicitly to keep the no-shadow assertion hermetic.
+    monkeypatch.setenv("CROSS_ASSET_SPINE", "0")
     assert not shadow_enabled()
     ledger = tmp_path / "s.jsonl"
     r = maybe_reevaluate_on_research_complete(

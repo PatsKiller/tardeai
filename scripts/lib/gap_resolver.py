@@ -856,6 +856,7 @@ def _v_llm_curation(gap: DataGap, entry: dict[str, Any], ctx: Context) -> Vector
                 curated_from=sorted(evidence.keys()),
             )
     except Exception:
+        # ALARM-DELIVERY-DECLARED: optional research-memory projection must not block the resolved answer.
         pass
     return VectorResult("partial", answer=answer, as_of=answer["as_of"], provider=provider, model=model,
                         detail=f"curated {len(evidence)} evidence keys")

@@ -16,6 +16,16 @@ import { AGENT_RUNTIME_SNAPSHOT, type AgentRuntimeSnapshot } from './agentRuntim
 
 export type AdapterState = 'FIXTURE' | 'NOT_CONNECTED' | 'UNAVAILABLE' | 'STALE' | 'SHADOW'
 
+// NOT_CONNECTED is an adapter diagnostic, not an operator maturity state. The
+// surface must disclose it as unavailable rather than inventing a sixth runtime
+// status that looks like a proven capability.
+export type OperatorRuntimeState = 'LIVE' | 'SHADOW' | 'FIXTURE' | 'UNAVAILABLE' | 'STALE'
+
+export function operatorRuntimeState(state: AdapterState): OperatorRuntimeState {
+  if (state === 'NOT_CONNECTED') return 'UNAVAILABLE'
+  return state === 'SHADOW' ? 'SHADOW' : state
+}
+
 export interface ReadApiConfig {
   baseUrl: string | null
   now?: () => number

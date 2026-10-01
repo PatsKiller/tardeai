@@ -43,6 +43,33 @@ Expect mixed pin hygiene on older open plans, intermittent LLM deferral to templ
 
 For operator-facing host packet (pin + as_of snapshots): see [CIO_DESK_OPERATING_PACKET.md](./CIO_DESK_OPERATING_PACKET.md) (also mirrored to Google Drive when synced).
 
+### Current Command Center lineage surface (2026-10-01)
+
+The five-tab `/v3/cio` desk remains the operator investment-office view. The
+Control Plane remains the diagnostic/engineering view; these products are not
+merged. CIO decision cards with a canonical `decision_id` now link to
+Evidence & Comms → Decision lineage, which reads the GET-only
+`/api/v3/cio/decision/{decision_id}/lineage` endpoint and returns the additive
+`CIODecisionLineage@v1` projection. Every required stage is keyed by the exact
+decision ID; missing state is backend-declared (`UNKNOWN`, `UNAVAILABLE`,
+`UNWIRED`, `NOT_RUN`, `NOT_APPLICABLE`, or `PENDING`) and is never inferred by
+React.
+
+This is a read-only advisory projection. It does not infer missing lineage,
+change truth stores, place orders, modify risk policy, or ratify operator policy.
+The implementation checkpoint is local until the governed remote sync and
+served-CURRENT browser/live proof are complete.
+
+See [CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md](./CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md)
+for the operator contract and validation record.
+
+The CIO Evidence & Comms tab also exposes the read-only
+`CIOOperatorEvidence@v1` projection. It separates retrieved research from
+research proven used in judgment, keeps institutional cognition beside rather
+than inside `OFFICE_TRUTH`, shows learning/outcome maturity without creating
+outcomes, and reports producer/consumer runtime coverage. Source clocks and
+composition clocks are independent; missing receipts remain `UNKNOWN`.
+
 ---
 
 ## Packet index
@@ -61,6 +88,10 @@ For operator-facing host packet (pin + as_of snapshots): see [CIO_DESK_OPERATING
 | [LEARNING_LOOP.md](./LEARNING_LOOP.md) | Dispositions → learning_log → enrichment bias; limits |
 | [ROADMAP_GAPS.md](./ROADMAP_GAPS.md) | Explicit missing product (aspirational only here) |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Track A vs Track B; where thesis is injected (and where not) |
+| [CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md](./CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md) | CIO-native decision lineage CTA, stage honesty, and validation record |
+| [CIO_OPERATOR_EVIDENCE_SURFACE.md](./CIO_OPERATOR_EVIDENCE_SURFACE.md) | Research provenance, cognition, learning, and runtime capability coverage |
+| [CIO_API_CONTRACT_CENSUS.md](./CIO_API_CONTRACT_CENSUS.md) | Source-visible API census and runtime-unknown disclosure |
+| [CIO_COMPLETENESS_MEASUREMENT.md](./CIO_COMPLETENESS_MEASUREMENT.md) | Produced-versus-surfaced measurement and critical-edge counts |
 
 ### Historical / phase notes (still useful)
 
@@ -97,6 +128,7 @@ For operator-facing host packet (pin + as_of snapshots): see [CIO_DESK_OPERATING
 | Situations config | [`config/cio_situations.yaml`](../../config/cio_situations.yaml) |
 | LLM/notify policy | [`config/cio_llm_policy.yaml`](../../config/cio_llm_policy.yaml) |
 | API hub | [`scripts/api_v3_cio.py`](../../scripts/api_v3_cio.py) |
+| Operator evidence projection | [`scripts/lib/cio_operator_evidence.py`](../../scripts/lib/cio_operator_evidence.py) |
 
 Runtime data (host-local, typically gitignored): `data/cio/*`.
 

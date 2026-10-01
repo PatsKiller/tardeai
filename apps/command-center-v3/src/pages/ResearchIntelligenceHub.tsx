@@ -2,7 +2,7 @@
  * Research Intelligence v2.7 — stage trades, cross-theme, concentration banner.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import TickerLinks from '../components/TickerLinks'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -1097,6 +1097,15 @@ function ArticleCard({
         )}
       </div>
 
+      {item.symbol && <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11.5 }}>
+        <Link to={`/cio?tab=research&symbol=${encodeURIComponent(item.symbol)}&research=${encodeURIComponent(item.id)}`} onClick={e => e.stopPropagation()} style={{ color: C.accent, fontWeight: 700, textDecoration: 'none' }}>
+          Open CIO research context →
+        </Link>
+        {item.source_system === 'hermes' && <Link to={`/hermes?tab=Provenance&symbol=${encodeURIComponent(item.symbol)}`} onClick={e => e.stopPropagation()} style={{ color: C.muted, fontWeight: 650, textDecoration: 'none' }}>
+          Open Hermes provenance →
+        </Link>}
+      </div>}
+
       {/* headline */}
       <h2 style={{
         margin: 0, fontSize: featured ? 22 : view === 'list' ? 17 : 15.5,
@@ -1331,7 +1340,8 @@ const THEME_TO_CATEGORY: Record<string, string> = {
 
 export default function ResearchIntelligenceHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
-  const [q, setQ] = useState('')
+  const [searchParams] = useSearchParams()
+  const [q, setQ] = useState(() => searchParams.get('symbol') || searchParams.get('q') || '')
   const [category, setCategory] = useState<string | null>(null)
   const [priority, setPriority] = useState<string | null>(null)
   const [holdingsOnly, setHoldingsOnly] = useState(false)
@@ -1682,6 +1692,7 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'flex-end' }}>
               <Link to="/retirement" style={navLink(C.muted)}>Retirement plan →</Link>
               <Link to="/portfolio" style={navLink(C.muted)}>Portfolio →</Link>
+              <Link to={`/cio?tab=research${q.trim() ? `&symbol=${encodeURIComponent(q.trim())}` : ''}`} style={navLink(C.muted)}>CIO research →</Link>
               <Link to="/hermes" style={navLink(C.muted)}>Hermes →</Link>
               <Link to="/risk" style={navLink(C.muted)}>Risk →</Link>
               <button
