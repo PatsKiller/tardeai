@@ -867,6 +867,8 @@ GATES = [
         "r12_operator_intelligence",
         [
             "tests/test_r12_policy_provenance.py",
+            # Capital Policy field modal: DeepSeek help on its own registered process, server-built prompt.
+            "tests/test_cio_policy_field_advisor.py",
             "tests/test_r12_situation_matrix.py",
             "tests/test_r12_dedupe_message_samebrain.py",
             "tests/test_r12_chokepoint_outbox.py",
