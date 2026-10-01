@@ -53008,6 +53008,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_investment_product()
                 if p == "dispositions":
                     return 200, _cio.get_decision_dispositions()
+                if p in ("operator-evidence", "operator_evidence"):
+                    return 200, _cio.get_operator_evidence_v1()
                 if p.startswith("decision/") and p.endswith("/lineage"):
                     mid = p[len("decision/") : -len("/lineage")].strip("/")
                     if not mid:

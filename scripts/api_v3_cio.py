@@ -41,6 +41,7 @@ Routes:
   GET /api/v3/cio/brain/learning-review — feedback patterns, outcomes, weekly review
   GET /api/v3/cio/brain/intelligence-lifecycle — projection of the persistent intelligence lifecycle
   GET /api/v3/cio/brain/model-performance — observational task→model metrics (no self-promotion)
+  GET /api/v3/cio/operator-evidence — research/cognition/learning/coverage composition
   POST /api/v3/cio/brain/feedback — linked operator feedback; no policy promotion
 """
 from __future__ import annotations
@@ -2287,6 +2288,24 @@ def get_learning_cockpit_v1() -> dict[str, Any]:
         }
     except Exception as exc:
         return {"ok": False, "error": type(exc).__name__, "authority": AUTHORITY_ADVISORY}
+
+
+def get_operator_evidence_v1() -> dict[str, Any]:
+    """Read-only CIO evidence, cognition, learning, and capability coverage."""
+    try:
+        from scripts.lib.cio_operator_evidence import build_operator_evidence
+
+        return build_operator_evidence()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "schema": "CIOOperatorEvidence@v1",
+            "error": type(exc).__name__,
+            "detail": str(exc)[:200],
+            "authority": AUTHORITY_ADVISORY,
+            "financial_action": False,
+            "mutation": False,
+        }
 
 
 def get_data_health_v1() -> dict[str, Any]:

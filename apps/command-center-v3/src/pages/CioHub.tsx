@@ -9,6 +9,7 @@ import CioScorecardStrip, { type ScorecardPayload, type ScorecardTile } from '..
 import CioJudgmentBand from '../components/cio/CioJudgmentBand'
 import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import CioDecisionLineagePanel from '../components/cio/CioDecisionLineagePanel'
+import CioOperatorEvidencePanel from '../components/cio/CioOperatorEvidencePanel'
 import { decisionLineageHref } from '../lib/cioDecisionLineage'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
@@ -2141,6 +2142,9 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           <AgentResearchOpsStrip />
           <UniverseThesesPanel />
           <div style={{ marginTop: 28 }}>
+            <CioOperatorEvidencePanel section="research" />
+          </div>
+          <div style={{ marginTop: 28 }}>
             <InvestmentBooksPanel />
           </div>
         </div>
@@ -2177,6 +2181,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'telegram-receipts' && <TelegramReceiptsPanel />}
           {evidenceSub === 'senses-evidence' && <SensesEvidencePanel />}
           {evidenceSub === 'full-brain' && <CioBrainPanel />}
+          {evidenceSub === 'operator-evidence' && <CioOperatorEvidencePanel />}
           {evidenceSub === 'decision-lineage' && <CioDecisionLineagePanel decisionId={decisionRaw || null} />}
           {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading evidence…</div>
@@ -2207,6 +2212,7 @@ function EvidenceCommsSubnav({ active, onSelect }: { active: string; onSelect: (
     { id: 'telegram-receipts', label: 'Telegram receipts' },
     { id: 'senses-evidence', label: 'Senses' },
     { id: 'full-brain', label: 'Full brain' },
+    { id: 'operator-evidence', label: 'Operator evidence' },
     { id: 'decision-lineage', label: 'Decision lineage' },
   ]
   return (

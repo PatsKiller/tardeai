@@ -880,6 +880,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/CIO_NOTIFICATION_POLICY.md` | CIO Notification Policy — Signal over Spam | review_required | OK | `40a0bb623a7c` |
 | `docs/cio/CIO_NOTIFICATION_REPLAY_ACCEPTANCE.md` | CIO Notification Replay Acceptance | review_required | OK | `76573f672e2d` |
 | `docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md` | CIO Notification Runtime Topology | review_required | OK | `ab46eaffc931` |
+| `docs/cio/CIO_OPERATOR_EVIDENCE_SURFACE.md` | CIO Operator Evidence Surface | review_required | OK | `b93266c28b0c` |
 | `docs/cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md` | CIO Telegram converse — operator runbook | review_required | OK | `01ee6726efe4` |
 | `docs/cio/CIO_TELEGRAM_PRODUCT_STANDARD.md` | CIO Telegram Product Standard | review_required | OK | `d22ceec24059` |
 | `docs/cio/CIO_WHATSAPP_CONVERSE_RUNBOOK.md` | CIO WhatsApp converse — operator runbook (P4) | review_required | OK | `241130c46382` |
@@ -890,7 +891,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/LEARNING_LOOP.md` | Learning loop — dispositions → enrichment bias | review_required | OK | `256c98fd17bc` |
 | `docs/cio/P2B_PLAN_ENRICHMENT.md` | Phase P2b — Plan enrichment (brain depth) | review_required | OK | `84357e0f4baf` |
 | `docs/cio/PROMPT_CURATION.md` | Alex enrichment — prompt curation, versioning, evaluation | review_required | OK | `084366e658e3` |
-| `docs/cio/README.md` | CIO Desk — Architect Packet | review_required | OK | `b16cc51f1400` |
+| `docs/cio/README.md` | CIO Desk — Architect Packet | review_required | OK | `32aab11ef35a` |
 | `docs/cio/REENTRY_RR.md` | Re-entry R:R methodology (live system) | review_required | OK | `9b9b33a8e5d0` |
 | `docs/cio/ROADMAP_GAPS.md` | Roadmap gaps — explicit “not yet” | review_required | OK | `4a998ebf44be` |
 | `docs/cio/SITUATIONS.md` | Situation catalog & plan lifecycle | review_required | OK | `e0d3e3a62f8d` |

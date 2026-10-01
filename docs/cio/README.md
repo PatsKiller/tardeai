@@ -60,6 +60,13 @@ served-CURRENT browser/live proof are complete.
 See [CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md](./CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md)
 for the operator contract and validation record.
 
+The CIO Evidence & Comms tab also exposes the read-only
+`CIOOperatorEvidence@v1` projection. It separates retrieved research from
+research proven used in judgment, keeps institutional cognition beside rather
+than inside `OFFICE_TRUTH`, shows learning/outcome maturity, and reports
+runtime-derived capability coverage. Source clocks and composition clocks are
+independent; missing receipts remain `UNKNOWN`.
+
 ---
 
 ## Packet index
@@ -79,6 +86,7 @@ for the operator contract and validation record.
 | [ROADMAP_GAPS.md](./ROADMAP_GAPS.md) | Explicit missing product (aspirational only here) |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Track A vs Track B; where thesis is injected (and where not) |
 | [CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md](./CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md) | CIO-native decision lineage CTA, stage honesty, and validation record |
+| [CIO_OPERATOR_EVIDENCE_SURFACE.md](./CIO_OPERATOR_EVIDENCE_SURFACE.md) | Research provenance, cognition, learning, and runtime capability coverage |
 
 ### Historical / phase notes (still useful)
 
@@ -115,6 +123,7 @@ for the operator contract and validation record.
 | Situations config | [`config/cio_situations.yaml`](../../config/cio_situations.yaml) |
 | LLM/notify policy | [`config/cio_llm_policy.yaml`](../../config/cio_llm_policy.yaml) |
 | API hub | [`scripts/api_v3_cio.py`](../../scripts/api_v3_cio.py) |
+| Operator evidence projection | [`scripts/lib/cio_operator_evidence.py`](../../scripts/lib/cio_operator_evidence.py) |
 
 Runtime data (host-local, typically gitignored): `data/cio/*`.
 
