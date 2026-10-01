@@ -53008,6 +53008,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_investment_product()
                 if p == "dispositions":
                     return 200, _cio.get_decision_dispositions()
+                if p.startswith("decision/") and p.endswith("/lineage"):
+                    mid = p[len("decision/") : -len("/lineage")].strip("/")
+                    if not mid:
+                        return 400, {"ok": False, "error": "decision_id required"}
+                    res = _cio.get_cio_decision_lineage(mid)
+                    return (200 if res.get("ok") else 404), res
                 if p.startswith("decision/"):
                     key = p[len("decision/") :].strip("/")
                     if not key:

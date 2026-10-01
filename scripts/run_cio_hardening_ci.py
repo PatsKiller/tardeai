@@ -881,6 +881,8 @@ GATES = [
         [
             "tests/test_ci_test_coverage_gate.py",
             "tests/test_wake_turn_effect.py",
+            # Direct CIO decision lineage contract and basename-safe operator link.
+            "tests/test_cio_decision_lineage_projection.py",
         ],
     ),
     # A failed producer must never overwrite good cached content. Registered here

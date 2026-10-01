@@ -9,6 +9,7 @@ import CioScorecardStrip, { type ScorecardPayload, type ScorecardTile } from '..
 import CioJudgmentBand from '../components/cio/CioJudgmentBand'
 import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import CioDecisionLineagePanel from '../components/cio/CioDecisionLineagePanel'
+import { decisionLineageHref } from '../lib/cioDecisionLineage'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
 import { RADIUS, SHADOW } from '../lib/designTokens'
@@ -65,7 +66,6 @@ type Decision = {
   domain?: string
   // Phase 5 — institutional card fields (render only when present)
   decision_id?: string | null
-  lineage_id?: string | null
   decision_input_digest?: string | null
   decision_evidence_digest?: string | null
   action?: string | null
@@ -603,7 +603,7 @@ function DecisionCard({ d, dispositions, legacyUnversioned, onAct }: {
 
       {d.decision_id && (
         <Link
-          to={`/v3/cio?tab=evidence-comms&sub=decision-lineage&decision=${encodeURIComponent(d.decision_id)}`}
+          to={decisionLineageHref(d.decision_id)}
           style={{ display: 'inline-block', marginTop: 8, color: 'var(--accent)', fontSize: 12, fontWeight: 700, textDecoration: 'none' }}
           data-testid="cio-decision-lineage-link"
         >

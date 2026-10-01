@@ -875,6 +875,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/ARCHITECTURE.md` | Architecture — Track A vs Track B | review_required | OK | `2dffd8834f47` |
 | `docs/cio/AUTHORITY.md` | Authority — READ_ONLY_ADVISORY | review_required | OK | `5ed5e4f198e6` |
 | `docs/cio/CATALYST_AND_HERMES.md` | Catalyst domain + Hermes research de-duplication | review_required | OK | `65dfcba21b19` |
+| `docs/cio/CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md` | CIO Decision Lineage — Operator Surface | review_required | OK | `08f390bfd657` |
 | `docs/cio/CIO_DESK_OPERATING_PACKET.md` | Trade AI — CIO Desk Operating Packet | review_required | OK | `6d3c1e290b04` |
 | `docs/cio/CIO_NOTIFICATION_POLICY.md` | CIO Notification Policy — Signal over Spam | review_required | OK | `40a0bb623a7c` |
 | `docs/cio/CIO_NOTIFICATION_REPLAY_ACCEPTANCE.md` | CIO Notification Replay Acceptance | review_required | OK | `76573f672e2d` |
@@ -889,7 +890,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/LEARNING_LOOP.md` | Learning loop — dispositions → enrichment bias | review_required | OK | `256c98fd17bc` |
 | `docs/cio/P2B_PLAN_ENRICHMENT.md` | Phase P2b — Plan enrichment (brain depth) | review_required | OK | `84357e0f4baf` |
 | `docs/cio/PROMPT_CURATION.md` | Alex enrichment — prompt curation, versioning, evaluation | review_required | OK | `084366e658e3` |
-| `docs/cio/README.md` | CIO Desk — Architect Packet | review_required | OK | `9b72cfda013c` |
+| `docs/cio/README.md` | CIO Desk — Architect Packet | review_required | OK | `b16cc51f1400` |
 | `docs/cio/REENTRY_RR.md` | Re-entry R:R methodology (live system) | review_required | OK | `9b9b33a8e5d0` |
 | `docs/cio/ROADMAP_GAPS.md` | Roadmap gaps — explicit “not yet” | review_required | OK | `4a998ebf44be` |
 | `docs/cio/SITUATIONS.md` | Situation catalog & plan lifecycle | review_required | OK | `e0d3e3a62f8d` |

@@ -1434,6 +1434,71 @@ def load_known_decision_catalog() -> dict[str, dict[str, Any]]:
         return {}
 
 
+def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
+    """GET-only CIODecisionLineage@v1 projection keyed by exact decision_id."""
+    did = str(decision_id or "").strip()
+    if not did:
+        return {"ok": False, "error": "decision_id_required", "authority": AUTHORITY_ADVISORY}
+    try:
+        from scripts.lib.cio_decision_lineage_projection import (
+            direct_match,
+            project_decision_lineage,
+        )
+
+        decision = dict(load_known_decision_catalog().get(did) or {})
+        try:
+            import api_v2 as _v2
+
+            db_row = _v2._db_query(
+                "SELECT * FROM cio_decisions WHERE decision_id=%s ORDER BY created_at DESC LIMIT 1",
+                (did,),
+                fetch="one",
+            )
+            if isinstance(db_row, dict):
+                decision = {**db_row, **decision}
+        except Exception:
+            pass
+
+        cio_root = Path(os.getenv("TRADEAI_CIO_DIR") or PROJECT_ROOT / "data" / "cio")
+        workflow_rows = _read_jsonl(cio_root / "cio_workflow_lineage.jsonl")
+        intelligence_rows = _read_jsonl(cio_root / "intelligence_lineages.jsonl")
+        checkpoint_rows = _read_jsonl(cio_root / "outcome_checkpoints.jsonl")
+        disposition_rows = _read_jsonl(_DISPOSITION_PATH)
+        matched = (
+            direct_match(did, workflow_rows)
+            + direct_match(did, intelligence_rows)
+            + direct_match(did, checkpoint_rows)
+            + direct_match(did, disposition_rows)
+        )
+        if not decision and not matched:
+            return {
+                "ok": False,
+                "error": "decision_lineage_not_found",
+                "decision_id": did,
+                "authority": AUTHORITY_ADVISORY,
+                "financial_action": False,
+            }
+        projection = project_decision_lineage(
+            did,
+            decision=decision,
+            workflow_records=workflow_rows,
+            intelligence_records=intelligence_rows,
+            checkpoint_records=checkpoint_rows,
+            disposition_records=disposition_rows,
+            composition_as_of=_now_iso(),
+        )
+        return {"ok": True, "lineage": projection, "authority": AUTHORITY_ADVISORY}
+    except Exception as exc:
+        return {
+            "ok": False,
+            "error": type(exc).__name__,
+            "detail": str(exc)[:200],
+            "decision_id": did,
+            "authority": AUTHORITY_ADVISORY,
+            "financial_action": False,
+        }
+
+
 def stamp_decision_identity(
     home: dict[str, Any] | None,
     capital_plan: dict[str, Any] | None,
