@@ -53107,6 +53107,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if p == "brain/policy/ratify":
                     res = _cio.post_operator_investment_policy_ratification(body or {})
                     return (200 if res.get("ok") else 400), res
+                if p == "brain/policy/advise":
+                    # Provider failures are a normal advisory outcome (200 + ok=false);
+                    # only a bad request body is a 400.
+                    res = _cio.post_operator_policy_field_advice(body or {})
+                    bad = res.get("reason_code") in ("FIELD_REQUIRED", "UNKNOWN_POLICY_FIELD")
+                    return (400 if bad else 200), res
                 # POST /api/v3/cio/decision/{key}/disposition — operator ACK/DEFER/DONE/REJECT/RATE
                 if p.startswith("decision/") and p.endswith("/disposition"):
                     mid = p[len("decision/") :]

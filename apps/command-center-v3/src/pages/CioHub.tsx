@@ -11,7 +11,6 @@ import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
 import { RADIUS, SHADOW } from '../lib/designTokens'
-import { DEEPSEEK_FLASH_SMOKE_PROCESS, runManualCloud } from '../lib/cloudLlmRun'
 import {
   CIO_HUB_TABS,
   CIO_HUB_TAB_LABEL,
@@ -1719,7 +1718,7 @@ type OperatorPolicyPayload = {
   required_field_count: number
   missing_fields: string[]
   fields: Record<string, PolicyField>
-  legacy_conflicts: { field: string; claims: { value: unknown; source: string }[] }[]
+  legacy_conflicts: { field: string; resolved_by?: string; claims: { field?: string; value: unknown; source: string }[] }[]
 }
 
 type PolicyFieldMeta = {
@@ -1805,27 +1804,21 @@ function OperatorPolicyPanel() {
   }
 
   const meta = manageField ? (POLICY_FIELD_META[manageField] || { purpose: policyLabel(manageField), guidance: 'Enter the operator-defined value for this policy field.', input: selected?.kind === 'range_pct' ? 'range' : 'text' }) : null
-  const observedClaims = manageField ? policy?.legacy_conflicts.find(c => c.field === manageField)?.claims || [] : []
+  // A legacy key can resolve to a differently named policy field (max_single_position_pct → concentration_hierarchy).
+  const observedClaims = manageField ? (policy?.legacy_conflicts || []).filter(c => c.field === manageField || c.resolved_by === manageField).flatMap(c => c.claims) : []
   const rangeHasTarget = (name: string | null) => Boolean(name && (name === 'cash_target_range_pct' || (policy?.fields?.[name]?.value && typeof policy.fields[name].value === 'object' && 'target' in (policy.fields[name].value as Record<string, unknown>))))
 
   const askDeepSeek = async () => {
     if (!manageField || !meta) return
     setLlmBusy(true); setLlmSuggestion(null)
     try {
-      const result = await runManualCloud({
-        process_id: DEEPSEEK_FLASH_SMOKE_PROCESS,
-        lane: 'deepseek-flash',
-        task_summary: `Advisory suggestion for CIO policy field ${manageField}`,
-        prompt: [
-          'You are an advisory-only policy assistant. Do not ratify, approve, or invent facts.',
-          `Policy field: ${policyLabel(manageField)}`,
-          `Purpose: ${meta.purpose}`,
-          `Guidance: ${meta.guidance}`,
-          `Current value: ${JSON.stringify(selected?.value ?? null)}`,
-          `Existing conflicting claims: ${JSON.stringify(observedClaims)}`,
-          'Give concise candidate criteria, assumptions, and questions the operator must answer. Do not output an order or trade instruction.',
-        ].join('\n'),
+      // Server builds the prompt from the policy projection; only the field name is sent.
+      const response = await fetch('/api/v3/cio/brain/policy/advise', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ field_name: manageField }),
       })
+      const result = await response.json().catch(() => null)
       setLlmSuggestion(result?.ok ? (result.text || 'DeepSeek returned no suggestion text.') : `DeepSeek unavailable: ${result?.error || result?.reason_code || 'request failed'}`)
     } catch (error: any) {
       setLlmSuggestion(`DeepSeek unavailable: ${String(error?.message || error)}`)
@@ -1955,7 +1948,7 @@ function OperatorPolicyPanel() {
           <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><button type="button" onClick={() => void askDeepSeek()} disabled={llmBusy} title="Ask DeepSeek for advisory criteria and questions. It cannot ratify or save this policy." style={{ padding: '6px 10px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: llmBusy ? 'wait' : 'pointer' }}>{llmBusy ? 'Asking DeepSeek…' : 'Ask DeepSeek for help'}</button><span style={{ color: 'var(--text3)', fontSize: 11 }}>Advisory only · operator confirms the final value</span></div>
           {llmSuggestion && <div role="status" style={{ marginTop: 10, padding: 10, borderLeft: '3px solid var(--accent)', background: 'var(--accent-dim)', color: 'var(--text1)', fontSize: 11, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}><strong>DeepSeek suggestion</strong><div style={{ marginTop: 5 }}>{llmSuggestion}</div></div>}
           {selected?.value != null && <div style={{ marginTop: 10, padding: 10, background: 'var(--bg0)', color: 'var(--text2)', fontSize: 11 }}>Current recorded value: <code>{JSON.stringify(selected.value)}</code></div>}
-          {observedClaims.length > 0 && <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--amber)', color: 'var(--text2)', fontSize: 11 }}>Existing conflicting evidence (draft only): {observedClaims.map(c => `${c.source}: ${JSON.stringify(c.value)}`).join(' · ')}. The operator must choose the final value.</div>}
+          {observedClaims.length > 0 && <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--amber)', color: 'var(--text2)', fontSize: 11 }}>Existing conflicting evidence (draft only): {observedClaims.map(c => `${c.source}${c.field && c.field !== manageField ? ` (${c.field})` : ''}: ${JSON.stringify(c.value)}`).join(' · ')}. The operator must choose the final value.</div>}
           <div style={{ marginTop: 14 }}>{renderManagedInput()}</div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}><button type="button" onClick={() => setManageField(null)} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Cancel</button><button type="button" onClick={reviewManagedValue} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer' }}>Review and continue</button></div>
         </div>
