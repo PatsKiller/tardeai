@@ -26,20 +26,60 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _rows(path: Path) -> list[dict[str, Any]]:
-    if not path.is_file():
-        return []
+_DECISION_LOOKUP_TAIL_BYTES = 8 * 1024 * 1024
+
+
+def _row_matches_decision(row: dict[str, Any], decision_id: str) -> bool:
+    """Match an exact decision id without using a symbol or neighboring row."""
+    did = str(decision_id or "").strip()
+    if not did:
+        return True
+    values: list[str] = []
+    for key in (
+        "decision_id", "judgment_decision_id", "cio_case_id", "workflow_id",
+        "decision_ids", "decision_refs", "decisions", "consumed_by_decision_ids",
+    ):
+        value = row.get(key)
+        if isinstance(value, str):
+            values.append(value)
+        elif isinstance(value, (list, tuple, set)):
+            values.extend(str(item) for item in value if item not in (None, ""))
+    contributions = row.get("contributions")
+    if isinstance(contributions, list):
+        for contribution in contributions:
+            if isinstance(contribution, dict) and _row_matches_decision(contribution, did):
+                return True
+    return did in values
+
+
+def _parse_rows(lines: Iterable[str], *, predicate: Any = None) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+    for line in lines:
         if not line.strip():
             continue
         try:
             row = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(row, dict):
+        if isinstance(row, dict) and (predicate is None or predicate(row)):
             out.append(row)
     return out
+
+
+def _rows(path: Path, *, decision_id: str | None = None) -> list[dict[str, Any]]:
+    if not path.is_file():
+        return []
+    predicate = (lambda row: _row_matches_decision(row, decision_id)) if decision_id else None
+    if decision_id and path.stat().st_size > _DECISION_LOOKUP_TAIL_BYTES:
+        with path.open("rb") as handle:
+            handle.seek(-_DECISION_LOOKUP_TAIL_BYTES, os.SEEK_END)
+            handle.readline()  # discard the partial first line
+            tail = handle.read().decode("utf-8", errors="replace").splitlines()
+        recent = _parse_rows(tail, predicate=predicate)
+        if recent:
+            return recent
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        return _parse_rows(handle, predicate=predicate)
 
 
 def _stamp(row: dict[str, Any] | None) -> str | None:
@@ -158,14 +198,14 @@ def _artifact_status(row: dict[str, Any], *, result: bool, source_name: str) -> 
     return "RETRIEVED" if retrieved else "UNKNOWN"
 
 
-def _research_rows(path: Path) -> Iterable[dict[str, Any]]:
+def _research_rows(path: Path, rows: Iterable[dict[str, Any]] | None = None) -> Iterable[dict[str, Any]]:
     """Yield artifact-shaped rows from existing research products.
 
     SecurityResearchSpine is a canonical projection whose contributions carry
     artifact ids; the spine envelope itself is not a new artifact and must not
     produce a synthetic ``UNKNOWN`` record.
     """
-    for row in _rows(path):
+    for row in rows if rows is not None else _rows(path):
         if path.name == "security_research_spine.jsonl":
             contributions = row.get("contributions")
             if isinstance(contributions, list) and contributions:
@@ -264,7 +304,7 @@ def _merge_research_artifact(existing: dict[str, Any], candidate: dict[str, Any]
     return merged
 
 
-def _research_provenance(root: Path) -> dict[str, Any]:
+def _research_provenance(root: Path, *, decision_id: str | None = None) -> dict[str, Any]:
     paths = [
         root / "hermes_research_results.jsonl",
         root / "web_evidence_provenance.jsonl",
@@ -273,9 +313,12 @@ def _research_provenance(root: Path) -> dict[str, Any]:
     by_artifact: dict[str, dict[str, Any]] = {}
     sources: list[dict[str, Any]] = []
     for path in paths:
+        # Research artifacts can be shared by several exact decisions.  Keep
+        # the full artifact merge so reverse links retain every decision ref;
+        # the public builder filters the merged result by decision_id below.
         rows = _rows(path)
         sources.append({"source": path.name, **_source_meta(path, rows)})
-        for row in list(_research_rows(path))[-250:]:
+        for row in list(_research_rows(path, rows))[-250:]:
             artifact = _research_artifact(row, source_name=path.name)
             if not artifact:
                 continue
@@ -312,7 +355,7 @@ def build_research_provenance(
     Filtering is by decision id only.  A shared symbol is not a join key because
     historical decisions for that symbol must remain independently resolvable.
     """
-    block = _research_provenance(root or _root())
+    block = _research_provenance(root or _root(), decision_id=decision_id)
     did = str(decision_id or "").strip()
     if did:
         artifacts = [
@@ -343,7 +386,7 @@ def build_research_provenance(
     return block
 
 
-def _cognition(root: Path) -> dict[str, Any]:
+def _cognition(root: Path, *, decision_id: str | None = None) -> dict[str, Any]:
     paths = {
         "memory_retrieval": root / "aif_memory_retrievals.jsonl",
         "memory_context": root / "memory_contexts.jsonl",
@@ -353,7 +396,7 @@ def _cognition(root: Path) -> dict[str, Any]:
     items: list[dict[str, Any]] = []
     sources: list[dict[str, Any]] = []
     for kind, path in paths.items():
-        rows = _rows(path)
+        rows = _rows(path, decision_id=decision_id)
         sources.append({"source": path.name, **_source_meta(path, rows)})
         for row in rows[-100:]:
             retrieved = kind in {"memory_retrieval", "memory_context", "research_lineage"} and bool(
@@ -414,7 +457,7 @@ def _learning_row(row: dict[str, Any], *, origin: str) -> dict[str, Any]:
     }
 
 
-def _learning(root: Path) -> dict[str, Any]:
+def _learning(root: Path, *, decision_id: str | None = None) -> dict[str, Any]:
     paths = {
         "outcomes": root / "advisory_outcomes_v1.jsonl",
         "checkpoints": root / "outcome_checkpoints.jsonl",
@@ -425,7 +468,7 @@ def _learning(root: Path) -> dict[str, Any]:
         "operator_learning": root / "cio_operator_learning.jsonl",
         "instrument_records": root / "cio_instrument_records.jsonl",
     }
-    rows_by_kind = {kind: _rows(path) for kind, path in paths.items()}
+    rows_by_kind = {kind: _rows(path, decision_id=decision_id) for kind, path in paths.items()}
     sources = [{"source": path.name, **_source_meta(path, rows_by_kind[kind])} for kind, path in paths.items()]
     outcomes = rows_by_kind["outcomes"]
     settled_statuses = {"OUTCOME_EVALUATED", "SETTLED", "SETTLED_OUTCOME", "CONFIRMED", "REFUTED", "EXPIRED"}
@@ -584,13 +627,22 @@ def _capability_coverage(root: Path, *, composition_as_of: str | None = None) ->
     return {"rows": rows, "counts": counts, "source_as_of": source_as_of, "freshness": _freshness(source_as_of)}
 
 
-def build_operator_evidence(*, now: str | None = None) -> dict[str, Any]:
+def build_operator_evidence(
+    *, now: str | None = None, decision_id: str | None = None,
+    include_coverage: bool = True,
+) -> dict[str, Any]:
     root = _root()
     composed = now or _now()
-    research = _research_provenance(root)
-    cognition = _cognition(root)
-    learning = _learning(root)
-    coverage = _capability_coverage(root, composition_as_of=composed)
+    research = _research_provenance(root, decision_id=decision_id)
+    cognition = _cognition(root, decision_id=decision_id)
+    learning = _learning(root, decision_id=decision_id)
+    coverage = _capability_coverage(root, composition_as_of=composed) if include_coverage else {
+        "rows": [],
+        "counts": {state: 0 for state in ("LIVE", "PARTIAL", "UNWIRED", "DARK", "UNKNOWN")},
+        "source_as_of": None,
+        "freshness": "UNKNOWN",
+        "reason": "omitted from exact decision lookup; unrelated capability stores are not scanned",
+    }
     blocks = {"research": research, "institutional_cognition": cognition, "learning": learning, "capability_coverage": coverage}
     for block in blocks.values():
         block["composition_as_of"] = composed
