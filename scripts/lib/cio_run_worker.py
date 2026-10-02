@@ -430,6 +430,82 @@ class CIORunWorker:
                     pass
             synthesis_result = self._cio_synthesis(run, snapshot_result, specialist_result, hermes_result)
             result["synthesis_artifact_id"] = synthesis_result.get("artifact_id")
+
+            # Flight recorder: Wire UNWIRED and DARK decision stages (Phase A-D)
+            # Record model route, confidence, counter-thesis, falsifier from synthesis
+            try:
+                from scripts.lib.cio_lineage import (
+                    record_model_route,
+                    record_counter_thesis,
+                    record_confidence,
+                    record_falsifier,
+                    record_canon_frameworks,
+                    record_specialist_disagreement,
+                )
+                synthesis_data = synthesis_result.get("result", {})
+                did = str(run_id)
+                workflow_id = f"wf_{run_id}"
+
+                # Record model routing decision
+                if synthesis_data.get("model_used") or synthesis_data.get("model_provider"):
+                    record_model_route(
+                        workflow_id,
+                        decision_id=did,
+                        model_route=synthesis_data.get("model_route"),
+                        model_used=synthesis_data.get("model_used"),
+                        provider=synthesis_data.get("provider"),
+                        model_provider=synthesis_data.get("model_provider"),
+                    )
+
+                # Record counter-thesis and scenarios
+                if synthesis_data.get("counter_thesis") or synthesis_data.get("counter_case"):
+                    record_counter_thesis(
+                        workflow_id,
+                        decision_id=did,
+                        counter_thesis=synthesis_data.get("counter_thesis"),
+                        counter_case=synthesis_data.get("counter_case"),
+                    )
+
+                # Record confidence assessment
+                confidence = synthesis_data.get("confidence")
+                if confidence is not None:
+                    record_confidence(
+                        workflow_id,
+                        decision_id=did,
+                        confidence=confidence,
+                        confidence_score=confidence,
+                    )
+
+                # Record falsifier/invalidation conditions
+                if synthesis_data.get("falsifier") or synthesis_data.get("invalidation_condition"):
+                    record_falsifier(
+                        workflow_id,
+                        decision_id=did,
+                        falsifier=synthesis_data.get("falsifier"),
+                        invalidation_condition=synthesis_data.get("invalidation_condition"),
+                    )
+
+                # Record framework selection (canon_frameworks)
+                if synthesis_data.get("framework_refs") or synthesis_data.get("canon_refs"):
+                    record_canon_frameworks(
+                        workflow_id,
+                        decision_id=did,
+                        framework_refs=synthesis_data.get("framework_refs"),
+                        canon_refs=synthesis_data.get("canon_refs"),
+                        methodology_ref=synthesis_data.get("methodology_ref"),
+                    )
+
+                # Record specialist disagreement assessment
+                if specialist_result and specialist_result.get("specialist_disagreement"):
+                    record_specialist_disagreement(
+                        workflow_id,
+                        decision_id=did,
+                        specialist_disagreement=specialist_result.get("specialist_disagreement"),
+                        disagreement_receipt=specialist_result.get("disagreement_receipt"),
+                    )
+            except Exception:
+                log.debug("Flight recorder stages unavailable", exc_info=True)
+
             # Slice 4: keep cio.operator_product.current fresh after a successful
             # synthesis. Refuse persist of UNAVAILABLE (preserve last-good).
             result["operator_product_persist"] = self._persist_operator_product()
