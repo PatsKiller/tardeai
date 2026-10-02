@@ -887,6 +887,13 @@ GATES = [
             "tests/test_cio_operator_evidence.py",
             # 10-02 review: per-decision research, honest clocks, bounded reads, shared cache.
             "tests/test_cio_operator_evidence_bounds_20261002.py",
+            "tests/test_cio_advisory_dependency_clocks_20261002.py",
+            "tests/test_cio_cross_surface_links_20261002.py",
+            "tests/test_cio_decision_lineage_states_20261002.py",
+            "tests/test_cio_lineage_deeplinks_20261002.py",
+            "tests/test_cio_operator_evidence_receipts_20261002.py",
+            "tests/test_cio_source_clocks_20261002.py",
+            "tests/test_cio_xsurface_census_completeness_20261002.py",
             # Advisory run-now must disclose independent dependency clocks.
             "tests/test_cio_advisory_dependency_clocks.py",
             # Source-side API census and produced-versus-surfaced measurement.

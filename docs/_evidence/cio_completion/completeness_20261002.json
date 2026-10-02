@@ -7,8 +7,8 @@
       "produced_not_surfaced": 0
     },
     "route": {
-      "operator_visible": 17,
-      "produced": 46,
+      "operator_visible": 18,
+      "produced": 47,
       "produced_not_surfaced": 29
     },
     "schema": {
@@ -57,6 +57,7 @@
     "route:/api/v3/cio/plans/*",
     "route:/api/v3/cio/research-provenance",
     "route:/api/v3/cio/scorecard",
+    "route:/api/v3/cio/source-clocks",
     "route:/api/v3/cio/symbol-thesis/*",
     "route:/api/v3/cio/universe-theses",
     "schema:AgentRuntimeProof@v1",
@@ -145,6 +146,7 @@
     "route:/api/v3/cio/research-provenance",
     "route:/api/v3/cio/scorecard",
     "route:/api/v3/cio/snapshot",
+    "route:/api/v3/cio/source-clocks",
     "route:/api/v3/cio/symbol-thesis/*",
     "route:/api/v3/cio/thesis",
     "route:/api/v3/cio/thesis-research-context/*",
@@ -286,18 +288,18 @@
     "schema:TradeAIMaturityContract@v1",
     "schema:WakeTurnEffect@v1"
   ],
-  "composition_as_of": "2026-10-02T16:06:12.926566+00:00",
+  "composition_as_of": "2026-10-02T16:09:29.649380+00:00",
   "counts": {
-    "operator_visible": 61,
-    "produced": 203,
+    "operator_visible": 62,
+    "produced": 204,
     "produced_not_surfaced": 142,
-    "surfaced_not_runtime_proven": 189,
-    "surfaced_runtime_unmeasured": 38
+    "surfaced_not_runtime_proven": 97,
+    "surfaced_runtime_unmeasured": 39
   },
-  "critical_edges_dark": 1,
-  "critical_edges_live": 0,
-  "critical_edges_partial": 22,
-  "critical_edges_unknown": 0,
+  "critical_edges_dark": 2,
+  "critical_edges_live": 6,
+  "critical_edges_partial": 13,
+  "critical_edges_unknown": 2,
   "critical_edges_unwired": 0,
   "method": {
     "limitations": [
@@ -452,1334 +454,690 @@
     "schema:WakeTurnEffect@v1"
   ],
   "schema": "CIOCompletenessMeasurement@v2",
-  "serving_sha": "544078d094f7b5286268b74b5193d70a06211bf9",
+  "serving_sha": "78ddd93110ae58512fceb1f69c058e50f7b99877",
   "source_acceptance": {
     "produced_not_surfaced_zero": false,
-    "runtime_unproven_count": 189,
+    "runtime_unproven_count": 97,
     "runtime_unproven_items_labelled": true
   },
   "surfaced_not_runtime_proven": [
     {
       "name": "capability:InstrumentRecord",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:identity resolution",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "capped at PARTIAL: identity resolution writes no record of its own here; a resolved subject_guid on a spine row cannot be separated from spine publication",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:office truth",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
-      "runtime_state": "PARTIAL",
-      "ui_label": "PARTIAL",
-      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
-    },
-    {
-      "name": "capability:persistent cognition",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:memory retrieval",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
-      "runtime_state": "PARTIAL",
-      "ui_label": "PARTIAL",
-      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
-    },
-    {
-      "name": "capability:Hermes research",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
-      "runtime_state": "PARTIAL",
-      "ui_label": "PARTIAL",
-      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
-    },
-    {
-      "name": "capability:external research",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:specialist artifacts",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:specialist disagreement",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
-      "runtime_state": "PARTIAL",
-      "ui_label": "PARTIAL",
+      "reason": "no producer row matches this capability's predicate in the recent window; declared producer module scripts.lib.cio_specialist_artifact exists",
+      "runtime_state": "DARK",
+      "ui_label": "DARK",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:CIO synthesis",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:judgment",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
-      "runtime_state": "PARTIAL",
-      "ui_label": "PARTIAL",
-      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
-    },
-    {
-      "name": "capability:commitment",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:notification policy",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:delivery/outbox",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:operator feedback",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
-      "runtime_state": "PARTIAL",
-      "ui_label": "PARTIAL",
-      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
-    },
-    {
-      "name": "capability:outcome checkpoint",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
-      "runtime_state": "PARTIAL",
-      "ui_label": "PARTIAL",
-      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
-    },
-    {
-      "name": "capability:outcome settlement",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:belief writer",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:lesson",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:hypothesis",
-      "reason": "declared producer exists but no runtime producer or consumer evidence was observed",
+      "reason": "producer store is missing; declared producer module scripts.lib.r17_checkpoint_binding exists",
       "runtime_state": "DARK",
       "ui_label": "DARK",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:graph propagation",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
       "runtime_state": "PARTIAL",
       "ui_label": "PARTIAL",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:canon retrieval",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
-      "runtime_state": "PARTIAL",
-      "ui_label": "PARTIAL",
+      "reason": "producer store is missing; producer module scripts.lib.cio_canon is not present in this repo",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "capability:historical analogue retrieval",
-      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
-      "runtime_state": "PARTIAL",
-      "ui_label": "PARTIAL",
+      "reason": "producer store is missing; producer module scripts.lib.cio_analogue_retrieval is not present in this repo",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
     },
     {
       "name": "research:symbol_stx@v6",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
       "name": "research:symbol_stx@v5",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_algn@v4",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_algn@v3",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_cof@v15",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_cof@v14",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_cdw@v4",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_cdw@v3",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_2d72c5c4edc7",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_f91528d8a078",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_imtx@v2",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_imtx@v1",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_dnp@v9",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_dnp@v8",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_dnp@v7",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_hrl@v5",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_hrl@v4",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sh@v23",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sh@v22",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sh@v21",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sh@v20",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sh@v19",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sh@v18",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sh@v17",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_aca0947e08c3",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_schd@v36",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_ce@v4",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_ctaa@v11",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_62cf0fbdf48c",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_4cda468a49ad",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_c9d357dcf0bb",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_bf13f4590180",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_alle@v25",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_alle@v24",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_alle@v23",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_alle@v22",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_alle@v21",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_b36109030eb4",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_oxy@v6",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_oxy@v5",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_oxy@v4",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_oxy@v3",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_oxy@v2",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_oxy@v1",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_schd@v35",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_bax@v18",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_ffr@v1",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_noc@v13",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_jepi@v27",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_be@v17",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sndk@v17",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_92a58039ccc7",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_bah@v30",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_bah@v29",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_bah@v28",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_bah@v27",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_6daa58272521",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_ce64746f4c65",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_aiff@v1",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_2e7641f4dd51",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sndk@v16",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sndk@v15",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sndk@v14",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sndk@v13",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sndk@v12",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_sndk@v11",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_meds@v3",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_crml@v4",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_now@v15",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_now@v14",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_now@v13",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_now@v12",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_d10f1ee38a27",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_1b620fa6178f",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_jepi@v26",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_jepi@v25",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_82aa2d41f062",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_rtx@v34",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_rtx@v33",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_rtx@v32",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_e41f78244519",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_9a8a41999891",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_b2e404ae5210",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_3b29d594d443",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_aa28ac81a89c",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_688e500c0e88",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_91098b26af00",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_4126d2c99cba",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_d6bcd170888b",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_4056e148b5b9",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_19a569222ee4",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_44e08934129d",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_436b3e467f7c",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_eb5ad602cc2f",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_4f08ffd068ff",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_noc@v12",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_eb79ee65ba83",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_e95207707fbe",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_29606d90f388",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_03e09506aa55",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_c44d239b1c53",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_schd@v34",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_schd@v33",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_schd@v32",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_schd@v31",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_03d9f8f0773b",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_ctaa@v9",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_ctaa@v8",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_ctaa@v7",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_ctaa@v10",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_bax@v17",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_bax@v16",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:symbol_bax@v15",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
       "name": "research:symbol_spcx@v18",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_72273460acd5",
+      "name": "research:symbol_sndk@v17",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_b86f91933f15",
+      "name": "research:symbol_sndk@v16",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_0091e269afe9",
+      "name": "research:symbol_sndk@v15",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v14",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v13",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v12",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v11",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v23",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v22",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v21",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v20",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v19",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v18",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v17",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v36",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v35",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v34",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v33",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v32",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v31",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_rtx@v34",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_rtx@v33",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_rtx@v32",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v6",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v5",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v2",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_now@v15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_now@v14",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_now@v13",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_now@v12",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_noc@v13",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_noc@v12",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_meds@v3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_jepi@v27",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_jepi@v26",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_jepi@v25",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_imtx@v2",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_imtx@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_hrl@v5",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_hrl@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ffr@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_dnp@v9",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_dnp@v8",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_dnp@v7",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v9",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v8",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v7",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v11",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v10",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_crml@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_cof@v15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_cof@v14",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ce@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_cdw@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_cdw@v3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_be@v17",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
       "name": "research:symbol_be@v16",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
       "name": "research:symbol_be@v15",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_a4a66bd38cf8",
+      "name": "research:symbol_bax@v18",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_9784b44d1279",
+      "name": "research:symbol_bax@v17",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_9b60fd7c4aed",
+      "name": "research:symbol_bax@v16",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_553f19071c0e",
+      "name": "research:symbol_bax@v15",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_583bda3d3f75",
+      "name": "research:symbol_bah@v30",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_1eb30904e2b7",
+      "name": "research:symbol_bah@v29",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_f5c69e2745a0",
+      "name": "research:symbol_bah@v28",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_17a6c525e7ae",
+      "name": "research:symbol_bah@v27",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_c7d6619f3c77",
+      "name": "research:symbol_alle@v25",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_303b6e079daf",
+      "name": "research:symbol_alle@v24",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_e28b5231a656",
+      "name": "research:symbol_alle@v23",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_f8380a9a3eba",
+      "name": "research:symbol_alle@v22",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_7a944bdd01d0",
+      "name": "research:symbol_alle@v21",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_860cbfc00291",
+      "name": "research:symbol_algn@v4",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_ea97a58693ff",
+      "name": "research:symbol_algn@v3",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     },
     {
-      "name": "research:rr_3e6767a620c5",
+      "name": "research:symbol_aiff@v1",
       "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_4d112bb2d8fd",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_956c8355d8c3",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_158dd7cf448e",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_8efdce82a222",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_5def32dc6912",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_fb330715e688",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_f21aefc77d50",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_26791f090121",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_c8dd7c7fe101",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_5ba95badd481",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_833142cb41fd",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_479ce62b5bad",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_b417efad5cbe",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_e7227c28edb9",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_934c19c70341",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_5ca02c404368",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_150f2cf48cf4",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_acf16a48cbd3",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_e879edcc4410",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_2860670a3346",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_fde889a6cd5f",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_09e2a6b41bf7",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_6c3562c01be8",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_1a693731fc23",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_5f6ad597f645",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_9f3e4b518aa4",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_0f8b07bcdc67",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_fa42c79c391a",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_cf14f5e45bca",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_cc006a9ffddf",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
-      "ui_surface": "CIO \u203a Research provenance"
-    },
-    {
-      "name": "research:rr_ffecf79d8d39",
-      "reason": "canonical use receipt does not prove judgment use",
-      "runtime_state": "RETRIEVED",
-      "ui_label": "RETRIEVED",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
       "ui_surface": "CIO \u203a Research provenance"
     }
   ],
@@ -1799,6 +1157,7 @@
     "route:/api/v3/cio/plans/*",
     "route:/api/v3/cio/research-provenance",
     "route:/api/v3/cio/scorecard",
+    "route:/api/v3/cio/source-clocks",
     "route:/api/v3/cio/symbol-thesis/*",
     "route:/api/v3/cio/universe-theses",
     "schema:AgentRuntimeProof@v1",
@@ -1941,17 +1300,17 @@
     },
     "route:/api/v2/cio/report-v2": {
       "via": [
-        "apps/command-center-v3/src/pages/CioHub.tsx:1567"
+        "apps/command-center-v3/src/pages/CioHub.tsx:1568"
       ]
     },
     "route:/api/v2/cio/youtube-research-queue": {
       "via": [
-        "apps/command-center-v3/src/pages/CioHub.tsx:1496"
+        "apps/command-center-v3/src/pages/CioHub.tsx:1497"
       ]
     },
     "route:/api/v3/cio/agent-research-ops": {
       "via": [
-        "apps/command-center-v3/src/pages/CioHub.tsx:941"
+        "apps/command-center-v3/src/pages/CioHub.tsx:942"
       ]
     },
     "route:/api/v3/cio/brain": {
@@ -1961,68 +1320,73 @@
     },
     "route:/api/v3/cio/brain/policy": {
       "via": [
-        "apps/command-center-v3/src/pages/CioHub.tsx:1808"
+        "apps/command-center-v3/src/pages/CioHub.tsx:1809"
       ]
     },
     "route:/api/v3/cio/decision/*": {
       "via": [
-        "apps/command-center-v3/src/components/cio/CioDecisionLineagePanel.tsx:82"
+        "apps/command-center-v3/src/components/cio/CioDecisionLineagePanel.tsx:84"
       ]
     },
     "route:/api/v3/cio/dispositions": {
       "via": [
-        "apps/command-center-v3/src/pages/CioHub.tsx:2033"
+        "apps/command-center-v3/src/pages/CioHub.tsx:2037"
       ]
     },
     "route:/api/v3/cio/home": {
       "via": [
-        "apps/command-center-v3/src/pages/CioHub.tsx:2014"
+        "apps/command-center-v3/src/pages/CioHub.tsx:2018"
       ]
     },
     "route:/api/v3/cio/intelligence/*": {
       "via": [
-        "apps/command-center-v3/src/pages/CioHub.tsx:1104"
+        "apps/command-center-v3/src/pages/CioHub.tsx:1105"
       ]
     },
     "route:/api/v3/cio/investment-product": {
       "via": [
-        "apps/command-center-v3/src/pages/CioHub.tsx:1246"
+        "apps/command-center-v3/src/pages/CioHub.tsx:1247"
       ]
     },
     "route:/api/v3/cio/observability": {
       "via": [
-        "apps/command-center-v3/src/components/cio/CioObservabilityPanel.tsx:59"
+        "apps/command-center-v3/src/components/cio/CioObservabilityPanel.tsx:61"
       ]
     },
     "route:/api/v3/cio/operator-evidence": {
       "via": [
-        "apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx:209"
+        "apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx:372"
       ]
     },
     "route:/api/v3/cio/plans/*": {
       "via": [
-        "apps/command-center-v3/src/pages/CioHub.tsx:2299"
+        "apps/command-center-v3/src/pages/CioHub.tsx:2338"
       ]
     },
     "route:/api/v3/cio/research-provenance": {
       "via": [
-        "apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx:208"
+        "apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx:371"
       ]
     },
     "route:/api/v3/cio/scorecard": {
       "via": [
-        "apps/command-center-v3/src/pages/CioHub.tsx:2015"
+        "apps/command-center-v3/src/pages/CioHub.tsx:2019"
+      ]
+    },
+    "route:/api/v3/cio/source-clocks": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioSourceClocksPanel.tsx:71"
       ]
     },
     "route:/api/v3/cio/symbol-thesis/*": {
       "via": [
-        "apps/command-center-v3/src/pages/CioHub.tsx:1092",
-        "apps/command-center-v3/src/pages/CioHub.tsx:1094"
+        "apps/command-center-v3/src/pages/CioHub.tsx:1093",
+        "apps/command-center-v3/src/pages/CioHub.tsx:1095"
       ]
     },
     "route:/api/v3/cio/universe-theses": {
       "via": [
-        "apps/command-center-v3/src/pages/CioHub.tsx:1088"
+        "apps/command-center-v3/src/pages/CioHub.tsx:1089"
       ]
     },
     "schema:AgentRuntimeProof@v1": {
