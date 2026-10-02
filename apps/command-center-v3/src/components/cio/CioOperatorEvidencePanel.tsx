@@ -207,7 +207,8 @@ export default function CioOperatorEvidencePanel({ section = 'all' }: { section?
   const endpoint = section === 'research'
     ? `/api/v3/cio/research-provenance${decisionId ? `?decision_id=${encodeURIComponent(decisionId)}` : ''}`
     : '/api/v3/cio/operator-evidence'
-  const { data, loading, error } = useApi<Payload & ResearchBlock>(endpoint, 60_000)
+  // Composition is shared server-side for 2 min; polling faster only re-reads the cache.
+  const { data, loading, error } = useApi<Payload & ResearchBlock>(endpoint, 300_000)
   if (loading && !data) return <div style={{ color: 'var(--text2)' }} data-testid="cio-operator-evidence-loading">Loading operator evidence…</div>
   if (error && !data) return <div style={{ color: 'var(--amber)' }} data-testid="cio-operator-evidence-error">Operator evidence unavailable: {String(error)}</div>
   const blocks = data?.blocks || {}

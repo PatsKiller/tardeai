@@ -885,6 +885,8 @@ GATES = [
             "tests/test_cio_decision_lineage_projection.py",
             # Operator evidence composition: research receipts, cognition, learning, coverage.
             "tests/test_cio_operator_evidence.py",
+            # 10-02 review: per-decision research, honest clocks, bounded reads, shared cache.
+            "tests/test_cio_operator_evidence_bounds_20261002.py",
             # Advisory run-now must disclose independent dependency clocks.
             "tests/test_cio_advisory_dependency_clocks.py",
             # Source-side API census and produced-versus-surfaced measurement.
