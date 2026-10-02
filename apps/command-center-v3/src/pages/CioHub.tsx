@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, type CSSProperties, type ReactNode } from 'react'
+import { useEffect, useRef, useState, useCallback, type CSSProperties, type ReactNode } from 'react'
 import { useSearchParams, Link } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import { hubTitle, hubSubtitle } from '../lib/terminalHubChrome'
@@ -10,7 +10,13 @@ import CioJudgmentBand from '../components/cio/CioJudgmentBand'
 import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import CioDecisionLineagePanel from '../components/cio/CioDecisionLineagePanel'
 import CioOperatorEvidencePanel from '../components/cio/CioOperatorEvidencePanel'
-import { decisionLineageHref } from '../lib/cioDecisionLineage'
+import CioSourceClocksPanel from '../components/cio/CioSourceClocksPanel'
+import CioOfficeHomeProjections from '../components/cio/CioOfficeHomeProjections'
+import CioProductHealthPanel from '../components/cio/CioProductHealthPanel'
+import CioThesisDelegationPanel from '../components/cio/CioThesisDelegationPanel'
+import CioThesisResearchContextPanel from '../components/cio/CioThesisResearchContextPanel'
+import CioRecordLedgersPanel from '../components/cio/CioRecordLedgersPanel'
+import { cioDeepLinkFocus, decisionLineageHref } from '../lib/cioDecisionLineage'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
 import { RADIUS, SHADOW } from '../lib/designTokens'
@@ -1238,6 +1244,7 @@ function UniverseThesesPanel() {
         </div>
       )}
       {sym && !cardError && <SymbolThesisCard card={mergedCard} />}
+      <CioThesisResearchContextPanel symbol={sym} />
     </div>
   )
 }
@@ -1381,6 +1388,7 @@ function InvestmentBooksPanel() {
       )
     })()}
     <div style={{ fontSize: 12, color: 'var(--text3)' }}>{p.summary}</div>
+    <CioProductHealthPanel data={data} />
   </div>
 }
 
@@ -2005,6 +2013,9 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
   const tabRaw = (sp.get('tab') || '').trim()
   const subRaw = (sp.get('sub') || '').trim()
   const decisionRaw = (sp.get('decision') || '').trim()
+  // Exact-id deep-link focus (decision=, artifact=, research=). Never a symbol fallback.
+  const focus = cioDeepLinkFocus(sp)
+  const decisionFocusRef = useRef<HTMLDivElement | null>(null)
   const initialTab = resolveCioHubTab(tabRaw)
   const [tab, setTab] = useState<Tab>(initialTab)
   const [evidenceSub, setEvidenceSub] = useState<string>(subRaw || resolveEvidenceSubtab(tabRaw) || 'report')
@@ -2085,6 +2096,21 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
     setSp(next, { replace: true })
   }
 
+  const clearDecisionFocus = () => {
+    const next = new URLSearchParams(sp)
+    next.delete('decision')
+    next.delete('artifact')
+    next.delete('research')
+    setSp(next, { replace: true })
+  }
+
+  // decision= on the Decisions tab opens that decision's lineage and scrolls to it.
+  useEffect(() => {
+    if (tab === 'decisions' && focus.decision) {
+      decisionFocusRef.current?.scrollIntoView?.({ block: 'start', behavior: 'smooth' })
+    }
+  }, [tab, focus.decision])
+
   const home = data
 
   return (
@@ -2137,6 +2163,15 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
 
       {tab === 'decisions' && (
         <div role="tabpanel" aria-label={TAB_LABEL.decisions}>
+          {focus.decision && (
+            <div ref={decisionFocusRef} data-testid="cio-decision-focus" style={{ marginBottom: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'baseline', marginBottom: 8, fontSize: 12, color: 'var(--text2)' }}>
+                <span>Focused decision <span style={{ fontFamily: 'var(--mono)', color: 'var(--text1)' }}>{focus.decision}</span></span>
+                <button type="button" onClick={clearDecisionFocus} style={{ border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg2)', color: 'var(--text2)', padding: '3px 10px', fontSize: 11, cursor: 'pointer' }}>Clear focus</button>
+              </div>
+              <CioDecisionLineagePanel decisionId={focus.decision} />
+            </div>
+          )}
           {loading && !home && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }} data-testid="cio-home-loading">
               Loading office home…
@@ -2153,6 +2188,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
               <div style={{ marginTop: 28 }}>
                 <OpportunitiesSection opp={home.opportunities} books={home.reentry_books} />
               </div>
+              <CioOfficeHomeProjections home={home} />
             </>
           )}
         </div>
@@ -2160,6 +2196,17 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
 
       {tab === 'research' && (
         <div role="tabpanel" aria-label={TAB_LABEL.research}>
+          {(focus.decision || focus.artifact || focus.research) && (
+            // The research evidence panel filters on decision= itself; this
+            // banner makes the deep-link focus visible instead of silently ignored.
+            <div data-testid="cio-research-focus" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'baseline', marginBottom: 16, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg2)', fontSize: 12, color: 'var(--text2)' }}>
+              {focus.decision && <span>Decision <span style={{ fontFamily: 'var(--mono)', color: 'var(--text1)' }}>{focus.decision}</span></span>}
+              {focus.artifact && <span>Artifact <span style={{ fontFamily: 'var(--mono)', color: 'var(--text1)' }}>{focus.artifact}</span></span>}
+              {focus.research && <span>Research item <span style={{ fontFamily: 'var(--mono)', color: 'var(--text1)' }}>{focus.research}</span></span>}
+              {focus.decision && <Link to={decisionLineageHref(focus.decision)} style={{ color: 'var(--accent)' }}>Open decision lineage</Link>}
+              <button type="button" onClick={clearDecisionFocus} style={{ border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg1)', color: 'var(--text2)', padding: '2px 8px', fontSize: 11, cursor: 'pointer' }}>Clear focus</button>
+            </div>
+          )}
           <AgentResearchOpsStrip />
           <UniverseThesesPanel />
           <div style={{ marginTop: 28 }}>
@@ -2168,6 +2215,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           <div style={{ marginTop: 28 }}>
             <InvestmentBooksPanel />
           </div>
+          <CioThesisDelegationPanel />
         </div>
       )}
 
@@ -2202,9 +2250,9 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'telegram-receipts' && <TelegramReceiptsPanel />}
           {evidenceSub === 'senses-evidence' && <SensesEvidencePanel />}
           {evidenceSub === 'full-brain' && <CioBrainPanel />}
-          {evidenceSub === 'operator-evidence' && <CioOperatorEvidencePanel />}
+          {evidenceSub === 'operator-evidence' && <><CioSourceClocksPanel /><CioOperatorEvidencePanel /></>}
           {evidenceSub === 'institutional-cognition' && <CioOperatorEvidencePanel section="cognition" />}
-          {evidenceSub === 'learning-cockpit' && <CioOperatorEvidencePanel section="learning" />}
+          {evidenceSub === 'learning-cockpit' && <><CioOperatorEvidencePanel section="learning" /><CioRecordLedgersPanel /></>}
           {evidenceSub === 'capability-coverage' && <CioOperatorEvidencePanel section="coverage" />}
           {evidenceSub === 'decision-lineage' && <CioDecisionLineagePanel decisionId={decisionRaw || null} />}
           {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (

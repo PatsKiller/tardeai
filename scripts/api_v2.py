@@ -52958,6 +52958,22 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
     # ── /v3/cio — CIO Command Center dashboard + plan deep links ──────────
+    # Read-only cross-surface links (HermesResearchLinks@v1 / AgentRuntimeProof@v1).
+    if method == "GET" and base_path == "/api/v3/hermes/research-links":
+        try:
+            import api_v3_hermes as _hx
+
+            return 200, _hx.get_hermes_research_links(query)
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+    if method == "GET" and base_path == "/api/v3/agents/runtime-proof":
+        try:
+            import api_v3_hermes as _hx
+
+            return 200, _hx.get_agent_runtime_proof(query)
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+
     if base_path.startswith("/api/v3/cio"):
         try:
             import api_v3_cio as _cio
@@ -53010,6 +53026,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_decision_dispositions()
                 if p in ("operator-evidence", "operator_evidence"):
                     return 200, _cio.get_operator_evidence_v1()
+                if p in ("source-clocks", "source_clocks"):
+                    return 200, _cio.get_cio_source_clocks_v1()
                 if p in ("research-provenance", "research_provenance"):
                     decision_id = (query or {}).get("decision_id") if isinstance(query, dict) else None
                     return 200, _cio.get_research_provenance_v1(decision_id)
@@ -53028,6 +53046,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_cio_snapshot()
                 if p == "actions":
                     return 200, _cio.get_cio_actions()
+                if p in ("records", "record-ledgers", "record_ledgers"):
+                    return 200, _cio.get_cio_record_ledgers()
                 if p == "delegation":
                     return 200, _cio.get_cio_delegation()
                 if p == "thesis":

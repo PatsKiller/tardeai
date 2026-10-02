@@ -1,5 +1,7 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useApi } from '../../hooks/useApi'
+import CioProjectionBlock, { CioProjectionGroup } from './CioProjectionBlock'
+import CioBrainProjectionsPanel from './CioBrainProjectionsPanel'
 
 type Brain = {
   schema?: string
@@ -26,6 +28,8 @@ type Brain = {
   intelligence_lifecycle?: any
   model_performance?: any
   learning_cockpit?: any
+  data_health?: any
+  situation_scan?: any
   versions?: Record<string, string | number | null>
   _serving?: {
     loaded_pin_sha?: string | null
@@ -84,6 +88,70 @@ function List({ rows, empty = 'None current' }: { rows: any[] | undefined; empty
         </li>
       ))}
     </ul>
+  )
+}
+
+/** Brain sub-projections that ride in the brain payload but had no band:
+ * data health (+ store inventory), model-task performance, the live envelope
+ * provider status, the office situation scan, the intelligence coverage matrix
+ * and producer inventory, and the latest weekly learning review. Labels are
+ * the payload's own. */
+function BrainPayloadProjections({ brain }: { brain: Brain }) {
+  const [open, setOpen] = useState(false)
+  const health = brain.data_health || null
+  const envelope = brain.intelligence_lifecycle?.envelope ?? null
+  return (
+    <CioProjectionGroup
+      title="Brain projections — data health, model performance, envelopes, situation scan, coverage, weekly review"
+      testId="cio-brain-payload-projections"
+      open={open}
+      onToggle={setOpen}
+      note="Projections only: the GUI never ingests, promotes or edits registries."
+    >
+      <CioProjectionBlock
+        title="Data health"
+        block={health}
+        rows={health?.graph_flags}
+        rowsLabel="writer/reader graph flags"
+        testId="cio-brain-data-health"
+      />
+      <CioProjectionBlock title="Canonical store inventory" block={health?.inventory ?? null} testId="cio-brain-store-inventory" />
+      <CioProjectionBlock
+        title="Model-task performance"
+        block={brain.model_performance ?? null}
+        rows={brain.model_performance?.cohorts}
+        rowsLabel="task cohorts"
+        testId="cio-brain-model-performance-view"
+      />
+      <CioProjectionBlock title="Envelope provider status" block={envelope} testId="cio-brain-envelope-status" />
+      <CioProjectionBlock
+        title="Office situation scan"
+        block={brain.situation_scan ?? null}
+        rows={brain.situation_scan?.situations}
+        rowsLabel="situations (as scanned)"
+        testId="cio-brain-situation-scan"
+      />
+      <CioProjectionBlock
+        title="Intelligence coverage matrix"
+        block={brain.intelligence_lifecycle?.coverage_matrix ?? null}
+        rows={brain.intelligence_lifecycle?.coverage_matrix?.not_connected}
+        rowsLabel="not connected"
+        testId="cio-brain-coverage-matrix"
+      />
+      <CioProjectionBlock
+        title="Intelligence producer inventory"
+        block={brain.intelligence_lifecycle?.producer_inventory ?? null}
+        rows={brain.intelligence_lifecycle?.producer_inventory?.producers}
+        rowsLabel="producers"
+        testId="cio-brain-producer-inventory"
+      />
+      <CioProjectionBlock
+        title="Weekly learning review (latest published)"
+        block={brain.learning?.latest_review ?? null}
+        note="Published by the weekly learning job; candidates only, behavior influence 0."
+        testId="cio-brain-weekly-learning-review"
+      />
+    </CioProjectionGroup>
   )
 }
 
@@ -325,6 +393,9 @@ export default function CioBrainPanel() {
         />
         <p className="cio-brain__muted">Gaps are explicit. Missing providers do not crash this panel.</p>
       </Band>
+
+      <BrainPayloadProjections brain={brain} />
+      <CioBrainProjectionsPanel />
 
       <Band title="System Health" state={serving.pin_match ? 'PIN MATCH' : 'PIN MISMATCH'} testId="cio-brain-system-health">
         <div className="cio-brain__source">

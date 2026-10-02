@@ -9,6 +9,25 @@ export function decisionLineageHref(decisionId: string): string {
   return `/cio?tab=evidence-comms&sub=decision-lineage&decision=${encodeURIComponent(decisionId)}`
 }
 
+/** Decisions tab focused on one exact decision; the hub opens its lineage. */
+export function decisionFocusHref(decisionId: string): string {
+  return `/cio?tab=decisions&decision=${encodeURIComponent(decisionId)}`
+}
+
+/** Research tab filtered to one exact decision (and optionally one artifact). */
+export function researchFocusHref(decisionId: string, artifactId?: string | null): string {
+  const artifact = artifactId ? `&artifact=${encodeURIComponent(artifactId)}` : ''
+  return `/cio?tab=research&decision=${encodeURIComponent(decisionId)}${artifact}`
+}
+
+export type CioDeepLinkFocus = { decision: string | null; artifact: string | null; research: string | null }
+
+/** Exact-id focus carried by a CIO deep link; blank params are no focus. */
+export function cioDeepLinkFocus(params: { get(name: string): string | null }): CioDeepLinkFocus {
+  const read = (name: string) => (params.get(name) || '').trim() || null
+  return { decision: read('decision'), artifact: read('artifact'), research: read('research') }
+}
+
 export function isCioLineageState(value: unknown): value is CioLineageState {
   return typeof value === 'string' && (CIO_LINEAGE_STATES as readonly string[]).includes(value)
 }

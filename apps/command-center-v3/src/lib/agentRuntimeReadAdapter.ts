@@ -146,3 +146,42 @@ export async function resolveAgentRuntimeView(config: ReadApiConfig): Promise<Re
   }
   return { state: anyShadow || rows.length > 0 ? 'SHADOW' : 'NOT_CONNECTED', snapshot, detail: 'Live read-only data from the agent-runtime read API.', live: true }
 }
+
+// AgentRuntimeProof@v1 — per-agent proof rows (last natural wake / research action /
+// memory retrieval / decisions contributed) read from production evidence stores.
+// Fail-closed: any transport/shape/authority problem returns null, so the UI keeps
+// "NOT EXPOSED BY READ CONTRACT" instead of inventing runtime proof.
+export interface AgentRuntimeProofResponse {
+  schema: 'AgentRuntimeProof@v1'
+  financial_action?: boolean
+  fields: Record<string, { attributable: boolean; source_ref?: string }>
+  agents: Record<string, Record<string, {
+    state: 'RECORDED' | 'NOT_RECORDED' | 'NOT_EXPOSED'
+    value?: string | number | null
+    at?: string | null
+    reason?: string | null
+    recent_ids?: string[]
+    fleet_last_at?: string | null
+  }>>
+}
+
+export async function resolveAgentRuntimeProof(
+  agentIds: string[],
+  config: { baseUrl?: string; fetchImpl?: typeof fetch } = {},
+): Promise<AgentRuntimeProofResponse | null> {
+  const doFetch = config.fetchImpl ?? (typeof fetch !== 'undefined' ? fetch : undefined)
+  if (!doFetch) return null
+  const qs = encodeURIComponent(agentIds.join(','))
+  try {
+    const response = await doFetch(`${config.baseUrl ?? ''}/api/v3/agents/runtime-proof?agents=${qs}`, {
+      method: 'GET', headers: { accept: 'application/json' },
+    })
+    if (!response.ok) return null
+    const body = await response.json() as Partial<AgentRuntimeProofResponse>
+    if (body?.schema !== 'AgentRuntimeProof@v1' || !body.fields || !body.agents) return null
+    if (body.financial_action === true) return null
+    return body as AgentRuntimeProofResponse
+  } catch {
+    return null
+  }
+}

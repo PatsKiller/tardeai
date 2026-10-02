@@ -20,11 +20,36 @@ live by the frontend.
 
 ## Evidence limits
 
-The surface reports last run, artifact, retrieval, review, and score evidence
-only when the read contract supplies it. Natural wake, research action, memory
-retrieval, and CIO-decision contribution remain `UNKNOWN` when the current
-read contract does not expose those receipts. No zero is invented for an
-unavailable producer.
+The surface reports last run, artifact, retrieval, review and score evidence
+only when the read contract supplies it. Four proof rows come from
+`GET /api/v3/agents/runtime-proof` (`AgentRuntimeProof@v1`, served by
+`scripts/api_v3_hermes.py` and `scripts/lib/cio_cross_surface_links.py`). It
+reads the production evidence stores through bounded tail windows:
+
+| Row | Source | Attribution |
+|---|---|---|
+| Last natural wake | `agent_run_traces.jsonl` (completed, non-manual trigger) | `agent` field |
+| Last research action | `hermes_research_results.jsonl` | `provenance.agent` |
+| Memory retrieval | `aif_memory_retrievals.jsonl` | **none**: rows carry no agent, so this row stays `NOT_EXPOSED` for every agent and shows the unattributed fleet time |
+| Decisions contributed to | `agent_run_traces.jsonl` `decision.decision_id`; for Hermes, CIO decisions that recorded consuming its results | `agent` / result consumption |
+
+Each row is rendered as one of four states:
+
+- `RUNTIME`: a store row attributes the proof to this agent.
+- `NOT_RECORDED`: the store attributes rows to agents, but none to this one.
+- `NOT_EXPOSED`: no store attributes this proof to an agent.
+- `UNKNOWN`: the proof read failed. The adapter fails closed to
+  `NOT EXPOSED BY READ CONTRACT`.
+
+As of 2026-10-02:
+
+- `alex` exposes last natural wake and decisions contributed.
+- `hermes` exposes last research action and decisions contributed.
+- All other catalog agents are `NOT_RECORDED` for those rows.
+- Memory retrieval is `NOT_EXPOSED` for every agent.
+
+No zero is invented for an unavailable producer. Declared catalog posture
+stays in its own band, separate from these rows.
 
 ## Read routes
 

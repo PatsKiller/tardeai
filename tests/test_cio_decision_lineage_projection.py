@@ -45,7 +45,9 @@ def test_same_symbol_historical_decisions_remain_exactly_distinct():
     assert _stage(second, "security_identity")["value"] == "security-guid-2"
     assert _stage(first, "wake_event")["value"] == "wake-1"
     assert _stage(second, "wake_event")["value"] == "wake-2"
-    assert _stage(first, "specialist_delegation")["state"] == "UNWIRED"
+    # A producer cannot declare its own contract absent: UNWIRED in
+    # stage_status is a recorded not-run, distinct from the other decision.
+    assert _stage(first, "specialist_delegation")["state"] == "NOT_RUN"
     assert _stage(second, "specialist_delegation")["state"] == "PENDING"
     assert first["matched_sources"]["workflow_records"] == 1
     assert second["matched_sources"]["workflow_records"] == 1
@@ -53,8 +55,12 @@ def test_same_symbol_historical_decisions_remain_exactly_distinct():
 
 def test_missing_stage_is_unknown_unless_backend_declares_a_state():
     missing = project_decision_lineage("dec_missing", decision={"decision_id": "dec_missing"})
-    assert _stage(missing, "specialist_disagreement")["state"] == "UNKNOWN"
-    assert _stage(missing, "canon_frameworks")["state"] == "UNKNOWN"
+    assert _stage(missing, "model_route")["state"] == "UNKNOWN"
+    assert _stage(missing, "model_route")["source_ref"] is None
+    # Stages with no producer contract are declared UNWIRED with a reason.
+    assert _stage(missing, "specialist_disagreement")["state"] == "UNWIRED"
+    assert _stage(missing, "canon_frameworks")["state"] == "UNWIRED"
+    assert _stage(missing, "canon_frameworks")["state_reason"]
 
     declared = project_decision_lineage(
         "dec_declared",
@@ -70,7 +76,7 @@ def test_missing_stage_is_unknown_unless_backend_declares_a_state():
             }
         ],
     )
-    assert _stage(declared, "specialist_delegation")["state"] == "UNWIRED"
+    assert _stage(declared, "specialist_delegation")["state"] == "NOT_RUN"
     assert _stage(declared, "notification")["state"] == "PENDING"
     assert _stage(declared, "checkpoint")["state"] == "NOT_RUN"
 
@@ -183,7 +189,7 @@ def test_api_projection_resolves_by_exact_decision_id(tmp_path, monkeypatch):
     assert result["ok"] is True
     assert result["lineage"]["decision_id"] == "dec_api_exact"
     assert result["lineage"]["stages"]["security_identity"]["value"] == "security-api"
-    assert result["lineage"]["stages"]["specialist_delegation"]["state"] == "UNWIRED"
+    assert result["lineage"]["stages"]["specialist_delegation"]["state"] == "NOT_RUN"
 
     absent = api.get_cio_decision_lineage("dec_api_absent")
     assert absent["ok"] is False

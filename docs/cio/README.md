@@ -90,6 +90,7 @@ composition clocks are independent; missing receipts remain `UNKNOWN`.
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | Track A vs Track B; where thesis is injected (and where not) |
 | [CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md](./CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md) | CIO-native decision lineage CTA, stage honesty, and validation record |
 | [CIO_OPERATOR_EVIDENCE_SURFACE.md](./CIO_OPERATOR_EVIDENCE_SURFACE.md) | Research provenance, cognition, learning, and runtime capability coverage |
+| [CIO_SOURCE_CLOCKS.md](./CIO_SOURCE_CLOCKS.md) | CIOSourceClocks@v1 and Advisory Desk dependency clocks: source clock vs composition clock, staleness budgets, run-now refresh audit |
 | [CIO_API_CONTRACT_CENSUS.md](./CIO_API_CONTRACT_CENSUS.md) | Source-visible API census and runtime-unknown disclosure |
 | [CIO_COMPLETENESS_MEASUREMENT.md](./CIO_COMPLETENESS_MEASUREMENT.md) | Produced-versus-surfaced measurement and critical-edge counts |
 

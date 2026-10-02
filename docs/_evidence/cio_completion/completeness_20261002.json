@@ -1,0 +1,3097 @@
+{
+  "authority": "READ_ONLY_ADVISORY",
+  "by_kind": {
+    "capability": {
+      "operator_visible": 23,
+      "produced": 23,
+      "produced_not_surfaced": 0,
+      "produced_not_surfaced_operator_relevant": 0
+    },
+    "route": {
+      "operator_visible": 44,
+      "produced": 48,
+      "produced_not_surfaced": 4,
+      "produced_not_surfaced_operator_relevant": 0
+    },
+    "schema": {
+      "operator_visible": 71,
+      "produced": 196,
+      "produced_not_surfaced": 125,
+      "produced_not_surfaced_operator_relevant": 13
+    }
+  },
+  "catalog_references": {
+    "LessonCandidate@v1": [
+      "scripts/lib/cio_intelligence_fabric.py"
+    ],
+    "PortfolioThesis@v1": [
+      "scripts/lib/cio_intelligence_fabric.py"
+    ],
+    "TickerResearchArtifact@v1": [
+      "scripts/lib/cio_intelligence_fabric.py"
+    ]
+  },
+  "census_schema": "CIOApiContractCensus@v2",
+  "cio_capabilities_operator_visible": [
+    "capability:CIO synthesis",
+    "capability:Hermes research",
+    "capability:InstrumentRecord",
+    "capability:belief writer",
+    "capability:canon retrieval",
+    "capability:commitment",
+    "capability:delivery/outbox",
+    "capability:external research",
+    "capability:graph propagation",
+    "capability:historical analogue retrieval",
+    "capability:hypothesis",
+    "capability:identity resolution",
+    "capability:judgment",
+    "capability:lesson",
+    "capability:memory retrieval",
+    "capability:notification policy",
+    "capability:office truth",
+    "capability:operator feedback",
+    "capability:outcome checkpoint",
+    "capability:outcome settlement",
+    "capability:persistent cognition",
+    "capability:specialist artifacts",
+    "capability:specialist disagreement",
+    "route:/api/v2/cio/capital-plan",
+    "route:/api/v2/cio/report-v2",
+    "route:/api/v2/cio/sector-opportunities",
+    "route:/api/v2/cio/youtube-research-queue",
+    "route:/api/v3/cio/actions",
+    "route:/api/v3/cio/agent-research-ops",
+    "route:/api/v3/cio/ask-thesis/*",
+    "route:/api/v3/cio/brain",
+    "route:/api/v3/cio/brain/capital-plan",
+    "route:/api/v3/cio/brain/data-health",
+    "route:/api/v3/cio/brain/intelligence-lifecycle",
+    "route:/api/v3/cio/brain/learning-cockpit",
+    "route:/api/v3/cio/brain/learning-review",
+    "route:/api/v3/cio/brain/market-context",
+    "route:/api/v3/cio/brain/maturity-contract",
+    "route:/api/v3/cio/brain/methodology",
+    "route:/api/v3/cio/brain/model-performance",
+    "route:/api/v3/cio/brain/policy",
+    "route:/api/v3/cio/brain/policy-provenance",
+    "route:/api/v3/cio/brain/portfolio-state",
+    "route:/api/v3/cio/brain/portfolio-thesis",
+    "route:/api/v3/cio/brain/seasonality",
+    "route:/api/v3/cio/decision/*",
+    "route:/api/v3/cio/delegation",
+    "route:/api/v3/cio/desk-note",
+    "route:/api/v3/cio/dispositions",
+    "route:/api/v3/cio/home",
+    "route:/api/v3/cio/intelligence/*",
+    "route:/api/v3/cio/investment-product",
+    "route:/api/v3/cio/observability",
+    "route:/api/v3/cio/operator-evidence",
+    "route:/api/v3/cio/plans",
+    "route:/api/v3/cio/plans/*",
+    "route:/api/v3/cio/records",
+    "route:/api/v3/cio/research-provenance",
+    "route:/api/v3/cio/scorecard",
+    "route:/api/v3/cio/snapshot",
+    "route:/api/v3/cio/source-clocks",
+    "route:/api/v3/cio/symbol-thesis/*",
+    "route:/api/v3/cio/thesis",
+    "route:/api/v3/cio/thesis-research-context/*",
+    "route:/api/v3/cio/thesis-research-proposal",
+    "route:/api/v3/cio/thesis-ri-pipeline/*",
+    "route:/api/v3/cio/universe-theses",
+    "schema:AgentRuntimeProof@v1",
+    "schema:CCRecordNarrativeCoverage@v1",
+    "schema:CIOCurrentProductUnavailable@v1",
+    "schema:CIODecisionLineage@v1",
+    "schema:CIODeskObservability@v1",
+    "schema:CIOExpiredMaturityObserve@v1",
+    "schema:CIOGraphImpact@v1",
+    "schema:CIOGraphImpactS6@v1",
+    "schema:CIOIdentityCoverage@v1",
+    "schema:CIOInvestmentProduct@v1",
+    "schema:CIONotificationBlock@v1",
+    "schema:CIOOperatorEvidence@v1",
+    "schema:CIOOperatorProduct@v1",
+    "schema:CIOOutcomeMaturity@v1",
+    "schema:CIOPortfolioThesis@v1",
+    "schema:CIOProvisionalLessons@v1",
+    "schema:CIOReassessment@v1",
+    "schema:CIOReconciliation@v1",
+    "schema:CIOReentryBookLabels@v1",
+    "schema:CIOResearchFailHistogram@v1",
+    "schema:CIOResearchProvenance@v1",
+    "schema:CIOResearchVerdictCounts@v1",
+    "schema:CIOScorecard@v1",
+    "schema:CIOSituationState@v1",
+    "schema:CIOSourceClocks@v1",
+    "schema:CIOTelegramSendReceipt@v1",
+    "schema:CIOWeeklyLearningReview@v1",
+    "schema:CanonClaim@v1",
+    "schema:CanonMaturity@v1",
+    "schema:CapitalDeploymentPlan@v1",
+    "schema:CashDeploymentSituation@v1",
+    "schema:CashSleeveLetter@v1",
+    "schema:CheckpointLineageHealth@v1",
+    "schema:CioTelegramStanceHoldSummary@v2",
+    "schema:EnvelopeProviderStatus@v1",
+    "schema:GoalPredicate@v1",
+    "schema:GoalPredicateVerdict@v1",
+    "schema:HeldBookThesisCoverage@v1",
+    "schema:HermesResearchLinks@v1",
+    "schema:HoldingsDataQuality@v1",
+    "schema:InstrumentBelief@v1",
+    "schema:InstrumentBeliefWriter@v1",
+    "schema:InstrumentRecord@v1",
+    "schema:IntelligenceCoverageMatrix@v1",
+    "schema:IntelligenceLifecycleProjection@v1",
+    "schema:IntelligenceProducerInventory@v1",
+    "schema:LessonBind@v1",
+    "schema:LessonCandidate@v2",
+    "schema:MarketContextState@v1",
+    "schema:MethodologyPolicy@v1",
+    "schema:ModelSelectionExplanation@v1",
+    "schema:NotificationPolicy@v1",
+    "schema:OfficeSituationScan@v1",
+    "schema:OperatorFeedback@v2",
+    "schema:OperatorFeedbackIngest@v1",
+    "schema:OperatorInvestmentPolicy@v1",
+    "schema:OperatorPolicyRegistry@v1",
+    "schema:OperatorTickerFeedback@v1",
+    "schema:OutcomeCheckpoint@v1",
+    "schema:OutcomeObservation@v1",
+    "schema:PortfolioState@v1",
+    "schema:PortfolioThesisDelta@v1",
+    "schema:PreferenceCandidate@v1",
+    "schema:ResearchImpact@v1",
+    "schema:SeasonalityState@v1",
+    "schema:SurfaceAStatus@v1",
+    "schema:SymbolIntelligenceObject@v1",
+    "schema:ThesisChangeCard@v1",
+    "schema:ThesisDecisionGate@v1",
+    "schema:ThesisRevisionLedger@v1",
+    "schema:TradeAIMaturityContract@v1"
+  ],
+  "cio_capabilities_produced": [
+    "capability:CIO synthesis",
+    "capability:Hermes research",
+    "capability:InstrumentRecord",
+    "capability:belief writer",
+    "capability:canon retrieval",
+    "capability:commitment",
+    "capability:delivery/outbox",
+    "capability:external research",
+    "capability:graph propagation",
+    "capability:historical analogue retrieval",
+    "capability:hypothesis",
+    "capability:identity resolution",
+    "capability:judgment",
+    "capability:lesson",
+    "capability:memory retrieval",
+    "capability:notification policy",
+    "capability:office truth",
+    "capability:operator feedback",
+    "capability:outcome checkpoint",
+    "capability:outcome settlement",
+    "capability:persistent cognition",
+    "capability:specialist artifacts",
+    "capability:specialist disagreement",
+    "route:/api/v2/cio",
+    "route:/api/v2/cio/capital-plan",
+    "route:/api/v2/cio/report-v2",
+    "route:/api/v2/cio/sector-opportunities",
+    "route:/api/v2/cio/youtube-research-queue",
+    "route:/api/v3/cio",
+    "route:/api/v3/cio/actions",
+    "route:/api/v3/cio/agent-research-ops",
+    "route:/api/v3/cio/ask-thesis/*",
+    "route:/api/v3/cio/brain",
+    "route:/api/v3/cio/brain/capital-plan",
+    "route:/api/v3/cio/brain/data-health",
+    "route:/api/v3/cio/brain/intelligence-lifecycle",
+    "route:/api/v3/cio/brain/learning-cockpit",
+    "route:/api/v3/cio/brain/learning-review",
+    "route:/api/v3/cio/brain/market-context",
+    "route:/api/v3/cio/brain/maturity-contract",
+    "route:/api/v3/cio/brain/methodology",
+    "route:/api/v3/cio/brain/model-performance",
+    "route:/api/v3/cio/brain/policy",
+    "route:/api/v3/cio/brain/policy-provenance",
+    "route:/api/v3/cio/brain/portfolio-state",
+    "route:/api/v3/cio/brain/portfolio-thesis",
+    "route:/api/v3/cio/brain/seasonality",
+    "route:/api/v3/cio/decision/*",
+    "route:/api/v3/cio/decision/*#get_decision_dispositions",
+    "route:/api/v3/cio/delegation",
+    "route:/api/v3/cio/desk-note",
+    "route:/api/v3/cio/dispositions",
+    "route:/api/v3/cio/home",
+    "route:/api/v3/cio/intelligence/*",
+    "route:/api/v3/cio/investment-product",
+    "route:/api/v3/cio/observability",
+    "route:/api/v3/cio/operator-evidence",
+    "route:/api/v3/cio/plans",
+    "route:/api/v3/cio/plans/*",
+    "route:/api/v3/cio/r71-fabric-map",
+    "route:/api/v3/cio/records",
+    "route:/api/v3/cio/research-provenance",
+    "route:/api/v3/cio/scorecard",
+    "route:/api/v3/cio/snapshot",
+    "route:/api/v3/cio/source-clocks",
+    "route:/api/v3/cio/symbol-thesis/*",
+    "route:/api/v3/cio/thesis",
+    "route:/api/v3/cio/thesis-research-context/*",
+    "route:/api/v3/cio/thesis-research-proposal",
+    "route:/api/v3/cio/thesis-ri-pipeline/*",
+    "route:/api/v3/cio/universe-theses",
+    "schema:AdvisoryCuration@v1",
+    "schema:AgentRoutingDisagreement@v1",
+    "schema:AgentRuntimeProof@v1",
+    "schema:AlertQuality@v1",
+    "schema:BitemporalEvaluation@v1",
+    "schema:BoundedContextBudget@v1",
+    "schema:BuyReadyInstitutionalPacket@v2",
+    "schema:CCRecordNarrativeCoverage@v1",
+    "schema:CIOAdvisoryDeliveryReceipt@v1",
+    "schema:CIOAdvisoryMessage@v1",
+    "schema:CIOAdvisorySynthesis@v1",
+    "schema:CIOAgentBrief@v1",
+    "schema:CIOAttentionAnswer@v1",
+    "schema:CIOAvoidRefusal@v1",
+    "schema:CIOCognitionPack@v1",
+    "schema:CIOCognitionRefs@v1",
+    "schema:CIOContextEnvelope@v2",
+    "schema:CIOCouncilSynthesis@v1",
+    "schema:CIOCurrentProductUnavailable@v1",
+    "schema:CIODecisionLineage@v1",
+    "schema:CIODeskObservability@v1",
+    "schema:CIODiligenceP2Census@v1",
+    "schema:CIOEnvelopeIntegration@v1",
+    "schema:CIOExpiredMaturityObserve@v1",
+    "schema:CIOGoalNeedLedger@v1",
+    "schema:CIOGraphImpact@v1",
+    "schema:CIOGraphImpactHeld@v1",
+    "schema:CIOGraphImpactS6@v1",
+    "schema:CIOIdentityConfidenceCensus@v1",
+    "schema:CIOIdentityCoverage@v1",
+    "schema:CIOIdentityRegisterApply@v1",
+    "schema:CIOIdentityRegisterDry@v1",
+    "schema:CIOInvestmentProduct@v1",
+    "schema:CIOLifecycleDLQ@v1",
+    "schema:CIOLiveDeliveryAudit@v1",
+    "schema:CIONotificationBlock@v1",
+    "schema:CIOOperatorEvidence@v1",
+    "schema:CIOOperatorProduct@v1",
+    "schema:CIOOutcomeMaturity@v1",
+    "schema:CIOPersistentCognition@v1",
+    "schema:CIOPortfolioThesis@v1",
+    "schema:CIOPositionStateMatrix@v1",
+    "schema:CIOPreconditionsBoard@v1",
+    "schema:CIOProvisionalLessons@v1",
+    "schema:CIOReassessment@v1",
+    "schema:CIOReconciliation@v1",
+    "schema:CIOReentryBookLabels@v1",
+    "schema:CIOResearchFailHistogram@v1",
+    "schema:CIOResearchProvenance@v1",
+    "schema:CIOResearchReplayDecision@v1",
+    "schema:CIOResearchVerdictCounts@v1",
+    "schema:CIOScorecard@v1",
+    "schema:CIOSituationState@v1",
+    "schema:CIOSourceClocks@v1",
+    "schema:CIOSpecialistOrchestration@v1",
+    "schema:CIOStanceReviewRequest@v1",
+    "schema:CIOSymbolThesisCoverage@v1",
+    "schema:CIOTelegramSendReceipt@v1",
+    "schema:CIOTestSink@v1",
+    "schema:CIOWeeklyLearningReview@v1",
+    "schema:CIOWhatChanged@v1",
+    "schema:CIOWorkflowEnvelope@v1",
+    "schema:CIOWorkflowLineage@v1",
+    "schema:CanonClaim@v1",
+    "schema:CanonMaturity@v1",
+    "schema:CanonSource@v1",
+    "schema:CanonSourceChunk@v1",
+    "schema:CanonicalEventIdentity@v1",
+    "schema:CapitalDeploymentPlan@v1",
+    "schema:CashDeploymentSituation@v1",
+    "schema:CashSleeveLetter@v1",
+    "schema:CheckpointLineageHealth@v1",
+    "schema:CioComposedNarrative@v1",
+    "schema:CioHermesQueueHealth@v1",
+    "schema:CioModelNarration@v1",
+    "schema:CioTelegramStanceGate@v1",
+    "schema:CioTelegramStanceHold@v1",
+    "schema:CioTelegramStanceHoldSummary@v2",
+    "schema:CioWakeComposition@v1",
+    "schema:CognitionSupersession@v1",
+    "schema:CognitionTimeline@v1",
+    "schema:ConfidenceCalibration@v1",
+    "schema:ContextUseReceipt@v1",
+    "schema:CurationCritique@v1",
+    "schema:CurationRun@v1",
+    "schema:CurationThesisLink@v1",
+    "schema:DecisionCoverage@v1",
+    "schema:DecisionOutcome@v1",
+    "schema:DecisionOutcomeLink@v1",
+    "schema:DecisionQualityAxes@v1",
+    "schema:DeliveryReceipt@v1",
+    "schema:DraftPlanHygiene@v1",
+    "schema:DueOutcomeProcessor@v1",
+    "schema:DuplicateS1Hygiene@v1",
+    "schema:EdgarFilingProof@v1",
+    "schema:EnvelopeProviderStatus@v1",
+    "schema:FreeFirstPending@v1",
+    "schema:GoalPredicate@v1",
+    "schema:GoalPredicateVerdict@v1",
+    "schema:GraphImpactResolution@v1",
+    "schema:GrokCritique@v1",
+    "schema:HaveWeSeenThis@v1",
+    "schema:HeldBookThesisCoverage@v1",
+    "schema:HeldInstrumentIds@v1",
+    "schema:HermesResearchLinks@v1",
+    "schema:HistoricalReplayIngest@v1",
+    "schema:HoldingsDataQuality@v1",
+    "schema:HypothesisCandidate@v1",
+    "schema:IdentityConfidenceScore@v1",
+    "schema:IdentityRegistry@v1",
+    "schema:IdentityRemediationQueue@v1",
+    "schema:InstrumentBelief@v1",
+    "schema:InstrumentBeliefWriter@v1",
+    "schema:InstrumentRecord@v1",
+    "schema:InstrumentRecordWake@v1",
+    "schema:InstrumentRehydration@v1",
+    "schema:IntelligenceCoverageMatrix@v1",
+    "schema:IntelligenceDeltaReceipt@v1",
+    "schema:IntelligenceFault@v1",
+    "schema:IntelligenceLifecycleProjection@v1",
+    "schema:IntelligenceLifecycleReceipt@v1",
+    "schema:IntelligenceProducerInventory@v1",
+    "schema:InvestmentDecision@v1",
+    "schema:InvestmentIntelligenceCard@v1",
+    "schema:LearnableDecision@v1",
+    "schema:LearningCost@v1",
+    "schema:LearningHypothesis@v1",
+    "schema:LessonBind@v1",
+    "schema:LessonCandidate@v2",
+    "schema:LineageCompletionReport@v1",
+    "schema:LineageStallNote@v1",
+    "schema:LookaheadAudit@v1",
+    "schema:MarketContextState@v1",
+    "schema:MethodologyPolicy@v1",
+    "schema:ModelRoutingCandidate@v1",
+    "schema:ModelRoutingShadowEval@v1",
+    "schema:ModelSelectionExplanation@v1",
+    "schema:ModelTaskPerformance@v1",
+    "schema:NarrativeSubjectLink@v1",
+    "schema:NotificationLearning@v1",
+    "schema:NotificationOutcome@v1",
+    "schema:NotificationPolicy@v1",
+    "schema:NotifyFreshness@v1",
+    "schema:ObservationalS1Apply@v1",
+    "schema:ObservationalS1Dry@v1",
+    "schema:OfficeCycleResult@v1",
+    "schema:OfficeSituationScan@v1",
+    "schema:OperatorFeedback@v2",
+    "schema:OperatorFeedbackIngest@v1",
+    "schema:OperatorInvestmentPolicy@v1",
+    "schema:OperatorPolicyRatificationReceipt@v1",
+    "schema:OperatorPolicyRegistry@v1",
+    "schema:OperatorProductRefresh@v1",
+    "schema:OperatorTickerFeedback@v1",
+    "schema:OrphanPlanHygiene@v1",
+    "schema:OutboundIdentityTag@v1",
+    "schema:OutcomeCheckpoint@v1",
+    "schema:OutcomeObservation@v1",
+    "schema:PlanOutcomeCheckpointBind@v1",
+    "schema:PolicyConfirmationLifecycle@v1",
+    "schema:PolicyProvenance@v1",
+    "schema:PortfolioState@v1",
+    "schema:PortfolioThesisDelta@v1",
+    "schema:PreferenceCandidate@v1",
+    "schema:ProviderRequestJournal@v1",
+    "schema:ResearchBudget@v1",
+    "schema:ResearchDecisionLink@v1",
+    "schema:ResearchHistory@v1",
+    "schema:ResearchImpact@v1",
+    "schema:ResearchPreflight@v1",
+    "schema:ResearchScheduleSurface@v1",
+    "schema:ResidualWebLane@v1",
+    "schema:RetryDisposition@v1",
+    "schema:S0OperatorTurn@v1",
+    "schema:S0RehydrateBundle@v1",
+    "schema:SameBrainAcceptance@v1",
+    "schema:ScanFabricOverlay@v1",
+    "schema:SeasonalityState@v1",
+    "schema:ShadowExperiment@v1",
+    "schema:SituationNotifyBridge@v1",
+    "schema:SourceLibrarian@v1",
+    "schema:SpecialistArtifact@v1",
+    "schema:SpecialistDisagreementMemory@v1",
+    "schema:SpecialistRuntimeArtifact@v1",
+    "schema:SpecialistRuntimeResult@v1",
+    "schema:SurfaceAStatus@v1",
+    "schema:SymbolIntelligenceObject@v1",
+    "schema:ThesisChangeCard@v1",
+    "schema:ThesisDecisionGate@v1",
+    "schema:ThesisRevisionLedger@v1",
+    "schema:TradeAIMaturityContract@v1",
+    "schema:WakeSubjectDecision@v1",
+    "schema:WakeTurnEffect@v1",
+    "schema:WatchInstrumentAdmit@v1",
+    "schema:WebEvidenceProvenance@v1",
+    "schema:WebSourceRef@v1"
+  ],
+  "classification_issues": [],
+  "classification_path": "config/cio_surface_classification.json",
+  "classification_stale": [],
+  "composition_as_of": "2026-10-02T17:14:09.562791+00:00",
+  "counts": {
+    "not_operator_relevant": 72,
+    "operator_visible": 138,
+    "produced": 267,
+    "produced_not_surfaced": 129,
+    "produced_not_surfaced_operator_relevant": 13,
+    "retire_candidates": 44,
+    "surfaced_not_runtime_proven": 117,
+    "surfaced_runtime_unmeasured": 115,
+    "unclassified": 0
+  },
+  "critical_edges_dark": 2,
+  "critical_edges_live": 6,
+  "critical_edges_partial": 13,
+  "critical_edges_unknown": 2,
+  "critical_edges_unwired": 0,
+  "method": {
+    "classification": "config/cio_surface_classification.json: every produced_not_surfaced item must be classified; NOT_OPERATOR_RELEVANT and RETIRE_CANDIDATE need a specific reason; anything else counts as produced_not_surfaced_operator_relevant",
+    "limitations": [
+      "Static source only; a surfaced route/schema has no runtime capture here (surfaced_runtime_unmeasured).",
+      "Payload flow over-approximates comprehensions and container-preserving calls (dict/list/sorted/copy) and does not follow calls through class instances.",
+      "A consumer 'reads' a key when the file (or a JSX child receiving the fetched value) contains .key / ?.key / ['key'] / destructuring; that is file-scoped, not data-flow-scoped.",
+      "Record edges declare reader-reads-writer's-store; that link is checked only by a shared store-file literal."
+    ],
+    "operator_visible": "route: fetched by a component in the routed pages' import closure with its result not discarded, or its handler's output embedded (envelope or one key below it) at a key path the consumer reads; capability rows via a consumer of /api/v3/cio/operator-evidence that renders them; schema: its own block lands (payload flow followed transitively handler -> api getter -> lib builder, with key paths) at a path whose every segment the consumer, or a local child component it hands the payload to as a JSX prop, reads as a property; record schemas only through a verified record edge",
+    "produced": "census CIO-family backend GET routes (alias groups) + capability coverage rows + Name@vN schemas defined in scripts/lib/cio_*.py (any *SCHEMA* constant incl. bare SCHEMA, or a schema/schema_version/contract key); literals inside module-level producer-catalog rows are catalog_references, not definitions"
+  },
+  "not_operator_relevant": [
+    {
+      "name": "route:/api/v3/cio/r71-fabric-map",
+      "owner_hint": "scripts/lib/r71_cursor_fabric_map.py",
+      "reason": "Engineering integration map: r71_cursor_fabric_map.fabric_map_report lists Cursor gap A-F wiring status and the cursor dependency SHA; it describes code integration progress, not CIO reasoning, policy, decisions, research or evidence."
+    },
+    {
+      "name": "schema:AdvisoryCuration@v1",
+      "owner_hint": "scripts/lib/cio_advisory_curator.py",
+      "reason": "Presentation-curation envelope: cio_advisory_curator.curate lets DeepSeek restyle an advisory's wording but 'may not touch the facts'; the curated text reaches plan cards, the wrapper carries no investment content of its own."
+    },
+    {
+      "name": "schema:AgentRoutingDisagreement@v1",
+      "owner_hint": "scripts/lib/cio_event_bus.py",
+      "reason": "Engineering telemetry row written by cio_event_bus._record_routing_disagreement to agent_registry_routing_receipts.jsonl when two agent-registry routes disagree; diagnoses the registry, not the portfolio."
+    },
+    {
+      "name": "schema:CIOAvoidRefusal@v1",
+      "owner_hint": "scripts/lib/cio_rebalancer_readonly.py",
+      "reason": "Receipt portfolio_rebalancer.py appends (cio_avoid_refusals.jsonl) when the rebalancer refuses an AVOID name; an internal enforcement trace for the read-only rebalancer, the AVOID decision itself is on the decision cards."
+    },
+    {
+      "name": "schema:CIOCognitionPack@v1",
+      "owner_hint": "scripts/lib/cio_persistent_cognition.py::build_cio_cognition",
+      "reason": "Prompt-context pack assembled for agents (cio_persistent_cognition.build_cio_cognition, cio_run_worker); agent input plumbing whose runtime presence is the 'persistent cognition' capability row in Operator evidence."
+    },
+    {
+      "name": "schema:CIOCognitionRefs@v1",
+      "owner_hint": "scripts/lib/cio_persistent_cognition.py::cognition_refs_from_row",
+      "reason": "Reference list extracted from a cognition row (cognition_refs_from_row) to cite memory ids inside agent context; an id-join helper, not reasoning content."
+    },
+    {
+      "name": "schema:CIODiligenceP2Census@v1",
+      "owner_hint": "scripts/lib/cio_identity_confidence_census.py::run_census",
+      "reason": "P2-WS4/WS5 diligence census run (cio_identity_confidence_census.run_census) measuring identity confidence for engineering acceptance; not investment reasoning."
+    },
+    {
+      "name": "schema:CIOEnvelopeIntegration@v1",
+      "owner_hint": "scripts/lib/cio_memory_integration.py",
+      "reason": "Memory-integration receipt (cio_memory_integration) converting a CIO envelope into bitemporal MemoryFactVersion@v2 for the memory projectors; memory plumbing, memory state is shown in the brain Memory band."
+    },
+    {
+      "name": "schema:CIOGoalNeedLedger@v1",
+      "owner_hint": "scripts/lib/cio_goal_need_ledger.py",
+      "reason": "Per-lap research-need bookkeeping of the goal loop (cio_goal_need_ledger.build_row) used by trigger_sources/goal_generation to pick the next research; the operator-facing 'what the CIO does not know' is rendered from the brain snapshot."
+    },
+    {
+      "name": "schema:CIOIdentityConfidenceCensus@v1",
+      "owner_hint": "scripts/lib/cio_identity_confidence_census.py::measure_identity_confidence_census",
+      "reason": "Identity confidence census measurement (measure_identity_confidence_census) used by the P2 diligence run; identity resolution quality for engineers, identity coverage for the operator is surfaced as CIOIdentityCoverage@v1."
+    },
+    {
+      "name": "schema:CIOIdentityRegisterApply@v1",
+      "owner_hint": "scripts/lib/cio_identity_coverage.py::apply_registerable",
+      "reason": "Apply receipt of the identity-registration job (cio_identity_coverage.apply_registerable) that registers missing instrument identities; job bookkeeping, coverage itself is surfaced."
+    },
+    {
+      "name": "schema:CIOIdentityRegisterDry@v1",
+      "owner_hint": "scripts/lib/cio_identity_coverage.py::collect_registerable",
+      "reason": "Dry-run listing of identities the registration job would add (cio_identity_coverage.collect_registerable); pre-flight output for the job operator, not CIO content."
+    },
+    {
+      "name": "schema:CIOLifecycleDLQ@v1",
+      "owner_hint": "scripts/lib/cio_dlq_ledger.py",
+      "reason": "Dead-letter queue ledger rows for failed lifecycle events (cio_dlq_ledger, scripts/cio_lifecycle_dlq.py enqueue/replay/apply); recovery plumbing for engineers."
+    },
+    {
+      "name": "schema:CIOLiveDeliveryAudit@v1",
+      "owner_hint": "scripts/lib/cio_delivery_audit.py::audit_delivery_flags",
+      "reason": "Audit of live-delivery flags (cio_delivery_audit.audit_delivery_flags) consumed only by the r18_2 closeout report; delivery mode is shown to the operator in the Telegram receipts panel."
+    },
+    {
+      "name": "schema:CIOPersistentCognition@v1",
+      "owner_hint": "scripts/lib/cio_persistent_cognition.py::cognition_for_symbol",
+      "reason": "Per-symbol cognition lookup (cognition_for_symbol) feeding Telegram converse, advisory memory and the memory shadow projector as agent context; operator-facing cognition is the Operator evidence cognition block."
+    },
+    {
+      "name": "schema:CIOPositionStateMatrix@v1",
+      "owner_hint": "scripts/lib/cio_identity_confidence_census.py::collect_position_state_matrix",
+      "reason": "Position-state matrix collected for the P2 identity census (collect_position_state_matrix): held/watch/exit denominator bookkeeping for the census, not a portfolio view."
+    },
+    {
+      "name": "schema:CIOPreconditionsBoard@v1",
+      "owner_hint": "scripts/lib/cio_preconditions_board.py",
+      "reason": "Engineering board checking the four preconditions of the CIO persistent spine (cio_preconditions_board.build_board/render); build readiness, not investment content."
+    },
+    {
+      "name": "schema:CIOResearchReplayDecision@v1",
+      "owner_hint": "scripts/lib/cio_research_fail_policy.py",
+      "reason": "Replay decision for a failed Hermes research request (cio_research_fail_policy.replay_decision via hermes_research_queue); queue retry policy, research failure counts are surfaced as CIOResearchFailHistogram@v1."
+    },
+    {
+      "name": "schema:CIOSpecialistOrchestration@v1",
+      "owner_hint": "scripts/lib/cio_r13_institution.py::orchestrate",
+      "reason": "Specialist orchestration plan (cio_r13_institution.orchestrate) used by hermes_research_agenda to route work to specialists; internal routing plan."
+    },
+    {
+      "name": "schema:CIOStanceReviewRequest@v1",
+      "owner_hint": "scripts/lib/cio_stance_review_request.py",
+      "reason": "Queue item that forces a CIO review when a bullish send is held for a missing stance (request_cio_review), drained by drain_cio_stance_classification.py; the held sends are summarised by CioTelegramStanceHoldSummary@v2, surfaced in Evidence & Comms > Learning cockpit > CIO record ledgers."
+    },
+    {
+      "name": "schema:CIOSymbolThesisCoverage@v1",
+      "owner_hint": "scripts/lib/cio_s0_operator_loop.py::thesis_coverage",
+      "reason": "Thesis-coverage check inside the S0 operator loop (cio_s0_operator_loop.thesis_coverage) and research_lane_health; per-turn bookkeeping, symbol theses themselves are surfaced via /api/v3/cio/symbol-thesis."
+    },
+    {
+      "name": "schema:CIOWorkflowEnvelope@v1",
+      "owner_hint": "scripts/lib/cio_workflow_envelope.py",
+      "reason": "Durable stage projection of one CIO workflow (cio_workflow_envelope.empty_envelope/freeze_governance) used by lineage and memory integration; lineage is shown to the operator via the decision-lineage panel."
+    },
+    {
+      "name": "schema:CIOWorkflowLineage@v1",
+      "owner_hint": "scripts/lib/cio_lineage.py",
+      "reason": "Row contract of cio_workflow_lineage.jsonl appended by cio_lineage.append; the decision-lineage route projects these rows into stages, the raw row envelope is storage format."
+    },
+    {
+      "name": "schema:CanonSource@v1",
+      "owner_hint": "scripts/lib/cio_canon_v1.py::admit_canon_source",
+      "reason": "Admitted methodology source document (cio_canon_v1.admit_canon_source via ingest_canon_source.py); the brain Methodology band shows canon catalog/source counts and CanonClaim@v1, the raw source record is ingestion storage."
+    },
+    {
+      "name": "schema:CanonSourceChunk@v1",
+      "owner_hint": "scripts/lib/cio_canon_v1.py",
+      "reason": "Text chunk of an admitted canon source produced during ingestion (admit_canon_source) for retrieval; retrieval substrate, not a CIO statement."
+    },
+    {
+      "name": "schema:CanonicalEventIdentity@v1",
+      "owner_hint": "scripts/lib/cio_canonical_identity.py",
+      "reason": "Canonical event identity (cio_canonical_identity SCHEMA) giving one id to one real event across both arcs; identity plumbing used by lineage/workflow envelope."
+    },
+    {
+      "name": "schema:CioHermesQueueHealth@v1",
+      "owner_hint": "scripts/lib/cio_hermes_queue_health.py",
+      "reason": "CIO Hermes research queue as a research-lane-health lane (collect_cio_hermes_queue_health) for research_lane_health reports; operator-facing research ops are rendered from /api/v3/cio/agent-research-ops."
+    },
+    {
+      "name": "schema:CioTelegramStanceGate@v1",
+      "owner_hint": "scripts/lib/cio_telegram_stance_gate.py",
+      "reason": "Contract constant of the CIO stance hard gate for investment-shaped Telegram sends (cio_telegram_stance_gate); the gate decision per send is a receipt, its summary is listed separately."
+    },
+    {
+      "name": "schema:CioTelegramStanceHold@v1",
+      "owner_hint": "scripts/lib/cio_telegram_stance_gate.py::record_hold",
+      "reason": "Per-send hold receipt (cio_telegram_stance_gate.record_hold -> cio_telegram_stance_holds.jsonl); one row per held message, aggregated for the operator by CioTelegramStanceHoldSummary@v2 (surfaced in CIO record ledgers)."
+    },
+    {
+      "name": "schema:ContextUseReceipt@v1",
+      "owner_hint": "scripts/lib/cio_persistent_cognition.py::receipt",
+      "reason": "Receipt that an agent used a context item (context_use_receipts.jsonl); consumed by Operator evidence as a capability consumer join, it is audit plumbing rather than a CIO statement."
+    },
+    {
+      "name": "schema:DeliveryReceipt@v1",
+      "owner_hint": "scripts/lib/cio_delivery_receipt.py",
+      "reason": "Record that a notification routing decision was made (cio_delivery_receipt.build -> cio_delivery_receipts.jsonl), read by cio_scorecard for the delivery tile; per-decision routing receipt."
+    },
+    {
+      "name": "schema:DraftPlanHygiene@v1",
+      "owner_hint": "scripts/lib/cio_draft_plan_hygiene.py",
+      "reason": "Receipt of the stale-empty-draft expiry job (cio_draft_plan_hygiene.expire_stale_empty_drafts via cio_regenerate_stale_plans.py); plan maintenance, open plans are surfaced in Thesis & delegation."
+    },
+    {
+      "name": "schema:DueOutcomeProcessor@v1",
+      "owner_hint": "scripts/lib/cio_institutional_learning.py::process_due_checkpoint",
+      "reason": "Run receipt of process_due_checkpoint (resolve_due_checkpoints.py) saying which due checkpoints were processed; the learning cockpit's due/completed counts are the operator view."
+    },
+    {
+      "name": "schema:DuplicateS1Hygiene@v1",
+      "owner_hint": "scripts/lib/cio_duplicate_s1_hygiene.py",
+      "reason": "Selection receipt of the duplicate-S1 expiry job (cio_duplicate_s1_hygiene.select_duplicate_s1, scripts/cio_duplicate_s1_hygiene.py); maintenance output."
+    },
+    {
+      "name": "schema:FreeFirstPending@v1",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::enqueue_free_first_pending",
+      "reason": "Free-first pending queue row (enqueue_free_first_pending) the fabric writes before any paid research; research routing plumbing, 'Free-first' status is in the brain Intelligence lifecycle band."
+    },
+    {
+      "name": "schema:GraphImpactResolution@v1",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::resolve_impact",
+      "reason": "Internal resolution of a fabric delta's graph impact (resolve_impact) inside process_observation; intermediate value, graph impact for held names is surfaced as CIOGraphImpactS6@v1."
+    },
+    {
+      "name": "schema:HeldInstrumentIds@v1",
+      "owner_hint": "scripts/lib/cio_investment_product.py::collect_held_instrument_ids",
+      "reason": "Envelope of the held instrument_id set (collect_held_instrument_ids) used as a join key by the product and identity census; the ids themselves are rendered in Product health > Held-instrument thesis coverage."
+    },
+    {
+      "name": "schema:IdentityConfidenceScore@v1",
+      "owner_hint": "scripts/lib/cio_identity_confidence_census.py::CONFIDENCE_SCORE_DEFINITION",
+      "reason": "Module-level CONFIDENCE_SCORE_DEFINITION in cio_identity_confidence_census describing how the identity census scores rows; a definition document for the census, not runtime output."
+    },
+    {
+      "name": "schema:IdentityRegistry@v1",
+      "owner_hint": "scripts/lib/cio_canonical_identity.py::REGISTRY_SCHEMA",
+      "reason": "Identity registry document format (cio_canonical_identity REGISTRY_SCHEMA, identity_registry.json) used by lineage/workflow envelope to resolve ids; storage format, not operator content."
+    },
+    {
+      "name": "schema:InstrumentRecordWake@v1",
+      "owner_hint": "scripts/lib/cio_instrument_record.py::load_instrument_record_for_wake",
+      "reason": "Wake-time load of an InstrumentRecord (load_instrument_record_for_wake) handed to the research preflight/persistent wake; transient agent input."
+    },
+    {
+      "name": "schema:InstrumentRehydration@v1",
+      "owner_hint": "scripts/lib/cio_rehydrate.py",
+      "reason": "Rehydration of an InstrumentRecord into the research gate (cio_rehydrate) for the wake dispatcher; transient agent input."
+    },
+    {
+      "name": "schema:IntelligenceDeltaReceipt@v1",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::build_delta_receipt",
+      "reason": "Delta receipt built inside process_observation (build_delta_receipt) -> intelligence_delta_receipts.jsonl; fabric bookkeeping."
+    },
+    {
+      "name": "schema:IntelligenceLifecycleReceipt@v1",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::process_observation",
+      "reason": "Lifecycle receipt of one fabric observation (process_observation via r17_producer_links) -> intelligence_lifecycle.jsonl; the lifecycle projection is surfaced as IntelligenceLifecycleProjection@v1."
+    },
+    {
+      "name": "schema:LineageCompletionReport@v1",
+      "owner_hint": "scripts/lib/cio_lineage_health.py",
+      "reason": "Read-only lineage completion metrics (cio_lineage_health.completion_report) for census/report scripts; engineering completeness measurement."
+    },
+    {
+      "name": "schema:LineageStallNote@v1",
+      "owner_hint": "scripts/lib/cio_hermes_research.py::_note_lineage_stall",
+      "reason": "Note appended to lineage_stalls.jsonl when Hermes research lineage stalls (cio_hermes_research._note_lineage_stall); worker diagnostics."
+    },
+    {
+      "name": "schema:ModelTaskPerformance@v1",
+      "owner_hint": "scripts/lib/cio_model_learning.py::record_performance",
+      "reason": "Row of the observational model-task performance ledger (cio_model_learning.record_performance); the operator view of it is ModelTaskPerformanceView via /api/v3/cio/brain/model-performance (surfaced)."
+    },
+    {
+      "name": "schema:NarrativeSubjectLink@v1",
+      "owner_hint": "scripts/lib/cio_narrative_subjects.py",
+      "reason": "What-a-narrative-is-about identity links (cio_narrative_subjects.build_links / cio_narrative_write.write_narrative) for the identity spine; subject tagging plumbing."
+    },
+    {
+      "name": "schema:NotifyFreshness@v1",
+      "owner_hint": "scripts/lib/cio_notify_freshness.py",
+      "reason": "Refusal record when an advisory quotes a stale portfolio figure (cio_notify_freshness.stale_claim/stale_evidence) in plan enrichment; a delivery guard, the delivered/suppressed outcome is surfaced via the notification block."
+    },
+    {
+      "name": "schema:ObservationalS1Apply@v1",
+      "owner_hint": "scripts/lib/cio_observational_s1.py::apply_observational_s1",
+      "reason": "Apply receipt of the observational-S1 job (apply_observational_s1, cap 5, no notify) that opens S1 plans for held names; the resulting plans are what the operator sees."
+    },
+    {
+      "name": "schema:ObservationalS1Dry@v1",
+      "owner_hint": "scripts/lib/cio_observational_s1.py::collect_held_without_open_s1",
+      "reason": "Dry-run listing of held equities without an open S1 (collect_held_without_open_s1) for the observational-S1 job; pre-flight output."
+    },
+    {
+      "name": "schema:OperatorPolicyRatificationReceipt@v1",
+      "owner_hint": "scripts/lib/cio_operator_investment_policy.py::ratify_policy_field",
+      "reason": "Write receipt returned to the POST /api/v3/cio/brain/policy/ratify caller (ratify_policy_field); the resulting policy state is surfaced (OperatorInvestmentPolicy@v1, operator policy registry, policy provenance)."
+    },
+    {
+      "name": "schema:OperatorProductRefresh@v1",
+      "owner_hint": "scripts/lib/cio_operator_product.py::persist_operator_product_if_available",
+      "reason": "Persist receipt of persist_operator_product_if_available (cio_run_worker) recording whether the operator product was refreshed; refresh bookkeeping."
+    },
+    {
+      "name": "schema:OrphanPlanHygiene@v1",
+      "owner_hint": "scripts/lib/cio_orphan_plan_hygiene.py",
+      "reason": "Receipt of the orphan-plan cancellation job (cio_orphan_plan_hygiene.cancel_orphan_plans, scripts/cio_orphan_plan_hygiene.py) for plans whose subject is no longer held; maintenance output."
+    },
+    {
+      "name": "schema:OutboundIdentityTag@v1",
+      "owner_hint": "scripts/lib/cio_outbound_identity.py",
+      "reason": "Identity tag attached to outbound text (cio_outbound_identity.tag_text via telegram_alert / comms client) so messages join the identity spine; comms plumbing."
+    },
+    {
+      "name": "schema:PlanOutcomeCheckpointBind@v1",
+      "owner_hint": "scripts/lib/cio_plan_outcome_checkpoints.py",
+      "reason": "Receipt of bind_held_researched_plan_checkpoints (binds checkpoints for held researched plans); its health is surfaced as CheckpointLineageHealth@v1 in Product health."
+    },
+    {
+      "name": "schema:PolicyProvenance@v1",
+      "owner_hint": "scripts/lib/cio_policy_provenance.py",
+      "reason": "Material-scan audit that a default cash band is not passed off as operator policy (audit_cash_posture_policy); the operator-facing provenance is the policy provenance view + registry (surfaced)."
+    },
+    {
+      "name": "schema:ProviderRequestJournal@v1",
+      "owner_hint": "scripts/lib/cio_provider_retry_v1.py",
+      "reason": "Durable LLM provider request journal (cio_provider_retry_v1.reserve/record, cio_governed_model_bridge) for idempotent retries; provider plumbing."
+    },
+    {
+      "name": "schema:ResearchBudget@v1",
+      "owner_hint": "scripts/lib/cio_research_budget.py",
+      "reason": "Per-instrument daily research budget ledger (cio_research_budget.record/select) for the wake dispatcher; spend control plumbing, reported by cio_research_budget_report.py."
+    },
+    {
+      "name": "schema:ResearchHistory@v1",
+      "owner_hint": "scripts/lib/cio_research_history.py",
+      "reason": "Prior research outcomes per plan read from the request stream (cio_research_history) for the research gate and S0 loop; gate input, research results themselves are surfaced via research provenance."
+    },
+    {
+      "name": "schema:ResearchPreflight@v1",
+      "owner_hint": "scripts/lib/cio_research_preflight.py",
+      "reason": "Preflight that loads an InstrumentRecord before ResearchNeedDecision.decide (decide_after_load) in the wake dispatcher; gate plumbing."
+    },
+    {
+      "name": "schema:ResearchScheduleSurface@v1",
+      "owner_hint": "scripts/lib/cio_research_gate.py::schedule_surface",
+      "reason": "Schedule surface of the research routing gate (cio_research_gate.schedule_surface) used only by cio_research_gate_report.py; routing internals."
+    },
+    {
+      "name": "schema:ResidualWebLane@v1",
+      "owner_hint": "scripts/lib/cio_residual_web.py",
+      "reason": "Residual web lane that executes the gate's residual rung (cio_residual_web legality/run_hop); search-lane plumbing and legality checks."
+    },
+    {
+      "name": "schema:RetryDisposition@v1",
+      "owner_hint": "scripts/lib/cio_provider_retry_v1.py::classify_failure",
+      "reason": "Canonical retry disposition for a failed provider call (cio_provider_retry_v1.classify_failure); retry policy plumbing."
+    },
+    {
+      "name": "schema:S0OperatorTurn@v1",
+      "owner_hint": "scripts/lib/cio_s0_operator_loop.py::_turn",
+      "reason": "Record of one S0 operator-loop turn (cio_s0_operator_loop._turn) minted for Telegram converse memory; conversation bookkeeping, not CIO judgment."
+    },
+    {
+      "name": "schema:S0RehydrateBundle@v1",
+      "owner_hint": "scripts/lib/cio_s0_operator_loop.py::rehydrate",
+      "reason": "Bundle the S0 loop rehydrates for the next conversation turn (cio_s0_operator_loop.rehydrate); transient agent context."
+    },
+    {
+      "name": "schema:ScanFabricOverlay@v1",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::observe_from_scan",
+      "reason": "Overlay that the material scan writes into the fabric (observe_from_scan via cio_material_scan); scan plumbing, situations are surfaced via OfficeSituationScan@v1."
+    },
+    {
+      "name": "schema:SituationNotifyBridge@v1",
+      "owner_hint": "scripts/lib/cio_situation_notify_bridge.py",
+      "reason": "Bridge receipt feeding CIOSituationState@v1 into the production notification chokepoint (cio_situation_notify_bridge, via cio_material_scan); the situations and notification block are surfaced."
+    },
+    {
+      "name": "schema:SourceLibrarian@v1",
+      "owner_hint": "scripts/lib/cio_research_librarian.py",
+      "reason": "Source shelf-life audit for graded sources (cio_research_librarian.audit/filter_corpus) applied inside the research gate; corpus hygiene."
+    },
+    {
+      "name": "schema:WakeSubjectDecision@v1",
+      "owner_hint": "scripts/lib/cio_wake_subject.py",
+      "reason": "Decision that gives a wake its subject before loading the record (cio_wake_subject.decide) in the wake dispatcher; dispatch plumbing."
+    },
+    {
+      "name": "schema:WakeTurnEffect@v1",
+      "owner_hint": "scripts/lib/cio_rehydrate.py::_record_turn_effect",
+      "reason": "Per-turn effect row of a wake (cio_rehydrate._record_turn_effect -> wake_turn_effects.jsonl) used by the research budget; agent bookkeeping."
+    },
+    {
+      "name": "schema:WatchInstrumentAdmit@v1",
+      "owner_hint": "scripts/lib/cio_watch_instrument_admit.py",
+      "reason": "Receipt of admitting WATCH InstrumentRecord rows (admit_watch_records, cognition only) during record migration; migration job output."
+    },
+    {
+      "name": "schema:WebSourceRef@v1",
+      "owner_hint": "scripts/lib/cio_web_librarian.py",
+      "reason": "Librarian-lite reference for one web source used by the residual web lane (cio_web_librarian.source_ref/summarize); citation plumbing, provenance is surfaced via research provenance."
+    }
+  ],
+  "produced_not_surfaced": [
+    "route:/api/v2/cio",
+    "route:/api/v3/cio",
+    "route:/api/v3/cio/decision/*#get_decision_dispositions",
+    "route:/api/v3/cio/r71-fabric-map",
+    "schema:AdvisoryCuration@v1",
+    "schema:AgentRoutingDisagreement@v1",
+    "schema:AlertQuality@v1",
+    "schema:BitemporalEvaluation@v1",
+    "schema:BoundedContextBudget@v1",
+    "schema:BuyReadyInstitutionalPacket@v2",
+    "schema:CIOAdvisoryDeliveryReceipt@v1",
+    "schema:CIOAdvisoryMessage@v1",
+    "schema:CIOAdvisorySynthesis@v1",
+    "schema:CIOAgentBrief@v1",
+    "schema:CIOAttentionAnswer@v1",
+    "schema:CIOAvoidRefusal@v1",
+    "schema:CIOCognitionPack@v1",
+    "schema:CIOCognitionRefs@v1",
+    "schema:CIOContextEnvelope@v2",
+    "schema:CIOCouncilSynthesis@v1",
+    "schema:CIODiligenceP2Census@v1",
+    "schema:CIOEnvelopeIntegration@v1",
+    "schema:CIOGoalNeedLedger@v1",
+    "schema:CIOGraphImpactHeld@v1",
+    "schema:CIOIdentityConfidenceCensus@v1",
+    "schema:CIOIdentityRegisterApply@v1",
+    "schema:CIOIdentityRegisterDry@v1",
+    "schema:CIOLifecycleDLQ@v1",
+    "schema:CIOLiveDeliveryAudit@v1",
+    "schema:CIOPersistentCognition@v1",
+    "schema:CIOPositionStateMatrix@v1",
+    "schema:CIOPreconditionsBoard@v1",
+    "schema:CIOResearchReplayDecision@v1",
+    "schema:CIOSpecialistOrchestration@v1",
+    "schema:CIOStanceReviewRequest@v1",
+    "schema:CIOSymbolThesisCoverage@v1",
+    "schema:CIOTestSink@v1",
+    "schema:CIOWhatChanged@v1",
+    "schema:CIOWorkflowEnvelope@v1",
+    "schema:CIOWorkflowLineage@v1",
+    "schema:CanonSource@v1",
+    "schema:CanonSourceChunk@v1",
+    "schema:CanonicalEventIdentity@v1",
+    "schema:CioComposedNarrative@v1",
+    "schema:CioHermesQueueHealth@v1",
+    "schema:CioModelNarration@v1",
+    "schema:CioTelegramStanceGate@v1",
+    "schema:CioTelegramStanceHold@v1",
+    "schema:CioWakeComposition@v1",
+    "schema:CognitionSupersession@v1",
+    "schema:CognitionTimeline@v1",
+    "schema:ConfidenceCalibration@v1",
+    "schema:ContextUseReceipt@v1",
+    "schema:CurationCritique@v1",
+    "schema:CurationRun@v1",
+    "schema:CurationThesisLink@v1",
+    "schema:DecisionCoverage@v1",
+    "schema:DecisionOutcome@v1",
+    "schema:DecisionOutcomeLink@v1",
+    "schema:DecisionQualityAxes@v1",
+    "schema:DeliveryReceipt@v1",
+    "schema:DraftPlanHygiene@v1",
+    "schema:DueOutcomeProcessor@v1",
+    "schema:DuplicateS1Hygiene@v1",
+    "schema:EdgarFilingProof@v1",
+    "schema:FreeFirstPending@v1",
+    "schema:GraphImpactResolution@v1",
+    "schema:GrokCritique@v1",
+    "schema:HaveWeSeenThis@v1",
+    "schema:HeldInstrumentIds@v1",
+    "schema:HistoricalReplayIngest@v1",
+    "schema:HypothesisCandidate@v1",
+    "schema:IdentityConfidenceScore@v1",
+    "schema:IdentityRegistry@v1",
+    "schema:IdentityRemediationQueue@v1",
+    "schema:InstrumentRecordWake@v1",
+    "schema:InstrumentRehydration@v1",
+    "schema:IntelligenceDeltaReceipt@v1",
+    "schema:IntelligenceFault@v1",
+    "schema:IntelligenceLifecycleReceipt@v1",
+    "schema:InvestmentDecision@v1",
+    "schema:InvestmentIntelligenceCard@v1",
+    "schema:LearnableDecision@v1",
+    "schema:LearningCost@v1",
+    "schema:LearningHypothesis@v1",
+    "schema:LineageCompletionReport@v1",
+    "schema:LineageStallNote@v1",
+    "schema:LookaheadAudit@v1",
+    "schema:ModelRoutingCandidate@v1",
+    "schema:ModelRoutingShadowEval@v1",
+    "schema:ModelTaskPerformance@v1",
+    "schema:NarrativeSubjectLink@v1",
+    "schema:NotificationLearning@v1",
+    "schema:NotificationOutcome@v1",
+    "schema:NotifyFreshness@v1",
+    "schema:ObservationalS1Apply@v1",
+    "schema:ObservationalS1Dry@v1",
+    "schema:OfficeCycleResult@v1",
+    "schema:OperatorPolicyRatificationReceipt@v1",
+    "schema:OperatorProductRefresh@v1",
+    "schema:OrphanPlanHygiene@v1",
+    "schema:OutboundIdentityTag@v1",
+    "schema:PlanOutcomeCheckpointBind@v1",
+    "schema:PolicyConfirmationLifecycle@v1",
+    "schema:PolicyProvenance@v1",
+    "schema:ProviderRequestJournal@v1",
+    "schema:ResearchBudget@v1",
+    "schema:ResearchDecisionLink@v1",
+    "schema:ResearchHistory@v1",
+    "schema:ResearchPreflight@v1",
+    "schema:ResearchScheduleSurface@v1",
+    "schema:ResidualWebLane@v1",
+    "schema:RetryDisposition@v1",
+    "schema:S0OperatorTurn@v1",
+    "schema:S0RehydrateBundle@v1",
+    "schema:SameBrainAcceptance@v1",
+    "schema:ScanFabricOverlay@v1",
+    "schema:ShadowExperiment@v1",
+    "schema:SituationNotifyBridge@v1",
+    "schema:SourceLibrarian@v1",
+    "schema:SpecialistArtifact@v1",
+    "schema:SpecialistDisagreementMemory@v1",
+    "schema:SpecialistRuntimeArtifact@v1",
+    "schema:SpecialistRuntimeResult@v1",
+    "schema:WakeSubjectDecision@v1",
+    "schema:WakeTurnEffect@v1",
+    "schema:WatchInstrumentAdmit@v1",
+    "schema:WebEvidenceProvenance@v1",
+    "schema:WebSourceRef@v1"
+  ],
+  "produced_not_surfaced_operator_relevant": [
+    "schema:AlertQuality@v1",
+    "schema:BuyReadyInstitutionalPacket@v2",
+    "schema:CIOAdvisoryMessage@v1",
+    "schema:CIOAdvisorySynthesis@v1",
+    "schema:CIOAgentBrief@v1",
+    "schema:CIOAttentionAnswer@v1",
+    "schema:CIOWhatChanged@v1",
+    "schema:CioComposedNarrative@v1",
+    "schema:CioModelNarration@v1",
+    "schema:CioWakeComposition@v1",
+    "schema:GrokCritique@v1",
+    "schema:InvestmentDecision@v1",
+    "schema:InvestmentIntelligenceCard@v1"
+  ],
+  "record_edges": [
+    {
+      "checks": {
+        "consumer_reads_path": true,
+        "reader_placed_at_path": true,
+        "route_consumed": true,
+        "store_shared": true,
+        "writer_names_schema": true
+      },
+      "name": "schema:CIOTelegramSendReceipt@v1",
+      "path": [
+        "receipts"
+      ],
+      "reader": "lib/maturity_control/telegram_receipts.py::collect_telegram_receipts",
+      "route": "/api/v3/maturity/telegram-receipts",
+      "store": "cio_telegram_receipts.jsonl",
+      "verified": true,
+      "writer": "lib/cio_telegram_transport.py::_append_send_receipt"
+    },
+    {
+      "checks": {
+        "consumer_reads_path": true,
+        "reader_placed_at_path": true,
+        "route_consumed": true,
+        "store_shared": true,
+        "writer_names_schema": true
+      },
+      "name": "schema:CIOWeeklyLearningReview@v1",
+      "path": [
+        "learning",
+        "latest_review"
+      ],
+      "reader": "lib/cio_feedback_learning_v1.py::load_latest_weekly_review",
+      "route": "/api/v3/cio/brain",
+      "store": "cio_weekly_learning_reviews.jsonl",
+      "verified": true,
+      "writer": "lib/cio_feedback_learning_v1.py::reconcile_weekly_learning_review"
+    },
+    {
+      "checks": {
+        "consumer_reads_path": true,
+        "reader_placed_at_path": true,
+        "route_consumed": true,
+        "store_shared": true,
+        "writer_names_schema": true
+      },
+      "name": "schema:ResearchImpact@v1",
+      "path": [
+        "items",
+        "decision_ids"
+      ],
+      "reader": "lib/cio_cross_surface_links.py::build_hermes_research_links",
+      "route": "/api/v3/hermes/research-links",
+      "store": "cio_research_impacts.jsonl",
+      "verified": true,
+      "writer": "lib/cio_product_reassessment.py::research_impact"
+    }
+  ],
+  "retire_candidates": [
+    {
+      "name": "route:/api/v2/cio",
+      "owner_hint": "scripts/api_v2.py::_cio_unified",
+      "reason": "Legacy v2 unified CIO payload (api_v2._cio_unified: decisions, rotations, plans, signals) superseded by /api/v3/cio/home and /api/v3/cio/brain, both rendered in the CIO hub; repo grep 2026-10-02 finds no Command Center, Telegram or script caller of the literal route. Confirm zero hits in the :7777 access log before removing the ROUTES entry."
+    },
+    {
+      "name": "route:/api/v3/cio",
+      "owner_hint": "scripts/api_v3_cio.py::get_cio_dashboard",
+      "reason": "get_cio_dashboard is a composite of snapshot, actions, delegation, plans and thesis; each part is now rendered from its own route in CIO > Research > Thesis & delegation, so this aggregate duplicates them and has no consumer anywhere in the repo."
+    },
+    {
+      "name": "route:/api/v3/cio/decision/*#get_decision_dispositions",
+      "owner_hint": "scripts/api_v2.py (api/v3/cio decision/ GET branch)",
+      "reason": "GET /api/v3/cio/decision/{key} ignores {key} and returns get_decision_dispositions(), byte-identical to GET /api/v3/cio/dispositions which CioHub renders; only the POST .../disposition and GET .../lineage branches under decision/ have consumers."
+    },
+    {
+      "name": "schema:BitemporalEvaluation@v1",
+      "owner_hint": "scripts/lib/cio_institutional_learning.py::bitemporal_view",
+      "reason": "cio_institutional_learning.bitemporal_view has no caller anywhere in scripts/ (grep 2026-10-02): the bitemporal evaluation contract is never produced at runtime. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:BoundedContextBudget@v1",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::budget_context",
+      "reason": "cio_intelligence_fabric.budget_context has no caller in scripts/; the bounded context budget envelope is defined but never built. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:CIOAdvisoryDeliveryReceipt@v1",
+      "owner_hint": "scripts/lib/cio_advisory_notify.py::deliver_prepared",
+      "reason": "cio_advisory_notify.deliver_prepared has no caller and the module is imported only by check_dark_contracts.py; the advisory delivery path that would stamp this receipt is dark. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:CIOContextEnvelope@v2",
+      "owner_hint": "scripts/lib/cio_context_envelope_v2.py::attach_v2",
+      "reason": "cio_context_envelope_v2 is imported by no module (attach_v2 never called); the v2 overlay of the context envelope is unwired. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:CIOCouncilSynthesis@v1",
+      "owner_hint": "synthesize",
+      "reason": "cio_council_synthesis is imported only by scripts/cio_wave3b_report.py, a one-off wave report; no production path builds the council synthesis. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:CIOGraphImpactHeld@v1",
+      "owner_hint": "build",
+      "reason": "cio_graph_impact_held is imported only by scripts/cio_wave3c_report.py; the held-only graph impact duplicates CIOGraphImpactS6@v1, which is surfaced in Office home projections. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:CIOTestSink@v1",
+      "owner_hint": "write_test_sink",
+      "reason": "cio_delivery_audit.write_test_sink has no caller; the test sink was a delivery-audit scaffold and is test-only by construction. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:CognitionSupersession@v1",
+      "owner_hint": "supersede",
+      "reason": "cio_curation_run.supersede is reachable only through the dark cio_curation_run module (sole importer: check_dark_contracts.py). Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:CognitionTimeline@v1",
+      "owner_hint": "cognition_timeline",
+      "reason": "cio_curation_run.cognition_timeline has no caller in scripts/; the timeline view of curation cognition is never built. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:ConfidenceCalibration@v1",
+      "owner_hint": "calibrate_confidence",
+      "reason": "cio_institutional_learning.calibrate_confidence is imported by nothing (cio_r13_institution defines its own calibrate_confidence); the calibration contract is never produced. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:CurationCritique@v1",
+      "owner_hint": "critique_before_memory",
+      "reason": "cio_curation_run.critique_before_memory is only called inside the dark cio_curation_run module (no production importer). Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:CurationRun@v1",
+      "owner_hint": "build_curation_run",
+      "reason": "cio_curation_run is imported only by check_dark_contracts.py; build_curation_run/persist_challenger have no production caller, so curation runs are never recorded through this contract. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:CurationThesisLink@v1",
+      "owner_hint": "link_thesis_candidate",
+      "reason": "cio_curation_run.link_thesis_candidate has no caller; the curation->thesis link contract lives in a module only check_dark_contracts.py imports. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:DecisionCoverage@v1",
+      "owner_hint": "inventory_decisions",
+      "reason": "cio_institutional_learning.inventory_decisions has no caller anywhere in scripts/; decision coverage inventory is never computed at runtime. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:DecisionOutcome@v1",
+      "owner_hint": "record_outcome",
+      "reason": "cio_intelligence_outcomes is imported only by check_dark_contracts.py; record_outcome is never called in production, so this decision-outcome contract is dark (settled outcomes flow through outcome_observations instead). Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:DecisionOutcomeLink@v1",
+      "owner_hint": "link_decision_outcome",
+      "reason": "cio_r13_institution.link_decision_outcome has no caller; decision<->outcome linkage is produced by the checkpoint/observation pipeline instead. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:DecisionQualityAxes@v1",
+      "owner_hint": "score_quality_axes",
+      "reason": "cio_institutional_learning.score_quality_axes has no caller; the per-decision quality-axes score is never produced (QUALITY_AXES names are surfaced via the learning cockpit). Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:EdgarFilingProof@v1",
+      "owner_hint": "build_proof",
+      "reason": "cio_edgar_proof is imported only by scripts/cio_wave3c_report.py (one EDGAR proof for a wave report, 'not a crawler'); no production producer. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:HaveWeSeenThis@v1",
+      "owner_hint": "similar_setup",
+      "reason": "cio_institutional_learning.similar_setup has no caller; the 'have we seen this setup' lookup is never executed. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:HistoricalReplayIngest@v1",
+      "owner_hint": "mine_historical_performance",
+      "reason": "cio_model_learning.mine_historical_performance has no caller; historical replay ingest is never run. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:HypothesisCandidate@v1",
+      "owner_hint": "hypothesis_from_lesson",
+      "reason": "cio_institutional_learning.hypothesis_from_lesson has no caller; hypothesis candidates are minted elsewhere (r17_checkpoint_binding), so this contract is a dead duplicate. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:IdentityRemediationQueue@v1",
+      "owner_hint": "identity_remediation_queue",
+      "reason": "cio_r13_institution.identity_remediation_queue has no caller in scripts/; identity remediation is handled by cio_identity_coverage jobs. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:IntelligenceFault@v1",
+      "owner_hint": "fault_response",
+      "reason": "cio_intelligence_fabric.fault_response has no caller; fabric faults are never emitted with this envelope. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:LearnableDecision@v1",
+      "owner_hint": "SCHEMA_DECISION",
+      "reason": "SCHEMA_DECISION = 'LearnableDecision@v1' in cio_institutional_learning is never referenced after its definition; no record is ever stamped with it. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:LearningCost@v1",
+      "owner_hint": "cost_of_learning",
+      "reason": "cio_institutional_learning.cost_of_learning has no caller in scripts/; learning cost accounting is defined but unwired. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:LearningHypothesis@v1",
+      "owner_hint": "register_hypothesis",
+      "reason": "cio_r13_institution.register_hypothesis has no caller; hypotheses are registered by r17_checkpoint_binding (Operator evidence 'hypothesis' capability). Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:LookaheadAudit@v1",
+      "owner_hint": "reject_lookahead",
+      "reason": "cio_institutional_learning.reject_lookahead has no caller; the lookahead-bias audit contract never runs. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:ModelRoutingCandidate@v1",
+      "owner_hint": "routing_candidate",
+      "reason": "cio_model_learning.routing_candidate has no caller; model routing candidates are never produced (the brain shows ModelSelectionExplanation instead). Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:ModelRoutingShadowEval@v1",
+      "owner_hint": "shadow_evaluate",
+      "reason": "cio_model_learning.shadow_evaluate has no caller; shadow evaluation of routing candidates never runs. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:NotificationLearning@v1",
+      "owner_hint": "notification_learning",
+      "reason": "cio_institutional_learning.notification_learning has no caller; notification learning summaries are never produced. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:NotificationOutcome@v1",
+      "owner_hint": "record_notification_outcome",
+      "reason": "cio_r13_institution.record_notification_outcome has no caller; notification outcomes are never recorded through this contract. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:OfficeCycleResult@v1",
+      "owner_hint": "run_office_cycle",
+      "reason": "cio_office_cycle is imported only by check_dark_contracts.py; run_office_cycle has no production caller, so the autonomous office-cycle result is never produced. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:PolicyConfirmationLifecycle@v1",
+      "owner_hint": "confirm_policy_lifecycle",
+      "reason": "cio_r13_institution.confirm_policy_lifecycle has no caller; policy confirmation goes through cio_operator_investment_policy.ratify_policy_field (surfaced as policy provenance). Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:ResearchDecisionLink@v1",
+      "owner_hint": "link_research_decision",
+      "reason": "cio_intelligence_outcomes.link_research_decision has no caller (module imported only by check_dark_contracts.py); research->decision links are recorded by intelligence_lineage instead. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:SameBrainAcceptance@v1",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::same_brain_institutional",
+      "reason": "Both definitions are uncalled: cio_context_envelope_v2.same_brain lives in a module nothing imports, and cio_intelligence_fabric.same_brain_institutional has no caller. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:ShadowExperiment@v1",
+      "owner_hint": "shadow_experiment",
+      "reason": "cio_institutional_learning.shadow_experiment has no caller; shadow experiments are tracked by other stores (shadow_experiments.jsonl), not this builder. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:SpecialistArtifact@v1",
+      "owner_hint": "specialist_artifact",
+      "reason": "cio_r13_institution.specialist_artifact is called only by score_specialist_readiness inside the same module, which itself has no caller; runtime specialist artifacts come from cio_specialist_artifact. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:SpecialistDisagreementMemory@v1",
+      "owner_hint": "specialist_disagreement_memory",
+      "reason": "cio_intelligence_outcomes.specialist_disagreement_memory has no caller; the Operator-evidence 'specialist disagreement' capability reports DARK for exactly this reason. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:SpecialistRuntimeArtifact@v1",
+      "owner_hint": "specialist_runtime_artifact",
+      "reason": "cio_intelligence_outcomes.specialist_runtime_artifact has no caller; specialist artifacts are written by cio_specialist_artifact, not this dark module. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:SpecialistRuntimeResult@v1",
+      "owner_hint": "specialist_unavailable",
+      "reason": "cio_intelligence_outcomes.specialist_unavailable has no caller in scripts/; the specialist runtime result contract never leaves the dark module. Do not delete without an archive tripwire (AGENTS rule 6)."
+    },
+    {
+      "name": "schema:WebEvidenceProvenance@v1",
+      "owner_hint": "persist_web_evidence",
+      "reason": "cio_intelligence_fabric.persist_web_evidence has no caller in scripts/; web evidence provenance is surfaced through the research-provenance route instead. Do not delete without an archive tripwire (AGENTS rule 6)."
+    }
+  ],
+  "schema": "CIOCompletenessMeasurement@v2",
+  "serving_sha": "6266c7573fcda2132938d71af55a7f3703eb16d4",
+  "source_acceptance": {
+    "classification_well_formed": true,
+    "every_non_surfaced_item_classified": true,
+    "operator_relevant_not_surfaced_zero": false,
+    "produced_not_surfaced_zero": false,
+    "runtime_unproven_count": 117,
+    "runtime_unproven_items_labelled": true
+  },
+  "surfaced_not_runtime_proven": [
+    {
+      "name": "capability:InstrumentRecord",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:identity resolution",
+      "reason": "capped at PARTIAL: identity resolution writes no record of its own here; a resolved subject_guid on a spine row cannot be separated from spine publication",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:office truth",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:memory retrieval",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:specialist artifacts",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:specialist disagreement",
+      "reason": "no producer row matches this capability's predicate in the recent window; declared producer module scripts.lib.cio_specialist_artifact exists",
+      "runtime_state": "DARK",
+      "ui_label": "DARK",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:CIO synthesis",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:judgment",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:notification policy",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:delivery/outbox",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:operator feedback",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:belief writer",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:lesson",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:hypothesis",
+      "reason": "producer store is missing; declared producer module scripts.lib.r17_checkpoint_binding exists",
+      "runtime_state": "DARK",
+      "ui_label": "DARK",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:graph propagation",
+      "reason": "producer rows observed; no consumer row carries an explicit reference to them",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:canon retrieval",
+      "reason": "producer store is missing; producer module scripts.lib.cio_canon is not present in this repo",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:historical analogue retrieval",
+      "reason": "producer store is missing; producer module scripts.lib.cio_analogue_retrieval is not present in this repo",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "research:symbol_sw@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sw@v3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sw@v2",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sw@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_stx@v6",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_stx@v5",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v17",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v16",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v14",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v13",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v12",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v11",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v24",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v23",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v22",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v21",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v20",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v19",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v18",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v17",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v36",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v35",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v34",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v33",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v32",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v31",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_rtx@v34",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_rtx@v33",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_rtx@v32",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v6",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v5",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v2",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_now@v15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_now@v14",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_now@v13",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_now@v12",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_noc@v14",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_noc@v13",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_noc@v12",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_nflx@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_meds@v3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_jepi@v27",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_jepi@v26",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_jepi@v25",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_imtx@v2",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_imtx@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_hrl@v5",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_hrl@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_hpe@v11",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_hpe@v10",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ffr@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_dnp@v9",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_dnp@v8",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_dnp@v7",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v9",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v8",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v7",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v11",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v10",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_crml@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_cof@v15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_cof@v14",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ce@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_cdw@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_cdw@v3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_be@v17",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_be@v16",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_be@v15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bax@v19",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bax@v18",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bax@v17",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bax@v16",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bax@v15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bah@v30",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bah@v29",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bah@v28",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bah@v27",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_alle@v25",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_alle@v24",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_alle@v23",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_alle@v22",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_alle@v21",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_algn@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_algn@v3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_aiff@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:sym-fwd-7094ff8d@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:sym-canary-nflx-e863e8@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_reassess_20260929",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_live_smoke",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_live_dd_20260929",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_630f58fd23b8",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_176c97f4594b",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:opr_livecanary",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:llm:llm_curation:deepseek-flash",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:llm:llm_curation:canary-retag",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:llm:llm_curation:canary-deepseek",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "UNKNOWN",
+      "ui_label": "UNKNOWN",
+      "ui_surface": "CIO \u203a Research provenance"
+    }
+  ],
+  "surfaced_runtime_unmeasured": [
+    "route:/api/v2/cio/capital-plan",
+    "route:/api/v2/cio/report-v2",
+    "route:/api/v2/cio/sector-opportunities",
+    "route:/api/v2/cio/youtube-research-queue",
+    "route:/api/v3/cio/actions",
+    "route:/api/v3/cio/agent-research-ops",
+    "route:/api/v3/cio/ask-thesis/*",
+    "route:/api/v3/cio/brain",
+    "route:/api/v3/cio/brain/capital-plan",
+    "route:/api/v3/cio/brain/data-health",
+    "route:/api/v3/cio/brain/intelligence-lifecycle",
+    "route:/api/v3/cio/brain/learning-cockpit",
+    "route:/api/v3/cio/brain/learning-review",
+    "route:/api/v3/cio/brain/market-context",
+    "route:/api/v3/cio/brain/maturity-contract",
+    "route:/api/v3/cio/brain/methodology",
+    "route:/api/v3/cio/brain/model-performance",
+    "route:/api/v3/cio/brain/policy",
+    "route:/api/v3/cio/brain/policy-provenance",
+    "route:/api/v3/cio/brain/portfolio-state",
+    "route:/api/v3/cio/brain/portfolio-thesis",
+    "route:/api/v3/cio/brain/seasonality",
+    "route:/api/v3/cio/decision/*",
+    "route:/api/v3/cio/delegation",
+    "route:/api/v3/cio/desk-note",
+    "route:/api/v3/cio/dispositions",
+    "route:/api/v3/cio/home",
+    "route:/api/v3/cio/intelligence/*",
+    "route:/api/v3/cio/investment-product",
+    "route:/api/v3/cio/observability",
+    "route:/api/v3/cio/operator-evidence",
+    "route:/api/v3/cio/plans",
+    "route:/api/v3/cio/plans/*",
+    "route:/api/v3/cio/records",
+    "route:/api/v3/cio/research-provenance",
+    "route:/api/v3/cio/scorecard",
+    "route:/api/v3/cio/snapshot",
+    "route:/api/v3/cio/source-clocks",
+    "route:/api/v3/cio/symbol-thesis/*",
+    "route:/api/v3/cio/thesis",
+    "route:/api/v3/cio/thesis-research-context/*",
+    "route:/api/v3/cio/thesis-research-proposal",
+    "route:/api/v3/cio/thesis-ri-pipeline/*",
+    "route:/api/v3/cio/universe-theses",
+    "schema:AgentRuntimeProof@v1",
+    "schema:CCRecordNarrativeCoverage@v1",
+    "schema:CIOCurrentProductUnavailable@v1",
+    "schema:CIODecisionLineage@v1",
+    "schema:CIODeskObservability@v1",
+    "schema:CIOExpiredMaturityObserve@v1",
+    "schema:CIOGraphImpact@v1",
+    "schema:CIOGraphImpactS6@v1",
+    "schema:CIOIdentityCoverage@v1",
+    "schema:CIOInvestmentProduct@v1",
+    "schema:CIONotificationBlock@v1",
+    "schema:CIOOperatorEvidence@v1",
+    "schema:CIOOperatorProduct@v1",
+    "schema:CIOOutcomeMaturity@v1",
+    "schema:CIOPortfolioThesis@v1",
+    "schema:CIOProvisionalLessons@v1",
+    "schema:CIOReassessment@v1",
+    "schema:CIOReconciliation@v1",
+    "schema:CIOReentryBookLabels@v1",
+    "schema:CIOResearchFailHistogram@v1",
+    "schema:CIOResearchProvenance@v1",
+    "schema:CIOResearchVerdictCounts@v1",
+    "schema:CIOScorecard@v1",
+    "schema:CIOSituationState@v1",
+    "schema:CIOSourceClocks@v1",
+    "schema:CIOTelegramSendReceipt@v1",
+    "schema:CIOWeeklyLearningReview@v1",
+    "schema:CanonClaim@v1",
+    "schema:CanonMaturity@v1",
+    "schema:CapitalDeploymentPlan@v1",
+    "schema:CashDeploymentSituation@v1",
+    "schema:CashSleeveLetter@v1",
+    "schema:CheckpointLineageHealth@v1",
+    "schema:CioTelegramStanceHoldSummary@v2",
+    "schema:EnvelopeProviderStatus@v1",
+    "schema:GoalPredicate@v1",
+    "schema:GoalPredicateVerdict@v1",
+    "schema:HeldBookThesisCoverage@v1",
+    "schema:HermesResearchLinks@v1",
+    "schema:HoldingsDataQuality@v1",
+    "schema:InstrumentBelief@v1",
+    "schema:InstrumentBeliefWriter@v1",
+    "schema:InstrumentRecord@v1",
+    "schema:IntelligenceCoverageMatrix@v1",
+    "schema:IntelligenceLifecycleProjection@v1",
+    "schema:IntelligenceProducerInventory@v1",
+    "schema:LessonBind@v1",
+    "schema:LessonCandidate@v2",
+    "schema:MarketContextState@v1",
+    "schema:MethodologyPolicy@v1",
+    "schema:ModelSelectionExplanation@v1",
+    "schema:NotificationPolicy@v1",
+    "schema:OfficeSituationScan@v1",
+    "schema:OperatorFeedback@v2",
+    "schema:OperatorFeedbackIngest@v1",
+    "schema:OperatorInvestmentPolicy@v1",
+    "schema:OperatorPolicyRegistry@v1",
+    "schema:OperatorTickerFeedback@v1",
+    "schema:OutcomeCheckpoint@v1",
+    "schema:OutcomeObservation@v1",
+    "schema:PortfolioState@v1",
+    "schema:PortfolioThesisDelta@v1",
+    "schema:PreferenceCandidate@v1",
+    "schema:ResearchImpact@v1",
+    "schema:SeasonalityState@v1",
+    "schema:SurfaceAStatus@v1",
+    "schema:SymbolIntelligenceObject@v1",
+    "schema:ThesisChangeCard@v1",
+    "schema:ThesisDecisionGate@v1",
+    "schema:ThesisRevisionLedger@v1",
+    "schema:TradeAIMaturityContract@v1"
+  ],
+  "unclassified": [],
+  "visibility_evidence": {
+    "capability:CIO synthesis": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:Hermes research": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:InstrumentRecord": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:belief writer": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:canon retrieval": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:commitment": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:delivery/outbox": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:external research": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:graph propagation": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:historical analogue retrieval": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:hypothesis": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:identity resolution": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:judgment": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:lesson": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:memory retrieval": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:notification policy": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:office truth": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:operator feedback": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:outcome checkpoint": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:outcome settlement": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:persistent cognition": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:specialist artifacts": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:specialist disagreement": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "route:/api/v2/cio/capital-plan": {
+      "method": "EMBEDDED_IN_CONSUMED_PAYLOAD",
+      "via": [
+        "/api/v3/cio/home#strategy_context -> apps/command-center-v3/src/pages/CioHub.tsx:2025"
+      ]
+    },
+    "route:/api/v2/cio/report-v2": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1575"
+      ]
+    },
+    "route:/api/v2/cio/sector-opportunities": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioThesisDelegationPanel.tsx:21"
+      ]
+    },
+    "route:/api/v2/cio/youtube-research-queue": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1504"
+      ]
+    },
+    "route:/api/v3/cio/actions": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioThesisDelegationPanel.tsx:17"
+      ]
+    },
+    "route:/api/v3/cio/agent-research-ops": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:947"
+      ]
+    },
+    "route:/api/v3/cio/ask-thesis/*": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioThesisResearchContextPanel.tsx:18"
+      ]
+    },
+    "route:/api/v3/cio/brain": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "route:/api/v3/cio/brain/capital-plan": {
+      "method": "EMBEDDED_IN_CONSUMED_PAYLOAD",
+      "via": [
+        "/api/v3/cio/brain#capital_plan -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "route:/api/v3/cio/brain/data-health": {
+      "method": "EMBEDDED_IN_CONSUMED_PAYLOAD",
+      "via": [
+        "/api/v3/cio/brain#data_health -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159",
+        "/api/v3/cio/observability#scorecards.blocker -> apps/command-center-v3/src/components/cio/CioObservabilityPanel.tsx:61"
+      ]
+    },
+    "route:/api/v3/cio/brain/intelligence-lifecycle": {
+      "method": "EMBEDDED_IN_CONSUMED_PAYLOAD",
+      "via": [
+        "/api/v3/cio/brain#intelligence_lifecycle -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "route:/api/v3/cio/brain/learning-cockpit": {
+      "method": "EMBEDDED_IN_CONSUMED_PAYLOAD",
+      "via": [
+        "/api/v3/cio/brain#learning_cockpit -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "route:/api/v3/cio/brain/learning-review": {
+      "method": "EMBEDDED_IN_CONSUMED_PAYLOAD",
+      "via": [
+        "/api/v3/cio/brain#learning -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "route:/api/v3/cio/brain/market-context": {
+      "method": "EMBEDDED_IN_CONSUMED_PAYLOAD",
+      "via": [
+        "/api/v3/cio/brain#market_context -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "route:/api/v3/cio/brain/maturity-contract": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioBrainProjectionsPanel.tsx:13"
+      ]
+    },
+    "route:/api/v3/cio/brain/methodology": {
+      "method": "EMBEDDED_IN_CONSUMED_PAYLOAD",
+      "via": [
+        "/api/v3/cio/brain#methodology -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "route:/api/v3/cio/brain/model-performance": {
+      "method": "EMBEDDED_IN_CONSUMED_PAYLOAD",
+      "via": [
+        "/api/v3/cio/brain#model_performance -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "route:/api/v3/cio/brain/policy": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1816"
+      ]
+    },
+    "route:/api/v3/cio/brain/policy-provenance": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioBrainProjectionsPanel.tsx:14"
+      ]
+    },
+    "route:/api/v3/cio/brain/portfolio-state": {
+      "method": "EMBEDDED_IN_CONSUMED_PAYLOAD",
+      "via": [
+        "/api/v3/cio/brain#portfolio_state -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "route:/api/v3/cio/brain/portfolio-thesis": {
+      "method": "EMBEDDED_IN_CONSUMED_PAYLOAD",
+      "via": [
+        "/api/v3/cio/brain#portfolio_thesis -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "route:/api/v3/cio/brain/seasonality": {
+      "method": "EMBEDDED_IN_CONSUMED_PAYLOAD",
+      "via": [
+        "/api/v3/cio/brain#seasonality -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "route:/api/v3/cio/decision/*": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioDecisionLineagePanel.tsx:84"
+      ]
+    },
+    "route:/api/v3/cio/delegation": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioThesisDelegationPanel.tsx:19"
+      ]
+    },
+    "route:/api/v3/cio/desk-note": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioThesisDelegationPanel.tsx:16"
+      ]
+    },
+    "route:/api/v3/cio/dispositions": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:2044"
+      ]
+    },
+    "route:/api/v3/cio/home": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:2025"
+      ]
+    },
+    "route:/api/v3/cio/intelligence/*": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1110"
+      ]
+    },
+    "route:/api/v3/cio/investment-product": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1253"
+      ]
+    },
+    "route:/api/v3/cio/observability": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioObservabilityPanel.tsx:61"
+      ]
+    },
+    "route:/api/v3/cio/operator-evidence": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx:372"
+      ]
+    },
+    "route:/api/v3/cio/plans": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioThesisDelegationPanel.tsx:18"
+      ]
+    },
+    "route:/api/v3/cio/plans/*": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:2347"
+      ]
+    },
+    "route:/api/v3/cio/records": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "route:/api/v3/cio/research-provenance": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx:371"
+      ]
+    },
+    "route:/api/v3/cio/scorecard": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:2026"
+      ]
+    },
+    "route:/api/v3/cio/snapshot": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioThesisDelegationPanel.tsx:20"
+      ]
+    },
+    "route:/api/v3/cio/source-clocks": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioSourceClocksPanel.tsx:71"
+      ]
+    },
+    "route:/api/v3/cio/symbol-thesis/*": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1098",
+        "apps/command-center-v3/src/pages/CioHub.tsx:1100"
+      ]
+    },
+    "route:/api/v3/cio/thesis": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioThesisDelegationPanel.tsx:15"
+      ]
+    },
+    "route:/api/v3/cio/thesis-research-context/*": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioThesisResearchContextPanel.tsx:19"
+      ]
+    },
+    "route:/api/v3/cio/thesis-research-proposal": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioThesisResearchContextPanel.tsx:21"
+      ]
+    },
+    "route:/api/v3/cio/thesis-ri-pipeline/*": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioThesisResearchContextPanel.tsx:20"
+      ]
+    },
+    "route:/api/v3/cio/universe-theses": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1094"
+      ]
+    },
+    "schema:AgentRuntimeProof@v1": {
+      "via": [
+        "/api/v3/agents/runtime-proof#(root) -> apps/command-center-v3/src/lib/agentRuntimeReadAdapter.ts:176"
+      ]
+    },
+    "schema:CCRecordNarrativeCoverage@v1": {
+      "via": [
+        "/api/v3/cio/home#record_narrative_coverage -> apps/command-center-v3/src/pages/CioHub.tsx:2025"
+      ]
+    },
+    "schema:CIOCurrentProductUnavailable@v1": {
+      "via": [
+        "/api/v3/cio/investment-product#product -> apps/command-center-v3/src/pages/CioHub.tsx:1253"
+      ]
+    },
+    "schema:CIODecisionLineage@v1": {
+      "via": [
+        "/api/v3/cio/decision/_not_selected/lineage#lineage -> apps/command-center-v3/src/components/cio/CioDecisionLineagePanel.tsx:84",
+        "/api/v3/cio/decision/{param}/lineage#lineage -> apps/command-center-v3/src/components/cio/CioDecisionLineagePanel.tsx:84"
+      ]
+    },
+    "schema:CIODeskObservability@v1": {
+      "via": [
+        "/api/v3/cio/observability#(root) -> apps/command-center-v3/src/components/cio/CioObservabilityPanel.tsx:61"
+      ]
+    },
+    "schema:CIOExpiredMaturityObserve@v1": {
+      "via": [
+        "/api/v3/maturity/authority#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:106",
+        "/api/v3/maturity/autonomy-health#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:439",
+        "/api/v3/maturity/cases#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:181",
+        "/api/v3/maturity/heartbeat#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:200",
+        "/api/v3/maturity/heartbeat#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:272",
+        "/api/v3/maturity/influence#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:24",
+        "/api/v3/maturity/learning#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:103",
+        "/api/v3/maturity/lessons/{param}#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:106",
+        "/api/v3/maturity/memory#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:35",
+        "/api/v3/maturity/notification-gate#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:271",
+        "/api/v3/maturity/promotions#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:160",
+        "/api/v3/maturity/senses#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:370",
+        "/api/v3/maturity/telegram-receipts#(root) -> apps/command-center-v3/src/pages/MaturityPanels.tsx:302"
+      ]
+    },
+    "schema:CIOGraphImpact@v1": {
+      "via": [
+        "/api/v3/cio/home#graph_impact.items -> apps/command-center-v3/src/pages/CioHub.tsx:2025"
+      ]
+    },
+    "schema:CIOGraphImpactS6@v1": {
+      "via": [
+        "/api/v3/cio/home#graph_impact -> apps/command-center-v3/src/pages/CioHub.tsx:2025"
+      ]
+    },
+    "schema:CIOIdentityCoverage@v1": {
+      "via": [
+        "/api/v3/cio/investment-product#product.identity_coverage -> apps/command-center-v3/src/pages/CioHub.tsx:1253"
+      ]
+    },
+    "schema:CIOInvestmentProduct@v1": {
+      "via": [
+        "/api/v3/cio/investment-product#product -> apps/command-center-v3/src/pages/CioHub.tsx:1253"
+      ]
+    },
+    "schema:CIONotificationBlock@v1": {
+      "via": [
+        "/api/v3/cio/home#notifications -> apps/command-center-v3/src/pages/CioHub.tsx:2025"
+      ]
+    },
+    "schema:CIOOperatorEvidence@v1": {
+      "via": [
+        "/api/v3/cio/operator-evidence#(root) -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx:372"
+      ]
+    },
+    "schema:CIOOperatorProduct@v1": {
+      "via": [
+        "/api/v3/cio/records#operator_product -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:CIOOutcomeMaturity@v1": {
+      "via": [
+        "/api/v3/maturity/authority#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:106",
+        "/api/v3/maturity/autonomy-health#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:439",
+        "/api/v3/maturity/cases#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:181",
+        "/api/v3/maturity/heartbeat#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:200",
+        "/api/v3/maturity/heartbeat#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:272",
+        "/api/v3/maturity/influence#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:24",
+        "/api/v3/maturity/learning#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:103",
+        "/api/v3/maturity/lessons/{param}#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:106",
+        "/api/v3/maturity/memory#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:35",
+        "/api/v3/maturity/notification-gate#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:271",
+        "/api/v3/maturity/promotions#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:160",
+        "/api/v3/maturity/senses#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:370",
+        "/api/v3/maturity/telegram-receipts#disposition_outcomes -> apps/command-center-v3/src/pages/MaturityPanels.tsx:302"
+      ]
+    },
+    "schema:CIOPortfolioThesis@v1": {
+      "via": [
+        "/api/v3/cio/brain#portfolio_thesis -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:CIOProvisionalLessons@v1": {
+      "via": [
+        "/api/v3/cio/investment-product#product.provisional_lessons -> apps/command-center-v3/src/pages/CioHub.tsx:1253"
+      ]
+    },
+    "schema:CIOReassessment@v1": {
+      "via": [
+        "/api/v3/cio/records#reassessments -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:CIOReconciliation@v1": {
+      "via": [
+        "/api/v3/intelligence/reconciliation#(root) -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:20"
+      ]
+    },
+    "schema:CIOReentryBookLabels@v1": {
+      "via": [
+        "/api/v3/cio/home#reentry_books -> apps/command-center-v3/src/pages/CioHub.tsx:2025"
+      ]
+    },
+    "schema:CIOResearchFailHistogram@v1": {
+      "via": [
+        "/api/v3/cio/investment-product#product.research_fail_histogram -> apps/command-center-v3/src/pages/CioHub.tsx:1253"
+      ]
+    },
+    "schema:CIOResearchProvenance@v1": {
+      "via": [
+        "/api/v3/cio/decision/_not_selected/lineage#lineage.research_provenance -> apps/command-center-v3/src/components/cio/CioDecisionLineagePanel.tsx:84",
+        "/api/v3/cio/decision/{param}/lineage#lineage.research_provenance -> apps/command-center-v3/src/components/cio/CioDecisionLineagePanel.tsx:84",
+        "/api/v3/cio/operator-evidence#blocks.research -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx:372",
+        "/api/v3/cio/research-provenance#(root) -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx:371"
+      ]
+    },
+    "schema:CIOResearchVerdictCounts@v1": {
+      "via": [
+        "/api/v3/cio/investment-product#product.research_quality_counts -> apps/command-center-v3/src/pages/CioHub.tsx:1253"
+      ]
+    },
+    "schema:CIOScorecard@v1": {
+      "via": [
+        "/api/v3/cio/scorecard#(root) -> apps/command-center-v3/src/pages/CioHub.tsx:2026"
+      ]
+    },
+    "schema:CIOSituationState@v1": {
+      "via": [
+        "/api/v3/cio/brain#operator_value.attention -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:CIOSourceClocks@v1": {
+      "via": [
+        "/api/v3/cio/source-clocks#(root) -> apps/command-center-v3/src/components/cio/CioSourceClocksPanel.tsx:71"
+      ]
+    },
+    "schema:CIOTelegramSendReceipt@v1": {
+      "method": "RECORD_EDGE_VERIFIED",
+      "via": [
+        "/api/v3/maturity/telegram-receipts#receipts (record edge: lib/cio_telegram_transport.py::_append_send_receipt -> cio_telegram_receipts.jsonl -> lib/maturity_control/telegram_receipts.py::collect_telegram_receipts)"
+      ]
+    },
+    "schema:CIOWeeklyLearningReview@v1": {
+      "method": "RECORD_EDGE_VERIFIED",
+      "via": [
+        "/api/v3/cio/brain#learning.latest_review (record edge: lib/cio_feedback_learning_v1.py::reconcile_weekly_learning_review -> cio_weekly_learning_reviews.jsonl -> lib/cio_feedback_learning_v1.py::load_latest_weekly_review)"
+      ]
+    },
+    "schema:CanonClaim@v1": {
+      "via": [
+        "/api/v3/cio/brain#methodology.methodology_policy -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:CanonMaturity@v1": {
+      "via": [
+        "/api/v3/cio/brain#methodology.canon -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:CapitalDeploymentPlan@v1": {
+      "via": [
+        "/api/v3/cio/brain#capital_plan -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:CashDeploymentSituation@v1": {
+      "via": [
+        "/api/v3/cio/brain#capital_situation -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:CashSleeveLetter@v1": {
+      "via": [
+        "/api/v3/cio/home#cash_letter -> apps/command-center-v3/src/pages/CioHub.tsx:2025"
+      ]
+    },
+    "schema:CheckpointLineageHealth@v1": {
+      "via": [
+        "/api/v3/cio/investment-product#product.checkpoint_lineage -> apps/command-center-v3/src/pages/CioHub.tsx:1253"
+      ]
+    },
+    "schema:CioTelegramStanceHoldSummary@v2": {
+      "via": [
+        "/api/v3/cio/records#stance_holds -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:EnvelopeProviderStatus@v1": {
+      "via": [
+        "/api/v3/cio/brain#intelligence_lifecycle.envelope -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:GoalPredicate@v1": {
+      "via": [
+        "/api/v3/cio/records#goal_predicates -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:GoalPredicateVerdict@v1": {
+      "via": [
+        "/api/v3/cio/records#goal_verdicts -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:HeldBookThesisCoverage@v1": {
+      "via": [
+        "/api/v3/cio/records#held_thesis_coverage -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:HermesResearchLinks@v1": {
+      "via": [
+        "/api/v3/hermes/research-links#(root) -> apps/command-center-v3/src/lib/hermesResearchLinks.ts:39"
+      ]
+    },
+    "schema:HoldingsDataQuality@v1": {
+      "via": [
+        "/api/v3/cio/investment-product#product.holdings_data_quality -> apps/command-center-v3/src/pages/CioHub.tsx:1253"
+      ]
+    },
+    "schema:InstrumentBelief@v1": {
+      "via": [
+        "/api/v3/cio/records#instrument_beliefs -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:InstrumentBeliefWriter@v1": {
+      "via": [
+        "/api/v3/cio/records#belief_writer -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:InstrumentRecord@v1": {
+      "via": [
+        "/api/v3/cio/records#instrument_records -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:IntelligenceCoverageMatrix@v1": {
+      "via": [
+        "/api/v3/cio/brain#intelligence_lifecycle.coverage_matrix -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:IntelligenceLifecycleProjection@v1": {
+      "via": [
+        "/api/v3/cio/brain#intelligence_lifecycle -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:IntelligenceProducerInventory@v1": {
+      "via": [
+        "/api/v3/cio/brain#intelligence_lifecycle.producer_inventory -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:LessonBind@v1": {
+      "via": [
+        "/api/v3/cio/records#lesson_binds -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:LessonCandidate@v2": {
+      "via": [
+        "/api/v3/cio/investment-product#product.provisional_lessons.items -> apps/command-center-v3/src/pages/CioHub.tsx:1253"
+      ]
+    },
+    "schema:MarketContextState@v1": {
+      "via": [
+        "/api/v3/cio/brain#market_context -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:MethodologyPolicy@v1": {
+      "via": [
+        "/api/v3/cio/brain#methodology.methodology_policy -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:ModelSelectionExplanation@v1": {
+      "via": [
+        "/api/v3/cio/brain#intelligence_lifecycle.model_reason -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:NotificationPolicy@v1": {
+      "via": [
+        "/api/v3/cio/home#notifications.items -> apps/command-center-v3/src/pages/CioHub.tsx:2025"
+      ]
+    },
+    "schema:OfficeSituationScan@v1": {
+      "via": [
+        "/api/v3/cio/brain#situation_scan -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:OperatorFeedback@v2": {
+      "via": [
+        "/api/v3/cio/records#linked_feedback -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:OperatorFeedbackIngest@v1": {
+      "via": [
+        "/api/v3/cio/records#feedback_ingests -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:OperatorInvestmentPolicy@v1": {
+      "via": [
+        "/api/v3/cio/brain#operator_policy -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159",
+        "/api/v3/cio/brain/policy#policy -> apps/command-center-v3/src/pages/CioHub.tsx:1816"
+      ]
+    },
+    "schema:OperatorPolicyRegistry@v1": {
+      "via": [
+        "/api/v3/cio/brain/policy-provenance#registry -> apps/command-center-v3/src/components/cio/CioBrainProjectionsPanel.tsx:14"
+      ]
+    },
+    "schema:OperatorTickerFeedback@v1": {
+      "via": [
+        "/api/v3/cio/intelligence/{param}#latest_feedback -> apps/command-center-v3/src/pages/CioHub.tsx:1110"
+      ]
+    },
+    "schema:OutcomeCheckpoint@v1": {
+      "via": [
+        "/api/v3/cio/records#outcome_checkpoints -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:OutcomeObservation@v1": {
+      "via": [
+        "/api/v3/cio/records#outcome_observations -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:PortfolioState@v1": {
+      "via": [
+        "/api/v3/cio/brain#portfolio_state -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:PortfolioThesisDelta@v1": {
+      "via": [
+        "/api/v3/cio/brain#portfolio_thesis_delta -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:PreferenceCandidate@v1": {
+      "via": [
+        "/api/v3/cio/brain#learning.feedback.preference_candidates -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:ResearchImpact@v1": {
+      "method": "RECORD_EDGE_VERIFIED",
+      "via": [
+        "/api/v3/hermes/research-links#items.decision_ids (record edge: lib/cio_product_reassessment.py::research_impact -> cio_research_impacts.jsonl -> lib/cio_cross_surface_links.py::build_hermes_research_links)"
+      ]
+    },
+    "schema:SeasonalityState@v1": {
+      "via": [
+        "/api/v3/cio/brain#seasonality -> apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:159"
+      ]
+    },
+    "schema:SurfaceAStatus@v1": {
+      "via": [
+        "/api/v3/cio/home#surface_a_status -> apps/command-center-v3/src/pages/CioHub.tsx:2025",
+        "/api/v3/cio/investment-product#product.surface_a_status -> apps/command-center-v3/src/pages/CioHub.tsx:1253"
+      ]
+    },
+    "schema:SymbolIntelligenceObject@v1": {
+      "via": [
+        "/api/v3/cio/intelligence/{param}#intelligence -> apps/command-center-v3/src/pages/CioHub.tsx:1110"
+      ]
+    },
+    "schema:ThesisChangeCard@v1": {
+      "via": [
+        "/api/v3/cio/records#thesis_change_cards -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:ThesisDecisionGate@v1": {
+      "via": [
+        "/api/v3/cio/investment-product#product.confidence.thesis_decision_gate -> apps/command-center-v3/src/pages/CioHub.tsx:1253"
+      ]
+    },
+    "schema:ThesisRevisionLedger@v1": {
+      "via": [
+        "/api/v3/cio/records#thesis_revisions -> apps/command-center-v3/src/components/cio/CioRecordLedgersPanel.tsx:19"
+      ]
+    },
+    "schema:TradeAIMaturityContract@v1": {
+      "via": [
+        "/api/v3/cio/brain/maturity-contract#(root) -> apps/command-center-v3/src/components/cio/CioBrainProjectionsPanel.tsx:13"
+      ]
+    }
+  },
+  "visibility_methods": {
+    "DIRECT_OR_PAYLOAD_FLOW": [
+      "capability:CIO synthesis",
+      "capability:Hermes research",
+      "capability:InstrumentRecord",
+      "capability:belief writer",
+      "capability:canon retrieval",
+      "capability:commitment",
+      "capability:delivery/outbox",
+      "capability:external research",
+      "capability:graph propagation",
+      "capability:historical analogue retrieval",
+      "capability:hypothesis",
+      "capability:identity resolution",
+      "capability:judgment",
+      "capability:lesson",
+      "capability:memory retrieval",
+      "capability:notification policy",
+      "capability:office truth",
+      "capability:operator feedback",
+      "capability:outcome checkpoint",
+      "capability:outcome settlement",
+      "capability:persistent cognition",
+      "capability:specialist artifacts",
+      "capability:specialist disagreement",
+      "route:/api/v2/cio/report-v2",
+      "route:/api/v2/cio/sector-opportunities",
+      "route:/api/v2/cio/youtube-research-queue",
+      "route:/api/v3/cio/actions",
+      "route:/api/v3/cio/agent-research-ops",
+      "route:/api/v3/cio/ask-thesis/*",
+      "route:/api/v3/cio/brain",
+      "route:/api/v3/cio/brain/maturity-contract",
+      "route:/api/v3/cio/brain/policy",
+      "route:/api/v3/cio/brain/policy-provenance",
+      "route:/api/v3/cio/decision/*",
+      "route:/api/v3/cio/delegation",
+      "route:/api/v3/cio/desk-note",
+      "route:/api/v3/cio/dispositions",
+      "route:/api/v3/cio/home",
+      "route:/api/v3/cio/intelligence/*",
+      "route:/api/v3/cio/investment-product",
+      "route:/api/v3/cio/observability",
+      "route:/api/v3/cio/operator-evidence",
+      "route:/api/v3/cio/plans",
+      "route:/api/v3/cio/plans/*",
+      "route:/api/v3/cio/records",
+      "route:/api/v3/cio/research-provenance",
+      "route:/api/v3/cio/scorecard",
+      "route:/api/v3/cio/snapshot",
+      "route:/api/v3/cio/source-clocks",
+      "route:/api/v3/cio/symbol-thesis/*",
+      "route:/api/v3/cio/thesis",
+      "route:/api/v3/cio/thesis-research-context/*",
+      "route:/api/v3/cio/thesis-research-proposal",
+      "route:/api/v3/cio/thesis-ri-pipeline/*",
+      "route:/api/v3/cio/universe-theses",
+      "schema:AgentRuntimeProof@v1",
+      "schema:CCRecordNarrativeCoverage@v1",
+      "schema:CIOCurrentProductUnavailable@v1",
+      "schema:CIODecisionLineage@v1",
+      "schema:CIODeskObservability@v1",
+      "schema:CIOExpiredMaturityObserve@v1",
+      "schema:CIOGraphImpact@v1",
+      "schema:CIOGraphImpactS6@v1",
+      "schema:CIOIdentityCoverage@v1",
+      "schema:CIOInvestmentProduct@v1",
+      "schema:CIONotificationBlock@v1",
+      "schema:CIOOperatorEvidence@v1",
+      "schema:CIOOperatorProduct@v1",
+      "schema:CIOOutcomeMaturity@v1",
+      "schema:CIOPortfolioThesis@v1",
+      "schema:CIOProvisionalLessons@v1",
+      "schema:CIOReassessment@v1",
+      "schema:CIOReconciliation@v1",
+      "schema:CIOReentryBookLabels@v1",
+      "schema:CIOResearchFailHistogram@v1",
+      "schema:CIOResearchProvenance@v1",
+      "schema:CIOResearchVerdictCounts@v1",
+      "schema:CIOScorecard@v1",
+      "schema:CIOSituationState@v1",
+      "schema:CIOSourceClocks@v1",
+      "schema:CanonClaim@v1",
+      "schema:CanonMaturity@v1",
+      "schema:CapitalDeploymentPlan@v1",
+      "schema:CashDeploymentSituation@v1",
+      "schema:CashSleeveLetter@v1",
+      "schema:CheckpointLineageHealth@v1",
+      "schema:CioTelegramStanceHoldSummary@v2",
+      "schema:EnvelopeProviderStatus@v1",
+      "schema:GoalPredicate@v1",
+      "schema:GoalPredicateVerdict@v1",
+      "schema:HeldBookThesisCoverage@v1",
+      "schema:HermesResearchLinks@v1",
+      "schema:HoldingsDataQuality@v1",
+      "schema:InstrumentBelief@v1",
+      "schema:InstrumentBeliefWriter@v1",
+      "schema:InstrumentRecord@v1",
+      "schema:IntelligenceCoverageMatrix@v1",
+      "schema:IntelligenceLifecycleProjection@v1",
+      "schema:IntelligenceProducerInventory@v1",
+      "schema:LessonBind@v1",
+      "schema:LessonCandidate@v2",
+      "schema:MarketContextState@v1",
+      "schema:MethodologyPolicy@v1",
+      "schema:ModelSelectionExplanation@v1",
+      "schema:NotificationPolicy@v1",
+      "schema:OfficeSituationScan@v1",
+      "schema:OperatorFeedback@v2",
+      "schema:OperatorFeedbackIngest@v1",
+      "schema:OperatorInvestmentPolicy@v1",
+      "schema:OperatorPolicyRegistry@v1",
+      "schema:OperatorTickerFeedback@v1",
+      "schema:OutcomeCheckpoint@v1",
+      "schema:OutcomeObservation@v1",
+      "schema:PortfolioState@v1",
+      "schema:PortfolioThesisDelta@v1",
+      "schema:PreferenceCandidate@v1",
+      "schema:SeasonalityState@v1",
+      "schema:SurfaceAStatus@v1",
+      "schema:SymbolIntelligenceObject@v1",
+      "schema:ThesisChangeCard@v1",
+      "schema:ThesisDecisionGate@v1",
+      "schema:ThesisRevisionLedger@v1",
+      "schema:TradeAIMaturityContract@v1"
+    ],
+    "EMBEDDED_IN_CONSUMED_PAYLOAD": [
+      "route:/api/v2/cio/capital-plan",
+      "route:/api/v3/cio/brain/capital-plan",
+      "route:/api/v3/cio/brain/data-health",
+      "route:/api/v3/cio/brain/intelligence-lifecycle",
+      "route:/api/v3/cio/brain/learning-cockpit",
+      "route:/api/v3/cio/brain/learning-review",
+      "route:/api/v3/cio/brain/market-context",
+      "route:/api/v3/cio/brain/methodology",
+      "route:/api/v3/cio/brain/model-performance",
+      "route:/api/v3/cio/brain/portfolio-state",
+      "route:/api/v3/cio/brain/portfolio-thesis",
+      "route:/api/v3/cio/brain/seasonality"
+    ],
+    "RECORD_EDGE_VERIFIED": [
+      "schema:CIOTelegramSendReceipt@v1",
+      "schema:CIOWeeklyLearningReview@v1",
+      "schema:ResearchImpact@v1"
+    ]
+  }
+}

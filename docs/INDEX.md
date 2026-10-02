@@ -875,16 +875,18 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/ARCHITECTURE.md` | Architecture — Track A vs Track B | review_required | OK | `2dffd8834f47` |
 | `docs/cio/AUTHORITY.md` | Authority — READ_ONLY_ADVISORY | review_required | OK | `5ed5e4f198e6` |
 | `docs/cio/CATALYST_AND_HERMES.md` | Catalyst domain + Hermes research de-duplication | review_required | OK | `65dfcba21b19` |
-| `docs/cio/CIO_AGENT_RUNTIME_OPERATOR_SURFACE.md` | CIO Agent Runtime Operator Surface | review_required | MISSING HEADER | `f7f7d6fcb493` |
-| `docs/cio/CIO_API_CONTRACT_CENSUS.md` | CIO API Contract Census | review_required | MISSING HEADER | `2bfc1b20277e` |
-| `docs/cio/CIO_COMPLETENESS_MEASUREMENT.md` | CIO Completeness Measurement | review_required | MISSING HEADER | `14acacfa992e` |
-| `docs/cio/CIO_CROSS_SURFACE_LINKS.md` | CIO / Hermes / Research Intelligence links | review_required | MISSING HEADER | `643a84f55d99` |
-| `docs/cio/CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md` | CIO Decision Lineage — Operator Surface | review_required | OK | `08f390bfd657` |
+| `docs/cio/CIO_AGENT_RUNTIME_OPERATOR_SURFACE.md` | CIO Agent Runtime Operator Surface | review_required | MISSING HEADER | `df43212fbb40` |
+| `docs/cio/CIO_API_CONTRACT_CENSUS.md` | CIO API Contract Census | review_required | MISSING HEADER | `c9429de640ab` |
+| `docs/cio/CIO_COMPLETENESS_MEASUREMENT.md` | CIO Completeness Measurement | review_required | MISSING HEADER | `7fde8da5f272` |
+| `docs/cio/CIO_CROSS_SURFACE_LINKS.md` | CIO / Hermes / Research Intelligence links | review_required | MISSING HEADER | `25634e4c8927` |
+| `docs/cio/CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md` | CIO Decision Lineage — Operator Surface | review_required | OK | `41fa3994e3fc` |
 | `docs/cio/CIO_DESK_OPERATING_PACKET.md` | Trade AI — CIO Desk Operating Packet | review_required | OK | `6d3c1e290b04` |
+| `docs/cio/CIO_KNOWN_DARK_CLASSIFICATION.md` | CIO KNOWN_DARK Classification | review_required | OK | `bcf3a5a5c4fc` |
 | `docs/cio/CIO_NOTIFICATION_POLICY.md` | CIO Notification Policy — Signal over Spam | review_required | OK | `40a0bb623a7c` |
 | `docs/cio/CIO_NOTIFICATION_REPLAY_ACCEPTANCE.md` | CIO Notification Replay Acceptance | review_required | OK | `76573f672e2d` |
 | `docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md` | CIO Notification Runtime Topology | review_required | OK | `ab46eaffc931` |
-| `docs/cio/CIO_OPERATOR_EVIDENCE_SURFACE.md` | CIO Operator Evidence Surface | review_required | OK | `b93266c28b0c` |
+| `docs/cio/CIO_OPERATOR_EVIDENCE_SURFACE.md` | CIO Operator Evidence Surface | review_required | OK | `d01482dd839e` |
+| `docs/cio/CIO_SOURCE_CLOCKS.md` | CIO source clocks and Advisory Desk dependency clocks | review_required | OK | `56b4628ed5f5` |
 | `docs/cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md` | CIO Telegram converse — operator runbook | review_required | OK | `01ee6726efe4` |
 | `docs/cio/CIO_TELEGRAM_PRODUCT_STANDARD.md` | CIO Telegram Product Standard | review_required | OK | `d22ceec24059` |
 | `docs/cio/CIO_WHATSAPP_CONVERSE_RUNBOOK.md` | CIO WhatsApp converse — operator runbook (P4) | review_required | OK | `241130c46382` |
@@ -895,7 +897,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/LEARNING_LOOP.md` | Learning loop — dispositions → enrichment bias | review_required | OK | `256c98fd17bc` |
 | `docs/cio/P2B_PLAN_ENRICHMENT.md` | Phase P2b — Plan enrichment (brain depth) | review_required | OK | `84357e0f4baf` |
 | `docs/cio/PROMPT_CURATION.md` | Alex enrichment — prompt curation, versioning, evaluation | review_required | OK | `084366e658e3` |
-| `docs/cio/README.md` | CIO Desk — Architect Packet | review_required | OK | `a4cb424969bd` |
+| `docs/cio/README.md` | CIO Desk — Architect Packet | review_required | OK | `6aa207d71ebb` |
 | `docs/cio/REENTRY_RR.md` | Re-entry R:R methodology (live system) | review_required | OK | `9b9b33a8e5d0` |
 | `docs/cio/ROADMAP_GAPS.md` | Roadmap gaps — explicit “not yet” | review_required | OK | `4a998ebf44be` |
 | `docs/cio/SITUATIONS.md` | Situation catalog & plan lifecycle | review_required | OK | `e0d3e3a62f8d` |

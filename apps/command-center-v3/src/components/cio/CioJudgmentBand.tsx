@@ -36,7 +36,7 @@ export default function CioJudgmentBand({ onPolicyClick, blockersTop, scorecardN
             Light band — full brain projection is deferred so the desk stays responsive.
           </div>
         </div>
-        <Link to="/v3/cio?tab=evidence-comms&sub=full-brain" style={{ color: 'var(--accent)', fontSize: 12 }}>
+        <Link to="/cio?tab=evidence-comms&sub=full-brain" style={{ color: 'var(--accent)', fontSize: 12 }}>
           Full brain projection →
         </Link>
       </div>
@@ -57,7 +57,7 @@ export default function CioJudgmentBand({ onPolicyClick, blockersTop, scorecardN
 
       <div style={{ color: 'var(--text1)', fontSize: 13, lineHeight: 1.55, marginBottom: 14 }}>
         Posture, recommendation, and capital stance stay on{' '}
-        <Link to="/v3/cio?tab=capital-policy" style={{ color: 'var(--accent)' }}>Capital & Policy</Link>
+        <Link to="/cio?tab=capital-policy" style={{ color: 'var(--accent)' }}>Capital & Policy</Link>
         {' '}and the full brain deep view — not rebuilt on every Overview paint.
         {scorecardNote ? <span style={{ color: 'var(--text3)' }}> · {scorecardNote}</span> : null}
       </div>
