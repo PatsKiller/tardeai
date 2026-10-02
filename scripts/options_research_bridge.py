@@ -46,7 +46,7 @@ def stage_hermes_research(summary: dict, *, apply: bool = False, symbol: str = "
     ]
     desk_line = (
         f"Options desk: {summary.get('proposal_count', 0)} proposals — "
-        f"{json.dumps(summary.get('strategy_counts') or {})}. "
+        f"{', '.join(f'{k.replace(chr(95), chr(32))} {v}' for k, v in (summary.get('strategy_counts') or {}).items()) or 'none'}. "
         f"Top: {', '.join(top_bits)}"
     )
     rows_to_stage = [{"symbol": None, "topic": "Options Desk Summary", "summary": desk_line, "thesis": desk_line}]

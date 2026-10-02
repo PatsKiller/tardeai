@@ -2483,6 +2483,38 @@ def get_learning_cockpit_v1() -> dict[str, Any]:
         return {"ok": False, "error": type(exc).__name__, "authority": AUTHORITY_ADVISORY}
 
 
+# Heavy CIO compositions (brain ~460 MB, home ~400 MB, observability ~520 MB
+# peak each, measured 2026-10-02) used to build concurrently when one page
+# loaded: the CIO overview pushed portfolio-server past MemoryHigh=1.5G and
+# wedged it under kernel throttling. Each is now shared for a short TTL with a
+# single in-flight build per name, and at most CIO_HEAVY_CONCURRENCY build at
+# once. Failures are never cached.
+_HEAVY_SEM = threading.BoundedSemaphore(int(os.getenv("CIO_HEAVY_CONCURRENCY") or 1))
+_HEAVY_CACHE: dict[str, tuple[float, Any]] = {}
+_HEAVY_LOCKS: dict[str, threading.Lock] = {}
+_HEAVY_LOCKS_GUARD = threading.Lock()
+
+
+def cached_heavy(name: str, build: Any, *, ttl: float = 60.0) -> Any:
+    """Shared, single-flight, concurrency-bounded build of a heavy GET payload."""
+    with _HEAVY_LOCKS_GUARD:
+        lock = _HEAVY_LOCKS.setdefault(name, threading.Lock())
+    with lock:
+        now = time.time()
+        hit = _HEAVY_CACHE.get(name)
+        if hit is None or now - hit[0] >= ttl:
+            with _HEAVY_SEM:
+                payload = build()
+            if isinstance(payload, dict) and payload.get("ok") is False:
+                return payload
+            hit = (time.time(), payload)
+            _HEAVY_CACHE[name] = hit
+        at, payload = hit
+    if isinstance(payload, dict):
+        return {**payload, "_composition_cache": {"age_seconds": int(time.time() - at), "ttl_seconds": int(ttl)}}
+    return payload
+
+
 _OPERATOR_EVIDENCE_TTL_SEC = float(os.getenv("CIO_OPERATOR_EVIDENCE_TTL_SEC") or 120)
 _OPERATOR_EVIDENCE_LOCK = threading.Lock()
 _OPERATOR_EVIDENCE_CACHE: dict[str, Any] = {"at": 0.0, "payload": None}

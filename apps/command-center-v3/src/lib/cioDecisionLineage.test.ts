@@ -1,5 +1,5 @@
 import {
-  cioDeepLinkFocus, decisionFocusHref, decisionLineageHref, isCioLineageState, researchFocusHref,
+  cioDeepLinkFocus, decisionFocusHref, decisionLineageHref, isCioLineageState, researchFocusHref, routerPath,
 } from './cioDecisionLineage.ts'
 
 if (decisionLineageHref('dec_same_symbol_1') !== '/cio?tab=evidence-comms&sub=decision-lineage&decision=dec_same_symbol_1') {
@@ -32,3 +32,15 @@ if (focus.decision !== 'dec_1' || focus.artifact !== 'res_9' || focus.research !
   throw new Error('deep-link focus must trim ids and treat blanks as no focus')
 }
 console.log('cioDecisionLineage.test.ts deep links: ok')
+
+// Backend hrefs (scorecard tiles, evidence refs) already carry /v3; the router adds it again.
+for (const [input, want] of [
+  ['/v3/cio?tab=research', '/cio?tab=research'],
+  ['/v3/cio?tab=evidence-comms&sub=telegram-receipts', '/cio?tab=evidence-comms&sub=telegram-receipts'],
+  ['/cio?tab=decisions', '/cio?tab=decisions'],
+  ['/v3', '/'],
+  ['/v3x/keep', '/v3x/keep'],
+] as const) {
+  if (routerPath(input) !== want) throw new Error(`routerPath(${input}) = ${routerPath(input)}, want ${want}`)
+}
+console.log('cioDecisionLineage.test.ts routerPath: ok')
