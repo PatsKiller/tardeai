@@ -237,14 +237,17 @@ def test_exact_decision_lineage_carries_only_exact_cognition_and_learning_rows(t
     assert result["lineage"]["learning"]["settled_outcomes"] == []
 
 
-def test_exact_lookup_uses_bounded_tail_and_omits_unrelated_capability_scan(tmp_path, monkeypatch):
+def test_exact_lookup_keeps_old_rows_and_omits_unrelated_capability_scan(tmp_path, monkeypatch):
     import scripts.api_v3_cio as api
     import scripts.lib.cio_operator_evidence as evidence
 
+    # The exact row is the OLDEST row; a tail-only window used to drop it.
     path = tmp_path / "large.jsonl"
-    path.write_text("{\"decision_id\": \"other\", \"payload\": \"x\"}\n" * 20 + "{\"decision_id\": \"exact\"}\n")
-    monkeypatch.setattr(evidence, "_DECISION_LOOKUP_TAIL_BYTES", 32)
-    assert evidence._rows(path, decision_id="exact") == [{"decision_id": "exact"}]
+    path.write_text("{\"decision_id\": \"exact\", \"n\": 1}\n" + "{\"decision_id\": \"other\", \"payload\": \"x\"}\n" * 5000
+                    + "{\"decision_id\": \"exact\", \"n\": 2}\n")
+    monkeypatch.setattr(evidence, "_COMPOSITION_TAIL_BYTES", 64)
+    assert [r["n"] for r in evidence._rows(path, decision_id="exact")] == [1, 2]
+    assert [r["n"] for r in api._read_jsonl(path, decision_id="exact")] == [1, 2]
 
     cio_root = tmp_path / "cio"
     cio_root.mkdir()

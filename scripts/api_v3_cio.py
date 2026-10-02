@@ -51,6 +51,8 @@ import json
 import os
 import re
 import sys
+import threading
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
@@ -193,7 +195,6 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-_DECISION_LOOKUP_TAIL_BYTES = 8 * 1024 * 1024
 
 
 def _row_matches_decision(row: dict[str, Any], decision_id: str) -> bool:
@@ -239,14 +240,12 @@ def _read_jsonl(path: Path, *, decision_id: str | None = None) -> list[dict[str,
                 entries.append(row)
         return entries
 
-    if decision_id and path.stat().st_size > _DECISION_LOOKUP_TAIL_BYTES:
-        with open(path, "rb") as handle:
-            handle.seek(-_DECISION_LOOKUP_TAIL_BYTES, 2)
-            handle.readline()
-            recent = parse(handle.read().decode("utf-8", errors="replace").splitlines())
-        if recent:
-            return recent
     with open(path, encoding="utf-8", errors="replace") as handle:
+        if decision_id:
+            # Exact lookups scan the whole store (older rows of the same
+            # decision must not drop) but only parse lines naming the id.
+            did = str(decision_id)
+            return parse(line for line in handle if did in line)
         return parse(handle)
 
 
@@ -2438,12 +2437,31 @@ def get_learning_cockpit_v1() -> dict[str, Any]:
         return {"ok": False, "error": type(exc).__name__, "authority": AUTHORITY_ADVISORY}
 
 
+_OPERATOR_EVIDENCE_TTL_SEC = float(os.getenv("CIO_OPERATOR_EVIDENCE_TTL_SEC") or 120)
+_OPERATOR_EVIDENCE_LOCK = threading.Lock()
+_OPERATOR_EVIDENCE_CACHE: dict[str, Any] = {"at": 0.0, "payload": None}
+
+
 def get_operator_evidence_v1() -> dict[str, Any]:
-    """Read-only CIO evidence, cognition, learning, and capability coverage."""
+    """Read-only CIO evidence, cognition, learning, and capability coverage.
+
+    Composition reads ~25 runtime stores, so one composition is shared for
+    _OPERATOR_EVIDENCE_TTL_SEC and concurrent requests wait for the single
+    in-flight build instead of each starting their own.  composition_as_of
+    stays the time the shared composition was built; cache_age_seconds says
+    how old it is.
+    """
     try:
         from scripts.lib.cio_operator_evidence import build_operator_evidence
 
-        return build_operator_evidence()
+        with _OPERATOR_EVIDENCE_LOCK:
+            now = time.time()
+            cached = _OPERATOR_EVIDENCE_CACHE["payload"]
+            if cached is None or now - _OPERATOR_EVIDENCE_CACHE["at"] >= _OPERATOR_EVIDENCE_TTL_SEC:
+                cached = build_operator_evidence()
+                _OPERATOR_EVIDENCE_CACHE.update({"at": now, "payload": cached})
+            age = int(now - _OPERATOR_EVIDENCE_CACHE["at"])
+        return {**cached, "cache_age_seconds": age, "cache_ttl_seconds": int(_OPERATOR_EVIDENCE_TTL_SEC)}
     except Exception as exc:
         return {
             "ok": False,

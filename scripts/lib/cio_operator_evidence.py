@@ -6,10 +6,9 @@ projection; an absent receipt is UNKNOWN, never REJECTED or USED.
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -24,9 +23,6 @@ def _root() -> Path:
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-_DECISION_LOOKUP_TAIL_BYTES = 8 * 1024 * 1024
 
 
 def _row_matches_decision(row: dict[str, Any], decision_id: str) -> bool:
@@ -66,20 +62,44 @@ def _parse_rows(lines: Iterable[str], *, predicate: Any = None) -> list[dict[str
     return out
 
 
+# Composition reads only a bounded window from the end of each store.  Every
+# consumer below keeps the most recent rows (100-250); fully parsing the
+# 60-120 MB stores on each request cost ~23 s and ~1.6 GB RSS per call.
+_COMPOSITION_TAIL_BYTES = int(os.getenv("CIO_EVIDENCE_TAIL_BYTES") or 1024 * 1024)
+
+
+def _tail_lines(path: Path, max_bytes: int) -> list[str]:
+    size = path.stat().st_size
+    with path.open("rb") as handle:
+        if size > max_bytes:
+            handle.seek(-max_bytes, os.SEEK_END)
+            handle.readline()  # discard the partial first line
+        return handle.read().decode("utf-8", errors="replace").splitlines()
+
+
 def _rows(path: Path, *, decision_id: str | None = None) -> list[dict[str, Any]]:
+    """Rows for one exact decision (whole store), or the store's recent window.
+
+    Exact lookups stream the whole file but only parse lines that contain the
+    decision id, so older rows for the same decision are never dropped and a
+    miss does not parse 100+ MB of JSON.
+    """
     if not path.is_file():
         return []
-    predicate = (lambda row: _row_matches_decision(row, decision_id)) if decision_id else None
-    if decision_id and path.stat().st_size > _DECISION_LOOKUP_TAIL_BYTES:
-        with path.open("rb") as handle:
-            handle.seek(-_DECISION_LOOKUP_TAIL_BYTES, os.SEEK_END)
-            handle.readline()  # discard the partial first line
-            tail = handle.read().decode("utf-8", errors="replace").splitlines()
-        recent = _parse_rows(tail, predicate=predicate)
-        if recent:
-            return recent
+    did = str(decision_id or "").strip()
+    if did:
+        predicate = lambda row: _row_matches_decision(row, did)  # noqa: E731
+        with path.open("r", encoding="utf-8", errors="replace") as handle:
+            return _parse_rows((line for line in handle if did in line), predicate=predicate)
+    return _parse_rows(_tail_lines(path, _COMPOSITION_TAIL_BYTES))
+
+
+def _rows_containing(path: Path, needles: set[str]) -> list[dict[str, Any]]:
+    """Whole-store rows whose raw line contains any needle (exact ids)."""
+    if not needles or not path.is_file():
+        return []
     with path.open("r", encoding="utf-8", errors="replace") as handle:
-        return _parse_rows(handle, predicate=predicate)
+        return _parse_rows(line for line in handle if any(n in line for n in needles))
 
 
 def _stamp(row: dict[str, Any] | None) -> str | None:
@@ -92,23 +112,48 @@ def _stamp(row: dict[str, Any] | None) -> str | None:
     return None
 
 
-def _latest_stamp(rows: Iterable[dict[str, Any]]) -> str | None:
-    values = [v for row in rows if (v := _stamp(row))]
-    return max(values) if values else None
+def _parse_ts(value: Any) -> datetime | None:
+    try:
+        if isinstance(value, (int, float)):
+            return datetime.fromtimestamp(float(value), tz=timezone.utc)
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return None
 
 
-def _source_sha(path: Path) -> str | None:
+def _latest_stamp(rows: Iterable[dict[str, Any]], *, not_after: datetime | None = None) -> str | None:
+    """Latest parseable row clock.  Mixed formats compare as instants, not
+    strings, and clocks in the future (beyond a 5-minute skew) are ignored."""
+    ceiling = (not_after or datetime.now(timezone.utc)) + timedelta(minutes=5)
+    best: tuple[datetime, str] | None = None
+    for row in rows:
+        raw = _stamp(row)
+        parsed = _parse_ts(raw) if raw else None
+        if parsed is None or parsed > ceiling:
+            continue
+        if best is None or parsed > best[0]:
+            best = (parsed, str(raw))
+    return best[1] if best else None
+
+
+def _source_version(path: Path) -> str | None:
+    """Cheap store version (size + mtime).  Hashing every store per request
+    re-read ~600 MB; a content hash is not needed to tell versions apart."""
     if not path.is_file():
         return None
-    return hashlib.sha256(path.read_bytes()).hexdigest()
+    st = path.stat()
+    return f"bytes={st.st_size};mtime_ns={st.st_mtime_ns}"
 
 
-def _source_meta(path: Path, rows: list[dict[str, Any]]) -> dict[str, Any]:
+def _source_meta(path: Path, rows: list[dict[str, Any]], *, exact: bool = False) -> dict[str, Any]:
     return {
         "source_ref": str(path),
-        "source_sha": _source_sha(path),
+        "source_sha": None,
+        "source_version": _source_version(path),
         "source_as_of": _latest_stamp(rows),
         "row_count": len(rows),
+        "row_scope": "EXACT_DECISION_SCAN" if exact else "RECENT_WINDOW",
         "evidence_class": "DURABLE_RUNTIME_ARTIFACT" if path.is_file() else "UNAVAILABLE",
     }
 
@@ -313,11 +358,17 @@ def _research_provenance(root: Path, *, decision_id: str | None = None) -> dict[
     by_artifact: dict[str, dict[str, Any]] = {}
     sources: list[dict[str, Any]] = []
     for path in paths:
-        # Research artifacts can be shared by several exact decisions.  Keep
-        # the full artifact merge so reverse links retain every decision ref;
-        # the public builder filters the merged result by decision_id below.
-        rows = _rows(path)
-        sources.append({"source": path.name, **_source_meta(path, rows)})
+        # Exact decision lookups read only rows that reference the decision;
+        # the global view reads each store's recent window.
+        rows = _rows(path, decision_id=decision_id)
+        sources.append({"source": path.name, **_source_meta(path, rows, exact=bool(decision_id))})
+        if decision_id:
+            # A shared artifact keeps every decision that referenced it: pull
+            # all rows of the artifacts this decision touched (second pass,
+            # still prefiltered by artifact id).
+            ids = {a["artifact_id"] for r in _research_rows(path, rows)
+                   if (a := _research_artifact(r, source_name=path.name))}
+            rows = _rows_containing(path, ids)
         for row in list(_research_rows(path, rows))[-250:]:
             artifact = _research_artifact(row, source_name=path.name)
             if not artifact:
@@ -325,9 +376,18 @@ def _research_provenance(root: Path, *, decision_id: str | None = None) -> dict[
             artifact_id = artifact["artifact_id"]
             by_artifact[artifact_id] = _merge_research_artifact(by_artifact.get(artifact_id, {}), artifact)
     artifacts = list(by_artifact.values())
+    did = str(decision_id or "").strip()
+    if did:
+        # Never hand a decision the global artifact list: keep only artifacts
+        # that carry this exact decision id.
+        artifacts = [
+            a for a in artifacts
+            if a.get("decision_id") == did or did in (a.get("decision_ids") or [])
+        ]
     artifacts.sort(key=lambda item: (str(item.get("retrieved_at") or ""), item["artifact_id"]), reverse=True)
     return {
         "schema": RESEARCH_SCHEMA,
+        "decision_id": did or None,
         "sources": sources,
         "artifacts": artifacts,
         "retrieved": [a for a in artifacts if a["status"] == "RETRIEVED"],
@@ -397,7 +457,7 @@ def _cognition(root: Path, *, decision_id: str | None = None) -> dict[str, Any]:
     sources: list[dict[str, Any]] = []
     for kind, path in paths.items():
         rows = _rows(path, decision_id=decision_id)
-        sources.append({"source": path.name, **_source_meta(path, rows)})
+        sources.append({"source": path.name, **_source_meta(path, rows, exact=bool(decision_id))})
         for row in rows[-100:]:
             retrieved = kind in {"memory_retrieval", "memory_context", "research_lineage"} and bool(
                 row.get("retrieval_receipt_id") or row.get("memory_ids") or row.get("has_context") or row.get("result_id")
@@ -469,7 +529,7 @@ def _learning(root: Path, *, decision_id: str | None = None) -> dict[str, Any]:
         "instrument_records": root / "cio_instrument_records.jsonl",
     }
     rows_by_kind = {kind: _rows(path, decision_id=decision_id) for kind, path in paths.items()}
-    sources = [{"source": path.name, **_source_meta(path, rows_by_kind[kind])} for kind, path in paths.items()]
+    sources = [{"source": path.name, **_source_meta(path, rows_by_kind[kind], exact=bool(decision_id))} for kind, path in paths.items()]
     outcomes = rows_by_kind["outcomes"]
     settled_statuses = {"OUTCOME_EVALUATED", "SETTLED", "SETTLED_OUTCOME", "CONFIRMED", "REFUTED", "EXPIRED"}
     settled = [r for r in outcomes if str(r.get("status") or r.get("outcome") or "").upper() in settled_statuses]
@@ -603,8 +663,9 @@ def _capability_coverage(root: Path, *, composition_as_of: str | None = None) ->
         else:
             state = "UNKNOWN"
             reason = "producer contract and runtime artifact could not be verified"
-        last_producer = _latest_stamp(producer_rows)
-        last_consumer = _latest_stamp(direct_consumers)
+        ceiling = _parse_ts(composed)
+        last_producer = _latest_stamp(producer_rows, not_after=ceiling)
+        last_consumer = _latest_stamp(direct_consumers, not_after=ceiling)
         rows.append({
             "capability": capability,
             "contract": producer,
@@ -619,7 +680,8 @@ def _capability_coverage(root: Path, *, composition_as_of: str | None = None) ->
             "current_status": state,
             "state": state,
             "reason": reason,
-            "source_sha": _source_sha(producer_path),
+            "source_sha": None,
+            "source_version": _source_version(producer_path),
             "evidence_class": "RUNTIME_ARTIFACT_CENSUS",
         })
     counts = {state: sum(row["state"] == state for row in rows) for state in ("LIVE", "PARTIAL", "UNWIRED", "DARK", "UNKNOWN")}
