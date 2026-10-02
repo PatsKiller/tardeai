@@ -521,6 +521,79 @@ def finalize_notification_required(
     )
 
 
+def record_canon_frameworks(
+    workflow_id: str,
+    decision_id: str | None = None,
+    framework_refs: Iterable[str] | None = None,
+    canon_refs: Iterable[str] | None = None,
+    methodology_ref: str | None = None,
+    *,
+    path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Record framework selection and canonical references for a CIO decision.
+
+    canon_frameworks is UNWIRED; this function persists it to cio_workflow_lineage
+    so the decision lineage projection can derive LIVE evidence instead of UNWIRED.
+    Writes to the envelope with decision_id for query-time matching.
+    """
+    store = LineageStore(path)
+    updates: dict[str, Any] = {}
+    did = _optional_str(decision_id)
+
+    if framework_refs or canon_refs or methodology_ref or did:
+        if framework_refs:
+            updates["framework_refs"] = list(framework_refs)
+        if canon_refs:
+            updates["canon_refs"] = list(canon_refs)
+        if methodology_ref:
+            updates["methodology_ref"] = str(methodology_ref)
+        if did:
+            updates["decision_id"] = did
+            # Include source_ref and source_as_of so projection marks it LIVE not PARTIAL
+            updates["source_ref"] = "cio_canon_frameworks"
+            updates["source_as_of"] = _now()
+
+        updates["stage_status"] = {"canon_frameworks": STAGE_COMPLETED}
+        return store.upsert_envelope(workflow_id, updates)
+
+    return {}
+
+
+def record_specialist_disagreement(
+    workflow_id: str,
+    decision_id: str | None = None,
+    specialist_disagreement: str | None = None,
+    disagreement_receipt: str | None = None,
+    *,
+    path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Record specialist disagreement or consensus after specialist review.
+
+    specialist_disagreement is UNWIRED; this function persists it to cio_workflow_lineage
+    so the decision lineage projection can derive LIVE evidence instead of UNWIRED.
+    Writes to the envelope with decision_id for query-time matching.
+    """
+    store = LineageStore(path)
+    updates: dict[str, Any] = {}
+    did = _optional_str(decision_id)
+
+    if specialist_disagreement or disagreement_receipt or did:
+        if specialist_disagreement:
+            updates["specialist_disagreement"] = str(specialist_disagreement)
+        if disagreement_receipt:
+            updates["disagreement_receipt"] = str(disagreement_receipt)
+        if did:
+            updates["decision_id"] = did
+            # Include source_ref and source_as_of so projection marks it LIVE not PARTIAL
+            updates["source_ref"] = "cio_specialist_disagreement"
+            updates["source_as_of"] = _now()
+
+        updates["stage_status"] = {"specialist_disagreement": STAGE_COMPLETED}
+        return store.upsert_envelope(workflow_id, updates)
+
+    return {}
+
+
 def persist_canonical_checkpoint(
     root: Path | str,
     workflow_id: str,
