@@ -594,6 +594,150 @@ def record_specialist_disagreement(
     return {}
 
 
+def record_model_route(
+    workflow_id: str,
+    decision_id: str | None = None,
+    model_route: str | None = None,
+    model_used: str | None = None,
+    provider: str | None = None,
+    model_provider: str | None = None,
+    *,
+    path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Record model routing decision and provider selection.
+
+    model_route is DARK (producer reads but doesn't write); this function wires
+    the producer so the lineage projection can derive LIVE evidence.
+    """
+    store = LineageStore(path)
+    updates: dict[str, Any] = {}
+    did = _optional_str(decision_id)
+
+    if model_route or model_used or provider or model_provider or did:
+        if model_route:
+            updates["model_route"] = str(model_route)
+        if model_used:
+            updates["model_used"] = str(model_used)
+        if provider:
+            updates["provider"] = str(provider)
+        if model_provider:
+            updates["model_provider"] = str(model_provider)
+        if did:
+            updates["decision_id"] = did
+            updates["source_ref"] = "cio_model_route"
+            updates["source_as_of"] = _now()
+
+        updates["stage_status"] = {"model_route": STAGE_COMPLETED}
+        return store.upsert_envelope(workflow_id, updates)
+
+    return {}
+
+
+def record_counter_thesis(
+    workflow_id: str,
+    decision_id: str | None = None,
+    counter_thesis: str | None = None,
+    counter_case: str | None = None,
+    *,
+    path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Record counter-thesis generation and evaluation.
+
+    counter_thesis is DARK (producer reads but doesn't write); this function wires
+    the producer so the lineage projection can derive LIVE evidence.
+    """
+    store = LineageStore(path)
+    updates: dict[str, Any] = {}
+    did = _optional_str(decision_id)
+
+    if counter_thesis or counter_case or did:
+        if counter_thesis:
+            updates["counter_thesis"] = str(counter_thesis)
+        if counter_case:
+            updates["counter_case"] = str(counter_case)
+        if did:
+            updates["decision_id"] = did
+            updates["source_ref"] = "cio_counter_thesis"
+            updates["source_as_of"] = _now()
+
+        updates["stage_status"] = {"counter_thesis": STAGE_COMPLETED}
+        return store.upsert_envelope(workflow_id, updates)
+
+    return {}
+
+
+def record_confidence(
+    workflow_id: str,
+    decision_id: str | None = None,
+    confidence: str | int | float | None = None,
+    confidence_raw: str | None = None,
+    confidence_score: str | int | float | None = None,
+    *,
+    path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Record confidence score and assessment for a decision.
+
+    confidence is DARK (producer reads but doesn't write); this function wires
+    the producer so the lineage projection can derive LIVE evidence.
+    """
+    store = LineageStore(path)
+    updates: dict[str, Any] = {}
+    did = _optional_str(decision_id)
+
+    if confidence is not None or confidence_raw or confidence_score is not None or did:
+        if confidence is not None:
+            updates["confidence"] = confidence if isinstance(confidence, (int, float)) else str(confidence)
+        if confidence_raw:
+            updates["confidence_raw"] = str(confidence_raw)
+        if confidence_score is not None:
+            updates["confidence_score"] = confidence_score if isinstance(confidence_score, (int, float)) else str(confidence_score)
+        if did:
+            updates["decision_id"] = did
+            updates["source_ref"] = "cio_confidence"
+            updates["source_as_of"] = _now()
+
+        updates["stage_status"] = {"confidence": STAGE_COMPLETED}
+        return store.upsert_envelope(workflow_id, updates)
+
+    return {}
+
+
+def record_falsifier(
+    workflow_id: str,
+    decision_id: str | None = None,
+    falsifier: str | None = None,
+    invalidation: str | None = None,
+    invalidation_condition: str | None = None,
+    *,
+    path: Path | str | None = None,
+) -> dict[str, Any]:
+    """Record falsifier (invalidation condition) for a decision.
+
+    falsifier is DARK (producer reads but doesn't write); this function wires
+    the producer so the lineage projection can derive LIVE evidence.
+    """
+    store = LineageStore(path)
+    updates: dict[str, Any] = {}
+    did = _optional_str(decision_id)
+
+    if falsifier or invalidation or invalidation_condition or did:
+        if falsifier:
+            updates["falsifier"] = str(falsifier)
+        if invalidation:
+            updates["invalidation"] = str(invalidation)
+        if invalidation_condition:
+            updates["invalidation_condition"] = str(invalidation_condition)
+        if did:
+            updates["decision_id"] = did
+            updates["source_ref"] = "cio_falsifier"
+            updates["source_as_of"] = _now()
+
+        updates["stage_status"] = {"falsifier": STAGE_COMPLETED}
+        return store.upsert_envelope(workflow_id, updates)
+
+    return {}
+
+
 def persist_canonical_checkpoint(
     root: Path | str,
     workflow_id: str,
