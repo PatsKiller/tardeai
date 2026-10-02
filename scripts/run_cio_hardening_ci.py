@@ -891,6 +891,8 @@ GATES = [
             "tests/test_research_delta_index_20261002.py",
             # /api/v3/maturity/learning: stream + cache the 270 MB lesson store (was ~910 MB/request).
             "tests/test_maturity_lessons_stream_cache_20261002.py",
+            # CIO overview: heavy compositions shared + bounded (Step 18 memory wedge).
+            "tests/test_cio_heavy_composition_guard_20261002.py",
             "tests/test_cio_advisory_dependency_clocks_20261002.py",
             "tests/test_cio_cross_surface_links_20261002.py",
             "tests/test_cio_decision_lineage_states_20261002.py",

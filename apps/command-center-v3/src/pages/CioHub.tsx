@@ -1771,6 +1771,22 @@ type PolicyFieldMeta = {
   suggestions?: string[]
 }
 
+/** Human text for a policy value: ranges read "2–15% (target 5%)", never raw JSON. */
+function policyValueText(value: unknown): string {
+  if (value == null) return '—'
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) return value.map(policyValueText).join(', ')
+  if (typeof value === 'object') {
+    const v = value as Record<string, unknown>
+    if ('min' in v || 'max' in v) {
+      const band = `${v.min ?? '—'}–${v.max ?? '—'}%`
+      return v.target != null ? `${band} (target ${v.target}%)` : band
+    }
+    return Object.entries(v).map(([k, x]) => `${k.replace(/_/g, ' ')}: ${policyValueText(x)}`).join(' · ')
+  }
+  return String(value)
+}
+
 const POLICY_FIELD_META: Record<string, PolicyFieldMeta> = {
   cash_target_range_pct: { purpose: 'Target cash allocation', guidance: 'Set the minimum, desired target, and maximum cash band. The range must reflect your liquidity policy.', input: 'range', suggestions: ['Use a wider minimum during withdrawals or high volatility.', 'Keep min ≤ target ≤ max.'] },
   minimum_liquidity_reserve_usd: { purpose: 'Liquidity floor', guidance: 'Cash that must remain available before any deployment plan is considered.', input: 'money', suggestions: ['Include known withdrawals and a contingency buffer.', 'Do not count earmarked cash as deployable.'] },
@@ -1940,7 +1956,7 @@ function OperatorPolicyPanel() {
           {policy.legacy_conflicts.map(conflict => (
             <div key={conflict.field} style={{ borderBottom: '1px solid var(--border)', padding: '9px 0', fontSize: 12 }}>
               <strong style={{ color: 'var(--text0)' }}>{policyLabel(conflict.field)}</strong>
-              <span style={{ color: 'var(--text2)', marginLeft: 10 }}>{conflict.claims.map(c => JSON.stringify(c.value)).join(' · ')}</span>
+              <span style={{ color: 'var(--text2)', marginLeft: 10 }}>{conflict.claims.map(c => policyValueText(c.value)).join(' · ')}</span>
             </div>
           ))}
         </section>
@@ -1976,7 +1992,7 @@ function OperatorPolicyPanel() {
         {Object.entries(policy.fields).map(([name, field]) => (
           <div key={name} style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1fr) 2fr auto', gap: 10, borderBottom: '1px solid var(--border)', padding: '8px 0', fontSize: 12 }}>
             <span style={{ color: 'var(--text1)' }}>{policyLabel(name)}</span>
-            <span style={{ color: field.operator_confirmed ? 'var(--text0)' : 'var(--text3)' }}>{field.value == null ? 'POLICY REQUIRED' : typeof field.value === 'string' ? field.value : JSON.stringify(field.value)}</span>
+            <span style={{ color: field.operator_confirmed ? 'var(--text0)' : 'var(--text3)' }}>{field.value == null ? 'POLICY REQUIRED' : policyValueText(field.value)}</span>
             <span style={{ color: field.operator_confirmed ? 'var(--green)' : 'var(--amber)', display: 'flex', alignItems: 'center', gap: 8 }}>{field.status}<button type="button" onClick={() => openFieldManager(name)} style={{ padding: '4px 8px', border: '1px solid var(--border)', background: 'var(--bg0)', color: 'var(--accent)', cursor: 'pointer' }}>Manage</button></span>
           </div>
         ))}
@@ -1989,8 +2005,8 @@ function OperatorPolicyPanel() {
           {meta.suggestions?.length ? <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--border)', background: 'var(--bg0)', color: 'var(--text2)', fontSize: 11 }}><strong title="Deterministic starting points only; nothing is applied automatically.">Suggested starting points ⓘ</strong><ul style={{ margin: '6px 0 0 18px', padding: 0 }}>{meta.suggestions.map(s => <li key={s} title="Advisory suggestion only — review against your actual circumstances.">{s}</li>)}</ul></div> : null}
           <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}><button type="button" onClick={() => void askDeepSeek()} disabled={llmBusy} title="Ask DeepSeek for advisory criteria and questions. It cannot ratify or save this policy." style={{ padding: '6px 10px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: llmBusy ? 'wait' : 'pointer' }}>{llmBusy ? 'Asking DeepSeek…' : 'Ask DeepSeek for help'}</button><span style={{ color: 'var(--text3)', fontSize: 11 }}>Advisory only · operator confirms the final value</span></div>
           {llmSuggestion && <div role="status" style={{ marginTop: 10, padding: 10, borderLeft: '3px solid var(--accent)', background: 'var(--accent-dim)', color: 'var(--text1)', fontSize: 11, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}><strong>DeepSeek suggestion</strong><div style={{ marginTop: 5 }}>{llmSuggestion}</div></div>}
-          {selected?.value != null && <div style={{ marginTop: 10, padding: 10, background: 'var(--bg0)', color: 'var(--text2)', fontSize: 11 }}>Current recorded value: <code>{JSON.stringify(selected.value)}</code></div>}
-          {observedClaims.length > 0 && <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--amber)', color: 'var(--text2)', fontSize: 11 }}>Existing conflicting evidence (draft only): {observedClaims.map(c => `${c.source}${c.field && c.field !== manageField ? ` (${c.field})` : ''}: ${JSON.stringify(c.value)}`).join(' · ')}. The operator must choose the final value.</div>}
+          {selected?.value != null && <div style={{ marginTop: 10, padding: 10, background: 'var(--bg0)', color: 'var(--text2)', fontSize: 11 }}>Current recorded value: <code>{policyValueText(selected.value)}</code></div>}
+          {observedClaims.length > 0 && <div style={{ marginTop: 10, padding: 10, border: '1px solid var(--amber)', color: 'var(--text2)', fontSize: 11 }}>Existing conflicting evidence (draft only): {observedClaims.map(c => `${c.source}${c.field && c.field !== manageField ? ` (${c.field})` : ''}: ${policyValueText(c.value)}`).join(' · ')}. The operator must choose the final value.</div>}
           <div style={{ marginTop: 14 }}>{renderManagedInput()}</div>
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}><button type="button" onClick={() => setManageField(null)} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Cancel</button><button type="button" onClick={reviewManagedValue} disabled={busy} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, cursor: 'pointer' }}>Review and continue</button></div>
         </div>

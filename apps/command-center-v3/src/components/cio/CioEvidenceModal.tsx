@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import type { ScorecardTile, ScorecardEvidenceRef } from './CioScorecardStrip'
 import { RADIUS, SHADOW } from '../../lib/designTokens'
 import { cioLabel } from '../../lib/cioLabels'
+import { routerPath } from '../../lib/cioDecisionLineage'
 
 type Props = {
   tile: ScorecardTile | null
@@ -17,8 +18,8 @@ const STATUS_COLOR: Record<string, string> = {
 }
 
 function evidenceHref(ref: ScorecardEvidenceRef): string | null {
-  if (ref.href) return ref.href
-  if (ref.path && String(ref.path).startsWith('/')) return String(ref.path)
+  if (ref.href) return routerPath(ref.href)
+  if (ref.path && String(ref.path).startsWith('/')) return routerPath(String(ref.path))
   return null
 }
 
@@ -162,7 +163,7 @@ export default function CioEvidenceModal({ tile, onClose, onOpenTab }: Props) {
             ))}
             {tile.href ? (
               <Link
-                to={tile.href}
+                to={routerPath(tile.href)}
                 onClick={onClose}
                 style={{
                   border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--accent)',
