@@ -956,6 +956,13 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "Librarian-lite reference for one web source used by the residual web lane (cio_web_librarian.source_ref/summarize); citation plumbing, provenance is surfaced via research provenance.",
       "owner_hint": "scripts/lib/cio_web_librarian.py"
+    },
+    {
+      "name": "schema:OperatorDisposition@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Operator decision disposition records (APPROVED/REJECTED/HOLD_FOR_REVIEW). Surfaced in decision-lineage audit trail and operator-evidence projections. Produced by cio_decision_disposition.DispositionRecorder when operators manually review CIO decisions.",
+      "owner_hint": "scripts/lib/cio_decision_disposition.py"
     }
   ]
 }

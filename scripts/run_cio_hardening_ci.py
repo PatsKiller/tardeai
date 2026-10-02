@@ -906,6 +906,14 @@ GATES = [
             # Source-side API census and produced-versus-surfaced measurement.
             "tests/test_cio_api_contract_census.py",
             "tests/test_cio_completeness_measurement.py",
+            # Flight recorder (Phases A-D): wire UNWIRED/DARK/MISSING decision lineage stages (10-02).
+            "tests/test_canon_frameworks_lineage_20261003.py",
+            "tests/test_specialist_disagreement_lineage_20261003.py",
+            "tests/test_model_route_lineage_20261003.py",
+            "tests/test_counter_thesis_lineage_20261003.py",
+            "tests/test_confidence_lineage_20261003.py",
+            "tests/test_falsifier_lineage_20261003.py",
+            "tests/test_operator_disposition_lineage_20261003.py",
         ],
     ),
     # A failed producer must never overwrite good cached content. Registered here
