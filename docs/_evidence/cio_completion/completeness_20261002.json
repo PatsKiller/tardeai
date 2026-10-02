@@ -1,0 +1,2161 @@
+{
+  "authority": "READ_ONLY_ADVISORY",
+  "by_kind": {
+    "capability": {
+      "operator_visible": 23,
+      "produced": 23,
+      "produced_not_surfaced": 0
+    },
+    "route": {
+      "operator_visible": 17,
+      "produced": 46,
+      "produced_not_surfaced": 29
+    },
+    "schema": {
+      "operator_visible": 21,
+      "produced": 134,
+      "produced_not_surfaced": 113
+    }
+  },
+  "census_schema": "CIOApiContractCensus@v2",
+  "cio_capabilities_operator_visible": [
+    "capability:CIO synthesis",
+    "capability:Hermes research",
+    "capability:InstrumentRecord",
+    "capability:belief writer",
+    "capability:canon retrieval",
+    "capability:commitment",
+    "capability:delivery/outbox",
+    "capability:external research",
+    "capability:graph propagation",
+    "capability:historical analogue retrieval",
+    "capability:hypothesis",
+    "capability:identity resolution",
+    "capability:judgment",
+    "capability:lesson",
+    "capability:memory retrieval",
+    "capability:notification policy",
+    "capability:office truth",
+    "capability:operator feedback",
+    "capability:outcome checkpoint",
+    "capability:outcome settlement",
+    "capability:persistent cognition",
+    "capability:specialist artifacts",
+    "capability:specialist disagreement",
+    "route:/api/v2/cio/report-v2",
+    "route:/api/v2/cio/youtube-research-queue",
+    "route:/api/v3/cio/agent-research-ops",
+    "route:/api/v3/cio/brain",
+    "route:/api/v3/cio/brain/policy",
+    "route:/api/v3/cio/decision/*",
+    "route:/api/v3/cio/dispositions",
+    "route:/api/v3/cio/home",
+    "route:/api/v3/cio/intelligence/*",
+    "route:/api/v3/cio/investment-product",
+    "route:/api/v3/cio/observability",
+    "route:/api/v3/cio/operator-evidence",
+    "route:/api/v3/cio/plans/*",
+    "route:/api/v3/cio/research-provenance",
+    "route:/api/v3/cio/scorecard",
+    "route:/api/v3/cio/symbol-thesis/*",
+    "route:/api/v3/cio/universe-theses",
+    "schema:AgentRuntimeProof@v1",
+    "schema:CCRecordNarrativeCoverage@v1",
+    "schema:CIOExpiredMaturityObserve@v1",
+    "schema:CIOGraphImpactS6@v1",
+    "schema:CIOIdentityCoverage@v1",
+    "schema:CIONotificationBlock@v1",
+    "schema:CIOOutcomeMaturity@v1",
+    "schema:CIOProvisionalLessons@v1",
+    "schema:CIOReentryBookLabels@v1",
+    "schema:CIOResearchFailHistogram@v1",
+    "schema:CIOResearchProvenance@v1",
+    "schema:CIOResearchVerdictCounts@v1",
+    "schema:CIOSituationState@v1",
+    "schema:CashSleeveLetter@v1",
+    "schema:CheckpointLineageHealth@v1",
+    "schema:HermesResearchLinks@v1",
+    "schema:HoldingsDataQuality@v1",
+    "schema:OfficeSituationScan@v1",
+    "schema:OperatorInvestmentPolicy@v1",
+    "schema:OperatorTickerFeedback@v1",
+    "schema:SurfaceAStatus@v1"
+  ],
+  "cio_capabilities_produced": [
+    "capability:CIO synthesis",
+    "capability:Hermes research",
+    "capability:InstrumentRecord",
+    "capability:belief writer",
+    "capability:canon retrieval",
+    "capability:commitment",
+    "capability:delivery/outbox",
+    "capability:external research",
+    "capability:graph propagation",
+    "capability:historical analogue retrieval",
+    "capability:hypothesis",
+    "capability:identity resolution",
+    "capability:judgment",
+    "capability:lesson",
+    "capability:memory retrieval",
+    "capability:notification policy",
+    "capability:office truth",
+    "capability:operator feedback",
+    "capability:outcome checkpoint",
+    "capability:outcome settlement",
+    "capability:persistent cognition",
+    "capability:specialist artifacts",
+    "capability:specialist disagreement",
+    "route:/api/v2/cio",
+    "route:/api/v2/cio/capital-plan",
+    "route:/api/v2/cio/report-v2",
+    "route:/api/v2/cio/sector-opportunities",
+    "route:/api/v2/cio/youtube-research-queue",
+    "route:/api/v3/cio",
+    "route:/api/v3/cio/actions",
+    "route:/api/v3/cio/agent-research-ops",
+    "route:/api/v3/cio/ask-thesis/*",
+    "route:/api/v3/cio/brain",
+    "route:/api/v3/cio/brain/capital-plan",
+    "route:/api/v3/cio/brain/data-health",
+    "route:/api/v3/cio/brain/intelligence-lifecycle",
+    "route:/api/v3/cio/brain/learning-cockpit",
+    "route:/api/v3/cio/brain/learning-review",
+    "route:/api/v3/cio/brain/market-context",
+    "route:/api/v3/cio/brain/maturity-contract",
+    "route:/api/v3/cio/brain/methodology",
+    "route:/api/v3/cio/brain/model-performance",
+    "route:/api/v3/cio/brain/policy",
+    "route:/api/v3/cio/brain/policy-provenance",
+    "route:/api/v3/cio/brain/portfolio-state",
+    "route:/api/v3/cio/brain/portfolio-thesis",
+    "route:/api/v3/cio/brain/seasonality",
+    "route:/api/v3/cio/decision/*",
+    "route:/api/v3/cio/decision/*#get_decision_dispositions",
+    "route:/api/v3/cio/delegation",
+    "route:/api/v3/cio/desk-note",
+    "route:/api/v3/cio/dispositions",
+    "route:/api/v3/cio/home",
+    "route:/api/v3/cio/intelligence/*",
+    "route:/api/v3/cio/investment-product",
+    "route:/api/v3/cio/observability",
+    "route:/api/v3/cio/operator-evidence",
+    "route:/api/v3/cio/plans",
+    "route:/api/v3/cio/plans/*",
+    "route:/api/v3/cio/r71-fabric-map",
+    "route:/api/v3/cio/research-provenance",
+    "route:/api/v3/cio/scorecard",
+    "route:/api/v3/cio/snapshot",
+    "route:/api/v3/cio/symbol-thesis/*",
+    "route:/api/v3/cio/thesis",
+    "route:/api/v3/cio/thesis-research-context/*",
+    "route:/api/v3/cio/thesis-research-proposal",
+    "route:/api/v3/cio/thesis-ri-pipeline/*",
+    "route:/api/v3/cio/universe-theses",
+    "schema:AgentRoutingDisagreement@v1",
+    "schema:AgentRuntimeProof@v1",
+    "schema:AlertQuality@v1",
+    "schema:BitemporalEvaluation@v1",
+    "schema:BoundedContextBudget@v1",
+    "schema:BuyReadyInstitutionalPacket@v2",
+    "schema:CCRecordNarrativeCoverage@v1",
+    "schema:CIOAdvisoryDeliveryReceipt@v1",
+    "schema:CIOAgentBrief@v1",
+    "schema:CIOAttentionAnswer@v1",
+    "schema:CIOAvoidRefusal@v1",
+    "schema:CIOCognitionPack@v1",
+    "schema:CIOCognitionRefs@v1",
+    "schema:CIOCouncilSynthesis@v1",
+    "schema:CIOCurrentProductUnavailable@v1",
+    "schema:CIODiligenceP2Census@v1",
+    "schema:CIOEnvelopeIntegration@v1",
+    "schema:CIOExpiredMaturityObserve@v1",
+    "schema:CIOGraphImpactHeld@v1",
+    "schema:CIOGraphImpactS6@v1",
+    "schema:CIOIdentityCoverage@v1",
+    "schema:CIOIdentityRegisterApply@v1",
+    "schema:CIOIdentityRegisterDry@v1",
+    "schema:CIOLiveDeliveryAudit@v1",
+    "schema:CIONotificationBlock@v1",
+    "schema:CIOOutcomeMaturity@v1",
+    "schema:CIOPositionStateMatrix@v1",
+    "schema:CIOProvisionalLessons@v1",
+    "schema:CIOReassessment@v1",
+    "schema:CIOReconciliation@v1",
+    "schema:CIOReentryBookLabels@v1",
+    "schema:CIOResearchFailHistogram@v1",
+    "schema:CIOResearchProvenance@v1",
+    "schema:CIOResearchReplayDecision@v1",
+    "schema:CIOResearchVerdictCounts@v1",
+    "schema:CIOSituationState@v1",
+    "schema:CIOSpecialistOrchestration@v1",
+    "schema:CIOSymbolThesisCoverage@v1",
+    "schema:CIOTelegramSendReceipt@v1",
+    "schema:CIOTestSink@v1",
+    "schema:CIOWeeklyLearningReview@v1",
+    "schema:CIOWhatChanged@v1",
+    "schema:CanonClaim@v1",
+    "schema:CanonMaturity@v1",
+    "schema:CanonSource@v1",
+    "schema:CanonSourceChunk@v1",
+    "schema:CapitalDeploymentPlan@v1",
+    "schema:CashDeploymentSituation@v1",
+    "schema:CashSleeveLetter@v1",
+    "schema:CheckpointLineageHealth@v1",
+    "schema:CioTelegramStanceHold@v1",
+    "schema:CioTelegramStanceHoldSummary@v2",
+    "schema:CognitionSupersession@v1",
+    "schema:CognitionTimeline@v1",
+    "schema:ConfidenceCalibration@v1",
+    "schema:ContextUseReceipt@v1",
+    "schema:CurationCritique@v1",
+    "schema:CurationThesisLink@v1",
+    "schema:DecisionCoverage@v1",
+    "schema:DecisionOutcome@v1",
+    "schema:DecisionOutcomeLink@v1",
+    "schema:DecisionQualityAxes@v1",
+    "schema:DeliveryReceipt@v1",
+    "schema:DraftPlanHygiene@v1",
+    "schema:DueOutcomeProcessor@v1",
+    "schema:DuplicateS1Hygiene@v1",
+    "schema:EdgarFilingProof@v1",
+    "schema:GoalPredicate@v1",
+    "schema:GoalPredicateVerdict@v1",
+    "schema:GrokCritique@v1",
+    "schema:HaveWeSeenThis@v1",
+    "schema:HeldInstrumentIds@v1",
+    "schema:HermesResearchLinks@v1",
+    "schema:HistoricalReplayIngest@v1",
+    "schema:HoldingsDataQuality@v1",
+    "schema:IdentityConfidenceScore@v1",
+    "schema:IdentityRegistry@v1",
+    "schema:IdentityRemediationQueue@v1",
+    "schema:InstrumentBelief@v1",
+    "schema:InstrumentRecordWake@v1",
+    "schema:IntelligenceFault@v1",
+    "schema:IntelligenceLifecycleProjection@v1",
+    "schema:InvestmentIntelligenceCard@v1",
+    "schema:LearningCost@v1",
+    "schema:LearningHypothesis@v1",
+    "schema:LessonBind@v1",
+    "schema:LessonCandidate@v1",
+    "schema:LineageStallNote@v1",
+    "schema:LookaheadAudit@v1",
+    "schema:MarketContextState@v1",
+    "schema:MethodologyPolicy@v1",
+    "schema:ModelSelectionExplanation@v1",
+    "schema:NotificationLearning@v1",
+    "schema:NotificationOutcome@v1",
+    "schema:NotificationPolicy@v1",
+    "schema:ObservationalS1Apply@v1",
+    "schema:ObservationalS1Dry@v1",
+    "schema:OfficeSituationScan@v1",
+    "schema:OperatorFeedback@v2",
+    "schema:OperatorInvestmentPolicy@v1",
+    "schema:OperatorPolicyRatificationReceipt@v1",
+    "schema:OperatorPolicyRegistry@v1",
+    "schema:OperatorProductRefresh@v1",
+    "schema:OperatorTickerFeedback@v1",
+    "schema:OrphanPlanHygiene@v1",
+    "schema:OutcomeCheckpoint@v1",
+    "schema:PlanOutcomeCheckpointBind@v1",
+    "schema:PolicyConfirmationLifecycle@v1",
+    "schema:PortfolioState@v1",
+    "schema:PortfolioThesis@v1",
+    "schema:PortfolioThesisDelta@v1",
+    "schema:PreferenceCandidate@v1",
+    "schema:ProviderRequestJournal@v1",
+    "schema:ResearchDecisionLink@v1",
+    "schema:ResearchHistory@v1",
+    "schema:ResearchImpact@v1",
+    "schema:ResearchScheduleSurface@v1",
+    "schema:RetryDisposition@v1",
+    "schema:S0OperatorTurn@v1",
+    "schema:S0RehydrateBundle@v1",
+    "schema:SameBrainAcceptance@v1",
+    "schema:ScanFabricOverlay@v1",
+    "schema:SeasonalityState@v1",
+    "schema:SpecialistArtifact@v1",
+    "schema:SpecialistDisagreementMemory@v1",
+    "schema:SpecialistRuntimeArtifact@v1",
+    "schema:SpecialistRuntimeResult@v1",
+    "schema:SurfaceAStatus@v1",
+    "schema:ThesisChangeCard@v1",
+    "schema:ThesisDecisionGate@v1",
+    "schema:ThesisRevisionLedger@v1",
+    "schema:TickerResearchArtifact@v1",
+    "schema:TradeAIMaturityContract@v1",
+    "schema:WakeTurnEffect@v1"
+  ],
+  "composition_as_of": "2026-10-02T16:06:12.926566+00:00",
+  "counts": {
+    "operator_visible": 61,
+    "produced": 203,
+    "produced_not_surfaced": 142,
+    "surfaced_not_runtime_proven": 189,
+    "surfaced_runtime_unmeasured": 38
+  },
+  "critical_edges_dark": 1,
+  "critical_edges_live": 0,
+  "critical_edges_partial": 22,
+  "critical_edges_unknown": 0,
+  "critical_edges_unwired": 0,
+  "method": {
+    "limitations": [
+      "Schemas nested deeper than one delegation level are reported as not surfaced even when a consumed payload may embed them.",
+      "Static source only; a surfaced route/schema has no runtime capture here (surfaced_runtime_unmeasured)."
+    ],
+    "operator_visible": "route consumed by a component in the routed pages' import closure; capability rows via a consumer of /api/v3/cio/operator-evidence that renders them; schema emitted by a consumed route's handler or its first delegated lib function",
+    "produced": "census CIO-family backend GET routes (alias groups) + capability coverage rows + Name@vN schemas defined in scripts/lib/cio_*.py"
+  },
+  "produced_not_surfaced": [
+    "route:/api/v2/cio",
+    "route:/api/v2/cio/capital-plan",
+    "route:/api/v2/cio/sector-opportunities",
+    "route:/api/v3/cio",
+    "route:/api/v3/cio/actions",
+    "route:/api/v3/cio/ask-thesis/*",
+    "route:/api/v3/cio/brain/capital-plan",
+    "route:/api/v3/cio/brain/data-health",
+    "route:/api/v3/cio/brain/intelligence-lifecycle",
+    "route:/api/v3/cio/brain/learning-cockpit",
+    "route:/api/v3/cio/brain/learning-review",
+    "route:/api/v3/cio/brain/market-context",
+    "route:/api/v3/cio/brain/maturity-contract",
+    "route:/api/v3/cio/brain/methodology",
+    "route:/api/v3/cio/brain/model-performance",
+    "route:/api/v3/cio/brain/policy-provenance",
+    "route:/api/v3/cio/brain/portfolio-state",
+    "route:/api/v3/cio/brain/portfolio-thesis",
+    "route:/api/v3/cio/brain/seasonality",
+    "route:/api/v3/cio/decision/*#get_decision_dispositions",
+    "route:/api/v3/cio/delegation",
+    "route:/api/v3/cio/desk-note",
+    "route:/api/v3/cio/plans",
+    "route:/api/v3/cio/r71-fabric-map",
+    "route:/api/v3/cio/snapshot",
+    "route:/api/v3/cio/thesis",
+    "route:/api/v3/cio/thesis-research-context/*",
+    "route:/api/v3/cio/thesis-research-proposal",
+    "route:/api/v3/cio/thesis-ri-pipeline/*",
+    "schema:AgentRoutingDisagreement@v1",
+    "schema:AlertQuality@v1",
+    "schema:BitemporalEvaluation@v1",
+    "schema:BoundedContextBudget@v1",
+    "schema:BuyReadyInstitutionalPacket@v2",
+    "schema:CIOAdvisoryDeliveryReceipt@v1",
+    "schema:CIOAgentBrief@v1",
+    "schema:CIOAttentionAnswer@v1",
+    "schema:CIOAvoidRefusal@v1",
+    "schema:CIOCognitionPack@v1",
+    "schema:CIOCognitionRefs@v1",
+    "schema:CIOCouncilSynthesis@v1",
+    "schema:CIOCurrentProductUnavailable@v1",
+    "schema:CIODiligenceP2Census@v1",
+    "schema:CIOEnvelopeIntegration@v1",
+    "schema:CIOGraphImpactHeld@v1",
+    "schema:CIOIdentityRegisterApply@v1",
+    "schema:CIOIdentityRegisterDry@v1",
+    "schema:CIOLiveDeliveryAudit@v1",
+    "schema:CIOPositionStateMatrix@v1",
+    "schema:CIOReassessment@v1",
+    "schema:CIOReconciliation@v1",
+    "schema:CIOResearchReplayDecision@v1",
+    "schema:CIOSpecialistOrchestration@v1",
+    "schema:CIOSymbolThesisCoverage@v1",
+    "schema:CIOTelegramSendReceipt@v1",
+    "schema:CIOTestSink@v1",
+    "schema:CIOWeeklyLearningReview@v1",
+    "schema:CIOWhatChanged@v1",
+    "schema:CanonClaim@v1",
+    "schema:CanonMaturity@v1",
+    "schema:CanonSource@v1",
+    "schema:CanonSourceChunk@v1",
+    "schema:CapitalDeploymentPlan@v1",
+    "schema:CashDeploymentSituation@v1",
+    "schema:CioTelegramStanceHold@v1",
+    "schema:CioTelegramStanceHoldSummary@v2",
+    "schema:CognitionSupersession@v1",
+    "schema:CognitionTimeline@v1",
+    "schema:ConfidenceCalibration@v1",
+    "schema:ContextUseReceipt@v1",
+    "schema:CurationCritique@v1",
+    "schema:CurationThesisLink@v1",
+    "schema:DecisionCoverage@v1",
+    "schema:DecisionOutcome@v1",
+    "schema:DecisionOutcomeLink@v1",
+    "schema:DecisionQualityAxes@v1",
+    "schema:DeliveryReceipt@v1",
+    "schema:DraftPlanHygiene@v1",
+    "schema:DueOutcomeProcessor@v1",
+    "schema:DuplicateS1Hygiene@v1",
+    "schema:EdgarFilingProof@v1",
+    "schema:GoalPredicate@v1",
+    "schema:GoalPredicateVerdict@v1",
+    "schema:GrokCritique@v1",
+    "schema:HaveWeSeenThis@v1",
+    "schema:HeldInstrumentIds@v1",
+    "schema:HistoricalReplayIngest@v1",
+    "schema:IdentityConfidenceScore@v1",
+    "schema:IdentityRegistry@v1",
+    "schema:IdentityRemediationQueue@v1",
+    "schema:InstrumentBelief@v1",
+    "schema:InstrumentRecordWake@v1",
+    "schema:IntelligenceFault@v1",
+    "schema:IntelligenceLifecycleProjection@v1",
+    "schema:InvestmentIntelligenceCard@v1",
+    "schema:LearningCost@v1",
+    "schema:LearningHypothesis@v1",
+    "schema:LessonBind@v1",
+    "schema:LessonCandidate@v1",
+    "schema:LineageStallNote@v1",
+    "schema:LookaheadAudit@v1",
+    "schema:MarketContextState@v1",
+    "schema:MethodologyPolicy@v1",
+    "schema:ModelSelectionExplanation@v1",
+    "schema:NotificationLearning@v1",
+    "schema:NotificationOutcome@v1",
+    "schema:NotificationPolicy@v1",
+    "schema:ObservationalS1Apply@v1",
+    "schema:ObservationalS1Dry@v1",
+    "schema:OperatorFeedback@v2",
+    "schema:OperatorPolicyRatificationReceipt@v1",
+    "schema:OperatorPolicyRegistry@v1",
+    "schema:OperatorProductRefresh@v1",
+    "schema:OrphanPlanHygiene@v1",
+    "schema:OutcomeCheckpoint@v1",
+    "schema:PlanOutcomeCheckpointBind@v1",
+    "schema:PolicyConfirmationLifecycle@v1",
+    "schema:PortfolioState@v1",
+    "schema:PortfolioThesis@v1",
+    "schema:PortfolioThesisDelta@v1",
+    "schema:PreferenceCandidate@v1",
+    "schema:ProviderRequestJournal@v1",
+    "schema:ResearchDecisionLink@v1",
+    "schema:ResearchHistory@v1",
+    "schema:ResearchImpact@v1",
+    "schema:ResearchScheduleSurface@v1",
+    "schema:RetryDisposition@v1",
+    "schema:S0OperatorTurn@v1",
+    "schema:S0RehydrateBundle@v1",
+    "schema:SameBrainAcceptance@v1",
+    "schema:ScanFabricOverlay@v1",
+    "schema:SeasonalityState@v1",
+    "schema:SpecialistArtifact@v1",
+    "schema:SpecialistDisagreementMemory@v1",
+    "schema:SpecialistRuntimeArtifact@v1",
+    "schema:SpecialistRuntimeResult@v1",
+    "schema:ThesisChangeCard@v1",
+    "schema:ThesisDecisionGate@v1",
+    "schema:ThesisRevisionLedger@v1",
+    "schema:TickerResearchArtifact@v1",
+    "schema:TradeAIMaturityContract@v1",
+    "schema:WakeTurnEffect@v1"
+  ],
+  "schema": "CIOCompletenessMeasurement@v2",
+  "serving_sha": "544078d094f7b5286268b74b5193d70a06211bf9",
+  "source_acceptance": {
+    "produced_not_surfaced_zero": false,
+    "runtime_unproven_count": 189,
+    "runtime_unproven_items_labelled": true
+  },
+  "surfaced_not_runtime_proven": [
+    {
+      "name": "capability:InstrumentRecord",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:identity resolution",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:office truth",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:persistent cognition",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:memory retrieval",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:Hermes research",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:external research",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:specialist artifacts",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:specialist disagreement",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:CIO synthesis",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:judgment",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:commitment",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:notification policy",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:delivery/outbox",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:operator feedback",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:outcome checkpoint",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:outcome settlement",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:belief writer",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:lesson",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:hypothesis",
+      "reason": "declared producer exists but no runtime producer or consumer evidence was observed",
+      "runtime_state": "DARK",
+      "ui_label": "DARK",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:graph propagation",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:canon retrieval",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "capability:historical analogue retrieval",
+      "reason": "runtime evidence exists on only one side, or the consumer lacks an explicit edge reference",
+      "runtime_state": "PARTIAL",
+      "ui_label": "PARTIAL",
+      "ui_surface": "CIO \u203a Operator evidence \u203a Capability coverage"
+    },
+    {
+      "name": "research:symbol_stx@v6",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_stx@v5",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_algn@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_algn@v3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_cof@v15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_cof@v14",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_cdw@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_cdw@v3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_2d72c5c4edc7",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_f91528d8a078",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_imtx@v2",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_imtx@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_dnp@v9",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_dnp@v8",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_dnp@v7",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_hrl@v5",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_hrl@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v23",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v22",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v21",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v20",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v19",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v18",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sh@v17",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_aca0947e08c3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v36",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ce@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v11",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_62cf0fbdf48c",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_4cda468a49ad",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_c9d357dcf0bb",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_bf13f4590180",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_alle@v25",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_alle@v24",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_alle@v23",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_alle@v22",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_alle@v21",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_b36109030eb4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v6",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v5",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v2",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_oxy@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v35",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bax@v18",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ffr@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_noc@v13",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_jepi@v27",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_be@v17",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v17",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_92a58039ccc7",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bah@v30",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bah@v29",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bah@v28",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bah@v27",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_6daa58272521",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_ce64746f4c65",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_aiff@v1",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_2e7641f4dd51",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v16",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v14",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v13",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v12",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_sndk@v11",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_meds@v3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_crml@v4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_now@v15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_now@v14",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_now@v13",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_now@v12",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_d10f1ee38a27",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_1b620fa6178f",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_jepi@v26",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_jepi@v25",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_82aa2d41f062",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_rtx@v34",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_rtx@v33",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_rtx@v32",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_e41f78244519",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_9a8a41999891",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_b2e404ae5210",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_3b29d594d443",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_aa28ac81a89c",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_688e500c0e88",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_91098b26af00",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_4126d2c99cba",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_d6bcd170888b",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_4056e148b5b9",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_19a569222ee4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_44e08934129d",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_436b3e467f7c",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_eb5ad602cc2f",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_4f08ffd068ff",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_noc@v12",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_eb79ee65ba83",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_e95207707fbe",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_29606d90f388",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_03e09506aa55",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_c44d239b1c53",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v34",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v33",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v32",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_schd@v31",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_03d9f8f0773b",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v9",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v8",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v7",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_ctaa@v10",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bax@v17",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bax@v16",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_bax@v15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_spcx@v18",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_72273460acd5",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_b86f91933f15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_0091e269afe9",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_be@v16",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:symbol_be@v15",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_a4a66bd38cf8",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_9784b44d1279",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_9b60fd7c4aed",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_553f19071c0e",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_583bda3d3f75",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_1eb30904e2b7",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_f5c69e2745a0",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_17a6c525e7ae",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_c7d6619f3c77",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_303b6e079daf",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_e28b5231a656",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_f8380a9a3eba",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_7a944bdd01d0",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_860cbfc00291",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_ea97a58693ff",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_3e6767a620c5",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_4d112bb2d8fd",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_956c8355d8c3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_158dd7cf448e",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_8efdce82a222",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_5def32dc6912",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_fb330715e688",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_f21aefc77d50",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_26791f090121",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_c8dd7c7fe101",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_5ba95badd481",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_833142cb41fd",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_479ce62b5bad",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_b417efad5cbe",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_e7227c28edb9",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_934c19c70341",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_5ca02c404368",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_150f2cf48cf4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_acf16a48cbd3",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_e879edcc4410",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_2860670a3346",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_fde889a6cd5f",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_09e2a6b41bf7",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_6c3562c01be8",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_1a693731fc23",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_5f6ad597f645",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_9f3e4b518aa4",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_0f8b07bcdc67",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_fa42c79c391a",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_cf14f5e45bca",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_cc006a9ffddf",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    },
+    {
+      "name": "research:rr_ffecf79d8d39",
+      "reason": "canonical use receipt does not prove judgment use",
+      "runtime_state": "RETRIEVED",
+      "ui_label": "RETRIEVED",
+      "ui_surface": "CIO \u203a Research provenance"
+    }
+  ],
+  "surfaced_runtime_unmeasured": [
+    "route:/api/v2/cio/report-v2",
+    "route:/api/v2/cio/youtube-research-queue",
+    "route:/api/v3/cio/agent-research-ops",
+    "route:/api/v3/cio/brain",
+    "route:/api/v3/cio/brain/policy",
+    "route:/api/v3/cio/decision/*",
+    "route:/api/v3/cio/dispositions",
+    "route:/api/v3/cio/home",
+    "route:/api/v3/cio/intelligence/*",
+    "route:/api/v3/cio/investment-product",
+    "route:/api/v3/cio/observability",
+    "route:/api/v3/cio/operator-evidence",
+    "route:/api/v3/cio/plans/*",
+    "route:/api/v3/cio/research-provenance",
+    "route:/api/v3/cio/scorecard",
+    "route:/api/v3/cio/symbol-thesis/*",
+    "route:/api/v3/cio/universe-theses",
+    "schema:AgentRuntimeProof@v1",
+    "schema:CCRecordNarrativeCoverage@v1",
+    "schema:CIOExpiredMaturityObserve@v1",
+    "schema:CIOGraphImpactS6@v1",
+    "schema:CIOIdentityCoverage@v1",
+    "schema:CIONotificationBlock@v1",
+    "schema:CIOOutcomeMaturity@v1",
+    "schema:CIOProvisionalLessons@v1",
+    "schema:CIOReentryBookLabels@v1",
+    "schema:CIOResearchFailHistogram@v1",
+    "schema:CIOResearchProvenance@v1",
+    "schema:CIOResearchVerdictCounts@v1",
+    "schema:CIOSituationState@v1",
+    "schema:CashSleeveLetter@v1",
+    "schema:CheckpointLineageHealth@v1",
+    "schema:HermesResearchLinks@v1",
+    "schema:HoldingsDataQuality@v1",
+    "schema:OfficeSituationScan@v1",
+    "schema:OperatorInvestmentPolicy@v1",
+    "schema:OperatorTickerFeedback@v1",
+    "schema:SurfaceAStatus@v1"
+  ],
+  "visibility_evidence": {
+    "capability:CIO synthesis": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:Hermes research": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:InstrumentRecord": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:belief writer": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:canon retrieval": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:commitment": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:delivery/outbox": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:external research": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:graph propagation": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:historical analogue retrieval": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:hypothesis": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:identity resolution": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:judgment": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:lesson": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:memory retrieval": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:notification policy": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:office truth": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:operator feedback": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:outcome checkpoint": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:outcome settlement": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:persistent cognition": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:specialist artifacts": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "capability:specialist disagreement": {
+      "via": [
+        "/api/v3/cio/operator-evidence -> apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx"
+      ]
+    },
+    "route:/api/v2/cio/report-v2": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1567"
+      ]
+    },
+    "route:/api/v2/cio/youtube-research-queue": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1496"
+      ]
+    },
+    "route:/api/v3/cio/agent-research-ops": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:941"
+      ]
+    },
+    "route:/api/v3/cio/brain": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioBrainPanel.tsx:91"
+      ]
+    },
+    "route:/api/v3/cio/brain/policy": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1808"
+      ]
+    },
+    "route:/api/v3/cio/decision/*": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioDecisionLineagePanel.tsx:82"
+      ]
+    },
+    "route:/api/v3/cio/dispositions": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:2033"
+      ]
+    },
+    "route:/api/v3/cio/home": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:2014"
+      ]
+    },
+    "route:/api/v3/cio/intelligence/*": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1104"
+      ]
+    },
+    "route:/api/v3/cio/investment-product": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1246"
+      ]
+    },
+    "route:/api/v3/cio/observability": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioObservabilityPanel.tsx:59"
+      ]
+    },
+    "route:/api/v3/cio/operator-evidence": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx:209"
+      ]
+    },
+    "route:/api/v3/cio/plans/*": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:2299"
+      ]
+    },
+    "route:/api/v3/cio/research-provenance": {
+      "via": [
+        "apps/command-center-v3/src/components/cio/CioOperatorEvidencePanel.tsx:208"
+      ]
+    },
+    "route:/api/v3/cio/scorecard": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:2015"
+      ]
+    },
+    "route:/api/v3/cio/symbol-thesis/*": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1092",
+        "apps/command-center-v3/src/pages/CioHub.tsx:1094"
+      ]
+    },
+    "route:/api/v3/cio/universe-theses": {
+      "via": [
+        "apps/command-center-v3/src/pages/CioHub.tsx:1088"
+      ]
+    },
+    "schema:AgentRuntimeProof@v1": {
+      "via": [
+        "/api/v3/agents/runtime-proof"
+      ]
+    },
+    "schema:CCRecordNarrativeCoverage@v1": {
+      "via": [
+        "/api/v3/cio/home"
+      ]
+    },
+    "schema:CIOExpiredMaturityObserve@v1": {
+      "via": [
+        "/api/v3/maturity/authority",
+        "/api/v3/maturity/autonomy-health",
+        "/api/v3/maturity/cases",
+        "/api/v3/maturity/heartbeat",
+        "/api/v3/maturity/influence",
+        "/api/v3/maturity/learning",
+        "/api/v3/maturity/lessons/{param}",
+        "/api/v3/maturity/memory",
+        "/api/v3/maturity/notification-gate",
+        "/api/v3/maturity/promotions",
+        "/api/v3/maturity/senses",
+        "/api/v3/maturity/telegram-receipts"
+      ]
+    },
+    "schema:CIOGraphImpactS6@v1": {
+      "via": [
+        "/api/v3/cio/home"
+      ]
+    },
+    "schema:CIOIdentityCoverage@v1": {
+      "via": [
+        "/api/v3/cio/investment-product"
+      ]
+    },
+    "schema:CIONotificationBlock@v1": {
+      "via": [
+        "/api/v3/cio/home"
+      ]
+    },
+    "schema:CIOOutcomeMaturity@v1": {
+      "via": [
+        "/api/v3/maturity/authority",
+        "/api/v3/maturity/autonomy-health",
+        "/api/v3/maturity/cases",
+        "/api/v3/maturity/heartbeat",
+        "/api/v3/maturity/influence",
+        "/api/v3/maturity/learning",
+        "/api/v3/maturity/lessons/{param}",
+        "/api/v3/maturity/memory",
+        "/api/v3/maturity/notification-gate",
+        "/api/v3/maturity/promotions",
+        "/api/v3/maturity/senses",
+        "/api/v3/maturity/telegram-receipts"
+      ]
+    },
+    "schema:CIOProvisionalLessons@v1": {
+      "via": [
+        "/api/v3/cio/investment-product"
+      ]
+    },
+    "schema:CIOReentryBookLabels@v1": {
+      "via": [
+        "/api/v3/cio/home"
+      ]
+    },
+    "schema:CIOResearchFailHistogram@v1": {
+      "via": [
+        "/api/v3/cio/investment-product"
+      ]
+    },
+    "schema:CIOResearchProvenance@v1": {
+      "via": [
+        "/api/v3/cio/decision/_not_selected/lineage",
+        "/api/v3/cio/decision/{param}/lineage",
+        "/api/v3/cio/operator-evidence",
+        "/api/v3/cio/research-provenance"
+      ]
+    },
+    "schema:CIOResearchVerdictCounts@v1": {
+      "via": [
+        "/api/v3/cio/investment-product"
+      ]
+    },
+    "schema:CIOSituationState@v1": {
+      "via": [
+        "/api/v3/cio/brain"
+      ]
+    },
+    "schema:CashSleeveLetter@v1": {
+      "via": [
+        "/api/v3/cio/home"
+      ]
+    },
+    "schema:CheckpointLineageHealth@v1": {
+      "via": [
+        "/api/v3/cio/investment-product"
+      ]
+    },
+    "schema:HermesResearchLinks@v1": {
+      "via": [
+        "/api/v3/agents/runtime-proof",
+        "/api/v3/hermes/research-links"
+      ]
+    },
+    "schema:HoldingsDataQuality@v1": {
+      "via": [
+        "/api/v3/cio/investment-product"
+      ]
+    },
+    "schema:OfficeSituationScan@v1": {
+      "via": [
+        "/api/v3/cio/brain"
+      ]
+    },
+    "schema:OperatorInvestmentPolicy@v1": {
+      "via": [
+        "/api/v3/cio/brain/policy"
+      ]
+    },
+    "schema:OperatorTickerFeedback@v1": {
+      "via": [
+        "/api/v3/cio/intelligence/{param}"
+      ]
+    },
+    "schema:SurfaceAStatus@v1": {
+      "via": [
+        "/api/v3/cio/home",
+        "/api/v3/cio/investment-product"
+      ]
+    }
+  }
+}
