@@ -894,6 +894,9 @@ GATES = [
             "tests/test_cio_operator_evidence_receipts_20261002.py",
             "tests/test_cio_source_clocks_20261002.py",
             "tests/test_cio_xsurface_census_completeness_20261002.py",
+            # Step 13 closure: nested payload flow, fetched-but-ignored, classification gate, record ledgers.
+            "tests/test_cio_payload_flow_20261002.py",
+            "tests/test_cio_surface_panels_20261002.py",
             # Advisory run-now must disclose independent dependency clocks.
             "tests/test_cio_advisory_dependency_clocks.py",
             # Source-side API census and produced-versus-surfaced measurement.

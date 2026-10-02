@@ -11,6 +11,11 @@ import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import CioDecisionLineagePanel from '../components/cio/CioDecisionLineagePanel'
 import CioOperatorEvidencePanel from '../components/cio/CioOperatorEvidencePanel'
 import CioSourceClocksPanel from '../components/cio/CioSourceClocksPanel'
+import CioOfficeHomeProjections from '../components/cio/CioOfficeHomeProjections'
+import CioProductHealthPanel from '../components/cio/CioProductHealthPanel'
+import CioThesisDelegationPanel from '../components/cio/CioThesisDelegationPanel'
+import CioThesisResearchContextPanel from '../components/cio/CioThesisResearchContextPanel'
+import CioRecordLedgersPanel from '../components/cio/CioRecordLedgersPanel'
 import { cioDeepLinkFocus, decisionLineageHref } from '../lib/cioDecisionLineage'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
@@ -1239,6 +1244,7 @@ function UniverseThesesPanel() {
         </div>
       )}
       {sym && !cardError && <SymbolThesisCard card={mergedCard} />}
+      <CioThesisResearchContextPanel symbol={sym} />
     </div>
   )
 }
@@ -1382,6 +1388,7 @@ function InvestmentBooksPanel() {
       )
     })()}
     <div style={{ fontSize: 12, color: 'var(--text3)' }}>{p.summary}</div>
+    <CioProductHealthPanel data={data} />
   </div>
 }
 
@@ -2181,6 +2188,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
               <div style={{ marginTop: 28 }}>
                 <OpportunitiesSection opp={home.opportunities} books={home.reentry_books} />
               </div>
+              <CioOfficeHomeProjections home={home} />
             </>
           )}
         </div>
@@ -2207,6 +2215,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           <div style={{ marginTop: 28 }}>
             <InvestmentBooksPanel />
           </div>
+          <CioThesisDelegationPanel />
         </div>
       )}
 
@@ -2243,7 +2252,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'full-brain' && <CioBrainPanel />}
           {evidenceSub === 'operator-evidence' && <><CioSourceClocksPanel /><CioOperatorEvidencePanel /></>}
           {evidenceSub === 'institutional-cognition' && <CioOperatorEvidencePanel section="cognition" />}
-          {evidenceSub === 'learning-cockpit' && <CioOperatorEvidencePanel section="learning" />}
+          {evidenceSub === 'learning-cockpit' && <><CioOperatorEvidencePanel section="learning" /><CioRecordLedgersPanel /></>}
           {evidenceSub === 'capability-coverage' && <CioOperatorEvidencePanel section="coverage" />}
           {evidenceSub === 'decision-lineage' && <CioDecisionLineagePanel decisionId={decisionRaw || null} />}
           {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (

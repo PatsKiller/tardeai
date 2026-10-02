@@ -877,7 +877,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/CATALYST_AND_HERMES.md` | Catalyst domain + Hermes research de-duplication | review_required | OK | `65dfcba21b19` |
 | `docs/cio/CIO_AGENT_RUNTIME_OPERATOR_SURFACE.md` | CIO Agent Runtime Operator Surface | review_required | MISSING HEADER | `df43212fbb40` |
 | `docs/cio/CIO_API_CONTRACT_CENSUS.md` | CIO API Contract Census | review_required | MISSING HEADER | `c9429de640ab` |
-| `docs/cio/CIO_COMPLETENESS_MEASUREMENT.md` | CIO Completeness Measurement | review_required | MISSING HEADER | `95bd0cfa7e1f` |
+| `docs/cio/CIO_COMPLETENESS_MEASUREMENT.md` | CIO Completeness Measurement | review_required | MISSING HEADER | `7fde8da5f272` |
 | `docs/cio/CIO_CROSS_SURFACE_LINKS.md` | CIO / Hermes / Research Intelligence links | review_required | MISSING HEADER | `25634e4c8927` |
 | `docs/cio/CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md` | CIO Decision Lineage — Operator Surface | review_required | OK | `41fa3994e3fc` |
 | `docs/cio/CIO_DESK_OPERATING_PACKET.md` | Trade AI — CIO Desk Operating Packet | review_required | OK | `6d3c1e290b04` |

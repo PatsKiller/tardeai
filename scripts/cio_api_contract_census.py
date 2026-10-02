@@ -895,6 +895,7 @@ def _endpoint_row(f: "Fetch", handler: Optional[Route], how: str, desc: dict[str
         "method": f.method,
         "poll_ms": f.poll_ms,
         "result_used": f.used,
+        "bound_names": list(f.bound_names),
         "producer": handler.producer if handler else None,
         "dispatch_ref": f"{handler.file}:{handler.line}" if handler else None,
         "match": how,

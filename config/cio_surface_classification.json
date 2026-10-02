@@ -1,0 +1,961 @@
+{
+  "schema": "CIOSurfaceClassification@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "description": "Classification of every produced CIO item that the completeness measurement does not prove operator-visible. SURFACE = operator-relevant (counted in produced_not_surfaced_operator_relevant until surfaced; a record_edge is verified by scripts/cio_completeness_measurement.py). NOT_OPERATOR_RELEVANT / RETIRE_CANDIDATE need a specific reason. A produced item missing here counts as operator-relevant and fails tests/test_cio_surface_classification_20261002.py.",
+  "as_of": "2026-10-02",
+  "entries": [
+    {
+      "name": "route:/api/v2/cio",
+      "kind": "route",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "Legacy v2 unified CIO payload (api_v2._cio_unified: decisions, rotations, plans, signals) superseded by /api/v3/cio/home and /api/v3/cio/brain, both rendered in the CIO hub; repo grep 2026-10-02 finds no Command Center, Telegram or script caller of the literal route. Confirm zero hits in the :7777 access log before removing the ROUTES entry.",
+      "owner_hint": "scripts/api_v2.py::_cio_unified"
+    },
+    {
+      "name": "route:/api/v3/cio",
+      "kind": "route",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "get_cio_dashboard is a composite of snapshot, actions, delegation, plans and thesis; each part is now rendered from its own route in CIO > Research > Thesis & delegation, so this aggregate duplicates them and has no consumer anywhere in the repo.",
+      "owner_hint": "scripts/api_v3_cio.py::get_cio_dashboard"
+    },
+    {
+      "name": "route:/api/v3/cio/decision/*#get_decision_dispositions",
+      "kind": "route",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "GET /api/v3/cio/decision/{key} ignores {key} and returns get_decision_dispositions(), byte-identical to GET /api/v3/cio/dispositions which CioHub renders; only the POST .../disposition and GET .../lineage branches under decision/ have consumers.",
+      "owner_hint": "scripts/api_v2.py (api/v3/cio decision/ GET branch)"
+    },
+    {
+      "name": "route:/api/v3/cio/r71-fabric-map",
+      "kind": "route",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Engineering integration map: r71_cursor_fabric_map.fabric_map_report lists Cursor gap A-F wiring status and the cursor dependency SHA; it describes code integration progress, not CIO reasoning, policy, decisions, research or evidence.",
+      "owner_hint": "scripts/lib/r71_cursor_fabric_map.py"
+    },
+    {
+      "name": "schema:AdvisoryCuration@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Presentation-curation envelope: cio_advisory_curator.curate lets DeepSeek restyle an advisory's wording but 'may not touch the facts'; the curated text reaches plan cards, the wrapper carries no investment content of its own.",
+      "owner_hint": "scripts/lib/cio_advisory_curator.py"
+    },
+    {
+      "name": "schema:AgentRoutingDisagreement@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Engineering telemetry row written by cio_event_bus._record_routing_disagreement to agent_registry_routing_receipts.jsonl when two agent-registry routes disagree; diagnoses the registry, not the portfolio.",
+      "owner_hint": "scripts/lib/cio_event_bus.py"
+    },
+    {
+      "name": "schema:AlertQuality@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Alert-quality score (cio_r13_institution.score_alerts) used by scalp_outcome_scorer; comms quality is operator-relevant and is not rendered anywhere in the Command Center. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_r13_institution.py::score_alerts"
+    },
+    {
+      "name": "schema:BitemporalEvaluation@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_institutional_learning.bitemporal_view has no caller anywhere in scripts/ (grep 2026-10-02): the bitemporal evaluation contract is never produced at runtime. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "scripts/lib/cio_institutional_learning.py::bitemporal_view"
+    },
+    {
+      "name": "schema:BoundedContextBudget@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_intelligence_fabric.budget_context has no caller in scripts/; the bounded context budget envelope is defined but never built. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::budget_context"
+    },
+    {
+      "name": "schema:BuyReadyInstitutionalPacket@v2",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "BUY_READY institutional packet (cio_options_fluency.build_buy_ready_packet, saved to data/runtime/buy_ready_packets/<SYM>.json). It is shown OUTSIDE the measured CIO pages - Re-Entry > Entry alerts and the Alerts center read /api/v2/buy-ready/packets (BuyReadyPacketIndex@v1 projection) - and no CIO page renders the packet itself. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_options_fluency.py"
+    },
+    {
+      "name": "schema:CIOAdvisoryDeliveryReceipt@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_advisory_notify.deliver_prepared has no caller and the module is imported only by check_dark_contracts.py; the advisory delivery path that would stamp this receipt is dark. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "scripts/lib/cio_advisory_notify.py::deliver_prepared"
+    },
+    {
+      "name": "schema:CIOAdvisoryMessage@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Human-readable CIO advisory message rendered for notification/attention paths (cio_advisory_message); the operator receives it on Telegram but no CC surface shows the composed advisory text or its schema label. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_advisory_message.py"
+    },
+    {
+      "name": "schema:CIOAdvisorySynthesis@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Governed narrative synthesis for material CIO situations (cio_advisory_synthesis.synthesize) used by the office cycle and situation state; CIO reasoning text with no GET route into the Command Center. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_advisory_synthesis.py"
+    },
+    {
+      "name": "schema:CIOAgentBrief@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Operator-language summary of what the agents did today; delivered by send_agent_brief.py on Telegram, and the Command Center builder cio_command_center.build_agent_brief_panel has no caller, so no CC page shows it. Needs a read route + panel. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_agent_brief.py"
+    },
+    {
+      "name": "schema:CIOAttentionAnswer@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Interactive 'what needs my attention' answer built from real notification/suppression state by cio_operator_attention.answer_attention_query; returned only to the Telegram converse/desk loop, no GET route serves it to the Command Center. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_operator_attention.py"
+    },
+    {
+      "name": "schema:CIOAvoidRefusal@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Receipt portfolio_rebalancer.py appends (cio_avoid_refusals.jsonl) when the rebalancer refuses an AVOID name; an internal enforcement trace for the read-only rebalancer, the AVOID decision itself is on the decision cards.",
+      "owner_hint": "scripts/lib/cio_rebalancer_readonly.py"
+    },
+    {
+      "name": "schema:CIOCognitionPack@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Prompt-context pack assembled for agents (cio_persistent_cognition.build_cio_cognition, cio_run_worker); agent input plumbing whose runtime presence is the 'persistent cognition' capability row in Operator evidence.",
+      "owner_hint": "scripts/lib/cio_persistent_cognition.py::build_cio_cognition"
+    },
+    {
+      "name": "schema:CIOCognitionRefs@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Reference list extracted from a cognition row (cognition_refs_from_row) to cite memory ids inside agent context; an id-join helper, not reasoning content.",
+      "owner_hint": "scripts/lib/cio_persistent_cognition.py::cognition_refs_from_row"
+    },
+    {
+      "name": "schema:CIOContextEnvelope@v2",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_context_envelope_v2 is imported by no module (attach_v2 never called); the v2 overlay of the context envelope is unwired. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "scripts/lib/cio_context_envelope_v2.py::attach_v2"
+    },
+    {
+      "name": "schema:CIOCouncilSynthesis@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_council_synthesis is imported only by scripts/cio_wave3b_report.py, a one-off wave report; no production path builds the council synthesis. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "synthesize"
+    },
+    {
+      "name": "schema:CIODiligenceP2Census@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "P2-WS4/WS5 diligence census run (cio_identity_confidence_census.run_census) measuring identity confidence for engineering acceptance; not investment reasoning.",
+      "owner_hint": "scripts/lib/cio_identity_confidence_census.py::run_census"
+    },
+    {
+      "name": "schema:CIOEnvelopeIntegration@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Memory-integration receipt (cio_memory_integration) converting a CIO envelope into bitemporal MemoryFactVersion@v2 for the memory projectors; memory plumbing, memory state is shown in the brain Memory band.",
+      "owner_hint": "scripts/lib/cio_memory_integration.py"
+    },
+    {
+      "name": "schema:CIOGoalNeedLedger@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Per-lap research-need bookkeeping of the goal loop (cio_goal_need_ledger.build_row) used by trigger_sources/goal_generation to pick the next research; the operator-facing 'what the CIO does not know' is rendered from the brain snapshot.",
+      "owner_hint": "scripts/lib/cio_goal_need_ledger.py"
+    },
+    {
+      "name": "schema:CIOGraphImpactHeld@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_graph_impact_held is imported only by scripts/cio_wave3c_report.py; the held-only graph impact duplicates CIOGraphImpactS6@v1, which is surfaced in Office home projections. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "build"
+    },
+    {
+      "name": "schema:CIOIdentityConfidenceCensus@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Identity confidence census measurement (measure_identity_confidence_census) used by the P2 diligence run; identity resolution quality for engineers, identity coverage for the operator is surfaced as CIOIdentityCoverage@v1.",
+      "owner_hint": "scripts/lib/cio_identity_confidence_census.py::measure_identity_confidence_census"
+    },
+    {
+      "name": "schema:CIOIdentityRegisterApply@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Apply receipt of the identity-registration job (cio_identity_coverage.apply_registerable) that registers missing instrument identities; job bookkeeping, coverage itself is surfaced.",
+      "owner_hint": "scripts/lib/cio_identity_coverage.py::apply_registerable"
+    },
+    {
+      "name": "schema:CIOIdentityRegisterDry@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Dry-run listing of identities the registration job would add (cio_identity_coverage.collect_registerable); pre-flight output for the job operator, not CIO content.",
+      "owner_hint": "scripts/lib/cio_identity_coverage.py::collect_registerable"
+    },
+    {
+      "name": "schema:CIOLifecycleDLQ@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Dead-letter queue ledger rows for failed lifecycle events (cio_dlq_ledger, scripts/cio_lifecycle_dlq.py enqueue/replay/apply); recovery plumbing for engineers.",
+      "owner_hint": "scripts/lib/cio_dlq_ledger.py"
+    },
+    {
+      "name": "schema:CIOLiveDeliveryAudit@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Audit of live-delivery flags (cio_delivery_audit.audit_delivery_flags) consumed only by the r18_2 closeout report; delivery mode is shown to the operator in the Telegram receipts panel.",
+      "owner_hint": "scripts/lib/cio_delivery_audit.py::audit_delivery_flags"
+    },
+    {
+      "name": "schema:CIOPersistentCognition@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Per-symbol cognition lookup (cognition_for_symbol) feeding Telegram converse, advisory memory and the memory shadow projector as agent context; operator-facing cognition is the Operator evidence cognition block.",
+      "owner_hint": "scripts/lib/cio_persistent_cognition.py::cognition_for_symbol"
+    },
+    {
+      "name": "schema:CIOPositionStateMatrix@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Position-state matrix collected for the P2 identity census (collect_position_state_matrix): held/watch/exit denominator bookkeeping for the census, not a portfolio view.",
+      "owner_hint": "scripts/lib/cio_identity_confidence_census.py::collect_position_state_matrix"
+    },
+    {
+      "name": "schema:CIOPreconditionsBoard@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Engineering board checking the four preconditions of the CIO persistent spine (cio_preconditions_board.build_board/render); build readiness, not investment content.",
+      "owner_hint": "scripts/lib/cio_preconditions_board.py"
+    },
+    {
+      "name": "schema:CIOResearchReplayDecision@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Replay decision for a failed Hermes research request (cio_research_fail_policy.replay_decision via hermes_research_queue); queue retry policy, research failure counts are surfaced as CIOResearchFailHistogram@v1.",
+      "owner_hint": "scripts/lib/cio_research_fail_policy.py"
+    },
+    {
+      "name": "schema:CIOSpecialistOrchestration@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Specialist orchestration plan (cio_r13_institution.orchestrate) used by hermes_research_agenda to route work to specialists; internal routing plan.",
+      "owner_hint": "scripts/lib/cio_r13_institution.py::orchestrate"
+    },
+    {
+      "name": "schema:CIOStanceReviewRequest@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Queue item that forces a CIO review when a bullish send is held for a missing stance (request_cio_review), drained by drain_cio_stance_classification.py; the held sends are summarised by CioTelegramStanceHoldSummary@v2, surfaced in Evidence & Comms > Learning cockpit > CIO record ledgers.",
+      "owner_hint": "scripts/lib/cio_stance_review_request.py"
+    },
+    {
+      "name": "schema:CIOSymbolThesisCoverage@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Thesis-coverage check inside the S0 operator loop (cio_s0_operator_loop.thesis_coverage) and research_lane_health; per-turn bookkeeping, symbol theses themselves are surfaced via /api/v3/cio/symbol-thesis.",
+      "owner_hint": "scripts/lib/cio_s0_operator_loop.py::thesis_coverage"
+    },
+    {
+      "name": "schema:CIOTelegramSendReceipt@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Every CIO Telegram send appends a CIOTelegramSendReceipt@v1 row to cio_telegram_receipts.jsonl; maturity_control.telegram_receipts reads those rows into receipts[] which TelegramReceiptsPanel lists under Evidence & Comms > Telegram receipts.",
+      "owner_hint": "scripts/lib/cio_telegram_transport.py",
+      "record_edge": {
+        "route": "/api/v3/maturity/telegram-receipts",
+        "path": [
+          "receipts"
+        ],
+        "reader": "lib/maturity_control/telegram_receipts.py::collect_telegram_receipts",
+        "writer": "lib/cio_telegram_transport.py::_append_send_receipt",
+        "store": "cio_telegram_receipts.jsonl"
+      }
+    },
+    {
+      "name": "schema:CIOTestSink@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_delivery_audit.write_test_sink has no caller; the test sink was a delivery-audit scaffold and is test-only by construction. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "write_test_sink"
+    },
+    {
+      "name": "schema:CIOWeeklyLearningReview@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Weekly learning review published by materialize_cio_weekly_learning.py into cio_weekly_learning_reviews.jsonl; get_learning_review_v1 returns the latest as learning.latest_review in the brain payload, rendered in Full brain > Brain projections.",
+      "owner_hint": "scripts/lib/cio_feedback_learning_v1.py",
+      "record_edge": {
+        "route": "/api/v3/cio/brain",
+        "path": [
+          "learning",
+          "latest_review"
+        ],
+        "reader": "lib/cio_feedback_learning_v1.py::load_latest_weekly_review",
+        "writer": "lib/cio_feedback_learning_v1.py::reconcile_weekly_learning_review",
+        "store": "cio_weekly_learning_reviews.jsonl"
+      }
+    },
+    {
+      "name": "schema:CIOWhatChanged@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Diff between consecutive CIO products after research (cio_product_reassessment.diff_products) - the 'what changed' an investor wants; produced inside reassessment, never served to the Command Center. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_product_reassessment.py::diff_products"
+    },
+    {
+      "name": "schema:CIOWorkflowEnvelope@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Durable stage projection of one CIO workflow (cio_workflow_envelope.empty_envelope/freeze_governance) used by lineage and memory integration; lineage is shown to the operator via the decision-lineage panel.",
+      "owner_hint": "scripts/lib/cio_workflow_envelope.py"
+    },
+    {
+      "name": "schema:CIOWorkflowLineage@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Row contract of cio_workflow_lineage.jsonl appended by cio_lineage.append; the decision-lineage route projects these rows into stages, the raw row envelope is storage format.",
+      "owner_hint": "scripts/lib/cio_lineage.py"
+    },
+    {
+      "name": "schema:CanonSource@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Admitted methodology source document (cio_canon_v1.admit_canon_source via ingest_canon_source.py); the brain Methodology band shows canon catalog/source counts and CanonClaim@v1, the raw source record is ingestion storage.",
+      "owner_hint": "scripts/lib/cio_canon_v1.py::admit_canon_source"
+    },
+    {
+      "name": "schema:CanonSourceChunk@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Text chunk of an admitted canon source produced during ingestion (admit_canon_source) for retrieval; retrieval substrate, not a CIO statement.",
+      "owner_hint": "scripts/lib/cio_canon_v1.py"
+    },
+    {
+      "name": "schema:CanonicalEventIdentity@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Canonical event identity (cio_canonical_identity SCHEMA) giving one id to one real event across both arcs; identity plumbing used by lineage/workflow envelope.",
+      "owner_hint": "scripts/lib/cio_canonical_identity.py"
+    },
+    {
+      "name": "schema:CioComposedNarrative@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Narrative the persistent wake composes when something new is found (cio_narrative_compose.compose); CIO reasoning that is written to records/Telegram, never served by a CIO GET route. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_narrative_compose.py"
+    },
+    {
+      "name": "schema:CioHermesQueueHealth@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "CIO Hermes research queue as a research-lane-health lane (collect_cio_hermes_queue_health) for research_lane_health reports; operator-facing research ops are rendered from /api/v3/cio/agent-research-ops.",
+      "owner_hint": "scripts/lib/cio_hermes_queue_health.py"
+    },
+    {
+      "name": "schema:CioModelNarration@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Model narration of a composed narrative on the governed ladder (cio_narrative_narrator); the LLM-worded reasoning the operator may receive has no Command Center read surface. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_narrative_narrator.py"
+    },
+    {
+      "name": "schema:CioTelegramStanceGate@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Contract constant of the CIO stance hard gate for investment-shaped Telegram sends (cio_telegram_stance_gate); the gate decision per send is a receipt, its summary is listed separately.",
+      "owner_hint": "scripts/lib/cio_telegram_stance_gate.py"
+    },
+    {
+      "name": "schema:CioTelegramStanceHold@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Per-send hold receipt (cio_telegram_stance_gate.record_hold -> cio_telegram_stance_holds.jsonl); one row per held message, aggregated for the operator by CioTelegramStanceHoldSummary@v2 (surfaced in CIO record ledgers).",
+      "owner_hint": "scripts/lib/cio_telegram_stance_gate.py::record_hold"
+    },
+    {
+      "name": "schema:CioWakeComposition@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Decision of the persistent wake's compose hook (cio_wake_compose.composing_decide, run_persistent_wake.py): what the CIO decided to say after a wake. Operator-relevant reasoning trail; no read route. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_wake_compose.py"
+    },
+    {
+      "name": "schema:CognitionSupersession@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_curation_run.supersede is reachable only through the dark cio_curation_run module (sole importer: check_dark_contracts.py). Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "supersede"
+    },
+    {
+      "name": "schema:CognitionTimeline@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_curation_run.cognition_timeline has no caller in scripts/; the timeline view of curation cognition is never built. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "cognition_timeline"
+    },
+    {
+      "name": "schema:ConfidenceCalibration@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_institutional_learning.calibrate_confidence is imported by nothing (cio_r13_institution defines its own calibrate_confidence); the calibration contract is never produced. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "calibrate_confidence"
+    },
+    {
+      "name": "schema:ContextUseReceipt@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Receipt that an agent used a context item (context_use_receipts.jsonl); consumed by Operator evidence as a capability consumer join, it is audit plumbing rather than a CIO statement.",
+      "owner_hint": "scripts/lib/cio_persistent_cognition.py::receipt"
+    },
+    {
+      "name": "schema:CurationCritique@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_curation_run.critique_before_memory is only called inside the dark cio_curation_run module (no production importer). Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "critique_before_memory"
+    },
+    {
+      "name": "schema:CurationRun@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_curation_run is imported only by check_dark_contracts.py; build_curation_run/persist_challenger have no production caller, so curation runs are never recorded through this contract. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "build_curation_run"
+    },
+    {
+      "name": "schema:CurationThesisLink@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_curation_run.link_thesis_candidate has no caller; the curation->thesis link contract lives in a module only check_dark_contracts.py imports. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "link_thesis_candidate"
+    },
+    {
+      "name": "schema:DecisionCoverage@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_institutional_learning.inventory_decisions has no caller anywhere in scripts/; decision coverage inventory is never computed at runtime. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "inventory_decisions"
+    },
+    {
+      "name": "schema:DecisionOutcome@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_intelligence_outcomes is imported only by check_dark_contracts.py; record_outcome is never called in production, so this decision-outcome contract is dark (settled outcomes flow through outcome_observations instead). Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "record_outcome"
+    },
+    {
+      "name": "schema:DecisionOutcomeLink@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_r13_institution.link_decision_outcome has no caller; decision<->outcome linkage is produced by the checkpoint/observation pipeline instead. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "link_decision_outcome"
+    },
+    {
+      "name": "schema:DecisionQualityAxes@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_institutional_learning.score_quality_axes has no caller; the per-decision quality-axes score is never produced (QUALITY_AXES names are surfaced via the learning cockpit). Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "score_quality_axes"
+    },
+    {
+      "name": "schema:DeliveryReceipt@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Record that a notification routing decision was made (cio_delivery_receipt.build -> cio_delivery_receipts.jsonl), read by cio_scorecard for the delivery tile; per-decision routing receipt.",
+      "owner_hint": "scripts/lib/cio_delivery_receipt.py"
+    },
+    {
+      "name": "schema:DraftPlanHygiene@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Receipt of the stale-empty-draft expiry job (cio_draft_plan_hygiene.expire_stale_empty_drafts via cio_regenerate_stale_plans.py); plan maintenance, open plans are surfaced in Thesis & delegation.",
+      "owner_hint": "scripts/lib/cio_draft_plan_hygiene.py"
+    },
+    {
+      "name": "schema:DueOutcomeProcessor@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Run receipt of process_due_checkpoint (resolve_due_checkpoints.py) saying which due checkpoints were processed; the learning cockpit's due/completed counts are the operator view.",
+      "owner_hint": "scripts/lib/cio_institutional_learning.py::process_due_checkpoint"
+    },
+    {
+      "name": "schema:DuplicateS1Hygiene@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Selection receipt of the duplicate-S1 expiry job (cio_duplicate_s1_hygiene.select_duplicate_s1, scripts/cio_duplicate_s1_hygiene.py); maintenance output.",
+      "owner_hint": "scripts/lib/cio_duplicate_s1_hygiene.py"
+    },
+    {
+      "name": "schema:EdgarFilingProof@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_edgar_proof is imported only by scripts/cio_wave3c_report.py (one EDGAR proof for a wave report, 'not a crawler'); no production producer. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "build_proof"
+    },
+    {
+      "name": "schema:FreeFirstPending@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Free-first pending queue row (enqueue_free_first_pending) the fabric writes before any paid research; research routing plumbing, 'Free-first' status is in the brain Intelligence lifecycle band.",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::enqueue_free_first_pending"
+    },
+    {
+      "name": "schema:GraphImpactResolution@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Internal resolution of a fabric delta's graph impact (resolve_impact) inside process_observation; intermediate value, graph impact for held names is surfaced as CIOGraphImpactS6@v1.",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::resolve_impact"
+    },
+    {
+      "name": "schema:GrokCritique@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Live Grok critique of a VALID research artifact (cio_grok_critique) consumed by research_quality; research-quality judgement with no CIO read surface. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_grok_critique.py"
+    },
+    {
+      "name": "schema:HaveWeSeenThis@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_institutional_learning.similar_setup has no caller; the 'have we seen this setup' lookup is never executed. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "similar_setup"
+    },
+    {
+      "name": "schema:HeldInstrumentIds@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Envelope of the held instrument_id set (collect_held_instrument_ids) used as a join key by the product and identity census; the ids themselves are rendered in Product health > Held-instrument thesis coverage.",
+      "owner_hint": "scripts/lib/cio_investment_product.py::collect_held_instrument_ids"
+    },
+    {
+      "name": "schema:HistoricalReplayIngest@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_model_learning.mine_historical_performance has no caller; historical replay ingest is never run. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "mine_historical_performance"
+    },
+    {
+      "name": "schema:HypothesisCandidate@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_institutional_learning.hypothesis_from_lesson has no caller; hypothesis candidates are minted elsewhere (r17_checkpoint_binding), so this contract is a dead duplicate. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "hypothesis_from_lesson"
+    },
+    {
+      "name": "schema:IdentityConfidenceScore@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Module-level CONFIDENCE_SCORE_DEFINITION in cio_identity_confidence_census describing how the identity census scores rows; a definition document for the census, not runtime output.",
+      "owner_hint": "scripts/lib/cio_identity_confidence_census.py::CONFIDENCE_SCORE_DEFINITION"
+    },
+    {
+      "name": "schema:IdentityRegistry@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Identity registry document format (cio_canonical_identity REGISTRY_SCHEMA, identity_registry.json) used by lineage/workflow envelope to resolve ids; storage format, not operator content.",
+      "owner_hint": "scripts/lib/cio_canonical_identity.py::REGISTRY_SCHEMA"
+    },
+    {
+      "name": "schema:IdentityRemediationQueue@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_r13_institution.identity_remediation_queue has no caller in scripts/; identity remediation is handled by cio_identity_coverage jobs. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "identity_remediation_queue"
+    },
+    {
+      "name": "schema:InstrumentRecordWake@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Wake-time load of an InstrumentRecord (load_instrument_record_for_wake) handed to the research preflight/persistent wake; transient agent input.",
+      "owner_hint": "scripts/lib/cio_instrument_record.py::load_instrument_record_for_wake"
+    },
+    {
+      "name": "schema:InstrumentRehydration@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Rehydration of an InstrumentRecord into the research gate (cio_rehydrate) for the wake dispatcher; transient agent input.",
+      "owner_hint": "scripts/lib/cio_rehydrate.py"
+    },
+    {
+      "name": "schema:IntelligenceDeltaReceipt@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Delta receipt built inside process_observation (build_delta_receipt) -> intelligence_delta_receipts.jsonl; fabric bookkeeping.",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::build_delta_receipt"
+    },
+    {
+      "name": "schema:IntelligenceFault@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_intelligence_fabric.fault_response has no caller; fabric faults are never emitted with this envelope. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "fault_response"
+    },
+    {
+      "name": "schema:IntelligenceLifecycleReceipt@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Lifecycle receipt of one fabric observation (process_observation via r17_producer_links) -> intelligence_lifecycle.jsonl; the lifecycle projection is surfaced as IntelligenceLifecycleProjection@v1.",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::process_observation"
+    },
+    {
+      "name": "schema:InvestmentDecision@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Canonical hash-pinned CIO decision envelope (cio_investment_decision) used by the decision pipeline/committee synthesis; the CC shows derived decision cards, not this envelope or its pins. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_investment_decision.py"
+    },
+    {
+      "name": "schema:InvestmentIntelligenceCard@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Telegram Investment Intelligence Card for a symbol (cio_symbol_intelligence CARD_SCHEMA); older notification-outbox rows carry it but none in the recent window. The CC shows the SymbolIntelligenceObject, not the card the operator receives, so the delivered wording cannot be checked from the CIO hub. Status: NOT YET SURFACED.",
+      "owner_hint": "scripts/lib/cio_symbol_intelligence.py"
+    },
+    {
+      "name": "schema:LearnableDecision@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "SCHEMA_DECISION = 'LearnableDecision@v1' in cio_institutional_learning is never referenced after its definition; no record is ever stamped with it. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "SCHEMA_DECISION"
+    },
+    {
+      "name": "schema:LearningCost@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_institutional_learning.cost_of_learning has no caller in scripts/; learning cost accounting is defined but unwired. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "cost_of_learning"
+    },
+    {
+      "name": "schema:LearningHypothesis@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_r13_institution.register_hypothesis has no caller; hypotheses are registered by r17_checkpoint_binding (Operator evidence 'hypothesis' capability). Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "register_hypothesis"
+    },
+    {
+      "name": "schema:LineageCompletionReport@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Read-only lineage completion metrics (cio_lineage_health.completion_report) for census/report scripts; engineering completeness measurement.",
+      "owner_hint": "scripts/lib/cio_lineage_health.py"
+    },
+    {
+      "name": "schema:LineageStallNote@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Note appended to lineage_stalls.jsonl when Hermes research lineage stalls (cio_hermes_research._note_lineage_stall); worker diagnostics.",
+      "owner_hint": "scripts/lib/cio_hermes_research.py::_note_lineage_stall"
+    },
+    {
+      "name": "schema:LookaheadAudit@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_institutional_learning.reject_lookahead has no caller; the lookahead-bias audit contract never runs. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "reject_lookahead"
+    },
+    {
+      "name": "schema:ModelRoutingCandidate@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_model_learning.routing_candidate has no caller; model routing candidates are never produced (the brain shows ModelSelectionExplanation instead). Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "routing_candidate"
+    },
+    {
+      "name": "schema:ModelRoutingShadowEval@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_model_learning.shadow_evaluate has no caller; shadow evaluation of routing candidates never runs. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "shadow_evaluate"
+    },
+    {
+      "name": "schema:ModelTaskPerformance@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Row of the observational model-task performance ledger (cio_model_learning.record_performance); the operator view of it is ModelTaskPerformanceView via /api/v3/cio/brain/model-performance (surfaced).",
+      "owner_hint": "scripts/lib/cio_model_learning.py::record_performance"
+    },
+    {
+      "name": "schema:NarrativeSubjectLink@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "What-a-narrative-is-about identity links (cio_narrative_subjects.build_links / cio_narrative_write.write_narrative) for the identity spine; subject tagging plumbing.",
+      "owner_hint": "scripts/lib/cio_narrative_subjects.py"
+    },
+    {
+      "name": "schema:NotificationLearning@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_institutional_learning.notification_learning has no caller; notification learning summaries are never produced. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "notification_learning"
+    },
+    {
+      "name": "schema:NotificationOutcome@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_r13_institution.record_notification_outcome has no caller; notification outcomes are never recorded through this contract. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "record_notification_outcome"
+    },
+    {
+      "name": "schema:NotifyFreshness@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Refusal record when an advisory quotes a stale portfolio figure (cio_notify_freshness.stale_claim/stale_evidence) in plan enrichment; a delivery guard, the delivered/suppressed outcome is surfaced via the notification block.",
+      "owner_hint": "scripts/lib/cio_notify_freshness.py"
+    },
+    {
+      "name": "schema:ObservationalS1Apply@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Apply receipt of the observational-S1 job (apply_observational_s1, cap 5, no notify) that opens S1 plans for held names; the resulting plans are what the operator sees.",
+      "owner_hint": "scripts/lib/cio_observational_s1.py::apply_observational_s1"
+    },
+    {
+      "name": "schema:ObservationalS1Dry@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Dry-run listing of held equities without an open S1 (collect_held_without_open_s1) for the observational-S1 job; pre-flight output.",
+      "owner_hint": "scripts/lib/cio_observational_s1.py::collect_held_without_open_s1"
+    },
+    {
+      "name": "schema:OfficeCycleResult@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_office_cycle is imported only by check_dark_contracts.py; run_office_cycle has no production caller, so the autonomous office-cycle result is never produced. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "run_office_cycle"
+    },
+    {
+      "name": "schema:OperatorPolicyRatificationReceipt@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Write receipt returned to the POST /api/v3/cio/brain/policy/ratify caller (ratify_policy_field); the resulting policy state is surfaced (OperatorInvestmentPolicy@v1, operator policy registry, policy provenance).",
+      "owner_hint": "scripts/lib/cio_operator_investment_policy.py::ratify_policy_field"
+    },
+    {
+      "name": "schema:OperatorProductRefresh@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Persist receipt of persist_operator_product_if_available (cio_run_worker) recording whether the operator product was refreshed; refresh bookkeeping.",
+      "owner_hint": "scripts/lib/cio_operator_product.py::persist_operator_product_if_available"
+    },
+    {
+      "name": "schema:OrphanPlanHygiene@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Receipt of the orphan-plan cancellation job (cio_orphan_plan_hygiene.cancel_orphan_plans, scripts/cio_orphan_plan_hygiene.py) for plans whose subject is no longer held; maintenance output.",
+      "owner_hint": "scripts/lib/cio_orphan_plan_hygiene.py"
+    },
+    {
+      "name": "schema:OutboundIdentityTag@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Identity tag attached to outbound text (cio_outbound_identity.tag_text via telegram_alert / comms client) so messages join the identity spine; comms plumbing.",
+      "owner_hint": "scripts/lib/cio_outbound_identity.py"
+    },
+    {
+      "name": "schema:PlanOutcomeCheckpointBind@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Receipt of bind_held_researched_plan_checkpoints (binds checkpoints for held researched plans); its health is surfaced as CheckpointLineageHealth@v1 in Product health.",
+      "owner_hint": "scripts/lib/cio_plan_outcome_checkpoints.py"
+    },
+    {
+      "name": "schema:PolicyConfirmationLifecycle@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_r13_institution.confirm_policy_lifecycle has no caller; policy confirmation goes through cio_operator_investment_policy.ratify_policy_field (surfaced as policy provenance). Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "confirm_policy_lifecycle"
+    },
+    {
+      "name": "schema:PolicyProvenance@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Material-scan audit that a default cash band is not passed off as operator policy (audit_cash_posture_policy); the operator-facing provenance is the policy provenance view + registry (surfaced).",
+      "owner_hint": "scripts/lib/cio_policy_provenance.py"
+    },
+    {
+      "name": "schema:ProviderRequestJournal@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Durable LLM provider request journal (cio_provider_retry_v1.reserve/record, cio_governed_model_bridge) for idempotent retries; provider plumbing.",
+      "owner_hint": "scripts/lib/cio_provider_retry_v1.py"
+    },
+    {
+      "name": "schema:ResearchBudget@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Per-instrument daily research budget ledger (cio_research_budget.record/select) for the wake dispatcher; spend control plumbing, reported by cio_research_budget_report.py.",
+      "owner_hint": "scripts/lib/cio_research_budget.py"
+    },
+    {
+      "name": "schema:ResearchDecisionLink@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_intelligence_outcomes.link_research_decision has no caller (module imported only by check_dark_contracts.py); research->decision links are recorded by intelligence_lineage instead. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "link_research_decision"
+    },
+    {
+      "name": "schema:ResearchHistory@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Prior research outcomes per plan read from the request stream (cio_research_history) for the research gate and S0 loop; gate input, research results themselves are surfaced via research provenance.",
+      "owner_hint": "scripts/lib/cio_research_history.py"
+    },
+    {
+      "name": "schema:ResearchImpact@v1",
+      "kind": "schema",
+      "classification": "SURFACE",
+      "reason": "Research-completion impacts written to cio_research_impacts.jsonl by cio_product_reassessment.research_impact are joined by build_hermes_research_links into items[].decision_ids, which the Hermes decision-links panel renders on the Hermes and Research Intelligence hubs.",
+      "owner_hint": "scripts/lib/cio_product_reassessment.py",
+      "record_edge": {
+        "route": "/api/v3/hermes/research-links",
+        "path": [
+          "items",
+          "decision_ids"
+        ],
+        "reader": "lib/cio_cross_surface_links.py::build_hermes_research_links",
+        "writer": "lib/cio_product_reassessment.py::research_impact",
+        "store": "cio_research_impacts.jsonl"
+      }
+    },
+    {
+      "name": "schema:ResearchPreflight@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Preflight that loads an InstrumentRecord before ResearchNeedDecision.decide (decide_after_load) in the wake dispatcher; gate plumbing.",
+      "owner_hint": "scripts/lib/cio_research_preflight.py"
+    },
+    {
+      "name": "schema:ResearchScheduleSurface@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Schedule surface of the research routing gate (cio_research_gate.schedule_surface) used only by cio_research_gate_report.py; routing internals.",
+      "owner_hint": "scripts/lib/cio_research_gate.py::schedule_surface"
+    },
+    {
+      "name": "schema:ResidualWebLane@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Residual web lane that executes the gate's residual rung (cio_residual_web legality/run_hop); search-lane plumbing and legality checks.",
+      "owner_hint": "scripts/lib/cio_residual_web.py"
+    },
+    {
+      "name": "schema:RetryDisposition@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Canonical retry disposition for a failed provider call (cio_provider_retry_v1.classify_failure); retry policy plumbing.",
+      "owner_hint": "scripts/lib/cio_provider_retry_v1.py::classify_failure"
+    },
+    {
+      "name": "schema:S0OperatorTurn@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Record of one S0 operator-loop turn (cio_s0_operator_loop._turn) minted for Telegram converse memory; conversation bookkeeping, not CIO judgment.",
+      "owner_hint": "scripts/lib/cio_s0_operator_loop.py::_turn"
+    },
+    {
+      "name": "schema:S0RehydrateBundle@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Bundle the S0 loop rehydrates for the next conversation turn (cio_s0_operator_loop.rehydrate); transient agent context.",
+      "owner_hint": "scripts/lib/cio_s0_operator_loop.py::rehydrate"
+    },
+    {
+      "name": "schema:SameBrainAcceptance@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "Both definitions are uncalled: cio_context_envelope_v2.same_brain lives in a module nothing imports, and cio_intelligence_fabric.same_brain_institutional has no caller. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::same_brain_institutional"
+    },
+    {
+      "name": "schema:ScanFabricOverlay@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Overlay that the material scan writes into the fabric (observe_from_scan via cio_material_scan); scan plumbing, situations are surfaced via OfficeSituationScan@v1.",
+      "owner_hint": "scripts/lib/cio_intelligence_fabric.py::observe_from_scan"
+    },
+    {
+      "name": "schema:ShadowExperiment@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_institutional_learning.shadow_experiment has no caller; shadow experiments are tracked by other stores (shadow_experiments.jsonl), not this builder. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "shadow_experiment"
+    },
+    {
+      "name": "schema:SituationNotifyBridge@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Bridge receipt feeding CIOSituationState@v1 into the production notification chokepoint (cio_situation_notify_bridge, via cio_material_scan); the situations and notification block are surfaced.",
+      "owner_hint": "scripts/lib/cio_situation_notify_bridge.py"
+    },
+    {
+      "name": "schema:SourceLibrarian@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Source shelf-life audit for graded sources (cio_research_librarian.audit/filter_corpus) applied inside the research gate; corpus hygiene.",
+      "owner_hint": "scripts/lib/cio_research_librarian.py"
+    },
+    {
+      "name": "schema:SpecialistArtifact@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_r13_institution.specialist_artifact is called only by score_specialist_readiness inside the same module, which itself has no caller; runtime specialist artifacts come from cio_specialist_artifact. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "specialist_artifact"
+    },
+    {
+      "name": "schema:SpecialistDisagreementMemory@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_intelligence_outcomes.specialist_disagreement_memory has no caller; the Operator-evidence 'specialist disagreement' capability reports DARK for exactly this reason. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "specialist_disagreement_memory"
+    },
+    {
+      "name": "schema:SpecialistRuntimeArtifact@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_intelligence_outcomes.specialist_runtime_artifact has no caller; specialist artifacts are written by cio_specialist_artifact, not this dark module. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "specialist_runtime_artifact"
+    },
+    {
+      "name": "schema:SpecialistRuntimeResult@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_intelligence_outcomes.specialist_unavailable has no caller in scripts/; the specialist runtime result contract never leaves the dark module. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "specialist_unavailable"
+    },
+    {
+      "name": "schema:WakeSubjectDecision@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Decision that gives a wake its subject before loading the record (cio_wake_subject.decide) in the wake dispatcher; dispatch plumbing.",
+      "owner_hint": "scripts/lib/cio_wake_subject.py"
+    },
+    {
+      "name": "schema:WakeTurnEffect@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Per-turn effect row of a wake (cio_rehydrate._record_turn_effect -> wake_turn_effects.jsonl) used by the research budget; agent bookkeeping.",
+      "owner_hint": "scripts/lib/cio_rehydrate.py::_record_turn_effect"
+    },
+    {
+      "name": "schema:WatchInstrumentAdmit@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Receipt of admitting WATCH InstrumentRecord rows (admit_watch_records, cognition only) during record migration; migration job output.",
+      "owner_hint": "scripts/lib/cio_watch_instrument_admit.py"
+    },
+    {
+      "name": "schema:WebEvidenceProvenance@v1",
+      "kind": "schema",
+      "classification": "RETIRE_CANDIDATE",
+      "reason": "cio_intelligence_fabric.persist_web_evidence has no caller in scripts/; web evidence provenance is surfaced through the research-provenance route instead. Do not delete without an archive tripwire (AGENTS rule 6).",
+      "owner_hint": "persist_web_evidence"
+    },
+    {
+      "name": "schema:WebSourceRef@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Librarian-lite reference for one web source used by the residual web lane (cio_web_librarian.source_ref/summarize); citation plumbing, provenance is surfaced via research provenance.",
+      "owner_hint": "scripts/lib/cio_web_librarian.py"
+    }
+  ]
+}
