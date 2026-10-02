@@ -1,0 +1,285 @@
+{
+  "schema": "CIOKnownDarkClassification@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "classified_at": "2026-10-02",
+  "census_command": "python scripts/check_dark_contracts.py --json (inherited=25, resolved_since_baseline=5, new=0)",
+  "doc_ref": "docs/cio/CIO_KNOWN_DARK_CLASSIFICATION.md",
+  "vocabulary": {
+    "WIRE": "should have, or already has, a production consumer",
+    "RETAIN_WITH_REASON": "no consumer by design; the reason is stated",
+    "RETIRE": "superseded; proposal only. Archive with a tripwire, never delete (AGENTS.md rule 6)"
+  },
+  "note": "Classification only. KNOWN_DARK in scripts/check_dark_contracts.py is unchanged; no module is wired, moved or archived by this file.",
+  "items": [
+    {
+      "module": "scripts/lib/cio_advisory_notify.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETIRE",
+      "reason": "Superseded by the live notification chain: cio_notification_signal -> operator_notification_outbox -> cio_delivery_mode -> cio_telegram_receipts (coverage rows 'notification policy' and 'delivery/outbox'). A second prepare/send/receipt path would be a competing writer.",
+      "consumer_or_successor": "scripts.lib.cio_notification_signal + scripts.lib.cio_delivery_mode",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/lib/cio_curation_run.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETAIN_WITH_REASON",
+      "reason": "CurationRun@v1 is the governance contract for material curation summaries. Curation currently reaches the spine as security_research_spine contributions (kind llm_llm_curation) without this lineage. Wiring it means scheduling governed LLM curation runs, which spends paid model budget: operator decision (AGENTS.md section 17).",
+      "consumer_or_successor": "operator decision on paid curation cadence",
+      "action_status": "NO_ACTION"
+    },
+    {
+      "module": "scripts/lib/cio_intelligence_outcomes.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETIRE",
+      "reason": "Its decision/outcome/lesson linkage (DecisionOutcome@v1, ResearchDecisionLink@v1) has no store. The live chain is outcome_observations.jsonl (cio_institutional_learning) -> lesson_candidates.jsonl -> InstrumentRecord beliefs (cio_belief_writer), and the operator-evidence learning link_graph composes those edges from real ids.",
+      "consumer_or_successor": "scripts.lib.cio_institutional_learning + scripts.lib.cio_belief_writer",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/lib/cio_office_cycle.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETIRE",
+      "reason": "A second autonomous truth -> CIO -> notify -> memory loop. The office cycle runs through cio_run and the wake lanes (cio_wake_jobs.jsonl, workflow-lineage CIO_GENERATION nodes). Wiring this one would create a competing cycle.",
+      "consumer_or_successor": "scripts.lib.cio_run + wake lanes",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/lib/decision_rationale.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "WIRE",
+      "reason": "DecisionRationale@v1 (auditable reasons that reject private chain-of-thought) is the rationale record the evidence surface lacks. Research reason_used_or_rejected is null for most artifacts because no producer writes a reason. Consumer: the CIO judgment writer (cio_run) emits it; operator evidence displays it.",
+      "consumer_or_successor": "scripts.lib.cio_run (judgment) -> cio_operator_evidence",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/lib/intelligence_coverage_v2.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETIRE",
+      "reason": "IntelligenceCoverageMatrix@v2 (SUPPORTED/MISSING) is superseded by the runtime census in cio_operator_evidence capability_coverage (LIVE/PARTIAL/UNWIRED/DARK/UNKNOWN plus freshness). Keeping both would produce two coverage verdicts.",
+      "consumer_or_successor": "scripts.lib.cio_operator_evidence capability_coverage",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/lib/symbol_thesis_event_wake.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "WIRE",
+      "reason": "Adds thesis-coverage checks to existing wake event types (watch.new_signal, hermes.research_promoted, hermes.contradiction_found...) without a new bus. Consumer: cio wake dispatch. It must stay behind the existing SHADOW wake flags until the operator flips persistent wake.",
+      "consumer_or_successor": "cio_wake_dispatch_entrypoint (SHADOW)",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/materialize_cio_seasonality_history.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETAIN_WITH_REASON",
+      "reason": "Manual backfill entrypoint for SeasonalityState@v1 inputs (market_ohlcv_bars). It runs once on operator request, so having no scheduler is correct.",
+      "consumer_or_successor": "manual",
+      "action_status": "NO_ACTION"
+    },
+    {
+      "module": "scripts/refresh_advisory_maturity_evidence.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "WIRE",
+      "reason": "Refreshes the read-only evidence that MaturityScorecard@v1 consumes, but nothing schedules it, so the scorecard reads stale snapshots. Wiring needs a crontab entry plus a lane_registry update, which is an operator change.",
+      "consumer_or_successor": "cron (operator) -> MaturityScorecard@v1",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/symbol_thesis_integration_audit.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETAIN_WITH_REASON",
+      "reason": "Manual read-only audit (no backfill, no enqueue). Run on demand after symbol-thesis changes.",
+      "consumer_or_successor": "manual",
+      "action_status": "NO_ACTION"
+    },
+    {
+      "module": "scripts/r71_health_audit.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETIRE",
+      "reason": "R7.1 release-closeout audit of RAG schedule, Hermes coordinator and Cursor dependency. Its checks now live in health monitors and the coverage census.",
+      "consumer_or_successor": "health monitor + capability_coverage",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/dump_research_prompt_fixture.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETAIN_WITH_REASON",
+      "reason": "Acceptance-evidence tool that dumps the redacted stateful research prompt on demand. It has no runtime role.",
+      "consumer_or_successor": "manual",
+      "action_status": "NO_ACTION"
+    },
+    {
+      "module": "scripts/research_output_token_report.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETIRE",
+      "reason": "Report for the concluded M2 output-ceiling experiment. No production config depends on it.",
+      "consumer_or_successor": "none",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/sandbox_output_ceiling_20.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETIRE",
+      "reason": "Sandbox for the concluded M2 output-ceiling experiment (writes data/cio/sandbox only).",
+      "consumer_or_successor": "none",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/repair_hermes_backlog_taxonomy.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETAIN_WITH_REASON",
+      "reason": "Manual repair tool (preview by default, --apply edits evidence_json only). Keep until the librarian backlog taxonomy is proven clean.",
+      "consumer_or_successor": "manual",
+      "action_status": "NO_ACTION"
+    },
+    {
+      "module": "scripts/lib/r17_gui_pane.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETIRE",
+      "reason": "Single-ticker GUI projection superseded by the CIO hub and security card surfaces.",
+      "consumer_or_successor": "CioHub / security card",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/lib/memory_vector_index_benchmark.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETAIN_WITH_REASON",
+      "reason": "Deterministic vector-index harness. HNSW/IVFFlat stay UNMEASURED until a Postgres shadow workload runs (pgvector is installed). Keep it as the benchmark vehicle.",
+      "consumer_or_successor": "manual benchmark",
+      "action_status": "NO_ACTION"
+    },
+    {
+      "module": "scripts/lib/embedding_policy.py",
+      "cio_relevant": true,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETIRE",
+      "reason": "EmbeddingPolicy@v1 duplicates scripts/lib/ollama_embedding_policy.py, which is the module its apparent consumers actually import (census 2026-08-30 substring collision).",
+      "consumer_or_successor": "scripts.lib.ollama_embedding_policy",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/lib/alert_semantic_aggregation.py",
+      "cio_relevant": false,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETAIN_WITH_REASON",
+      "reason": "Comms-layer aggregation of alert events by meaning. The owner is outside the CIO evidence surface, and it is a candidate for the comms editor chokepoint.",
+      "consumer_or_successor": "comms owner",
+      "action_status": "NO_ACTION"
+    },
+    {
+      "module": "scripts/lib/control_plane_contract_v1.py",
+      "cio_relevant": false,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETAIN_WITH_REASON",
+      "reason": "Frozen ControlPlane@v1.0.0 types. The frontend consumes them through JSON fixtures, not Python imports, so the gate cannot see the consumer.",
+      "consumer_or_successor": "apps/command-center-v3 fixtures",
+      "action_status": "NO_ACTION"
+    },
+    {
+      "module": "scripts/lib/free_first_scheduler_health.py",
+      "cio_relevant": false,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETAIN_WITH_REASON",
+      "reason": "FREE_FIRST timer health predicate, exercised by CI and tests. Its health-monitor owner is outside CIO.",
+      "consumer_or_successor": "health monitor owner",
+      "action_status": "NO_ACTION"
+    },
+    {
+      "module": "scripts/lib/provider_spend_snapshot.py",
+      "cio_relevant": false,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETAIN_WITH_REASON",
+      "reason": "Opt-in (--write) provider spend snapshot documented in docs/ops/MATURITY_SCORECARD.md and run by hand.",
+      "consumer_or_successor": "manual",
+      "action_status": "NO_ACTION"
+    },
+    {
+      "module": "scripts/audit_local_model_decommission.py",
+      "cio_relevant": false,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETAIN_WITH_REASON",
+      "reason": "Evidence collector to run before any operator-authorized model removal. It is manual by design.",
+      "consumer_or_successor": "manual",
+      "action_status": "NO_ACTION"
+    },
+    {
+      "module": "scripts/lib/r18_2_closeout.py",
+      "cio_relevant": false,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETIRE",
+      "reason": "R18.2 local closeout with zero references repo-wide.",
+      "consumer_or_successor": "none",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/lib/r18_data_closeout.py",
+      "cio_relevant": false,
+      "census_state": "INHERITED_DARK",
+      "classification": "RETIRE",
+      "reason": "R18-DATA.1 local closeout. The release is closed.",
+      "consumer_or_successor": "none",
+      "action_status": "PROPOSED"
+    },
+    {
+      "module": "scripts/lib/hermes_golden_judge.py",
+      "cio_relevant": true,
+      "census_state": "RESOLVED_SINCE_BASELINE",
+      "classification": "WIRE",
+      "reason": "A consumer now exists (check_dark_contracts resolved_since_baseline, 2026-10-02). No action here; the KNOWN_DARK entry can be dropped in a separate change.",
+      "consumer_or_successor": "already wired",
+      "action_status": "ALREADY_WIRED"
+    },
+    {
+      "module": "scripts/lib/memory_m2_v2.py",
+      "cio_relevant": true,
+      "census_state": "RESOLVED_SINCE_BASELINE",
+      "classification": "WIRE",
+      "reason": "A consumer now exists (resolved_since_baseline, 2026-10-02).",
+      "consumer_or_successor": "already wired",
+      "action_status": "ALREADY_WIRED"
+    },
+    {
+      "module": "scripts/lib/proactive_cio.py",
+      "cio_relevant": true,
+      "census_state": "RESOLVED_SINCE_BASELINE",
+      "classification": "WIRE",
+      "reason": "A consumer now exists (resolved_since_baseline, 2026-10-02).",
+      "consumer_or_successor": "already wired",
+      "action_status": "ALREADY_WIRED"
+    },
+    {
+      "module": "scripts/lib/tradeai_record_envelope.py",
+      "cio_relevant": false,
+      "census_state": "RESOLVED_SINCE_BASELINE",
+      "classification": "WIRE",
+      "reason": "A consumer now exists (resolved_since_baseline, 2026-10-02).",
+      "consumer_or_successor": "already wired",
+      "action_status": "ALREADY_WIRED"
+    },
+    {
+      "module": "scripts/repair_health_threshold_tuning_noise.py",
+      "cio_relevant": false,
+      "census_state": "RESOLVED_SINCE_BASELINE",
+      "classification": "WIRE",
+      "reason": "A consumer now exists (resolved_since_baseline, 2026-10-02).",
+      "consumer_or_successor": "already wired",
+      "action_status": "ALREADY_WIRED"
+    }
+  ]
+}

@@ -881,10 +881,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/CIO_CROSS_SURFACE_LINKS.md` | CIO / Hermes / Research Intelligence links | review_required | MISSING HEADER | `643a84f55d99` |
 | `docs/cio/CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md` | CIO Decision Lineage — Operator Surface | review_required | OK | `08f390bfd657` |
 | `docs/cio/CIO_DESK_OPERATING_PACKET.md` | Trade AI — CIO Desk Operating Packet | review_required | OK | `6d3c1e290b04` |
+| `docs/cio/CIO_KNOWN_DARK_CLASSIFICATION.md` | CIO KNOWN_DARK Classification | review_required | OK | `bcf3a5a5c4fc` |
 | `docs/cio/CIO_NOTIFICATION_POLICY.md` | CIO Notification Policy — Signal over Spam | review_required | OK | `40a0bb623a7c` |
 | `docs/cio/CIO_NOTIFICATION_REPLAY_ACCEPTANCE.md` | CIO Notification Replay Acceptance | review_required | OK | `76573f672e2d` |
 | `docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md` | CIO Notification Runtime Topology | review_required | OK | `ab46eaffc931` |
-| `docs/cio/CIO_OPERATOR_EVIDENCE_SURFACE.md` | CIO Operator Evidence Surface | review_required | OK | `b93266c28b0c` |
+| `docs/cio/CIO_OPERATOR_EVIDENCE_SURFACE.md` | CIO Operator Evidence Surface | review_required | OK | `d01482dd839e` |
 | `docs/cio/CIO_TELEGRAM_CONVERSE_RUNBOOK.md` | CIO Telegram converse — operator runbook | review_required | OK | `01ee6726efe4` |
 | `docs/cio/CIO_TELEGRAM_PRODUCT_STANDARD.md` | CIO Telegram Product Standard | review_required | OK | `d22ceec24059` |
 | `docs/cio/CIO_WHATSAPP_CONVERSE_RUNBOOK.md` | CIO WhatsApp converse — operator runbook (P4) | review_required | OK | `241130c46382` |
