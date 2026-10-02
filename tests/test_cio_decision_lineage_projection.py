@@ -237,6 +237,32 @@ def test_exact_decision_lineage_carries_only_exact_cognition_and_learning_rows(t
     assert result["lineage"]["learning"]["settled_outcomes"] == []
 
 
+def test_exact_lookup_uses_bounded_tail_and_omits_unrelated_capability_scan(tmp_path, monkeypatch):
+    import scripts.api_v3_cio as api
+    import scripts.lib.cio_operator_evidence as evidence
+
+    path = tmp_path / "large.jsonl"
+    path.write_text("{\"decision_id\": \"other\", \"payload\": \"x\"}\n" * 20 + "{\"decision_id\": \"exact\"}\n")
+    monkeypatch.setattr(evidence, "_DECISION_LOOKUP_TAIL_BYTES", 32)
+    assert evidence._rows(path, decision_id="exact") == [{"decision_id": "exact"}]
+
+    cio_root = tmp_path / "cio"
+    cio_root.mkdir()
+    (cio_root / "cio_workflow_lineage.jsonl").write_text(json.dumps({"decision_id": "exact", "record_type": "envelope"}) + "\n")
+    monkeypatch.setenv("TRADEAI_CIO_DIR", str(cio_root))
+    monkeypatch.setattr(api, "load_known_decision_catalog", lambda: {})
+    calls = {}
+
+    def fake_operator_evidence(*, now, decision_id, include_coverage):
+        calls.update({"decision_id": decision_id, "include_coverage": include_coverage})
+        return {"blocks": {"research": {}, "institutional_cognition": {"items": []}, "learning": {}}}
+
+    monkeypatch.setattr(evidence, "build_operator_evidence", fake_operator_evidence)
+    result = api.get_cio_decision_lineage("exact")
+    assert result["ok"] is True
+    assert calls == {"decision_id": "exact", "include_coverage": False}
+
+
 def test_frontend_research_provenance_has_required_operator_groups_and_links():
     panel = (ROOT / "apps" / "command-center-v3" / "src" / "components" / "cio" / "CioOperatorEvidencePanel.tsx").read_text()
     lineage_panel = (ROOT / "apps" / "command-center-v3" / "src" / "components" / "cio" / "CioDecisionLineagePanel.tsx").read_text()

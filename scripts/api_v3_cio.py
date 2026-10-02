@@ -193,19 +193,57 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _read_jsonl(path: Path) -> list[dict[str, Any]]:
+_DECISION_LOOKUP_TAIL_BYTES = 8 * 1024 * 1024
+
+
+def _row_matches_decision(row: dict[str, Any], decision_id: str) -> bool:
+    did = str(decision_id or "").strip()
+    if not did:
+        return True
+    values: list[str] = []
+    for key in (
+        "decision_id", "judgment_decision_id", "cio_case_id", "workflow_id",
+        "decision_ids", "decision_refs", "decisions", "consumed_by_decision_ids",
+    ):
+        value = row.get(key)
+        if isinstance(value, str):
+            values.append(value)
+        elif isinstance(value, (list, tuple, set)):
+            values.extend(str(item) for item in value if item not in (None, ""))
+    contributions = row.get("contributions")
+    if isinstance(contributions, list):
+        return any(isinstance(item, dict) and _row_matches_decision(item, did) for item in contributions) or did in values
+    return did in values
+
+
+def _read_jsonl(path: Path, *, decision_id: str | None = None) -> list[dict[str, Any]]:
     if not path.exists():
         return []
-    entries = []
-    with open(path) as f:
-        for line in f:
+    predicate = (lambda row: _row_matches_decision(row, decision_id)) if decision_id else None
+
+    def parse(lines: Any) -> list[dict[str, Any]]:
+        entries: list[dict[str, Any]] = []
+        for line in lines:
             line = line.strip()
-            if line:
-                try:
-                    entries.append(json.loads(line))
-                except json.JSONDecodeError:
-                    pass
-    return entries
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(row, dict) and (predicate is None or predicate(row)):
+                entries.append(row)
+        return entries
+
+    if decision_id and path.stat().st_size > _DECISION_LOOKUP_TAIL_BYTES:
+        with open(path, "rb") as handle:
+            handle.seek(-_DECISION_LOOKUP_TAIL_BYTES, 2)
+            handle.readline()
+            recent = parse(handle.read().decode("utf-8", errors="replace").splitlines())
+        if recent:
+            return recent
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        return parse(handle)
 
 
 def _cio_snapshot_data() -> dict[str, Any]:
@@ -1446,7 +1484,7 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             direct_match,
             project_decision_lineage,
         )
-        from scripts.lib.cio_operator_evidence import build_operator_evidence, build_research_provenance
+        from scripts.lib.cio_operator_evidence import build_operator_evidence
 
         decision = dict(load_known_decision_catalog().get(did) or {})
         try:
@@ -1463,9 +1501,9 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             pass
 
         cio_root = Path(os.getenv("TRADEAI_CIO_DIR") or PROJECT_ROOT / "data" / "cio")
-        workflow_rows = _read_jsonl(cio_root / "cio_workflow_lineage.jsonl")
-        intelligence_rows = _read_jsonl(cio_root / "intelligence_lineages.jsonl")
-        checkpoint_rows = _read_jsonl(cio_root / "outcome_checkpoints.jsonl")
+        workflow_rows = _read_jsonl(cio_root / "cio_workflow_lineage.jsonl", decision_id=did)
+        intelligence_rows = _read_jsonl(cio_root / "intelligence_lineages.jsonl", decision_id=did)
+        checkpoint_rows = _read_jsonl(cio_root / "outcome_checkpoints.jsonl", decision_id=did)
         disposition_rows = _read_jsonl(_DISPOSITION_PATH)
         matched = (
             direct_match(did, workflow_rows)
@@ -1482,7 +1520,9 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
                 "financial_action": False,
             }
         composition_as_of = _now_iso()
-        operator_evidence = build_operator_evidence(now=composition_as_of)
+        operator_evidence = build_operator_evidence(
+            now=composition_as_of, decision_id=did, include_coverage=False,
+        )
         evidence_blocks = operator_evidence.get("blocks", {})
         cognition_block = dict(evidence_blocks.get("institutional_cognition") or {})
         cognition_block["items"] = [
@@ -1502,7 +1542,7 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             intelligence_records=intelligence_rows,
             checkpoint_records=checkpoint_rows,
             disposition_records=disposition_rows,
-            research_provenance=build_research_provenance(cio_root, decision_id=did),
+            research_provenance=evidence_blocks.get("research") or {},
             institutional_cognition=cognition_block,
             learning=learning_block,
             composition_as_of=composition_as_of,
