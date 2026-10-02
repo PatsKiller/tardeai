@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import re
+import threading
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -90,12 +91,34 @@ def delta_path(root: Path | str | None = None) -> Path:
     return Path(override).expanduser() if override else _root(root) / "data/cio/research_thesis_deltas.jsonl"
 
 
+# symbol -> latest delta row, rebuilt only when the store changes. The Advisory
+# desk calls latest_delta once per row (124 rows), and re-parsing the 34 MB
+# store each time made GET /api/v3/advisory take ~35 s.
+_DELTA_INDEX: dict[str, Any] = {"key": None, "index": {}}
+_DELTA_INDEX_LOCK = threading.Lock()
+
+
+def _delta_index(path: Path) -> dict[str, dict[str, Any]]:
+    try:
+        st = path.stat()
+    except OSError:
+        return {}
+    key = (str(path), st.st_size, st.st_mtime_ns)
+    with _DELTA_INDEX_LOCK:
+        if _DELTA_INDEX["key"] != key:
+            index: dict[str, dict[str, Any]] = {}
+            for row in _read_jsonl(path):
+                sym = str(row.get("symbol") or "").upper()
+                if sym:
+                    index[sym] = row  # later rows win: same as scanning newest-first
+            _DELTA_INDEX.update({"key": key, "index": index})
+        return _DELTA_INDEX["index"]
+
+
 def latest_delta(symbol: str, *, root: Path | str | None = None) -> dict[str, Any] | None:
     sym = str(symbol or "").upper()
-    for row in reversed(_read_jsonl(delta_path(root))):
-        if str(row.get("symbol") or "").upper() == sym:
-            return row
-    return None
+    row = _delta_index(delta_path(root)).get(sym)
+    return dict(row) if row is not None else None
 
 
 def _market_snapshot(symbol: str, root: Path) -> dict[str, Any]:
