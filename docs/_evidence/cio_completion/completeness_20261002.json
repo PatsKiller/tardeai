@@ -444,7 +444,7 @@
   "classification_issues": [],
   "classification_path": "config/cio_surface_classification.json",
   "classification_stale": [],
-  "composition_as_of": "2026-10-02T17:03:32.226553+00:00",
+  "composition_as_of": "2026-10-02T17:14:09.562791+00:00",
   "counts": {
     "not_operator_relevant": 72,
     "operator_visible": 138,
@@ -1261,7 +1261,7 @@
     }
   ],
   "schema": "CIOCompletenessMeasurement@v2",
-  "serving_sha": "cc3a4d5d479b6a0892871f3e8300fa9da5785b36",
+  "serving_sha": "6266c7573fcda2132938d71af55a7f3703eb16d4",
   "source_acceptance": {
     "classification_well_formed": true,
     "every_non_surfaced_item_classified": true,
