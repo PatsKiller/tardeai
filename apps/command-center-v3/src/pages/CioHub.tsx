@@ -10,6 +10,7 @@ import CioJudgmentBand from '../components/cio/CioJudgmentBand'
 import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import CioDecisionLineagePanel from '../components/cio/CioDecisionLineagePanel'
 import CioOperatorEvidencePanel from '../components/cio/CioOperatorEvidencePanel'
+import CioSourceClocksPanel from '../components/cio/CioSourceClocksPanel'
 import { cioDeepLinkFocus, decisionLineageHref } from '../lib/cioDecisionLineage'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
@@ -2240,7 +2241,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'telegram-receipts' && <TelegramReceiptsPanel />}
           {evidenceSub === 'senses-evidence' && <SensesEvidencePanel />}
           {evidenceSub === 'full-brain' && <CioBrainPanel />}
-          {evidenceSub === 'operator-evidence' && <CioOperatorEvidencePanel />}
+          {evidenceSub === 'operator-evidence' && <><CioSourceClocksPanel /><CioOperatorEvidencePanel /></>}
           {evidenceSub === 'institutional-cognition' && <CioOperatorEvidencePanel section="cognition" />}
           {evidenceSub === 'learning-cockpit' && <CioOperatorEvidencePanel section="learning" />}
           {evidenceSub === 'capability-coverage' && <CioOperatorEvidencePanel section="coverage" />}

@@ -575,24 +575,66 @@ function PriceClockStamp({ pc }: { pc?: any }) {
   )
 }
 
-function DependencyClockBoard({ clocks }: { clocks?: Record<string, any> }) {
-  const labels: Record<string, string> = {
-    advisory_synthesis: 'ADVISORY SYNTHESIS',
-    technicals: 'TECHNICALS',
-    analyst_data: 'ANALYST DATA',
-    research: 'RESEARCH',
-    durable_memory: 'DURABLE MEMORY',
-  }
+const DEPENDENCY_ORDER: Array<[string, string]> = [
+  ['advisory_synthesis', 'ADVISORY SYNTHESIS'],
+  ['technicals', 'TECHNICALS'],
+  ['prices', 'PRICES'],
+  ['watch_intelligence', 'WATCH INTELLIGENCE'],
+  ['reentry', 'RE-ENTRY'],
+  ['analyst_data', 'ANALYST DATA'],
+  ['research', 'RESEARCH'],
+  ['hermes_research', 'HERMES RESEARCH'],
+  ['durable_memory', 'DURABLE MEMORY'],
+]
+
+function fmtDur(seconds: any) {
+  if (seconds == null || Number.isNaN(Number(seconds))) return 'UNKNOWN'
+  const s = Math.max(0, Math.round(Number(seconds)))
+  if (s < 90) return `${s}s`
+  if (s < 90 * 60) return `${Math.round(s / 60)}m`
+  if (s < 48 * 3600) return `${Math.round(s / 3600)}h`
+  return `${Math.round(s / 86400)}d`
+}
+
+function DependencyClockBoard({ clocks, refresh }: { clocks?: Record<string, any>; refresh?: Record<string, any> }) {
+  const older: any[] = refresh?.older_than_synthesis || []
+  const unknown: string[] = refresh?.unknown_clock || []
+  const notByRun: string[] = refresh?.not_refreshed_by_run_now || []
   return (
     <div data-testid="advisory-dependency-clocks" style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 8, margin: '0 0 14px' }}>
-      <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700, letterSpacing: 0.3, marginBottom: 6 }}>INDEPENDENT DEPENDENCY CLOCKS</div>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-        {Object.entries(labels).map(([key, label]) => {
+      <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 700, letterSpacing: 0.3, marginBottom: 6 }}>INDEPENDENT DEPENDENCY CLOCKS · each producer's own data time</div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 8 }}>
+        {DEPENDENCY_ORDER.map(([key, label]) => {
           const clock = clocks?.[key]
-          return <div key={key} style={{ minWidth: 145 }}><div style={{ fontSize: 10, color: 'var(--text3)' }}>{label}</div><div style={{ fontSize: 11, color: qualityTone(clock?.freshness) || 'var(--text2)', fontWeight: 650 }}>{clock?.freshness || 'UNKNOWN'}</div><div style={{ fontSize: 10, color: 'var(--text3)' }}>{clock?.source_as_of ? fmtWhen(clock.source_as_of) : 'source_as_of UNKNOWN'}</div></div>
+          const fresh = clock?.freshness || 'UNKNOWN'
+          return (
+            <div key={key} data-testid={`advisory-dependency-clock-${key}`} style={{ borderLeft: `2px solid ${qualityTone(fresh === 'FRESH' ? 'CURRENT' : fresh) || 'var(--border)'}`, paddingLeft: 6 }} title={`${clock?.producer || ''} · ${clock?.source_ref || ''}${clock?.clock_basis ? ` · ${clock.clock_basis}` : ''}`}>
+              <div style={{ fontSize: 10, color: 'var(--text3)' }}>{label}</div>
+              <div style={{ fontSize: 11, color: qualityTone(fresh === 'FRESH' ? 'CURRENT' : fresh) || 'var(--text2)', fontWeight: 650 }}>
+                {fresh}
+                <span style={{ color: 'var(--text3)', fontWeight: 400 }}> · {fmtDur(clock?.age_seconds)} / {fmtDur(clock?.stale_after_seconds)}</span>
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text3)' }}>{clock?.source_as_of ? fmtWhen(clock.source_as_of_utc || clock.source_as_of) : 'no source clock'}</div>
+              <div style={{ fontSize: 10, color: clock?.refreshed_by_run_now ? 'var(--green)' : 'var(--text3)' }}>
+                {clock?.refreshed_by_run_now ? 'refreshed by Run now' : 'not refreshed by Run now'}
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--text3)' }}>
+                next {clock?.next_scheduled_run ? fmtWhen(clock.next_scheduled_run) : `— ${clock?.next_scheduled_run_reason || 'no declared schedule'}`}
+              </div>
+            </div>
+          )
         })}
       </div>
-      <div style={{ marginTop: 6, fontSize: 10, color: 'var(--amber)' }}>Run now rebuilds advisory synthesis; it does not refresh technicals, analyst data, research, or memory unless each clock advances independently.</div>
+      <div data-testid="advisory-dependency-refresh" style={{ marginTop: 6, fontSize: 10.5, color: older.length || unknown.length ? 'var(--amber)' : 'var(--text2)' }}>
+        {refresh?.synthesis_as_of
+          ? <>Behind the synthesis ({fmtWhen(refresh.synthesis_as_of)}): {older.length ? older.map((o) => o.label).join(' · ') : 'none'}{unknown.length ? ` · no source clock: ${unknown.join(', ')}` : ''}</>
+          : 'Synthesis clock unknown — dependency lag cannot be derived.'}
+      </div>
+      {notByRun.length > 0 && (
+        <div style={{ marginTop: 2, fontSize: 10, color: 'var(--text3)' }}>
+          Run now advances only the synthesis clock; not refreshed by Run now: {notByRun.join(', ')}.
+        </div>
+      )}
     </div>
   )
 }
@@ -694,7 +736,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
       })
       const j = await res.json()
       if (res.status === 202 || j.accepted) {
-        setRunMsg(`${j.message || 'Running… paid Flash + Pro, advisory only'} — desk rebuilt; technicals not refreshed`)
+        setRunMsg(`${j.message || 'Running… paid Flash + Pro, advisory only'} — only the synthesis clock advances — dependency clocks below are independent`)
       } else if (res.status === 409) {
         setRunMsg('Already running')
       } else {
@@ -723,7 +765,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
         </span>
         {data?.desk_cache_age_seconds != null && (
           <span style={{ color: 'var(--text3)', marginLeft: 10 }}>
-            cache {Math.round(data.desk_cache_age_seconds)}s · {data.desk_freshness_state || ''}
+            cache {Math.round(data.desk_cache_age_seconds)}s · desk composition {data.desk_freshness_state || ''} (dependency clocks below are independent)
           </span>
         )}
       </div>
@@ -738,7 +780,7 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
         <Stamp label="FLASH OPINION" at={ts.flash} fresh={ts.flash_freshness} />
         <Stamp label="PRO SYNTHESIS" at={ts.synthesis} fresh={ts.synthesis_freshness} />
       </div>
-      <DependencyClockBoard clocks={data?.dependency_clocks} />
+      <DependencyClockBoard clocks={data?.dependency_clocks} refresh={data?.dependency_refresh} />
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center', margin: '0 0 14px' }}>
         <div data-testid="advisory-next-run" style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', minWidth: 220 }}>
@@ -782,9 +824,10 @@ export default function AdvisoryDeskHub({ onDrill }: Props) {
         )}
       </div>
       <div style={{ fontSize: 11, color: 'var(--text3)', margin: '-8px 0 14px' }}>
-        Run now rebuilds facts + Flash/Pro opinions only. Stale technical snapshots behind watch
-        <span style={{ color: 'var(--amber)' }}> BLOCKED</span> rows (indicator_cache_refresh · materialize_watchlist_strategy_cards · quote_refresh)
-        are <em>not</em> refreshed here — re-run the Watch technical pipeline to clear those.
+        Run now rebuilds facts + Flash/Pro opinions only.{' '}
+        {(data?.dependency_refresh?.older_than_synthesis || []).length
+          ? <span style={{ color: 'var(--amber)' }}>{data.dependency_refresh.summary}.</span>
+          : <span>{data?.dependency_refresh?.summary || 'dependency clocks unavailable'}.</span>}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 8, margin: '0 0 16px' }}>

@@ -53010,6 +53010,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_decision_dispositions()
                 if p in ("operator-evidence", "operator_evidence"):
                     return 200, _cio.get_operator_evidence_v1()
+                if p in ("source-clocks", "source_clocks"):
+                    return 200, _cio.get_cio_source_clocks_v1()
                 if p in ("research-provenance", "research_provenance"):
                     decision_id = (query or {}).get("decision_id") if isinstance(query, dict) else None
                     return 200, _cio.get_research_provenance_v1(decision_id)

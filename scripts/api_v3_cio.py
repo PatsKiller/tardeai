@@ -2800,3 +2800,26 @@ def get_cio_actions() -> dict[str, Any]:
 
 def get_cio_delegation() -> dict[str, Any]:
     return {"ok": True, "as_of": _now_iso(), "delegation": _delegation_data()}
+
+
+def get_cio_source_clocks_v1() -> dict[str, Any]:
+    """GET /api/v3/cio/source-clocks — CIOSourceClocks@v1 (read-only).
+
+    One row per CIO source with the source's own data clock, the composition
+    time, and FRESH/STALE/UNKNOWN/UNAVAILABLE against an explicit
+    stale_after_seconds.  Stat + bounded tail reads + max() probes only.
+    """
+    try:
+        from scripts.lib.cio_source_clocks import compose_cio_source_clocks
+
+        return compose_cio_source_clocks(root=PROJECT_ROOT)
+    except Exception as exc:
+        return {
+            "ok": False,
+            "schema": "CIOSourceClocks@v1",
+            "error": type(exc).__name__,
+            "detail": str(exc)[:200],
+            "authority": AUTHORITY_ADVISORY,
+            "financial_action": False,
+            "mutation": False,
+        }

@@ -507,37 +507,304 @@ def _load_opinions_blob() -> dict[str, Any]:
     return {}
 
 
-def _dependency_clock(rows: list[dict[str, Any]], timestamps: dict[str, Any]) -> dict[str, Any]:
-    """Keep run-now synthesis freshness separate from dependency freshness."""
-    def latest(values: list[Any]) -> str | None:
-        clean = [str(value) for value in values if value not in (None, "", [])]
-        return max(clean) if clean else None
+# Run-now refresh audit (scripts/lib/advisory_desk_schedule.py::_execute_run):
+# run-now calls build_advisory_desk(force=True, max_age_s=0) — which re-reads
+# holdings.json, indicator_confluence_cache, analyst/Hermes/agent DB rows and
+# the re-entry artifact without running any producer — and then
+# enrich_advisory_with_opinions(include_synthesis=True), which writes the
+# Flash opinions + Pro synthesis.  Only the synthesis clock can advance
+# because of run-now.  tests/test_cio_advisory_dependency_clocks_20261002.py
+# pins this audit against the _execute_run source.
+RUN_NOW_REFRESHES: dict[str, bool] = {
+    "advisory_synthesis": True,
+    "technicals": False,
+    "prices": False,
+    "watch_intelligence": False,
+    "reentry": False,
+    "analyst_data": False,
+    "research": False,
+    "hermes_research": False,
+    "durable_memory": False,
+}
+
+# Declared producer lanes (config/lane_registry.json) per dependency clock.
+# Empty = no lane declares the producer; next_scheduled_run is null + reason.
+DEPENDENCY_LANES: dict[str, tuple[str, ...]] = {
+    "technicals": ("indicator-cache-refresh",),
+    "prices": ("portfolio-repricer",),
+    "watch_intelligence": ("watch-review-workers",),
+    "reentry": (),
+    "analyst_data": (),
+    "research": (
+        "research-scheduler-holdings",
+        "research-scheduler-priority-hourly",
+        "research-scheduler-watchlist-2030",
+        "governed-research-producer",
+    ),
+    "hermes_research": (),
+    "durable_memory": ("advisory-shadow-seed",),
+}
+
+DEPENDENCY_LABELS: dict[str, str] = {
+    "advisory_synthesis": "synthesis",
+    "technicals": "technicals",
+    "prices": "prices",
+    "watch_intelligence": "watch intelligence",
+    "reentry": "re-entry",
+    "analyst_data": "analyst data",
+    "research": "research",
+    "hermes_research": "Hermes research",
+    "durable_memory": "durable memory",
+}
+
+
+def _stale_budgets() -> dict[str, int]:
+    """Explicit staleness budgets, from the desk's declared source thresholds."""
+    from lib.advisory_desk_operator import (
+        FACTS_STALE_S,
+        MEMORY_STALE_S,
+        OPINION_STALE_S,
+        REENTRY_STALE_S,
+        STREET_STALE_S,
+    )
+    from lib.cio_source_clocks import SPECS_BY_SOURCE
+
+    return {
+        "advisory_synthesis": int(OPINION_STALE_S),
+        "technicals": int(SPECS_BY_SOURCE["technicals"].stale_after_seconds),
+        "prices": int(FACTS_STALE_S),
+        "watch_intelligence": 4 * 86400,  # watch review workers run Mon/Wed/Fri
+        "reentry": int(REENTRY_STALE_S),
+        "analyst_data": int(STREET_STALE_S),
+        "research": 48 * 3600,
+        "hermes_research": 48 * 3600,
+        "durable_memory": int(MEMORY_STALE_S),
+    }
+
+
+def _fmt_lag(seconds: float) -> str:
+    s = max(0, int(seconds))
+    if s < 90:
+        return f"{s}s"
+    if s < 90 * 60:
+        return f"{round(s / 60)}m"
+    if s < 48 * 3600:
+        return f"{round(s / 3600)}h"
+    return f"{round(s / 86400)}d"
+
+
+def _dependency_clock(
+    rows: list[dict[str, Any]],
+    timestamps: dict[str, Any],
+    *,
+    price_clock: dict[str, Any] | None = None,
+    producer_clocks: dict[str, dict[str, Any]] | None = None,
+    next_runs: dict[str, dict[str, Any]] | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    """Independent per-dependency clocks; run-now synthesis never stands in.
+
+    Every clock is the dependency producer's *own* data clock:
+      * technicals — indicator_confluence_cache max(computed_at) when supplied
+        in ``producer_clocks``, else a row-level technicals ``as_of``.  A quote
+        tick (``quote.price_as_of``) and the indicator_snapshot.json
+        projection time are never technicals clocks.
+      * prices — holdings.json repricer clock (``price_clock``), else the
+        newest watch quote; prices never feed technicals.
+      * watch_intelligence — newest CIO/Maria watch review completion.
+      * analyst_data — target snapshot dates of rows that carry a target.
+      * research vs hermes_research — research deltas + agent opinions vs
+        hermes_external_research evidence.
+    """
+    from lib.cio_source_clocks import ET, classify, newest_clock, parse_clock
+
+    def et_wall(value: Any) -> str | None:
+        # Evidence items truncate DB timestamptz strings to 19 chars, leaving
+        # the DB session's America/New_York wall time without an offset.
+        dt = parse_clock(value, naive_tz=ET)
+        return dt.isoformat() if dt else None
+
+    now = now or datetime.now(timezone.utc)
+    producer_clocks = producer_clocks or {}
+    next_runs = next_runs or {}
+    budgets = _stale_budgets()
 
     technicals: list[Any] = []
+    quotes: list[Any] = []
+    watch_reviews: list[Any] = []
     analysts: list[Any] = []
     research: list[Any] = []
+    hermes: list[Any] = []
     for row in rows:
         wi = row.get("watch_intelligence") or {}
-        technicals.extend([
-            (wi.get("technicals") or {}).get("as_of"),
-            (wi.get("technicals") or {}).get("updated_at"),
-            (wi.get("quote") or {}).get("price_as_of"),
-        ])
-        analyst = row.get("expand", {}).get("analyst") if isinstance(row.get("expand"), dict) else None
-        analyst = analyst or row.get("analyst") or {}
-        analysts.extend([analyst.get("as_of"), analyst.get("target_as_of")])
+        tech = wi.get("technicals") or {}
+        technicals.extend([tech.get("as_of"), tech.get("updated_at")])
+        quotes.append((wi.get("quote") or {}).get("price_as_of"))
+        for review in ((wi.get("reviews") or {}).values() if isinstance(wi.get("reviews"), dict) else []):
+            if isinstance(review, dict):
+                watch_reviews.extend([review.get("completed_at"), review.get("generated_at")])
+        expand = row.get("expand") if isinstance(row.get("expand"), dict) else {}
+        analyst = expand.get("analyst") or row.get("analyst") or {}
+        # A target-less analyst block inherits the holdings date as target_as_of
+        # (cio_advisory_provenance fallback) — that is not an analyst clock.
+        if analyst.get("target") is not None or analyst.get("price_target_mean") is not None or "target" not in analyst:
+            analysts.extend([analyst.get("as_of"), analyst.get("target_as_of")])
         prov = row.get("advisory_provenance") or {}
         research.extend([prov.get("research_as_of"), prov.get("evidence_as_of")])
-        for item in (row.get("expand", {}).get("evidence_items") or []) if isinstance(row.get("expand"), dict) else []:
-            if isinstance(item, dict):
+        delta = (row.get("decision_context") or {}).get("research_delta") or {}
+        if isinstance(delta, dict):
+            research.append(delta.get("evidence_as_of"))
+        for item in expand.get("evidence_items") or []:
+            if not isinstance(item, dict):
+                continue
+            kind = item.get("type")
+            if kind == "external_research" or str(item.get("source") or "").startswith("hermes_external"):
+                hermes.extend([et_wall(item.get("as_of")), et_wall(item.get("created_at"))])
+            elif kind == "agent_opinion":
+                research.append(et_wall(item.get("as_of")))
+            elif kind == "analyst_context":
+                if item.get("target") is not None:
+                    analysts.append(item.get("target_as_of"))
+            elif kind in (None, "research", "research_evidence"):
                 research.extend([item.get("retrieved_at"), item.get("published_at")])
+
+    pc = price_clock or {}
+    tech_prod = producer_clocks.get("technicals") or {}
+
+    def clock(name: str, source_as_of: Any, producer: str, source_ref: str, *, basis: str | None = None) -> dict[str, Any]:
+        stale_after = budgets.get(name)
+        age, freshness = classify(source_as_of, stale_after, now)
+        nxt = next_runs.get(name) or {"next_run_at": None, "reason": "not computed"}
+        return {
+            "name": name,
+            "label": DEPENDENCY_LABELS.get(name, name),
+            "source_as_of": str(source_as_of) if source_as_of not in (None, "") else None,
+            "source_as_of_utc": (parse_clock(source_as_of).isoformat() if parse_clock(source_as_of) else None),
+            "producer": producer,
+            "source_ref": source_ref,
+            "clock_basis": basis,
+            "age_seconds": age,
+            "stale_after_seconds": stale_after,
+            "freshness": freshness,
+            "refreshed_by_run_now": bool(RUN_NOW_REFRESHES.get(name, False)),
+            "next_scheduled_run": nxt.get("next_run_at"),
+            "next_scheduled_run_reason": nxt.get("reason"),
+            "next_scheduled_lane": nxt.get("lane_id"),
+        }
+
+    tech_as_of = tech_prod.get("source_as_of") or newest_clock(technicals, now=now)
+    price_as_of = pc.get("as_of") or newest_clock(quotes, now=now)
     return {
-        "advisory_synthesis": {"source_as_of": timestamps.get("synthesis"), "freshness": timestamps.get("synthesis_freshness"), "producer": "advisory_desk_synthesis"},
-        "technicals": {"source_as_of": latest(technicals), "freshness": "UNKNOWN" if not latest(technicals) else "OBSERVED", "producer": "watch_intelligence"},
-        "analyst_data": {"source_as_of": latest(analysts), "freshness": "UNKNOWN" if not latest(analysts) else "OBSERVED", "producer": "analyst_projection"},
-        "research": {"source_as_of": latest(research), "freshness": "UNKNOWN" if not latest(research) else "OBSERVED", "producer": "research_evidence"},
-        "durable_memory": {"source_as_of": timestamps.get("memory"), "freshness": timestamps.get("memory_freshness"), "producer": "durable_memory"},
+        "advisory_synthesis": clock(
+            "advisory_synthesis", timestamps.get("synthesis"), "advisory_desk_synthesis",
+            "data/runtime/advisory_opinions_latest.json", basis="opinions generated_at",
+        ),
+        "technicals": clock(
+            "technicals", tech_as_of,
+            tech_prod.get("producer") or "watch_intelligence technicals",
+            tech_prod.get("source_ref") or "watch_intelligence.technicals.as_of",
+            basis="indicator_confluence_cache max(computed_at)" if tech_prod.get("source_as_of") else "row technicals as_of (quote time excluded)",
+        ),
+        "prices": clock(
+            "prices", price_as_of,
+            f"portfolio_repricer ({pc.get('reprice_source')})" if pc.get("as_of") else "watch canonical quote",
+            "data/portfolios/state/holdings.json" if pc.get("as_of") else "watch_intelligence.quote.price_as_of",
+            basis=f"holdings.{pc.get('clock_field')}" if pc.get("as_of") else "newest watch quote",
+        ),
+        "watch_intelligence": clock(
+            "watch_intelligence", newest_clock(watch_reviews, now=now), "watch_review_workers (CIO/Maria reviews)",
+            "watch_intelligence.reviews.*.completed_at", basis="newest watch review completion (quote time excluded)",
+        ),
+        "reentry": clock(
+            "reentry", timestamps.get("reentry"), "reentry_decision_desk",
+            "data/runtime/reentry_decision_desk_latest.json", basis="artifact generated_at",
+        ),
+        "analyst_data": clock(
+            "analyst_data", newest_clock(analysts, now=now), "analyst_projection",
+            "yahoo_analyst_targets_history.snapshot_date", basis="newest target snapshot date of rows with a target",
+        ),
+        "research": clock(
+            "research", newest_clock(research, now=now), "research_evidence",
+            "research_delta.evidence_as_of + watchlist_agent_results", basis="newest research delta / agent opinion",
+        ),
+        "hermes_research": clock(
+            "hermes_research", newest_clock(hermes, now=now), "hermes_external_research",
+            "db:hermes_external_research.created_at", basis="newest external research evidence consumed by the desk",
+        ),
+        "durable_memory": clock(
+            "durable_memory", timestamps.get("memory"), "durable_memory",
+            "DurableJsonlMemoryProvider", basis="last admitted memory",
+        ),
     }
+
+
+def _dependency_refresh(clocks: dict[str, Any], run_now: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Derived (never static) list of dependencies older than the synthesis."""
+    from lib.cio_source_clocks import parse_clock
+
+    run_now = run_now or {}
+    synth = clocks.get("advisory_synthesis") or {}
+    synth_dt = parse_clock(synth.get("source_as_of"))
+    older: list[dict[str, Any]] = []
+    unknown: list[str] = []
+    for name, c in clocks.items():
+        if name == "advisory_synthesis":
+            continue
+        dt = parse_clock(c.get("source_as_of"))
+        if dt is None:
+            unknown.append(name)
+            continue
+        if synth_dt is not None and dt < synth_dt:
+            lag = (synth_dt - dt).total_seconds()
+            older.append({
+                "name": name,
+                "lag_seconds": int(lag),
+                "label": f"{c.get('label') or name} {_fmt_lag(lag)} older than synthesis",
+                "refreshed_by_run_now": bool(c.get("refreshed_by_run_now")),
+            })
+    older.sort(key=lambda x: -x["lag_seconds"])
+    not_refreshed = [n for n, c in clocks.items() if not c.get("refreshed_by_run_now")]
+    stale = [n for n, c in clocks.items() if c.get("freshness") == "STALE"]
+    if synth_dt is None:
+        status = "SYNTHESIS_CLOCK_UNKNOWN"
+    elif older or unknown:
+        status = "DEPENDENCIES_NOT_ALL_REFRESHED"
+    else:
+        status = "DEPENDENCIES_AT_OR_AFTER_SYNTHESIS"
+    parts = [o["label"] for o in older]
+    if unknown:
+        parts.append("no source clock: " + ", ".join(DEPENDENCY_LABELS.get(n, n) for n in unknown))
+    return {
+        "status": status,
+        # Never "all refreshed": run-now advances only the synthesis clock.
+        "all_dependencies_at_or_after_synthesis": status == "DEPENDENCIES_AT_OR_AFTER_SYNTHESIS",
+        "synthesis_as_of": synth.get("source_as_of"),
+        "last_run_state": run_now.get("state"),
+        "last_run_finished_at": run_now.get("finished_at"),
+        "older_than_synthesis": older,
+        "unknown_clock": unknown,
+        "stale": stale,
+        "not_refreshed_by_run_now": not_refreshed,
+        "summary": "; ".join(parts) if parts else "every dependency clock is at or after the synthesis",
+    }
+
+
+def _dependency_next_runs(schedule: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    out: dict[str, dict[str, Any]] = {
+        "advisory_synthesis": {
+            "next_run_at": schedule.get("next_run_at"),
+            "reason": None if schedule.get("next_run_at") else "advisory schedule unavailable",
+            "lane_id": schedule.get("timer_unit"),
+        }
+    }
+    try:
+        from lib.cio_source_clocks import next_scheduled_run
+        for name, lanes in DEPENDENCY_LANES.items():
+            out[name] = next_scheduled_run(lanes)
+    except Exception as exc:  # noqa: BLE001
+        for name in DEPENDENCY_LANES:
+            out.setdefault(name, {"next_run_at": None, "reason": f"schedule lookup failed: {type(exc).__name__}"})
+    return out
 
 
 def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> dict[str, Any]:
@@ -643,7 +910,26 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
         "reentry_universe": meta.get("reentry_universe_count"),
         "reentry_shown": by_class.get("closed_journal", 0),
     }
-    dependency_clocks = _dependency_clock(rows, timestamps)
+    producer_clocks: dict[str, dict[str, Any]] = {}
+    try:
+        from lib.cio_source_clocks import cached_source_row
+        tech_row = cached_source_row("technicals")
+        if tech_row and tech_row.get("source_as_of"):
+            producer_clocks["technicals"] = tech_row
+    except Exception:
+        producer_clocks = {}
+    try:
+        dependency_clocks = _dependency_clock(
+            rows,
+            timestamps,
+            price_clock=price_clock,
+            producer_clocks=producer_clocks,
+            next_runs=_dependency_next_runs(schedule),
+        )
+        dependency_refresh = _dependency_refresh(dependency_clocks, run_now)
+    except Exception as exc:  # noqa: BLE001 — clocks never break the desk
+        dependency_clocks = {}
+        dependency_refresh = {"status": "UNAVAILABLE", "all_dependencies_at_or_after_synthesis": False, "error": type(exc).__name__}
     return {
         "ok": True,
         "as_of": data.get("computed_at") or _now_iso(),
@@ -659,6 +945,9 @@ def get_advisory_desk(*, force: bool = False, row_class: str | None = None) -> d
         "desk_health": health,
         "timestamps": timestamps,
         "dependency_clocks": dependency_clocks,
+        "dependency_refresh": dependency_refresh,
+        # desk_freshness_state is the desk *composition* (facts) clock only.
+        "desk_freshness_scope": "DESK_COMPOSITION_ONLY",
         "price_clock": price_clock,
         "banners": banners,
         "metadata": meta,
