@@ -53046,6 +53046,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_cio_snapshot()
                 if p == "actions":
                     return 200, _cio.get_cio_actions()
+                if p in ("records", "record-ledgers", "record_ledgers"):
+                    return 200, _cio.get_cio_record_ledgers()
                 if p == "delegation":
                     return 200, _cio.get_cio_delegation()
                 if p == "thesis":

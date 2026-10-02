@@ -2351,6 +2351,8 @@ def get_policy_provenance_v1() -> dict[str, Any]:
         "memory_behavior_influence": 0,
         "fields": policy_provenance_view(registry),
         "cash_target_confirmed": registry["cash_target_confirmed"],
+        # The OperatorPolicyRegistry@v1 block the view above is projected from.
+        "registry": registry,
         "financial_action": False,
     }
 
@@ -2384,6 +2386,10 @@ def get_intelligence_lifecycle_v1(symbol: str | None = None) -> dict[str, Any]:
             "schema": "IntelligenceLifecycleProjection@v1",
             "projection": projection,
             "coverage": cov.get("counts"),
+            # Full IntelligenceCoverageMatrix@v1 / IntelligenceProducerInventory@v1 blocks
+            # (already computed above) so the GUI renders them, not just their counts.
+            "coverage_matrix": cov,
+            "producer_inventory": inv,
             "unwired_providers": cov.get("not_connected"),
             "knowledge_gaps": gaps,
             "envelope": env,
@@ -2577,6 +2583,7 @@ def get_cio_brain_v1() -> dict[str, Any]:
 
     situation = capital.get("situation") or {}
     notification = situation.get("notification") or {}
+    situation_scan: dict[str, Any] | None = None
     policy_doc = policy.get("policy") or {}
     portfolio_doc = portfolio.get("portfolio_state") or {}
     market_doc = market.get("market_context") or {}
@@ -2662,6 +2669,7 @@ def get_cio_brain_v1() -> dict[str, Any]:
             for s in (scan.get("situations") or [])[:8]
         ]
         operator_value["attention"] = operator_value["current_material_situations"]
+        situation_scan = scan
         operator_value["notifications"] = {
             "sent": scan.get("notification_decision") == "NOTIFY",
             "suppressed": scan.get("notification_decision") == "SUPPRESS",
@@ -2710,6 +2718,9 @@ def get_cio_brain_v1() -> dict[str, Any]:
         "model_performance": get_model_performance_v1(),
         "learning_cockpit": get_learning_cockpit_v1(),
         "data_health": get_data_health_v1(),
+        # OfficeSituationScan@v1 behind operator_value.current_material_situations
+        # (None when the scan raised; operator_value then carries the fallback).
+        "situation_scan": situation_scan,
     }
 
 
@@ -2800,6 +2811,55 @@ def get_cio_actions() -> dict[str, Any]:
 
 def get_cio_delegation() -> dict[str, Any]:
     return {"ok": True, "as_of": _now_iso(), "delegation": _delegation_data()}
+
+
+def get_cio_record_ledgers() -> dict[str, Any]:
+    """GET /api/v3/cio/records — newest rows of the CIO's own record ledgers.
+
+    Outcome checkpoints/observations, lesson binds, thesis revisions and change
+    cards, instrument records and their beliefs, the belief-writer receipt, the
+    held-book thesis coverage report, research-driven product reassessments,
+    linked operator feedback and feedback-ingest receipts, goal predicates and
+    verdicts, the persisted operator-product envelope header and the Telegram
+    stance-hold summary.  Bounded tail reads; each block carries its
+    store facts, its own state (PRESENT/EMPTY/MISSING) and source_as_of.
+    """
+    composed = _now_iso()
+    out: dict[str, Any] = {
+        "ok": True,
+        "composition_as_of": composed,
+        "authority": AUTHORITY_ADVISORY,
+        "financial_action": False,
+        "mutation": False,
+    }
+    try:
+        from scripts.lib import cio_record_ledgers as _rl
+
+        root = _rl.default_cio_root()
+        out["outcome_checkpoints"] = _rl.recent_outcome_checkpoints(root)
+        out["outcome_observations"] = _rl.recent_outcome_observations(root)
+        out["thesis_revisions"] = _rl.recent_thesis_revisions(root)
+        out["thesis_change_cards"] = _rl.recent_thesis_change_cards(root)
+        out["instrument_records"] = _rl.recent_instrument_records(root)
+        out["instrument_beliefs"] = _rl.recent_instrument_beliefs(root)
+        out["belief_writer"] = _rl.latest_belief_writer_receipt(root)
+        out["held_thesis_coverage"] = _rl.latest_held_thesis_coverage(root)
+        out["reassessments"] = _rl.recent_reassessments(root)
+        out["lesson_binds"] = _rl.recent_lesson_binds(root)
+        out["linked_feedback"] = _rl.recent_linked_feedback(root)
+        out["feedback_ingests"] = _rl.recent_feedback_ingests(root)
+        out["goal_predicates"] = _rl.goal_predicates(root)
+        out["goal_verdicts"] = _rl.goal_predicate_verdicts(root)
+        out["operator_product"] = _rl.operator_product_envelope(root)
+    except Exception as exc:
+        out.update(ok=False, error=type(exc).__name__, detail=str(exc)[:200])
+    try:
+        from scripts.lib.cio_telegram_stance_gate import summarize_stance_holds
+
+        out["stance_holds"] = summarize_stance_holds()
+    except Exception as exc:
+        out["stance_holds"] = {"ok": False, "error": type(exc).__name__, "detail": str(exc)[:200]}
+    return out
 
 
 def get_cio_source_clocks_v1() -> dict[str, Any]:

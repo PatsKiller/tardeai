@@ -117,6 +117,18 @@ export function LearningPanel() {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
         {Object.entries(data?.counts || {}).map(([k, v]) => <Badge key={k}>{`${k} ${String(v)}`}</Badge>)}
       </div>
+      {data?.disposition_outcomes && (
+        // CIOOutcomeMaturity@v1 — disposition outcomes as the observer reports them (labels verbatim).
+        <div data-testid="maturity-disposition-outcomes" style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, fontSize: 12, color: 'var(--text2)' }}>
+          <span style={{ color: 'var(--text3)' }}>Disposition outcomes</span>
+          <Badge>{`schema ${data.disposition_outcomes.schema || 'NOT_IN_PAYLOAD'}`}</Badge>
+          {data.disposition_outcomes.ok === false && <Badge tone="red">{`UNAVAILABLE ${data.disposition_outcomes.error || ''}`}</Badge>}
+          <Badge>{`matured ${String(data.disposition_outcomes.matured_count ?? 'NOT_IN_PAYLOAD')}`}</Badge>
+          <Badge>{`eligible runs ${String(data.disposition_outcomes.eligible_runs ?? 'NOT_IN_PAYLOAD')}`}</Badge>
+          <Badge>{`as of ${String(data.disposition_outcomes.as_of || data.disposition_outcomes.generated_at || 'NOT_IN_PAYLOAD')}`}</Badge>
+          <Badge>{`behavior influence ${String(data.disposition_outcomes.memory_behavior_influence ?? 0)}`}</Badge>
+        </div>
+      )}
     </div>
     {loading && <div style={{ color: 'var(--text3)' }}>Loading lessons…</div>}
     {error && <div style={{ color: 'var(--amber)' }}>{String(error)}</div>}
