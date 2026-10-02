@@ -12,7 +12,8 @@ import {
   type AgentLifecycle,
   type AgentRuntimeDefinition,
 } from '../lib/agentRuntimeMonitoring'
-import { operatorRuntimeState, resolveAgentRuntimeView, readApiBaseFromEnv, type ResolvedRuntimeView } from '../lib/agentRuntimeReadAdapter'
+import { operatorRuntimeState, resolveAgentRuntimeProof, resolveAgentRuntimeView, readApiBaseFromEnv, type AgentRuntimeProofResponse, type ResolvedRuntimeView } from '../lib/agentRuntimeReadAdapter'
+import { proofRow } from '../lib/hermesResearchLinks'
 import { CasesPanel, LearningPanel, MemoryPanel, PromotionPanel } from './MaturityPanels'
 import { resolveAgentRuntimeDetail, type AgentDetailView } from '../lib/agentRuntimeDetailAdapter'
 import {
@@ -122,22 +123,24 @@ function RuntimeProofBand({
   runtimeView,
   detail,
   maturityView,
+  proof,
 }: {
   agent: AgentRuntimeDefinition
   runtimeView: ResolvedRuntimeView
   detail: AgentDetailView | null
   maturityView: ResolvedAgentMaturityView
+  proof: AgentRuntimeProofResponse | null
 }) {
   const state = operatorRuntimeState(runtimeView.state)
   const maturity = maturityView.payload?.data?.find(row => row.agent_id === agent.agentId)
   const runtimeOrUnknown = (value: string | number | null | undefined, empty = 'UNKNOWN') => value === null || value === undefined || value === '' ? empty : String(value)
   const proofRows: Array<[string, string, string]> = [
     ['Runtime status', state, 'RUNTIME'],
-    ['Last natural wake', 'NOT EXPOSED BY READ CONTRACT', 'UNKNOWN'],
+    ['Last natural wake', ...proofRow(proof, agent.agentId, 'last_natural_wake')],
     ['Last artifact', detail?.live ? runtimeOrUnknown(detail.lastArtifactAt, 'NOT RUN') : 'NOT CONNECTED', detail?.live ? 'RUNTIME' : 'UNAVAILABLE'],
-    ['Last research action', 'NOT EXPOSED BY READ CONTRACT', 'UNKNOWN'],
-    ['Memory retrieval', 'NOT EXPOSED BY READ CONTRACT', 'UNKNOWN'],
-    ['Decisions contributed to', 'NOT EXPOSED BY READ CONTRACT', 'UNKNOWN'],
+    ['Last research action', ...proofRow(proof, agent.agentId, 'last_research_action')],
+    ['Memory retrieval', ...proofRow(proof, agent.agentId, 'last_memory_retrieval')],
+    ['Decisions contributed to', ...proofRow(proof, agent.agentId, 'decisions_contributed')],
     ['Specialist role', detail?.live ? runtimeOrUnknown(detail.role).toUpperCase() : `${agent.role.toUpperCase()} · DECLARED`, detail?.live ? 'RUNTIME' : 'DECLARED'],
     ['Review health', detail?.live ? `${detail.counts.reviewed} reviewed · ${detail.counts.scored} scored` : 'UNKNOWN', detail?.live ? 'RUNTIME' : 'UNKNOWN'],
     ['Maturity status', agent.lifecycle, 'DECLARED'],
@@ -147,14 +150,14 @@ function RuntimeProofBand({
     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, alignItems: 'baseline', flexWrap: 'wrap' }}>
       <div>
         <div style={{ fontSize: TYPE.md, fontWeight: 800 }}>Runtime-proven capability</div>
-        <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)' }}>Runtime evidence is separate from the declared catalog. Unknown means the read contract does not expose that proof.</div>
+        <div style={{ marginTop: 3, fontSize: TYPE.xs, color: 'var(--text3)' }}>Runtime evidence is separate from the declared catalog. RUNTIME = read from a production evidence store (AgentRuntimeProof@v1); NOT_RECORDED = the store attributes rows to agents but none to this one; NOT_EXPOSED / UNKNOWN = no store attributes that proof to an agent.</div>
       </div>
       <StatusBadge tone={state === 'SHADOW' || state === 'LIVE' ? 'green' : state === 'STALE' ? 'amber' : state === 'UNAVAILABLE' ? 'red' : 'slate'}>{state}</StatusBadge>
     </div>
     <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 10 }}>
       {proofRows.map(([name, value, source]) => <div key={name}>
         <div style={label}>{name}</div>
-        <div style={{ marginTop: 3, fontSize: TYPE.xs, color: source === 'UNKNOWN' || source === 'UNAVAILABLE' ? BB.amber : 'var(--text2)', lineHeight: 1.4 }}>{value}</div>
+        <div style={{ marginTop: 3, fontSize: TYPE.xs, color: source === 'UNKNOWN' || source === 'UNAVAILABLE' || source === 'NOT_EXPOSED' || source === 'NOT_RECORDED' ? BB.amber : 'var(--text2)', lineHeight: 1.4 }}>{value}</div>
         <div style={{ marginTop: 2, fontSize: TYPE.xs, color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{source}</div>
       </div>)}
     </div>
@@ -484,8 +487,12 @@ function RuntimeView() {
     state: 'UNAVAILABLE', payload: null, detail: 'Resolving maturity read API…',
   }))
   const [detail, setDetail] = useState<AgentDetailView | null>(null)
+  const [proof, setProof] = useState<AgentRuntimeProofResponse | null>(null)
   useEffect(() => {
     let active = true
+    resolveAgentRuntimeProof(AGENT_RUNTIME_CATALOG.map(agent => agent.agentId))
+      .then(payload => { if (active) setProof(payload) })
+      .catch(() => { if (active) setProof(null) })
     resolveAgentRuntimeView({ baseUrl: readApiBaseFromEnv() })
       .then(view => { if (active) setRuntimeView(view) })
       .catch(() => { if (active) setRuntimeView({ state: 'UNAVAILABLE', snapshot: AGENT_RUNTIME_SNAPSHOT, detail: 'Adapter error', live: false }) })
@@ -576,7 +583,7 @@ function RuntimeView() {
       <AgentDetail agent={selected} />
     </div>
 
-    <RuntimeProofBand agent={selected} runtimeView={runtimeView} detail={detail} maturityView={maturityView} />
+    <RuntimeProofBand agent={selected} runtimeView={runtimeView} detail={detail} maturityView={maturityView} proof={proof} />
 
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(260px,1fr))', gap: 12 }}>
       {detail?.live

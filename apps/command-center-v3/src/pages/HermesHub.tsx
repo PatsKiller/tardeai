@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useApi } from '../hooks/useApi'
 import ReactFlow, { Background, Controls, MarkerType } from 'reactflow'
 import 'reactflow/dist/style.css'
@@ -10,6 +10,7 @@ import HermesClosedLoopPanel from '../components/HermesClosedLoopPanel'
 import HermesDiscoveryInbox from '../components/HermesDiscoveryInbox'
 import HermesQualitySpotCheck from '../components/HermesQualitySpotCheck'
 import PrivateProxyCard from '../components/PrivateProxyCard'
+import HermesDecisionLinksPanel from '../components/HermesDecisionLinksPanel'
 import { useTerminalUi } from '../lib/terminalUi'
 import { hubTitle, hubSubtitle, hubTab } from '../lib/terminalHubChrome'
 
@@ -151,11 +152,19 @@ const HSTATE_LABEL: Record<HState, string> = { operational: 'operational (live)'
 export default function HermesHub({ onDrill }: Props) {
   const [terminalUi] = useTerminalUi()
   const [fleet, setFleet] = useState<typeof FLEETS[number]>('Research Fleet')
-  const [tab, setTab] = useState<typeof TABS[number]>('Overview')
+  const [searchParams] = useSearchParams()
+  // Deep links (e.g. Research Intelligence → /hermes?tab=Provenance&symbol=X) select the tab.
+  const [tab, setTab] = useState<typeof TABS[number]>(() => {
+    const requested = searchParams.get('tab')
+    return (TABS as readonly string[]).includes(requested ?? '') ? requested as typeof TABS[number] : 'Overview'
+  })
+  const linkSymbol = searchParams.get('symbol') ?? undefined
+  const linkResultId = searchParams.get('result_id') ?? undefined
   const [scalpTab, setScalpTab] = useState<typeof SCALP_TABS[number]>('Overview')
   const { data: health } = useApi<any>('/api/v2/hermes/health', 120_000)
   const { data: scalpSwarm } = useApi<any>('/api/v2/hermes/scalp-swarm/status', 60_000)
-  const { data: selfLearn } = useApi<any>('/api/v2/hermes/self-learning-overview', 120_000)
+  // self-learning-overview and promotion-review fetches removed 2026-10-02: the census proved both results
+  // were never rendered (selfLearn→slData unused; promo only listed in a useMemo deps array).
   const { data: choices } = useApi<any>('/api/v2/hermes/advisory-choices', 120_000)
   const [backlogFilter, setBacklogFilter] = useState<'active' | 'staged' | 'archived' | 'all'>('active')
   const { data: backlog } = useApi<any>(`/api/v2/hermes/research-backlog?status=${backlogFilter}`, 120_000)
@@ -163,7 +172,6 @@ export default function HermesHub({ onDrill }: Props) {
   const { data: pipeQual } = useApi<any>('/api/v2/hermes/pipeline-quality', 120_000)
   // HermesQualitySpotCheck loads pipeline-quality + health itself (Overview strip).
   const { data: maturity } = useApi<any>('/api/v2/hermes/maturity-dashboard', 120_000)
-  const { data: promo } = useApi<any>('/api/v2/hermes/promotion-review', 120_000)
   const { data: footprint } = useApi<any>('/api/v2/hermes/agent-footprint', 120_000)
   const { data: runstate } = useApi<any>('/api/v2/hermes/agent-runstate', 60_000)
   const { data: infra } = useApi<any>('/api/v2/hermes/infra', 60_000)
@@ -223,7 +231,6 @@ export default function HermesHub({ onDrill }: Props) {
   const staging = health?.staging_counts ?? {}
   const killSwitch = health?.kill_switch_active ?? false
   const autonomous = health?.autonomous_loop_active ?? false
-  const slData = selfLearn ?? {}
 
   // VALIDATED execution footprint per contract agent (real DB rows, not the design-doc label).
   // Maps the messy real hermes_agent_name values onto the 7 contract agents.
@@ -404,7 +411,7 @@ export default function HermesHub({ onDrill }: Props) {
       markerEnd: { type: MarkerType.ArrowClosed, color: '#06b6d4' },
     }))
     return { wfNodes: nodes, wfEdges: edges }
-  }, [staging, promo, backlog, footprint, searxUp, runstate])
+  }, [staging, backlog, footprint, searxUp, runstate])
 
   const isScalp = fleet === 'Momentum Scalp Swarm'
   const activeTabs = isScalp ? SCALP_TABS : TABS
@@ -792,6 +799,7 @@ export default function HermesHub({ onDrill }: Props) {
 
       {!isScalp && tab === 'Provenance' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <HermesDecisionLinksPanel symbol={linkSymbol} resultId={linkResultId} limit={25} />
           <div style={{ fontSize: 11, color: 'var(--text3)' }}>Research provenance: where web research comes from (SearXNG) and how it flows into the core RAG.</div>
           {/* Funnel: SearXNG → staged → promoted → embedded */}
           <div style={{ background: 'var(--bg1)', border: '1px solid var(--border)', borderRadius: 10, padding: 16 }}>
@@ -1028,6 +1036,8 @@ export default function HermesHub({ onDrill }: Props) {
           </div>
         )
       })()}
+
+      {!isScalp && tab === 'Research' && <HermesDecisionLinksPanel limit={10} title="Latest Hermes results → CIO decisions consuming them" />}
 
       {!isScalp && tab === 'Research' && backlog && (() => {
         const raw = backlog.items ?? []

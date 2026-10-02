@@ -3,6 +3,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
+import HermesDecisionLinksPanel from '../components/HermesDecisionLinksPanel'
 import TickerLinks from '../components/TickerLinks'
 import { useApi } from '../hooks/useApi'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -1750,6 +1751,18 @@ export default function ResearchIntelligenceHub({ onDrill }: Props) {
           </div>
         </div>
       </header>
+
+      {(searchParams.get('symbol') || searchParams.get('decision')) && (
+        <div style={{ margin: '12px 0' }}>
+          <HermesDecisionLinksPanel
+            symbol={searchParams.get('symbol') ?? undefined}
+            decisionId={searchParams.get('decision') ?? undefined}
+            limit={10}
+            title={`Hermes research → CIO decisions${searchParams.get('symbol') ? ` · ${searchParams.get('symbol')!.toUpperCase()}` : ''}`}
+            showProvenanceLink
+          />
+        </div>
+      )}
 
       {toast && (
         <div style={{
