@@ -202,7 +202,7 @@ def _row_matches_decision(row: dict[str, Any], decision_id: str) -> bool:
         return True
     values: list[str] = []
     for key in (
-        "decision_id", "judgment_decision_id", "cio_case_id", "workflow_id",
+        "decision_id", "product_id", "judgment_decision_id", "cio_case_id", "workflow_id",
         "decision_ids", "decision_refs", "decisions", "consumed_by_decision_ids",
     ):
         value = row.get(key)
@@ -213,6 +213,10 @@ def _row_matches_decision(row: dict[str, Any], decision_id: str) -> bool:
     contributions = row.get("contributions")
     if isinstance(contributions, list):
         return any(isinstance(item, dict) and _row_matches_decision(item, did) for item in contributions) or did in values
+    for nested_key in ("decision", "payload"):
+        nested = row.get(nested_key)
+        if isinstance(nested, dict) and _row_matches_decision(nested, did):
+            return True
     return did in values
 
 
@@ -244,6 +248,88 @@ def _read_jsonl(path: Path, *, decision_id: str | None = None) -> list[dict[str,
             return recent
     with open(path, encoding="utf-8", errors="replace") as handle:
         return parse(handle)
+
+
+def _natural_runtime_decision(decision_id: str, cio_root: Path) -> dict[str, Any]:
+    """Resolve an exact natural CIO product or agent decision read-only.
+
+    Natural cycles write canonical product and AgentRunTrace artifacts, but do
+    not write a second decision store.  This resolver makes those existing
+    artifacts addressable by their exact decision/product ID for lineage; it
+    never falls back by symbol or grants execution authority.
+    """
+    did = str(decision_id or "").strip()
+    if not did:
+        return {}
+
+    product_path = cio_root / "cio_investment_brief.json"
+    product: dict[str, Any] = {}
+    try:
+        raw = json.loads(product_path.read_text(encoding="utf-8")) if product_path.is_file() else {}
+        if isinstance(raw, dict) and did in {
+            str(raw.get("decision_id") or ""),
+            str(raw.get("product_id") or ""),
+        }:
+            product = raw
+    except (OSError, json.JSONDecodeError):
+        product = {}
+
+    if not product:
+        history = _read_jsonl(cio_root / "cio_investment_briefs.jsonl", decision_id=did)
+        if history:
+            product = history[-1]
+
+    if product:
+        return {
+            "decision": {
+                "decision_id": did,
+                "product_id": product.get("product_id"),
+                "as_of": product.get("as_of") or product.get("created_at"),
+                "source_ref": str(product_path),
+                "producer": product.get("producer") or "cio_investment_product.build_product",
+                "evidence_class": "DURABLE_RUNTIME_ARTIFACT",
+                "authority": AUTHORITY_ADVISORY,
+                "financial_action": False,
+            },
+            "artifact": {
+                "kind": "CIOInvestmentProduct@v1",
+                "product_id": product.get("product_id"),
+                "source_ref": str(product_path),
+                "source_as_of": product.get("as_of") or product.get("created_at"),
+                "producer": product.get("producer") or "cio_investment_product.build_product",
+                "evidence_class": "DURABLE_RUNTIME_ARTIFACT",
+            },
+        }
+
+    traces = _read_jsonl(cio_root / "agent_run_traces.jsonl", decision_id=did)
+    if not traces:
+        return {}
+    trace = traces[-1]
+    decision = dict(trace.get("decision") if isinstance(trace.get("decision"), dict) else {})
+    decision.update({
+        "decision_id": did,
+        "wake_id": decision.get("wake_id") or trace.get("wake_id"),
+        "trace_id": decision.get("trace_id") or trace.get("trace_id"),
+        "run_id": decision.get("run_id") or trace.get("run_id"),
+        "as_of": decision.get("as_of") or trace.get("ended_at") or trace.get("started_at"),
+        "action": decision.get("action") or decision.get("current_action"),
+        "producer": decision.get("producer") or "agent_run_trace",
+        "evidence_class": decision.get("evidence_class") or "DURABLE_RUNTIME_ARTIFACT",
+        "authority": AUTHORITY_ADVISORY,
+        "financial_action": False,
+    })
+    return {
+        "decision": decision,
+        "artifact": {
+            "kind": "AgentRunTrace@v1",
+            "trace_id": trace.get("trace_id"),
+            "wake_id": trace.get("wake_id"),
+            "source_ref": str(cio_root / "agent_run_traces.jsonl"),
+            "source_as_of": trace.get("ended_at") or trace.get("started_at"),
+            "producer": "agent_run_trace",
+            "evidence_class": "DURABLE_RUNTIME_ARTIFACT",
+        },
+    }
 
 
 def _cio_snapshot_data() -> dict[str, Any]:
@@ -1501,6 +1587,9 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             pass
 
         cio_root = Path(os.getenv("TRADEAI_CIO_DIR") or PROJECT_ROOT / "data" / "cio")
+        natural = _natural_runtime_decision(did, cio_root)
+        if not decision and natural:
+            decision = dict(natural.get("decision") or {})
         workflow_rows = _read_jsonl(cio_root / "cio_workflow_lineage.jsonl", decision_id=did)
         intelligence_rows = _read_jsonl(cio_root / "intelligence_lineages.jsonl", decision_id=did)
         checkpoint_rows = _read_jsonl(cio_root / "outcome_checkpoints.jsonl", decision_id=did)
@@ -1547,6 +1636,8 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             learning=learning_block,
             composition_as_of=composition_as_of,
         )
+        if natural.get("artifact"):
+            projection["runtime_artifact"] = dict(natural["artifact"])
         return {"ok": True, "lineage": projection, "authority": AUTHORITY_ADVISORY}
     except Exception as exc:
         return {
