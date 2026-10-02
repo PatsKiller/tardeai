@@ -263,6 +263,71 @@ def test_exact_lookup_uses_bounded_tail_and_omits_unrelated_capability_scan(tmp_
     assert calls == {"decision_id": "exact", "include_coverage": False}
 
 
+def test_api_projection_resolves_natural_cio_product_by_exact_product_decision_id(tmp_path, monkeypatch):
+    import scripts.api_v3_cio as api
+
+    cio_root = tmp_path / "cio"
+    cio_root.mkdir()
+    (cio_root / "cio_investment_brief.json").write_text(json.dumps({
+        "schema": "CIOInvestmentProduct@v1",
+        "product_id": "prod_cio_books_20261002T115032",
+        "decision_id": "cio_books_20261002T115032",
+        "as_of": "2026-10-02T11:50:32Z",
+        "producer": "cio_investment_product.build_product",
+        "authority": "READ_ONLY_ADVISORY",
+        "financial_action": False,
+    }))
+    monkeypatch.setenv("TRADEAI_CIO_DIR", str(cio_root))
+    monkeypatch.setattr(api, "load_known_decision_catalog", lambda: {})
+
+    result = api.get_cio_decision_lineage("cio_books_20261002T115032")
+
+    assert result["ok"] is True
+    lineage = result["lineage"]
+    assert lineage["decision_id"] == "cio_books_20261002T115032"
+    assert lineage["runtime_artifact"]["kind"] == "CIOInvestmentProduct@v1"
+    assert lineage["runtime_artifact"]["product_id"] == "prod_cio_books_20261002T115032"
+    assert lineage["authority"] == "READ_ONLY_ADVISORY"
+    assert lineage["financial_action"] is False
+    assert lineage["mutation"] is False
+
+
+def test_api_projection_resolves_natural_agent_trace_by_exact_decision_id(tmp_path, monkeypatch):
+    import scripts.api_v3_cio as api
+
+    cio_root = tmp_path / "cio"
+    cio_root.mkdir()
+    (cio_root / "agent_run_traces.jsonl").write_text(json.dumps({
+        "trace_version": "1.0",
+        "trace_id": "tr_wake_reentry_exact",
+        "wake_id": "wake_reentry_exact",
+        "agent": "alex",
+        "role": "reentry",
+        "started_at": "2026-10-02T11:42:49Z",
+        "ended_at": "2026-10-02T11:42:49Z",
+        "status": "completed",
+        "decision": {
+            "decision_id": "dec_reentry_EXACT_NEAR_ENTRY",
+            "symbol": "BJDX",
+            "current_action": "NEAR",
+            "financial_action": False,
+        },
+    }) + "\n")
+    monkeypatch.setenv("TRADEAI_CIO_DIR", str(cio_root))
+    monkeypatch.setattr(api, "load_known_decision_catalog", lambda: {})
+
+    result = api.get_cio_decision_lineage("dec_reentry_EXACT_NEAR_ENTRY")
+
+    assert result["ok"] is True
+    lineage = result["lineage"]
+    assert lineage["decision_id"] == "dec_reentry_EXACT_NEAR_ENTRY"
+    assert lineage["runtime_artifact"]["kind"] == "AgentRunTrace@v1"
+    assert lineage["runtime_artifact"]["trace_id"] == "tr_wake_reentry_exact"
+    assert lineage["stages"]["judgment"]["state"] == "LIVE"
+    assert lineage["stages"]["judgment"]["trace_id"] == "tr_wake_reentry_exact"
+    assert lineage["financial_action"] is False
+
+
 def test_frontend_research_provenance_has_required_operator_groups_and_links():
     panel = (ROOT / "apps" / "command-center-v3" / "src" / "components" / "cio" / "CioOperatorEvidencePanel.tsx").read_text()
     lineage_panel = (ROOT / "apps" / "command-center-v3" / "src" / "components" / "cio" / "CioDecisionLineagePanel.tsx").read_text()
