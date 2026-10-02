@@ -1,5 +1,6 @@
 import { useApi } from '../../hooks/useApi'
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { RADIUS, TYPE } from '../../lib/designTokens'
 
 type Domain = {
@@ -34,7 +35,8 @@ function StatusPill({ status }: { status?: string }) {
 function OperatorActionModal({ finding, onClose }: { finding: NonNullable<Observability['findings']>[number]; onClose: () => void }) {
   const policy = finding.issue_id === 'CIO-POLICY-001'
   const plans = finding.issue_id === 'CIO-DECISIONS-001'
-  const href = policy ? '/v3/cio?tab=operator-policy' : plans ? '/v3/cio?tab=cio-now' : '/v3/cio?tab=evidence'
+  // Router-relative: BrowserRouter owns basename="/v3".
+  const href = policy ? '/cio?tab=operator-policy' : plans ? '/cio?tab=cio-now' : '/cio?tab=evidence'
   const action = policy ? 'Review and ratify policy fields' : plans ? 'Review and disposition open plans' : 'Open evidence and runtime details'
   return (
     <div role="dialog" aria-modal="true" data-testid="cio-operator-action-modal" style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,.62)', display: 'grid', placeItems: 'center', padding: 20 }}>
@@ -48,7 +50,7 @@ function OperatorActionModal({ finding, onClose }: { finding: NonNullable<Observ
         {finding.external_dependency && <div style={{ color: 'var(--amber)', fontSize: 11, marginTop: 10 }}>Requires: {finding.external_dependency}</div>}
         <div style={{ display: 'flex', gap: 8, marginTop: 18, justifyContent: 'flex-end' }}>
           <button type="button" onClick={onClose} style={{ padding: '8px 12px', border: '1px solid var(--border)', borderRadius: RADIUS.sm, background: 'var(--bg0)', color: 'var(--text1)', cursor: 'pointer' }}>Close</button>
-          <a href={href} onClick={onClose} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, textDecoration: 'none' }}>{action}</a>
+          <Link to={href} onClick={onClose} style={{ padding: '8px 12px', border: '1px solid var(--accent)', borderRadius: RADIUS.sm, background: 'var(--accent-dim)', color: 'var(--accent)', fontWeight: 700, textDecoration: 'none' }}>{action}</Link>
         </div>
       </div>
     </div>

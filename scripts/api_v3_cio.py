@@ -310,6 +310,9 @@ def _natural_runtime_decision(decision_id: str, cio_root: Path) -> dict[str, Any
         "wake_id": decision.get("wake_id") or trace.get("wake_id"),
         "trace_id": decision.get("trace_id") or trace.get("trace_id"),
         "run_id": decision.get("run_id") or trace.get("run_id"),
+        "source_ref": decision.get("source_ref") or (
+            f"{cio_root / 'agent_run_traces.jsonl'}#{trace.get('trace_id')}" if trace.get("trace_id") else None
+        ),
         "as_of": decision.get("as_of") or trace.get("ended_at") or trace.get("started_at"),
         "action": decision.get("action") or decision.get("current_action"),
         "producer": decision.get("producer") or "agent_run_trace",
@@ -1559,6 +1562,26 @@ def load_known_decision_catalog() -> dict[str, dict[str, Any]]:
         return {}
 
 
+def _lineage_store_rows(
+    path: Path, decision_id: str | None, label: str, availability: dict[str, bool],
+) -> list[dict[str, Any]]:
+    """Read one lineage store, recording whether it was readable at all.
+
+    A missing or unreadable store makes its stages UNAVAILABLE in the
+    projection instead of silently reading as "no rows".
+    """
+    if not path.is_file():
+        availability[label] = False
+        return []
+    try:
+        rows = _read_jsonl(path, decision_id=decision_id)
+    except OSError:
+        availability[label] = False
+        return []
+    availability[label] = True
+    return rows
+
+
 def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
     """GET-only CIODecisionLineage@v1 projection keyed by exact decision_id."""
     did = str(decision_id or "").strip()
@@ -1572,6 +1595,7 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
         from scripts.lib.cio_operator_evidence import build_operator_evidence
 
         decision = dict(load_known_decision_catalog().get(did) or {})
+        decision_source = "cio_capital_plan"
         try:
             import api_v2 as _v2
 
@@ -1582,6 +1606,7 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             )
             if isinstance(db_row, dict):
                 decision = {**db_row, **decision}
+                decision_source = "cio_decisions"
         except Exception:
             pass
 
@@ -1589,10 +1614,23 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
         natural = _natural_runtime_decision(did, cio_root)
         if not decision and natural:
             decision = dict(natural.get("decision") or {})
-        workflow_rows = _read_jsonl(cio_root / "cio_workflow_lineage.jsonl", decision_id=did)
-        intelligence_rows = _read_jsonl(cio_root / "intelligence_lineages.jsonl", decision_id=did)
-        checkpoint_rows = _read_jsonl(cio_root / "outcome_checkpoints.jsonl", decision_id=did)
-        disposition_rows = _read_jsonl(_DISPOSITION_PATH)
+            decision_source = str((natural.get("artifact") or {}).get("kind") or "natural_runtime")
+        availability: dict[str, bool] = {}
+        workflow_rows = _lineage_store_rows(
+            cio_root / "cio_workflow_lineage.jsonl", did, "cio_workflow_lineage", availability,
+        )
+        intelligence_rows = _lineage_store_rows(
+            cio_root / "intelligence_lineages.jsonl", did, "intelligence_lineages", availability,
+        )
+        checkpoint_rows = _lineage_store_rows(
+            cio_root / "outcome_checkpoints.jsonl", did, "outcome_checkpoints", availability,
+        )
+        # Dispositions live beside the other CIO stores; read them from the
+        # same root so an operator-pointed TRADEAI_CIO_DIR stays coherent.
+        disposition_path = (
+            cio_root / "decision_dispositions.jsonl" if os.getenv("TRADEAI_CIO_DIR") else _DISPOSITION_PATH
+        )
+        disposition_rows = _lineage_store_rows(disposition_path, None, "decision_dispositions", availability)
         matched = (
             direct_match(did, workflow_rows)
             + direct_match(did, intelligence_rows)
@@ -1626,6 +1664,8 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
         projection = project_decision_lineage(
             did,
             decision=decision,
+            decision_source=decision_source,
+            source_availability=availability,
             workflow_records=workflow_rows,
             intelligence_records=intelligence_rows,
             checkpoint_records=checkpoint_rows,

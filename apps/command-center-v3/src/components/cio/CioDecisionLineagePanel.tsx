@@ -5,6 +5,7 @@ import { isCioLineageState, type CioLineageState } from '../../lib/cioDecisionLi
 
 type Stage = {
   state?: CioLineageState
+  state_reason?: string | null
   producer?: string | null
   consumer?: string | null
   source_ref?: string | null
@@ -79,6 +80,7 @@ function stateTone(state: string): string {
 }
 
 export default function CioDecisionLineagePanel({ decisionId }: Props) {
+  // State and its reason are backend-derived; the panel renders them verbatim.
   const path = decisionId ? `/api/v3/cio/decision/${encodeURIComponent(decisionId)}/lineage` : '/api/v3/cio/decision/_not_selected/lineage'
   const { data, loading, error } = useApi<{ ok?: boolean; lineage?: Lineage; error?: string }>(path, undefined, { enabled: Boolean(decisionId) })
   const lineage = data?.lineage
@@ -135,7 +137,7 @@ export default function CioDecisionLineagePanel({ decisionId }: Props) {
               const state = isCioLineageState(stage?.state) ? stage.state : 'UNKNOWN'
               return <div key={key} style={{ display: 'grid', gridTemplateColumns: '24px minmax(180px, 1fr) minmax(120px, auto)', gap: 8, alignItems: 'center', borderTop: '1px solid var(--border-subtle)', padding: '7px 0', fontSize: 11 }}>
                 <span style={{ color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{index + 1}</span>
-                <span style={{ color: 'var(--text1)' }}>{label}<small style={{ display: 'block', color: 'var(--text3)', marginTop: 2 }}>{stage?.producer || 'producer not exposed'} · {stage?.source_ref || 'source not exposed'}</small></span>
+                <span style={{ color: 'var(--text1)' }}>{label}<small style={{ display: 'block', color: 'var(--text3)', marginTop: 2 }}>{stage?.producer || 'producer not exposed'} · {stage?.source_ref || 'no matched source row'}{stage?.source_as_of ? ` · ${stamp(stage.source_as_of)}` : ''}</small>{stage?.state_reason ? <small data-testid={`cio-lineage-reason-${key}`} style={{ display: 'block', color: 'var(--text2)', marginTop: 2 }}>{stage.state_reason}</small> : null}</span>
                 <span style={{ color: stateTone(state), fontWeight: 800, fontFamily: 'var(--mono)' }}>{state}</span>
               </div>
             })}
