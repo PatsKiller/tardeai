@@ -24,6 +24,7 @@ from pathlib import Path
 SEARXNG_URL = "http://127.0.0.1:18888/search"
 OUTPUT_ROOT = Path(__file__).resolve().parent.parent / "data" / "searxng_queries"
 MAX_SNIPPET_LEN = 500
+MAX_RESULTS = 25
 
 # Patterns that must never appear in output
 SECRET_PATTERNS = [
@@ -40,6 +41,8 @@ def sanitize_text(text: str) -> str:
     """Remove secrets, IPs, and truncate."""
     if not text:
         return ""
+    if not isinstance(text, str):
+        text = str(text)
     for pat in SECRET_PATTERNS:
         text = re.sub(pat, '[REDACTED]', text)
     # Remove IP addresses
@@ -48,6 +51,17 @@ def sanitize_text(text: str) -> str:
     if len(text) > MAX_SNIPPET_LEN:
         text = text[:MAX_SNIPPET_LEN] + "..."
     return text
+
+
+def sanitize_url(url: str) -> str:
+    """Keep result links usable while removing credentials and internal IPs."""
+    if not url:
+        return ""
+    if not isinstance(url, str):
+        url = str(url)
+    for pat in SECRET_PATTERNS:
+        url = re.sub(pat, '[REDACTED]', url)
+    return re.sub(r'\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b', '[IP]', url)
 
 
 def query_searxng(query: str, max_results: int = 15) -> dict:
@@ -74,7 +88,7 @@ def sanitize_results(raw: dict, max_results: int) -> list[dict]:
     for r in raw.get("results", [])[:max_results]:
         results.append({
             "title": sanitize_text(r.get("title", "")),
-            "url": r.get("url", ""),
+            "url": sanitize_url(r.get("url", "")),
             "snippet": sanitize_text(r.get("content", "")),
             "engine": r.get("engine", "unknown"),
             "category": r.get("category", "general"),
@@ -88,28 +102,30 @@ def write_outputs(query: str, results: list[dict], raw_meta: dict, out_dir: Path
 
     # 1. Metadata
     metadata = {
-        "query": query,
+        "query": sanitize_text(query),
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "result_count": len(results),
         "total_available": raw_meta.get("number_of_results", 0),
         "searxng_version": raw_meta.get("version", "unknown"),
-        "engines_used": list(set(r["engine"] for r in results)),
+        "engines_used": sorted(set(r["engine"] for r in results)),
         "wrapper": "searxng_manual_query.py",
         "db_writes": 0,
         "embeddings": 0,
         "ingested": False,
         "promoted": False,
     }
-    (out_dir / "query_metadata.json").write_text(json.dumps(metadata, indent=2))
+    (out_dir / "query_metadata.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
 
     # 2. Sanitized results JSON
-    (out_dir / "query_results_sanitized.json").write_text(json.dumps(results, indent=2))
+    (out_dir / "query_results_sanitized.json").write_text(
+        json.dumps(results, indent=2), encoding="utf-8"
+    )
 
     # 3. Markdown summary
     lines = [
         f"# SearXNG Manual Query — {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
         "",
-        f"**Query:** {query}",
+        f"**Query:** {sanitize_text(query)}",
         f"**Results:** {len(results)}",
         f"**Engines:** {', '.join(metadata['engines_used'])}",
         "",
@@ -128,19 +144,22 @@ def write_outputs(query: str, results: list[dict], raw_meta: dict, out_dir: Path
             lines.append(f"\n{r['snippet']}")
         lines.append("")
 
-    (out_dir / "query_summary.md").write_text("\n".join(lines))
+    (out_dir / "query_summary.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def main():
     parser = argparse.ArgumentParser(description="SearXNG Manual Query Wrapper")
     parser.add_argument("query_positional", nargs="?", help="Search query")
     parser.add_argument("--query", "-q", help="Search query (alternative)")
-    parser.add_argument("--max-results", "-n", type=int, default=15, help="Max results (default 15)")
+    parser.add_argument("--max-results", "-n", type=int, default=15,
+                        help="Max results (1-25, default 15)")
     args = parser.parse_args()
 
     query = args.query_positional or args.query
     if not query:
         parser.error("Query required: provide as positional arg or --query")
+    if not 1 <= args.max_results <= MAX_RESULTS:
+        parser.error(f"--max-results must be between 1 and {MAX_RESULTS}")
 
     # Verify SearXNG is reachable
     try:

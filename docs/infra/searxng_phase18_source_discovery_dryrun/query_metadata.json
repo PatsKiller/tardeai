@@ -1,0 +1,73 @@
+{
+  "queries": [
+    {
+      "query": "recent analyst commentary SCHD dividend ETF 2026",
+      "timestamp": "2026-06-01T00:34:12.815736+00:00",
+      "result_count": 15,
+      "engines": [
+        "google",
+        "startpage",
+        "bing",
+        "duckduckgo",
+        "brave"
+      ],
+      "dir": "20260601_003412"
+    },
+    {
+      "query": "SEC filing APAM quarterly earnings transcript 2026",
+      "timestamp": "2026-06-01T00:34:13.834187+00:00",
+      "result_count": 15,
+      "engines": [
+        "duckduckgo",
+        "google",
+        "bing",
+        "startpage"
+      ],
+      "dir": "20260601_003413"
+    },
+    {
+      "query": "gold miners TRX company news earnings 2026",
+      "timestamp": "2026-06-01T00:34:14.807128+00:00",
+      "result_count": 15,
+      "engines": [
+        "bing",
+        "duckduckgo",
+        "startpage"
+      ],
+      "dir": "20260601_003414"
+    },
+    {
+      "query": "closed end fund FJSCX portfolio allocation holdings",
+      "timestamp": "2026-06-01T00:34:16.002599+00:00",
+      "result_count": 15,
+      "engines": [
+        "startpage",
+        "duckduckgo",
+        "bing",
+        "google"
+      ],
+      "dir": "20260601_003416"
+    },
+    {
+      "query": "market breadth risk portfolio rotation signals 2026",
+      "timestamp": "2026-06-01T00:34:17.457174+00:00",
+      "result_count": 15,
+      "engines": [
+        "startpage",
+        "google",
+        "bing"
+      ],
+      "dir": "20260601_003417"
+    }
+  ],
+  "total_results": 75,
+  "unique_urls": 75,
+  "duplicates": 0,
+  "candidates_retained": 25,
+  "rejected": 1,
+  "future_ingestion": 10,
+  "db_writes": 0,
+  "embeddings": 0,
+  "hermes_rows": 0,
+  "promotions": 0
+}
