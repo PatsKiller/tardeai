@@ -1,6 +1,9 @@
 """Unified learning view for Command Center (never calls RATIFIED_CONTEXT production policy)."""
 from __future__ import annotations
 
+import copy
+import json
+import threading
 from collections import Counter
 from pathlib import Path
 from typing import Any
@@ -26,6 +29,55 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return out
 
 
+def _latest_by_id_stream(path: Path, key: str = "id") -> list[dict[str, Any]]:
+    """Latest row per id, parsing one line at a time.
+
+    advisory_kb_lessons.jsonl is ~270 MB of ~75 KB rows; materialising every
+    row before de-duplicating peaked the API at ~900 MB per request.
+    """
+    if not path.is_file():
+        return []
+    by: dict[str, dict[str, Any]] = {}
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            if isinstance(obj, dict):
+                lid = str(obj.get(key) or obj.get("lesson_id") or "")
+                if lid:
+                    by[lid] = obj
+    return list(by.values())
+
+
+def _count_rows(path: Path) -> int:
+    if not path.is_file():
+        return 0
+    with path.open("rb") as handle:
+        return sum(1 for line in handle if line.strip())
+
+
+def _stat_key(*paths: Path) -> tuple:
+    out = []
+    for path in paths:
+        try:
+            st = path.stat()
+            out.append((str(path), st.st_size, st.st_mtime_ns))
+        except OSError:
+            out.append((str(path), None, None))
+    return tuple(out)
+
+
+# collect_lessons is called by the maturity API, the CIO investment product, the
+# research prompt context and the autonomy watchdog. Its inputs change about
+# once a day, so the result is shared until any input changes.
+_LESSONS_CACHE: dict[str, Any] = {"key": None, "value": None}
+_LESSONS_LOCK = threading.Lock()
+
+
 def _latest_by_id(rows: list[dict[str, Any]], key: str = "id") -> list[dict[str, Any]]:
     by: dict[str, dict[str, Any]] = {}
     for r in rows:
@@ -40,10 +92,26 @@ def collect_lessons(*, root: Path | str | None = None) -> dict[str, Any]:
     runtime = base / "data" / "runtime"
     cio = base / "data" / "cio"
     overlays = load_json_map("lessons", root=base)
+    key = (
+        _stat_key(
+            runtime / "advisory_kb_lessons.jsonl",
+            runtime / "advisory_kb_lesson_candidates.jsonl",
+            runtime / "advisory_kb_lesson_applications.jsonl",
+            cio / "cio_reflection_candidates.json",
+        ),
+        json.dumps(overlays, sort_keys=True, default=str),
+    )
+    with _LESSONS_LOCK:
+        if _LESSONS_CACHE["key"] != key:
+            _LESSONS_CACHE.update({"key": key, "value": _collect_lessons(base, runtime, cio, overlays)})
+        # Callers get their own copy; the cached value is never handed out.
+        return copy.deepcopy(_LESSONS_CACHE["value"])
 
-    kb = _latest_by_id(_read_jsonl(runtime / "advisory_kb_lessons.jsonl"))
-    cands = _latest_by_id(_read_jsonl(runtime / "advisory_kb_lesson_candidates.jsonl"))
-    apps = _read_jsonl(runtime / "advisory_kb_lesson_applications.jsonl")
+
+def _collect_lessons(base: Path, runtime: Path, cio: Path, overlays: dict[str, Any]) -> dict[str, Any]:
+    kb = _latest_by_id_stream(runtime / "advisory_kb_lessons.jsonl")
+    cands = _latest_by_id_stream(runtime / "advisory_kb_lesson_candidates.jsonl")
+    application_events = _count_rows(runtime / "advisory_kb_lesson_applications.jsonl")
     by_id: dict[str, dict[str, Any]] = {}
     for row in cands + kb:
         lid = str(row.get("id") or "")
@@ -55,7 +123,6 @@ def collect_lessons(*, root: Path | str | None = None) -> dict[str, Any]:
     snap_path = cio / "cio_reflection_candidates.json"
     reflection_props: list[dict[str, Any]] = []
     if snap_path.is_file():
-        import json
         try:
             snap = json.loads(snap_path.read_text(encoding="utf-8"))
         except Exception:
@@ -111,7 +178,7 @@ def collect_lessons(*, root: Path | str | None = None) -> dict[str, Any]:
     return {
         "authority": "READ_ONLY_ADVISORY",
         "auto_promotion_to_trading": False,
-        "application_events": len(apps),
+        "application_events": application_events,
         "reflection_candidate_lessons": len(reflection_props),
         "counts": {k: counts.get(k, 0) for k in (
             "CANDIDATE", "RATIFIED_CONTEXT", "SHADOW_INFLUENCE",

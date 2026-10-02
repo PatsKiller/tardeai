@@ -887,6 +887,10 @@ GATES = [
             "tests/test_cio_operator_evidence.py",
             # 10-02 review: per-decision research, honest clocks, bounded reads, shared cache.
             "tests/test_cio_operator_evidence_bounds_20261002.py",
+            # Advisory desk: latest_delta indexed once per store version (was ~35 s/request).
+            "tests/test_research_delta_index_20261002.py",
+            # /api/v3/maturity/learning: stream + cache the 270 MB lesson store (was ~910 MB/request).
+            "tests/test_maturity_lessons_stream_cache_20261002.py",
             "tests/test_cio_advisory_dependency_clocks_20261002.py",
             "tests/test_cio_cross_surface_links_20261002.py",
             "tests/test_cio_decision_lineage_states_20261002.py",
