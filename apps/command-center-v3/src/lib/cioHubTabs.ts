@@ -28,7 +28,7 @@ export const CIO_HUB_TAB_ALIASES: Record<string, CioHubTab> = {
   'capital-policy': 'capital-policy',
   'evidence-comms': 'evidence-comms',
   // Legacy 13-tab strip
-  'cio-brain': 'overview',
+  'cio-brain': 'evidence-comms',
   'cio-now': 'decisions',
   opportunities: 'decisions',
   'universe-theses': 'research',

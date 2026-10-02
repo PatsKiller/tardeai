@@ -838,6 +838,23 @@ def get_agent_research_ops() -> dict[str, Any]:
         out["ok"] = False
         out["error"] = type(e).__name__
         out["detail"] = str(e)[:200]
+    # Thin disk stamp for light scorecard Hermes metrics (never nests ops rebuild).
+    try:
+        slim = {
+            "ok": bool(out.get("ok")),
+            "as_of": out.get("as_of"),
+            "completed_today": (out.get("queue") or {}).get("completed_today"),
+            "created_today": (out.get("queue") or {}).get("created_today"),
+            "failed_today": (out.get("queue") or {}).get("failed_today"),
+            "flash_first": out.get("flash_first") or {},
+            "provider_mix_today": out.get("provider_mix_today") or {},
+            "source": "get_agent_research_ops",
+        }
+        path = PROJECT_ROOT / "data" / "runtime" / "agent_research_ops_latest.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(slim, separators=(",", ":"), default=str), encoding="utf-8")
+    except Exception:
+        pass
     return out
 
 
@@ -2611,7 +2628,7 @@ def get_cio_brain_v1() -> dict[str, Any]:
         }
     except Exception:
         pass
-    return {
+    out = {
         "ok": True,
         "schema": "CIOBrainSnapshot@v1",
         "as_of": _now_iso(),
@@ -2653,6 +2670,12 @@ def get_cio_brain_v1() -> dict[str, Any]:
         "learning_cockpit": get_learning_cockpit_v1(),
         "data_health": get_data_health_v1(),
     }
+    try:
+        from scripts.lib.cio_scorecard import stamp_brain_judgment
+        stamp_brain_judgment(out, root=PROJECT_ROOT)
+    except Exception:
+        pass
+    return out
 
 
 def post_confirm_preference_candidate(candidate_id: str, body: dict[str, Any] | None = None) -> dict[str, Any]:

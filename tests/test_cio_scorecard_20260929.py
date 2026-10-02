@@ -173,3 +173,45 @@ def test_decisions_tile_from_attention_stamp(tmp_path: Path):
     assert by_label["Decisions"] == 3
     assert by_label["Material today"] == 3
     assert by_label["Open plans"] == 914
+
+
+def test_judgment_stamp_surfaces_on_scorecard(tmp_path: Path):
+    from scripts.lib.cio_scorecard import get_cio_scorecard, stamp_brain_judgment
+
+    stamp_brain_judgment(
+        {
+            "ok": True,
+            "as_of": "2026-09-30T12:00:00+00:00",
+            "portfolio_state": {
+                "total_portfolio_value_usd": 1263019,
+                "observed_cash_usd": 902013,
+                "truth_quality": "UNVERIFIED_INVESTABLE",
+                "investable_cash_status": "UNVERIFIED_INVESTABLE",
+            },
+            "portfolio_thesis": {"current_posture": "HOLD_CASH_RESEARCH_FIRST", "state": "INSUFFICIENT_DATA"},
+            "capital_plan": {"stance": "RESEARCH_FIRST", "next_review": "ON_BLOCKER_RESOLUTION"},
+            "capital_situation": {"conclusion": "RESEARCH_FIRST", "blockers": ["POLICY_REQUIRED"]},
+            "operator_value": {
+                "current_recommendation": "RESEARCH_FIRST",
+                "why": "evidence incomplete",
+                "what_happens_next": "ON_BLOCKER_RESOLUTION",
+                "uncertainty": ["POLICY_REQUIRED"],
+            },
+            "market_context": {
+                "fields": {
+                    "regime": {"value": "risk_on_trend", "state": "VERIFIED"},
+                    "vix_close": {"value": 16.0, "state": "VERIFIED"},
+                    "breadth": {"value": "broad", "state": "VERIFIED"},
+                    "valuation": {"value": None, "state": "UNAVAILABLE"},
+                }
+            },
+            "unresolved_conflicts": ["POLICY_REQUIRED"],
+        },
+        root=tmp_path,
+    )
+    out = get_cio_scorecard(root=tmp_path)
+    j = out.get("judgment") or {}
+    assert j.get("ok") is True
+    assert j["portfolio_state"]["total_portfolio_value_usd"] == 1263019
+    assert j["operator_value"]["current_recommendation"] == "RESEARCH_FIRST"
+    assert "POLICY_REQUIRED" in (out.get("blockers_top") or [])

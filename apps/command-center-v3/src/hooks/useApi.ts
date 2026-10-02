@@ -184,7 +184,9 @@ export function useApi<T>(path: string, intervalMs?: number, options?: UseApiOpt
         ? 15_000
         : (path.includes('/options/proposals') || path.includes('/options/monitor'))
           ? 120_000
-          : path.includes('universe-theses')
+          : (path.includes('universe-theses')
+            || path.includes('/maturity/senses')
+            || path.includes('/maturity/heartbeat'))
             ? 90_000
             : 30_000
       // Initial load only — interval polls keep last data without blanking the UI

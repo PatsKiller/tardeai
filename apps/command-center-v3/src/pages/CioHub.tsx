@@ -2126,10 +2126,11 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
             onTileClick={(tile) => setEvidenceTile(tile)}
           />
           <CioJudgmentBand
+            judgment={scorecard?.judgment as any}
+            judgmentLoading={scorecardLoading}
+            judgmentMissing={Boolean(scorecard && !scorecard.judgment)}
             blockersTop={scorecard?.blockers_top}
             scorecardNote={scorecard?.note}
-            healthSummary={scorecard?.health_summary}
-            pin={scorecard?.pin}
             onPolicyClick={() => selectTab('capital-policy')}
           />
         </div>
