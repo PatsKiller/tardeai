@@ -1566,6 +1566,7 @@ it with `UNAPPROVED_SOURCE`. That is the point.
 | **maturity_scores** | derived | `governance/maturity_scores.jsonl` | `scripts/maturity_remeasure.py` | weekly (cron, after the cron grant) | 336h | — | native | — | — | `say_so` | operator 2026-09-27 |
 | **conformance_gate_receipts** | derived | `governance/conformance_gate_receipts.jsonl` | `scripts/conformance_gate.py` | per promote | 720h | — | native | — | — | `say_so` | operator 2026-09-27 |
 | **supervisor_recoveries** | derived | `runtime/supervisor_recoveries.jsonl` | `scripts/supervisor_breach_detector.py` | per detector run | 1h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **capital_plan_decisions** | derived | `cio/cio_capital_plan_decisions.jsonl` | `scripts/lib/cio_capital_plan_decision_store.py` | on capital-plan build (GET /api/v2/cio/capital-plan) | 168h | — | native | — | — | `say_so` | operator 2026-10-03 |
 <!-- SOURCE_OF_TRUTH_TABLE_END -->
 
 §0 rule 5 still governs the one case the gate cannot decide: **two divergent copies of an

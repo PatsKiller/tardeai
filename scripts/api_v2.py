@@ -35598,6 +35598,12 @@ def _cio_capital_plan(query=None):
             sector_opportunities=sectors,
             risk_posture=_risk_posture(),
         )
+        try:
+            from scripts.lib.cio_capital_plan_decision_store import record_position_decisions
+
+            record_position_decisions(plan.get("position_decisions"))
+        except Exception:
+            pass
         return {"ok": True, **plan}
     except Exception as exc:
         return {"ok": False, "error": str(exc)[:200], "authority": "READ_ONLY_ADVISORY"}

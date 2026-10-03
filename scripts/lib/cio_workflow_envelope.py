@@ -302,6 +302,13 @@ def merge_envelope(
     for key, value in incoming.items():
         if key == "workflow_id":
             continue
+        if key == "decision_ids":
+            # A workflow can serve several decisions over its life; stamping one
+            # must never erase another.
+            merged = [str(x) for x in (out.get(key) or []) if x not in (None, "")]
+            merged += [str(x) for x in (value or []) if x not in (None, "") and str(x) not in merged]
+            out[key] = merged or out.get(key)
+            continue
         if value is None and key in _NULLABLE_IDENTITY and out.get(key) is not None:
             # None in an update does not wipe a previously recorded identifier.
             continue

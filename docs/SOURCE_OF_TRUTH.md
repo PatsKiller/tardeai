@@ -1,7 +1,7 @@
 # Source of Truth — one declaration per domain
 
 **Rendered from `config/data_source_authority.json` by `scripts/render_source_of_truth.py`. Do not edit by hand.**
-Registry as of 2026-09-28T00:20:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 46 domains · 22 providers.
+Registry as of 2026-09-28T00:20:00-04:00 · schema `DataSourceAuthority@v2` · authority READ_ONLY_ADVISORY · 47 domains · 22 providers.
 
 One source of truth per domain. For five months Performance (10 Years) was stored as a 1-5 analyst rating because two files mapped Finviz columns by position and nothing declared which store was the analyst source. For eighteen days the site served one copy of the state tree while the producers wrote another, because nothing declared where each store is served from. This file is that declaration. The data broker reads it; scripts/check_data_source_authority.py enforces it; docs/SOURCE_OF_TRUTH.md is rendered from it.
 
@@ -96,6 +96,7 @@ Both the release (CURRENT) and the dev tree the 344 cron producers run from must
 | **maturity_scores** | derived | `governance/maturity_scores.jsonl` | `scripts/maturity_remeasure.py` | weekly (cron, after the cron grant) | 336h | — | native | — | — | `say_so` | operator 2026-09-27 |
 | **conformance_gate_receipts** | derived | `governance/conformance_gate_receipts.jsonl` | `scripts/conformance_gate.py` | per promote | 720h | — | native | — | — | `say_so` | operator 2026-09-27 |
 | **supervisor_recoveries** | derived | `runtime/supervisor_recoveries.jsonl` | `scripts/supervisor_breach_detector.py` | per detector run | 1h | — | native | — | — | `say_so` | operator 2026-09-27 |
+| **capital_plan_decisions** | derived | `cio/cio_capital_plan_decisions.jsonl` | `scripts/lib/cio_capital_plan_decision_store.py` | on capital-plan build (GET /api/v2/cio/capital-plan) | 168h | — | native | — | — | `say_so` | operator 2026-10-03 |
 
 ## Writer ceilings — stores not yet consolidated to one writer
 
@@ -157,6 +158,7 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 5 item O-W5-4** — 1 rows: domain `maturity_scores`
 - **ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 5 item O-W5-2** — 1 rows: domain `conformance_gate_receipts`
 - **ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 5 item O-W5-3** — 1 rows: domain `supervisor_recoveries`
+- **Decision Lineage Join Plan Phase 3 — operator approved all phases 2026-10-03 (artifact https://claude.ai/artifact/C89ctZQYdYWg8onPMiCjyD, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); follows #1400** — 1 rows: domain `capital_plan_decisions`
 
 ## Monitors
 

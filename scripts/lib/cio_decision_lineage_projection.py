@@ -296,7 +296,11 @@ def review_metadata_fields(row: dict[str, Any] | None) -> dict[str, Any]:
 
 def _row_for_decision(row: dict[str, Any], decision_id: str) -> bool:
     did = _text(row.get("decision_id"))
-    return did == decision_id or _text(row.get("workflow_id")) == decision_id
+    if did == decision_id or _text(row.get("workflow_id")) == decision_id:
+        return True
+    # Producers stamp the decisions a workflow served (record_cio_generation).
+    ids = row.get("decision_ids")
+    return isinstance(ids, list) and decision_id in {_text(i) for i in ids}
 
 
 def _for_decision(row: dict[str, Any], did: str) -> bool:
