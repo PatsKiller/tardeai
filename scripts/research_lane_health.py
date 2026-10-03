@@ -221,6 +221,9 @@ def fix_hint(row: dict) -> str:
     return "see research_lane_health.py JSON"
 
 
+_MEASURED_KEYS = ("non_error_24h", "attempts_24h", "error_rate_24h", "error_streak")
+
+
 def reconcile_recovered(state: dict, report: dict) -> dict:
     """Lanes this report evaluated as ok are ok in the state file.
 
@@ -237,6 +240,11 @@ def reconcile_recovered(state: dict, report: dict) -> dict:
             prev = out.get(lane) or {}
             out[lane] = {"lane": lane, "ok": True, "firing": [], "as_of": report.get("as_of"),
                          "last_alert": prev.get("last_alert"), "recovered_from": prev.get("signature")}
+            # Keep what this run measured: dropping the counts made a healthy lane
+            # read "0 succeeded in 24h" on the CIO Desk card.
+            for key in _MEASURED_KEYS:
+                if row.get(key) is not None:
+                    out[lane][key] = row[key]
     return out
 
 

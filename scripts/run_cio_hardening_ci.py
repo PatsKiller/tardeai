@@ -932,6 +932,11 @@ GATES = [
         "cio_desk_degraded_20261003",
         ["tests/test_cio_desk_degraded_20261003.py"],
     ),
+    # CIO Desk cards read live outcome counts and keep measured lane counts (2026-10-03).
+    (
+        "cio_scorecard_live_counts_20261003",
+        ["tests/test_cio_scorecard_live_counts_20261003.py"],
+    ),
     (
         "lineage_phase12_20261003",
         [
