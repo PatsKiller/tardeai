@@ -23,8 +23,10 @@ DEFAULT_PROJECTION_PATH = Path("data/cio/cio_plans_projection.json")
 DETECTOR_VERSION_DEFAULT = "situation-catalog-v1.0.0"
 
 VALID_STATUSES = frozenset({
-    "draft", "proposed", "accepted", "superseded", "cancelled",
+    "draft", "proposed", "accepted", "superseded", "cancelled", "expired",
 })
+# Draft/proposed plans the expiry sweep may close (accepted plans are the operator's).
+EXPIRABLE = frozenset({"draft", "proposed"})
 OPENISH = frozenset({"draft", "proposed", "accepted"})
 
 VALID_SITUATION_TYPES = frozenset({
@@ -107,41 +109,108 @@ class CIOPlanStore:
         self.projection_path = Path(projection_path)
         self.event_path.parent.mkdir(parents=True, exist_ok=True)
         self._plans: dict[str, dict[str, Any]] = {}
+        # Byte offset of the event log the in-memory plans reflect. Every writer
+        # used to rewrite the whole projection from its own in-memory copy, so a
+        # concurrent writer silently undid another's changes (2026-10-03: 52
+        # plans cancelled in the log still read draft, 7 created plans missing).
+        # The log is the truth; the projection now records how far it got and
+        # every load/write first catches up from there.
+        # None = loaded from a pre-offset projection; the first write migrates it.
+        self._offset: Optional[int] = 0
         self._load_or_rebuild()
 
+    def _event_size(self) -> int:
+        try:
+            return self.event_path.stat().st_size
+        except OSError:
+            return 0
+
+    def _load_projection(self) -> bool:
+        if not self.projection_path.exists():
+            return False
+        try:
+            data = json.loads(self.projection_path.read_text())
+        except Exception:
+            return False
+        plans = data.get("plans") or {}
+        if not isinstance(plans, dict):
+            return False
+        offset = data.get("event_offset")
+        self._plans = plans
+        if isinstance(offset, int) and 0 <= offset <= self._event_size():
+            self._offset = offset
+            self._catch_up()
+        else:
+            # Pre-offset projection: serve it as-is (reads stay read-only); the
+            # first locked write rebuilds from the log and records the offset.
+            self._offset = None
+        return True
+
     def _load_or_rebuild(self) -> None:
-        if self.projection_path.exists():
+        if self._load_projection():
+            return
+        # One rebuild at a time: a projection without an offset (pre-2026-10-03)
+        # is rebuilt once under the event lock; concurrent loaders wait and then
+        # read the rebuilt projection instead of each replaying the full log.
+        lock = _lock_path(self.event_path)
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        with open(lock, "a") as lf:
+            fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
             try:
-                data = json.loads(self.projection_path.read_text())
-                plans = data.get("plans") or {}
-                if isinstance(plans, dict):
-                    self._plans = plans
-                    return
-            except Exception:
-                pass
-        self.rebuild_projection()
+                if not self._load_projection():
+                    self.rebuild_projection()
+            finally:
+                fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
+
+    def _catch_up(self) -> int:
+        """Apply events appended to the log since ``self._offset``. Returns how many."""
+        if self._offset is None:
+            return 0
+        size = self._event_size()
+        if size < self._offset:
+            # The log shrank (rotated/restored): the offset is meaningless.
+            self._plans, self._offset = {}, 0
+        if size == self._offset:
+            return 0
+        n = 0
+        with open(self.event_path, "rb") as fh:
+            fh.seek(self._offset)
+            chunk = fh.read()
+        # Only consume complete lines; a writer may be mid-append.
+        end = chunk.rfind(b"\n") + 1
+        for raw in chunk[:end].splitlines():
+            if not raw.strip():
+                continue
+            try:
+                ev = json.loads(raw)
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            self._apply_event(self._plans, ev)
+            n += 1
+        self._offset += end
+        return n
+
+    def _replay_log(self) -> None:
+        self._plans, self._offset = {}, 0
+        self._catch_up()
+
+    def refresh_from_log(self) -> bool:
+        """Read-only: replace a pre-offset projection's view with the log's. True if replayed."""
+        if self._offset is not None:
+            return False
+        self._replay_log()
+        return True
 
     def rebuild_projection(self) -> dict[str, Any]:
-        plans: dict[str, dict[str, Any]] = {}
-        if self.event_path.exists():
-            with open(self.event_path, "r") as fh:
-                for line in fh:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    try:
-                        ev = json.loads(line)
-                    except json.JSONDecodeError:
-                        continue
-                    self._apply_event(plans, ev)
-        self._plans = plans
+        self._replay_log()
         self._write_projection()
-        return {"plan_count": len(plans)}
+        return {"plan_count": len(self._plans)}
 
     def _write_projection(self) -> None:
         payload = {
             "updated_ts": _now(),
             "plan_count": len(self._plans),
+            "event_offset": self._offset,
             "plans": self._plans,
         }
         tmp = self.projection_path.with_suffix(".tmp")
@@ -162,19 +231,40 @@ class CIOPlanStore:
             "authority": "READ_ONLY_ADVISORY",
             "payload": payload,
         }
+        self._locked_append([envelope])
+        return envelope
+
+    def _locked_append(self, envelopes: Any) -> list[dict[str, Any]]:
+        """Catch up, append, apply and persist the projection under one lock.
+
+        ``envelopes`` may be a callable: it is evaluated after the catch-up, so a
+        decision that depends on current state (e.g. "still draft?") sees the
+        latest log, not a stale in-memory copy.
+        """
         lock = _lock_path(self.event_path)
         lock.parent.mkdir(parents=True, exist_ok=True)
         with open(lock, "a") as lf:
             fcntl.flock(lf.fileno(), fcntl.LOCK_EX)
             try:
+                if self._offset is None:
+                    self._replay_log()
+                self._catch_up()
+                if callable(envelopes):
+                    envelopes = envelopes()
+                if not envelopes:
+                    return []
                 with open(self.event_path, "a") as fh:
-                    fh.write(json.dumps(envelope, sort_keys=True, default=str) + "\n")
+                    for env in envelopes:
+                        fh.write(json.dumps(env, sort_keys=True, default=str) + "\n")
                     fh.flush()
+                    os.fsync(fh.fileno())
+                for env in envelopes:
+                    self._apply_event(self._plans, env)
+                self._offset = self._event_size()
+                self._write_projection()
+                return list(envelopes)
             finally:
                 fcntl.flock(lf.fileno(), fcntl.LOCK_UN)
-        self._apply_event(self._plans, envelope)
-        self._write_projection()
-        return envelope
 
     def _apply_event(self, plans: dict[str, dict[str, Any]], ev: dict[str, Any]) -> None:
         et = ev.get("event_type")
@@ -330,6 +420,46 @@ class CIOPlanStore:
         else:
             self._append_event("PLAN_UPDATED", plan_id, patch, actor_id=actor_id)
         return dict(self._plans[plan_id])
+
+    def expire_plans(
+        self,
+        items: list[tuple[str, str]],
+        *,
+        actor_id: str = "cio_plan_expiry",
+        recheck: Any = None,
+    ) -> list[str]:
+        """Append one PLAN_STATUS_CHANGED -> expired per (plan_id, reason).
+
+        Batched: every event is written under one lock and the (tens of MB)
+        projection is rewritten once, not once per plan. Only draft/proposed
+        plans are expired; anything else is skipped. Append-only. ``recheck``,
+        if given, is called with the plan's CURRENT state (after catching up on
+        the log, under the lock) and must return the reason to use, or None to
+        leave the plan open.
+        """
+        def build() -> list[dict[str, Any]]:
+            now = _now()
+            out: list[dict[str, Any]] = []
+            for plan_id, reason in items:
+                cur = self._plans.get(plan_id)
+                if not cur or cur.get("status") not in EXPIRABLE:
+                    continue
+                if recheck is not None:
+                    reason = recheck(dict(cur))
+                    if not reason:
+                        continue
+                out.append({
+                    "event_id": f"{int(time.time() * 1_000_000):020d}-{uuid.uuid4().hex[:8]}",
+                    "event_type": "PLAN_STATUS_CHANGED",
+                    "plan_id": plan_id,
+                    "occurred_at": now,
+                    "actor_id": actor_id,
+                    "authority": "READ_ONLY_ADVISORY",
+                    "payload": {"status": "expired", "reason": reason, "updated_ts": now},
+                })
+            return out
+
+        return [env["plan_id"] for env in self._locked_append(build)]
 
     def get_plan(self, plan_id: str) -> Optional[dict[str, Any]]:
         p = self._plans.get(plan_id)
