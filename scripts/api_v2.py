@@ -53011,15 +53011,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             p = base_path[len("/api/v3/cio") :].strip("/")
             if method == "GET":
                 if p == "brain":
-                    return 200, _cio.get_cio_brain_v1()
+                    return 200, _cio.cached_heavy("brain", _cio.get_cio_brain_v1)
                 if p == "scorecard":
                     return 200, _cio.get_cio_scorecard()
                 if p in ("", "dashboard"):
-                    return 200, _cio.get_cio_dashboard()
+                    return 200, _cio.cached_heavy("dashboard", _cio.get_cio_dashboard)
                 if p == "home":
-                    return 200, _cio.get_cio_home()
+                    return 200, _cio.cached_heavy("home", _cio.get_cio_home)
                 if p in ("observability", "operations", "ops"):
-                    return 200, _cio.get_cio_observability()
+                    return 200, _cio.cached_heavy("observability", _cio.get_cio_observability)
                 if p in ("brain/maturity-contract", "brain/maturity_contract"):
                     return 200, _cio.get_brain_maturity_contract()
                 if p == "brain/policy":
@@ -53051,7 +53051,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if p in ("brain/data-health", "brain/data_health"):
                     return 200, _cio.get_data_health_v1()
                 if p in ("investment-product", "investment-books", "books"):
-                    return 200, _cio.get_investment_product()
+                    return 200, _cio.cached_heavy("investment-product", _cio.get_investment_product)
                 if p == "dispositions":
                     return 200, _cio.get_decision_dispositions()
                 if p in ("operator-evidence", "operator_evidence"):
@@ -53127,7 +53127,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         return 400, {"ok": False, "error": "symbol required"}
                     return 200, _cio.get_ask_thesis_context(sym)
                 if p in ("desk-note", "desk_note", "synthesis"):
-                    return 200, _cio.get_cio_desk_note()
+                    return 200, _cio.cached_heavy("desk-note", _cio.get_cio_desk_note, ttl=300.0)
                 if p == "plans":
                     lim = 30
                     st = None

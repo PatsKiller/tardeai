@@ -556,6 +556,9 @@ _SKIP_CALLS = frozenset({
 })
 
 
+_HEAVY_WRAP_RE = re.compile(r"(?:\b\w+\.)?cached_heavy\(\s*[\"'][^\"']*[\"']\s*,\s*([A-Za-z_][\w.]*)")
+
+
 def _producer_after(lines: list[str], idx: int, aliases: dict[str, str], span: int = 16) -> Optional[str]:
     """First producer call in the branch that starts at ``lines[idx]``.
 
@@ -573,6 +576,8 @@ def _producer_after(lines: list[str], idx: int, aliases: dict[str, str], span: i
         if am:
             aliases[am.group(2)] = f"{am.group(1)}.py"
             continue
+        # cached_heavy("name", producer, ...) serves producer: resolve it, not the cache wrapper.
+        line = _HEAVY_WRAP_RE.sub(r"\1(", line)
         for m in re.finditer(r"(?:return\s+(?:\d+|\(\s*\d+[^,]*\))\s*,\s*|return\s+|=\s*|\(\s*)(?:_?\w+\s*\(\s*)?([A-Za-z_][\w]*(?:\.[A-Za-z_]\w*)?)\s*\(", line):
             name = m.group(1)
             if name in _SKIP_CALLS or name.split(".")[-1] in _SKIP_CALLS or name.startswith(("self.", "_os", "os.", "re.", "json.")):
