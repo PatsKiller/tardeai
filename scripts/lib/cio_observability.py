@@ -73,6 +73,18 @@ def _finding(issue_id: str, severity: str, title: str, root_cause: str,
     }
 
 
+def _plans_stale(cio_now: dict[str, Any]) -> bool:
+    """Decisions are stale when open plans are overdue under the plan-expiry rule.
+
+    Open plans within their revisit window are normal work, not debt. When the
+    overdue measure is absent (older home payload), any open plan still counts.
+    """
+    overdue = cio_now.get("overdue_open_plans_count")
+    if overdue is None:
+        return _count(cio_now.get("open_plans_count")) > 0
+    return _count(overdue) > 0
+
+
 def build_observability(*, home: dict[str, Any] | None,
                         brain: dict[str, Any] | None,
                         research_ops: dict[str, Any] | None,
@@ -173,7 +185,7 @@ def build_observability(*, home: dict[str, Any] | None,
         ),
         _domain(
             "Decisions",
-            _status(available=decisions_available, stale=_count(cio_now.get("open_plans_count")) > 0),
+            _status(available=decisions_available, stale=_plans_stale(cio_now)),
             value=_count(cio_now.get("decision_count")), source="/api/v3/cio/home",
             last_success=home.get("as_of"), cadence="CIO projection",
             blocker=None if decisions_available else "Decision projection unavailable",
@@ -181,6 +193,7 @@ def build_observability(*, home: dict[str, Any] | None,
             metrics={"decisions": _count(cio_now.get("decision_count")),
                      "workflow_actions": _count(cio_now.get("open_actions_count")),
                      "open_plans": _count(cio_now.get("open_plans_count")),
+                     "overdue_open_plans": cio_now.get("overdue_open_plans_count"),
                      "material_today": _count(cio_now.get("material_today_count"))},
             drill=["/v3/cio?tab=cio-now"],
         ),
@@ -222,10 +235,14 @@ def build_observability(*, home: dict[str, Any] | None,
                                  residual_risk="Capital recommendations remain gated",
                                  external_dependency="Primary operator ratification"))
     open_plans = _count(cio_now.get("open_plans_count"))
-    if open_plans:
+    overdue = cio_now.get("overdue_open_plans_count")
+    if _plans_stale(cio_now):
+        detail = (f"{overdue} of {open_plans} open plan(s) are past their revisit date beyond the expiry grace"
+                  if overdue is not None else
+                  f"CIO home reports {open_plans} open plan(s) and no overdue measure")
         findings.append(_finding(
             "CIO-DECISIONS-001", "MEDIUM", "Open advisory plans require disposition",
-            f"CIO home reports {open_plans} open plan(s); the plans are durable operator work and are not auto-closed",
+            detail,
             "EXTERNAL_DEPENDENCY", "CIO decision lifecycle",
             fix="Operator must acknowledge, defer, complete, reject, or re-run each open plan",
             evidence=["/api/v3/cio/home", "/api/v3/cio/plans"],
