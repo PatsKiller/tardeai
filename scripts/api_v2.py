@@ -42935,8 +42935,11 @@ def _finviz_credential_health(query=None):
             message = "Finviz Elite cookie expired — screener and social scalp empty"
         else:
             status = "expired" if (not ok or err_signal) else "error"
-            message = ("Finviz Elite cookie and API token both failing — screener and social scalp empty"
-                       if token else "Finviz Elite cookie expired — screener and social scalp empty")
+            message = (
+                "Finviz Elite cookie and API token both failing — screener and social scalp empty"
+                if token
+                else "Finviz Elite cookie expired — screener and social scalp empty"
+            )
         return {
             "ok": healthy,
             "status": status,
