@@ -343,11 +343,18 @@ def project_decision_lineage(
     learning: dict[str, Any] | None = None,
     source_availability: dict[str, bool] | None = None,
     composition_as_of: str | None = None,
+    identity_resolution: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Compose one exact decision projection from canonical evidence rows.
 
     ``source_availability`` maps a store label to whether the store could be
     read; an unread store is UNAVAILABLE, never UNKNOWN or LIVE.
+
+    ``identity_resolution`` is a read-time identity-registry lookup for a
+    decision whose producer recorded only a symbol. It is consulted after every
+    producer row and carries its own ``identity_registry:<guid>`` source_ref, so
+    a producer-stamped GUID always wins and a read-time one is never disguised
+    as recorded.
     """
     did = _text(decision_id)
     composed = composition_as_of or datetime.now(timezone.utc).isoformat()
@@ -422,7 +429,11 @@ def project_decision_lineage(
         return unmatched(stage, status_key, primary, [primary, *(s for s, r in rows if r)])
 
     stages: dict[str, dict[str, Any]] = {}
-    for name in ("wake_event", "security_identity", "office_truth", "canon_frameworks", "research_gap",
+    stages["security_identity"] = keyed(
+        "security_identity",
+        rows=[*keyed_rows, *((("identity_registry", identity_resolution),) if identity_resolution else ())],
+    )
+    for name in ("wake_event", "office_truth", "canon_frameworks", "research_gap",
                  "specialist_delegation", "specialist_disagreement", "model_route", "judgment",
                  "counter_thesis", "confidence", "falsifier", "notification"):
         stages[name] = keyed(name)
