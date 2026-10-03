@@ -19,6 +19,13 @@ from typing import Any, Iterable
 from scripts.lib.canonical_store_registry import production_state_root
 
 SCHEMA = "OperatorDisposition@v1"
+NO_CONSUMER_REASON = (
+    "producer built (PR #1394, flight recorder steps 19-20) but NOT wired: no "
+    "production code calls DispositionRecorder yet -- only "
+    "tests/test_operator_disposition_lineage_20261003.py. Nothing writes "
+    "decision_dispositions.jsonl until an operator-review path (desk approve/"
+    "reject handler) is wired to record()."
+)
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 
