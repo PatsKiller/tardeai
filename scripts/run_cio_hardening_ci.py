@@ -918,6 +918,12 @@ GATES = [
     # so the guard runs behind the required context: the 2026-09-01 data loss was
     # invisible precisely because a fail-open write and a fail-closed write are
     # indistinguishable on a successful run.
+    # Capital-plan decisions keep the versioned sizing policy through aggregation
+    # (canon_frameworks methodology_ref) without churning decision ids.
+    (
+        "capital_plan_methodology_20261003",
+        ["tests/test_capital_plan_methodology_20261003.py"],
+    ),
     # Lineage join phases 1-2 (operator-approved 2026-10-03): production-case outcomes
     # and dispositions, and the declared stage-applicability contract.
     (

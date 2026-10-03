@@ -39,6 +39,7 @@ def materialize(*, store_path: Path, projection_path: Path) -> dict:
         market_context=market,
         seasonality=seasonality,
         symbol_theses=symbol_refs,
+        methodology_refs=cio_api._ratified_methodology_refs(),
     )
     return reconcile_portfolio_thesis(candidate, store_path=str(store_path))
 
