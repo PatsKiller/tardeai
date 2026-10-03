@@ -286,6 +286,92 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
   .metric-strip .metric-strip-row::-webkit-scrollbar { height: 0; }
 }
 
+/* ── Compact mobile header (2026-10-03) ─────────────────────────────────────
+   Phones saw seven stacked tiles plus four chips: the strip filled the first
+   screen and never scrolled away. At <=820px one line shows PORTFOLIO, TODAY and
+   the attention chips; the full strip opens below it on demand. Desktop never
+   renders .ms-compact. */
+.ms-compact { display: none; }
+@media (max-width: 820px) {
+  .metric-strip > .ms-compact {
+    display: flex;
+    flex-wrap: nowrap !important;
+    overflow: hidden !important;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: calc(2px + env(safe-area-inset-top, 0px)) 8px 2px !important;
+  }
+  /* Beats the later `.metric-strip { padding: 8px 10px !important }` mobile rule. */
+  .app-shell .metric-strip { padding: 0 !important; }
+  .metric-strip[data-mobile-expanded="false"] > .metric-strip-row { display: none !important; }
+  .metric-strip[data-mobile-expanded="true"] > .metric-strip-row {
+    max-height: 60dvh;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+  }
+  .ms-compact button {
+    font: inherit;
+    border: 0;
+    background: transparent;
+    color: var(--text0);
+    cursor: pointer;
+    min-height: 40px;
+  }
+  .ms-compact__cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    min-width: 0;
+    flex: 0 1 auto;
+    padding: 0 4px;
+    text-align: left;
+  }
+  .ms-compact__label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: .06em;
+    color: var(--text3);
+    line-height: 1.1;
+  }
+  .ms-compact__value {
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+  }
+  .ms-compact__chip {
+    flex: 0 0 auto;
+    min-width: 40px;
+    padding: 0 8px !important;
+    font-size: 12px !important;
+    font-weight: 700;
+  }
+  .ms-compact__toggle {
+    position: relative;
+    flex: 0 0 auto;
+    margin-left: auto;
+    min-width: 40px;
+    font-size: 16px !important;
+    color: var(--text1) !important;
+  }
+  .ms-compact__toggle:focus-visible,
+  .ms-compact__cell:focus-visible,
+  .ms-compact__chip:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .ms-compact__dot {
+    position: absolute;
+    top: 8px;
+    right: 6px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+  }
+}
+
 /* ── Mobile responsiveness ──────────────────────────────────────────────────
    The layout uses inline styles; these media queries override with !important
    on small screens: nav becomes a top horizontal scroll bar, content goes

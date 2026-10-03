@@ -48,9 +48,23 @@ const NOWRAP = { whiteSpace: 'nowrap' as const, overflow: 'hidden' as const, tex
 const VALUE_BIG = TYPE.lg
 const VALUE_COMPACT = TYPE.md
 
+const HEADER_PREF_KEY = 'cc_mobile_header_expanded'
+
+function readHeaderExpanded(): boolean {
+  try { return window.localStorage.getItem(HEADER_PREF_KEY) === '1' } catch { return false }
+}
+
 export default function MetricStrip({ onDrill }: Props) {
   const navigate = useNavigate()
   const [alertsOpen, setAlertsOpen] = useState(false)
+  // Phones only (CSS shows .ms-compact at <=820px): one line by default, the full
+  // strip on demand. Remembered per device; storage failure just means collapsed.
+  const [mobileExpanded, setMobileExpanded] = useState<boolean>(readHeaderExpanded)
+  const toggleMobileExpanded = () => setMobileExpanded(v => {
+    const next = !v
+    try { window.localStorage.setItem(HEADER_PREF_KEY, next ? '1' : '0') } catch { /* private mode */ }
+    return next
+  })
 
   const { data: overview } = useApi<any>('/api/v2/overview', 120_000)
   const { data: readiness } = useApi<any>('/api/v2/paper-trade-readiness', 120_000)
@@ -525,9 +539,43 @@ export default function MetricStrip({ onDrill }: Props) {
     },
   ]
 
+  // The compact line reuses the tiles' own values and colours; nothing is
+  // recomputed. Any tile not 'ok' (STALE, underfilled run, missing accounts)
+  // marks the expand control, so a collapsed header never hides a fault.
+  const [portfolioTile, todayTile] = tiles
+  const worstHeaderTone: Tone = worseTone(...tiles.map(t => ((t as any).tone ?? 'ok') as Tone))
+  const attentionTiles = tiles.filter(t => ((t as any).tone ?? 'ok') !== 'ok').map(t => t.label)
+
   return (
-    <div className="metric-strip" style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
-    <div className="metric-strip-row" data-density={dx.density === 'compact' ? 'compact' : 'normal'} style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
+    <div className="metric-strip" data-mobile-expanded={mobileExpanded ? 'true' : 'false'} style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg0)', borderBottom: '1px solid var(--border)', flexShrink: 0 }}>
+    <div className="ms-compact" data-testid="ms-compact">
+      <button type="button" className="ms-compact__cell" onClick={() => onDrill(portfolioTile.drill)} title={(portfolioTile as any).tip}>
+        <span className="ms-compact__label">PORT{(portfolioTile as any).stale ? <span style={{ color: BB.amber }} data-surface-stale> ⚠</span> : null}</span>
+        <span className="ms-compact__value" style={{ ...numStyle, color: portfolioTile.color }}>{portfolioTile.value}</span>
+      </button>
+      <button type="button" className="ms-compact__cell" onClick={() => onDrill(todayTile.drill)} title={(todayTile as any).tip}>
+        <span className="ms-compact__label">TODAY</span>
+        <span className="ms-compact__value" style={{ ...numStyle, color: todayTile.color }}>{todayTile.value}</span>
+      </button>
+      {approvals != null && approvals > 0 && (
+        <button type="button" className="ms-compact__chip" onClick={() => navigate('/')}
+          aria-label={`${approvals} pending approvals`} title={`${approvals} pending approvals — Home → Action Inbox`}
+          style={{ background: BB.amberDim, color: BB.amber, borderRadius: RADIUS.sm }}>⚑ {approvals}</button>
+      )}
+      {healthWarn > 0 && (
+        <button type="button" className="ms-compact__chip" onClick={() => navigate('/health')}
+          aria-label={`${healthWarn} health findings${healthCritical ? `, ${healthCritical} critical` : ''}`} title={healthPopulation}
+          style={{ background: BB.redDim, color: BB.red, borderRadius: RADIUS.sm }}>♥ {healthCritical ? `${healthCritical}!` : healthWarn}</button>
+      )}
+      <button type="button" className="ms-compact__toggle" aria-expanded={mobileExpanded} aria-controls="ms-full"
+        aria-label={`${mobileExpanded ? 'Hide' : 'Show'} all header metrics${attentionTiles.length ? ` (attention: ${attentionTiles.join(', ')})` : ''}`}
+        title={attentionTiles.length ? `Needs attention: ${attentionTiles.join(' · ')}` : 'All header metrics'}
+        onClick={toggleMobileExpanded}>
+        {worstHeaderTone !== 'ok' && <span className="ms-compact__dot" style={{ background: toneColor(worstHeaderTone) }} data-header-attention={worstHeaderTone} />}
+        <span aria-hidden="true">{mobileExpanded ? '▴' : '▾'}</span>
+      </button>
+    </div>
+    <div id="ms-full" className="metric-strip-row" data-density={dx.density === 'compact' ? 'compact' : 'normal'} style={{ display: 'flex', alignItems: 'center', gap: 0, padding: '8px 16px 4px' }}>
       {/* Fixed width, and min-width:0 so the flex algorithm may actually shrink
           it. The stamp had maxWidth:280 with overflow:visible, so its 603px of
           text painted straight over the PORTFOLIO tile — a 323px spill that no
