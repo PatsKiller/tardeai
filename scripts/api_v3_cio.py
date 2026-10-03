@@ -1597,6 +1597,24 @@ def _read_time_identity(decision: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+_CASE_LINEAGE_EVENTS = {"OUTCOME_OBSERVED", "OPERATOR_DISPOSITION"}
+
+
+def _production_case_rows(path: Path, decision_id: str, availability: dict[str, bool]) -> list[dict[str, Any]]:
+    """Production-case events lineage reads: outcomes and operator dispositions only.
+
+    RETRIEVAL_RECORDED (an ephemeral, non-durable audit) and DARWIN_SCORED (a
+    formula, not calibration) are dropped here so no stage can treat them as
+    research or lesson evidence. Kept rows are bounded to those two kinds.
+    """
+    rows = _lineage_store_rows(path, decision_id, "cio_production_cases", availability)
+    return [
+        r for r in rows
+        if str(r.get("event_type") or "").upper() in _CASE_LINEAGE_EVENTS
+        or (not r.get("event_type") and isinstance(r.get("operator_disposition"), dict))
+    ]
+
+
 def _lineage_store_rows(
     path: Path, decision_id: str | None, label: str, availability: dict[str, bool],
 ) -> list[dict[str, Any]]:
@@ -1667,6 +1685,7 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             cio_root / "decision_dispositions.jsonl" if os.getenv("TRADEAI_CIO_DIR") else _DISPOSITION_PATH
         )
         disposition_rows = _lineage_store_rows(disposition_path, None, "decision_dispositions", availability)
+        case_rows = _production_case_rows(cio_root / "cio_production_cases.jsonl", did, availability)
         matched = (
             direct_match(did, workflow_rows)
             + direct_match(did, intelligence_rows)
@@ -1706,6 +1725,7 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             intelligence_records=intelligence_rows,
             checkpoint_records=checkpoint_rows,
             disposition_records=disposition_rows,
+            production_case_records=case_rows,
             research_provenance=evidence_blocks.get("research") or {},
             institutional_cognition=cognition_block,
             learning=learning_block,
