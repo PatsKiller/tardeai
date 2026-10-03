@@ -83,6 +83,34 @@ def _rows_by_id(path: Path) -> dict[str, dict[str, Any]]:
     return rows
 
 
+# Desk-thesis posture keys that build_position_decisions consumes to size each
+# decision (cio_capital_plan.build_capital_plan: max_single_name_pct,
+# concentration_fire_pct). cash_band_min_pct shapes the plan, not a decision row.
+_SIZING_POSTURE_KEYS = ("max_single_name_weight_pct", "concentration_fire_pct")
+
+
+def framework_fields(desk_thesis: dict[str, Any] | None, posture: dict[str, Any] | None) -> dict[str, Any]:
+    """The framework that sized this build's decisions, or {} when none applied.
+
+    Only when the desk thesis actually supplied a sizing parameter is it named:
+    absent those keys the builder used policy defaults, and naming the thesis
+    would claim an influence it did not have. Scope is stated: the desk thesis is
+    portfolio-level, shared by every decision in the build.
+    """
+    desk = desk_thesis if isinstance(desk_thesis, dict) else {}
+    applied = {k: (posture or {}).get(k) for k in _SIZING_POSTURE_KEYS if (posture or {}).get(k) is not None}
+    version = desk.get("thesis_version") or (
+        f"{desk.get('thesis_id')}@v{desk.get('version')}" if desk.get("thesis_id") and desk.get("version") else None
+    )
+    if not applied or not version:
+        return {}
+    return {
+        "framework_refs": [f"cio_thesis:{version}"],
+        "framework_scope": "portfolio (desk thesis risk posture)",
+        "framework_parameters": applied,
+    }
+
+
 def _row(decision: dict[str, Any], *, producer: str, recorded_at: str) -> dict[str, Any]:
     did = str(decision["decision_id"])
     row: dict[str, Any] = {
@@ -98,6 +126,13 @@ def _row(decision: dict[str, Any], *, producer: str, recorded_at: str) -> dict[s
     for key in _FIELDS:
         if decision.get(key) is not None:
             row[key] = decision[key]
+    # Same mapping the live catalog uses (api_v3_cio.catalog_from_position_decisions).
+    action = decision.get("action") or decision.get("stance") or decision.get("stance_code")
+    if action:
+        row["action"] = action
+    if decision.get("decision_policy_version"):
+        # The versioned sizing method that computed this decision.
+        row["methodology_ref"] = decision["decision_policy_version"]
     return row
 
 

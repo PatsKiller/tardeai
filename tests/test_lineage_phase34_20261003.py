@@ -39,7 +39,8 @@ def _isolated(tmp_path_factory, monkeypatch):
 
 
 def _decision(did: str, **kw) -> dict:
-    return {"decision_id": did, "symbol": "SCHD", "cio_stance": "HOLD", "recommended_delta_usd": 0.0,
+    return {"decision_id": did, "symbol": "SCHD", "cio_stance": "HOLD", "stance": "Hold", "stance_code": "HOLD",
+            "recommended_delta_usd": 0.0,
             "why_now": "inside band", "decision_input_digest": f"in_{did}", "decision_evidence_digest": f"ev_{did}",
             "decision_policy_version": "capital_plan_1.3.0", "generated_at": "2026-10-03", **kw}
 
@@ -116,6 +117,8 @@ def test_a_churned_capital_plan_id_still_resolves_from_the_store(tmp_path, monke
     office = lineage["stages"]["office_truth"]
     assert office["state"] == "LIVE" and office["value"] == "in_dec_churned"
     assert office["source_ref"] == "cio_capital_plan_decisions:dec_churned"
+    judgment = lineage["stages"]["judgment"]
+    assert judgment["state"] == "LIVE" and judgment["value"] == "Hold"
 
 
 def test_an_unknown_id_is_still_not_found(tmp_path, monkeypatch):
@@ -163,3 +166,54 @@ def test_checkpoint_row_carries_the_produced_ids(tmp_path):
         "decision_id": "run_3", "subject_id": "goal_x", "entity_type": "GOAL", "recommendation": "OBSERVE",
         "producer_id": "cio_run_worker", "decision_ids": ["prod_cio_books_3"]}, "sha", path=p)
     assert out["checkpoint"]["decision_ids"] == ["prod_cio_books_3"]
+
+
+# ── Phase 4: the framework that sized each capital-plan decision ─────────────
+
+DESK = {"thesis_id": "desk", "version": 5, "thesis_version": "desk@v5"}
+
+
+def test_framework_named_only_when_the_desk_thesis_supplied_a_sizing_parameter():
+    applied = store.framework_fields(DESK, {"max_single_name_weight_pct": 12.0, "cash_band_min_pct": 20.0})
+    assert applied["framework_refs"] == ["cio_thesis:desk@v5"]
+    assert applied["framework_parameters"] == {"max_single_name_weight_pct": 12.0}
+    assert "portfolio" in applied["framework_scope"]
+    # Policy defaults were used: the thesis had no influence on sizing.
+    assert store.framework_fields(DESK, {"cash_band_min_pct": 20.0}) == {}
+    assert store.framework_fields(DESK, {}) == {}
+    assert store.framework_fields({}, {"concentration_fire_pct": 16.5}) == {}
+
+
+def test_stored_row_records_the_policy_version_as_its_methodology(tmp_path):
+    p = tmp_path / "d.jsonl"
+    store.record_position_decisions([_decision("dec_m")], path=p,
+                                    extra=store.framework_fields(DESK, {"concentration_fire_pct": 16.5}))
+    row = store.load_decision("dec_m", path=p)
+    assert row["methodology_ref"] == "capital_plan_1.3.0"
+    assert row["framework_refs"] == ["cio_thesis:desk@v5"]
+    # extra never overrides a decision field
+    store.record_position_decisions([_decision("dec_n")], path=p, extra={"decision_id": "forged", "symbol": "X"})
+    assert store.load_decision("dec_n", path=p)["symbol"] == "SCHD"
+
+
+def test_canon_frameworks_live_from_the_stored_row(tmp_path, monkeypatch):
+    root = _cio_root(tmp_path)
+    store.record_position_decisions(
+        [_decision("dec_canon")], path=root / "cio_capital_plan_decisions.jsonl",
+        extra=store.framework_fields(DESK, {"max_single_name_weight_pct": 12.0}),
+    )
+    stage = _endpoint(monkeypatch, root, "dec_canon")["lineage"]["stages"]["canon_frameworks"]
+    assert stage["state"] == "LIVE"
+    assert stage["value"] == ["cio_thesis:desk@v5"]
+    assert stage["source_ref"] == "cio_capital_plan_decisions:dec_canon"
+
+
+def test_canon_frameworks_stays_unwired_for_a_decision_with_no_row(tmp_path, monkeypatch):
+    root = _cio_root(tmp_path)
+    store.record_position_decisions([_decision("dec_canon")], path=root / "cio_capital_plan_decisions.jsonl")
+    trace = {"trace_id": "tr", "wake_id": "wk", "role": "reentry", "started_at": "2026-10-03T00:00:00+00:00",
+             "ended_at": "2026-10-03T00:00:00+00:00", "decision": {"decision_id": "dec_reentry_X", "symbol": "X",
+             "as_of": "2026-10-03T00:00:00+00:00", "current_action": "WAIT"}}
+    (root / "agent_run_traces.jsonl").write_text(json.dumps(trace) + "\n", encoding="utf-8")
+    stage = _endpoint(monkeypatch, root, "dec_reentry_X")["lineage"]["stages"]["canon_frameworks"]
+    assert stage["state"] == "UNWIRED"

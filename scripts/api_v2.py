@@ -35553,20 +35553,24 @@ def _sector_opportunities_compact():
         return {"digest": None, "count": 0, "opportunity_count": 0, "opportunities": []}
 
 
-def _risk_posture() -> dict:
+def _desk_thesis_head() -> dict:
+    """Current `desk` thesis head from data/cio/cio_theses_projection.json, fail-soft ({})."""
+    try:
+        proj = _load_json(PROJECT_ROOT / "data" / "cio" / "cio_theses_projection.json") or {}
+        return (proj.get("current") or {}).get("desk") or {}
+    except Exception:
+        return {}
+
+
+def _risk_posture(desk: Optional[dict] = None) -> dict:
     """Read the desk thesis risk_posture_structured (cash band / caps) fail-soft.
 
     The thesis store is file-backed (data/cio/cio_theses_projection.json); this
     reads only the current `desk` head's structured posture. Returns {} on any
     error so the capital plan falls back to policy defaults.
     """
-    try:
-        proj = _load_json(PROJECT_ROOT / "data" / "cio" / "cio_theses_projection.json") or {}
-        current = proj.get("current") or {}
-        desk = current.get("desk") or {}
-        return desk.get("risk_posture_structured") or {}
-    except Exception:
-        return {}
+    head = _desk_thesis_head() if desk is None else desk
+    return head.get("risk_posture_structured") or {}
 
 
 def _cio_capital_plan(query=None):
@@ -35591,17 +35595,19 @@ def _cio_capital_plan(query=None):
         redeploy = _redeploy_opportunity_set() or {}
         open_events = redeploy.get("open_events") or []
         sectors = (_cio_sector_opportunities() or {}).get("opportunities") or []
+        desk = _desk_thesis_head()
+        posture = _risk_posture(desk)
         plan = build_capital_plan_from_sources(
             holdings_doc=holdings,
             queue=queue,
             redeploy_open_events=open_events,
             sector_opportunities=sectors,
-            risk_posture=_risk_posture(),
+            risk_posture=posture,
         )
         try:
-            from scripts.lib.cio_capital_plan_decision_store import record_position_decisions
+            from scripts.lib.cio_capital_plan_decision_store import framework_fields, record_position_decisions
 
-            record_position_decisions(plan.get("position_decisions"))
+            record_position_decisions(plan.get("position_decisions"), extra=framework_fields(desk, posture))
         except Exception:
             pass
         return {"ok": True, **plan}
