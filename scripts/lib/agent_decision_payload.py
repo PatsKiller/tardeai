@@ -236,7 +236,29 @@ def build_decision_payload(
             if kl in {"chain_of_thought", "cot", "reasoning", "api_key", "token", "password"}:
                 continue
             payload[k] = v
+    if ticker != "DATA_UNAVAILABLE" and not (payload.get("security_guid") or payload.get("subject_guid")):
+        guid = _registry_security_guid(ticker)
+        if guid:
+            payload["security_guid"] = guid
     return payload
+
+
+def _registry_security_guid(symbol: str) -> Optional[str]:
+    """security_guid of a CONFIRMED registry entity for this ticker, else None.
+
+    Read-only and cached (load_cached re-parses only when the file changes). Never
+    mints: CANDIDATE and UNRESOLVED entities are left unstamped, and a missing or
+    unreadable registry leaves the payload as it was.
+    """
+    try:
+        from scripts.lib.identity_registry import load_cached, lookup_symbol
+        entity = lookup_symbol(load_cached(), symbol)
+    except Exception:
+        return None
+    if not isinstance(entity, dict) or entity.get("identity_status") != "CONFIRMED":
+        return None
+    guid = str(entity.get("security_guid") or "").strip()
+    return guid or None
 
 
 def enrich_payload_with_cognition(

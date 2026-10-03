@@ -897,6 +897,7 @@ GATES = [
             "tests/test_cio_lineage_deeplinks_20261002.py",
             # Stages read the model/confidence/evidence_against producers already record.
             "tests/test_cio_lineage_stage_sources_20261003.py",
+            "tests/test_decision_payload_guid_stamp_20261003.py",
             "tests/test_cio_operator_evidence_receipts_20261002.py",
             "tests/test_cio_source_clocks_20261002.py",
             "tests/test_cio_xsurface_census_completeness_20261002.py",
