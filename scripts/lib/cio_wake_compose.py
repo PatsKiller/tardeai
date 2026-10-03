@@ -167,6 +167,24 @@ def composing_decide(context: dict, *, env: Mapping[str, str] | None = None,
     base["narrative"] = {"schema": SCHEMA, "sentences": sentences,
                          "cited_ids": cites, "narrated_by": out.get("narrated_by"),
                          "subject_label": label, "authority": AUTHORITY}
+    try:
+        from scripts.lib.cio_operator_artifacts import (
+            record_composed_narrative, record_model_narration, record_wake_composition,
+        )
+
+        links = {"wake_id": context.get("wake_id"), "trace_id": context.get("trace_id"), "symbol": label or None}
+        key = context.get("wake_id") or None
+        record_wake_composition({**base["narrative"], "composition_reason": base.get("composition_reason"),
+                                 "subject_guid": subject_guid},
+                                producer="cio_wake_compose", artifact_id=f"{key}:{label}" if key else None, links=links)
+        record_composed_narrative(out, producer="cio_narrative_compose",
+                                  artifact_id=f"{key}:{label}" if key else None, links=links)
+        if out.get("narrated_by") == "model":
+            record_model_narration({"schema": "CioModelNarration@v1", "subject_label": label, "sentences": sentences},
+                                   producer="cio_narrative_narrator",
+                                   artifact_id=f"{key}:{label}" if key else None, links=links)
+    except Exception:
+        pass
     return base
 
 

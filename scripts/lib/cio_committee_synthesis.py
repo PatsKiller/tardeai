@@ -175,6 +175,15 @@ def synthesize_decision(
         confidence=confidence,
         quorum=quorum,
     )
+    try:
+        from scripts.lib.cio_operator_artifacts import record_investment_decision
+
+        d = decision.to_dict() if hasattr(decision, "to_dict") else (decision if isinstance(decision, dict) else {})
+        record_investment_decision(d, producer="cio_committee_synthesis",
+                                   artifact_id=str(d.get("decision_id") or d.get("decision_hash") or "") or None,
+                                   links={"decision_id": d.get("decision_id"), "run_id": parent_run_id})
+    except Exception:
+        pass
     return decision
 
 

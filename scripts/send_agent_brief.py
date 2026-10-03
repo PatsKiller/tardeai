@@ -53,6 +53,14 @@ def main() -> int:
         return 0
 
     try:
+        from scripts.lib.cio_operator_artifacts import record_agent_brief
+
+        record_agent_brief({**brief, "rendered_text": text}, producer="send_agent_brief",
+                           source_as_of=str(brief.get("as_of") or brief.get("generated_at") or "") or None)
+    except Exception:
+        pass
+
+    try:
         from telegram_alert import publish_operator_message
     except Exception as e:
         print(f"[agent-brief] cannot import operator path: {type(e).__name__}: {e}",

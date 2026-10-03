@@ -943,6 +943,11 @@ GATES = [
         ["tests/test_cio_scorecard_live_counts_20261003.py"],
     ),
     # Stale draft/proposed plans expire append-only; plan store catches up on the log (2026-10-03).
+    # Operator-approved store for otherwise-transient CIO outputs; hooks never change a send (2026-10-03).
+    (
+        "cio_operator_artifacts_20261003",
+        ["tests/test_cio_operator_artifacts_20261003.py"],
+    ),
     (
         "cio_plan_expiry_20261003",
         ["tests/test_cio_plan_expiry_20261003.py"],

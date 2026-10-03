@@ -71,8 +71,17 @@
       "name": "schema:BuyReadyInstitutionalPacket@v2",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "BUY_READY institutional packet (cio_options_fluency.build_buy_ready_packet, saved to data/runtime/buy_ready_packets/<SYM>.json). It is shown OUTSIDE the measured CIO pages - Re-Entry > Entry alerts and the Alerts center read /api/v2/buy-ready/packets (BuyReadyPacketIndex@v1 projection) - and no CIO page renders the packet itself. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_options_fluency.py"
+      "reason": "BUY_READY institutional packet persisted by cio_entry_state_runner to data/runtime/buy_ready_packets/<SYM>.json (built by cio_options_fluency.build_buy_ready_packet); served from that store (not copied) by GET /api/v3/cio/operator-artifacts and rendered in Evidence & Comms > CIO outputs.",
+      "owner_hint": "scripts/lib/cio_options_fluency.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_options_fluency.py::build_buy_ready_packet",
+        "store": "buy_ready_packets"
+      }
     },
     {
       "name": "schema:CIOAdvisoryDeliveryReceipt@v1",
@@ -85,29 +94,65 @@
       "name": "schema:CIOAdvisoryMessage@v1",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "Human-readable CIO advisory message rendered for notification/attention paths (cio_advisory_message); the operator receives it on Telegram but no CC surface shows the composed advisory text or its schema label. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_advisory_message.py"
+      "reason": "Operator-relevant CIO output persisted to cio_operator_artifacts.jsonl (CIOOperatorArtifact@v1, operator-approved store 2026-10-03) by a hook in cio_situation_notify_bridge (material scan) and cio_office_cycle; served by GET /api/v3/cio/operator-artifacts and rendered in Evidence & Comms > CIO outputs (and per decision in Decision lineage).",
+      "owner_hint": "scripts/lib/cio_operator_artifacts.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_operator_artifacts.py::record_advisory_message",
+        "store": "cio_operator_artifacts.jsonl"
+      }
     },
     {
       "name": "schema:CIOAdvisorySynthesis@v1",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "Governed narrative synthesis for material CIO situations (cio_advisory_synthesis.synthesize) used by the office cycle and situation state; CIO reasoning text with no GET route into the Command Center. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_advisory_synthesis.py"
+      "reason": "Operator-relevant CIO output persisted to cio_operator_artifacts.jsonl (CIOOperatorArtifact@v1, operator-approved store 2026-10-03) by a hook in cio_office_cycle after synthesize(); served by GET /api/v3/cio/operator-artifacts and rendered in Evidence & Comms > CIO outputs (and per decision in Decision lineage).",
+      "owner_hint": "scripts/lib/cio_operator_artifacts.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_operator_artifacts.py::record_advisory_synthesis",
+        "store": "cio_operator_artifacts.jsonl"
+      }
     },
     {
       "name": "schema:CIOAgentBrief@v1",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "Operator-language summary of what the agents did today; delivered by send_agent_brief.py on Telegram, and the Command Center builder cio_command_center.build_agent_brief_panel has no caller, so no CC page shows it. Needs a read route + panel. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_agent_brief.py"
+      "reason": "Operator-relevant CIO output persisted to cio_operator_artifacts.jsonl (CIOOperatorArtifact@v1, operator-approved store 2026-10-03) by a hook in send_agent_brief.py when --send; served by GET /api/v3/cio/operator-artifacts and rendered in Evidence & Comms > CIO outputs (and per decision in Decision lineage).",
+      "owner_hint": "scripts/lib/cio_operator_artifacts.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_operator_artifacts.py::record_agent_brief",
+        "store": "cio_operator_artifacts.jsonl"
+      }
     },
     {
       "name": "schema:CIOAttentionAnswer@v1",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "Interactive 'what needs my attention' answer built from real notification/suppression state by cio_operator_attention.answer_attention_query; returned only to the Telegram converse/desk loop, no GET route serves it to the Command Center. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_operator_attention.py"
+      "reason": "Operator-relevant CIO output persisted to cio_operator_artifacts.jsonl (CIOOperatorArtifact@v1, operator-approved store 2026-10-03) by a hook in cio_converse_core attention branch (desk bot); served by GET /api/v3/cio/operator-artifacts and rendered in Evidence & Comms > CIO outputs (and per decision in Decision lineage).",
+      "owner_hint": "scripts/lib/cio_operator_artifacts.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_operator_artifacts.py::record_attention_answer",
+        "store": "cio_operator_artifacts.jsonl"
+      }
     },
     {
       "name": "schema:CIOAvoidRefusal@v1",
@@ -300,8 +345,17 @@
       "name": "schema:CIOWhatChanged@v1",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "Diff between consecutive CIO products after research (cio_product_reassessment.diff_products) - the 'what changed' an investor wants; produced inside reassessment, never served to the Command Center. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_product_reassessment.py::diff_products"
+      "reason": "Operator-relevant CIO output persisted to cio_operator_artifacts.jsonl (CIOOperatorArtifact@v1, operator-approved store 2026-10-03) by a hook in cio_product_reassessment after persist_product; served by GET /api/v3/cio/operator-artifacts and rendered in Evidence & Comms > CIO outputs (and per decision in Decision lineage).",
+      "owner_hint": "scripts/lib/cio_operator_artifacts.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_operator_artifacts.py::record_what_changed",
+        "store": "cio_operator_artifacts.jsonl"
+      }
     },
     {
       "name": "schema:CIOWorkflowEnvelope@v1",
@@ -342,8 +396,17 @@
       "name": "schema:CioComposedNarrative@v1",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "Narrative the persistent wake composes when something new is found (cio_narrative_compose.compose); CIO reasoning that is written to records/Telegram, never served by a CIO GET route. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_narrative_compose.py"
+      "reason": "Operator-relevant CIO output persisted to cio_operator_artifacts.jsonl (CIOOperatorArtifact@v1, operator-approved store 2026-10-03) by a hook in cio_wake_compose.composing_decide when a narrative is composed; served by GET /api/v3/cio/operator-artifacts and rendered in Evidence & Comms > CIO outputs (and per decision in Decision lineage).",
+      "owner_hint": "scripts/lib/cio_operator_artifacts.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_operator_artifacts.py::record_composed_narrative",
+        "store": "cio_operator_artifacts.jsonl"
+      }
     },
     {
       "name": "schema:CioHermesQueueHealth@v1",
@@ -356,8 +419,17 @@
       "name": "schema:CioModelNarration@v1",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "Model narration of a composed narrative on the governed ladder (cio_narrative_narrator); the LLM-worded reasoning the operator may receive has no Command Center read surface. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_narrative_narrator.py"
+      "reason": "Operator-relevant CIO output persisted to cio_operator_artifacts.jsonl (CIOOperatorArtifact@v1, operator-approved store 2026-10-03) by a hook in cio_wake_compose.composing_decide when narrated_by=model; served by GET /api/v3/cio/operator-artifacts and rendered in Evidence & Comms > CIO outputs (and per decision in Decision lineage).",
+      "owner_hint": "scripts/lib/cio_operator_artifacts.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_operator_artifacts.py::record_model_narration",
+        "store": "cio_operator_artifacts.jsonl"
+      }
     },
     {
       "name": "schema:CioTelegramStanceGate@v1",
@@ -377,8 +449,17 @@
       "name": "schema:CioWakeComposition@v1",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "Decision of the persistent wake's compose hook (cio_wake_compose.composing_decide, run_persistent_wake.py): what the CIO decided to say after a wake. Operator-relevant reasoning trail; no read route. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_wake_compose.py"
+      "reason": "The persistent wake's compose decision (narrative sentences, cited ids, composition_reason, subject) is persisted to cio_operator_artifacts.jsonl (CIOOperatorArtifact@v1, operator-approved store 2026-10-03) when cio_wake_compose.composing_decide composes a narrative; served by GET /api/v3/cio/operator-artifacts in Evidence & Comms > CIO outputs, linked by wake_id.",
+      "owner_hint": "scripts/lib/cio_operator_artifacts.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_operator_artifacts.py::record_wake_composition",
+        "store": "cio_operator_artifacts.jsonl"
+      }
     },
     {
       "name": "schema:CognitionSupersession@v1",
@@ -510,8 +591,17 @@
       "name": "schema:GrokCritique@v1",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "Live Grok critique of a VALID research artifact (cio_grok_critique) consumed by research_quality; research-quality judgement with no CIO read surface. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_grok_critique.py"
+      "reason": "Operator-relevant CIO output persisted to cio_operator_artifacts.jsonl (CIOOperatorArtifact@v1, operator-approved store 2026-10-03) by a hook in research_quality after critique_live; served by GET /api/v3/cio/operator-artifacts and rendered in Evidence & Comms > CIO outputs (and per decision in Decision lineage).",
+      "owner_hint": "scripts/lib/cio_operator_artifacts.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_operator_artifacts.py::record_grok_critique",
+        "store": "cio_operator_artifacts.jsonl"
+      }
     },
     {
       "name": "schema:HaveWeSeenThis@v1",
@@ -601,15 +691,33 @@
       "name": "schema:InvestmentDecision@v1",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "Canonical hash-pinned CIO decision envelope (cio_investment_decision) used by the decision pipeline/committee synthesis; the CC shows derived decision cards, not this envelope or its pins. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_investment_decision.py"
+      "reason": "Operator-relevant CIO output persisted to cio_operator_artifacts.jsonl (CIOOperatorArtifact@v1, operator-approved store 2026-10-03) by a hook in cio_committee_synthesis after build_decision; served by GET /api/v3/cio/operator-artifacts and rendered in Evidence & Comms > CIO outputs (and per decision in Decision lineage).",
+      "owner_hint": "scripts/lib/cio_operator_artifacts.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_operator_artifacts.py::record_investment_decision",
+        "store": "cio_operator_artifacts.jsonl"
+      }
     },
     {
       "name": "schema:InvestmentIntelligenceCard@v1",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "Telegram Investment Intelligence Card for a symbol (cio_symbol_intelligence CARD_SCHEMA); older notification-outbox rows carry it but none in the recent window. The CC shows the SymbolIntelligenceObject, not the card the operator receives, so the delivered wording cannot be checked from the CIO hub. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_symbol_intelligence.py"
+      "reason": "Operator-relevant CIO output persisted to cio_operator_artifacts.jsonl (CIOOperatorArtifact@v1, operator-approved store 2026-10-03) by a hook in cio_product_reassessment card loop once the body is final; served by GET /api/v3/cio/operator-artifacts and rendered in Evidence & Comms > CIO outputs (and per decision in Decision lineage).",
+      "owner_hint": "scripts/lib/cio_operator_artifacts.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_operator_artifacts.py::record_intelligence_card",
+        "store": "cio_operator_artifacts.jsonl"
+      }
     },
     {
       "name": "schema:LearnableDecision@v1",

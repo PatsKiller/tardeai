@@ -75,6 +75,17 @@ def situation_to_decision(situation: dict[str, Any]) -> dict[str, Any]:
     why = str(situation.get("what_changed") or klass)
     body = render_advisory_message(situation)
     created = datetime.now(timezone.utc)
+    try:
+        from scripts.lib.cio_operator_artifacts import record_advisory_message
+
+        record_advisory_message(
+            {"text": body, "situation_id": sit_id, "situation_class": klass},
+            producer="cio_situation_notify_bridge", artifact_id=f"{sit_id}:{klass}",
+            links={"decision_id": f"dec_sit_{sit_id[-16:]}", "symbol": lineage_symbol},
+            source_as_of=created.isoformat(),
+        )
+    except Exception:
+        pass
     return {
         "decision_id": f"dec_sit_{sit_id[-16:]}",
         "symbol": lineage_symbol if klass in {"EXCESS_CASH", "POLICY_GAP", "ALLOCATION_DRIFT"} else str(

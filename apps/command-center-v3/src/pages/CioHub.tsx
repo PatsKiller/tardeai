@@ -10,6 +10,7 @@ import CioJudgmentBand from '../components/cio/CioJudgmentBand'
 import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import CioDecisionLineagePanel from '../components/cio/CioDecisionLineagePanel'
 import CioOperatorEvidencePanel from '../components/cio/CioOperatorEvidencePanel'
+import CioOperatorArtifactsPanel from '../components/cio/CioOperatorArtifactsPanel'
 import CioSourceClocksPanel from '../components/cio/CioSourceClocksPanel'
 import CioOfficeHomeProjections from '../components/cio/CioOfficeHomeProjections'
 import CioProductHealthPanel from '../components/cio/CioProductHealthPanel'
@@ -2255,6 +2256,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'learning-cockpit' && <><CioOperatorEvidencePanel section="learning" /><CioRecordLedgersPanel /></>}
           {evidenceSub === 'capability-coverage' && <CioOperatorEvidencePanel section="coverage" />}
           {evidenceSub === 'decision-lineage' && <CioDecisionLineagePanel decisionId={decisionRaw || null} />}
+          {evidenceSub === 'cio-outputs' && <CioOperatorArtifactsPanel />}
           {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading evidence…</div>
           )}
@@ -2289,6 +2291,7 @@ function EvidenceCommsSubnav({ active, onSelect }: { active: string; onSelect: (
     { id: 'learning-cockpit', label: 'Learning cockpit' },
     { id: 'capability-coverage', label: 'Capability coverage' },
     { id: 'decision-lineage', label: 'Decision lineage' },
+    { id: 'cio-outputs', label: 'CIO outputs' },
   ]
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }} role="tablist" aria-label="Evidence subsections">

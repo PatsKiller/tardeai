@@ -125,6 +125,20 @@ def run_office_cycle(
     )
     message = render_advisory_message(primary, synthesis_text=synthesis.get("text") or None)
     assert_not_json_dump(message)
+    try:
+        from scripts.lib.cio_operator_artifacts import record_advisory_message, record_advisory_synthesis
+
+        sit_id = str(primary.get("situation_id") or "")
+        record_advisory_synthesis(synthesis, producer="cio_office_cycle",
+                                  artifact_id=f"{sit_id}:{evaluated_at.isoformat()}" if sit_id and evaluated_at else None,
+                                  source_as_of=evaluated_at.isoformat() if evaluated_at else None)
+        record_advisory_message({"text": message, "situation_id": sit_id or None,
+                                 "situation_class": primary.get("situation_class")},
+                                producer="cio_office_cycle",
+                                artifact_id=f"{sit_id}:{evaluated_at.isoformat()}" if sit_id and evaluated_at else None,
+                                source_as_of=evaluated_at.isoformat() if evaluated_at else None)
+    except Exception:
+        pass
     episode = None
     if persist:
         kind = "notification" if scan.get("notification_decision") == NOTIFY else "suppression"
