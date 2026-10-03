@@ -2769,6 +2769,61 @@
         "path": "data/runtime/agent_number_grounding_slo_last_run.json"
       },
       "note": "Daily measurement of the RATIFIED agent number-grounding SLO (config/agent_number_grounding_slo.json, ratified 2026-09-30). Read-only DB query; writes one JSON receipt; exits 1 on breach (logged, never blocks an answer). No LLM spend."
+    },
+    {
+      "lane_id": "cio-draft-plan-hygiene",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "52 6 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/cio_draft_hygiene.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cio_draft_plan_hygiene.py --apply --expire-stale >> /home/johnclaw/logs/cio_draft_hygiene.log 2>&1",
+        "match": "scripts/cio_draft_plan_hygiene.py --apply --expire-stale"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/logs/cio_draft_hygiene.log"
+      },
+      "note": "Operator-approved scheduled job 2026-10-03 (session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC). Declared from the inherited baseline and extended with --expire-stale: draft/proposed plans past revisit_at by 14+ days get an append-only EXPIRED event (receipts in data/cio/cio_plan_expiry_receipts.jsonl, written only when something expires, so the daily signal is the run log)."
+    },
+    {
+      "lane_id": "cio-portfolio-thesis",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "47 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/cio_portfolio_thesis.lock bash -c \"set -a; . ./.env; set +a; /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/materialize_cio_portfolio_thesis.py\" >> logs/cio_portfolio_thesis.log 2>&1",
+        "match": "scripts/materialize_cio_portfolio_thesis.py"
+      },
+      "expected_cadence_hours": 24.0,
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/cio_portfolio_thesis.log"
+      },
+      "note": "Operator-approved scheduled job 2026-10-03 (session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC). Deterministic (no LLM). Weekdays after the 16:05 regime refresh and 16:45 prices; needs .env for the read-only DB (market context, seasonality). Append-only to data/cio/cio_portfolio_theses.jsonl and dedups identical content (second dry run: NO_NEW_INFO), so the daily signal is the run log."
+    },
+    {
+      "lane_id": "advisory-maturity-evidence",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "17 6 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/advisory_maturity_evidence.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m scripts.refresh_advisory_maturity_evidence >> logs/refresh_advisory_maturity_evidence.log 2>&1",
+        "match": "scripts.refresh_advisory_maturity_evidence"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/pin_integrity_latest.json"
+      },
+      "note": "Operator-approved scheduled job 2026-10-03 (session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC). Read-only collectors (no provider/model calls) feeding MaturityScorecard@v1 (7-day TTL); atomically rewrites data/cio/{rag_freshness,pin_integrity,gpu_policy,ops_tree_pin_audit}_latest.json, which had never been written. Must run as -m (plain script path fails: No module named 'scripts')."
     }
   ],
   "undeclared_baseline": [
@@ -3230,7 +3285,6 @@
     "50 6,12,18 * * * cd $PROJ && flock -n /tmp/research_insight_extractor.lock $PY scripts/research_insight_extractor.py >> logs/research_insight_extractor.log 2>&1",
     "50 7 * * 1-5 cd $PROJ && $PY scripts/record_decision_outcome.py >> logs/decision_outcomes.log 2>&1",
     "50 9 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh flock -n /tmp/snaptrade_sync.lock $PY scripts/snaptrade_sync.py --apply >> logs/snaptrade_sync.log 2>&1",
-    "52 6 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/cio_draft_hygiene.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/cio_draft_plan_hygiene.py --apply >> /home/johnclaw/logs/cio_draft_hygiene.log 2>&1",
     "55 17 * * 1-5 cd $PROJ && $PY scripts/alert_daily_digest.py >> logs/alert_daily_digest.log 2>&1",
     "55 17 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && flock -n /tmp/inv_stoplights.lock bash -c \"set -a; . ./.env; set +a; .venv/bin/python scripts/defense_inverse_stoplights.py\" >> logs/inverse_stoplights.log 2>&1",
     "55 6 * * 1-5 cd $PROJ && $PY scripts/materialize_income_engine.py >> logs/income_engine.log 2>&1",
@@ -3293,7 +3347,7 @@
   "inherited_tranches": [
     {
       "added": "2026-09-28",
-      "count": 107,
+      "count": 106,
       "reason": "Installed on the host between 2026-09-27 12:22 ET and 2026-09-28 by the crons-to-CURRENT migration and the cogx/audit sessions (run_scheduled_atp2_research, data_gap_resolver, stale-quote gates, analyst digests, hermes pipeline health, opening intel, defense recs, options lifecycle, ...) with no lane row and no baseline entry, so check_lane_registry --fail-on-new failed on main itself and blocked every local acceptance on this host. Operator decision 2026-09-28: record them as a dated inherited tranche with provenance rather than grow the original baseline or guess 107 owners. Every line here is DEBT: declare it as a lane (owner, cadence, output signal) and remove it from this list.",
       "recorded_by": "plan 'Momentum scalps: why none arrive' (session 0192azxXaexnV4yt3sM2mjja); full `crontab -l` expressions via lane_registry.find_undeclared, 2026-09-28 ~09:25 ET",
       "lines": [
@@ -3400,7 +3454,6 @@
         "50 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/defense_recs.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/defense_recommendations.py\" >> logs/defense_recs.log 2>&1  # Defense v3 WS-R: recommendations after sector 17:25 + radar 17:35",
         "50 21 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && bash \"$HOME/.config/tradeai/bin/run_with_deepseek_offpeak.sh\" --official -- bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/non_trading_hours_gate.sh flock -n /tmp/topic_reground.lock $PY scripts/topic_research_synthesizer.py --reground --max 20 --apply >> /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/logs/topic_research_synth.log 2>&1",
         "50 5 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/mint_identity_registry.py --apply >> logs/mint_identity_registry.log 2>&1",
-        "52 6 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_ROOT=/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT flock -n /tmp/cio_draft_hygiene.lock $PY scripts/cio_draft_plan_hygiene.py --apply >> /home/johnclaw/logs/cio_draft_hygiene.log 2>&1",
         "55 17 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/inv_stoplights.lock bash -c \"set -a; . ./.env; set +a; $PY scripts/defense_inverse_stoplights.py\" >> logs/inverse_stoplights.log 2>&1",
         "55 7 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && $PY scripts/monitoring/classifier_health_check.py >> logs/classifier_health.log 2>&1",
         "@reboot sleep 60 && cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && systemctl --user start trade-ai-lab-moomoo-opend.service >> logs/moomoo_opend_health.log 2>&1  # belt-and-braces: systemd linger already autostarts it, this covers a failed/disabled unit"

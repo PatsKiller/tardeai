@@ -88,8 +88,8 @@
       "cio_relevant": true,
       "census_state": "INHERITED_DARK",
       "classification": "WIRE",
-      "reason": "Refreshes the read-only evidence that MaturityScorecard@v1 consumes, but nothing schedules it, so the scorecard reads stale snapshots. Wiring needs a crontab entry plus a lane_registry update, which is an operator change.",
-      "consumer_or_successor": "cron (operator) -> MaturityScorecard@v1",
+      "reason": "Refreshes the read-only evidence that MaturityScorecard@v1 consumes. Operator approved scheduling on 2026-10-03: lane advisory-maturity-evidence is declared in config/lane_registry.json (daily 06:17, run as -m scripts.refresh_advisory_maturity_evidence); the crontab install under the operator's cron grant is the remaining step, after which this becomes ALREADY_WIRED.",
+      "consumer_or_successor": "cron lane advisory-maturity-evidence (operator-approved 2026-10-03) -> MaturityScorecard@v1",
       "action_status": "PROPOSED"
     },
     {

@@ -881,7 +881,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/cio/CIO_CROSS_SURFACE_LINKS.md` | CIO / Hermes / Research Intelligence links | review_required | MISSING HEADER | `25634e4c8927` |
 | `docs/cio/CIO_DECISION_LINEAGE_OPERATOR_SURFACE.md` | CIO Decision Lineage — Operator Surface | review_required | OK | `41fa3994e3fc` |
 | `docs/cio/CIO_DESK_OPERATING_PACKET.md` | Trade AI — CIO Desk Operating Packet | review_required | OK | `6d3c1e290b04` |
-| `docs/cio/CIO_KNOWN_DARK_CLASSIFICATION.md` | CIO KNOWN_DARK Classification | review_required | OK | `bcf3a5a5c4fc` |
+| `docs/cio/CIO_KNOWN_DARK_CLASSIFICATION.md` | CIO KNOWN_DARK Classification | review_required | OK | `a377e185967c` |
 | `docs/cio/CIO_NOTIFICATION_POLICY.md` | CIO Notification Policy — Signal over Spam | review_required | OK | `40a0bb623a7c` |
 | `docs/cio/CIO_NOTIFICATION_REPLAY_ACCEPTANCE.md` | CIO Notification Replay Acceptance | review_required | OK | `76573f672e2d` |
 | `docs/cio/CIO_NOTIFICATION_RUNTIME_TOPOLOGY.md` | CIO Notification Runtime Topology | review_required | OK | `ab46eaffc931` |

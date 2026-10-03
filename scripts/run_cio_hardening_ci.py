@@ -947,6 +947,11 @@ GATES = [
         "cio_plan_expiry_20261003",
         ["tests/test_cio_plan_expiry_20261003.py"],
     ),
+    # Operator-approved scheduled jobs declared as lanes (2026-10-03).
+    (
+        "cron_lanes_20261003",
+        ["tests/test_cron_lanes_20261003.py"],
+    ),
     # Health criticals: Finviz cookie honours the API-token backstop; scalp policy skips are policy (2026-10-03).
     (
         "health_finviz_scalp_20261003",
