@@ -1725,7 +1725,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/COGNITIVE_MEMORY_PRODUCTION_RUNBOOK.md` | Cognitive memory in production: runbook | review_required | OK | `720ebe9b2fee` |
 | `docs/ops/COGX_WAVE1_APPROVAL_PACKAGE_2026-09-27.md` | COGX Wave 1 approval package — pkg-20260927-cogx-w1-d9e1 | review_required | OK | `07d135121c55` |
 | `docs/ops/COGX_WAVE1_OPERATOR_RUNBOOK_2026-09-27.md` | COGX Wave 1 — operator runbook: the commands only you can run | review_required | OK | `d2afff1dea8d` |
-| `docs/ops/COGX_WAVE1_STATUS_2026-09-27.md` | COGX Wave 1 · tranches 1–3 — foundations, shadow wiring, lane artifacts | review_required | OK | `cdb9f6430c30` |
+| `docs/ops/COGX_WAVE1_STATUS_2026-09-27.md` | COGX Wave 1 · tranches 1–3 — foundations, shadow wiring, lane artifacts | review_required | OK | `6b7eacff3640` |
 | `docs/ops/COGX_WAVE2_APPROVAL_PACKAGE_2026-09-28.md` | COGX Wave 2 approval package — pkg-20260928-wave-2-enforcement-35c4 | review_required | OK | `864f52aab6ed` |
 | `docs/ops/COGX_WAVE2_T3_T4_OPERATOR_HANDOFF_2026-09-27.md` | COGX Wave 2 tranches 3 + 4 — operator handoff (merge, deploy, install) | review_required | OK | `2d1f37ccf247` |
 | `docs/ops/COGX_WAVES_3_5_OPERATOR_HANDOFF_2026-09-28.md` | COGX Waves 3–5 — operator handoff (merge order, grants, deploy, installs, first runs, flips) | review_required | OK | `b40fbe0c732f` |
