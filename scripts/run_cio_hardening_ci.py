@@ -937,6 +937,11 @@ GATES = [
         "cio_scorecard_live_counts_20261003",
         ["tests/test_cio_scorecard_live_counts_20261003.py"],
     ),
+    # CIO-LEARNING-001 compares due and matured from the same checkpoint store (2026-10-03).
+    (
+        "cio_learning_finding_20261003",
+        ["tests/test_cio_learning_finding_20261003.py"],
+    ),
     (
         "lineage_phase12_20261003",
         [
