@@ -12,7 +12,10 @@ Stage states are derived, never presence-guessed:
 * PENDING — a checkpoint/outcome horizon has not matured (or the producer
   recorded PENDING).
 * NOT_RUN — the producer explicitly recorded a skip / not-yet-run.
-* NOT_APPLICABLE — the producer recorded the stage as not required.
+* NOT_APPLICABLE — the producer recorded the stage as not required, or the
+  producer's recorded ``decision_origin`` falls under the reviewed
+  StageApplicability@v1 contract (``cio_stage_applicability``). That recorded
+  origin is the explicit producer record; nothing is presence-guessed.
 * UNWIRED — the stage has no producer contract in this system
   (``UNWIRED_STAGES`` names each one with its reason).
 * UNAVAILABLE — the stage's source store is missing or unreadable.
@@ -25,6 +28,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from typing import Any, Iterable
+
+from scripts.lib.cio_stage_applicability import not_applicable_reason
 
 SCHEMA = "CIODecisionLineage@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -451,6 +456,10 @@ def project_decision_lineage(
         if available.get(primary) is False:
             return _stage(state="UNAVAILABLE", state_reason=f"source store {primary} missing or unreadable",
                           composition_as_of=composed)
+        contract = not_applicable_reason(d, stage)
+        if contract:
+            return _stage(state="NOT_APPLICABLE", state_reason=contract, composition_as_of=composed,
+                          row=d or None, store=decision_source)
         searched = ", ".join(dict.fromkeys(stores))
         return _stage(state="UNKNOWN", state_reason=f"no matched row for this decision in {searched}",
                       composition_as_of=composed)

@@ -924,6 +924,7 @@ GATES = [
         "lineage_phase12_20261003",
         [
             "tests/test_cio_lineage_production_cases_20261003.py",
+            "tests/test_cio_stage_applicability_20261003.py",
         ],
     ),
     # Optional falsifier in the options / buy-ready CIO reviews (operator-approved 2026-10-03).
