@@ -149,7 +149,8 @@ def _plan_is_open(p: Any) -> bool:
     if not isinstance(p, dict):
         return False
     st = _str(p.get("status") or p.get("state") or "open").lower()
-    if st in ("cancelled", "canceled", "closed", "done", "rejected", "accepted", "complete", "completed"):
+    if st in ("cancelled", "canceled", "closed", "done", "rejected", "accepted", "complete", "completed",
+              "expired", "superseded"):
         return False
     if st in _OPEN_PLAN_STATUSES or not st:
         return True
