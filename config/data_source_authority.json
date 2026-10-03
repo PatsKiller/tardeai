@@ -2636,7 +2636,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-03",
-        "reference": "CIO completeness gap closure - operator approved ONE append-only store for operator-relevant CIO outputs 2026-10-03 (session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); follows #1411",
+        "reference": "CIO completeness gap closure - operator approved ONE append-only store for operator-relevant CIO outputs 2026-10-03 (session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1419",
         "scope": "CIOOperatorArtifact@v1 - append-only, one row per (original_schema, artifact_id) for operator-relevant CIO outputs that were otherwise transient (advisory messages/syntheses, agent briefs, attention answers, what-changed, wake compositions and narratives, Grok critiques, investment decisions, intelligence cards)"
       },
       "store": {
