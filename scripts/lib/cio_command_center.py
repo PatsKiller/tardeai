@@ -223,6 +223,24 @@ def suppress_untrusted_sizing(card: dict[str, Any]) -> dict[str, Any]:
     return card
 
 
+def _overdue_plan_count(open_plans: list[dict[str, Any]]) -> Optional[int]:
+    """Open plans past the expiry rule's grace (cio_plan_expiry), or None when unknowable.
+
+    None when no row carries ``revisit_at``: a projection without dates must not
+    read as "nothing overdue".
+    """
+    rows = [p for p in open_plans if isinstance(p, dict)]
+    if not rows:
+        return 0
+    if not any("revisit_at" in p for p in rows):
+        return None
+    try:
+        from scripts.lib.cio_plan_expiry import expiry_candidates
+    except Exception:
+        return None
+    return len(expiry_candidates(rows))
+
+
 def build_cio_now(
     *,
     position_decisions: Optional[list[dict[str, Any]]] = None,
@@ -441,6 +459,7 @@ def build_cio_now(
     investment_decisions_count = len(needing)
     workflow_actions_count = len(open_actions)
     open_plans_count = len(open_plans)
+    overdue_open_plans_count = _overdue_plan_count(open_plans)
 
     return {
         "decisions": cards,
@@ -468,6 +487,7 @@ def build_cio_now(
         "decision_count": investment_decisions_count,
         "open_actions_count": workflow_actions_count,
         "open_plans_count": open_plans_count,
+        "overdue_open_plans_count": overdue_open_plans_count,
         "material_today_count": material_today,
     }
 
