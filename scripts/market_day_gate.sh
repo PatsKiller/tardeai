@@ -11,7 +11,23 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-session=$(.venv/bin/python -c "
+# Release directories have no .venv, so the hard-coded .venv/bin/python failed on
+# every promoted release and the gate "failed open" on every run (2026-10-02 atm.log):
+# the session check never ran at all. Use the interpreter the job itself was given
+# (crons pass $PY first), then a local or the canonical venv, then python3.
+gate_py=""
+for cand in "${1:-}" ".venv/bin/python" "$HOME/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python"; do
+    case "$(basename -- "${cand:-x}")" in
+        python|python3|python3.*) [ -x "$cand" ] && { gate_py="$cand"; break; } ;;
+    esac
+done
+[ -n "$gate_py" ] || gate_py="$(command -v python3 || true)"
+if [ -z "$gate_py" ]; then
+    echo "[market_day_gate] $(date +%F\ %T) no python interpreter found for the session check — failing open, running job"
+    exec "$@"
+fi
+
+session=$("$gate_py" -c "
 import sys; sys.path.insert(0,'scripts')
 from market_session import current_market_session, is_trading_day
 print('TRADE' if is_trading_day() else current_market_session())

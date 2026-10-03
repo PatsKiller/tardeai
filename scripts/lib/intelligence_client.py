@@ -459,6 +459,18 @@ def _resolve_subjects(subjects: Iterable[str], loaders: Loaders, degraded: list[
 # open_context
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _attribution_scope(actor: dict):
+    """Attribute the facts retrieval to the identities the actor declared (none are inferred)."""
+    try:
+        # Same spelling agent_durable_memory uses, so no second module identity is created.
+        from scripts.lib import memory_retrieval_attribution as attribution
+        return attribution.retrieval_attribution(
+            **{k: actor.get(k) for k in ("agent_id", "wake_id", "trace_id", "decision_id")})
+    except Exception:  # noqa: BLE001 — attribution is accounting; never block a read
+        import contextlib
+        return contextlib.nullcontext()
+
+
 def open_context(actor: dict, purpose: str, subjects: Iterable[str], *, as_of: str | None = None,
                  classes: Iterable[str] | None = None, mode: str | None = None,
                  loaders: Loaders | None = None, root: Path | None = None, env: dict | None = None,
@@ -520,7 +532,8 @@ def open_context(actor: dict, purpose: str, subjects: Iterable[str], *, as_of: s
         try:
             if loaders.facts is None:
                 raise RuntimeError("no facts loader")
-            res = loaders.facts(symbols, guids) or {}
+            with _attribution_scope(actor):
+                res = loaders.facts(symbols, guids) or {}
             rows = list(res.get("supporting") or res.get("records") or []) + list(res.get("counter_memory") or res.get("counter") or [])
             conflicts = {c.get("memory_id") for c in (res.get("conflicts") or []) if isinstance(c, dict)}
             # Wave 3 finding (first ADVISORY render, V): the provider search returns nearest memories, not the
@@ -909,7 +922,8 @@ def commit(ctx: dict, outcome: dict, *, deltas: Iterable[dict] = (), confidence_
 
 def shadow_open(lane_id: str, subjects: Iterable[str], purpose: str = "RESEARCH", *, agent_id: str | None = None,
                 question: dict | None = None, surface: str | None = None, root: Path | None = None,
-                env: dict | None = None) -> dict | None:
+                env: dict | None = None, wake_id: str | None = None, trace_id: str | None = None,
+                decision_id: str | None = None) -> dict | None:
     """open_context in SHADOW and, when a question is given, observe the ladder as the caller's own
     generation (receipt generated=True, reason SHADOW_CALLER). Returns the context or None."""
     try:
@@ -923,7 +937,11 @@ def shadow_open(lane_id: str, subjects: Iterable[str], purpose: str = "RESEARCH"
         except Exception:  # noqa: BLE001
             mode = "SHADOW"
         try:
-            ctx = open_context({"lane_id": lane_id, "agent_id": agent_id}, purpose, subs, mode=mode, root=root, env=env)
+            actor = {"lane_id": lane_id, "agent_id": agent_id}
+            # Retrieval attribution only (MemoryContext@v1's actor block is unchanged).
+            actor.update({k: v for k, v in (("wake_id", wake_id), ("trace_id", trace_id),
+                                            ("decision_id", decision_id)) if v})
+            ctx = open_context(actor, purpose, subs, mode=mode, root=root, env=env)
             if question:
                 ctx["question"] = dict(question)
             if surface:  # Wave 3 O-W3-4: the surface's influence mode decides whether the model SEES memory

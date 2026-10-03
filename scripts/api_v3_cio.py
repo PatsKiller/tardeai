@@ -512,6 +512,10 @@ def _coverage_plan_index(limit: int = 5000) -> list[dict[str, Any]]:
             "situation_type": p.get("situation_type"),
             "symbols": [str(s).upper() for s in (p.get("symbols") or []) if s],
             "status": p.get("status"),
+            # The expiry rule (cio_plan_expiry) needs these to say which open plans are overdue.
+            "revisit_at": p.get("revisit_at"),
+            "updated_ts": p.get("updated_ts"),
+            "created_ts": p.get("created_ts"),
             "material": bool(p.get("material") or extra.get("material")),
             "hermes_result_id": p.get("hermes_result_id") or extra.get("hermes_result_id"),
         })

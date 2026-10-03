@@ -947,6 +947,11 @@ GATES = [
         "cio_plan_expiry_20261003",
         ["tests/test_cio_plan_expiry_20261003.py"],
     ),
+    # Decisions card degrades only for plans overdue under the expiry rule (2026-10-03).
+    (
+        "cio_browser_gates_20261003",
+        ["tests/test_cio_browser_gates_20261003.py"],
+    ),
     # Health criticals: Finviz cookie honours the API-token backstop; scalp policy skips are policy (2026-10-03).
     (
         "health_finviz_scalp_20261003",
@@ -961,6 +966,11 @@ GATES = [
     (
         "cio_heavy_bound_20261003",
         ["tests/test_cio_heavy_bound_20261003.py"],
+    ),
+    # Auto-approver survives a dropped DB connection (fail-closed); market_day_gate runs its check (2026-10-03).
+    (
+        "atm_db_gate_fix_20261003",
+        ["tests/test_atm_db_gate_fix_20261003.py"],
     ),
     (
         "lineage_phase12_20261003",
@@ -994,6 +1004,11 @@ GATES = [
         [
             "tests/test_lineage_run_hermes_join_20261003.py",
         ],
+    ),
+    # Memory retrieval receipts carry the agent/wake/trace/decision a caller knew (operator-approved 2026-10-03).
+    (
+        "memory_retrieval_attribution_20261003",
+        ["tests/test_memory_retrieval_attribution_20261003.py"],
     ),
     (
         "ai_analyst_freshness_sla",
