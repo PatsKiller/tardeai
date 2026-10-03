@@ -1,5 +1,6 @@
 import {
   cioDeepLinkFocus, decisionFocusHref, decisionLineageHref, isCioLineageState, researchFocusHref,
+  stageValueText,
 } from './cioDecisionLineage.ts'
 
 if (decisionLineageHref('dec_same_symbol_1') !== '/cio?tab=evidence-comms&sub=decision-lineage&decision=dec_same_symbol_1') {
@@ -32,3 +33,21 @@ if (focus.decision !== 'dec_1' || focus.artifact !== 'res_9' || focus.research !
   throw new Error('deep-link focus must trim ids and treat blanks as no focus')
 }
 console.log('cioDecisionLineage.test.ts deep links: ok')
+
+const valueCases: Array<[unknown, string | null, string]> = [
+  ['grok-3-mini', 'grok-3-mini', 'model name shown verbatim'],
+  [55, '55', 'numeric confidence'],
+  [0, '0', 'zero is a value, not absence'],
+  ['  ', null, 'blank string is no value'],
+  [null, null, 'null is no value'],
+  [['IV rank thin', 'no catalyst'], 'IV rank thin · no catalyst', 'list joined'],
+  [['a', 'b', 'c', 'd', 'e'], 'a · b · c (+2 more)', 'long list capped'],
+  [{ disposition: 'reject', account: 'ira', nested: { x: 1 } }, 'disposition: reject · account: ira', 'object as readable pairs, never raw JSON'],
+  [{}, null, 'empty object is no value'],
+]
+for (const [input, expected, why] of valueCases) {
+  const got = stageValueText(input)
+  if (got !== expected) throw new Error(`stageValueText ${why}: ${String(got)} !== ${String(expected)}`)
+}
+if ((stageValueText('x'.repeat(400)) || '').length !== 180) throw new Error('stageValueText must cap length')
+console.log('cioDecisionLineage.test.ts stage values: ok')
