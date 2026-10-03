@@ -58,11 +58,10 @@ def test_enrichment_import_failure_detected():
     assert f[0]["severity"] in ("warning", "critical")
 
 
-def test_approved_paper_test_stuck_detected():
+def test_paper_lane_stuck_is_not_a_health_finding():
+    # Operator rule 2026-10-03: health scores live data only; the paper lane never feeds it.
     findings = _run_collector({"APPROVED_FOR_PAPER_TEST": {"c": 2}})
-    f = [x for x in findings if x["type"] == "approved_paper_test_stuck"]
-    assert len(f) == 1
-    assert f[0]["count"] == 2
+    assert not [x for x in findings if x["type"] == "approved_paper_test_stuck"]
 
 
 def test_in_progress_stale_detected():

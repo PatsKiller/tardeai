@@ -138,14 +138,11 @@
     "mismatch_critical": 5
   },
   "proposal_pipeline": {
-    "_comment": "Dual-lane (paper_atm + live_2fa) enrichment/readiness + paper-lane lifecycle stuck states.",
+    "_comment": "Dual-lane (paper_atm + live_2fa) enrichment/readiness. Paper-lane lifecycle checks removed 2026-10-03 (operator: health is live data only).",
     "enabled": true,
     "enrichment_failure_window_hours": 3,
     "enrichment_failure_warn": 3,
     "enrichment_pending_fail_warn": 5,
-    "approved_paper_stuck_hours": 2,
-    "approved_paper_stuck_warn": 1,
-    "approved_paper_stuck_critical": 3,
     "in_progress_stale_minutes": 30,
     "in_progress_stale_warn": 3
   },
@@ -391,7 +388,6 @@
       "auto_proposal.log",
       "screener_pm.log",
       "news_ingestion.log",
-      "paper_execution.log",
       "unified_stop_supervisor.log",
       "pipeline_watchdog.log",
       "atm.log",

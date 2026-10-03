@@ -1085,35 +1085,8 @@ def collect_execution_health() -> list[dict]:
         if orph and orph.get("c", 0) > 0:
             out.append(_f("execution_health", "orphaned_stops", "warning",
                           f"{orph['c']} orphaned stop orders", count=orph["c"]))
-        # pending rows with wrong lifecycle (phantom false-positive source)
-        lc_mis = _db("""SELECT COUNT(*) AS c FROM paper_trades
-                        WHERE status='pending' AND lifecycle_state='open'
-                          AND COALESCE(broker_order_id,'')=''""", fetch="one")
-        if lc_mis and lc_mis.get("c", 0) > 0:
-            out.append(_f("execution_health", "pending_lifecycle_mismatch", "critical",
-                          f"{lc_mis['c']} pending trade(s) with lifecycle_state=open (phantom risk)",
-                          count=lc_mis["c"], kind="code"))
-        # stale never-submitted trades (should be auto-cancelled by monitor/submitter)
-        stale_ns = _db("""SELECT COUNT(*) AS c FROM paper_trades
-                          WHERE status IN ('pending','open')
-                            AND COALESCE(broker_order_id,'')='' AND filled_at IS NULL
-                            AND created_at < now() - interval '20 minutes'""", fetch="one")
-        if stale_ns and stale_ns.get("c", 0) > 0:
-            out.append(_f("execution_health", "never_submitted_stale", "warning",
-                          f"{stale_ns['c']} trade(s) pending >20m without broker order",
-                          count=stale_ns["c"]))
-        # ATM-bypass guard: every executed/automated trade must trace back to a proposal that was
-        # PRESENTED in the queue (account-agnostic). A trade with no source_proposal_id/proposal_id
-        # skipped the proposal review — flag it (operator requirement: any ATM trade → Proposals).
-        byp = _db("""SELECT COUNT(*) AS c FROM paper_trades
-                     WHERE status IN ('open','closed') AND created_at > now() - interval '7 days'
-                       AND (source_proposal_id IS NULL OR source_proposal_id='') AND proposal_id IS NULL""",
-                  fetch="one")
-        if byp and byp.get("c", 0) > 0:
-            out.append(_f("execution_health", "atm_proposal_bypass", "warning",
-                          f"{byp['c']} executed trade(s) in 7d not linked to a proposal — every ATM trade "
-                          f"must be presented in Proposals first",
-                          count=byp["c"]))
+        # paper_trades is paper-only (ALPACA_PAPER / TOS_PAPER / tradeai_automated sandbox): it never feeds
+        # health — operator rule 2026-10-03, live data only. See _drop_paper_findings.
     except Exception as e:
         out.append(_f("execution_health", "collector_error", "info", f"execution check error: {e}"))
     return out
@@ -1286,12 +1259,6 @@ def collect_research_heartbeat() -> list[dict]:
 def collect_risk_protection() -> list[dict]:
     out = []
     try:
-        # open paper positions with no stop recorded
-        unp = _db("""SELECT COUNT(*) AS c FROM paper_trades
-                     WHERE status='open' AND (stop_loss IS NULL OR stop_loss=0)""", fetch="one")
-        if unp and unp.get("c", 0) > 0:
-            out.append(_f("risk_protection", "unprotected_positions", "critical",
-                          f"{unp['c']} open positions without a stop", count=unp["c"]))
         # stop lifecycle alerts — but a rejected NATIVE stop is NOT unprotected if an armed SYNTHETIC stop
         # covers the same symbol/account (Schwab rejects fractional STOPs by design → synthetic takes over).
         # Cross-reference synthetic_stops so fractional positions don't trip a false 'unprotected' alert.
@@ -1535,7 +1502,7 @@ def collect_log_errors() -> list[dict]:
     if not cfg.get("enabled", True):
         return out
     watch = cfg.get("watch") or [
-        "auto_proposal.log", "screener_pm.log", "news_ingestion.log", "paper_execution.log",
+        "auto_proposal.log", "screener_pm.log", "news_ingestion.log",
         "unified_stop_supervisor.log", "pipeline_watchdog.log", "atm.log", "cio_decisions.log",
         "data_gap_resolver.log", "rag_indexer.log", "health_agent_cron.log", "coder_dispatch_cron.log",
         "hermes_scope_governor.log", "hermes_event_feeder.log",
@@ -3067,7 +3034,7 @@ def collect_execution_hardening_health() -> list[dict]:
 
 
 def collect_proposal_pipeline_health() -> list[dict]:
-    """Dual-lane proposal pipeline: enrichment failures, stuck paper approvals, stale IN_PROGRESS."""
+    """Dual-lane proposal pipeline: enrichment failures and stale IN_PROGRESS (no paper-lane checks)."""
     import re as _re
     out = []
     cfg = (_POLICY.get("proposal_pipeline") or {})
@@ -3133,27 +3100,6 @@ def collect_proposal_pipeline_health() -> list[dict]:
                 count=pf,
             ))
 
-        stuck_h = int(cfg.get("approved_paper_stuck_hours", 2))
-        stuck = _db(
-            f"""SELECT COUNT(*) AS c FROM paper_trade_proposals
-                WHERE status = 'APPROVED_FOR_PAPER_TEST'
-                  AND (
-                    updated_at < NOW() - INTERVAL '{stuck_h} hours'
-                    OR paper_submit_state IN ('VALIDATING', 'NOT_SUBMITTED')
-                    OR execution_eligibility_status = 'NEEDS_REVALIDATION'
-                  )""",
-            fetch="one",
-        )
-        stuck_n = int((stuck or {}).get("c") or 0)
-        if stuck_n >= int(cfg.get("approved_paper_stuck_warn", 1)):
-            sev = "critical" if stuck_n >= int(cfg.get("approved_paper_stuck_critical", 3)) else "warning"
-            out.append(_f(
-                "execution_health", "approved_paper_test_stuck", sev,
-                f"{stuck_n} APPROVED_FOR_PAPER_TEST proposal(s) stuck in paper lane "
-                f"(revalidation/submit drift)",
-                count=stuck_n,
-            ))
-
         stale_m = int(cfg.get("in_progress_stale_minutes", 30))
         inprog = _db(
             f"""SELECT
@@ -3161,7 +3107,7 @@ def collect_proposal_pipeline_health() -> list[dict]:
                     WHERE status IN ('EXPIRED', 'REJECTED', 'APPROVED', 'RISK_BLOCKED')
                   ) AS terminal,
                   COUNT(*) FILTER (
-                    WHERE status IN ('PENDING', 'APPROVED_FOR_PAPER_TEST', 'APPROVED')
+                    WHERE status IN ('PENDING', 'APPROVED')
                       AND COALESCE(enrichment_last_attempt_at, updated_at)
                           < NOW() - INTERVAL '{stale_m} minutes'
                   ) AS active
@@ -4037,6 +3983,25 @@ def score_category(findings: list[dict], penalties: dict) -> int:
     return max(0, min(100, score))
 
 
+# Operator rule 2026-10-03 ("This is all live data"): paper / alpaca-paper is training and never
+# feeds the health score, criticals, alerts or escalations. Collectors no longer read paper
+# stores; this guard keeps any paper finding out even if one is reintroduced.
+PAPER_FINDING_TYPES = frozenset({"approved_paper_test_stuck"})
+PAPER_LOGS = frozenset({"paper_execution.log"})
+
+
+def _is_paper_finding(f: dict) -> bool:
+    if not isinstance(f, dict):
+        return False
+    if str(f.get("lane") or "").lower() == "paper" or f.get("type") in PAPER_FINDING_TYPES:
+        return True
+    return str(f.get("log") or "") in PAPER_LOGS
+
+
+def _drop_paper_findings(findings: list) -> list:
+    return [f for f in findings if not _is_paper_finding(f)]
+
+
 def compute(policy: dict):
     global _POLICY
     _POLICY = policy or {}
@@ -4070,6 +4035,7 @@ def compute(policy: dict):
             all_findings.extend(fn() or [])
         except Exception as e:
             all_findings.append(_f("execution_health", "collector_error", "info", f"{fn.__name__}: {e}"))
+    all_findings = _drop_paper_findings(all_findings)
     # Annotate each finding with why-it-matters + recommended action (self-justifying + actionable).
     rmap = (policy.get("remediation_map") or {})
     for _f_ in all_findings:
