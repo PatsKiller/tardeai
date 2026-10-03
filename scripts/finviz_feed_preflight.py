@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 PR = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(PR / "scripts"))
 STATE_FILE = PR / "data" / "state" / "finviz_feed_health.json"
 
 def get_cookie():
@@ -37,6 +38,11 @@ def get_cookie():
         except Exception:
             pass
         return False
+
+def get_token():
+    """Check Elite API token existence without returning value."""
+    from finviz_auth import finviz_secret
+    return len(finviz_secret("FINVIZ_API_TOKEN")) > 8
 
 def probe_feed():
     """Check if Finviz returns CSV, not login page."""
@@ -59,9 +65,10 @@ def main():
     args = parser.parse_args()
 
     has_cookie = get_cookie()
+    has_token = get_token()
     last_status, last_symbols = probe_feed()
 
-    if not has_cookie:
+    if not has_cookie and not has_token:
         status = "MISSING_COOKIE"
     elif last_status == "RUN_HEALTHY" and last_symbols > 0:
         status = "HEALTHY"
@@ -73,6 +80,7 @@ def main():
     result = {
         "status": status,
         "cookie_present": has_cookie,
+        "token_present": has_token,
         "last_screener_status": last_status,
         "last_symbols": last_symbols,
         "checked_at": datetime.now(timezone.utc).isoformat(),
@@ -85,7 +93,7 @@ def main():
     if args.json:
         print(json.dumps(result))
     else:
-        print(f"Finviz feed: {status} (cookie={'present' if has_cookie else 'MISSING'}, last={last_status}, symbols={last_symbols})")
+        print(f"Finviz feed: {status} (cookie={'present' if has_cookie else 'MISSING'}, token={'present' if has_token else 'MISSING'}, last={last_status}, symbols={last_symbols})")
 
     sys.exit(0 if status == "HEALTHY" else 1 if status in ("DEGRADED", "EXPIRED_COOKIE", "MISSING_COOKIE") else 2)
 

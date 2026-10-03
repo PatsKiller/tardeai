@@ -33,11 +33,32 @@ def _get_conn():
     return psycopg2.connect(host="localhost", dbname="trade_ai",
                             user="trade_ai", password=_env("DB_PASSWORD"))
 
-def check():
-    """Check Finviz health. Returns dict with status."""
-    result = {"source_key": "finviz", "status": "unknown", "row_count": 0, "error": None}
+TEST_URL = "https://elite.finviz.com/export?v=152&f=sh_price_u5&ft=3&c=0,1,65&o=-price"
 
-    # Check credentials exist (redacted)
+
+def _probe(url, headers):
+    """(row_count, error) for one export request; error is None on a real CSV."""
+    import urllib.request
+    import finviz_throttle
+    finviz_throttle.acquire(timeout=30)
+    req = urllib.request.Request(url, headers=headers)
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        data = resp.read().decode("utf-8", errors="replace")
+    lines = [l for l in data.strip().split("\n") if l.strip()]
+    rows = max(0, len(lines) - 1)
+    if rows > 0 and "Ticker" in data[:400]:
+        return rows, None
+    return 0, "zero rows / login page"
+
+
+def check(probe=None):
+    """Check Finviz health: cookie first, then the Elite API token. Returns dict with status."""
+    from finviz_auth import redact, with_auth_token
+
+    probe = probe or _probe
+    result = {"source_key": "finviz", "status": "unknown", "row_count": 0, "error": None,
+              "credential": None}
+
     cookie = _env("FINVIZ_COOKIE", "")
     token = _env("FINVIZ_API_TOKEN", "")
     if not cookie and not token:
@@ -47,39 +68,33 @@ def check():
 
     result["has_cookie"] = bool(cookie)
     result["has_token"] = bool(token)
+    ua = _env("FINVIZ_USER_AGENT") or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    base = {"User-Agent": ua, "Accept": "text/csv,*/*", "Referer": "https://elite.finviz.com/"}
 
-    # Try a lightweight screener check
-    try:
-        import urllib.request
-        # Use a minimal Finviz export URL to test connectivity
-        test_url = "https://elite.finviz.com/export?v=152&f=sh_price_u5&ft=3&c=0,1,65&o=-price"
-        ua = _env("FINVIZ_USER_AGENT") or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        real_headers = {"User-Agent": ua, "Accept": "text/csv,*/*", "Referer": "https://elite.finviz.com/"}
-        if cookie:
-            real_headers["Cookie"] = cookie
+    attempts = []
+    if cookie:
+        attempts.append(("cookie", TEST_URL, {**base, "Cookie": cookie}))
+    if token:
+        attempts.append(("token", with_auth_token(TEST_URL, token), dict(base)))
 
-        # urllib path: take a throttle slot explicitly (short wait — this is a probe)
-        import finviz_throttle
-        finviz_throttle.acquire(timeout=30)
-        req = urllib.request.Request(test_url, headers=real_headers)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            data = resp.read().decode("utf-8", errors="replace")
-            lines = [l for l in data.strip().split("\n") if l.strip()]
-            row_count = max(0, len(lines) - 1)  # minus header
-
-            if row_count > 0 and "Ticker" in data[:400]:
-                result["status"] = "healthy"
-                result["row_count"] = row_count
-                print(f"  [finviz] Healthy: {row_count} rows returned")
-            else:
-                result["status"] = "degraded"
-                result["error"] = "Zero rows returned — cookie may be expired"
-                print(f"  [finviz] DEGRADED: 0 rows (cookie expired?)")
-
-    except Exception as e:
-        result["status"] = "error"
-        result["error"] = str(e)[:200]
-        print(f"  [finviz] ERROR: {e}")
+    notes = []
+    for name, url, headers in attempts:
+        try:
+            rows, err = probe(url, headers)
+        except Exception as e:
+            rows, err = 0, redact(e, cookie, token)[:160]
+        if err is None:
+            result.update(status="healthy", row_count=rows, credential=name)
+            if notes:
+                # Informational: the source works, but the cookie needs rotating eventually.
+                result["error"] = "; ".join(notes + [f"{name} OK"])
+            print(f"  [finviz] Healthy via {name}: {rows} rows" + (f" ({'; '.join(notes)})" if notes else ""))
+            break
+        notes.append(f"{name} failed: {err}")
+    else:
+        result["status"] = "degraded"
+        result["error"] = "; ".join(notes) or "no credential attempted"
+        print(f"  [finviz] DEGRADED: {result['error']}")
 
     # Record to DB
     try:
@@ -88,9 +103,9 @@ def check():
         if result["status"] == "healthy":
             cur.execute("""
                 UPDATE data_source_health SET status='healthy', last_success_at=NOW(),
-                    last_row_count=%s, failure_count=0, degraded=false, last_error=NULL, updated_at=NOW()
+                    last_row_count=%s, failure_count=0, degraded=false, last_error=%s, updated_at=NOW()
                 WHERE source_key='finviz'
-            """, (result["row_count"],))
+            """, (result["row_count"], result.get("error")))
         else:
             cur.execute("""
                 UPDATE data_source_health SET status=%s, last_failure_at=NOW(),

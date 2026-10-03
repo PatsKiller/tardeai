@@ -64,21 +64,39 @@ def _cookie() -> str:
         return os.environ.get("FINVIZ_COOKIE", "").strip().strip('"\'')
 
 
-def _fetch_signal(sig_param: str, cookie: str) -> list[dict]:
-    # losers/new-low sort MOST NEGATIVE first (o=change asc); everything else biggest first
-    order = "change" if sig_param in ("ta_toplosers", "ta_newlow") else "-change"
-    url = f"https://elite.finviz.com/export.ashx?v=111&s={sig_param}&o={order}"
+def _get_csv(url: str, headers: dict) -> str:
     _fv_acquire()
-    req = urllib.request.Request(url, headers={
-        "User-Agent": "Mozilla/5.0", "Cookie": cookie,
-        "Referer": "https://elite.finviz.com/screener.ashx"})
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
-            content = r.read().decode("utf-8", "ignore")
+            return r.read().decode("utf-8", "ignore")
     except urllib.error.HTTPError as e:
         if e.code == 429:
             _fv_cooldown()
         raise
+
+
+def _fetch_signal(sig_param: str, cookie: str, token: str = "") -> list[dict]:
+    """Cookie export first; on an empty or failed cookie export, the Elite API token."""
+    from finviz_auth import with_auth_token
+    # losers/new-low sort MOST NEGATIVE first (o=change asc); everything else biggest first
+    order = "change" if sig_param in ("ta_toplosers", "ta_newlow") else "-change"
+    url = f"https://elite.finviz.com/export.ashx?v=111&s={sig_param}&o={order}"
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://elite.finviz.com/screener.ashx"}
+    rows: list[dict] = []
+    if cookie:
+        try:
+            rows = _parse_rows(_get_csv(url, {**headers, "Cookie": cookie}))
+        except urllib.error.HTTPError as e:
+            if e.code == 429 or not token:
+                raise
+    if not rows and token:
+        token_url = with_auth_token(f"https://elite.finviz.com/export?v=111&s={sig_param}&o={order}", token)
+        rows = _parse_rows(_get_csv(token_url, headers))
+    return rows
+
+
+def _parse_rows(content: str) -> list[dict]:
     rows = []
     rd = csv.DictReader(io.StringIO(content))
     for rec in rd:
@@ -107,9 +125,11 @@ def _fetch_signal(sig_param: str, cookie: str) -> list[dict]:
 
 def main() -> int:
     from db_adapter import _get_conn
+    from finviz_auth import finviz_secret, redact
     cookie = _cookie()
-    if not cookie:
-        print("[movers] FATAL: no FINVIZ_COOKIE")
+    token = finviz_secret("FINVIZ_API_TOKEN")
+    if not cookie and not token:
+        print("[movers] FATAL: no FINVIZ_COOKIE or FINVIZ_API_TOKEN")
         return 1
     conn = _get_conn()
     cur = conn.cursor()
@@ -124,7 +144,7 @@ def main() -> int:
     snap = {"captured_at": captured_at, "signals": {}, "errors": {}}
     for key, param, label in SIGNALS:
         try:
-            rows = _fetch_signal(param, cookie)
+            rows = _fetch_signal(param, cookie, token)
             snap["signals"][key] = {"label": label, "rows": rows}
             for r in rows:
                 cur.execute(
@@ -136,8 +156,9 @@ def main() -> int:
         except Exception as e:
             conn.rollback()
             # flag-back contract: a signal the export can't serve is REPORTED, never synthesized
-            snap["errors"][key] = f"{type(e).__name__}: {str(e)[:120]}"
-            print(f"[movers] {key} FAILED: {str(e)[:120]}")
+            msg = redact(e, cookie, token)[:120]
+            snap["errors"][key] = f"{type(e).__name__}: {msg}"
+            print(f"[movers] {key} FAILED: {msg}")
     # retention: keep 7 days of captures
     try:
         cur.execute("DELETE FROM market_movers WHERE captured_at < now() - interval '7 days'")

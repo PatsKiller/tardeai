@@ -42904,26 +42904,39 @@ def _finviz_credential_health(query=None):
         from credential_monitor import is_finviz_cookie_failure_text
 
         cookie = _sv._key("FINVIZ_COOKIE")
-        if not cookie:
-            return {
-                "ok": False,
-                "status": "missing",
-                "detail": "FINVIZ_COOKIE not set",
-                "last_error": last_error,
-                "as_of": as_of,
-                "show_banner": True,
-                "message": "Finviz Elite cookie expired — screener and social scalp empty",
-                "admin_secrets_path": "/v3/system?tab=Admin",
-            }
-        ok, detail = _sv._finviz_cookie(cookie)
+        token = _sv._key("FINVIZ_API_TOKEN")
+        if cookie:
+            ok, detail = _sv._finviz_cookie(cookie)
+        else:
+            ok, detail = False, "FINVIZ_COOKIE not set"
         err_signal = is_finviz_cookie_failure_text(last_error or "") or is_finviz_cookie_failure_text(detail or "")
         healthy = bool(ok) and not is_finviz_cookie_failure_text(last_error or "")
+        if not healthy and token:
+            # Every export path falls back to the Elite API token, so a dead cookie with a
+            # working token is a rotation reminder, not an empty screener.
+            token_ok, token_detail = _sv._finviz_token(token)
+            if token_ok:
+                return {
+                    "ok": True,
+                    "status": "token_ok",
+                    "detail": f"cookie: {detail}; token: {token_detail}",
+                    "last_error": last_error,
+                    "as_of": as_of,
+                    "show_banner": False,
+                    "message": "Finviz cookie expired — Elite API token OK; screeners use the token",
+                    "admin_secrets_path": "/v3/system?tab=Admin",
+                }
+            detail = f"cookie: {detail}; token: {token_detail}"
         if healthy:
             status = "ok"
             message = detail
+        elif not cookie and not token:
+            status = "missing"
+            message = "Finviz Elite cookie expired — screener and social scalp empty"
         else:
             status = "expired" if (not ok or err_signal) else "error"
-            message = "Finviz Elite cookie expired — screener and social scalp empty"
+            message = ("Finviz Elite cookie and API token both failing — screener and social scalp empty"
+                       if token else "Finviz Elite cookie expired — screener and social scalp empty")
         return {
             "ok": healthy,
             "status": status,
@@ -42935,10 +42948,12 @@ def _finviz_credential_health(query=None):
             "admin_secrets_path": "/v3/system?tab=Admin",
         }
     except Exception as e:
+        import re as _re
+
         return {
             "ok": False,
             "status": "check_failed",
-            "detail": str(e)[:160],
+            "detail": _re.sub(r"(auth=)[^&\s'\"]+", r"\1<redacted>", str(e))[:160],
             "last_error": last_error,
             "as_of": as_of,
             "show_banner": True,

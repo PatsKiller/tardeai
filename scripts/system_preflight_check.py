@@ -51,22 +51,35 @@ def run():
         except Exception:
             cookie = ""
 
-    check("FINVIZ_COOKIE exists", len(cookie) > 50, f"Only {len(cookie)} chars")
-    check("Has .ASPXAUTH", ".ASPXAUTH=" in cookie, "Missing authentication token")
-    check("Has .AspNetCore.Session", ".AspNetCore.Session=" in cookie, "Missing session")
+    from finviz_auth import finviz_secret, redact, with_auth_token
+    token = finviz_secret("FINVIZ_API_TOKEN")
+    cookie_shape = len(cookie) > 50 and ".ASPXAUTH=" in cookie and ".AspNetCore.Session=" in cookie
+    if token:
+        # The Elite API token is the backstop every export path uses; a stale cookie alone
+        # is a reminder to rotate it, not a broken feed.
+        print(f"  {'✅' if cookie_shape else 'ℹ️ '} FINVIZ_COOKIE shape {'ok' if cookie_shape else 'incomplete (token backstop in use)'}")
+    else:
+        check("FINVIZ_COOKIE exists", len(cookie) > 50, f"Only {len(cookie)} chars")
+        check("Has .ASPXAUTH", ".ASPXAUTH=" in cookie, "Missing authentication token")
+        check("Has .AspNetCore.Session", ".AspNetCore.Session=" in cookie, "Missing session")
 
-    # Test actual download
-    try:
-        import requests
-        url = "https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_relvol_o5&ft=3"
-        resp = finviz_probe(url, headers={"Cookie": cookie, "User-Agent": "Mozilla/5.0"})
-        is_csv = "Ticker" in resp.text[:100]
-        check("Finviz CSV download", is_csv, f"Got {resp.headers.get('Content-Type','?')} ({len(resp.text)} bytes)")
-        if is_csv:
-            rows = len(resp.text.strip().split("\n")) - 1
-            check(f"Finviz returns tickers", rows > 0, "0 tickers returned")
-    except Exception as e:
-        check("Finviz download", False, str(e))
+    # Test actual download: cookie first, then the Elite API token
+    url = "https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_relvol_o5&ft=3"
+    attempts = ([("cookie", url, {"Cookie": cookie, "User-Agent": "Mozilla/5.0"})] if cookie else []) + \
+               ([("token", with_auth_token(url, token), {"User-Agent": "Mozilla/5.0"})] if token else [])
+    failures = []
+    for name, probe_url, headers in attempts:
+        try:
+            resp = finviz_probe(probe_url, headers=headers)
+            rows = len(resp.text.strip().split("\n")) - 1 if "Ticker" in resp.text[:100] else 0
+            if rows > 0:
+                check(f"Finviz CSV download ({name})", True)
+                break
+            failures.append(f"{name}: {resp.headers.get('Content-Type', '?')} ({len(resp.text)} bytes)")
+        except Exception as e:
+            failures.append(f"{name}: {redact(e, cookie, token)[:120]}")
+    else:
+        check("Finviz CSV download", False, "; ".join(failures) or "no FINVIZ_COOKIE or FINVIZ_API_TOKEN")
 
     # 2. Ollama
     print("\nOLLAMA:")
