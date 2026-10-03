@@ -947,6 +947,11 @@ GATES = [
         "cio_plan_expiry_20261003",
         ["tests/test_cio_plan_expiry_20261003.py"],
     ),
+    # Operator-approved scheduled jobs declared as lanes (2026-10-03).
+    (
+        "cron_lanes_20261003",
+        ["tests/test_cron_lanes_20261003.py"],
+    ),
     # Decisions card degrades only for plans overdue under the expiry rule (2026-10-03).
     (
         "cio_browser_gates_20261003",
