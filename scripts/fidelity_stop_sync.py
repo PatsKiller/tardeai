@@ -20,6 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 from lib.fidelity_stop_sync import (  # noqa: E402
+    configured_stops_account,
     default_fidelity_rollover_stops,
     sync_stops,
 )
@@ -44,10 +45,13 @@ def main() -> int:
         rows = json.loads(Path(args.json).read_text())
         if isinstance(rows, dict):
             rows = rows.get("stops") or rows.get("rows") or []
+        retire_account = None
     else:
         rows = default_fidelity_rollover_stops()
+        retire_account = configured_stops_account()
 
-    report = sync_stops(rows, retire_absent=not args.no_retire, apply=args.apply)
+    report = sync_stops(rows, retire_absent=not args.no_retire, apply=args.apply,
+                        retire_account=retire_account)
     print(json.dumps(report, indent=2, default=str))
     return 0 if not report.get("errors") else 1
 

@@ -20,6 +20,9 @@ def _load():
     mod = importlib.util.module_from_spec(spec)
     assert spec and spec.loader
     spec.loader.exec_module(mod)
+    # Parse/default behaviour is tested against a fixed copy of the July registry,
+    # not the live config the operator edits (it was emptied 2026-10-03).
+    mod.FIDELITY_STOPS_CONFIG = ROOT / "tests" / "fixtures" / "fidelity_rollover_stops_20260713.json"
     return mod
 
 
