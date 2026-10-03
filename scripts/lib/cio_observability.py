@@ -88,6 +88,11 @@ def build_observability(*, home: dict[str, Any] | None,
     policy = brain.get("operator_policy") or {}
     learning = brain.get("learning") or {}
     cockpit = brain.get("learning_cockpit") or {}
+    # Matured outcomes come from the same checkpoint store as outcomes_due.
+    # learning.outcomes.matured counts advisory_outcomes_v1.jsonl, which nothing
+    # writes, so comparing it with checkpoint "due" read "none matured" forever.
+    matured = _count(cockpit.get("matured_outcomes")) if cockpit.get("matured_outcomes") is not None \
+        else _count((learning.get("outcomes") or {}).get("matured"))
     memory = brain.get("memory") or {}
     queue = research_ops.get("queue") or {}
     by_status = queue.get("by_status") or {}
@@ -187,7 +192,7 @@ def build_observability(*, home: dict[str, Any] | None,
             blocker=None if learning_available else "Learning cockpit unavailable",
             owner="Outcome and learning governance", impact="Feedback, lesson, and memory effectiveness",
             metrics={"outcomes_due": _count(cockpit.get("outcomes_due")),
-                     "matured": _count((learning.get("outcomes") or {}).get("matured")),
+                     "matured": matured,
                      "lessons": _count(cockpit.get("lessons_n")),
                      "memory_influence": brain.get("memory_behavior_influence", 0),
                      "retrieval_receipts": _count(memory.get("retrieval_receipts"))},
@@ -245,7 +250,7 @@ def build_observability(*, home: dict[str, Any] | None,
             evidence=["/api/v3/cio/brain/data-health"],
             residual_risk="Legacy readers may resolve stale filenames or duplicate current projections",
             external_dependency="Repository-wide reader migration"))
-    if _count(cockpit.get("outcomes_due")) > 0 and _count((learning.get("outcomes") or {}).get("matured")) == 0:
+    if _count(cockpit.get("outcomes_due")) > 0 and matured == 0:
         findings.append(_finding("CIO-LEARNING-001", "HIGH", "Outcomes due but none matured",
                                  "Due outcomes have not reached the maturation stage in the current projection",
                                  "ACCEPTED_LIMITATION", "outcome lifecycle",
@@ -268,7 +273,7 @@ def build_observability(*, home: dict[str, Any] | None,
         {"id": "policy", "label": "Policy Review", "status": "BLOCKED" if policy_blocked else "WORKING", "throughput": _count(policy.get("confirmed_field_count"))},
         {"id": "capital", "label": "Capital Plan", "status": "BLOCKED" if policy_blocked else "WORKING", "throughput": None},
         {"id": "communications", "label": "Communications", "status": scorecards[0]["status"], "throughput": None},
-        {"id": "outcomes", "label": "Outcomes", "status": scorecards[4]["status"], "throughput": _count((learning.get("outcomes") or {}).get("matured"))},
+        {"id": "outcomes", "label": "Outcomes", "status": scorecards[4]["status"], "throughput": matured},
         {"id": "memory", "label": "Memory / Learning", "status": scorecards[4]["status"], "throughput": _count(cockpit.get("lessons_n"))},
     ]
     funnel = [
@@ -276,7 +281,7 @@ def build_observability(*, home: dict[str, Any] | None,
         {"id": "completed", "label": "Research Completed", "count": _count(queue.get("completed_today"))},
         {"id": "decisions", "label": "Decision Generated", "count": _count(cio_now.get("decision_count"))},
         {"id": "outcomes", "label": "Outcomes Due", "count": _count(cockpit.get("outcomes_due"))},
-        {"id": "matured", "label": "Outcomes Matured", "count": _count((learning.get("outcomes") or {}).get("matured"))},
+        {"id": "matured", "label": "Outcomes Matured", "count": matured},
         {"id": "influence", "label": "Memory Influence", "count": brain.get("memory_behavior_influence", 0)},
     ]
     blocked = sum(1 for row in scorecards if row["status"] == "BLOCKED")
