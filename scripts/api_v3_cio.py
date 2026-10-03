@@ -1562,6 +1562,41 @@ def load_known_decision_catalog() -> dict[str, dict[str, Any]]:
         return {}
 
 
+def _read_time_identity(decision: dict[str, Any]) -> dict[str, Any] | None:
+    """Registry identity for a decision whose producer recorded only a symbol.
+
+    Labelled ``identity_registry:<guid>`` so the lineage shows it was looked up
+    at read time, not recorded by the producer. Never mints; an unknown symbol
+    or an unreadable registry yields None.
+    """
+    if any(decision.get(k) for k in ("subject_guid", "security_guid", "entity_guid")):
+        return None
+    symbol = str(decision.get("symbol") or "").strip()
+    if not symbol or symbol.upper() == "DATA_UNAVAILABLE":
+        return None
+    try:
+        from scripts.lib.identity_registry import load_cached, lookup_symbol
+
+        doc = load_cached()
+        entity = lookup_symbol(doc, symbol) or {}
+    except Exception:
+        return None
+    guid = str(entity.get("subject_guid") or "").strip()
+    # Only a CONFIRMED entity is a security identity; an unresolved ticker alias is not.
+    if not guid or entity.get("identity_status") != "CONFIRMED":
+        return None
+    return {
+        "decision_id": decision.get("decision_id"),
+        "subject_guid": guid,
+        "identity_status": entity.get("identity_status"),
+        "symbol": symbol,
+        "source_ref": f"identity_registry:{guid}",
+        "source_as_of": entity.get("last_seen") or doc.get("updated_at"),
+        "producer": "identity_registry.lookup_symbol (read-time)",
+        "evidence_class": "READ_TIME_RESOLUTION",
+    }
+
+
 def _lineage_store_rows(
     path: Path, decision_id: str | None, label: str, availability: dict[str, bool],
 ) -> list[dict[str, Any]]:
@@ -1675,6 +1710,7 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
             institutional_cognition=cognition_block,
             learning=learning_block,
             composition_as_of=composition_as_of,
+            identity_resolution=_read_time_identity(decision),
         )
         if natural.get("artifact"):
             projection["runtime_artifact"] = dict(natural["artifact"])

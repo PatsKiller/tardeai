@@ -894,6 +894,8 @@ GATES = [
             "tests/test_cio_advisory_dependency_clocks_20261002.py",
             "tests/test_cio_cross_surface_links_20261002.py",
             "tests/test_cio_decision_lineage_states_20261002.py",
+            # Labelled read-time registry identity for symbol-only decisions (operator-approved).
+            "tests/test_cio_lineage_identity_readtime_20261003.py",
             "tests/test_cio_lineage_deeplinks_20261002.py",
             # Stages read the model/confidence/evidence_against producers already record.
             "tests/test_cio_lineage_stage_sources_20261003.py",
