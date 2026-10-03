@@ -2214,6 +2214,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/system/SYSTEM_ACCESS_AND_APPLICATIONS_PAGE_REPORT.md` | System Access & Applications Pages Report — Trade AI v12 | review_required | OK | `cbe0b6e04fb0` |
 | `docs/testing/test-plan.md` | Communications Gateway — Test Plan (Phase 11) | review_required | OK | `339231375ca1` |
 | `docs/testing/unit-results.md` | Communications Gateway — Unit Results Packet | review_required | OK | `ab7c5138fdc8` |
+| `docs/trade-ai-audit-followup-20260928.md` | Trade AI audit follow-up — 2026-09-28 | review_required | OK | `8b49bc892fe7` |
 | `docs/trade_in_view_profit_capture.md` | Profit-Capture All-Trades Analysis | review_required | OK | `3628798fab7a` |
 | `docs/ui/PHASE111C_SYS_CLASSIFICATION_AUDIT.md` | Phase 111C — SYS Classification Audit | review_required | OK | `5d2b43556700` |
 | `docs/ui/PHASE112_DASHBOARD_ACTIONABILITY_REPORT.md` | Phase 112 — Self-Learning Dashboard Actionability Fix | review_required | OK | `506e1cb20ed0` |
