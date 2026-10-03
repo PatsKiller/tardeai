@@ -157,18 +157,36 @@ def _alpaca(k):
     return _ok(r), f"HTTP {r.status_code} (paper endpoint)"
 
 
-def _finviz_cookie(k):
-    import requests
-    # Elite CSV export lives at /export (not /export.ashx — that path returns the HTML shell).
-    # Probe matches live ingestion: prime_setups screener URL from assets/screeners.yaml.
-    url = ("https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u50,"
-           "sh_price_2to20,sh_relvol_o5,ta_gap_u10&ft=3&o=-relativevolume"
-           "&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67")
+# Elite CSV export lives at /export (not /export.ashx — that path returns the HTML shell).
+# Probe matches live ingestion: prime_setups screener URL from assets/screeners.yaml.
+_FINVIZ_PROBE_URL = ("https://elite.finviz.com/export?v=152&f=cap_smallunder,sh_avgvol_o100,sh_float_u50,"
+                     "sh_price_2to20,sh_relvol_o5,ta_gap_u10&ft=3&o=-relativevolume"
+                     "&c=0,1,2,3,4,5,6,7,25,61,63,64,65,66,67")
+
+
+def _finviz_export_probe(url, extra_headers):
     ua = _key("FINVIZ_USER_AGENT") or "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    r = finviz_probe(url, headers={
-        "User-Agent": ua, "Cookie": k, "Accept": "text/csv,*/*",
-        "Referer": "https://elite.finviz.com/",
+    return finviz_probe(url, headers={
+        "User-Agent": ua, "Accept": "text/csv,*/*", "Referer": "https://elite.finviz.com/",
+        **extra_headers,
     })
+
+
+def _finviz_token(k):
+    """Elite API token (``auth=``) probe on the same export; never echoes the token."""
+    from finviz_auth import with_auth_token
+    r = _finviz_export_probe(with_auth_token(_FINVIZ_PROBE_URL, k), {})
+    text = r.text or ""
+    if r.status_code != 200:
+        return False, f"HTTP {r.status_code}"
+    if "Ticker" not in text[:400]:
+        return False, "token rejected or empty export"
+    rows = max(0, len([ln for ln in text.strip().split("\n") if ln.strip()]) - 1)
+    return rows > 0, f"{rows} screener rows"
+
+
+def _finviz_cookie(k):
+    r = _finviz_export_probe(_FINVIZ_PROBE_URL, {"Cookie": k})
     text = r.text or ""
     body = text[:500].lower()
     if r.status_code != 200:

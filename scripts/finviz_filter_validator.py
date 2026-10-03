@@ -58,14 +58,21 @@ def _cookie() -> str:
         return ""
 
 
-def _rows(url: str, cookie: str) -> int:
-    """Row count for a screener export, or -1 on a non-CSV/auth failure."""
+def _rows(url: str, cookie: str, token: str = "") -> int:
+    """Row count for a screener export, or -1 on a non-CSV/auth failure.
+
+    With a token the request carries ``auth=`` and no cookie; otherwise the cookie.
+    """
     import finviz_throttle
     import requests
+    from finviz_auth import with_auth_token
     finviz_throttle.acquire()
-    r = requests.get(url, timeout=45, headers={
-        "User-Agent": "Mozilla/5.0", "Cookie": cookie,
-        "Referer": "https://elite.finviz.com/screener.ashx"})
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://elite.finviz.com/screener.ashx"}
+    if token:
+        url = with_auth_token(url, token)
+    else:
+        headers["Cookie"] = cookie
+    r = requests.get(url, timeout=45, headers=headers)
     if r.status_code == 429:
         finviz_throttle.cooldown(r.headers.get("Retry-After"))
         raise RuntimeError("HTTP 429 — rate limited")
@@ -92,27 +99,37 @@ def production_tokens() -> dict:
     return out
 
 
-def validate(tokens, cookie=None) -> dict:
+def validate(tokens, cookie=None, api_token=None) -> dict:
+    """Baseline and every token use ONE credential, so their row counts compare."""
+    from finviz_auth import finviz_secret, redact
     cookie = cookie or _cookie()
-    if not cookie:
-        return {"ok": False, "error": "FINVIZ_COOKIE absent — cannot validate"}
-    try:
-        baseline = _rows(_BASE_URL, cookie)
-    except Exception as e:
-        return {"ok": False, "error": f"baseline fetch failed: {e}"}
+    api_token = api_token if api_token is not None else finviz_secret("FINVIZ_API_TOKEN")
+    if not cookie and not api_token:
+        return {"ok": False, "error": "FINVIZ_COOKIE and FINVIZ_API_TOKEN absent — cannot validate"}
+    modes = ([("cookie", "")] if cookie else []) + ([("token", api_token)] if api_token else [])
+    baseline, mode, auth, failures = -1, None, "", []
+    for mode, auth in modes:
+        try:
+            baseline = _rows(_BASE_URL, cookie, auth)
+        except Exception as e:
+            failures.append(f"{mode}: {redact(e, cookie, api_token)[:100]}")
+            continue
+        if baseline > 0:
+            break
+        failures.append(f"{mode}: implausible baseline {baseline}")
     if baseline <= 0:
-        return {"ok": False, "error": f"implausible baseline {baseline}"}
+        return {"ok": False, "error": "baseline fetch failed: " + "; ".join(failures)}
 
     results = {}
     for t in tokens:
         try:
-            n = _rows(f"https://elite.finviz.com/export?v=152&f={t}&c=0,1,65", cookie)
+            n = _rows(f"https://elite.finviz.com/export?v=152&f={t}&c=0,1,65", cookie, auth)
             state = IGNORED if n == baseline else (ZERO if n == 0 else APPLIED)
             results[t] = {"state": state, "rows": n,
                           "pct_of_universe": round(100 * n / baseline, 1)}
         except Exception as e:
-            results[t] = {"state": ERROR, "rows": None, "error": str(e)[:100]}
-    return {"ok": True, "baseline_universe": baseline, "results": results}
+            results[t] = {"state": ERROR, "rows": None, "error": redact(e, cookie, api_token)[:100]}
+    return {"ok": True, "baseline_universe": baseline, "credential": mode, "results": results}
 
 
 def main() -> int:

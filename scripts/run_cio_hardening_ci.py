@@ -1148,6 +1148,14 @@ GATES = [
             "tests/test_finviz_cookie_classification.py",
         ],
     ),
+    # A dead FINVIZ_COOKIE with a working FINVIZ_API_TOKEN is healthy (rotation note),
+    # never "screener empty"; degraded only when both fail; no secret in any record.
+    (
+        "finviz_token_backstop_20261003",
+        [
+            "tests/test_finviz_token_backstop_20261003.py",
+        ],
+    ),
     # A function-local import that shadows a module-level one makes the name
     # local for the WHOLE function -> UnboundLocalError on every earlier use.
     # claude_escalation_handler:295 did exactly that from 2026-08-08, which broke

@@ -94,18 +94,36 @@ def _pct(v):
         return None
 
 
-def fetch_groups() -> list[dict]:
+def _get_csv(url: str, headers: dict) -> str:
     _fv_acquire()
-    req = urllib.request.Request(URL, headers={
-        "User-Agent": "Mozilla/5.0", "Cookie": _cookie(),
-        "Referer": "https://elite.finviz.com/groups.ashx"})
+    req = urllib.request.Request(url, headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=25) as r:
-            content = r.read().decode("utf-8", "ignore")
+            return r.read().decode("utf-8", "ignore")
     except urllib.error.HTTPError as e:
         if e.code == 429:
             _fv_cooldown()
         raise
+
+
+def fetch_groups() -> list[dict]:
+    """Cookie export first; on an empty or failed cookie export, the Elite API token."""
+    from finviz_auth import finviz_secret, with_auth_token
+    cookie, token = _cookie(), finviz_secret("FINVIZ_API_TOKEN")
+    headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://elite.finviz.com/groups.ashx"}
+    rows: list[dict] = []
+    if cookie:
+        try:
+            rows = _parse_groups(_get_csv(URL, {**headers, "Cookie": cookie}))
+        except urllib.error.HTTPError as e:
+            if e.code == 429 or not token:
+                raise
+    if not rows and token:
+        rows = _parse_groups(_get_csv(with_auth_token(URL, token), headers))
+    return rows
+
+
+def _parse_groups(content: str) -> list[dict]:
     rows = []
     for rec in csv.DictReader(io.StringIO(content)):
         name = (rec.get("Name") or "").strip()
