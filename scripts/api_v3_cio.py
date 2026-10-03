@@ -2527,6 +2527,8 @@ def get_learning_cockpit_v1() -> dict[str, Any]:
             "pending": store.get("pending"),
             "due": store.get("due"),
             "completed": store.get("completed"),
+            "matured_outcomes": store.get("matured_outcomes"),
+            "not_resolvable": store.get("not_resolvable"),
             "blocked_data": store.get("blocked_data"),
             "observations_n": store.get("observations_n"),
             "lessons_n": store.get("lessons_n"),
