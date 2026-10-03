@@ -942,6 +942,11 @@ GATES = [
         "health_finviz_scalp_20261003",
         ["tests/test_health_finviz_scalp_20261003.py"],
     ),
+    # CIO-LEARNING-001 compares due and matured from the same checkpoint store (2026-10-03).
+    (
+        "cio_learning_finding_20261003",
+        ["tests/test_cio_learning_finding_20261003.py"],
+    ),
     (
         "lineage_phase12_20261003",
         [
