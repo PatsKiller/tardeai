@@ -952,6 +952,13 @@ GATES = [
             "tests/test_lineage_phase34_20261003.py",
         ],
     ),
+    # Hermes research joins the options review that asked for it (MORE_RESEARCH follow-up).
+    (
+        "lineage_run_hermes_join_20261003",
+        [
+            "tests/test_lineage_run_hermes_join_20261003.py",
+        ],
+    ),
     (
         "ai_analyst_freshness_sla",
         [

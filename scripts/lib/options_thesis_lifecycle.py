@@ -336,7 +336,8 @@ def advance(
                         step.update(reused_research_id=shared.get("research_id"))
                     if apply:
                         out = ({"research_id": shared.get("research_id"), "plan_id": shared.get("plan_id")}
-                               if shared else request_research(p, qs))
+                               if shared else request_research(
+                                   {**p, "for_decision": dec["decision_guid"]} if dec.get("decision_guid") else p, qs))
                         if not shared:
                             _remember(p, out, qs)
                         store.append_event(guid, "OPTIONS_THESIS_FOLLOWUP_REQUESTED",

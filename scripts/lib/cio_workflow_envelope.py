@@ -385,7 +385,21 @@ def hermes_request_fields(request: Mapping[str, Any]) -> dict[str, Any]:
         "never_minted_security_guid": True,
         "stage_status": {"research": STAGE_NOT_YET_CREATED, "specialist": STAGE_NOT_YET_CREATED},
     }
+    linked = _linked_decision_ids(request)
+    if linked:
+        fields["decision_ids"] = linked
     return fields
+
+
+def _linked_decision_ids(*payloads: Mapping[str, Any]) -> list[str]:
+    """Decision ids a research request was made for (only what the producer recorded)."""
+    out: list[str] = []
+    for payload in payloads:
+        for value in payload.get("decision_ids") or []:
+            text = str(value).strip() if value is not None else ""
+            if text and text not in out:
+                out.append(text)
+    return out
 
 
 def hermes_completion_fields(request: Mapping[str, Any], result: Mapping[str, Any]) -> dict[str, Any]:
@@ -393,7 +407,7 @@ def hermes_completion_fields(request: Mapping[str, Any], result: Mapping[str, An
     rid = _blank_to_none(result.get("research_id") or request.get("research_id"))
     result_id = _blank_to_none(result.get("result_id"))
     result_id_s = str(result_id) if result_id is not None else None
-    return {
+    fields = {
         "research_request_id": str(rid) if rid is not None else None,
         "research_artifact_id": result_id_s,
         # Honest: Hermes result_id, not a specialist-office artifact.
@@ -417,3 +431,7 @@ def hermes_completion_fields(request: Mapping[str, Any], result: Mapping[str, An
             "specialist": STAGE_COMPLETED if result_id_s else STAGE_NOT_YET_CREATED,
         },
     }
+    linked = _linked_decision_ids(request, result)
+    if linked:
+        fields["decision_ids"] = linked
+    return fields
