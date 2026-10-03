@@ -67,7 +67,11 @@ def request_research(p: dict, questions: list | None = None) -> dict:
                                             "horizon": str(p.get("strategy") or "options")})
     except Exception:  # noqa: BLE001
         _ic_ctx = None
-    out = emit_research_for_plan({**plan, "hermes_requested": True}, reason="options_thesis_gap",
+    # A CIO review that returned MORE_RESEARCH asks for this research on behalf of
+    # that exact decision; carry its id so the request and result join to it.
+    for_decision = str(p.get("for_decision") or "").strip()
+    linked = {"decision_ids": [for_decision]} if for_decision else {}
+    out = emit_research_for_plan({**plan, "hermes_requested": True, **linked}, reason="options_thesis_gap",
                                  priority=settings(load_desk_config())["research_priority"],
                                  questions=questions or research_questions(p), actor_id="options_thesis_lifecycle")
     out = dict(out) if isinstance(out, dict) else {}

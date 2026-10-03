@@ -425,6 +425,7 @@ def _research_artifact(row: dict[str, Any], *, source_name: str) -> dict[str, An
         "reason_used_or_rejected": _first(row, "use_reason", "reason_used", *_REJECTION_KEYS),
         "decision_id": direct_decision_id,
         "decision_ids": decision_ids,
+        "decision_link_basis": row.get("decision_link_basis"),
         "trace_id": _first(row, "trace_id", "trace"),
         "lineage_id": row.get("lineage_id"),
         "use_receipt_ref": None,
@@ -503,6 +504,36 @@ def _group_research(artifacts: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+_FOLLOWUP_EVENT = "OPTIONS_THESIS_FOLLOWUP_REQUESTED"
+_FOLLOWUP_BASIS = "options_theses:OPTIONS_THESIS_FOLLOWUP_REQUESTED.for_decision"
+
+
+def _followup_research_ids(root: Path, decision_id: str) -> set[str]:
+    """Research the producer requested for this exact decision.
+
+    When an options CIO review returns MORE_RESEARCH, the thesis lifecycle
+    records the follow-up with both the research_id and ``for_decision`` at the
+    moment it asks. That written link is the join; nothing is matched by symbol
+    or time.
+    """
+    path = root / "options_theses.jsonl"
+    if not decision_id or not path.is_file():
+        return set()
+    ids: set[str] = set()
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            if decision_id not in line or _FOLLOWUP_EVENT not in line:
+                continue
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if (isinstance(row, dict) and row.get("event_type") == _FOLLOWUP_EVENT
+                    and str(row.get("for_decision") or "") == decision_id and row.get("research_id")):
+                ids.add(str(row["research_id"]))
+    return ids
+
+
 def _research_provenance(root: Path, *, decision_id: str | None = None) -> dict[str, Any]:
     paths = [
         root / "hermes_research_results.jsonl",
@@ -523,6 +554,14 @@ def _research_provenance(root: Path, *, decision_id: str | None = None) -> dict[
             ids = {a["artifact_id"] for r in _research_rows(path, rows)
                    if (a := _research_artifact(r, source_name=path.name))}
             rows = _rows_containing(path, ids)
+            if path.name == "hermes_research_results.jsonl":
+                requested = _followup_research_ids(root, str(decision_id).strip())
+                rows = rows + [
+                    {**row, "decision_ids": [*(row.get("decision_ids") or []), str(decision_id).strip()],
+                     "decision_link_basis": _FOLLOWUP_BASIS}
+                    for row in _rows_containing(path, requested)
+                    if str(row.get("research_id") or (row.get("payload") or {}).get("research_id") or "") in requested
+                ]
         for row in list(_research_rows(path, rows))[-250:]:
             artifact = _research_artifact(row, source_name=path.name)
             if not artifact:

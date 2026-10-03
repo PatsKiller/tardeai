@@ -378,6 +378,12 @@ def _list_open_by_plan(plan_id: str) -> list[dict[str, Any]]:
 
 
 @_in_projection_transaction
+def _decision_ids(value: Any) -> list[str]:
+    """Decision ids a caller requested this research for: unique, non-empty, bounded."""
+    items = [value] if isinstance(value, str) else (value if isinstance(value, (list, tuple, set)) else [])
+    return sorted({str(v).strip() for v in items if isinstance(v, (str, int)) and str(v).strip()})[:20]
+
+
 def _patch_request(research_id: str, patch: dict[str, Any]) -> None:
     proj = _load_projection()
     rec = (proj.get("by_research_id") or {}).get(research_id)
@@ -435,6 +441,7 @@ def _project_new_request(proj: dict[str, Any], req: dict[str, Any]) -> None:
         "fingerprint": fp,
         "priority": pri,
         "created_ts": req.get("created_ts"),
+        **({"decision_ids": _decision_ids(req.get("decision_ids"))} if req.get("decision_ids") else {}),
         "thesis_version": req.get("thesis_version"),
         "situation_type": req.get("situation_type"),
         "subject_guid": req.get("subject_guid"),
@@ -682,6 +689,11 @@ def enqueue_research_request(
             request["known_catalyst_event_ids"] = eids
         if inv_signals:
             request["invalidation_signals"] = inv_signals
+        # Only a caller acting for a specific decision passes decision_ids (e.g. an
+        # options CIO review that returned MORE_RESEARCH); never inferred here.
+        linked = _decision_ids(plan.get("decision_ids"))
+        if linked:
+            request["decision_ids"] = linked
 
         result = _enqueue_core(
             request,
@@ -710,6 +722,21 @@ def enqueue_research_request(
                 "authority": AUTHORITY,
             })
         _log_enqueue(result, pid, pri)
+        if (linked and result.existing is not None and result.research_id
+                and result.reason != "reused_fresh_result"):
+            # This decision's ask joined research already in flight: record the
+            # link on the open request so its eventual result carries it too.
+            have = _decision_ids(result.existing.get("decision_ids"))
+            merged = _decision_ids([*have, *linked])
+            if merged != have:
+                _patch_request(result.research_id, {"decision_ids": merged})
+                _append_jsonl(REQUEST_PATH, {
+                    "event": "HERMES_RESEARCH_DECISION_LINKED",
+                    "research_id": result.research_id,
+                    "plan_id": pid,
+                    "decision_ids": merged,
+                    "authority": AUTHORITY,
+                })
 
         out: dict[str, Any] = {
             "ok": True,
@@ -1051,6 +1078,12 @@ def _persist_stamped_result(research_id: str, result: dict[str, Any]) -> dict[st
             pass
         for key, val in _lineage_for_research(research_id, req_meta).items():
             result.setdefault(key, val)
+        linked = _decision_ids([
+            *(req_meta.get("decision_ids") or []),
+            *((req_meta.get("request") or {}).get("decision_ids") or []),
+        ])
+        if linked:
+            result["decision_ids"] = _decision_ids([*(result.get("decision_ids") or []), *linked])
 
         _append_jsonl(RESULT_PATH, {"event": "HERMES_RESEARCH_COMPLETED", **result})
 
