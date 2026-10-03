@@ -1048,7 +1048,7 @@ class WakeEngine:
         try:
             from scripts.lib import intelligence_client as _ic
             _ic_ctx = _ic.shadow_open("persistent-wake", [str((selection_meta or {}).get("symbol") or subject_guid or "")],
-                                      "DECIDE", agent_id=agent_id, question=None)
+                                      "DECIDE", agent_id=agent_id, wake_id=wake_id, question=None)
             if _ic_ctx:
                 wake["intelligence_context_id"] = _ic_ctx.get("context_id")
         except Exception as exc:  # noqa: BLE001 — shadow never touches the wake
