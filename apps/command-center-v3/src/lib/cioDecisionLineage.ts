@@ -56,3 +56,12 @@ export function stageValueText(value: unknown): string | null {
   if (text === null) return null
   return text.length > VALUE_MAX ? `${text.slice(0, VALUE_MAX - 1)}…` : text
 }
+
+/**
+ * Router-relative path for an href produced by the backend. The app runs under
+ * BrowserRouter basename="/v3", so a backend href that already starts with
+ * "/v3/" must drop it or the router renders "/v3/v3/...".
+ */
+export function routerPath(href: string): string {
+  return href.replace(/^\/v3(?=\/|$)/, '') || '/'
+}

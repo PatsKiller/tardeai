@@ -962,6 +962,11 @@ GATES = [
         "cio_learning_finding_20261003",
         ["tests/test_cio_learning_finding_20261003.py"],
     ),
+    # Heavy CIO compositions share one re-entrant, cached build slot (2026-10-03).
+    (
+        "cio_heavy_bound_20261003",
+        ["tests/test_cio_heavy_bound_20261003.py"],
+    ),
     # Auto-approver survives a dropped DB connection (fail-closed); market_day_gate runs its check (2026-10-03).
     (
         "atm_db_gate_fix_20261003",

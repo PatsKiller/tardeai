@@ -852,8 +852,8 @@ def get_cio_observability() -> dict[str, Any]:
     from scripts.lib.cio_observability import build_observability
     from scripts.lib.current_pin_integrity import collect_process_freshness
 
-    home = get_cio_home()
-    brain = get_cio_brain_v1()
+    home = cached_heavy("home", get_cio_home)
+    brain = cached_heavy("brain", get_cio_brain_v1)
     # The HTTP response wrapper stamps _serving after this function returns.
     # The observability projection itself still needs the same read-only
     # freshness evidence so its Platform / Pin scorecard is truthful when
@@ -2580,6 +2580,53 @@ def get_learning_cockpit_v1() -> dict[str, Any]:
         return {"ok": False, "error": type(exc).__name__, "authority": AUTHORITY_ADVISORY}
 
 
+# Heavy CIO compositions share one re-entrant build slot.
+#
+# Measured on prod 2026-10-03: one /v3/cio overview load took portfolio-server
+# from 947 MB to 1,296 MB RSS, because /home, /observability (which built home
+# AND brain itself) and brain (which builds home again) composed home three
+# times at once. Two loads crossed MemoryHigh (1.6 GB) and the server restarted
+# (12:06 ET). Each composition is now cached for a short TTL; a single
+# re-entrant lock serialises heavy builds, so a nested call (observability ->
+# brain -> home) re-uses the slot in-thread and finds home already built.
+# One lock cannot deadlock the way per-name locks plus a semaphore can.
+# Failures are never cached. Every hit returns a fresh top-level dict, because
+# the HTTP layer stamps `_serving` into the top level.
+_HEAVY_LOCK = threading.RLock()
+_HEAVY_CACHE: dict[str, tuple[float, Any]] = {}
+_HEAVY_WAIT_SEC = float(os.getenv("CIO_HEAVY_WAIT_SEC") or 120)
+
+
+def _heavy_view(name: str, hit: tuple[float, Any], ttl: float) -> Any:
+    at, payload = hit
+    if isinstance(payload, dict):
+        return {**payload, "_composition_cache": {"name": name, "age_seconds": int(time.time() - at),
+                                                   "ttl_seconds": int(ttl)}}
+    return payload
+
+
+def cached_heavy(name: str, build: Any, *, ttl: float = 60.0) -> Any:
+    """Shared, single-flight, serialised build of a heavy CIO GET payload."""
+    hit = _HEAVY_CACHE.get(name)
+    if hit is not None and time.time() - hit[0] < ttl:
+        return _heavy_view(name, hit, ttl)
+    if not _HEAVY_LOCK.acquire(timeout=_HEAVY_WAIT_SEC):
+        return {"ok": False, "error": "composition_busy",
+                "detail": f"another CIO composition held the build slot for over {int(_HEAVY_WAIT_SEC)}s",
+                "authority": AUTHORITY_ADVISORY, "financial_action": False}
+    try:
+        hit = _HEAVY_CACHE.get(name)
+        if hit is None or time.time() - hit[0] >= ttl:
+            payload = build()
+            if not isinstance(payload, dict) or payload.get("ok") is False:
+                return payload
+            hit = (time.time(), payload)
+            _HEAVY_CACHE[name] = hit
+    finally:
+        _HEAVY_LOCK.release()
+    return _heavy_view(name, hit, ttl)
+
+
 _OPERATOR_EVIDENCE_TTL_SEC = float(os.getenv("CIO_OPERATOR_EVIDENCE_TTL_SEC") or 120)
 _OPERATOR_EVIDENCE_LOCK = threading.Lock()
 _OPERATOR_EVIDENCE_CACHE: dict[str, Any] = {"at": 0.0, "payload": None}
@@ -2676,7 +2723,7 @@ def get_cio_brain_v1() -> dict[str, Any]:
     methodology = get_methodology_policy_v1()
     learning = get_learning_review_v1()
     memory = get_memory_summary_v1()
-    home = get_cio_home()
+    home = cached_heavy("home", get_cio_home)
 
     situation = capital.get("situation") or {}
     notification = situation.get("notification") or {}
