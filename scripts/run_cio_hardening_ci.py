@@ -972,6 +972,11 @@ GATES = [
         "atm_db_gate_fix_20261003",
         ["tests/test_atm_db_gate_fix_20261003.py"],
     ),
+    # /v3/cio/home memory: stream the action ledger, tail-read logs, one plan-store load (2026-10-03).
+    (
+        "cio_home_memory_20261003",
+        ["tests/test_cio_home_memory_20261003.py"],
+    ),
     (
         "lineage_phase12_20261003",
         [
