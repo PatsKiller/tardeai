@@ -158,7 +158,7 @@ Every provider and domain row carries `approval`. The distinct references, and t
 - **ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 5 item O-W5-4** — 1 rows: domain `maturity_scores`
 - **ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 5 item O-W5-2** — 1 rows: domain `conformance_gate_receipts`
 - **ApprovalPackage pkg-20260928-waves-3-5-cognition-unification-maturity-80f2 (SUBMITTED 2026-09-27 22:53 ET, Telegram 54509/54511; operator 'do rest of waves now'); PR #1326 (Wave 3 base; this row lands with the stacked Wave 5 PR); decision record docs/ops/COGX_WAVE1_STATUS_2026-09-27.md § Wave 5 item O-W5-3** — 1 rows: domain `supervisor_recoveries`
-- **Decision Lineage Join Plan Phase 3 — operator approved all phases 2026-10-03 (artifact https://claude.ai/artifact/C89ctZQYdYWg8onPMiCjyD, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); follows #1400** — 1 rows: domain `capital_plan_decisions`
+- **Decision Lineage Join Plan Phase 3 — operator approved all phases 2026-10-03 (artifact https://claude.ai/artifact/C89ctZQYdYWg8onPMiCjyD, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1402** — 1 rows: domain `capital_plan_decisions`
 
 ## Monitors
 

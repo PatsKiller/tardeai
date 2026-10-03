@@ -2594,7 +2594,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-03",
-        "reference": "Decision Lineage Join Plan Phase 3 — operator approved all phases 2026-10-03 (artifact https://claude.ai/artifact/C89ctZQYdYWg8onPMiCjyD, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); follows #1400",
+        "reference": "Decision Lineage Join Plan Phase 3 — operator approved all phases 2026-10-03 (artifact https://claude.ai/artifact/C89ctZQYdYWg8onPMiCjyD, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1402",
         "scope": "CIOCapitalPlanDecision@v1 — append-only, one row per capital-plan position decision id the first time a plan build produces it; keeps churned ids resolvable for decision lineage"
       },
       "store": {
