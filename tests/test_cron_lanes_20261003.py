@@ -16,14 +16,11 @@ from scripts.lib.lane_registry import (  # noqa: E402
     discover_cron, find_undeclared, load_registry, validate_registry,
 )
 
-CUR = "/home/johnclaw/trade-ai-releases/portfolio-server/CURRENT"
+LANES = ("cio-draft-plan-hygiene", "cio-portfolio-thesis", "advisory-maturity-evidence")
+# The exact lines the operator installs are the registry's own expressions.
 INSTALLED = [
-    f"52 6 * * * cd {CUR} && TRADEAI_ROOT={CUR} flock -n /tmp/cio_draft_hygiene.lock $PY "
-    "scripts/cio_draft_plan_hygiene.py --apply --expire-stale >> /home/johnclaw/logs/cio_draft_hygiene.log 2>&1",
-    f"47 17 * * 1-5 cd {CUR} && flock -n /tmp/cio_portfolio_thesis.lock bash -c \"set -a; . ./.env; set +a; "
-    "$PY scripts/materialize_cio_portfolio_thesis.py\" >> logs/cio_portfolio_thesis.log 2>&1",
-    f"17 6 * * * cd {CUR} && flock -n /tmp/advisory_maturity_evidence.lock $PY "
-    "-m scripts.refresh_advisory_maturity_evidence >> logs/refresh_advisory_maturity_evidence.log 2>&1",
+    next(r for r in load_registry()["lanes"] if r["lane_id"] == lane)["scheduler"]["expression"]
+    for lane in LANES
 ]
 OLD_HYGIENE = INSTALLED[0].replace(" --expire-stale", "")
 
