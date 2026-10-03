@@ -164,9 +164,16 @@ def _hermes_tile(root: Path) -> dict[str, Any]:
             or 0
         )
         attempts = int((coverage or {}).get("attempts_24h") or ok_24 or 0)
+    # None, not 0, when no lane row carries a measured count (a recovered lane
+    # used to drop them): "0 succeeded" and "not reported" are different facts.
+    measured = any(
+        (row or {}).get(key) is not None
+        for row in (deepseek, coverage)
+        for key in ("non_error_24h", "attempts_24h", "deepseek_ok_24h")
+    )
     metrics = [
-        {"label": "DeepSeek ok 24h", "value": ok_24},
-        {"label": "Attempts 24h", "value": attempts},
+        {"label": "DeepSeek ok 24h", "value": ok_24 if measured else None},
+        {"label": "Attempts 24h", "value": attempts if measured else None},
     ]
     evidence = [{"kind": "lane", "id": k, "firing": (lanes.get(k) or {}).get("firing")} for k in ("deepseek", "cio-hermes-queue", "coverage-stall") if k in (lanes or {})]
     if deepseek is None and hermes_q is None and not lane_doc:
@@ -204,7 +211,8 @@ def _hermes_tile(root: Path) -> dict[str, Any]:
             id="hermes_research",
             title="Hermes / research",
             status="working",
-            verdict=f"Research lanes ok — DeepSeek non-error 24h={ok_24}.",
+            verdict=(f"Research lanes ok — DeepSeek non-error 24h={ok_24}." if measured
+                     else "Research lanes ok — 24h DeepSeek count not reported by the lane monitor."),
             metrics=metrics,
             evidence_refs=evidence,
             href="/v3/cio?tab=research",
@@ -578,6 +586,43 @@ def _light_home(root: Path) -> dict[str, Any]:
     return {"ok": False}
 
 
+_LIVE_COCKPIT: dict[str, Any] = {"key": None, "value": None}
+
+
+def _live_learning_cockpit(root: Path) -> dict[str, Any] | None:
+    """Outcome counts from the checkpoint store itself, recomputed only when it changes.
+
+    The light path used to read cio_brain_learning_slice.json, which no job
+    writes: a one-off from 2026-09-30 kept the card at "1127 due; matured=0"
+    after the counts it describes had moved on.
+    """
+    try:
+        from scripts.lib.r17_checkpoint_binding import (
+            CHECKPOINT_PATH, OBSERVATION_PATH, learning_cockpit_from_store,
+        )
+        key = []
+        for rel in (CHECKPOINT_PATH, OBSERVATION_PATH):
+            try:
+                st = (root / rel).stat()
+                key.append((str(rel), st.st_size, st.st_mtime_ns))
+            except OSError:
+                key.append((str(rel), None, None))
+        key_t = tuple(key)
+        if _LIVE_COCKPIT["key"] == key_t and _LIVE_COCKPIT["value"] is not None:
+            return _LIVE_COCKPIT["value"]
+        store = learning_cockpit_from_store(root)
+        value = {
+            "outcomes_due": store.get("due"),
+            "matured_outcomes": store.get("matured_outcomes"),
+            "not_resolvable": store.get("not_resolvable"),
+            "source": "outcome_checkpoints (live)",
+        }
+        _LIVE_COCKPIT["key"], _LIVE_COCKPIT["value"] = key_t, value
+        return value
+    except Exception:
+        return None
+
+
 def _light_brain(root: Path) -> dict[str, Any]:
     """Learning/outcomes slice from disk + serving pin — never rebuilds brain."""
     brain: dict[str, Any] = {"_serving": _light_serving(root)}
@@ -593,6 +638,12 @@ def _light_brain(root: Path) -> dict[str, Any]:
             else:
                 brain["learning_cockpit"] = doc
             break
+    live = _live_learning_cockpit(root)
+    if live:
+        brain["learning_cockpit"] = {**(brain.get("learning_cockpit") or {}), **live}
+        if isinstance(brain.get("learning"), dict):
+            # The file's own outcome block is the stale one; the live counts replace it.
+            brain["learning"] = {k: v for k, v in brain["learning"].items() if k != "outcomes"}
     return brain
 
 
