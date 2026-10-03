@@ -1293,7 +1293,7 @@ def build_position_decisions(
             "decision_revalidated_at": None,
             "decision_input_digest": _decision_digest(symbol, stance, delta, p),
             "decision_evidence_digest": _decision_digest(symbol, stance, delta, p, extra="evidence"),
-            "decision_policy_version": "capital_plan_1.3.0",
+            "decision_policy_version": CAPITAL_PLAN_VERSION,
             "decision_revalidation_reason": "builder_ran_not_evidence_revalidation",
             # Keep generated_at as the evidence clock, never "now".
             "generated_at": _decision_source_clock(p, now),

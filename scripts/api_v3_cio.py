@@ -1545,6 +1545,9 @@ def catalog_from_position_decisions(rows: Any) -> dict[str, dict[str, Any]]:
             "symbol_thesis_id": d.get("symbol_thesis_id"),
             "symbol_thesis_version": d.get("symbol_thesis_version"),
         }
+        if d.get("decision_policy_version"):
+            # The versioned sizing policy that computed this decision (canon_frameworks).
+            rec["methodology_ref"] = d["decision_policy_version"]
         rec["decision_identity"] = classify_decision_identity(rec)
         out[did] = rec
     return out
@@ -2241,6 +2244,20 @@ def get_seasonality_state_v1() -> dict[str, Any]:
         return {"ok": False, "seasonality": state, "authority": AUTHORITY_ADVISORY}
 
 
+def _ratified_methodology_refs() -> list[str]:
+    """Operator-ratified canon claim ids (decision_eligible); [] when none or unreadable.
+
+    Only RATIFIED_ADVISORY claims may influence a decision, and ratification is an
+    operator action (cio_canon_v1.transition_claim), so nothing here promotes one.
+    """
+    try:
+        from scripts.lib.cio_canon_v1 import build_methodology_policy, load_canon_claims
+
+        return list(build_methodology_policy(load_canon_claims(_canon_claims_store()))["ratified_advisory_claim_ids"])
+    except Exception:
+        return []
+
+
 def get_portfolio_thesis_v1() -> dict[str, Any]:
     """Preview the current semantic delta. GET is read-only and never publishes a version."""
     from scripts.lib.cio_portfolio_thesis_v1 import (
@@ -2266,6 +2283,7 @@ def get_portfolio_thesis_v1() -> dict[str, Any]:
         market_context=market,
         seasonality=seasonality,
         symbol_theses=symbol_refs,
+        methodology_refs=_ratified_methodology_refs(),
     )
     published = load_latest_portfolio_thesis(str(_portfolio_thesis_store()))
     return {

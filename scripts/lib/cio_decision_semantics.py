@@ -740,7 +740,10 @@ def aggregate_position_decisions(
         "decision_evidence_digest",
         "decision_id",
     )
-    _preserve_keys = _size_keys + _identity_keys
+    # The versioned sizing policy that computed the row. Not a hash input, so
+    # carrying it through the merge cannot change decision_id or the digests.
+    _policy_keys = ("decision_policy_version",)
+    _preserve_keys = _size_keys + _identity_keys + _policy_keys
     for r in rows or []:
         if not isinstance(r, dict):
             continue
