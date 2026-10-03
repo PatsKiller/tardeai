@@ -552,7 +552,6 @@ def emit_decision_payload(
             started,
             status=STATUS_COMPLETED,
             decision=sanitize_trace(payload),
-            notification={"sent": False, "channel": None},
             operator=None,
             learning={"auto_promoted": False, "synthesized": payload.get("decision_origin") == "SYNTHESIZED"},
         )
