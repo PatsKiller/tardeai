@@ -82,7 +82,8 @@ _STAGE_SPECS: dict[str, tuple[tuple[str, ...], tuple[str, ...], str | None, str]
     "research_gap": (("research_gap", "research_gaps"), (), None, _WORKFLOW),
     "specialist_delegation": (("specialist_dispatch_id", "specialist_artifact_id"), (), "specialist", _WORKFLOW),
     "specialist_disagreement": (("specialist_disagreement", "disagreement_receipt"), (), None, _WORKFLOW),
-    "model_route": (("model_route", "model_used", "provider", "model_provider"), (), None, _WORKFLOW),
+    # ``model`` is what AgentRunTrace holdings decisions record (the LLM that made them).
+    "model_route": (("model_route", "model_used", "model", "provider", "model_provider"), (), None, _WORKFLOW),
     "judgment": (("judgment", "recommendation", "action"), (), "cio", _WORKFLOW),
     "counter_thesis": (("counter_thesis", "counter_case"), (), None, _WORKFLOW),
     "confidence": (("confidence", "confidence_raw", "confidence_score"), (), None, _WORKFLOW),
@@ -256,6 +257,39 @@ def _producer_status(envelope: dict[str, Any], key: str | None) -> tuple[str, st
     if not state:
         return None
     return state, f"producer stage_status.{key}={raw}"
+
+
+def review_metadata_fields(row: dict[str, Any] | None) -> dict[str, Any]:
+    """Stage fields an LLM review stored inside ``cio_decisions.metadata``.
+
+    options_cio_review / buy_ready_cio_review persist the model and the review as
+    nested JSON, which a top-level key match never sees. Only values the review
+    actually recorded are lifted; nothing is derived or defaulted.
+    """
+    if not isinstance(row, dict):
+        return {}
+    meta = row.get("metadata")
+    if isinstance(meta, str):
+        try:
+            import json
+            meta = json.loads(meta)
+        except ValueError:
+            return {}
+    if not isinstance(meta, dict):
+        return {}
+    out: dict[str, Any] = {}
+    model = meta.get("model")
+    if isinstance(model, dict):
+        for key in ("model_used", "provider"):
+            if _evidence(model.get(key)):
+                out[key] = model[key]
+    review = meta.get("review")
+    if isinstance(review, dict):
+        if _evidence(review.get("confidence")):
+            out["confidence"] = review["confidence"]
+        if _evidence(review.get("evidence_against")):
+            out["counter_case"] = review["evidence_against"]
+    return out
 
 
 def _row_for_decision(row: dict[str, Any], decision_id: str) -> bool:

@@ -1591,6 +1591,7 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
         from scripts.lib.cio_decision_lineage_projection import (
             direct_match,
             project_decision_lineage,
+            review_metadata_fields,
         )
         from scripts.lib.cio_operator_evidence import build_operator_evidence
 
@@ -1605,7 +1606,7 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
                 fetch="one",
             )
             if isinstance(db_row, dict):
-                decision = {**db_row, **decision}
+                decision = {**review_metadata_fields(db_row), **db_row, **decision}
                 decision_source = "cio_decisions"
         except Exception:
             pass
