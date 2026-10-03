@@ -926,6 +926,12 @@ GATES = [
     ),
     # Lineage join phases 1-2 (operator-approved 2026-10-03): production-case outcomes
     # and dispositions, and the declared stage-applicability contract.
+    # CIO Desk cards: count checkpoints once (latest row), keep terminal
+    # NOT_PRICE_RESOLVABLE out of "due", grade spine POPULATED theses by bucket.
+    (
+        "cio_desk_degraded_20261003",
+        ["tests/test_cio_desk_degraded_20261003.py"],
+    ),
     (
         "lineage_phase12_20261003",
         [

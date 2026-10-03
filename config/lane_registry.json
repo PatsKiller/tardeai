@@ -2248,7 +2248,7 @@
       "owner": "cio",
       "scheduler": {
         "kind": "cron",
-        "expression": "20 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/resolve_due_checkpoints.py --apply >> logs/resolve_due_checkpoints.log 2>&1",
+        "expression": "20 * * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && TRADEAI_PENDING_DATA_APPLY=1 /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/resolve_due_checkpoints.py --apply --apply-pending-data >> logs/resolve_due_checkpoints.log 2>&1",
         "match": "scripts/resolve_due_checkpoints.py --apply"
       },
       "expected_cadence_hours": 1.0,
@@ -2257,7 +2257,7 @@
         "kind": "file_mtime",
         "path": "data/cio/outcome_observations.jsonl"
       },
-      "note": "Declared 2026-09-24 (agentic-memory tranche 1): was in undeclared_baseline while resolving outcome checkpoints hourly. Settlement hop 1 of the learning loop; feeds the belief writer through outcome_observations."
+      "note": "Declared 2026-09-24 (agentic-memory tranche 1): was in undeclared_baseline while resolving outcome checkpoints hourly. Settlement hop 1 of the learning loop; feeds the belief writer through outcome_observations. 2026-10-03 operator decision: also --apply-pending-data with TRADEAI_PENDING_DATA_APPLY=1 so OUTCOME_PENDING_DATA rows whose prices now exist settle (dry run: 7 would resolve, 0 expire; append-only)."
     },
     {
       "lane_id": "build-lesson-candidates",

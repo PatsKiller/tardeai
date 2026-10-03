@@ -349,12 +349,14 @@ def _outcomes_tile(brain: dict[str, Any] | None) -> dict[str, Any]:
     due = int(cockpit.get("outcomes_due") or outcomes.get("due") or outcomes.get("outcomes_due") or 0)
     matured = int(outcomes.get("matured") or cockpit.get("matured_outcomes") or 0)
     frozen = int(outcomes.get("frozen") or cockpit.get("frozen_outcomes") or 0)
+    not_resolvable = int(cockpit.get("not_resolvable") or 0)
     influence = brain.get("memory_behavior_influence")
     if influence is None:
         influence = (brain.get("memory") or {}).get("behavior_influence") or 0
     metrics = [
         {"label": "Outcomes due", "value": due},
         {"label": "Matured", "value": matured},
+        {"label": "Not price-resolvable", "value": not_resolvable},
         {"label": "MBI", "value": influence},
     ]
     if not brain or (not learning and not cockpit and "_serving" not in brain and "learning" not in brain):
@@ -382,7 +384,8 @@ def _outcomes_tile(brain: dict[str, Any] | None) -> dict[str, Any]:
         id="outcomes_learning",
         title="Outcomes / learning",
         status="working" if matured or due == 0 else "degraded",
-        verdict=f"Due={due} · matured={matured} · frozen={frozen} · influence={influence} (lessons stay candidates).",
+        verdict=(f"Due={due} · matured={matured} · not price-resolvable={not_resolvable} · frozen={frozen} · "
+                 f"influence={influence} (lessons stay candidates)."),
         metrics=metrics,
         href="/v3/cio?tab=evidence-comms&sub=full-brain",
     )

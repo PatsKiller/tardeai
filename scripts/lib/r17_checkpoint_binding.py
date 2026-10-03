@@ -410,6 +410,9 @@ def process_due_store(
     }
 
 
+_TERMINAL_UNRESOLVABLE = frozenset({"NOT_PRICE_RESOLVABLE", "EXPIRED", "NOT_APPLICABLE"})
+
+
 def learning_cockpit_from_store(root: Path | str, *, now: datetime | None = None) -> dict[str, Any]:
     """GUI projection of durable checkpoint/outcome/lesson stores. Not in-memory theater."""
     now = now or _now()
@@ -419,15 +422,29 @@ def learning_cockpit_from_store(root: Path | str, *, now: datetime | None = None
     lessons = _jsonl(root_p / "data/cio/lesson_candidates.jsonl")
     hyps = _jsonl(root_p / "data/cio/hypothesis_candidates.jsonl")
     experiments = _jsonl(root_p / "data/cio/shadow_experiments.jsonl")
-    counts = {"PENDING": 0, "DUE": 0, "COMPLETE": 0, "FAILED": 0, "BLOCKED_DATA": 0}
-    for row in checkpoints:
-        counts[classify_checkpoint(row, now=now)] = counts.get(classify_checkpoint(row, now=now), 0) + 1
+    # The store is append-only: a resolution appends a new row for the same
+    # checkpoint_id, so count each checkpoint once, by its latest row.
+    latest: dict[str, dict[str, Any]] = {}
+    for i, row in enumerate(checkpoints):
+        latest[str(row.get("checkpoint_id") or f"_row{i}")] = row
+    counts = {"PENDING": 0, "DUE": 0, "COMPLETE": 0, "FAILED": 0, "BLOCKED_DATA": 0, "NOT_RESOLVABLE": 0}
+    for row in latest.values():
+        if str(row.get("status") or "").upper() in _TERMINAL_UNRESOLVABLE and not row.get("outcome_id"):
+            # The resolver recorded a final verdict (e.g. no security to price);
+            # it will never resolve, so it is not "due".
+            counts["NOT_RESOLVABLE"] += 1
+            continue
+        klass = classify_checkpoint(row, now=now)
+        counts[klass] = counts.get(klass, 0) + 1
     return {
         "ok": True,
         "schema": SCHEMA_COCKPIT,
         "outcomes_due": counts["DUE"],
+        "matured_outcomes": counts["COMPLETE"],
+        "not_resolvable": counts["NOT_RESOLVABLE"],
         "checkpoint_counts": counts,
-        "checkpoints_n": len(checkpoints),
+        "checkpoints_n": len(latest),
+        "checkpoint_rows_n": len(checkpoints),
         "observations_n": len(observations),
         "lessons_n": len(lessons),
         "hypotheses_n": len(hyps),

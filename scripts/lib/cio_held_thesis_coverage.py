@@ -65,6 +65,9 @@ def list_held_tickers(*, root: Path | None = None) -> list[str]:
         return []
 
 
+_SPINE_BUCKET_STATE = {"PASS": "CURRENT", "THIN": "THIN", "SKIP": "RESEARCH_REQUIRED"}
+
+
 def coverage_row_for_symbol(symbol: str, *, root: Path | None = None) -> dict[str, Any]:
     root = root or _project_root()
     try:
@@ -74,6 +77,11 @@ def coverage_row_for_symbol(symbol: str, *, root: Path | None = None) -> dict[st
     except Exception as exc:
         fields = {"thesis_state": "INSUFFICIENT_DATA", "error": type(exc).__name__}
     state = str(fields.get("thesis_state") or "INSUFFICIENT_DATA")
+    if state == "POPULATED":
+        # Shared-spine storage state. Grade it by the thesis's own substantiveness
+        # bucket (same mapping as thesis_substantiveness.grade_text) instead of
+        # leaving it outside SUBSTANTIVE_STATES, which counted A/PASS theses thin.
+        state = _SPINE_BUCKET_STATE.get(str(fields.get("substantiveness_bucket") or "").upper(), state)
     current = bool(fields.get("has_current_symbol_thesis")) or state in {
         "CURRENT", "THIN", "STALE", "CONFLICTED",
     }
