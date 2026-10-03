@@ -990,6 +990,11 @@ GATES = [
             "tests/test_lineage_run_hermes_join_20261003.py",
         ],
     ),
+    # Memory retrieval receipts carry the agent/wake/trace/decision a caller knew (operator-approved 2026-10-03).
+    (
+        "memory_retrieval_attribution_20261003",
+        ["tests/test_memory_retrieval_attribution_20261003.py"],
+    ),
     (
         "ai_analyst_freshness_sla",
         [

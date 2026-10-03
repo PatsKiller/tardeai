@@ -88,6 +88,8 @@ export interface ProofField {
   reason?: string | null
   recent_ids?: string[]
   fleet_last_at?: string | null
+  wake_id?: string | null
+  unattributed_in_window?: number | null
 }
 export interface AgentRuntimeProofPayload {
   schema?: string
@@ -114,6 +116,13 @@ export function proofRow(payload: AgentRuntimeProofPayload | null | undefined, a
   }
   if (!row || row.state !== 'RECORDED') return ['NOT RECORDED', 'NOT_RECORDED']
   const at = row.at ? String(row.at).slice(0, 19) + 'Z' : ''
+  if (key === 'last_memory_retrieval') {
+    const n = Number(row.value ?? 0)
+    const ids = row.recent_ids ?? []
+    const mem = ids.length ? ` · memories ${ids.slice(0, 3).join(', ')}${ids.length > 3 ? ` (+${ids.length - 3})` : ''}` : ''
+    const wake = row.wake_id ? ` · wake ${row.wake_id}` : ''
+    return [`${n} retrieval${n === 1 ? '' : 's'} · latest ${at}${mem}${wake}`, 'RUNTIME']
+  }
   if (key === 'decisions_contributed') {
     const recent = row.recent_ids?.length ? ` · latest ${row.recent_ids[0]}` : ''
     return [`${row.value ?? 0} decision${row.value === 1 ? '' : 's'}${recent}`, 'RUNTIME']
