@@ -1682,6 +1682,7 @@ _CTA_BY_TYPE = {
     "portfolio_repricer_stale": {"label": "System → Pipeline", "route": "/v3/system?tab=pipeline"},
     "finviz_quote_cache_stale": {"label": "System → Admin", "route": "/v3/system?tab=admin"},
     "finviz_cookie_expired": {"label": "System → Admin secrets", "route": "/v3/system?tab=Admin"},
+    "finviz_cookie_expired_token_ok": {"label": "System → Admin secrets", "route": "/v3/system?tab=Admin"},
     "agent_jobs_processing_stuck": {"label": "System → Jobs", "route": "/v3/system?tab=jobs"},
     "trade_proposals_backlog": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
     "enrichment_pipeline_failure": {"label": "Trading → Proposals", "route": "/v3/trading?tab=Proposals"},
@@ -1720,7 +1721,7 @@ def _attach_cta(f: dict):
 # Hard operator-only: never claim auto-retry; never enqueue producer scripts.
 _NEVER_AUTO_DEFAULT = frozenset({
     "unprotected_positions", "siem_p0p1", "schwab_token_revoked",
-    "finviz_cookie_expired", "audit_ledger_coverage_warn",
+    "finviz_cookie_expired", "finviz_cookie_expired_token_ok", "audit_ledger_coverage_warn",
     "audit_ledger_coverage_fail", "audit_ledger_chain_break",
     "kill_switch_active",
 })
@@ -2090,6 +2091,41 @@ def collect_momentum_scalp_multi_source_health() -> list[dict]:
     return out
 
 
+def _finviz_token_backstop() -> tuple[bool, str]:
+    """Probe the Elite API token (FINVIZ_API_TOKEN, ``auth=``). Never echoes the token.
+
+    Every Finviz export path falls back to the token (#1397), so an expired session
+    cookie with a working token is a rotation reminder, not dead ingestion.
+    """
+    try:
+        import secret_validators as _sv
+    except Exception as e:
+        return False, f"validator unavailable: {type(e).__name__}"
+    token = _sv._key("FINVIZ_API_TOKEN")
+    if not token:
+        return False, "FINVIZ_API_TOKEN not set"
+    try:
+        return _sv._finviz_token(token)
+    except Exception as e:
+        return False, f"token probe failed: {type(e).__name__}"
+
+
+def _finviz_cookie_finding(src: str, last_err: str, age_m: float, cookie_detail: str) -> dict:
+    """Critical only when BOTH the cookie and the Elite API token fail."""
+    token_ok, token_detail = _finviz_token_backstop()
+    if token_ok:
+        return _f("data_quality", "finviz_cookie_expired_token_ok", "info",
+                  f"Finviz cookie expired ({cookie_detail}) but the Elite API token works "
+                  f"({token_detail}) — screeners use the token; refresh FINVIZ_COOKIE when convenient",
+                  source=src, last_error=last_err[:120], operator_action=False)
+    return _f("data_quality", "finviz_cookie_expired", "critical",
+              f"Finviz cookie and Elite API token both failing (cookie: {cookie_detail}; token: "
+              f"{token_detail}) — last healthy probe {age_m / 60:.0f}h ago; operator must refresh "
+              f"FINVIZ_COOKIE or FINVIZ_API_TOKEN in System → Admin secrets",
+              source=src, last_error=last_err[:120], operator_action=True,
+              reauth_cmd="Open /v3/system?tab=Admin and rotate FINVIZ_COOKIE")
+
+
 def _assess_go_conversion(go_scans: int, created: int, skipped_by_reason: dict, window_days: int) -> dict:
     """Pure (2026-09-28, plan root cause 5): the scanner produced GO rows but no momentum_scalp
     proposal was created in the window → the pipeline discards what it finds. Names the skip
@@ -2114,6 +2150,11 @@ def _assess_go_conversion(go_scans: int, created: int, skipped_by_reason: dict, 
         "SKIPPED_CRITIC_DOWNGRADE",
         "SKIPPED_LIQUIDITY",
         "SKIPPED_STRATEGY_CRITERIA",
+        # Also gates working as designed (reason codes on prod 2026-10-03):
+        # contract.require_catalyst, critic=BLOCK, and "scan decision=NO_GO/WAIT".
+        "SKIPPED_NO_CATALYST",
+        "SKIPPED_CRITIC_BLOCK",
+        "SKIPPED_NOT_GO",
     }
     reasons = {str(k) for k in skipped_by_reason}
     policy_only = bool(reasons) and reasons.issubset(policy_skips)
@@ -3331,24 +3372,15 @@ def collect_data_source_health() -> list[dict]:
                 is_finviz_cookie_failure_text = lambda _t: False  # noqa: E731
                 check_finviz = None
             if is_finviz_cookie_failure_text(last_err):
-                out.append(_f("data_quality", "finviz_cookie_expired", "critical",
-                              f"Finviz cookie/screener failure ({last_err.strip()[:120]}) — "
-                              f"screener ingestion dead since {age_m / 60:.0f}h; operator must refresh "
-                              f"FINVIZ_COOKIE in System → Admin secrets",
-                              source=src, last_error=last_err[:120], operator_action=True,
-                              reauth_cmd="Open /v3/system?tab=Admin and rotate FINVIZ_COOKIE"))
+                out.append(_finviz_cookie_finding(src, last_err, age_m, last_err.strip()[:120]))
                 continue
             if cfg.get("finviz_cookie_check", True) and check_finviz is not None:
                 # Distinguish cookie expiry (operator action) from transient failure.
                 try:
                     ck = check_finviz()
                     if str(ck.get("status")) != "ok":
-                        out.append(_f("data_quality", "finviz_cookie_expired", "critical",
-                                      f"Finviz cookie invalid ({ck.get('error') or ck.get('status')}) — "
-                                      f"screener ingestion dead since {age_m / 60:.0f}h; operator must refresh "
-                                      f"FINVIZ_COOKIE in System → Admin secrets",
-                                      source=src, last_error=last_err[:120], operator_action=True,
-                                      reauth_cmd="Open /v3/system?tab=Admin and rotate FINVIZ_COOKIE"))
+                        out.append(_finviz_cookie_finding(src, last_err, age_m,
+                                                          str(ck.get("error") or ck.get("status"))))
                         continue
                 except Exception:
                     pass
