@@ -12,7 +12,10 @@ Stage states are derived, never presence-guessed:
 * PENDING — a checkpoint/outcome horizon has not matured (or the producer
   recorded PENDING).
 * NOT_RUN — the producer explicitly recorded a skip / not-yet-run.
-* NOT_APPLICABLE — the producer recorded the stage as not required.
+* NOT_APPLICABLE — the producer recorded the stage as not required, or the
+  producer's recorded ``decision_origin`` falls under the reviewed
+  StageApplicability@v1 contract (``cio_stage_applicability``). That recorded
+  origin is the explicit producer record; nothing is presence-guessed.
 * UNWIRED — the stage has no producer contract in this system
   (``UNWIRED_STAGES`` names each one with its reason).
 * UNAVAILABLE — the stage's source store is missing or unreadable.
@@ -25,6 +28,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from typing import Any, Iterable
+
+from scripts.lib.cio_stage_applicability import not_applicable_reason
 
 SCHEMA = "CIODecisionLineage@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -64,6 +69,7 @@ _DISPOSITIONS = "decision_dispositions"
 _RESEARCH = "research_provenance"
 _COGNITION = "institutional_cognition"
 _LEARNING = "learning"
+_CASES = "cio_production_cases"
 
 # stage -> (value keys, PARTIAL-only keys, producer stage_status key, primary store)
 _STAGE_SPECS: dict[str, tuple[tuple[str, ...], tuple[str, ...], str | None, str]] = {
@@ -259,6 +265,49 @@ def _producer_status(envelope: dict[str, Any], key: str | None) -> tuple[str, st
     return state, f"producer stage_status.{key}={raw}"
 
 
+def _case_payload(row: dict[str, Any]) -> dict[str, Any]:
+    payload = row.get("payload")
+    return payload if isinstance(payload, dict) else {}
+
+
+def _case_row(row: dict[str, Any]) -> dict[str, Any]:
+    """A production-case event with its own reference: case id plus event type."""
+    out = dict(row)
+    case_id, event = _text(row.get("case_id")), _text(row.get("event_type")) or _text(row.get("status"))
+    if case_id:
+        out["source_ref"] = f"{_CASES}:{case_id}#{event}" if event else f"{_CASES}:{case_id}"
+    return out
+
+
+def _case_disposition(row: dict[str, Any]) -> dict[str, Any] | None:
+    """Operator disposition recorded on a production case, in either shape it was written."""
+    if _text(row.get("event_type")).upper() == "OPERATOR_DISPOSITION":
+        value = _case_payload(row).get("operator_disposition") or _case_payload(row)
+    else:
+        value = row.get("operator_disposition")
+    return value if isinstance(value, dict) and _evidence(value.get("disposition")) else None
+
+
+# Outcome statuses that record "the horizon elapsed and no market result was
+# measured". They are a recorded verdict, not a win or loss, so they read
+# NOT_APPLICABLE with the producer's own status and reason, mirroring how a
+# checkpoint resolved NOT_PRICE_RESOLVABLE is shown.
+_NO_MARKET_OUTCOME = {"EXPIRED"}
+
+
+def _case_outcome_stage(row: dict[str, Any], composed: str) -> dict[str, Any]:
+    payload = _case_payload(row)
+    status = _text(payload.get("outcome_status")).upper() or "UNSTATED"
+    reason = _text(payload.get("reason"))
+    horizon = _text(payload.get("evaluation_horizon"))
+    as_of = _iso(payload.get("maturity_at")) or _timestamp(row)
+    detail = f"production case outcome {status}" + (f": {reason}" if reason else "") + (f" ({horizon} horizon)" if horizon else "")
+    if status in _NO_MARKET_OUTCOME or "no_market_outcome" in reason:
+        return _stage(state="NOT_APPLICABLE", state_reason=f"{detail}; no market result was measured",
+                      composition_as_of=composed, row=row, store=_CASES, value=status, source_as_of=as_of)
+    return _matched_stage("outcome", row, _CASES, status, composed=composed, source_as_of=as_of)
+
+
 def review_metadata_fields(row: dict[str, Any] | None) -> dict[str, Any]:
     """Stage fields an LLM review stored inside ``cio_decisions.metadata``.
 
@@ -344,6 +393,7 @@ def project_decision_lineage(
     intelligence_records: Iterable[dict[str, Any]] = (),
     checkpoint_records: Iterable[dict[str, Any]] = (),
     disposition_records: Iterable[dict[str, Any]] = (),
+    production_case_records: Iterable[dict[str, Any]] = (),
     research_provenance: dict[str, Any] | None = None,
     institutional_cognition: dict[str, Any] | None = None,
     learning: dict[str, Any] | None = None,
@@ -373,6 +423,9 @@ def project_decision_lineage(
     intel = _latest(intelligence)
     checkpoint = _latest(checkpoints)
     disposition = _latest(dispositions)
+    cases = [r for r in production_case_records if isinstance(r, dict) and _text(r.get("decision_id")) == did]
+    case_outcomes = [_case_row(r) for r in cases if _text(r.get("event_type")).upper() == "OUTCOME_OBSERVED"]
+    case_dispositions = [_case_row(r) for r in cases if _case_disposition(r) is not None]
 
     research = research_provenance if isinstance(research_provenance, dict) else {}
     artifacts = [a for a in research.get("artifacts") or [] if isinstance(a, dict) and _for_decision(a, did)]
@@ -407,6 +460,10 @@ def project_decision_lineage(
         if available.get(primary) is False:
             return _stage(state="UNAVAILABLE", state_reason=f"source store {primary} missing or unreadable",
                           composition_as_of=composed)
+        contract = not_applicable_reason(d, stage)
+        if contract:
+            return _stage(state="NOT_APPLICABLE", state_reason=contract, composition_as_of=composed,
+                          row=d or None, store=decision_source)
         searched = ", ".join(dict.fromkeys(stores))
         return _stage(state="UNKNOWN", state_reason=f"no matched row for this decision in {searched}",
                       composition_as_of=composed)
@@ -465,10 +522,15 @@ def project_decision_lineage(
     stages["research_used"] = keyed("research_used", extra=research_extra({"USED_IN_JUDGMENT"}))
     stages["research_rejected"] = keyed("research_rejected", extra=research_extra({"REJECTED"}))
 
-    stages["operator_disposition"] = (
-        _matched_stage("operator_disposition", disposition, _DISPOSITIONS, disposition, composed=composed)
-        if disposition else unmatched("operator_disposition", None, _DISPOSITIONS, [_DISPOSITIONS])
-    )
+    if disposition:
+        stages["operator_disposition"] = _matched_stage("operator_disposition", disposition, _DISPOSITIONS,
+                                                        disposition, composed=composed)
+    elif case_dispositions:
+        row = case_dispositions[-1]
+        stages["operator_disposition"] = _matched_stage("operator_disposition", row, _CASES,
+                                                        _case_disposition(row), composed=composed)
+    else:
+        stages["operator_disposition"] = unmatched("operator_disposition", None, _DISPOSITIONS, [_DISPOSITIONS])
 
     checkpoint_rows = [(_CHECKPOINTS, r) for r in reversed(checkpoints)] + [(_WORKFLOW, env)]
     stages["checkpoint"] = keyed("checkpoint", rows=checkpoint_rows)
@@ -506,6 +568,8 @@ def project_decision_lineage(
         row = pending_outcomes[-1]
         stages["outcome"] = _stage(state="PENDING", state_reason=f"advisory outcome {_text(row.get('status')) or 'PENDING'} not settled",
                                    composition_as_of=composed, row=row, store="advisory_outcomes_v1")
+    elif case_outcomes:
+        stages["outcome"] = _case_outcome_stage(case_outcomes[-1], composed)
     else:
         declared = _producer_status(env, "checkpoint")
         if declared and declared[0] == "NOT_RUN":

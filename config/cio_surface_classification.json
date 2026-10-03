@@ -963,6 +963,13 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "Append-only audit record of each capital-plan position decision id (cio_capital_plan_decision_store), read by the decision-lineage endpoint so a churned id stays resolvable; the decision itself is surfaced by the capital-plan / CIO NOW table and its stages by the decision-lineage panel.",
       "owner_hint": "scripts/lib/cio_capital_plan_decision_store.py"
+    },
+    {
+      "name": "schema:StageApplicability@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Contract label only, not a payload: cio_stage_applicability.not_applicable_reason returns a reason string prefixed with it, and that string is surfaced verbatim as the stage state_reason inside CIODecisionLineage@v1 on the decision-lineage panel. No StageApplicability block is produced or persisted.",
+      "owner_hint": "scripts/lib/cio_stage_applicability.py"
     }
   ]
 }

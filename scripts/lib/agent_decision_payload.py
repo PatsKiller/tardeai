@@ -42,6 +42,7 @@ VALID_ORIGINS = frozenset({
     "FRESH_RESEARCH",
     "MEMORY_INFLUENCED",
     "OPERATOR_ASK",
+    "LLM_JUDGMENT",  # a model produced the decision (e.g. holdings health refresh)
     "SYNTHESIZED",  # never count toward promotion arithmetic
 })
 
@@ -758,7 +759,8 @@ def payload_from_holdings_health(
         current_action=action,
         act_now=str(action).upper() in {"TRIM", "EXIT", "ADD"},
         confidence=r.get("confidence"),
-        decision_origin=infer_decision_origin(trigger="HOLDINGS_HEALTH"),
+        # holdings_llm_refresh emits only after parsing an LLM response.
+        decision_origin="LLM_JUDGMENT",
         extra={"health": r.get("health"), "model": r.get("model")},
     )
 
