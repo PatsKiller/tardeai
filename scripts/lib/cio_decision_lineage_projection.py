@@ -289,6 +289,8 @@ def review_metadata_fields(row: dict[str, Any] | None) -> dict[str, Any]:
             out["confidence"] = review["confidence"]
         if _evidence(review.get("evidence_against")):
             out["counter_case"] = review["evidence_against"]
+        if _evidence(review.get("falsifier")):
+            out["falsifier"] = review["falsifier"]
     return out
 
 

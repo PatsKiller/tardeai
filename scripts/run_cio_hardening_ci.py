@@ -914,6 +914,11 @@ GATES = [
     # so the guard runs behind the required context: the 2026-09-01 data loss was
     # invisible precisely because a fail-open write and a fail-closed write are
     # indistinguishable on a successful run.
+    # Optional falsifier in the options / buy-ready CIO reviews (operator-approved 2026-10-03).
+    (
+        "review_falsifier_20261003",
+        ["tests/test_review_falsifier_20261003.py"],
+    ),
     (
         "ai_analyst_cache_fail_closed",
         [
