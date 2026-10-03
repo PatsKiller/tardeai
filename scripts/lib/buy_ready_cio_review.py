@@ -78,10 +78,17 @@ TASK — return JSON only:
 Refuse and return verdict=REJECT with reason "INSUFFICIENT_FACTS" if the quote or
 chain is stale beyond policy or the plan levels are missing."""
 
+FALSIFIER_SPEC = (
+    "one specific, observable condition (using only SUPPLIED FACTS, or a dated event they "
+    "contain) that would prove this review wrong"
+)
+FALSIFIER_MAX_CHARS = 300
+
 OUTPUT_CONTRACT = (
     'Return exactly one JSON object: {"verdict": "...", "reason": "...", "scores": {"<name>": '
     '{"score": 1-10, "evidence": "..."}}, "equity_view": "...", "options_view": "...", '
-    '"portfolio_view": "...", "modifications": ["..."], "unknowns": ["..."]}'
+    '"portfolio_view": "...", "modifications": ["..."], "unknowns": ["..."], '
+    f'"falsifier": "{FALSIFIER_SPEC}"}}'
 )
 
 
@@ -209,6 +216,18 @@ def _keys_deep(obj: Any) -> set[str]:
     return ks
 
 
+def falsifier_errors(review: dict[str, Any]) -> list[str]:
+    """Shape check for the OPTIONAL falsifier; its text is checked with the other free text."""
+    if "falsifier" not in review or review.get("falsifier") is None:
+        return []
+    value = review.get("falsifier")
+    if not isinstance(value, str) or not value.strip():
+        return ["falsifier, when present, must be a non-empty string"]
+    if len(value) > FALSIFIER_MAX_CHARS:
+        return [f"falsifier longer than {FALSIFIER_MAX_CHARS} chars"]
+    return []
+
+
 def validate_review(review: Any, facts: dict[str, Any]) -> tuple[bool, list[str]]:
     errs: list[str] = []
     if not isinstance(review, dict):
@@ -230,8 +249,10 @@ def validate_review(review: Any, facts: dict[str, Any]) -> tuple[bool, list[str]
     bad_keys = sorted(_keys_deep(review) & set(BEHAVIOR_FIELDS))
     if bad_keys:
         errs.append(f"MBI_BEHAVIOR=0: sizing/behaviour keys refused {bad_keys}")
+    errs.extend(falsifier_errors(review))
     text = json.dumps({k: review.get(k) for k in ("reason", "scores", "equity_view", "options_view",
-                                                   "portfolio_view", "modifications", "unknowns")}, default=str)
+                                                   "portfolio_view", "modifications", "unknowns",
+                                                   "falsifier")}, default=str)
     for m in _SIZING_TEXT.finditer(text):
         # Quoting the EXISTING holding ("you hold 130.27 shares") is a fact, not sizing.
         if re.search(r"\b(hold|holds|held|holding|own|owns|owned)\b[^.]{0,24}$", text[max(0, m.start() - 30):m.start()], re.I):

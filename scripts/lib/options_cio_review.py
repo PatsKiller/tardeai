@@ -45,7 +45,8 @@ TASK - return JSON only:
   "evidence_for": ["..."],
   "evidence_against": ["..."],
   "exit_plan_view": "is the stated exit plan adequate for this structure",
-  "unknowns": ["missing or stale inputs that limited this review"]}}
+  "unknowns": ["missing or stale inputs that limited this review"],
+  "falsifier": "one specific, observable condition (using only SUPPLIED FACTS, or a dated event they contain) that would prove this review wrong"}}
 Use MORE_RESEARCH when a catalyst, exit or bear case is too thin to judge;
 MONITOR_ONLY when the thesis is sound but the timing or price is not.
 Be concise: reasoning at most 150 words; each list at most 4 short items. Return the
@@ -240,8 +241,10 @@ def validate(review: Any, facts: dict[str, Any]) -> tuple[bool, list[str]]:
     bad = sorted(br._keys_deep(review) & set(br.BEHAVIOR_FIELDS))
     if bad:
         errs.append(f"MBI_BEHAVIOR=0: sizing/behaviour keys refused {bad}")
+    errs.extend(br.falsifier_errors(review))
     text = json.dumps({k: review.get(k) for k in ("reasoning", "concerns", "assumptions_challenged",
-                                                   "evidence_for", "evidence_against", "exit_plan_view")},
+                                                   "evidence_for", "evidence_against", "exit_plan_view",
+                                                   "falsifier")},
                       default=str)
     if br._SIZING_TEXT.search(text):
         errs.append("MBI_BEHAVIOR=0: sizing/quantity language refused")
