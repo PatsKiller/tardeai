@@ -383,8 +383,14 @@ def record_cio_generation(
     path: Path | str | None = None,
     source_sha: str | None = None,
     identity: Any = None,
+    decision_ids: Iterable[str] | None = None,
 ) -> dict[str, Any]:
     """Persist a real CIO generation id, or a typed skip. Never mint a fake id.
+
+    ``decision_ids`` are the decisions this run actually produced (e.g. its
+    investment product's ids). They are unioned onto the run's envelope so the
+    decision lineage joins the run's specialist, notification and checkpoint
+    stages to those decisions. Never pass an id the run did not produce.
 
     `identity` is an optional payload describing what the run is *about*, used to
     stamp a canonical `event_id`. Without it a CIO envelope carries no entity at
@@ -397,6 +403,9 @@ def record_cio_generation(
     updates: dict[str, Any] = {}
     if source_sha:
         updates["source_sha"] = source_sha
+    produced = [str(x).strip() for x in (decision_ids or []) if str(x or "").strip()]
+    if produced:
+        updates["decision_ids"] = list(dict.fromkeys(produced))
     if identity:
         try:
             from scripts.lib.cio_canonical_identity import identity_fields
@@ -549,6 +558,9 @@ def persist_canonical_checkpoint(
     by_semantic = {str(r.get("semantic_key")): r for r in existing_rows if r.get("semantic_key")}
     existing_ids = [str(r.get("checkpoint_id")) for r in existing_rows if r.get("checkpoint_id")]
     ck = enrich_checkpoint(d, hz, source_sha=str(source_sha), existing_ids=existing_ids)
+    produced = [str(x) for x in (d.get("decision_ids") or []) if str(x or "").strip()]
+    if produced:
+        ck["decision_ids"] = list(dict.fromkeys(produced))
     env = store.latest_envelope(workflow_id) or {}
     ntf_id = d.get("notification_id") if d.get("notification_id") is not None else env.get("notification_id")
     ident = identity_from_payload(d)

@@ -958,6 +958,13 @@
       "owner_hint": "scripts/lib/cio_web_librarian.py"
     },
     {
+      "name": "schema:CIOCapitalPlanDecision@v1",
+      "kind": "schema",
+      "classification": "NOT_OPERATOR_RELEVANT",
+      "reason": "Append-only audit record of each capital-plan position decision id (cio_capital_plan_decision_store), read by the decision-lineage endpoint so a churned id stays resolvable; the decision itself is surfaced by the capital-plan / CIO NOW table and its stages by the decision-lineage panel.",
+      "owner_hint": "scripts/lib/cio_capital_plan_decision_store.py"
+    },
+    {
       "name": "schema:StageApplicability@v1",
       "kind": "schema",
       "classification": "NOT_OPERATOR_RELEVANT",

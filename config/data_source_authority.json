@@ -2587,6 +2587,48 @@
         }
       ],
       "_writer_note": "Wave 5 O-W5-3 (06 §5–§6): 2 attempts per 10 min per lane; the lane's own systemd unit only (class A); S-W4-1 sudoers is needed only for system units, which this never restarts."
+    },
+    {
+      "domain": "capital_plan_decisions",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-03",
+        "reference": "Decision Lineage Join Plan Phase 3 — operator approved all phases 2026-10-03 (artifact https://claude.ai/artifact/C89ctZQYdYWg8onPMiCjyD, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1402",
+        "scope": "CIOCapitalPlanDecision@v1 — append-only, one row per capital-plan position decision id the first time a plan build produces it; keeps churned ids resolvable for decision lineage"
+      },
+      "store": {
+        "file": "cio/cio_capital_plan_decisions.jsonl"
+      },
+      "writer": "scripts/lib/cio_capital_plan_decision_store.py",
+      "cadence": "on capital-plan build (GET /api/v2/cio/capital-plan)",
+      "stale_after_hours": 168,
+      "projection": null,
+      "required_fields": [
+        "decision_id",
+        "decision_input_digest",
+        "recorded_at",
+        "source_ref"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 24,
+          "expected_seconds": 10
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Join design Phase 3 (2026-10-03). Written best-effort from api_v2._cio_capital_plan after the plan is built; an in-process id index keyed on (size, mtime_ns) means repeat builds parse nothing and only unseen ids append. Read by api_v3_cio.get_cio_decision_lineage."
     }
   ]
 }

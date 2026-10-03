@@ -938,6 +938,14 @@ GATES = [
             "tests/test_ai_analyst_cache_fails_closed.py",
         ],
     ),
+    # Join design Phases 3-4 (operator-approved 2026-10-03): durable capital-plan
+    # decision ids, run decision_ids stamping, framework refs per decision.
+    (
+        "lineage_phase34_20261003",
+        [
+            "tests/test_lineage_phase34_20261003.py",
+        ],
+    ),
     (
         "ai_analyst_freshness_sla",
         [

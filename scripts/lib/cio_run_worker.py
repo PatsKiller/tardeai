@@ -65,6 +65,20 @@ def _run_identity(run: dict[str, Any] | None) -> dict[str, Any] | None:
     return None
 
 
+def _produced_decision_ids(synthesis_result: dict[str, Any] | None) -> list[str]:
+    """Decision ids the run's synthesis actually produced (its investment product).
+
+    The product synthesis returns ``decision_id`` (cio_books_*) and, once
+    persisted, ``product_id`` (prod_cio_books_*); the lineage endpoint resolves
+    either. A fallback synthesis with neither produces no ids — none are minted.
+    """
+    result = (synthesis_result or {}).get("result")
+    if not isinstance(result, dict):
+        return []
+    ids = [str(result.get(k) or "").strip() for k in ("decision_id", "product_id")]
+    return list(dict.fromkeys(i for i in ids if i))
+
+
 # ── Constants ────────────────────────────────────────────────────────────────
 
 ADVISORY_ONLY_TOOLS = frozenset({
@@ -436,6 +450,7 @@ class CIORunWorker:
             # Persist the canonical CIO stage against this run before delivery.
             # The lineage writer is an audit projection; failures never alter
             # the governed advisory workflow.
+            produced_decision_ids = _produced_decision_ids(synthesis_result)
             try:
                 from scripts.lib.cio_lineage import record_cio_generation
                 generation_id = synthesis_result.get("generation_id") or synthesis_result.get("artifact_id")
@@ -444,6 +459,7 @@ class CIORunWorker:
                         str(run_id),
                         generation_id=str(generation_id),
                         identity=_run_identity(run),
+                        decision_ids=produced_decision_ids,
                     )
             except Exception:
                 log.debug("CIO lineage projection unavailable", exc_info=True)
@@ -491,6 +507,7 @@ class CIORunWorker:
                     "material_generation": result.get("synthesis_artifact_id"),
                     "notification_id": (ids[0] if ids else None),
                     "observational_only": True,
+                    "decision_ids": produced_decision_ids,
                 }
                 persist_canonical_checkpoint(
                     production_state_root(),

@@ -1650,6 +1650,22 @@ def get_cio_decision_lineage(decision_id: str) -> dict[str, Any]:
 
         decision = dict(load_known_decision_catalog().get(did) or {})
         decision_source = "cio_capital_plan"
+        # Durable record of capital-plan decisions: keeps an id the operator saw
+        # resolvable after its text churns, and carries the fields the live
+        # catalog strips. Live catalog fields win.
+        try:
+            from scripts.lib.cio_capital_plan_decision_store import load_decision
+
+            cio_dir_env = os.getenv("TRADEAI_CIO_DIR")
+            stored = load_decision(
+                did, path=Path(cio_dir_env) / "cio_capital_plan_decisions.jsonl" if cio_dir_env else None,
+            )
+            if stored:
+                if not decision:
+                    decision_source = "CIOCapitalPlanDecision@v1"
+                decision = {**stored, **decision}
+        except Exception:
+            pass
         try:
             import api_v2 as _v2
 
