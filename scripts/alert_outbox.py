@@ -138,9 +138,25 @@ def publish_legacy_message(message: str, *, source_producer: str = "legacy_send_
     none could ever close: 41 open, 41 distinct dedupe keys, 0 resolved, oldest
     2026-09-16.
     """
+    # Canonical contract is the first classification boundary for every raw producer.
+    # Keep the established AlertEvent adapter below during migration so existing
+    # occurrence/dedupe rows and route policy remain replay-compatible.
+    try:
+        from scripts.lib.message_contract import audit_unknown, classify_message
+    except ImportError:  # direct ``python scripts/alert_outbox.py`` imports
+        from lib.message_contract import audit_unknown, classify_message  # type: ignore
+    envelope = classify_message(message, producer=source_producer)
+    audit_unknown(envelope)
     event = classify_legacy_message(message, source_producer=source_producer)
     payload = dict(event.payload)
     payload["bypass_router_requested"] = bool(bypass_router)
+    payload["message_contract"] = {
+        "message_type": envelope.message_type,
+        "schema_version": envelope.schema_version,
+        "registry_version": "telegram-formatting-registry@v1",
+        "classification_reason": envelope.classification_reason,
+        "dedupe_key": envelope.dedupe_key,
+    }
     event = AlertEvent(**{**event.__dict__, "payload": payload})
     return publish_event(event, resolving=resolving)
 
