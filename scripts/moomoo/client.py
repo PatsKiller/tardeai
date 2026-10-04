@@ -155,7 +155,8 @@ class FutuTransport:
             try:
                 with self._quiet():
                     for s in list(self._subscribed):
-                        self.unsubscribe_book(s)
+                        if "#" not in s:          # TICKER keys are released by ctx.close()
+                            self.unsubscribe_book(s)
                     self._ctx.close()
             except Exception:
                 pass
@@ -248,7 +249,44 @@ class FutuTransport:
             "bids": _pairs(book.get("Bid")),
             "asks": _pairs(book.get("Ask")),
             "ts": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
+            # OpenD's own receive times (exchange-local strings, may be empty) so a caller can
+            # measure book age instead of trusting the fetch time.
+            "svr_recv_time_bid": str(book.get("svr_recv_time_bid") or ""),
+            "svr_recv_time_ask": str(book.get("svr_recv_time_ask") or ""),
         }
+
+    # ── tape + snapshot time (Active Trader Phase 1 alerts; read plane only) ─────
+    def get_ticker(self, symbol: str, num: int = 50) -> list[dict]:
+        """Last `num` prints [{time, price, volume, direction}] oldest→newest. Subscribes TICKER
+        on first use (quote quota, released when the context closes). Exchange-local time."""
+        from futu import RET_OK, SubType
+        sym = to_futu_symbol(symbol)
+        key = f"{sym}#TICKER"
+        if key not in self._subscribed:
+            with self._quiet():
+                ret, msg = self._context().subscribe([sym], [SubType.TICKER], subscribe_push=False)
+            if ret != RET_OK:
+                raise MoomooUnavailable(f"TICKER subscribe refused for {sym}: {str(msg)[:120]}")
+            self._subscribed.add(key)
+        with self._quiet():
+            ret, data = self._context().get_rt_ticker(sym, num=int(num))
+        if ret != RET_OK or data is None:
+            raise MoomooUnavailable(f"ticker failed for {sym}: {str(data)[:120]}")
+        return [{"time": str(r.get("time")), "price": r.get("price"), "volume": r.get("volume"),
+                 "direction": str(r.get("ticker_direction") or "NEUTRAL")}
+                for r in data.to_dict("records")]
+
+    def get_snapshot_time(self, symbol: str) -> dict:
+        """{last, update_time} from the market snapshot — exchange-local update time, so
+        callers can measure quote age instead of trusting the fetch time."""
+        from futu import RET_OK
+        sym = to_futu_symbol(symbol)
+        with self._quiet():
+            ret, data = self._context().get_market_snapshot([sym])
+        if ret != RET_OK or data is None or len(data) == 0:
+            raise MoomooUnavailable(f"snapshot failed for {sym}: {str(data)[:120]}")
+        row = data.iloc[0]
+        return {"last": row.get("last_price"), "update_time": str(row.get("update_time"))}
 
 
 class MoomooTradeReader:
