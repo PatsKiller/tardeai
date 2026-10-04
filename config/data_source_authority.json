@@ -2629,6 +2629,42 @@
         }
       ],
       "_writer_note": "Join design Phase 3 (2026-10-03). Written best-effort from api_v2._cio_capital_plan after the plan is built; an in-process id index keyed on (size, mtime_ns) means repeat builds parse nothing and only unseen ids append. Read by api_v3_cio.get_cio_decision_lineage."
+    },
+    {
+      "domain": "cio_operator_artifacts",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-03",
+        "reference": "CIO completeness gap closure - operator approved ONE append-only store for operator-relevant CIO outputs 2026-10-03 (session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1419",
+        "scope": "CIOOperatorArtifact@v1 - append-only, one row per (original_schema, artifact_id) for operator-relevant CIO outputs that were otherwise transient (advisory messages/syntheses, agent briefs, attention answers, what-changed, wake compositions and narratives, Grok critiques, investment decisions, intelligence cards)"
+      },
+      "store": {
+        "file": "cio/cio_operator_artifacts.jsonl"
+      },
+      "writer": "scripts/lib/cio_operator_artifacts.py",
+      "cadence": "event-driven (written when a hooked producer composes or sends an output)",
+      "stale_after_hours": 168,
+      "projection": null,
+      "required_fields": [
+        "original_schema",
+        "artifact_id",
+        "producer",
+        "persisted_at"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Best-effort hooks at each producer's final point; recording never blocks or changes a send. Payloads bounded at 32 KB with an explicit truncation marker. Read by api_v3_cio.get_cio_operator_artifacts (GET /api/v3/cio/operator-artifacts). BuyReady packets are served from their own store, not copied."
     }
   ]
 }

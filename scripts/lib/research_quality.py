@@ -75,6 +75,14 @@ def critique(result: dict[str, Any], *, backend: str = "lint",
     live["backend"] = "live"
     live["lint_verdict"] = lint.get("verdict")
     live["lint_reasons"] = lint.get("reasons")
+    try:
+        from scripts.lib.cio_operator_artifacts import record_grok_critique
+
+        record_grok_critique(live, producer="research_quality.critique_live",
+                             artifact_id=f"{research_id}:{plan_id}" if research_id else None,
+                             links={"research_id": research_id, "plan_id": plan_id})
+    except Exception:
+        pass
     return live
 
 

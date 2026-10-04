@@ -1,6 +1,7 @@
 import { useApi } from '../../hooks/useApi'
 import { Link } from 'react-router-dom'
 import { RADIUS } from '../../lib/designTokens'
+import CioOperatorArtifactsPanel from './CioOperatorArtifactsPanel'
 import { isCioLineageState, stageValueText, type CioLineageState } from '../../lib/cioDecisionLineage'
 
 type Stage = {
@@ -146,6 +147,7 @@ export default function CioDecisionLineagePanel({ decisionId }: Props) {
           </div>
         </div>
       )}
+      {lineage && decisionId && <CioOperatorArtifactsPanel decisionId={decisionId} compact />}
     </section>
   )
 }

@@ -53035,6 +53035,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.cached_heavy("brain", _cio.get_cio_brain_v1)
                 if p == "scorecard":
                     return 200, _cio.get_cio_scorecard()
+                if p == "operator-artifacts":
+                    return 200, _cio.get_cio_operator_artifacts(query if isinstance(query, dict) else None)
                 if p in ("", "dashboard"):
                     return 200, _cio.cached_heavy("dashboard", _cio.get_cio_dashboard)
                 if p == "home":

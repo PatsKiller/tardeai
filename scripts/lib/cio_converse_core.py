@@ -457,6 +457,13 @@ def process_operator_message(
         ans = answer_attention_query(text)
         final_reply = _prepare_reply(ans.get("text") or "No material page. READ_ONLY_ADVISORY.",
                                      _attention_provenance(ans))
+        try:
+            from scripts.lib.cio_operator_artifacts import record_attention_answer
+
+            record_attention_answer({**ans, "question": text[:500], "reply": final_reply, "channel": channel},
+                                    producer="cio_converse_core.attention")
+        except Exception:
+            pass
         sent = _send(final_reply, reply_to=reply_to_message_id)
         out.update({
             "handled": True,
