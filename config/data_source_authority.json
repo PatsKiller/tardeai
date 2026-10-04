@@ -2636,7 +2636,7 @@
       "approval": {
         "approved_by": "operator",
         "approved_on": "2026-10-03",
-        "reference": "Policy Review P3 counterfactual ledger for blocked ideas — operator approved 2026-10-03 (artifact https://claude.ai/artifact/A9hC1prwHkkt3WbvTDBxiv, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); follows #1417 — update to this PR number when opened",
+        "reference": "Policy Review P3 counterfactual ledger for blocked ideas — operator approved 2026-10-03 (artifact https://claude.ai/artifact/A9hC1prwHkkt3WbvTDBxiv, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1425",
         "scope": "CounterfactualLedger@v1 — append-only, one row per blocked idea (gate, symbol, ET day) and a new version when its 1/5/20-session measurement changes; observation only"
       },
       "store": {
