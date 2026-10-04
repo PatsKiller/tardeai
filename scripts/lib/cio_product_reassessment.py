@@ -557,6 +557,18 @@ def _enqueue_material_product_outbox(
             if not (body or "").strip():
                 # T1: inverted invalidation / empty card — do not enqueue.
                 continue
+            try:
+                from scripts.lib.cio_operator_artifacts import record_intelligence_card
+
+                art_pid = str(product.get("product_id") or "")
+                record_intelligence_card(
+                    {**card, "rendered_text": body}, producer="cio_product_reassessment.cards",
+                    artifact_id=f"{art_pid}:{transition_key}" if art_pid else None,
+                    links={"symbol": sym, "decision_id": card.get("decision_id")},
+                    source_as_of=str(product.get("as_of") or "") or None, root=root,
+                )
+            except Exception:
+                pass
             # Belt-and-suspenders: never enqueue a legacy raw dump body.
             if is_raw_product_dump_body(body):
                 log.warning(
@@ -867,6 +879,20 @@ def reassess_on_research_completed(
             changed, parent.get("symbol")
         )
         persist_product(product, root=root)
+        try:
+            from scripts.lib.cio_operator_artifacts import record_what_changed
+
+            art_pid = str(product.get("product_id") or "")
+            record_what_changed(
+                {"schema": WHAT_CHANGED_SCHEMA, "product_id": art_pid or None, "what_changed": changed,
+                 "notification_change_scope": product.get("notification_change_scope")},
+                producer="cio_product_reassessment", artifact_id=f"{art_pid}:what_changed" if art_pid else None,
+                links={"decision_id": product.get("decision_id"), "research_id": parent.get("research_id"),
+                       "symbol": parent.get("symbol")},
+                source_as_of=str(product.get("as_of") or "") or None, root=root,
+            )
+        except Exception:
+            pass
         impact = research_impact(
             symbol=str(parent.get("symbol") or ""),
             result_id=str(result_id),

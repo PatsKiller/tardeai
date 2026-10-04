@@ -11,12 +11,14 @@ import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import CioDecisionLineagePanel from '../components/cio/CioDecisionLineagePanel'
 import CioCounterfactualPanel from '../components/cio/CioCounterfactualPanel'
 import CioOperatorEvidencePanel from '../components/cio/CioOperatorEvidencePanel'
+import CioOperatorArtifactsPanel from '../components/cio/CioOperatorArtifactsPanel'
 import CioSourceClocksPanel from '../components/cio/CioSourceClocksPanel'
 import CioOfficeHomeProjections from '../components/cio/CioOfficeHomeProjections'
 import CioProductHealthPanel from '../components/cio/CioProductHealthPanel'
 import CioThesisDelegationPanel from '../components/cio/CioThesisDelegationPanel'
 import CioThesisResearchContextPanel from '../components/cio/CioThesisResearchContextPanel'
 import CioRecordLedgersPanel from '../components/cio/CioRecordLedgersPanel'
+import CioLessonDigestPanel from '../components/cio/CioLessonDigestPanel'
 import { cioDeepLinkFocus, decisionLineageHref } from '../lib/cioDecisionLineage'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
@@ -2253,10 +2255,11 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'full-brain' && <CioBrainPanel />}
           {evidenceSub === 'operator-evidence' && <><CioSourceClocksPanel /><CioOperatorEvidencePanel /></>}
           {evidenceSub === 'institutional-cognition' && <CioOperatorEvidencePanel section="cognition" />}
-          {evidenceSub === 'learning-cockpit' && <><CioOperatorEvidencePanel section="learning" /><CioRecordLedgersPanel /></>}
+          {evidenceSub === 'learning-cockpit' && <><CioOperatorEvidencePanel section="learning" /><CioLessonDigestPanel /><CioRecordLedgersPanel /></>}
           {evidenceSub === 'blocked-ideas' && <CioCounterfactualPanel />}
           {evidenceSub === 'capability-coverage' && <CioOperatorEvidencePanel section="coverage" />}
           {evidenceSub === 'decision-lineage' && <CioDecisionLineagePanel decisionId={decisionRaw || null} />}
+          {evidenceSub === 'cio-outputs' && <CioOperatorArtifactsPanel />}
           {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (
             <div style={{ padding: '12px 0', color: 'var(--text2)', fontSize: 13 }}>Loading evidence…</div>
           )}
@@ -2292,6 +2295,7 @@ function EvidenceCommsSubnav({ active, onSelect }: { active: string; onSelect: (
     { id: 'blocked-ideas', label: 'Blocked ideas' },
     { id: 'capability-coverage', label: 'Capability coverage' },
     { id: 'decision-lineage', label: 'Decision lineage' },
+    { id: 'cio-outputs', label: 'CIO outputs' },
   ]
   return (
     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }} role="tablist" aria-label="Evidence subsections">

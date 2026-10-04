@@ -3121,6 +3121,35 @@ def get_cio_counterfactuals(query: dict[str, Any] | None = None) -> dict[str, An
     }
 
 
+def get_cio_operator_artifacts(query: dict[str, Any] | None = None) -> dict[str, Any]:
+    """GET /api/v3/cio/operator-artifacts — CIOOperatorArtifact@v1 rows, newest first.
+
+    Operator-relevant CIO outputs that used to be transient (sent on Telegram or
+    used inside a cycle and never stored), plus BuyReady packets from their own
+    store. Filters: schema, decision_id, symbol, limit (<= 200). Fail-soft.
+    """
+    q = query if isinstance(query, dict) else {}
+
+    def one(key: str) -> str | None:
+        v = q.get(key)
+        if isinstance(v, list):
+            v = v[0] if v else None
+        return str(v).strip() or None if v is not None else None
+
+    try:
+        from scripts.lib.cio_operator_artifacts import list_operator_artifacts
+
+        try:
+            limit = int(one("limit") or 50)
+        except ValueError:
+            limit = 50
+        return {"ok": True, **list_operator_artifacts(schema=one("schema"), decision_id=one("decision_id"),
+                                                      symbol=one("symbol"), limit=limit)}
+    except Exception as e:
+        return {"ok": False, "error": type(e).__name__, "detail": str(e)[:200],
+                "authority": AUTHORITY_ADVISORY, "artifacts": [], "as_of": _now_iso()}
+
+
 def get_cio_scorecard() -> dict[str, Any]:
     """GET /api/v3/cio/scorecard — Overview ops tiles (working vs not). Fail-soft."""
     try:
