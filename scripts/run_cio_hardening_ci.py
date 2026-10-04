@@ -985,6 +985,11 @@ GATES = [
         ],
     ),
     # Optional falsifier in the options / buy-ready CIO reviews (operator-approved 2026-10-03).
+    # Empty Fidelity stop registry retires its stops; no baked-in fallback (2026-10-03).
+    (
+        "fidelity_registry_empty_20261003",
+        ["tests/test_fidelity_registry_empty_20261003.py", "tests/test_fidelity_stop_sync.py"],
+    ),
     (
         "review_falsifier_20261003",
         ["tests/test_review_falsifier_20261003.py"],
@@ -1002,6 +1007,11 @@ GATES = [
         [
             "tests/test_lineage_phase34_20261003.py",
         ],
+    ),
+    # Dark WIRE debt: DecisionRationale on decisions + lineage; thesis event wake in SHADOW (2026-10-03).
+    (
+        "dark_wire_rationale_wake_20261003",
+        ["tests/test_dark_wire_rationale_wake_20261003.py"],
     ),
     # Hermes research joins the options review that asked for it (MORE_RESEARCH follow-up).
     (
