@@ -1,0 +1,40 @@
+{
+  "schema": "OperatorPolicyProposal@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "created": "2026-10-03",
+  "source": "Policy Review https://claude.ai/artifact/A9hC1prwHkkt3WbvTDBxiv (Before you ratify)",
+  "note": "Nothing here is policy until the operator confirms it. scripts/apply_operator_policy_proposal.py is a dry run unless --apply is given.",
+  "measured_portfolio_2026_10_02": {
+    "total_value_usd": 1264135.09,
+    "cash_pct": 69.41,
+    "classifier_fixed_income_pct": 0.0,
+    "classifier_other_pct": 12.74,
+    "manual_read": "fixed income about 0% (BND $54); alternatives about 0%, or 5.02% if SPCX (SPAC ETF) counts; the classifier files SCHD/SCHG/V/NVDA/BND under OTHER because holdings carry no asset_type"
+  },
+  "fields": [
+    {
+      "field": "concentration_hierarchy",
+      "status": "OPERATOR_DECIDED",
+      "value": {"max_single_position_pct": 12.0, "resolution_note": "operator 2026-10-03: 12%, via Claude Code session"},
+      "why": "Operator chose 12% (SCHD is 10.36%, within the cap). Concentration fire level stays the desk-thesis fallback until separately ratified."
+    },
+    {
+      "field": "fixed_income_range_pct",
+      "status": "PROPOSED",
+      "value": {"min": 0.0, "max": 20.0},
+      "why": "Includes the current measured share (about 0%), so no instant UNDERWEIGHT flag; leaves room for a bond sleeve."
+    },
+    {
+      "field": "alternatives_range_pct",
+      "status": "PROPOSED",
+      "value": {"min": 0.0, "max": 15.0},
+      "why": "Includes the current share under either reading (0-5% true alternatives; 12.74% under the crude classifier)."
+    },
+    {
+      "field": "investable_cash_definition",
+      "status": "PROPOSED",
+      "value": "cash above the $75,000 reserve, excluding earmarked redeploy funds",
+      "why": "Replaces the stored value \"75000\", a number entered into a text field."
+    }
+  ]
+}

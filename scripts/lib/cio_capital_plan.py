@@ -146,6 +146,8 @@ def cash_posture(
     cash_total: float,
     portfolio_value: float,
     min_pct: Optional[float] = None,
+    max_pct: Optional[float] = None,
+    reserve_floor_usd: Optional[float] = None,
 ) -> dict[str, Any]:
     """Classify current cash vs the policy band and split into reserve vs investable.
 
@@ -155,14 +157,18 @@ def cash_posture(
     """
     cash = max(0.0, _fnum(cash_total))
     value = max(0.0, _fnum(portfolio_value))
-    band = cash_policy_band(value, min_pct=min_pct)
+    band = cash_policy_band(value, min_pct=min_pct, max_pct=max_pct)
     cash_pct = round(cash / value * 100.0, 2) if value > 0 else 0.0
     reserve = band["min_usd"]
+    floor = _fnum(reserve_floor_usd) if reserve_floor_usd is not None else None
+    if floor is not None and floor > reserve:
+        # Ratified absolute liquidity reserve outranks a percentage floor below it.
+        reserve = floor
     investable = max(0.0, cash - reserve)
 
     if value <= 0:
         status = "NO_PORTFOLIO"
-    elif cash_pct >= band["min_pct"]:
+    elif (cash >= reserve) if floor is not None else (cash_pct >= band["min_pct"]):
         status = "ABOVE_BAND"
     elif cash >= reserve * 0.5:
         status = "IN_BAND"
@@ -575,6 +581,70 @@ def build_capital_uses(
 # Pure plan composition (no I/O)
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _ratified(policy: Optional[dict[str, Any]], name: str) -> Any:
+    """Value of an operator-confirmed investment-policy field, else None."""
+    field = ((policy or {}).get("fields") or {}).get(name) or {}
+    if field.get("operator_confirmed") or field.get("status") == "OPERATOR_CONFIRMED":
+        return field.get("value")
+    return None
+
+
+def resolve_sizing_policy(
+    risk_posture: Optional[dict[str, Any]],
+    investment_policy: Optional[dict[str, Any]],
+) -> dict[str, Any]:
+    """Sizing inputs: the ratified investment policy first, the desk thesis as fallback.
+
+    Operator decision 2026-10-03: the ratified policy drives cash and position
+    sizing; the desk thesis may only propose changes. A thesis value that
+    disagrees with a ratified one is recorded as ``thesis_proposed_changes``,
+    never applied. Each value carries its source.
+    """
+    rps = risk_posture or {}
+    sources: dict[str, str] = {}
+    proposals: list[dict[str, Any]] = []
+
+    def pick(key: str, ratified: Any, thesis_key: str, default: float) -> Optional[float]:
+        thesis = rps.get(thesis_key)
+        if ratified is not None:
+            sources[key] = "ratified"
+            if thesis is not None and abs(_fnum(thesis) - _fnum(ratified)) > 1e-9:
+                proposals.append({"field": key, "ratified": _fnum(ratified), "thesis_proposed": _fnum(thesis),
+                                  "status": "PROPOSED_NOT_APPLIED"})
+            return _fnum(ratified)
+        if thesis is not None:
+            sources[key] = "desk_thesis_fallback"
+            return _num(thesis, default)
+        sources[key] = "default"
+        return default
+
+    cash_range = _ratified(investment_policy, "cash_target_range_pct") or {}
+    concentration = _ratified(investment_policy, "concentration_hierarchy") or {}
+    reserve = _ratified(investment_policy, "minimum_liquidity_reserve_usd")
+    out = {
+        "cash_band_min_pct": pick("cash_band_min_pct", cash_range.get("min") if cash_range else None,
+                                  "cash_band_min_pct", CASH_BAND_DEFAULT_MIN_PCT),
+        "cash_band_max_pct": pick("cash_band_max_pct", cash_range.get("max") if cash_range else None,
+                                  "cash_band_max_pct", CASH_BAND_DEFAULT_MAX_PCT),
+        "max_single_name_pct": pick(
+            "max_single_name_pct",
+            concentration.get("max_single_position_pct", concentration.get("max_single_name_pct")) if concentration else None,
+            "max_single_name_weight_pct", MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT),
+        "concentration_fire_pct": pick("concentration_fire_pct",
+                                       concentration.get("concentration_fire_pct") if concentration else None,
+                                       "concentration_fire_pct", CONCENTRATION_FIRE_PCT_DEFAULT),
+    }
+    if reserve is not None:
+        out["reserve_floor_usd"] = _fnum(reserve)
+        sources["reserve_floor_usd"] = "ratified"
+    else:
+        out["reserve_floor_usd"] = None
+        sources["reserve_floor_usd"] = "none"
+    out["policy_source"] = sources
+    out["thesis_proposed_changes"] = proposals
+    return out
+
+
 def build_capital_plan(
     *,
     portfolio_value: float,
@@ -592,6 +662,7 @@ def build_capital_plan(
     concentration_fire_pct: Optional[float] = None,
     account_cash: Optional[list[dict[str, Any]]] = None,
     cash_as_of: Optional[dict[str, Any]] = None,
+    investment_policy: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Build the full Capital Plan projection (advisory only).
 
@@ -603,12 +674,16 @@ def build_capital_plan(
     value = max(0.0, _fnum(portfolio_value))
     cash = max(0.0, _fnum(cash_total))
 
-    min_pct = cash_band_min_pct if cash_band_min_pct is not None else _num(
-        rps.get("cash_band_min_pct"), CASH_BAND_DEFAULT_MIN_PCT)
-    max_name_pct = max_single_name_pct if max_single_name_pct is not None else _num(
-        rps.get("max_single_name_weight_pct"), MAX_SINGLE_NAME_WEIGHT_PCT_DEFAULT)
-    conc_pct = concentration_fire_pct if concentration_fire_pct is not None else _num(
-        rps.get("concentration_fire_pct"), CONCENTRATION_FIRE_PCT_DEFAULT)
+    sizing = resolve_sizing_policy(rps, investment_policy)
+    # Explicit arguments (fixtures, what-if callers) still win and are labelled.
+    for arg, key in ((cash_band_min_pct, "cash_band_min_pct"), (max_single_name_pct, "max_single_name_pct"),
+                     (concentration_fire_pct, "concentration_fire_pct")):
+        if arg is not None:
+            sizing[key] = _fnum(arg)
+            sizing["policy_source"][key] = "explicit_argument"
+    min_pct = sizing["cash_band_min_pct"]
+    max_name_pct = sizing["max_single_name_pct"]
+    conc_pct = sizing["concentration_fire_pct"]
 
     # Accept raw or normalized positions; normalize once for all sub-computations.
     norm_positions = [
@@ -616,7 +691,8 @@ def build_capital_plan(
         if p is not None
     ]
 
-    posture = cash_posture(cash, value, min_pct=min_pct)
+    posture = cash_posture(cash, value, min_pct=min_pct, max_pct=sizing["cash_band_max_pct"],
+                           reserve_floor_usd=sizing["reserve_floor_usd"])
     sources = build_capital_sources(
         norm_positions, queue=queue, redeploy_open_events=redeploy_open_events,
         cash_total=cash,
@@ -786,6 +862,7 @@ def build_capital_plan(
                                       deploy_request=uses["total_deploy_request_usd"],
                                       uncertainty_high=_uncertainty_high(queue, sector_opportunities)),
         "position_decisions": position_decisions,
+        "sizing_policy": sizing,
     }
 
     key_raw = json.dumps({
@@ -1417,6 +1494,7 @@ def build_capital_plan_from_sources(
     divergence_map: Optional[dict[str, Any]] = None,
     now: Optional[datetime] = None,
     attach_financial_truth_gate: bool = True,
+    investment_policy: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Compose the full plan from already-fetched canonical state (convenience).
 
@@ -1437,6 +1515,7 @@ def build_capital_plan_from_sources(
         now=now,
         account_cash=snap.get("account_cash"),
         cash_as_of=snap.get("cash_as_of"),
+        investment_policy=investment_policy,
     )
     if attach_financial_truth_gate and holdings_doc is not None:
         try:

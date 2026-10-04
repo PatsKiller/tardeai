@@ -35573,6 +35573,18 @@ def _risk_posture(desk: Optional[dict] = None) -> dict:
     return head.get("risk_posture_structured") or {}
 
 
+def _ratified_investment_policy() -> Optional[dict]:
+    """Operator investment policy (ratified fields drive sizing; operator 2026-10-03). Fail-soft."""
+    try:
+        from scripts.lib.cio_operator_investment_policy import build_operator_investment_policy
+
+        return build_operator_investment_policy(
+            store_path=str(PROJECT_ROOT / "data" / "cio" / "operator_profile.jsonl"), repo_root=PROJECT_ROOT
+        )
+    except Exception:
+        return None
+
+
 def _cio_capital_plan(query=None):
     """GET /api/v2/cio/capital-plan — Alex's Capital Plan + Position Decision table.
 
@@ -35603,6 +35615,7 @@ def _cio_capital_plan(query=None):
             redeploy_open_events=open_events,
             sector_opportunities=sectors,
             risk_posture=posture,
+            investment_policy=_ratified_investment_policy(),
         )
         try:
             from scripts.lib.cio_capital_plan_decision_store import framework_fields, record_position_decisions
