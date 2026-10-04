@@ -301,6 +301,12 @@ body { font-family: var(--sans); background: var(--bg0); color: var(--text0); }
     gap: 6px;
     min-height: 44px;
     padding: calc(2px + env(safe-area-inset-top, 0px)) 8px 2px !important;
+    /* A flex child sizes to its content by default (min-width: auto): a long
+       value (PORT ⚠ $1,264,135) widened the line to 393px at 390px and the whole
+       page scrolled sideways. Cap it at the strip; the cells shrink instead. */
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
   }
   /* Beats the later `.metric-strip { padding: 8px 10px !important }` mobile rule. */
   .app-shell .metric-strip { padding: 0 !important; }
