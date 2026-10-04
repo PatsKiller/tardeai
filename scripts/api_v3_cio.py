@@ -249,6 +249,43 @@ def _read_jsonl(path: Path, *, decision_id: str | None = None) -> list[dict[str,
         return parse(handle)
 
 
+def _read_jsonl_tail(path: Path, n: int, *, block: int = 65536) -> list[dict[str, Any]]:
+    """Exactly ``_read_jsonl(path)[-n:]`` without parsing the whole file.
+
+    Reads backwards in blocks and stops once ``n`` rows survive the same filters
+    (blank lines, undecodable JSON and non-dict rows are skipped). Home took the
+    last 2-4 rows of three logs by parsing all of them: the 27 MB wake-job log
+    alone cost ~230 MB RSS per /v3/cio/home build.
+    """
+    if n <= 0 or not path.exists():
+        return []
+    found: list[dict[str, Any]] = []
+    with open(path, "rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        pos = handle.tell()
+        carry = b""
+        while pos > 0 and len(found) < n:
+            step = min(block, pos)
+            pos -= step
+            handle.seek(pos)
+            lines = (handle.read(step) + carry).splitlines()
+            # Until the start of the file, the first piece may be a partial line.
+            carry = lines.pop(0) if pos > 0 and lines else b""
+            for raw in reversed(lines):
+                line = raw.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(row, dict):
+                    found.append(row)
+                    if len(found) == n:
+                        break
+    return list(reversed(found))
+
+
 def _natural_runtime_decision(decision_id: str, cio_root: Path) -> dict[str, Any]:
     """Resolve an exact natural CIO product or agent decision read-only.
 
@@ -343,16 +380,86 @@ def _cio_snapshot_data() -> dict[str, Any]:
         return {"error": "Data Broker unavailable", "detail": str(e)[:200], "domains": {}, "health": {}}
 
 
-def _cio_actions_data(limit: int = 20) -> list[dict[str, Any]]:
-    """Get CIO actions from the event-sourced JSONL ledger."""
-    ledger_path = PROJECT_ROOT / "data" / "cio" / "cio_action_ledger.jsonl"
-    events = _read_jsonl(ledger_path)
-    actions: dict[str, dict[str, Any]] = {}
+_OPEN_ACTIONS_CACHE: dict[str, Any] = {"key": None, "rows": None}
+_OPEN_ACTIONS_LOCK = threading.Lock()
+_OPEN_ACTIONS_MIN_K = 50
 
-    for event in events:
+
+def _cio_actions_data(limit: int = 20) -> list[dict[str, Any]]:
+    """Get CIO actions from the event-sourced JSONL ledger.
+
+    The ledger is ~71 MB with ~52k open actions; materializing every event to
+    return the newest 20 cost ~150-460 MB of RSS per /v3/cio/home build. The
+    newest ``k`` open actions are now computed in two streaming passes and
+    cached per ledger version (size, mtime_ns); callers get copies.
+    """
+    import copy
+
+    ledger_path = PROJECT_ROOT / "data" / "cio" / "cio_action_ledger.jsonl"
+    try:
+        st = ledger_path.stat()
+    except OSError:
+        return []
+    k = max(int(limit), _OPEN_ACTIONS_MIN_K)
+    with _OPEN_ACTIONS_LOCK:
+        cached = _OPEN_ACTIONS_CACHE["key"]
+        if cached and cached[:3] == (str(ledger_path), st.st_size, st.st_mtime_ns) and cached[3] >= k:
+            return copy.deepcopy(_OPEN_ACTIONS_CACHE["rows"][:limit])
+    rows = _newest_open_actions(ledger_path, k)
+    with _OPEN_ACTIONS_LOCK:
+        _OPEN_ACTIONS_CACHE["key"] = (str(ledger_path), st.st_size, st.st_mtime_ns, k)
+        _OPEN_ACTIONS_CACHE["rows"] = rows
+    return copy.deepcopy(rows[:limit])
+
+
+def _iter_jsonl(path: Path) -> Any:
+    """Stream the rows ``_read_jsonl(path)`` would return, one at a time."""
+    with open(path, encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(row, dict):
+                yield row
+
+
+def _newest_open_actions(ledger_path: Path, k: int) -> list[dict[str, Any]]:
+    """The first ``k`` of: open actions sorted newest-first, exactly as the full
+    projection would order them (CREATED replaces, UPDATED merges into an
+    existing action; stable sort on created_at, reverse).
+
+    Pass 1 keeps only each action's final status and created_at; pass 2
+    materializes the payloads of the ``k`` selected actions only.
+    """
+    state: dict[str, dict[str, Any]] = {}
+    for event in _iter_jsonl(ledger_path):
         payload = event.get("payload", {})
         aid = payload.get("cio_action_id")
         if not aid:
+            continue
+        event_type = event.get("event_type", "")
+        if event_type == "CIO_ACTION_CREATED":
+            # A re-CREATE replaces the payload but keeps the action's position.
+            state[aid] = {k2: payload[k2] for k2 in ("status", "created_at") if k2 in payload}
+        elif event_type == "CIO_ACTION_UPDATED":
+            if aid in state:
+                for k2 in ("status", "created_at"):
+                    if k2 in payload:
+                        state[aid][k2] = payload[k2]
+    open_ids = [aid for aid, st in state.items() if st.get("status") in ("OPEN", "ACKNOWLEDGED")]
+    ordered = sorted(open_ids, key=lambda aid: state[aid].get("created_at", ""), reverse=True)[:k]
+    del state, open_ids
+    keep = set(ordered)
+
+    actions: dict[str, dict[str, Any]] = {}
+    for event in _iter_jsonl(ledger_path):
+        payload = event.get("payload", {})
+        aid = payload.get("cio_action_id")
+        if not aid or aid not in keep:
             continue
         event_type = event.get("event_type", "")
         if event_type == "CIO_ACTION_CREATED":
@@ -360,12 +467,7 @@ def _cio_actions_data(limit: int = 20) -> list[dict[str, Any]]:
         elif event_type == "CIO_ACTION_UPDATED":
             if aid in actions:
                 actions[aid].update(payload)
-
-    open_actions = [
-        a for a in actions.values()
-        if a.get("status") in ("OPEN", "ACKNOWLEDGED")
-    ]
-    return sorted(open_actions, key=lambda a: a.get("created_at", ""), reverse=True)[:limit]
+    return [actions[aid] for aid in ordered]
 
 
 def _delegation_data() -> dict[str, Any]:
@@ -471,8 +573,8 @@ def _public_plan(plan: dict[str, Any]) -> dict[str, Any]:
     return out
 
 
-def get_cio_plans(*, limit: int = 30, situation_type: Optional[str] = None) -> dict[str, Any]:
-    store = _plan_store()
+def get_cio_plans(*, limit: int = 30, situation_type: Optional[str] = None, store: Any = None) -> dict[str, Any]:
+    store = store if store is not None else _plan_store()
     rows = store.list_open_plans(situation_type=situation_type, limit=limit)
     return {
         "ok": True,
@@ -483,7 +585,7 @@ def get_cio_plans(*, limit: int = 30, situation_type: Optional[str] = None) -> d
     }
 
 
-def _coverage_plan_index(limit: int = 5000) -> list[dict[str, Any]]:
+def _coverage_plan_index(limit: int = 5000, *, store: Any = None) -> list[dict[str, Any]]:
     """Read-only open-plan projection for coverage counting (Wave 2 slice 12b).
 
     The fields the coverage counter AND the notification block read. Fail-soft
@@ -499,7 +601,7 @@ def _coverage_plan_index(limit: int = 5000) -> list[dict[str, Any]]:
     a consumer branches on is worse than a short one.
     """
     try:
-        rows = _plan_store().list_open_plans(limit=limit)
+        rows = (store if store is not None else _plan_store()).list_open_plans(limit=limit)
     except Exception:
         return []
     out: list[dict[str, Any]] = []
@@ -1353,12 +1455,18 @@ def get_cio_home() -> dict[str, Any]:
 
     thesis = (get_cio_thesis() or {}).get("thesis") or None
     actions = _cio_actions_data(20)
-    plans = (get_cio_plans(limit=12) or {}).get("plans") or []
+    # One plan-store load serves both reads below (each load parses the ~40 MB
+    # projection); a store that fails to open falls back to the old behaviour.
+    try:
+        plan_store = _plan_store()
+    except Exception:
+        plan_store = None
+    plans = (get_cio_plans(limit=12, store=plan_store) or {}).get("plans") or []
     # Wave 2 slice 12b: `plans` above is the 12-row CIO NOW window and must stay
     # that size. Coverage counts open plans against the whole store, through a
     # minimal read-only projection (_public_plan drops hermes_result_id, which
     # coverage.with_research needs). Nothing is minted, nothing is written.
-    coverage_plans = _coverage_plan_index()
+    coverage_plans = _coverage_plan_index(store=plan_store)
     # Wave 2 slice 16: same-sector context for S6 names only. Fail-soft — a
     # sector-map problem must not blank /v3/cio/home.
     try:
@@ -1381,21 +1489,21 @@ def get_cio_home() -> dict[str, Any]:
         for name, h in sorted((((report or {}).get("manifest") or {}).get("input_hashes") or {}).items())
     ]
     validator_states = []
-    for rev in _read_jsonl(PROJECT_ROOT / "data" / "cio" / "sentinel_reviews.jsonl")[-3:]:
+    for rev in _read_jsonl_tail(PROJECT_ROOT / "data" / "cio" / "sentinel_reviews.jsonl", 3):
         validator_states.append({
             "reviewer": rev.get("reviewer"),
             "status": rev.get("status"),
             "contradictions": rev.get("contradictions"),
             "ts": rev.get("timestamp"),
         })
-    for sc in _read_jsonl(PROJECT_ROOT / "data" / "cio" / "darwin_scorecards.jsonl")[-2:]:
+    for sc in _read_jsonl_tail(PROJECT_ROOT / "data" / "cio" / "darwin_scorecards.jsonl", 2):
         validator_states.append({
             "reviewer": sc.get("scorer"),
             "status": sc.get("event_type"),
             "ts": sc.get("timestamp"),
         })
     run_ids = []
-    for w in _read_jsonl(PROJECT_ROOT / "data" / "cio" / "cio_wake_jobs.jsonl")[-4:]:
+    for w in _read_jsonl_tail(PROJECT_ROOT / "data" / "cio" / "cio_wake_jobs.jsonl", 4):
         run_ids.append({
             "id": w.get("wake_id") or w.get("event_id"),
             "state": w.get("state") or w.get("event_type"),
