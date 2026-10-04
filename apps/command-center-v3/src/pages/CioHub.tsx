@@ -17,6 +17,7 @@ import CioProductHealthPanel from '../components/cio/CioProductHealthPanel'
 import CioThesisDelegationPanel from '../components/cio/CioThesisDelegationPanel'
 import CioThesisResearchContextPanel from '../components/cio/CioThesisResearchContextPanel'
 import CioRecordLedgersPanel from '../components/cio/CioRecordLedgersPanel'
+import CioLessonDigestPanel from '../components/cio/CioLessonDigestPanel'
 import { cioDeepLinkFocus, decisionLineageHref } from '../lib/cioDecisionLineage'
 import { NotificationGatePanel, SensesEvidencePanel, TelegramReceiptsPanel } from './MaturityPanels'
 import { cioLabel, formatAsOfET } from '../lib/cioLabels'
@@ -2253,7 +2254,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'full-brain' && <CioBrainPanel />}
           {evidenceSub === 'operator-evidence' && <><CioSourceClocksPanel /><CioOperatorEvidencePanel /></>}
           {evidenceSub === 'institutional-cognition' && <CioOperatorEvidencePanel section="cognition" />}
-          {evidenceSub === 'learning-cockpit' && <><CioOperatorEvidencePanel section="learning" /><CioRecordLedgersPanel /></>}
+          {evidenceSub === 'learning-cockpit' && <><CioOperatorEvidencePanel section="learning" /><CioLessonDigestPanel /><CioRecordLedgersPanel /></>}
           {evidenceSub === 'capability-coverage' && <CioOperatorEvidencePanel section="coverage" />}
           {evidenceSub === 'decision-lineage' && <CioDecisionLineagePanel decisionId={decisionRaw || null} />}
           {evidenceSub === 'cio-outputs' && <CioOperatorArtifactsPanel />}
