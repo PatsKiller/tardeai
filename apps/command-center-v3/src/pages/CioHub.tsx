@@ -9,6 +9,7 @@ import CioScorecardStrip, { type ScorecardPayload, type ScorecardTile } from '..
 import CioJudgmentBand from '../components/cio/CioJudgmentBand'
 import CioEvidenceModal from '../components/cio/CioEvidenceModal'
 import CioDecisionLineagePanel from '../components/cio/CioDecisionLineagePanel'
+import CioCounterfactualPanel from '../components/cio/CioCounterfactualPanel'
 import CioOperatorEvidencePanel from '../components/cio/CioOperatorEvidencePanel'
 import CioSourceClocksPanel from '../components/cio/CioSourceClocksPanel'
 import CioOfficeHomeProjections from '../components/cio/CioOfficeHomeProjections'
@@ -2253,6 +2254,7 @@ export default function CioHub({ onDrill: _onDrill }: Props) {
           {evidenceSub === 'operator-evidence' && <><CioSourceClocksPanel /><CioOperatorEvidencePanel /></>}
           {evidenceSub === 'institutional-cognition' && <CioOperatorEvidencePanel section="cognition" />}
           {evidenceSub === 'learning-cockpit' && <><CioOperatorEvidencePanel section="learning" /><CioRecordLedgersPanel /></>}
+          {evidenceSub === 'blocked-ideas' && <CioCounterfactualPanel />}
           {evidenceSub === 'capability-coverage' && <CioOperatorEvidencePanel section="coverage" />}
           {evidenceSub === 'decision-lineage' && <CioDecisionLineagePanel decisionId={decisionRaw || null} />}
           {!home && (evidenceSub === 'report' || evidenceSub === 'audit') && (
@@ -2287,6 +2289,7 @@ function EvidenceCommsSubnav({ active, onSelect }: { active: string; onSelect: (
     { id: 'operator-evidence', label: 'Operator evidence' },
     { id: 'institutional-cognition', label: 'Institutional cognition' },
     { id: 'learning-cockpit', label: 'Learning cockpit' },
+    { id: 'blocked-ideas', label: 'Blocked ideas' },
     { id: 'capability-coverage', label: 'Capability coverage' },
     { id: 'decision-lineage', label: 'Decision lineage' },
   ]

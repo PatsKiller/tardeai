@@ -2931,6 +2931,51 @@ def get_cio_snapshot() -> dict[str, Any]:
     return {"ok": True, "as_of": _now_iso(), "snapshot": _cio_snapshot_data()}
 
 
+def get_cio_counterfactuals(query: dict[str, Any] | None = None) -> dict[str, Any]:
+    """GET /api/v3/cio/counterfactuals — what blocked ideas did afterwards (CounterfactualLedger@v1).
+
+    Read-only over the append-only ledger; latest measurement per block. Bounded.
+    """
+    q = query or {}
+
+    def _one(key: str) -> str:
+        v = q.get(key)
+        if isinstance(v, list):
+            v = v[0] if v else ""
+        return str(v or "").strip()
+
+    try:
+        from scripts.lib import counterfactual_ledger as cl
+
+        rows = list(cl.latest_rows().values())
+    except Exception as e:  # noqa: BLE001
+        return {"ok": False, "error": type(e).__name__, "detail": str(e)[:200],
+                "authority": AUTHORITY_ADVISORY, "schema": "CounterfactualLedger@v1"}
+    if not rows:
+        return {"ok": True, "status": "NO_LEDGER_YET", "summary": [], "rows": [],
+                "authority": AUTHORITY_ADVISORY, "schema": "CounterfactualLedger@v1", "as_of": _now_iso()}
+    gate = _one("gate")
+    if gate:
+        rows = [r for r in rows if r.get("gate") == gate]
+    try:
+        limit = max(1, min(int(_one("limit") or 100), 500))
+    except ValueError:
+        limit = 100
+    rows.sort(key=lambda r: str(r.get("blocked_at") or ""), reverse=True)
+    return {
+        "ok": True,
+        "status": "LIVE",
+        "schema": "CounterfactualLedger@v1",
+        "authority": AUTHORITY_ADVISORY,
+        "financial_action": False,
+        "as_of": _now_iso(),
+        "source_as_of": max((str(r.get("recorded_at") or "") for r in rows), default=None),
+        "summary": cl.summarize(rows),
+        "rows": rows[:limit],
+        "row_count": len(rows),
+    }
+
+
 def get_cio_scorecard() -> dict[str, Any]:
     """GET /api/v3/cio/scorecard — Overview ops tiles (working vs not). Fail-soft."""
     try:

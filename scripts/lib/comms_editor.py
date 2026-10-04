@@ -382,6 +382,47 @@ def _resolve_primary_symbols(explicit: Optional[Iterable[str]]) -> Optional[list
     return scope_primary_symbols(cv)
 
 
+# Words that are also tickers. In operator prose they are almost always the word:
+# 14 days to 2026-10-03 the top "disagreeing tickers" were B (51), D (50) and
+# "ONE" (which held an operator approval request). They count as a subject only
+# when the text marks them: $ONE, "ticker ONE", or the security's own GUID.
+_AMBIGUOUS_WORDS = frozenset({
+    "A", "AI", "ALL", "AM", "AN", "ANY", "ARE", "AT", "BE", "BEST", "BIG", "BY", "CAN", "CASH", "DAY",
+    "DO", "EVER", "FOR", "FUN", "GO", "GOOD", "HAS", "HE", "HOLD", "HOPE", "IT", "KEY", "LIFE", "LOVE",
+    "LOW", "MAIN", "MORE", "NEW", "NICE", "NOW", "ON", "ONE", "OPEN", "OUT", "PLAY", "PR", "REAL", "RUN",
+    "SAFE", "SEE", "SO", "TOP", "TRUE", "TWO", "UP", "WELL",
+})
+_GUARD_APPROVAL = re.compile(r"Approval requested", re.I)
+_GUARD_CODE = re.compile(r"/(?:approve|deny)\s+\S+", re.I)
+
+
+def is_operator_approval_request(text: str) -> bool:
+    """A guard grant request (scripts/guard_request_approval.py). Never held."""
+    plain = re.sub(r"<[^>]+>", " ", text or "")
+    return bool(_GUARD_APPROVAL.search(plain) and _GUARD_CODE.search(plain))
+
+
+def _marked_as_ticker(text: str, symbol: str, guid: str = "") -> bool:
+    plain = re.sub(r"<[^>]+>", " ", text or "")
+    sym = re.escape(symbol)
+    if re.search(rf"\${sym}(?![A-Za-z])", plain):
+        return True
+    if re.search(rf"\b(?:ticker|symbol)\s*:?\s*{sym}(?![A-Za-z])", plain, re.I):
+        return True
+    return bool(guid) and guid in plain
+
+
+def unambiguous_subjects(text: str, subs: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Drop single letters and word-tickers the text does not mark as tickers."""
+    out = []
+    for s in subs:
+        sym = str(s.get("symbol") or "").upper()
+        if (len(sym) == 1 or sym in _AMBIGUOUS_WORDS) and not _marked_as_ticker(text, sym, s.get("guid") or ""):
+            continue
+        out.append(s)
+    return out
+
+
 def cio_views(symbols: list[str], db_query: Optional[Callable[..., list[dict]]]) -> dict[str, dict[str, Any]]:
     """The CIO's latest decision per symbol in the last 3 days."""
     if not symbols or db_query is None:
@@ -685,7 +726,7 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
     was_html = parse_mode == "HTML" or looks_like_html(body)
 
     primary = _resolve_primary_symbols(primary_symbols)
-    subs = subjects(body, resolve=resolve)
+    subs = unambiguous_subjects(body, subjects(body, resolve=resolve))
     if primary is not None:
         allow = set(primary)
         # Keep GUID rows for primary only; never invent links for body bleed.
@@ -734,7 +775,7 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
         if html_body != body:
             changes.append("markdown_to_html")
 
-    held = _hold_reason(body, disagree, missing)
+    held = None if is_operator_approval_request(body) else _hold_reason(body, disagree, missing)
     prior = ledger.check(chat_id, fp, now)
 
     footer: list[str] = []
@@ -791,7 +832,7 @@ def commit(decision: EditorDecision, *, chat_id: Any, now: Optional[datetime] = 
 
 
 __all__ = ["DuplicateLedger", "EditorDecision", "PILL_HOUSE", "PILL_MODEL", "PILL_OUTSIDE", "build_outbound_links",
-           "cc_base", "cio_disagreements", "cio_missing_decisions", "commit", "default_db_query", "edit",
+           "cc_base", "cio_disagreements", "is_operator_approval_request", "unambiguous_subjects", "cio_missing_decisions", "commit", "default_db_query", "edit",
            "fingerprint", "markdown_to_html", "message_guid", "mode", "reset_primary_symbols",
            "rewrite_bullish_to_watch", "set_primary_symbols", "soft_block_rewrite_symbols", "subjects",
            "symbol_links"]

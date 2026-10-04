@@ -2769,6 +2769,23 @@
         "path": "data/runtime/agent_number_grounding_slo_last_run.json"
       },
       "note": "Daily measurement of the RATIFIED agent number-grounding SLO (config/agent_number_grounding_slo.json, ratified 2026-09-30). Read-only DB query; writes one JSON receipt; exits 1 on breach (logged, never blocks an answer). No LLM spend."
+    },
+    {
+      "lane_id": "counterfactual-ledger",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-03",
+      "state_reason": "Operator approved the counterfactual ledger 2026-10-03 (Policy Review P3); the daily line awaits the operator's cron grant. Proposed: 40 7 * * 1-5 cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/counterfactual_ledger.lock $PY scripts/build_counterfactual_ledger.py --apply >> logs/counterfactual_ledger.log 2>&1",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/cio/counterfactual_ledger.jsonl"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "scripts/build_counterfactual_ledger.py is deterministic (no LLM), dry-run by default, append-only on --apply. Installing the line needs a cron grant; until then the lane is declared, not scheduled."
     }
   ],
   "undeclared_baseline": [
