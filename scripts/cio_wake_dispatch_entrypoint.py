@@ -297,6 +297,21 @@ def main(argv: list[str] | None = None):
         result["error_count"],
     )
 
+    # ── Step 1a: thesis-coverage wakes for dispatched bus events. SHADOW unless
+    # the operator sets SYMBOL_THESIS_EVENT_WAKE_MODE=active with
+    # PERSISTENT_WAKE_ENABLED=1; in SHADOW it only plans and writes receipts.
+    try:
+        from scripts.lib.symbol_thesis_event_wake import consume_dispatched_wakes
+
+        stw = consume_dispatched_wakes(result.get("dispatched") or [])
+        log.info(
+            "symbol_thesis_event_wake mode=%s considered=%s planned=%s duplicates=%s unmapped=%s checks_run=%s",
+            stw.get("mode"), stw.get("considered"), stw.get("planned"), stw.get("duplicates"),
+            stw.get("unmapped"), stw.get("checks_run"),
+        )
+    except Exception:
+        log.exception("symbol_thesis_event_wake unavailable (fail-soft)")
+
     # ── Step 1b: M5 evidence ──────────────────────────────────────────
     # The record consult happens inside poll_and_dispatch, before any claim.
     # Emit what it changed, to the log AND to a durable artifact, so the proof

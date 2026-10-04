@@ -500,6 +500,16 @@ def project_decision_lineage(
                  "specialist_delegation", "specialist_disagreement", "model_route", "judgment",
                  "counter_thesis", "confidence", "falsifier", "notification"):
         stages[name] = keyed(name)
+    # The producer's DecisionRationale@v1 for THIS decision, shown with the judgment.
+    # It carries only producer-stated fields (decision_rationale.py); never reasoning text.
+    rationale = d.get("rationale") if isinstance(d.get("rationale"), dict) else None
+    if rationale and rationale.get("schema") == "DecisionRationale@v1" and _text(rationale.get("decision_id")) == did:
+        stages["judgment"]["rationale"] = {
+            k: rationale.get(k) for k in (
+                "conclusion", "structured_reason_codes", "evidence_refs", "model_provider",
+                "context_digest", "source_ref", "as_of", "schema",
+            ) if rationale.get(k) not in (None, "", [])
+        }
 
     cognition_refs = d.get("cognition_refs") if isinstance(d.get("cognition_refs"), dict) else {}
     cognition_skip = (
