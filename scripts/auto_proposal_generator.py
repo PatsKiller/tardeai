@@ -349,6 +349,58 @@ def _contract_target_account(cfg: dict) -> str | None:
     return str(acct).strip() if acct else None
 
 
+ADVISORY_ALERT = "advisory_alert"
+
+
+def _contract_delivery(cfg: dict) -> str:
+    """How a fully-gated signal is delivered: "proposal" (default) or "advisory_alert".
+
+    advisory_alert (operator 2026-10-03, momentum_scalp): no paper_trade_proposals row is created,
+    so nothing downstream can route or submit it; the operator gets an immediate alert instead.
+    """
+    raw = str(_proposal_contract(cfg).get("delivery") or "proposal").strip().lower()
+    return ADVISORY_ALERT if raw == ADVISORY_ALERT else "proposal"
+
+
+def _window_end_et(cfg: dict) -> str:
+    win = ((cfg or {}).get("intraday_execution") or {}).get("trading_window_et") or {}
+    return str(win.get("end") or "12:00")
+
+
+def _inside_window(cfg: dict, now: datetime | None = None) -> bool:
+    """True inside intraday_execution.trading_window_et (ET). No window configured = True."""
+    win = ((cfg or {}).get("intraday_execution") or {}).get("trading_window_et") or {}
+    if not win.get("start") or not win.get("end"):
+        return True
+    from zoneinfo import ZoneInfo
+    et = (now or datetime.now(timezone.utc)).astimezone(ZoneInfo("America/New_York"))
+    hm = et.strftime("%H:%M")
+    return str(win["start"]) <= hm < str(win["end"])
+
+
+def deliver_advisory_alert(conn, run_label: str, sig: dict, sizing: dict, rg: dict, cfg: dict,
+                           *, send=None, session: str | None = None) -> dict:
+    """Run the pre-promotion gate, then alert the operator instead of creating a proposal."""
+    if not _inside_window(cfg):
+        record_decision(conn, run_label, sig, "SKIPPED_OUTSIDE_WINDOW", [f"window ends {_window_end_et(cfg)} ET"], None, sizing, rg)
+        return {"decision": "SKIPPED_OUTSIDE_WINDOW"}
+    blockers = _pre_promotion_blockers(sig)
+    if blockers:
+        record_decision(conn, run_label, sig, "SKIPPED_PREPROMOTION", ["pre-promotion gate blocked"] + [str(b) for b in blockers][:4], None, sizing, rg)
+        return {"decision": "SKIPPED_PREPROMOTION", "blockers": blockers}
+    try:
+        from lib.scalp_advisory_alert import send_advisory_alert
+    except ImportError:
+        from scripts.lib.scalp_advisory_alert import send_advisory_alert  # type: ignore
+    if session is None:
+        from zoneinfo import ZoneInfo
+        session = datetime.now(ZoneInfo("America/New_York")).date().isoformat()
+    gates = {"score": True, "liquidity": True, "catalyst": True, "critic": True, "pre_promotion": True}
+    receipt = send_advisory_alert(sig, gates=gates, window_end_et=_window_end_et(cfg), session=session, send=send)
+    record_decision(conn, run_label, sig, "ADVISORY_ALERT", [receipt.get("status", "")], None, sizing, rg)
+    return {"decision": "ADVISORY_ALERT", "receipt": receipt}
+
+
 def _account_mode(conn, account_label: str) -> str | None:
     try:
         with conn.cursor() as cur:
@@ -534,6 +586,13 @@ def _liquidity_prescreen(symbol: str, rules: dict, strategy_id: str = None) -> t
     return True, ""
 
 
+def _strategy_filter() -> tuple:
+    """(only, exclude) strategy-id sets from AUTO_PROPOSAL_STRATEGIES / ..._EXCLUDE_STRATEGIES."""
+    def _ids(name: str) -> set:
+        return {x.strip() for x in (os.getenv(name) or "").split(",") if x.strip()}
+    return _ids("AUTO_PROPOSAL_STRATEGIES"), _ids("AUTO_PROPOSAL_EXCLUDE_STRATEGIES")
+
+
 def get_eligible_signals(conn, run_label=None, symbol=None, min_score=40) -> list:
     """Get current-day planned strategy signals eligible for auto-proposal."""
     cur = conn.cursor()
@@ -561,6 +620,15 @@ def get_eligible_signals(conn, run_label=None, symbol=None, min_score=40) -> lis
     if symbol:
         sql += " AND symbol = %s"
         params.append(symbol)
+    # Lane split (operator 2026-10-03): the momentum-scalp lane runs 06:00-12:00 ET on its own
+    # line (AUTO_PROPOSAL_STRATEGIES=momentum_scalp); the 9-16 line excludes it. Unset = all.
+    only, skip = _strategy_filter()
+    if only:
+        sql += " AND strategy_id = ANY(%s)"
+        params.append(sorted(only))
+    if skip:
+        sql += " AND NOT (strategy_id = ANY(%s))"
+        params.append(sorted(skip))
     sql += " ORDER BY signal_score DESC NULLS LAST"
     cur.execute(sql, params)
     cols = [d[0] for d in cur.description]
@@ -1041,11 +1109,11 @@ def _proposal_cio_view(conn, symbol):
         return None
 
 
-def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
-                         auto_run_id: int, available_cols: set,
-                         auto_context: dict = None) -> int | None:
-    """Insert a PENDING paper proposal. Returns proposal_id."""
-    # PROMOTE-1: Pre-promotion readiness gate
+def _pre_promotion_blockers(signal: dict) -> list:
+    """PROMOTE-1 pre-promotion readiness gate. Blockers, or [] when the signal may proceed.
+
+    Shared by proposal creation and the advisory-alert delivery so neither skips the gate.
+    """
     try:
         from pre_promotion_readiness_policy import evaluate_pre_promotion_readiness
         # Compute scan age from fired_at — screener signals have fresh price data from Finviz
@@ -1082,9 +1150,19 @@ def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
         })
         if _pre["blockers"]:
             log.warning(f"[auto_gen] BLOCKED by pre-promotion gate: {signal.get('symbol')} — {_pre['blockers']}")
-            return None
+            return list(_pre["blockers"])
     except Exception as _e:
         log.warning(f"[auto_gen] Pre-promotion check failed: {_e}")
+    return []
+
+
+def create_auto_proposal(conn, signal: dict, sizing: dict, risk_gate: dict,
+                         auto_run_id: int, available_cols: set,
+                         auto_context: dict = None) -> int | None:
+    """Insert a PENDING paper proposal. Returns proposal_id."""
+    # PROMOTE-1: Pre-promotion readiness gate
+    if _pre_promotion_blockers(signal):
+        return None
 
     entry = float(signal.get("entry_high") or 0)
     stop = float(signal.get("stop_loss") or 0)
@@ -1647,6 +1725,16 @@ def run_auto_proposals(conn, run_label: str = None, symbol: str = None,
                 stats["proposals_created"] += 1
                 stats["details"].append({"symbol": sym, "decision": "WOULD_CREATE", "strategy_id": sid,
                                          "shares": sizing["adjusted_shares"], "dollar_risk": sizing["adjusted_dollar_risk"]})
+            elif _contract_delivery(_load_strategy_config(sid)) == ADVISORY_ALERT:
+                _adv = deliver_advisory_alert(conn, run_label, sig, sizing, rg, _load_strategy_config(sid))
+                conn.commit()
+                if _adv["decision"] == "ADVISORY_ALERT":
+                    stats["advisory_alerts"] = stats.get("advisory_alerts", 0) + 1
+                else:
+                    stats["proposals_skipped"] += 1
+                log.info(f"  {sym}: {_adv['decision']} (advisory delivery; no proposal created)")
+                stats["details"].append({"symbol": sym, "decision": _adv["decision"], "strategy_id": sid,
+                                         "alert_status": (_adv.get("receipt") or {}).get("status")})
             else:
                 _tgt_acct, _tgt_skip = resolve_contract_target_account(conn, _load_strategy_config(sid))
                 if _tgt_skip:

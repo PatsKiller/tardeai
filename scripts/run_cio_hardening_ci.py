@@ -957,6 +957,16 @@ GATES = [
         "health_finviz_scalp_20261003",
         ["tests/test_health_finviz_scalp_20261003.py"],
     ),
+    # Momentum scalps are advisory alerts, 06:00-12:00 ET, one 8% spread limit (operator 2026-10-03).
+    (
+        "scalp_advisory_20261003",
+        ["tests/test_scalp_advisory_20261003.py"],
+    ),
+    # Shadow ignition engine skips startup DDL when its schema exists (crashed on lock timeouts from 09-17).
+    (
+        "scalp_shadow_schema_20261003",
+        ["tests/test_scalp_shadow_logger_schema_20261003.py"],
+    ),
     # CIO-LEARNING-001 compares due and matured from the same checkpoint store (2026-10-03).
     (
         "cio_learning_finding_20261003",
