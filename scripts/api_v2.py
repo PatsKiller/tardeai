@@ -53040,6 +53040,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_methodology_policy_v1()
                 if p in ("brain/learning-review", "brain/learning_review"):
                     return 200, _cio.get_learning_review_v1()
+                if p in ("lessons/digest", "lessons_digest"):
+                    return 200, _cio.get_lessons_digest_v1()
                 if p in ("brain/intelligence-lifecycle", "brain/intelligence_lifecycle"):
                     return 200, _cio.get_intelligence_lifecycle_v1(
                         (query or {}).get("symbol") if isinstance(query, dict) else None

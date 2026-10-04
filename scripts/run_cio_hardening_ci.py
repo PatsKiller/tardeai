@@ -998,6 +998,11 @@ GATES = [
             "tests/test_lineage_phase34_20261003.py",
         ],
     ),
+    # Policy Review P2: only outcome-backed lessons queue; Darwin scores only market outcomes (2026-10-03).
+    (
+        "lesson_queue_darwin_20261003",
+        ["tests/test_lesson_queue_darwin_20261003.py"],
+    ),
     # Hermes research joins the options review that asked for it (MORE_RESEARCH follow-up).
     (
         "lineage_run_hermes_join_20261003",
