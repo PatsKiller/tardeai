@@ -138,7 +138,11 @@ def evaluate_strategy_match(config: dict, signal: dict) -> dict:
     for disq in (config.get("auto_disqualifiers") or []):
         did = disq.get("id", "?")
         condition = disq.get("condition", "")
-        if _check_disqualifier(condition, signal):
+        if disq.get("threshold_from"):
+            hit = _check_ref_disqualifier(condition, disq["threshold_from"], config, signal)
+        else:
+            hit = _check_disqualifier(condition, signal)
+        if hit:
             disqualifiers_hit.append(did)
 
     # Scoring adjustments — use YAML weights for bonus factors too
@@ -211,6 +215,31 @@ def evaluate_strategy_match(config: dict, signal: dict) -> dict:
         "scoring_model_version": "yaml_weighted_v1",
         "scoring_weights_used": weights_used,
     }
+
+
+def _config_path(config: dict, dotted: str):
+    cur = config
+    for part in str(dotted).split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _check_ref_disqualifier(condition: str, threshold_from: str, config: dict, signal: dict) -> bool:
+    """`<field> > <name>` whose threshold is read from another config key (one source, no literal).
+
+    An unresolvable threshold or a missing field never disqualifies, matching _check_disqualifier.
+    """
+    try:
+        field = str(condition).split()[0]
+        threshold = _config_path(config, threshold_from)
+        actual = signal.get(field)
+        if threshold is None or actual is None:
+            return False
+        return float(actual) > float(threshold)
+    except (ValueError, TypeError, IndexError):
+        return False
 
 
 def _check_disqualifier(condition: str, signal: dict) -> bool:

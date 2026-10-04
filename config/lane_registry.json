@@ -2769,6 +2769,23 @@
         "path": "data/runtime/agent_number_grounding_slo_last_run.json"
       },
       "note": "Daily measurement of the RATIFIED agent number-grounding SLO (config/agent_number_grounding_slo.json, ratified 2026-09-30). Read-only DB query; writes one JSON receipt; exits 1 on breach (logged, never blocks an answer). No LLM spend."
+    },
+    {
+      "lane_id": "momentum-scalp-advisory-alerts",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/10 6-11 * * 1-5 cd $PROJ && flock -n /tmp/auto_proposal_scalp.lock env AUTO_PROPOSAL_STRATEGIES=momentum_scalp timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal_scalp.log 2>&1",
+        "match": "AUTO_PROPOSAL_STRATEGIES=momentum_scalp"
+      },
+      "expected_cadence_hours": 0.17,
+      "active_days": [0, 1, 2, 3, 4],
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "logs/auto_proposal_scalp.log"
+      },
+      "note": "Operator 2026-10-03: momentum scalps are ADVISORY. 06:00-12:00 ET every 10 min, momentum_scalp only; fully-gated setups become one Telegram alert per symbol+setup per session (data/scalp/scalp_advisory_alerts.jsonl), no paper proposal. The 9-16 generator line excludes momentum_scalp."
     }
   ],
   "undeclared_baseline": [
@@ -2804,7 +2821,7 @@
     "*/15 9-16 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/safe_flock.sh /tmp/alpaca_live_read_sync.lock /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python scripts/alpaca_live_read_sync.py >> /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/logs/alpaca_live_read_sync.log 2>&1",
     "*/2 * * * * bash /home/johnclaw/.config/tradeai/bin/run_telegram_callback_poller_current.sh",
     "*/2 * * * * bash /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT/scripts/portfolio_server_watchdog.sh",
-    "*/2 6-11 * * 1-5 cd $PROJ && flock -n /tmp/momentum_scalp_validation_fp.lock $PY scripts/momentum_scalp_validation_fast_path.py --submit-sandbox >> logs/momentum_scalp_validation_fast_path.log 2>&1",
+    "*/2 6-11 * * 1-5 cd $PROJ && flock -n /tmp/momentum_scalp_validation_fp.lock $PY scripts/momentum_scalp_validation_fast_path.py --dry-run >> logs/momentum_scalp_validation_fast_path.log 2>&1",
     "*/2 9-16 * * 1-5 cd $PROJ && bash $PROJ/scripts/safe_flock.sh /tmp/paper_monitor.lock $PY scripts/paper_trade_monitor.py >> logs/paper_monitor.log 2>&1",
     "*/2 9-16 * * 1-5 cd $PROJ && set -a && . .env && set +a && bash scripts/market_day_gate.sh .venv/bin/python scripts/send_telegram_proposal_alert.py --mode pending --send >> logs/proposal_alerts.log 2>&1",
     "*/20 * * * * cd $PROJ && $PY scripts/log_error_scraper.py >> logs/log_error_scraper.log 2>&1",
@@ -2831,7 +2848,7 @@
     "*/30 9-15 * * 1-5 cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild && bash /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts/safe_flock.sh /tmp/tradeai_atp2_reval.lock bash scripts/market_day_gate.sh .venv/bin/python scripts/run_automated_trade_proposal_revalidation.py --apply --limit 50 >> logs/atp2_proposal_revalidation_cron.log 2>&1",
     "*/30 9-16 * * 1-5 cd $PROJ && $PY scripts/proposal_lifecycle.py >> logs/proposal_lifecycle.log 2>&1",
     "*/30 9-16 * * 1-5 cd $PROJ && CURATION_AUTO_APPLY=1 flock -n /tmp/watch_directives_service.lock env AGENT_DECISION_PAYLOAD=1 $PY scripts/watch_directives_service.py --apply >> logs/watch_directives_service.log 2>&1",
-    "*/30 9-16 * * 1-5 cd $PROJ && MOMENTUM_SCALP_VALIDATION_FAST_PATH=1 MOMENTUM_SCALP_VALIDATION_SUBMIT=1 timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal.log 2>&1",
+    "*/30 9-16 * * 1-5 cd $PROJ && AUTO_PROPOSAL_EXCLUDE_STRATEGIES=momentum_scalp timeout 5m $PY scripts/auto_proposal_generator.py --today --apply >> logs/auto_proposal.log 2>&1",
     "*/30 9-16 * * 1-5 cd $PROJ && bash scripts/market_day_gate.sh bash scripts/run_protection_pipeline.sh >> logs/protection_pipeline_cron.log 2>&1  # phase194 protection-learning pipeline",
     "*/30 9-16 * * 1-5 cd $PROJ && flock -n /tmp/cloud_consensus_verdict.lock $PY scripts/cloud_consensus_verdict.py --run >> logs/cloud_consensus_verdict.log 2>&1  # cloud dual-consensus advisory verdicts, market hours only per EXTERNAL_LLM_USAGE_POLICY (installed 2026-07-05)",
     "*/30 9-16 * * 1-5 cd $PROJ && flock -n /tmp/enh_scalp.lock $PY scripts/hermes_subject_enhance.py --type scalp --lanes grok,chatgpt --apply --limit 10 >> logs/hermes_enh.log 2>&1  # H-enh scalp (Grok+ChatGPT)",
