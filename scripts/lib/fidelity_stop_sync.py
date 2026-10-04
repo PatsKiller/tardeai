@@ -209,11 +209,36 @@ def load_manual_protective_stops() -> dict[tuple[str, str], dict[str, Any]]:
         return {}
 
 
-def sync_stops(rows: list[dict[str, Any]], *, retire_absent: bool = True, apply: bool = True) -> dict[str, Any]:
+def configured_stops_account() -> str | None:
+    """Account the operator registry covers, when the registry file exists."""
+    if not FIDELITY_STOPS_CONFIG.is_file():
+        return None
+    try:
+        raw = json.loads(FIDELITY_STOPS_CONFIG.read_text())
+    except Exception:
+        return None
+    return str(raw.get("account") or "fidelity_rollover_ira")  # hardcode-ok: same default as load_fidelity_stops_config
+
+
+def sync_stops(
+    rows: list[dict[str, Any]],
+    *,
+    retire_absent: bool = True,
+    apply: bool = True,
+    retire_account: str | None = None,
+) -> dict[str, Any]:
+    """``retire_account``: the registry's account, so an empty registry retires its stops."""
     from db_adapter import _get_conn
     report: dict[str, Any] = {"applied": apply, "upserted": [], "retired": [], "errors": []}
     if not rows:
-        return {**report, "note": "no rows"}
+        if not (apply and retire_absent and retire_account):
+            return {**report, "note": "no rows"}
+        conn = _get_conn()
+        cur = conn.cursor()
+        report["retired"].extend(deactivate_stale_stops(cur, retire_account, set()))
+        conn.commit()
+        record_sync_run(report)
+        return {**report, "note": "registry empty: retired every active stop for the account"}
     by_acct: dict[str, set[str]] = {}
     conn = _get_conn()
     cur = conn.cursor()
@@ -309,7 +334,9 @@ def fidelity_stops_sync_status() -> dict[str, Any]:
 def default_fidelity_rollover_stops() -> list[dict[str, Any]]:
     """Known GTC stops — prefers config/fidelity_rollover_stops.json, else baked-in fallback."""
     cfg = load_fidelity_stops_config()
-    if cfg:
+    # A present config is the operator's registry even when it lists no stops:
+    # an empty list means every GTC was cancelled, not "use the baked-in list".
+    if cfg or FIDELITY_STOPS_CONFIG.is_file():
         return cfg
     acct = "fidelity_rollover_ira"  # hardcode-ok: fallback when config JSON missing
     return [

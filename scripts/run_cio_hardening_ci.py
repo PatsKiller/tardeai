@@ -985,6 +985,11 @@ GATES = [
         ],
     ),
     # Optional falsifier in the options / buy-ready CIO reviews (operator-approved 2026-10-03).
+    # Empty Fidelity stop registry retires its stops; no baked-in fallback (2026-10-03).
+    (
+        "fidelity_registry_empty_20261003",
+        ["tests/test_fidelity_registry_empty_20261003.py", "tests/test_fidelity_stop_sync.py"],
+    ),
     (
         "review_falsifier_20261003",
         ["tests/test_review_falsifier_20261003.py"],
