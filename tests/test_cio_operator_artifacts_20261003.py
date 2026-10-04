@@ -177,17 +177,18 @@ def test_buy_ready_packets_are_served_from_their_own_store_not_copied(store, tmp
 
 # --- completeness -------------------------------------------------------------
 
-def test_completeness_leaves_only_the_dead_producer_unsurfaced():
+def test_completeness_leaves_no_operator_relevant_output_unsurfaced():
     import subprocess
 
     proc = subprocess.run([sys.executable, str(ROOT / "scripts" / "cio_completeness_measurement.py"), "--json"],
                           cwd=ROOT, capture_output=True, text=True, timeout=600)
     data = json.loads(proc.stdout)
-    assert data["produced_not_surfaced_operator_relevant"] == ["schema:AlertQuality@v1"]
+    # AlertQuality@v1 gained a real producer (scripts/score_alert_quality.py), so nothing remains.
+    assert data["produced_not_surfaced_operator_relevant"] == []
     verified = {e["name"] for e in data["record_edges"] if e["verified"]}
     for name in ("CIOAdvisoryMessage@v1", "CIOAdvisorySynthesis@v1", "CIOAgentBrief@v1", "CIOAttentionAnswer@v1",
                  "CIOWhatChanged@v1", "CioComposedNarrative@v1", "CioModelNarration@v1", "CioWakeComposition@v1",
-                 "GrokCritique@v1", "InvestmentDecision@v1", "InvestmentIntelligenceCard@v1"):
+                 "GrokCritique@v1", "InvestmentDecision@v1", "InvestmentIntelligenceCard@v1", "AlertQuality@v1"):
         assert f"schema:{name}" in verified
     # BuyReady packets are visible through the payload flow itself (served from their own store).
     visible = data.get("visibility_evidence") or {}

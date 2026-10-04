@@ -50,8 +50,17 @@
       "name": "schema:AlertQuality@v1",
       "kind": "schema",
       "classification": "SURFACE",
-      "reason": "Alert-quality score (cio_r13_institution.score_alerts) used by scalp_outcome_scorer; comms quality is operator-relevant and is not rendered anywhere in the Command Center. No store under data/cio or data/runtime carries this schema (grep 2026-10-02): it is built transiently for the Telegram/agent path, so a CC read surface first needs the producer to persist it. Status: NOT YET SURFACED.",
-      "owner_hint": "scripts/lib/cio_r13_institution.py::score_alerts"
+      "reason": "Daily alert quality scored from the real ledgers (communication_deliveries/events and comms-editor receipts) by scripts/score_alert_quality.py via cio_r13_institution.score_alerts, persisted to cio_operator_artifacts.jsonl (operator-approved store 2026-10-03; operator chose to wire a real producer). Served by GET /api/v3/cio/operator-artifacts and rendered in Evidence & Comms > CIO outputs.",
+      "owner_hint": "scripts/score_alert_quality.py",
+      "record_edge": {
+        "route": "/api/v3/cio/operator-artifacts",
+        "path": [
+          "artifacts"
+        ],
+        "reader": "lib/cio_operator_artifacts.py::list_operator_artifacts",
+        "writer": "lib/cio_operator_artifacts.py::record_alert_quality",
+        "store": "cio_operator_artifacts.jsonl"
+      }
     },
     {
       "name": "schema:BitemporalEvaluation@v1",
