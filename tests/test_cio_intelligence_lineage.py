@@ -118,7 +118,8 @@ def test_observe_expires_only_old_cases_and_never_invents_pnl(cio: Path, monkeyp
     assert "EXPIRED" not in raw
     applied = L.observe_overdue_cases(apply=True, horizon_days=7)
     assert applied["observed_expired"] == 1
-    assert applied["scored"] >= 1
+    # EXPIRED is no market result: Darwin no longer scores it (Policy Review P2, 2026-10-03).
+    assert applied["scored"] == 0
     folded = materialize_cases(path=cio / "cio_production_cases.jsonl")
     by = {c["decision_id"]: c for c in folded}
     assert (by["dec_old"].get("outcome") or {}).get("outcome_status") == "EXPIRED"

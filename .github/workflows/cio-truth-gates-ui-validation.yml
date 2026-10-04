@@ -3,8 +3,27 @@ name: cio-truth-gates-ui-validation
 on:
   pull_request:
     paths:
+      # Fixture contract specs and the surfaces they render. The completion gate
+      # visits CIO (all tabs), Advisory, Agents, Hermes and Research Intelligence.
       - 'apps/command-center-v3/e2e/cio-truth-gates.spec.ts'
+      - 'apps/command-center-v3/e2e/cio-completion-gate.spec.ts'
+      - 'apps/command-center-v3/playwright.config.ts'
+      - 'apps/command-center-v3/src/App.tsx'
       - 'apps/command-center-v3/src/pages/CioHub.tsx'
+      - 'apps/command-center-v3/src/pages/AdvisoryDeskHub.tsx'
+      - 'apps/command-center-v3/src/pages/AgentRuntimeHub.tsx'
+      - 'apps/command-center-v3/src/pages/HermesHub.tsx'
+      - 'apps/command-center-v3/src/pages/ResearchIntelligenceHub.tsx'
+      - 'apps/command-center-v3/src/components/cio/**'
+      - 'apps/command-center-v3/src/components/Hermes*.tsx'
+      - 'apps/command-center-v3/src/components/Agent*.tsx'
+      - 'apps/command-center-v3/src/components/MetricStrip.tsx'
+      - 'apps/command-center-v3/src/lib/cio*.ts'
+      - 'apps/command-center-v3/src/lib/agent*.ts'
+      - 'apps/command-center-v3/src/lib/hermes*.ts'
+      - 'apps/command-center-v3/src/lib/advisory*.ts'
+      - 'apps/command-center-v3/src/lib/research*.ts'
+      - 'apps/command-center-v3/src/hooks/useApi.ts'
       - '.github/workflows/cio-truth-gates-ui-validation.yml'
   workflow_dispatch:
 
@@ -41,11 +60,13 @@ jobs:
           done
           cat /tmp/cio-truth-gates-ui-preview.log
           exit 1
-      - name: Focused CIO truth-gates Playwright
+      - name: CIO fixture contract Playwright (truth gates + 9-surface completion gate)
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
           CI: 'true'
-        run: npx playwright test e2e/cio-truth-gates.spec.ts --project=chromium --reporter=line
+        # Both specs intercept /api/** with fixtures: they gate rendering
+        # semantics, not live data. Live acceptance is e2e-live/ (post-deploy).
+        run: npx playwright test e2e/cio-truth-gates.spec.ts e2e/cio-completion-gate.spec.ts --project=chromium --reporter=line
       - name: Upload Playwright evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -55,5 +76,6 @@ jobs:
             apps/command-center-v3/playwright-report
             apps/command-center-v3/test-results
             docs/_evidence/autonomous_advisory_loop/cio_truth_gates
+            docs/_evidence/cio_completion/browser
             /tmp/cio-truth-gates-ui-preview.log
           if-no-files-found: warn

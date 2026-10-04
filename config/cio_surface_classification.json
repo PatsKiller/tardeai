@@ -1085,6 +1085,13 @@
       "classification": "NOT_OPERATOR_RELEVANT",
       "reason": "Audit receipt appended by scripts/expire_stale_cio_plans.py (counts and expired plan ids per run). Its effect is surfaced where the operator looks: the CIO Desk Decisions card's open-plan count, and each expired plan's status_reason on the plan itself.",
       "owner_hint": "scripts/expire_stale_cio_plans.py"
+    },
+    {
+      "name": "route:/api/v3/cio/lessons/digest",
+      "kind": "route",
+      "classification": "SURFACE",
+      "reason": "NOT YET SURFACED: weekly lesson digest under Policy Review P2 (operator-approved 2026-10-03) - up to 5 queued lessons backed by 3+ independent quality-checked settled outcomes, plus RETIRE_PROPOSED items. Operator-relevant (promotion is operator-only); the CIO hub panel is a follow-up.",
+      "owner_hint": "scripts/api_v3_cio.py::get_lessons_digest_v1"
     }
   ]
 }

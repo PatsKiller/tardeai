@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import { RADIUS } from '../../lib/designTokens'
 import { cioLabel } from '../../lib/cioLabels'
+import { routerPath } from '../../lib/cioDecisionLineage'
 
 export type ScorecardMetric = {
   key?: string
@@ -138,7 +139,7 @@ export default function CioScorecardStrip({ data, loading, error, onTileClick }:
               <div style={{ color: 'var(--text1)', fontSize: 12, lineHeight: 1.45, marginTop: 10 }}>{tile.verdict}</div>
               {tile.href ? (
                 <div style={{ marginTop: 8 }} onClick={(e) => e.stopPropagation()}>
-                  <Link to={tile.href} style={{ color: 'var(--accent)', fontSize: 11 }}>
+                  <Link to={routerPath(tile.href)} style={{ color: 'var(--accent)', fontSize: 11 }}>
                     Open related surface →
                   </Link>
                 </div>

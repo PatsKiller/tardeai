@@ -53003,6 +53003,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, _hx.get_agent_runtime_proof(query)
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+    if method == "GET" and base_path == "/api/v3/agents/calibration":
+        # AgentCalibration@v1: stated confidence vs realized hit rate (cached on store stats).
+        try:
+            from scripts.lib.agent_calibration import get_agent_calibration
+
+            return 200, {"ok": True, **get_agent_calibration(PROJECT_ROOT)}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
     if base_path.startswith("/api/v3/cio"):
         try:
@@ -53011,17 +53019,17 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             p = base_path[len("/api/v3/cio") :].strip("/")
             if method == "GET":
                 if p == "brain":
-                    return 200, _cio.get_cio_brain_v1()
+                    return 200, _cio.cached_heavy("brain", _cio.get_cio_brain_v1)
                 if p == "scorecard":
                     return 200, _cio.get_cio_scorecard()
                 if p == "operator-artifacts":
                     return 200, _cio.get_cio_operator_artifacts(query if isinstance(query, dict) else None)
                 if p in ("", "dashboard"):
-                    return 200, _cio.get_cio_dashboard()
+                    return 200, _cio.cached_heavy("dashboard", _cio.get_cio_dashboard)
                 if p == "home":
-                    return 200, _cio.get_cio_home()
+                    return 200, _cio.cached_heavy("home", _cio.get_cio_home)
                 if p in ("observability", "operations", "ops"):
-                    return 200, _cio.get_cio_observability()
+                    return 200, _cio.cached_heavy("observability", _cio.get_cio_observability)
                 if p in ("brain/maturity-contract", "brain/maturity_contract"):
                     return 200, _cio.get_brain_maturity_contract()
                 if p == "brain/policy":
@@ -53042,6 +53050,8 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                     return 200, _cio.get_methodology_policy_v1()
                 if p in ("brain/learning-review", "brain/learning_review"):
                     return 200, _cio.get_learning_review_v1()
+                if p in ("lessons/digest", "lessons_digest"):
+                    return 200, _cio.get_lessons_digest_v1()
                 if p in ("brain/intelligence-lifecycle", "brain/intelligence_lifecycle"):
                     return 200, _cio.get_intelligence_lifecycle_v1(
                         (query or {}).get("symbol") if isinstance(query, dict) else None
@@ -53053,7 +53063,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                 if p in ("brain/data-health", "brain/data_health"):
                     return 200, _cio.get_data_health_v1()
                 if p in ("investment-product", "investment-books", "books"):
-                    return 200, _cio.get_investment_product()
+                    return 200, _cio.cached_heavy("investment-product", _cio.get_investment_product)
                 if p == "dispositions":
                     return 200, _cio.get_decision_dispositions()
                 if p in ("operator-evidence", "operator_evidence"):
@@ -53129,7 +53139,7 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
                         return 400, {"ok": False, "error": "symbol required"}
                     return 200, _cio.get_ask_thesis_context(sym)
                 if p in ("desk-note", "desk_note", "synthesis"):
-                    return 200, _cio.get_cio_desk_note()
+                    return 200, _cio.cached_heavy("desk-note", _cio.get_cio_desk_note, ttl=300.0)
                 if p == "plans":
                     lim = 30
                     st = None

@@ -28,7 +28,13 @@ from typing import Any
 SCHEMA = "LessonPromotion@v1"
 PROCEDURE_SCHEMA = "Procedure@v1"
 AUTHORITY = "READ_ONLY_ADVISORY"
-STATUSES = ("QUEUED", "PROMOTED", "REFUTED", "RETIRED")
+STATUSES = ("QUEUED", "PROMOTED", "REFUTED", "RETIRED", "ARCHIVED", "RETIRE_PROPOSED")
+# Policy Review P2 (operator-approved 2026-10-03): a lesson reaches the operator queue
+# only with 3+ independent settled outcomes that pass lesson_outcome_quality.
+CASE_SUMMARY_TASK_CLASS = "CASE_SUMMARY_CONTEXT"
+POLICY_ACTOR = "policy:lesson_queue_p2"
+DIGEST_LIMIT = 5
+DIGEST_SCHEMA = "LessonDigest@v1"
 KINDS = ("LESSON", "PREFERENCE", "PLAYBOOK", "POLICY")
 
 
@@ -133,13 +139,73 @@ def gather(root: Path | None = None, env: dict | None = None) -> list[dict]:
     return list(out.values())
 
 
-def enqueue(root: Path | None = None, env: dict | None = None, *, apply: bool = False) -> dict:
-    """Append QUEUED rows for candidates not yet on the queue. Dry run by default."""
+def outcome_index(root: Path | None = None, env: dict | None = None) -> dict[str, dict]:
+    """outcome_id → settled outcome row with a priced realized_state (outcome_observations)."""
+    env = os.environ if env is None else env
+    out: dict[str, dict] = {}
+    for r in _read_jsonl(_cio_dir(root, env) / "outcome_observations.jsonl", limit=500_000):
+        rs = r.get("realized_state") if isinstance(r.get("realized_state"), dict) else {}
+        oid = r.get("outcome_id")
+        if oid and rs.get("change_pct") is not None:
+            out[str(oid)] = r
+    return out
+
+
+def _quality():
+    try:
+        import lesson_outcome_quality as q  # type: ignore
+    except ImportError:
+        from scripts.lib import lesson_outcome_quality as q  # type: ignore
+    return q
+
+
+def _supporting(proc: dict, outcomes: dict[str, dict]) -> list[dict]:
+    ids = list(((proc.get("evidence") or {}).get("supporting_outcome_ids") or []))
+    return [outcomes[i] for i in ids if i in outcomes]
+
+
+def queue_verdict(proc: dict, outcomes: dict[str, dict], *, price_on=None, daily_vol=None) -> dict:
+    """Whether a lesson may sit on the operator queue under P2, and why not."""
+    if str((proc.get("applies_to") or {}).get("task_class") or "") == CASE_SUMMARY_TASK_CLASS:
+        return {"eligible": False, "reason": "case_summary_context: no outcome attached", "independent": 0}
+    support = _supporting(proc, outcomes)
+    if not support:
+        return {"eligible": False, "reason": "no_settled_outcomes", "independent": 0}
+    q = _quality()
+    res = q.independent_quality_outcomes(support, price_on=price_on, daily_vol=daily_vol)
+    n = len(res["independent"])
+    if n < q.MIN_INDEPENDENT_OUTCOMES:
+        first = (res["rejected"][0]["reasons"][0] if res["rejected"] and res["rejected"][0]["reasons"] else "")
+        return {"eligible": False, "independent": n, "rejected": res["rejected"],
+                "reason": f"insufficient_quality_outcomes: {n} of {q.MIN_INDEPENDENT_OUTCOMES} needed"
+                          + (f" ({first})" if first else "")}
+    return {"eligible": True, "reason": "", "independent": n, "outcomes": res["independent"]}
+
+
+def enqueue(root: Path | None = None, env: dict | None = None, *, apply: bool = False,
+            price_on=None, daily_vol=None, outcome_rule: bool = True) -> dict:
+    """Append QUEUED rows for candidates not yet on the queue. Dry run by default.
+
+    With ``outcome_rule`` (default) only lessons passing P2 are queued; without price
+    lookups the quality check fails closed, so nothing outcome-less slips through.
+    """
     env = os.environ if env is None else env
     q = queue_path(root, env)
     existing = {r.get("procedure_id") for r in _read_jsonl(q)}
     cands = gather(root, env)
     new = [c for c in cands if c["procedure_id"] not in existing]
+    held: dict[str, int] = {}
+    if outcome_rule and new:
+        outcomes = outcome_index(root, env)
+        kept = []
+        for c in new:
+            v = queue_verdict(c, outcomes, price_on=price_on, daily_vol=daily_vol)
+            if v["eligible"]:
+                kept.append(c)
+            else:
+                key = v["reason"].split(":")[0]
+                held[key] = held.get(key, 0) + 1
+        new = kept
     by_src: dict[str, int] = {}
     for c in new:
         by_src[c["source"]] = by_src.get(c["source"], 0) + 1
@@ -148,8 +214,8 @@ def enqueue(root: Path | None = None, env: dict | None = None, *, apply: bool = 
         with q.open("a", encoding="utf-8") as fh:
             for c in new:
                 fh.write(json.dumps({"schema": SCHEMA, "event": "QUEUED", "ts": _now_iso(), **c, "status": "QUEUED"}, sort_keys=True, default=str) + "\n")
-    return {"candidates": len(cands), "already_queued": len(cands) - len(new), "new": len(new), "by_source": by_src,
-            "written": len(new) if apply else 0, "path": str(q)}
+    return {"candidates": len(cands), "already_queued": len(cands) - len(new) - sum(held.values()), "new": len(new),
+            "held_by_policy": held, "by_source": by_src, "written": len(new) if apply else 0, "path": str(q)}
 
 
 def state(root: Path | None = None, env: dict | None = None) -> dict[str, dict]:
@@ -180,6 +246,123 @@ def decide(procedure_id: str, decision: str, *, by: str, reason: str = "", root:
     with q.open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(row, sort_keys=True) + "\n")
     return row
+
+
+def _append(row: dict, root: Path | None, env: dict) -> dict:
+    q = queue_path(root, env)
+    q.parent.mkdir(parents=True, exist_ok=True)
+    with q.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
+    return row
+
+
+def _policy_event(procedure_id: str, event: str, reason: str, evidence: dict | None, root, env) -> dict:
+    return _append({"schema": SCHEMA, "event": event, "ts": _now_iso(), "procedure_id": procedure_id,
+                    "status": event, "decided_by": POLICY_ACTOR, "reason": str(reason)[:400],
+                    "evidence_check": evidence or {}}, root, env)
+
+
+def archive_plan(root: Path | None = None, env: dict | None = None, *, price_on=None, daily_vol=None) -> list[dict]:
+    """QUEUED lessons that fail P2: each would move to ARCHIVED with its reason (no write)."""
+    env = os.environ if env is None else env
+    outcomes = outcome_index(root, env)
+    plan = []
+    for pid, r in sorted(state(root, env).items()):
+        if r.get("status") != "QUEUED":
+            continue
+        v = queue_verdict(r, outcomes, price_on=price_on, daily_vol=daily_vol)
+        if not v["eligible"]:
+            plan.append({"procedure_id": pid, "reason": v["reason"], "source": r.get("source"),
+                         "statement": str(r.get("statement") or "")[:160]})
+    return plan
+
+
+def archive(procedure_id: str, reason: str, *, root: Path | None = None, env: dict | None = None) -> dict:
+    """Append-only ARCHIVED transition for queue hygiene. Reversible: the operator can decide() it."""
+    env = os.environ if env is None else env
+    if procedure_id not in state(root, env):
+        raise KeyError(f"{procedure_id} is not on the queue")
+    return _policy_event(procedure_id, "ARCHIVED", reason, None, root, env)
+
+
+def _sign(x: float) -> int:
+    return (x > 0) - (x < 0)
+
+
+def contradiction_plan(root: Path | None = None, env: dict | None = None, *, price_on=None, daily_vol=None) -> list[dict]:
+    """Queued/promoted lessons whose later quality outcomes disagree: proposed for retirement."""
+    env = os.environ if env is None else env
+    q = _quality()
+    outcomes = outcome_index(root, env)
+    by_key: dict[tuple[str, str], list[dict]] = {}
+    for o in outcomes.values():
+        rs = o.get("realized_state") or {}
+        by_key.setdefault((str(rs.get("symbol") or "").upper(), str(rs.get("recommendation") or "").upper()), []).append(o)
+    plan = []
+    for pid, r in sorted(state(root, env).items()):
+        if r.get("status") not in ("QUEUED", "PROMOTED"):
+            continue
+        v = queue_verdict(r, outcomes, price_on=price_on, daily_vol=daily_vol)
+        if not v["eligible"]:
+            continue
+        support = v["outcomes"]
+        claimed = _sign(sum(o["move"] for o in support))
+        rs0 = _supporting(r, outcomes)[0].get("realized_state") or {}
+        key = (str(rs0.get("symbol") or "").upper(), str(rs0.get("recommendation") or "").upper())
+        last = max(o["decision_date"] for o in support)
+        ids = {o["outcome_id"] for o in support}
+        later = [o for o in by_key.get(key, []) if o.get("outcome_id") not in ids
+                 and str((o.get("realized_state") or {}).get("decision_price_date") or "")[:10] > last]
+        res = q.independent_quality_outcomes(later, price_on=price_on, daily_vol=daily_vol)
+        against = [o for o in res["independent"] if claimed and _sign(o["move"]) == -claimed]
+        if len(against) >= q.MIN_INDEPENDENT_OUTCOMES and len(against) > len(support):
+            plan.append({"procedure_id": pid, "claimed_sign": claimed, "supporting": len(support),
+                         "contradicting": [o["outcome_id"] for o in against],
+                         "reason": f"{len(against)} later quality outcomes disagree with {len(support)} supporting"})
+    return plan
+
+
+def propose_retirement(procedure_id: str, evidence: dict, *, root: Path | None = None, env: dict | None = None) -> dict:
+    """RETIRE_PROPOSED, never RETIRED: retiring stays an operator decide()."""
+    env = os.environ if env is None else env
+    if procedure_id not in state(root, env):
+        raise KeyError(f"{procedure_id} is not on the queue")
+    return _policy_event(procedure_id, "RETIRE_PROPOSED", evidence.get("reason", ""), evidence, root, env)
+
+
+def weekly_digest(root: Path | None = None, env: dict | None = None, *, price_on=None, daily_vol=None,
+                  limit: int = DIGEST_LIMIT) -> dict:
+    """Up to ``limit`` queued lessons ranked by evidence strength, plus retirement proposals."""
+    env = os.environ if env is None else env
+    outcomes = outcome_index(root, env)
+    ranked, statuses = [], {}
+    for pid, r in state(root, env).items():
+        st = str(r.get("status") or "")
+        statuses[st] = statuses.get(st, 0) + 1
+        if st != "QUEUED":
+            continue
+        v = queue_verdict(r, outcomes, price_on=price_on, daily_vol=daily_vol)
+        if not v["eligible"]:
+            continue
+        moves = [o["move"] for o in v["outcomes"]]
+        mean = sum(moves) / len(moves)
+        consistency = sum(1 for m in moves if _sign(m) == _sign(mean)) / len(moves)
+        ranked.append({"procedure_id": pid, "statement": r.get("statement"), "source": r.get("source"),
+                       "independent_outcomes": v["independent"], "consistency": round(consistency, 3),
+                       "mean_move_pct": round(mean * 100, 3),
+                       "latest_decision_date": max(o["decision_date"] for o in v["outcomes"]),
+                       "outcome_ids": [o["outcome_id"] for o in v["outcomes"]]})
+    # Most independent outcomes, then most consistent, then most recent.
+    ranked.sort(key=lambda x: x["latest_decision_date"], reverse=True)
+    ranked.sort(key=lambda x: (x["independent_outcomes"], x["consistency"]), reverse=True)
+    retire = [{"procedure_id": pid, "statement": r.get("statement"), "reason": r.get("reason"),
+               "evidence": r.get("evidence_check")} for pid, r in state(root, env).items()
+              if r.get("status") == "RETIRE_PROPOSED"]
+    return {"schema": DIGEST_SCHEMA, "authority": AUTHORITY, "generated_at": _now_iso(),
+            "rule": f"queued only with >= {_quality().MIN_INDEPENDENT_OUTCOMES} independent quality-checked settled outcomes",
+            "candidates": ranked[:max(0, int(limit))], "eligible_total": len(ranked),
+            "retire_proposed": retire[:max(0, int(limit))], "status_counts": statuses,
+            "promotion": "operator-only: lesson_promotion_cli.py decide <id> PROMOTED --by operator:<name>"}
 
 
 def promoted(root: Path | None = None, env: dict | None = None, *, symbol: str | None = None, scope: str | None = None,

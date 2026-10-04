@@ -1,5 +1,5 @@
 import {
-  cioDeepLinkFocus, decisionFocusHref, decisionLineageHref, isCioLineageState, researchFocusHref,
+  cioDeepLinkFocus, decisionFocusHref, decisionLineageHref, isCioLineageState, researchFocusHref, routerPath,
   stageValueText,
 } from './cioDecisionLineage.ts'
 
@@ -51,3 +51,15 @@ for (const [input, expected, why] of valueCases) {
 }
 if ((stageValueText('x'.repeat(400)) || '').length !== 180) throw new Error('stageValueText must cap length')
 console.log('cioDecisionLineage.test.ts stage values: ok')
+
+// Backend hrefs (scorecard tiles, evidence refs) already carry /v3; the router adds it again.
+for (const [input, want] of [
+  ['/v3/cio?tab=research', '/cio?tab=research'],
+  ['/v3/cio?tab=evidence-comms&sub=telegram-receipts', '/cio?tab=evidence-comms&sub=telegram-receipts'],
+  ['/cio?tab=decisions', '/cio?tab=decisions'],
+  ['/v3', '/'],
+  ['/v3x/keep', '/v3x/keep'],
+] as const) {
+  if (routerPath(input) !== want) throw new Error(`routerPath(${input}) = ${routerPath(input)}, want ${want}`)
+}
+console.log('cioDecisionLineage.test.ts routerPath: ok')

@@ -952,6 +952,11 @@ GATES = [
         "cio_plan_expiry_20261003",
         ["tests/test_cio_plan_expiry_20261003.py"],
     ),
+    # Decisions card degrades only for plans overdue under the expiry rule (2026-10-03).
+    (
+        "cio_browser_gates_20261003",
+        ["tests/test_cio_browser_gates_20261003.py"],
+    ),
     # Health criticals: Finviz cookie honours the API-token backstop; scalp policy skips are policy (2026-10-03).
     (
         "health_finviz_scalp_20261003",
@@ -962,6 +967,21 @@ GATES = [
         "cio_learning_finding_20261003",
         ["tests/test_cio_learning_finding_20261003.py"],
     ),
+    # Heavy CIO compositions share one re-entrant, cached build slot (2026-10-03).
+    (
+        "cio_heavy_bound_20261003",
+        ["tests/test_cio_heavy_bound_20261003.py"],
+    ),
+    # Auto-approver survives a dropped DB connection (fail-closed); market_day_gate runs its check (2026-10-03).
+    (
+        "atm_db_gate_fix_20261003",
+        ["tests/test_atm_db_gate_fix_20261003.py"],
+    ),
+    # /v3/cio/home memory: stream the action ledger, tail-read logs, one plan-store load (2026-10-03).
+    (
+        "cio_home_memory_20261003",
+        ["tests/test_cio_home_memory_20261003.py"],
+    ),
     (
         "lineage_phase12_20261003",
         [
@@ -970,6 +990,11 @@ GATES = [
         ],
     ),
     # Optional falsifier in the options / buy-ready CIO reviews (operator-approved 2026-10-03).
+    # Empty Fidelity stop registry retires its stops; no baked-in fallback (2026-10-03).
+    (
+        "fidelity_registry_empty_20261003",
+        ["tests/test_fidelity_registry_empty_20261003.py", "tests/test_fidelity_stop_sync.py"],
+    ),
     (
         "review_falsifier_20261003",
         ["tests/test_review_falsifier_20261003.py"],
@@ -988,12 +1013,32 @@ GATES = [
             "tests/test_lineage_phase34_20261003.py",
         ],
     ),
+    # Policy Review P2: only outcome-backed lessons queue; Darwin scores only market outcomes (2026-10-03).
+    (
+        "lesson_queue_darwin_20261003",
+        ["tests/test_lesson_queue_darwin_20261003.py"],
+    ),
+    # Dark WIRE debt: DecisionRationale on decisions + lineage; thesis event wake in SHADOW (2026-10-03).
+    (
+        "dark_wire_rationale_wake_20261003",
+        ["tests/test_dark_wire_rationale_wake_20261003.py"],
+    ),
     # Hermes research joins the options review that asked for it (MORE_RESEARCH follow-up).
     (
         "lineage_run_hermes_join_20261003",
         [
             "tests/test_lineage_run_hermes_join_20261003.py",
         ],
+    ),
+    # Memory retrieval receipts carry the agent/wake/trace/decision a caller knew (operator-approved 2026-10-03).
+    (
+        "memory_retrieval_attribution_20261003",
+        ["tests/test_memory_retrieval_attribution_20261003.py"],
+    ),
+    # P1 every call is falsifiable + P4 per-agent calibration (operator 2026-10-03).
+    (
+        "falsifiable_calls_20261003",
+        ["tests/test_falsifiable_calls_20261003.py"],
     ),
     (
         "ai_analyst_freshness_sla",

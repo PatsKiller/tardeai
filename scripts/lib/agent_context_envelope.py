@@ -447,7 +447,11 @@ def get_context_for_agent(
     wake_id = str(wake.get("wake_id") or wake.get("wake_job_id") or "")
     trace_id = str(wake.get("trace_id") or "") or None
 
-    episodic_memory = _retrieve_episodic(memory_provider, symbols=symbols, plan_id=plan_id)
+    from scripts.lib.memory_retrieval_attribution import retrieval_attribution
+
+    with retrieval_attribution(agent_id=agent, wake_id=wake_id, trace_id=trace_id,
+                               decision_id=(decision or {}).get("decision_id")):
+        episodic_memory = _retrieve_episodic(memory_provider, symbols=symbols, plan_id=plan_id)
     research_merged = dict(research_memory or {})
     if not symbols:
         try:

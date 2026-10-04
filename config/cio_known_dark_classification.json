@@ -50,11 +50,11 @@
     {
       "module": "scripts/lib/decision_rationale.py",
       "cio_relevant": true,
-      "census_state": "INHERITED_DARK",
+      "census_state": "RESOLVED_SINCE_BASELINE",
       "classification": "WIRE",
-      "reason": "DecisionRationale@v1 (auditable reasons that reject private chain-of-thought) is the rationale record the evidence surface lacks. Research reason_used_or_rejected is null for most artifacts because no producer writes a reason. Consumer: the CIO judgment writer (cio_run) emits it; operator evidence displays it.",
-      "consumer_or_successor": "scripts.lib.cio_run (judgment) -> cio_operator_evidence",
-      "action_status": "PROPOSED"
+      "reason": "Wired 2026-10-03 (operator-approved): every natural decision trace and every stored capital-plan decision carries a DecisionRationale@v1 built only from producer-stated fields (gates, stance, why_now, evidence refs, policy version); decision lineage shows it with the judgment. No reasoning text is copied. The KNOWN_DARK entry can be dropped in a separate change.",
+      "consumer_or_successor": "agent_decision_payload.emit_decision_payload + cio_capital_plan_decision_store -> decision lineage (judgment.rationale)",
+      "action_status": "ALREADY_WIRED"
     },
     {
       "module": "scripts/lib/intelligence_coverage_v2.py",
@@ -68,11 +68,11 @@
     {
       "module": "scripts/lib/symbol_thesis_event_wake.py",
       "cio_relevant": true,
-      "census_state": "INHERITED_DARK",
+      "census_state": "RESOLVED_SINCE_BASELINE",
       "classification": "WIRE",
-      "reason": "Adds thesis-coverage checks to existing wake event types (watch.new_signal, hermes.research_promoted, hermes.contradiction_found...) without a new bus. Consumer: cio wake dispatch. It must stay behind the existing SHADOW wake flags until the operator flips persistent wake.",
-      "consumer_or_successor": "cio_wake_dispatch_entrypoint (SHADOW)",
-      "action_status": "PROPOSED"
+      "reason": "Wired 2026-10-03 in SHADOW (operator-approved): the CIO wake dispatcher hands dispatched EVENT_BUS wakes to consume_dispatched_wakes, which plans the thesis-coverage wake and writes SymbolThesisEventWakeReceipt@v1 receipts. ACTIVE (coverage/materiality/RAG checks) requires SYMBOL_THESIS_EVENT_WAKE_MODE=active AND PERSISTENT_WAKE_ENABLED=1, which only the operator sets; bus emission is not wired. The KNOWN_DARK entry can be dropped in a separate change.",
+      "consumer_or_successor": "cio_wake_dispatch_entrypoint -> consume_dispatched_wakes (SHADOW)",
+      "action_status": "ALREADY_WIRED"
     },
     {
       "module": "scripts/materialize_cio_seasonality_history.py",
