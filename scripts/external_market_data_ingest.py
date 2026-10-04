@@ -13,7 +13,7 @@ Usage:
     python3 scripts/external_market_data_ingest.py --fred            # FRED macro snapshot
     python3 scripts/external_market_data_ingest.py --all             # Everything
 """
-import json, os, sys
+import json, os, sys, time
 from datetime import datetime, date
 from pathlib import Path
 from finviz_http import finviz_get, finviz_probe  # global Finviz throttle (2026-07-20)
@@ -355,6 +355,11 @@ def _alpha_vantage_symbols(cur, limit: int) -> list:
             SELECT b.symbol FROM best b LEFT JOIN last l ON l.symbol = b.symbol
             WHERE b.symbol !~ '[^A-Z]' AND length(b.symbol) <= 5
               AND b.symbol !~ '^[A-Z]{4}X$'  -- mutual funds (AMANX): OVERVIEW has no coverage
+              -- ETFs/funds (BND, DIV, JEPI, SCHD): OVERVIEW returns {} and wastes one of the 25
+              -- daily calls (2026-10-04). Same rule as lib/instrument_class.classify.
+              AND NOT EXISTS (SELECT 1 FROM symbol_profiles p WHERE p.symbol = b.symbol
+                              AND (lower(coalesce(p.instrument_type, '')) IN ('etf', 'fund', 'mutual_fund', 'etn')
+                                   OR p.quote_type IN ('ETF', 'MUTUALFUND')))
               AND (l.at IS NULL OR l.at < now() - interval '6 days')
             ORDER BY b.pri, l.at NULLS FIRST, b.symbol
             LIMIT %s
@@ -371,6 +376,24 @@ def _alpha_vantage_symbols(cur, limit: int) -> list:
     return _get_symbols()[:limit]
 
 
+AV_MIN_INTERVAL_S = 1.5      # free tier: 1 request/second; a margin so clock jitter never trips it
+AV_BURST_BACKOFF_S = 5.0
+
+
+def _av_overview(sym: str, api_key: str) -> dict:
+    import urllib.request
+    url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={sym}&apikey={api_key}"
+    req = urllib.request.Request(url, headers={"User-Agent": "TradeAI/1.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read())
+
+
+def _av_burst_notice(data: dict) -> bool:
+    """The per-second limit notice (retryable), as opposed to the daily quota (not retryable)."""
+    msg = str(data.get("Information") or data.get("Note") or "")
+    return "per second" in msg.lower() or "spreading out" in msg.lower()
+
+
 def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
     """Fetch company fundamentals via Alpha Vantage (free tier: 25 calls/day)."""
     import urllib.request
@@ -385,12 +408,18 @@ def ingest_alpha_vantage(symbols: list = None, limit: int = 5) -> dict:
         symbols = _alpha_vantage_symbols(cur, limit)  # Free tier limited
     fetched = 0
 
-    for sym in symbols[:limit]:
+    for i, sym in enumerate(symbols[:limit]):
         try:
-            url = f"https://www.alphavantage.co/query?function=OVERVIEW&symbol={sym}&apikey={api_key}"
-            req = urllib.request.Request(url, headers={"User-Agent": "TradeAI/1.0"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read())
+            # Free tier is 1 request/second (and 25/day). The loop fired 5 calls back to back, so
+            # the first succeeded and the rest got the "spread out your free API requests" notice
+            # (2026-10-04: last success 322.5h ago). Pace every call; on a burst notice wait and
+            # retry once. A daily-quota notice is not retried.
+            if i:
+                time.sleep(AV_MIN_INTERVAL_S)
+            data = _av_overview(sym, api_key)
+            if _av_burst_notice(data):
+                time.sleep(AV_BURST_BACKOFF_S)
+                data = _av_overview(sym, api_key)
 
             if "Symbol" not in data:
                 # A rate-limit or quota notice arrives as HTTP 200 with

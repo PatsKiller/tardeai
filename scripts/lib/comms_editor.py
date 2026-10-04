@@ -391,6 +391,9 @@ _AMBIGUOUS_WORDS = frozenset({
     "DO", "EVER", "FOR", "FUN", "GO", "GOOD", "HAS", "HE", "HOLD", "HOPE", "IT", "KEY", "LIFE", "LOVE",
     "LOW", "MAIN", "MORE", "NEW", "NICE", "NOW", "ON", "ONE", "OPEN", "OUT", "PLAY", "PR", "REAL", "RUN",
     "SAFE", "SEE", "SO", "TOP", "TRUE", "TWO", "UP", "WELL",
+    # System chrome, not companies (2026-10-04 data-source alert linked "08:00 ET" and "free API
+    # requests" as Energy Transfer / Agora): a real mention needs $ET / "ticker: ET".
+    "API", "ET",
 })
 _GUARD_APPROVAL = re.compile(r"Approval requested", re.I)
 _GUARD_CODE = re.compile(r"/(?:approve|deny)\s+\S+", re.I)
