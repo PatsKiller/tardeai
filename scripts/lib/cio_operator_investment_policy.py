@@ -20,27 +20,30 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 SCHEMA = "OperatorInvestmentPolicy@v1"
 DEFAULT_STORE = "data/cio/operator_profile.jsonl"
 
+# Operator decision 2026-10-03 (Policy Review): overall CONFIRMED requires only the
+# fields code reads to size and alarm (cash band, reserve, asset-class ranges,
+# concentration). The rest are shown and recorded but OPTIONAL: no agent reads them.
 FIELD_SPECS: dict[str, dict[str, Any]] = {
     "cash_target_range_pct": {"domain": "investment_policy_statement", "kind": "range_pct", "required": True},
     "minimum_liquidity_reserve_usd": {"domain": "cash_liquidity_needs", "kind": "money", "required": True},
-    "investable_cash_definition": {"domain": "cash_liquidity_needs", "kind": "text", "required": True},
+    "investable_cash_definition": {"domain": "cash_liquidity_needs", "kind": "text", "required": False},
     "equity_range_pct": {"domain": "investment_policy_statement", "kind": "range_pct", "required": True},
     "fixed_income_range_pct": {"domain": "investment_policy_statement", "kind": "range_pct", "required": True},
     "alternatives_range_pct": {"domain": "investment_policy_statement", "kind": "range_pct", "required": True},
-    "growth_objective": {"domain": "goals", "kind": "text", "required": True},
-    "income_objective": {"domain": "income_needs", "kind": "text", "required": True},
-    "capital_preservation_objective": {"domain": "goals", "kind": "text", "required": True},
-    "time_horizon": {"domain": "time_horizon", "kind": "text", "required": True},
-    "withdrawal_needs": {"domain": "cash_liquidity_needs", "kind": "text", "required": True},
-    "future_known_cash_requirements": {"domain": "cash_liquidity_needs", "kind": "list", "required": True},
-    "tax_constraints": {"domain": "tax_constraints", "kind": "list", "required": True},
-    "account_location_constraints": {"domain": "account_constraints", "kind": "list", "required": True},
+    "growth_objective": {"domain": "goals", "kind": "text", "required": False},
+    "income_objective": {"domain": "income_needs", "kind": "text", "required": False},
+    "capital_preservation_objective": {"domain": "goals", "kind": "text", "required": False},
+    "time_horizon": {"domain": "time_horizon", "kind": "text", "required": False},
+    "withdrawal_needs": {"domain": "cash_liquidity_needs", "kind": "text", "required": False},
+    "future_known_cash_requirements": {"domain": "cash_liquidity_needs", "kind": "list", "required": False},
+    "tax_constraints": {"domain": "tax_constraints", "kind": "list", "required": False},
+    "account_location_constraints": {"domain": "account_constraints", "kind": "list", "required": False},
     "concentration_hierarchy": {"domain": "risk_constraints", "kind": "object", "required": True},
-    "preferred_instruments": {"domain": "investment_policy_statement", "kind": "list", "required": True},
-    "excluded_instruments": {"domain": "investment_policy_statement", "kind": "list", "required": True},
-    "benchmark": {"domain": "investment_policy_statement", "kind": "text", "required": True},
-    "sleeve_ranges_pct": {"domain": "investment_policy_statement", "kind": "object", "required": True},
-    "risk_tolerance": {"domain": "risk_constraints", "kind": "text", "required": True},
+    "preferred_instruments": {"domain": "investment_policy_statement", "kind": "list", "required": False},
+    "excluded_instruments": {"domain": "investment_policy_statement", "kind": "list", "required": False},
+    "benchmark": {"domain": "investment_policy_statement", "kind": "text", "required": False},
+    "sleeve_ranges_pct": {"domain": "investment_policy_statement", "kind": "object", "required": False},
+    "risk_tolerance": {"domain": "risk_constraints", "kind": "text", "required": False},
 }
 
 CONFLICT_RESOLUTION_FIELD = {
@@ -199,6 +202,7 @@ def build_operator_investment_policy(
                 "version": current.get("version", 1),
                 "status": "OPERATOR_CONFIRMED",
                 "kind": spec["kind"],
+                "required": bool(spec["required"]),
             }
         else:
             fields[name] = {
@@ -209,6 +213,7 @@ def build_operator_investment_policy(
                 "version": current.get("version", 0) if current else 0,
                 "status": current.get("status", "POLICY_REQUIRED") if current else "POLICY_REQUIRED",
                 "kind": spec["kind"],
+                "required": bool(spec["required"]),
             }
             if spec["required"]:
                 missing.append(name)
@@ -228,7 +233,9 @@ def build_operator_investment_policy(
                 "status": "POLICY_REQUIRED",
                 "claims": [c for c in legacy_claims if c["field"] == field],
             })
-    confirmed = len(fields) - len(missing)
+    required_names = [n for n, spec in FIELD_SPECS.items() if spec["required"]]
+    confirmed = sum(1 for n in required_names if fields[n]["operator_confirmed"])
+    optional_names = [n for n, spec in FIELD_SPECS.items() if not spec["required"]]
     payload = {
         "schema": SCHEMA,
         "authority": AUTHORITY,
@@ -236,8 +243,12 @@ def build_operator_investment_policy(
         "status": "CONFIRMED" if not missing and not conflicts else "POLICY_REQUIRED",
         "fields": fields,
         "confirmed_field_count": confirmed,
-        "required_field_count": len(FIELD_SPECS),
+        "required_field_count": len(required_names),
         "missing_fields": missing,
+        "optional_fields": optional_names,
+        "optional_missing_fields": [n for n in optional_names if not fields[n]["operator_confirmed"]],
+        "confirmed_total_count": sum(1 for f in fields.values() if f["operator_confirmed"]),
+        "field_count": len(FIELD_SPECS),
         "legacy_conflicts": conflicts,
         "legacy_claims": legacy_claims,
         "generated_at": _now(),

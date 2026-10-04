@@ -967,6 +967,11 @@ GATES = [
         "cio_heavy_bound_20261003",
         ["tests/test_cio_heavy_bound_20261003.py"],
     ),
+    # Ratified investment policy drives capital-plan sizing; 12% cap; required-only CONFIRMED (2026-10-03).
+    (
+        "policy_unify_20261003",
+        ["tests/test_policy_unify_20261003.py"],
+    ),
     # Auto-approver survives a dropped DB connection (fail-closed); market_day_gate runs its check (2026-10-03).
     (
         "atm_db_gate_fix_20261003",
