@@ -120,9 +120,13 @@ class FakeResp:
  def __exit__(self,*a):pass
  def read(self):return b'{"ok":true,"result":{"message_id":42}}'
 def fake_urlopen(req,timeout=None):return FakeResp()
-with patch("urllib.request.urlopen",side_effect=fake_urlopen):
+# The adapter now delivers through the CIO-only transport (cio_telegram_transport.send_cio_message),
+# which also interdicts the network under test; the raw-urlopen patch no longer reaches it
+# (updated 2026-10-04). Stub the transport and assert the current success contract.
+with patch("scripts.lib.cio_telegram_transport.network_interdicted",return_value=False), \
+     patch("scripts.lib.cio_telegram_transport.send_cio_message",return_value={"delivered":True,"message_ids":[42]}):
  ra5=RealTelegramAdapter(bot_token="tk",chat_id="ch");r5=ra5.send({"notification_id":"t34","body":"x"})
- tt("r1_4_success",r5["delivered"]is True and r5.get("delivery_method")=="telegram")
+ tt("r1_4_success",r5["delivered"]is True and r5.get("delivery_method")=="telegram_cio" and r5.get("message_id")==42)
 
 # ====== R1.5 ======
 import scripts.cio_commands as cc
@@ -146,15 +150,18 @@ finally:sys.argv=oa
 from scripts.lib.cio_event_bus import DEFAULT_BUS_PATH
 cb=CIOEventBus(bus_path=DEFAULT_BUS_PATH,cursor_path=str(Path(tempfile.gettempdir())/f"cc-{uuid.uuid4().hex[:8]}.jsonl"))
 okc,msgc=cb.verify_integrity();tt("r1_2_canon_chain",okc,msgc)
-cp2=Path(DEFAULT_BUS_PATH);lf=False
+cp2=Path(DEFAULT_BUS_PATH);lf=False;seen=False
 if cp2.exists():
  with open(cp2)as fh2:
   for ln2 in fh2:
    s2=ln2.strip()
    if not s2 or"genesis"in s2:continue
+   seen=True
    if"acknowledged"in json.loads(s2):lf=True
    break
-tt("r1_2_legacy_fmt",lf)
+# Needs a real event to inspect: a fresh tree only has the genesis line the bus writes on open.
+if seen:tt("r1_2_legacy_fmt",lf)
+else:print("  SKIP: r1_2_legacy_fmt -- no CIO events in this tree (data/cio is runtime state)")
 
 print(f"\n=== GATE A.1: {tp} passed, {tf} failed, {tp+tf} total ===")
 if tf:print("FAILURES:");print("\n".join(f"  - {x}"for x in fls));raise SystemExit(1)

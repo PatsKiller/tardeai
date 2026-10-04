@@ -7,6 +7,9 @@ on:
       - 'apps/command-center-v3/src/components/active-trader-motion/**'
       - 'apps/command-center-v3/src/hooks/useActiveTraderMotion.ts'
       - 'apps/command-center-v3/src/pages/ActiveTraderHub.tsx'
+      - 'apps/command-center-v3/src/pages/ActiveTraderAlertsTab.tsx'
+      - 'apps/command-center-v3/e2e/active-trader-alerts.spec.ts'
+      - 'apps/command-center-v3/e2e/active-trader-tab.spec.ts'
       - 'apps/command-center-v3/src/pages/ActiveTraderPage.tsx'
       - 'apps/command-center-v3/src/pages/activeTrader.css'
       - 'apps/command-center-v3/src/pages/activeTrader.mock.ts'
@@ -28,7 +31,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'   # npm run build runs .ts unit tests (needs Node >= 22.6); was 20
           cache: npm
           cache-dependency-path: apps/command-center-v3/package-lock.json
       - name: Install dependencies
@@ -50,7 +53,7 @@ jobs:
       - name: Focused Active Trader motion Playwright
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
-        run: npx playwright test e2e/active-trader-live-motion.spec.ts --project=chromium --reporter=line
+        run: npx playwright test e2e/active-trader-live-motion.spec.ts e2e/active-trader-alerts.spec.ts e2e/active-trader-tab.spec.ts --project=chromium --reporter=line
       - name: Upload Playwright evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -4,6 +4,10 @@ import sys, unittest
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# The repo venv exists only in the primary tree; worktrees and CI run the current interpreter.
+_PY = str(PROJECT_ROOT / ".venv/bin/python") if (PROJECT_ROOT / ".venv/bin/python").exists() else sys.executable
+# The repo venv exists only in the primary tree; worktrees and CI run the current interpreter.
+_PY = _PY if (PROJECT_ROOT / ".venv/bin/python").exists() else sys.executable
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 
@@ -112,7 +116,7 @@ class TestSafety(unittest.TestCase):
     def test_16_alert1_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "unittest",
+            [_PY, "-m", "unittest",
              "tests/test_alert1_telegram_proposal_alerts.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
@@ -121,7 +125,7 @@ class TestSafety(unittest.TestCase):
     def test_17_q1_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "-m", "unittest",
+            [_PY, "-m", "unittest",
              "tests/test_q1_proactive_quote_refresh.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )

@@ -131,9 +131,13 @@ def test_adapter_ignores_unsupported_parse_mode(monkeypatch):
 def test_enqueue_book_fallback_html_subject(tmp_path: Path):
     """Temperament-only / no-ticker material → muted HTML book digest."""
     outbox = NotificationOutbox(event_store_path=tmp_path / "outbox.jsonl")
+    # Not RESEARCH_COMPLETED: since 2026-08-23 (82735ed99) a research-completed product only notifies
+    # for items on its own trigger symbol, so a symbol-less item there is skipped as
+    # unrelated_rebuild_churn (tested in test_cio_symbol_intelligence_card.py). The book fallback is
+    # still the path for other material triggers.
     product = {
         "product_id": "prod_book_1",
-        "trigger": "RESEARCH_COMPLETED",
+        "trigger": "CONCENTRATION",
         "reentry_book": {"names": []},
     }
     changed = {
@@ -180,8 +184,10 @@ def test_enqueue_card_sets_html_parse_mode(tmp_path: Path):
             {"kind": "reentry_added", "symbol": "UBER", "to": "NEAR", "material": True},
         ],
     }
+    # The research product's trigger symbol is the card's symbol (UBER); a different trigger symbol
+    # would be skipped as unrelated_rebuild_churn since 2026-08-23.
     res = _enqueue_material_product_outbox(
-        product, changed, {"symbol": "SPCX"}, root=tmp_path, outbox=outbox, max_cards=1,
+        product, changed, {"symbol": "UBER"}, root=tmp_path, outbox=outbox, max_cards=1,
     )
     assert res.get("outbox_enqueued") is True
     notif = outbox.get_notification(res["outbox_notification_id"])

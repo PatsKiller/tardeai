@@ -66,7 +66,7 @@ async function open(page: Page, respond: (index: number) => MotionBody | { statu
     }
   })
   await page.clock.install()
-  await page.goto('/v3/active-trader')
+  await page.goto('/v3/active-trader?tab=Review')  // Alerts became the landing tab 2026-10-04
   await expect(page.getByTestId('active-trader-motion')).toBeVisible({ timeout: 20_000 })
   return counter
 }

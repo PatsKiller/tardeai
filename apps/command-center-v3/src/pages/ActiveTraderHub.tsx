@@ -3,17 +3,19 @@ import { useSearchParams } from 'react-router-dom';
 import { useApi } from '../hooks/useApi';
 import ActiveTraderPage from './ActiveTraderPage';
 import ActiveTraderConfigTab from './ActiveTraderConfigTab';
+import ActiveTraderAlertsTab from './ActiveTraderAlertsTab';
 import ScalpStrategyModal from '../components/ScalpStrategyModal';
 import type { Setup } from '../components/ScalpStrategyModal';
 
-type SubTab = 'Review' | 'Configuration' | 'Setups';
-const SUBTABS: SubTab[] = ['Review', 'Configuration', 'Setups'];
+type SubTab = 'Alerts' | 'Review' | 'Configuration' | 'Setups';
+const SUBTABS: SubTab[] = ['Alerts', 'Review', 'Configuration', 'Setups'];
 
 // Own top-level section (/v3/active-trader). Read-only market-state review; account binding is separate.
 export default function ActiveTraderHub() {
   const [params, setParams] = useSearchParams();
-  const raw = (params.get('tab') || 'Review') as SubTab;
-  const tab: SubTab = SUBTABS.includes(raw) ? raw : 'Review';
+  // Alerts is the landing tab (2026-10-04): the L2-confirmed decision feed is what the desk acts on.
+  const raw = (params.get('tab') || 'Alerts') as SubTab;
+  const tab: SubTab = SUBTABS.includes(raw) ? raw : 'Alerts';
   const setTab = (t: SubTab) => setParams(p => { p.set('tab', t); return p; }, { replace: true });
 
   const { data: pq } = useApi<any>('/api/v3/active-trader/permission-queue', 5_000, { enabled: tab === 'Review' });
@@ -74,6 +76,8 @@ export default function ActiveTraderHub() {
           />
         </>
       )}
+
+      {tab === 'Alerts' && <ActiveTraderAlertsTab />}
 
       {tab === 'Configuration' && <ActiveTraderConfigTab />}
 

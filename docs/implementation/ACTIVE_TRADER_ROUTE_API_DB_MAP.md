@@ -1,8 +1,8 @@
 # Active Trader — Route / API / DB map (Stage 0 inventory)
 
 Status:      ACTIVE
-as_of:       2026-07-27T12:13:37-04:00
-Measured at: efcc51365 / not measured
+as_of:       2026-10-04T12:30:00-04:00
+Measured at: c08323704 (+ Phase 1 alerts PR) — earlier rows: efcc51365
 
 Honest map of **current** production surfaces vs **Active Trader Next** targets.
 Stage 0 does not replace `/v3` TradingHub.
@@ -13,7 +13,8 @@ Stage 0 does not replace `/v3` TradingHub.
 |------|-----------|---------------------------|
 | `/v3` → `trading` | `TradingHub.tsx` | Existing scalp/proposals desk — **not** AT session UI |
 | `/v3` → `journal` | `JournalHub` | Closed-trade journal — separate from AT session journal |
-| `/v3-next` | *(absent)* | Program target Stage 6+ |
+| `/v3/active-trader` | `ActiveTraderHub.tsx` | **Active Trader section.** Tabs: **Alerts** (landing, Phase 1 L2-confirmed feed) · Review · Configuration · Setups. Replaced the `/v3-next` target. |
+| `/v3-next` | *(absent)* | Superseded by `/v3/active-trader` |
 | `/api/v3/active-trader/*` | Stage 0 stubs | This PR — health/status/sessions only |
 
 ### TradingHub tabs (existing)
@@ -30,7 +31,10 @@ Stage 0 does not replace `/v3` TradingHub.
 | GET | `/api/v3/active-trader/health` | `{ stage:0, write:false, canary:false, venues:{schwab,moomoo,alpaca} }` |
 | GET | `/api/v3/active-trader/status` | Same + feature flag snapshot (all off) |
 | GET | `/api/v3/active-trader/sessions` | `{ sessions: [] }` until Stage 1 schema |
-| * | other methods on prefix | **405** — never mutate |
+| GET | `/api/v3/active-trader/alerts?limit=&session_date=` | Phase 1 alert feed: decisions (alert + veto with L2/tape evidence), counts, veto reasons, precision, mode, engine heartbeat — contract `active-trader-alerts-feed-v1` (`momentum_alerts_api.py`) |
+| GET | `/api/v3/active-trader/motion` | Motion snapshot; reads `ACTIVE_TRADER_MOTION_JOURNAL` (server drop-in `35-active-trader-motion-journal.conf`, 2026-10-04) |
+| POST | `/api/v3/active-trader/session-drafts`, `/sessions` | P3 session-control plane (`session_http.py`); live activation is hard-off |
+| * | other methods on the read prefix | **405** — never mutate |
 
 `venues.*.data` / `venues.*.execution` are **always false** at Stage 0 (read-only inventory).
 

@@ -6,7 +6,7 @@
 **Controlling architecture:**  
 `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_3.md` §15  
 **Related program (out of scope for Stage 0):**  
-`docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md` (Active Trader stages 1+)
+`docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_2.md` (Active Trader stages 1+; v1_1 superseded)
 
 ## Hard boundaries
 
@@ -39,7 +39,7 @@ in later stages; Stage 0 only scaffolds the gateway client interface.
 | Host | Production target documented as `ms01-openclaw` (verify before ops) |
 | OpenD binary | Candidate version family documented in architecture (e.g. 10.9.x); pin later |
 | OpenD data port | Default example `127.0.0.1:11111` (config only; not a secret) |
-| Trade port | **Must remain unused / locked** in Stage 0 |
+| Trade port | **Never unlocked; no order path.** Measured 2026-10-04: the read-only `moomoo_live_read_sync` opens `OpenSecTradeContext` via `MoomooTradeReader` for positions/cash; place/modify/cancel/unlock raise `MoomooAuthorityError`. |
 | Runtime secrets dir | Architecture: `/run/trade-ai-prod/moomoo/` mode `0600` (not written by Packet F) |
 | Bitwarden secret **names** (examples) | `MOOMOO_OPEND_LOGIN_ACCOUNT` · `MOOMOO_OPEND_LOGIN_PWD` · `MOOMOO_OPEND_SECURITY_FIRM` — data-only; **never** print values |
 | Env config path | `MOOMOO_STAGE0_CONFIG` → YAML path (defaults to example for preflight dry checks) |
@@ -125,6 +125,21 @@ or whether corresponding env vars are **set** (presence), never print values.
 - Promotion gate (agents, not Moomoo): `docs/operations/PROMOTION_GATE_v1.md`
 - Architecture §15 Moomoo market-intelligence plane (v3.3)
 - Historical reference: `MOOMOO_REFERENCE_ARCHITECTURE_v2_2.md` (superseded; evidence only)
-- Active Trader program (later): `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_1.md`
+- Active Trader program: `docs/prompts/CODEX_ACTIVE_TRADER_MOOMOO_SCALP_IMPLEMENTATION_v1_2.md`
+
+## Level 2 entitlement — PROVEN 2026-10-04
+
+A read-only quote-context probe (`get_global_state`, `query_subscription`, ORDER_BOOK +
+TICKER subscribe) through the lab OpenD unit (`trade-ai-lab-moomoo-opend.service`, 127.0.0.1:11111):
+
+- `qot_logined: True`; subscription quota **100**.
+- `get_order_book(num=60)` returned **60 bid / 60 ask levels** for US.AAPL, US.TSLA, US.SPY, US.SOUN.
+  Level 1 would return one.
+- TICKER (tape) returns time, price, volume and direction.
+- History: `scalp_t2_shadow` holds 263 `AVAILABLE_REALTIME` rows (`moomoo_totalview`, 24 symbols,
+  2026-09-14..17), captured at 5 levels because the provider requested 5.
+
+Phase 1 alerts use this as the primary Level 2 source; see
+`docs/implementation/ACTIVE_TRADER_PHASE1_ALERTS.md`.
 - **Active Trader Stage 0 (read-only baseline, no live):**  
   `docs/implementation/ACTIVE_TRADER_STAGE0_BASELINE.md` · Packet G

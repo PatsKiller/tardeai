@@ -402,6 +402,22 @@ def is_operator_approval_request(text: str) -> bool:
     return bool(_GUARD_APPROVAL.search(plain) and _GUARD_CODE.search(plain))
 
 
+#: Active Trader Phase 1 scalp alerts (operator decision 2026-10-04): intraday, Level 2 + tape
+#: confirmed, advisory-only. Scalp tickers almost never carry a cio_decisions row, so the
+#: missing-CIO hold (09-23 rule) would hold every one. The operator exempted THIS class from that
+#: one hold only; a CIO disagreement on the ticker still rewrites/holds. Matched on the fixed
+#: header the alert builder (scripts/active_trader/momentum_alerts.build_message) always emits
+#: plus its not-an-order line, the same way guard approval requests are recognised.
+AT_SCALP_ALERT_HEADER = "ACTIVE TRADER · SCALP ALERT"
+AT_SCALP_NOT_AN_ORDER = "ADVISORY ONLY — NOT AN ORDER"
+
+
+def is_active_trader_scalp_alert(text: str) -> bool:
+    plain = re.sub(r"<[^>]+>", " ", text or "")
+    lines = [ln.strip() for ln in plain.splitlines() if ln.strip()]
+    return bool(lines) and lines[0].startswith(AT_SCALP_ALERT_HEADER) and AT_SCALP_NOT_AN_ORDER in plain
+
+
 def _marked_as_ticker(text: str, symbol: str, guid: str = "") -> bool:
     plain = re.sub(r"<[^>]+>", " ", text or "")
     sym = re.escape(symbol)
@@ -531,13 +547,13 @@ def rewrite_bullish_to_watch(text: str, symbols: list[str]) -> tuple[str, list[s
         out = re.sub(
             rf"\b(STRONG\s+BUY|BUY|ACCUMULATE|ADD(?:_ON_PULLBACK)?|BULLISH)\b"
             rf"([^\n]{{0,50}}\b{re.escape(s)}\b)",
-            rf"WATCH\2",
+            r"WATCH\2",
             out,
             flags=re.I,
         )
         out = re.sub(
             rf"(\b{re.escape(s)}\b[^\n]{{0,50}})\b(STRONG\s+BUY|BUY|ACCUMULATE|BULLISH)\b",
-            rf"\1WATCH",
+            r"\1WATCH",
             out,
             flags=re.I,
         )
@@ -775,6 +791,10 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
         if html_body != body:
             changes.append("markdown_to_html")
 
+    at_scalp_exempt = bool(missing) and is_active_trader_scalp_alert(body)
+    if at_scalp_exempt:
+        changes.extend(f"at_scalp_cio_missing_exempt:{d['symbol']}" for d in missing)
+        missing = []
     held = None if is_operator_approval_request(body) else _hold_reason(body, disagree, missing)
     prior = ledger.check(chat_id, fp, now)
 
@@ -791,6 +811,8 @@ def edit(text: str, *, chat_id: Any, parse_mode: Optional[str] = None, now: Opti
                       f"CIO decision is {html.escape(d['cio_action'] or 'UNKNOWN')} ({html.escape(d['cio_as_of'])})"
                       f" — <b>held</b>")
         changes.append(f"cio_disagreement:{d['symbol']}")
+    if at_scalp_exempt:
+        footer.append("<i>Intraday scalp alert · no CIO decision on this ticker (exempt by operator, 2026-10-04)</i>")
     for d in missing:
         footer.append(f"⚠️ <b>CIO decision missing for {html.escape(d['symbol'])}</b>: message reads "
                       f"{d['message']} — <b>held</b> (fail closed)")

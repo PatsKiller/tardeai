@@ -4,6 +4,8 @@ import sys, unittest
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# The repo venv exists only in the primary tree; worktrees and CI run the current interpreter.
+_PY = str(PROJECT_ROOT / ".venv/bin/python") if (PROJECT_ROOT / ".venv/bin/python").exists() else sys.executable
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 
@@ -98,7 +100,7 @@ class TestSafety(unittest.TestCase):
     def test_14_r5_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_r5_yaml_scoring_weights_router.py"],
+            [_PY, "tests/test_r5_yaml_scoring_weights_router.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
         self.assertEqual(r.returncode, 0, f"R-5 tests failed:\n{r.stderr}")
@@ -106,7 +108,7 @@ class TestSafety(unittest.TestCase):
     def test_15_sp2c_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_sp2c_route_audit_pipeline_wiring.py"],
+            [_PY, "tests/test_sp2c_route_audit_pipeline_wiring.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
         self.assertEqual(r.returncode, 0, f"SP-2C tests failed:\n{r.stderr}")
