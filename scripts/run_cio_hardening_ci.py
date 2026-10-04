@@ -1010,6 +1010,11 @@ GATES = [
         "memory_retrieval_attribution_20261003",
         ["tests/test_memory_retrieval_attribution_20261003.py"],
     ),
+    # P1 every call is falsifiable + P4 per-agent calibration (operator 2026-10-03).
+    (
+        "falsifiable_calls_20261003",
+        ["tests/test_falsifiable_calls_20261003.py"],
+    ),
     (
         "ai_analyst_freshness_sla",
         [

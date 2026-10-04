@@ -178,6 +178,7 @@ def build_decision_payload(
     gates_evaluated: Optional[list[dict[str, Any]]] = None,
     next_review: Optional[dict[str, Any]] = None,
     extra: Optional[dict[str, Any]] = None,
+    expectation: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
     """Build DecisionPayload@v1. Missing facts stay None / DATA_UNAVAILABLE — never invented."""
     surf = str(surface or "advisory").lower()
@@ -237,6 +238,19 @@ def build_decision_payload(
             if kl in {"chain_of_thought", "cot", "reasoning", "api_key", "token", "password"}:
                 continue
             payload[k] = v
+    # ExpectationPolicy@v1: what would prove this call wrong. A producer-stated
+    # expectation wins; otherwise the reviewed rule table derives one from the
+    # action, labelled POLICY_DEFAULT. Actions that claim nothing get none.
+    try:
+        from scripts.lib.expectation_policy import build_expectation
+        stated = expectation if isinstance(expectation, dict) else payload.get("expectation")
+        exp = build_expectation(action, stated=stated)
+        if exp:
+            payload["expectation"] = exp
+        else:
+            payload.pop("expectation", None)
+    except Exception:
+        payload.pop("expectation", None)
     if ticker != "DATA_UNAVAILABLE" and not (payload.get("security_guid") or payload.get("subject_guid")):
         guid = _registry_security_guid(ticker)
         if guid:

@@ -151,7 +151,7 @@ def rows_from_advisory_outcomes(rows: Iterable[dict[str, Any]], *,
 
 def rows_from_observations(rows: Iterable[dict[str, Any]], *,
                            subject_key_for: Callable[[str], Optional[str]]) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    from scripts.lib.outcome_to_lesson import _direction
+    from scripts.lib.outcome_to_lesson import _direction, expectation_verdict
 
     out: list[dict[str, Any]] = []
     skipped = defaultdict(int)
@@ -168,6 +168,12 @@ def rows_from_observations(rows: Iterable[dict[str, Any]], *,
         orig = r.get("original_decision_state") or {}
         rec = _sym(orig.get("recommendation"))
         direction = _direction(change, rec)
+        basis = "DIRECTIONAL"
+        if direction is None:
+            # A non-directional call (HOLD/OBSERVE...) counts only when its
+            # recorded expectation was actually scored against the benchmark.
+            direction = expectation_verdict(realized)
+            basis = "EXPECTATION"
         if direction is None:
             skipped["checkpoint_no_direction"] += 1
             continue
@@ -179,9 +185,11 @@ def rows_from_observations(rows: Iterable[dict[str, Any]], *,
         if not oid:
             skipped["checkpoint_no_outcome_id"] += 1
             continue
-        out.append(_settled(oid, direction == "CONFIRMED", population=POP_CHECKPOINT,
-                            horizon=str(r.get("horizon") or ""), subject_key=skey, recommendation=rec,
-                            produced_at=str(r.get("observed_at") or ""), source_id=str(r.get("decision_id") or "")))
+        row = _settled(oid, direction == "CONFIRMED", population=POP_CHECKPOINT,
+                       horizon=str(r.get("horizon") or ""), subject_key=skey, recommendation=rec,
+                       produced_at=str(r.get("observed_at") or ""), source_id=str(r.get("decision_id") or ""))
+        row["scoring_basis"] = basis
+        out.append(row)
     return out, dict(skipped)
 
 
