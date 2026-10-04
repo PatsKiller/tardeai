@@ -75,6 +75,7 @@ def dispatch(
                 f"{ACTIVE_TRADER_PREFIX}/scalp/setups",
                 f"{ACTIVE_TRADER_PREFIX}/scalp/setup-events?limit=...",
                 f"{ACTIVE_TRADER_PREFIX}/motion",
+                f"{ACTIVE_TRADER_PREFIX}/alerts?limit=...&session_date=...",
                 f"{ACTIVE_TRADER_PREFIX}/config",
             ],
         }
@@ -112,6 +113,15 @@ def dispatch(
             return 200, motion_snapshot()
         except Exception as exc:  # fail-closed, never leak internals
             return 503, _envelope("unavailable", f"motion snapshot unavailable: {exc}", status_hint=503)
+    if suffix in ("alerts",):
+        try:
+            from .momentum_alerts_api import alerts_snapshot
+            # PURE READ of the Phase 1 alert journal / scores / heartbeat; never sends or writes.
+            lim = _q1(query, "limit")
+            return 200, alerts_snapshot(limit=int(lim) if lim.isdigit() else 100,
+                                        session_date=_q1(query, "session_date") or None)
+        except Exception as exc:  # fail-closed, never leak internals
+            return 503, _envelope("unavailable", f"alerts feed unavailable: {type(exc).__name__}", status_hint=503)
     if suffix in ("scalp/setups", "scalp_setups"):
         return 200, api.scalp_setups()
     if suffix in ("scalp/setup-events", "scalp/setup_events", "scalp_setup_events"):

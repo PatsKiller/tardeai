@@ -1384,9 +1384,10 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/hermes/source_discovery_dryruns/2026-06-02_source_discovery_dryrun.md` | Source Discovery Dry-Run — 2026-06-02 | review_required | OK | `5fe5537bd7da` |
 | `docs/hermes/source_discovery_dryruns/2026-08-28_source_discovery_dryrun.md` | Source Discovery Dry-Run — 2026-08-28 | review_required | OK | `8c36697ecaca` |
 | `docs/hermes/source_discovery_dryruns/2026-08-29_source_discovery_dryrun.md` | Source Discovery Dry-Run — 2026-08-29 | review_required | OK | `6fdb0537b0d5` |
-| `docs/implementation/ACTIVE_TRADER_CURRENT_GUARDRAILS.md` | Active Trader — Current guardrails (Stage 0) | review_required | OK | `6c94f1907575` |
+| `docs/implementation/ACTIVE_TRADER_CURRENT_GUARDRAILS.md` | Active Trader — Current guardrails (Stage 0) | review_required | OK | `4a9e1e43410f` |
 | `docs/implementation/ACTIVE_TRADER_NEAR_READY_v1.md` | Active Trader — Stage 1b: Near-Ready Candidate Read Model (v1) | review_required | OK | `19dc8b2f79f9` |
-| `docs/implementation/ACTIVE_TRADER_ROUTE_API_DB_MAP.md` | Active Trader — Route / API / DB map (Stage 0 inventory) | review_required | OK | `b2093b575ff0` |
+| `docs/implementation/ACTIVE_TRADER_PHASE1_ALERTS.md` | Active Trader — Phase 1: Level 2–confirmed scalp alerts | review_required | OK | `2284c7aa0331` |
+| `docs/implementation/ACTIVE_TRADER_ROUTE_API_DB_MAP.md` | Active Trader — Route / API / DB map (Stage 0 inventory) | review_required | OK | `0401a69b4224` |
 | `docs/implementation/ACTIVE_TRADER_STAGE0_BASELINE.md` | Active Trader Stage 0 — Baseline | review_required | OK | `1dbd606d89d5` |
 | `docs/implementation/ACTIVE_TRADER_VENUE_ELIGIBILITY_v1.md` | Active Trader — Venue Eligibility & Schwab Compliance-Block Prompt (Stage 1a) | review_required | OK | `8f4ed9463ca3` |
 | `docs/implementation/maturity-program/mp-20260901-210554/STAGE_00_PREFLIGHT.md` | Stage 0 · Pre-flight | review_required | OK | `a502f2f7191b` |
@@ -1547,7 +1548,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/operations/CIO_RESTART_PROCEDURES.md` | CIO Restart / Recovery Procedures | review_required | OK | `991d01b25595` |
 | `docs/operations/DOCUMENTATION_STANDARDS.md` | Documentation Standards — Trade AI v12 | review_required | OK | `bca7253c377a` |
 | `docs/operations/MOMENTUM_SCALP_PROPOSALS_EXPIRED_BEFORE_APPROVAL_2026-07-27.md` | Ops note: `momentum_scalp` bottleneck `proposals_expired_before_approval` | review_required | OK | `de31a924f02b` |
-| `docs/operations/MOOMOO_STAGE0_FOUNDATION_v1.md` | Moomoo Stage 0 Foundation v1 — Read-plane only | review_required | OK | `4a4d6f6884f7` |
+| `docs/operations/MOOMOO_STAGE0_FOUNDATION_v1.md` | Moomoo Stage 0 Foundation v1 — Read-plane only | review_required | OK | `f55fc06d5d8e` |
 | `docs/operations/MOOMOO_T2_SHADOW.md` | Moomoo OpenD / T2 (L2 depth) — operations | review_required | OK | `47194353194a` |
 | `docs/operations/PHASE36A_CRON_RISK_AND_GROUPING_AUDIT.md` | Phase 36A — Cron Risk and Grouping Audit | review_required | OK | `32870cc645dd` |
 | `docs/operations/PHASE36B_SCHEDULE_DUPLICATE_OVERLAP_AUDIT.md` | Phase 36B — Schedule Duplicate and Overlap Audit | review_required | OK | `50839a855620` |
@@ -1756,7 +1757,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/LANE_QUALITY_BAKEOFF_2026-08-21.md` | Lane Quality Bake-Off — 2026-08-21 | review_required | OK | `cd49b9ce53e7` |
 | `docs/ops/LANE_QUALITY_BAKEOFF_OPERATOR_BLIND_2026-08-21.md` | Blind ranking sheet — Lane bake-off 2026-08-21 | review_required | OK | `f88b31c995fa` |
 | `docs/ops/LANE_REGISTRY_AND_RETIREMENT_CONVENTION.md` | Lane registry and the retirement convention | review_required | OK | `b54b463e120a` |
-| `docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md` | LIVE-cio-stance-governance — 24/7 universal CIO stance maturity | review_required | OK | `d80f76060dfc` |
+| `docs/ops/LIVE_CIO_STANCE_GOVERNANCE_2026-09-21.md` | LIVE-cio-stance-governance — 24/7 universal CIO stance maturity | review_required | OK | `25f9efd74675` |
 | `docs/ops/LLM_OFFPEAK_ROUTING.md` | LLM Off-Peak Routing — operator guide | review_required | MISSING HEADER | `f87f06023478` |
 | `docs/ops/LLM_ROUTING_AND_DATA_LAYERS.md` | How LLMs, Hermes, SearXNG, and ticker data actually work | review_required | OK | `3b36a08165b8` |
 | `docs/ops/M2_DARK_READ_PARITY_2026-08-24.md` | M2 dark-read parity | review_required | OK | `ebee0b2213fc` |

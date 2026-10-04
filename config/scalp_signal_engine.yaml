@@ -186,9 +186,10 @@ t1:
 # ── Moomoo T2 (Level-2) arm-on-demand, wired to the trigger FSM ARMED state. CONSERVING + fail-closed.
 #    Arms a symbol's L2 subscription only while its trigger FSM is ARMED (seconds/minutes from a fire),
 #    disarms otherwise; hard max_armed budget + TTL. Live-only (replay never arms). Fail-closed →
-#    SCAFFOLD_ONLY until OpenD is configured (no real subscription/cost until then). ──
+#    SCAFFOLD_ONLY whenever OpenD is down. OpenD (lab unit) is configured and 60-level depth was
+#    proven 2026-10-04 (docs/operations/MOOMOO_STAGE0_FOUNDATION_v1.md). ──
 t2:
-  arm_from_trigger: true       # wire ARMED → moomoo L2 arm (harmless until OpenD; observability now)
+  arm_from_trigger: true       # wire ARMED → moomoo L2 arm (live books → scalp_t2_shadow)
   max_armed: 8                 # hard OpenD L2 subscription budget (never exceeded / never silent-evict)
   ttl_seconds: 180             # auto-disarm if a name isn't re-armed within 3 min
   state_file: data/scalp/moomoo_armed_state.json   # cross-cron persistence (avoid re-subscribe churn)
@@ -201,3 +202,11 @@ refit:
   g1_min_sessions: 15
   held_out_frac: 0.30          # deterministic (hashed) train/test split
   lock_file: config/scalp_ignition_weights_locked.json   # written on refit --apply (audit + hash)
+
+# ── Active Trader Phase 1 alerts (docs/implementation/ACTIVE_TRADER_PHASE1_ALERTS.md). ALERTS ONLY —
+#    no order path. ARMED / TRIGGERED decisions confirmed by moomoo Level 2 + tape; stale data vetoes.
+#    mode: send → Telegram (operator 2026-10-04: live from Monday 2026-10-05 open); shadow → journal only.
+#    Thresholds default in scripts/active_trader/momentum_alerts.AlertConfig; override here only with
+#    operator ratification. ──
+active_trader_alerts:
+  mode: send

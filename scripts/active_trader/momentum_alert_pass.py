@@ -68,7 +68,10 @@ def run_from_logger(conn, cfg: Mapping[str, Any], results, trigger_fires, trigge
     interesting.sort(key=lambda c: (ma.alert_kind(c, now=now, cfg=acfg) != ma.TRIGGERED, -c.ign))
     interesting = interesting[:MAX_CANDIDATES]
     if not interesting:
-        return {"evaluated": 0, "alerts": 0, "vetoes": 0, "mode": acfg.mode}
+        res = {"evaluated": 0, "alerts": 0, "sent": 0, "vetoes": 0, "mode": acfg.mode}
+        if not dry_run:
+            _heartbeat(now, acfg.mode, len(cands), res)
+        return res
     src = source or MoomooSource(levels=acfg.book_levels, prints=acfg.tape_prints)
     floats = float_lookup(conn) if conn is not None else (lambda s: None)
     for c in interesting:
@@ -81,10 +84,7 @@ def run_from_logger(conn, cfg: Mapping[str, Any], results, trigger_fires, trigge
         except Exception:  # noqa: BLE001
             c.float_mm = None
     if send_fn is None and acfg.mode == "send" and not dry_run:
-        try:
-            from alert_dispatcher import dispatch_alert as send_fn  # type: ignore
-        except ModuleNotFoundError:
-            from scripts.alert_dispatcher import dispatch_alert as send_fn  # type: ignore
+        send_fn = ma.telegram_send
     rows = ma.evaluate_pass(
         interesting, cfg=acfg, now=now,
         fetch_primary_book=src.book, fetch_primary_tape=src.tape,
@@ -92,7 +92,25 @@ def run_from_logger(conn, cfg: Mapping[str, Any], results, trigger_fires, trigge
         send_fn=None if dry_run else send_fn, run_id=f"{day}:{int(now)}", persist=not dry_run)
     if source is None:
         src.close()
-    return {"evaluated": len(rows), "mode": acfg.mode,
-            "alerts": sum(1 for r in rows if r["verdict"] == ma.ALERT),
-            "sent": sum(1 for r in rows if r.get("sent")),
-            "vetoes": sum(1 for r in rows if r["verdict"] == ma.VETO)}
+    res = {"evaluated": len(rows), "mode": acfg.mode,
+           "alerts": sum(1 for r in rows if r["verdict"] == ma.ALERT),
+           "sent": sum(1 for r in rows if r.get("sent")),
+           "vetoes": sum(1 for r in rows if r["verdict"] == ma.VETO)}
+    if not dry_run:
+        _heartbeat(now, acfg.mode, len(cands), res)
+    return res
+
+
+def _heartbeat(now: float, mode: str, scored_symbols: int, res: Mapping[str, Any]) -> None:
+    """One small file per live engine pass, so the page can show the engine is alive even when
+    nothing qualified. Best effort; never breaks the logger."""
+    import json
+    try:
+        p = ma.journal_dir() / "momentum_alerts_heartbeat.json"
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"ts_epoch": now, "mode": mode, "symbols_scored": scored_symbols,
+                                   "last_pass": dict(res)}), encoding="utf-8")
+        tmp.replace(p)
+    except Exception:  # noqa: BLE001
+        pass

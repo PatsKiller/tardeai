@@ -4,6 +4,8 @@ import sys, unittest
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# The repo venv exists only in the primary tree; worktrees and CI run the current interpreter.
+_PY = str(PROJECT_ROOT / ".venv/bin/python") if (PROJECT_ROOT / ".venv/bin/python").exists() else sys.executable
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 
@@ -108,7 +110,7 @@ class TestSafety(unittest.TestCase):
     def test_20_r2_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_r2_family_liquidity_gating.py"],
+            [_PY, "tests/test_r2_family_liquidity_gating.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
         self.assertEqual(r.returncode, 0, f"R-2 tests failed:\n{r.stderr}")

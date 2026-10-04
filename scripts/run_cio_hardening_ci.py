@@ -1012,6 +1012,11 @@ GATES = [
         "active_trader_momentum_alerts_20261004",
         ["tests/test_active_trader_momentum_alerts_20261004.py"],
     ),
+    # Active Trader alerts live: comms-editor exemption (missing-CIO hold only), Telegram path, feed API.
+    (
+        "active_trader_live_alerts_20261004",
+        ["tests/test_active_trader_live_alerts_20261004.py"],
+    ),
     # Ratified investment policy drives capital-plan sizing; 12% cap; required-only CONFIRMED (2026-10-03).
     (
         "policy_unify_20261003",

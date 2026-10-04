@@ -236,28 +236,76 @@ def _fmt(v: Any, nd: int = 2) -> str:
     return "n/a" if f is None else f"{f:.{nd}f}"
 
 
+AT_SCALP_ALERT_HEADER = "ACTIVE TRADER · SCALP ALERT"   # comms_editor recognises this line
+NOT_AN_ORDER = "ADVISORY ONLY — NOT AN ORDER. Your decision, your broker."
+
+
 def build_message(c: Candidate, kind: str, l2: dict, tape: dict, decision: dict) -> tuple[str, str]:
-    head = "TIME TO BUY? (TRIGGERED)" if kind == TRIGGERED else "HEADS-UP (ARMED)"
-    title = f"SCALP {head} · {c.symbol}"
+    """(title, body). The FIRST line of title+body is always the fixed header: the comms editor
+    uses it (with the not-an-order line) to apply the operator's 2026-10-04 exemption from the
+    missing-CIO hold. Do not reword it."""
+    if kind == TRIGGERED:
+        headline = f"🟢 TRIGGERED · {c.symbol} · entry conditions met — time to buy?"
+    else:
+        headline = f"🟡 ARMED · {c.symbol} · setting up — watch it"
+    title = f"{AT_SCALP_ALERT_HEADER}\n{headline}"
     lines = [
-        "ADVISORY ONLY — NOT AN ORDER. Your decision, your broker.",
-        f"{c.symbol} last {_fmt(c.last)} · entry ref {_fmt(c.entry_ref)} · stop ref {_fmt(c.stop_ref)} · R {_fmt(c.r_dollars)}",
-        f"float {_fmt(c.float_mm, 1)}M · RVOL {_fmt(c.rvol, 1)}x · IGN {_fmt(c.ign, 0)} {c.lane} · setup {c.setup_label or c.setup_id or 'n/a'}",
-        (f"L2 ({l2.get('source')}, {l2.get('levels', 0)} lv): bid/ask depth {_fmt(l2.get('depth_ratio'))}x · "
-         f"spread {_fmt(l2.get('spread_bps'), 0)} bps · age {_fmt(l2.get('age_s'), 0)}s"),
+        NOT_AN_ORDER,
+        f"last {_fmt(c.last)} · entry {_fmt(c.entry_ref)} · stop {_fmt(c.stop_ref)} · R {_fmt(c.r_dollars)}",
+        f"float {_fmt(c.float_mm, 1)}M · RVOL {_fmt(c.rvol, 1)}x · setup {c.setup_label or c.setup_id or 'n/a'}",
+        (f"L2 {l2.get('source')} {l2.get('levels', 0)} lv: bid/ask {_fmt(l2.get('depth_ratio'))}x · "
+         f"spread {_fmt(l2.get('spread_bps'), 0)} bps"),
     ]
     if kind == TRIGGERED:
-        lines.append(f"Tape ({tape.get('source')}): buy {_fmt(tape.get('buy_ratio'))} of {tape.get('prints', 0)} prints · age {_fmt(tape.get('age_s'), 0)}s")
-    lines.append(f"quote age {_fmt(decision.get('quote_age_s'), 0)}s")
+        lines.append(f"tape {tape.get('source')}: {_pct(tape.get('buy_ratio'))} buys of {tape.get('prints', 0)} prints")
+    lines.append(f"data age: quote {_fmt(decision.get('quote_age_s'), 0)}s · book {_fmt(l2.get('age_s'), 0)}s"
+                 + (f" · tape {_fmt(tape.get('age_s'), 0)}s" if kind == TRIGGERED else ""))
+    base = _cc_base()
+    if base:
+        lines.append(f"Active Trader: {base}/v3/active-trader?tab=Alerts")
     return title, "\n".join(lines)
+
+
+def _cc_base() -> str:
+    """Command Center base URL (tailnet https) for the deep link; empty when unknown."""
+    try:
+        try:
+            from lib.comms_editor import cc_base  # type: ignore
+        except ModuleNotFoundError:
+            from scripts.lib.comms_editor import cc_base  # type: ignore
+        return (cc_base() or "").rstrip("/")
+    except Exception:  # noqa: BLE001
+        return ""
+
+
+def _pct(v: Any) -> str:
+    f = _num(v)
+    return "n/a" if f is None else f"{f * 100:.0f}%"
+
+
+def telegram_send(*, alert_type: str, title: str, body: str, **_: Any) -> dict:
+    """Deliver one alert now: telegram_alert.send_telegram with the router bypassed (an alert that
+    arrives in a digest is useless). Cooldown and hourly cap are enforced by Throttle above."""
+    try:
+        from telegram_alert import send_telegram  # type: ignore
+    except ModuleNotFoundError:
+        from scripts.telegram_alert import send_telegram  # type: ignore
+    ok = send_telegram(f"{title}\n{body}", bypass_router=True, message_class="active_trader_scalp_alert")
+    return {"sent": bool(ok), "alert_type": alert_type, "channel": "telegram"}
 
 
 # ── journal ───────────────────────────────────────────────────────────────────
 
 def journal_dir() -> Path:
+    """Where the logger WRITES and the API READS. Pinned to persistent state first: a per-process
+    TRADEAI_ROOT (honoured by production_state_root) would otherwise split writer and reader the
+    way the motion journal split on 2026-10-04. ACTIVE_TRADER_ALERTS_DIR overrides (tests)."""
     env = os.environ.get("ACTIVE_TRADER_ALERTS_DIR", "").strip()
     if env:
         return Path(env)
+    persistent = Path.home() / "trade-ai-releases" / "persistent-state"
+    if (persistent / "PERSISTENT_STATE_ROOT.json").is_file():
+        return persistent / "data" / "active_trader"
     try:
         from scripts.lib.canonical_store_registry import production_state_root
     except Exception:  # noqa: BLE001
@@ -265,8 +313,7 @@ def journal_dir() -> Path:
             from lib.canonical_store_registry import production_state_root  # type: ignore
         except Exception:  # noqa: BLE001
             production_state_root = None  # type: ignore
-    root = Path(production_state_root()) if production_state_root else (
-        Path.home() / "trade-ai-releases" / "persistent-state")
+    root = Path(production_state_root()) if production_state_root else persistent
     return root / "data" / "active_trader"
 
 

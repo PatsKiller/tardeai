@@ -3,14 +3,16 @@ Description=TradeAI Active Trader motion observation producer
 After=network.target portfolio-server.service
 # Default-disabled safety gate. Enabling the unit alone is insufficient; an operator
 # must deliberately create this marker after completing the data-only host proof.
-ConditionPathExists=/etc/tardeai/enable-active-trader-motion
+# Paths match the live host (2026-10-04): /etc/tardeai (misspelt) never existed; the user
+# drop-in 10-user-exact-sha.conf already used %h/.config/tradeai.
+ConditionPathExists=%h/.config/tradeai/enable-active-trader-motion
 
 [Service]
 Type=simple
 WorkingDirectory=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 Environment=HOME=/home/johnclaw
 Environment=PYTHONPATH=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/scripts
-EnvironmentFile=-/etc/tardeai/active-trader-motion.env
+EnvironmentFile=-%h/.config/tradeai/active-trader-motion.env
 ExecStart=/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild/.venv/bin/python -m active_trader.motion_runtime
 Restart=on-failure
 RestartSec=5

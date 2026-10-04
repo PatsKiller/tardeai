@@ -9,11 +9,14 @@ properties:
    symbol's book ONLY while it is "armed" — i.e. seconds/minutes from trading. `ArmedSubscriptionManager`
    caps the number of concurrent armed symbols to a hard budget and auto-disarms on TTL. Nothing is
    subscribed continuously; unarmed symbols cost nothing.
-2. **Fail-closed.** OpenD is not configured on this host, so `entitlement()` resolves to
-   `SCAFFOLD_ONLY` and `fetch_book()` returns None — no T2 capability is manufactured. It only ever
-   returns a real book once OpenD is up AND a real L2 fetcher is wired AND the symbol is armed.
+2. **Fail-closed.** `entitlement()` is `AVAILABLE_REALTIME` only while OpenD is logged in AND a real
+   L2 fetcher is wired; otherwise `SCAFFOLD_ONLY`, and `fetch_book()` returns None — no T2 capability
+   is manufactured. A real book is returned only for an armed symbol.
 
-NOT wired into the shadow logger (operator: capability + tests only; activate on-demand later).
+Wired into `scalp_shadow_logger` (T2 shadow rows → `scalp_t2_shadow`) since 2026-09; the lab OpenD
+unit is configured and 60-level depth was proven 2026-10-04 (docs/operations/
+MOOMOO_STAGE0_FOUNDATION_v1.md). Phase 1 alerts read moomoo through
+`active_trader.momentum_alert_sources` (same quote context, no order path).
 """
 from __future__ import annotations
 

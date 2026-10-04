@@ -75,3 +75,19 @@ Wed host timers saw organic=3276 at early 06:35 and main 09:05 — NEW Wed traff
 
 Restricting proof to “weekday equity GO alert only” understated the product: CIO stance
 is a **continuous governance control**, not a market-hours equity screener accessory.
+
+## Exemption: Active Trader scalp alerts (operator decision 2026-10-04)
+
+The missing-decision hold (`held_reason=cio_decision_missing`) would hold every intraday scalp
+alert, because scalp tickers almost never carry a `cio_decisions` row. The operator exempted
+**only** Active Trader scalp alerts, and **only** from that hold:
+
+- Recognised by `comms_editor.is_active_trader_scalp_alert`: the first line is exactly
+  `ACTIVE TRADER · SCALP ALERT` and the body contains `ADVISORY ONLY — NOT AN ORDER`
+  (emitted by `active_trader.momentum_alerts.build_message`).
+- A CIO **disagreement** on the ticker still rewrites or holds the alert.
+- Every other bullish message keeps the hold.
+- Receipts record `at_scalp_cio_missing_exempt:<SYMBOL>`; the message footer says so.
+- Tests: `tests/test_active_trader_live_alerts_20261004.py`.
+
+Details: `docs/implementation/ACTIVE_TRADER_PHASE1_ALERTS.md`.

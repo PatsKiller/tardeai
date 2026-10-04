@@ -1,8 +1,8 @@
 # Active Trader — Current guardrails (Stage 0)
 
 Status:      ACTIVE
-as_of:       2026-07-27T12:13:37-04:00
-Measured at: efcc51365 / not measured
+as_of:       2026-10-04T12:30:00-04:00
+Measured at: c08323704 (+ Phase 1 alerts PR) — Stage 0 rows: efcc51365
 
 These guardrails apply to Stage 0 work and remain binding until a later stage is
 explicitly authorized by architecture + operator process.
@@ -40,11 +40,26 @@ explicitly authorized by architecture + operator process.
 
 ## Read API guardrails
 
-- Methods other than GET on `/api/v3/active-trader/*` → **405**
+- Methods other than GET on the **read** routes under `/api/v3/active-trader/*` → **405**.
+  Exception (measured 2026-10-04): the P3 session-control plane accepts POST on
+  `session-drafts` and `sessions` (`session_http.py`); live activation there is hard-off
+  (`LIVE_ACTIVATION_ENABLED=False`, `live_session_enabled` coerced false).
 - Response always includes `write: false` and `canary: false` at stage 0
 - `venues.*.data` / `venues.*.execution` always **false** at stage 0
 - No DSN or secret values logged by Packet G or AT Stage 0 modules
 - Health/status work **without** live broker credentials
+
+## Phase 1 alert guardrails (2026-10-04)
+
+See `ACTIVE_TRADER_PHASE1_ALERTS.md`. Binding:
+
+- Alerts only. The alert modules have no order path, trade context or 2FA; an AST test enforces this.
+- moomoo is read through the OpenD **quote** context only. The trade port is never unlocked.
+- Fail closed: a stale or missing quote, book or tape is a journaled VETO, never an alert.
+- Comms editor: Active Trader scalp alerts are exempt **only** from the missing-CIO-decision hold
+  (operator decision 2026-10-04). A CIO disagreement still holds them.
+- Telegram delivery is controlled by `active_trader_alerts.mode` (`send` | `shadow`), a config-write
+  decision. The kill file `~/.tradeai/SCALP_ENGINE_DISABLED` stops the engine.
 
 ## Relation to existing desks
 

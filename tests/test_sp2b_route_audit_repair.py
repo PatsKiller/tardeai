@@ -4,6 +4,8 @@ import sys, unittest
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+# The repo venv exists only in the primary tree; worktrees and CI run the current interpreter.
+_PY = str(PROJECT_ROOT / ".venv/bin/python") if (PROJECT_ROOT / ".venv/bin/python").exists() else sys.executable
 sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
 
 
@@ -104,7 +106,7 @@ class TestRegression(unittest.TestCase):
     def test_16_sp2_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_sp2_strategy_watch_horizon_finviz_audit.py"],
+            [_PY, "tests/test_sp2_strategy_watch_horizon_finviz_audit.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=60
         )
         self.assertEqual(r.returncode, 0, f"SP-2 tests failed:\n{r.stderr}")
@@ -112,7 +114,7 @@ class TestRegression(unittest.TestCase):
     def test_17_ppux2_tests_pass(self):
         import subprocess
         r = subprocess.run(
-            [str(PROJECT_ROOT / ".venv/bin/python"), "tests/test_pp_ux2_proposal_trust_audit.py"],
+            [_PY, "tests/test_pp_ux2_proposal_trust_audit.py"],
             capture_output=True, text=True, cwd=str(PROJECT_ROOT), timeout=120
         )
         self.assertEqual(r.returncode, 0, f"PP-UX-2 tests failed:\n{r.stderr}")
