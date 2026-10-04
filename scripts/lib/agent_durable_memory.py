@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from scripts.lib.agent_context_envelope import RETRIEVAL_EMPTY, RETRIEVAL_OK
+from scripts.lib.memory_retrieval_attribution import current as current_retrieval_attribution
 from scripts.lib.agent_memory_governance import (
     STATUS_ACTIVE,
     STATUS_CANDIDATE,
@@ -334,7 +335,7 @@ class DurableJsonlMemoryProvider(LocalTestMemoryProvider):
         result["superseded_context"] = superseded[: int(top_k or DEFAULT_TOP_K)]
         result["counter"] = result.get("counter_memory") or []
         result["authority_class"] = MEMORY_AUTHORITY
-        self._append_receipt(self.retrievals_path, {
+        receipt = {
             "at": _now_iso(),
             "query": query,
             "symbols": list(symbols or []),
@@ -342,7 +343,10 @@ class DurableJsonlMemoryProvider(LocalTestMemoryProvider):
             "retrieval_status": result.get("retrieval_status"),
             "behavior_mode": os.environ.get("GOVERNED_MEMORY_ADVISORY_INFLUENCE", "OFF"),
             "memory_behavior_influence": os.environ.get("MEMORY_BEHAVIOR_INFLUENCE", "0"),
-        })
+        }
+        # Only identities a caller declared via retrieval_attribution(); never inferred.
+        receipt.update(current_retrieval_attribution())
+        self._append_receipt(self.retrievals_path, receipt)
         return result
 
     def counts(self) -> dict[str, int]:

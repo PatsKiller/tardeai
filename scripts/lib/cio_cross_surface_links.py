@@ -412,12 +412,28 @@ def build_agent_runtime_proof(
     attributed_keys = ("agent", "agent_id", "consumer", "caller", "actor_id")
     retrieval_attributable = any(any(_text(r.get(k)) for k in attributed_keys) for r in retrieval_rows)
     retrievals: dict[str, str] = {}
+    # Per agent: how many attributed retrievals in the window, and the latest one's
+    # memories/wake (memory_retrieval_attribution, 2026-10-03). Unattributed rows
+    # are counted, never assigned to an agent.
+    retrieval_detail: dict[str, dict[str, Any]] = {}
+    unattributed_in_window = 0
     fleet_last_retrieval = max((_text(r.get("at")) for r in retrieval_rows), default="") or None
     if retrieval_attributable:
         for r in retrieval_rows:
             agent = next((_text(r.get(k)).lower() for k in attributed_keys if _text(r.get(k))), "")
-            if agent and _text(r.get("at")) >= retrievals.get(agent, ""):
+            if not agent:
+                unattributed_in_window += 1
+                continue
+            detail = retrieval_detail.setdefault(agent, {"count": 0})
+            detail["count"] += 1
+            if _text(r.get("at")) >= retrievals.get(agent, ""):
                 retrievals[agent] = _text(r.get("at"))
+                detail.update({
+                    "memory_ids": list(r.get("memory_ids") or [])[:10],
+                    "wake_id": r.get("wake_id"),
+                    "trace_id": r.get("trace_id"),
+                    "decision_id": r.get("decision_id"),
+                })
 
     consumed: dict[str, set[str]] = {}
     for item in (research_links or {}).get("items") or []:
@@ -448,10 +464,16 @@ def build_agent_runtime_proof(
             dec_field = _proof_field(NOT_RECORDED, value=0, source_ref="agent_run_traces.jsonl",
                                      reason="no decision row attributed to this agent in the read window")
         if retrieval_attributable:
+            detail = retrieval_detail.get(agent) or {}
             mem_field = (
-                _proof_field(RECORDED, at=retrievals[agent], source_ref="aif_memory_retrievals.jsonl")
+                _proof_field(RECORDED, value=detail.get("count"), at=retrievals[agent],
+                             source_ref="aif_memory_retrievals.jsonl#agent_id", window="tail",
+                             recent_ids=detail.get("memory_ids") or None, wake_id=detail.get("wake_id"),
+                             trace_id=detail.get("trace_id"), decision_id=detail.get("decision_id"),
+                             unattributed_in_window=unattributed_in_window)
                 if agent in retrievals else
-                _proof_field(NOT_RECORDED, source_ref="aif_memory_retrievals.jsonl", reason="no retrieval attributed to this agent")
+                _proof_field(NOT_RECORDED, source_ref="aif_memory_retrievals.jsonl", reason="no retrieval attributed to this agent",
+                             unattributed_in_window=unattributed_in_window)
             )
         else:
             mem_field = _proof_field(

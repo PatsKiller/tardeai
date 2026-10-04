@@ -136,6 +136,15 @@ def _row(decision: dict[str, Any], *, producer: str, recorded_at: str) -> dict[s
     return row
 
 
+def _rationale(row: dict[str, Any]) -> dict[str, Any] | None:
+    """DecisionRationale@v1 from the plan's own stated fields (why_now, stance, policy)."""
+    try:
+        from scripts.lib.decision_rationale import rationale_for_capital_plan_row
+        return rationale_for_capital_plan_row(row)
+    except Exception:
+        return None
+
+
 def record_position_decisions(
     decisions: Iterable[dict[str, Any]] | None,
     *,
@@ -172,6 +181,9 @@ def record_position_decisions(
                         if did in seen:
                             continue
                         row = {**(extra or {}), **_row(d, producer=producer, recorded_at=recorded_at)}
+                        rationale = _rationale(row)
+                        if rationale:
+                            row["rationale"] = rationale
                         fh.write(json.dumps(row, sort_keys=True, default=str) + "\n")
                         seen[did] = row
                         written += 1

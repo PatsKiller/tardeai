@@ -162,6 +162,38 @@ def _count_positions(conn, account_label: str) -> int:
     return cur.fetchone()[0] or 0
 
 
+class PositionCountsUnavailable(RuntimeError):
+    """Position/new-today counts could not be read; the cycle must not approve."""
+
+
+def _read_position_counts(conn, target: str, enabled_accounts) -> tuple:
+    """(conn, pos_open, pos_total, new_today, new_total), retrying once on a dropped connection.
+
+    A count that cannot be read is never treated as 0: the caller aborts the cycle.
+    """
+    try:
+        import psycopg2
+        dropped = (psycopg2.InterfaceError, psycopg2.OperationalError)
+    except ImportError:  # CI has no driver; a real run always does
+        dropped = (ConnectionError,)
+
+    last_exc = None
+    for attempt in (1, 2):
+        try:
+            pos_open = _count_positions(conn, target)
+            pos_total = sum(_count_positions(conn, a) for a in enabled_accounts)
+            new_today = _count_new_today(conn, target)
+            new_total = sum(_count_new_today(conn, a) for a in enabled_accounts)
+            return conn, pos_open, pos_total, new_today, new_total
+        except dropped as exc:
+            last_exc = exc
+            log.warning(f"position counts: {type(exc).__name__} on attempt {attempt}; reconnecting")
+            conn = get_connection()
+            if not conn:
+                break
+    raise PositionCountsUnavailable(f"{type(last_exc).__name__}: {last_exc}" if last_exc else "no DB connection")
+
+
 def _count_new_today(conn, account_label: str) -> int:
     """Count new trades opened today. Excludes closed/phantom/failed."""
     cur = conn.cursor()
@@ -475,6 +507,16 @@ def _run_cycle_locked():
     expired_this_cycle = []  # for batched Telegram
 
     for p in proposals:
+        # The shared connection can be dropped by the server between proposals
+        # (idle_session_timeout, a long approve_proposal). db_adapter.get_connection()
+        # pings and rebuilds a dead connection, but only when called -- holding the
+        # cycle-start object made the next _count_positions raise "connection already
+        # closed" and kill the whole cycle (2026-10-02 14:40-16:00).
+        conn = get_connection()
+        if not conn:
+            log.error("ATM cycle aborted (fail-closed): no DB connection mid-cycle; no further approvals")
+            break
+        cur = conn.cursor()
         pid = p["id"]
         sym = p["symbol"]
         sid = p["strategy_id"] or "unknown"
@@ -602,10 +644,14 @@ def _run_cycle_locked():
             log.info(f"  {sym}: EXPIRED — {expiry_code}")
             continue
 
-        pos_open = _count_positions(conn, target)
-        pos_total = sum(_count_positions(conn, a) for a in enabled_accounts)
-        new_today = _count_new_today(conn, target)
-        new_total = sum(_count_new_today(conn, a) for a in enabled_accounts)
+        try:
+            conn, pos_open, pos_total, new_today, new_total = _read_position_counts(
+                conn, target, enabled_accounts)
+        except PositionCountsUnavailable as exc:
+            log.error(f"ATM cycle aborted (fail-closed) at {sym}: position counts unreadable ({exc}); "
+                      "no approvals without real counts")
+            break
+        cur = conn.cursor()
         pnl_acct = _daily_pnl_pct(conn, target)
         health = get_health(sid)
 

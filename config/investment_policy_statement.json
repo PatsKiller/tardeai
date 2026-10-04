@@ -79,7 +79,7 @@
 
   "constraints": {
     "prohibited_instruments": ["leveraged_etfs", "inverse_etfs_held_overnight", "crypto", "penny_stocks_under_1"],
-    "max_single_position_pct": 8.0,
+    "max_single_position_pct": 12.0,
     "max_sector_concentration_pct": 25.0,
     "max_portfolio_heat_pct": 2.0,
     "min_market_cap": 300000000,

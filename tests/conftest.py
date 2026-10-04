@@ -501,3 +501,15 @@ def _production_receipt_write_barrier(monkeypatch):
             continue
         if hasattr(m, "_db_conn"):
             monkeypatch.setattr(m, "_db_conn", _barrier, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _reset_cio_heavy_composition_cache():
+    """api_v3_cio caches heavy compositions per process; never leak one across tests."""
+    import sys as _sys
+
+    yield
+    for _name in ("scripts.api_v3_cio", "api_v3_cio"):
+        _mod = _sys.modules.get(_name)
+        if _mod is not None and hasattr(_mod, "_HEAVY_CACHE"):
+            _mod._HEAVY_CACHE.clear()

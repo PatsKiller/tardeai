@@ -170,9 +170,17 @@ def evaluate_paper_fast_path(proposal: dict, now: datetime = None, quote: dict =
     return out("WOULD_SUBMIT_PAPER", qage_s, age_m)
 
 
+def auto_submit_enabled(cfg: dict) -> bool:
+    """intraday_execution.fast_path_auto_approve; False (operator 2026-10-03: scalps are advisory)
+    forces evaluation-only, whatever the cron's submit flags say."""
+    return bool((cfg.get("intraday_execution") or {}).get("fast_path_auto_approve", False))
+
+
 def run(dry_run: bool = True) -> dict:
     started = datetime.now(timezone.utc).isoformat()
     cfg = _cfg()
+    if not dry_run and not auto_submit_enabled(cfg):
+        dry_run = True
     try:
         from db_adapter import get_connection
         conn = get_connection()

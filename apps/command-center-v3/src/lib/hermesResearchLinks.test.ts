@@ -56,6 +56,19 @@ check('unattributable memory is NOT_EXPOSED', proofRow(proof, 'alex', 'last_memo
 check('agent with no rows is NOT_RECORDED, never RUNTIME', proofRow(proof, 'sentinel', 'last_natural_wake')[1] === 'NOT_RECORDED')
 check('decision count rendered', proofRow(proof, 'alex', 'decisions_contributed')[0].startsWith('3 decisions'))
 
+const attributed = {
+  fields: { last_memory_retrieval: { attributable: true } },
+  agents: {
+    alex: { last_memory_retrieval: { state: 'RECORDED' as const, value: 2, at: '2026-10-03T20:00:00+00:00',
+      recent_ids: ['mem_a', 'mem_b'], wake_id: 'wake_x', unattributed_in_window: 40 } },
+    hermes: { last_memory_retrieval: { state: 'NOT_RECORDED' as const, reason: 'no retrieval attributed to this agent' } },
+  },
+}
+const memRow = proofRow(attributed, 'alex', 'last_memory_retrieval')
+check('attributed memory retrieval names count, memories and wake',
+  memRow[1] === 'RUNTIME' && memRow[0].startsWith('2 retrievals') && memRow[0].includes('mem_a, mem_b') && memRow[0].includes('wake wake_x'))
+check('agent without attributed retrievals stays NOT_RECORDED', proofRow(attributed, 'hermes', 'last_memory_retrieval')[1] === 'NOT_RECORDED')
+
 // The source-file scan for "/v3/" internal links lives in tests/test_cio_xsurface_census_completeness_20261002.py.
 
 console.log(`\n${pass} passed, ${fail} failed`)

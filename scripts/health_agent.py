@@ -2122,6 +2122,8 @@ def _assess_go_conversion(go_scans: int, created: int, skipped_by_reason: dict, 
         "SKIPPED_NO_CATALYST",
         "SKIPPED_CRITIC_BLOCK",
         "SKIPPED_NOT_GO",
+        # Advisory scalps outside the 06:00-12:00 ET strategy window (operator 2026-10-03).
+        "SKIPPED_OUTSIDE_WINDOW",
     }
     reasons = {str(k) for k in skipped_by_reason}
     policy_only = bool(reasons) and reasons.issubset(policy_skips)
@@ -2146,7 +2148,8 @@ def collect_go_to_proposal_conversion() -> list[dict]:
                       WHERE strategy_id='momentum_scalp' AND created_at > now() - make_interval(days => %s)
                       GROUP BY decision""", (days,), fetch="all") or []
         by = {str(r.get("decision")): int(r.get("n") or 0) for r in rows}
-        created = by.pop("CREATED", 0)
+        # Advisory delivery (operator 2026-10-03): an operator alert is the conversion; no proposal row.
+        created = by.pop("CREATED", 0) + by.pop("ADVISORY_ALERT", 0)
         a = _assess_go_conversion(int((go or {}).get("n") or 0), created, by, days)
         if a.get("finding"):
             out.append(_f("pipeline_freshness", a["type"], a["severity"], a["message"],

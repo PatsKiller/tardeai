@@ -206,19 +206,33 @@ def realized_state(
         return False, {}, []
 
     change_pct = round((end_px - then_px) / then_px * 100.0, 4)
-    return (
-        True,
-        {
-            "symbol": symbol,
-            "price_at_decision": then_px,
-            "price_at_horizon": end_px,
-            "change_pct": change_pct,
-            "decision_price_date": then_date,
-            "horizon_price_date": end_date,
-            "recommendation": original.get("recommendation"),
-        },
-        [f"ticker_prices:{symbol}:{then_date}", f"ticker_prices:{symbol}:{end_date}"],
-    )
+    realized: dict[str, Any] = {
+        "symbol": symbol,
+        "price_at_decision": then_px,
+        "price_at_horizon": end_px,
+        "change_pct": change_pct,
+        "decision_price_date": then_date,
+        "horizon_price_date": end_date,
+        "recommendation": original.get("recommendation"),
+    }
+    refs = [f"ticker_prices:{symbol}:{then_date}", f"ticker_prices:{symbol}:{end_date}"]
+    expectation = cp.get("expectation")
+    if isinstance(expectation, dict):
+        # Separate basis from the raw directional reading: the benchmark is
+        # priced over the SAME dates, and a missing benchmark price leaves the
+        # expectation PENDING_DATA rather than guessed.
+        from scripts.lib.expectation_policy import score_expectation
+        bench_sym = str(expectation.get("benchmark") or "").upper()
+        bench_change = None
+        if bench_sym:
+            b0 = price_lookup(bench_sym, then_date)
+            b1 = price_lookup(bench_sym, end_date)
+            if b0 and b1 and b0[0]:
+                bench_change = round((b1[0] - b0[0]) / b0[0] * 100.0, 4)
+                refs += [f"ticker_prices:{bench_sym}:{b0[1]}", f"ticker_prices:{bench_sym}:{b1[1]}"]
+        realized["expectation"] = expectation
+        realized["expectation_score"] = score_expectation(expectation, change_pct, bench_change)
+    return True, realized, refs
 
 
 def resolution_row(

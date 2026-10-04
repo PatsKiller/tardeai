@@ -1,0 +1,47 @@
+{
+  "schema": "ExpectationPolicy@v1",
+  "version": "ExpectationPolicy@v1",
+  "authority": "READ_ONLY_ADVISORY",
+  "approved": "operator 2026-10-03 (Policy Review P1: every call is falsifiable)",
+  "default_benchmark": "SPY",
+  "default_horizon_days": 20,
+  "default_band_pct": 5.0,
+  "rules": [
+    {
+      "actions": [
+        "BUY",
+        "ADD",
+        "ACCUMULATE"
+      ],
+      "direction": "UP",
+      "reading": "expected to outperform the benchmark over the horizon"
+    },
+    {
+      "actions": [
+        "TRIM",
+        "SELL",
+        "SELL_TAXABLE",
+        "REDUCE",
+        "EXIT"
+      ],
+      "direction": "DOWN",
+      "reading": "expected to underperform the benchmark over the horizon"
+    },
+    {
+      "actions": [
+        "HOLD",
+        "OBSERVE",
+        "WAIT",
+        "MONITOR",
+        "MONITOR_ONLY",
+        "NEAR",
+        "NEAR_ENTRY",
+        "KEEP"
+      ],
+      "direction": "WITHIN_BAND",
+      "reading": "expected to stay within the band of the benchmark over the horizon"
+    }
+  ],
+  "unscored_actions_note": "Any other action (e.g. HOLD_CASH, RESEARCH, MORE_RESEARCH, DATA_UNAVAILABLE) gets no default expectation: nothing is claimed, nothing is scored.",
+  "calibration_min_sample": 20
+}

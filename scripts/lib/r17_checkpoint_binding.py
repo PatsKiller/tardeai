@@ -251,6 +251,19 @@ def enrich_checkpoint(
         "auto_registered": True,
         "created_at": _iso(now),
     })
+    # ExpectationPolicy@v1: carry the decision's expectation (or derive the
+    # labelled policy default from its recommendation) so the resolver can score
+    # HOLD/OBSERVE calls too. None when the recommendation claims nothing.
+    try:
+        from scripts.lib.expectation_policy import build_expectation
+        exp = build_expectation(
+            decision.get("recommendation") or decision.get("action") or decision.get("current_action"),
+            stated=decision.get("expectation"),
+        )
+        if exp:
+            ck["expectation"] = exp
+    except Exception:
+        pass
     # Stable checkpoint_id from semantic key + horizon so replay IDs don't fork rows.
     ck["checkpoint_id"] = _sha({"semantic_key": semantic, "horizon": horizon})[:20]
     return ck

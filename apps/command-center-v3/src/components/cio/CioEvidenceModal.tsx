@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { routerPath } from '../../lib/cioDecisionLineage'
 import type { ScorecardTile, ScorecardEvidenceRef } from './CioScorecardStrip'
 import { RADIUS, SHADOW } from '../../lib/designTokens'
 import { cioLabel } from '../../lib/cioLabels'
@@ -162,7 +163,7 @@ export default function CioEvidenceModal({ tile, onClose, onOpenTab }: Props) {
             ))}
             {tile.href ? (
               <Link
-                to={tile.href}
+                to={routerPath(tile.href)}
                 onClick={onClose}
                 style={{
                   border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--accent)',

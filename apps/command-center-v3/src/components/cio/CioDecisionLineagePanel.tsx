@@ -17,6 +17,7 @@ type Stage = {
   run_id?: string | null
   trace_id?: string | null
   value?: unknown
+  rationale?: { conclusion?: string | null; structured_reason_codes?: string[] | null } | null
 }
 
 type Lineage = {
@@ -139,7 +140,7 @@ export default function CioDecisionLineagePanel({ decisionId }: Props) {
               const valueText = stageValueText(stage?.value)
               return <div key={key} style={{ display: 'grid', gridTemplateColumns: '24px minmax(180px, 1fr) minmax(120px, auto)', gap: 8, alignItems: 'center', borderTop: '1px solid var(--border-subtle)', padding: '7px 0', fontSize: 11 }}>
                 <span style={{ color: 'var(--text3)', fontFamily: 'var(--mono)' }}>{index + 1}</span>
-                <span style={{ color: 'var(--text1)' }}>{label}{valueText ? <span data-testid={`cio-lineage-value-${key}`} style={{ display: 'block', color: 'var(--text1)', fontWeight: 700, marginTop: 2 }}>{valueText}</span> : null}<small style={{ display: 'block', color: 'var(--text3)', marginTop: 2 }}>{stage?.producer || 'producer not exposed'} · {stage?.source_ref || 'no matched source row'}{stage?.source_as_of ? ` · ${stamp(stage.source_as_of)}` : ''}</small>{stage?.state_reason ? <small data-testid={`cio-lineage-reason-${key}`} style={{ display: 'block', color: 'var(--text2)', marginTop: 2 }}>{stage.state_reason}</small> : null}</span>
+                <span style={{ color: 'var(--text1)' }}>{label}{valueText ? <span data-testid={`cio-lineage-value-${key}`} style={{ display: 'block', color: 'var(--text1)', fontWeight: 700, marginTop: 2 }}>{valueText}</span> : null}<small style={{ display: 'block', color: 'var(--text3)', marginTop: 2 }}>{stage?.producer || 'producer not exposed'} · {stage?.source_ref || 'no matched source row'}{stage?.source_as_of ? ` · ${stamp(stage.source_as_of)}` : ''}</small>{stage?.state_reason ? <small data-testid={`cio-lineage-reason-${key}`} style={{ display: 'block', color: 'var(--text2)', marginTop: 2 }}>{stage.state_reason}</small> : null}{stage?.rationale?.conclusion ? <small data-testid={`cio-lineage-rationale-${key}`} style={{ display: 'block', color: 'var(--text2)', marginTop: 2 }}>Stated rationale: {stage.rationale.conclusion}{stageValueText(stage.rationale.structured_reason_codes) ? ` · ${stageValueText(stage.rationale.structured_reason_codes)}` : ''}</small> : null}</span>
                 <span style={{ color: stateTone(state), fontWeight: 800, fontFamily: 'var(--mono)' }}>{state}</span>
               </div>
             })}

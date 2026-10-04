@@ -140,6 +140,12 @@ def independent_groups(observations: Iterable[dict[str, Any]]) -> list[list[dict
     return [groups[k] for k in sorted(groups)]
 
 
+def expectation_verdict(realized: Any) -> str | None:
+    """CONFIRMED / CONTRADICTED from a scored ExpectationPolicy@v1 expectation."""
+    from scripts.lib.expectation_policy import expectation_verdict as _ev
+    return _ev(realized)
+
+
 def _direction(change_pct: float | None, recommendation: str) -> str | None:
     """Did the move go the way the recommendation implied?
 
@@ -177,10 +183,14 @@ def build_candidates(
         rec = str(realized.get("recommendation") or "")
         if not symbol or not rec:
             continue
-        by_task.setdefault((symbol, rec), []).append(group)
+        # Directional actions keep the raw reading. Everything else is scored only
+        # against its recorded expectation (ExpectationPolicy@v1) — a separate,
+        # labelled basis, never mixed into the directional one.
+        basis = "DIRECTIONAL" if _direction(0.0, rec) is not None else "EXPECTATION"
+        by_task.setdefault((symbol, rec, basis), []).append(group)
 
     candidates = []
-    for (symbol, rec), groups in sorted(by_task.items()):
+    for (symbol, rec, basis), groups in sorted(by_task.items()):
         supporting: list[str] = []
         counterexamples: list[str] = []
         correlated: list[str] = []
@@ -197,7 +207,7 @@ def build_candidates(
             change = realized.get("change_pct")
             if isinstance(change, (int, float)):
                 moves.append(float(change))
-            verdict = _direction(change, rec)
+            verdict = _direction(change, rec) if basis == "DIRECTIONAL" else expectation_verdict(realized)
             if verdict == "CONTRADICTED":
                 counterexamples.append(oid)
             elif verdict == "CONFIRMED" and oid:
@@ -218,11 +228,22 @@ def build_candidates(
             verdict = "held"
         else:
             verdict = "held inconsistently"
-        statement = (
-            f"{rec} on {symbol} {verdict}: the subsequent move averaged "
-            f"{avg}% over the observed horizon, across "
-            f"{len(supporting) + len(counterexamples)} independent observation(s)."
-        )
+        if basis == "EXPECTATION":
+            exp = (groups[0][0].get("realized_state") or {}).get("expectation") or {}
+            statement = (
+                f"{rec} on {symbol} {verdict} against its expectation "
+                f"({exp.get('direction')} vs {exp.get('benchmark')}"
+                f"{', band ' + str(exp.get('band_pct')) + '%' if exp.get('band_pct') is not None else ''}; "
+                f"{exp.get('source')} {exp.get('policy')}): the subsequent move averaged "
+                f"{avg}% over the observed horizon, across "
+                f"{len(supporting) + len(counterexamples)} independent observation(s)."
+            )
+        else:
+            statement = (
+                f"{rec} on {symbol} {verdict}: the subsequent move averaged "
+                f"{avg}% over the observed horizon, across "
+                f"{len(supporting) + len(counterexamples)} independent observation(s)."
+            )
         candidate = lesson_candidate_v2(
             scope=symbol,
             task_class=rec,
@@ -238,6 +259,7 @@ def build_candidates(
         candidate["total_observations"] = (
             len(supporting) + len(counterexamples) + len(correlated)
         )
+        candidate["scoring_basis"] = basis
         candidate["authority"] = AUTHORITY
         candidate["memory_behavior_influence"] = MBI
         candidate["observational_only"] = True
