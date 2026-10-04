@@ -43,11 +43,12 @@ def test_policy_fails_closed_and_inventories_legacy_conflicts(tmp_path: Path):
     )
     assert policy["status"] == "POLICY_REQUIRED"
     assert policy["confirmed_field_count"] == 0
-    assert set(policy["missing_fields"]) == set(FIELD_SPECS)
+    assert set(policy["missing_fields"]) == {n for n, s in FIELD_SPECS.items() if s["required"]}
     conflicts = {row["field"]: row for row in policy["legacy_conflicts"]}
     assert "cash_target_range_pct" in conflicts
-    assert "max_single_position_pct" in conflicts
-    assert {claim["value"] for claim in conflicts["max_single_position_pct"]["claims"]} == {8.0, 12.0}
+    # Operator 2026-10-03 chose 12%; every legacy source now agrees, so no conflict remains.
+    assert "max_single_position_pct" not in conflicts
+    assert {c["value"] for c in policy["legacy_claims"] if c["field"] == "max_single_position_pct"} == {12.0}
 
 
 def test_policy_ratification_is_versioned_operator_confirmation(tmp_path: Path):

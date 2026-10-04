@@ -78,9 +78,13 @@ def test_lesson_queue_gather_enqueue_decide_and_loader(tmp_path):
     env = _env(tmp_path)
     cands = lp.gather(env=env)
     assert {c["source"] for c in cands} == {"lesson_candidates", "advisory_kb_ratified"} and all(c["status"] == "CANDIDATE" for c in cands)
-    dry = lp.enqueue(env=env)
+    # Queue mechanics only; the P2 outcome rule (on by default) is covered in test_lesson_queue_darwin_20261003.
+    held = lp.enqueue(env=env)
+    assert held["new"] == 0 and sum(held["held_by_policy"].values()) == 2
+    dry = lp.enqueue(env=env, outcome_rule=False)
     assert dry["new"] == 2 and dry["written"] == 0 and not lp.queue_path(env=env).exists()
-    assert lp.enqueue(env=env, apply=True)["written"] == 2 and lp.enqueue(env=env, apply=True)["new"] == 0
+    assert lp.enqueue(env=env, apply=True, outcome_rule=False)["written"] == 2
+    assert lp.enqueue(env=env, apply=True, outcome_rule=False)["new"] == 0
     assert lp.promoted(env=env) == []                                  # nothing promoted → nothing reaches a context
     pid = [c for c in cands if c["source"] == "lesson_candidates"][0]["procedure_id"]
     with pytest.raises(PermissionError):

@@ -281,8 +281,27 @@ def resolve_universe(conn, cfg: dict) -> list[str]:
         return [r[0] for r in cur.fetchall()]
 
 
+# Newest column the startup migrations add. When it exists, both migrations are already applied.
+_SCHEMA_SENTINEL = ("scalp_ignition_events", "registry_hash")
+
+
+def _schema_present(cur) -> bool:
+    """Catalog read; takes no lock on the table."""
+    cur.execute(
+        "SELECT 1 FROM information_schema.columns WHERE table_name = %s AND column_name = %s LIMIT 1",
+        _SCHEMA_SENTINEL,
+    )
+    return cur.fetchone() is not None
+
+
 def ensure_schema(conn) -> None:
+    # Re-running `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` every 5 minutes takes an
+    # AccessExclusiveLock even when nothing changes; from 2026-09-17 it hit the lock timeout on
+    # every run and the engine wrote nothing for 16 days (150 LockNotAvailable crashes).
     with conn.cursor() as cur:
+        if _schema_present(cur):
+            conn.commit()
+            return
         cur.execute((_REPO / "migrations" / "2026-07-27_scalp_ignition_events.sql").read_text())
         # additive multi-setup taxonomy columns (idempotent ADD COLUMN IF NOT EXISTS)
         tax = _REPO / "migrations" / "2026-07-28_scalp_setup_taxonomy.sql"

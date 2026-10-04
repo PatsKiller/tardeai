@@ -76,7 +76,7 @@ routing:
     Verdict taxonomy (use exactly one):
     ADD, AVOID, EXIT, HOLD, INSUFFICIENT_DATA, RE_ENTER, TRIM, WAIT
 
-    IPS defaults (unless evidence overrides): max single position 8%, max drawdown 25%.
+    IPS defaults (unless evidence overrides): max single position 12%, max drawdown 25%.
 
     Output schema — return ONLY one JSON object:
     {

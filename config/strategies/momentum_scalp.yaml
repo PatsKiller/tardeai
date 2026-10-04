@@ -44,14 +44,17 @@ proposal_contract:
     max_spread_pct: 8.0               # scalp names run 5–8%; the execution layer stays the tight backstop
     min_day_volume_shares: 1000000    # = screen_filters.min_volume
     min_dollar_day_volume: 250000
-  target_account: tradeai_automated   # must be mode=paper in `accounts`, else SKIPPED_ACCOUNT_NOT_PAPER
+  # Operator 2026-10-03: momentum scalps are ADVISORY. A fully-gated setup becomes an immediate
+  # operator alert (Telegram + Active Trader) — no paper_trade_proposals row, nothing executes.
+  delivery: advisory_alert
+  target_account: tradeai_automated   # unused while delivery=advisory_alert; kept for the proposal path
 
 # Intraday scalp execution (operator 2026-06-26): the strategy was generating 104 proposals → 0
 # conversions because the 9h TTL + slow approval cadence outran the scalp window. Fast-path fixes it.
 intraday_execution:
   trading_window_et: {start: "06:00", end: "12:00"}     # 6am-noon ET, trading days only
   proposal_ttl_minutes: 30        # short TTL — a scalp setup is valid for minutes, not 9h
-  fast_path_auto_approve: true    # gated auto-approve within window (paper account) so it converts
+  fast_path_auto_approve: false   # operator 2026-10-03: advisory only — no paper auto-approve/submit
   fast_path_account: tradeai_automated # build the sample on paper before promoting off TESTING
   max_price_drift_pct: 3.0        # kill the proposal if price drifts past this before fill
   social_momentum:
@@ -97,7 +100,9 @@ auto_disqualifiers:
   - id: TRADING_HALTED
     condition: trading_halt_active
   - id: WIDE_SPREAD
-    condition: spread_pct > 5
+    condition: spread_pct > max_spread_pct
+    # One spread limit (operator 2026-10-03): the same number the liquidity pre-screen uses.
+    threshold_from: proposal_contract.liquidity_prescreen.max_spread_pct
   - id: DILUTION_RISK
     condition: recent_offering_or_shelf
 scoring_weights:

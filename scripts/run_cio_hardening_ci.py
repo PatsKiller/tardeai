@@ -962,6 +962,16 @@ GATES = [
         "health_finviz_scalp_20261003",
         ["tests/test_health_finviz_scalp_20261003.py"],
     ),
+    # Momentum scalps are advisory alerts, 06:00-12:00 ET, one 8% spread limit (operator 2026-10-03).
+    (
+        "scalp_advisory_20261003",
+        ["tests/test_scalp_advisory_20261003.py"],
+    ),
+    # Shadow ignition engine skips startup DDL when its schema exists (crashed on lock timeouts from 09-17).
+    (
+        "scalp_shadow_schema_20261003",
+        ["tests/test_scalp_shadow_logger_schema_20261003.py"],
+    ),
     # CIO-LEARNING-001 compares due and matured from the same checkpoint store (2026-10-03).
     (
         "cio_learning_finding_20261003",
@@ -972,10 +982,20 @@ GATES = [
         "cio_heavy_bound_20261003",
         ["tests/test_cio_heavy_bound_20261003.py"],
     ),
+    # Ratified investment policy drives capital-plan sizing; 12% cap; required-only CONFIRMED (2026-10-03).
+    (
+        "policy_unify_20261003",
+        ["tests/test_policy_unify_20261003.py"],
+    ),
     # Auto-approver survives a dropped DB connection (fail-closed); market_day_gate runs its check (2026-10-03).
     (
         "atm_db_gate_fix_20261003",
         ["tests/test_atm_db_gate_fix_20261003.py"],
+    ),
+    # /v3/cio/home memory: stream the action ledger, tail-read logs, one plan-store load (2026-10-03).
+    (
+        "cio_home_memory_20261003",
+        ["tests/test_cio_home_memory_20261003.py"],
     ),
     (
         "lineage_phase12_20261003",
@@ -1008,6 +1028,11 @@ GATES = [
             "tests/test_lineage_phase34_20261003.py",
         ],
     ),
+    # Policy Review P2: only outcome-backed lessons queue; Darwin scores only market outcomes (2026-10-03).
+    (
+        "lesson_queue_darwin_20261003",
+        ["tests/test_lesson_queue_darwin_20261003.py"],
+    ),
     # Dark WIRE debt: DecisionRationale on decisions + lineage; thesis event wake in SHADOW (2026-10-03).
     (
         "dark_wire_rationale_wake_20261003",
@@ -1024,6 +1049,11 @@ GATES = [
     (
         "memory_retrieval_attribution_20261003",
         ["tests/test_memory_retrieval_attribution_20261003.py"],
+    ),
+    # P1 every call is falsifiable + P4 per-agent calibration (operator 2026-10-03).
+    (
+        "falsifiable_calls_20261003",
+        ["tests/test_falsifiable_calls_20261003.py"],
     ),
     (
         "ai_analyst_freshness_sla",

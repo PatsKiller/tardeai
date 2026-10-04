@@ -57,7 +57,9 @@ def main(argv=None) -> int:
             print(f"  {r['procedure_id']} [{r['source']}] {r['statement'][:110]}")
         return 0
     if a.cmd == "enqueue":
-        print(json.dumps(lp.enqueue(root, env, apply=a.apply), indent=1)); return 0
+        import lesson_outcome_quality as loq  # type: ignore
+        price_on, daily_vol = loq.default_lookups()
+        print(json.dumps(lp.enqueue(root, env, apply=a.apply, price_on=price_on, daily_vol=daily_vol), indent=1)); return 0
     if a.cmd == "list":
         st = lp.state(root, env)
         rows = [r for r in st.values() if not a.status or r.get("status") == a.status.upper()]
