@@ -91,3 +91,23 @@ def test_chrome_et_and_api_are_not_tickers():
     text = "Next run: tomorrow 08:00 ET. Please consider spreading out your free API requests."
     assert ce.unambiguous_subjects(text, subs) == []
     assert ce.unambiguous_subjects("Watching $ET into earnings", [{"symbol": "ET", "guid": "g1"}]) != []
+
+
+def test_weekday_is_not_a_company():
+    from scripts.lib.operator_subject_resolver import resolve_subjects
+    syms = {r.get("symbol") for r in resolve_subjects("delivery check before Monday. NOT A SIGNAL", book=[])}
+    assert "MNDY" not in syms
+    assert "MNDY" in {r.get("symbol") for r in resolve_subjects("MNDY up 5%", book=[])}
+
+
+def test_alert_message_never_glues_units_to_missing_values():
+    from active_trader import momentum_alerts as ma
+    c = ma.Candidate(symbol="ABCD", lane="BELOW", ign=0)
+    t, b = ma.build_message(c, ma.TRIGGERED, {"source": "moomoo", "levels": 0}, {"source": "moomoo"}, {})
+    text = f"{t}\n{b}"
+    for bad in ("n/aM", "n/ax", "n/as", "n/a bps"):
+        assert bad not in text, bad
+    c2 = ma.Candidate(symbol="ABCD", lane="BELOW", ign=0, float_mm=6.2, rvol=9.0)
+    _, b2 = ma.build_message(c2, ma.ARMED, {"source": "moomoo", "levels": 10, "depth_ratio": 1.4, "spread_bps": 20,
+                                            "age_s": 1}, {}, {"quote_age_s": 2})
+    assert "float 6.2M" in b2 and "RVOL 9.0x" in b2 and "spread 20 bps" in b2 and "quote 2s" in b2

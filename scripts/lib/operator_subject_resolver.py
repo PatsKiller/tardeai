@@ -83,6 +83,9 @@ _MONTHS = frozenset({
     "January", "February", "March", "April", "May", "June", "July", "August", "September",
     "October", "November", "December", "Q1", "Q2", "Q3", "Q4",
 })
+# Weekdays are calendar words, not companies: "before Monday" resolved to monday.com (MNDY) on a
+# 2026-10-04 alert. Compared after stripping trailing punctuation ("Monday.").
+_WEEKDAYS = frozenset({"Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"})
 
 _UPPER_TOKEN = re.compile(r"(?<![A-Za-z0-9_$])([A-Z]{1,5})(?![A-Za-z0-9_])")
 _ANYCASE_TOKEN = re.compile(r"(?<![A-Za-z0-9_$])([A-Za-z]{2,5})(?![A-Za-z0-9_])")
@@ -284,7 +287,7 @@ def _companies(text: str, taken: set[str], doc: Mapping[str, Any]) -> list[dict[
         return []
     out: list[dict[str, Any]] = []
     for name in T.extract_name_mentions(text):
-        words = [w for w in name.split() if w not in _MONTHS]
+        words = [w for w in name.split() if w not in _MONTHS and w.strip(".,;:!?") not in _WEEKDAYS]
         if not words:
             continue
         name = " ".join(words)
