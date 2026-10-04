@@ -252,14 +252,14 @@ def build_message(c: Candidate, kind: str, l2: dict, tape: dict, decision: dict)
     lines = [
         NOT_AN_ORDER,
         f"last {_fmt(c.last)} · entry {_fmt(c.entry_ref)} · stop {_fmt(c.stop_ref)} · R {_fmt(c.r_dollars)}",
-        f"float {_fmt(c.float_mm, 1)}M · RVOL {_fmt(c.rvol, 1)}x · setup {c.setup_label or c.setup_id or 'n/a'}",
-        (f"L2 {l2.get('source')} {l2.get('levels', 0)} lv: bid/ask {_fmt(l2.get('depth_ratio'))}x · "
-         f"spread {_fmt(l2.get('spread_bps'), 0)} bps"),
+        f"float {_u(c.float_mm, 1, 'M')} · RVOL {_u(c.rvol, 1, 'x')} · setup {c.setup_label or c.setup_id or 'n/a'}",
+        (f"L2 {l2.get('source')} {l2.get('levels', 0)} lv: bid/ask {_u(l2.get('depth_ratio'), 2, 'x')} · "
+         f"spread {_u(l2.get('spread_bps'), 0, ' bps')}"),
     ]
     if kind == TRIGGERED:
         lines.append(f"tape {tape.get('source')}: {_pct(tape.get('buy_ratio'))} buys of {tape.get('prints', 0)} prints")
-    lines.append(f"data age: quote {_fmt(decision.get('quote_age_s'), 0)}s · book {_fmt(l2.get('age_s'), 0)}s"
-                 + (f" · tape {_fmt(tape.get('age_s'), 0)}s" if kind == TRIGGERED else ""))
+    lines.append(f"data age: quote {_u(decision.get('quote_age_s'), 0, 's')} · book {_u(l2.get('age_s'), 0, 's')}"
+                 + (f" · tape {_u(tape.get('age_s'), 0, 's')}" if kind == TRIGGERED else ""))
     base = _cc_base()
     if base:
         lines.append(f"Active Trader: {base}/v3/active-trader?tab=Alerts")
@@ -276,6 +276,12 @@ def _cc_base() -> str:
         return (cc_base() or "").rstrip("/")
     except Exception:  # noqa: BLE001
         return ""
+
+
+def _u(v: Any, nd: int, unit: str) -> str:
+    """Value with its unit, or a bare "n/a" — never "n/aM" / "n/ax" (2026-10-04 test alert)."""
+    f = _num(v)
+    return "n/a" if f is None else f"{f:.{nd}f}{unit}"
 
 
 def _pct(v: Any) -> str:
