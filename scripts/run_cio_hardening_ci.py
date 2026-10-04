@@ -1022,6 +1022,11 @@ GATES = [
         "repair_cio_event_bus_fork_20261004",
         ["tests/test_repair_cio_event_bus_fork_20261004.py"],
     ),
+    # Alpha Vantage fundamentals paced (1 req/s free tier), fund exclusion; ET/API chrome not tickers.
+    (
+        "alpha_vantage_pacing_20261004",
+        ["tests/test_alpha_vantage_pacing_20261004.py"],
+    ),
     # Ratified investment policy drives capital-plan sizing; 12% cap; required-only CONFIRMED (2026-10-03).
     (
         "policy_unify_20261003",
