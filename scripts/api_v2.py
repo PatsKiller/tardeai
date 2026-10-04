@@ -53003,6 +53003,14 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 200, _hx.get_agent_runtime_proof(query)
         except Exception as e:
             return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
+    if method == "GET" and base_path == "/api/v3/agents/calibration":
+        # AgentCalibration@v1: stated confidence vs realized hit rate (cached on store stats).
+        try:
+            from scripts.lib.agent_calibration import get_agent_calibration
+
+            return 200, {"ok": True, **get_agent_calibration(PROJECT_ROOT)}
+        except Exception as e:
+            return 500, {"ok": False, "error": type(e).__name__, "detail": str(e)[:200]}
 
     if base_path.startswith("/api/v3/cio"):
         try:
