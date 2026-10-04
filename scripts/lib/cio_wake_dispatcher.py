@@ -383,6 +383,9 @@ class CIOWakeDispatcher:
                 # record without a second pass over the store. None when the
                 # wake resolved no subject -- the caller must not invent one.
                 "subject_key": _subject_key,
+                # Lets event consumers (symbol_thesis_event_wake) find the bus event.
+                "trigger_type": wake.get("trigger_type"),
+                "trigger_ref": wake.get("trigger_ref"),
             })
 
         return {

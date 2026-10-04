@@ -541,6 +541,16 @@ def emit_decision_payload(
         trace_id = str(payload.get("trace_id") or new_trace_id(wake_id))
         payload = dict(payload)
         payload["trace_id"] = trace_id
+        if not isinstance(payload.get("rationale"), dict):
+            # DecisionRationale@v1 from the producer's own stated fields; never reasoning
+            # text. A rationale failure must never cost the decision its trace.
+            try:
+                from scripts.lib.decision_rationale import rationale_for_decision_payload
+                rationale = rationale_for_decision_payload(payload, source_ref=f"agent_run_traces#{trace_id}")
+                if rationale:
+                    payload["rationale"] = rationale
+            except Exception:  # noqa: BLE001
+                pass
         started = build_trace(
             trace_id=trace_id,
             wake_id=wake_id,

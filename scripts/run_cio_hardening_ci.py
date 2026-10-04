@@ -1003,6 +1003,11 @@ GATES = [
             "tests/test_lineage_phase34_20261003.py",
         ],
     ),
+    # Dark WIRE debt: DecisionRationale on decisions + lineage; thesis event wake in SHADOW (2026-10-03).
+    (
+        "dark_wire_rationale_wake_20261003",
+        ["tests/test_dark_wire_rationale_wake_20261003.py"],
+    ),
     # Hermes research joins the options review that asked for it (MORE_RESEARCH follow-up).
     (
         "lineage_run_hermes_join_20261003",
