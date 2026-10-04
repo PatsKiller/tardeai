@@ -27,16 +27,31 @@ from scripts.lib.cio_operator_investment_policy import (  # noqa: E402
 )
 
 DEFAULT_PROPOSAL = ROOT / "config" / "policy_proposals" / "operator_policy_proposal_20261003.json"
-DEFAULT_STORE = ROOT / "data" / "cio" / "operator_profile.jsonl"
+STORE_RELPATH = Path("data") / "cio" / "operator_profile.jsonl"
+
+
+def default_store() -> Path:
+    """The store the served Command Center reads: production state, not this tree.
+
+    2026-10-04: the old default (<this tree>/data/cio) is only production inside a
+    release, where data/cio is a symlink. From a worktree or the dev tree it was a
+    dead copy, and a ratification there would never have reached the capital plan.
+    """
+    try:
+        from scripts.lib.canonical_store_registry import production_state_root
+        return Path(production_state_root()) / STORE_RELPATH
+    except Exception:  # noqa: BLE001
+        return Path.home() / "trade-ai-releases" / "persistent-state" / STORE_RELPATH
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--proposal", default=str(DEFAULT_PROPOSAL))
-    ap.add_argument("--store", default=str(DEFAULT_STORE))
+    ap.add_argument("--store", default=None, help="operator profile store (default: production state)")
     ap.add_argument("--only", nargs="*", default=None, help="field names to include (default: all)")
     ap.add_argument("--apply", action="store_true", help="ratify (default: dry run)")
     args = ap.parse_args(argv)
+    args.store = str(args.store or default_store())
 
     proposal = json.loads(Path(args.proposal).read_text(encoding="utf-8"))
     current = build_operator_investment_policy(store_path=args.store, repo_root=ROOT)["fields"]
@@ -55,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
                                           source=f"operator_policy_proposal:{Path(args.proposal).name}")
             entry["ratified"] = {"event_id": receipt["event_id"], "confirmed_at": receipt["confirmed_at"]}
         out.append(entry)
-    print(json.dumps({"applied": bool(args.apply), "fields": out}, indent=2, default=str))
+    print(json.dumps({"applied": bool(args.apply), "store": args.store, "fields": out}, indent=2, default=str))
     return 0
 
 

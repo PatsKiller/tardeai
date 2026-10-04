@@ -1002,6 +1002,11 @@ GATES = [
         "health_make_interval_20261004",
         ["tests/test_health_make_interval_20261004.py"],
     ),
+    # Policy apply script ratifies into production state, not the running tree (2026-10-04).
+    (
+        "apply_policy_default_store_20261004",
+        ["tests/test_apply_policy_default_store_20261004.py"],
+    ),
     # Ratified investment policy drives capital-plan sizing; 12% cap; required-only CONFIRMED (2026-10-03).
     (
         "policy_unify_20261003",
