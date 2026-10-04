@@ -78,6 +78,18 @@ test('CIO completion gate renders tabs, labels partial/unknown evidence, and pre
     expect(observation.horizontalOverflow).toBe(false)
     expect(observation.loadingText).toBe(false)
     expect(page.url()).not.toContain('/v3/v3/')
+    if (index % 2) {
+      // Live 2026-10-04: a stale portfolio (PORT ⚠ $1,264,135) widened the one-line
+      // phone header to 393px at 390px. Fixture values are short, so force long ones.
+      const headerOverflow = await page.evaluate(() => {
+        const strip = document.querySelector('[data-testid="ms-compact"]')
+        if (!strip) return null
+        strip.querySelectorAll('.ms-compact__label').forEach(el => { el.textContent = 'PORT ⚠ STALE' })
+        strip.querySelectorAll('.ms-compact__value').forEach(el => { el.textContent = '$12,345,678.90 +$123,456 +12.34%' })
+        return document.documentElement.scrollWidth - window.innerWidth
+      })
+      if (headerOverflow !== null) expect(headerOverflow).toBeLessThanOrEqual(1)
+    }
   }
 
   await page.setViewportSize({ width: 1440, height: 900 })
