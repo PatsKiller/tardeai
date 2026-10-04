@@ -13,6 +13,33 @@ from pathlib import Path
 
 import yaml
 
+import importlib.util  # noqa: E402
+
+# CI installs no psycopg2 (memory: "CI has NO psycopg2"); these tests never touch
+# a database, so stand in a minimal module only when the driver is absent.
+if importlib.util.find_spec("psycopg2") is None:  # pragma: no cover - CI path
+    _pg = types.ModuleType("psycopg2")
+    for _name in ("Error", "OperationalError", "InterfaceError", "DatabaseError", "ProgrammingError", "IntegrityError"):
+        setattr(_pg, _name, type(_name, (Exception,), {}))
+
+    def _no_db(*_a, **_k):
+        raise _pg.OperationalError("psycopg2 unavailable in tests")
+
+    _pg.connect = _no_db
+    for _sub in ("extras", "extensions", "pool", "sql", "errors"):
+        _m = types.ModuleType(f"psycopg2.{_sub}")
+        setattr(_pg, _sub, _m)
+        sys.modules[f"psycopg2.{_sub}"] = _m
+    _pg.extras.RealDictCursor = object
+    _pg.extras.DictCursor = object
+    _pg.extras.Json = lambda value: value
+    _pg.extras.execute_values = _no_db
+    _pg.extensions.connection = object
+    _pg.extensions.cursor = object
+    _pg.pool.SimpleConnectionPool = _no_db
+    _pg.pool.ThreadedConnectionPool = _no_db
+    sys.modules["psycopg2"] = _pg
+
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
