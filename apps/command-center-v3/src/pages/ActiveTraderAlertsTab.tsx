@@ -82,11 +82,11 @@ export default function ActiveTraderAlertsTab() {
       </header>
 
       <section className="at-alerts__kpis" aria-label="Today">
-        <Kpi label="Time to buy" value={c.triggered_alerts ?? 0} tone="green" hint="TRIGGERED alerts today" />
-        <Kpi label="Heads-up" value={c.armed_alerts ?? 0} tone="amber" hint="ARMED alerts today" />
-        <Kpi label="Sent to Telegram" value={c.sent ?? 0} tone="blue" hint={live ? 'delivered' : 'shadow mode — nothing sent'} />
-        <Kpi label="Vetoed" value={c.vetoes ?? 0} tone="muted" hint="blocked by a check (reasons below)" />
-        <Kpi label="5-min hit rate" value={precisionText(p5['TRIGGERED:ALERT'])} tone="green" hint="TRIGGERED alerts that reached +1R within 5 min" />
+        <Kpi label="Time to buy" value={c.triggered_alerts ?? 0} tone="green" tip="TRIGGERED alerts today" />
+        <Kpi label="Heads-up" value={c.armed_alerts ?? 0} tone="amber" tip="ARMED alerts today" />
+        <Kpi label="Sent to Telegram" value={c.sent ?? 0} tone="blue" tip={live ? 'delivered' : 'shadow mode — nothing sent'} />
+        <Kpi label="Vetoed" value={c.vetoes ?? 0} tone="muted" tip="blocked by a check (reasons below)" />
+        <Kpi label="5-min hit rate" value={precisionText(p5['TRIGGERED:ALERT'])} tone="green" tip="TRIGGERED alerts that reached +1R within 5 min" />
       </section>
 
       <div className="at-alerts__grid">
@@ -164,12 +164,12 @@ function precisionText(p?: { n: number; hit: number; precision: number | null })
   return `${pct(p.precision)} (${p.hit}/${p.n})`;
 }
 
-function Kpi({ label, value, tone, hint }: { label: string; value: number | string; tone: 'green' | 'amber' | 'blue' | 'muted'; hint: string }) {
+function Kpi({ label, value, tone, tip }: { label: string; value: number | string; tone: 'green' | 'amber' | 'blue' | 'muted'; tip: string }) {
   return (
-    <div className={`at-kpi at-kpi--${tone}`} title={hint}>
+    <div className={`at-kpi at-kpi--${tone}`} title={tip}>
       <small>{label}</small>
       <strong>{value}</strong>
-      <span>{hint}</span>
+      <span>{tip}</span>
     </div>
   );
 }
