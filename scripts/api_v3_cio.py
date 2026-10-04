@@ -3115,6 +3115,7 @@ def get_cio_counterfactuals(query: dict[str, Any] | None = None) -> dict[str, An
         "as_of": _now_iso(),
         "source_as_of": max((str(r.get("recorded_at") or "") for r in rows), default=None),
         "summary": cl.summarize(rows),
+        "idea_summary": cl.summarize_ideas(rows),
         "rows": rows[:limit],
         "row_count": len(rows),
     }

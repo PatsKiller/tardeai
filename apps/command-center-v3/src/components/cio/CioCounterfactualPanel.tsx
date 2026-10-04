@@ -16,7 +16,16 @@ type GateRow = {
 }
 type Horizon = { status?: string; return_pct?: number | null; relative_pct?: number | null; reason?: string }
 type Row = { block_id: string; gate: string; symbol: string; day: string; rechecks?: number; horizons?: Record<string, Horizon> }
-type Payload = { ok?: boolean; status?: string; summary?: GateRow[]; rows?: Row[]; row_count?: number; source_as_of?: string | null; error?: string }
+type IdeaRow = {
+  strategy: string
+  horizon_sessions: number
+  ideas: number
+  measured: number
+  median_return_pct: number | null
+  good_moves_blocked: number
+  losers_avoided: number
+}
+type Payload = { ok?: boolean; status?: string; summary?: GateRow[]; idea_summary?: IdeaRow[]; rows?: Row[]; row_count?: number; source_as_of?: string | null; error?: string }
 
 const HORIZONS = [1, 5, 20]
 const SLOW_POLL_MS = 300_000
@@ -36,6 +45,7 @@ export default function CioCounterfactualPanel() {
   const [horizon, setHorizon] = useState(5)
   const { data, loading, error } = useApi<Payload>('/api/v3/cio/counterfactuals?limit=40', SLOW_POLL_MS)
   const gates = (data?.summary || []).filter((g) => g.horizon_sessions === horizon && g.blocks > 0)
+  const strategies = (data?.idea_summary || []).filter((g) => g.horizon_sessions === horizon && g.ideas > 0)
   const cell = { padding: '6px 8px', borderBottom: '1px solid var(--border-subtle)', fontSize: 11, textAlign: 'right' as const }
 
   return (
@@ -65,6 +75,37 @@ export default function CioCounterfactualPanel() {
               </button>
             ))}
           </div>
+          {strategies.length > 0 && (
+            <div style={{ overflowX: 'auto', marginBottom: 12 }}>
+              <div style={{ fontSize: 10, color: 'var(--text3)', fontWeight: 800, letterSpacing: '.6px', marginBottom: 4 }}>
+                BY STRATEGY · EACH IDEA COUNTED ONCE
+              </div>
+              <table style={{ borderCollapse: 'collapse', width: '100%', fontVariantNumeric: 'tabular-nums' }}>
+                <thead>
+                  <tr>
+                    {['Strategy', 'Ideas', 'Measured', 'Median', 'Good moves blocked', 'Losers avoided'].map((h, i) => (
+                      <th key={h} style={{ ...cell, textAlign: i === 0 ? 'left' : 'right', color: 'var(--text3)', fontWeight: 700 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {strategies.map((g) => (
+                    <tr key={g.strategy} data-testid="cio-counterfactual-strategy">
+                      <td style={{ ...cell, textAlign: 'left', color: 'var(--text1)' }}>{g.strategy}</td>
+                      <td style={cell}>{g.ideas}</td>
+                      <td style={cell}>{g.measured}</td>
+                      <td style={{ ...cell, color: tone(g.median_return_pct) }}>{pct(g.median_return_pct)}</td>
+                      <td style={{ ...cell, color: g.good_moves_blocked ? 'var(--amber)' : 'var(--text2)' }}>{g.good_moves_blocked}</td>
+                      <td style={{ ...cell, color: g.losers_avoided ? 'var(--green)' : 'var(--text2)' }}>{g.losers_avoided}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 4 }}>
+                One idea is often stopped by several gates of the same strategy; the per-gate table below counts it under each.
+              </div>
+            </div>
+          )}
           <div style={{ overflowX: 'auto' }}>
             <table style={{ borderCollapse: 'collapse', width: '100%', fontVariantNumeric: 'tabular-nums' }}>
               <thead>

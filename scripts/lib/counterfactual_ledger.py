@@ -218,6 +218,38 @@ def summarize(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
+
+def summarize_ideas(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per strategy and horizon, each idea (strategy, symbol, ET day) counted ONCE.
+
+    ``summarize`` is per gate, and one idea is usually blocked by several gates of
+    the same strategy (GLND 09-21: four meme-squeeze gates), so adding gate rows
+    counted it up to four times. This is the per-idea view to judge a strategy by.
+    """
+    ideas: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in rows:
+        strategy = str(row.get("gate") or "").split(":", 1)[0]
+        key = (strategy, str(row.get("symbol")), str(row.get("day")))
+        idea = ideas.setdefault(key, {"strategy": strategy, "gates": set(), "horizons": row.get("horizons") or {}})
+        idea["gates"].add(str(row.get("gate") or "").split(":", 1)[-1])
+    out: list[dict[str, Any]] = []
+    for strategy in sorted({k[0] for k in ideas}):
+        members = [v for k, v in ideas.items() if k[0] == strategy]
+        for k in HORIZONS:
+            r = [float(m["horizons"][str(k)]["return_pct"]) for m in members
+                 if (m["horizons"].get(str(k)) or {}).get("status") == "MEASURED"
+                 and m["horizons"][str(k)].get("return_pct") is not None]
+            up = sum(1 for x in r if x > BIG_MOVE_PCT)
+            down = sum(1 for x in r if x < -BIG_MOVE_PCT)
+            out.append({
+                "strategy": strategy, "horizon_sessions": int(k), "ideas": len(members), "measured": len(r),
+                "mean_return_pct": round(statistics.fmean(r), 2) if r else None,
+                "median_return_pct": round(statistics.median(r), 2) if r else None,
+                "good_moves_blocked": up, "losers_avoided": down,
+                "multi_gate_ideas": sum(1 for m in members if len(m["gates"]) > 1),
+            })
+    return out
+
 # ── store ────────────────────────────────────────────────────────────────────
 
 _INDEX: dict[str, tuple[tuple[int, int], dict[str, dict[str, Any]]]] = {}
@@ -301,8 +333,8 @@ def build(db_query: Callable[..., Any], *, days: int = 30, now: Optional[datetim
     rows = [measure(b, prices) for b in blocks]
     return {"schema": SCHEMA, "as_of": now.isoformat(), "days": days, "blocks": len(rows),
             "rechecks_collapsed": sum(b.get("rechecks", 1) - 1 for b in blocks),
-            "summary": summarize(rows), "rows": rows}
+            "summary": summarize(rows), "idea_summary": summarize_ideas(rows), "rows": rows}
 
 
 __all__ = ["SCHEMA", "HORIZONS", "append_rows", "block_id", "build", "collect_blocks", "latest_rows",
-           "load_prices", "measure", "store_path", "summarize"]
+           "load_prices", "measure", "store_path", "summarize", "summarize_ideas"]

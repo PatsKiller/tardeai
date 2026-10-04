@@ -46,6 +46,11 @@ def main() -> int:
         print(f"  {g['gate'][:48]:48} h={g['horizon_sessions']:>2} blocks={g['blocks']:>4} measured={g['measured']:>4} "
               f"pending={g['pending']:>4} stale={g['stale_identical']:>3} mean={g['mean_return_pct']} "
               f"median={g['median_return_pct']} up>5%={g['cost_good_moves_blocked']} down>5%={g['benefit_losers_avoided']}")
+    print("  -- per strategy, each idea once (gate rows above can repeat an idea) --")
+    for g in out.get("idea_summary") or []:
+        print(f"  {g['strategy'][:32]:32} h={g['horizon_sessions']:>2} ideas={g['ideas']:>4} measured={g['measured']:>4} "
+              f"mean={g['mean_return_pct']} median={g['median_return_pct']} "
+              f"up>5%={g['good_moves_blocked']} down>5%={g['losers_avoided']} multi_gate={g['multi_gate_ideas']}")
     return 0
 
 
