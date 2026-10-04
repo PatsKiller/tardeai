@@ -958,6 +958,11 @@ GATES = [
         "cio_operator_artifacts_20261003",
         ["tests/test_cio_operator_artifacts_20261003.py"],
     ),
+    # AlertQuality@v1 scored from the real alert ledgers, persisted via operator artifacts (2026-10-03).
+    (
+        "alert_quality_producer_20261003",
+        ["tests/test_alert_quality_producer_20261003.py"],
+    ),
     (
         "cio_plan_expiry_20261003",
         ["tests/test_cio_plan_expiry_20261003.py"],

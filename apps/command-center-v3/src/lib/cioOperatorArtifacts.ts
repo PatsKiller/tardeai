@@ -36,10 +36,29 @@ function clip(text: string): string {
   return t.length > MAX ? `${t.slice(0, MAX - 1)}…` : t
 }
 
+function num(v: unknown): string {
+  return typeof v === 'number' && Number.isFinite(v) ? String(v) : '—'
+}
+
+/** One readable line for a ledger-derived AlertQuality@v1 day; unmeasured stays unmeasured. */
+export function alertQualitySummary(p: Record<string, unknown>): string | null {
+  const d = p.delivery && typeof p.delivery === 'object' ? p.delivery as Record<string, unknown> : null
+  const e = p.editor && typeof p.editor === 'object' ? p.editor as Record<string, unknown> : null
+  if (!d || !e) return null
+  const o = p.outcomes && typeof p.outcomes === 'object' ? p.outcomes as Record<string, unknown> : {}
+  const outcome = typeof o.status === 'string' ? o.status : 'outcomes unmeasured'
+  return clip(`${typeof p.day === 'string' ? p.day : 'Day'}: ${num(d.delivered_confirmed)} delivered (confirmed), `
+    + `${num(d.delivered_unconfirmed)} unconfirmed, ${num(d.suppressed)} suppressed of ${num(d.attempts)} attempts. `
+    + `Editor held ${num(e.held_duplicate)} duplicates and ${num(e.held_cio_disagreement)} CIO-disagreement messages `
+    + `(${num(e.false_positive_cio_holds)} single-letter false positives). ${outcome}.`)
+}
+
 /** The human-readable core of an artifact: its own text first, never raw JSON. */
 export function artifactSummary(row: CioOperatorArtifact | null | undefined): string {
   const p = (row?.payload && typeof row.payload === 'object') ? row.payload as Record<string, unknown> : {}
   if (p._truncated) return `Payload truncated (${String(p._original_bytes ?? '?')} bytes); open details for the stored prefix.`
+  const quality = alertQualitySummary(p)
+  if (quality) return quality
   for (const key of ['text', 'rendered_text', 'reply', 'summary', 'verdict', 'final_position', 'conclusion']) {
     const v = p[key]
     if (typeof v === 'string' && v.trim()) return clip(v)

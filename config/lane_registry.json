@@ -2260,6 +2260,22 @@
       "note": "Declared 2026-09-24 (agentic-memory tranche 1): was in undeclared_baseline while resolving outcome checkpoints hourly. Settlement hop 1 of the learning loop; feeds the belief writer through outcome_observations. 2026-10-03 operator decision: also --apply-pending-data with TRADEAI_PENDING_DATA_APPLY=1 so OUTCOME_PENDING_DATA rows whose prices now exist settle (dry run: 7 would resolve, 0 expire; append-only)."
     },
     {
+      "lane_id": "alert-quality",
+      "owner": "cio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 7 * * * cd /home/johnclaw/trade-ai-releases/portfolio-server/CURRENT && flock -n /tmp/score_alert_quality.lock $PY scripts/score_alert_quality.py --apply >> logs/score_alert_quality.log 2>&1",
+        "match": "scripts/score_alert_quality.py --apply"
+      },
+      "expected_cadence_hours": 24.0,
+      "state": "ACTIVE",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/alert_quality_last.json"
+      },
+      "note": "Declared 2026-10-03 (operator chose to wire a real AlertQuality@v1 producer). Daily at 07:05 ET it scores the previous completed ET day from communication_deliveries/events and the comms-editor receipts and persists one row through the operator-artifact store. Read-only on the ledgers; no LLM, no sends. Install requires the operator's cron grant."
+    },
+    {
       "lane_id": "build-lesson-candidates",
       "owner": "cio",
       "scheduler": {

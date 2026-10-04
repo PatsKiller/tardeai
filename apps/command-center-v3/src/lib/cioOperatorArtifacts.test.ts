@@ -1,4 +1,4 @@
-import { ARTIFACT_LABELS, artifactFields, artifactSummary } from './cioOperatorArtifacts.ts'
+import { ARTIFACT_LABELS, alertQualitySummary, artifactFields, artifactSummary } from './cioOperatorArtifacts.ts'
 
 function eq(a: unknown, b: unknown, msg: string) {
   if (a !== b) throw new Error(`FAIL ${msg}: ${String(a)} !== ${String(b)}`)
@@ -16,4 +16,12 @@ const f = artifactFields({ payload: { symbol: 'SCHD', n: 3, nested: { a: 1 }, no
 eq(f.length, 2, 'only scalar fields listed')
 eq(f[0][0], 'symbol', 'field order kept')
 eq(ARTIFACT_LABELS['GrokCritique@v1'], 'Grok critique', 'labels')
+const aq = artifactSummary({ payload: { schema: 'AlertQuality@v1', day: '2026-10-02',
+  delivery: { attempts: 1667, delivered_confirmed: 79, delivered_unconfirmed: 32, suppressed: 1556 },
+  editor: { held_duplicate: 30, held_cio_disagreement: 5, false_positive_cio_holds: 1 },
+  outcomes: { status: 'UNMEASURED: no delivered alert carried a decision_id' } } })
+eq(aq.startsWith('2026-10-02: 79 delivered (confirmed), 32 unconfirmed, 1556 suppressed of 1667 attempts.'), true, 'alert quality day line')
+eq(aq.includes('UNMEASURED'), true, 'unmeasured outcome stays unmeasured')
+eq(alertQualitySummary({ delivery: { attempts: 1 } }), null, 'partial alert quality payload falls back')
+eq(alertQualitySummary({ delivery: {}, editor: {} })?.includes('— delivered'), true, 'missing numbers show a dash, never 0')
 console.log('cioOperatorArtifacts.test.ts: ok')

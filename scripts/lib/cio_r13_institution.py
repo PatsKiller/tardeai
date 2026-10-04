@@ -65,7 +65,136 @@ def record_notification_outcome(
 
 # ── D15 alert quality ─────────────────────────────────────────────────────
 
-def score_alerts(rows: list[dict[str, Any]]) -> dict[str, Any]:
+# Inbound traffic shares the delivery ledger; it is not an alert the system sent.
+_INBOUND_EVENT_TYPES = frozenset({"callback_query", "telegram_command", "operator_reply", "inbound_message"})
+_EDITOR_HOLD_KEYS = ("cio_disagreement", "cio_decision_missing")
+
+
+def _rate(num: int, den: int) -> float | None:
+    """None when there is nothing to divide: an empty day is unmeasured, not 0%."""
+    return round(num / den, 4) if den else None
+
+
+def _is_delivered(row: dict[str, Any]) -> str | None:
+    """CONFIRMED when the provider returned a message id; UNCONFIRMED when only the
+    path claims delivery (LEGACY_DELIVERED / SENT without an id: some of those were
+    held by the comms editor, so they are not counted as delivered)."""
+    status = str(row.get("status") or "").upper()
+    if status not in {"SENT", "LEGACY_DELIVERED"}:
+        return None
+    return "CONFIRMED" if str(row.get("provider_message_id") or "").strip() else "UNCONFIRMED"
+
+
+def _score_alert_ledgers(
+    deliveries: list[dict[str, Any]],
+    editor_receipts: list[dict[str, Any]],
+    decision_outcomes: dict[str, dict[str, Any]],
+    day: str | None,
+) -> dict[str, Any]:
+    outbound = [r for r in deliveries if str(r.get("event_type") or "") not in _INBOUND_EVENT_TYPES]
+    counts = {"attempts": len(outbound), "delivered_confirmed": 0, "delivered_unconfirmed": 0,
+              "suppressed": 0, "in_flight": 0, "other": 0}
+    by_event_type: dict[str, dict[str, int]] = {}
+    by_producer: dict[str, dict[str, int]] = {}
+    delivered_rows: list[dict[str, Any]] = []
+    for row in outbound:
+        kind = _is_delivered(row)
+        status = str(row.get("status") or "").upper()
+        key = ("delivered_confirmed" if kind == "CONFIRMED" else "delivered_unconfirmed" if kind
+               else "suppressed" if status == "SUPPRESSED" else "in_flight" if status == "RESERVED" else "other")
+        counts[key] += 1
+        for group, name in ((by_event_type, row.get("event_type")), (by_producer, row.get("producer"))):
+            bucket = group.setdefault(str(name or "unknown"), {"attempts": 0, "delivered_confirmed": 0, "suppressed": 0})
+            bucket["attempts"] += 1
+            if key in bucket:
+                bucket[key] += 1
+        if kind:
+            delivered_rows.append(row)
+    delivered = len(delivered_rows)
+    subject_bound = sum(1 for r in delivered_rows if r.get("subject_guid"))
+    with_decision = [r for r in delivered_rows if r.get("decision_ids")]
+
+    # Comms editor: one message reaches each operator chat with the same fingerprint
+    # within a second, so (fingerprint, minute) is one message. Shadow-mode receipts
+    # never changed a send and are not counted.
+    messages: dict[tuple[str, str], dict[str, Any]] = {}
+    for rec in editor_receipts:
+        if str(rec.get("mode") or "") != "live":
+            continue
+        messages.setdefault((str(rec.get("fingerprint") or ""), str(rec.get("ts") or "")[:16]), rec)
+    editor = {"messages": len(messages), "sent": 0, "held_duplicate": 0,
+              **{f"held_{k}": 0 for k in _EDITOR_HOLD_KEYS}, "held_other": 0,
+              "false_positive_cio_holds": 0}
+    for rec in messages.values():
+        if rec.get("send"):
+            editor["sent"] += 1
+            continue
+        reason = str(rec.get("held_reason") or "")
+        if reason in _EDITOR_HOLD_KEYS:
+            editor[f"held_{reason}"] += 1
+            syms = [str((d or {}).get("symbol") or "") for d in rec.get("cio_disagreements") or []]
+            if reason == "cio_disagreement" and syms and all(len(s) == 1 for s in syms):
+                editor["false_positive_cio_holds"] += 1
+        elif rec.get("duplicate_of"):
+            editor["held_duplicate"] += 1
+        else:
+            editor["held_other"] += 1
+
+    outcome = {"favourable": 0, "unfavourable": 0, "pending": 0, "not_scorable": 0}
+    for row in with_decision:
+        for did in row.get("decision_ids") or []:
+            verdict = str((decision_outcomes.get(did) or {}).get("verdict") or "pending")
+            outcome[verdict if verdict in outcome else "not_scorable"] += 1
+    scored = outcome["favourable"] + outcome["unfavourable"]
+    return {
+        "schema": "AlertQuality@v1",
+        "basis": "ledgers",
+        "day": day,
+        "delivery": {**counts,
+                     "confirmed_delivery_rate": _rate(counts["delivered_confirmed"], counts["attempts"]),
+                     "suppression_rate": _rate(counts["suppressed"], counts["attempts"]),
+                     "subject_bound_delivered": subject_bound,
+                     "subject_bound_rate": _rate(subject_bound, delivered),
+                     "decision_attached_delivered": len(with_decision),
+                     "decision_attached_rate": _rate(len(with_decision), delivered)},
+        "editor": {**editor,
+                   "duplicate_hold_rate": _rate(editor["held_duplicate"], editor["messages"]),
+                   "false_positive_cio_hold_rate": _rate(editor["false_positive_cio_holds"],
+                                                         editor["held_cio_disagreement"])},
+        "outcomes": {**outcome,
+                     "favourable_rate": _rate(outcome["favourable"], scored),
+                     "status": "MEASURED" if scored else
+                     ("UNMEASURED: no delivered alert carried a decision_id" if not with_decision
+                      else "PENDING: decision-attached alerts have no matured outcome yet")},
+        "by_event_type": by_event_type,
+        "by_producer": by_producer,
+        "limits": [
+            "Alert class is not recorded on the delivery ledger (message_class is 'ops' and "
+            "source_job is empty for nearly all rows), so rates are per event type and producer.",
+            "Delivered means the provider returned a message id; id-less LEGACY_DELIVERED rows "
+            "are counted as delivered_unconfirmed.",
+            "False-positive CIO holds count only holds whose every 'disagreeing ticker' is a single letter.",
+        ],
+        "behavior_influence": 0,
+        "authority": AUTHORITY,
+    }
+
+
+def score_alerts(
+    rows: list[dict[str, Any]] | None = None,
+    *,
+    deliveries: list[dict[str, Any]] | None = None,
+    editor_receipts: list[dict[str, Any]] | None = None,
+    decision_outcomes: dict[str, dict[str, Any]] | None = None,
+    day: str | None = None,
+) -> dict[str, Any]:
+    """AlertQuality@v1. With ledger inputs (the production path,
+    scripts/score_alert_quality.py) it scores what the delivery ledger and the comms
+    editor actually recorded; with ``rows`` it keeps the original summary rates."""
+    if deliveries is not None or editor_receipts is not None:
+        return _score_alert_ledgers(list(deliveries or []), list(editor_receipts or []),
+                                    dict(decision_outcomes or {}), day)
+    rows = list(rows or [])
     n = max(len(rows), 1)
     suppressed = sum(1 for r in rows if str(r.get("notification_class") or r.get("status")) == "SUPPRESSED")
     delivered = sum(1 for r in rows if str(r.get("status") or "") == "DELIVERED" or r.get("notification_class") == "IMMEDIATE")
