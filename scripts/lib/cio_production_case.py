@@ -52,6 +52,11 @@ EVENT_TYPES = (
 )
 
 MATURED_OUTCOMES = frozenset({"POSITIVE", "NEGATIVE", "FLAT", "EXPIRED"})
+# Darwin scores only a measured market result. EXPIRED means the horizon passed with
+# no market result ("horizon_elapsed_no_market_outcome"): scoring it graded a formula,
+# not a decision (operator-approved Policy Review P2 fix, 2026-10-03).
+DARWIN_SCORABLE_OUTCOMES = frozenset({"POSITIVE", "NEGATIVE", "FLAT"})
+UNSCORED_NO_MARKET_OUTCOME = "UNSCORED_NO_MARKET_OUTCOME"
 CASE_STATUSES = ("OPEN", "AWAITING_OUTCOME", "MATURED", "SCORED", "CLOSED")
 
 SCORER = "cio_production_case_darwin_v1"
@@ -465,8 +470,28 @@ def record_challenge(
     )
 
 
+def _no_market_outcome(case: dict[str, Any]) -> bool:
+    outcome = case.get("outcome")
+    status = _outcome_status(outcome) if isinstance(outcome, dict) else ""
+    return bool(status) and status in MATURED_OUTCOMES and status not in DARWIN_SCORABLE_OUTCOMES
+
+
+def _unscored_no_market_outcome() -> dict[str, Any]:
+    return {
+        "eligible": False,
+        "darwin_status": UNSCORED_NO_MARKET_OUTCOME,
+        "reason": "unscored: no market outcome",
+        "score": None,
+        "scorer": SCORER,
+        "formula": FORMULA,
+        "authority": AUTHORITY,
+    }
+
+
 def score_case_darwin(case: dict[str, Any]) -> dict[str, Any]:
-    """Deterministic job score — only after maturity. Not generic win rate."""
+    """Deterministic job score — only after a measured market outcome. Not generic win rate."""
+    if _darwin_eligible(case) and _no_market_outcome(case) and not case.get("auto_promoted"):
+        return _unscored_no_market_outcome()
     if not _darwin_eligible(case):
         rec: dict[str, Any] = {
             "eligible": False,
@@ -670,7 +695,15 @@ def _fold_events(case_id: str, events: list[dict[str, Any]]) -> dict[str, Any]:
 
     # Darwin only after CASE_MATURED / DARWIN_SCORED.
     # Persist SCORED only via DARWIN_SCORED; CASE_MATURED is eligible but not yet scored.
-    if saw_scored and scored_payload is not None:
+    if saw_scored and scored_payload is not None and _no_market_outcome(out) and not out.get("auto_promoted"):
+        # A legacy DARWIN_SCORED event graded an EXPIRED (no market result) case.
+        # The event stays in the append-only log; the projection withdraws the score.
+        d = _unscored_no_market_outcome()
+        d["withdrawn_score"] = scored_payload.get("score")
+        out["darwin"] = d
+        if out["status"] == "SCORED":
+            out["status"] = "MATURED"
+    elif saw_scored and scored_payload is not None:
         d = dict(scored_payload)
         d.setdefault("eligible", True)
         d.setdefault("darwin_status", "SCORED")

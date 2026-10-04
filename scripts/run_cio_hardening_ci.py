@@ -1008,6 +1008,11 @@ GATES = [
             "tests/test_lineage_phase34_20261003.py",
         ],
     ),
+    # Policy Review P2: only outcome-backed lessons queue; Darwin scores only market outcomes (2026-10-03).
+    (
+        "lesson_queue_darwin_20261003",
+        ["tests/test_lesson_queue_darwin_20261003.py"],
+    ),
     # Dark WIRE debt: DecisionRationale on decisions + lineage; thesis event wake in SHADOW (2026-10-03).
     (
         "dark_wire_rationale_wake_20261003",

@@ -2475,6 +2475,42 @@ def post_linked_operator_feedback(body: dict[str, Any] | None = None) -> dict[st
     }
 
 
+_LESSON_DIGEST_CACHE: dict[str, Any] = {"key": None, "value": None}
+
+
+def get_lessons_digest_v1() -> dict[str, Any]:
+    """GET /api/v3/cio/lessons/digest — weekly top lessons under Policy Review P2.
+
+    Read-only. Rebuilt only when the queue or the outcome store changes; promotion
+    stays operator-only through lesson_promotion decide.
+    """
+    try:
+        from scripts.lib import lesson_outcome_quality as loq
+        from scripts.lib import lesson_promotion as lp
+
+        cio_dir = Path(os.getenv("TRADEAI_CIO_DIR") or PROJECT_ROOT / "data" / "cio")
+        env = {"TRADEAI_CIO_DIR": str(cio_dir)}
+        key = []
+        for name in ("lesson_promotions.jsonl", "outcome_observations.jsonl"):
+            try:
+                st = (cio_dir / name).stat()
+                key.append((name, st.st_size, st.st_mtime_ns))
+            except OSError:
+                key.append((name, None, None))
+        key_t = tuple(key)
+        if _LESSON_DIGEST_CACHE["key"] == key_t and _LESSON_DIGEST_CACHE["value"] is not None:
+            return dict(_LESSON_DIGEST_CACHE["value"])
+        price_on, daily_vol = loq.default_lookups()
+        digest = lp.weekly_digest(None, env, price_on=price_on, daily_vol=daily_vol)
+        digest["ok"] = True
+        digest["price_checks"] = "LIVE" if price_on else "UNAVAILABLE (quality checks fail closed)"
+        _LESSON_DIGEST_CACHE["key"], _LESSON_DIGEST_CACHE["value"] = key_t, digest
+        return dict(digest)
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": type(exc).__name__, "detail": str(exc)[:200],
+                "authority": AUTHORITY_ADVISORY, "candidates": []}
+
+
 def get_learning_review_v1() -> dict[str, Any]:
     from scripts.lib.cio_feedback_learning_v1 import (
         build_preference_candidates,
