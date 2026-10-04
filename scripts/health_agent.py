@@ -1116,9 +1116,9 @@ def collect_intelligence_quality() -> list[dict]:
         # A claim crash changes no row status, so the failure count above cannot see it
         # (2026-07-08..09-26: 0 claims, 3,687 queued). Stalled = old queued work and nothing finished.
         stall_h = float(os.getenv("ENSEMBLE_STALL_HOURS", "72"))
-        st = _db("""SELECT COUNT(*) FILTER (WHERE status='queued' AND requested_at < now() - make_interval(hours => %s)) AS old_q,
+        st = _db("""SELECT COUNT(*) FILTER (WHERE status='queued' AND requested_at < now() - make_interval(hours => %s::int)) AS old_q,
                            MAX(finished_at) AS last_done
-                    FROM inference_ensemble_jobs""", (stall_h,), fetch="one")
+                    FROM inference_ensemble_jobs""", (int(round(stall_h)),), fetch="one")
         if st and (st.get("old_q") or 0) > 0:
             last_done = st.get("last_done")
             stale = last_done is None or (datetime.now(timezone.utc) - last_done).total_seconds() > stall_h * 3600
