@@ -937,6 +937,16 @@ GATES = [
         "health_paper_siem_20261003",
         ["tests/test_health_paper_excluded_20261003.py"],
     ),
+    # Blocked-idea counterfactual ledger + comms editor word-ticker / approval-request fix (2026-10-03).
+    (
+        "blocked_ledger_comms_20261003",
+        ["tests/test_blocked_ledger_comms_20261003.py"],
+    ),
+    # Blocked-idea ledger counts each idea once per strategy; meme-squeeze gate kept (2026-10-03).
+    (
+        "meme_squeeze_gate_20261003",
+        ["tests/test_meme_squeeze_gate_20261003.py"],
+    ),
     # CIO Desk cards read live outcome counts and keep measured lane counts (2026-10-03).
     (
         "cio_scorecard_live_counts_20261003",

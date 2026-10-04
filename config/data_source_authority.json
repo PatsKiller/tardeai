@@ -2665,6 +2665,50 @@
         }
       ],
       "_writer_note": "Best-effort hooks at each producer's final point; recording never blocks or changes a send. Payloads bounded at 32 KB with an explicit truncation marker. Read by api_v3_cio.get_cio_operator_artifacts (GET /api/v3/cio/operator-artifacts). BuyReady packets are served from their own store, not copied."
+    },
+    {
+      "domain": "counterfactual_ledger",
+      "class": "derived",
+      "approval": {
+        "approved_by": "operator",
+        "approved_on": "2026-10-03",
+        "reference": "Policy Review P3 counterfactual ledger for blocked ideas — operator approved 2026-10-03 (artifact https://claude.ai/artifact/A9hC1prwHkkt3WbvTDBxiv, session https://claude.ai/code/session_016HFMrnsdyVGo4QnLAijLVC); PR #1425",
+        "scope": "CounterfactualLedger@v1 — append-only, one row per blocked idea (gate, symbol, ET day) and a new version when its 1/5/20-session measurement changes; observation only"
+      },
+      "store": {
+        "file": "cio/counterfactual_ledger.jsonl"
+      },
+      "writer": "scripts/lib/counterfactual_ledger.py",
+      "cadence": "daily (scripts/build_counterfactual_ledger.py --apply)",
+      "stale_after_hours": 48,
+      "projection": null,
+      "required_fields": [
+        "block_id",
+        "gate",
+        "symbol",
+        "blocked_at",
+        "recorded_at",
+        "source_ref"
+      ],
+      "primary_provider": "native",
+      "backup": [],
+      "retired": [],
+      "no_coverage": "say_so",
+      "on_gap": [
+        {
+          "vector": "refresh_producer",
+          "cost_class": "free",
+          "max_per_day": 4,
+          "expected_seconds": 30
+        },
+        {
+          "vector": "operator_ask",
+          "cost_class": "free",
+          "max_per_day": 1,
+          "expected_seconds": 0
+        }
+      ],
+      "_writer_note": "Reads auto_proposal_decisions SKIPPED_* and cio_decisions options/entry reviews, prices from ticker_prices snapshots (SPY session calendar). Missing prices are PENDING; identical forward snapshots STALE_IDENTICAL. Read by api_v3_cio.get_cio_counterfactuals."
     }
   ]
 }
