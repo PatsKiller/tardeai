@@ -1017,6 +1017,11 @@ GATES = [
         "active_trader_live_alerts_20261004",
         ["tests/test_active_trader_live_alerts_20261004.py"],
     ),
+    # CIO event bus fork repair: re-link without loss/reorder, byte-exact archive, idempotent (2026-10-04).
+    (
+        "repair_cio_event_bus_fork_20261004",
+        ["tests/test_repair_cio_event_bus_fork_20261004.py"],
+    ),
     # Ratified investment policy drives capital-plan sizing; 12% cap; required-only CONFIRMED (2026-10-03).
     (
         "policy_unify_20261003",
