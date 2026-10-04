@@ -623,6 +623,23 @@ def run(args) -> int:
                       f"(SHADOW — scoring still T0/dcf {cfg['data_tiers']['dcf']['T0']})")
         except Exception as e:
             print(f"  [moomoo-arm] skipped: {e}")
+
+    # Active Trader Phase 1 (operator 2026-10-04): ARMED / TRIGGERED alerts confirmed by moomoo
+    # Level 2 + tape (Schwab book recorded for comparison). ALERTS ONLY. Default mode "shadow"
+    # journals decisions without sending. LIVE only — replay is history and never alerts. Then
+    # scores decisions whose 15-minute window has closed. Never breaks the logger.
+    if not args.replay:
+        try:
+            from active_trader.momentum_alert_pass import run_from_logger
+            from active_trader.momentum_alert_scoring import score_pending
+            at_dry = bool(getattr(args, "dry_run", False)) or not args.apply
+            res = run_from_logger(conn, cfg, results, trigger_fires, trigger_states, day=day, dry_run=at_dry)
+            print(f"  [at-alerts]{' DRY' if at_dry else ''} {res}")
+            if not at_dry:
+                scored = score_pending(lambda s, d: session_rth_bars(s, cfg, d, fetch_days), now=as_of.timestamp())
+                print(f"  [at-alerts] scored {len(scored)} decision(s)")
+        except Exception as e:
+            print(f"  [at-alerts] skipped: {type(e).__name__}: {e}")
     return 0
 
 

@@ -1007,6 +1007,11 @@ GATES = [
         "apply_policy_default_store_20261004",
         ["tests/test_apply_policy_default_store_20261004.py"],
     ),
+    # Active Trader Phase 1: ARMED/TRIGGERED alerts on moomoo L2 + tape; fail closed; no order path (2026-10-04).
+    (
+        "active_trader_momentum_alerts_20261004",
+        ["tests/test_active_trader_momentum_alerts_20261004.py"],
+    ),
     # Ratified investment policy drives capital-plan sizing; 12% cap; required-only CONFIRMED (2026-10-03).
     (
         "policy_unify_20261003",
