@@ -225,3 +225,171 @@ def economics(p: dict[str, Any], *, shares_held: Optional[float] = None,
                     "actual cost basis differs from the mark.",
         })
     return out
+
+
+def _package_payoff(p: dict[str, Any]):
+    """Per-unit terminal payoff from current stock mark, including entry cash flow."""
+    strategy = p.get("strategy")
+    spot, k, premium = (_f(p.get(key)) for key in ("underlying_price", "strike", "premium"))
+    if premium is None or spot is None or not math.isfinite(premium) or not math.isfinite(spot) or spot <= 0:
+        raise ValueError("spot and executable premium required")
+    if strategy in {"credit_spread", "debit_spread"}:
+        sk, lk = _f(p.get("short_strike")), _f(p.get("long_strike"))
+        side = p.get("option_type", "put")
+        if sk is None or lk is None or side not in {"call", "put"}:
+            raise ValueError("vertical strikes and option type required")
+        credit = strategy == "credit_spread"
+        valid = (sk < lk if side == "call" else sk > lk)
+        if valid != credit or not 0 < premium < abs(sk - lk):
+            raise ValueError("invalid vertical ordering or entry price")
+        expirations = {str(x.get("expiration") or x.get("exp")) for x in p.get("legs", [])
+                       if x.get("expiration") or x.get("exp")}
+        if len(expirations) > 1:
+            raise ValueError("vertical legs must share expiry")
+        intrinsic = (lambda s, strike: max(s - strike, 0.0)) if side == "call" else (
+            lambda s, strike: max(strike - s, 0.0))
+        return lambda s: intrinsic(s, lk) - intrinsic(s, sk) + (premium if credit else -premium), [lk, sk]
+    if strategy == "collar":
+        pk, ck = _f(p.get("put_strike")), _f(p.get("call_strike"))
+        debit = _f(p.get("net_debit"))
+        if pk is None or ck is None or debit is None or not 0 < pk < ck:
+            raise ValueError("collar strikes and signed net debit required")
+        return lambda s: s - spot + max(pk - s, 0.0) - max(s - ck, 0.0) - debit, [pk, ck]
+    if k is None or k <= 0 or premium < 0:
+        raise ValueError("positive strike and nonnegative premium required")
+    if strategy == "covered_call":
+        return lambda s: s - spot + premium - max(s - k, 0.0), [k]
+    if strategy == "protective_put":
+        return lambda s: s - spot + max(k - s, 0.0) - premium, [k]
+    if strategy == "cash_secured_put":
+        return lambda s: premium - max(k - s, 0.0), [k]
+    if strategy == "long_call":
+        return lambda s: max(s - k, 0.0) - premium, [k]
+    if strategy == "long_put":
+        return lambda s: max(k - s, 0.0) - premium, [k]
+    raise ValueError("unsupported strategy")
+
+
+def payoff_metrics(p: dict[str, Any]) -> dict[str, Any]:
+    """Piecewise-linear package risk and model probability of positive net P/L.
+
+    Finite tail slopes are checked explicitly; None plus ``unlimited`` means an
+    unbounded gain, never a fabricated target. Fees/slippage are explicit inputs.
+    The zero-drift lognormal distribution is a model assumption, not calibrated alpha.
+    """
+    out: dict[str, Any] = {"schema": "OptionsPayoff@v1", "status": "UNAVAILABLE",
+        "max_loss": None, "max_profit": None, "breakeven": None,
+        "probability_of_profit_pct": None, "expected_pl": None,
+        "probability_basis": "lognormal terminal price at stated IV, zero drift; not empirically calibrated",
+        "price_basis": p.get("price_basis") or p.get("credit_basis") or "legacy midpoint",
+        "fee_basis": "provided" if p.get("fees_total") is not None else "not supplied; excluded",
+        "slippage_basis": "provided" if p.get("slippage_total") is not None else "not supplied; excluded"}
+    if p.get("non_standard") or p.get("nonstandard") or p.get("deliverable_status") == "nonstandard":
+        return {**out, "status": "UNSUPPORTED_DELIVERABLE"}
+    try:
+        contracts = _f(p.get("contracts", 1))
+        multiplier = _f(p.get("multiplier", 100))
+        fees = _f(p.get("fees_total", 0))
+        slippage = _f(p.get("slippage_total", 0))
+        vals = [contracts, multiplier, fees, slippage]
+        if any(v is None or not math.isfinite(v) for v in vals):
+            raise ValueError("non-finite economics input")
+        if contracts <= 0 or contracts != int(contracts) or multiplier <= 0 or fees < 0 or slippage < 0:
+            raise ValueError("invalid multiplier, contracts or costs")
+        payoff, strikes = _package_payoff(p)
+        if any(not math.isfinite(k) or k <= 0 for k in strikes):
+            raise ValueError("invalid strike")
+        unit_cost = (fees + slippage) / (contracts * multiplier)
+        net = lambda s: payoff(s) - unit_cost
+        points = sorted({0.0, *strikes})
+        last = points[-1]
+        slope = net(last + 1) - net(last)
+        values = [net(s) for s in points]
+        scale = contracts * multiplier
+        maximum = None if slope > 1e-8 else max(values) * scale
+        minimum = None if slope < -1e-8 else min(values) * scale
+        roots = []
+        segments = [*points, math.inf]
+        profitable = []
+        for left, right in zip(segments, segments[1:]):
+            m = net(left + 1) - net(left) if math.isinf(right) else (net(right) - net(left)) / (right - left)
+            root = left - net(left) / m if abs(m) > 1e-9 else None
+            cuts = [left]
+            if root is not None and left <= root <= right and math.isfinite(root):
+                roots.append(round(root, 6))
+                if left < root < right:
+                    cuts.append(root)
+            cuts.append(right)
+            for a, b in zip(cuts, cuts[1:]):
+                if net(a + 1 if math.isinf(b) else (a + b) / 2) > 0:
+                    profitable.append((a, b))
+        roots = sorted(set(roots))
+        out.update(status="MODELED", multiplier=multiplier, contracts=int(contracts),
+                   max_loss=round(max(0, -minimum), 2) if minimum is not None else None,
+                   max_profit=round(maximum, 2) if maximum is not None else None,
+                   profit_unlimited=maximum is None, loss_unlimited=minimum is None,
+                   breakeven=roots[0] if len(roots) == 1 else None, breakevens=roots,
+                   package_basis="stock plus options from current mark" if p.get("strategy") in {
+                       "covered_call", "protective_put", "collar"} else "options only")
+        spot, iv, dte = _f(p.get("underlying_price")), _f(p.get("iv_used")), _f(p.get("dte"))
+        if spot and iv and dte and all(math.isfinite(v) and v > 0 for v in (spot, iv, dte)):
+            sigma = iv * math.sqrt(dte / 365)
+            def cdf(s):
+                if s <= 0:
+                    return 0.0
+                if math.isinf(s):
+                    return 1.0
+                z = (math.log(s / spot) + sigma * sigma / 2) / sigma
+                return (1 + math.erf(z / math.sqrt(2))) / 2
+            out["probability_of_profit_pct"] = round(100 * sum(cdf(b) - cdf(a) for a, b in profitable), 2)
+            ev = expected_payoff(net, spot, iv, int(dte))
+            out["expected_pl"] = round(ev * scale, 2) if ev is not None else None
+    except (ValueError, TypeError, OverflowError) as exc:
+        out.update(status="INVALID_INPUT", reason=str(exc))
+    return out
+
+
+def stamp_payoff(proposal: dict[str, Any], *, quote_issues: list | None = None) -> None:
+    """Replace displayed metrics with their actual economic meaning after policy gates.
+
+    Preserve legacy policy inputs explicitly. This fixes labels/calculation without
+    silently changing the operator's heuristic score or eligibility thresholds.
+    """
+    proposal['gate_probability_pct'] = proposal.get('pop_pct')
+    proposal['gate_probability_basis'] = 'legacy strike probability used by existing heuristic gate'
+    strategy = proposal.get('strategy')
+    priced = dict(proposal)
+    bid, ask = _f(proposal.get('bid')), _f(proposal.get('ask'))
+    executable = False
+    if strategy == 'credit_spread' and proposal.get('executable_credit') is not None:
+        priced['premium'] = proposal['executable_credit']
+        executable = True
+    elif bid is not None and ask is not None and 0 <= bid <= ask and ask > 0:
+        priced['premium'] = ask if strategy in {'long_call', 'long_put', 'protective_put'} else bid
+        executable = True
+    priced['price_basis'] = 'executable bid/ask before fees and slippage' if executable else 'midpoint estimate; not executable'
+    metrics = payoff_metrics(priced)
+    if quote_issues or not executable or proposal.get('data_source') == 'bs_estimate':
+        metrics['probability_of_profit_pct'] = None
+        metrics['expected_pl'] = None
+        metrics['model_status'] = 'WITHHELD_UNVALIDATED_QUOTES'
+    proposal['payoff'] = metrics
+    proposal['price_basis'] = metrics['price_basis']
+    proposal['edge_basis'] = 'heuristic score; not calibrated expected return'
+    proposal['pop_pct'] = metrics.get('probability_of_profit_pct')
+    proposal['pop_basis'] = metrics['probability_basis']
+    proposal['expected_value'] = metrics.get('expected_pl')
+    proposal['expected_value_method'] = metrics['probability_basis']
+    if metrics['status'] == 'MODELED':
+        proposal['max_loss'] = metrics['max_loss']
+        proposal['max_profit'] = 'unlimited' if metrics['profit_unlimited'] else metrics['max_profit']
+        proposal['breakeven'] = metrics['breakeven']
+        proposal['risk_reward'] = (round(metrics['max_profit'] / metrics['max_loss'], 4)
+                                  if metrics['max_profit'] is not None and metrics['max_loss'] else None)
+    else:
+        proposal['pop_pct'] = None
+        proposal['expected_value'] = None
+        ent = proposal.setdefault('enterprise', {})
+        ent['live_eligible'] = False
+        ent['blocks'] = list(ent.get('blocks') or []) + [metrics['status']]
+        proposal['enterprise_blocked'] = True

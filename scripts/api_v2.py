@@ -40450,20 +40450,66 @@ def _options_validation(query=None):
 
 
 def _options_holdings_funnel(query=None):
-    """GET /api/v2/options/holdings-funnel — read-only owned-book drop reasons (CC + protective put).
+    """GET: cached producer result; resolve_chain no longer triggers provider access."""
+    data = _get_options_engine().read_proposals()
+    return _json_clean(
+        data.get("holdings_funnel")
+        or {"status": "UNAVAILABLE", "rows": [], "reason": "Awaiting a worker funnel snapshot"}
+    )
 
-    Names why each holding is or is not an options idea. Does not widen IV/intent gates.
-    Optional ?resolve_chain=0 for share/IV-only (no live Schwab contract resolve).
-    """
-    q = query or {}
-    g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
-    resolve_raw = str(g("resolve_chain", "1")).lower()
-    resolve_chain = resolve_raw not in ("0", "false", "no")
+
+def _options_coverage(query=None):
+    from lib.options_scan import ScanStore, coverage_page, load_config, scan_coverage
+
     oe = _get_options_engine()
-    try:
-        return _json_clean(oe.build_holdings_funnel(resolve_chain=resolve_chain))
-    except Exception as e:
-        return {"ok": False, "error": str(e)[:240]}
+    q = query or {}
+
+    def value(key, default):
+        raw = q.get(key, default)
+        return raw[0] if isinstance(raw, list) else raw
+
+    store = ScanStore(oe.STATE_DIR)
+    page = coverage_page(
+        scan_coverage(oe.read_proposals(), store),
+        offset=int(value("offset", 0)),
+        limit=int(value("limit", 100)),
+        symbol=str(value("symbol", "")),
+    )
+    cfg = load_config(oe.PROJECT_ROOT)
+    runs = ScanStore(oe.STATE_DIR).runs(summaries=True)
+    page["scan_enabled"] = cfg.get("enabled", False)
+    page["runs"] = [
+        {
+            "run_id": r["id"],
+            "status": r["status"],
+            "profile": r["profile"],
+            "updated_at": r["updated_at"],
+            "completed": r["payload"].get("completed_count", 0),
+            "inventory_count": r["payload"].get("inventory_count", 0),
+        }
+        for r in runs[:10]
+    ]
+    return _json_clean(page)
+
+
+def _options_request_scan(body=None):
+    from lib.options_scan import ScanStore, load_config
+
+    oe = _get_options_engine()
+    cfg = load_config(oe.PROJECT_ROOT)
+    if not cfg.get("enabled"):
+        return {
+            "ok": False,
+            "status": "CONFIG_REQUIRED",
+            "error": "Expanded scan requires provider capacity approval and worker activation",
+        }
+    b = body or {}
+    import uuid
+
+    run = ScanStore(oe.STATE_DIR).request(
+        str(b.get("profile") or "priority"), str(b.get("request_key") or uuid.uuid4())
+    )
+    return {"ok": True, **{key: run.get(key) for key in ("id", "profile", "status", "created_at", "deduplicated")}}
 
 
 def _options_proposals(query=None):
@@ -40472,7 +40518,9 @@ def _options_proposals(query=None):
     g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
     force = str(g("force", "")).lower() in ("1", "true", "yes")
     oe = _get_options_engine()
-    data = oe.generate_proposals(force=force)
+    data = dict(oe.read_proposals())
+    if force:
+        data["scan_request_required"] = "POST /api/v2/options/scans"
     proposals = data.get("proposals") or []
     # Schwab-only Options Desk (2026-09-25): do NOT merge Alpaca / educational
     # paper-model queue rows into Ideas. Opt-in only via include_paper_lab=1.
@@ -40516,7 +40564,9 @@ def _options_proposals(query=None):
         min_pop=float(g("min_pop", 0) or 0),
         min_edge=float(g("min_edge", 0) or 0),
     )
-    _attach_options_underlying_context(filtered)
+    desk_queue = g("desk_queue") or ""
+    if desk_queue:
+        filtered = [p for p in filtered if p.get("desk_queue") == desk_queue]
     schwab_armed = None
     try:
         import options_pilot_arm as opa
@@ -40530,6 +40580,19 @@ def _options_proposals(query=None):
         filtered = apply_card_semantics_batch(filtered, schwab_armed=schwab_armed)
     except Exception:
         pass
+    if str(g("show_blocked", "1")).lower() in {"0", "false", "no"}:
+        filtered = [
+            p
+            for p in filtered
+            if p.get("approvable") is True
+            and (p.get("enterprise") or {}).get("live_eligible") is True
+            and not (p.get("enterprise") or {}).get("blocks")
+        ]
+    if g("flag"):
+        filtered = [p for p in filtered if any(f.get("key") == g("flag") for f in p.get("flags") or [])]
+    filtered_count = len(filtered)
+    offset, limit = max(0, int(g("offset", 0))), min(250, max(1, int(g("limit", 50))))
+    filtered = filtered[offset : offset + limit]
     try:
         from lib.recommendation_comparison import build_recommendation_comparison
         from lib.options_decision_packet import build_options_decision_packet
@@ -40588,7 +40651,18 @@ def _options_proposals(query=None):
         {
             **data,
             "proposals": filtered,
-            "filtered_count": len(filtered),
+            "filtered_count": filtered_count,
+            "offset": offset,
+            "limit": limit,
+            "ready_count": sum(
+                p.get("approvable") is True and (p.get("enterprise") or {}).get("live_eligible") is True
+                for p in proposals
+            ),
+            "queue_counts": {
+                key: sum(p.get("desk_queue") == key for p in proposals)
+                for key in ("income", "protection", "watch_reentry", "discovery")
+            },
+            "coverage": {k: v for k, v in (data.get("coverage") or {}).items() if k != "rows"},
             "paper_model_count": len(paper_rows),
             "filter_facets": oe.proposal_filter_facets(proposals),
             "filters_applied": {
@@ -40634,7 +40708,7 @@ def _options_positions(query=None):
     g = lambda k, d=None: ((q.get(k) or [d])[0] if isinstance(q.get(k), list) else q.get(k)) or d
     force = str(g("force", "")).lower() in ("1", "true", "yes")
     oe = _get_options_engine()
-    data = oe.monitor_positions(force=force)
+    data = oe._load_json(oe.MONITOR_CACHE) or {"positions": [], "status": "UNAVAILABLE"}
     positions = data.get("positions") or []
     working_raw = g("working_only", "")
     working_only = None
@@ -41631,7 +41705,7 @@ def _options_desk_risk(query=None):
     oe = _get_options_engine()
     import options_desk_enterprise as ent
 
-    props = oe._load_json(oe.PROPOSALS_CACHE) or oe.generate_proposals()
+    props = oe.read_proposals()
     holdings, _ = oe._load_holdings()
     positions = oe._fetch_schwab_option_positions()
     return _json_clean(ent.build_enterprise_summary(props.get("proposals") or [], holdings, positions))
@@ -47489,6 +47563,7 @@ ROUTES = {
     "/api/v2/schwab/option-chain": _schwab_option_chain,
     "/api/v2/options/intents": _options_intents,
     "/api/v2/options/proposals": _options_proposals,
+    "/api/v2/options/coverage": _options_coverage,
     "/api/v2/options/holdings-funnel": _options_holdings_funnel,
     "/api/v2/options/validation": _options_validation,
     "/api/v2/options/positions": _options_positions,
@@ -54284,6 +54359,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
         except Exception as e:
             return 500, {"ok": False, "error": str(e)[:160]}
 
+    if method == "POST" and base_path == "/api/v2/options/scans":
+        try:
+            result = _options_request_scan(body if isinstance(body, dict) else {})
+            return (202 if result.get("ok") else 409), result
+        except ValueError as exc:
+            return 400, {"ok": False, "error": str(exc)}
+        except Exception:
+            return 503, {"ok": False, "error": "scan queue unavailable"}
+
     if method == "POST" and base_path == "/api/v2/options/ensemble/enqueue":
         try:
             import options_engine as oe
@@ -54291,8 +54375,15 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             b = body if isinstance(body, dict) else {}
             force = str(b.get("force") or "").lower() in ("1", "true", "yes")
             fresh_hours = int(b.get("fresh_hours") or 24)
-            data = oe.generate_proposals(force=force)
+            data = oe.read_proposals()
             proposals = data.get("proposals") or []
+            if isinstance(b.get("proposal_ids"), list):
+                requested = set(str(x) for x in b["proposal_ids"][:250])
+                proposals = [p for p in proposals if p.get("id") in requested]
+            if b.get("proposal_id"):
+                proposals = [p for p in proposals if p.get("id") == b["proposal_id"]]
+            if b.get("symbol"):
+                proposals = [p for p in proposals if p.get("symbol") == str(b["symbol"]).upper()]
             ens = oe.enqueue_ensemble_for_proposals(proposals, fresh_hours=fresh_hours)
             return 200, {"ok": True, "proposal_count": len(proposals), **ens}
         except Exception as e:

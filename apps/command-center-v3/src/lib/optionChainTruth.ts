@@ -92,7 +92,10 @@ export function executableNet(legs: LegSpec[], rows: ChainRow[], contracts = 1):
 }
 
 /** Legs implied by a proposal row (server fields only). */
-export function legsFromProposal(p: { strategy?: string; option_type?: string; strike?: number; short_strike?: number; long_strike?: number }): LegSpec[] {
+export function legsFromProposal(p: { strategy?: string; option_type?: string; strike?: number; short_strike?: number; long_strike?: number; legs?: Array<{ action?: string; option_type?: string; strike?: number }> }): LegSpec[] {
+  if (p.legs?.length) return p.legs.flatMap(leg =>
+    leg.strike != null && (leg.option_type === 'call' || leg.option_type === 'put') && ['BUY', 'SELL'].includes(leg.action || '')
+      ? [{ role: leg.action === 'SELL' ? 'short' : 'long', side: leg.option_type, strike: leg.strike } as LegSpec] : [])
   const s = String(p.strategy || '')
   const side: 'call' | 'put' = p.option_type === 'put' || /put/.test(s) ? 'put' : 'call'
   if (s === 'credit_spread' && p.short_strike != null && p.long_strike != null) return [{ role: 'short', side, strike: p.short_strike }, { role: 'long', side, strike: p.long_strike }]

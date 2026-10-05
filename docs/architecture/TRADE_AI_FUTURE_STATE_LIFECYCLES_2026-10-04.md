@@ -11,6 +11,28 @@ Supersedes:  TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md for targets and road
              and resets the targets from the 10-04 measurement.
 ```
 
+## Options target and remaining proof — 2026-10-05
+
+Target: all holdings, all active/researched watches, all reentry members and broad US optionable
+stocks/ETFs have an explicit coverage disposition. The selected service is a 09:35 ET daily full
+scan plus 15-minute held/watch/reentry/shortlist refresh during official exchange hours, full
+strikes/both sides, 7–365 DTE. Four queues distinguish income, protection, entry alternatives and
+new opportunities. Eight advisory expression families do not imply eight authorized execution
+routes or a profitable recommendation.
+
+Source implementation now provides the coverage/read model, persistent scan requests/checkpoints,
+shared research reuse and actual package-payoff display. **Do not close this target yet:** expanded
+scanning remains disabled until provider entitlement and measured throughput/storage/memory
+support the selected service. The observed 5,541-symbol watchlist requires at least 369.4 fresh
+chain requests/minute for that cadence. Any service reduction needs an explicit operator choice.
+
+Close only after exact-SHA release verification, matching process pins, capacity approval and five
+natural trading sessions with reconciled membership, achieved age targets, restart recovery,
+shared evidence identity, nonduplicated research, and honest no-change/blocked dispositions.
+Do not force changed recommendations, successful outcomes or lesson promotions to satisfy a
+metric. [Capacity and release acceptance](../ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md) is the scoped
+contract; the earlier learning-remediation acceptance remains independently open where stated.
+
 ## 0. How to read this document
 
 Values labelled 10-05 come from the [updated As-Is](TRADE_AI_AS_IS_LIFECYCLES_2026-10-04.md) and

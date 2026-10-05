@@ -128,7 +128,7 @@ def best_edge(summary: dict, sym: str) -> float:
 
 
 def run(*, apply: bool = False, symbol: str = "", force: bool = False) -> dict:
-    props = oe.generate_proposals(force=force)
+    props = oe.read_proposals()
     summary = oe.publish_options_desk_runtime(oe.build_options_desk_summary(props))
     hermes = stage_hermes_research(summary, apply=apply, symbol=symbol)
     return {

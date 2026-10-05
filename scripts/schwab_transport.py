@@ -1012,22 +1012,22 @@ def normalize_option_chain(raw):
         rows = []
         for exp, strikes in (side_map or {}).items():
             for strike, contracts in (strikes or {}).items():
-                c = (contracts or [{}])[0]
-                _bid, _ask = c.get("bid"), c.get("ask")
-                _two = bool(_bid and _ask and float(_bid) > 0 and float(_ask) > float(_bid))
-                _mid = (float(_bid) + float(_ask)) / 2 if _two else None
-                rows.append({"exp": exp.split(":")[0], "strike": float(strike), "side": side,
-                             "bid": _bid, "ask": _ask, "last": c.get("last"),
-                             "mark": c.get("mark"),
-                             "two_sided": _two,
-                             "spread_pct": (round(100.0 * (float(_ask) - float(_bid)) / _mid, 1) if _two and _mid else None),
-                             "symbol": c.get("symbol"), "multiplier": c.get("multiplier"),
-                             "nonstandard": bool(c.get("nonStandard")) or None,
-                             "iv": c.get("volatility"), "delta": c.get("delta"),
-                             "oi": c.get("openInterest"), "volume": c.get("totalVolume"),
-                             "dte": c.get("daysToExpiration"),
-                             "quote_time": _ms_iso(c.get("quoteTimeInLong")),
-                             "trade_time": _ms_iso(c.get("tradeTimeInLong"))})
+                for c in (contracts or []):
+                    _bid, _ask = c.get("bid"), c.get("ask")
+                    _two = bool(_bid and _ask and float(_bid) > 0 and float(_ask) > float(_bid))
+                    _mid = (float(_bid) + float(_ask)) / 2 if _two else None
+                    rows.append({"exp": exp.split(":")[0], "strike": float(strike), "side": side,
+                                 "bid": _bid, "ask": _ask, "last": c.get("last"),
+                                 "mark": c.get("mark"),
+                                 "two_sided": _two,
+                                 "spread_pct": (round(100.0 * (float(_ask) - float(_bid)) / _mid, 1) if _two and _mid else None),
+                                 "symbol": c.get("symbol"), "multiplier": c.get("multiplier"),
+                                 "nonstandard": bool(c.get("nonStandard")) or None,
+                                 "iv": c.get("volatility"), "delta": c.get("delta"),
+                                 "oi": c.get("openInterest"), "volume": c.get("totalVolume"),
+                                 "dte": c.get("daysToExpiration"),
+                                 "quote_time": _ms_iso(c.get("quoteTimeInLong")),
+                                 "trade_time": _ms_iso(c.get("tradeTimeInLong"))})
         return rows
     rows = _walk(raw.get("callExpDateMap"), "call") + _walk(raw.get("putExpDateMap"), "put")
     by_exp = {}
@@ -1039,13 +1039,18 @@ def normalize_option_chain(raw):
                                    "total_call_oi": sum(r["oi"] or 0 for r in rs if r["side"] == "call"),
                                    "total_put_oi": sum(r["oi"] or 0 for r in rs if r["side"] == "put"),
                                    "strikes": sorted(rs, key=lambda r: (r["side"], r["strike"]))})
+    out["provider_contract_count"] = raw.get("numberOfContracts")
+    out["received_contract_count"] = len(rows)
+    out["response_complete"] = ("callExpDateMap" in raw and "putExpDateMap" in raw
+        and isinstance(raw.get("numberOfContracts"), int) and raw["numberOfContracts"] == len(rows))
     if not out["expirations"]:
         out["status"] = "empty"
         out["error"] = "Schwab returned no listed contracts for this request (symbol may not be optionable, or the expiration/strike window is empty)"
     return out
 
 
-def get_option_chain(symbol, strike_count=8, account_key=None, expiration=None, contract_type=None):
+def get_option_chain(symbol, strike_count=8, account_key=None, expiration=None, contract_type=None,
+                     *, full_chain=False, min_dte=7, max_dte=365):
     """READ-ONLY option chain (near-the-money by default). No order surface.
 
     2026-09-28: `expiration` (YYYY-MM-DD) pins the request to one expiration date (from_date =
@@ -1055,6 +1060,16 @@ def get_option_chain(symbol, strike_count=8, account_key=None, expiration=None, 
     if not account_key:
         return {"status": "needs_account_link"}
     kw = {"strike_count": max(1, min(int(strike_count or 8), 40)), "include_underlying_quote": True}
+    if full_chain:
+        from datetime import datetime as _datetime, timedelta as _timedelta
+        from zoneinfo import ZoneInfo as _ZoneInfo
+        if expiration or contract_type or not 7 <= int(min_dte) <= int(max_dte) <= 365:
+            return {"status": "error", "error": "full chain requires both sides and 7-365 DTE"}
+        # Omit strike_count entirely: a large numeric cap is still a partial chain.
+        kw.pop("strike_count")
+        today = _datetime.now(_ZoneInfo("America/New_York")).date()
+        kw.update(from_date=today + _timedelta(days=int(min_dte)),
+                  to_date=today + _timedelta(days=int(max_dte)))
     if expiration:
         from datetime import date as _date
         try:
@@ -1069,7 +1084,13 @@ def get_option_chain(symbol, strike_count=8, account_key=None, expiration=None, 
             kw["contract_type"] = Client.Options.ContractType.CALL if contract_type == "call" else Client.Options.ContractType.PUT
         except ImportError:  # CI installs no broker SDK (cio-hardening: pytest + pyyaml only); the string form is what the enum carries
             kw["contract_type"] = contract_type.upper()
-    return _read(account_key, "get_option_chain", normalize_option_chain, symbol.upper(), **kw)
+    out = _read(account_key, "get_option_chain", normalize_option_chain, symbol.upper(), **kw)
+    if isinstance(out, dict):
+        out["request_coverage"] = {"all_strikes": bool(full_chain), "both_sides": contract_type is None,
+                                   "min_dte": int(min_dte) if full_chain else None,
+                                   "max_dte": int(max_dte) if full_chain else None,
+                                   "status": "COMPLETE" if full_chain and out.get("status") == "ok" and out.get("response_complete") is True else "PARTIAL"}
+    return out
 
 
 def get_option_expirations(symbol, account_key=None):

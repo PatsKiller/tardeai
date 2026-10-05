@@ -66,7 +66,7 @@ def _stub_resolve(monkeypatch, contract=None, missing: bool = False):
         return dict(c), "bs_estimate"
 
     monkeypatch.setattr(oe, "_resolve_option_contract", _resolve)
-    monkeypatch.setattr(oe, "_iv_rank_proxy", lambda sym, tech, chain_iv=None: 35.0)
+    monkeypatch.setattr(oe, "_iv_rank_proxy", lambda sym, tech, chain_iv=None, **kw: 35.0)
     monkeypatch.setattr(
         oe, "_auto_select_account",
         lambda *a, **k: "schwab_roth",
@@ -147,7 +147,7 @@ def test_t1e3_entry_near_elevated_atr_stamped(monkeypatch):
 def test_t1e4_iv_below_named_drop(monkeypatch):
     """T1E.4 — Entry symbol IV below floor → no long_call · named IV_BELOW drop (not silent)."""
     _stub_resolve(monkeypatch)
-    monkeypatch.setattr(oe, "_iv_rank_proxy", lambda sym, tech, chain_iv=None: 5.0)  # < MIN_IV_CONVICTION 12
+    monkeypatch.setattr(oe, "_iv_rank_proxy", lambda sym, tech, chain_iv=None, **kw: 5.0)  # < MIN_IV_CONVICTION 12
     c = _entry_conviction("ZZZ", state="BUY_READY", price=50.0, stop=45.0, atr=1.0)
     drops: list = []
     props = oe.generate_defined_risk_proposals(
@@ -207,5 +207,5 @@ def test_t1e6_regression_floors_and_advisory_only():
     ])
     long_syms = [p["symbol"] for p in picked if p["strategy"] == "long_call"]
     assert "V" in long_syms  # entry_state kept despite lower edge
-    assert "BBB" not in long_syms  # squeezed out by entry preference + slot cap 2
+    assert set(long_syms) == {"AAA", "BBB", "V"}  # no display cap may erase coverage
     assert "AAA" in long_syms

@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import OptionsCoverage from '../components/options/OptionsCoverage'
 import { isCardBlocked } from '../lib/optionsCardSemantics'
 import { armedDeskLine, armedOverviewLine, coveredCallFunnelCounts, funnelNameText, optionsDeskPersonLine, packageLeadIds } from '../lib/optionsDeskTruth'
 import { useSearchParams } from 'react-router-dom'
@@ -33,7 +34,7 @@ import { BB, T, TYPE } from '../lib/watchTokens'
 
 interface Props { onDrill: (ctx: DrillContext) => void }
 
-const TABS = ['Lifecycle', 'Proposals', 'Open Options', 'Strategy Overview', 'Options Trends'] as const
+const TABS = ['Lifecycle', 'Proposals', 'All coverage', 'Open Options', 'Strategy Overview', 'Options Trends'] as const
 const LEGACY_TAB_ALIASES: Record<string, typeof TABS[number]> = {
   'Open Positions': 'Open Options',
 }
@@ -69,7 +70,9 @@ export default function OptionsHub({ onDrill }: Props) {
   // 2026-09-26 (operator): filter on the card's honest status pills.
   const [flagFilter, setFlagFilter] = useState<string | null>(null)
   // Blocked research remains available on demand; it is not an action queue.
-  const [showBlocked, setShowBlocked] = useState(false)
+  const [showBlocked, setShowBlocked] = useState(true)
+  const [deskQueue, setDeskQueue] = useState('')
+  const [proposalPage, setProposalPage] = useState(0)
   const [minPop, setMinPop] = useState(0)
   const [minEdge, setMinEdge] = useState(0)
   const [posSymbolFilter, setPosSymbolFilter] = useState('')
@@ -90,8 +93,16 @@ export default function OptionsHub({ onDrill }: Props) {
   const ProposalCard = uiV5 ? OptionProposalCardV5 : OptionProposalCardV4
   const PositionCard = uiV5 ? OptionPositionCardV5 : OptionPositionCardV4
 
+  useEffect(() => setProposalPage(0), [symbolFilter, strategyFilter, groupFilter, optionTypeFilter,
+    sideFilter, sleeveFilter, legStyleFilter, tierFilter, liveOnly, minPop, minEdge, deskQueue, showBlocked, flagFilter])
+
   const q = useMemo(() => {
     const p = new URLSearchParams()
+    p.set('offset', String(proposalPage * 50))
+    p.set('limit', '50')
+    if (deskQueue) p.set('desk_queue', deskQueue)
+    if (!showBlocked) p.set('show_blocked', '0')
+    if (flagFilter) p.set('flag', flagFilter)
     if (symbolFilter) p.set('symbol', symbolFilter.toUpperCase())
     if (strategyFilter) p.set('strategy', strategyFilter)
     if (groupFilter) p.set('group', groupFilter)
@@ -105,7 +116,7 @@ export default function OptionsHub({ onDrill }: Props) {
     if (minEdge > 0) p.set('min_edge', String(minEdge))
     const s = p.toString()
     return s ? `?${s}` : ''
-  }, [symbolFilter, strategyFilter, groupFilter, optionTypeFilter, sideFilter, sleeveFilter, legStyleFilter, tierFilter, liveOnly, minPop, minEdge])
+  }, [symbolFilter, strategyFilter, groupFilter, optionTypeFilter, sideFilter, sleeveFilter, legStyleFilter, tierFilter, liveOnly, minPop, minEdge, deskQueue, proposalPage, showBlocked, flagFilter])
 
   const posQ = useMemo(() => {
     const p = new URLSearchParams()
@@ -129,7 +140,7 @@ export default function OptionsHub({ onDrill }: Props) {
   const { data: validation } = useApi<any>('/api/v2/options/validation', 300_000)
   // resolve_chain=1 rewrites drop reasons after a chain read. Cleared gates is CC_ELIGIBLE
   // only; INTENT_BYPASS stays a separate count. No IV widen.
-  const { data: holdingsFunnel } = useApi<any>('/api/v2/options/holdings-funnel?resolve_chain=1', 300_000)
+  const { data: holdingsFunnel } = useApi<any>('/api/v2/options/holdings-funnel', 300_000)
   const deskPathBRows: any[] = Array.isArray(validation?.desk_path_b_strategies)
     ? validation.desk_path_b_strategies.filter((s: any) => s?.ok)
     : Array.isArray(validation?.strategies)
@@ -181,7 +192,7 @@ export default function OptionsHub({ onDrill }: Props) {
     setSymbolFilter(''); setStrategyFilter(''); setGroupFilter('')
     setOptionTypeFilter(''); setSideFilter(''); setSleeveFilter('')
     setLegStyleFilter(''); setTierFilter(''); setLiveOnly(false); setFlagFilter(null)
-    setMinPop(0); setMinEdge(0)
+    setMinPop(0); setMinEdge(0); setDeskQueue(''); setShowBlocked(true)
   }
 
   const facetChip = (tip: string, label: string, count: number | undefined, active: boolean, onClick: () => void, color = '#60a5fa') => (
@@ -195,18 +206,43 @@ export default function OptionsHub({ onDrill }: Props) {
     />
   )
 
-  const forceRefresh = async () => {
+  const forceRefresh = async (profile: 'full' | 'priority' = 'priority') => {
     try {
-      const r = await fetch(`/api/v2/options/proposals?force=1${q ? q.replace('?', '&') : ''}`)
-      const j = await r.json()
+      const r = await fetch('/api/v2/options/scans', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile, request_key: crypto.randomUUID() }),
+      })
+      const raw = await r.json()
+      const result = raw.data ?? raw
+      setExecMsg(result.ok ? `${profile} scan queued · ${result.id}` : result.error || 'Scan request failed')
       refetchProps()
-      refetchMon()
-      refetchOverview()
-      return j
-    } catch {
+      return result
+    } catch (error) {
+      setExecMsg(`Scan request failed: ${String(error)}`)
+    }
+  }
+
+  const validatePageQuotes = async () => {
+    setEnsembleBusy(true)
+    let validated = 0
+    let failed = 0
+    try {
+      for (const proposal of propList) {
+        const response = await fetch('/api/v2/options/validate', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ proposal_id: proposal.id }),
+        })
+        const raw = await response.json()
+        const result = raw.data ?? raw
+        if (response.ok && result.ok) validated += 1
+        else failed += 1
+      }
+      setEnsembleMsg(`Quote validation: ${validated} passed, ${failed} require attention. No orders submitted.`)
+    } catch (error) {
+      setEnsembleMsg(`Quote validation interrupted: ${String(error)}`)
+    } finally {
+      setEnsembleBusy(false)
       refetchProps()
-      refetchMon()
-      refetchOverview()
     }
   }
 
@@ -333,11 +369,11 @@ export default function OptionsHub({ onDrill }: Props) {
       const r = await fetch('/api/v2/options/ensemble/enqueue', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force: 0, fresh_hours: 12 }),
+        body: JSON.stringify({ force: 0, fresh_hours: 12, proposal_ids: propList.map(p => p.id) }),
       })
       const j = await r.json()
       const d = j.data ?? j
-      setEnsembleMsg(`Queued ${d.enqueued ?? 0} Aegis reviews (Grok+ChatGPT+DeepSeek) · ${d.skipped ?? 0} already warm`)
+      setEnsembleMsg(`Queued ${d.enqueued ?? 0} model reviews · ${d.skipped ?? 0} reused, deferred or excluded`)
       refetchProps()
     } catch (e: any) {
       setEnsembleMsg(String(e?.message || e))
@@ -363,7 +399,7 @@ export default function OptionsHub({ onDrill }: Props) {
         subjectType: 'options_proposal',
         subjectKey: p.id,
       })}
-      reviewBar={<OptionReviewBar proposal={p} autoRequest />}
+      reviewBar={<OptionReviewBar proposal={p} />}
     />
   )
 
@@ -375,8 +411,8 @@ export default function OptionsHub({ onDrill }: Props) {
             Options Desk ⓘ
           </Tip>
           <div style={hubSubtitle(terminalUi)}>
-            {(proposals?.universe_census?.banner) || 'This is not a market-wide options search. These cards were scored from holdings, the buy and strong-buy watchlist, and a short signal list.'}
-            {' '}· {propCount} cards from that limited set · {posList.length} open legs
+            {(proposals?.universe_census?.banner) || 'Coverage unavailable until a producer snapshot is recorded.'}
+            {' '}· {propCount} matching ideas · {proposals?.coverage?.inventory_count ?? '—'} securities in inventory · {posList.length} open legs
             {(() => {
               // 2026-09-26: say why names did not become cards, instead of showing dead ones.
               const reasons = (proposals as any)?.income_screen?.reasons as Record<string, { count: number; symbols: string[] }> | undefined
@@ -426,7 +462,7 @@ export default function OptionsHub({ onDrill }: Props) {
           </div>
         </div>
         <div style={{ fontSize: 12, lineHeight: 1.45, color: BB.text2, marginTop: 8, maxWidth: 720 }}>
-          {optionsDeskPersonLine(propList as any[], posList.length)}
+          This page: {optionsDeskPersonLine(propList as any[], posList.length)}
         </div>
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
           <div className="hub-tabs">
@@ -447,6 +483,13 @@ export default function OptionsHub({ onDrill }: Props) {
         </div>
       </div>
 
+      {tab === 'All coverage' && <OptionsCoverage requestScan={forceRefresh} />}
+      {tab === 'Proposals' && <div aria-label="Options desk queues" style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+        {Object.entries({ '': 'All ideas', income: 'Holdings income', protection: 'Portfolio protection', watch_reentry: 'Watch / re-entry', discovery: 'New opportunities' }).map(([key, label]) =>
+          <button key={key} onClick={() => setDeskQueue(key)} aria-pressed={deskQueue === key} style={hubTab(deskQueue === key, terminalUi)}>
+            {label}{key && proposals?.queue_counts ? ` (${proposals.queue_counts[key] ?? 0})` : ''}
+          </button>)}
+      </div>}
       {/* Operator's standing options intents + the live Schwab contracts that fit them (2026-10-05). */}
       <StandingIntentsPanel />
 
@@ -500,7 +543,7 @@ export default function OptionsHub({ onDrill }: Props) {
       {tab === 'Proposals' && (
         <>
           <div style={{ ...panel, marginBottom: 14, borderLeft: `4px solid ${liveEligibleCount > 0 ? BB.green : BB.amber}` }} data-testid="options-attention-summary">
-            <b style={{ color: 'var(--text0)' }}>{liveEligibleCount} live eligible from this limited scan</b>
+            <b style={{ color: 'var(--text0)' }}>{liveEligibleCount} live eligible on this page</b>
             {' · '}{blockedCount} blocked{flagCounts.THESIS_INCOMPLETE ? ` · ${flagCounts.THESIS_INCOMPLETE} incomplete theses` : ''}.
             {' '}An eligible idea still needs an operator decision, a fresh preflight, and per-order 2FA.
             {' '}Options execution: {execStatus ? (execStatus.armed_for_execution ? 'armed' : 'disarmed') : 'status unverified'}.
@@ -529,6 +572,9 @@ export default function OptionsHub({ onDrill }: Props) {
                   <option value="cash_secured_put">Cash-Secured Put</option>
                   <option value="protective_put">Protective Put</option>
                   <option value="long_call">Long Call</option>
+                  <option value="long_put">Long Put</option>
+                  <option value="debit_spread">Debit Spread (advisory)</option>
+                  <option value="collar">Collar (advisory)</option>
                   <option value="credit_spread">Credit Spread</option>
                   <option value="deep_itm_call">Deep ITM Call (paper)</option>
                   <option value="atm_call">ATM Call (paper)</option>
@@ -555,9 +601,10 @@ export default function OptionsHub({ onDrill }: Props) {
                 </select>
               </TipLabel>
               <button title={FILTERS.refresh} onClick={() => { refetchProps(); refetchMon(); refetchOverview() }} style={{ ...SEL, cursor: 'help' }}>Refresh</button>
-              <button title={FILTERS.forceScan} onClick={() => forceRefresh()} style={{ ...SEL, cursor: 'help', color: '#60a5fa' }}>Force scan</button>
+              <button title="Queue a background priority scan; progress appears in All coverage" onClick={() => forceRefresh()} style={SEL}>Request scan</button>
+              <button onClick={validatePageQuotes} disabled={ensembleBusy} style={SEL}>Validate page quotes</button>
               <button title={FILTERS.validateAll} onClick={validateAllEnsemble} disabled={ensembleBusy} style={{ ...SEL, cursor: ensembleBusy ? 'default' : 'help', color: '#a855f7' }}>
-                {ensembleBusy ? 'Queuing…' : 'Validate all'}
+                {ensembleBusy ? 'Working…' : 'Request model reviews'}
               </button>
               <button title={FILTERS.clear} onClick={clearPropFilters} style={{ ...SEL, cursor: 'help', color: 'var(--text3)' }}>Clear filters</button>
               {ensembleMsg && <span style={{ fontSize: 10, color: 'var(--text3)' }}>{ensembleMsg}</span>}
@@ -604,14 +651,16 @@ export default function OptionsHub({ onDrill }: Props) {
               {facetChip(FILTERS.liveEligible, 'Live eligible', propFacets.live_eligible, liveOnly, () => setLiveOnly(v => !v), '#22c55e')}
               {blockedCount > 0 && facetChip('Blocked ideas are research and refusals. Open them to inspect their reasons; none is ready for an order.', `Blocked`, blockedCount, showBlocked, () => setShowBlocked(v => !v), '#ef4444')}
               <Tip tip={FILTERS.showing} style={{ fontSize: 10, color: 'var(--text3)', alignSelf: 'center', marginLeft: 4 }}>
-                Showing {propCount}{propFacets.total != null && propCount !== propFacets.total ? ` of ${propFacets.total}` : ''} ⓘ
+                Showing {propList.length} of {propCount} matching ideas · page {proposalPage + 1} ⓘ
+                <button disabled={!proposalPage} onClick={() => setProposalPage(p => p - 1)}>Previous</button>
+                <button disabled={(proposalPage + 1) * 50 >= propCount} onClick={() => setProposalPage(p => p + 1)}>Next</button>
               </Tip>
             </div>
           </div>
 
           {propError && (
             <div style={{ ...panel, marginBottom: 12, borderLeft: '4px solid #ef4444', fontSize: 11, color: '#ef4444' }}>
-              Options API: {propError} — try Force scan or check server on :7777
+              Options data unavailable: {propError}
             </div>
           )}
 
@@ -669,14 +718,14 @@ export default function OptionsHub({ onDrill }: Props) {
                 No proposals passed quality gates (edge ≥62, POP ≥52%, IV rank).
                 {funnelSummary
                   ? ` Holdings funnel: ${funnelSummary.cc_need_100_shares ?? 0} need ≥100 shares, ${funnelSummary.cc_iv_below ?? 0} IV below floor, ${funnelCounts.cleared.count} cleared the covered-call gates, ${funnelCounts.intentIvOnly.count} cleared only the intent IV floor.`
-                  : ' Use Force scan — fallback tier surfaces income-sleeve CCs when chain is thin.'}
+                  : ' Check All coverage for missing data and processing status.'}
                 {' '}View Chain on any card still hits live Schwab; Sell actions require ARMED + per-order 2FA.
               </div>
             </div>
           )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, alignItems: 'center', marginBottom: 6 }}><NoviceToggle on={novice} onChange={v => { setNovice(v); setNoviceMode(v) }} /><UiV5Toggle /></div>
-          <div style={{ fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Operator attention · {reviewProps.length} card{reviewProps.length === 1 ? '' : 's'} in this view</div>
+          <div style={{ fontWeight: 700, color: 'var(--text0)', marginBottom: 8 }}>Ready for review · {reviewProps.length} card{reviewProps.length === 1 ? '' : 's'} in this view</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: 12 }}>
             {reviewProps.map(proposalCard)}
           </div>

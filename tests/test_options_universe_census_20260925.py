@@ -46,7 +46,7 @@ def test_fixture_universe_is_not_a_market_search():
     assert census["scored"] == 2
     assert census["listed"] == 2
     assert census["blocked"] == 2
-    assert census["ranking"].startswith("edge_score")
+    assert census["ranking"].startswith("readiness first")
 
 
 def test_research_memo_answers_or_says_missing():

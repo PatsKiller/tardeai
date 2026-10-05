@@ -48,6 +48,20 @@ def _is_researched(row: dict[str, Any], lanes: set[str]) -> bool:
     return False
 
 
+def conviction_bias(row: dict[str, Any]) -> str:
+    """Normalize persisted direction; conflicting evidence requires review."""
+    if row.get("direction_conflict"):
+        return "conflict"
+    directions = set()
+    for key in ("bias", "direction", "verdict", "severity", "inference_type"):
+        value = str(row.get(key) or "").lower().replace("-", "_").replace(" ", "_")
+        if value in {"bullish", "long", "buy", "strong_buy", "up", "opportunity", "positive"}:
+            directions.add("bullish")
+        if value in {"bearish", "short", "sell", "strong_sell", "down", "risk", "negative"}:
+            directions.add("bearish")
+    return "conflict" if len(directions) > 1 else next(iter(directions), "neutral")
+
+
 def merge_research_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
     """Merge rows by symbol, retaining all research lanes and best evidence.
 
@@ -63,10 +77,12 @@ def merge_research_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
         if not symbol:
             continue
         lanes = _source_lanes(raw)
+        direction = conviction_bias(raw)
         current = merged.get(symbol)
         if current is None:
             current = {"symbol": symbol, **raw}
             current["source_lanes"] = sorted(lanes)
+            current["direction_evidence"] = list(raw.get("direction_evidence") or [])
             merged[symbol] = current
         else:
             current["source_lanes"] = sorted(set(current.get("source_lanes") or []).union(lanes))
@@ -75,18 +91,31 @@ def merge_research_rows(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
                     continue
                 if current.get(key) in (None, "", [], {}):
                     current[key] = value
+        evidence = current["direction_evidence"]
+        for item in raw.get("direction_evidence") or []:
+            if item not in evidence:
+                evidence.append(item)
+        if direction != "neutral" and not raw.get("direction_evidence"):
+            item = {"direction": direction, "source": raw.get("source"),
+                    "artifact_id": raw.get("research_artifact_id"),
+                    "as_of": raw.get("research_as_of") or raw.get("evaluated_at")}
+            if item not in evidence:
+                evidence.append(item)
+        directions = {e["direction"] for e in evidence}
+        current["direction_conflict"] = "conflict" in directions or len(directions) > 1
         lanes_now = set(current.get("source_lanes") or [])
         qualified = _is_researched(current, lanes_now)
         # Operator 2026-09-27: a lane membership qualifies a name for the desk; it is not
         # itself research. Say which one the card is looking at.
         if raw.get("research_status") in {"researched", "research_qualified"}:
             current["_explicit_researched"] = True
-        has_artifact = bool(current.get("research_artifact_id") or current.get("research_memo")
-                            or current.get("_explicit_researched"))
+        has_artifact = bool(current.get("research_memo") or current.get("_explicit_researched")
+                            or (current.get("research_artifact_id")
+                                and current.get("research_status") != "research_required"))
         current["research_lane_status"] = "lane_qualified" if lanes_now.intersection(RESEARCH_SOURCES) else "unqualified"
         current["research_status"] = ("researched" if has_artifact else
                                       ("lane_qualified" if qualified else "research_required"))
-        current["research_qualified"] = qualified
+        current["research_qualified"] = qualified or has_artifact
     for row in merged.values():
         row.pop("_explicit_researched", None)
     return list(merged.values())
@@ -112,7 +141,7 @@ def reentry_research_rows(snapshot: dict[str, Any] | None) -> list[dict[str, Any
             "invalidated_if": row.get("invalidated_if"),
             "exit_date": row.get("exit_date"),
             "price": row.get("price") or row.get("current_price"),
-            "evaluated_at": row.get("evaluated_at") or row.get("as_of"),
+            "evaluated_at": row.get("evaluated_at") or row.get("as_of") or (snapshot or {}).get("computed_at"),
         })
     return out
 

@@ -142,6 +142,9 @@ const STRAT_LABEL: Record<string, string> = {
   covered_call: 'Covered Call',
   cash_secured_put: 'Cash-Secured Put',
   long_call: 'Long Call',
+  long_put: 'Long Put',
+  collar: 'Collar',
+  debit_spread: 'Debit Spread',
   credit_spread: 'Credit Spread',
   protective_put: 'Protective Put',
   deep_itm_call: 'Deep ITM Call',
@@ -1248,13 +1251,13 @@ export default function OptionProposalCardV4({
           </span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: terminalUi ? 10 : 12, flexWrap: 'wrap', fontSize: terminalUi ? 9.5 : 11, color: terminalUi ? BB.text2 : WL.text.secondary }}>
-          <HeroMetricChip metricKey="edge" label="edge" value={edge ?? '—'} context={metricCtx} color={edgeColor} />
+          <HeroMetricChip metricKey="edge" label="heuristic edge" value={edge ?? '—'} context={metricCtx} color={edgeColor} />
           <span title={(p as any).expected_value_caveat || (p as any).economics?.expected_pl_status || undefined} style={{ display: 'inline-flex' }}>
             <HeroMetricChip metricKey="ev" label={(p as any).expected_value_caveat ? 'exp. P/L*' : 'exp. P/L'} value={p.expected_value == null && (p as any).economics?.expected_pl_status ? 'withheld' : fmt$(p.expected_value)} context={metricCtx} />
           </span>
           <HeroMetricChip
             metricKey="pop"
-            label="POP"
+            label={p.pop_basis ? 'model POP' : 'POP proxy'}
             value={p.pop_pct != null ? `${p.pop_pct.toFixed(1)}%` : '—'}
             context={metricCtx}
             color={termSignal(p.pop_pct != null && p.pop_pct >= 60 ? WL.signal.teal : WL.signal.amber, terminalUi)}
@@ -1274,6 +1277,14 @@ export default function OptionProposalCardV4({
           </span>
         </div>
       </div>
+
+      {(p.pop_basis || p.advisory_only) && <div style={bodyPad}>
+        {p.advisory_only && <b>Research expression · blocked pending strategy and CIO review. </b>}
+        <span>{p.price_basis || 'Price basis unavailable'} · {p.pop_basis || 'Probability unavailable'}.
+          {' '}Model estimates are not observed win rates. IV basis: {p.iv_rank_basis || 'unknown'}.</span>
+        {p.legs?.length ? <div>{p.legs.map((leg, i) =>
+          <span key={i}>{i ? ' + ' : ''}{leg.action || leg.side} {leg.option_type} ${leg.strike} · {leg.expiration}</span>)}</div> : null}
+      </div>}
 
       {liqWarnings.length > 0 && (
         <div style={terminalUi ? { ...modRow(terminalUi) } : { padding: '6px 15px 0' }} onClick={e => e.stopPropagation()}>

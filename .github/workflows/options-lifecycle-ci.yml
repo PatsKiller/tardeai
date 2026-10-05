@@ -3,6 +3,11 @@ on:
   push:
     paths: &lifecycle_paths
       - 'scripts/options_*.py'
+      - 'scripts/lib/options_*.py'
+      - 'scripts/run_options_scan.py'
+      - 'scripts/schwab_transport.py'
+      - 'tests/test_options_desk_complete.py'
+      - 'tests/test_options_full_chain.py'
       - 'scripts/investment_costs.py'
       - 'scripts/ticker_attribution.py'
       - 'scripts/schwab_econfirm_reconcile.py'
@@ -67,7 +72,8 @@ jobs:
       - run: pip install pytest psycopg2-binary
       - name: pure + REAL-PG + eConfirm tests (skips are FAILURES; JUnit published)
         run: |
-          pytest tests/test_options_lifecycle_policy.py tests/test_options_lifecycle_migration.py \
+          pytest tests/test_options_desk_complete.py tests/test_options_full_chain.py \
+            tests/test_options_lifecycle_policy.py tests/test_options_lifecycle_migration.py \
             tests/test_econfirm_parser.py tests/test_inverse_stoplights.py \
             tests/test_schwab_exec_parser.py tests/test_outbox_process_crash.py \
             tests/test_drive_semantic_compare.py tests/test_friction_statement_oer.py \

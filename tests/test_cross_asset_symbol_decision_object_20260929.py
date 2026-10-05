@@ -80,7 +80,7 @@ def test_buy_hold_reentry_sell_routing():
     families = {c["family"]: c for c in hold}
     assert "covered_call" in families
     assert "fewer_than_100_shares" in families["covered_call"]["blocks"]
-    assert families["collar"]["status"] == "unavailable"
+    assert families["collar"]["status"] == "evaluable_shadow"
 
     reentry = route_expressions("reentry", position_state={})
     assert {c["family"] for c in reentry} == set(SIGNAL_EXPRESSIONS["reentry"])
@@ -88,7 +88,7 @@ def test_buy_hold_reentry_sell_routing():
     sell = route_expressions("sell", position_state={"held_shares": 100, "coverage_100": True})
     sf = {c["family"]: c for c in sell}
     assert "sell_shares" in sf
-    assert sf["collar"]["status"] == "unavailable"
+    assert sf["collar"]["status"] == "evaluable_shadow"
 
 
 def test_event_hook_flag_off(tmp_path: Path, monkeypatch):

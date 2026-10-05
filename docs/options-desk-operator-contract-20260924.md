@@ -11,6 +11,10 @@ Canonical SoT: plan-options-desk-holdings-strategies-20260924.md
 
 **Read the full plan for stages and acceptance.** Pocket card only.
 
+Current coverage/scan contract: [Options Module](options-module.md) and
+[October 5 capacity and acceptance record](ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md).
+The historical requirements below are retained verbatim.
+
 ## Asks (P1–P8)
 
 1. CC/CSP/puts/spreads + Schwab + Path B · **latest holdings** · propose only when gates+edge clear  

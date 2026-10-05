@@ -1,0 +1,15 @@
+{
+  "schema": "OptionsScanPolicy@v1",
+  "owner": "options_engine",
+  "enabled": false,
+  "capacity_approval": null,
+  "provider_requests_per_minute": null,
+  "max_requests_per_slice": 5,
+  "full_start_minutes_after_open": 5,
+  "priority_interval_minutes": 15,
+  "min_dte": 7,
+  "max_dte": 365,
+  "discovery_filters": "sh_opt_option",
+  "discovery_max_pages": 1000,
+  "note": "Capacity approval and scheduler activation required. No financial policy or broker authority is granted."
+}

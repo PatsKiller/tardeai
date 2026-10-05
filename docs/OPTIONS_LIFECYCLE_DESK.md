@@ -10,6 +10,12 @@ Measured at: efcc51365 / not measured
 > only (operator rule): they never count as operational verification for the live book and
 > never alert.
 
+> **Proposal update (2026-10-05):** Complete coverage, queued scans and read-only proposal GETs
+> are documented in [Options Module](options-module.md) and the
+> [capacity/acceptance contract](ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md). Expanded scanning is
+> disabled pending capacity approval and activation. Open-position management ownership remains
+> with this lifecycle desk; new advisory expressions do not activate execution routes.
+
 ## Status (the three-level language, applied honestly)
 
 - **STRUCTURALLY COMPLETE** — all 11 phases built: canonical strategy model,
