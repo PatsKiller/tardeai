@@ -180,11 +180,25 @@ def export_pack(out_dir: Path) -> dict:
            "\n_CI evidence not yet generated — run `python3 scripts/run_release_ci_equivalent.py`._\n"))
 
     # ── Maturity score + acceptance (read latest maturity artifact) ──
+    # Stamp STALE when generated_at is older than 30 days. Do not invent a score.
+    from scripts.lib.maturity_score_latest_reader import (
+        ArchivedMaturityScoreRefused,
+        read_maturity_score_latest,
+    )
+
     mat = ROOT / "data" / "runtime" / "maturity_score_latest.json"
     mat_data = {}
     if mat.exists():
         try:
-            mat_data = json.loads(mat.read_text())
+            mat_data = read_maturity_score_latest(mat)
+        except ArchivedMaturityScoreRefused:
+            mat_data = {
+                "freshness": "STALE",
+                "status": "STALE",
+                "current": False,
+                "original_generated_at": None,
+                "final_maturity_score_of_5": None,
+            }
         except Exception:
             mat_data = {}
     files["MATURITY_4_5_ACCEPTANCE.md"] = _acceptance_doc(state, rel, mat_data, wp_status, nb_status,
@@ -278,7 +292,15 @@ def _acceptance_doc(state: dict, rel: dict, mat: dict, wp_status: str, nb_status
     score = mat.get("final_maturity_score_of_5")
     rel_status = rel.get("status", "UNKNOWN")
     live_dirty = (rel.get("dirty_classification") or {}).get("live_adjacent") or []
+    freshness = mat.get("freshness") or "not stamped"
+    original_generated_at = mat.get("original_generated_at")
+    if original_generated_at is None:
+        original_generated_at = (
+            mat.get("as_of") or mat.get("generated_at") or mat.get("computed_at") or "not recorded"
+        )
     verdict = "**HISTORICAL — SUPERSEDED; current learning not established by this artifact**"
+    if freshness == "STALE":
+        verdict = "**STALE — generated_at is older than 30 days; not a current score**"
     caps = mat.get("caps_applied") or []
     caps_md = ("\n".join(f"- {c['reason']} → cap {c['cap']}" for c in caps)) if caps else "- None."
     return f"""# Control Validation and Historical Coverage Checklist
@@ -289,11 +311,13 @@ _Source: `python3 scripts/export_diligence_evidence.py` + `scripts/compute_matur
 
 ## 1. Superseded historical maturity artifact
 
-The June installation score below is retained as history. It does not establish current learning,
-current readiness, or release acceptance. Read `/api/v3/control-plane/maturity` for measured
+The installation score below is retained as history. It does not establish current learning,
+current readiness, or release acceptance. A STALE freshness means generated_at is older than
+30 days; the number is not a new score. Read `/api/v3/control-plane/maturity` for measured
 current evidence and freshness; unavailable evidence remains unknown.
 
-- Historical as-of: {mat.get('as_of') or mat.get('generated_at') or mat.get('computed_at') or 'not recorded'}
+- Original generated_at: {original_generated_at}
+- Freshness: {freshness}
 - Historical final maturity (after caps): **{score} / 5**
 - Raw weighted: {mat.get('raw_weighted_score_of_5')} / 5
 - Caps applied:

@@ -387,7 +387,9 @@ def cio_entry_alert(item: dict[str, Any]) -> RichMessage:
         marker = "🔴"
     elif held is True:
         marker = "🟡"
-    elif state in {"BUY_READY", "READY"}:
+    elif state in {"BUY_READY", "READY"} and (item.get("cio_review_id") or item.get("cio_review_status") == "REVIEWED"):
+        # Green only when the CIO actually reviewed it (operator 2026-10-05, VCIG: an unreviewed
+        # BUY READY rendered green twice). Unreviewed stays amber below.
         marker = "🟢"
     elif "NEAR" in state or "REVIEW" in stance or stance in {"WATCH", "RESEARCH MORE"}:
         marker = "🟡"

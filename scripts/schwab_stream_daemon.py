@@ -10,7 +10,12 @@ Safety: market-data subscriptions ONLY (LEVELONE_EQUITIES + NASDAQ_BOOK). No acc
 Schwab write fence (validate_schwab_no_writes 12/12) is untouched — streaming uses the same read-only client.
 
 Symbols (no hardcoding): union of open paper positions + active PENDING proposals + active directive symbols,
-capped via STREAM_MAX_SYMBOLS (env, default 12). Kill switch: data/state/STREAM_DISABLED file.
+capped via STREAM_MAX_SYMBOLS (env, default 12), PLUS the momentum-scalp names the Active Trader
+microstructure recorder is watching (its live_symbols.json file, capped via STREAM_MAX_SCALP_SYMBOLS, default
+10). The scalp list is re-read every STREAM_RESUBSCRIBE_S (default 180) and new names are added to the
+L1 + NASDAQ book subscriptions (2026-10-05: scalp names were never subscribed, so the Schwab comparison book
+was missing on every alert). Reading a JSON file keeps Rule-9 isolation: nothing is imported from the engine.
+Kill switch: data/state/STREAM_DISABLED file.
 
   .venv/bin/python scripts/schwab_stream_daemon.py --max-seconds 90      # spike/test run
   .venv/bin/python scripts/schwab_stream_daemon.py                       # run until market close / kill switch
@@ -51,6 +56,45 @@ def _symbols(limit):
         print(f"[stream] symbol query degraded: {e}")
     out = sorted({s for s in syms if s and s.isalpha()})[: limit]
     return out
+
+
+def _scalp_symbols_path() -> Path:
+    env = os.getenv("ACTIVE_TRADER_ALERTS_DIR", "").strip()
+    if env:
+        return Path(env) / "micro" / "live_symbols.json"
+    persistent = Path.home() / "trade-ai-releases" / "persistent-state"
+    if (persistent / "PERSISTENT_STATE_ROOT.json").is_file():
+        return persistent / "data" / "active_trader" / "micro" / "live_symbols.json"
+    return ROOT / "data" / "active_trader" / "micro" / "live_symbols.json"
+
+
+def _scalp_symbols(limit, *, now=None, path=None, max_age_s=None):
+    """The recorder's live scalp list; a stale or missing file contributes nothing."""
+    p = path or _scalp_symbols_path()
+    max_age_s = float(os.getenv("STREAM_SCALP_SYMBOLS_MAX_AGE_S", "900")) if max_age_s is None else max_age_s
+    now = dt.datetime.now(dt.timezone.utc).timestamp() if now is None else now
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if now - float(d.get("ts_epoch") or 0) > max_age_s:
+        return []
+    return [s for s in (d.get("symbols") or []) if isinstance(s, str) and s.isalpha()][: limit]
+
+
+def _union(base, scalp):
+    out = list(base)
+    for s in scalp:
+        if s not in out:
+            out.append(s)
+    return out
+
+
+async def _add_subscriptions(sc, new_syms):
+    """Add symbols to the running L1 + NASDAQ book subscriptions (schwab-py *_add keeps the
+    existing set; *_subs would replace it, so it is never used here)."""
+    await sc.level_one_equity_add(new_syms)
+    await sc.nasdaq_book_add(new_syms)
 
 
 def _market_open():
@@ -130,9 +174,11 @@ async def run(max_seconds=None):
     if not _market_open():
         print("[stream] market closed — exiting"); return 0
     limit = int(os.getenv("STREAM_MAX_SYMBOLS", "12"))
-    syms = _symbols(limit)
+    scalp_limit = int(os.getenv("STREAM_MAX_SCALP_SYMBOLS", "10"))
+    resub_s = float(os.getenv("STREAM_RESUBSCRIBE_S", "180"))
+    syms = _union(_symbols(limit), _scalp_symbols(scalp_limit))
     if not syms:
-        print("[stream] no symbols (no open positions/proposals/directives) — exiting"); return 0
+        print("[stream] no symbols (no open positions/proposals/directives/scalp names) — exiting"); return 0
     print(f"[stream] symbols: {syms}")
 
     import schwab_transport
@@ -152,6 +198,7 @@ async def run(max_seconds=None):
     started = dt.datetime.now(dt.timezone.utc)
     last_flush = started
     last_mh_check = started
+    last_resub = started
     while True:
         try:
             await asyncio.wait_for(sc.handle_message(), timeout=10)
@@ -165,6 +212,16 @@ async def run(max_seconds=None):
         now = dt.datetime.now(dt.timezone.utc)
         if (now - last_flush).total_seconds() >= FLUSH_EVERY:
             cap.flush(conn); last_flush = now
+        if (now - last_resub).total_seconds() >= resub_s:
+            last_resub = now
+            new = [x for x in _scalp_symbols(scalp_limit) if x not in syms]
+            if new:
+                try:
+                    await _add_subscriptions(sc, new)
+                    syms = syms + new
+                    print(f"[stream] added scalp symbols: {new}")
+                except Exception as e:
+                    print(f"[stream] add subscription failed ({e}) — keeping {len(syms)} symbols")
         if KILL_FILE.exists():
             print("[stream] kill switch — stopping"); break
         if max_seconds and (now - started).total_seconds() > max_seconds:

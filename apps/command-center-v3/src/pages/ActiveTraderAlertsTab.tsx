@@ -20,7 +20,24 @@ type Supply = { ask_size_inside?: number; bid_size_inside?: number; ask_shares_n
   ask_wall_price?: number; ask_wall_size?: number; ask_wall_x_median?: number | null };
 type Trip = { symbol: string; account?: string; qty: number; buy_at?: string | null; buy_price: number; sell_at?: string | null;
   sell_price?: number | null; pnl?: number | null; pnl_pct?: number | null; held_s?: number | null; source: 'active_trader' | 'untagged';
-  alert?: { id: string; kind?: string; at?: string | null; ask_at_alert?: number | null; last_at_alert?: number | null; stop?: number | null; lag_s?: number } | null };
+  alert?: { id: string; kind?: string; at?: string | null; ask_at_alert?: number | null; last_at_alert?: number | null; stop?: number | null; lag_s?: number } | null;
+  replay?: { buy?: ReplayPoint | null; sell?: ReplayPoint | null } | null };
+type Sig = { on?: boolean | null; value?: unknown; threshold?: unknown };
+type ReplayBook = { best_bid?: number | null; best_ask?: number | null; bid_depth?: number | null; ask_depth?: number | null;
+  ask_inside?: number | null; spread_bps?: number | null; levels?: number | null };
+type ReplayPoint = {
+  at?: string | null; evidence?: 'exact' | 'bracketed' | 'none'; book_age_s?: number; book?: ReplayBook | null;
+  bracket?: { at?: string | null; seconds_from_fill?: number; decision?: string; book?: ReplayBook | null; tape?: { buy_ratio?: number | null } | null }[];
+  bracket_change?: { bid_depth_pct?: number | null; ask_depth_pct?: number | null } | null;
+  tape?: { buy_ratio?: number | null; prints?: number } | null;
+  volume?: { source?: string; minute_volume?: number | null; prior5_avg?: number | null } | null;
+  schwab?: { best_bid?: number | null; best_ask?: number | null; ask_inside_mm?: number | null } | null;
+  signals?: Record<string, Sig> | null;
+};
+type ExitRow = { at?: string | null; symbol?: string; fired?: string[]; last?: number | null; verdict?: string; sent?: boolean; mode?: string };
+type Learning = { decisions: number; trips: number; sessions: number; min_sample: number; status: string; trip_pnl?: number;
+  first_session?: string | null; last_session?: string | null;
+  calibration?: { status?: string; worked_rate?: number | null; proposals?: { type: string; proposal?: string; knob?: string; proposed_value?: number; why?: string; status: string }[] } | null } | null;
 type OutcomeAgg = { n: number; WORKED: number; STOPPED: number; NO_TOUCH: number; AT_OR_BELOW_STOP: number; worked_rate?: number | null;
   avg_best_exit_pct?: number | null; avg_rule_exit_pct?: number | null };
 type Decision = {
@@ -29,6 +46,9 @@ type Decision = {
   r?: number | null; float_mm?: number | null; rvol?: number | null; ign?: number | null; lane?: string | null;
   setup?: string | null; quote_age_s?: number | null; l2: L2; tape?: Tape | null; l2_compare?: L2 | null; score?: Score | null;
   supply?: Supply | null; outcome?: Outcome | null; ts_epoch?: number | null;
+  source?: 'pass5' | 'fast'; intrabar?: boolean; break_level?: number | null; zone?: { low: number; high: number } | null;
+  latency?: { event?: string; latency_s?: number | null; event_at?: string | null } | null;
+  signals?: { status?: string | null; snapshots?: number | null; fired: string[]; detail: Record<string, Sig> } | null;
 };
 type Feed = {
   contract?: string; session_date?: string; latest_session_with_decisions?: string | null; mode?: 'send' | 'shadow';
@@ -37,7 +57,9 @@ type Feed = {
              last_pass?: { evaluated?: number; alerts?: number; vetoes?: number; sent?: number } | null };
   l2?: { source?: string; levels_proven?: number; proven_at?: string; compare?: string };
   rules?: Record<string, string>;
-  counts?: { triggered_alerts?: number; armed_alerts?: number; vetoes?: number; sent?: number; decisions?: number };
+  counts?: { triggered_alerts?: number; armed_alerts?: number; vetoes?: number; sent?: number; decisions?: number;
+              buy_alerts?: number; headsup_alerts?: number; by_kind?: Record<string, number> };
+  latency?: Record<string, { n: number; p50_s: number | null; p90_s: number | null }>;
   veto_reasons?: Record<string, number>;
   precision?: Record<string, Record<string, { n: number; hit: number; precision: number | null }>>;
   scored_total?: number;
@@ -45,11 +67,24 @@ type Feed = {
   outcomes?: { session?: Record<string, OutcomeAgg>; all?: Record<string, OutcomeAgg>; touch_min?: number; horizon_min?: number; pending?: number };
   sessions?: string[];
   your_trades?: Trip[];
+  exit_watch?: ExitRow[];
+  learning?: Learning;
   decisions?: Decision[];
 };
 
 type Kind = 'all' | 'buy' | 'heads' | 'sent' | 'veto' | 'traded';
 type Res = 'any' | 'WORKED' | 'STOPPED' | 'NO_TOUCH' | 'AT_OR_BELOW_STOP' | 'pending';
+// Alert sync (2026-10-05): buy = TRIGGERED / back in buy zone; heads-up = ARMED / APPROACHING /
+// EXTENDED (don't chase) / trigger failed.
+const BUY_KINDS = ['TRIGGERED', 'PULLBACK_ZONE']
+const HEADS_KINDS = ['ARMED', 'APPROACHING', 'EXTENDED', 'TRIGGER_CANCELLED']
+const KIND_CHIP: Record<string, string> = {
+  TRIGGERED: 'TIME TO BUY', PULLBACK_ZONE: 'BACK IN BUY ZONE', ARMED: 'HEADS-UP', APPROACHING: 'APPROACHING',
+  EXTENDED: "EXTENDED · don't chase", TRIGGER_CANCELLED: 'TRIGGER FAILED',
+}
+const EVENT_TEXT: Record<string, string> = {
+  break_print: 'the break print', zone_entry: 'price entered the zone', extension: 'the run past entry', bar_close: 'the fire bar close',
+}
 const KIND_LABEL: Record<Kind, string> = { all: 'All', buy: 'Time to buy', heads: 'Heads-up', sent: 'Sent', veto: 'Vetoed', traded: 'You traded' };
 const RES_LABEL: Record<Exclude<Res, 'any'>, string> = {
   WORKED: '+1R before stop', STOPPED: 'stop hit first', NO_TOUCH: 'neither in window', AT_OR_BELOW_STOP: 'already through stop', pending: 'not scored yet',
@@ -59,11 +94,20 @@ const resultOf = (d: Decision): Exclude<Res, 'any'> => {
   return !r ? 'pending' : r === 'SAME_BAR' ? 'STOPPED' : r;
 };
 
+const SIGNAL_TEXT: Record<string, string> = {
+  supply_thinning: 'ask supply thinning', ask_refill: 'ask refilling (hidden seller)', book_pull: 'book pulled both sides',
+  volume_acceleration: 'volume accelerating', high_break: 'high break on volume', vwap_distance: 'extended above VWAP',
+  schwab_mm_stack: 'Schwab: market makers stacked at ask', tape_flip: 'tape flipped to sellers', volume_climax: 'volume climax',
+  ask_wall: 'ask wall appeared', close_below_prior_low: 'close below prior low', vwap_loss: 'lost VWAP',
+};
+const firedOf = (sig?: Record<string, Sig> | null) => Object.entries(sig ?? {}).filter(([, v]) => v && v.on === true).map(([k]) => k);
+
 const REASON_TEXT: Record<string, string> = {
   QUOTE_STALE: 'quote stale', BOOK_STALE: 'book stale', BOOK_MISSING: 'no L2 book', BOOK_EMPTY: 'book empty',
   BOOK_CROSSED: 'book crossed', SPREAD_WIDE: 'spread too wide', L2_ASK_HEAVY: 'sellers heavier in book',
   TAPE_MISSING: 'no tape', TAPE_STALE: 'tape stale', TAPE_THIN: 'too few prints', TAPE_SELLERS: 'tape selling',
   NO_STOP_REF: 'no valid stop', COOLDOWN: 'cooldown', RATE_LIMIT: 'hourly cap', PRICE_AT_OR_BELOW_STOP: 'price already through stop',
+  DUPLICATE: 'already alerted', NO_ZONE: 'no buy zone',
 };
 
 const n = (v: number | null | undefined, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toFixed(d));
@@ -85,8 +129,8 @@ export default function ActiveTraderAlertsTab() {
   const symbols = useMemo(() => Array.from(new Set((data?.decisions ?? []).map(d => d.symbol).filter(Boolean) as string[])).sort(), [data]);
   const decisions = useMemo(() => (data?.decisions ?? []).filter(d => {
     const alert = d.verdict === 'ALERT';
-    if (kind === 'buy' && !(alert && d.kind === 'TRIGGERED')) return false;
-    if (kind === 'heads' && !(alert && d.kind === 'ARMED')) return false;
+    if (kind === 'buy' && !(alert && BUY_KINDS.includes(String(d.kind)))) return false;
+    if (kind === 'heads' && !(alert && HEADS_KINDS.includes(String(d.kind)))) return false;
     if (kind === 'sent' && !d.sent) return false;
     if (kind === 'veto' && alert) return false;
     if (kind === 'traded' && !tradedIds.has(d.id)) return false;
@@ -113,6 +157,8 @@ export default function ActiveTraderAlertsTab() {
   const buyAgg = os['TRIGGERED:ALERT'];
   const tagged = trips.filter(t => t.source === 'active_trader');
   const tripPnl = trips.reduce((a, t) => a + (t.pnl ?? 0), 0);
+  const lat = data?.latency?.all
+  const fast = data?.latency?.['source:fast']
   const reasons = Object.entries(data?.veto_reasons ?? {});
   const maxReason = Math.max(1, ...reasons.map(([, v]) => v));
 
@@ -137,9 +183,9 @@ export default function ActiveTraderAlertsTab() {
       </header>
 
       <section className="at-alerts__kpis" aria-label="Today">
-        <Kpi label="Time to buy" value={c.triggered_alerts ?? 0} tone="green" tip="TRIGGERED alerts today"
+        <Kpi label="Time to buy" value={c.buy_alerts ?? c.triggered_alerts ?? 0} tone="green" tip="TRIGGERED + back-in-buy-zone alerts today"
           on={kind === 'buy' && res === 'any'} onClick={() => pick('buy')} />
-        <Kpi label="Heads-up" value={c.armed_alerts ?? 0} tone="amber" tip="ARMED alerts today"
+        <Kpi label="Heads-up" value={c.headsup_alerts ?? c.armed_alerts ?? 0} tone="amber" tip="ARMED, APPROACHING, EXTENDED and trigger-failed alerts today"
           on={kind === 'heads'} onClick={() => pick('heads')} />
         <Kpi label="Sent to Telegram" value={c.sent ?? 0} tone="blue" tip={live ? 'delivered' : 'shadow mode — nothing sent'}
           on={kind === 'sent'} onClick={() => pick('sent')} />
@@ -148,6 +194,8 @@ export default function ActiveTraderAlertsTab() {
         <Kpi label="Time to buy worked" value={buyAgg?.n ? `${buyAgg.WORKED}/${buyAgg.n}` : '—'} tone="green"
           tip={`reached +1R from the ask at the alert before the stop, within ${data?.outcomes?.touch_min ?? 15} min`}
           on={kind === 'buy' && res === 'WORKED'} onClick={() => pick('buy', 'WORKED')} />
+        <Kpi label="Alert latency" value={lat?.n ? `${lat.p50_s}s · ${lat.p90_s}s` : '—'} tone="blue"
+          tip={`p50 · p90 seconds from the market event (break print, zone entry, run past entry) to the alert${fast?.n ? ` · fast loop p50 ${fast.p50_s}s` : ''}`} />
         <Kpi label="Your trades" value={trips.length ? `${trips.length} · ${sgn(tripPnl, 2, '')}` : '0'} tone="blue"
           tip={`${tagged.length} after an alert · from your broker fills`} on={kind === 'traded'} onClick={() => pick('traded')} />
       </section>
@@ -237,11 +285,42 @@ export default function ActiveTraderAlertsTab() {
                       {Math.floor((t.alert.lag_s ?? 0) / 60)}m{(t.alert.lag_s ?? 0) % 60}s after the alert · ask then {n(t.alert.ask_at_alert)} → you paid {n(t.buy_price)}
                     </div>
                   )}
+                  {t.replay?.buy || t.replay?.sell ? (
+                    <details className="at-alerts__replay" data-testid="at-trade-replay">
+                      <summary>Book, tape and volume when you traded</summary>
+                      {t.replay?.buy && <ReplayView label="At your buy" p={t.replay.buy} />}
+                      {t.replay?.sell && <ReplayView label="At your sell" p={t.replay.sell} />}
+                    </details>
+                  ) : (
+                    <div className="at-source">Replay builds when the recorder closes its window.</div>
+                  )}
                 </div>
               ))}
             </div>
             <p className="at-alerts__note">From your broker fills (read-only). A trade is tagged to the latest alert sent on that symbol in the 20 minutes before your buy.</p>
           </section>
+
+          {(data?.exit_watch?.length ?? 0) > 0 && (
+            <section className="at-panel" data-testid="at-exit-watch">
+              <header className="at-panel__header"><h2>Exit watch <small>your open scalps</small></h2></header>
+              <div className="at-alerts__trips">
+                {(data?.exit_watch ?? []).slice().reverse().map((x, i) => (
+                  <div key={`${x.symbol}-${x.at}-${i}`} className="at-alerts__trip">
+                    <div className="at-inline at-wrap">
+                      <b>{x.symbol}</b>
+                      <span className={`at-chip ${x.verdict === 'ALERT' ? 'at-chip--warning' : 'at-chip--context'}`}>{x.verdict === 'ALERT' ? 'exit signals' : 'cooldown'}</span>
+                      <time className="mono">{hm(x.at)}</time>
+                      {x.sent && <span className="at-chip at-chip--lane">✓ Telegram</span>}
+                    </div>
+                    <div className="at-source">{(x.fired ?? []).map(f => SIGNAL_TEXT[f] ?? f).join(' · ')} · last {n(x.last)}</div>
+                  </div>
+                ))}
+              </div>
+              <p className="at-alerts__note">Advisory only — you decide. {data?.exit_watch?.[0]?.mode === 'send' ? 'Sent to Telegram.' : 'Shadow mode: recorded here, not sent.'}</p>
+            </section>
+          )}
+
+          <LearningPanel l={data?.learning ?? null} />
 
           <section className="at-panel">
             <header className="at-panel__header"><h2>Track record <small>{data?.scored_session ?? 0} scored · {data?.outcomes?.pending ?? 0} pending</small></h2></header>
@@ -267,8 +346,69 @@ export default function ActiveTraderAlertsTab() {
   );
 }
 
+function ReplayView({ label, p }: { label: string; p: ReplayPoint }) {
+  const fired = firedOf(p.signals);
+  return (
+    <div className="at-alerts__replay-point">
+      <div className="at-inline at-wrap">
+        <b>{label} {hm(p.at)}</b>
+        <span className={`at-chip ${p.evidence === 'exact' ? 'at-chip--pass' : 'at-chip--context'}`}>
+          {p.evidence === 'exact' ? `exact · book ${n(p.book_age_s, 0)}s before` : p.evidence === 'bracketed' ? 'bracketed by alert snapshots' : 'no book data'}
+        </span>
+      </div>
+      {p.evidence === 'bracketed' && (p.bracket ?? []).map((b, i) => (
+        <div key={i} className="at-source">
+          {hm(b.at)} ({(b.seconds_from_fill ?? 0) > 0 ? '+' : ''}{b.seconds_from_fill}s, {b.decision}) · bid {sh(b.book?.bid_depth)} / ask {sh(b.book?.ask_depth)} sh
+          {b.tape?.buy_ratio != null ? ` · tape ${pct(b.tape.buy_ratio)} buys` : ''}
+        </div>
+      ))}
+      {p.bracket_change?.bid_depth_pct != null && (
+        <div className="at-source">book change across the gap: bid {sgn(p.bracket_change.bid_depth_pct, 0)} · ask {sgn(p.bracket_change.ask_depth_pct, 0)}</div>
+      )}
+      {p.evidence === 'exact' && p.book && (
+        <div className="at-source">
+          bid {n(p.book.best_bid)} / ask {n(p.book.best_ask)} · {sh(p.book.ask_inside)} sh at the ask · depth {sh(p.book.bid_depth)} / {sh(p.book.ask_depth)} sh
+          {p.tape?.buy_ratio != null ? ` · tape ${pct(p.tape.buy_ratio)} buys of ${p.tape.prints}` : ''}
+        </div>
+      )}
+      {p.volume && (
+        <div className="at-source">minute volume {sh(p.volume.minute_volume)} vs prior-5 avg {sh(p.volume.prior5_avg)} · {p.volume.source}</div>
+      )}
+      {p.schwab && <div className="at-source">Schwab book {n(p.schwab.best_bid)} / {n(p.schwab.best_ask)} · {p.schwab.ask_inside_mm ?? '—'} market makers at the ask</div>}
+      {fired.length > 0 && <div className="at-inline at-wrap">{fired.map(f => <span key={f} className="at-chip at-chip--context">{SIGNAL_TEXT[f] ?? f}</span>)}</div>}
+    </div>
+  );
+}
+
+function LearningPanel({ l }: { l: Learning }) {
+  const props = l?.calibration?.proposals ?? [];
+  return (
+    <section className="at-panel" data-testid="at-learning">
+      <header className="at-panel__header"><h2>What the engine is learning</h2></header>
+      <div className="at-alerts__trips">
+        {!l ? <div className="at-source">No learning records yet.</div> : (
+          <>
+            <div className="at-inline at-wrap">
+              <span className={`at-chip ${l.status === 'learning' ? 'at-chip--pass' : 'at-chip--context'}`}>
+                {l.status === 'learning' ? 'learning' : `insufficient sample · ${l.decisions} of ${l.min_sample} decisions`}
+              </span>
+            </div>
+            <div className="at-source">{l.decisions} scored decisions · {l.trips} of your trades · {l.sessions} sessions{l.first_session ? ` since ${l.first_session}` : ''}</div>
+            {props.length > 0 ? props.map((p, i) => (
+              <div key={i} className="at-source">Proposed: {p.proposal ?? `${p.knob} → ${p.proposed_value} (${p.why})`}</div>
+            )) : <div className="at-source">No threshold changes proposed yet.</div>}
+          </>
+        )}
+      </div>
+      <p className="at-alerts__note">Every scored alert and every trade you close is recorded with the book, tape and volume behind it. Proposed changes never apply themselves; you ratify them.</p>
+    </section>
+  );
+}
+
 function TrackTable({ rows, caption }: { rows: Record<string, OutcomeAgg>; caption: string }) {
-  const keys: [string, string][] = [['TRIGGERED:ALERT', 'Time to buy'], ['ARMED:ALERT', 'Heads-up'], ['TRIGGERED:VETO', 'Vetoed trigger'], ['ARMED:VETO', 'Vetoed heads-up']];
+  const keys: [string, string][] = [['TRIGGERED:ALERT', 'Time to buy'], ['PULLBACK_ZONE:ALERT', 'Back in buy zone'],
+    ['APPROACHING:ALERT', 'Approaching'], ['ARMED:ALERT', 'Heads-up'], ['EXTENDED:ALERT', "Extended (don't chase)"],
+    ['TRIGGERED:VETO', 'Vetoed trigger'], ['ARMED:VETO', 'Vetoed heads-up']];
   return (
     <table className="at-alerts__prec">
       <caption>{caption}</caption>
@@ -307,8 +447,9 @@ function Kpi({ label, value, tone, tip, on, onClick }: {
 
 function DecisionRow({ d, trips }: { d: Decision; trips: Trip[] }) {
   const alert = d.verdict === 'ALERT';
-  const trig = d.kind === 'TRIGGERED';
+  const trig = BUY_KINDS.includes(String(d.kind));
   const o = d.outcome;
+  const chip = `${KIND_CHIP[String(d.kind)] ?? d.kind}${d.intrabar ? ' · intrabar' : ''}`;
   const r = resultOf(d);
   const sup = d.supply;
   return (
@@ -316,7 +457,7 @@ function DecisionRow({ d, trips }: { d: Decision; trips: Trip[] }) {
       <div className="at-alerts__row-head">
         <span className="at-alerts__sym">{d.symbol}</span>
         <span className={`at-chip ${alert ? (trig ? 'at-chip--pass' : 'at-chip--warning') : 'at-chip--fail'}`}>
-          {alert ? (trig ? 'TIME TO BUY' : 'HEADS-UP') : `VETO · ${d.kind === 'TRIGGERED' ? 'trigger' : 'armed'}`}
+          {alert ? chip : `VETO · ${(KIND_CHIP[String(d.kind)] ?? String(d.kind)).toLowerCase()}`}
         </span>
         {d.sent && <span className="at-chip at-chip--lane" title="Delivered to Telegram">✓ Telegram</span>}
         {trips.map((t, i) => (
@@ -324,6 +465,7 @@ function DecisionRow({ d, trips }: { d: Decision; trips: Trip[] }) {
             you bought {n(t.buy_price)} {hm(t.buy_at)}{t.pnl != null ? ` · ${sgn(t.pnl, 2, '')}` : ''}
           </span>
         ))}
+        {d.source === 'fast' && <span className="at-chip at-chip--context" title="Sub-minute loop on the recorder's live store">fast</span>}
         <time className="mono">{timeOf(d.at)} ET</time>
       </div>
       {!alert && d.veto_reasons.length > 0 && (
@@ -337,6 +479,15 @@ function DecisionRow({ d, trips }: { d: Decision; trips: Trip[] }) {
         <div><dt>float</dt><dd>{d.float_mm == null ? '—' : `${n(d.float_mm, 1)}M`}</dd></div>
         <div><dt>RVOL</dt><dd>{d.rvol == null ? '—' : `${n(d.rvol, 1)}x`}</dd></div>
       </dl>
+      {(d.latency?.latency_s != null || d.zone || d.break_level != null) && (
+        <div className="at-alerts__evidence at-alerts__sync" data-testid="at-alert-sync">
+          {d.break_level != null && <span><b>break</b> above {n(d.break_level)}</span>}
+          {d.zone && <span><b>buy zone</b> {n(d.zone.low)}–{n(d.zone.high)}</span>}
+          {d.latency?.latency_s != null && (
+            <span title={`event ${d.latency.event_at ?? ''}`}><b>sync</b> {n(d.latency.latency_s, 0)}s after {EVENT_TEXT[String(d.latency.event)] ?? d.latency.event}</span>
+          )}
+        </div>
+      )}
       <div className="at-alerts__evidence">
         <span title={`book age ${n(d.l2?.age_s, 0)}s (${d.l2?.ts_source ?? 'n/a'})`}>
           <b>L2</b> {d.l2?.levels ?? 0} lv · bid/ask {n(d.l2?.depth_ratio)}x · spread {n(d.l2?.spread_bps, 0)} bps
@@ -344,6 +495,7 @@ function DecisionRow({ d, trips }: { d: Decision; trips: Trip[] }) {
         {d.tape && <span><b>tape</b> {pct(d.tape.buy_ratio)} buys · {d.tape.prints ?? 0} prints</span>}
         {d.l2_compare && d.l2_compare.levels ? <span className="at-source">Schwab {d.l2_compare.levels} lv · {n(d.l2_compare.depth_ratio)}x</span> : null}
         {d.setup && <span className="at-source">{d.setup}</span>}
+        {d.signals?.fired?.map(f => <span key={f} className="at-chip at-chip--context">{SIGNAL_TEXT[f] ?? f}</span>)}
       </div>
       {sup && sup.ask_size_inside != null && (
         <div className="at-alerts__evidence at-alerts__supply">

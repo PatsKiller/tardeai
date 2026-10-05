@@ -103,7 +103,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/RESEARCH_TOPIC_REGISTRY_2026_06_04.md` | Research Topic Registry — 2026-06-04 | review_required | OK | `f51d95275ab4` |
 | `docs/RESTORE_GUIDE.md` | Trade AI v12 — Restore Guide | active_keep | OK | `e75090b6bb16` |
 | `docs/SCHWAB_AUTO_REAUTH.md` | Schwab OAuth Reauth (manual-first) | review_required | OK | `039c557e4214` |
-| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `5c670e23fa2c` |
+| `docs/SOURCE_OF_TRUTH.md` | Source of Truth — one declaration per domain | review_required | MISSING HEADER | `4f3e5b9279e6` |
 | `docs/STAGING_VS_V2_BITEMPORAL_STATUS_REPORT.md` | Staging vs V2 bitemporal database — status report | review_required | OK | `809ec60535eb` |
 | `docs/STOP_METHODOLOGY.md` | Stop & Trailing-Stop Methodology (canonical) | review_required | OK | `5b9791931edc` |
 | `docs/STOP_SYSTEM_GAP_REPORT.md` | Trade AI v12 — Stop System Alignment / Gap Report | review_required | OK | `12d1dfe39ffb` |
@@ -184,6 +184,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_generated/profit_capture/pc_refresh.md` | Profit-Capture All-Trades Analysis | review_required | OK | `01ce13f3e88a` |
 | `docs/_generated/profit_capture/pc_shadow.md` | Profit-Protection Shadow Threshold Recommendations (advisory only) | review_required | OK | `396938ff08de` |
 | `docs/_generated/profit_capture/pc_val.md` | Profit-Capture Rule Quality Validation | review_required | OK | `630fb810182f` |
+| `docs/active_trader/ACTIVE_TRADER_SOUL.md` | Active Trader — Soul and Foundation | review_required | MISSING HEADER | `d7932fb4a906` |
 | `docs/adr/ADR-AIF-FS-ONE-GATEWAY.md` | ADR: Financial Senses integrates through the AIF governed read-only gateway | review_required | OK | `b62f7dc5ac25` |
 | `docs/advisory/PHASE141_142_DUAL_OPINION_AND_CHOICE_TRACKING.md` | Phases 141-142 — Dual-Opinion Advisory + Operator Choice Tracking | review_required | OK | `f1ca2aa75749` |
 | `docs/advisory/PHASE143_144_INLINE_ADVISORY_REPORT.md` | Phases 143-144 — Inline Dual-Opinion Advisory + Journal/Backtest Intelligence | review_required | OK | `3caee3d01e99` |
@@ -263,6 +264,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/AGENT_MATURITY_COMMAND_CENTER_IMPLEMENTATION_PLAN_2026-07-25.md` | Agent Maturity and Command Center Implementation Plan — 2026-07-25 | review_required | OK | `4a66cdff27f6` |
 | `docs/architecture/AGENT_SERVICE_MAP_2026-09-25.md` | Agent and Service Map — traced from code and the served host | review_required | OK | `5d1890b5787e` |
 | `docs/architecture/AGENT_TOOL_PERMISSION_MATRIX_2026-07-23.md` | Trade AI Agent Tool Permission Matrix — 2026-07-23 | review_required | OK | `f40d7f04bd37` |
+| `docs/architecture/ALERT_DATA_SOURCES_2026-10-05.md` | Alert data sources — inventory 2026-10-05 | review_required | MISSING HEADER | `fc2ae5f8b1bb` |
 | `docs/architecture/ARCHITECTURE_INDEX.md` | Architecture Index — where to look before you change a component | review_required | OK | `3af8b36899d6` |
 | `docs/architecture/ATM_BROKER_ACCOUNT_AUTOMATION_2026_06_05.md` | ATM → Broker/Account Automation Console (Phase 1) — 2026-06-05 | review_required | OK | `4cc7fdd232c2` |
 | `docs/architecture/ATM_BROKER_ACCOUNT_REFACTOR_DUE_DILIGENCE.md` | ATM Controls → Broker/Account Automation — Due Diligence (Phase 1) | review_required | OK | `34549ef247f4` |
@@ -438,6 +440,8 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/PHASE210C_CADENCE_TIMER_SCHEDULE_VERIFICATION.md` | Phase 210C — Cadence Timer Schedule Verification — 2026-06-07 | review_required | OK | `1d9cdac8c715` |
 | `docs/architecture/PLAN_S_HOLLOW_RESEARCH_THEN_ANSWER_2026-09-22.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | delete_candidate_duplicate | OK | `5e9e634f7fa6` |
 | `docs/architecture/PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md` | Platform Intelligence Due Diligence: Memory, Research, Agents, Workers (As-Is / To-Be) | review_required | OK | `235d5804d634` |
+| `docs/architecture/POSITIONS_SOURCE_OF_TRUTH_2026-10-05.md` | Positions — one source of truth (design, 2026-10-05) | review_required | MISSING HEADER | `6a13be8e1b61` |
+| `docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md` | Positions Source of Truth Plan | review_required | MISSING HEADER | `128e0389ca93` |
 | `docs/architecture/PRE_DEPLOY_STATE_GUARD.md` | Pre-Deploy State Guard (canonical) | review_required | OK | `fe30cc8699b6` |
 | `docs/architecture/PROJECT_THE_DESK_V2.md` | PROJECT · THE DESK — an autonomous CIO, built as extensions to the existing spec | review_required | OK | `2af6860a863f` |
 | `docs/architecture/QUOTE_PIPELINE_UNIFICATION_SCOPING_2026-08-27.md` | Quote Pipeline Unification — Scoping (Audit Finding H4) | review_required | OK | `d3580a82544b` |
@@ -1751,7 +1755,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 | review_required | OK | `3490029f050c` |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) | review_required | OK | `9b701b444eb7` |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs | review_required | OK | `991bedac8b13` |
-| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `1c91968a72e4` |
+| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `c33abcec912e` |
 | `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md` | Flash activation + thesis canary — 2026-08-20 | review_required | OK | `2423165b9ce4` |
 | `docs/ops/GITHUB_ACTIONS_COST_REDUCTION_PLAN.md` | GitHub Actions cost-reduction plan | review_required | OK | `820bad46ce5f` |
 | `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` | GitHub Actions outage — repo visibility flip exhausted the private-repo minute quota | review_required | OK | `1d1b620b91db` |
@@ -1782,6 +1786,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | OK | `ad67ce75eb83` |
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | OK | `57b472ac277f` |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
+| `docs/ops/PORTFOLIO_RECONCILIATION_2026-10-05.md` | Portfolio reconciliation — Command Center vs broker (2026-10-05) | review_required | MISSING HEADER | `ba46e3cd1f71` |
 | `docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` | DEFERRED — operator continue-park (AGENTS.md §17) | review_required | OK | `f8c764608410` |
 | `docs/ops/PROPOSED_INSTALL_CODE_MIRROR_DRIVE_CRON_2026-09-20.md` | APPROVED — code-mirror Drive cron + apply (AGENTS.md §9.3 / §17) | review_required | OK | `71b2e4f7012b` |
 | `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` | CONFIRMED — host timers installed (AGENTS.md §9.3 overnight maturity cron grant) | review_required | OK | `0e9571d27421` |
@@ -2219,7 +2224,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/sessions/ALPACA_LIVE_READ_INTEGRATION_2026-07-21.md` | Alpaca Live Read-Only Integration — Session Handoff | review_required | OK | `ee2052565b9f` |
 | `docs/sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md` | Alpaca Multi-Account Taxonomy Build — R1–R5 Session Handoff | review_required | OK | `556e597927ea` |
 | `docs/sessions/bitwarden_sm_migration_2026-07-21.md` | Bitwarden Secrets Manager Migration — Session Handoff (S0–S7) | review_required | OK | `5d1c34e95f2b` |
-| `docs/strategies/MOMENTUM_SCALP_SIGNAL_ENGINE_v1.md` | Momentum Scalp Signal Engine — Design Document v1 (DRAFT FOR REVIEW) | review_required | OK | `a0c18ca4b8a6` |
+| `docs/strategies/MOMENTUM_SCALP_SIGNAL_ENGINE_v1.md` | Momentum Scalp Signal Engine — Design Document v1 (DRAFT FOR REVIEW) | review_required | OK | `c43d8e24fe18` |
 | `docs/strategies/SCALP_SETUP_TAXONOMY_v1.md` | Momentum Scalp — Setup Taxonomy v1 | review_required | OK | `6ed049bb4014` |
 | `docs/strategy/BOT_MATURITY_ROADMAP_v1.md` | Automated Trade Bot Maturity Roadmap v1 | current_phase_keep | OK | `597378911cfd` |
 | `docs/strategy/SCREENER_REFERENCE.md` | Trade AI v12 — Screener Reference | current_phase_keep | OK | `8836ce913693` |

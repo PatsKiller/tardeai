@@ -80,7 +80,42 @@ class MoomooSource:
             last = None
         return last, exchange_time_to_epoch(q.get("update_time"))
 
+    def bars_1m(self, symbol: str, num: int = 500) -> list[dict]:
+        """Today's 1-min K-lines incl. extended hours and the FORMING bar, normalized to bar START.
+        moomoo labels a 1-min bar by its END (verified 2026-10-05 16:25:27 ET: newest time_key was
+        16:26:00), so start = time_key − 60 s. Quote context only. Producer: the microstructure
+        recorder; consumers read its store, never this method (operator rule 2026-10-05)."""
+        from datetime import datetime as _dt
+        from zoneinfo import ZoneInfo as _Z
+        from futu import KLType, SubType
+        ctx = self._transport()._context()
+        code = f"US.{symbol.upper()}"
+        subs = getattr(self, "_kl", None)
+        if subs is None:
+            subs = self._kl = set()
+        if code not in subs:
+            ret, msg = ctx.subscribe([code], [SubType.K_1M], subscribe_push=False, extended_time=True)
+            if ret != 0:
+                raise RuntimeError(f"K_1M subscribe refused for {symbol}: {str(msg)[:120]}")
+            subs.add(code)
+        ret, df = ctx.get_cur_kline(code, num=num, ktype=KLType.K_1M)
+        if ret != 0:
+            raise RuntimeError(f"get_cur_kline failed for {symbol}: {str(df)[:120]}")
+        et = _Z("America/New_York")
+        out = []
+        for r in df[["time_key", "open", "high", "low", "close", "volume"]].to_dict("records"):
+            end = _dt.strptime(str(r["time_key"]), "%Y-%m-%d %H:%M:%S").replace(tzinfo=et).timestamp()
+            out.append({"s": end - 60.0, "o": float(r["open"]), "h": float(r["high"]), "l": float(r["low"]),
+                        "c": float(r["close"]), "v": float(r["volume"] or 0)})
+        return out
+
     def close(self) -> None:
+        if getattr(self, "_kl", None):
+            try:
+                from futu import SubType
+                self._t._context().unsubscribe(list(self._kl), [SubType.K_1M])
+            except Exception:  # noqa: BLE001 — OpenD drops subscriptions with the connection anyway
+                pass
         if self._t is not None:
             try:
                 self._t.close()

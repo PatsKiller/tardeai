@@ -63,6 +63,24 @@ def _load_json(path: Path, default):
         return default
 
 
+def _age_h(ts) -> float | None:
+    if ts is None or not hasattr(ts, "timestamp"):
+        return None
+    from datetime import datetime, timezone
+    return (datetime.now(timezone.utc).timestamp() - ts.timestamp()) / 3600.0
+
+
+def _after_open(ts) -> bool:
+    """True when the plan was made after today's 09:30 ET open (a re-plan after any move)."""
+    if ts is None or not hasattr(ts, "astimezone"):
+        return False
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    et = ZoneInfo("America/New_York")
+    now = datetime.now(et)
+    return ts.astimezone(et) >= now.replace(hour=9, minute=30, second=0, microsecond=0)
+
+
 def gather(cur) -> dict[str, dict]:
     """symbol → evidence dict for cio_entry_state.evaluate."""
     ev: dict[str, dict] = {}
@@ -87,13 +105,14 @@ def gather(cur) -> dict[str, dict]:
                     WHERE upper(symbol) = ANY(%s) AND created_at > now() - interval '7 days'
                     ORDER BY upper(symbol), created_at DESC""", (syms,))
     plans = {row[0]: row[1:] for row in cur.fetchall()}
-    cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol), price,
-                          EXTRACT(EPOCH FROM (now() - last_enriched_at)) / 3600.0
-                     FROM watchlist_items WHERE upper(symbol) = ANY(%s) AND price IS NOT NULL
-                    ORDER BY upper(symbol), last_enriched_at DESC NULLS LAST""", (syms,))
-    quotes = {row[0]: row[1:] for row in cur.fetchall()}
+    # Prices come from the Command Center data broker (market_quotes, refreshed by the broker's
+    # own writer) — operator 2026-10-05: no alert reads its own price source. watchlist_items.price
+    # is an enrichment copy that lagged a day (NVDA 26 h) while the broker had it at 16:00.
+    from lib.alert_quotes import broker_quotes
+    quotes = {s: (q["price"], q["age_h"], q.get("chg_pct")) for s, q in broker_quotes(cur, syms).items()}
     cur.execute("""SELECT DISTINCT ON (upper(symbol)) upper(symbol), ideal_entry, add_zone_low, add_zone_high,
-                          stop_loss, target_price, catalyst_summary
+                          stop_loss, target_price, catalyst_summary,
+                          EXTRACT(EPOCH FROM (now() - updated_at)) / 3600.0
                      FROM watchlist_strategy_cards WHERE upper(symbol) = ANY(%s)
                     ORDER BY upper(symbol), updated_at DESC NULLS LAST""", (syms,))
     cards = {row[0]: row[1:] for row in cur.fetchall()}
@@ -125,13 +144,19 @@ def gather(cur) -> dict[str, dict]:
         e = ev.setdefault(sym, {"symbol": sym, "plan_source": None})
         if e.get("plan_source") is None:
             if sym in plans and (plans[sym][0] is not None or plans[sym][1] is not None):
-                lo, hi, st, tg, _ = plans[sym]
-                e.update(entry_low=lo, entry_high=hi, stop=st, target=tg, plan_source="entry_plan")
+                lo, hi, st, tg, created = plans[sym]
+                e.update(entry_low=lo, entry_high=hi, stop=st, target=tg, plan_source="entry_plan",
+                         plan_age_h=_age_h(created), plan_after_move=_after_open(created))
             elif sym in cards and cards[sym][0] is not None:
-                ideal, zl, zh, st, tg, _ = cards[sym]
-                e.update(entry_low=zl or ideal, entry_high=zh or ideal, stop=st, target=tg, plan_source="strategy_card")
-        if e.get("price") is None and sym in quotes:
-            e["price"], e["quote_age_h"] = quotes[sym]
+                ideal, zl, zh, st, tg, _, card_age_h = cards[sym]
+                # A strategy card is rewritten by its own job; it is never a re-plan after a move.
+                e.update(entry_low=zl or ideal, entry_high=zh or ideal, stop=st, target=tg, plan_source="strategy_card",
+                         plan_age_h=card_age_h, plan_after_move=False)
+        if sym in quotes:
+            px, age_h, chg = quotes[sym]
+            if e.get("price") is None:
+                e["price"], e["quote_age_h"] = px, age_h
+            e["change_pct"] = chg
         if not e.get("catalyst") and sym in cards:
             e["catalyst"] = cards[sym][5]
         e["cio_action"] = cio.get(sym)

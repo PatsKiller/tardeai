@@ -19,7 +19,7 @@ module never sizes, never orders, never picks a quantity (MBI_BEHAVIOR=0). It is
 pure: the chain, liquidity gate and earnings check are passed in, so tests make
 no broker or network calls. Live callers pass options_desk_enterprise's
 liquidity_gate / earnings_blackout_check and a chain from
-schwab_transport.get_option_chain (read-only).
+the Command Center option-chain route (read-only Schwab chain).
 
 Greeks: the normalized chain carries delta only; gamma/theta/vega are
 Black-Scholes estimates from the contract IV and are labelled as such.
@@ -584,10 +584,10 @@ CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "runtime" / "buy_read
 
 
 def live_alternatives(plan: dict[str, Any], *, held: bool, proxy_iv_rank: Optional[float] = None,
-                      cache_dir: Optional[Path] = None) -> dict[str, Any]:
+                      cache_dir: Optional[Path] = None, chain_fetcher=None) -> dict[str, Any]:
     """Read-only chain fetch → ranked alternatives → cached JSON. Never raises.
 
-    Chain: schwab_transport.get_option_chain (READ-ONLY; no order surface), wide
+    Chain: Command Center /api/v2/schwab/option-chain (READ-ONLY; no order surface), wide
     strike window so deep-ITM LEAPS strikes are present. Gates: the enterprise
     liquidity gate and earnings blackout (fail-closed on an unknown calendar).
     """
@@ -596,14 +596,16 @@ def live_alternatives(plan: dict[str, Any], *, held: bool, proxy_iv_rank: Option
         return {"schema": SCHEMA, "symbol": sym, "status": "DISABLED", "alternatives": [], "skipped": [],
                 "notes": ["CIO_ENTRY_OPTIONS_CHAIN=off"]}
     strike_count = int(os.environ.get("CIO_ENTRY_OPTIONS_STRIKE_COUNT") or 40)
+    # Through the Command Center (operator rule 2026-10-05: alerts never fetch their own data);
+    # the CC route is the same read-only Schwab chain, normalized.
     try:
         try:
-            import schwab_transport  # type: ignore
+            from lib.alert_quotes import cc_option_chain  # type: ignore
         except ImportError:
-            from scripts import schwab_transport  # type: ignore
-        chain = schwab_transport.get_option_chain(sym, strike_count=strike_count) or {}
+            from scripts.lib.alert_quotes import cc_option_chain  # type: ignore
+        chain = (chain_fetcher or cc_option_chain)(sym, strike_count) or {}
     except Exception as exc:  # noqa: BLE001
-        chain = {"status": "error", "error": f"{type(exc).__name__}: {str(exc)[:120]}"}
+        chain = {"status": "error", "error": f"Command Center chain unavailable: {type(exc).__name__}: {str(exc)[:100]}"}
     try:
         try:
             import options_desk_enterprise as ode  # type: ignore
@@ -613,7 +615,7 @@ def live_alternatives(plan: dict[str, Any], *, held: bool, proxy_iv_rank: Option
     except Exception:  # noqa: BLE001
         liq, bo = None, None
     out = build_alternatives(plan, chain, held=held, liquidity_fn=liq, blackout_fn=bo,
-                             chain_source="schwab_transport.get_option_chain (read-only)", chain_as_of=now_iso())
+                             chain_source="command_center:/api/v2/schwab/option-chain (read-only)", chain_as_of=now_iso())
     out["iv_context"] = iv_context(_atm_iv_pct(chain, _f(plan.get("price"))), _iv_history(sym),
                                    proxy_rank=proxy_iv_rank)
     try:

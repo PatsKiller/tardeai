@@ -89,7 +89,8 @@ def run_from_logger(conn, cfg: Mapping[str, Any], results, trigger_fires, trigge
         interesting, cfg=acfg, now=now,
         fetch_primary_book=src.book, fetch_primary_tape=src.tape,
         fetch_compare_book=schwab_book_fetcher(conn) if conn is not None else None,
-        send_fn=None if dry_run else send_fn, run_id=f"{day}:{int(now)}", persist=not dry_run)
+        send_fn=None if dry_run else send_fn, run_id=f"{day}:{int(now)}", persist=not dry_run,
+        fetch_signals=signals_fetcher(conn, cfg, day=day, now=now))
     if source is None:
         src.close()
     res = {"evaluated": len(rows), "mode": acfg.mode,
@@ -99,6 +100,46 @@ def run_from_logger(conn, cfg: Mapping[str, Any], results, trigger_fires, trigge
     if not dry_run:
         _heartbeat(now, acfg.mode, len(cands), res)
     return res
+
+
+def schwab_row_fetcher(conn, *, max_age_s: float = 60.0):
+    """Latest Schwab NASDAQ_BOOK row with market-maker counts per level (SELECT only)."""
+    def _f(symbol: str):
+        if conn is None:
+            return None
+        with conn.cursor() as cur:
+            cur.execute("""SELECT bid_levels, ask_levels FROM schwab_stream_book
+                           WHERE symbol=%s AND captured_at > now() - make_interval(secs => %s)
+                           ORDER BY captured_at DESC LIMIT 1""", [symbol.upper(), float(max_age_s)])
+            row = cur.fetchone()
+        return {"bid_levels": row[0], "ask_levels": row[1]} if row else None
+    return _f
+
+
+def signals_fetcher(conn, cfg: Mapping[str, Any], *, day: str, now: float):
+    """Entry microstructure signals from the recorder's last 15 minutes for a symbol, plus the
+    Schwab book. Without recorder data the evidence says so (never guessed)."""
+    try:
+        from active_trader import microstructure_signals as msig
+        from active_trader import microstructure_recorder as rec
+    except ModuleNotFoundError:  # pragma: no cover
+        from scripts.active_trader import microstructure_signals as msig
+        from scripts.active_trader import microstructure_recorder as rec
+    scfg = msig.SignalConfig.from_mapping(cfg.get("microstructure_signals"))
+    schwab = schwab_row_fetcher(conn)
+
+    def _f(symbol: str) -> dict:
+        snaps = rec.load_snapshots(day, symbol, start=now - 15 * 60, end=now)
+        try:
+            srow = schwab(symbol)
+        except Exception:  # noqa: BLE001
+            srow = None
+        if not snaps:
+            return {"status": "NO_RECORDER_DATA", "schwab_mm_stack": msig.schwab_book(srow, scfg)}
+        bars = [b for b in msig.bars_from_ticks(msig.ticks(snaps)) if b["t"] + 60 <= now]
+        return {"status": "OK", "snapshots": len(snaps),
+                **msig.entry_signals(snaps, bars, now=now, cfg=scfg, schwab_row=srow)}
+    return _f
 
 
 def _heartbeat(now: float, mode: str, scored_symbols: int, res: Mapping[str, Any]) -> None:

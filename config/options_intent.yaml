@@ -1,0 +1,17 @@
+# Operator options intents — proactive contract matcher (scripts/options_intent_matcher.py).
+# Operator 2026-10-05 (SPCX): the Command Center should keep pulling the contracts that fit what
+# he asked for. Advisory only: no proposal is staged and no order path exists.
+#
+# mode: shadow = snapshot only (Command Center shows it); send = also a Telegram digest when the
+# best contract for a play changes or improves materially. Operator decides when to switch.
+mode: send                    # operator 2026-10-05: "this should be proactive" (yes do 1-4)
+top_per_play: 5
+queue_proposals: false        # matches are shown on the desk; they are not pushed into the approval queue
+liquidity:
+  max_spread_pct: 10.0        # wider than this is hard to fill near the mid
+  min_oi: 50
+  require_two_sided: true
+digest:
+  min_improvement_pct: 10.0   # same best contract must improve this much to re-alert
+  min_interval_min: 120       # at most one digest per intent in this window
+  per_play: 2

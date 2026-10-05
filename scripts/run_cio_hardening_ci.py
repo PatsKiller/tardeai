@@ -312,11 +312,13 @@ GATES = [
             "tests/test_alarm_capture_selftest.py",
             "tests/test_alarm_fires.py",
             "tests/test_alarm_fires_stop_path.py",
+            "tests/test_alarm_fires_ci_outage_emergency_20261005.py",
             "tests/test_alarm_fires_batch3.py",
             "tests/test_alarm_fires_batch4.py",
             "tests/test_alarm_fires_scalp_alerts_20261005.py",
             "tests/test_alarm_fires_batch5.py",
             "tests/test_alarm_fires_guard_approval.py",
+            "tests/test_alarm_fires_options_intent_20261005.py",
             "tests/test_alarm_fires_disk_and_handler_20260919.py",
             "tests/test_alarm_fires_disk_pressure_20260921.py",
             "tests/test_alarm_coverage.py",
@@ -1018,6 +1020,12 @@ GATES = [
         "apply_policy_default_store_20261004",
         ["tests/test_apply_policy_default_store_20261004.py"],
     ),
+    # Active Trader microstructure recorder, entry/exit signals (moomoo + Schwab), trade replay, exit watch,
+    # learning memory + calibration proposals; Schwab stream subscribes the scalp names (2026-10-05).
+    (
+        "at_microstructure_learning_20261005",
+        ["tests/test_at_microstructure_learning_20261005.py"],
+    ),
     # Active Trader Phase 1: ARMED/TRIGGERED alerts on moomoo L2 + tape; fail closed; no order path (2026-10-04).
     (
         "active_trader_momentum_alerts_20261004",
@@ -1027,6 +1035,12 @@ GATES = [
     (
         "active_trader_live_alerts_20261004",
         ["tests/test_active_trader_live_alerts_20261004.py"],
+    ),
+    # Operator options intents: standing memory on the ticker directive, proactive Schwab contract
+    # matcher (shadow default, throttled digest), generic covered calls obey the intent floor (2026-10-05).
+    (
+        "options_intent_20261005",
+        ["tests/test_options_intent_20261005.py"],
     ),
     # CIO event bus fork repair: re-link without loss/reorder, byte-exact archive, idempotent (2026-10-04).
     (
@@ -1065,10 +1079,28 @@ GATES = [
         "policy_unify_20261003",
         ["tests/test_policy_unify_20261003.py"],
     ),
+    # CI-provider outage emergency release: outage proof (incident + never-started jobs; real red stays red),
+    # local replay evidence bound to the tree, release-emergency grant, commit rule, reconciliation (2026-10-05).
+    (
+        "ci_outage_emergency_release_20261005",
+        ["tests/test_ci_outage_emergency_release_20261005.py"],
+    ),
     # Auto-approver survives a dropped DB connection (fail-closed); market_day_gate runs its check (2026-10-03).
     (
         "atm_db_gate_fix_20261003",
         ["tests/test_atm_db_gate_fix_20261003.py"],
+    ),
+    # Alerts read the Command Center (data broker / CC API), never their own sources; producer ratchet;
+    # material-change digest priced by the broker and concise; CIO entry plan sanity (2026-10-05).
+    (
+        "alert_single_source_20261005",
+        ["tests/test_alert_single_source_20261005.py"],
+    ),
+    # Active Trader alert sync: sub-minute APPROACHING / intrabar TRIGGERED / EXTENDED + buy zone,
+    # state-aware throttle, latency journaled; fast loop reads only the Command Center store (2026-10-05).
+    (
+        "at_alert_sync_20261005",
+        ["tests/test_at_alert_sync_20261005.py"],
     ),
     # /v3/cio/home memory: stream the action ledger, tail-read logs, one plan-store load (2026-10-03).
     (
@@ -1081,6 +1113,12 @@ GATES = [
     (
         "portfolio_price_truth_20261005",
         ["tests/test_portfolio_price_truth_20261005.py"],
+    ),
+    # Active Trader soul: "should have been" session review reproduces the operator's XNDU table;
+    # automated mode is SIMULATION ONLY (one brain, sized to the ask supply, no live mode) (2026-10-05).
+    (
+        "at_soul_review_sim_20261005",
+        ["tests/test_at_soul_review_sim_20261005.py"],
     ),
     (
         "lineage_phase12_20261003",
@@ -3262,6 +3300,19 @@ GATES = [
             "tests/test_spine_multi_producer_lifecycle_20260929.py",
             "tests/test_spine_gaps_close_20260929.py",
         ],
+    ),
+    (
+        # 2026-10-05 — portfolio-server shutdown record names the signal and exit
+        # code (the journal line at 15:06 ET had neither). The ATM protection
+        # pass releases its read transaction before apply()'s quote/HTTP work.
+        "exit_cause_txn_scope_20261005",
+        ["tests/test_exit_cause_txn_scope_20261005.py"],
+    ),
+    (
+        # 2026-10-05 — the June maturity_score_latest.json must not be served as
+        # current. Readers stamp STALE after 30 days and do not open the archive copy.
+        "maturity_score_stale_20261005",
+        ["tests/test_maturity_score_latest_stale_20261005.py"],
     ),
 ]
 

@@ -21,8 +21,16 @@ const feed = {
   your_trades: [
     { symbol: 'SOUN', account: 'schwab_rollover_ira', qty: 100, buy_at: '2026-10-05T10:07:09-04:00', buy_price: 5.88, sell_at: '2026-10-05T10:08:15-04:00',
       sell_price: 5.89, pnl: 0.99, pnl_pct: 0.17, held_s: 66, source: 'active_trader',
-      alert: { id: 'a', kind: 'TRIGGERED', at: '2026-10-05T10:05:01-04:00', ask_at_alert: 5.87, last_at_alert: 5.86, stop: 5.7, lag_s: 128 } },
+      alert: { id: 'a', kind: 'TRIGGERED', at: '2026-10-05T10:05:01-04:00', ask_at_alert: 5.87, last_at_alert: 5.86, stop: 5.7, lag_s: 128 },
+      replay: { buy: { at: '2026-10-05T10:07:09-04:00', evidence: 'bracketed',
+        bracket: [{ at: '2026-10-05T10:05:16-04:00', seconds_from_fill: -113, decision: 'ARMED ALERT', book: { bid_depth: 45658, ask_depth: 35217 } },
+                  { at: '2026-10-05T10:10:15-04:00', seconds_from_fill: 186, decision: 'TRIGGERED VETO', book: { bid_depth: 10329, ask_depth: 10779 }, tape: { buy_ratio: 0.998 } }],
+        bracket_change: { bid_depth_pct: -77.4, ask_depth_pct: -69.4 },
+        volume: { source: 'alpaca_iex (partial volume)', minute_volume: 1000, prior5_avg: 1782.2 } } } },
   ],
+  exit_watch: [{ at: '2026-10-05T10:20:00-04:00', symbol: 'SOUN', fired: ['tape_flip'], last: 5.8, verdict: 'ALERT', sent: false, mode: 'shadow' }],
+  learning: { decisions: 3, trips: 1, sessions: 1, min_sample: 30, status: 'insufficient sample', first_session: '2026-10-05',
+    calibration: { status: 'insufficient sample', proposals: [] } },
   decisions: [
     { id: 'a', at: '2026-10-05T10:05:01-04:00', symbol: 'SOUN', kind: 'TRIGGERED', verdict: 'ALERT', veto_reasons: [], sent: true,
       last: 5.86, entry: 5.86, stop: 5.7, r: 0.16, float_mm: 310, rvol: 6.2, setup: 'Bull flag',
@@ -85,6 +93,18 @@ test('KPI tiles filter the decision list on click; clicking again clears', async
   await expect(page.getByTestId('at-alerts-empty')).toContainText('No decisions match')
 })
 
+test('your trade shows the book and volume when you traded, plus exit watch and learning', async ({ page }) => {
+  await open(page, feed)
+  const replay = page.getByTestId('at-trade-replay')
+  await replay.locator('summary').click()
+  await expect(replay).toContainText('bracketed by alert snapshots')
+  await expect(replay).toContainText('bid −77%')
+  await expect(replay).toContainText('minute volume 1,000 vs prior-5 avg 1,782')
+  await expect(page.getByTestId('at-exit-watch')).toContainText('tape flipped to sellers')
+  await expect(page.getByTestId('at-exit-watch')).toContainText('Shadow mode')
+  await expect(page.getByTestId('at-learning')).toContainText('insufficient sample · 3 of 30 decisions')
+})
+
 test('empty session explains when the engine runs; shadow mode is labelled', async ({ page }) => {
   await open(page, { ...feed, mode: 'shadow', decisions: [], counts: {}, veto_reasons: {}, latest_session_with_decisions: null })
   await expect(page.getByTestId('at-alerts-mode')).toContainText('SHADOW')
@@ -96,4 +116,29 @@ test('phone width has no horizontal overflow', async ({ page }) => {
   await open(page, feed)
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   expect(overflow).toBeLessThanOrEqual(1)
+})
+
+test('alert sync: APPROACHING / intrabar kinds, buy zone and latency are shown', async ({ page }) => {
+  const sync = {
+    ...feed,
+    counts: { buy_alerts: 1, headsup_alerts: 1, vetoes: 0, sent: 2, decisions: 2 },
+    latency: { all: { n: 2, p50_s: 5, p90_s: 40 }, 'source:fast': { n: 2, p50_s: 5, p90_s: 40 } },
+    decisions: [
+      { id: 'f1', at: '2026-10-05T10:00:05-04:00', symbol: 'XNDU', kind: 'APPROACHING', verdict: 'ALERT', veto_reasons: [], sent: true,
+        last: 4.38, entry: 4.425, stop: 4.36, r: 0.065, source: 'fast', break_level: 4.405,
+        l2: { source: 'moomoo', levels: 10, depth_ratio: 1.4, spread_bps: 22, age_s: 1 } },
+      { id: 'f2', at: '2026-10-05T09:51:45-04:00', symbol: 'XNDU', kind: 'TRIGGERED', verdict: 'ALERT', veto_reasons: [], sent: true,
+        last: 4.355, entry: 4.375, stop: 4.331, r: 0.044, source: 'fast', intrabar: true, break_level: 4.32,
+        latency: { event: 'break_print', latency_s: 40, event_at: '2026-10-05T09:51:05-04:00' },
+        l2: { source: 'moomoo', levels: 10, depth_ratio: 1.3, spread_bps: 23, age_s: 1 } },
+    ],
+  }
+  await open(page, sync)
+  await expect(page.getByTestId('at-alert-row').first()).toContainText('APPROACHING')
+  await expect(page.getByTestId('at-alert-row').first()).toContainText('break above 4.41')
+  await expect(page.getByTestId('at-alert-row').nth(1)).toContainText('TIME TO BUY · intrabar')
+  await expect(page.getByTestId('at-alert-row').nth(1)).toContainText('40s after the break print')
+  await expect(page.locator('.at-kpi', { hasText: 'Alert latency' })).toContainText('5s · 40s')
+  await page.locator('.at-kpi', { hasText: 'Heads-up' }).click()
+  await expect(page.getByTestId('at-alert-row')).toHaveCount(1)
 })

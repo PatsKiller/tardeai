@@ -570,6 +570,25 @@ def load_json_store(store_id: str, *, root: Path | str | None = None) -> dict[st
             "path": str(loc.get("primary_path")),
         }
     path = Path(loc["path"])
+    from scripts.lib.maturity_score_latest_reader import (
+        is_archived_maturity_score_path,
+        stamp_maturity_score_payload,
+    )
+
+    # Archived copy is not a current score. Refuse before any read.
+    if is_archived_maturity_score_path(path):
+        return {
+            "ok": False,
+            "available": False,
+            "reason": "REFUSED_NOT_CURRENT",
+            "status": "STALE",
+            "freshness": "STALE",
+            "current": False,
+            "store_id": store_id,
+            "path": str(path),
+            "original_generated_at": None,
+            "data": None,
+        }
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:
@@ -582,6 +601,24 @@ def load_json_store(store_id: str, *, root: Path | str | None = None) -> dict[st
             "error": type(exc).__name__,
             "store_id": store_id,
             "path": str(path),
+        }
+    score_file = store_id == "runtime.maturity" or path.name == "maturity_score_latest.json"
+    if score_file and isinstance(data, dict):
+        data = stamp_maturity_score_payload(data)
+        stale = data.get("freshness") == "STALE"
+        return {
+            "ok": True,
+            "available": not stale,
+            "reason": "STALE" if stale else None,
+            "status": "STALE" if stale else "AVAILABLE",
+            "freshness": data.get("freshness"),
+            "current": False if stale else bool(data.get("current")),
+            "store_id": store_id,
+            "path": str(path),
+            "used_alias": loc.get("used_alias"),
+            "original_generated_at": data.get("original_generated_at"),
+            "data": data,
+            "mtime": path.stat().st_mtime,
         }
     return {
         "ok": True,

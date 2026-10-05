@@ -153,9 +153,13 @@ def test_vetoes_are_journaled_not_sent(_journal_dir):
 
 
 def test_cooldown_and_rate_limit():
+    # 2026-10-05 (alert sync): repeats are judged per symbol+kind+LEVEL. The SAME fire seen again
+    # inside the window is skipped (not re-sent, not journaled); a NEW fire is always allowed.
     _pass([cand()])
-    again = _pass([cand(quote_ts_epoch=NOW + 58, fire_ts_epoch=NOW + 30)], now=NOW + 60)
-    assert again[0]["veto_reasons"] == ["COOLDOWN"]
+    same = _pass([cand(quote_ts_epoch=NOW + 58)], now=NOW + 60)            # fire NOW-30 again
+    assert same == []
+    new_fire = _pass([cand(quote_ts_epoch=NOW + 58, fire_ts_epoch=NOW + 30)], now=NOW + 60)
+    assert new_fire[0]["verdict"] == ma.ALERT
     later = NOW + 7200
     cfg = ma.AlertConfig(max_alerts_per_hour=2, cooldown_s=0)
     fresh = [cand(symbol=s, quote_ts_epoch=later - 2, fire_ts_epoch=later - 30) for s in ("A1", "A2", "A3")]
