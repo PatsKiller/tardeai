@@ -4,7 +4,7 @@
 #
 # mode: shadow = snapshot only (Command Center shows it); send = also a Telegram digest when the
 # best contract for a play changes or improves materially. Operator decides when to switch.
-mode: shadow
+mode: send                    # operator 2026-10-05: "this should be proactive" (yes do 1-4)
 top_per_play: 5
 queue_proposals: false        # matches are shown on the desk; they are not pushed into the approval queue
 liquidity:
