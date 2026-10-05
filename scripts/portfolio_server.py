@@ -2838,11 +2838,17 @@ if __name__ == "__main__":
     # Do NOT fuser-kill :7777 here — overlapping systemd restarts + port-guard SIGTERM caused
     # adopt churn (orphan PPID=1 while systemctl shows inactive). Watchdog clears unhealthy orphans;
     # manual recovery: systemctl --user stop portfolio-server && kill stray pid && systemctl start.
+    import signal
+
+    from lib.portfolio_server_shutdown import install_shutdown_logging, log_shutdown
+
+    install_shutdown_logging()
     try:
         server = ReusableHTTPServer(("", PORT), PortfolioHandler)
     except OSError as e:
         print(f"[fatal] Cannot bind port {PORT}: {e}")
         print("Another portfolio_server may already be listening. Check: ss -tlnp | grep 7777")
+        log_shutdown(None, 1)
         sys.exit(1)
     try:
         _boot = _boot_stamp_path()
@@ -2903,4 +2909,9 @@ if __name__ == "__main__":
     try:
         server.serve_forever()
     except KeyboardInterrupt:
+        log_shutdown(signal.SIGINT, 128 + signal.SIGINT)
         print("\nServer stopped.")
+    except SystemExit:
+        raise
+    else:
+        log_shutdown(None, 0)

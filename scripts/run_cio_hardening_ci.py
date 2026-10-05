@@ -3256,6 +3256,19 @@ GATES = [
             "tests/test_spine_gaps_close_20260929.py",
         ],
     ),
+    (
+        # 2026-10-05 — portfolio-server shutdown record names the signal and exit
+        # code (the journal line at 15:06 ET had neither). The ATM protection
+        # pass releases its read transaction before apply()'s quote/HTTP work.
+        "exit_cause_txn_scope_20261005",
+        ["tests/test_exit_cause_txn_scope_20261005.py"],
+    ),
+    (
+        # 2026-10-05 — the June maturity_score_latest.json must not be served as
+        # current. Readers stamp STALE after 30 days and do not open the archive copy.
+        "maturity_score_stale_20261005",
+        ["tests/test_maturity_score_latest_stale_20261005.py"],
+    ),
 ]
 
 

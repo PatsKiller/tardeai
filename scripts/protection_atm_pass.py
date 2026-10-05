@@ -49,11 +49,32 @@ def _load_env() -> None:
         pass
 
 
-def run_protection_pass(conn=None, *, mode: str = "active", dry_run: bool = False) -> dict:
-    """Process PROPOSED protection adjustments. mode='active' applies on paper; 'dry' previews only."""
-    _load_env()  # ensure ALPACA_MODE present (apply() also asserts paper)
-    from db_adapter import _get_conn
-    conn = conn or _get_conn()
+def release_read_transaction(conn) -> None:
+    """End the open read transaction before slow non-database work.
+
+    rollback, not commit: this pass only SELECTed. commit() would publish
+    writes the caller had not yet committed on the shared connection.
+    """
+    conn.rollback()
+
+
+def _db_connection_closed(exc: BaseException) -> bool:
+    text = str(exc).lower()
+    return "connection already closed" in text or "cursor already closed" in text
+
+
+def _connection_for_pass(conn):
+    """Use the passed handle when it is open; otherwise the thread-local one."""
+    from db_adapter import _get_conn, ensure_conn
+
+    if conn is None:
+        return _get_conn()
+    if getattr(conn, "closed", 0):
+        return ensure_conn()
+    return conn
+
+
+def _load_proposed_rows(conn) -> list:
     cur = conn.cursor()
     cur.execute("""
         SELECT a.id, a.symbol, a.action, a.proposed_stop, a.trade_id,
@@ -64,7 +85,25 @@ def run_protection_pass(conn=None, *, mode: str = "active", dry_run: bool = Fals
         ORDER BY a.id
     """)
     cols = [d[0] for d in cur.description]
-    rows = [dict(zip(cols, r)) for r in cur.fetchall()]
+    return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
+def run_protection_pass(conn=None, *, mode: str = "active", dry_run: bool = False) -> dict:
+    """Process PROPOSED protection adjustments. mode='active' applies on paper; 'dry' previews only."""
+    _load_env()  # ensure ALPACA_MODE present (apply() also asserts paper)
+    conn = _connection_for_pass(conn)
+    try:
+        rows = _load_proposed_rows(conn)
+    except Exception as exc:
+        if not _db_connection_closed(exc):
+            raise
+        from db_adapter import ensure_conn
+        conn = ensure_conn()
+        rows = _load_proposed_rows(conn)
+    # Rows are already in memory. apply() does quote lookups and broker HTTP;
+    # leaving this connection inside the SELECT transaction holds it
+    # idle-in-transaction for that whole call.
+    release_read_transaction(conn)
 
     out = {"considered": len(rows), "auto_applied": 0, "operator_pending": 0,
            "skipped_action": 0, "failed": 0, "dry_run": dry_run, "details": []}
