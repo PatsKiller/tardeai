@@ -462,9 +462,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | TradeAI System State & Autonomy Record — 2026-08-20 (updated 2026-08-21 evening) | review_required | OK | `d9303c3e9930` |
 | `docs/architecture/TRADE_AI_AS_IS_2026-09-14.md` | Trade AI Platform — AS-IS: Deployed & Tested Environment | review_required | OK | `4272eddf89f6` |
 | `docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md` | Trade AI Platform — AS-IS Lifecycles: the complete end-to-end picture | review_required | OK | `cf4cbeb78077` |
+| `docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-10-04.md` | Trade AI Platform — AS-IS Lifecycles, 2026-10-04 (re-measurement) | review_required | OK | `0fed7736cecd` |
 | `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md` | Bitemporal memory data model | review_required | OK | `8491cfb5a15b` |
 | `docs/architecture/TRADE_AI_FUTURE_STATE_2026-09-14.md` | Trade AI Platform — FUTURE STATE: Target Architecture & Build Recommendation | review_required | OK | `0b8d8c77a12c` |
 | `docs/architecture/TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md` | Trade AI Platform — FUTURE STATE Lifecycles: target lifecycles, lifecycle contract and build roadmap | review_required | OK | `0705cb774b73` |
+| `docs/architecture/TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-10-04.md` | Trade AI Platform — FUTURE STATE Lifecycles, 2026-10-04: targets, contract status and roadmap | review_required | OK | `e564a9153098` |
 | `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | Trade AI Institutional Memory + Autonomous Agent Architecture | review_required | OK | `b8f0727bdc82` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_0.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.0 | archive_superseded | OK | `513271e8544b` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_1.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.1 | archive_superseded | OK | `cafe3fa26a8c` |
@@ -474,6 +476,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/TRADE_AI_WORKLOG_2026-09-14.md` | Trade AI — Work Log: everything changed from 2026-09-13 20:00 to 2026-09-14 23:44 | review_required | OK | `f6af86715bf5` |
 | `docs/architecture/TRADE_AI_WORKLOG_2026-09-15.md` | Trade-AI work log — 2026-09-15 | review_required | MISSING HEADER | `c64058d9dff7` |
 | `docs/architecture/TRADE_AI_WORKLOG_2026-09-16.md` | Trade-AI work log — 2026-09-16 | review_required | MISSING HEADER | `75af831ec916` |
+| `docs/architecture/TRADE_AI_WORKLOG_2026-10-04.md` | Trade AI — Work log 2026-10-03 → 2026-10-05 (00:30 ET) | review_required | OK | `38353225db24` |
 | `docs/architecture/TRADE_INTELLIGENCE_JOURNAL_DESIGN.md` | Trade Intelligence Journal -- Design Document | review_required | OK | `471edac9ceb2` |
 | `docs/architecture/V3_3_IMPLEMENTATION_STATUS_2026-09-27.md` | v3.3 implementation status | review_required | OK | `b50d5b17334d` |
 | `docs/architecture/V3_OPENCLAW_TRADEAI_SYSTEM_TABS.md` | Command Center v3 — OpenClaw + TradeAI System Tabs — 2026-06-07 | review_required | OK | `10a7313b3681` |
@@ -560,11 +563,18 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/holding_llm_curation_20260909/CIO_GAP_2026-09-09-1634.md` | CIO / Command Center — GAP (holding LLM curation) — 2026-09-09-1634 | review_required | OK | `abb87a5a6101` |
 | `docs/architecture/holding_llm_curation_20260909/HONEST_MATURITY_ASSESSMENT_2026-09-09-1634.md` | Honest maturity assessment — holding LLM curation — 2026-09-09-1634 | review_required | OK | `a9c41360e2d7` |
 | `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_A_DATA_2026-09-14.md` | Trade AI — Data and Source Lifecycles (measured) | review_required | OK | `9c4b33e7a27a` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_A_DATA_2026-10-04.md` | Trade AI — Family A: Data and Source Lifecycles (re-measured) | review_required | OK | `a4d2115328df` |
 | `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_B_QUESTIONS_2026-09-14.md` | Trade AI — QUESTION & RESEARCH LIFECYCLES (measured, end to end) | review_required | OK | `f3398e634c86` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_B_QUESTIONS_2026-10-04.md` | Trade AI — QUESTION & RESEARCH LIFECYCLES (family B), re-measured | review_required | OK | `956dcfc999cf` |
 | `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_C_WATCHLIST_2026-09-14.md` | WATCHLIST · ADVISORY · LEARNING — every lifecycle, measured | review_required | OK | `b4118b909b6c` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_C_WATCHLIST_2026-10-04.md` | Trade AI — Family C: Watchlist, Proposal and Learning Lifecycles (re-measured 2026-10-04) | review_required | OK | `c416ec8acbac` |
 | `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_D_COGNITION_2026-09-14.md` | CIO Cognition — Iteration Lifecycles (how one cycle feeds the next) | review_required | OK | `d2b8dc9dc2e2` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_D_COGNITION_2026-10-04.md` | Lifecycle Fact Base D — Cognition (CIO, agents, memory) — re-measurement | review_required | OK | `8a34ecd133ed` |
 | `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_E_COMMS_2026-09-14.md` | Trade AI — COMMUNICATION LIFECYCLES (measured, end-to-end) | review_required | OK | `1e1343155bb0` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_E_COMMS_2026-10-04.md` | Trade AI — COMMUNICATION LIFECYCLES (family E), re-measured | review_required | OK | `d5d049c03d7c` |
 | `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_F_ENGINEERING_2026-09-14.md` | ENGINEERING, RUNTIME AND OPERATIONS LIFECYCLES: every stage, measured | review_required | OK | `e2580673f4b0` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_F_ENGINEERING_2026-10-04.md` | Trade AI — Family F: Engineering, Runtime and Operations Lifecycles (re-measured 2026-10-04) | review_required | OK | `ae2e2f666deb` |
+| `docs/architecture/lifecycles/LIFECYCLE_FACTBASE_G_TRADING_2026-10-04.md` | Lifecycle Factbase — Family G: Trading Desks & Active Trader | review_required | OK | `6758d5b4c1d5` |
 | `docs/architecture/maturity_gap_closure_20260909/CIO_ASIS_VS_FUTURE_GAP_2026-09-09.md` | CIO AS-IS vs FUTURE GAP — 2026-09-09 | review_required | MISSING HEADER | `c7504900b1d6` |
 | `docs/architecture/maturity_gap_closure_20260909/CIO_ASIS_VS_SPEC_2026-09-09.md` | CIO AS-IS vs SPEC — 2026-09-09 (Maturity Gap Closure) | review_required | MISSING HEADER | `dd9a228364d0` |
 | `docs/architecture/maturity_gap_closure_20260909/CIO_AS_IS_2026-09-09-1401.md` | CIO Agent — AS-IS (as-built) — 2026-09-09-1401 | review_required | OK | `5f04d5100a7e` |
