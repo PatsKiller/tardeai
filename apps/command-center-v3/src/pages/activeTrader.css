@@ -213,3 +213,7 @@ button.at-motion-rail__row:focus-visible{outline:2px solid var(--at-blue);outlin
 .at-alerts__prec caption{text-align:left;padding:10px 12px 2px;color:var(--at-muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
 @media(max-width:1100px){.at-alerts__kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:600px){.at-alerts__kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.at-kpi--click{font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%}
+.at-kpi--click:hover{border-color:var(--at-muted)}
+.at-kpi--click.is-on{outline:2px solid var(--at-blue);outline-offset:-2px}
+.at-kpi--click:focus-visible{outline:2px solid var(--at-blue);outline-offset:2px}

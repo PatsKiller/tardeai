@@ -48,9 +48,9 @@ type Feed = {
   decisions?: Decision[];
 };
 
-type Kind = 'all' | 'buy' | 'heads' | 'veto' | 'traded';
+type Kind = 'all' | 'buy' | 'heads' | 'sent' | 'veto' | 'traded';
 type Res = 'any' | 'WORKED' | 'STOPPED' | 'NO_TOUCH' | 'AT_OR_BELOW_STOP' | 'pending';
-const KIND_LABEL: Record<Kind, string> = { all: 'All', buy: 'Time to buy', heads: 'Heads-up', veto: 'Vetoed', traded: 'You traded' };
+const KIND_LABEL: Record<Kind, string> = { all: 'All', buy: 'Time to buy', heads: 'Heads-up', sent: 'Sent', veto: 'Vetoed', traded: 'You traded' };
 const RES_LABEL: Record<Exclude<Res, 'any'>, string> = {
   WORKED: '+1R before stop', STOPPED: 'stop hit first', NO_TOUCH: 'neither in window', AT_OR_BELOW_STOP: 'already through stop', pending: 'not scored yet',
 };
@@ -87,6 +87,7 @@ export default function ActiveTraderAlertsTab() {
     const alert = d.verdict === 'ALERT';
     if (kind === 'buy' && !(alert && d.kind === 'TRIGGERED')) return false;
     if (kind === 'heads' && !(alert && d.kind === 'ARMED')) return false;
+    if (kind === 'sent' && !d.sent) return false;
     if (kind === 'veto' && alert) return false;
     if (kind === 'traded' && !tradedIds.has(d.id)) return false;
     if (sym && d.symbol !== sym) return false;
@@ -94,6 +95,12 @@ export default function ActiveTraderAlertsTab() {
     return true;
   }), [data, kind, sym, res, tradedIds]);
   const filtered = kind !== 'all' || sym !== '' || res !== 'any';
+  // KPI tiles filter the decision list; clicking the active tile again clears it (operator 2026-10-05)
+  const pick = (k: Kind, r: Res = 'any') => {
+    const same = kind === k && res === r;
+    setKind(same ? 'all' : k); setRes(same ? 'any' : r); setSym('');
+    if (!same) document.getElementById('at-feed-title')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   if (loading && !data) return <div className="active-trader-page at-alerts"><div className="at-fullstate">Loading alert feed…</div></div>;
   if (error && !data) return <div className="active-trader-page at-alerts"><div className="at-fullstate at-fullstate--fail">Alert feed unavailable: {String(error)}</div></div>;
@@ -130,14 +137,19 @@ export default function ActiveTraderAlertsTab() {
       </header>
 
       <section className="at-alerts__kpis" aria-label="Today">
-        <Kpi label="Time to buy" value={c.triggered_alerts ?? 0} tone="green" tip="TRIGGERED alerts today" />
-        <Kpi label="Heads-up" value={c.armed_alerts ?? 0} tone="amber" tip="ARMED alerts today" />
-        <Kpi label="Sent to Telegram" value={c.sent ?? 0} tone="blue" tip={live ? 'delivered' : 'shadow mode — nothing sent'} />
-        <Kpi label="Vetoed" value={c.vetoes ?? 0} tone="muted" tip="blocked by a check (reasons below)" />
+        <Kpi label="Time to buy" value={c.triggered_alerts ?? 0} tone="green" tip="TRIGGERED alerts today"
+          on={kind === 'buy' && res === 'any'} onClick={() => pick('buy')} />
+        <Kpi label="Heads-up" value={c.armed_alerts ?? 0} tone="amber" tip="ARMED alerts today"
+          on={kind === 'heads'} onClick={() => pick('heads')} />
+        <Kpi label="Sent to Telegram" value={c.sent ?? 0} tone="blue" tip={live ? 'delivered' : 'shadow mode — nothing sent'}
+          on={kind === 'sent'} onClick={() => pick('sent')} />
+        <Kpi label="Vetoed" value={c.vetoes ?? 0} tone="muted" tip="blocked by a check (reasons below)"
+          on={kind === 'veto'} onClick={() => pick('veto')} />
         <Kpi label="Time to buy worked" value={buyAgg?.n ? `${buyAgg.WORKED}/${buyAgg.n}` : '—'} tone="green"
-          tip={`reached +1R from the ask at the alert before the stop, within ${data?.outcomes?.touch_min ?? 15} min`} />
+          tip={`reached +1R from the ask at the alert before the stop, within ${data?.outcomes?.touch_min ?? 15} min`}
+          on={kind === 'buy' && res === 'WORKED'} onClick={() => pick('buy', 'WORKED')} />
         <Kpi label="Your trades" value={trips.length ? `${trips.length} · ${sgn(tripPnl, 2, '')}` : '0'} tone="blue"
-          tip={`${tagged.length} after an alert · from your broker fills`} />
+          tip={`${tagged.length} after an alert · from your broker fills`} on={kind === 'traded'} onClick={() => pick('traded')} />
       </section>
 
       <div className="at-alerts__grid">
@@ -280,13 +292,16 @@ function TrackTable({ rows, caption }: { rows: Record<string, OutcomeAgg>; capti
   );
 }
 
-function Kpi({ label, value, tone, tip }: { label: string; value: number | string; tone: 'green' | 'amber' | 'blue' | 'muted'; tip: string }) {
+function Kpi({ label, value, tone, tip, on, onClick }: {
+  label: string; value: number | string; tone: 'green' | 'amber' | 'blue' | 'muted'; tip: string; on?: boolean; onClick?: () => void;
+}) {
   return (
-    <div className={`at-kpi at-kpi--${tone}`} title={tip}>
+    <button type="button" className={`at-kpi at-kpi--${tone} at-kpi--click${on ? ' is-on' : ''}`} title={`${tip} — click to filter`}
+      aria-pressed={!!on} onClick={onClick}>
       <small>{label}</small>
       <strong>{value}</strong>
       <span>{tip}</span>
-    </div>
+    </button>
   );
 }
 
