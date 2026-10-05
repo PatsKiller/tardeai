@@ -85,8 +85,84 @@ def _compact(row: dict, score: Optional[dict]) -> dict:
         "score": {w: {k: v.get(k) for k in ("mfe_r", "mae_r", "mfe_pct", "mae_pct")} for w, v in windows.items()
                   if isinstance(v, dict) and v.get("mfe") is not None} or None,
         "supply": l2.get("supply") or None,
+        "signals": _signals_view(row.get("signals")),
         "outcome": _outcome_view((score or {}).get("outcome")),
+        # alert sync (2026-10-05): which loop decided, the market event it reacted to, and how late
+        "source": row.get("source") or "pass5",
+        "intrabar": bool(c.get("intrabar")),
+        "break_level": c.get("break_level"),
+        "zone": ({"low": c.get("zone_low"), "high": c.get("zone_high")} if c.get("zone_low") is not None else None),
+        "latency": ({**(row.get("latency") or {}), "event_at": _et((row.get("latency") or {}).get("event_ts_epoch"))}
+                    if row.get("latency") else None),
     }
+
+
+def latency_summary(rows: list[dict]) -> dict:
+    """p50 / p90 seconds from the market event (break print, zone entry, extension, bar close) to the
+    alert, for ALERT rows — the proof that alerts are in sync with the tape."""
+    def pct(xs: list[float], q: float):
+        if not xs:
+            return None
+        xs = sorted(xs)
+        return round(xs[min(len(xs) - 1, int(round(q * (len(xs) - 1))))], 1)
+    out: dict[str, Any] = {}
+    groups: dict[str, list[float]] = {}
+    for r in rows:
+        lat = r.get("latency") or {}
+        if r.get("verdict") != ma.ALERT or lat.get("latency_s") is None:
+            continue
+        groups.setdefault("all", []).append(float(lat["latency_s"]))
+        groups.setdefault(f"source:{r.get('source') or 'pass5'}", []).append(float(lat["latency_s"]))
+        groups.setdefault(f"event:{lat.get('event')}", []).append(float(lat["latency_s"]))
+    for k, xs in groups.items():
+        out[k] = {"n": len(xs), "p50_s": pct(xs, 0.5), "p90_s": pct(xs, 0.9)}
+    return out
+
+
+def _signals_view(sig: Any) -> Optional[dict]:
+    if not isinstance(sig, dict):
+        return None
+    detail = {k: v for k, v in sig.items() if isinstance(v, dict)}
+    return {"status": sig.get("status"), "snapshots": sig.get("snapshots"),
+            "fired": [k for k, v in detail.items() if v.get("on") is True], "detail": detail}
+
+
+def _learning_block(day: str) -> dict:
+    """Replays, exit watch and learning summary — each part fails soft on its own."""
+    out: dict[str, Any] = {"replays": [], "exit_watch": [], "learning": None}
+    try:
+        from active_trader import trade_replay as tr
+    except ModuleNotFoundError:  # pragma: no cover
+        from scripts.active_trader import trade_replay as tr
+    try:
+        out["replays"] = tr.read_replays(day)
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from active_trader import exit_watch as ew
+    except ModuleNotFoundError:  # pragma: no cover
+        from scripts.active_trader import exit_watch as ew
+    try:
+        out["exit_watch"] = [{"at": _et(r.get("ts_epoch")), "symbol": (r.get("position") or {}).get("symbol"),
+                              "fired": r.get("fired"), "last": r.get("last"), "verdict": r.get("verdict"),
+                              "sent": r.get("sent"), "mode": r.get("mode"), "position": r.get("position")}
+                             for r in ew.read_rows(day)][-50:]
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        from active_trader import trade_learning as tl
+        from active_trader import signal_calibration as sc
+    except ModuleNotFoundError:  # pragma: no cover
+        from scripts.active_trader import trade_learning as tl
+        from scripts.active_trader import signal_calibration as sc
+    try:
+        rep = sc.read_report() or {}
+        summ = tl.summary(tl.read_records(), min_sample=int(rep.get("min_sample") or sc.DEFAULTS["min_sample"]))
+        summ["calibration"] = {k: rep.get(k) for k in ("status", "decisions", "worked_rate", "proposals", "generated_at")} if rep else None
+        out["learning"] = summ
+    except Exception:  # noqa: BLE001
+        pass
+    return out
 
 
 def _outcome_view(o: Optional[dict]) -> Optional[dict]:
@@ -132,6 +208,15 @@ def operator_fills(day: str, symbols: set[str], *, conn=None) -> list[dict]:
                     "symbol": r[2], "side": r[3], "qty": float(r[4] or 0), "price": float(r[5] or 0),
                     "amount": float(r[6] or 0), "source": r[7]})
     return out
+
+
+def _with_replays(trips: list[dict], replays: list[dict]) -> list[dict]:
+    by = {(r.get("symbol"), r.get("buy_ts"), r.get("qty")): r for r in replays or []}
+    for t in trips:
+        rp = by.get((t.get("symbol"), t.get("buy_ts"), t.get("qty")))
+        if rp:
+            t["replay"] = {"buy": rp.get("buy"), "sell": rp.get("sell")}
+    return trips
 
 
 def attribute_fills(fills: list[dict], decisions: list[dict]) -> list[dict]:
@@ -198,6 +283,7 @@ def alerts_snapshot(*, limit: int = 100, session_date: Optional[str] = None,
     compact = [_compact(r, scored.get(ms.decision_id(r)))
                for r in sorted(today, key=lambda x: x.get("ts_epoch") or 0, reverse=True)]
     fills = operator_fills(day, {d["symbol"] for d in compact if d.get("symbol")})
+    extra = _learning_block(day)
     sessions = sorted({(r.get("candidate") or {}).get("session_date") for r in journal} - {None}, reverse=True)
     hb_age = (now - float(hb["ts_epoch"])) if hb and hb.get("ts_epoch") else None
     return {
@@ -219,9 +305,14 @@ def alerts_snapshot(*, limit: int = 100, session_date: Optional[str] = None,
         },
         "counts": {"triggered_alerts": sum(1 for r in alerts if r.get("kind") == ma.TRIGGERED),
                    "armed_alerts": sum(1 for r in alerts if r.get("kind") == ma.ARMED),
+                   "by_kind": {k: sum(1 for r in alerts if r.get("kind") == k) for k in ma.KINDS},
+                   "buy_alerts": sum(1 for r in alerts if r.get("kind") in (ma.TRIGGERED, ma.PULLBACK_ZONE)),
+                   "headsup_alerts": sum(1 for r in alerts if r.get("kind") in (ma.ARMED, ma.APPROACHING,
+                                                                                 ma.EXTENDED, ma.TRIGGER_CANCELLED)),
                    "vetoes": len(vetoes), "sent": sum(1 for r in today if r.get("sent")),
                    "decisions": len(today)},
         "veto_reasons": dict(reasons.most_common()),
+        "latency": latency_summary(today),
         "precision": {w: ms.precision_summary(all_scored, window=w, hit_r=1.0) for w in ("1m", "5m", "15m")},
         "precision_note": "legacy v1: measured from the trigger's fire price; a stop hit first still counts. Use outcomes.",
         "outcomes": {"session": ms.outcome_summary(day_scored), "all": ms.outcome_summary(all_scored),
@@ -230,6 +321,8 @@ def alerts_snapshot(*, limit: int = 100, session_date: Optional[str] = None,
         "scored_total": len(all_scored),
         "scored_session": len(day_scored),
         "sessions": sessions,
-        "your_trades": attribute_fills(fills, compact),
+        "your_trades": _with_replays(attribute_fills(fills, compact), extra["replays"]),
+        "exit_watch": extra["exit_watch"],
+        "learning": extra["learning"],
         "decisions": compact[:max(1, int(limit))],
     }

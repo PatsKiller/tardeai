@@ -32,8 +32,20 @@ MODE="${1:-status}"
 log() { echo "[phase2 $(date -u +%H:%M:%S)] $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
 
-git_sha() { git -C "$ROOT" rev-parse origin/main; }
-git_sha_short() { git -C "$ROOT" rev-parse --short origin/main; }
+# CI-provider outage emergency release (2026-10-05). TRADEAI_EMERGENCY_RELEASE_SHA names the ONE
+# commit an operator-approved emergency may release while GitHub cannot run CI. The variable grants
+# nothing by itself: prepare and promote run scripts/ci_outage_emergency_release.py check, which
+# requires a live Actions incident, required jobs that never started, local replay evidence bound to
+# the commit's tree, a release-emergency grant naming the SHA + incident, and the commit rule.
+EMERGENCY_SHA="${TRADEAI_EMERGENCY_RELEASE_SHA:-}"
+git_sha() { if [[ -n "$EMERGENCY_SHA" ]]; then echo "$EMERGENCY_SHA"; else git -C "$ROOT" rev-parse origin/main; fi; }
+git_sha_short() { git -C "$ROOT" rev-parse --short "$(git_sha)"; }
+
+emergency_check() {
+  local sha="$1"; shift
+  [[ -f "${ROOT}/scripts/ci_outage_emergency_release.py" ]] || die "emergency release tool missing in ${ROOT}"
+  "$VENV_PYTHON" "${ROOT}/scripts/ci_outage_emergency_release.py" check --sha "$sha" "$@"
+}
 
 # Exact-main: refuse to stamp origin/main onto a different HEAD (the hybrid disease).
 require_head_is_origin_main() {
@@ -41,6 +53,14 @@ require_head_is_origin_main() {
   local head origin_main
   head="$(git -C "$ROOT" rev-parse HEAD)"
   origin_main="$(git -C "$ROOT" rev-parse origin/main)"
+  if [[ -n "$EMERGENCY_SHA" ]]; then
+    [[ "$EMERGENCY_SHA" =~ ^[0-9a-f]{40}$ ]] || die "TRADEAI_EMERGENCY_RELEASE_SHA must be a full 40-hex SHA"
+    [[ "$head" == "$EMERGENCY_SHA" ]] || die "ROOT HEAD $head != emergency SHA $EMERGENCY_SHA — check out the emergency commit first"
+    [[ -z "$(git -C "$ROOT" status --porcelain)" ]] || die "ROOT working tree dirty — refuse emergency prepare"
+    emergency_check "$EMERGENCY_SHA" >/dev/null || die "emergency release refused for $EMERGENCY_SHA (run: scripts/ci_outage_emergency_release.py check --sha $EMERGENCY_SHA)"
+    log "EMERGENCY: preparing $EMERGENCY_SHA (origin/main is $origin_main) — CI-outage path, reconciliation required"
+    return 0
+  fi
   if [[ "$head" != "$origin_main" ]]; then
     die "ROOT HEAD $head != origin/main $origin_main — refuse hybrid promote. Checkout origin/main first."
   fi
@@ -629,9 +649,16 @@ cmd_promote() {
   conformance_gate "$sha"
   # Re-query immediately before activation. Pending, missing, failed or unavailable
   # push/main evidence cannot be substituted with PR CI or an old receipt.
+  local promote_note="promote_ok"
   if ! "$VENV_PYTHON" "${ROOT}/scripts/release_grant_preflight.py" --ci-only --sha "$sha" --ci-receipt "$CI_RECEIPT_FILE"; then
-    write_deploy_receipt false promote blocked false "post_merge_ci_refused"
-    die "exact-SHA push-to-main checks are not completed successfully; activation refused"
+    if [[ -n "$EMERGENCY_SHA" && "$EMERGENCY_SHA" == "$sha" ]] \
+        && emergency_check "$sha" --record --prev "$PREV_RELEASE" --release "$dir"; then
+      log "EMERGENCY: exact-SHA CI unavailable (provider outage proven); promoting under release-emergency grant — PENDING_RECONCILIATION"
+      promote_note="promote_ok_emergency_pending_reconciliation"
+    else
+      write_deploy_receipt false promote blocked false "post_merge_ci_refused"
+      die "exact-SHA push-to-main checks are not completed successfully; activation refused"
+    fi
   fi
   write_state
   activate_release "$dir" "$sha"
@@ -650,8 +677,11 @@ cmd_promote() {
   fi
   restart_root_frozen_units "$dir"
   write_expected_release_pin "$dir"
-  write_deploy_receipt true promote ok false "promote_ok"
+  write_deploy_receipt true promote ok false "$promote_note"
   log "PROMOTE OK live=$sha"
+  if [[ -n "$EMERGENCY_SHA" ]]; then
+    log "EMERGENCY release PENDING_RECONCILIATION — when GitHub recovers run: scripts/ci_outage_emergency_release.py reconcile --apply"
+  fi
   worker_pin_check
   ff_dev_tree_after_promote "$sha"
 }

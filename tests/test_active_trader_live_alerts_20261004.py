@@ -163,7 +163,10 @@ def test_alerts_feed_counts_vetoes_and_mode(monkeypatch, _dir):
     monkeypatch.setattr(api, "_alert_config", lambda: ma.AlertConfig(mode="send"))
     snap = api.alerts_snapshot(session_date="2026-10-05", now=NOW + 60)
     assert snap["contract"] == "active-trader-alerts-feed-v1" and snap["mode"] == "send"
-    assert snap["counts"] == {"triggered_alerts": 1, "armed_alerts": 0, "vetoes": 1, "sent": 1, "decisions": 2}
+    base = {k: snap["counts"][k] for k in ("triggered_alerts", "armed_alerts", "vetoes", "sent", "decisions")}
+    assert base == {"triggered_alerts": 1, "armed_alerts": 0, "vetoes": 1, "sent": 1, "decisions": 2}
+    # 2026-10-05 alert sync: per-kind counts are additive
+    assert snap["counts"]["buy_alerts"] == 1 and snap["counts"]["by_kind"]["TRIGGERED"] == 1
     assert snap["veto_reasons"] == {"TAPE_SELLERS": 1}
     assert [d["symbol"] for d in snap["decisions"]] == ["PLUG", "ABCD"]
     assert snap["engine"]["last_pass_age_s"] == 60

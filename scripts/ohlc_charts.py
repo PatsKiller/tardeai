@@ -895,6 +895,43 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
     if same_day and not (_has_clock(entry_time) or _has_clock(exit_time)) and fill_source == "caller":
         time_warnings.append("fill times not resolved — pass trade_key or entry_time")
 
+    # Active Trader alerts in the chart window (operator 2026-10-05: "what time you gave me the alert"
+    # vs the fill — synchronize). Read from the alert journal (Command Center store); intraday only.
+    alert_markers = []
+    if timeframe not in _CALENDAR_TFS and out_bars:
+        try:
+            import json as _json
+            from active_trader import momentum_alerts as _ma
+            _jp = _ma.journal_dir() / "momentum_alerts.jsonl"
+            _days = {ent.astimezone(_ET).date().isoformat() if _ET else str(ent)[:10],
+                     ext.astimezone(_ET).date().isoformat() if _ET else str(ext)[:10]}
+            if _jp.exists():
+                with _jp.open(encoding="utf-8") as _fh:
+                    for _raw in _fh:
+                        if symbol not in _raw:
+                            continue
+                        try:
+                            _r = _json.loads(_raw)
+                        except ValueError:
+                            continue
+                        _cd = _r.get("candidate") or {}
+                        if _cd.get("symbol") != symbol or _cd.get("session_date") not in _days:
+                            continue
+                        if _r.get("verdict") != "ALERT":
+                            continue
+                        _ts = dt.datetime.fromtimestamp(float(_r["ts_epoch"]), dt.timezone.utc)
+                        _bt = _bar_time_for(_ts)
+                        if _bt is None:
+                            continue
+                        _lat = _r.get("latency") or {}
+                        alert_markers.append({
+                            "time": _bt, "kind": _r.get("kind"), "at_et": _ts.astimezone(_ET).strftime("%H:%M:%S") if _ET else None,
+                            "sent": bool(_r.get("sent")), "intrabar": bool(_cd.get("intrabar")), "source": _r.get("source") or "pass5",
+                            "last": _cd.get("last"), "entry": _cd.get("entry_ref"),
+                            "latency_s": _lat.get("latency_s"), "latency_event": _lat.get("event")})
+        except Exception:  # noqa: BLE001 — the chart never fails because the alert overlay did
+            alert_markers = []
+
     # Data-vendor clamp notes (e.g. 2007 entry, Alpaca monthly from 2016) are informational only.
     hard_time_warnings = [w for w in time_warnings if "predates available bars" not in w]
     times_valid = not hard_time_warnings
@@ -904,6 +941,7 @@ def trade_chart(symbol, entry_date, exit_date, entry_price=None, exit_price=None
             "macd": out_macd, "rsi": out_rsi, "markers": markers, "bar_count": len(out_bars),
             "session_open_time": session_open_time, "session_close_time": session_close_time,
             "news_events": news_events, "l2_strip": l2_strip, "spy_overlay": spy_overlay,
+            "alert_markers": alert_markers,
             "fill_times": {"entry": ent.isoformat(), "exit": ext.isoformat(), "source": fill_source},
             "price_bounds": {"min_low": round(min_low, 6), "max_high": round(max_high, 6)},
             "integrity": {"marker_in_range": marker_in_range, "marker_aligned": marker_aligned,

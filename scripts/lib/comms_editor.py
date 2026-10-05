@@ -394,6 +394,8 @@ _AMBIGUOUS_WORDS = frozenset({
     # System chrome, not companies (2026-10-04 data-source alert linked "08:00 ET" and "free API
     # requests" as Energy Transfer / Agora): a real mention needs $ET / "ticker: ET".
     "API", "ET",
+    # 2026-10-05 digest linked "OFF in Command Center" from the stance word "HOLD-OFF".
+    "OFF",
 })
 _GUARD_APPROVAL = re.compile(r"Approval requested", re.I)
 _GUARD_CODE = re.compile(r"/(?:approve|deny)\s+\S+", re.I)

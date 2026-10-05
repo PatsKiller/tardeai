@@ -214,7 +214,13 @@ def run_trigger_engine(bars: Sequence[Mapping], cfg: Mapping) -> dict:
 
         trace.append(st)
 
-    return {"events": events, "trace": trace, "macd_hist_5m": macd_hist_5m(bars, cfg)}
+    # Additive (2026-10-05, alert sync): the machine's state after the LAST bar, so a sub-minute
+    # loop can tell how close the next bar is to firing (APPROACHING) without re-deriving the fold.
+    last = bars[-1] if bars else None
+    final = {"state": st, "leg_high": leg_high, "origin_low": origin_low, "pullback_low": pullback_low,
+             "lower_highs": lower_highs, "prev_high": (t0._h(last) if last else None),
+             "atr": (atrs[-1] if atrs else None), "vwap": (vwaps[-1] if vwaps else None)}
+    return {"events": events, "trace": trace, "macd_hist_5m": macd_hist_5m(bars, cfg), "final": final}
 
 
 def triggered_fires(result: dict) -> list[dict]:

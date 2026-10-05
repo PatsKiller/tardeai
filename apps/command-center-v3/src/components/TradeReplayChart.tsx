@@ -13,6 +13,19 @@ import {
   syncReplayCharts,
   type TradeFocusRange,
 } from '../lib/replayChartScale'
+import { CHART_HEX, TYPE } from '../lib/designTokens'
+
+// Active Trader alerts on the trade chart (operator 2026-10-05: line up "what time you gave me the
+// alert" with the fill). Colours come from the chart token palette (no raw hex in components).
+const ALERT_SHORT: Record<string, string> = {
+  TRIGGERED: 'BUY?', PULLBACK_ZONE: 'ZONE', APPROACHING: 'NEAR', ARMED: 'ARMED', EXTENDED: 'EXT', TRIGGER_CANCELLED: 'FAIL',
+}
+const alertColor = (kind: string) => {
+  const p = CHART_HEX.dark
+  return kind === 'TRIGGERED' || kind === 'PULLBACK_ZONE' ? p.success
+    : kind === 'EXTENDED' || kind === 'TRIGGER_CANCELLED' ? p.danger
+    : kind === 'APPROACHING' ? p.series[0] : p.warning
+}
 
 /** Exec/plan overlays — drawn as price lines but labeled in the HTML legend (not on the axis). */
 type OverlayLevel = { price: number; color: string; label: string; style?: string }
@@ -211,6 +224,9 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
       mks.push({ time: data.session_open_time, position: 'aboveBar', color: '#eab308', shape: 'circle', text: '9:30 open' })
     if (data.session_close_time && shown.has(String(data.session_close_time)))
       mks.push({ time: data.session_close_time, position: 'aboveBar', color: '#f97316', shape: 'circle', text: '16:00 close' })
+    for (const am of (data.alert_markers || []))
+      if (shown.has(String(am.time))) mks.push({ time: am.time, position: 'aboveBar', color: alertColor(String(am.kind)),
+        shape: 'square', text: `${ALERT_SHORT[String(am.kind)] ?? am.kind} ${String(am.at_et || '').slice(0, 5)}${am.latency_s != null ? ` +${Math.round(am.latency_s)}s` : ''}` })
     for (const ne of (data.news_events || []))
       if (shown.has(String(ne.time))) mks.push({ time: ne.time, position: 'aboveBar', color: '#22d3ee', shape: 'circle', text: '📰' })
     mks.sort((a: any, b: any) => (typeof a.time === 'number' ? a.time - b.time : String(a.time).localeCompare(String(b.time))))
@@ -321,6 +337,19 @@ export default function TradeReplayChart({ trade, onClose }: { trade: Trade; onC
           <div ref={macdRef} style={{ width: '100%', display: show.macd ? 'block' : 'none' }} />
           {show.rsi && <div style={{ fontSize: 8, color: 'var(--text3)', marginTop: 4 }}>RSI</div>}
           <div ref={rsiRef} style={{ width: '100%', display: show.rsi ? 'block' : 'none' }} />
+        {(data?.alert_markers?.length ?? 0) > 0 && (
+          <div style={{ marginTop: 6, fontSize: TYPE.xs, color: 'var(--text3)' }} data-testid="trade-chart-alerts">
+            <b style={{ color: 'var(--text2)' }}>Active Trader alerts in this window:</b>
+            {data.alert_markers.slice(0, 12).map((am: any, i: number) => (
+              <div key={i} style={{ marginTop: 2 }}>
+                <span style={{ color: alertColor(String(am.kind)), fontWeight: 600 }}>{am.at_et}</span> · {String(am.kind).replace('_', ' ')}
+                {am.intrabar ? ' (intrabar)' : ''} · last {am.last ?? '—'}{am.entry != null ? ` · entry ${Number(am.entry).toFixed(3)}` : ''}
+                {am.latency_s != null && <span> · {Math.round(am.latency_s)}s after {String(am.latency_event || '').replace('_', ' ')}</span>}
+                {am.sent ? ' · ✓ Telegram' : ''}{am.source === 'fast' ? ' · fast loop' : ''}
+              </div>
+            ))}
+          </div>
+        )}
         {(data?.news_events?.length ?? 0) > 0 && (
           <div style={{ marginTop: 6, fontSize: 9, color: 'var(--text3)' }}>
             <b style={{ color: '#22d3ee' }}>📰 News during trade window:</b>

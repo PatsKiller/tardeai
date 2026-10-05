@@ -19,6 +19,7 @@ import OptionReviewBar from '../components/OptionReviewBar'
 import ManualExecutionModal, { type ManualExecSeed } from '../components/ManualExecutionModal'
 import ManualExecutionLog from '../components/ManualExecutionLog'
 import OptionsLifecycleView from '../components/options/OptionsLifecycleView'
+import StandingIntentsPanel from '../components/options/StandingIntentsPanel'
 
 import { fmt$ } from '../lib/format'
 import type { DrillContext } from '../components/DetailDrawer'
@@ -489,6 +490,8 @@ export default function OptionsHub({ onDrill }: Props) {
             {label}{key && proposals?.queue_counts ? ` (${proposals.queue_counts[key] ?? 0})` : ''}
           </button>)}
       </div>}
+      {/* Operator's standing options intents + the live Schwab contracts that fit them (2026-10-05). */}
+      <StandingIntentsPanel />
 
       {/* Desk Path B readiness — Schwab Path B only (Alpaca paper lane retired from Hub). */}
       {deskPathBRows.length > 0 && (

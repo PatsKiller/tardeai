@@ -2845,6 +2845,126 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "PR #1441 (premarket_watch.py), replay 2026-10-05: SDEV gap +44% alert at 08:00.",
       "note": "Every 5 min 06:00-09:59 ET (script self-gates to 06:00-09:29). Kill: persistent-state data/active_trader/PREMARKET_DISABLED."
+    },
+    {
+      "lane_id": "active-trader-micro-recorder-premarket",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 6 * * 1-5 cd $PROJ && flock -n /tmp/at_micro_recorder_pm.lock $PY scripts/active_trader/microstructure_recorder.py --apply --premarket >> logs/at_micro_recorder.log 2>&1",
+        "match": "microstructure_recorder.py --apply --premarket"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "state_since": "2026-10-05",
+      "state_reason": "Operator 2026-10-05 approved ('yes do 1-4'): microstructure recorder + learning (PR #1444); premarket coverage from 06:00 (operator rule).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/micro/live_symbols.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "PR #1444; dry run 2026-10-05: 60 s live moomoo on XNDU/SDEV, 12 polls, 0 errors.",
+      "note": "06:00-09:28 ET moomoo book+tape every 5 s for scalp names; self-terminates; kill file honored."
+    },
+    {
+      "lane_id": "active-trader-micro-recorder",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "28 9 * * 1-5 cd $PROJ && flock -n /tmp/at_micro_recorder.lock $PY scripts/active_trader/microstructure_recorder.py --apply >> logs/at_micro_recorder.log 2>&1",
+        "match": "microstructure_recorder.py --apply >>"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "state_since": "2026-10-05",
+      "state_reason": "Operator 2026-10-05 approved ('yes do 1-4'): microstructure recorder + learning (PR #1444); premarket coverage from 06:00 (operator rule).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/micro/live_symbols.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "PR #1444; dry run 2026-10-05: 60 s live moomoo on XNDU/SDEV, 12 polls, 0 errors.",
+      "note": "09:28-12:00 ET recorder (feeds trade replay, signals, exit watch)."
+    },
+    {
+      "lane_id": "active-trader-signal-calibration",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 12 * * 1-5 cd $PROJ && $PY scripts/active_trader/signal_calibration.py --apply >> logs/at_signal_calibration.log 2>&1",
+        "match": "scripts/active_trader/signal_calibration.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "state_since": "2026-10-05",
+      "state_reason": "Operator 2026-10-05 approved ('yes do 1-4'): microstructure recorder + learning (PR #1444); premarket coverage from 06:00 (operator rule).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/learning/calibration_report.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "PR #1444; dry run 2026-10-05: 60 s live moomoo on XNDU/SDEV, 12 polls, 0 errors.",
+      "note": "Daily after the engine window: which signals separated WORKED vs STOPPED; PROPOSES thresholds only."
+    },
+    {
+      "lane_id": "options-intent-matcher",
+      "owner": "options",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "15,45 9-15 * * 1-5 cd $PROJ && flock -n /tmp/options_intent_matcher.lock timeout 240 $PY scripts/options_intent_matcher.py --apply >> logs/options_intent_matcher.log 2>&1",
+        "match": "scripts/options_intent_matcher.py"
+      },
+      "expected_cadence_hours": 0.5,
+      "state": "ACTIVE",
+      "state_since": "2026-10-05",
+      "state_reason": "Operator 2026-10-05 (SPCX): 'the command center should be working on pulling particular contracts that meet what I'm asking for… proactive, from the persistent memory'; approved 'yes do 1-4'.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/options_intent/latest.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "PR #1445; live dry run 2026-10-05 vs Schwab chain (SPCX Oct 30 157.5P mid 3.70).",
+      "note": "Every 30 min 09:15-15:45 ET weekdays: rank Schwab contracts against each active options intent (watch_directives spec.options_intent); Telegram digest only on material improvement (≤1 per intent per 120 min)."
+    },
+    {
+      "lane_id": "active-trader-session-review",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 12 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
+        "match": "scripts/active_trader/session_review.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-05",
+      "state_reason": "Operator 2026-10-05: build the 'should have been' methodology in as the Active Trader soul (docs/active_trader/ACTIVE_TRADER_SOUL.md). Cron line awaits operator approval.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/reviews"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_at_soul_review_sim_20261005.py reproduces the operator's XNDU 2026-10-05 table from real data.",
+      "note": "12:05 ET after the 09:30–11:55 engine window: grade every decision and fill against 'should have been'; auto-sim comparison (ledger only in auto_sim)."
+    },
+    {
+      "lane_id": "active-trader-session-review-close",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 16 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
+        "match": "scripts/active_trader/session_review.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-05",
+      "state_reason": "Operator 2026-10-05: build the 'should have been' methodology in as the Active Trader soul (docs/active_trader/ACTIVE_TRADER_SOUL.md). Cron line awaits operator approval.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/reviews"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_at_soul_review_sim_20261005.py reproduces the operator's XNDU 2026-10-05 table from real data.",
+      "note": "16:10 ET: re-run with the full day's bars (rewrites the day's review file; learning records are written once by id)."
     }
   ],
   "undeclared_baseline": [

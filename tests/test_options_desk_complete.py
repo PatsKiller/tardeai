@@ -321,3 +321,16 @@ def test_reentry_membership_exceeds_snapshot_and_query_failure_is_visible(monkey
     monkeypatch.setattr(db_adapter, '_execute', lambda *a, **k: None)
     assert engine._reentry_research_rows()[0]['symbol'] == 'A'
     assert engine.SOURCE_RECEIPTS['reentry']['status'] == 'UNAVAILABLE'
+
+
+def test_advisory_calls_and_collars_respect_existing_operator_intent():
+    from scripts.lib.options_advisory_candidates import generate_candidates
+    drops = []
+    out = generate_candidates([{'symbol': 'X', 'direction': 'bullish'}],
+        [{'symbol': 'X', 'shares': 100, 'account': 'a'}], {'X': _sample_chain()},
+        covered_call_block=lambda symbol, strike, spot: 'operator floor 150' if strike < 150 else None,
+        drops=drops)
+    assert not {'covered_call', 'collar'}.intersection(r['strategy'] for r in out)
+    assert 'protective_put' in {r['strategy'] for r in out}
+    assert {r['strategy'] for r in drops} == {'covered_call', 'collar'}
+    assert all(r['reason'] == 'OPERATOR_INTENT' for r in drops)

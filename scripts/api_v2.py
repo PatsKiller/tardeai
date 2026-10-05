@@ -40062,6 +40062,80 @@ def _schwab_option_chain(query=None):
     return _json_clean(out)
 
 
+def _options_intents(query=None):
+    """GET /api/v2/options/intents — the operator's standing options intents (spec.options_intent on
+    ticker watch directives) joined to the matcher's latest live-contract snapshot. READ-ONLY."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.options_intent import matcher as _mt
+    from lib.options_intent import store as _st
+
+    rows = _db_query(_st.SELECT_SQL, fetch="all") or []
+    intents = []
+    for r in rows:
+        spec = r.get("spec") if isinstance(r, dict) else None
+        if isinstance(spec, str):
+            try:
+                spec = json.loads(spec)
+            except ValueError:
+                spec = {}
+        it = (spec or {}).get(_st.INTENT_KEY)
+        if isinstance(it, dict):
+            intents.append({**it, "directive_id": r.get("id")})
+    try:
+        latest = json.loads((_mt.state_dir() / "latest.json").read_text(encoding="utf-8"))
+    except Exception:
+        latest = {}
+    cfg = _mt.load_config()
+    return _json_clean(
+        {
+            "status": "ok",
+            "advisory_only": True,
+            "mode": cfg.get("mode"),
+            "intents": [{**i, "matches": latest.get(i.get("symbol"))} for i in intents],
+        }
+    )
+
+
+def _options_intent_upsert(body):
+    """POST /api/v2/options/intents — record/replace the operator's options intent for a symbol (APP
+    ROLE, like /api/v2/watch/directives). Body = intent dict; `dry_run: true` returns the plan only.
+    Advisory memory: nothing is staged or ordered."""
+    import sys as _sys
+
+    _sys.path.insert(0, str(PROJECT_ROOT / "scripts"))
+    from lib.options_intent import store as _st
+
+    body = dict(body or {})
+    dry = bool(body.pop("dry_run", False))
+    status = body.pop("set_status", None)
+    from db_adapter import get_connection as _gc
+
+    conn = _gc()
+    try:
+        cur = conn.cursor()
+        if status:
+            plan = _st.set_intent_status(
+                cur, body.get("symbol") or "", status, source=str(body.get("source") or "operator"), apply=not dry
+            )
+        else:
+            plan = _st.upsert_intent(cur, body, source=str(body.get("source") or "operator"), apply=not dry)
+        if dry:
+            conn.rollback()
+        else:
+            conn.commit()
+        return 200, {"ok": True, "dry_run": dry, **_json_clean(plan)}
+    except ValueError as e:
+        conn.rollback()
+        return 400, {"ok": False, "error": str(e)}
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
 _OPTIONS_ENGINE_MTIME = [0.0]
 
 
@@ -47400,6 +47474,7 @@ ROUTES = {
     "/api/v2/schwab/quotes": _schwab_batch_quotes,
     "/api/v2/schwab/market-hours": _schwab_market_hours,
     "/api/v2/schwab/option-chain": _schwab_option_chain,
+    "/api/v2/options/intents": _options_intents,
     "/api/v2/options/proposals": _options_proposals,
     "/api/v2/options/coverage": _options_coverage,
     "/api/v2/options/holdings-funnel": _options_holdings_funnel,
@@ -51628,6 +51703,12 @@ def handle(path: str, method: str = "GET", body: dict = None, query: dict = None
             return 500, {"ok": False, "error": str(e)[:200]}
 
     # Watch Directives — create (operator) + one-tap promote (operator override). App role; firewall preserved.
+    # Operator options intents — standing memory the proactive matcher works from (2026-10-05).
+    if method == "POST" and base_path == "/api/v2/options/intents":
+        try:
+            return _options_intent_upsert(body or {})
+        except Exception as e:
+            return 500, {"ok": False, "error": str(e)[:300]}
     if method == "POST" and base_path == "/api/v2/watch/directives":
         try:
             return _watch_directive_create(body or {})

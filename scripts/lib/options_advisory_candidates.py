@@ -31,7 +31,8 @@ def _pick(rows, side, target):
         float(r['ask']) - float(r.get('bid') or 0)), default=None)
 
 
-def generate_candidates(research: list[dict], holdings: list[dict], chains: dict[str, dict]) -> list[dict]:
+def generate_candidates(research: list[dict], holdings: list[dict], chains: dict[str, dict],
+                        *, covered_call_block=None, drops: list[dict] | None = None) -> list[dict]:
     """One representative per expiry/family/account, examining all returned strikes."""
     research_by_symbol = {r['symbol']: r for r in research}
     result = []
@@ -61,6 +62,13 @@ def generate_candidates(research: list[dict], holdings: list[dict], chains: dict
                     return
                 if strategy != 'collar' and premium <= 0:
                     return
+                if covered_call_block and strategy in {'covered_call', 'collar'}:
+                    call = next(leg for action, leg in legs if action == 'SELL' and leg['side'] == 'call')
+                    reason = covered_call_block(symbol, float(call['strike']), spot)
+                    if reason:
+                        if drops is not None:
+                            drops.append({'symbol': symbol, 'strategy': strategy, 'reason': 'OPERATOR_INTENT', 'detail': reason})
+                        return
                 spec = [(action, leg['side'], leg['strike']) for action, leg in legs]
                 identity = [symbol, strategy, exp, extra.get('account'), spec]
                 proposal_id = 'adv_' + hashlib.sha256(repr(identity).encode()).hexdigest()[:24]

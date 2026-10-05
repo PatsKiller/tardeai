@@ -1,0 +1,1250 @@
+{
+"_source": "2026-10-05 XNDU: Alpaca IEX 1-min RTH bars (scalp_shadow_logger.session_rth_bars), Active Trader alert journal rows (message text dropped), operator Schwab fills (trade_transactions). Real data, frozen for replay tests.",
+"symbol": "XNDU",
+"day": "2026-10-05",
+"bars": [
+{
+"c": 4.29,
+"h": 4.31,
+"l": 4.29,
+"n": 18,
+"o": 4.295,
+"t": "2026-10-05T13:30:00Z",
+"v": 1335,
+"vw": 4.299091,
+"m": 0
+},
+{
+"c": 4.29,
+"h": 4.29,
+"l": 4.29,
+"n": 12,
+"o": 4.29,
+"t": "2026-10-05T13:31:00Z",
+"v": 659,
+"vw": 4.29,
+"m": 1
+},
+{
+"c": 4.29,
+"h": 4.29,
+"l": 4.29,
+"n": 12,
+"o": 4.29,
+"t": "2026-10-05T13:32:00Z",
+"v": 524,
+"vw": 4.29,
+"m": 2
+},
+{
+"c": 4.28,
+"h": 4.29,
+"l": 4.28,
+"n": 11,
+"o": 4.29,
+"t": "2026-10-05T13:33:00Z",
+"v": 676,
+"vw": 4.283333,
+"m": 3
+},
+{
+"c": 4.3,
+"h": 4.3,
+"l": 4.3,
+"n": 5,
+"o": 4.3,
+"t": "2026-10-05T13:34:00Z",
+"v": 344,
+"vw": 4.3,
+"m": 4
+},
+{
+"c": 4.28,
+"h": 4.28,
+"l": 4.28,
+"n": 9,
+"o": 4.28,
+"t": "2026-10-05T13:35:00Z",
+"v": 1502,
+"vw": 4.28,
+"m": 5
+},
+{
+"c": 4.28,
+"h": 4.28,
+"l": 4.275,
+"n": 17,
+"o": 4.275,
+"t": "2026-10-05T13:36:00Z",
+"v": 1296,
+"vw": 4.27625,
+"m": 6
+},
+{
+"c": 4.275,
+"h": 4.275,
+"l": 4.275,
+"n": 8,
+"o": 4.275,
+"t": "2026-10-05T13:37:00Z",
+"v": 640,
+"vw": 4.275,
+"m": 7
+},
+{
+"c": 4.265,
+"h": 4.265,
+"l": 4.265,
+"n": 8,
+"o": 4.265,
+"t": "2026-10-05T13:38:00Z",
+"v": 490,
+"vw": 4.265,
+"m": 8
+},
+{
+"c": 4.255,
+"h": 4.255,
+"l": 4.255,
+"n": 42,
+"o": 4.255,
+"t": "2026-10-05T13:39:00Z",
+"v": 2665,
+"vw": 4.255,
+"m": 9
+},
+{
+"c": 4.265,
+"h": 4.27,
+"l": 4.255,
+"n": 25,
+"o": 4.255,
+"t": "2026-10-05T13:40:00Z",
+"v": 2819,
+"vw": 4.260963,
+"m": 10
+},
+{
+"c": 4.27,
+"h": 4.27,
+"l": 4.265,
+"n": 13,
+"o": 4.265,
+"t": "2026-10-05T13:41:00Z",
+"v": 1162,
+"vw": 4.265565,
+"m": 11
+},
+{
+"c": 4.29,
+"h": 4.29,
+"l": 4.27,
+"n": 12,
+"o": 4.27,
+"t": "2026-10-05T13:42:00Z",
+"v": 1207,
+"vw": 4.276148,
+"m": 12
+},
+{
+"c": 4.33,
+"h": 4.33,
+"l": 4.29,
+"n": 28,
+"o": 4.29,
+"t": "2026-10-05T13:43:00Z",
+"v": 2007,
+"vw": 4.311652,
+"m": 13
+},
+{
+"c": 4.31,
+"h": 4.315,
+"l": 4.31,
+"n": 6,
+"o": 4.31,
+"t": "2026-10-05T13:44:00Z",
+"v": 574,
+"vw": 4.312403,
+"m": 14
+},
+{
+"c": 4.305,
+"h": 4.33,
+"l": 4.305,
+"n": 15,
+"o": 4.32,
+"t": "2026-10-05T13:45:00Z",
+"v": 1524,
+"vw": 4.319237,
+"m": 15
+},
+{
+"c": 4.31,
+"h": 4.31,
+"l": 4.305,
+"n": 17,
+"o": 4.305,
+"t": "2026-10-05T13:46:00Z",
+"v": 1703,
+"vw": 4.309231,
+"m": 16
+},
+{
+"c": 4.32,
+"h": 4.335,
+"l": 4.32,
+"n": 4,
+"o": 4.335,
+"t": "2026-10-05T13:47:00Z",
+"v": 360,
+"vw": 4.328333,
+"m": 17
+},
+{
+"c": 4.315,
+"h": 4.32,
+"l": 4.315,
+"n": 6,
+"o": 4.315,
+"t": "2026-10-05T13:48:00Z",
+"v": 820,
+"vw": 4.315915,
+"m": 18
+},
+{
+"c": 4.32,
+"h": 4.32,
+"l": 4.31,
+"n": 11,
+"o": 4.31,
+"t": "2026-10-05T13:49:00Z",
+"v": 1108,
+"vw": 4.311667,
+"m": 19
+},
+{
+"c": 4.355,
+"h": 4.355,
+"l": 4.35,
+"n": 24,
+"o": 4.35,
+"t": "2026-10-05T13:51:00Z",
+"v": 2288,
+"vw": 4.350417,
+"m": 21
+},
+{
+"c": 4.38,
+"h": 4.38,
+"l": 4.35,
+"n": 9,
+"o": 4.35,
+"t": "2026-10-05T13:52:00Z",
+"v": 1100,
+"vw": 4.361364,
+"m": 22
+},
+{
+"c": 4.39,
+"h": 4.4,
+"l": 4.39,
+"n": 11,
+"o": 4.39,
+"t": "2026-10-05T13:53:00Z",
+"v": 1048,
+"vw": 4.39375,
+"m": 23
+},
+{
+"c": 4.41,
+"h": 4.41,
+"l": 4.4,
+"n": 6,
+"o": 4.4,
+"t": "2026-10-05T13:54:00Z",
+"v": 688,
+"vw": 4.402427,
+"m": 24
+},
+{
+"c": 4.41,
+"h": 4.43,
+"l": 4.405,
+"n": 13,
+"o": 4.43,
+"t": "2026-10-05T13:55:00Z",
+"v": 2109,
+"vw": 4.412729,
+"m": 25
+},
+{
+"c": 4.4,
+"h": 4.4,
+"l": 4.4,
+"n": 3,
+"o": 4.4,
+"t": "2026-10-05T13:56:00Z",
+"v": 200,
+"vw": 4.4,
+"m": 26
+},
+{
+"c": 4.42,
+"h": 4.42,
+"l": 4.42,
+"n": 6,
+"o": 4.42,
+"t": "2026-10-05T13:57:00Z",
+"v": 192,
+"vw": 4.42,
+"m": 27
+},
+{
+"c": 4.42,
+"h": 4.42,
+"l": 4.42,
+"n": 1,
+"o": 4.42,
+"t": "2026-10-05T13:58:00Z",
+"v": 100,
+"vw": 4.42,
+"m": 28
+},
+{
+"c": 4.38,
+"h": 4.405,
+"l": 4.38,
+"n": 17,
+"o": 4.405,
+"t": "2026-10-05T13:59:00Z",
+"v": 2188,
+"vw": 4.39174,
+"m": 29
+},
+{
+"c": 4.4,
+"h": 4.4,
+"l": 4.38,
+"n": 12,
+"o": 4.38,
+"t": "2026-10-05T14:00:00Z",
+"v": 1388,
+"vw": 4.388636,
+"m": 30
+},
+{
+"c": 4.425,
+"h": 4.425,
+"l": 4.41,
+"n": 13,
+"o": 4.415,
+"t": "2026-10-05T14:01:00Z",
+"v": 1071,
+"vw": 4.413889,
+"m": 31
+},
+{
+"c": 4.43,
+"h": 4.44,
+"l": 4.43,
+"n": 12,
+"o": 4.435,
+"t": "2026-10-05T14:02:00Z",
+"v": 1105,
+"vw": 4.435508,
+"m": 32
+},
+{
+"c": 4.435,
+"h": 4.44,
+"l": 4.435,
+"n": 3,
+"o": 4.44,
+"t": "2026-10-05T14:03:00Z",
+"v": 424,
+"vw": 4.43625,
+"m": 33
+},
+{
+"c": 4.44,
+"h": 4.44,
+"l": 4.435,
+"n": 10,
+"o": 4.435,
+"t": "2026-10-05T14:04:00Z",
+"v": 873,
+"vw": 4.43875,
+"m": 34
+},
+{
+"c": 4.465,
+"h": 4.465,
+"l": 4.445,
+"n": 14,
+"o": 4.445,
+"t": "2026-10-05T14:05:00Z",
+"v": 2006,
+"vw": 4.458674,
+"m": 35
+},
+{
+"c": 4.49,
+"h": 4.5,
+"l": 4.475,
+"n": 30,
+"o": 4.49,
+"t": "2026-10-05T14:06:00Z",
+"v": 4503,
+"vw": 4.489959,
+"m": 36
+},
+{
+"c": 4.485,
+"h": 4.49,
+"l": 4.485,
+"n": 6,
+"o": 4.49,
+"t": "2026-10-05T14:07:00Z",
+"v": 1000,
+"vw": 4.4895,
+"m": 37
+},
+{
+"c": 4.48,
+"h": 4.495,
+"l": 4.475,
+"n": 10,
+"o": 4.485,
+"t": "2026-10-05T14:08:00Z",
+"v": 1058,
+"vw": 4.480085,
+"m": 38
+},
+{
+"c": 4.475,
+"h": 4.49,
+"l": 4.475,
+"n": 15,
+"o": 4.49,
+"t": "2026-10-05T14:09:00Z",
+"v": 2000,
+"vw": 4.481796,
+"m": 39
+},
+{
+"c": 4.475,
+"h": 4.475,
+"l": 4.475,
+"n": 6,
+"o": 4.475,
+"t": "2026-10-05T14:10:00Z",
+"v": 600,
+"vw": 4.475,
+"m": 40
+},
+{
+"c": 4.485,
+"h": 4.49,
+"l": 4.465,
+"n": 13,
+"o": 4.47,
+"t": "2026-10-05T14:11:00Z",
+"v": 1876,
+"vw": 4.474158,
+"m": 41
+},
+{
+"c": 4.495,
+"h": 4.495,
+"l": 4.49,
+"n": 4,
+"o": 4.49,
+"t": "2026-10-05T14:12:00Z",
+"v": 311,
+"vw": 4.493246,
+"m": 42
+},
+{
+"c": 4.475,
+"h": 4.475,
+"l": 4.47,
+"n": 8,
+"o": 4.475,
+"t": "2026-10-05T14:13:00Z",
+"v": 1079,
+"vw": 4.473559,
+"m": 43
+},
+{
+"c": 4.47,
+"h": 4.475,
+"l": 4.47,
+"n": 16,
+"o": 4.475,
+"t": "2026-10-05T14:14:00Z",
+"v": 1906,
+"vw": 4.470491,
+"m": 44
+},
+{
+"c": 4.435,
+"h": 4.435,
+"l": 4.43,
+"n": 5,
+"o": 4.43,
+"t": "2026-10-05T14:15:00Z",
+"v": 585,
+"vw": 4.433431,
+"m": 45
+},
+{
+"c": 4.46,
+"h": 4.46,
+"l": 4.46,
+"n": 2,
+"o": 4.46,
+"t": "2026-10-05T14:16:00Z",
+"v": 114,
+"vw": 4.46,
+"m": 46
+},
+{
+"c": 4.455,
+"h": 4.455,
+"l": 4.455,
+"n": 1,
+"o": 4.455,
+"t": "2026-10-05T14:17:00Z",
+"v": 100,
+"vw": 4.455,
+"m": 47
+},
+{
+"c": 4.445,
+"h": 4.445,
+"l": 4.445,
+"n": 1,
+"o": 4.445,
+"t": "2026-10-05T14:19:00Z",
+"v": 100,
+"vw": 4.445,
+"m": 49
+},
+{
+"c": 4.445,
+"h": 4.445,
+"l": 4.445,
+"n": 3,
+"o": 4.445,
+"t": "2026-10-05T14:20:00Z",
+"v": 200,
+"vw": 4.445,
+"m": 50
+},
+{
+"c": 4.465,
+"h": 4.465,
+"l": 4.45,
+"n": 3,
+"o": 4.45,
+"t": "2026-10-05T14:21:00Z",
+"v": 217,
+"vw": 4.4575,
+"m": 51
+},
+{
+"c": 4.465,
+"h": 4.465,
+"l": 4.465,
+"n": 1,
+"o": 4.465,
+"t": "2026-10-05T14:23:00Z",
+"v": 100,
+"vw": 4.465,
+"m": 53
+},
+{
+"c": 4.47,
+"h": 4.47,
+"l": 4.47,
+"n": 1,
+"o": 4.47,
+"t": "2026-10-05T14:24:00Z",
+"v": 100,
+"vw": 4.47,
+"m": 54
+},
+{
+"c": 4.46,
+"h": 4.46,
+"l": 4.46,
+"n": 6,
+"o": 4.46,
+"t": "2026-10-05T14:28:00Z",
+"v": 698,
+"vw": 4.46,
+"m": 58
+},
+{
+"c": 4.44,
+"h": 4.44,
+"l": 4.435,
+"n": 9,
+"o": 4.435,
+"t": "2026-10-05T14:30:00Z",
+"v": 1096,
+"vw": 4.435519,
+"m": 60
+},
+{
+"c": 4.46,
+"h": 4.46,
+"l": 4.435,
+"n": 9,
+"o": 4.435,
+"t": "2026-10-05T14:31:00Z",
+"v": 1549,
+"vw": 4.438333,
+"m": 61
+},
+{
+"c": 4.46,
+"h": 4.46,
+"l": 4.46,
+"n": 2,
+"o": 4.46,
+"t": "2026-10-05T14:32:00Z",
+"v": 168,
+"vw": 4.46,
+"m": 62
+},
+{
+"c": 4.47,
+"h": 4.47,
+"l": 4.46,
+"n": 10,
+"o": 4.46,
+"t": "2026-10-05T14:33:00Z",
+"v": 1430,
+"vw": 4.469231,
+"m": 63
+},
+{
+"c": 4.46,
+"h": 4.46,
+"l": 4.46,
+"n": 7,
+"o": 4.46,
+"t": "2026-10-05T14:35:00Z",
+"v": 950,
+"vw": 4.46,
+"m": 65
+},
+{
+"c": 4.5,
+"h": 4.5,
+"l": 4.5,
+"n": 7,
+"o": 4.5,
+"t": "2026-10-05T14:36:00Z",
+"v": 797,
+"vw": 4.5,
+"m": 66
+},
+{
+"c": 4.515,
+"h": 4.515,
+"l": 4.51,
+"n": 6,
+"o": 4.51,
+"t": "2026-10-05T14:37:00Z",
+"v": 454,
+"vw": 4.513494,
+"m": 67
+},
+{
+"c": 4.55,
+"h": 4.55,
+"l": 4.525,
+"n": 20,
+"o": 4.525,
+"t": "2026-10-05T14:38:00Z",
+"v": 2421,
+"vw": 4.531774,
+"m": 68
+},
+{
+"c": 4.555,
+"h": 4.555,
+"l": 4.555,
+"n": 2,
+"o": 4.555,
+"t": "2026-10-05T14:39:00Z",
+"v": 105,
+"vw": 4.555,
+"m": 69
+},
+{
+"c": 4.535,
+"h": 4.535,
+"l": 4.525,
+"n": 16,
+"o": 4.525,
+"t": "2026-10-05T14:40:00Z",
+"v": 1753,
+"vw": 4.530068,
+"m": 70
+},
+{
+"c": 4.545,
+"h": 4.555,
+"l": 4.545,
+"n": 21,
+"o": 4.545,
+"t": "2026-10-05T14:41:00Z",
+"v": 3418,
+"vw": 4.547667,
+"m": 71
+}
+],
+"journal": [
+{
+"authority": {
+"broker_write": false,
+"financial_action": false,
+"order": false,
+"read_only": true,
+"two_factor": false
+},
+"candidate": {
+"entry_ref": 4.32,
+"fire_ts_epoch": null,
+"float_mm": 20.68,
+"fsm_state": "ARMED",
+"ign": 12.077,
+"lane": "BELOW",
+"last": 4.33,
+"quote_ts_epoch": 1791208210.0,
+"rvol": 2.2786103542234333,
+"session_date": "2026-10-05",
+"setup_id": null,
+"setup_label": null,
+"stop_ref": 4.305714285714286,
+"symbol": "XNDU"
+},
+"contract": "active-trader-momentum-alert-v1",
+"kind": "ARMED",
+"l2": {
+"age_s": -0.1,
+"ask_depth": 26456.0,
+"best_ask": 4.34,
+"best_bid": 4.33,
+"bid_depth": 43872.0,
+"depth_ratio": 1.658,
+"levels": 10,
+"ok": true,
+"reasons": [],
+"source": "moomoo",
+"spread_bps": 23.1,
+"ts_source": "fetch"
+},
+"l2_compare": {
+"ok": false,
+"reasons": [
+"BOOK_MISSING"
+],
+"source": "schwab"
+},
+"mode": "send",
+"quote_age_s": 3.6,
+"r_dollars": 0.014285714285714235,
+"run_id": "2026-10-05:1791208213",
+"send_result": {
+"alert_type": "at_scalp_armed",
+"channel": "telegram",
+"sent": true
+},
+"sent": true,
+"tape": {},
+"ts_epoch": 1791208213.5539355,
+"verdict": "ALERT",
+"veto_reasons": []
+},
+{
+"authority": {
+"broker_write": false,
+"financial_action": false,
+"order": false,
+"read_only": true,
+"two_factor": false
+},
+"candidate": {
+"entry_ref": 4.375,
+"fire_ts_epoch": 1791208260.0,
+"float_mm": 20.68,
+"fsm_state": "IMPULSE",
+"ign": 18.382,
+"lane": "BELOW",
+"last": 4.43,
+"quote_ts_epoch": 1791208507.0,
+"rvol": 2.557945684323743,
+"session_date": "2026-10-05",
+"setup_id": null,
+"setup_label": null,
+"stop_ref": 4.3586,
+"symbol": "XNDU"
+},
+"contract": "active-trader-momentum-alert-v1",
+"kind": "TRIGGERED",
+"l2": {
+"age_s": -0.1,
+"ask_depth": 8172.0,
+"best_ask": 4.43,
+"best_bid": 4.42,
+"bid_depth": 9856.0,
+"depth_ratio": 1.206,
+"levels": 10,
+"ok": true,
+"reasons": [],
+"source": "moomoo",
+"spread_bps": 22.6,
+"ts_source": "fetch"
+},
+"l2_compare": {
+"ok": false,
+"reasons": [
+"BOOK_MISSING"
+],
+"source": "schwab"
+},
+"mode": "send",
+"quote_age_s": 4.8,
+"r_dollars": 0.01639999999999997,
+"run_id": "2026-10-05:1791208511",
+"send_result": {
+"alert_type": "at_scalp_triggered",
+"channel": "telegram",
+"sent": true
+},
+"sent": true,
+"tape": {
+"age_s": 1.1,
+"buy_ratio": 0.866,
+"buy_volume": 2478.0,
+"last_price": 4.43,
+"ok": true,
+"prints": 50,
+"reasons": [],
+"sell_volume": 383.0,
+"source": "moomoo"
+},
+"ts_epoch": 1791208511.778781,
+"verdict": "ALERT",
+"veto_reasons": []
+},
+{
+"authority": {
+"broker_write": false,
+"financial_action": false,
+"order": false,
+"read_only": true,
+"two_factor": false
+},
+"candidate": {
+"entry_ref": 4.375,
+"fire_ts_epoch": 1791208260.0,
+"float_mm": 20.68,
+"fsm_state": "ARMED",
+"ign": 17.832,
+"lane": "BELOW",
+"last": 4.4,
+"quote_ts_epoch": 1791208822.0,
+"rvol": 2.4241189947994326,
+"session_date": "2026-10-05",
+"setup_id": null,
+"setup_label": null,
+"stop_ref": 4.3586,
+"symbol": "XNDU"
+},
+"contract": "active-trader-momentum-alert-v1",
+"kind": "ARMED",
+"l2": {
+"age_s": -0.1,
+"ask_depth": 19711.0,
+"best_ask": 4.41,
+"best_bid": 4.4,
+"bid_depth": 35394.0,
+"depth_ratio": 1.796,
+"levels": 10,
+"ok": true,
+"reasons": [],
+"source": "moomoo",
+"spread_bps": 22.7,
+"ts_source": "fetch"
+},
+"l2_compare": {
+"ok": false,
+"reasons": [
+"BOOK_MISSING"
+],
+"source": "schwab"
+},
+"mode": "send",
+"quote_age_s": 0.8,
+"r_dollars": 0.01639999999999997,
+"run_id": "2026-10-05:1791208822",
+"sent": false,
+"tape": {},
+"ts_epoch": 1791208822.8119025,
+"verdict": "VETO",
+"veto_reasons": [
+"COOLDOWN"
+]
+},
+{
+"authority": {
+"broker_write": false,
+"financial_action": false,
+"order": false,
+"read_only": true,
+"two_factor": false
+},
+"candidate": {
+"entry_ref": 4.375,
+"fire_ts_epoch": 1791208260.0,
+"float_mm": 20.68,
+"fsm_state": "ARMED",
+"ign": 16.631,
+"lane": "BELOW",
+"last": 4.46,
+"quote_ts_epoch": 1791209104.0,
+"rvol": 2.416107807161837,
+"session_date": "2026-10-05",
+"setup_id": null,
+"setup_label": null,
+"stop_ref": 4.3586,
+"symbol": "XNDU"
+},
+"contract": "active-trader-momentum-alert-v1",
+"kind": "ARMED",
+"l2": {
+"age_s": 0.5,
+"ask_depth": 35217.0,
+"best_ask": 4.47,
+"best_bid": 4.46,
+"bid_depth": 45658.0,
+"depth_ratio": 1.296,
+"levels": 10,
+"ok": true,
+"reasons": [],
+"source": "moomoo",
+"spread_bps": 22.4,
+"ts_source": "opend_server"
+},
+"l2_compare": {
+"ok": false,
+"reasons": [
+"BOOK_MISSING"
+],
+"source": "schwab"
+},
+"mode": "send",
+"quote_age_s": 12.1,
+"r_dollars": 0.01639999999999997,
+"run_id": "2026-10-05:1791209116",
+"send_result": {
+"alert_type": "at_scalp_armed",
+"channel": "telegram",
+"sent": true
+},
+"sent": true,
+"tape": {},
+"ts_epoch": 1791209116.0982792,
+"verdict": "ALERT",
+"veto_reasons": []
+},
+{
+"authority": {
+"broker_write": false,
+"financial_action": false,
+"order": false,
+"read_only": true,
+"two_factor": false
+},
+"candidate": {
+"entry_ref": 4.485,
+"fire_ts_epoch": 1791209100.0,
+"float_mm": 20.68,
+"fsm_state": "PULLBACK",
+"ign": 21.58,
+"lane": "BELOW",
+"last": 4.475,
+"quote_ts_epoch": 1791209413.0,
+"rvol": 2.832757168172443,
+"session_date": "2026-10-05",
+"setup_id": null,
+"setup_label": null,
+"stop_ref": 4.4661,
+"symbol": "XNDU"
+},
+"contract": "active-trader-momentum-alert-v1",
+"kind": "TRIGGERED",
+"l2": {
+"age_s": -0.1,
+"ask_depth": 10779.0,
+"best_ask": 4.48,
+"best_bid": 4.47,
+"bid_depth": 10329.0,
+"depth_ratio": 0.958,
+"levels": 10,
+"ok": true,
+"reasons": [],
+"source": "moomoo",
+"spread_bps": 22.3,
+"ts_source": "fetch"
+},
+"l2_compare": {
+"ok": false,
+"reasons": [
+"BOOK_MISSING"
+],
+"source": "schwab"
+},
+"mode": "send",
+"quote_age_s": 2.5,
+"r_dollars": 0.01890000000000036,
+"run_id": "2026-10-05:1791209415",
+"sent": false,
+"tape": {
+"age_s": 2.5,
+"buy_ratio": 0.998,
+"buy_volume": 1855.0,
+"last_price": 4.475,
+"ok": true,
+"prints": 50,
+"reasons": [],
+"sell_volume": 3.0,
+"source": "moomoo"
+},
+"ts_epoch": 1791209415.4634302,
+"verdict": "VETO",
+"veto_reasons": [
+"L2_ASK_HEAVY"
+]
+},
+{
+"authority": {
+"broker_write": false,
+"financial_action": false,
+"order": false,
+"read_only": true,
+"two_factor": false
+},
+"candidate": {
+"entry_ref": 4.485,
+"fire_ts_epoch": 1791209100.0,
+"float_mm": 20.68,
+"fsm_state": "ARMED",
+"ign": 16.979,
+"lane": "BELOW",
+"last": 4.46,
+"quote_ts_epoch": 1791210311.0,
+"rvol": 2.4522085366120456,
+"session_date": "2026-10-05",
+"setup_id": null,
+"setup_label": null,
+"stop_ref": 4.4661,
+"symbol": "XNDU"
+},
+"contract": "active-trader-momentum-alert-v1",
+"kind": "ARMED",
+"l2": {
+"age_s": -0.6,
+"ask_depth": 31631.0,
+"best_ask": 4.46,
+"best_bid": 4.45,
+"bid_depth": 32463.0,
+"depth_ratio": 1.026,
+"levels": 10,
+"ok": true,
+"reasons": [],
+"source": "moomoo",
+"spread_bps": 22.4,
+"ts_source": "opend_server"
+},
+"l2_compare": {
+"ok": false,
+"reasons": [
+"BOOK_MISSING"
+],
+"source": "schwab"
+},
+"mode": "send",
+"quote_age_s": 2.9,
+"r_dollars": 0.01890000000000036,
+"run_id": "2026-10-05:1791210313",
+"send_result": {
+"alert_type": "at_scalp_armed",
+"channel": "telegram",
+"sent": true
+},
+"sent": true,
+"tape": {},
+"ts_epoch": 1791210313.8898325,
+"verdict": "ALERT",
+"veto_reasons": []
+},
+{
+"authority": {
+"broker_write": false,
+"financial_action": false,
+"order": false,
+"read_only": true,
+"two_factor": false
+},
+"candidate": {
+"entry_ref": 4.485,
+"fire_ts_epoch": 1791209100.0,
+"float_mm": 20.68,
+"fsm_state": "ARMED",
+"ign": 16.2,
+"lane": "BELOW",
+"last": 4.44,
+"quote_ts_epoch": 1791210615.0,
+"rvol": 2.4324081020255064,
+"session_date": "2026-10-05",
+"setup_id": null,
+"setup_label": null,
+"stop_ref": 4.4661,
+"symbol": "XNDU"
+},
+"contract": "active-trader-momentum-alert-v1",
+"kind": "ARMED",
+"l2": {
+"age_s": -0.1,
+"ask_depth": 40296.0,
+"best_ask": 4.44,
+"best_bid": 4.43,
+"bid_depth": 31116.0,
+"depth_ratio": 0.772,
+"levels": 10,
+"ok": true,
+"reasons": [],
+"source": "moomoo",
+"spread_bps": 22.5,
+"ts_source": "fetch"
+},
+"l2_compare": {
+"ok": false,
+"reasons": [
+"BOOK_MISSING"
+],
+"source": "schwab"
+},
+"mode": "send",
+"quote_age_s": 7.4,
+"r_dollars": 0.01890000000000036,
+"run_id": "2026-10-05:1791210622",
+"sent": false,
+"tape": {},
+"ts_epoch": 1791210622.420308,
+"verdict": "VETO",
+"veto_reasons": [
+"L2_ASK_HEAVY"
+]
+},
+{
+"authority": {
+"broker_write": false,
+"financial_action": false,
+"order": false,
+"read_only": true,
+"two_factor": false
+},
+"candidate": {
+"entry_ref": 4.48,
+"fire_ts_epoch": 1791210660.0,
+"float_mm": 20.68,
+"fsm_state": "IMPULSE",
+"ign": 20.474,
+"lane": "BELOW",
+"last": 4.44,
+"quote_ts_epoch": 1791210913.0,
+"rvol": 2.529710670953023,
+"session_date": "2026-10-05",
+"setup_id": null,
+"setup_label": null,
+"stop_ref": 4.4654,
+"symbol": "XNDU"
+},
+"contract": "active-trader-momentum-alert-v1",
+"kind": "TRIGGERED",
+"l2": {
+"age_s": -0.1,
+"ask_depth": 10721.0,
+"best_ask": 4.45,
+"best_bid": 4.44,
+"bid_depth": 10971.0,
+"depth_ratio": 1.023,
+"levels": 10,
+"ok": true,
+"reasons": [],
+"source": "moomoo",
+"spread_bps": 22.5,
+"ts_source": "fetch"
+},
+"l2_compare": {
+"ok": false,
+"reasons": [
+"BOOK_MISSING"
+],
+"source": "schwab"
+},
+"mode": "send",
+"quote_age_s": 4.7,
+"r_dollars": 0.014600000000000612,
+"run_id": "2026-10-05:1791210917",
+"sent": false,
+"tape": {
+"age_s": 2.6,
+"buy_ratio": 0.45,
+"buy_volume": 2129.921348,
+"last_price": 4.4442,
+"ok": true,
+"prints": 50,
+"reasons": [],
+"sell_volume": 2608.0,
+"source": "moomoo"
+},
+"ts_epoch": 1791210917.6571777,
+"verdict": "VETO",
+"veto_reasons": [
+"L2_ASK_HEAVY",
+"TAPE_SELLERS"
+]
+}
+],
+"fills": [
+{
+"ts_epoch": 1791209229.0,
+"account": "schwab_rollover_ira",
+"symbol": "XNDU",
+"side": "Buy",
+"qty": 100.0,
+"price": 4.48,
+"amount": -448.0,
+"source": "schwab_api"
+},
+{
+"ts_epoch": 1791209295.0,
+"account": "schwab_rollover_ira",
+"symbol": "XNDU",
+"side": "Sell",
+"qty": 100.0,
+"price": 4.49,
+"amount": 448.99,
+"source": "schwab_api"
+}
+]
+}

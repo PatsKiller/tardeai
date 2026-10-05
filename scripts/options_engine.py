@@ -1503,6 +1503,49 @@ def _build_reasoning(
     return " · ".join(parts)
 
 
+# Operator options intents (2026-10-05). The generic covered-call screen proposed SPCX $185C while the
+# operator's standing plan says covered calls must keep the run toward $300 (spec.options_intent on
+# the SPCX ticker directive). An active intent's covered-call floor now binds this generator. Fail-
+# open to the generic rules only when no intent can be read (never invents a floor).
+_INTENT_CC_FLOORS: Optional[Dict[str, Any]] = None
+
+
+def _intent_cc_floors() -> Dict[str, Any]:
+    global _INTENT_CC_FLOORS
+    if _INTENT_CC_FLOORS is None:
+        floors: Dict[str, Any] = {}
+        try:
+            from lib.options_intent import store as _ois
+            from db_adapter import _execute
+            for r in _execute(_ois.SELECT_SQL, None, fetch="all") or []:
+                spec = r.get("spec") if isinstance(r, dict) else None
+                spec = json.loads(spec) if isinstance(spec, str) else (spec or {})
+                it = spec.get(_ois.INTENT_KEY) or {}
+                cc = (it.get("plays") or {}).get("covered_call")
+                if it.get("status", "active") == "active" and it.get("symbol"):
+                    floors[str(it["symbol"]).upper()] = {"covered_call": cc, "thesis_target": it.get("thesis_target"),
+                                                         "directive_id": r.get("id") if isinstance(r, dict) else None}
+        except Exception:
+            floors = {}
+        _INTENT_CC_FLOORS = floors
+    return _INTENT_CC_FLOORS
+
+
+def _intent_blocks_covered_call(sym: str, strike: float, spot: float) -> Optional[str]:
+    """Reason string when an operator intent forbids this covered-call strike, else None."""
+    it = _intent_cc_floors().get(sym.upper())
+    if not it:
+        return None
+    if it.get("covered_call") is None:
+        return f"operator options intent #{it.get('directive_id')} has no covered-call play for {sym}"
+    from lib.options_intent.ranking import cc_strike_floor
+    floor = cc_strike_floor(it["covered_call"], spot=spot, thesis_target=it.get("thesis_target"))
+    if floor is not None and strike < floor:
+        return (f"operator options intent #{it.get('directive_id')}: covered calls on {sym} must be at or above "
+                f"${floor:g} (thesis target ${it.get('thesis_target')})")
+    return None
+
+
 def generate_covered_call_proposals(
     holdings: List[dict],
     tech_map: dict,
@@ -1554,6 +1597,8 @@ def generate_covered_call_proposals(
         premium = contract["mid"]
         strike = contract["strike"]
         dte = contract["dte"]
+        if _intent_blocks_covered_call(sym, _f(strike), _f(price)):
+            continue  # the operator's standing intent overrides the generic strike choice
         iv = contract.get("iv") or 0.25
         exp = contract.get("exp")
         und = _f(price)
@@ -3316,7 +3361,8 @@ def generate_proposals(force: bool = False, *, scan_inputs: Optional[dict] = Non
         all_p.extend(p for p in (cached or {}).get("proposals", []) if p.get("symbol") not in refreshed)
     if scan_inputs is not None:
         from lib.options_advisory_candidates import generate_candidates
-        all_p.extend(generate_candidates(convictions, holdings, scan_inputs.get("chains", {})))
+        all_p.extend(generate_candidates(convictions, holdings, scan_inputs.get("chains", {}),
+                                         covered_call_block=_intent_blocks_covered_call, drops=INCOME_SCREEN_DROPS))
     for p in all_p:
         p["iv_rank_basis"] = IV_RANK_BASIS.get(p.get("symbol"), "unknown")
         p["desk_queue"] = desk_queue(p, (p.get("research_context") or {}).get("source_lanes") or [])
