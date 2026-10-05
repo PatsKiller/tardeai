@@ -276,21 +276,25 @@ canceled → CANCELLED; rejected → REJECTED; expired → EXPIRED; unknown → 
 def _acceptance_doc(state: dict, rel: dict, mat: dict, wp_status: str, nb_status: str,
                     ledger_status: str) -> str:
     score = mat.get("final_maturity_score_of_5")
-    meets = mat.get("meets_4_5")
     rel_status = rel.get("status", "UNKNOWN")
     live_dirty = (rel.get("dirty_classification") or {}).get("live_adjacent") or []
-    verdict = ("**4.5 MET**" if meets else "**4.5 BLOCKED**") if mat else "**maturity score not yet computed**"
+    verdict = "**HISTORICAL — SUPERSEDED; current learning not established by this artifact**"
     caps = mat.get("caps_applied") or []
     caps_md = ("\n".join(f"- {c['reason']} → cap {c['cap']}" for c in caps)) if caps else "- None."
-    return f"""# Maturity 4.5 Acceptance Checklist
+    return f"""# Control Validation and Historical Coverage Checklist
 
 _Generated: {_now()}_
 _Source: `python3 scripts/export_diligence_evidence.py` + `scripts/compute_maturity_score.py`_
 **Status: {verdict}**
 
-## 1. Current maturity score
+## 1. Superseded historical maturity artifact
 
-- Final maturity (after caps): **{score} / 5** ({'meets 4.5' if meets else 'does not meet 4.5'})
+The June installation score below is retained as history. It does not establish current learning,
+current readiness, or release acceptance. Read `/api/v3/control-plane/maturity` for measured
+current evidence and freshness; unavailable evidence remains unknown.
+
+- Historical as-of: {mat.get('as_of') or mat.get('generated_at') or mat.get('computed_at') or 'not recorded'}
+- Historical final maturity (after caps): **{score} / 5**
 - Raw weighted: {mat.get('raw_weighted_score_of_5')} / 5
 - Caps applied:
 {caps_md}
@@ -350,7 +354,7 @@ See `MATURITY_SCORE_LATEST.md` for the full line-by-line breakdown.
 - [{'x' if wp_status == 'PASS' else ' '}] Schwab write policy validator green
 - [{'x' if nb_status == 'PASS' else ' '}] No-broker-write-bypass test green
 - [{'x' if ledger_status in ('PASS', 'WARN') else ' '}] Audit ledger chain verified
-- [{'x' if meets else ' '}] Maturity score ≥ 4.5 earned from evidence
+- [ ] Current learning acceptance requires fresh production evidence; historical score is superseded
 
 **Broker truth is authoritative after submit. No order is treated as live before broker acknowledgement.**
 """

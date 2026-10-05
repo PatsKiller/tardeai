@@ -94,27 +94,17 @@ def test_critic_refuses_trade_verbs(tmp_path, monkeypatch):
     assert not (tmp_path / "agent_views.jsonl").exists()
 
 
-def test_commitment_flag_mints_and_calibration_on_settled(tmp_path, monkeypatch):
+def test_commitment_flag_does_not_turn_an_observation_into_a_prediction(tmp_path, monkeypatch):
     monkeypatch.setenv(CORTEX_SHADOW_FLAG, "1")
     monkeypatch.setenv(COMMITMENT_FLAG, "1")
-    r = run_cortex_shadow(
-        subject="subj-1",
-        summary="Evidence suggests quiet tape",
-        citations=["src_1"],
-        confidence=0.7,
-        state_root=tmp_path,
-        source_sha_value="sha-test",
-        observation={"confirmed": True},
-        dry_run=False,
-    )
-    assert r.ok and r.commitment and r.evaluation
-    assert r.evaluation["outcome"] == "CONFIRMED"
-    assert (tmp_path / "commitments.jsonl").exists()
-    assert (tmp_path / "calibration_shadow.json").exists()
-    cal = json.loads((tmp_path / "calibration_shadow.json").read_text(encoding="utf-8"))
-    assert cal["confirmed"] == 1
-    assert cal["refuted_hidden"] is False
-    assert r.mbi_behavior == 0
+    r = run_cortex_shadow(subject="subj-1", summary="Evidence suggests quiet tape",
+                         citations=["src_1"], confidence=0.7, state_root=tmp_path,
+                         source_sha_value="sha-test", observation={"confirmed": True}, dry_run=False)
+    assert r.ok and r.outcome == "observation_only"
+    assert r.commitment is None and r.evaluation is None
+    assert (tmp_path / "agent_views.jsonl").exists()
+    assert not (tmp_path / "commitments.jsonl").exists()
+    assert not (tmp_path / "calibration_shadow.json").exists()
 
 
 def test_cli_flag_off(capsys, tmp_path, monkeypatch):

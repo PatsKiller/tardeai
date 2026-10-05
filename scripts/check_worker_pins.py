@@ -91,26 +91,62 @@ def dev_tree_sha(dev_tree: Path = DEV_TREE) -> str | None:
     return sha
 
 
+def service_observation(unit: str, *, runner=None, cgroup_root: Path = Path("/sys/fs/cgroup")) -> dict[str, Any]:
+    """Exit evidence, never an inferred OOM diagnosis or a restart action."""
+    from datetime import datetime, timezone
+
+    run = runner or subprocess.run
+    fields = ("Id", "MainPID", "ActiveState", "SubState", "Result", "ExecMainCode", "ExecMainStatus",
+              "NRestarts", "Restart", "InvocationID", "ControlGroup", "WorkingDirectory",
+              "ExecMainStartTimestamp", "ExecMainExitTimestamp")
+    row = {"name": unit, "as_of": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")}
+    try:
+        proc = run(["systemctl", "--user", "show", "--property=" + ",".join(fields), unit],
+                   capture_output=True, text=True, timeout=10, check=True)
+        props = dict(line.split("=", 1) for line in proc.stdout.splitlines() if "=" in line)
+        row.update({k: props.get(k) or None for k in fields})
+        row["observation_status"] = "OBSERVED" if props.get("Id") else "UNAVAILABLE"
+    except (OSError, subprocess.SubprocessError) as exc:
+        row.update(observation_status="UNAVAILABLE", error=type(exc).__name__)
+    counters = None
+    group = row.get("ControlGroup")
+    if group:
+        try:
+            path = (cgroup_root / str(group).lstrip("/") / "memory.events").resolve()
+            path.relative_to(cgroup_root.resolve())
+            counters = {k: int(v) for k, v in (line.split() for line in path.read_text().splitlines())}
+        except (OSError, ValueError):
+            pass  # Missing cgroup after exit is UNKNOWN, not zero OOMs.
+    row["cgroup_memory_events"] = counters
+    row["restart_reason"] = row.get("Result") if row.get("Result") not in (None, "success") else None
+    row["exit_signal"] = row.get("ExecMainStatus") if row.get("ExecMainCode") in ("2", "3", "killed", "dumped") else None
+    row["oom_causation"] = "OBSERVED" if row.get("Result") == "oom-kill" else "NOT_ESTABLISHED"
+    return row
+
+
 def unit_rows(units: Iterable[str] = RELEVANT_UNITS) -> list[dict[str, Any]]:
     rows = []
     for u in units:
-        try:
-            pid = subprocess.run(["systemctl", "--user", "show", "-p", "MainPID", "--value", u],
-                                 capture_output=True, text=True, timeout=10, check=False).stdout.strip()
-            active = subprocess.run(["systemctl", "--user", "is-active", u],
-                                    capture_output=True, text=True, timeout=10, check=False).stdout.strip()
-        except Exception:
-            pid, active = "", "unknown"
+        observation = service_observation(u)
+        pid = observation.get("MainPID")
         cwd = None
         if pid and pid != "0":
             try:
                 cwd = os.readlink(f"/proc/{pid}/cwd")
             except OSError:
-                cwd = None
-        rows.append({"kind": "unit", "name": u, "active": active, "pid": pid or None, "path": cwd,
-                     **tree_of(cwd or "")})
+                pass
+        declared = observation.get("WorkingDirectory") or ""
+        # These are the explicit units in the canonical promotion contract.
+        current_units = {"portfolio-server.service", *os.environ.get("TRADEAI_CURRENT_BOUND_UNITS",
+                         "tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service").split()}
+        binding = "CURRENT" if (u in current_units or str(CURRENT) in declared or "/portfolio-server/CURRENT" in declared) else (
+            "DECLARED_SEPARATE" if declared else "UNDECLARED")
+        rows.append({"kind": "unit", "name": u, "active": observation.get("ActiveState") or "unknown",
+                     "pid": pid, "path": cwd, "declared_path": declared, "deployment_binding": binding,
+                     "cwd_is_release_pin": bool(tree_of(declared).get("tree") in {"release", "current"}
+                                                or re.search(r"/trade-ai-deployments/[^/]+/[0-9a-f]{40}/?$", declared)),
+                     "exit_observation": observation, **tree_of(cwd or "")})
     return rows
-
 
 def cron_rows(crontab_text: str, *, patterns: Iterable[str] = RELEVANT_CRON_PATTERNS) -> list[dict[str, Any]]:
     rows = []
@@ -128,10 +164,27 @@ def cron_rows(crontab_text: str, *, patterns: Iterable[str] = RELEVANT_CRON_PATT
 def evaluate(*, served: str | None, rows: list[dict[str, Any]]) -> dict[str, Any]:
     mismatches = []
     for r in rows:
+        if (r.get("exit_observation") or {}).get("observation_status") == "UNAVAILABLE":
+            r["verdict"] = "UNVERIFIED"
+            mismatches.append(r)
+            continue
         if r.get("kind") == "unit" and r.get("active") not in ("active", None, "unknown"):
             r["verdict"] = "INACTIVE"
             continue
         sha = r.get("sha")
+        if r.get("kind") == "unit" and r.get("deployment_binding") == "DECLARED_SEPARATE":
+            if r.get("cwd_is_release_pin") is False:
+                # A daemon may chdir into its data directory. WorkingDirectory
+                # alone is not an immutable-release deployment contract.
+                r["verdict"] = "SEPARATE_WORKDIR_OBSERVED"
+                continue
+            declared = str(r.get("declared_path") or "")
+            actual = str(r.get("path") or "")
+            matches = bool(declared and actual and Path(declared).resolve() == Path(actual).resolve())
+            r["verdict"] = "SEPARATE_CONTRACT_MATCH" if matches else "SEPARATE_CONTRACT_MISMATCH"
+            if not matches:
+                mismatches.append(r)
+            continue
         if r.get("tree") == "other":
             r["verdict"] = "OTHER_TREE"
             continue

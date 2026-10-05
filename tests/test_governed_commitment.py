@@ -103,8 +103,8 @@ def test_duplicate_commitment_same_id():
 
 def test_outcome_confirmed_and_refuted():
     c = build_governed_commitment(**_base())
-    conf = evaluate_outcome(c, observation={"confirmed": True})
-    ref = evaluate_outcome(c, observation={"refuted": True})
+    conf = evaluate_outcome(c, observation={"confirmed": True, "observed": True, "source_refs": ["price:fixture"], "commitment_id": c["commitment_id"]})
+    ref = evaluate_outcome(c, observation={"refuted": True, "observed": True, "source_refs": ["price:fixture"], "commitment_id": c["commitment_id"]})
     assert conf["outcome"] == "CONFIRMED"
     assert ref["outcome"] == "REFUTED"
     assert conf["commitment_id"] == c["commitment_id"]
@@ -119,17 +119,17 @@ def test_outcome_expired_after_due():
 
 def test_prohibited_self_evaluation():
     c = build_governed_commitment(**_base(trigger_provenance={"producer": "alice"}))
-    o = evaluate_outcome(c, observation={"confirmed": True}, evaluator_identity="alice")
+    o = evaluate_outcome(c, observation={"confirmed": True, "observed": True, "source_refs": ["price:fixture"], "commitment_id": c["commitment_id"]}, evaluator_identity="alice")
     assert o["outcome"] == "INSUFFICIENT_EVIDENCE"
     assert "prohibited_self_evaluation" in o["errors"]
 
 
 def test_refuted_outcome_preserved_in_ledger():
     c = build_governed_commitment(**_base())
-    ledger = durable_outcome_ledger_append([], evaluate_outcome(c, observation={"refuted": True}))
+    ledger = durable_outcome_ledger_append([], evaluate_outcome(c, observation={"refuted": True, "observed": True, "source_refs": ["price:fixture"], "commitment_id": c["commitment_id"]}))
     assert len(ledger) == 1 and ledger[0]["outcome"] == "REFUTED"
     # Append-only: re-evaluating the same commitment+observation is a no-op.
-    again = durable_outcome_ledger_append(ledger, evaluate_outcome(c, observation={"refuted": True}))
+    again = durable_outcome_ledger_append(ledger, evaluate_outcome(c, observation={"refuted": True, "observed": True, "source_refs": ["price:fixture"], "commitment_id": c["commitment_id"]}))
     assert len(again) == 1
 
 

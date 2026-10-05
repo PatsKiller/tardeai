@@ -52,7 +52,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -62,6 +61,9 @@ from scripts.lib.governed_commitment import (
     OUTCOME_SCHEMA,
     durable_outcome_ledger_append,
     evaluate_outcome,
+    claim_is_falsifiable,
+    is_prediction,  # public compatibility import
+
 )
 
 AUTHORITY = "READ_ONLY_ADVISORY"
@@ -73,14 +75,6 @@ SETTLED = ("CONFIRMED", "REFUTED", "EXPIRED")
 #: A claim that only asserts its own occurrence cannot be contradicted by any
 #: later observation. Matched on the live template, not invented: 96 of 224
 #: commitments are this exact shape.
-_UNFALSIFIABLE_CLAIM_RE = re.compile(
-    r"reviewed subject\s+[0-9a-f-]{8,}\s*;\s*advisory observation only", re.I
-)
-#: Likewise a falsifier that restates "the claim could be wrong" names no
-#: observable and so can never fire.
-_VACUOUS_FALSIFIER_RE = re.compile(
-    r"^\s*observation contradicts claim within horizon\s*$", re.I
-)
 
 
 def _now() -> datetime:
@@ -103,37 +97,6 @@ def _iso(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def is_prediction(commitment: Mapping[str, Any]) -> bool:
-    """Does this record predict anything, or merely record that something happened?
-
-    `commitments.jsonl` holds two shapes. 99 rows are GovernedCommitment@v1:
-    FROZEN, with due_at, horizon, confidence and a falsifier. The other 125 are
-    thin wake commitments -- agent_id / commitment_kind / normalized_claim,
-    lifecycle OPEN, claims like "selection:material_change:<guid> warrants
-    review" -- with no due_at, no horizon and no confidence. Those are
-    observations, not predictions, and were never meant to be scored.
-
-    Counting them as predictions with a missing falsifier would invent 125
-    failures out of records that never claimed anything about the future.
-    """
-    return bool(commitment.get("due_at")) and bool(commitment.get("horizon"))
-
-
-def claim_is_falsifiable(commitment: Mapping[str, Any]) -> tuple[bool, str]:
-    """Can any later observation contradict this claim? Returns (ok, reason)."""
-    claim = str(commitment.get("claim") or "")
-    falsifier = str(commitment.get("falsifier") or "")
-    if not is_prediction(commitment):
-        return False, "not_a_prediction"
-    if not claim.strip():
-        return False, "missing_claim"
-    if not falsifier.strip():
-        return False, "missing_falsifier"
-    if _UNFALSIFIABLE_CLAIM_RE.search(claim):
-        return False, "claim_asserts_only_that_a_review_occurred"
-    if _VACUOUS_FALSIFIER_RE.match(falsifier):
-        return False, "falsifier_names_no_observable"
-    return True, "falsifiable"
 
 
 def _lesson_id(commitment_id: str, outcome: str) -> str:
@@ -171,6 +134,8 @@ def build_lesson_candidate(
         ),
         "ratified_by": None,
         "ratified_at": None,
+        "outcome_evidence_refs": (outcome.get("observation") or {}).get("source_refs") or [],
+        "advisory_use": {"state": "NOT_YET_OBSERVED", "broker_behavior_authorized": False},
         "rejected_by": None,
         "rejected_at": None,
         "produced_at": _iso(when),
@@ -268,9 +233,13 @@ def sweep_due_commitments(
                 ).hexdigest()[:32],
             }
         else:
+            try:
+                observation = provider(commitment)
+            except Exception as exc:
+                observation = {"available": False, "reason": "observation_provider_unavailable:" + type(exc).__name__}
             outcome = evaluate_outcome(
                 dict(commitment),
-                observation=provider(commitment),
+                observation=observation,
                 now=when,
                 evaluator_identity=evaluator_identity,
             )

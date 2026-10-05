@@ -17,6 +17,7 @@ STATUSES = (
     "LLM_ELIGIBLE_NOT_AUTHORIZED",
     "RESOLVED_LLM",
     "NO_LONGER_RELEVANT",
+    "EXPIRED",
 )
 
 
@@ -83,7 +84,8 @@ def upsert_gap(root: Path | str, gap: dict[str, Any]) -> dict[str, Any]:
                 continue
     gid = gap.get("gap_id")
     prev = next((r for r in rows if r.get("gap_id") == gid), None)
-    if prev and prev.get("status") == gap.get("status") and prev.get("question") == gap.get("question"):
+    if prev and all(prev.get(k) == gap.get(k) for k in
+                    ("status", "question", "answer_status", "answer_ids", "resolved_by_artifact_guids")):
         return {"wrote": False, "reason": "NO_NEW_INFO", "gap": prev}
     kept = [r for r in rows if r.get("gap_id") != gid]
     kept.append(gap)
@@ -117,3 +119,67 @@ def _register_on_spine(gap: dict[str, Any]) -> str | None:
         )
     except Exception:  # noqa: BLE001 -- never break the gap write
         return None
+
+
+def reconcile_research_completion(root: Path | str, request: dict, result: dict, *, critique: dict | None = None) -> dict:
+    """Close only explicitly originating gaps with matching, fresh cited answers."""
+    from scripts.lib.research_quality import evidence_eligibility
+    metadata = request.get("metadata") if isinstance(request.get("metadata"), dict) else {}
+    origins = request.get("gap_ids") or metadata.get("gap_ids") or [request.get("gap_id") or metadata.get("gap_id")]
+    if isinstance(origins, str):
+        origins = [origins]
+    origins = {str(g) for g in origins if g}
+    if not origins:
+        return {"status": "NO_ORIGIN_GAP", "updated": 0}
+    path = Path(root) / PATH
+    rows = []
+    if path.exists():
+        for line in path.read_text().splitlines():
+            if line.strip():
+                rows.append(json.loads(line))
+    changed = []
+    missing = set(origins)
+    for gap in rows:
+        gid = str(gap.get("gap_id") or "")
+        if gid not in origins:
+            continue
+        missing.discard(gid)
+        if gap.get("status") in {"RESOLVED_LLM", "RESOLVED_FREE", "NO_LONGER_RELEVANT", "EXPIRED"}:
+            continue
+        rid = str(result.get("result_id") or "")
+        if rid and rid in (gap.get("answer_ids") or []):
+            continue
+        validation = evidence_eligibility({**request, "symbol": gap.get("symbol"),
+                                           "subject_guid": gap.get("security_guid")}, result, critique)
+        answers = result.get("answers") or []
+        if not isinstance(answers, list):
+            answers = []
+        matches = [a for a in answers if isinstance(a, dict) and
+                   (str(a.get("gap_id") or a.get("question_id") or "") == gid or
+                    str(a.get("question") or "").strip() == str(gap.get("question") or "").strip()) and a.get("answer")]
+        # Explicit result/request joins alone establish lineage, not answer completeness.
+        state, reason = "UNRESOLVED", "no_matching_answer"
+        if not validation["eligible"]:
+            reason = ";".join(validation["reasons"])
+        elif matches:
+            state = "ANSWERED" if str((critique or {}).get("verdict") or "").upper() == "VALID" else "PARTIALLY_ANSWERED"
+            reason = "matched_origin_question_with_cited_research"
+        updated = {**gap, "answer_status": state,
+                   "answer_ids": list(gap.get("answer_ids") or []) + ([rid] if rid else []),
+                   "lifecycle_events": list(gap.get("lifecycle_events") or []) + [{
+                       "at": _now(), "state": state, "reason": reason, "result_id": rid,
+                       "research_id": result.get("research_id") or request.get("research_id"),
+                       "evidence_refs": validation["evidence_refs"]}]}
+        if state == "ANSWERED":
+            updated.update(status="RESOLVED_LLM", resolved_at=_now(), resolved_by_artifact_guids=[rid])
+        elif gap.get("expires_at"):
+            try:
+                expiry = datetime.fromisoformat(str(gap["expires_at"]).replace("Z", "+00:00"))
+                if expiry.tzinfo and expiry <= datetime.now(timezone.utc):
+                    updated.update(status="EXPIRED", answer_status="EXPIRED")
+            except ValueError:
+                pass
+        outcome = upsert_gap(root, updated)
+        if outcome["wrote"]:
+            changed.append({"gap_id": gid, "answer_status": updated["answer_status"], "result_id": rid})
+    return {"status": "RECONCILED", "updated": len(changed), "changes": changed, "missing_origin_ids": sorted(missing)}

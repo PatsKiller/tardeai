@@ -192,9 +192,10 @@ def test_same_slot_replay_one_wake_one_effect_receipt(tmp_path):
     ]
     assert len(effects) == 1
     assert effects[0]["source_id"] == RID
-    assert effects[0]["receipt_id"] == mint_receipt_id(
-        AGENT, "research_object", RID, "wake_decision",
-    )
+    # Receipts now include the actual subject and wake scope to avoid aliasing
+    # unrelated consumption. Replay still emits exactly one effect.
+    assert effects[0]["subject_guid"] == SG
+    assert effects[0]["wake_id"] == a["wake"]["wake_id"]
     assert b.get("replay_suppressed") is True
     assert a["wake"]["wake_id"] == b["wake"]["wake_id"]
 
