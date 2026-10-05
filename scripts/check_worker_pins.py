@@ -136,7 +136,11 @@ def unit_rows(units: Iterable[str] = RELEVANT_UNITS) -> list[dict[str, Any]]:
             except OSError:
                 pass
         declared = observation.get("WorkingDirectory") or ""
-        binding = "CURRENT" if str(CURRENT) in declared or "/portfolio-server/CURRENT" in declared else "SEPARATE_OR_UNDECLARED"
+        # These are the explicit units in the canonical promotion contract.
+        current_units = {"portfolio-server.service", *os.environ.get("TRADEAI_CURRENT_BOUND_UNITS",
+                         "tradeai-health-agent.service cio-governed-bridge.service tradeai-cio-telegram.service").split()}
+        binding = "CURRENT" if (u in current_units or str(CURRENT) in declared or "/portfolio-server/CURRENT" in declared) else (
+            "DECLARED_SEPARATE" if declared else "UNDECLARED")
         rows.append({"kind": "unit", "name": u, "active": observation.get("ActiveState") or "unknown",
                      "pid": pid, "path": cwd, "declared_path": declared, "deployment_binding": binding,
                      "exit_observation": observation, **tree_of(cwd or "")})
@@ -158,10 +162,22 @@ def cron_rows(crontab_text: str, *, patterns: Iterable[str] = RELEVANT_CRON_PATT
 def evaluate(*, served: str | None, rows: list[dict[str, Any]]) -> dict[str, Any]:
     mismatches = []
     for r in rows:
+        if (r.get("exit_observation") or {}).get("observation_status") == "UNAVAILABLE":
+            r["verdict"] = "UNVERIFIED"
+            mismatches.append(r)
+            continue
         if r.get("kind") == "unit" and r.get("active") not in ("active", None, "unknown"):
             r["verdict"] = "INACTIVE"
             continue
         sha = r.get("sha")
+        if r.get("kind") == "unit" and r.get("deployment_binding") == "DECLARED_SEPARATE":
+            declared = str(r.get("declared_path") or "")
+            actual = str(r.get("path") or "")
+            matches = bool(declared and actual and Path(declared).resolve() == Path(actual).resolve())
+            r["verdict"] = "SEPARATE_CONTRACT_MATCH" if matches else "SEPARATE_CONTRACT_MISMATCH"
+            if not matches:
+                mismatches.append(r)
+            continue
         if r.get("tree") == "other":
             r["verdict"] = "OTHER_TREE"
             continue
