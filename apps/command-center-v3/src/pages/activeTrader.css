@@ -147,7 +147,7 @@ button.at-motion-rail__row:focus-visible{outline:2px solid var(--at-blue);outlin
 .at-alerts__hero h1{margin:0;font-size:24px}.at-alerts__hero h1 small{font-size:14px;color:var(--at-muted);font-weight:500;margin-left:8px}
 .at-alerts__hero p{margin:6px 0 0;color:var(--at-muted);max-width:70ch;line-height:1.45}
 .at-alerts__badges .at-chip{font-size:13px}
-.at-alerts__kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.at-alerts__kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:12px;margin-bottom:16px}
 .at-kpi{background:var(--at-panel);border:1px solid var(--at-line);border-radius:var(--radius-lg);padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
 .at-kpi small{color:var(--at-muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
 .at-kpi strong{font-size:28px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.1}
@@ -221,3 +221,4 @@ button.at-motion-rail__row:focus-visible{outline:2px solid var(--at-blue);outlin
 .at-alerts__replay summary{cursor:pointer;color:var(--at-blue);font-size:13px}
 .at-alerts__replay summary:focus-visible{outline:2px solid var(--at-blue);outline-offset:2px}
 .at-alerts__replay-point{display:flex;flex-direction:column;gap:3px;margin-top:8px;padding:8px 10px;border-radius:var(--radius-md);background:var(--at-panel2)}
+.at-alerts__sync{margin-top:6px;color:var(--at-muted)}

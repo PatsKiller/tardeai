@@ -117,3 +117,28 @@ test('phone width has no horizontal overflow', async ({ page }) => {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)
   expect(overflow).toBeLessThanOrEqual(1)
 })
+
+test('alert sync: APPROACHING / intrabar kinds, buy zone and latency are shown', async ({ page }) => {
+  const sync = {
+    ...feed,
+    counts: { buy_alerts: 1, headsup_alerts: 1, vetoes: 0, sent: 2, decisions: 2 },
+    latency: { all: { n: 2, p50_s: 5, p90_s: 40 }, 'source:fast': { n: 2, p50_s: 5, p90_s: 40 } },
+    decisions: [
+      { id: 'f1', at: '2026-10-05T10:00:05-04:00', symbol: 'XNDU', kind: 'APPROACHING', verdict: 'ALERT', veto_reasons: [], sent: true,
+        last: 4.38, entry: 4.425, stop: 4.36, r: 0.065, source: 'fast', break_level: 4.405,
+        l2: { source: 'moomoo', levels: 10, depth_ratio: 1.4, spread_bps: 22, age_s: 1 } },
+      { id: 'f2', at: '2026-10-05T09:51:45-04:00', symbol: 'XNDU', kind: 'TRIGGERED', verdict: 'ALERT', veto_reasons: [], sent: true,
+        last: 4.355, entry: 4.375, stop: 4.331, r: 0.044, source: 'fast', intrabar: true, break_level: 4.32,
+        latency: { event: 'break_print', latency_s: 40, event_at: '2026-10-05T09:51:05-04:00' },
+        l2: { source: 'moomoo', levels: 10, depth_ratio: 1.3, spread_bps: 23, age_s: 1 } },
+    ],
+  }
+  await open(page, sync)
+  await expect(page.getByTestId('at-alert-row').first()).toContainText('APPROACHING')
+  await expect(page.getByTestId('at-alert-row').first()).toContainText('break above 4.41')
+  await expect(page.getByTestId('at-alert-row').nth(1)).toContainText('TIME TO BUY · intrabar')
+  await expect(page.getByTestId('at-alert-row').nth(1)).toContainText('40s after the break print')
+  await expect(page.locator('.at-kpi', { hasText: 'Alert latency' })).toContainText('5s · 40s')
+  await page.locator('.at-kpi', { hasText: 'Heads-up' }).click()
+  await expect(page.getByTestId('at-alert-row')).toHaveCount(1)
+})

@@ -87,7 +87,36 @@ def _compact(row: dict, score: Optional[dict]) -> dict:
         "supply": l2.get("supply") or None,
         "signals": _signals_view(row.get("signals")),
         "outcome": _outcome_view((score or {}).get("outcome")),
+        # alert sync (2026-10-05): which loop decided, the market event it reacted to, and how late
+        "source": row.get("source") or "pass5",
+        "intrabar": bool(c.get("intrabar")),
+        "break_level": c.get("break_level"),
+        "zone": ({"low": c.get("zone_low"), "high": c.get("zone_high")} if c.get("zone_low") is not None else None),
+        "latency": ({**(row.get("latency") or {}), "event_at": _et((row.get("latency") or {}).get("event_ts_epoch"))}
+                    if row.get("latency") else None),
     }
+
+
+def latency_summary(rows: list[dict]) -> dict:
+    """p50 / p90 seconds from the market event (break print, zone entry, extension, bar close) to the
+    alert, for ALERT rows — the proof that alerts are in sync with the tape."""
+    def pct(xs: list[float], q: float):
+        if not xs:
+            return None
+        xs = sorted(xs)
+        return round(xs[min(len(xs) - 1, int(round(q * (len(xs) - 1))))], 1)
+    out: dict[str, Any] = {}
+    groups: dict[str, list[float]] = {}
+    for r in rows:
+        lat = r.get("latency") or {}
+        if r.get("verdict") != ma.ALERT or lat.get("latency_s") is None:
+            continue
+        groups.setdefault("all", []).append(float(lat["latency_s"]))
+        groups.setdefault(f"source:{r.get('source') or 'pass5'}", []).append(float(lat["latency_s"]))
+        groups.setdefault(f"event:{lat.get('event')}", []).append(float(lat["latency_s"]))
+    for k, xs in groups.items():
+        out[k] = {"n": len(xs), "p50_s": pct(xs, 0.5), "p90_s": pct(xs, 0.9)}
+    return out
 
 
 def _signals_view(sig: Any) -> Optional[dict]:
@@ -276,9 +305,14 @@ def alerts_snapshot(*, limit: int = 100, session_date: Optional[str] = None,
         },
         "counts": {"triggered_alerts": sum(1 for r in alerts if r.get("kind") == ma.TRIGGERED),
                    "armed_alerts": sum(1 for r in alerts if r.get("kind") == ma.ARMED),
+                   "by_kind": {k: sum(1 for r in alerts if r.get("kind") == k) for k in ma.KINDS},
+                   "buy_alerts": sum(1 for r in alerts if r.get("kind") in (ma.TRIGGERED, ma.PULLBACK_ZONE)),
+                   "headsup_alerts": sum(1 for r in alerts if r.get("kind") in (ma.ARMED, ma.APPROACHING,
+                                                                                 ma.EXTENDED, ma.TRIGGER_CANCELLED)),
                    "vetoes": len(vetoes), "sent": sum(1 for r in today if r.get("sent")),
                    "decisions": len(today)},
         "veto_reasons": dict(reasons.most_common()),
+        "latency": latency_summary(today),
         "precision": {w: ms.precision_summary(all_scored, window=w, hit_r=1.0) for w in ("1m", "5m", "15m")},
         "precision_note": "legacy v1: measured from the trigger's fire price; a stop hit first still counts. Use outcomes.",
         "outcomes": {"session": ms.outcome_summary(day_scored), "all": ms.outcome_summary(all_scored),
