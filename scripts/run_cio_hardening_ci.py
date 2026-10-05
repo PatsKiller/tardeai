@@ -3263,6 +3263,12 @@ GATES = [
         "exit_cause_txn_scope_20261005",
         ["tests/test_exit_cause_txn_scope_20261005.py"],
     ),
+    (
+        # 2026-10-05 — the June maturity_score_latest.json must not be served as
+        # current. Readers stamp STALE after 30 days and do not open the archive copy.
+        "maturity_score_stale_20261005",
+        ["tests/test_maturity_score_latest_stale_20261005.py"],
+    ),
 ]
 
 

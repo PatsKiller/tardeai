@@ -335,7 +335,15 @@ def _select_rows(paths: tuple[Path, ...], *, domain: str) -> tuple[list[dict[str
     """
     seen_invalid = False
     seen_valid = False
+    from scripts.lib.maturity_score_latest_reader import (
+        is_archived_maturity_score_path,
+        stamp_maturity_score_payload,
+    )
+
     for path in paths:
+        # Archive copy is not current. Do not open it.
+        if is_archived_maturity_score_path(path):
+            continue
         if not path.is_file():
             continue
         if path.suffix.lower() == ".jsonl":
@@ -348,6 +356,12 @@ def _select_rows(paths: tuple[Path, ...], *, domain: str) -> tuple[list[dict[str
         if quality != "AVAILABLE":
             continue
         seen_valid = True
+        if path.name == "maturity_score_latest.json":
+            if not isinstance(value, dict):
+                return [], "STALE"
+            stamped = stamp_maturity_score_payload(value)
+            out_quality = "STALE" if stamped.get("freshness") == "STALE" else "AVAILABLE"
+            return [dict(stamped)], out_quality
         rows = _extract_rows(value, domain=domain, path=path)
         if rows is None:
             continue
@@ -359,7 +373,9 @@ def _select_rows(paths: tuple[Path, ...], *, domain: str) -> tuple[list[dict[str
 
 def _rows_from_json(paths: tuple[Path, ...], query: dict[str, Any], *, domain: str) -> tuple[dict[str, Any], str]:
     rows, quality = _select_rows(paths, domain=domain)
-    if quality != "AVAILABLE":
+    # STALE is a stamped score payload, not an empty store. AVAILABLE stays the
+    # only quality that means current.
+    if quality not in {"AVAILABLE", "STALE"}:
         return _empty_page(query), quality
     return _paged(rows, query), quality
 
