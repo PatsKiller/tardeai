@@ -805,7 +805,10 @@ def _reentry_research_rows(limit: Optional[int] = None) -> List[dict]:
         from lib.data_broker.reentry_decision_desk import RESISTANCE_KEY
         if not USE_DB:
             raise RuntimeError("reentry membership database unavailable")
-        pref = _execute("SELECT value FROM ui_prefs WHERE key=%s", (RESISTANCE_KEY,), fetch="one")
+        prefs = _execute("SELECT value FROM ui_prefs WHERE key=%s", (RESISTANCE_KEY,), fetch="all")
+        if prefs is None:
+            raise RuntimeError("reentry preference query did not return a result")
+        pref = prefs[0] if prefs else {}
         exits = _execute("""SELECT DISTINCT upper(symbol) AS symbol FROM trade_transactions
             WHERE trade_date >= CURRENT_DATE - 365
               AND (lower(coalesce(action,'')) IN

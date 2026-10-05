@@ -303,3 +303,21 @@ def test_watchlist_query_failure_cannot_claim_complete(monkeypatch):
     monkeypatch.setattr(db_adapter, '_execute', lambda *a, **kw: None)
     assert engine._researched_watchlist_rows() == []
     assert engine.SOURCE_RECEIPTS['watchlist']['status'] == 'UNAVAILABLE'
+
+
+def test_reentry_membership_exceeds_snapshot_and_query_failure_is_visible(monkeypatch, tmp_path):
+    import options_engine as engine
+    import db_adapter
+    monkeypatch.setattr(engine, 'PROJECT_ROOT', tmp_path)
+    monkeypatch.setattr(engine, '_load_json', lambda _: {'computed_at': '2026-10-05T20:00:00Z', 'rows': [{'symbol': 'A'}]})
+    monkeypatch.setattr(db_adapter, 'USE_DB', True)
+    def query(sql, *args, **kwargs):
+        return [] if 'ui_prefs' in sql else [{'symbol': 'Z'}]
+    monkeypatch.setattr(db_adapter, '_execute', query)
+    rows = engine._reentry_research_rows()
+    assert {r['symbol'] for r in rows} == {'A', 'Z'}
+    assert engine.SOURCE_RECEIPTS['reentry']['status'] == 'COMPLETE'
+    assert engine.SOURCE_RECEIPTS['reentry']['as_of'] == '2026-10-05T20:00:00Z'
+    monkeypatch.setattr(db_adapter, '_execute', lambda *a, **k: None)
+    assert engine._reentry_research_rows()[0]['symbol'] == 'A'
+    assert engine.SOURCE_RECEIPTS['reentry']['status'] == 'UNAVAILABLE'
