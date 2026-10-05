@@ -1,0 +1,12 @@
+# One price truth for positions (scripts/lib/portfolio_positions.py) — operator 2026-10-05:
+# "This discrepancy is real … I need this to be the source of truth." See
+# docs/architecture/POSITIONS_SOURCE_OF_TRUTH_2026-10-05.md.
+positions:
+  price_stale_after_s: 21600      # a mark older than 6 h is shown as stale, never as live
+  price_tolerance_pct: 1.0        # reconciliation: CC price vs data-broker quote
+  value_tolerance_usd: 1.0        # reconciliation: value == shares × price
+  basis_tolerance_usd: 1.0        # reconciliation: CC cost vs broker cost
+  qty_tolerance: 0.001            # reconciliation: CC shares vs broker shares
+closed:
+  # trade_closed rows written by health probes (2026-08-07), not trades — excluded from REALIZED/TRADING
+  test_accounts: [health, journal_check]

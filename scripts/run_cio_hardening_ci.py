@@ -1075,6 +1075,13 @@ GATES = [
         "cio_home_memory_20261003",
         ["tests/test_cio_home_memory_20261003.py"],
     ),
+    # One price truth for positions (data-broker quote; never the frozen `current_price`), stale basis
+    # anchors not scaled, probe rows out of REALIZED, broker trade dates, CC-vs-broker reconciliation,
+    # no new direct position-store readers (operator 2026-10-05).
+    (
+        "portfolio_price_truth_20261005",
+        ["tests/test_portfolio_price_truth_20261005.py"],
+    ),
     (
         "lineage_phase12_20261003",
         [

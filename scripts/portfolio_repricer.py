@@ -600,6 +600,7 @@ def _apply_to_holdings(
                 h["canonical_mark_ingested_at"] = _utc_now_iso()
                 h["analytical_market_value"] = round(new_price * shares, 2)
                 h["price_source"] = src
+                _sync_legacy_price_alias(h, new_price)
                 updated += 1
         elif sym in live_prices and shares > 0:
             p          = live_prices[sym]
@@ -637,9 +638,22 @@ def _apply_to_holdings(
                 h.pop("day_change_broker_check", None)
             h["day_change_pct"] = round(chg_pct, 4)
             h["price_source"]   = src
+            _sync_legacy_price_alias(h, new_price)
             updated += 1
     _annotate_canonical_quotes(holdings)
     return updated
+
+
+def _sync_legacy_price_alias(h: Dict, new_price: float) -> None:
+    """Keep the DEPRECATED `current_price` field equal to the mark just written (operator 2026-10-05).
+
+    schwab_position_sync rebuilds rows from dict(prior) and never refreshed `current_price`, so it froze
+    (SPCX $136.46 for weeks while the mark was $171.09) and surfaces that read it showed wrong values and
+    P&L. Surfaces now price through lib/portfolio_positions (which never reads it); this keeps the ~legacy
+    readers of the stored field from seeing a fossil until they are migrated. Not a source of truth.
+    """
+    h["current_price"] = round(float(new_price), 4)
+    h["current_price_is_alias_of"] = "canonical_mark"
 
 
 def _annotate_canonical_quotes(holdings: List[Dict]) -> None:

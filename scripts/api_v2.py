@@ -3349,6 +3349,24 @@ def overview():
     j_realized_win_rate = 0.0
     j_long_term_trim_pnl = 0.0
     j_last_close = None
+    from lib import portfolio_positions as _pp_k
+
+    _pp_closed_cfg = _pp_k.load_closed_config()
+    # Sells the broker ledger cannot price (transferred-in / pre-ledger lots → basis unknown) are kept out
+    # of REALIZED by schwab_journal_builder (never a fabricated P&L) — and are now DISCLOSED next to it.
+    j_basis_unknown = {"count": 0, "proceeds": 0.0}
+    try:
+        _bu = (
+            _db_query(
+                "SELECT count(*) AS n, COALESCE(SUM(qty*exit_price),0) AS proceeds FROM schwab_round_trips "
+                "WHERE basis_status = 'basis_unknown' AND canary IS NOT TRUE",
+                fetch="one",
+            )
+            or {}
+        )
+        j_basis_unknown = {"count": int(_bu.get("n") or 0), "proceeds": round(float(_bu.get("proceeds") or 0), 2)}
+    except Exception:  # noqa: BLE001 — disclosure is best-effort; the KPI itself does not depend on it
+        pass
     try:
         _jr = (
             _db_query(
@@ -3356,7 +3374,10 @@ def overview():
                 "  SELECT tc.pnl AS pnl, COALESCE(srt.classification,'') AS cls, tc.close_date AS close_date "
                 "  FROM trade_closed tc "
                 "  LEFT JOIN schwab_round_trips srt ON tc.dedupe_key = 'srt:' || srt.id "
-                "  WHERE tc.buy_price > 0 OR tc.pnl != 0"
+                "  WHERE (tc.buy_price > 0 OR tc.pnl != 0) "
+                # health-check probe rows (account 'health'/'journal_check', 2026-08-07) are not trades;
+                # they were counted in TRADING (167 vs 166) and REALIZED (operator reconciliation 2026-10-05)
+                "    AND tc.account <> ALL(%s)"
                 ") "
                 "SELECT "
                 "  count(*) FILTER (WHERE cls NOT IN ('long_term_trim','pre_window_trim') AND pnl!=0) AS trade_n, "
@@ -3368,6 +3389,7 @@ def overview():
                 "  COALESCE(SUM(pnl) FILTER (WHERE cls='long_term_trim'),0) AS ltt_pnl, "
                 "  MAX(close_date) AS last_close "
                 "FROM j",
+                (list(_pp_closed_cfg["test_accounts"]),),
                 fetch="one",
             )
             or {}
@@ -3635,6 +3657,7 @@ def overview():
             # separate tile so decades-old-position gains don't inflate the trading number).
             "realized_count": j_realized_count,
             "realized_pnl": round(j_realized_pnl, 2),
+            "realized_excluded_basis_unknown": j_basis_unknown,
             "realized_win_rate": round(j_realized_win_rate, 1),
             "long_term_trim_pnl": round(j_long_term_trim_pnl, 2),
             "source": "journal",
@@ -4060,6 +4083,9 @@ def portfolio_holdings():
     from lib.data_broker.market_quote import get_price_batch as _brk_get_price_batch
 
     _brk_prices = _brk_get_price_batch(_db_query, _holding_symbols, skip_live=True) if _holding_symbols else {}
+    from lib import portfolio_positions as _pp_mod
+
+    _pp_cfg = _pp_mod.load_config()
     _live_mq: dict[str, float] = {}
     _live_mq_ts: dict[str, str] = {}
     for _sym, _bq in _brk_prices.items():
@@ -4237,23 +4263,26 @@ def portfolio_holdings():
                 # SnapTrade positions can lag after a Fidelity stop/manual sale. If the synced activity ledger
                 # says the latest trade fully sold the stale holding, suppress it from Portfolio/stop cards.
                 continue
-        _stale_px = float(p.get("current_price") or p.get("price") or 0)
+        # ONE price truth (operator 2026-10-05; scripts/lib/portfolio_positions.py): the data-broker quote,
+        # then the Finviz live cache, then the stored repricer mark with its age. The stored
+        # `current_price` is NEVER read — schwab_position_sync rebuilds rows from dict(prior) and only
+        # refreshes `price`, so `current_price` froze (SPCX $136.46 vs $171.09; 22 of 27 rows off).
         _su = sym.upper()
-        _mq = _live_mq.get(_su)
-        _fvpx = _live_fv.get(_su)
-        _is_schwab_acct = _acct.startswith("schwab")
-        if _is_schwab_acct and _stale_px > 0:
-            _px, _px_source = _stale_px, "schwab"
-        elif _is_fidelity_acct and _fvpx and _fvpx > 0:
-            _px, _px_source = float(_fvpx), "finviz"
-        elif _is_fidelity_acct and _mq and _mq > 0:
-            _px, _px_source = float(_mq), "market_quotes"
-        elif _mq and _mq > 0:
-            _px, _px_source = float(_mq), "market_quotes"
-        elif _fvpx and _fvpx > 0:
-            _px, _px_source = float(_fvpx), "finviz"
-        elif _stale_px > 0:
-            _px, _px_source = _stale_px, "snaptrade" if _is_fidelity_acct else "holdings"
+        _stale_px = float(p.get("price") or p.get("canonical_mark") or 0)  # prior stored mark (day-change input)
+        _bq_row = _brk_prices.get(_su) or {}
+        _mark = _pp_mod.resolve_mark(
+            p,
+            quote=(
+                {"price": _live_mq[_su], "as_of": _live_mq_ts.get(_su), "source": _bq_row.get("source")}
+                if _su in _live_mq
+                else None
+            ),
+            finviz=({"price": _live_fv[_su], "as_of": _live_fv_ts.get(_su)} if _su in _live_fv else None),
+            cfg=_pp_cfg,
+        )
+        if _mark["price"]:
+            _px, _px_source = float(_mark["price"]), _mark["source"]
+            _price_as_of = _mark["as_of"] or ""
         else:
             _tp = _pick(t_snap, e_cache, key="price")
             try:
@@ -4261,36 +4290,12 @@ def portfolio_holdings():
             except (TypeError, ValueError):
                 _px = 0.0
             _px_source = "technical_snapshot"
-        if _px_source == "finviz":
-            _price_as_of = _fv_meta.get("last_updated", "")
-        elif _px_source == "market_quotes":
-            _price_as_of = _live_mq_ts.get(_su, "")
-        elif _px_source in ("schwab", "holdings", "snaptrade"):
-            _price_as_of = h.get("last_repriced", "") or h.get("as_of", "")
-        else:
             _price_as_of = _json_clean(t_snap.get("as_of") or e_cache.get("as_of") or "")
-        _px_live = _px_source in ("market_quotes", "finviz") and _px > 0
-        # Stamp the price with WHEN its source was fetched, so the protective-stop freshness gate has a real
-        # timestamp instead of treating every holding as a stale quote. Per source: market_quotes/finviz carry
-        # their own fetch time; broker-synced (schwab) and holdings/snaptrade prices use the holding's as_of.
-        if _px_source == "market_quotes":
-            _px_ts = _live_mq_ts.get(_su)
-        elif _px_source == "finviz":
-            _px_ts = _live_fv_ts.get(_su)
-        elif _px_source in ("schwab", "holdings", "snaptrade"):
-            # Freshness gate = how current is our price knowledge for this symbol. A live finviz / market-quote
-            # tick (the same source the schwab reprice draws from, just more recent) is the freshest signal;
-            # fall back to the holdings.json reprice time, then the clean per-holding ISO updated_at, then the
-            # date-only as_of last (it parses to midnight and would read as stale).
-            _px_ts = (
-                _live_fv_ts.get(_su)
-                or _live_mq_ts.get(_su)
-                or h.get("last_repriced")
-                or p.get("updated_at")
-                or p.get("as_of")
-            )
-        else:
-            _px_ts = None
+        _px_live = bool(_mark.get("live")) and _px > 0
+        _px_stale = bool(_mark.get("stale"))
+        # Stamp the price with WHEN its source was fetched (protective-stop freshness gate). It is the
+        # timestamp of the number actually shown — never a fresher timestamp borrowed from another source.
+        _px_ts = _mark.get("as_of")
         _mv = (
             round(_shares * _px, 2)
             if (_px > 0 and _shares > 0 and not p.get("is_cash"))
@@ -4302,12 +4307,18 @@ def portfolio_holdings():
         # still matches; otherwise scale by per-share basis, else fall back to broker.
         _anchor = basis_map.get((sym, p.get("account", "")))
         _cb = p.get("cost_basis")
+        _cb_broker = p.get("cost_basis") if p.get("cost_basis_source") == "broker_api" else None
+        _basis_note = None
         if _anchor:
             _a_sh = _anchor.get("shares") or 0
             if _a_sh and _shares and abs(_a_sh - _shares) / max(_a_sh, _shares) <= 0.05:
                 _cb = _anchor["total"]
-            elif _anchor.get("per_share") and _shares:
-                _cb = round(_anchor["per_share"] * _shares, 2)
+            else:
+                # A point-in-time anchor describes lots that have since been sold/re-bought; scaling its
+                # per-share basis to today's share count produced a number that is neither the broker's nor
+                # the anchor's (SCHD $125,341 vs broker $132,173; V 0.80 sh $63 vs $278 — reconciliation
+                # 2026-10-05). Keep the stored (broker-synced) basis and say so.
+                _basis_note = "anchor_stale"
         if _cb is None and p.get("avg_cost") and _shares:
             _cb = float(p.get("avg_cost")) * _shares
         try:
@@ -4375,6 +4386,7 @@ def portfolio_holdings():
                 "price_source": _px_source,
                 "price_as_of": _price_as_of,
                 "price_live": _px_live,
+                "price_stale": _px_stale,
                 "source_timestamp": _px_ts,  # quote fetch time → protective-stop freshness gate (null = unknown)
                 "market_value": _mv,
                 "portfolio_pct": _ppct or 0,
@@ -4398,6 +4410,14 @@ def portfolio_holdings():
                 "company": e_cache.get("company") or t_snap.get("company", ""),
                 "industry": e_cache.get("industry", ""),
                 "cost_basis": _cb_f,
+                # both bases when they differ — an operator decision, never an automatic pick (AGENTS.md §0 rule 5)
+                "cost_basis_broker": _cb_broker,
+                "cost_basis_note": _basis_note
+                or (
+                    "anchor_differs_from_broker"
+                    if (_cb_broker is not None and _cb_f is not None and abs(float(_cb_broker) - _cb_f) > 1.0)
+                    else None
+                ),
                 "gain_loss": _gl,
                 "gain_loss_pct": _glp,
                 "pi_score": _pi_score(pi_input) if (e_cache or t_snap) else None,
@@ -34944,11 +34964,23 @@ def _analyst_detail(query=None):
         except Exception:
             return None
 
+    # Upside is measured against the data-broker price NOW (operator 2026-10-05: SPCX showed "+105.7%"
+    # against the $115 snapshot price while it traded at $171). The snapshot's price is kept, labelled.
+    try:
+        from lib.data_broker.market_quote import get_price_batch as _ad_price_batch
+
+        _ad_live = _ad_price_batch(_db_query, [r["s"] for r in tgt_rows], skip_live=True) if tgt_rows else {}
+    except Exception:  # noqa: BLE001 — no live price → upside is computed against the snapshot and labelled so
+        _ad_live = {}
+
     out = {}
     for r in tgt_rows:
         s = r["s"]
         mean = _f(r["target_mean_price"])
-        cur = _f(r["current_price"])
+        snap_px = _f(r["current_price"])
+        _lq = _ad_live.get(s) or {}
+        live_px = _f(_lq.get("price"))
+        cur = live_px or snap_px
         d = dist.get(s, {})
         out[s] = {
             "rec": r["recommendation_key"],
@@ -34958,6 +34990,11 @@ def _analyst_detail(query=None):
             "target_high": _f(r["target_high_price"]),
             "target_low": _f(r["target_low_price"]),
             "current": cur,
+            "current_source": "data_broker" if live_px else "analyst_snapshot",
+            "current_as_of": str(_lq.get("as_of"))
+            if live_px and _lq.get("as_of")
+            else (str(r["snapshot_date"]) if r["snapshot_date"] else None),
+            "price_at_snapshot": snap_px,
             "upside": (round((mean - cur) / cur * 100, 1) if (mean and cur) else None),
             "as_of": str(r["snapshot_date"]) if r["snapshot_date"] else None,
             "dist": {k: d.get(k) for k in ("strong_buy", "buy", "hold", "sell", "strong_sell") if d.get(k) is not None},
@@ -39523,6 +39560,17 @@ def _schwab_accounts_live(query=None):
         _db_query("SELECT account_key FROM broker_accounts WHERE broker ILIKE '%schwab%' ORDER BY account_key") or []
     )
 
+    # One price truth (lib/portfolio_positions): data-broker quote → stored mark; never `current_price`.
+    from lib import portfolio_positions as _pp_live
+    from lib.data_broker.market_quote import get_price_batch as _al_price_batch
+
+    _al_syms = sorted({str(h.get("symbol") or "").upper() for h in holdings if not h.get("is_cash")} - {""})
+    try:
+        _al_quotes = _al_price_batch(_db_query, _al_syms, skip_live=True) if _al_syms else {}
+    except Exception:  # noqa: BLE001 — quote outage degrades to the stored mark (flagged stale), never to a fossil
+        _al_quotes = {}
+    _al_cfg = _pp_live.load_config()
+
     accounts = []
     for r in sdbr_rows:
         ak_canonical = str(r["account_key"])
@@ -39535,13 +39583,31 @@ def _schwab_accounts_live(query=None):
             if ha in (ak_canonical.lower(), ak_short.lower(), _resolve(ak_short)):
                 if h.get("is_cash") or h.get("is_loan"):
                     continue
+                _q = _al_quotes.get(str(h.get("symbol") or "").upper()) or {}
+                _mk = _pp_live.resolve_mark(
+                    h,
+                    quote=(
+                        {"price": _q.get("price"), "as_of": _q.get("as_of"), "source": _q.get("source")}
+                        if _q.get("price")
+                        else None
+                    ),
+                    cfg=_al_cfg,
+                )
+                _vp = _pp_live.value_and_pl(h, _mk)
                 pos.append(
                     {
                         "symbol": str(h.get("symbol") or "").upper(),
                         "qty": h.get("shares"),
-                        "avg_price": h.get("avg_cost") or h.get("cost_basis"),
-                        "market_value": h.get("market_value"),
-                        "current_price": h.get("current_price") or h.get("price"),
+                        # avg_price is PER SHARE; the stored cost_basis is the position TOTAL (was conflated:
+                        # SPCX avg_price 49210.13 = total basis).
+                        "avg_price": _pp_live.per_share_cost(h),
+                        "cost_basis": _vp["cost_basis"],
+                        "market_value": _vp["market_value"],
+                        "current_price": _mk["price"],
+                        "price_source": _mk["source"],
+                        "price_as_of": _mk["as_of"],
+                        "price_stale": _mk["stale"],
+                        "unrealized_pl": _vp["gain_loss"],
                         "day_change": h.get("day_change"),
                     }
                 )

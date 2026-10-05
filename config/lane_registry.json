@@ -2845,6 +2845,23 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "PR #1441 (premarket_watch.py), replay 2026-10-05: SDEV gap +44% alert at 08:00.",
       "note": "Every 5 min 06:00-09:59 ET (script self-gates to 06:00-09:29). Kill: persistent-state data/active_trader/PREMARKET_DISABLED."
+    },
+    {
+      "lane_id": "portfolio-broker-reconciliation",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "none"
+      },
+      "expected_cadence_hours": 1.0,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-05",
+      "state_reason": "Proposed (operator 2026-10-05: 'I need this to be the source of truth'). Read-only check that every Command Center position and closed trade matches the broker: value == shares x data-broker quote, P&L == value - cost, CC vs broker qty/cost within config/portfolio_positions.yaml tolerances. Cron needs operator approval: `5 10-16 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_reconcile.lock timeout 300 $PY scripts/portfolio_reconcile.py --json data/runtime/portfolio_reconcile_latest.json >> logs/portfolio_reconcile.log 2>&1`.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/portfolio_reconcile_latest.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/PORTFOLIO_RECONCILIATION_2026-10-05.md; scripts/portfolio_reconcile.py (read-only); tests/test_portfolio_price_truth_20261005.py."
     }
   ],
   "undeclared_baseline": [
