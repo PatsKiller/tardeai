@@ -291,3 +291,49 @@ active_trader_premarket:
   mode: send
   window_start: "06:00"
   window_end: "09:29"
+
+# ── Active Trader doctrine: session review + automated mode (SIMULATION ONLY) ──
+# operator 2026-10-05: "build this methodology in as a soul and its foundation … both the option for
+# manual and automated". See docs/active_trader/ACTIVE_TRADER_SOUL.md.
+# manual  = you trade; the simulator runs as a comparison only (no ledger).
+# auto_sim = the simulator also writes data/active_trader/auto_sim/ledger.jsonl — the track record
+#            automation must earn. There is NO live mode in code.
+active_trader_mode: manual
+
+active_trader_review:
+  mode: shadow                 # shadow = persist the review; send = also a short Telegram summary
+  base_min_bars: 3
+  base_max_bars: 8
+  base_max_range_pct: 1.0
+  break_vol_mult: 1.5
+  zone_lo_retrace: 0.382
+  zone_hi_retrace: 0.618
+  zone_tolerance: 0.01
+  pullback_max_bars: 15
+  min_leg_pct: 1.0
+  min_stop_pct: 0.5
+  climax_mult: 3.0
+  climax_lookback: 10
+  climax_wick_frac: 0.5
+  time_stop_bars: 20
+  horizon_bars: 30
+  heads_up_lead_s: 300
+  late_s: 60
+  chase_pct: 1.0
+  chase_r: 1.0
+  missed_window_s: 120
+  top_symbols: 5
+  window_et: ["09:30", "11:55"]
+  link_max_s: 600
+
+active_trader_auto_sim:
+  size_shares: 500            # used only when size_notional_usd is 0
+  size_notional_usd: 2000     # shares = floor($2,000 / price) so every symbol compares on the same dollars
+  max_take_pct: 25.0           # refuse when size > this % of ask supply near the inside
+  near_pct: 1.0
+  book_max_age_s: 600
+  min_stop_pct: 1.0
+  sec_fee_rate: 0.0000278
+  taf_per_share: 0.000166
+  taf_cap: 8.30
+  commission: 0.0

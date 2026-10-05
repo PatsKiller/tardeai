@@ -2925,6 +2925,46 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "PR #1445; live dry run 2026-10-05 vs Schwab chain (SPCX Oct 30 157.5P mid 3.70).",
       "note": "Every 30 min 09:15-15:45 ET weekdays: rank Schwab contracts against each active options intent (watch_directives spec.options_intent); Telegram digest only on material improvement (≤1 per intent per 120 min)."
+    },
+    {
+      "lane_id": "active-trader-session-review",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "5 12 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
+        "match": "scripts/active_trader/session_review.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-05",
+      "state_reason": "Operator 2026-10-05: build the 'should have been' methodology in as the Active Trader soul (docs/active_trader/ACTIVE_TRADER_SOUL.md). Cron line awaits operator approval.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/reviews"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_at_soul_review_sim_20261005.py reproduces the operator's XNDU 2026-10-05 table from real data.",
+      "note": "12:05 ET after the 09:30–11:55 engine window: grade every decision and fill against 'should have been'; auto-sim comparison (ledger only in auto_sim)."
+    },
+    {
+      "lane_id": "active-trader-session-review-close",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 16 * * 1-5 cd $PROJ && flock -n /tmp/at_session_review.lock timeout 300 $PY scripts/active_trader/session_review.py --apply >> logs/at_session_review.log 2>&1",
+        "match": "scripts/active_trader/session_review.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "NEVER_SCHEDULED",
+      "state_since": "2026-10-05",
+      "state_reason": "Operator 2026-10-05: build the 'should have been' methodology in as the Active Trader soul (docs/active_trader/ACTIVE_TRADER_SOUL.md). Cron line awaits operator approval.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/reviews"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "tests/test_at_soul_review_sim_20261005.py reproduces the operator's XNDU 2026-10-05 table from real data.",
+      "note": "16:10 ET: re-run with the full day's bars (rewrites the day's review file; learning records are written once by id)."
     }
   ],
   "undeclared_baseline": [
