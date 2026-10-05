@@ -3082,6 +3082,7 @@ def generate_proposals(force: bool = False, *, scan_inputs: Optional[dict] = Non
         return cached
 
     INCOME_SCREEN_DROPS.clear()
+    SOURCE_RECEIPTS.clear()
     _CHAIN_CACHE.clear()
     IV_RANK_BASIS.clear()
     _PRICE_SOURCE.clear()
@@ -3091,6 +3092,10 @@ def generate_proposals(force: bool = False, *, scan_inputs: Optional[dict] = Non
     _INSTRUMENT_CLASS.clear()
     holdings, holdings_meta = ((scan_inputs["holdings"], scan_inputs["holdings_meta"])
                                if scan_inputs is not None else _load_holdings())
+    SOURCE_RECEIPTS["holdings"] = {
+        "status": "COMPLETE" if holdings_meta.get("_holdings_path") and holdings_meta.get("_observed_at") else "UNAVAILABLE",
+        "observed_at": holdings_meta.get("_observed_at"),
+    }
     global _SCAN_CHAINS
     _SCAN_CHAINS = scan_inputs.get("chains", {}) if scan_inputs is not None else None
     tech_map = _load_technicals()
@@ -3344,7 +3349,7 @@ def generate_proposals(force: bool = False, *, scan_inputs: Optional[dict] = Non
             holdings=holdings_meta.get("_inventory_holdings", holdings), convictions=convictions,
             proposals=all_p, drops=INCOME_SCREEN_DROPS + entry_drops,
             chains=(scan_inputs or {}).get("coverage_receipts", (scan_inputs or {}).get("chain_receipts", {})),
-            source_receipts=(scan_inputs or {}).get("source_receipts", {})),
+            source_receipts=(scan_inputs or {}).get("source_receipts", dict(SOURCE_RECEIPTS))),
         "income_screen": _income_screen_summary(),
         "holdings_funnel": build_holdings_funnel(holdings=holdings, tech_map=tech_map,
                                                  intent_cfg=intent_cfg, aegis_map=aegis_map,
