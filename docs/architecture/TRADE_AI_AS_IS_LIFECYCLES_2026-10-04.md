@@ -2,8 +2,9 @@
 
 ```
 Status:      ACTIVE
-as_of:       2026-10-04T23:30:00-04:00
-Measured at: 4f932b88a (main = dev tree = CURRENT release 4f932b88a-main-exact-phase2-20261004-202102)
+as_of:       2026-10-05T18:58:00Z (scoped update; full census remains 10-04)
+Measured at: baseline 4f932b88a; remediation verified at 8da0bd92b19519f4815c2b20ced2f1dfbd1eae96
+             CURRENT c91fa6a32126b4cfc09a868d529365933d630f43 observed around 18:58Z
 Supersedes:  TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md (kept; this document re-measures it)
 Method:      seven read-only measurement passes, one per lifecycle family, each writing a fact base
              (docs/architecture/lifecycles/LIFECYCLE_FACTBASE_<FAMILY>_2026-10-04.md), then this synthesis.
@@ -13,10 +14,12 @@ Labels:      MEASURED (command, SQL or file:line in the fact base) · DOCUMENTED
 
 ## How to read this document
 
-This is the summary layer. Every number below comes from one of the seven fact bases, which hold
+This is the summary layer. Original 10-04 measurements come from seven fact bases, which hold
 the per-lifecycle anatomy (purpose · state machine · flow · iterations · questions · measurements ·
 failure paths · per-stage maturity · target) and the evidence for each claim. Where this document
-and a fact base disagree, the fact base wins.
+and a fact base disagree about the original window, the fact base wins. The timestamped 10-05
+update below supersedes only the named claims. Unmeasured database counts, credential deadlines,
+spend, Drive, protection totals and first-session trading results remain historical evidence.
 
 Maturity uses the 09-14 scale: **L0** absent or broken · **L1** exists, unmeasured · **L2** measured ·
 **L3** closed loop with a counter · **L4** loop proven to change behaviour · **L5** self-improving.
@@ -25,7 +28,40 @@ qualitative levels only, so the "09-14" column is reconstructed from its stage t
 
 ---
 
-## 1. Executive summary
+## 2026-10-05 scoped remediation update [OBSERVED]
+
+PRs [#1442](https://github.com/PatsKiller/tardeai/pull/1442) and
+[#1443](https://github.com/PatsKiller/tardeai/pull/1443) shipped in `8da0bd92b` at 18:18:56Z.
+Eight exact-SHA push/main workflows succeeded and four CURRENT-bound services matched.
+The [remediation runbook](../ops/VALIDATED_LEARNING_REMEDIATION.md) names archived receipts,
+exact windows and the later `c91fa6a32` CURRENT observation with source continuity checks.
+
+| Area | Verified change | Remaining evidence / work |
+|---|---|---|
+| Deployment | Promotion refuses incomplete, unsuccessful, missing, wrong-SHA or unavailable push/main checks and records workflow/run identities. A real pending candidate was refused. | Preserve the gate and archive receipts; the global receipt file is still overwritten. |
+| Topic ingestion | Configured interpreter and distinct infrastructure failures deployed. Scheduled 18:20Z gate correctly skipped the prohibited regular session. | Successful permitted-session ingestion and symbol-level freshness remain unmeasured. |
+| Research → judgment | Shared validated dispositions and lineage deployed. 18:18:57–18:45:47Z: eight reassessments, six `BLOCKED` and two `NO_CHANGE`; two Hermes completions, one of each. | No changed advisory judgment or research-driven notification demonstrated in this window. A negative model label alone is insufficient. |
+| Operator → wake | Subject-scoped consumption and selection receipts deployed. Natural 18:00Z wake on the same SHA selected memory while receipting selected research. Turn 115 was consumed, although still loaded as history. | The wake preceded this task's promotion in a prior directory of the identical SHA. Sustained new-turn/duplicate behavior needs observation. |
+| Questions / reuse | DDQ schema added without row loss or research dispatch. 200 questions naturally checked: 48 partially answered, 152 unresolved. Retrieval receipts distinguish available, retrieved, used, rejected and judgment-changing evidence, with traversed graph references. | Cross-store closure and decision-time graph influence are unproved. Visa views shared subject/thesis/research/result identities with zero paid calls; identity agreement is not influence. |
+| Outcomes / checkpoints | All 883 insufficient outcomes retained. Migration appended 10,137 `MIGRATION_REVIEW_REQUIRED` events, zero invented deadlines; repeat preview had zero proposals. | Migration review remains open. No organic confirmed/refuted outcome or ratified lesson use demonstrated. |
+| Operations / governance | Exit status, signal, restart and OOM evidence and deployment-contract reporting installed. Four registry/runtime disagreements surfaced: Maria, Aegis, risk_agent, tax_agent. | Historical OOM cause unproved. Disabled agents, broker authority, trading policy and memory settings unchanged by this remediation. |
+
+The 15:24Z read-only audit found 274 watch-ticket completions in 24 hours, 1,329 queued and
+two running with current heartbeats: the blanket stall claim was stale. Twenty old Hermes
+requests were absent from the active projection; a bounded snapshot dry run found zero eligible
+recoveries and dispatched none. The 633 archived lessons remain unpromoted. The contradiction
+backlog (204,901 candidates without recorded verdict) requires ownership/budget diagnosis.
+Scalp candidate ingestion, an active weekday catalyst schedule and research output already
+exist; blanket exclusion is unsupported, while coverage and latency remain unproved.
+
+At 18:46Z API liveness was true but health was degraded, 83/100, with one critical SIEM finding
+(11 distinct P0/P1 issues open). CURRENT subsequently advanced under another session to
+`c91fa6a32-main-exact-phase2-20261005-144256`; this update does not assert a full new health census.
+**No maturity score was recalculated.** The 85 new regression tests are fixtures. The historical
+June 4.95/5 installation-coverage artifact is superseded by the existing current-evidence route;
+neither installation coverage nor these repairs prove L4 or investment-performance improvement.
+
+## 1. Executive summary (10-04 baseline; scoped corrections above)
 
 **The platform moved from about 1.3 to about 1.8 out of 5 in three weeks.** The gains are mostly
 "the pipe now runs": research jobs complete, watchlist jobs complete, messages are deduplicated and
@@ -43,7 +79,7 @@ Nothing yet proves that an outcome changed a later decision.
 | G · Trading desks and Active Trader (new) | — | **~1.9** | Phase 1 L2 alerts built and live-configured; moomoo L2 proven 60 levels | ignition engine dark 09-17 → 10-04; Schwab token hard expiry 10-05 12:06 ET; protection alarms muted |
 | **Platform (mean of families)** | **~1.3** | **~1.8** | | |
 
-### The ten facts that matter most today
+### Ten findings recorded at the 10-04 baseline
 
 1. **Main is red and red code shipped.** Every 10-04 promote went live on a commit whose post-merge
    CI failed (`alarm_fires`: the two new Telegram alert senders had no firing test). Fix and a PR-run
@@ -54,8 +90,9 @@ Nothing yet proves that an outcome changed a later decision.
    a schema lock). Fixed in #1424; Monday 10-05 is the first live proof. (G)
 4. **Active Trader Phase 1 alerts are configured to send to Telegram from Monday's open**, but have never
    run on a live session: no journal or heartbeat exists yet. (G)
-5. **Research does not change decisions.** 14 thesis-challenging Hermes verdicts in 7 days produced 0
-   material changes and 0 notifications. (B)
+5. **The inspected plan path reported no material transitions.** The historical challenge sample
+   produced zero material changes/notifications. A broader replay found 204 successful product
+   reassessments; this proves neither changed judgment nor universal research non-use. (B)
 6. **The learning loop closes on nothing.** 883 commitments swept, 0 scored, 0 lessons promoted; 10,217
    checkpoints can never come due; outcome verdicts are 96 % NEUTRAL. (C, D)
 7. **Approval is effectively unreviewed.** All 55 proposals approved in 30 days still have an open agent
@@ -69,7 +106,7 @@ Nothing yet proves that an outcome changed a later decision.
 
 ---
 
-## 2. What changed since 2026-09-14
+## 2. What changed from 2026-09-14 to the 10-04 baseline
 
 ### 2.1 Delivered (measured working)
 
@@ -107,7 +144,7 @@ Nothing yet proves that an outcome changed a later decision.
 
 ---
 
-## 3. The platform lifecycle, end to end (as measured)
+## 3. The platform lifecycle, end to end (10-04 baseline)
 
 ```
  sources ──► data point ──► identity ──► material change ──► question / research
@@ -129,13 +166,13 @@ Nothing yet proves that an outcome changed a later decision.
                          ✗ dark 09-17→10-04                      first live run 10-05
 ```
 
-The pipe runs further than on 09-14 at every stage up to "judgment". The loop still breaks at the
-same three places: **outcome → lesson → behaviour**, **research → decision**, and **operator reply →
-cognition**.
+This diagram records the 10-04 assessment. The 10-05 update establishes research disposition,
+question reconciliation and scoped operator-consumption paths; outcome-to-ratified-lesson use
+and sustained effects on later advisory judgments remain unproved.
 
 ---
 
-## 4. Lifecycle index
+## 4. Lifecycle index (10-04 scores; not rescored)
 
 | ID | Lifecycle | Fact base | 10-04 maturity |
 |---|---|---|---|
@@ -177,6 +214,9 @@ cognition**.
 
 ---
 
+The family sections below retain the 10-04 census. Affected families identify their 10-05 delta;
+other figures and operator actions require rechecking before treating them as present state.
+
 ## 5. Family A — data and sources (≈1.9 / 5)
 
 **What works.** The plausibility timer runs daily (8 of 12 checks blocking); the Yahoo cross-check and
@@ -198,6 +238,10 @@ lives in persistent state; the event bus chain verifies (13,394 records, 0 link 
 
 ## 6. Family B — questions and research (≈1.7 / 5)
 
+**10-05 delta:** dispositions, lineage, priority/age fairness and question reconciliation are
+deployed; the interpreter defect is repaired. Historical failures below no longer describe all
+these paths. See the scoped update for measured results.
+
 **What works.** Hermes completes 92 % of jobs; operator questions close on their research with the
 subject kept; free-search fallback answered every Brave-capped request through SearXNG; plan expiry
 fires (643 in 7 days).
@@ -214,6 +258,9 @@ fires (643 in 7 days).
 
 ## 7. Family C — watchlist, proposals and learning (≈1.4 / 5)
 
+**10-05 delta:** ticket processing was active; 10,137 missing-deadline checkpoints were marked
+for migration review without invented deadlines. Proposal review/thrash was not remeasured.
+
 **What works.** Agent jobs complete 95 % with no budget refusals; the auto-queue no longer bans a
 symbol forever after one identity rejection; the lesson digest and calibration API are honest about
 an empty signal.
@@ -229,6 +276,10 @@ an empty signal.
 
 ## 8. Family D — cognition: CIO, agents, memory (≈1.5 / 5)
 
+**10-05 delta:** turn consumption and research selection receipts ran naturally on the verified
+SHA. All 883 historical insufficiency outcomes remain. Four registry/runtime disagreements
+were surfaced without activation; full lineage coverage and later lesson use remain unproved.
+
 **What works.** Wakes run (2 missed slots since 09-14); judgments and falsifiers vary and the critic
 writes questions back; checkpoints resolve; agent runtimes complete jobs in shadow (1,206 in 24 h);
 the ratified policy drives capital-plan sizing; LLM spend stays under the $2/day cap.
@@ -238,7 +289,8 @@ the ratified policy drives capital-plan sizing; LLM spend stays under the $2/day
   so almost nothing new is minted.
 - One 09-11 ADBE operator turn is replayed on 25 of 75 wakes a day.
 - Decision lineage: at most 4 of 21 stages LIVE on probed decisions.
-- Memory influence is zero; attribution covers 49 of 32,071 retrievals.
+- Historical attribution covered 49 of 32,071 retrievals. Zero influence in deliberately SHADOW
+  lanes is a control setting, not itself a defect; changing it requires separate governance.
 - Registries disagree with the runtime (3 agents ACTIVE vs DESIGNED; 2 lanes); wake-job over-enqueue
   (5,414 superseded; 193 streams older than 4 h).
 
@@ -250,7 +302,8 @@ in ~8 s); platform alerts resolve and remind on a schedule; the CIO bot and poll
 
 **What does not.**
 - 9,245 outbound rows a week, 92 % suppressed; one health body is 5,216 of them.
-- 40 % of tagged editor decisions carry a non-company tag (fixes for ET/API/Monday shipped 10-04;
+- About 40 % of the sampled subject-tagged editor receipts carry a non-company tag; this is not
+  40 % of all messages (fixes for ET/API/Monday shipped 10-04;
   PRICE, ALERT, OI, NONE, OFF, LIVE remain).
 - The CIO outbox recorded 1,694 confirmations without a real message id; 1,204 orphans.
 - Operator replies rarely reach cognition: 0 of 501 intake receipts linked to a wake; desk replies are
@@ -260,6 +313,10 @@ in ~8 s); platform alerts resolve and remind on a schedule; the CIO bot and poll
   alert took the CIO-disagreement path (SOUN = RESEARCH_MORE → WATCH), as designed.
 
 ## 10. Family F — engineering and operations (≈2.3 / 5)
+
+**10-05 delta:** exact-SHA post-merge CI blocks promotion; service exit/OOM evidence and
+deployment contracts are reported. Historical exit causation is unproved. Separate deployments
+are valid where declared; repinning every service is not an acceptance requirement.
 
 **What works.** 408 PRs merged since 09-14; two required checks enforced on admins; release-grant
 binding; promote re-binds four services and reads their working directory back; cron runs from
@@ -302,7 +359,7 @@ the interlock on the order path and a non-expiring token.
 
 ---
 
-## 12. Cross-lifecycle analysis
+## 12. Cross-lifecycle analysis (10-04 baseline)
 
 ### X1 · Feedback edges
 
@@ -336,7 +393,11 @@ still do not close:
 6. Prices without a quarantine contract feed stops and technicals.
 7. Standing live arm with a single control.
 
-### X4 · Recommendations (ranked)
+### X4 · Original recommendations (superseded for remediated paths)
+
+Use the [updated Future-State roadmap](TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-10-04.md#5-roadmap--remaining-work-after-10-05-remediation)
+for remaining work. The list below is historical, not authority to retry queues, invent deadlines,
+change memory limits or repin separately deployed services.
 
 1. **Before 12:06 ET Monday:** re-authenticate Schwab (operator).
 2. **Monday 09:35 ET:** verify ignition rows, the alert heartbeat and 0 tracebacks; then the 08:00 Alpha
@@ -372,8 +433,9 @@ still do not close:
 - Lifecycle family G (trading desks, Active Trader) is new; 09-14 covered execution only as a
   boundary.
 
-## 14. The one-sentence version
+## 14. Current assessment
 
-The platform now reliably runs its pipes — research, jobs, messages, approvals, releases — but it
-still does not learn from outcomes, act on research, or hear the operator, and three controls
-(post-merge CI, protection alarms, the Schwab token) need attention before Monday's session.
+The repaired paths expose validated research dispositions, scoped operator consumption, question
+reconciliation and exact-SHA deployment evidence. Sustained learning from valid outcomes and
+later ratified lesson use remain to be demonstrated. Historical operational and trading findings
+outside this update require fresh verification before action.
