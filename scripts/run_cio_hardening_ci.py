@@ -23,6 +23,7 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    ("learning_research_remediation", ["tests/test_learning_research_remediation.py"]),
     ("learning_operator_remediation", ["tests/test_learning_operator_remediation.py"]),
     ("learning_operational_remediation", ["tests/test_learning_operational_remediation.py"]),
     # Campaign m2-canary-20260907 — persistent wake, communications consumption,

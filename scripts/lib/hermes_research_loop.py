@@ -603,9 +603,20 @@ def on_hermes_completed(
     # Plan attach/enrich needs a plan. Product reassessment does not —
     # overnight Flash jobs often have no plan_id (ORPHANED_LEGACY parent).
 
+    from scripts.lib.research_quality import evidence_eligibility
+    from scripts.lib.cio_product_reassessment import research_impact
+    evaluated_result = merged if "merged" in locals() else result
+    eligibility = evidence_eligibility(request, evaluated_result, out.get("critique"))
+    out["evidence_validation"] = eligibility
     plan = None
     store = None
+    prior_plan = None
+    duplicate = False
     if plan_id:
+        store = _import_plans()()
+        prior_plan = store.get_plan(plan_id)
+        previous_evaluation = ((prior_plan or {}).get("extra") or {}).get("research_evaluation") or {}
+        duplicate = bool(result.get("result_id") and previous_evaluation.get("result_id") == result["result_id"])
         try:
             try:
                 from lib.hermes_research_schema import evidence_domain_from_result
@@ -653,7 +664,7 @@ def on_hermes_completed(
 
     before_fp = _substantive_fingerprint(plan) if plan else ""
 
-    if resynth and plan and store:
+    if resynth and plan and store and eligibility["eligible"] and not duplicate:
         try:
             try:
                 from lib.cio_plan_enrichment import enrich_plan, maybe_notify_plan, is_material_plan
@@ -677,14 +688,38 @@ def on_hermes_completed(
             after_fp = _substantive_fingerprint(plan)
             material_changed = after_fp != before_fp
             out["material_changed"] = material_changed
-            if notify and material_changed and is_material_plan(plan):
-                try:
-                    notified = maybe_notify_plan(plan, force=False)
-                    out["notified"] = bool(notified)
-                except Exception as e:
-                    out["notify_error"] = f"{type(e).__name__}:{e}"
+            # Notification follows the shared evidence evaluation below.
         except Exception as e:
             out["enrich_error"] = f"{type(e).__name__}:{e}"
+
+    if plan_id:
+        evaluation = research_impact(
+            symbol=str(eligibility.get("symbol") or ""), result_id=str(result.get("result_id") or ""),
+            research_id=str(result.get("research_id") or request.get("research_id") or ""),
+            prior=prior_plan or {}, new=plan or {}, critique=out.get("critique"),
+            request=request, result=evaluated_result, prior_thesis=prior_plan or {},
+        )
+        if not prior_plan or not plan or out.get("enrich_error"):
+            evaluation.update(disposition="BLOCKED", disposition_reason="plan_reassessment_unavailable")
+        if duplicate:
+            evaluation.update(disposition="NO_CHANGE", disposition_reason="duplicate_result")
+        out["research_evaluation"] = evaluation
+        out["material_changed"] = evaluation["disposition"] in {"CHANGED_ADVISORY_JUDGMENT", "REVIEW_REQUIRED"}
+        if plan and store and not duplicate:
+            previous = ((prior_plan or {}).get("extra") or {}).get("research_evaluation") or {}
+            # Repeated conflicts remain visible but are not a new notification transition.
+            transition = evaluation["disposition"] == "CHANGED_ADVISORY_JUDGMENT" or (
+                evaluation["disposition"] == "REVIEW_REQUIRED" and previous.get("premise_conflicts") != evaluation["premise_conflicts"])
+            try:
+                plan = store.update_plan(plan_id, extra={**(plan.get("extra") or {}), "research_evaluation": evaluation})
+                if notify and transition:
+                    from scripts.lib.cio_plan_enrichment import maybe_notify_plan, is_material_plan
+                    if is_material_plan(plan):
+                        out["notified"] = bool(maybe_notify_plan(plan, force=False))
+            except Exception as exc:
+                out["evaluation_persist_error"] = f"{type(exc).__name__}:{exc}"
+                evaluation.update(disposition="BLOCKED", disposition_reason="evaluation_persist_unavailable")
+                out["material_changed"] = False
 
     # Desk memo deferred until after reassessment/lineage so we can stamp lineage_id.
     if plan_id:
@@ -708,8 +743,11 @@ def on_hermes_completed(
                 reassess_on_research_completed,
             )
         out["reassessment"] = reassess_on_research_completed(
-            request, result, critique=out.get("critique") if isinstance(out.get("critique"), dict) else None,
+            request, evaluated_result, critique=out.get("critique") if isinstance(out.get("critique"), dict) else None,
+            notify=notify,
         )
+        if not plan_id:
+            out["research_evaluation"] = out["reassessment"].get("research_evaluation")
     except Exception as e:
         out["reassessment_error"] = f"{type(e).__name__}:{e}"
 
@@ -765,6 +803,18 @@ def on_hermes_completed(
     except Exception as e:
         out["memo_error"] = f"{type(e).__name__}:{e}"
 
+    out.setdefault("research_evaluation", {
+        "disposition": "BLOCKED", "disposition_reason": "reassessment_unavailable",
+        "research_request_id": result.get("research_id") or request.get("research_id"),
+        "result_id": result.get("result_id"),
+    })
+    try:
+        from scripts.lib.research_gap import reconcile_research_completion
+        from scripts.lib.maturity_control.store import resolve_root
+        out["question_lifecycle"] = reconcile_research_completion(
+            resolve_root(None), request, evaluated_result, critique=out.get("critique"))
+    except Exception as exc:
+        out["question_lifecycle"] = {"status": "BLOCKED", "reason": type(exc).__name__}
     # Audit line — include critique/memory/overlay so a missing receipt is visible
     try:
         Path("data/cio").mkdir(parents=True, exist_ok=True)
@@ -781,6 +831,9 @@ def on_hermes_completed(
                 "enriched": out.get("enriched"),
                 "notified": out.get("notified"),
                 "material_changed": out.get("material_changed"),
+                "research_evaluation": out.get("research_evaluation"),
+                "product_research_evaluation": (out.get("reassessment") or {}).get("research_evaluation"),
+                "question_lifecycle": out.get("question_lifecycle"),
                 "critique_verdict": (out.get("critique") or {}).get("verdict")
                 if isinstance(out.get("critique"), dict) else None,
                 "memory_ok": mem.get("ok"),
@@ -799,8 +852,9 @@ def on_hermes_completed(
                 "reassessment_lineage_id": (out.get("reassessment") or {}).get("lineage_id")
                 if isinstance(out.get("reassessment"), dict) else None,
             }, sort_keys=True) + "\n")
-    except Exception:
-        pass
+    except Exception as exc:
+        out["ok"] = False
+        out["audit_error"] = f"{type(exc).__name__}:{exc}"
 
     return out
 

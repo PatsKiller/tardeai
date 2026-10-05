@@ -356,6 +356,11 @@ def research_impact(
     prior: dict[str, Any],
     new: dict[str, Any],
     critique: Optional[dict[str, Any]] = None,
+    request: dict | None = None,
+    result: dict | None = None,
+    prior_thesis: dict | None = None,
+    thesis_review: dict | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     verdict = str((critique or {}).get("verdict") or "").upper()
     p_st = _symbols((prior or {}).get("reentry_book") or {}).get(symbol) or _symbols(
@@ -376,8 +381,42 @@ def research_impact(
         impact = "WEAKENED" if str(n_st).upper() != "AVOID" else "BROKEN"
     else:
         impact = "UNKNOWN"
+    from scripts.lib.research_quality import evidence_eligibility, grounded_premise_conflicts
+    evidence = evidence_eligibility(request or {}, result or {}, critique, now=now)
+    prior_thesis = prior_thesis or ((request or {}).get("prompt_context") or {}).get("standing_thesis") or {}
+    conflicts = grounded_premise_conflicts(result or {}, prior_thesis, evidence_refs=evidence["evidence_refs"])
+    def decision_fields(product, state):
+        rows = ((product.get("reentry_book") or {}).get("names") or []) + ((product.get("opportunity_book") or {}).get("top") or [])
+        row = next((r for r in rows if str(r.get("symbol") or "").upper() == symbol), {})
+        return {"state": state, "recommendation": row.get("recommendation"),
+                "actions": sorted(bucket for sym, bucket in _action_pairs(product.get("action_book") or {}) if sym == symbol)}
+    before = decision_fields(prior or {}, p_st)
+    after = decision_fields(new or {}, n_st)
+    if (prior or {}).get("plan_id"):
+        before = {k: prior.get(k) for k in ("recommendation", "summary", "material")}
+        after = {k: new.get(k) for k in before}
+    if not evidence["eligible"]:
+        disposition, reason = "BLOCKED", ";".join(evidence["reasons"])
+    elif before != after:
+        disposition, reason = "CHANGED_ADVISORY_JUDGMENT", "validated_research_reassessment_changed_fields"
+    elif conflicts:
+        disposition, reason = "REVIEW_REQUIRED", "validated_evidence_conflicts_with_prior_premise"
+    else:
+        disposition, reason = "NO_CHANGE", "no_verified_advisory_transition"
+    review = thesis_review or {}
     return {
         "schema": IMPACT_SCHEMA,
+        "disposition": disposition,
+        "disposition_reason": reason,
+        "before": before, "after": after,
+        "evidence_validation": evidence,
+        "premise_conflicts": conflicts,
+        "thesis_id": review.get("thesis_id") or prior_thesis.get("thesis_id"),
+        "prior_thesis_version": review.get("old_version") or prior_thesis.get("version"),
+        "new_thesis_version": review.get("new_version") or prior_thesis.get("version"),
+        "decision_id": (new or {}).get("decision_id") or (new or {}).get("plan_id"),
+        "retrieval_receipt_id": (result or {}).get("retrieval_receipt_id") or (request or {}).get("retrieval_receipt_id"),
+        "notification_ids": [],
         "symbol": symbol,
         "research_request_id": research_id,
         "result_id": result_id,
@@ -387,7 +426,16 @@ def research_impact(
         "new_state": n_st,
         "impact": impact,
         "reason": f"{p_st or 'absent'} → {n_st or 'absent'}",
-        "evidence_refs": [result_id] if result_id else [],
+        "evidence_refs": evidence["evidence_refs"],
+        "evidence_usage": {
+            "retrieved_refs": evidence["evidence_refs"],
+            # Verified premise references are used to request review. A product
+            # difference alone cannot establish which source caused it.
+            "used_refs": sorted({ref for c in conflicts for ref in c["evidence_refs"]}) if evidence["eligible"] else [],
+            "rejected_refs": [] if evidence["eligible"] else evidence["evidence_refs"],
+            "judgment_changing_refs": sorted(set((result or {}).get("judgment_changing_evidence_refs") or []) & set(evidence["evidence_refs"])) if disposition == "CHANGED_ADVISORY_JUDGMENT" else [],
+            "usage_status": "PREMISE_REVIEW" if evidence["eligible"] and conflicts else "NOT_REPORTED",
+            "graph_edge_refs": list((result or {}).get("traversed_graph_edge_refs") or [])},
         "as_of": (new or {}).get("as_of") or _now(),
         "quality": verdict or "UNKNOWN",
         "confidence": (critique or {}).get("confidence"),
@@ -758,6 +806,10 @@ def reassess_on_research_completed(
             "reassessment_id": rid,
             "parent": parent,
             "product_id": prior_done.get("product_id"),
+            "impact": prior_done.get("research_evaluation"),
+            "research_evaluation": prior_done.get("research_evaluation") or {
+                "disposition": "NO_CHANGE", "disposition_reason": "duplicate_reassessment",
+                "research_request_id": parent.get("research_id"), "result_id": result_id},
             "notification": {"notification_class": "SUPPRESSED", "suppressed_reason": "duplicate_reassessment"},
             "authority": AUTHORITY,
             "financial_action": False,
@@ -773,6 +825,9 @@ def reassess_on_research_completed(
         "memory_behavior_influence": (env or os.environ).get("MEMORY_BEHAVIOR_INFLUENCE", "0"),
     }
     prior = load_brief(root)
+    from scripts.lib.research_quality import evidence_eligibility, grounded_premise_conflicts
+    eligibility = evidence_eligibility(request, result, critique)
+    prior_thesis = (result.get("prompt_context") or request.get("prompt_context") or {}).get("standing_thesis") or {}
     try:
         # Begin from persistent ticker cognition (read-only). Not a second research lane.
         cognition_pack: dict[str, Any] | None = None
@@ -806,9 +861,18 @@ def reassess_on_research_completed(
         sym_for_thesis = str(parent.get("symbol") or result.get("symbol") or "").upper()
         if sym_for_thesis:
             try:
-                critique_v = str((critique or {}).get("verdict") or "").upper()
-                if critique_v in {"INSUFFICIENT", "REJECT", "REJECTED"}:
-                    thesis_review = {"skipped": True, "reason": f"critique_{critique_v.lower()}"}
+                from scripts.lib.research_prompt_context import build_research_prompt_context
+                prompt_context = result.get("prompt_context") or request.get("prompt_context")
+                if not isinstance(prompt_context, dict):
+                    prompt_context = build_research_prompt_context(
+                        sym_for_thesis, question=str(request.get("question") or result.get("question") or "research completion"), root=root)
+                prior_thesis = prompt_context.get("standing_thesis") or {}
+                conflicts = grounded_premise_conflicts(result, prior_thesis, evidence_refs=eligibility["evidence_refs"])
+                label = str(result.get("classification") or "").upper()
+                if not eligibility["eligible"]:
+                    thesis_review = {"skipped": True, "reason": ";".join(eligibility["reasons"])}
+                elif label in {"WEAKENS", "INVALIDATES", "CONFLICTED"} and not conflicts:
+                    thesis_review = {"skipped": True, "reason": "unverified_premise_conflict"}
                 else:
                     from scripts.lib.research_prompt_context import build_research_prompt_context
                     from scripts.lib.research_thesis_delta import accept_research_result
@@ -878,6 +942,20 @@ def reassess_on_research_completed(
         product["notification_change_scope"] = scope_research_change_to_symbol(
             changed, parent.get("symbol")
         )
+        impact = research_impact(
+            symbol=str(parent.get("symbol") or ""),
+            result_id=str(result_id),
+            research_id=str(parent.get("research_id") or ""),
+            prior=prior,
+            new=product,
+            critique=critique, request=request, result=result,
+            prior_thesis=prior_thesis, thesis_review=thesis_review,
+        )
+        product["research_evaluation"] = impact
+        for book, key in (("reentry_book", "names"), ("opportunity_book", "top")):
+            for row in (product.get(book) or {}).get(key) or []:
+                if str(row.get("symbol") or "").upper() == str(parent.get("symbol") or "").upper():
+                    row["research_evaluation"] = impact
         persist_product(product, root=root)
         try:
             from scripts.lib.cio_operator_artifacts import record_what_changed
@@ -893,21 +971,15 @@ def reassess_on_research_completed(
             )
         except Exception:
             pass
-        impact = research_impact(
-            symbol=str(parent.get("symbol") or ""),
-            result_id=str(result_id),
-            research_id=str(parent.get("research_id") or ""),
-            prior=prior,
-            new=product,
-            critique=critique,
-        )
-        _append_jsonl(_paths(root)["impacts"], impact)
         notification_changed = product["notification_change_scope"]
         nd = (
             _notify(product, notification_changed, parent, root=root)
-            if notify
-            else {"notification_class": "COMMAND_CENTER_ONLY", "skipped": True, "outbox_enqueued": False}
+            if notify and impact["disposition"] == "CHANGED_ADVISORY_JUDGMENT"
+            else {"notification_class": "COMMAND_CENTER_ONLY", "skipped": True, "outbox_enqueued": False,
+                  "suppressed_reason": impact["disposition_reason"]}
         )
+        impact["notification_ids"] = nd.get("outbox_notification_ids") or ([nd["outbox_notification_id"]] if nd.get("outbox_notification_id") else [])
+        _append_jsonl(_paths(root)["impacts"], impact)
         rec = {
             "schema": REASSESS_SCHEMA,
             "reassessment_id": rid,
@@ -918,6 +990,7 @@ def reassess_on_research_completed(
             "parent": parent,
             "what_changed_material": changed.get("material"),
             "impact": impact.get("impact"),
+            "research_evaluation": impact,
             "notification_class": nd.get("notification_class"),
             "authority": AUTHORITY,
         }
@@ -953,6 +1026,7 @@ def reassess_on_research_completed(
                 "trigger", "what_changed", "summary", "parent_recovery", "lineage_id",
             ) if k in product},
             "impact": impact,
+            "research_evaluation": impact,
             "notification": nd,
         })
         return out
@@ -978,7 +1052,9 @@ def reassess_on_research_completed(
         }
         _append_jsonl(_paths(root)["pending"], pending)
         _mark("pending", rid, pending, root=root)
-        out.update({"ok": False, "status": "REASSESSMENT_PENDING", "error": pending["error"]})
+        out.update({"ok": False, "status": "REASSESSMENT_PENDING", "error": pending["error"],
+                    "research_evaluation": {"disposition": "BLOCKED", "disposition_reason": "reassessment_unavailable",
+                                            "research_request_id": parent.get("research_id"), "result_id": result_id}})
         return out
 
 

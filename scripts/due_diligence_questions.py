@@ -92,11 +92,8 @@ DOSSIER_NEWS = int(os.getenv("DDQ_DOSSIER_NEWS", "12"))
 #: docs/architecture/MATERIAL_CHANGE_TO_QUESTIONS.md). Declared rather than left
 #: dark: an undeclared contract is indistinguishable from one whose caller was
 #: forgotten, which is the defect check_dark_contracts exists to catch.
-NO_CONSUMER_REASON = (
-    "questions and narratives are read within this module (citation + routing "
-    "backlog); the answer-side consumers — supersede-on-answer and the open-question "
-    "digest — are the unbuilt tail of the lifecycle"
-)
+# The answer side is reconciled by reconcile_answers in this owner.
+NO_CONSUMER_REASON = "open-question digest remains a presentation consumer"
 
 DDL = """
 CREATE TABLE IF NOT EXISTS subject_state_narratives (
@@ -139,6 +136,9 @@ CREATE TABLE IF NOT EXISTS due_diligence_questions (
 );
 CREATE INDEX IF NOT EXISTS ddq_subject_idx ON due_diligence_questions (subject_guid);
 CREATE INDEX IF NOT EXISTS ddq_status_idx ON due_diligence_questions (status);
+ALTER TABLE due_diligence_questions ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+ALTER TABLE due_diligence_questions ADD COLUMN IF NOT EXISTS lifecycle_checked_at TIMESTAMPTZ;
+ALTER TABLE due_diligence_questions ADD COLUMN IF NOT EXISTS lifecycle_events JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE material_changes ADD COLUMN IF NOT EXISTS questioned_at TIMESTAMPTZ;
 """
 
@@ -590,6 +590,78 @@ def _register_question_on_spine(cur, qguid: str, change: dict) -> None:
         pass
 
 
+def answer_state(answers: list[dict], *, expires_at=None, now=None) -> dict:
+    """Evidence-grounded completion; no response, success code or age implies an answer."""
+    from datetime import datetime, timezone
+    now = now or datetime.now(timezone.utc)
+    ids, accepted = [], []
+    for answer in answers:
+        if answer.get("id") is not None:
+            ids.append(f"hermes_external_research:{answer['id']}")
+        if answer.get("status") == "sent" and str(answer.get("recommendation") or "").strip():
+            accepted.append(answer)
+    for answer in accepted:
+        evidence = answer.get("evidence_json") or []
+        if isinstance(evidence, str):
+            try:
+                evidence = json.loads(evidence)
+            except ValueError:
+                evidence = []
+        rows = evidence if isinstance(evidence, list) else [evidence]
+        if any(isinstance(e, dict) and any(e.get(k) for k in ("url", "source_id", "evidence_id", "source_ref")) for e in rows):
+            return {"status": "ANSWERED", "reason": "accepted_answer_with_cited_evidence", "answer_ids": ids}
+    if accepted:
+        return {"status": "PARTIALLY_ANSWERED", "reason": "answer_lacks_verifiable_source_references", "answer_ids": ids}
+    if expires_at:
+        try:
+            expiry = datetime.fromisoformat(str(expires_at).replace("Z", "+00:00"))
+            if expiry.tzinfo and expiry <= now:
+                return {"status": "EXPIRED", "reason": "recorded_deadline_elapsed_without_answer", "answer_ids": ids}
+        except ValueError:
+            pass
+    return {"status": "UNRESOLVED", "reason": "no_accepted_answer", "answer_ids": ids}
+
+
+def reconcile_answers(cur, *, limit: int = 100, apply: bool = False) -> dict:
+    """Join by the originating question id, never by ticker or prose similarity."""
+    cur.execute("""SELECT question_guid, status, answer_ids, expires_at
+                     FROM due_diligence_questions
+                    WHERE status IN ('ASKED','ROUTED','UNRESOLVED','PARTIALLY_ANSWERED')
+                    ORDER BY lifecycle_checked_at ASC NULLS FIRST, created_at ASC
+                    LIMIT %s""", (limit,))
+    questions = cur.fetchall()
+    out = {"considered": len(questions), "transitions": [], "applied": apply}
+    for qguid, status, old_ids, expires_at in questions:
+        if apply:
+            cur.execute("UPDATE due_diligence_questions SET lifecycle_checked_at=now() WHERE question_guid=%s", (qguid,))
+        cur.execute("""SELECT h.id, h.status, h.recommendation, h.evidence_json
+                         FROM hermes_external_research h JOIN due_diligence_questions q
+                           ON (h.trigger_reason = 'due_diligence_question:' || q.question_guid::text
+                               OR (h.trigger_reason='due_diligence_question'
+                                   AND h.subject_guid=q.subject_guid AND h.question=q.question
+                                   AND h.created_at >= q.created_at
+                                   AND 1=(SELECT count(*) FROM due_diligence_questions q2
+                                           WHERE q2.subject_guid=q.subject_guid AND q2.question=q.question)))
+                        WHERE q.question_guid=%s AND h.symbol=q.symbol
+                          AND (h.subject_guid=q.subject_guid OR h.subject_guid IS NULL)
+                        ORDER BY h.created_at, h.id""", (qguid,))
+        answers = [dict(zip(("id", "status", "recommendation", "evidence_json"), row)) for row in cur.fetchall()]
+        state = answer_state(answers, expires_at=expires_at)
+        # Unrouted work retains eligibility. A deadline can explicitly expire it.
+        if not answers and status == "ASKED" and state["status"] == "UNRESOLVED":
+            continue
+        if status == state["status"] and sorted(old_ids or []) == sorted(state["answer_ids"]):
+            continue
+        event = {"from": status, **state, "question_guid": str(qguid)}
+        out["transitions"].append(event)
+        if apply:
+            cur.execute("""UPDATE due_diligence_questions SET status=%s, answer_ids=%s::jsonb,
+                             lifecycle_events=lifecycle_events || jsonb_build_array(%s::jsonb || jsonb_build_object('at', now()))
+                            WHERE question_guid=%s AND status=%s""",
+                        (state["status"], json.dumps(state["answer_ids"]), json.dumps(event), qguid, status))
+    return out
+
+
 def route(cur, limit: int) -> dict:
     """Send the top unrouted questions out for research.
 
@@ -599,9 +671,15 @@ def route(cur, limit: int) -> dict:
     what makes the loop close on itself.
     """
     cur.execute(
-        """SELECT question_guid, symbol, question FROM due_diligence_questions
-            WHERE status = 'ASKED' AND routed_at IS NULL
-            ORDER BY created_at DESC LIMIT %s""", (limit,))
+        """SELECT q.question_guid, q.symbol, q.question FROM due_diligence_questions q
+            LEFT JOIN material_changes m ON m.change_guid=q.change_guid
+            WHERE q.status = 'ASKED' AND q.routed_at IS NULL
+              AND (q.expires_at IS NULL OR q.expires_at > now())
+              AND NOT EXISTS (SELECT 1 FROM hermes_external_research h
+                   WHERE h.trigger_reason='due_diligence_question:' || q.question_guid::text)
+            ORDER BY coalesce(m.magnitude,0) + extract(epoch FROM now()-q.created_at)/3600 DESC,
+                     q.created_at ASC, q.question_guid
+            LIMIT %s FOR UPDATE OF q SKIP LOCKED""", (limit,))
     rows = cur.fetchall()
     lanes = rank_research_lanes(cur)
     out = {"routed": 0, "failed": 0, "lanes_ranked": [l[0] for l in lanes], "detail": []}
@@ -615,13 +693,26 @@ def route(cur, limit: int) -> dict:
         for lane, _success, _quality in lanes:
             cmd = [sys.executable, str(ROOT / "scripts" / "hermes_external_researcher.py"),
                    "--lane", lane,
-                   "--question", question, "--symbol", symbol, "--apply"]
+                   "--question", question, "--symbol", symbol,
+                   "--trigger", f"due_diligence_question:{qguid}", "--apply"]
             try:
                 r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True, text=True,
                                    timeout=int(os.getenv("DDQ_ROUTE_TIMEOUT", "300")))
-                ok = r.returncode == 0
+                # The researcher exits zero for budget/auth/cache skips too.
+                # A stored row closes this attempt; reconciliation reports its real status.
+                cur.execute("SELECT id FROM hermes_external_research WHERE trigger_reason=%s ORDER BY id DESC LIMIT 1",
+                            (f"due_diligence_question:{qguid}",))
+                ok = bool(cur.fetchone())
+                if r.returncode == 0 and not ok:
+                    break
             except Exception as exc:  # noqa: BLE001
-                ok, r = False, type("R", (), {"stderr": f"{type(exc).__name__}: {exc}"})()
+                ok, r = False, type("R", (), {"stderr": type(exc).__name__})()
+                # Unknown completion is not permission for another paid attempt.
+                cur.execute("""UPDATE due_diligence_questions SET status='UNRESOLVED', routed_at=now(),
+                                 lifecycle_events=lifecycle_events || jsonb_build_array(jsonb_build_object(
+                                   'at', now(), 'state', 'UNRESOLVED', 'reason', 'route_outcome_unknown'))
+                                WHERE question_guid=%s""", (qguid,))
+                break
             if ok:
                 used = lane
                 break
@@ -638,12 +729,11 @@ def route(cur, limit: int) -> dict:
             cur.execute("""UPDATE hermes_external_research h
                               SET subject_guid = q.subject_guid,
                                   issuer_guid  = q.issuer_guid,
-                                  trigger_source = 'material_change',
-                                  trigger_reason = 'due_diligence_question'
+                                  trigger_source = 'material_change'
                              FROM due_diligence_questions q
                             WHERE q.question_guid = %s
+                              AND h.trigger_reason = 'due_diligence_question:' || q.question_guid::text
                               AND h.symbol = q.symbol
-                              AND h.question = q.question
                               AND h.subject_guid IS NULL""", (qguid,))
             out["routed"] += 1
             out.setdefault("used", []).append(f"{symbol}:{used}")
@@ -667,8 +757,16 @@ def main() -> int:
     cur = conn.cursor()
     # ddl_guard: see scripts/lib/ddl_guard.py — third contender for the same lock.
     from scripts.lib.ddl_guard import apply_ddl
-    apply_ddl(cur, DDL)
-    conn.commit()
+    if args.apply:
+        apply_ddl(cur, DDL)
+        conn.commit()
+    else:
+        conn.set_session(readonly=True)
+        cur.execute("SELECT to_regclass('due_diligence_questions')")
+        if not cur.fetchone()[0]:
+            print(json.dumps({"dry_run": True, "schema_required": True, "external_calls": 0, "writes": 0}))
+            conn.close()
+            return 0
 
     warn = cap_env_warning()
     if warn:
@@ -679,6 +777,13 @@ def main() -> int:
               "cap_env_warning": warn,
               "changes_considered": len(changes), "narratives": 0, "questions": 0,
               "dropped": {}, "lanes": [], "rows_produced": None, "routed": None}
+    if not args.apply:
+        result.update(dry_run=True, external_calls=0, writes=0)
+        conn.close()
+        print("RESULT: " + json.dumps(result, default=str))
+        return 0
+    result["answer_lifecycle"] = reconcile_answers(cur, apply=True)
+    conn.commit()
     print(f"{SCHEMA_QUESTION} — apply={args.apply} route={args.route} "
           f"changes={len(changes)}")
     if not changes:

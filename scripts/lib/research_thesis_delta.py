@@ -209,7 +209,11 @@ def build_research_thesis_delta(
         "metadata": metadata,
         "research_id": research_id,
         "result_fingerprint": result_fp,
-        "thesis_publish_eligible": bool(grade.get("grade") == "A" and classification in MATERIAL_CLASSIFICATIONS),
+        # Negative model classifications are review candidates. Only a separate
+        # governed thesis review can ratify them; prose quality is not validation.
+        "review_required": classification in {"WEAKENS", "INVALIDATES", "CONFLICTED"},
+        "thesis_publish_eligible": bool(grade.get("grade") == "A" and classification in MATERIAL_CLASSIFICATIONS
+                                        and classification not in {"WEAKENS", "INVALIDATES", "CONFLICTED"}),
         "thesis_quality_grade": grade,
         "authority": AUTHORITY,
         "raw_chain_of_thought": False,
@@ -487,7 +491,7 @@ def accept_research_result(
     }
     grade = str((delta.get("thesis_quality_grade") or {}).get("grade") or "")
     enrich_fields: dict[str, Any] = {}
-    if standing and grade == "A" and delta["classification"] != "INSUFFICIENT_DATA":
+    if standing and grade == "A" and delta["classification"] != "INSUFFICIENT_DATA" and not delta.get("review_required"):
         if not prior_inval and merged_inval:
             enrich_fields["invalidation_conditions"] = merged_inval
         if not prior_cats and merged_cats:
