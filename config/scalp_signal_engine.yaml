@@ -337,3 +337,17 @@ active_trader_auto_sim:
   taf_per_share: 0.000166
   taf_cap: 8.30
   commission: 0.0
+
+# ── Active Trader alert sync (operator 2026-10-05: "the optimum time to get in was 10 a.m. We need
+#    to synchronize and coordinate"). Sub-minute evaluation of the recorder's live names on every
+#    recorder tick (~5 s): APPROACHING / intrabar TRIGGERED (confirmed or cancelled at the close) /
+#    EXTENDED + buy zone / PULLBACK_ZONE. Reads ONLY the Command Center microstructure store
+#    (operator rule: no process fetches its own data). Mode follows active_trader_alerts.mode. ──
+active_trader_fast_loop:
+  enabled: true
+  window_et: ["09:30", "11:55"]
+  max_symbols: 10
+  max_store_age_s: 15          # freshness contract on the recorder store; older → skip, marked stale
+  near_trigger_pct: 0.5        # APPROACHING within 0.5 % (or 3 ticks) below the break level
+  near_trigger_ticks: 3
+  tick_size: 0.01

@@ -1096,6 +1096,12 @@ GATES = [
         "alert_single_source_20261005",
         ["tests/test_alert_single_source_20261005.py"],
     ),
+    # Active Trader alert sync: sub-minute APPROACHING / intrabar TRIGGERED / EXTENDED + buy zone,
+    # state-aware throttle, latency journaled; fast loop reads only the Command Center store (2026-10-05).
+    (
+        "at_alert_sync_20261005",
+        ["tests/test_at_alert_sync_20261005.py"],
+    ),
     # /v3/cio/home memory: stream the action ledger, tail-read logs, one plan-store load (2026-10-03).
     (
         "cio_home_memory_20261003",

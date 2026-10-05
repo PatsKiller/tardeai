@@ -57,6 +57,7 @@ class RecorderConfig:
     premarket_window_et: tuple = ("06:00", "09:28")   # operator 2026-10-05: from 6am
     universe_refresh_s: float = 300.0
     live_symbols_max_age_s: float = 900.0
+    publish_bars: bool = True               # 1-min bars (forming bar included) per symbol, every poll
 
     @classmethod
     def from_mapping(cls, raw: Optional[Mapping[str, Any]]) -> "RecorderConfig":
@@ -164,6 +165,24 @@ def load_snapshots(day: str, symbol: str, *, start: Optional[float] = None, end:
     return out
 
 
+def bars_file(day: str, symbol: str, base: Optional[Path] = None) -> Path:
+    return (base or micro_dir()) / day / f"{symbol.upper()}.bars.json"
+
+
+def write_bars(day: str, symbol: str, rows: list[dict], *, now: float, base: Optional[Path] = None) -> None:
+    """Atomic overwrite: today's 1-min bars (start-normalized; the last one may be forming). The
+    single published source of intraday bars for the Active Trader consumers (operator 2026-10-05:
+    the Command Center is the source of truth; processes do not fetch their own data)."""
+    p = bars_file(day, symbol, base)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    start_of_day = datetime.fromisoformat(f"{day}T00:00:00").replace(tzinfo=ET).timestamp()
+    tmp = p.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"t": round(now, 3), "time_basis": "bar_start", "provider": "moomoo",
+                               "rows": [r for r in rows if r.get("s", 0) >= start_of_day]},
+                              separators=(",", ":")), encoding="utf-8")
+    tmp.replace(p)
+
+
 def write_live_symbols(symbols: list[str], *, now: float, base: Optional[Path] = None) -> None:
     p = (base or micro_dir()) / "live_symbols.json"
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -266,6 +285,15 @@ def run(*, rcfg: RecorderConfig, symbols_fn: Callable[[], list[str]], src, now_f
                                 **{k: line[k] for k in ("book_err", "tape_err", "quote_err") if k in line}}))
             else:
                 append_line(day_file(day, sym, base), line)
+            if rcfg.publish_bars and hasattr(src, "bars_1m"):
+                try:
+                    rows = src.bars_1m(sym)
+                    if not dry_run:
+                        write_bars(day, sym, rows, now=now_fn(), base=base)
+                    stats["bars"] = stats.get("bars", 0) + 1
+                except Exception as e:  # noqa: BLE001 — bars are a separate product; never stop recording
+                    stats["errors"] += 1
+                    out(f"[recorder] bars {sym}: {type(e).__name__}: {str(e)[:80]}")
         stats["polls"] += 1
         if on_tick is not None:
             try:
@@ -310,7 +338,23 @@ def main(argv=None) -> int:
             from active_trader import exit_watch as ew
         except ModuleNotFoundError:  # pragma: no cover
             from scripts.active_trader import exit_watch as ew
-        on_tick = ew.ticker(cfg, conn_fn=(lambda: conn), alert_cfg=acfg)
+        ticks = [ew.ticker(cfg, conn_fn=(lambda: conn), alert_cfg=acfg)]
+        # Sub-minute alert sync (2026-10-05): the fast trigger loop is a pure CONSUMER of what this
+        # recorder just published; it runs on the same tick, so no second process or subscription.
+        try:
+            from active_trader import fast_trigger_loop as ftl
+        except ModuleNotFoundError:  # pragma: no cover
+            from scripts.active_trader import fast_trigger_loop as ftl
+        fl = ftl.ticker(cfg, base=None)
+        if fl is not None:
+            ticks.append(fl)
+
+        def on_tick(now, symbols, _ticks=ticks):
+            for t in _ticks:
+                try:
+                    t(now, symbols)
+                except Exception as e:  # noqa: BLE001 — one consumer never stops the others
+                    print(f"[recorder] tick consumer failed: {type(e).__name__}: {e}")
     try:
         stats = run(rcfg=rcfg, symbols_fn=symbols_fn, src=src, window=window, max_seconds=a.max_seconds,
                     dry_run=dry, on_tick=on_tick)

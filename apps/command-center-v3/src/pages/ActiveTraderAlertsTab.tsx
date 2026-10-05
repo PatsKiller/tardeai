@@ -46,6 +46,8 @@ type Decision = {
   r?: number | null; float_mm?: number | null; rvol?: number | null; ign?: number | null; lane?: string | null;
   setup?: string | null; quote_age_s?: number | null; l2: L2; tape?: Tape | null; l2_compare?: L2 | null; score?: Score | null;
   supply?: Supply | null; outcome?: Outcome | null; ts_epoch?: number | null;
+  source?: 'pass5' | 'fast'; intrabar?: boolean; break_level?: number | null; zone?: { low: number; high: number } | null;
+  latency?: { event?: string; latency_s?: number | null; event_at?: string | null } | null;
   signals?: { status?: string | null; snapshots?: number | null; fired: string[]; detail: Record<string, Sig> } | null;
 };
 type Feed = {
@@ -55,7 +57,9 @@ type Feed = {
              last_pass?: { evaluated?: number; alerts?: number; vetoes?: number; sent?: number } | null };
   l2?: { source?: string; levels_proven?: number; proven_at?: string; compare?: string };
   rules?: Record<string, string>;
-  counts?: { triggered_alerts?: number; armed_alerts?: number; vetoes?: number; sent?: number; decisions?: number };
+  counts?: { triggered_alerts?: number; armed_alerts?: number; vetoes?: number; sent?: number; decisions?: number;
+              buy_alerts?: number; headsup_alerts?: number; by_kind?: Record<string, number> };
+  latency?: Record<string, { n: number; p50_s: number | null; p90_s: number | null }>;
   veto_reasons?: Record<string, number>;
   precision?: Record<string, Record<string, { n: number; hit: number; precision: number | null }>>;
   scored_total?: number;
@@ -70,6 +74,17 @@ type Feed = {
 
 type Kind = 'all' | 'buy' | 'heads' | 'sent' | 'veto' | 'traded';
 type Res = 'any' | 'WORKED' | 'STOPPED' | 'NO_TOUCH' | 'AT_OR_BELOW_STOP' | 'pending';
+// Alert sync (2026-10-05): buy = TRIGGERED / back in buy zone; heads-up = ARMED / APPROACHING /
+// EXTENDED (don't chase) / trigger failed.
+const BUY_KINDS = ['TRIGGERED', 'PULLBACK_ZONE']
+const HEADS_KINDS = ['ARMED', 'APPROACHING', 'EXTENDED', 'TRIGGER_CANCELLED']
+const KIND_CHIP: Record<string, string> = {
+  TRIGGERED: 'TIME TO BUY', PULLBACK_ZONE: 'BACK IN BUY ZONE', ARMED: 'HEADS-UP', APPROACHING: 'APPROACHING',
+  EXTENDED: "EXTENDED · don't chase", TRIGGER_CANCELLED: 'TRIGGER FAILED',
+}
+const EVENT_TEXT: Record<string, string> = {
+  break_print: 'the break print', zone_entry: 'price entered the zone', extension: 'the run past entry', bar_close: 'the fire bar close',
+}
 const KIND_LABEL: Record<Kind, string> = { all: 'All', buy: 'Time to buy', heads: 'Heads-up', sent: 'Sent', veto: 'Vetoed', traded: 'You traded' };
 const RES_LABEL: Record<Exclude<Res, 'any'>, string> = {
   WORKED: '+1R before stop', STOPPED: 'stop hit first', NO_TOUCH: 'neither in window', AT_OR_BELOW_STOP: 'already through stop', pending: 'not scored yet',
@@ -92,6 +107,7 @@ const REASON_TEXT: Record<string, string> = {
   BOOK_CROSSED: 'book crossed', SPREAD_WIDE: 'spread too wide', L2_ASK_HEAVY: 'sellers heavier in book',
   TAPE_MISSING: 'no tape', TAPE_STALE: 'tape stale', TAPE_THIN: 'too few prints', TAPE_SELLERS: 'tape selling',
   NO_STOP_REF: 'no valid stop', COOLDOWN: 'cooldown', RATE_LIMIT: 'hourly cap', PRICE_AT_OR_BELOW_STOP: 'price already through stop',
+  DUPLICATE: 'already alerted', NO_ZONE: 'no buy zone',
 };
 
 const n = (v: number | null | undefined, d = 2) => (v == null || !Number.isFinite(v) ? '—' : v.toFixed(d));
@@ -113,8 +129,8 @@ export default function ActiveTraderAlertsTab() {
   const symbols = useMemo(() => Array.from(new Set((data?.decisions ?? []).map(d => d.symbol).filter(Boolean) as string[])).sort(), [data]);
   const decisions = useMemo(() => (data?.decisions ?? []).filter(d => {
     const alert = d.verdict === 'ALERT';
-    if (kind === 'buy' && !(alert && d.kind === 'TRIGGERED')) return false;
-    if (kind === 'heads' && !(alert && d.kind === 'ARMED')) return false;
+    if (kind === 'buy' && !(alert && BUY_KINDS.includes(String(d.kind)))) return false;
+    if (kind === 'heads' && !(alert && HEADS_KINDS.includes(String(d.kind)))) return false;
     if (kind === 'sent' && !d.sent) return false;
     if (kind === 'veto' && alert) return false;
     if (kind === 'traded' && !tradedIds.has(d.id)) return false;
@@ -141,6 +157,8 @@ export default function ActiveTraderAlertsTab() {
   const buyAgg = os['TRIGGERED:ALERT'];
   const tagged = trips.filter(t => t.source === 'active_trader');
   const tripPnl = trips.reduce((a, t) => a + (t.pnl ?? 0), 0);
+  const lat = data?.latency?.all
+  const fast = data?.latency?.['source:fast']
   const reasons = Object.entries(data?.veto_reasons ?? {});
   const maxReason = Math.max(1, ...reasons.map(([, v]) => v));
 
@@ -165,9 +183,9 @@ export default function ActiveTraderAlertsTab() {
       </header>
 
       <section className="at-alerts__kpis" aria-label="Today">
-        <Kpi label="Time to buy" value={c.triggered_alerts ?? 0} tone="green" tip="TRIGGERED alerts today"
+        <Kpi label="Time to buy" value={c.buy_alerts ?? c.triggered_alerts ?? 0} tone="green" tip="TRIGGERED + back-in-buy-zone alerts today"
           on={kind === 'buy' && res === 'any'} onClick={() => pick('buy')} />
-        <Kpi label="Heads-up" value={c.armed_alerts ?? 0} tone="amber" tip="ARMED alerts today"
+        <Kpi label="Heads-up" value={c.headsup_alerts ?? c.armed_alerts ?? 0} tone="amber" tip="ARMED, APPROACHING, EXTENDED and trigger-failed alerts today"
           on={kind === 'heads'} onClick={() => pick('heads')} />
         <Kpi label="Sent to Telegram" value={c.sent ?? 0} tone="blue" tip={live ? 'delivered' : 'shadow mode — nothing sent'}
           on={kind === 'sent'} onClick={() => pick('sent')} />
@@ -176,6 +194,8 @@ export default function ActiveTraderAlertsTab() {
         <Kpi label="Time to buy worked" value={buyAgg?.n ? `${buyAgg.WORKED}/${buyAgg.n}` : '—'} tone="green"
           tip={`reached +1R from the ask at the alert before the stop, within ${data?.outcomes?.touch_min ?? 15} min`}
           on={kind === 'buy' && res === 'WORKED'} onClick={() => pick('buy', 'WORKED')} />
+        <Kpi label="Alert latency" value={lat?.n ? `${lat.p50_s}s · ${lat.p90_s}s` : '—'} tone="blue"
+          tip={`p50 · p90 seconds from the market event (break print, zone entry, run past entry) to the alert${fast?.n ? ` · fast loop p50 ${fast.p50_s}s` : ''}`} />
         <Kpi label="Your trades" value={trips.length ? `${trips.length} · ${sgn(tripPnl, 2, '')}` : '0'} tone="blue"
           tip={`${tagged.length} after an alert · from your broker fills`} on={kind === 'traded'} onClick={() => pick('traded')} />
       </section>
@@ -386,7 +406,9 @@ function LearningPanel({ l }: { l: Learning }) {
 }
 
 function TrackTable({ rows, caption }: { rows: Record<string, OutcomeAgg>; caption: string }) {
-  const keys: [string, string][] = [['TRIGGERED:ALERT', 'Time to buy'], ['ARMED:ALERT', 'Heads-up'], ['TRIGGERED:VETO', 'Vetoed trigger'], ['ARMED:VETO', 'Vetoed heads-up']];
+  const keys: [string, string][] = [['TRIGGERED:ALERT', 'Time to buy'], ['PULLBACK_ZONE:ALERT', 'Back in buy zone'],
+    ['APPROACHING:ALERT', 'Approaching'], ['ARMED:ALERT', 'Heads-up'], ['EXTENDED:ALERT', "Extended (don't chase)"],
+    ['TRIGGERED:VETO', 'Vetoed trigger'], ['ARMED:VETO', 'Vetoed heads-up']];
   return (
     <table className="at-alerts__prec">
       <caption>{caption}</caption>
@@ -425,8 +447,9 @@ function Kpi({ label, value, tone, tip, on, onClick }: {
 
 function DecisionRow({ d, trips }: { d: Decision; trips: Trip[] }) {
   const alert = d.verdict === 'ALERT';
-  const trig = d.kind === 'TRIGGERED';
+  const trig = BUY_KINDS.includes(String(d.kind));
   const o = d.outcome;
+  const chip = `${KIND_CHIP[String(d.kind)] ?? d.kind}${d.intrabar ? ' · intrabar' : ''}`;
   const r = resultOf(d);
   const sup = d.supply;
   return (
@@ -434,7 +457,7 @@ function DecisionRow({ d, trips }: { d: Decision; trips: Trip[] }) {
       <div className="at-alerts__row-head">
         <span className="at-alerts__sym">{d.symbol}</span>
         <span className={`at-chip ${alert ? (trig ? 'at-chip--pass' : 'at-chip--warning') : 'at-chip--fail'}`}>
-          {alert ? (trig ? 'TIME TO BUY' : 'HEADS-UP') : `VETO · ${d.kind === 'TRIGGERED' ? 'trigger' : 'armed'}`}
+          {alert ? chip : `VETO · ${(KIND_CHIP[String(d.kind)] ?? String(d.kind)).toLowerCase()}`}
         </span>
         {d.sent && <span className="at-chip at-chip--lane" title="Delivered to Telegram">✓ Telegram</span>}
         {trips.map((t, i) => (
@@ -442,6 +465,7 @@ function DecisionRow({ d, trips }: { d: Decision; trips: Trip[] }) {
             you bought {n(t.buy_price)} {hm(t.buy_at)}{t.pnl != null ? ` · ${sgn(t.pnl, 2, '')}` : ''}
           </span>
         ))}
+        {d.source === 'fast' && <span className="at-chip at-chip--context" title="Sub-minute loop on the recorder's live store">fast</span>}
         <time className="mono">{timeOf(d.at)} ET</time>
       </div>
       {!alert && d.veto_reasons.length > 0 && (
@@ -455,6 +479,15 @@ function DecisionRow({ d, trips }: { d: Decision; trips: Trip[] }) {
         <div><dt>float</dt><dd>{d.float_mm == null ? '—' : `${n(d.float_mm, 1)}M`}</dd></div>
         <div><dt>RVOL</dt><dd>{d.rvol == null ? '—' : `${n(d.rvol, 1)}x`}</dd></div>
       </dl>
+      {(d.latency?.latency_s != null || d.zone || d.break_level != null) && (
+        <div className="at-alerts__evidence at-alerts__sync" data-testid="at-alert-sync">
+          {d.break_level != null && <span><b>break</b> above {n(d.break_level)}</span>}
+          {d.zone && <span><b>buy zone</b> {n(d.zone.low)}–{n(d.zone.high)}</span>}
+          {d.latency?.latency_s != null && (
+            <span title={`event ${d.latency.event_at ?? ''}`}><b>sync</b> {n(d.latency.latency_s, 0)}s after {EVENT_TEXT[String(d.latency.event)] ?? d.latency.event}</span>
+          )}
+        </div>
+      )}
       <div className="at-alerts__evidence">
         <span title={`book age ${n(d.l2?.age_s, 0)}s (${d.l2?.ts_source ?? 'n/a'})`}>
           <b>L2</b> {d.l2?.levels ?? 0} lv · bid/ask {n(d.l2?.depth_ratio)}x · spread {n(d.l2?.spread_bps, 0)} bps
