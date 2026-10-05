@@ -17,7 +17,7 @@ from .options_research_universe import conviction_bias
 def _quote(row):
     try:
         bid, ask = float(row.get('bid') or 0), float(row.get('ask') or 0)
-        multiplier = float(row.get('multiplier') or 100)
+        multiplier = float(row.get('multiplier'))
         strike = float(row.get('strike') or 0)
         return (all(math.isfinite(v) for v in (bid, ask, multiplier, strike)) and strike > 0
                 and bid >= 0 and ask > 0 and ask >= bid and multiplier == 100 and not row.get('nonstandard'))
@@ -72,8 +72,14 @@ def generate_candidates(research: list[dict], holdings: list[dict], chains: dict
                 spec = [(action, leg['side'], leg['strike']) for action, leg in legs]
                 identity = [symbol, strategy, exp, extra.get('account'), spec]
                 proposal_id = 'adv_' + hashlib.sha256(repr(identity).encode()).hexdigest()[:24]
-                ivs = [float(leg.get('iv') or 0) for _, leg in legs]
-                ivs = [iv / 100 if iv > 3 else iv for iv in ivs if iv > 0]
+                ivs = []
+                for _, leg in legs:
+                    try:
+                        iv = float(leg.get('iv') or 0)
+                    except (ValueError, TypeError):
+                        continue
+                    if math.isfinite(iv) and iv > 0:
+                        ivs.append(iv / 100 if iv > 3 else iv)
                 proposal = {'id': proposal_id, 'strategy': strategy, 'symbol': symbol, 'underlying': symbol,
                     'expiration': exp, 'dte': dte, 'underlying_price': spot, 'premium': round(premium, 4),
                     'premium_total': round(premium * 100, 2), 'contracts': 1, 'multiplier': 100,
@@ -95,6 +101,11 @@ def generate_candidates(research: list[dict], holdings: list[dict], chains: dict
                     'quality_pass': False, 'edge_score': None, 'edge_basis': 'not ranked: configuration required',
                     'action_buttons': [{'action': 'review_chain', 'label': 'View chain'}],
                     'recommended_action': 'Research expression', **extra}
+                if strategy == 'collar':
+                    # Keep signed net_debit for the payoff; display cashflow as credit/debit plus magnitude.
+                    proposal['side'] = 'SELL' if premium < 0 else 'BUY'
+                    proposal['premium'] = abs(round(premium, 4))
+                    proposal['premium_total'] = abs(round(premium * 100, 2))
                 economics = payoff_metrics(proposal)
                 if economics['status'] != 'MODELED':
                     return

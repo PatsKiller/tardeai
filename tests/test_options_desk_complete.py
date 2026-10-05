@@ -334,3 +334,22 @@ def test_advisory_calls_and_collars_respect_existing_operator_intent():
     assert 'protective_put' in {r['strategy'] for r in out}
     assert {r['strategy'] for r in drops} == {'covered_call', 'collar'}
     assert all(r['reason'] == 'OPERATOR_INTENT' for r in drops)
+
+
+def test_credit_collar_cashflow_and_unknown_iv_or_deliverable_are_honest():
+    from scripts.lib.options_advisory_candidates import generate_candidates
+    chain = _sample_chain()
+    for row in chain['expirations'][0]['strikes']:
+        row['iv'] = 'unavailable'
+        if row['side'] == 'call':
+            row['bid'] += 2
+            row['ask'] += 2
+    holdings = [{'symbol': 'X', 'shares': 100, 'account': 'a'}]
+    out = generate_candidates([], holdings, {'X': chain})
+    collar = next(r for r in out if r['strategy'] == 'collar')
+    assert collar['side'] == 'SELL' and collar['premium_total'] == 180
+    assert collar['net_debit'] == pytest.approx(-1.8)
+    assert collar['max_loss'] == 320 and collar['pop_pct'] is None
+    for row in chain['expirations'][0]['strikes']:
+        row.pop('multiplier')
+    assert generate_candidates([], holdings, {'X': chain}) == []
