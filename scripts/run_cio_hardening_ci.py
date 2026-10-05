@@ -310,6 +310,7 @@ GATES = [
             "tests/test_alarm_fires_stop_path.py",
             "tests/test_alarm_fires_batch3.py",
             "tests/test_alarm_fires_batch4.py",
+            "tests/test_alarm_fires_scalp_alerts_20261005.py",
             "tests/test_alarm_fires_batch5.py",
             "tests/test_alarm_fires_guard_approval.py",
             "tests/test_alarm_fires_disk_and_handler_20260919.py",
@@ -3425,6 +3426,22 @@ def run_gates(gates, *, profile: str, jobs: int) -> list[str]:
     return failed
 
 
+ALARM_GATE_NAMES = ("alarm_fires", "alarm_document_sites_20260922")
+
+
+def _touches_alarm_sites(changed: list[str]) -> bool:
+    """True when a changed scripts/*.py file contains a send_telegram call (alarm-coverage scope)."""
+    for p in changed or []:
+        if not (p.startswith("scripts/") and p.endswith(".py")):
+            continue
+        try:
+            if "send_telegram" in (REPO / p).read_text(encoding="utf-8", errors="ignore"):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def select_pr_gates(
     base: str, *, include_worktree: bool = False, budget: float | None = None, changed: list[str] | None = None
 ):
@@ -3455,6 +3472,15 @@ def select_pr_gates(
         default_seconds=DEFAULT_FILE_SECONDS,
         budget_seconds=budget,
     )
+    # A new send_telegram call is invisible to the tier map and the import graph, so the
+    # alarm-coverage gates ran only after merge and main went red (2026-10-04: two new alert senders
+    # shipped without firing tests). Any changed script that sends Telegram pulls them in.
+    if _touches_alarm_sites(changed):
+        have = {name for name, _f in sel["gates"]}
+        for name, files in GATES:
+            if name in ALARM_GATE_NAMES and name not in have:
+                sel["gates"].append((name, files))
+                print(f"[select] ALARM: {name} added (a changed script calls send_telegram)", flush=True)
     n_files = sum(len(f) for _n, f in sel["gates"])
     print(
         f"[select] base={base} changed={len(changed)} tier={sel['tier']} map={status} "
