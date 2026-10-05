@@ -193,3 +193,26 @@ def test_no_trade_context_or_order_path():
     tree = ast.parse(src)
     calls = {n.func.attr for n in ast.walk(tree) if isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)}
     assert not calls & {"place_order", "unlock_trade", "cancel_order", "request_history_kline"}  # no history quota
+
+
+# ── operator 2026-10-05: "has to run from 6am" ────────────────────────────────
+
+def test_configured_window_starts_at_6am_and_hands_off_at_0930():
+    import yaml
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    raw = yaml.safe_load((ROOT / "config" / "scalp_signal_engine.yaml").read_text(encoding="utf-8"))
+    cfg = pw.PremarketConfig.from_mapping(raw["active_trader_premarket"])
+    assert cfg.window_start == "06:00" and cfg.window_end == "09:29" and cfg.mode == "send"
+    et = ZoneInfo("America/New_York")
+    at = lambda hm: datetime(2026, 10, 6, int(hm[:2]), int(hm[3:]), tzinfo=et)  # noqa: E731
+    assert pw.in_window(at("06:00"), cfg) and pw.in_window(at("09:29"), cfg)
+    assert not pw.in_window(at("05:55"), cfg) and not pw.in_window(at("09:30"), cfg)
+
+
+def test_premarket_lane_is_registered_from_6am():
+    import json
+    lanes = {l["lane_id"]: l for l in json.loads((ROOT / "config" / "lane_registry.json").read_text(encoding="utf-8"))["lanes"]}
+    lane = lanes["active-trader-premarket-watch"]
+    assert lane["scheduler"]["expression"].startswith("*/5 6-9 * * 1-5 ")
+    assert "premarket_watch.py --apply" in lane["scheduler"]["expression"]
