@@ -154,8 +154,8 @@ def get_social_candidates(conn) -> list[dict]:
 
     posts = cur.fetchall()
     if not posts:
+        # Keep going: Hermes/Aegis sentiment rows can still produce candidates.
         logger.info("No social posts with ticker mentions in last %dh", LOOKBACK_HOURS)
-        return []
 
     ticker_data: dict[str, dict] = {}
     for post in posts:
@@ -180,6 +180,8 @@ def get_social_candidates(conn) -> list[dict]:
                 }
             ticker_data[sym]["mention_count"] += 1
             ticker_data[sym]["sources"].add(post.get("platform", "unknown"))
+            _mbs = ticker_data[sym].setdefault("mentions_by_source", {})
+            _mbs[post.get("platform", "unknown")] = _mbs.get(post.get("platform", "unknown"), 0) + 1
             stags = post.get("strategy_tags") or []
             if isinstance(stags, str):
                 stags = json.loads(stags)
@@ -191,13 +193,80 @@ def get_social_candidates(conn) -> list[dict]:
             elif sent == "bearish":
                 ticker_data[sym]["bear"] += 1
 
+    # 2026-10-05 (operator: "social should use Reddit, Hermes, StockTwits"): social_posts holds only
+    # StockTwits today (Reddit public JSON is 403). Hermes forum search and Aegis social sentiment
+    # write social_sentiment_history, which this scanner never read. Merge them as named sources.
+    merge_sentiment_history(conn, ticker_data, cutoff)
+
     candidates = [
-        {**v, "sources": list(v["sources"]), "strategy_tags": list(v["strategy_tags"])}
+        {**v, "sources": sorted(v["sources"]), "strategy_tags": list(v["strategy_tags"]),
+         "mentions_by_source": dict(v.get("mentions_by_source") or {})}
         for v in ticker_data.values()
         if v["mention_count"] >= MIN_MENTIONS
     ]
     candidates.sort(key=lambda x: x["mention_count"], reverse=True)
     return candidates[:MAX_CANDIDATES]
+
+
+def merge_sentiment_history(conn, ticker_data: dict, cutoff) -> int:
+    """Fold social_sentiment_history (Hermes forum search, Aegis Reddit/StockTwits/Brave sentiment)
+    into the per-symbol aggregate. Each row adds a NAMED source (`hermes:hermes_searxng`,
+    `social:reddit+stocktwits+brave`), its mention and bull/bear counts, and a per-source breakdown,
+    so a reader sees where every mention came from. Latest row per symbol+source only (no double
+    counting across runs). Never raises: a failure leaves the StockTwits aggregate unchanged."""
+    try:
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            """
+            SELECT DISTINCT ON (upper(symbol), source_family, source_name)
+                   upper(symbol) AS symbol, source_family, source_name, mention_count,
+                   bullish_count, bearish_count, top_posts_summary,
+                   coalesce(provenance->>'universe', 'tracked') AS universe
+            FROM social_sentiment_history
+            WHERE observed_at > %s AND symbol IS NOT NULL AND coalesce(mention_count, 0) > 0
+            ORDER BY upper(symbol), source_family, source_name, observed_at DESC
+            """,
+            [cutoff],
+        )
+        rows = cur.fetchall()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("social_sentiment_history merge skipped: %s", exc)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return 0
+    merged = 0
+    for r in rows:
+        sym = str(r.get("symbol") or "").strip().upper()
+        if not sym or len(sym) > 5 or not sym.isalpha():
+            continue
+        label = f"{r.get('source_family') or 'social'}:{r.get('source_name') or 'unknown'}"
+        n = int(r.get("mention_count") or 0)
+        if sym in ticker_data:
+            # Already a social-post candidate: show the extra sources, keep ranking on its own
+            # post mentions (Aegis/Hermes run on the portfolio universe with capped counts; adding
+            # them to the ranking pushed every scalp name out of the top 15 in the 10-05 preview).
+            d = ticker_data[sym]
+            d["external_mentions"] = d.get("external_mentions", 0) + n
+        elif r.get("universe") == "scalp":
+            # Hermes ran on today's scalp candidates: a scalp name seen only there is a candidate.
+            d = ticker_data.setdefault(sym, {"symbol": sym, "mention_count": 0, "sources": set(), "bull": 0,
+                                             "bear": 0, "strategy_tags": set(),
+                                             "sample_content": (r.get("top_posts_summary") or "")[:200]})
+            d["mention_count"] += n
+        else:
+            continue  # portfolio/watch-universe sentiment never creates a scalp candidate
+        d["sources"].add(label)
+        d["bull"] += int(r.get("bullish_count") or 0)
+        d["bear"] += int(r.get("bearish_count") or 0)
+        d.setdefault("mentions_by_source", {})[label] = n
+        if not d.get("sample_content"):
+            d["sample_content"] = (r.get("top_posts_summary") or "")[:200]
+        merged += 1
+    if merged:
+        logger.info("Merged %d social_sentiment_history rows (Hermes/Aegis) into the social aggregate", merged)
+    return merged
 
 
 def already_alerted(conn, symbol: str) -> bool:

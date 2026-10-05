@@ -175,10 +175,19 @@ def get_scalp_candidates(max_tickers=15):
                                 dbname=os.getenv("DB_NAME"), user=os.getenv("DB_USER"),
                                 password=os.getenv("DB_PASSWORD"))
         cur = conn.cursor()
+        # Social scouts that are blocked ONLY on catalyst verification come first (2026-10-05:
+        # SDEV sat "AWAITING_CATALYST_VERIFICATION" all morning because a score-ranked list of
+        # GO/WAIT names never reached it); then the highest-scoring GO/WAIT names.
+        cur.execute("""SELECT symbol FROM scalp_scan_results
+                       WHERE scanned_at::date = current_date
+                         AND route_reason_codes::text LIKE '%%AWAITING_CATALYST_VERIFICATION%%'
+                       GROUP BY symbol ORDER BY max(score) DESC NULLS LAST LIMIT %s""", (max_tickers,))
+        syms = [r[0] for r in cur.fetchall()]
         cur.execute("""SELECT symbol FROM scalp_scan_results
                        WHERE scanned_at::date = current_date AND decision IN ('GO','WAIT')
                        GROUP BY symbol ORDER BY max(score) DESC NULLS LAST LIMIT %s""", (max_tickers,))
-        syms = [r[0] for r in cur.fetchall()]
+        syms += [r[0] for r in cur.fetchall() if r[0] not in syms]
+        syms = syms[:max_tickers]
         conn.close()
     except Exception as e:
         print(f"scalp candidate read failed: {e}")

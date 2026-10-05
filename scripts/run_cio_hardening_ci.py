@@ -1038,6 +1038,12 @@ GATES = [
         "secret_single_path_20261005",
         ["tests/test_secret_single_path_20261005.py"],
     ),
+    # Social scanner: Reddit via official OAuth (loud when not configured), Hermes/Aegis merged as named
+    # sources (scalp-universe rows only create candidates), catalyst research on scouts first (2026-10-05).
+    (
+        "social_multisource_20261005",
+        ["tests/test_social_multisource_20261005.py"],
+    ),
     # Ratified investment policy drives capital-plan sizing; 12% cap; required-only CONFIRMED (2026-10-03).
     (
         "policy_unify_20261003",

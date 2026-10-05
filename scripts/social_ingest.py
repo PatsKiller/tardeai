@@ -126,12 +126,80 @@ def ingest_stocktwits(symbols: list) -> dict:
     return result
 
 
+REDDIT_OAUTH_BASE = "https://oauth.reddit.com"
+REDDIT_TOKEN_URL = "https://www.reddit.com/api/v1/access_token"
+REDDIT_UA = "linux:tradeai-social-ingest:1.0 (personal research; read-only)"
+# Momentum/small-cap subreddits feed the social scalp scanner (operator 2026-10-05).
+REDDIT_MOMENTUM_SUBS = ["pennystocks", "smallstreetbets", "Daytrading", "wallstreetbets", "stocks",
+                        "RobinHoodPennyStocks", "StockMarket"]
+_REDDIT_STRATEGY = {"pennystocks": "momentum_scalp", "smallstreetbets": "momentum_scalp",
+                    "Daytrading": "momentum_scalp", "wallstreetbets": "momentum_scalp",
+                    "RobinHoodPennyStocks": "momentum_scalp", "StockMarket": "growth_momentum"}
+
+
+def _reddit_secret(name: str) -> str:
+    try:
+        sec = Path(__file__).resolve().parent / "secrets"
+        if str(sec) not in sys.path:
+            sys.path.insert(0, str(sec))
+        from resolve_secret import resolve_secret
+        return (resolve_secret(name, "") or "").strip()
+    except Exception:
+        import os
+        return (os.environ.get(name) or "").strip()
+
+
+def reddit_session() -> dict:
+    """Official Reddit Data API, app-only OAuth (client_credentials).
+
+    Reddit has refused unauthenticated `www.reddit.com/.../.json` reads with HTTP 403 for this
+    host (measured 2026-10-05; social_posts had 0 reddit rows ever). Returns
+    {"ok": True, "base": oauth base, "headers": {...}} or {"ok": False, "reason": ...}.
+    Never prints or returns the credentials or the token.
+    """
+    import requests
+    cid, secret = _reddit_secret("REDDIT_CLIENT_ID"), _reddit_secret("REDDIT_CLIENT_SECRET")
+    if not cid or not secret:
+        return {"ok": False, "reason": "REDDIT_NOT_CONFIGURED: create a 'script' app at reddit.com/prefs/apps "
+                                       "and store REDDIT_CLIENT_ID / REDDIT_CLIENT_SECRET with "
+                                       "scripts/secrets/rotate.py (unauthenticated Reddit returns HTTP 403)"}
+    try:
+        r = requests.post(REDDIT_TOKEN_URL, auth=(cid, secret), data={"grant_type": "client_credentials"},
+                          headers={"User-Agent": REDDIT_UA}, timeout=15)
+        if r.status_code != 200:
+            return {"ok": False, "reason": f"REDDIT_TOKEN_HTTP_{r.status_code}"}
+        token = (r.json() or {}).get("access_token")
+        if not token:
+            return {"ok": False, "reason": "REDDIT_TOKEN_MISSING"}
+        return {"ok": True, "base": REDDIT_OAUTH_BASE,
+                "headers": {"Authorization": f"bearer {token}", "User-Agent": REDDIT_UA}}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "reason": f"REDDIT_TOKEN_ERROR: {type(exc).__name__}"}
+
+
+def _report_reddit(ok: bool, rows: int, error: str | None) -> None:
+    """Make Reddit failures loud: print them and record the source's health row."""
+    if error:
+        print(f"[reddit] FAILED: {error}")
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from lib.data_source_report import report_source
+        report_source("reddit", ok, rows=rows, error=error)
+    except Exception:
+        pass
+
+
 def ingest_reddit(subreddits: list = None) -> dict:
-    """Fetch recent posts from Reddit via public JSON API (no auth needed)."""
+    """Fetch recent posts from Reddit via the official Data API (app-only OAuth; see reddit_session)."""
     import requests
 
     if subreddits is None:
         subreddits = ["dividends", "investing", "retirement", "financialindependence"]
+
+    session = reddit_session()
+    if not session.get("ok"):
+        _report_reddit(False, 0, session.get("reason"))
+        return {"inserted": 0, "skipped": 0, "errors": [session.get("reason")], "configured": False}
 
     conn = _get_conn()
     cur = conn.cursor()
@@ -141,8 +209,8 @@ def ingest_reddit(subreddits: list = None) -> dict:
 
     for sub in subreddits:
         try:
-            url = f"https://www.reddit.com/r/{sub}/new/.json?limit=25"
-            r = requests.get(url, timeout=15, headers={"User-Agent": "TradeAI/1.0 (portfolio intelligence)"})
+            url = f"{session['base']}/r/{sub}/new?limit=25&raw_json=1"
+            r = requests.get(url, timeout=15, headers=session["headers"])
 
             if r.status_code == 429:
                 print(f"  [reddit] Rate limited on r/{sub} — stopping.")
@@ -289,7 +357,13 @@ def ingest_reddit_with_discovery(subreddits: list = None) -> dict:
 
     if subreddits is None:
         subreddits = ["dividends", "investing", "retirement", "financialindependence",
-                      "stocks", "ValueInvesting"]
+                      "stocks", "ValueInvesting"] + [x for x in REDDIT_MOMENTUM_SUBS if x != "stocks"]
+
+    session = reddit_session()
+    if not session.get("ok"):
+        _report_reddit(False, 0, session.get("reason"))
+        return {"inserted": 0, "skipped": 0, "errors": [session.get("reason")], "discovered_tickers": {},
+                "configured": False}
 
     conn = _get_conn()
     cur = conn.cursor()
@@ -306,12 +380,13 @@ def ingest_reddit_with_discovery(subreddits: list = None) -> dict:
         "financialindependence": "retirement_ssdi_roth_tax",
         "stocks": "growth_momentum",
         "ValueInvesting": "value_dividend",
+        **_REDDIT_STRATEGY,
     }
 
     for sub in subreddits:
         try:
-            url = f"https://www.reddit.com/r/{sub}/hot/.json?limit=25"
-            r = requests.get(url, timeout=15, headers={"User-Agent": "TradeAI/1.0 (portfolio intelligence)"})
+            url = f"{session['base']}/r/{sub}/hot?limit=25&raw_json=1"
+            r = requests.get(url, timeout=15, headers=session["headers"])
 
             if r.status_code == 429:
                 print(f"  [reddit] Rate limited on r/{sub} — stopping.")
@@ -388,7 +463,7 @@ def ingest_reddit_with_discovery(subreddits: list = None) -> dict:
     # Report discovered tickers
     if discovered_tickers:
         top_mentions = sorted(discovered_tickers.items(), key=lambda x: x[1]["count"], reverse=True)[:15]
-        print(f"[reddit-discovery] Top mentioned tickers:")
+        print("[reddit-discovery] Top mentioned tickers:")
         for ticker, info in top_mentions:
             strategies = ", ".join(info["strategies"])
             print(f"  ${ticker}: {info['count']}x ({strategies})")
@@ -397,6 +472,11 @@ def ingest_reddit_with_discovery(subreddits: list = None) -> dict:
               "discovered_tickers": {k: {"count": v["count"], "strategies": list(v["strategies"])}
                                     for k, v in list(discovered_tickers.items())[:30]}}
     print(f"[reddit] Inserted: {total_inserted}, Skipped: {total_skipped}, Tickers found: {len(discovered_tickers)}")
+    for e in errors[:10]:
+        print(f"  [reddit] error: {e}")
+    fetched = total_inserted + total_skipped
+    _report_reddit(fetched > 0, total_inserted,
+                   None if fetched > 0 else ("; ".join(errors[:3]) or "0 posts fetched"))
     return result
 
 
