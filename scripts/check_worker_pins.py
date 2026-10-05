@@ -143,6 +143,8 @@ def unit_rows(units: Iterable[str] = RELEVANT_UNITS) -> list[dict[str, Any]]:
             "DECLARED_SEPARATE" if declared else "UNDECLARED")
         rows.append({"kind": "unit", "name": u, "active": observation.get("ActiveState") or "unknown",
                      "pid": pid, "path": cwd, "declared_path": declared, "deployment_binding": binding,
+                     "cwd_is_release_pin": bool(tree_of(declared).get("tree") in {"release", "current"}
+                                                or re.search(r"/trade-ai-deployments/[^/]+/[0-9a-f]{40}/?$", declared)),
                      "exit_observation": observation, **tree_of(cwd or "")})
     return rows
 
@@ -171,6 +173,11 @@ def evaluate(*, served: str | None, rows: list[dict[str, Any]]) -> dict[str, Any
             continue
         sha = r.get("sha")
         if r.get("kind") == "unit" and r.get("deployment_binding") == "DECLARED_SEPARATE":
+            if r.get("cwd_is_release_pin") is False:
+                # A daemon may chdir into its data directory. WorkingDirectory
+                # alone is not an immutable-release deployment contract.
+                r["verdict"] = "SEPARATE_WORKDIR_OBSERVED"
+                continue
             declared = str(r.get("declared_path") or "")
             actual = str(r.get("path") or "")
             matches = bool(declared and actual and Path(declared).resolve() == Path(actual).resolve())

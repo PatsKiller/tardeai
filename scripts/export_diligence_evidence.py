@@ -281,7 +281,7 @@ def _acceptance_doc(state: dict, rel: dict, mat: dict, wp_status: str, nb_status
     verdict = "**HISTORICAL — SUPERSEDED; current learning not established by this artifact**"
     caps = mat.get("caps_applied") or []
     caps_md = ("\n".join(f"- {c['reason']} → cap {c['cap']}" for c in caps)) if caps else "- None."
-    return f"""# Maturity 4.5 Acceptance Checklist
+    return f"""# Control Validation and Historical Coverage Checklist
 
 _Generated: {_now()}_
 _Source: `python3 scripts/export_diligence_evidence.py` + `scripts/compute_maturity_score.py`_

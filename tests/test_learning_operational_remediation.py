@@ -119,6 +119,18 @@ def test_exit_signal_and_oom_counters_do_not_invent_causation(tmp_path):
     assert result["oom_causation"] == "NOT_ESTABLISHED"
 
 
+def test_separate_daemon_chdir_is_observation_not_release_mismatch():
+    row = {"name": "lab-postgres.service", "kind": "unit", "active": "active",
+           "deployment_binding": "DECLARED_SEPARATE", "cwd_is_release_pin": False,
+           "declared_path": "/lab", "path": "/lab/pgdata", "tree": "other"}
+    report = pins.evaluate(served=SHA, rows=[row])
+    assert report["ok"]
+    assert row["verdict"] == "SEPARATE_WORKDIR_OBSERVED"
+    # An explicit immutable deployment path still must match the process.
+    row.update(cwd_is_release_pin=True)
+    assert not pins.evaluate(served=SHA, rows=[row])["ok"]
+
+
 def test_promotion_gate_precedes_activation_in_real_shell(tmp_path):
     # Source only the function definitions; replace host mutations with sentinels.
     source = (ROOT / "scripts/cio_phase2_exact_main_deploy.sh").read_text()

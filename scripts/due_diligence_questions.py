@@ -677,7 +677,7 @@ def route(cur, limit: int) -> dict:
               AND (q.expires_at IS NULL OR q.expires_at > now())
               AND NOT EXISTS (SELECT 1 FROM hermes_external_research h
                    WHERE h.trigger_reason='due_diligence_question:' || q.question_guid::text)
-            ORDER BY coalesce(m.magnitude,0) + extract(epoch FROM now()-q.created_at)/3600 DESC,
+            ORDER BY least(100,greatest(0,coalesce(m.magnitude,0))) + extract(epoch FROM now()-q.created_at)/3600 DESC,
                      q.created_at ASC, q.question_guid
             LIMIT %s FOR UPDATE OF q SKIP LOCKED""", (limit,))
     rows = cur.fetchall()

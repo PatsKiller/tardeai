@@ -327,10 +327,11 @@ def test_reassessment_passes_parent_research_id(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(rtd, "accept_research_result", fake_accept)
     request = {"plan_id": "plan_1", "research_id": "res_abc123", "symbol": "HOOD",
                "prompt_context": {"standing_thesis": {}}}
-    result = {"research_id": "res_abc123", "result_id": "rr_def456", "symbol": "HOOD"}
+    result = {"research_id": "res_abc123", "result_id": "rr_def456", "symbol": "HOOD",
+              "sources": ["filing:hood"], "as_of": datetime.now(timezone.utc).isoformat()}
     try:
         cpr.reassess_on_research_completed(request, result, root=tmp_path, notify=False,
-                                           queue={}, previously_traded=[], holdings={})
+                                           critique={"verdict": "VALID"}, queue={}, previously_traded=[], holdings={})
     except Exception:
         pass
     assert seen.get("research_id") == "res_abc123"

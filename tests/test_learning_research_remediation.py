@@ -100,6 +100,57 @@ def test_product_completion_persists_review_and_duplicate_is_suppressed(tmp_path
     second = pr.reassess_on_research_completed(**kwargs)
     assert second["duplicate"] and second["notification"]["notification_class"] == "SUPPRESSED"
     assert len(persisted) == 1
+    assert second["research_evaluation"]["disposition"] == "NO_CHANGE"
+    assert second["research_evaluation"]["original_disposition"] == "REVIEW_REQUIRED"
+    assert second["research_evaluation"]["notification_ids"] == []
+
+
+def test_review_notification_retains_message_identity(tmp_path, monkeypatch):
+    from scripts.lib import cio_plan_enrichment as enrich
+    from scripts.lib import cio_telegram_converse as telegram
+    from scripts.lib import cio_advisory_curator as curator
+    from scripts.lib import cio_prompt_eval as structural
+    from scripts.lib import cio_notify_freshness as freshness
+    monkeypatch.setattr(structural, "structural_check", lambda *a: {})
+    monkeypatch.setattr(freshness, "stale_claim", lambda *a: None)
+    monkeypatch.setattr(freshness, "stale_evidence", lambda *a: None)
+    monkeypatch.setattr(curator, "curate", lambda *a, **k: {"reason": "disabled"})
+    monkeypatch.setattr(enrich, "should_skip_notify", lambda *a, **k: (False, "fixture"))
+    monkeypatch.setattr(enrich, "record_notify", lambda *a, **k: None)
+    monkeypatch.setattr(telegram, "allowlist_chat_ids", lambda: [123])
+    monkeypatch.setattr(telegram, "format_structured_reply", lambda **k: "HOLD")
+    sent = []
+    def send(chat, text):
+        sent.append(text)
+        return {"ok": True, "message_id": 456}
+    monkeypatch.setattr(telegram, "send_cio_message", send)
+    plan = {"status": "draft", "plan_id": "plan_v", "situation_type": "S0_OPERATOR_CONVERSE",
+            "recommendation": "HOLD", "extra": {"research_evaluation": {"disposition": "REVIEW_REQUIRED"}}}
+    assert enrich.maybe_notify_plan(plan, policy={"situation_notify_telegram": True}, ledger_path=tmp_path/"notify.jsonl")
+    assert sent[0].startswith("Research review required:")
+    assert plan["recommendation"] == "HOLD"
+    assert plan["telegram_notification_ids"] == ["telegram:123:456"]
+
+
+def test_plan_load_failure_still_records_blocked_completion(tmp_path, monkeypatch):
+    import json
+    from scripts.lib import hermes_research_loop as loop
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("TRADEAI_ROOT", str(tmp_path))
+    monkeypatch.setenv("MATURITY_CONTROL_ROOT", str(tmp_path))
+    monkeypatch.setenv("MEMORY_BEHAVIOR_INFLUENCE", "0")
+    def unavailable():
+        raise OSError("fixture unavailable")
+    monkeypatch.setattr(loop, "_import_plans", unavailable)
+    out = loop.on_hermes_completed({"symbol": "V", "plan_id": "plan_unavailable"},
+                                  result(as_of=datetime.now(timezone.utc).isoformat()),
+                                  resynth=False, notify=False)
+    assert out["plan_load_error"] == "OSError"
+    assert out["research_evaluation"]["disposition"] == "BLOCKED"
+    rows = [json.loads(line) for line in (tmp_path/"data/cio/hermes_research_requests.jsonl").read_text().splitlines()]
+    completion = [r for r in rows if r.get("event") == "HERMES_LOOP_COMPLETED"][-1]
+    assert completion["research_evaluation"]["disposition"] == "BLOCKED"
+    assert not completion["notified"]
 
 
 def test_shared_visa_identity_reuses_same_evidence_without_paid_generation(tmp_path):

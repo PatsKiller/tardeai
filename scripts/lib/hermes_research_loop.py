@@ -613,8 +613,11 @@ def on_hermes_completed(
     prior_plan = None
     duplicate = False
     if plan_id:
-        store = _import_plans()()
-        prior_plan = store.get_plan(plan_id)
+        try:
+            store = _import_plans()()
+            prior_plan = store.get_plan(plan_id)
+        except Exception as exc:
+            out["plan_load_error"] = type(exc).__name__
         previous_evaluation = ((prior_plan or {}).get("extra") or {}).get("research_evaluation") or {}
         duplicate = bool(result.get("result_id") and previous_evaluation.get("result_id") == result["result_id"])
         try:
@@ -643,9 +646,11 @@ def on_hermes_completed(
             )
             plan = None
 
-        CIOPlanStore = _import_plans()
-        store = CIOPlanStore()
-        plan = plan or store.get_plan(plan_id)
+        if store and not plan:
+            try:
+                plan = store.get_plan(plan_id)
+            except Exception as exc:
+                out["plan_load_error"] = type(exc).__name__
 
     # Step 2A: CASE_SUMMARY from the joined VALID/PARTIAL result. Completeness
     # only. Fail-soft. Does not notify and does not change material_changed.
@@ -716,6 +721,9 @@ def on_hermes_completed(
                     from scripts.lib.cio_plan_enrichment import maybe_notify_plan, is_material_plan
                     if is_material_plan(plan):
                         out["notified"] = bool(maybe_notify_plan(plan, force=False))
+                        evaluation["notification_ids"] = list(plan.get("telegram_notification_ids") or [])
+                        if evaluation["notification_ids"]:
+                            store.update_plan(plan_id, extra={**(plan.get("extra") or {}), "research_evaluation": evaluation})
             except Exception as exc:
                 out["evaluation_persist_error"] = f"{type(exc).__name__}:{exc}"
                 evaluation.update(disposition="BLOCKED", disposition_reason="evaluation_persist_unavailable")

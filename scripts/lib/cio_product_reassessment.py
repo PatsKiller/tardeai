@@ -800,16 +800,19 @@ def reassess_on_research_completed(
     rid = reassessment_id(parent_key=str(parent["parent_key"]), result_id=str(result_id))
     prior_done = already_completed(rid, root=root)
     if prior_done:
+        original_evaluation = prior_done.get("research_evaluation") or {}
+        replay_evaluation = {**original_evaluation, "disposition": "NO_CHANGE",
+                             "disposition_reason": "duplicate_reassessment", "notification_ids": [],
+                             "original_disposition": original_evaluation.get("disposition"),
+                             "research_request_id": parent.get("research_id"), "result_id": result_id}
         return {
             "ok": True,
             "duplicate": True,
             "reassessment_id": rid,
             "parent": parent,
             "product_id": prior_done.get("product_id"),
-            "impact": prior_done.get("research_evaluation"),
-            "research_evaluation": prior_done.get("research_evaluation") or {
-                "disposition": "NO_CHANGE", "disposition_reason": "duplicate_reassessment",
-                "research_request_id": parent.get("research_id"), "result_id": result_id},
+            "impact": replay_evaluation,
+            "research_evaluation": replay_evaluation,
             "notification": {"notification_class": "SUPPRESSED", "suppressed_reason": "duplicate_reassessment"},
             "authority": AUTHORITY,
             "financial_action": False,
