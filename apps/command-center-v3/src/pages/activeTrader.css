@@ -147,7 +147,7 @@ button.at-motion-rail__row:focus-visible{outline:2px solid var(--at-blue);outlin
 .at-alerts__hero h1{margin:0;font-size:24px}.at-alerts__hero h1 small{font-size:14px;color:var(--at-muted);font-weight:500;margin-left:8px}
 .at-alerts__hero p{margin:6px 0 0;color:var(--at-muted);max-width:70ch;line-height:1.45}
 .at-alerts__badges .at-chip{font-size:13px}
-.at-alerts__kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.at-alerts__kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px;margin-bottom:16px}
 .at-kpi{background:var(--at-panel);border:1px solid var(--at-line);border-radius:var(--radius-lg);padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
 .at-kpi small{color:var(--at-muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
 .at-kpi strong{font-size:28px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;line-height:1.1}
@@ -190,3 +190,30 @@ button.at-motion-rail__row:focus-visible{outline:2px solid var(--at-blue);outlin
 .at-alerts__note{margin:0;padding:12px 20px;color:var(--at-muted);font-size:12px;line-height:1.45;border-top:1px solid var(--at-line)}
 @media(max-width:1100px){.at-alerts__grid{grid-template-columns:1fr}.at-alerts__kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:600px){.at-alerts{padding:12px}.at-alerts__kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.at-alerts__levels{grid-template-columns:repeat(3,minmax(0,1fr))}.at-alerts__reason{grid-template-columns:110px 1fr 28px}.at-alerts__row-head time{margin-left:0;width:100%}}
+
+/* Alerts audit 2026-10-05: filters, outcome line, supply, your trades */
+.at-alerts__filters{display:flex;flex-wrap:wrap;justify-content:space-between;gap:10px;padding:12px 20px;border-bottom:1px solid var(--at-line)}
+.at-filter{text-transform:none}
+.at-alerts__select{display:inline-flex;align-items:center;gap:6px;color:var(--at-muted);font-size:12px}
+.at-alerts__select select{background:var(--at-panel2);color:var(--at-text);border:1px solid var(--at-line);border-radius:var(--radius-md);padding:6px 8px;font:inherit;font-size:13px}
+.at-alerts__select select:focus-visible,.at-filter:focus-visible{outline:2px solid var(--at-blue);outline-offset:2px}
+.at-alerts__supply{margin-top:6px;color:var(--at-muted)}
+.at-alerts__outcome{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:8px;padding:8px 10px;border-radius:var(--radius-md);background:var(--at-panel2);font-size:13px;border-left:3px solid var(--at-line)}
+.at-alerts__outcome b{font-weight:700}
+.at-alerts__outcome em{font-style:normal;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.at-alerts__outcome.is-worked{border-left-color:var(--at-green)}.at-alerts__outcome.is-worked b{color:var(--at-green)}
+.at-alerts__outcome.is-stopped,.at-alerts__outcome.is-at_or_below_stop{border-left-color:var(--at-red)}
+.at-alerts__outcome.is-stopped b,.at-alerts__outcome.is-at_or_below_stop b{color:var(--at-red)}
+.at-alerts__outcome.is-no_touch{border-left-color:var(--at-amber)}.at-alerts__outcome.is-no_touch b{color:var(--at-amber)}
+.at-alerts__outcome.is-pending{color:var(--at-muted)}
+.at-alerts__trips{padding:12px 20px;display:flex;flex-direction:column;gap:10px}
+.at-alerts__trip{display:flex;flex-direction:column;gap:3px;padding-left:10px;border-left:3px solid var(--at-line)}
+.at-alerts__trip.is-tagged{border-left-color:var(--at-green)}
+.at-alerts__trip .is-up{color:var(--at-green)}.at-alerts__trip .is-down{color:var(--at-red)}
+.at-alerts__prec caption{text-align:left;padding:10px 12px 2px;color:var(--at-muted);font-size:11px;text-transform:uppercase;letter-spacing:.05em}
+@media(max-width:1100px){.at-alerts__kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:600px){.at-alerts__kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.at-kpi--click{font:inherit;color:inherit;text-align:left;cursor:pointer;width:100%}
+.at-kpi--click:hover{border-color:var(--at-muted)}
+.at-kpi--click.is-on{outline:2px solid var(--at-blue);outline-offset:-2px}
+.at-kpi--click:focus-visible{outline:2px solid var(--at-blue);outline-offset:2px}

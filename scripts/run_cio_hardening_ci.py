@@ -1043,6 +1043,12 @@ GATES = [
         "alpha_vantage_pacing_20261004",
         ["tests/test_alpha_vantage_pacing_20261004.py"],
     ),
+    # Active Trader alert audit: outcomes from the price you could pay, stop-first is a miss, exits,
+    # below-stop veto, supply evidence, your fills tagged to the alert before them (2026-10-05).
+    (
+        "at_alert_outcomes_20261005",
+        ["tests/test_at_alert_outcomes_20261005.py"],
+    ),
     # Secrets: one write path (render reported, never silently skipped), drift check, Finviz cookie tool (2026-10-05).
     (
         "secret_single_path_20261005",

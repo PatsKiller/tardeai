@@ -60,6 +60,11 @@ class AlertConfig:
     min_buy_ratio: float = 0.55             # buy volume / (buy + sell) volume over the window
     cooldown_s: float = 900.0               # per symbol per alert kind
     max_alerts_per_hour: int = 12
+    # Outcome scoring (audit 2026-10-05): measured from the price you could have paid at the alert
+    # (best ask, else last), stop-first counts as a miss, plus best and rule-based exits.
+    score_touch_min: int = 15               # first touch of stop vs +1R is looked for in this window
+    score_horizon_min: int = 30             # best exit / rule exit are looked for in this window
+    supply_near_pct: float = 1.0            # ask shares within this % above the inside ask
 
     @classmethod
     def from_mapping(cls, raw: Optional[Mapping[str, Any]]) -> "AlertConfig":
@@ -114,12 +119,29 @@ def l2_evidence(book: Optional[Mapping[str, Any]], *, now: float, cfg: AlertConf
     ev.update(bid_depth=bid_depth, ask_depth=ask_depth, best_bid=best_bid, best_ask=best_ask,
               depth_ratio=None if ratio is None else round(ratio, 3),
               spread_bps=None if spread_bps is None else round(spread_bps, 1))
+    ev["supply"] = supply_evidence(bids, asks, near_pct=cfg.supply_near_pct)
     if spread_bps is None or spread_bps > cfg.max_spread_bps:
         ev["reasons"].append("SPREAD_WIDE")
     if best_ask <= best_bid:
         ev["reasons"].append("BOOK_CROSSED")
     ev["ok"] = not ev["reasons"]
     return ev
+
+
+def supply_evidence(bids: Sequence[tuple], asks: Sequence[tuple], *, near_pct: float) -> dict:
+    """Observation only (operator 2026-10-05: "the supply wasn't there" on the XNDU fill). Shares
+    offered at the inside ask, within `near_pct`% above it, and the largest ask level (a wall)."""
+    if not bids or not asks:
+        return {}
+    best_ask = asks[0][0]
+    near = [(p, s) for p, s in asks if p <= best_ask * (1 + near_pct / 100.0)]
+    wall_p, wall_s = max(asks, key=lambda x: x[1])
+    sizes = sorted(s for _, s in asks)
+    med = sizes[len(sizes) // 2] if sizes else None
+    return {"ask_size_inside": asks[0][1], "bid_size_inside": bids[0][1],
+            "ask_shares_near": sum(s for _, s in near), "ask_levels_near": len(near),
+            "near_pct": near_pct, "ask_wall_price": wall_p, "ask_wall_size": wall_s,
+            "ask_wall_x_median": round(wall_s / med, 1) if med else None}
 
 
 def tape_evidence(ticks: Optional[Sequence[Mapping[str, Any]]], *, now: float,
@@ -201,6 +223,10 @@ def decide(c: Candidate, kind: str, l2: dict, tape: dict, *, now: float, cfg: Al
             reasons.append("TAPE_SELLERS")
         if c.entry_ref is None or c.stop_ref is None or c.r_dollars is None:
             reasons.append("NO_STOP_REF")
+    # Audit 2026-10-05: XNDU 10:25 and CHPT 10:30 went out as heads-ups with price already through
+    # the stop. A setup whose stop is already broken is not a setup.
+    if c.last is not None and c.stop_ref is not None and c.last <= c.stop_ref:
+        reasons.append("PRICE_AT_OR_BELOW_STOP")
     return {"verdict": VETO if reasons else ALERT, "veto_reasons": reasons,
             "quote_age_s": None if q_age is None else round(q_age, 1)}
 

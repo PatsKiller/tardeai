@@ -7,6 +7,7 @@ from config/scalp_signal_engine.yaml. Pure read: never writes, never sends, no b
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections import Counter
 from datetime import datetime
@@ -21,7 +22,8 @@ except ModuleNotFoundError:
     from scripts.active_trader import momentum_alerts as ma
     from scripts.active_trader import momentum_alert_scoring as ms
 
-CONTRACT = "active-trader-alerts-feed-v1"
+CONTRACT = "active-trader-alerts-feed-v1"   # additive fields only (2026-10-05)
+FILL_MATCH_WINDOW_S = 20 * 60      # a fill up to 20 min after a sent alert on the same symbol is "after the alert"
 ET = ZoneInfo("America/New_York")
 REPO = Path(__file__).resolve().parents[2]
 TAIL_BYTES = 4_000_000          # journal tail read; a full session is far smaller
@@ -76,12 +78,101 @@ def _compact(row: dict, score: Optional[dict]) -> dict:
         "r": row.get("r_dollars"), "float_mm": c.get("float_mm"), "rvol": c.get("rvol"),
         "ign": c.get("ign"), "lane": c.get("lane"), "setup": c.get("setup_label") or c.get("setup_id"),
         "quote_age_s": row.get("quote_age_s"),
-        "l2": {k: l2.get(k) for k in ("source", "levels", "depth_ratio", "spread_bps", "age_s", "ts_source")},
+        "l2": {k: l2.get(k) for k in ("source", "levels", "depth_ratio", "spread_bps", "age_s", "ts_source",
+                                       "best_bid", "best_ask", "bid_depth", "ask_depth")},
         "tape": {k: tape.get(k) for k in ("source", "prints", "buy_ratio", "age_s")} if tape else None,
         "l2_compare": {k: cmp_.get(k) for k in ("source", "levels", "depth_ratio", "spread_bps", "age_s")} if cmp_ else None,
         "score": {w: {k: v.get(k) for k in ("mfe_r", "mae_r", "mfe_pct", "mae_pct")} for w, v in windows.items()
                   if isinstance(v, dict) and v.get("mfe") is not None} or None,
+        "supply": l2.get("supply") or None,
+        "outcome": _outcome_view((score or {}).get("outcome")),
     }
+
+
+def _outcome_view(o: Optional[dict]) -> Optional[dict]:
+    if not o:
+        return None
+    v = dict(o)
+    for k in ("best_exit", "rule_exit"):
+        if isinstance(v.get(k), dict):
+            v[k] = {**v[k], "at": _et(v[k].get("ts_epoch"))}
+    v["first_touch_at"] = _et(v.get("first_touch_epoch"))
+    return v
+
+
+def operator_fills(day: str, symbols: set[str], *, conn=None) -> list[dict]:
+    """Your broker fills on these symbols that day (read-only SELECT on trade_transactions)."""
+    if not symbols:
+        return []
+    if conn is None and os.environ.get("PYTEST_CURRENT_TEST"):
+        return []          # tests never reach the live database; they inject a connection
+    own = conn is None
+    try:
+        if own:
+            from db_adapter import get_connection  # type: ignore
+            conn = get_connection()
+        with conn.cursor() as cur:
+            cur.execute("""SELECT trade_time, account, symbol, action, quantity, price, amount, import_source
+                           FROM trade_transactions
+                           WHERE trade_date = %s AND symbol = ANY(%s) AND action IN ('Buy', 'Sell')
+                           ORDER BY trade_time""", (day, sorted(symbols)))
+            rows = cur.fetchall()
+    except Exception:  # noqa: BLE001 — the feed never fails because the fills lookup did
+        return []
+    finally:
+        if own and conn is not None:
+            try:
+                conn.close()
+            except Exception:  # noqa: BLE001
+                pass
+    out = []
+    for r in rows:
+        t = r[0]
+        out.append({"ts_epoch": t.timestamp() if hasattr(t, "timestamp") else None, "account": r[1],
+                    "symbol": r[2], "side": r[3], "qty": float(r[4] or 0), "price": float(r[5] or 0),
+                    "amount": float(r[6] or 0), "source": r[7]})
+    return out
+
+
+def attribute_fills(fills: list[dict], decisions: list[dict]) -> list[dict]:
+    """Pair buys with the following sells (FIFO, per symbol) and tag each round trip with the latest
+    SENT alert on that symbol in the FILL_MATCH_WINDOW_S before the buy. Untagged trades stay
+    visible as untagged — nothing is guessed."""
+    sent = sorted((d for d in decisions if d.get("sent")), key=lambda d: d.get("ts_epoch") or 0)
+    trips, open_ = [], {}
+    for f in sorted(fills, key=lambda x: x.get("ts_epoch") or 0):
+        q = open_.setdefault(f["symbol"], [])
+        if f["side"] == "Buy":
+            q.append(dict(f))
+            continue
+        qty = f["qty"]
+        while qty > 1e-9 and q:
+            b = q[0]
+            take = min(qty, b["qty"])
+            trips.append({"symbol": f["symbol"], "account": f["account"], "qty": take,
+                          "buy_at": _et(b["ts_epoch"]), "buy_ts": b["ts_epoch"], "buy_price": b["price"],
+                          "sell_at": _et(f["ts_epoch"]), "sell_price": f["price"],
+                          "pnl": round((f["price"] - b["price"]) * take, 2),
+                          "pnl_pct": round((f["price"] - b["price"]) / b["price"] * 100, 3) if b["price"] else None,
+                          "held_s": round((f["ts_epoch"] or 0) - (b["ts_epoch"] or 0))})
+            b["qty"] -= take
+            qty -= take
+            if b["qty"] <= 1e-9:
+                q.pop(0)
+    for sym, q in open_.items():
+        for b in q:
+            trips.append({"symbol": sym, "account": b["account"], "qty": b["qty"], "buy_at": _et(b["ts_epoch"]),
+                          "buy_ts": b["ts_epoch"], "buy_price": b["price"], "sell_at": None, "sell_price": None,
+                          "pnl": None, "pnl_pct": None, "held_s": None})
+    for t in trips:
+        prior = [d for d in sent if d.get("symbol") == t["symbol"] and d.get("ts_epoch") is not None
+                 and t["buy_ts"] is not None and 0 <= t["buy_ts"] - d["ts_epoch"] <= FILL_MATCH_WINDOW_S]
+        a = prior[-1] if prior else None
+        t["source"] = "active_trader" if a else "untagged"
+        t["alert"] = ({"id": a["id"], "kind": a.get("kind"), "at": a.get("at"), "ask_at_alert": (a.get("l2") or {}).get("best_ask"),
+                       "last_at_alert": a.get("last"), "stop": a.get("stop"),
+                       "lag_s": round(t["buy_ts"] - a["ts_epoch"])} if a else None)
+    return trips
 
 
 def alerts_snapshot(*, limit: int = 100, session_date: Optional[str] = None,
@@ -102,6 +193,12 @@ def alerts_snapshot(*, limit: int = 100, session_date: Optional[str] = None,
     vetoes = [r for r in today if r.get("verdict") == ma.VETO]
     reasons = Counter(x for r in vetoes for x in (r.get("veto_reasons") or []))
     all_scored = list(scored.values())
+    today_ids = {ms.decision_id(r) for r in today}
+    day_scored = [v for k, v in scored.items() if k in today_ids]
+    compact = [_compact(r, scored.get(ms.decision_id(r)))
+               for r in sorted(today, key=lambda x: x.get("ts_epoch") or 0, reverse=True)]
+    fills = operator_fills(day, {d["symbol"] for d in compact if d.get("symbol")})
+    sessions = sorted({(r.get("candidate") or {}).get("session_date") for r in journal} - {None}, reverse=True)
     hb_age = (now - float(hb["ts_epoch"])) if hb and hb.get("ts_epoch") else None
     return {
         "contract": CONTRACT, "authority": ma.AUTHORITY, "read_only": True,
@@ -126,7 +223,13 @@ def alerts_snapshot(*, limit: int = 100, session_date: Optional[str] = None,
                    "decisions": len(today)},
         "veto_reasons": dict(reasons.most_common()),
         "precision": {w: ms.precision_summary(all_scored, window=w, hit_r=1.0) for w in ("1m", "5m", "15m")},
+        "precision_note": "legacy v1: measured from the trigger's fire price; a stop hit first still counts. Use outcomes.",
+        "outcomes": {"session": ms.outcome_summary(day_scored), "all": ms.outcome_summary(all_scored),
+                     "touch_min": cfg.score_touch_min, "horizon_min": cfg.score_horizon_min,
+                     "pending": sum(1 for d in compact if not d.get("outcome"))},
         "scored_total": len(all_scored),
-        "decisions": [_compact(r, scored.get(ms.decision_id(r)))
-                      for r in sorted(today, key=lambda x: x.get("ts_epoch") or 0, reverse=True)[:max(1, int(limit))]],
+        "scored_session": len(day_scored),
+        "sessions": sessions,
+        "your_trades": attribute_fills(fills, compact),
+        "decisions": compact[:max(1, int(limit))],
     }
