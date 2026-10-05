@@ -221,3 +221,22 @@ button.at-motion-rail__row:focus-visible{outline:2px solid var(--at-blue);outlin
 .at-alerts__replay summary{cursor:pointer;color:var(--at-blue);font-size:13px}
 .at-alerts__replay summary:focus-visible{outline:2px solid var(--at-blue);outline-offset:2px}
 .at-alerts__replay-point{display:flex;flex-direction:column;gap:3px;margin-top:8px;padding:8px 10px;border-radius:var(--radius-md);background:var(--at-panel2)}
+
+/* Session review (operator 2026-10-05): engine vs should have been + auto-sim comparison */
+.at-review__compare{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.at-review__cell{background:var(--at-panel);border:1px solid var(--at-line);border-radius:var(--radius-lg);padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.at-review__cell small{color:var(--at-muted);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+.at-review__cell strong{font-size:24px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.at-review__cell span{color:var(--at-muted);font-size:12px}
+.at-review__sym{margin-bottom:16px}
+.at-review__tablewrap{overflow-x:auto}
+.at-review__table{width:100%;border-collapse:collapse;font-size:13px}
+.at-review__table th,.at-review__table td{padding:8px 12px;border-bottom:1px solid var(--at-line);text-align:left;vertical-align:top}
+.at-review__table th{color:var(--at-muted);font-size:12px;font-weight:600}
+.at-review__table td.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap}
+.at-review__table tr.is-ideal_entry td{color:var(--at-green)}
+.at-review__table tr.is-ideal_exit td{color:var(--at-red)}
+.at-review__table tr.is-you td{color:var(--at-blue);font-weight:600}
+.at-review__table tr.is-top td{color:var(--at-amber)}
+.at-review__sim{display:flex;flex-direction:column;gap:4px;padding:12px 20px;border-top:1px solid var(--at-line)}
+@media(max-width:900px){.at-review__compare{grid-template-columns:repeat(2,minmax(0,1fr))}}

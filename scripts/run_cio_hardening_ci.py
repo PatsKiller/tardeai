@@ -1081,6 +1081,12 @@ GATES = [
         "cio_home_memory_20261003",
         ["tests/test_cio_home_memory_20261003.py"],
     ),
+    # Active Trader soul: "should have been" session review reproduces the operator's XNDU table;
+    # automated mode is SIMULATION ONLY (one brain, sized to the ask supply, no live mode) (2026-10-05).
+    (
+        "at_soul_review_sim_20261005",
+        ["tests/test_at_soul_review_sim_20261005.py"],
+    ),
     (
         "lineage_phase12_20261003",
         [

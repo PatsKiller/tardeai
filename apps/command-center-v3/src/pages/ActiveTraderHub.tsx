@@ -4,11 +4,12 @@ import { useApi } from '../hooks/useApi';
 import ActiveTraderPage from './ActiveTraderPage';
 import ActiveTraderConfigTab from './ActiveTraderConfigTab';
 import ActiveTraderAlertsTab from './ActiveTraderAlertsTab';
+import ActiveTraderSessionReviewTab from './ActiveTraderSessionReviewTab';
 import ScalpStrategyModal from '../components/ScalpStrategyModal';
 import type { Setup } from '../components/ScalpStrategyModal';
 
-type SubTab = 'Alerts' | 'Review' | 'Configuration' | 'Setups';
-const SUBTABS: SubTab[] = ['Alerts', 'Review', 'Configuration', 'Setups'];
+type SubTab = 'Alerts' | 'Session review' | 'Review' | 'Configuration' | 'Setups';
+const SUBTABS: SubTab[] = ['Alerts', 'Session review', 'Review', 'Configuration', 'Setups'];
 
 // Own top-level section (/v3/active-trader). Read-only market-state review; account binding is separate.
 export default function ActiveTraderHub() {
@@ -78,6 +79,8 @@ export default function ActiveTraderHub() {
       )}
 
       {tab === 'Alerts' && <ActiveTraderAlertsTab />}
+
+      {tab === 'Session review' && <ActiveTraderSessionReviewTab />}
 
       {tab === 'Configuration' && <ActiveTraderConfigTab />}
 

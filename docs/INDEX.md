@@ -184,6 +184,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/_generated/profit_capture/pc_refresh.md` | Profit-Capture All-Trades Analysis | review_required | OK | `01ce13f3e88a` |
 | `docs/_generated/profit_capture/pc_shadow.md` | Profit-Protection Shadow Threshold Recommendations (advisory only) | review_required | OK | `396938ff08de` |
 | `docs/_generated/profit_capture/pc_val.md` | Profit-Capture Rule Quality Validation | review_required | OK | `630fb810182f` |
+| `docs/active_trader/ACTIVE_TRADER_SOUL.md` | Active Trader — Soul and Foundation | review_required | MISSING HEADER | `d7932fb4a906` |
 | `docs/adr/ADR-AIF-FS-ONE-GATEWAY.md` | ADR: Financial Senses integrates through the AIF governed read-only gateway | review_required | OK | `b62f7dc5ac25` |
 | `docs/advisory/PHASE141_142_DUAL_OPINION_AND_CHOICE_TRACKING.md` | Phases 141-142 — Dual-Opinion Advisory + Operator Choice Tracking | review_required | OK | `f1ca2aa75749` |
 | `docs/advisory/PHASE143_144_INLINE_ADVISORY_REPORT.md` | Phases 143-144 — Inline Dual-Opinion Advisory + Journal/Backtest Intelligence | review_required | OK | `3caee3d01e99` |
@@ -2219,7 +2220,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/sessions/ALPACA_LIVE_READ_INTEGRATION_2026-07-21.md` | Alpaca Live Read-Only Integration — Session Handoff | review_required | OK | `ee2052565b9f` |
 | `docs/sessions/ALPACA_TAXONOMY_BUILD_2026-07-21.md` | Alpaca Multi-Account Taxonomy Build — R1–R5 Session Handoff | review_required | OK | `556e597927ea` |
 | `docs/sessions/bitwarden_sm_migration_2026-07-21.md` | Bitwarden Secrets Manager Migration — Session Handoff (S0–S7) | review_required | OK | `5d1c34e95f2b` |
-| `docs/strategies/MOMENTUM_SCALP_SIGNAL_ENGINE_v1.md` | Momentum Scalp Signal Engine — Design Document v1 (DRAFT FOR REVIEW) | review_required | OK | `a0c18ca4b8a6` |
+| `docs/strategies/MOMENTUM_SCALP_SIGNAL_ENGINE_v1.md` | Momentum Scalp Signal Engine — Design Document v1 (DRAFT FOR REVIEW) | review_required | OK | `c43d8e24fe18` |
 | `docs/strategies/SCALP_SETUP_TAXONOMY_v1.md` | Momentum Scalp — Setup Taxonomy v1 | review_required | OK | `6ed049bb4014` |
 | `docs/strategy/BOT_MATURITY_ROADMAP_v1.md` | Automated Trade Bot Maturity Roadmap v1 | current_phase_keep | OK | `597378911cfd` |
 | `docs/strategy/SCREENER_REFERENCE.md` | Trade AI v12 — Screener Reference | current_phase_keep | OK | `8836ce913693` |

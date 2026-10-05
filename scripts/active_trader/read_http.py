@@ -122,6 +122,17 @@ def dispatch(
                                         session_date=_q1(query, "session_date") or None)
         except Exception as exc:  # fail-closed, never leak internals
             return 503, _envelope("unavailable", f"alerts feed unavailable: {type(exc).__name__}", status_hint=503)
+    if suffix in ("session-review", "session_review"):
+        try:
+            from .session_review import list_days, read_review
+            # PURE READ of the persisted "should have been" review + auto-sim comparison; never writes.
+            days = list_days()
+            day = _q1(query, "day") or (days[0] if days else None)
+            rv = read_review(day) if day else None
+            return 200, {"contract": "active-trader-session-review-feed-v1", "read_only": True, "day": day,
+                         "days": days[:60], "review": rv}
+        except Exception as exc:  # fail-closed, never leak internals
+            return 503, _envelope("unavailable", f"session review unavailable: {type(exc).__name__}", status_hint=503)
     if suffix in ("scalp/setups", "scalp_setups"):
         return 200, api.scalp_setups()
     if suffix in ("scalp/setup-events", "scalp/setup_events", "scalp_setup_events"):

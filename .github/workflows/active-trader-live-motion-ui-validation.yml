@@ -10,6 +10,8 @@ on:
       - 'apps/command-center-v3/src/pages/ActiveTraderAlertsTab.tsx'
       - 'apps/command-center-v3/e2e/active-trader-alerts.spec.ts'
       - 'apps/command-center-v3/e2e/active-trader-tab.spec.ts'
+      - 'apps/command-center-v3/e2e/active-trader-session-review.spec.ts'
+      - 'apps/command-center-v3/src/pages/ActiveTraderSessionReviewTab.tsx'
       - 'apps/command-center-v3/src/pages/ActiveTraderPage.tsx'
       - 'apps/command-center-v3/src/pages/activeTrader.css'
       - 'apps/command-center-v3/src/pages/activeTrader.mock.ts'
@@ -53,7 +55,7 @@ jobs:
       - name: Focused Active Trader motion Playwright
         env:
           PLAYWRIGHT_BASE_URL: http://127.0.0.1:4173
-        run: npx playwright test e2e/active-trader-live-motion.spec.ts e2e/active-trader-alerts.spec.ts e2e/active-trader-tab.spec.ts --project=chromium --reporter=line
+        run: npx playwright test e2e/active-trader-live-motion.spec.ts e2e/active-trader-alerts.spec.ts e2e/active-trader-tab.spec.ts e2e/active-trader-session-review.spec.ts --project=chromium --reporter=line
       - name: Upload Playwright evidence
         if: always()
         uses: actions/upload-artifact@v4
