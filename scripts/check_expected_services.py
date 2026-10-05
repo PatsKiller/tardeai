@@ -164,9 +164,23 @@ def _write_run_receipt(checked: int, off: int, detail: dict) -> None:
     a durable artifact, "not its exit code, not its log file existing", and this
     is that artifact.
     """
-    path = PROJECT_ROOT / "data" / "runtime" / RECEIPT_NAME
+    from persistent_state_root import resolve_durable_dir
+    path = resolve_durable_dir("data/runtime", PROJECT_ROOT) / RECEIPT_NAME
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
+        # Preserve observations across automatic restarts; the projection remains latest.
+        try:
+            previous = json.loads(path.read_text()) if path.exists() else {}
+        except (OSError, ValueError):
+            previous = {}
+        old = {r["name"]: r.get("exit_observation") for r in previous.get("results", [])}
+        for row in detail.get("results", []):
+            observation = row.get("exit_observation")
+            prior = old.get(row["name"]) or {}
+            keys = ("InvocationID", "ExecMainExitTimestamp", "ExecMainCode", "ExecMainStatus", "Result", "NRestarts")
+            if observation and (not prior or any(observation.get(k) != prior.get(k) for k in keys)):
+                with path.with_suffix(".events.jsonl").open("a", encoding="utf-8") as history:
+                    history.write(json.dumps(observation, sort_keys=True) + "\n")
         path.write_text(
             json.dumps(
                 {
@@ -209,7 +223,11 @@ def main() -> int:
     results = []
     for entry in manifest.get("units", []):
         unit = entry["unit"]
-        results.append({"kind": "unit", "name": unit, "status": check_unit(unit, enablement, activity)})
+        row = {"kind": "unit", "name": unit, "status": check_unit(unit, enablement, activity)}
+        if unit.endswith(".service"):
+            from check_worker_pins import service_observation
+            row["exit_observation"] = service_observation(unit)
+        results.append(row)
 
     for entry in manifest.get("flags", []):
         got = _flag_value(entry["name"], entry["source"])

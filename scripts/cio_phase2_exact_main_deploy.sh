@@ -24,6 +24,7 @@ CIO_URL="${CIO_URL:-http://localhost:7777/v3/cio}"
 STATE_DIR="${HOME}/.local/state/cio-phase2-exact-main"
 STATE_FILE="${STATE_DIR}/state.env"
 RECEIPT_FILE="${STATE_DIR}/deploy_receipt.json"
+CI_RECEIPT_FILE="${STATE_DIR}/post_merge_ci.json"
 LABEL="${CIO_EXACT_LABEL:-main-exact-phase2}"
 
 MODE="${1:-status}"
@@ -77,7 +78,7 @@ write_deploy_receipt() {
   local prev="${PREV_RELEASE:-}"
   local pr="${CIO_SOURCE_PR:-}"
   OK_FLAG="$ok_flag" MODE="$mode" HEALTH="$health" ROLLED="$rolled" EXTRA="$extra" \
-  SHA="$sha" DIR="$dir" PREV="$prev" PR="$pr" RECEIPT_FILE="$RECEIPT_FILE" python3 - <<'PY'
+  SHA="$sha" DIR="$dir" PREV="$prev" PR="$pr" RECEIPT_FILE="$RECEIPT_FILE" CI_RECEIPT_FILE="$CI_RECEIPT_FILE" python3 - <<'PY'
 import json, os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -97,6 +98,11 @@ rec = {
     "authority": "READ_ONLY_ADVISORY",
     "script": "cio_phase2_exact_main_deploy.sh",
 }
+ci_path = Path(os.environ["CI_RECEIPT_FILE"])
+if rec["mode"] == "promote" and ci_path.is_file():
+    ci = json.loads(ci_path.read_text())
+    if ci.get("candidate_sha") == rec["content_sha"]:
+        rec["post_merge_ci"] = ci
 Path(os.environ["RECEIPT_FILE"]).write_text(json.dumps(rec, indent=2) + "\n")
 print("wrote deploy receipt", os.environ["RECEIPT_FILE"])
 PY
@@ -621,6 +627,12 @@ cmd_promote() {
   CONTENT_SHA="$sha"
   release_grant_preflight promote "$sha"
   conformance_gate "$sha"
+  # Re-query immediately before activation. Pending, missing, failed or unavailable
+  # push/main evidence cannot be substituted with PR CI or an old receipt.
+  if ! "$VENV_PYTHON" "${ROOT}/scripts/release_grant_preflight.py" --ci-only --sha "$sha" --ci-receipt "$CI_RECEIPT_FILE"; then
+    write_deploy_receipt false promote blocked false "post_merge_ci_refused"
+    die "exact-SHA push-to-main checks are not completed successfully; activation refused"
+  fi
   write_state
   activate_release "$dir" "$sha"
   if ! health_check "promote"; then

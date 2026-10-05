@@ -1234,9 +1234,21 @@ def collect_research_heartbeat() -> list[dict]:
     """
     out = []
     try:
+        from lib.persistent_state_root import resolve_durable_dir
+        gate_path = resolve_durable_dir("data/health", PROJECT_ROOT) / "non_trading_hours_gate.json"
+        if gate_path.exists():
+            gate = json.loads(gate_path.read_text(encoding="utf-8"))
+            if gate.get("status") == "FAILED":
+                out.append(_f("intelligence_quality", "research_session_gate_failed", "warning",
+                              "Research session gate failed: " + str(gate.get("reason")),
+                              evidence=gate, path=str(gate_path)))
+    except (OSError, ValueError) as exc:
+        out.append(_f("intelligence_quality", "research_session_gate_unreadable", "warning",
+                      "Cannot read research session gate health: " + type(exc).__name__))
+    try:
         age_h = _file_age_h(RESEARCH_LANE_STATUS)
         if age_h is None:
-            return [_f("intelligence_quality", "research_heartbeat_unmonitored", "critical",
+            return out + [_f("intelligence_quality", "research_heartbeat_unmonitored", "critical",
                        "research lane monitor has never written its status file", path=str(RESEARCH_LANE_STATUS))]
         if age_h > 1.0:
             out.append(_f("intelligence_quality", "research_heartbeat_monitor_stale", "critical",
