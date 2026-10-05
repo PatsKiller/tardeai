@@ -169,15 +169,10 @@ def test_resolution_stays_observational():
 
 # ── legacy event-relative rows with due_at null (tranche 1, R5, 2026-09-24) ──
 
-def test_a_legacy_event_relative_row_31_days_old_is_due():
-    """~12,000 event-relative checkpoints were minted with due_at null. They are
-    read as due created_at + 30d — never as "now" — and the projected row says so."""
+def test_a_legacy_event_relative_row_has_no_invented_deadline():
     created = (NOW - timedelta(days=31)).isoformat()
     cp = _cp(checkpoint_id="legacy1", horizon="event-relative", due_at=None, created_at=created)
-    due = due_checkpoints([cp], now=NOW)
-    assert [c["checkpoint_id"] for c in due] == ["legacy1"]
-    assert due[0]["due_at_basis"] == "legacy_null_projected_created_plus_30d"
-    assert due[0]["due_at"] is not None
+    assert due_checkpoints([cp], now=NOW) == []
 
 
 def test_a_legacy_event_relative_row_10_days_old_is_not_yet_due():

@@ -65,6 +65,7 @@ from scripts.lib.outcome_resolution import (  # noqa: E402
     STATUS_PENDING_DATA,
     STATUS_RESOLVED,
     due_checkpoints,
+    checkpoint_deadline_migrations,
     pending_data_checkpoints,
     price_resolvable,
     realized_state,
@@ -382,6 +383,8 @@ def main() -> int:
         ),
     )
     ap.add_argument("--json", action="store_true")
+    ap.add_argument("--migrate-missing-deadlines", action="store_true",
+                    help="preview conservative deadline migration; --apply appends proposals only")
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument(
         "--as-of",
@@ -394,6 +397,17 @@ def main() -> int:
     )
     args = ap.parse_args()
 
+    if args.migrate_missing_deadlines:
+        root = _state_root()
+        rows = checkpoint_deadline_migrations(_jsonl(root / CHECKPOINT_PATH), limit=args.limit)
+        if args.apply:
+            for row in rows:
+                _append(root / CHECKPOINT_PATH, row)
+        print(json.dumps({"schema": "CheckpointDeadlineMigration@v1", "applied": args.apply,
+                          "proposed": len(rows), "derived": sum(bool(r.get("due_at")) for r in rows),
+                          "review_required": sum(not r.get("due_at") for r in rows),
+                          "authority": "READ_ONLY_ADVISORY", "samples": rows[:5]}, default=str))
+        return 0
     result = run(
         apply=args.apply,
         limit=args.limit,

@@ -95,3 +95,34 @@ def model_caller(any_id: str | None, env: dict | None = None) -> str | None:
 
 def known_ids(env: dict | None = None) -> set[str]:
     return set(alias_map(env).keys())
+
+
+def runtime_truth(*, env: dict | None = None, definitions=None, observations: dict | None = None) -> dict:
+    """Read-only comparison. Registered identity never confers activation authority."""
+    from datetime import datetime, timezone
+    if definitions is None:
+        from scripts.agent_runtime.agents.definitions import fleet
+        definitions = {key: spec.definition for key, spec in fleet().items()}
+    registry = agents(env)
+    aliases = alias_map(env)
+    deployed = {aliases.get(str(key).lower(), key): value for key, value in definitions.items()}
+    rows = []
+    for entry in registry:
+        aid = entry["agent_id"]
+        definition = deployed.get(aid)
+        if definition is None:
+            state, enabled = "UNDECLARED", None
+        elif isinstance(definition, dict):
+            state, enabled = definition.get("deployment_state"), definition.get("enabled")
+        else:
+            state, enabled = definition.deployment_state.value, definition.enabled
+        drift = entry.get("status") == "ACTIVE" and (enabled is False or state == "DESIGNED")
+        rows.append({"agent_id": aid, "registered": True, "registry_status": entry.get("status"),
+                     "intended_capability": entry.get("role"), "declared_lanes": entry.get("lanes") or [],
+                     "deployment_state": state, "runtime_enabled": enabled,
+                     "observed_activity": (observations or {}).get(aid) or {"status": "UNMEASURED"},
+                     "configuration_disagreement": drift,
+                     "disagreement_reason": "registry_active_runtime_disabled" if drift else None})
+    return {"schema": "AgentRuntimeTruth@v1", "as_of": datetime.now(timezone.utc).isoformat(),
+            "agents": rows, "disagreements": sum(r["configuration_disagreement"] for r in rows),
+            "authority": "READ_ONLY_ADVISORY", "activation_performed": False}

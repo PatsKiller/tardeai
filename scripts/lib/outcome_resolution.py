@@ -36,10 +36,7 @@ AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 
 STATUS_SCHEDULED = "SCHEDULED"
-# Legacy event-relative checkpoints carry due_at=null; they are read as due
-# this many days after creation (see due_checkpoints). Mirrors
-# r17_checkpoint_binding.EVENT_RELATIVE_FALLBACK_DAYS for NEW rows.
-LEGACY_EVENT_RELATIVE_DAYS = 30
+STATUS_MIGRATION_REVIEW = "MIGRATION_REVIEW_REQUIRED"
 STATUS_RESOLVED = "RESOLVED"
 STATUS_PENDING_DATA = "OUTCOME_PENDING_DATA"
 # Structurally not a price comparison — distinct from "waiting for data", which
@@ -110,15 +107,8 @@ def due_checkpoints(
     A checkpoint with no `due_at` is not due — it is unscheduled. Treating a
     missing deadline as "now" would resolve the entire backlog on first run.
 
-    2026-09-24 (agentic-memory tranche 1, R5): ``event-relative`` checkpoints
-    were minted with ``due_at: null`` (``due_at_for`` had no offset for that
-    horizon), so ~12,000 rows could never be selected. New rows now carry a
-    real ``due_at`` (``r17_checkpoint_binding.due_at_for`` — the event date, or
-    ``created_at + LEGACY_EVENT_RELATIVE_DAYS`` with ``due_at_basis``). Legacy
-    rows are read through the same projection here: a null ``due_at`` on an
-    ``event-relative`` row is treated as ``created_at + LEGACY_EVENT_RELATIVE_DAYS``,
-    never as "now", and the projected row says so (``due_at_basis``). History is
-    not rewritten; the projection lives on the row returned, not in the store.
+    Missing historical deadlines require explicit migration. An event-relative
+    horizon is not a duration, so the resolver cannot infer an original deadline.
     """
     at = now or _now()
     out = []
@@ -126,17 +116,60 @@ def due_checkpoints(
         if str(cp.get("status") or "") != STATUS_SCHEDULED:
             continue
         due = _parse(cp.get("due_at"))
-        if due is None and str(cp.get("horizon") or "") == "event-relative":
-            created = _parse(cp.get("created_at"))
-            if created is not None:
-                projected = created + timedelta(days=LEGACY_EVENT_RELATIVE_DAYS)
-                if projected <= at:
-                    cp = {**cp, "due_at": projected.isoformat(),
-                          "due_at_basis": "legacy_null_projected_created_plus_30d"}
-                    due = projected
         if due and due <= at:
             out.append(cp)
     return sorted(out, key=lambda c: str(c.get("due_at")))
+
+
+def checkpoint_deadline_migrations(rows: list[dict[str, Any]], *, limit: int | None = None) -> list[dict[str, Any]]:
+    """Deterministic append-only proposals; calendar sessions/events are ambiguous.
+
+    Only literal elapsed durations are accepted. No event date, holiday calendar,
+    default horizon or current time may substitute for a recorded forecast deadline.
+    """
+    import re
+    from hashlib import sha256
+    out = []
+    for cid, cp in sorted(latest_checkpoints(rows).items()):
+        if cp.get("status") != STATUS_SCHEDULED or cp.get("due_at"):
+            continue
+        created_raw, horizon = cp.get("created_at"), str(cp.get("horizon") or "").strip()
+        created = _parse(created_raw)
+        # _parse accepts legacy naive timestamps for observation reads; migration
+        # must not infer their timezone.
+        try:
+            aware = datetime.fromisoformat(str(created_raw).replace("Z", "+00:00")).tzinfo is not None
+        except (ValueError, TypeError):
+            aware = False
+        match = re.fullmatch(r"([1-9][0-9]{0,4})\s*(h|hours?|d|days?|w|weeks?)", horizon.lower())
+        iso = re.fullmatch(r"P([1-9][0-9]{0,4})D|PT([1-9][0-9]{0,4})H", horizon)
+        seconds = None
+        if match:
+            unit = match[2][0]
+            seconds = int(match[1]) * {"h": 3600, "d": 86400, "w": 604800}[unit]
+        elif iso:
+            seconds = int(iso[1] or iso[2]) * (86400 if iso[1] else 3600)
+        row = dict(cp)
+        reason = "creation_time_missing_or_ambiguous" if not (created and aware) else "horizon_not_an_explicit_duration"
+        if created and aware and seconds:
+            try:
+                row["due_at"] = (created + timedelta(seconds=seconds)).isoformat()
+                row["due_at_basis"] = "recorded_creation_plus_explicit_horizon"
+                reason = "deadline_derived_from_original_fields"
+            except OverflowError:
+                reason = "horizon_out_of_range"
+        if not row.get("due_at"):
+            row["status"] = STATUS_MIGRATION_REVIEW
+        row["deadline_migration"] = {
+            "migration_id": "deadline_" + sha256(f"{cid}|{created_raw}|{horizon}".encode()).hexdigest()[:24],
+            "reason": reason, "original_due_at": cp.get("due_at"),
+            "original_created_at": created_raw, "original_horizon": cp.get("horizon"),
+            "original_status": cp.get("status"), "authority": AUTHORITY,
+        }
+        out.append(row)
+        if limit is not None and len(out) >= max(0, limit):
+            break
+    return out if limit is None or limit > 0 else []
 
 
 def checkpoint_symbol(cp: dict[str, Any]) -> str | None:

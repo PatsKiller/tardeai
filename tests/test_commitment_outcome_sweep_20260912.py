@@ -83,7 +83,7 @@ def test_a_due_commitment_with_no_observation_expires_rather_than_confirming():
 
 def test_a_refuted_prediction_is_preserved_and_proposes_a_lesson():
     res = sweep_due_commitments(
-        [_commitment()], observation_provider=lambda _c: {"refuted": True}, now=NOW
+        [_commitment()], observation_provider=lambda _c: {"refuted": True, "observed": True, "source_refs": ["filing:fixture"], "commitment_id": _c["commitment_id"]}, now=NOW
     )
     assert res.by_outcome == {"REFUTED": 1}
     assert len(res.lessons) == 1
@@ -95,7 +95,7 @@ def test_a_refuted_prediction_is_preserved_and_proposes_a_lesson():
 
 def test_a_confirmed_prediction_also_proposes_a_lesson():
     res = sweep_due_commitments(
-        [_commitment()], observation_provider=lambda _c: {"confirmed": True}, now=NOW
+        [_commitment()], observation_provider=lambda _c: {"confirmed": True, "observed": True, "source_refs": ["filing:fixture"], "commitment_id": _c["commitment_id"]}, now=NOW
     )
     assert res.by_outcome == {"CONFIRMED": 1}
     assert len(res.lessons) == 1
@@ -105,19 +105,19 @@ def test_the_commitment_itself_is_never_mutated():
     """A frozen prediction stays exactly as written, refuted included."""
     c = _commitment()
     before = dict(c)
-    sweep_due_commitments([c], observation_provider=lambda _x: {"refuted": True}, now=NOW)
+    sweep_due_commitments([c], observation_provider=lambda _x: {"refuted": True, "observed": True, "source_refs": ["filing:fixture"], "commitment_id": _x["commitment_id"]}, now=NOW)
     assert c == before
 
 
 def test_rescoring_the_same_commitment_is_idempotent():
     ledger: list[dict] = []
     first = sweep_due_commitments(
-        [_commitment()], ledger=ledger, observation_provider=lambda _c: {"refuted": True}, now=NOW
+        [_commitment()], ledger=ledger, observation_provider=lambda _c: {"refuted": True, "observed": True, "source_refs": ["filing:fixture"], "commitment_id": _c["commitment_id"]}, now=NOW
     )
     second = sweep_due_commitments(
         [_commitment()],
         ledger=first.ledger,
-        observation_provider=lambda _c: {"refuted": True},
+        observation_provider=lambda _c: {"refuted": True, "observed": True, "source_refs": ["filing:fixture"], "commitment_id": _c["commitment_id"]},
         now=NOW,
     )
     assert len(first.ledger) == 1
@@ -138,7 +138,7 @@ def test_an_unfalsifiable_claim_is_reported_not_scored_as_a_success():
     assert ok is False
     assert reason == "claim_asserts_only_that_a_review_occurred"
 
-    res = sweep_due_commitments([c], observation_provider=lambda _x: {"confirmed": True}, now=NOW)
+    res = sweep_due_commitments([c], observation_provider=lambda _x: {"confirmed": True, "observed": True, "source_refs": ["filing:fixture"], "commitment_id": _x["commitment_id"]}, now=NOW)
     assert res.unfalsifiable == 1
     assert res.scored == 0
     assert res.by_outcome == {"INSUFFICIENT_EVIDENCE": 1}
@@ -160,7 +160,7 @@ def test_an_agent_cannot_score_its_own_commitment():
     """Constitutional: an agent cannot validate or score its own artifact."""
     res = sweep_due_commitments(
         [_commitment(producer="cortex_shadow_pipeline")],
-        observation_provider=lambda _c: {"confirmed": True},
+        observation_provider=lambda _c: {"confirmed": True, "observed": True, "source_refs": ["filing:fixture"], "commitment_id": _c["commitment_id"]},
         now=NOW,
         evaluator_identity="cortex_shadow_pipeline",
     )
@@ -172,7 +172,7 @@ def test_an_agent_cannot_score_its_own_commitment():
 def test_a_neutral_evaluator_may_score_it():
     res = sweep_due_commitments(
         [_commitment(producer="cortex_shadow_pipeline")],
-        observation_provider=lambda _c: {"confirmed": True},
+        observation_provider=lambda _c: {"confirmed": True, "observed": True, "source_refs": ["filing:fixture"], "commitment_id": _c["commitment_id"]},
         now=NOW,
         evaluator_identity="deterministic_neutral",
     )
@@ -275,7 +275,9 @@ def test_a_bearish_commitment_confirms_on_a_down_move_and_proposes_an_outcome_de
     start = (NOW - timedelta(days=8)).date().isoformat()
     end = (NOW - timedelta(days=1)).date().isoformat()
     prov = _provider({"ADBE": {start: 100.0, end: 95.0}})
-    c = dict(_commitment(), stance="BEARISH")
+    c = dict(_commitment(claim="ADBE close return will be below zero at the horizon.",
+                         falsifier="ADBE close return is nonnegative at the horizon."),
+             observation_spec={"metric": "close_return_pct", "operator": "<", "threshold": 0, "source": "ticker_prices"})
     obs = prov(c)
     assert obs["observed"] is True and obs["direction"] == "DOWN"
     assert obs["change_pct"] == -5.0 and obs["confirmed"] is True
@@ -291,7 +293,10 @@ def test_a_bullish_commitment_is_refuted_on_a_down_move():
     start = (NOW - timedelta(days=8)).date().isoformat()
     end = (NOW - timedelta(days=1)).date().isoformat()
     prov = _provider({"ADBE": {start: 100.0, end: 95.0}})
-    res = sweep_due_commitments([dict(_commitment(), stance="BULLISH")], observation_provider=prov, now=NOW)
+    c = dict(_commitment(claim="ADBE close return will exceed zero at the horizon.",
+                         falsifier="ADBE close return is nonpositive at the horizon."),
+             observation_spec={"metric": "close_return_pct", "operator": ">", "threshold": 0, "source": "ticker_prices"})
+    res = sweep_due_commitments([c], observation_provider=prov, now=NOW)
     assert res.by_outcome.get("REFUTED") == 1
 
 
@@ -312,8 +317,8 @@ def test_missing_prices_yield_no_observation_never_an_invented_one():
     assert res.by_outcome.get("CONFIRMED") is None
 
 
-def test_a_directional_word_in_the_claim_is_read_when_no_stance_is_recorded():
+def test_a_directional_opinion_is_not_reinterpreted_as_a_price_forecast():
     from scripts.lib.commitment_price_observation import direction_of
-    assert direction_of({"claim": "TRIM before the print; multiple is stretched."}) == "DOWN"
+    assert direction_of({"claim": "TRIM before the print; multiple is stretched."}) is None
     assert direction_of({"claim": "ADBE margin expansion persists."}) is None
     assert direction_of({"stance": "INSUFFICIENT", "claim": "TRIM now"}) is None

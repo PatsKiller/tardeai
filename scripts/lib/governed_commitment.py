@@ -41,6 +41,7 @@ NO_CONSUMER_REASON = (
 
 import hashlib
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Mapping
@@ -101,6 +102,49 @@ def _commitment_id(c: dict[str, Any]) -> str:
     return "gcmt_" + hashlib.sha256(material.encode("utf-8")).hexdigest()[:24]
 
 
+_UNFALSIFIABLE_CLAIM_RE = re.compile(
+    r"reviewed subject\s+[0-9a-f-]{8,}\s*;\s*advisory observation only", re.I
+)
+#: Likewise a falsifier that restates "the claim could be wrong" names no
+#: observable and so can never fire.
+_VACUOUS_FALSIFIER_RE = re.compile(
+    r"^\s*observation contradicts claim within horizon\s*$", re.I
+)
+
+
+def is_prediction(commitment: Mapping[str, Any]) -> bool:
+    """Does this record predict anything, or merely record that something happened?
+
+    `commitments.jsonl` holds two shapes. 99 rows are GovernedCommitment@v1:
+    FROZEN, with due_at, horizon, confidence and a falsifier. The other 125 are
+    thin wake commitments -- agent_id / commitment_kind / normalized_claim,
+    lifecycle OPEN, claims like "selection:material_change:<guid> warrants
+    review" -- with no due_at, no horizon and no confidence. Those are
+    observations, not predictions, and were never meant to be scored.
+
+    Counting them as predictions with a missing falsifier would invent 125
+    failures out of records that never claimed anything about the future.
+    """
+    return bool(commitment.get("due_at")) and bool(commitment.get("horizon"))
+
+
+def claim_is_falsifiable(commitment: Mapping[str, Any]) -> tuple[bool, str]:
+    """Can any later observation contradict this claim? Returns (ok, reason)."""
+    claim = str(commitment.get("claim") or "")
+    falsifier = str(commitment.get("falsifier") or "")
+    if not is_prediction(commitment):
+        return False, "not_a_prediction"
+    if not claim.strip():
+        return False, "missing_claim"
+    if not falsifier.strip():
+        return False, "missing_falsifier"
+    if _UNFALSIFIABLE_CLAIM_RE.search(claim):
+        return False, "claim_asserts_only_that_a_review_occurred"
+    if _VACUOUS_FALSIFIER_RE.match(falsifier):
+        return False, "falsifier_names_no_observable"
+    return True, "falsifiable"
+
+
 def _validate(c: dict[str, Any]) -> list[str]:
     errs: list[str] = []
     if not c.get("claim"):
@@ -118,7 +162,7 @@ def _validate(c: dict[str, Any]) -> list[str]:
     if not c.get("falsifier"):
         errs.append("missing_falsifier")
     ev = c.get("evidence_refs")
-    if not isinstance(ev, list) or not ev:
+    if not isinstance(ev, list) or not ev or not all(str(e).strip() for e in ev):
         errs.append("missing_evidence")
     if not c.get("source_identity"):
         errs.append("missing_source_identity")
@@ -162,6 +206,7 @@ def build_governed_commitment(
     created_at: datetime | None = None,
     frozen_at: datetime | None = None,
     authority: str = AUTHORITY,
+    observation_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build + validate the canonical commitment. Fail-closed on any missing field."""
     now = created_at or _now()
@@ -186,7 +231,12 @@ def build_governed_commitment(
         "mbi_behavior": 0,
         "lifecycle_state": "FROZEN",
     }
+    if observation_spec is not None:
+        commitment["observation_spec"] = dict(observation_spec)
     errs = _validate(commitment)
+    falsifiable, reason = claim_is_falsifiable(commitment)
+    if not falsifiable:
+        errs.append("claim_not_falsifiable:" + reason)
     if errs:
         raise CommitmentError(";".join(errs))
     commitment["commitment_id"] = _commitment_id(commitment)
@@ -207,6 +257,8 @@ def assert_not_mutated(original: dict[str, Any], candidate: dict[str, Any]) -> l
         "subject_guid",
         "created_at",
         "frozen_at",
+        "evidence_refs",
+        "observation_spec",
     ):
         if original.get(k) != candidate.get(k):
             changed.append(k)
@@ -232,10 +284,17 @@ def evaluate_outcome(
             "commitment_id": commitment.get("commitment_id"),
             "outcome": "INSUFFICIENT_EVIDENCE",
             "errors": errs,
+            "idempotency_key": hashlib.sha256(f"{commitment.get('commitment_id')}|invalid|{errs}".encode()).hexdigest()[:32],
             "evaluated_at": _iso(now or _now()),
             "authority": AUTHORITY,
         }
 
+    scoreable, refusal = claim_is_falsifiable(commitment)
+    if not scoreable:
+        return {"schema_version": OUTCOME_SCHEMA, "commitment_id": commitment.get("commitment_id"),
+                "outcome": "INSUFFICIENT_EVIDENCE", "errors": ["claim_not_falsifiable:" + refusal],
+                "idempotency_key": hashlib.sha256(f"{commitment.get('commitment_id')}|unfalsifiable|{refusal}".encode()).hexdigest()[:32],
+                "evaluated_at": _iso(now or _now()), "authority": AUTHORITY}
     producer = (commitment.get("trigger_provenance") or {}).get("producer")
     if evaluator_identity not in ("deterministic_neutral",) and evaluator_identity == producer:
         return {
@@ -243,6 +302,7 @@ def evaluate_outcome(
             "commitment_id": commitment.get("commitment_id"),
             "outcome": "INSUFFICIENT_EVIDENCE",
             "errors": ["prohibited_self_evaluation"],
+            "idempotency_key": hashlib.sha256(f"{commitment.get('commitment_id')}|self_evaluation".encode()).hexdigest()[:32],
             "evaluated_at": _iso(now or _now()),
             "authority": AUTHORITY,
         }
@@ -250,7 +310,12 @@ def evaluate_outcome(
     when = now or _now()
     due = _parse_ts(commitment.get("due_at"))
     obs = observation or {}
-    if obs.get("refuted") is True:
+    grounded = bool(obs.get("observed") is True and (obs.get("source_refs") or obs.get("evidence_refs"))
+                    and obs.get("commitment_id") == commitment.get("commitment_id"))
+    if (obs.get("confirmed") or obs.get("refuted")) and (not grounded or due is None or when < due
+            or (obs.get("confirmed") is True and obs.get("refuted") is True)):
+        outcome = "INSUFFICIENT_EVIDENCE"
+    elif obs.get("refuted") is True:
         outcome = "REFUTED"
     elif obs.get("confirmed") is True:
         outcome = "CONFIRMED"

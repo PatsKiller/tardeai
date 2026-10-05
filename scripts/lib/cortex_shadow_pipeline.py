@@ -28,6 +28,7 @@ from scripts.lib.agent_view_v1 import critic_pass, persist_allowed, produce_agen
 from scripts.lib.governed_commitment import (
     FEATURE_FLAG as COMMITMENT_FLAG,
     build_governed_commitment,
+    claim_is_falsifiable,
     evaluate_outcome,
     feature_enabled as commitment_enabled,
 )
@@ -205,6 +206,11 @@ def run_cortex_shadow(
     if commitment_enabled(env_map) and view.critic_pass:
         now = datetime.now(timezone.utc)
         due = due_at or (now + timedelta(days=7))
+        scoreable, refusal = claim_is_falsifiable({"claim": view.summary, "falsifier": falsifier,
+                                                  "horizon": horizon, "due_at": due})
+        if not scoreable:
+            return CortexShadowResult(ok=True, outcome="observation_only", view=view_row,
+                                      paths=paths, reason=refusal)
         commitment_row = build_governed_commitment(
             claim=view.summary,
             confidence=view.confidence,
