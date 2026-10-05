@@ -1130,10 +1130,12 @@ class WakeEngine:
         # OPERATOR_QUESTION commitment from it) is history, not a new ask. One
         # stale turn (115) was replayed as the primary decision on 308 ADBE
         # wakes. Mark consumed turns; decide() skips them.
-        consumed_turns = self._consumed_operator_turn_ids()
+        consumed_turns = self._consumed_operator_turn_ids(subject_guid=subject_guid, agent_id=agent_id)
+        from scripts.lib.wake_comms_history import is_approval_callback
         op_turns = [
-            {**t, "already_consumed": str(t.get("turn_id") or t.get("id")) in consumed_turns}
-            for t in op_turns
+            {**t, "already_consumed": bool(t.get("answered")) or str(t.get("turn_id") or t.get("id")) in consumed_turns}
+            for t in op_turns if not is_approval_callback(t)
+            and (not t.get("subject_guid") or str(t["subject_guid"]) == subject_guid)
         ]
         # Exclude irrelevant history (wrong subject already filtered by port)
         wake["prior_comm_event_ids"] = [str(e.get("event_id") or e.get("id")) for e in comm_events]
@@ -1509,6 +1511,14 @@ class WakeEngine:
                     "reason": f"{type(exc).__name__}: {exc}",
                 }
 
+        # Selection and influence are different facts. A competing decision branch
+        # still evaluated this research; receipt it so the scheduler can advance.
+        if selection_meta and _selection_primary_kind(selection_meta) == "research_object":
+            receipts.append(self._emit_receipt(
+                agent_id=agent_id, source_kind="research_object", source_id=selection_meta["source_id"],
+                wake_id=wake_id, subject_guid=subject_guid, purpose="wake_selection",
+                effect_kind="none", effect_ref=None, now=now, corr=corr, influence_source_ids=[],
+            ))
         wake["receipts_emitted"] = [r["receipt_id"] for r in receipts]
         wake["lifecycle_state"] = "ACTED" if decision.get("act") else (
             "LOADED" if memory_empty else "ACTED"
@@ -1570,12 +1580,14 @@ class WakeEngine:
             "judgment": judgment,
         }
 
-    def _consumed_operator_turn_ids(self) -> set[str]:
-        """Turn ids already consumed with a behavioural effect by a prior wake."""
+    def _consumed_operator_turn_ids(self, *, subject_guid: str, agent_id: str) -> set[str]:
+        """Consumption is scoped to the real turn, subject and consuming agent."""
         out: set[str] = set()
         try:
             for rec in self.store.iter("receipts"):
                 if (str(rec.get("source_kind")) == "operator_turn"
+                        and str(rec.get("subject_guid")) == subject_guid
+                        and str(rec.get("agent_id")) == agent_id
                         and str(rec.get("effect_kind") or "none") != "none"):
                     out.add(str(rec.get("source_id")))
         except Exception:  # noqa: BLE001 — a missing receipts file is not a wake failure
@@ -1760,7 +1772,9 @@ class WakeEngine:
             raise WakeRejected(f"illegal source_kind {source_kind!r}")
         if effect_kind not in EFFECT_KINDS:
             raise WakeRejected(f"illegal effect_kind {effect_kind!r}")
-        rid = mint_receipt_id(agent_id, source_kind, source_id, purpose)
+        scope = (f"{purpose}:{subject_guid}:{wake_id}"
+                 if source_kind in {"operator_turn", "research_object"} else purpose)
+        rid = mint_receipt_id(agent_id, source_kind, source_id, scope)
         rec = {
             "receipt_id": rid,
             "agent_id": agent_id,
@@ -1771,6 +1785,8 @@ class WakeEngine:
             "thread_id": None,
             "subject_guid": subject_guid,
             "purpose": purpose,
+            "receipt_scope": scope,
+            "processing_disposition": "PROCESSED" if purpose == "wake_selection" else None,
             "policy_decision": "consume",
             "retrieved_at": _iso(now),
             "acknowledged_at": _iso(now),
@@ -1933,8 +1949,10 @@ def default_decide(context: dict) -> dict:
     # First, because the operator outranks the scheduler. If they asked about
     # this subject, that is the question worth answering, not the one the
     # selection feed happened to surface.
+    from scripts.lib.wake_comms_history import is_approval_callback
     turns = [t for t in (context.get("operator_turns") or [])
-             if isinstance(t, dict) and not t.get("already_consumed")]
+             if isinstance(t, dict) and not t.get("already_consumed") and not t.get("answered")
+             and not is_approval_callback(t)]
     if turns:
         newest = turns[0]
         tid = str(newest.get("turn_id") or newest.get("id") or "")
