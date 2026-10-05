@@ -1027,6 +1027,11 @@ GATES = [
         "repair_cio_event_bus_fork_20261004",
         ["tests/test_repair_cio_event_bus_fork_20261004.py"],
     ),
+    # Momentum-scalp universe fails closed on unknown float/price (looked up first); min stop distance (2026-10-05).
+    (
+        "scalp_universe_failclosed_20261005",
+        ["tests/test_scalp_universe_failclosed_20261005.py"],
+    ),
     # Alpha Vantage fundamentals paced (1 req/s free tier), fund exclusion; ET/API chrome not tickers.
     (
         "alpha_vantage_pacing_20261004",
