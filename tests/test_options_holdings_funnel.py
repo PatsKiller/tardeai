@@ -112,13 +112,13 @@ def test_api_handler_shape(monkeypatch):
 
     monkeypatch.setattr(
         oe,
-        "build_holdings_funnel",
-        lambda **kw: {
+        "read_proposals",
+        lambda: {"holdings_funnel": {
             "ok": True,
             "as_of": "2026-09-24T15:00:00Z",
             "summary": {"holdings_scanned": 0, "cc_need_100_shares": 0},
             "rows": [],
-        },
+        }},
     )
     monkeypatch.setattr(api_v2, "_get_options_engine", lambda: oe)
     out = api_v2._options_holdings_funnel({"resolve_chain": ["0"]})

@@ -122,6 +122,11 @@ export type OptionProposal = {
   premium?: number
   premium_total?: number
   pop_pct?: number
+  pop_basis?: string
+  edge_basis?: string
+  price_basis?: string
+  iv_rank_basis?: string
+  advisory_only?: boolean
   edge_score?: number
   iv_rank?: number
   iv_context?: IvContext
@@ -205,6 +210,7 @@ export type OptionProposal = {
   reward_to_risk?: number
   multi_leg_proven?: boolean
   legs?: {
+    action?: string
     underlying?: string
     expiration?: string
     strike?: number

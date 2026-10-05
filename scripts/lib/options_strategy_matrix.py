@@ -33,6 +33,18 @@ MATRIX: dict[str, dict[str, Any]] = {
         "negative_cases": ["weak_thesis", "excessive_premium", "theta_burn", "missing_catalyst_or_horizon"],
         "lifecycle": LIFECYCLE,
     },
+    "long_put": {
+        "family": "long_put", "advisory_only": True,
+        "gates": ["thesis_direction", "premium_at_risk", "expiration", "quote_validation", "cio_review"],
+        "negative_cases": ["bullish_thesis", "stale_quote", "missing_catalyst_or_horizon"],
+        "lifecycle": LIFECYCLE,
+    },
+    "collar": {
+        "family": "collar", "advisory_only": True,
+        "gates": ["account_share_coverage", "leg_identity", "same_expiration", "net_debit", "floor", "upside_cap", "cio_review"],
+        "negative_cases": ["uncovered_call", "inconsistent_expiry", "missing_policy", "stale_quote"],
+        "lifecycle": LIFECYCLE,
+    },
     "debit_spread": {
         "family": "vertical_debit",
         "gates": ["leg_identity", "width", "debit", "max_loss", "max_profit", "package_liquidity", "pop"],
@@ -48,7 +60,7 @@ MATRIX: dict[str, dict[str, Any]] = {
 }
 
 ABSENT = frozenset({
-    "leaps_diagonal", "iron_condor", "iron_butterfly", "buffer_protect", "collar",
+    "leaps_diagonal", "iron_condor", "iron_butterfly", "buffer_protect",
 })
 
 # Registry ids that are paper or research lanes, not missing matrix rows.

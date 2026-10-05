@@ -21,7 +21,9 @@ import options_engine as oe
 
 
 def main():
-    props = oe.generate_proposals(force=True)
+    from lib.options_scan import load_config
+    scan_config = load_config(oe.PROJECT_ROOT)
+    props = oe.read_proposals() if scan_config.get("enabled") else oe.generate_proposals(force=True)
     mon = oe.monitor_positions(force=True)
     lifecycle = {}
     try:

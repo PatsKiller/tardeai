@@ -69,6 +69,8 @@ def _now() -> datetime:
 _DESK_CFG: Optional[dict] = None
 # Why an income idea was not built (2026-09-26); reset per generate_proposals pass.
 INCOME_SCREEN_DROPS: List[dict] = []
+SOURCE_RECEIPTS: Dict[str, dict] = {}
+IV_RANK_BASIS: Dict[str, str] = {}
 
 
 def _desk_cfg() -> dict:
@@ -255,11 +257,13 @@ def _iv_rank_proxy(
     vol_boost = min(30.0, (vol_w + vol_m) / 4.0)
     hist = _iv_rank_from_history(sym, iv_pct)
     if hist is not None:
+        IV_RANK_BASIS[sym] = "historical IV rank"
         return max(0.0, min(100.0, hist))
     if iv_pct <= 0 and not (hi > lo and px > 0) and vol_boost <= 0:
         # No IV, no 52-week range, no volatility: the blend is a constant 12.5 that
         # cleared the conviction floor on nothing (2026-09-26). Say "unknown" as 0.
         return 0.0
+    IV_RANK_BASIS[sym] = "proxy blend of IV, price range and volatility; not historical IV rank"
     rank = min(95.0, max(5.0, iv_pct * 0.55 + range_pos * 0.25 + vol_boost))
     return round(rank, 1)
 
@@ -535,27 +539,10 @@ def _load_holdings() -> Tuple[List[dict], dict]:
         except Exception:
             pass
     candidates.append(STATE_DIR / "holdings.json")
-    # Prefer newest readable copy among unique realpaths.
-    best: Optional[Path] = None
-    best_mtime = -1.0
-    seen: set[str] = set()
-    for p in candidates:
-        try:
-            key = str(p.resolve())
-        except OSError:
-            key = str(p)
-        if key in seen:
-            continue
-        seen.add(key)
-        if not p.is_file():
-            continue
-        try:
-            mtime = p.stat().st_mtime
-        except OSError:
-            continue
-        if mtime >= best_mtime:
-            best_mtime = mtime
-            best = p
+    # Canonical persistent-state precedence, never filesystem mtime: copying an
+    # old snapshot must not make it the newest observed portfolio.
+    best = next((p for p in candidates if p.is_file()), None)
+    best_mtime = best.stat().st_mtime if best is not None else None
     h = _load_json(best) if best is not None else {}
     if not isinstance(h, dict):
         h = {}
@@ -567,12 +554,15 @@ def _load_holdings() -> Tuple[List[dict], dict]:
         prof = _execution_profile(row.get("account") or "")
         if prof.get("broker") == "alpaca" or prof.get("options_desk_excluded"):
             dropped_alpaca += 1
+            row["options_desk_excluded"] = True
             continue
         kept.append(row)
     meta = dict(h) if isinstance(h, dict) else {}
     meta["_holdings_path"] = str(best) if best is not None else None
     meta["_holdings_mtime"] = best_mtime if best is not None else None
     meta["_alpaca_holdings_excluded"] = dropped_alpaca
+    meta["_inventory_holdings"] = normalized
+    meta["_observed_at"] = h.get("as_of") or h.get("observed_at") or h.get("updated_at") or h.get("generated_at")
     return kept, meta
 
 
@@ -728,7 +718,7 @@ def _watchlist_buy_conviction_rows(limit: int = 40) -> List[dict]:
     return out
 
 
-def _researched_watchlist_rows(limit: int = 120) -> List[dict]:
+def _researched_watchlist_rows(limit: Optional[int] = None) -> List[dict]:
     """All active/researched watchlist names, not only BUY/STRONG_BUY.
 
     This is intentionally separate from the legacy conviction resolver.  A
@@ -738,6 +728,7 @@ def _researched_watchlist_rows(limit: int = 120) -> List[dict]:
     try:
         from db_adapter import _execute, USE_DB
         if not USE_DB:
+            SOURCE_RECEIPTS["watchlist"] = {"status": "UNAVAILABLE", "reason": "database unavailable"}
             return []
         # 2026-09-27: this query selected wi.catalyst_headline / wi.catalyst_at, columns
         # watchlist_items never had; the error was swallowed below and the lane contributed
@@ -763,21 +754,23 @@ def _researched_watchlist_rows(limit: int = 120) -> List[dict]:
                        LIMIT 1
                  ) ce ON TRUE
                 WHERE wi.status IN ('active', 'researched')
-                  AND wi.symbol ~ '^[A-Z][A-Z0-9.\\-]{0,9}$'
-                  AND (rc.symbol IS NOT NULL OR fs.symbol IS NOT NULL OR ce.headline IS NOT NULL)
                 ORDER BY upper(wi.symbol), GREATEST(
                   COALESCE(fs.updated_at, 'epoch'::timestamp),
                   COALESCE(rc.updated_at, 'epoch'::timestamp),
                   COALESCE(ce.published_at, 'epoch'::timestamptz)
                 ) DESC NULLS LAST
                 LIMIT %s""",
-            (int(limit),), fetch="all",
-        ) or []
+            (limit,), fetch="all",
+        )
+        if rows is None:
+            raise RuntimeError("watchlist query did not return a result")
     except Exception as e:  # noqa: BLE001 -- a lane that cannot read says so
         print(f"[options_engine] researched-watchlist lane unavailable: {type(e).__name__}: {str(e)[:160]}", file=sys.stderr)
         INCOME_SCREEN_DROPS.append({"symbol": "*", "strategy": "*", "reason": "RESEARCH_LANE_UNAVAILABLE",
                                     "detail": f"{type(e).__name__}: {str(e)[:160]}"})
+        SOURCE_RECEIPTS["watchlist"] = {"status": "UNAVAILABLE", "reason": type(e).__name__}
         return []
+    SOURCE_RECEIPTS["watchlist"] = {"status": "COMPLETE", "rows": len(rows), "as_of": _iso()}
     out: List[dict] = []
     for row in rows:
         sym = str(row.get("symbol") or "").upper()
@@ -788,25 +781,56 @@ def _researched_watchlist_rows(limit: int = 120) -> List[dict]:
             "symbol": sym,
             "source": "watchlist",
             "source_lanes": ["watchlist"],
-            "research_status": "researched",
-            "research_artifact_id": f"watchlist:{sym}",
+            "research_status": "researched" if verdict or row.get("catalyst_headline") else "research_required",
+            "research_artifact_id": f"watchlist:{sym}" if verdict or row.get("catalyst_headline") else None,
             "verdict": verdict,
             "summary": row.get("catalyst_headline") or f"researched watchlist name ({verdict or 'unresolved'})",
             "catalyst": row.get("catalyst_headline"),
             "research_as_of": row.get("synthesis_at") or row.get("research_card_at") or row.get("catalyst_at"),
-            "confidence": _f(row.get("hermes_composite_score"), 0.0) or None,
+            "confidence": None,  # a research quality score is not directional conviction
+            "research_quality_score": row.get("hermes_composite_score"),
         })
     return out
 
 
-def _reentry_research_rows(limit: int = 120) -> List[dict]:
+def _reentry_research_rows(limit: Optional[int] = None) -> List[dict]:
     """Read-only re-entry research lane for former holdings and exit reviews."""
     try:
         from lib.options_research_universe import reentry_research_rows
         snapshot = _load_json(PROJECT_ROOT / "data" / "runtime" / "reentry_decision_desk_latest.json") or {}
         rows = reentry_research_rows(snapshot)[:limit]
-    except Exception:
-        rows = []
+        # The dashboard projection is capped. Read complete membership from the same
+        # authoritative preference/exit sources, without invoking its quote-producing builder.
+        from db_adapter import _execute, USE_DB
+        from lib.data_broker.reentry_decision_desk import RESISTANCE_KEY
+        if not USE_DB:
+            raise RuntimeError("reentry membership database unavailable")
+        pref = _execute("SELECT value FROM ui_prefs WHERE key=%s", (RESISTANCE_KEY,), fetch="one")
+        exits = _execute("""SELECT DISTINCT upper(symbol) AS symbol FROM trade_transactions
+            WHERE trade_date >= CURRENT_DATE - 365
+              AND (lower(coalesce(action,'')) IN
+                ('sell','sold','assigned','assignment','expired','exercise','exercised','close','closed')
+                OR lower(coalesce(action,'')) LIKE 'sell%%') ORDER BY 1""", fetch="all")
+        if exits is None:
+            raise RuntimeError("reentry exit query did not return a result")
+        value = (pref or {}).get("value") or {}
+        if isinstance(value, str):
+            value = json.loads(value)
+        symbols = set((value.get("symbols") or {}).keys())
+        symbols.update(r['symbol'] for r in exits if r.get('symbol'))
+        known = {r['symbol'] for r in rows}
+        rows.extend({'symbol': str(s).upper(), 'source': 'reentry', 'source_lanes': ['reentry'],
+                     'research_status': 'research_required'} for s in sorted(symbols)
+                    if str(s).upper() not in known)
+        rows = rows[:limit]
+        SOURCE_RECEIPTS["reentry"] = {"status": "COMPLETE" if limit is None else "PARTIAL",
+            "rows": len(rows), "membership_as_of": _iso(),
+            "as_of": snapshot.get("computed_at") or snapshot.get("as_of") or snapshot.get("generated_at"),
+            "research_snapshot_rows": len(snapshot.get("rows") or []),
+            "membership_basis": "reentry resistance preference plus 365-day exit ledger; uncapped"}
+    except Exception as exc:
+        SOURCE_RECEIPTS["reentry"] = {"status": "UNAVAILABLE", "reason": type(exc).__name__}
+        rows = locals().get('rows', [])
     # Overlay shared spine summaries onto reentry rows (CADI-012).
     try:
         from lib.cross_asset.hooks import overlay_thesis_fields_from_spine
@@ -850,11 +874,11 @@ def _research_universe_rows() -> List[dict]:
     # CADI-012: CIO spine first so merge_research_rows first-wins keeps shared thesis.
     try:
         from lib.cross_asset.hooks import spine_rows_for_root
-        rows.extend(spine_rows_for_root(PROJECT_ROOT))
+        rows.extend(spine_rows_for_root(PROJECT_ROOT, limit=0))
     except Exception:
         try:
             from scripts.lib.cross_asset.hooks import spine_rows_for_root
-            rows.extend(spine_rows_for_root(PROJECT_ROOT))
+            rows.extend(spine_rows_for_root(PROJECT_ROOT, limit=0))
         except Exception:
             pass
     rows.extend(_high_conviction_symbols())
@@ -862,7 +886,7 @@ def _research_universe_rows() -> List[dict]:
     rows.extend(_researched_watchlist_rows())
     rows.extend(_reentry_research_rows())
     merged = merge_research_rows(rows)
-    return [row for row in merged if row.get("research_qualified")]
+    return merged  # membership is independent of research/approval readiness
 
 
 def _high_conviction_symbols(limit: int = 25) -> List[dict]:
@@ -998,10 +1022,15 @@ def _aegis_cc_map() -> Dict[str, dict]:
 # One chain read per (symbol, width) per generation pass: the IV lookup and the
 # contract picker share it, so reading IV from the chain costs no extra call.
 _CHAIN_CACHE: Dict[tuple, dict] = {}
+_SCAN_CHAINS = None  # immutable lazy mapping supplied only during worker projection
 
 
 def _schwab_chain(symbol: str, strikes: int = 12) -> dict:
+    if _SCAN_CHAINS is not None:
+        return _SCAN_CHAINS.get(symbol.upper(), {"status": "pending"})
     key = (symbol.upper(), int(strikes))
+    if (symbol.upper(), 0) in _CHAIN_CACHE:
+        return _CHAIN_CACHE[(symbol.upper(), 0)]
     if key in _CHAIN_CACHE:
         return _CHAIN_CACHE[key]
     try:
@@ -1015,6 +1044,8 @@ def _schwab_chain(symbol: str, strikes: int = 12) -> dict:
 
 def _chain_fetched_at(symbol: str) -> Optional[str]:
     """When the cached chain for ``symbol`` was read (normalize_option_chain stamps it)."""
+    if _SCAN_CHAINS is not None:
+        return (_SCAN_CHAINS.get(symbol.upper()) or {}).get("fetched_at")
     for (sym, _n), out in _CHAIN_CACHE.items():
         if sym == symbol.upper() and isinstance(out, dict) and out.get("fetched_at"):
             return out["fetched_at"]
@@ -1098,7 +1129,11 @@ def _pick_chain_contract(
                 "last": _f(row.get("last")) if row.get("last") is not None else None,
                 "mark": _f(row.get("mark")) if row.get("mark") is not None else None,
                 "quote_time": row.get("quote_time"),
+                "multiplier": row.get("multiplier", 100),
+                "nonstandard": row.get("nonstandard", False),
             }
+            if contract["nonstandard"] or _f(contract["multiplier"], 100) != 100:
+                continue  # legacy policy supports standard 100-share deliverables only
             # sort key: proximity, then spread, then prefer higher OI
             candidates.append((proximity, spread_pct, -(oi or 0), contract))
     if not candidates:
@@ -1161,24 +1196,8 @@ def _cc_yield_ann_pct(premium: float, underlying: float, dte: int) -> float:
 
 
 def _conviction_bias(c: dict) -> str:
-    """Return bullish | bearish | neutral for defined-risk routing."""
-    bias = (c.get("bias") or "").lower()
-    if bias in ("bullish", "long", "buy", "up"):
-        return "bullish"
-    if bias in ("bearish", "short", "sell", "down"):
-        return "bearish"
-    direction = (c.get("direction") or "").lower()
-    if direction in ("bullish", "long", "buy", "up"):
-        return "bullish"
-    if direction in ("bearish", "short", "sell", "down"):
-        return "bearish"
-    sev = (c.get("severity") or "").lower()
-    inf = (c.get("inference_type") or "").lower()
-    if sev in ("opportunity", "positive", "bullish") or inf == "opportunity":
-        return "bullish"
-    if sev in ("risk", "negative", "bearish", "critical", "high") or inf == "risk":
-        return "bearish"
-    return "neutral"
+    from lib.options_research_universe import conviction_bias
+    return conviction_bias(c)
 
 
 def _edge_score_wheel(
@@ -1312,42 +1331,11 @@ def _enrich_tech_map(symbols: List[str], tech_map: dict, holdings: List[dict]) -
 
 
 def _allocate_strategy_slots(proposals: List[dict]) -> List[dict]:
-    """Reserve slots per strategy so puts/spreads are not buried by covered-call edge."""
-    by_strat: Dict[str, List[dict]] = {}
-    for p in proposals:
-        strat = p.get("strategy") or "other"
-        by_strat.setdefault(strat, []).append(p)
-    for strat in by_strat:
-        # Stage 1E: prefer entry_state long_calls inside the small long_call slot cap.
-        by_strat[strat].sort(
-            key=lambda x: (
-                0 if (strat == "long_call" and x.get("conviction_source") == "entry_state") else 1,
-                -_f(x.get("edge_score")),
-            )
-        )
-    picked: List[dict] = []
-    seen = set()
-    for strat, cap in STRATEGY_SLOTS.items():
-        for p in by_strat.get(strat, [])[:cap]:
-            key = (p.get("strategy"), p.get("symbol"), p.get("strike"), p.get("account"))
-            if key in seen:
-                continue
-            seen.add(key)
-            picked.append(p)
-    remainder = []
-    for strat, rows in by_strat.items():
-        if strat in STRATEGY_SLOTS:
-            continue
-        remainder.extend(rows)
-    remainder.sort(key=lambda x: -_f(x.get("edge_score")))
-    for p in remainder:
-        key = (p.get("strategy"), p.get("symbol"), p.get("strike"), p.get("account"))
-        if key in seen:
-            continue
-        seen.add(key)
-        picked.append(p)
-    picked.sort(key=lambda x: (-_f(x.get("edge_score")), x.get("strategy") or ""))
-    return picked
+    """Order every proposal; display limits must never erase evaluated candidates."""
+    return sorted(proposals, key=lambda p: (
+        bool((p.get("enterprise") or {}).get("blocks")) or p.get("approvable") is not True,
+        -_f(p.get("edge_score")), str(p.get("strategy") or ""), str(p.get("id") or ""),
+    ))
 
 
 def _proposal_id(strategy: str, sym: str, account: str, strike: Any, expiration: str = "",
@@ -1447,7 +1435,12 @@ def enqueue_ensemble_for_proposals(proposals: List[dict], fresh_hours: int = 24)
     cur = conn.cursor()
     enqueued = skipped = 0
     lanes_json = _options_ensemble_lanes()
-    for p in proposals:
+    from lib.options_thesis_lifecycle import settings as lifecycle_settings
+    budget = int(lifecycle_settings(_desk_cfg())["max_reviews_per_run"])
+    for p in sorted(proposals, key=lambda row: str(row.get("last_review_at") or row.get("generated_at") or "")):
+        if p.get("advisory_only") or enqueued >= budget:
+            skipped += 1
+            continue
         tid = str(p.get("id") or "")
         if not tid:
             skipped += 1
@@ -1776,7 +1769,7 @@ def generate_holdings_put_proposals(
         }, acct, holdings))
 
     proposals.sort(key=lambda x: -x["edge_score"])
-    return proposals[:12]
+    return proposals
 
 
 def _append_long_call_proposal(
@@ -1805,7 +1798,7 @@ def _append_long_call_proposal(
     if edge < min_edge:
         return "EDGE_BELOW"
     acct = account or _auto_select_account(sym, holdings or [], strategy="long_call", cash_map=cash_map)
-    from_entry = c.get("source") == "entry_state"
+    from_entry = "entry_state" in set(c.get("source_lanes") or [c.get("source")])
     vol_elevated = bool(c.get("volatility_elevated"))
     entry_state = c.get("entry_state")
     tech_note = f"Conviction {conf:.0%}"
@@ -1843,6 +1836,11 @@ def _append_long_call_proposal(
         "iv_rank": iv_rank,
         "delta": contract.get("delta"),
         "quote_time": contract.get("quote_time"),
+        "bid": contract.get("bid"), "ask": contract.get("ask"),
+        "oi": contract.get("oi"), "volume": contract.get("volume"),
+        "bid_ask_spread_pct": contract.get("bid_ask_spread_pct"),
+        "multiplier": contract.get("multiplier", 100),
+        "non_standard": contract.get("nonstandard", False),
         "severity": "info",
         "recommended_action": "Buy Call (defined risk)",
         "action_buttons": [
@@ -1975,7 +1973,7 @@ def generate_defined_risk_proposals(
     drops = out_entry_drops if out_entry_drops is not None else []
 
     def _drop_entry(c: dict, reason: str, **extra: Any) -> None:
-        if c.get("source") != "entry_state":
+        if "entry_state" not in set(c.get("source_lanes") or [c.get("source")]):
             return
         drops.append({
             "symbol": c.get("symbol"),
@@ -1986,7 +1984,9 @@ def generate_defined_risk_proposals(
 
     for c in convictions:
         sym = c["symbol"]
-        from_entry = c.get("source") == "entry_state"
+        if _conviction_bias(c) in {"bearish", "conflict", "neutral"}:
+            continue
+        from_entry = "entry_state" in set(c.get("source_lanes") or [c.get("source")])
         # Owned ≥100 hard-skip — except entry_state long_call (V litmus).
         if sym in owned and not from_entry:
             continue
@@ -2042,7 +2042,7 @@ def generate_defined_risk_proposals(
             )
             if drop:
                 _drop_entry(c, drop, edge_attempted=True)
-        elif conf >= 0.55 and not owned_entry:
+        elif bias == "bullish" and conf >= 0.55 and not owned_entry and c.get("willing_to_own") is True:
             # entry_state + owned → long_call only; never CSP on a name already held ≥100.
             target_strike = round(und * 0.92 / 2.5) * 2.5 if und > 50 else round(und * 0.93, 1)
             from lib.options_income_quality import setting as _qs
@@ -2062,7 +2062,7 @@ def generate_defined_risk_proposals(
         elif from_entry:
             _drop_entry(c, "NOT_ACTIONABLE", bias=bias, confidence=conf)
     proposals.sort(key=lambda x: -x["edge_score"])
-    return proposals[:12]
+    return proposals
 
 
 def _resolve_spread_puts(
@@ -2076,7 +2076,7 @@ def _resolve_spread_puts(
     """Resolve bull-put spread legs from chain or BS fallback."""
     short_c, src_s = _resolve_option_contract(sym, und, tech, "put", short_strike, target_dte)
     long_c, src_l = _resolve_option_contract(sym, und, tech, "put", long_strike, target_dte)
-    if short_c and long_c:
+    if short_c and long_c and short_c.get("exp") == long_c.get("exp"):
         src = "schwab_chain" if src_s == "schwab_chain" and src_l == "schwab_chain" else "bs_estimate"
         return short_c, long_c, src
     return None, None, ""
@@ -2095,7 +2095,9 @@ def generate_credit_spread_proposals(
 ) -> List[dict]:
     """Bull put / bear call credit spreads on high-conviction names (defined risk)."""
     proposals: List[dict] = []
-    for c in convictions[:15]:
+    for c in convictions:
+        if _conviction_bias(c) != "bullish":
+            continue
         sym = c["symbol"]
         tech = tech_map.get(sym) or {}
         price = _f(tech.get("price") or tech.get("last"))
@@ -2239,7 +2241,7 @@ def generate_credit_spread_proposals(
             "generated_at": _iso(),
         }, acct, holdings))
     proposals.sort(key=lambda x: -x["edge_score"])
-    return proposals[:8]
+    return proposals
 
 
 def _fetch_schwab_option_positions() -> List[dict]:
@@ -2570,7 +2572,7 @@ def _stamp_cio_hub_strip(proposals: List[dict], convictions: List[dict]) -> List
         if not sym:
             continue
         prior = by_sym.get(sym)
-        if prior is None or c.get("source") == "entry_state":
+        if prior is None or "entry_state" in set(c.get("source_lanes") or [c.get("source")]):
             by_sym[sym] = c
     for p in proposals or []:
         if not isinstance(p, dict):
@@ -2580,7 +2582,7 @@ def _stamp_cio_hub_strip(proposals: List[dict], convictions: List[dict]) -> List
         if not c:
             continue
         entry = c.get("entry_state")
-        if not entry and c.get("source") != "entry_state":
+        if not entry and "entry_state" not in set(c.get("source_lanes") or [c.get("source")]):
             continue
         note_parts: List[str] = []
         if c.get("volatility_elevated"):
@@ -2830,6 +2832,8 @@ def _attach_options_thesis(proposals: List[dict]) -> None:
                     p["breakeven_label"] = "Stock+put breakeven from mark"
                     p["floor_value"] = _e.get("floor_value_after_premium")
                     p["uninsured_shares"] = _e.get("uninsured_shares")
+            from lib.options_economics import stamp_payoff
+            stamp_payoff(p, quote_issues=list(_liq.get("issues") or []) if _liq.get("pass") is False else None)
         except Exception:  # noqa: BLE001
             p["expected_value"] = None
         rc = p.get("research_context") or {}
@@ -3036,8 +3040,32 @@ def _universe_census(holdings, convictions, scored_rows, listed) -> dict:
     )
 
 
-def generate_proposals(force: bool = False) -> dict:
-    """Full proposal pass with quality filter."""
+def read_proposals() -> dict:
+    """Read model only: an empty cache never starts research or provider calls."""
+    data = _load_json(PROPOSALS_CACHE) or {"proposals": [], "count": 0, "status": "UNAVAILABLE",
+                                         "reason": "No completed options scan snapshot"}
+    import options_desk_enterprise as ent
+    cfg = _desk_cfg()
+    for proposal in data.get("proposals", []):
+        ent.stamp_freshness(proposal, now=_now(), session=_market_session_now())
+        blocks = [b for b in ent.evaluate_hard_risk_blocks(proposal, mode="preflight", cfg=cfg)
+                  if b.get("code") in {"quote_age_unknown", "quote_stale", "chain_age_unknown", "option_chain_stale"}]
+        if blocks:
+            enterprise = proposal.setdefault("enterprise", {})
+            enterprise["blocks"] = list(enterprise.get("blocks") or []) + blocks
+            enterprise["live_eligible"] = False
+            proposal["approvable"] = False
+            proposal["enterprise_blocked"] = True
+            proposal["readiness_as_of"] = _iso()
+    return data
+
+
+def generate_proposals(force: bool = False, *, scan_inputs: Optional[dict] = None) -> dict:
+    """Proposal projection; expanded collection belongs only to the scan worker."""
+    if scan_inputs is None:
+        from lib.options_scan import load_config
+        if load_config(PROJECT_ROOT).get("enabled"):
+            return read_proposals()
     cached = _load_json(PROPOSALS_CACHE)
     if proposal_cache_serves(cached, now=_now(), session=_market_session_now(), force=force):
         if not cached.get("universe_census"):
@@ -3052,12 +3080,16 @@ def generate_proposals(force: bool = False) -> dict:
 
     INCOME_SCREEN_DROPS.clear()
     _CHAIN_CACHE.clear()
+    IV_RANK_BASIS.clear()
     _PRICE_SOURCE.clear()
     LIQUIDITY_DEFERRED.clear()
     _SESSION["now"] = _market_session_now()
     _FUNDAMENTALS.clear()
     _INSTRUMENT_CLASS.clear()
-    holdings, _ = _load_holdings()
+    holdings, holdings_meta = ((scan_inputs["holdings"], scan_inputs["holdings_meta"])
+                               if scan_inputs is not None else _load_holdings())
+    global _SCAN_CHAINS
+    _SCAN_CHAINS = scan_inputs.get("chains", {}) if scan_inputs is not None else None
     tech_map = _load_technicals()
     intent_cfg = _load_intent_cfg()
     aegis_map = _aegis_cc_map()
@@ -3066,27 +3098,53 @@ def generate_proposals(force: bool = False) -> dict:
     # researched watchlist and re-entry names are now first-class candidates.
     # The helper is research-qualified only; raw starred/scan names remain
     # visible to their originating desks but do not become option ideas here.
-    convictions = _research_universe_rows()
+    convictions = scan_inputs["convictions"] if scan_inputs is not None else _research_universe_rows()
     entry_scanned = [
         {
             "symbol": c.get("symbol"),
             "entry_state": c.get("entry_state"),
             "volatility_elevated": bool(c.get("volatility_elevated")),
         }
-        for c in convictions if c.get("source") == "entry_state"
+        for c in convictions if "entry_state" in set(c.get("source_lanes") or [c.get("source")])
     ]
     entry_drops: List[dict] = []
     conv_syms = [c["symbol"] for c in convictions if c.get("symbol")]
     hold_syms = [(h.get("symbol") or "").upper() for h in holdings if not h.get("is_cash")]
+    evaluation_holdings, evaluation_convictions = holdings, convictions
+    if scan_inputs is not None:
+        complete = {sym for sym, receipt in scan_inputs.get("chain_receipts", {}).items()
+                    if receipt.get("status") == "COMPLETE"}
+        evaluation_holdings = [h for h in holdings if h.get("symbol") in complete]
+        evaluation_convictions = [c for c in convictions if c.get("symbol") in complete]
+        for sym, chain in scan_inputs.get("chains", {}).items():
+            if _f(chain.get("underlying_price")) > 0:
+                tech_map.setdefault(sym, {}).update(price=chain["underlying_price"], last=chain["underlying_price"])
+        conv_syms = [c["symbol"] for c in evaluation_convictions]
+        hold_syms = [h["symbol"] for h in evaluation_holdings]
+    else:
+        # Compatibility producer keeps its previous provider envelope until expanded
+        # capacity is approved. Inventory still contains every name; omitted chains are PENDING.
+        lane_budgets = {"watchlist": 120, "reentry": 120, "security_research_spine": 500}
+        used = {lane: 0 for lane in lane_budgets}
+        evaluation_convictions = []
+        for row in convictions:
+            lanes = set(row.get("source_lanes") or [row.get("source")])
+            budgeted = lanes.intersection(lane_budgets)
+            if budgeted and all(used[lane] >= lane_budgets[lane] for lane in budgeted):
+                continue
+            evaluation_convictions.append(row)
+            for lane in budgeted:
+                used[lane] += 1
+        conv_syms = [c["symbol"] for c in evaluation_convictions if c.get("symbol")]
     tech_map = _enrich_tech_map(conv_syms + hold_syms, tech_map, holdings)
 
-    cc = generate_covered_call_proposals(holdings, tech_map, intent_cfg, aegis_map)
+    cc = generate_covered_call_proposals(evaluation_holdings, tech_map, intent_cfg, aegis_map)
     cash_map = _cash_by_account(holdings)
-    puts = generate_holdings_put_proposals(holdings, tech_map, cash_map, aegis_map)
+    puts = generate_holdings_put_proposals(evaluation_holdings, tech_map, cash_map, aegis_map)
     dr = generate_defined_risk_proposals(
-        convictions, tech_map, owned, holdings, cash_map, out_entry_drops=entry_drops,
+        evaluation_convictions, tech_map, owned, holdings, cash_map, out_entry_drops=entry_drops,
     )
-    spreads = generate_credit_spread_proposals(convictions, tech_map, holdings, cash_map)
+    spreads = generate_credit_spread_proposals(evaluation_convictions, tech_map, holdings, cash_map)
     pool = cc + puts + dr + spreads
     cc_syms = set(s.upper() for s in (intent_cfg.get("covered_call_candidate") or []))
 
@@ -3149,13 +3207,18 @@ def generate_proposals(force: bool = False) -> dict:
     except Exception:
         # Desk Ideas must still render if CIO strip stamping fails.
         pass
-    all_p = _allocate_strategy_slots(strict)
+    all_p = strict
     research_by_symbol = {
         str(c.get("symbol") or "").upper(): c for c in convictions if c.get("symbol")
     }
     for proposal in all_p:
         ctx = research_by_symbol.get(str(proposal.get("symbol") or "").upper())
         if ctx:
+            if ctx.get("direction_conflict"):
+                ent = proposal.setdefault("enterprise", {})
+                ent["blocks"] = list(ent.get("blocks") or []) + ["RESEARCH_DIRECTION_CONFLICT"]
+                ent["live_eligible"] = False
+                proposal["enterprise_blocked"] = True
             proposal["research_context"] = {
                 "source_lanes": list(ctx.get("source_lanes") or []),
                 # Operator 2026-09-27: lane membership is not research; say which it is.
@@ -3239,8 +3302,21 @@ def generate_proposals(force: bool = False) -> dict:
     except Exception:
         universe_summary = {"total": len(convictions), "research_qualified": len(convictions)}
 
+    from lib.options_universe_census import build_coverage, desk_queue
+    if scan_inputs is not None and scan_inputs.get("profile") == "priority":
+        refreshed = set(scan_inputs.get("chain_receipts", {}))
+        all_p.extend(p for p in (cached or {}).get("proposals", []) if p.get("symbol") not in refreshed)
+    if scan_inputs is not None:
+        from lib.options_advisory_candidates import generate_candidates
+        all_p.extend(generate_candidates(convictions, holdings, scan_inputs.get("chains", {})))
+    for p in all_p:
+        p["iv_rank_basis"] = IV_RANK_BASIS.get(p.get("symbol"), "unknown")
+        p["desk_queue"] = desk_queue(p, (p.get("research_context") or {}).get("source_lanes") or [])
+    all_p = _allocate_strategy_slots(all_p)
     out = {
         "generated_at": _iso(),
+        "scan_run_id": (scan_inputs or {}).get("run_id"),
+        "scan_status": (scan_inputs or {}).get("run_status", "LEGACY_PARTIAL"),
         "count": len(all_p),
         "covered_calls": len(cc),
         "puts": len(puts),
@@ -3260,21 +3336,29 @@ def generate_proposals(force: bool = False) -> dict:
         "research_universe": universe_summary,
         "research_lanes": sorted({lane for c in convictions for lane in (c.get("source_lanes") or [])}),
         "proposals": all_p,
-        "universe_census": _universe_census(holdings, convictions, strict, all_p),
+        "universe_census": _universe_census(holdings_meta.get("_inventory_holdings", holdings), convictions, strict, all_p),
+        "coverage": build_coverage(
+            holdings=holdings_meta.get("_inventory_holdings", holdings), convictions=convictions,
+            proposals=all_p, drops=INCOME_SCREEN_DROPS + entry_drops,
+            chains=(scan_inputs or {}).get("chain_receipts", {}),
+            source_receipts=(scan_inputs or {}).get("source_receipts", {})),
         "income_screen": _income_screen_summary(),
+        "holdings_funnel": build_holdings_funnel(holdings=holdings, tech_map=tech_map,
+                                                 intent_cfg=intent_cfg, aegis_map=aegis_map,
+                                                 resolve_chain=True),
         "market_session": _market_session_now(),
         "desk_level": "enterprise",
         "enterprise": enterprise_summary,
         "approval_queue": approval_sync,
         "archived_queue_rows": archive_sync,
         "strategy_overview": {
-            "total_edge_avg": round(sum(p["edge_score"] for p in all_p) / max(len(all_p), 1), 1),
-            "avg_pop": round(sum(p.get("pop_pct", 50) for p in all_p) / max(len(all_p), 1), 1),
+            "total_edge_avg": round(sum(_f(p.get("edge_score")) for p in all_p) / max(sum(p.get("edge_score") is not None for p in all_p), 1), 1),
+            "avg_pop": round(sum(_f(p.get("pop_pct")) for p in all_p) / max(sum(p.get("pop_pct") is not None for p in all_p), 1), 1),
             "income_opportunities": sum(1 for p in all_p if p["strategy"] == "covered_call"),
             "put_plays": sum(1 for p in all_p if "put" in (p.get("strategy") or "")),
             "conviction_plays": sum(1 for p in all_p if p["strategy"] not in ("covered_call", "cash_secured_put", "protective_put")),
             "strategy_slots": STRATEGY_SLOTS,
-            "note": "Balanced desk — per-strategy slots prevent covered-call crowding.",
+            "note": "Complete proposal ledger; display pagination never limits evaluation.",
         },
     }
     _save_json(PROPOSALS_CACHE, out)
@@ -3285,6 +3369,7 @@ def generate_proposals(force: bool = False) -> dict:
         out["ensemble_enqueue"] = ens
     except Exception as e:
         out["ensemble_enqueue"] = {"ok": False, "error": str(e)[:120]}
+    _SCAN_CHAINS = None
     return out
 
 
@@ -3394,8 +3479,8 @@ def monitor_positions(force: bool = False) -> dict:
 
 
 def get_overview() -> dict:
-    props = _load_json(PROPOSALS_CACHE) or generate_proposals()
-    mon = _load_json(MONITOR_CACHE) or monitor_positions()
+    props = read_proposals()
+    mon = _load_json(MONITOR_CACHE) or {}
     return {
         "generated_at": _iso(),
         "desk_level": props.get("desk_level") or "enterprise",
@@ -3412,9 +3497,9 @@ def get_overview() -> dict:
 
 STRATEGY_GROUPS: Dict[str, frozenset] = {
     "income": frozenset({"covered_call", "cash_secured_put", "credit_spread"}),
-    "hedge": frozenset({"protective_put"}),
-    "directional": frozenset({"long_call", "long_put"}),
-    "spread": frozenset({"credit_spread"}),
+    "hedge": frozenset({"protective_put", "collar"}),
+    "directional": frozenset({"long_call", "long_put", "debit_spread"}),
+    "spread": frozenset({"credit_spread", "debit_spread"}),
 }
 PORTFOLIO_STRATEGIES = frozenset({"covered_call", "protective_put"})
 CONVICTION_STRATEGIES = frozenset({"cash_secured_put", "long_call", "credit_spread", "long_put"})
@@ -3430,7 +3515,7 @@ def _proposal_sleeve(p: dict) -> str:
 
 
 def _is_spread_pair(p: dict) -> bool:
-    return (p.get("strategy") == "credit_spread"
+    return (p.get("strategy") in {"credit_spread", "debit_spread"}
             and _f(p.get("short_strike")) > 0
             and _f(p.get("long_strike")) > 0)
 
@@ -3996,7 +4081,7 @@ OPTIONS_DESK_RUNTIME = PROJECT_ROOT / "data" / "runtime" / "options_desk_latest.
 
 def build_options_desk_summary(props: Optional[dict] = None) -> dict:
     """Compact desk summary for Hermes staging + TradeAI ticker attachment."""
-    props = props or _load_json(PROPOSALS_CACHE) or generate_proposals()
+    props = props or read_proposals()
     proposals = props.get("proposals") or []
     by_sym: Dict[str, List[dict]] = {}
     by_strat: Dict[str, int] = {}

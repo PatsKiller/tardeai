@@ -19,6 +19,28 @@
 
 ---
 
+## Complete coverage and queued scanning (2026-10-05 source change)
+
+The new Options proposal read model includes every recorded holding, active/researched watchlist
+security, reentry membership and discovered optionable security. Inventory, chain coverage,
+research readiness and approval are separate counts. The UI offers All coverage and four queues:
+income, protection, watch/reentry alternatives and new opportunities. GET requests only read
+producer snapshots; scan requests are explicit queued POSTs. Additional captured-chain research
+covers all eight expression families over 7–365 DTE, with blocked advisory status until the
+existing governance and strategy requirements are satisfied.
+
+**Expanded scanning remains disabled pending measured capacity and activation.** The live
+watchlist count was 5,541 on October 5; a complete 15-minute refresh requires at least 369.4
+chain requests/minute before other work. No provider allowance or achieved refresh SLA is assumed.
+The compatibility producer keeps its prior bounded workload and shows omitted chains as pending.
+See the [capacity, API, ownership and acceptance contract](ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md)
+for exact source/code status, rollout requirements and five-session acceptance. Source completion
+and fixture success do not establish deployed or organically effective behavior.
+
+Package payoff/POP display identifies executable bid/ask assumptions, IV basis and heuristic
+scores. Profit probability includes premium; model estimates are not observed win rates.
+Readiness gates and operator-controlled execution policy retain their authority.
+
 ## Current flow (2026-09-26)
 
 This section is canonical for the proposal side. Older sections below are kept for

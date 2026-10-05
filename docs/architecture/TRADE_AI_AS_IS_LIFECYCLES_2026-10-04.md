@@ -12,6 +12,22 @@ Method:      seven read-only measurement passes, one per lifecycle family, each 
 Labels:      MEASURED (command, SQL or file:line in the fact base) · DOCUMENTED · INFERRED
 ```
 
+## Options coverage delta — 2026-10-05 implementation, activation pending
+
+A read-only count at approximately 20:42Z found **5,541 distinct active/researched watchlist
+symbols**. The old screen's ten cards and capped research inputs did not establish full book,
+watch or reentry coverage. This tranche implements uncapped membership, explicit per-security
+coverage, queued/resumable full-chain acquisition, read-only paginated GETs, direction-conflict
+handling, four operator queues and eight advisory expression families. Research identities reuse
+the existing CIO spine; this is not a second thesis store.
+
+This is a **source implementation delta**, not a new production maturity measurement. Expanded
+scanning ships disabled: provider capacity, schedule activation, natural full-run receipts and
+five-session effectiveness remain unproved. The 15-minute watchlist requirement alone implies
+369.4 requests/minute without cross-cycle stale reuse. Broker routes, agent enablement, financial
+thresholds, per-order 2FA and memory authority are unchanged. Additional expressions are blocked
+research ideas, not approved trades. See [the capacity and acceptance record](../ops/OPTIONS_SCAN_CAPACITY_2026-10-05.md).
+
 ## How to read this document
 
 This is the summary layer. Original 10-04 measurements come from seven fact bases, which hold

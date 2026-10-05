@@ -48,3 +48,9 @@ eq('legs: none without strike', legsFromProposal({ strategy: 'long_call' }), [])
 
 if (failed) throw new Error(`optionChainTruth: ${failed} failed`)
 console.log('[optionChainTruth] ok')
+
+// Mixed legs must retain their actual direction and call/put type.
+eq('legs: collar', legsFromProposal({ strategy: 'collar', legs: [
+  { action: 'BUY', option_type: 'put', strike: 95 },
+  { action: 'SELL', option_type: 'call', strike: 105 },
+] }), [{ role: 'long', side: 'put', strike: 95 }, { role: 'short', side: 'call', strike: 105 }])
