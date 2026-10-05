@@ -312,6 +312,7 @@ GATES = [
             "tests/test_alarm_capture_selftest.py",
             "tests/test_alarm_fires.py",
             "tests/test_alarm_fires_stop_path.py",
+            "tests/test_alarm_fires_ci_outage_emergency_20261005.py",
             "tests/test_alarm_fires_batch3.py",
             "tests/test_alarm_fires_batch4.py",
             "tests/test_alarm_fires_scalp_alerts_20261005.py",
@@ -1064,6 +1065,12 @@ GATES = [
     (
         "policy_unify_20261003",
         ["tests/test_policy_unify_20261003.py"],
+    ),
+    # CI-provider outage emergency release: outage proof (incident + never-started jobs; real red stays red),
+    # local replay evidence bound to the tree, release-emergency grant, commit rule, reconciliation (2026-10-05).
+    (
+        "ci_outage_emergency_release_20261005",
+        ["tests/test_ci_outage_emergency_release_20261005.py"],
     ),
     # Auto-approver survives a dropped DB connection (fail-closed); market_day_gate runs its check (2026-10-03).
     (
