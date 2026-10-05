@@ -2812,13 +2812,99 @@
         "match": "AUTO_PROPOSAL_STRATEGIES=momentum_scalp"
       },
       "expected_cadence_hours": 0.17,
-      "active_days": [0, 1, 2, 3, 4],
+      "active_days": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
       "state": "ACTIVE",
       "output_signal": {
         "kind": "file_mtime",
         "path": "logs/auto_proposal_momentum_scalp.log"
       },
       "note": "Operator 2026-10-03: momentum scalps are ADVISORY. 06:00-12:00 ET every 10 min, momentum_scalp only; fully-gated setups become one Telegram alert per symbol+setup per session (data/scalp/scalp_advisory_alerts.jsonl), no paper proposal. The 9-16 generator line excludes momentum_scalp."
+    },
+    {
+      "lane_id": "active-trader-premarket-watch",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "*/5 6-9 * * 1-5 cd $PROJ && flock -n /tmp/at_premarket.lock timeout 240 $PY scripts/active_trader/premarket_watch.py --apply >> logs/at_premarket_watch.log 2>&1",
+        "match": "scripts/active_trader/premarket_watch.py"
+      },
+      "expected_cadence_hours": 0.084,
+      "state": "ACTIVE",
+      "state_since": "2026-10-05",
+      "state_reason": "Operator 2026-10-05: 'has to run from 6am for premarket — IMPORTANT'. Heads-up only 06:00-09:29 ET (moomoo quote context, extended-hours 1-min bars); the RTH alert engine (scalp_shadow_logger) covers 09:30-11:55.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/momentum_alerts_premarket_heartbeat.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "PR #1441 (premarket_watch.py), replay 2026-10-05: SDEV gap +44% alert at 08:00.",
+      "note": "Every 5 min 06:00-09:59 ET (script self-gates to 06:00-09:29). Kill: persistent-state data/active_trader/PREMARKET_DISABLED."
+    },
+    {
+      "lane_id": "active-trader-micro-recorder-premarket",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "0 6 * * 1-5 cd $PROJ && flock -n /tmp/at_micro_recorder_pm.lock $PY scripts/active_trader/microstructure_recorder.py --apply --premarket >> logs/at_micro_recorder.log 2>&1",
+        "match": "microstructure_recorder.py --apply --premarket"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "state_since": "2026-10-05",
+      "state_reason": "Operator 2026-10-05 approved ('yes do 1-4'): microstructure recorder + learning (PR #1444); premarket coverage from 06:00 (operator rule).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/micro/live_symbols.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "PR #1444; dry run 2026-10-05: 60 s live moomoo on XNDU/SDEV, 12 polls, 0 errors.",
+      "note": "06:00-09:28 ET moomoo book+tape every 5 s for scalp names; self-terminates; kill file honored."
+    },
+    {
+      "lane_id": "active-trader-micro-recorder",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "28 9 * * 1-5 cd $PROJ && flock -n /tmp/at_micro_recorder.lock $PY scripts/active_trader/microstructure_recorder.py --apply >> logs/at_micro_recorder.log 2>&1",
+        "match": "microstructure_recorder.py --apply >>"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "state_since": "2026-10-05",
+      "state_reason": "Operator 2026-10-05 approved ('yes do 1-4'): microstructure recorder + learning (PR #1444); premarket coverage from 06:00 (operator rule).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/micro/live_symbols.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "PR #1444; dry run 2026-10-05: 60 s live moomoo on XNDU/SDEV, 12 polls, 0 errors.",
+      "note": "09:28-12:00 ET recorder (feeds trade replay, signals, exit watch)."
+    },
+    {
+      "lane_id": "active-trader-signal-calibration",
+      "owner": "scalp",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "10 12 * * 1-5 cd $PROJ && $PY scripts/active_trader/signal_calibration.py --apply >> logs/at_signal_calibration.log 2>&1",
+        "match": "scripts/active_trader/signal_calibration.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "state_since": "2026-10-05",
+      "state_reason": "Operator 2026-10-05 approved ('yes do 1-4'): microstructure recorder + learning (PR #1444); premarket coverage from 06:00 (operator rule).",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/learning/calibration_report.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "PR #1444; dry run 2026-10-05: 60 s live moomoo on XNDU/SDEV, 12 polls, 0 errors.",
+      "note": "Daily after the engine window: which signals separated WORKED vs STOPPED; PROPOSES thresholds only."
     }
   ],
   "undeclared_baseline": [

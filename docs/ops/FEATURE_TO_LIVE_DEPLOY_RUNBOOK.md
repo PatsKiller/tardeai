@@ -1,8 +1,9 @@
 # Feature-to-live deploy runbook (single-approval)
 
 Status:      ACTIVE
-as_of:       2026-09-13
+as_of:       2026-10-05T18:58:00Z
 Measured at: 9853e6b47f13b744287c588cc0dcb5bd8bfe0bf7 (steps 0–6, Fib chart declutter — PR #947 + #949); a8a62217e (step 7, PRs #998–#1001)
+Verified:    exact-SHA gate at 8da0bd92b19519f4815c2b20ced2f1dfbd1eae96 (PRs #1442, #1443)
 Authority:   AGENTS.md §Local gates / docs/GIT_HYGIENE.md / RELEASE_COORDINATOR boundary
 See also:    scripts/cio_phase2_exact_main_deploy.sh, scripts/new-worktree.sh, bin/guard
 
@@ -11,7 +12,10 @@ See also:    scripts/cio_phase2_exact_main_deploy.sh, scripts/new-worktree.sh, b
 Take a finished feature branch all the way to LIVE with **one operator approval**, instead of
 stopping to re-grant `git-push` / `release-write` at each boundary. The operator approves the
 whole scope set once; the agent drives push → PR → merge (exact green SHA) → prepare → promote →
-identity verification, with automatic rollback on a failed promote.
+identity verification, with automatic rollback on a failed promote. Completed successful
+**push-to-main CI on the exact deployment SHA** is a separate activation gate after PR CI.
+`AI_WORK_POLICY.md` still governs push budgets; a broad grant does not authorize unlimited
+synchronization. Never infer a grant or enter the operator confirmation yourself.
 
 ## The one approval
 
@@ -96,27 +100,56 @@ git fetch origin main --quiet && git merge origin/main --no-edit
 bin/agent-push -u origin wt/<name>    # then re-merge the PR
 ```
 
-### 4. Re-sync primary tree to origin/main
+### 4. Resolve the exact main candidate and wait for post-merge CI
+
+Use a clean isolated deployment worktree. Fetch main, record the full candidate SHA and compare
+it with the merged PR and release grant. If peers advanced main, establish that the new candidate
+is within the approved release scope before preparing it. Do not silently widen the grant or
+reset the shared primary tree. Promote fast-forwards the dev tree after activation (step 7).
 
 ```bash
-cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
 git fetch origin main --quiet
-git merge --ff-only origin/main
-[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ] && echo MATCH   # else re-run; main advances under concurrent merges
+git checkout --detach origin/main
+git rev-parse HEAD
 git status --short    # must be clean
+.venv/bin/python scripts/release_grant_preflight.py --ci-only --sha <full-candidate-sha>
 ```
+
+`--ci-only` reads GitHub and consumes no release grant. Exit 0 means eligible at the time of the
+read; exit 2 means blocked. The gate requires always-on `cio-production-hardening-ci.yml` and
+`agent-governance.yml`, and checks the latest matching run/attempt for every workflow returned
+for `event=push`, `branch=main` and the full candidate SHA. Each must be `completed` with
+`conclusion=success`. Missing, pending, failed, cancelled, wrong-SHA or unavailable evidence
+blocks promotion. An earlier success cannot hide a newer pending rerun; PR checks and old
+receipts cannot substitute for this check.
+
+The reader supports host `gh 2.46.0`: it decodes consecutive `gh api --paginate` pages and rejects
+malformed/trailing output. API or network failure means unavailable evidence; resolve it and
+repeat the read without weakening the gate. See the
+[verified remediation release](VALIDATED_LEARNING_REMEDIATION.md#release-verification-observed-2026-10-05).
 
 ### 5. prepare then promote (never promote alone)
 
 ```bash
-cd /home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild
-bash scripts/cio_phase2_exact_main_deploy.sh prepare    # must end "npm run build OK" + "PREPARE OK"
-bash scripts/cio_phase2_exact_main_deploy.sh promote    # must end "PROMOTE OK"
+cd /home/johnclaw/tradeai-wt-<deployment-name>
+TRADEAI_RELEASE_PR=<n> bash scripts/cio_phase2_exact_main_deploy.sh prepare
+# must end "npm run build OK" + "PREPARE OK"
+TRADEAI_RELEASE_PR=<n> bash scripts/cio_phase2_exact_main_deploy.sh promote
+# must end "PROMOTE OK"
 ```
 
 `prepare` is the moment the design-guard / pin-check / integrity-hook gates actually fire. A
 `vite build only` fallback (design guard failure) is a **defect to fix before promote**, not a
-signal to proceed.
+signal to proceed. `prepare` checks exact main and grant binding; it does not itself enforce
+post-merge CI. `promote` re-queries CI immediately before changing CURRENT, after the grant and
+conformance checks. A CI refusal records `post_merge_ci_refused` and leaves activation untouched.
+Both release actions consume a grant use; a refused promotion may already have consumed its use.
+
+Archive `~/.local/state/cio-phase2-exact-main/post_merge_ci.json` and `deploy_receipt.json`
+with the candidate validation. CI evidence records candidate SHA, workflow path/ID, run ID/attempt,
+event, branch, status, conclusion and check time; the deploy receipt embeds it. These global files
+are overwritten by subsequent deployments, not an append-only deployment ledger. Existing grant
+checks and rollback behavior remain in force.
 
 ### 6. Verify live identity (do not trust "PROMOTE OK" alone)
 
@@ -129,8 +162,12 @@ systemctl --user show portfolio-server.service -p WorkingDirectory --value
 curl -fsS --max-time 5 http://localhost:7777/api/v2/health | python3 -c 'import sys,json; print(json.load(sys.stdin).get("ok"))'
 ```
 
-All four pins (CURRENT dir, SOURCE_COMMIT, BUILD_SHA, origin/main) must be the **same 40-char
-SHA**, `WorkingDirectory` must equal the CURRENT dir, and health must be `True`.
+CURRENT, SOURCE_COMMIT, BUILD_SHA and each CURRENT-bound process directory must identify the
+**candidate 40-character SHA** in the deployment receipt. Read `/proc/<MainPID>/cwd`, not only
+unit configuration. Compare origin/main at deployment time; a later peer merge is a new source
+candidate, not proof of a hybrid served release. API liveness must be `True`; separately record
+overall health and unresolved findings. Observe the relevant natural scheduled receipt before
+claiming that a repaired path ran.
 
 ### 7. Reach what `promote` does not
 
@@ -189,5 +226,6 @@ bash scripts/cio_phase2_exact_main_deploy.sh rollback
 
 - Never `prepare`/`promote` a hybrid SHA (HEAD must equal origin/main; the script refuses).
 - Never merge without green CI on the exact PR head.
+- Never activate without freshly queried, completed successful push/main CI on the exact candidate SHA.
 - Never reintroduce raw hex / sub-10px fonts — `check_design_tokens.sh` is a frozen ratchet.
 - `secret` and `gate` are **never** grantable; this runbook touches neither.

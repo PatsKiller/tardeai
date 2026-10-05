@@ -67,10 +67,22 @@ def test_github_unavailable_and_pagination():
         if cmd[0] == "git":
             return subprocess.CompletedProcess(cmd, 0, "https://github.com/example/repository.git\n")
         assert "--paginate" in cmd
-        return subprocess.CompletedProcess(cmd, 0, json.dumps([
-            {"workflow_runs": runs()[:1]}, {"workflow_runs": runs()[1:]}
-        ]))
+        assert "--slurp" not in cmd  # gh 2.46 on the deployment host has no such flag
+        pages = [{"workflow_runs": runs()[:1]}, {"workflow_runs": runs()[1:]}]
+        return subprocess.CompletedProcess(cmd, 0, "\n".join(json.dumps(p, indent=2) for p in pages))
     assert gate.collect_push_checks(SHA, runner=api)["ok"]
+
+
+@pytest.mark.parametrize("response", ["", "[]", "{}", '{"workflow_runs": []} trailing',
+                                      '{"workflow_runs": null}', '{"workflow_runs": []} []'])
+def test_invalid_paginated_response_refuses_promotion(response):
+    def api(cmd, **kwargs):
+        if cmd[0] == "git":
+            return subprocess.CompletedProcess(cmd, 0, "git@github.com:example/repository.git\n")
+        return subprocess.CompletedProcess(cmd, 0, response)
+    report = gate.collect_push_checks(SHA, runner=api)
+    assert not report["ok"]
+    assert any(error.startswith("checks_unavailable:") for error in report["errors"])
 
 
 @pytest.mark.parametrize("session,rc,expected", [("regular", 0, "SKIPPED"), ("premarket", 0, "SKIPPED"),

@@ -54,7 +54,7 @@ class RecorderConfig:
     book_levels: int = 10
     tape_prints: int = 100
     window_et: tuple = ("09:28", "12:00")
-    premarket_window_et: tuple = ("07:00", "09:28")
+    premarket_window_et: tuple = ("06:00", "09:28")   # operator 2026-10-05: from 6am
     universe_refresh_s: float = 300.0
     live_symbols_max_age_s: float = 900.0
 

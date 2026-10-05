@@ -108,10 +108,21 @@ def collect_push_checks(sha: str, *, runner=None) -> dict:
         if not re.fullmatch(r"[0-9a-f]{40}", sha):
             return evaluate_push_checks(sha, [])
         endpoint = f"repos/{repository}/actions/runs?head_sha={sha}&event=push&branch=main&per_page=100"
-        response = run(["gh", "api", "--paginate", "--slurp", endpoint],
+        response = run(["gh", "api", "--paginate", endpoint],
                        capture_output=True, text=True, timeout=60, check=True)
-        pages = json.loads(response.stdout)
-        if not isinstance(pages, list) or not pages or any(not isinstance(p, dict) or not isinstance(p.get("workflow_runs"), list) for p in pages):
+        # gh 2.46 (the deployment host) emits consecutive JSON documents for
+        # --paginate and does not support --slurp. Decode every page ourselves;
+        # malformed or trailing output remains unavailable, never partial success.
+        decoder = json.JSONDecoder()
+        remaining = response.stdout.strip()
+        pages = []
+        while remaining:
+            page, end = decoder.raw_decode(remaining)
+            if not isinstance(page, dict) or not isinstance(page.get("workflow_runs"), list):
+                raise ValueError("invalid_workflow_response")
+            pages.append(page)
+            remaining = remaining[end:].lstrip()
+        if not pages:
             raise ValueError("invalid_workflow_response")
         evidence = evaluate_push_checks(sha, [r for p in pages for r in p["workflow_runs"]])
         evidence["repository"] = repository
