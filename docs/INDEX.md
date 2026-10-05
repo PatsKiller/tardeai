@@ -440,6 +440,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/PHASE210C_CADENCE_TIMER_SCHEDULE_VERIFICATION.md` | Phase 210C — Cadence Timer Schedule Verification — 2026-06-07 | review_required | OK | `1d9cdac8c715` |
 | `docs/architecture/PLAN_S_HOLLOW_RESEARCH_THEN_ANSWER_2026-09-22.md` | Plan: Why `S` got a hollow DeepSeek answer instead of research-then-answer | delete_candidate_duplicate | OK | `5e9e634f7fa6` |
 | `docs/architecture/PLATFORM_INTELLIGENCE_DUE_DILIGENCE_2026-09-27.md` | Platform Intelligence Due Diligence: Memory, Research, Agents, Workers (As-Is / To-Be) | review_required | OK | `235d5804d634` |
+| `docs/architecture/POSITIONS_SOURCE_OF_TRUTH_2026-10-05.md` | Positions — one source of truth (design, 2026-10-05) | review_required | MISSING HEADER | `6a13be8e1b61` |
 | `docs/architecture/POSITIONS_SOURCE_OF_TRUTH_PLAN_2026-10-05.md` | Positions Source of Truth Plan | review_required | MISSING HEADER | `128e0389ca93` |
 | `docs/architecture/PRE_DEPLOY_STATE_GUARD.md` | Pre-Deploy State Guard (canonical) | review_required | OK | `fe30cc8699b6` |
 | `docs/architecture/PROJECT_THE_DESK_V2.md` | PROJECT · THE DESK — an autonomous CIO, built as extensions to the existing spec | review_required | OK | `2af6860a863f` |
@@ -1785,6 +1786,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/OPERATOR_DEPLOYMENT_REQUIRED.md` | OPERATOR_DEPLOYMENT_REQUIRED | review_required | OK | `ad67ce75eb83` |
 | `docs/ops/PHASE189D_HEALTH_AGENT_MISSING_STOP_FAILURE_ANALYSIS.md` | PHASE 189D — Health-Agent Missing-Stop Failure Analysis | review_required | OK | `57b472ac277f` |
 | `docs/ops/PHASE190D_HEALTH_AGENT_PROTECTION_ALERT_ROUTING_FIX.md` | PHASE 190D — Health-Agent Protection Alert Routing Fix | review_required | OK | `8f174ca4e015` |
+| `docs/ops/PORTFOLIO_RECONCILIATION_2026-10-05.md` | Portfolio reconciliation — Command Center vs broker (2026-10-05) | review_required | MISSING HEADER | `ba46e3cd1f71` |
 | `docs/ops/PROPOSED_BITTEMPORAL_PROD_5432_2026-09-20-1051.md` | DEFERRED — operator continue-park (AGENTS.md §17) | review_required | OK | `f8c764608410` |
 | `docs/ops/PROPOSED_INSTALL_CODE_MIRROR_DRIVE_CRON_2026-09-20.md` | APPROVED — code-mirror Drive cron + apply (AGENTS.md §9.3 / §17) | review_required | OK | `71b2e4f7012b` |
 | `docs/ops/PROPOSED_INSTALL_STANCE_ORGANIC_OBSERVE_TIMERS_2026-09-20.md` | CONFIRMED — host timers installed (AGENTS.md §9.3 overnight maturity cron grant) | review_required | OK | `0e9571d27421` |

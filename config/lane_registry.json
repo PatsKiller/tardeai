@@ -2935,9 +2935,9 @@
         "match": "scripts/active_trader/session_review.py"
       },
       "expected_cadence_hours": 24,
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-10-05",
-      "state_reason": "Operator 2026-10-05: build the 'should have been' methodology in as the Active Trader soul (docs/active_trader/ACTIVE_TRADER_SOUL.md). Cron line awaits operator approval.",
+      "state_reason": "Operator 2026-10-05: build the 'should have been' methodology in as the Active Trader soul (docs/active_trader/ACTIVE_TRADER_SOUL.md). Cron line awaits operator approval. Cron approved by operator 2026-10-05 ('Approve the review's two cron lines').",
       "output_signal": {
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/reviews"
@@ -2955,9 +2955,9 @@
         "match": "scripts/active_trader/session_review.py"
       },
       "expected_cadence_hours": 24,
-      "state": "NEVER_SCHEDULED",
+      "state": "ACTIVE",
       "state_since": "2026-10-05",
-      "state_reason": "Operator 2026-10-05: build the 'should have been' methodology in as the Active Trader soul (docs/active_trader/ACTIVE_TRADER_SOUL.md). Cron line awaits operator approval.",
+      "state_reason": "Operator 2026-10-05: build the 'should have been' methodology in as the Active Trader soul (docs/active_trader/ACTIVE_TRADER_SOUL.md). Cron line awaits operator approval. Cron approved by operator 2026-10-05 ('Approve the review's two cron lines').",
       "output_signal": {
         "kind": "file_mtime",
         "path": "/home/johnclaw/trade-ai-releases/persistent-state/data/active_trader/reviews"
@@ -2965,6 +2965,25 @@
       "reason_confidence": "ESTABLISHED",
       "reason_evidence": "tests/test_at_soul_review_sim_20261005.py reproduces the operator's XNDU 2026-10-05 table from real data.",
       "note": "16:10 ET: re-run with the full day's bars (rewrites the day's review file; learning records are written once by id)."
+    },
+    {
+      "lane_id": "portfolio-broker-reconciliation",
+      "owner": "portfolio",
+      "scheduler": {
+        "kind": "cron",
+        "expression": "30 20 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_reconcile.lock timeout 300 $PY scripts/portfolio_reconcile.py --json data/runtime/portfolio_reconcile_latest.json >> logs/portfolio_reconcile.log 2>&1",
+        "match": "scripts/portfolio_reconcile.py"
+      },
+      "expected_cadence_hours": 24,
+      "state": "ACTIVE",
+      "state_since": "2026-10-05",
+      "state_reason": "Proposed (operator 2026-10-05: 'I need this to be the source of truth'). Read-only check that every Command Center position and closed trade matches the broker: value == shares x data-broker quote, P&L == value - cost, CC vs broker qty/cost within config/portfolio_positions.yaml tolerances. Cron needs operator approval: `5 10-16 * * 1-5 cd $PROJ && flock -n /tmp/portfolio_reconcile.lock timeout 300 $PY scripts/portfolio_reconcile.py --json data/runtime/portfolio_reconcile_latest.json >> logs/portfolio_reconcile.log 2>&1`. Approved nightly by operator 2026-10-05 ('Schedule the nightly reconciliation check'): 20:30 ET weekdays, after the evening Schwab ingest and SnapTrade sync.",
+      "output_signal": {
+        "kind": "file_mtime",
+        "path": "data/runtime/portfolio_reconcile_latest.json"
+      },
+      "reason_confidence": "ESTABLISHED",
+      "reason_evidence": "docs/ops/PORTFOLIO_RECONCILIATION_2026-10-05.md; scripts/portfolio_reconcile.py (read-only); tests/test_portfolio_price_truth_20261005.py."
     }
   ],
   "undeclared_baseline": [

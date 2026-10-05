@@ -272,6 +272,10 @@ export default function MetricStrip({ onDrill }: Props) {
   const realizedPnl = overview?.journal?.realized_pnl
   const realizedCount = overview?.journal?.realized_count
   const longTermTrimPnl = overview?.journal?.long_term_trim_pnl
+  // Sells whose cost basis the broker ledger cannot verify (transferred-in / pre-ledger lots) are excluded
+  // from REALIZED — never given a made-up P&L — and disclosed on the tile (operator reconciliation 2026-10-05).
+  const excludedBU = overview?.journal?.realized_excluded_basis_unknown as { count?: number; proceeds?: number } | undefined
+  const excludedNote = excludedBU?.count ? ` · ${excludedBU.count} sells (${fmt$(excludedBU.proceeds ?? 0, 0)}) basis unknown, excluded` : ''
   const journalLastClose = overview?.journal?.last_close_date
   const journalLastIngested = overview?.journal?.last_ingested_at
   // Provenance (cc-header-truth-v2 Phase 2 E): TRADING and REALIZED must state
@@ -443,13 +447,13 @@ export default function MetricStrip({ onDrill }: Props) {
     },
     {
       label: 'REALIZED', value: realizedPnl != null ? fmt$(realizedPnl, 0) : '—',
-      asOfNote: showQuietProvenance ? `all closed${realizedCount ? ` · ${realizedCount} trades` : ''}${longTermTrimPnl ? ' · incl trims' : ''}` : null,
+      asOfNote: showQuietProvenance ? `all closed${realizedCount ? ` · ${realizedCount} trades` : ''}${longTermTrimPnl ? ' · incl trims' : ''}${excludedNote}` : null,
       tone: journalStale ? 'warn' : 'ok', minWidth: 140, maxWidth: 200,
       stale: journalStale ? journalAgeMark : null,
       color: realizedPnl == null ? 'var(--text3)' : realizedPnl >= 0 ? BB.green : BB.red,
-      tip: `All closed P&L incl. long-term trims of old buy-and-hold lots · ${journalScope} · ${journalWindow}${journalAsOf ? ` · as_of ${String(journalAsOf).slice(0, 19).replace('T', ' ')}` : ''}${longTermTrimPnl ? ` (${fmt$(longTermTrimPnl, 0)} of it is long-term trims)` : ''}${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Trading-only P&L is ${journalPnl != null ? fmt$(journalPnl, 0) : '—'}.`,
+      tip: `All closed P&L incl. long-term trims of old buy-and-hold lots · ${journalScope} · ${journalWindow}${journalAsOf ? ` · as_of ${String(journalAsOf).slice(0, 19).replace('T', ' ')}` : ''}${longTermTrimPnl ? ` (${fmt$(longTermTrimPnl, 0)} of it is long-term trims)` : ''}${journalLastClose ? ` · last close ${journalLastClose}` : ''}${journalRefreshedMark}. Trading-only P&L is ${journalPnl != null ? fmt$(journalPnl, 0) : '—'}.${excludedNote ? ` Not included:${excludedNote.replace(' · ', ' ')} — their cost basis is not in the broker ledger (transferred-in or pre-ledger lots).` : ''}`,
       drill: { title: 'Realized P&L (all closed)', subtitle: `Includes long-term position trims — not just trading · ${journalScope} · ${journalWindow}${journalLastClose ? ` · through ${journalLastClose}` : ''}`, endpoint: '/api/v2/overview',
-        rows: [{ realized_pnl: realizedPnl, realized_trades: realizedCount, long_term_trim_pnl: longTermTrimPnl, trading_pnl: overview?.journal?.total_pnl, trading_trades: overview?.journal?.trade_count, basis: overview?.journal?.basis, account_scope: overview?.journal?.account_scope, time_window: overview?.journal?.time_window, as_of: overview?.journal?.as_of, last_close_date: overview?.journal?.last_close_date, last_ingested_at: overview?.journal?.last_ingested_at }] },
+        rows: [{ realized_pnl: realizedPnl, realized_trades: realizedCount, long_term_trim_pnl: longTermTrimPnl, trading_pnl: overview?.journal?.total_pnl, trading_trades: overview?.journal?.trade_count, basis: overview?.journal?.basis, account_scope: overview?.journal?.account_scope, time_window: overview?.journal?.time_window, as_of: overview?.journal?.as_of, last_close_date: overview?.journal?.last_close_date, last_ingested_at: overview?.journal?.last_ingested_at, excluded_basis_unknown_sells: excludedBU?.count ?? 0, excluded_basis_unknown_proceeds: excludedBU?.proceeds ?? 0 }] },
     },
     {
       label: 'REGIME', value: regimeLabel ? `${regimeLabel.replace(/_/g, ' ')}${regimeConf ? ` ${Math.round(regimeConf * 100)}%` : ''}` : '—',

@@ -65,7 +65,8 @@ def _group_legs(fills, gap_min=5):
             if cur:
                 legs.append(cur)
             cur = {"side": f["side"], "qty": f["qty"], "cost": f["qty"] * f["price"], "fees": f["fees"],
-                   "t": f["t"], "last": f["t"], "pre_window": f.get("pre_window", False), "source": f.get("source", "api")}
+                   "t": f["t"], "last": f["t"], "pre_window": f.get("pre_window", False), "source": f.get("source", "api"),
+                   "d": f.get("d")}
     if cur:
         legs.append(cur)
     for l in legs:
@@ -83,7 +84,7 @@ def _round_trips(account, symbol, legs):
     for leg in legs:
         if leg["side"] == "Buy":
             buys.append(dict(qty=leg["qty"], price=leg["price"], fees=leg["fees"], t=leg["t"],
-                             pre=leg.get("pre_window", False), src=leg.get("source", "api")))
+                             pre=leg.get("pre_window", False), src=leg.get("source", "api"), d=leg.get("d")))
         else:
             sq, sp, sf, st = leg["qty"], leg["price"], leg["fees"], leg["t"]
             sell_qty0 = sq or 1
@@ -104,6 +105,7 @@ def _round_trips(account, symbol, legs):
                               "exit_price": round(sp, 4), "gross_pnl": round(gross, 2), "fees": fees,
                               "net_pnl": net, "pnl_pct": round((sp - b["price"]) / b["price"] * 100, 2) if b["price"] else 0,
                               "classification": cls, "basis_status": bstat, "basis_source": b["src"],
+                              "entry_trade_date": b.get("d"), "exit_trade_date": leg.get("d"),
                               "dedupe_key": f"{account}|{symbol}|{b['t'].isoformat()}|{st.isoformat()}|{round(m,3)}"})
                 b["qty"] -= m; sq -= m
                 if b["qty"] <= 1e-9:
@@ -114,8 +116,19 @@ def _round_trips(account, symbol, legs):
                               "exit_price": round(sp, 4), "gross_pnl": None, "fees": round(sf, 2),
                               "net_pnl": None, "pnl_pct": None, "classification": "pre_window_trim",
                               "basis_status": "basis_unknown", "basis_source": None,
+                              "entry_trade_date": None, "exit_trade_date": leg.get("d"),
                               "dedupe_key": f"{account}|{symbol}|UNKNOWN|{st.isoformat()}|{round(sq,3)}"})
     return trips
+
+
+def _ensure_trade_date_columns(cur) -> None:
+    """Add the broker trade-date columns once (catalog check first: ALTER takes an exclusive lock)."""
+    cur.execute("""SELECT column_name FROM information_schema.columns
+                   WHERE table_name = 'schwab_round_trips' AND column_name IN ('entry_trade_date','exit_trade_date')""")
+    have = {r[0] for r in cur.fetchall()}
+    for col in ("entry_trade_date", "exit_trade_date"):
+        if col not in have:
+            cur.execute(f"ALTER TABLE schwab_round_trips ADD COLUMN IF NOT EXISTS {col} DATE")
 
 
 def _load_overrides():
@@ -131,6 +144,8 @@ def run(apply=False, gap_min=5):
     import datetime as _dt
     conn = _conn(); cur = conn.cursor()
     cur.execute(DDL); conn.commit()
+    if apply:  # schema change only on --apply (a dry run never alters the production table)
+        _ensure_trade_date_columns(cur); conn.commit()
     overrides = _load_overrides()
     # API both sides (in-window) + CSV BUYS only (pre-window opening lots; never CSV sells — those are the
     # lossy collapsed rows we already replaced). CSV rows carry trade_date, not trade_time.
@@ -145,7 +160,10 @@ def run(apply=False, gap_min=5):
         px = float(price) if price and float(price) > 0 else (abs(float(amount) / float(qty)) if qty else 0)
         t = tt or _dt.datetime.combine(td, _dt.time(), tzinfo=_dt.timezone.utc)
         bykey[(acct, sym)].append({"side": action, "qty": float(qty or 0), "price": px, "fees": float(fees or 0),
-                                   "t": t, "pre_window": (not inwin), "source": ("api" if inwin else "csv")})
+                                   "t": t, "pre_window": (not inwin), "source": ("api" if inwin else "csv"),
+                                   # the BROKER trade date (an after-hours fund order placed 07-13 21:05 ET
+                                   # trades 07-14; t::date gave 07-13 — reconciliation 2026-10-05)
+                                   "d": td})
     # inject operator-documented basis as a pre-window opening lot for any net-underflow override symbol
     for (acct, sym), fills in bykey.items():
         ov = overrides.get(f"{sym}|{acct}")
@@ -160,7 +178,8 @@ def run(apply=False, gap_min=5):
         if net < -0.01:
             inject = min(abs(net), float(doc_qty)) if doc_qty else abs(net)
             fills.append({"side": "Buy", "qty": inject, "price": ov_basis, "fees": 0.0,
-                          "t": _dt.datetime(2008, 1, 1, tzinfo=_dt.timezone.utc), "pre_window": True, "source": "operator"})
+                          "t": _dt.datetime(2008, 1, 1, tzinfo=_dt.timezone.utc), "pre_window": True, "source": "operator",
+                          "d": _dt.date(2008, 1, 1)})
     all_trips = []
     canary_syms = _canary_symbols()
     for (acct, sym), fills in bykey.items():
@@ -172,12 +191,15 @@ def run(apply=False, gap_min=5):
         for tp in all_trips:
             cur.execute("""INSERT INTO schwab_round_trips
                              (account,symbol,entry_time,exit_time,hold_minutes,qty,entry_price,exit_price,
-                              gross_pnl,fees,net_pnl,pnl_pct,classification,basis_status,basis_source,dedupe_key,canary)
+                              gross_pnl,fees,net_pnl,pnl_pct,classification,basis_status,basis_source,dedupe_key,canary,
+                              entry_trade_date,exit_trade_date)
                            VALUES (%(account)s,%(symbol)s,%(entry_time)s,%(exit_time)s,%(hold_minutes)s,%(qty)s,
                               %(entry_price)s,%(exit_price)s,%(gross_pnl)s,%(fees)s,%(net_pnl)s,%(pnl_pct)s,
-                              %(classification)s,%(basis_status)s,%(basis_source)s,%(dedupe_key)s,%(canary)s)
+                              %(classification)s,%(basis_status)s,%(basis_source)s,%(dedupe_key)s,%(canary)s,
+                              %(entry_trade_date)s,%(exit_trade_date)s)
                            ON CONFLICT (dedupe_key) DO UPDATE SET net_pnl=EXCLUDED.net_pnl, fees=EXCLUDED.fees,
                              basis_status=EXCLUDED.basis_status, basis_source=EXCLUDED.basis_source,
+                             entry_trade_date=EXCLUDED.entry_trade_date, exit_trade_date=EXCLUDED.exit_trade_date,
                              canary=(schwab_round_trips.canary OR EXCLUDED.canary)""", tp)
             ins += 1
         # purge orphans: rows whose dedupe_key is no longer produced this run (e.g. a trip's classification
@@ -191,7 +213,8 @@ def run(apply=False, gap_min=5):
         cur.execute("""INSERT INTO trade_closed
                          (symbol, account, open_date, close_date, trade_type, shares, buy_price, sell_price,
                           cost_basis, proceeds, pnl, pnl_pct, hold_days, strategy_id, dedupe_key, created_at)
-                       SELECT symbol, account, entry_time::date, exit_time::date, classification, qty,
+                       SELECT symbol, account, COALESCE(entry_trade_date, entry_time::date),
+                         COALESCE(exit_trade_date, exit_time::date), classification, qty,
                          entry_price, exit_price, round(entry_price*qty, 2), round(exit_price*qty, 2),
                          net_pnl, pnl_pct, round(hold_minutes/1440.0)::int, strategy_tag, 'srt:'||id, NOW()
                        FROM schwab_round_trips
