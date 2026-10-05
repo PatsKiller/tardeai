@@ -1,0 +1,50 @@
+# CI-provider outage — governed emergency release path (operator 2026-10-05: "you need to build an
+# emergency path for situations like this. Because this is not in our control").
+#
+# Used ONLY when GitHub cannot run CI (an unresolved Actions incident AND the exact SHA's required
+# jobs never started). Real red stays red: a required job that ran and failed blocks the path.
+# Every use needs a separate `release-emergency` grant naming the SHA and the incident id, local
+# evidence bound to the commit's tree hash, and is reconciled against GitHub when it recovers.
+# Code: scripts/lib/ci_outage_emergency.py · CLI: scripts/ci_outage_emergency_release.py
+# Runbook: docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md § "CI provider outage — emergency release".
+
+status_url: https://www.githubstatus.com/api/v2/incidents/unresolved.json
+incident_match: ["actions"]          # incident name or component name must contain one (case-insensitive)
+grant_tier: release-emergency         # separate from release-write; both are required
+evidence_max_age_h: 12                # local evidence older than this is refused
+reconcile_within_h: 24                # an emergency release not reconciled in this window pages the operator
+auto_rollback: false                  # reconciliation failure → page; true also runs the existing rollback path
+page_cooldown_min: 120
+
+# Required push/main workflows are replayed locally from the workflow file AT THE CANDIDATE SHA:
+# every `run:` step of the listed job, in order. `uses:` steps (checkout, setup-python, artifact
+# upload) are not code and are skipped automatically. Any other step that is skipped must be listed
+# here with its reason; an unlisted step that cannot run (unknown `if:` or `${{ }}` expression)
+# BLOCKS the emergency path.
+workflow_jobs:
+  - workflow: .github/workflows/cio-production-hardening-ci.yml
+    job: cio-hardening
+    skip:
+      "Install test deps": "the local venv already provides pytest/pyyaml/requests; installing would mutate it"
+  - workflow: .github/workflows/agent-governance.yml
+    job: agent-governance
+    skip:
+      "Install minimal deps": "the local venv already provides pytest/pyyaml; installing would mutate it"
+
+# Extra suites the operator asked for on top of the replayed workflows.
+extra_suites:
+  - name: cio-hardening-full
+    cmd: ["python3", "scripts/run_cio_hardening_ci.py", "--profile", "full", "--no-tail"]
+    timeout_s: 3600
+  - name: frontend-build-design-guard
+    cwd: apps/command-center-v3
+    cmd: ["npm", "run", "build"]
+    needs_node_modules: true
+    timeout_s: 900
+  - name: active-trader-playwright
+    cwd: apps/command-center-v3
+    cmd: ["npx", "playwright", "test", "e2e/active-trader-live-motion.spec.ts", "e2e/active-trader-alerts.spec.ts",
+          "e2e/active-trader-tab.spec.ts", "--project=chromium", "--reporter=line"]
+    needs_node_modules: true
+    preview_port: 4198                # its own `vite preview` (4173 is used by another server)
+    timeout_s: 900

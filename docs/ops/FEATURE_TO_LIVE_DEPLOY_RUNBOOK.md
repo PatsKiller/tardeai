@@ -226,6 +226,61 @@ bash scripts/cio_phase2_exact_main_deploy.sh rollback
 
 - Never `prepare`/`promote` a hybrid SHA (HEAD must equal origin/main; the script refuses).
 - Never merge without green CI on the exact PR head.
-- Never activate without freshly queried, completed successful push/main CI on the exact candidate SHA.
+- Never activate without freshly queried, completed successful push/main CI on the exact candidate SHA — the one exception is the governed CI-provider-outage path below (proven outage + tree-bound local evidence + `release-emergency` grant + reconciliation). Real red never uses it.
 - Never reintroduce raw hex / sub-10px fonts — `check_design_tokens.sh` is a frozen ratchet.
 - `secret` and `gate` are **never** grantable; this runbook touches neither.
+
+## CI provider outage — emergency release
+
+Added 2026-10-05, during a GitHub Actions incident in which hosted-runner assignment failed and every required job was cancelled before running a step. The operator asked for "an emergency path for situations like this. Because this is not in our control." The normal gate is unchanged: promote requires completed, successful push/main CI on the exact SHA. This path substitutes that evidence only when every condition below is machine-verified. Code: `scripts/lib/ci_outage_emergency.py`, CLI `scripts/ci_outage_emergency_release.py`, config `config/ci_outage_emergency.yaml`.
+
+**When it applies:**
+
+1. GitHub's status page has an unresolved incident naming **Actions**.
+2. Every required push/main workflow that is not green has jobs that **never started**: no runner and no executed step.
+   - A required job that ran and failed blocks this path. Real red stays red.
+   - So does a job that is still running.
+
+**What it requires:**
+
+| Condition | How it is verified |
+|---|---|
+| Local evidence | The required workflows' own `run:` steps are replayed from the workflow file **at the candidate SHA**, in a throwaway local clone (its own `.git/config`), plus the extra suites in the config (full CI profile, `npm run build` with the design guard, Active Trader Playwright). Logs are sha256-hashed into a manifest bound to the commit's **tree hash**, and are valid for 12 h. A step that cannot be replayed (unknown `if:` or `${{ }}`) and is not skipped with a reason in the config blocks the path. |
+| Operator authority | A **`release-emergency`** grant (Telegram) whose text names the SHA **and** the incident id, in addition to the normal `release-write` grant. `TRADEAI_EMERGENCY_RELEASE_SHA` alone grants nothing. |
+| Commit rule | The SHA is on `origin/main`. If required checks block the merge itself, the SHA may be a local merge of `origin/main` with PR branches **already pushed to GitHub**. Unpushed commits block. The release is then labelled `PENDING_RECONCILIATION`. |
+| Record | `~/.local/state/cio-phase2-exact-main/emergency/ledger.jsonl` (EMERGENCY_CHECK, EMERGENCY_PROMOTED, reconciliation states). The deploy receipt note is `promote_ok_emergency_pending_reconciliation`. |
+
+**Operator steps** (dev tree `/home/johnclaw/trade-ai-v12-rebuild/trade-ai-v12-rebuild`, venv python):
+
+```bash
+# 0. Confirm it is a provider outage, not red code
+.venv/bin/python scripts/release_grant_preflight.py --ci-only --sha <SHA>       # fails: not_successful / missing
+# 1. Put the dev tree on the candidate (on main, or a local merge of main + pushed PR branches)
+git checkout --detach <SHA>
+# 2. Local evidence (long: replays the required workflows + full profile + build + Playwright)
+.venv/bin/python scripts/ci_outage_emergency_release.py evidence --sha <SHA>
+# 3. Ask for authority (Telegram): release-emergency naming SHA + incident id; plus the usual
+.venv/bin/python scripts/ci_outage_emergency_release.py request-grant --sha <SHA>
+.venv/bin/python scripts/guard_request_approval.py release-write --for 2h --uses 4 --reason "Deploy <SHA> (emergency, GitHub incident <id>)"
+# 4. Dry check: every condition, as JSON; exit 0 only when all hold
+.venv/bin/python scripts/ci_outage_emergency_release.py check --sha <SHA>
+# 5. Prepare + promote with the emergency SHA named
+TRADEAI_EMERGENCY_RELEASE_SHA=<SHA> bash scripts/cio_phase2_exact_main_deploy.sh prepare <worktree-or-dev-tree>
+TRADEAI_EMERGENCY_RELEASE_SHA=<SHA> bash scripts/cio_phase2_exact_main_deploy.sh promote <release-dir>
+# 6. When GitHub recovers: merge the PRs normally, then reconcile (dry run first)
+.venv/bin/python scripts/ci_outage_emergency_release.py reconcile
+.venv/bin/python scripts/ci_outage_emergency_release.py reconcile --apply
+.venv/bin/python scripts/ci_outage_emergency_release.py status
+```
+
+**Reconciliation outcomes:**
+
+- **RECONCILED:** push/main CI is green on the deployed SHA, or on the main commit with the identical tree.
+- **RECONCILE_FAILED:**
+  - required CI ran and failed on that content; or
+  - the PRs merged but main carries a different tree (local conflict resolution diverged).
+  - Either way it pages the operator through `telegram_alert.send_telegram`.
+  - Rollback via `cio_phase2_exact_main_deploy.sh rollback <prev>` runs only when `auto_rollback: true` is set in the config. The default records a dry run.
+- **RECONCILE_OVERDUE:** not reconciled within `reconcile_within_h` (24 h). It pages, with a cooldown.
+
+The path cannot ship itself: this change merges and deploys through the normal gate once GitHub recovers.
