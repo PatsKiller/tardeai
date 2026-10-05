@@ -1033,6 +1033,12 @@ GATES = [
         "secret_single_path_20261005",
         ["tests/test_secret_single_path_20261005.py"],
     ),
+    # Active Trader alert audit: outcomes from the price you could pay, stop-first is a miss, exits,
+    # below-stop veto, supply evidence, your fills tagged to the alert before them (2026-10-05).
+    (
+        "at_alert_outcomes_20261005",
+        ["tests/test_at_alert_outcomes_20261005.py"],
+    ),
     # Ratified investment policy drives capital-plan sizing; 12% cap; required-only CONFIRMED (2026-10-03).
     (
         "policy_unify_20261003",
