@@ -269,16 +269,115 @@ def assemble_inputs(bars: list[dict], profile_cum: float | None, tier_weight, ag
 
 # ─────────────────────────── run ───────────────────────────
 
-def resolve_universe(conn, cfg: dict) -> list[str]:
+def classify_universe(rows, u: dict) -> tuple[list[str], dict]:
+    """Pure fail-closed filter (operator 2026-10-05). rows: (symbol, float_mm, price, route,
+    disqualified) with each value the symbol's latest known. A symbol stays only with a KNOWN float
+    <= float_mm_max, not disqualified, not on an excluded route, and a reference price inside
+    [price_min, price_max] — an unknown reference price defers to the live-bar band check unless
+    require_reference_price. Unknown fails: bare social rows (HPE, DELL, CHPT) carried no float and leaked in
+    under the old `float IS NULL OR ...` rule. Returns (kept, {symbol: reason})."""
+    excluded_routes = {str(r) for r in (u["excluded_routes"] or [])}
+    kept, excluded = [], {}
+    for sym, flt, price, route, disq in rows:
+        if disq:
+            reason = "disqualified"
+        elif route is not None and str(route) in excluded_routes:
+            reason = f"route_{route}"
+        elif flt is None and u["require_known_float"]:
+            reason = "float_unknown"
+        elif flt is not None and float(flt) > float(u["float_mm_max"]):
+            reason = "float_above_max"
+        elif price is None:
+            if u["require_reference_price"]:
+                reason = "price_unknown"
+            else:   # no scan price: the live bar price is the band check (in_price_band, fail closed)
+                kept.append(sym)
+                continue
+        elif not (float(u["price_min"]) <= float(price) <= float(u["price_max"])):
+            reason = "price_band"
+        else:
+            kept.append(sym)
+            continue
+        excluded[sym] = reason
+    return kept, excluded
+
+
+def resolve_universe_detail(conn, cfg: dict, *, float_lookup=None) -> tuple[list[str], dict]:
+    """Universe for ONE strategy profile: every key it reads lives under cfg["universe"], so another
+    profile (e.g. a future swing universe) is a separate config block, not a code branch."""
     u = cfg["universe"]
+    t, s, tc = u["source_table"], u["symbol_column"], u["time_column"]
+    fc, pc = u["float_column"], u["price_column"]
+
+    def latest(col, extra=""):
+        return (f"(SELECT {col} FROM {t} x WHERE x.{s} = seen.{s} AND x.{col} IS NOT NULL{extra} "
+                f"ORDER BY x.{tc} DESC LIMIT 1)")
     with conn.cursor() as cur:
         cur.execute(
-            f"""SELECT DISTINCT {u['symbol_column']} FROM {u['source_table']}
-                WHERE {u['time_column']} > now() - interval '{int(u['lookback_days'])} days'
-                  AND ({u['float_column']} IS NULL OR {u['float_column']} <= %s)
-                  AND {u['symbol_column']} IS NOT NULL ORDER BY 1""",
-            [float(u["float_mm_max"])])
-        return [r[0] for r in cur.fetchall()]
+            f"""WITH seen AS (SELECT DISTINCT {s} FROM {t}
+                    WHERE {tc} > now() - interval '{int(u['lookback_days'])} days' AND {s} IS NOT NULL)
+                SELECT seen.{s}, {latest(fc)},
+                       {latest(pc, f" AND x.{tc} > now() - interval '{int(u['price_lookback_days'])} days'")},
+                       {latest('route')}, {latest('disqualified')}
+                FROM seen ORDER BY 1""")
+        rows = cur.fetchall()
+    # Look up floats the scanner never recorded before failing them closed (bounded, cached).
+    excluded_routes = {str(r) for r in (u["excluded_routes"] or [])}
+    missing = [r[0] for r in rows if r[1] is None and not r[4]
+               and not (r[3] is not None and str(r[3]) in excluded_routes)]
+    if missing:
+        if float_lookup is None:
+            from scalp_float_lookup import lookup_floats as float_lookup
+        try:
+            found = float_lookup(missing, u) or {}
+        except Exception as e:  # noqa: BLE001 — a lookup failure leaves them unknown (excluded)
+            print(f"  [float-lookup] skipped: {type(e).__name__}: {e}")
+            found = {}
+        rows = [(r[0], found[str(r[0]).upper()]["float_mm"],
+                 r[2] if r[2] is not None else found[str(r[0]).upper()].get("price"), r[3], r[4])
+                if (r[1] is None and str(r[0]).upper() in found) else tuple(r) for r in rows]
+    return classify_universe(rows, u)
+
+
+def resolve_universe(conn, cfg: dict) -> list[str]:
+    from collections import Counter
+    kept, excluded = resolve_universe_detail(conn, cfg)
+    print(f"universe: {len(kept)} kept, excluded: {dict(Counter(excluded.values()))}")
+    return kept
+
+
+def in_price_band(price, cfg: dict) -> bool:
+    u = cfg["universe"]
+    return price is not None and float(u["price_min"]) <= float(price) <= float(u["price_max"])
+
+
+def min_stop_distance(price, atr, spread_bps, cfg: dict):
+    """Minimum stop distance in $ = max(atr_mult·ATR_1m, spread_mult·spread$, pct_of_price·price).
+    A 1-cent stop on a $4 name (XNDU, 10-05: R $0.01-0.02) made every tick look like several R."""
+    ms = cfg["min_stop"]
+    if price is None or price <= 0:
+        return None
+    parts = [float(ms["pct_of_price"]) * price]
+    if atr and atr > 0:
+        parts.append(float(ms["atr_mult"]) * atr)
+    if spread_bps is not None and spread_bps > 0:
+        parts.append(float(ms["spread_mult"]) * spread_bps / 1e4 * price)
+    return max(parts)
+
+
+def apply_min_stop(entry, stop, atr, spread_bps, cfg: dict) -> dict:
+    """Widen (never tighten) a stop to the minimum distance. Returns entry/stop/r_dollars/stop_pct
+    plus stop_floor_applied and the original stop."""
+    out = {"entry": entry, "stop": stop, "stop_floor_applied": False, "stop_raw": stop}
+    if entry is not None and cfg.get("min_stop", {}).get("enabled") and stop is not None:
+        d = min_stop_distance(entry, atr, spread_bps, cfg)
+        if d is not None and (entry - stop) < d:
+            out["stop"] = round(entry - d, 4)
+            out["stop_floor_applied"] = True
+    r = (entry - out["stop"]) if (entry is not None and out["stop"] is not None) else None
+    out["r_dollars"] = round(r, 4) if r is not None else None
+    out["stop_pct"] = round(r / entry, 4) if (r is not None and entry) else None
+    return out
 
 
 # Newest column the startup migrations add. When it exists, both migrations are already applied.
@@ -357,6 +456,7 @@ def run(args) -> int:
 
     # pass 1: assemble per-symbol (needs cross-sectional rs before scoring)
     assembled = []
+    band_drops = []
     for sym in symbols:
         try:
             bars = [b for b in session_rth_bars(sym, cfg, day, fetch_days) if b["m"] <= minute]
@@ -366,6 +466,9 @@ def run(args) -> int:
             pcum, pmeta = get_profile_denominator(conn, sym, minute, cfg, now=as_of)
             tw, age = catalyst_for(conn, sym, cfg, as_of)
             inp = assemble_inputs(bars, pcum, tw, age, spy_ret, cfg)
+            if not args.symbols and not in_price_band(inp.get("price"), cfg):
+                band_drops.append(sym)   # live price left the scalp band since the last scan
+                continue
             inp["_profile_source"] = "per_symbol" if pcum is not None else "none"
             inp["_profile_meta"] = pmeta
             inp["_bars"] = bars
@@ -374,6 +477,8 @@ def run(args) -> int:
         except Exception as e:
             print(f"  {sym}: ERR {e}")
 
+    if band_drops:
+        print(f"  live price outside the scalp band, skipped: {','.join(band_drops)}")
     universe_rs = [a["rs_value"] for a in assembled if a["rs_value"] is not None]
 
     if args.apply:
@@ -409,7 +514,10 @@ def run(args) -> int:
         price = a.get("price"); atr1 = a.get("atr_1m")
         entry_ref = price
         stop_ref = (price - atr1) if (price is not None and atr1 and atr1 > 0) else None
-        r_dollars = (entry_ref - stop_ref) if (entry_ref is not None and stop_ref is not None) else None
+        _spread_bps = (se * 1e4) if se is not None else None
+        _ms = apply_min_stop(entry_ref, stop_ref, atr1, _spread_bps, cfg)   # min distance (10-05)
+        stop_ref = _ms["stop"]
+        r_dollars = _ms["r_dollars"]
         stop_dist_bps = (r_dollars / entry_ref * 1e4) if (r_dollars and entry_ref) else None
         row = {
             "symbol": a["_symbol"], "minute": minute, "session_date": day, "as_of": as_of,
@@ -418,6 +526,7 @@ def run(args) -> int:
             "spread_bps": (se * 1e4) if se is not None else None, "spread_source": spread_src,
             "pressure": t0.bar_pressure(bars), "evr": evr_last, "amihud": t0.amihud_illiq(bars),
             "entry_ref": entry_ref, "stop_ref": stop_ref, "r_dollars": r_dollars, "stop_dist_bps": stop_dist_bps,
+            "stop_pct": _ms["stop_pct"], "stop_floor_applied": _ms["stop_floor_applied"],
         }
         # Layer A: named-setup taxonomy for this symbol/minute (SHADOW; fail-safe — never breaks logging)
         try:
@@ -433,6 +542,9 @@ def run(args) -> int:
         tr = trig.run_trigger_engine(bars, cfg)
         trigger_states[a["_symbol"]] = (tr["trace"][-1] if tr.get("trace") else "IDLE")  # current FSM state
         for fe in trig.triggered_fires(tr):
+            _fms = apply_min_stop(fe.get("entry"), fe.get("stop"), a.get("atr_1m"), row["spread_bps"], cfg)
+            fe = {**fe, "stop": _fms["stop"], "r_dollars": _fms["r_dollars"], "stop_pct": _fms["stop_pct"],
+                  "stop_raw": _fms["stop_raw"], "stop_floor_applied": _fms["stop_floor_applied"]}
             fb = bars[fe["fire_idx"]]
             fm = fb.get("m")
             if fm is None:
@@ -454,6 +566,8 @@ def run(args) -> int:
                 "spread_bps": row["spread_bps"], "spread_source": row["spread_source"],
                 "gate_reasons": {"macd_hist_5m": tr["macd_hist_5m"], "rr": fe.get("rr"),
                                  "stop_pct": fe.get("stop_pct"), "floor_bound": fe.get("floor_bound"),
+                                 "stop_raw": fe.get("stop_raw"),
+                                 "stop_floor_applied": fe.get("stop_floor_applied"),
                                  "trigger": "TRIGGERED"},
             })
 
