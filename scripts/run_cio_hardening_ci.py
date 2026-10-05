@@ -1028,6 +1028,11 @@ GATES = [
         "alpha_vantage_pacing_20261004",
         ["tests/test_alpha_vantage_pacing_20261004.py"],
     ),
+    # Secrets: one write path (render reported, never silently skipped), drift check, Finviz cookie tool (2026-10-05).
+    (
+        "secret_single_path_20261005",
+        ["tests/test_secret_single_path_20261005.py"],
+    ),
     # Ratified investment policy drives capital-plan sizing; 12% cap; required-only CONFIRMED (2026-10-03).
     (
         "policy_unify_20261003",

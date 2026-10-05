@@ -208,6 +208,29 @@ def _sm_upsert(key: str, value: str) -> str:
     return "created"
 
 
+def render_now() -> dict:
+    """Re-render the SM tmpfs cache NOW and report the result (never a value).
+
+    Until 2026-10-05 this ran `<root>/.venv/bin/python` and swallowed every error. A release
+    directory has no .venv, so a save from the Command Center (server cwd = CURRENT) updated
+    Bitwarden and .env but left the tmpfs render, which resolve_secret reads FIRST, stale for up
+    to 4 h: a new FINVIZ_COOKIE was shadowed by the old one. Use the repo venv when present, else
+    the running interpreter, and say whether it worked.
+    """
+    import subprocess
+    import sys
+    root = Path(__file__).resolve().parent.parent
+    venv_py = root / ".venv" / "bin" / "python"
+    py = str(venv_py) if venv_py.exists() else sys.executable
+    try:
+        r = subprocess.run([py, str(root / "scripts" / "secrets" / "render_env.py"), "--now"],
+                           cwd=str(root), capture_output=True, text=True, timeout=180)
+        return {"ok": r.returncode == 0, "returncode": r.returncode,
+                "error": None if r.returncode == 0 else (r.stderr or r.stdout or "")[-200:]}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "returncode": None, "error": f"{type(exc).__name__}: {exc}"[:200]}
+
+
 def set_secret(key, value, actor="operator"):
     """Write/rotate one secret: Bitwarden SM → render tmpfs → process env. Never returns the value."""
     key = (key or "").strip()
@@ -253,17 +276,8 @@ def set_secret(key, value, actor="operator"):
 
     # S5: SM is source of truth
     action = _sm_upsert(key, sm_value)
-    # re-render tmpfs
-    try:
-        import subprocess
-        from pathlib import Path as _P
-        root = _P(__file__).resolve().parent.parent
-        subprocess.run(
-            [str(root / ".venv" / "bin" / "python"), str(root / "scripts" / "secrets" / "render_env.py"), "--now"],
-            cwd=str(root), capture_output=True, text=True, timeout=180,
-        )
-    except Exception:
-        pass
+    # re-render tmpfs (reported, never silently skipped)
+    render = render_now()
     # Dual-write: keep disk .env aligned for keys already present (legacy cron that only sources .env)
     if value:
         try:
@@ -291,6 +305,7 @@ def set_secret(key, value, actor="operator"):
         "rotated": action == "edited",
         "backend": "bitwarden_sm",
         "action": action,
+        "render": render,
         "note": "Written to Bitwarden SM + tmpfs render (+ disk .env if key already existed). Long-running services pick up on next restart.",
     }
 
