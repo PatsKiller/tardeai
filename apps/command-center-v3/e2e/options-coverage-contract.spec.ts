@@ -19,7 +19,11 @@ test('coverage includes fractional holdings and paginates without implicit write
             { account: 'rollover', shares: .8, covered_call_capacity: 0 }], proposal_count: 0, ready_count: 0 }],
         source_receipts: { market_discovery: { status: 'PARTIAL', reason: 'fixture missing source total' } } }
     } else if (url.pathname.endsWith('/options/proposals')) {
-      body = { proposals: [], count: 0, total_count: 0, ready_count: 0, queue_counts: {}, quality_gate: {} }
+      body = { proposals: [{ id: 'fixture-proposal', symbol: 'TEST', strategy: 'long_put',
+        strike: 100, dte: 30, premium: 2, contracts: 1, max_loss: 200, max_profit: 9800,
+        enterprise: { live_eligible: false, blocks: ['Fixture review required'] }, approvable: false,
+        action_buttons: [], reasoning: 'Fixture bearish research expression' }],
+        count: 1, filtered_count: 1, total_count: 1, ready_count: 0, queue_counts: {}, quality_gate: {} }
     } else if (url.pathname.endsWith('/options/positions')) {
       body = { positions: [], count: 0 }
     } else if (url.pathname.endsWith('/options/overview')) {
@@ -42,4 +46,9 @@ test('coverage includes fractional holdings and paginates without implicit write
   expect(writes).toEqual([])
   await coverage.getByRole('button', { name: 'Request full scan', exact: true }).click()
   await expect.poll(() => writes).toEqual(['/api/v2/options/scans'])
+  writes.length = 0
+  await page.goto('/v3/trading?tab=Options&otab=Proposals&ui=v4')
+  await expect(page.getByText('TEST', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Request model reviews', exact: true })).toBeVisible()
+  expect(writes).toEqual([])
 })

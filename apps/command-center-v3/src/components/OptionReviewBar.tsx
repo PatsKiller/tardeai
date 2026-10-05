@@ -61,7 +61,7 @@ export default function OptionReviewBar({ proposal: p, autoRequest }: { proposal
       />
       {!autoRequest && (
         <div title={REVIEW.worker} style={{ fontSize: 8.5, color: MUTED, marginTop: 6, fontStyle: 'italic', cursor: 'help' }}>
-          Worker processes ~10–40s per proposal — use “Validate all” to queue every card. ⓘ
+          Use “Request model reviews” to queue the displayed page within the review budget; quote validation is a separate action. ⓘ
         </div>
       )}
     </div>
