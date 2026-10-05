@@ -86,6 +86,9 @@ SPLIT_DIRS = ("audit", "cio", "health", "paper_trading", "portfolios/state", "ru
 #: directories and the overwritten served copies. Nothing may read from here. Any
 #: reference from live code, the crontab or a unit file is a defect — the tripwire.
 ARCHIVE_ROOT = "/home/johnclaw/trade-ai-releases/archive/served_copy_split_20260913"
+# 2026-10-04: pre-rechain copy of the forked CIO event bus (scripts/repair_cio_event_bus_fork.py).
+# Nothing live may read it; the tripwire below covers every root in this tuple.
+ARCHIVE_ROOTS = (ARCHIVE_ROOT, "/home/johnclaw/trade-ai-releases/archive/cio_event_bus_fork_20261004")
 
 #: mtimes closer than this are the same write (filesystems round differently).
 MTIME_TOLERANCE_S = 2.0
@@ -312,7 +315,7 @@ def main() -> int:
         return 2
 
     findings = [check_dir(sub, dev_root, served_root, count=not args.no_count) for sub in SPLIT_DIRS]
-    trips = archive_tripwire()
+    trips = [t for root in ARCHIVE_ROOTS for t in archive_tripwire(root)]
     if trips:
         findings.append({"dir": "archive_tripwire", "status": "TRIPPED",
                          "detail": f"{len(trips)} live reference(s) to the reconcile archive", "trips": trips})
