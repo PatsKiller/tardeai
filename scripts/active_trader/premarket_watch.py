@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Active Trader PREMARKET watch: heads-up alerts 07:00–09:29 ET for the momentum-scalp names.
+"""Active Trader PREMARKET watch: heads-up alerts 06:00–09:29 ET for the momentum-scalp names.
 
 Operator 2026-10-05: "why can't [it] pick up premarket". The RTH engine (scalp_shadow_logger +
 momentum_alert_pass) only runs 09:30–11:55 because its RVOL profile and IEX bars are regular-hours
@@ -58,7 +58,7 @@ class PremarketConfig:
     """Defaults are the proposal. `active_trader_premarket:` in config/scalp_signal_engine.yaml may
     override any field (operator-ratified changes only)."""
     mode: str = "shadow"                    # shadow = journal only; send = journal + Telegram
-    window_start: str = "07:00"             # ET
+    window_start: str = "06:00"             # ET (operator 2026-10-05: from 6am)
     window_end: str = "09:29"               # ET, inclusive; the RTH engine takes over at 09:30
     max_symbols: int = 15                   # also bounds K_1M + book subscriptions
     lookback_hours: int = 20                # scan rows newer than this feed the universe
