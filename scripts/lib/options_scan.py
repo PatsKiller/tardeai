@@ -170,6 +170,13 @@ class ScanStore:
                         "SELECT symbol,receipt FROM results WHERE run_id=?", (run['id'],))}
             return runs
 
+    def latest_full_discovery(self) -> dict | None:
+        if not self.path.exists():
+            return None
+        with self.connection() as db:
+            row = db.execute("SELECT i.payload FROM inputs i JOIN runs r ON r.id=i.run_id WHERE r.profile='full' ORDER BY r.created_at DESC LIMIT 1").fetchone()
+            return json.loads(row['payload']).get('discovery') if row else None
+
     def latest_receipts(self) -> dict[str, dict]:
         if not self.path.exists():
             return {}

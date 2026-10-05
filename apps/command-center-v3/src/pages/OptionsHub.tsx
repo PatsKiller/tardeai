@@ -93,13 +93,15 @@ export default function OptionsHub({ onDrill }: Props) {
   const PositionCard = uiV5 ? OptionPositionCardV5 : OptionPositionCardV4
 
   useEffect(() => setProposalPage(0), [symbolFilter, strategyFilter, groupFilter, optionTypeFilter,
-    sideFilter, sleeveFilter, legStyleFilter, tierFilter, liveOnly, minPop, minEdge, deskQueue])
+    sideFilter, sleeveFilter, legStyleFilter, tierFilter, liveOnly, minPop, minEdge, deskQueue, showBlocked, flagFilter])
 
   const q = useMemo(() => {
     const p = new URLSearchParams()
     p.set('offset', String(proposalPage * 50))
     p.set('limit', '50')
     if (deskQueue) p.set('desk_queue', deskQueue)
+    if (!showBlocked) p.set('show_blocked', '0')
+    if (flagFilter) p.set('flag', flagFilter)
     if (symbolFilter) p.set('symbol', symbolFilter.toUpperCase())
     if (strategyFilter) p.set('strategy', strategyFilter)
     if (groupFilter) p.set('group', groupFilter)
@@ -113,7 +115,7 @@ export default function OptionsHub({ onDrill }: Props) {
     if (minEdge > 0) p.set('min_edge', String(minEdge))
     const s = p.toString()
     return s ? `?${s}` : ''
-  }, [symbolFilter, strategyFilter, groupFilter, optionTypeFilter, sideFilter, sleeveFilter, legStyleFilter, tierFilter, liveOnly, minPop, minEdge, deskQueue, proposalPage])
+  }, [symbolFilter, strategyFilter, groupFilter, optionTypeFilter, sideFilter, sleeveFilter, legStyleFilter, tierFilter, liveOnly, minPop, minEdge, deskQueue, proposalPage, showBlocked, flagFilter])
 
   const posQ = useMemo(() => {
     const p = new URLSearchParams()
@@ -189,7 +191,7 @@ export default function OptionsHub({ onDrill }: Props) {
     setSymbolFilter(''); setStrategyFilter(''); setGroupFilter('')
     setOptionTypeFilter(''); setSideFilter(''); setSleeveFilter('')
     setLegStyleFilter(''); setTierFilter(''); setLiveOnly(false); setFlagFilter(null)
-    setMinPop(0); setMinEdge(0)
+    setMinPop(0); setMinEdge(0); setDeskQueue(''); setShowBlocked(true)
   }
 
   const facetChip = (tip: string, label: string, count: number | undefined, active: boolean, onClick: () => void, color = '#60a5fa') => (

@@ -46,3 +46,5 @@ def test_normalizer_preserves_all_contracts_and_detects_partial_response():
     assert result['response_complete'] is True
     raw['numberOfContracts'] = 3
     assert transport.normalize_option_chain(raw)['response_complete'] is False
+    raw.pop('numberOfContracts')
+    assert transport.normalize_option_chain(raw)['response_complete'] is False

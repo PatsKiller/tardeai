@@ -14,6 +14,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+NO_CONSUMER_REASON = "Standalone worker CLI; scheduled activation is NOT installed pending approved provider capacity (config/options_scan.json)."
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
 from lib.options_scan import ScanStore, due_profiles, load_config, run_slice
@@ -34,10 +36,7 @@ def collect(profile, *, engine, store, config):
         from lib.options_discovery import fetch_discovery
         discovery = fetch_discovery(max_pages=int(config.get('discovery_max_pages', 1000)))
     else:
-        for old in store.runs():
-            if old['profile'] == 'full' and old['payload'].get('discovery'):
-                discovery = old['payload']['discovery']
-                break
+        discovery = store.latest_full_discovery()
     discovery = discovery or {'status': 'UNAVAILABLE', 'rows': [], 'reason': 'no broad discovery receipt'}
     sources['market_discovery'] = {k: v for k, v in discovery.items() if k != 'rows'}
     rows = merge_research_rows([*rows, *discovery.get('rows', [])])
@@ -98,7 +97,10 @@ def tick(*, root=ROOT, apply=False):
         receipts = {r['symbol']: payload.get('results', {}).get(r['symbol'], {'status': 'PENDING'})
                     for r in payload['inventory']}
         chains = CapturedChains(store, receipts)
-        scan_inputs = {**payload, 'chains': chains, 'chain_receipts': receipts, 'run_id': run['id'],
+        coverage_receipts = {s: v['receipt'] for s, v in store.latest_receipts().items()}
+        coverage_receipts.update(receipts)
+        scan_inputs = {**payload, 'chains': chains, 'chain_receipts': receipts,
+                       'coverage_receipts': coverage_receipts, 'run_id': run['id'],
                        'run_status': run['status'], 'profile': run['profile']}
         projection = engine.generate_proposals(force=True, scan_inputs=scan_inputs)
         from lib.options_scan import request_missing_research

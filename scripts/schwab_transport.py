@@ -1042,7 +1042,7 @@ def normalize_option_chain(raw):
     out["provider_contract_count"] = raw.get("numberOfContracts")
     out["received_contract_count"] = len(rows)
     out["response_complete"] = ("callExpDateMap" in raw and "putExpDateMap" in raw
-        and (raw.get("numberOfContracts") is None or raw.get("numberOfContracts") == len(rows)))
+        and isinstance(raw.get("numberOfContracts"), int) and raw["numberOfContracts"] == len(rows))
     if not out["expirations"]:
         out["status"] = "empty"
         out["error"] = "Schwab returned no listed contracts for this request (symbol may not be optionable, or the expiration/strike window is empty)"

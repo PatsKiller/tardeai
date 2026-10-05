@@ -196,6 +196,10 @@ def test_api_gets_read_cache_and_paginate_without_generation(tmp_path, monkeypat
     response = ns['_options_proposals']({'offset': ['50'], 'limit': ['50'], 'force': ['1']})
     assert response['filtered_count'] == 60 and len(response['proposals']) == 10
     assert response['scan_request_required'] == 'POST /api/v2/options/scans'
+    assert ns['_options_proposals']({'show_blocked': ['0']})['filtered_count'] == 0
+    rows[-1].update(approvable=True, enterprise={'live_eligible': True, 'blocks': []})
+    ready = ns['_options_proposals']({'show_blocked': ['0'], 'offset': ['0']})
+    assert ready['filtered_count'] == 1 and ready['proposals'][0]['id'] == '59'
     assert ns['_options_holdings_funnel']()['status'] == 'UNAVAILABLE'
     assert ns['_options_coverage']()['scan_enabled'] is False
     assert not (tmp_path / 'options_scan.sqlite3').exists()

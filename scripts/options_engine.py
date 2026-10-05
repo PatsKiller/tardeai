@@ -3340,7 +3340,7 @@ def generate_proposals(force: bool = False, *, scan_inputs: Optional[dict] = Non
         "coverage": build_coverage(
             holdings=holdings_meta.get("_inventory_holdings", holdings), convictions=convictions,
             proposals=all_p, drops=INCOME_SCREEN_DROPS + entry_drops,
-            chains=(scan_inputs or {}).get("chain_receipts", {}),
+            chains=(scan_inputs or {}).get("coverage_receipts", (scan_inputs or {}).get("chain_receipts", {})),
             source_receipts=(scan_inputs or {}).get("source_receipts", {})),
         "income_screen": _income_screen_summary(),
         "holdings_funnel": build_holdings_funnel(holdings=holdings, tech_map=tech_map,

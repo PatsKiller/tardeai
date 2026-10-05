@@ -40291,40 +40291,63 @@ def _options_validation(query=None):
 def _options_holdings_funnel(query=None):
     """GET: cached producer result; resolve_chain no longer triggers provider access."""
     data = _get_options_engine().read_proposals()
-    return _json_clean(data.get("holdings_funnel") or {
-        "status": "UNAVAILABLE", "rows": [], "reason": "Awaiting a worker funnel snapshot"})
+    return _json_clean(
+        data.get("holdings_funnel")
+        or {"status": "UNAVAILABLE", "rows": [], "reason": "Awaiting a worker funnel snapshot"}
+    )
 
 
 def _options_coverage(query=None):
     from lib.options_scan import ScanStore, coverage_page, load_config, scan_coverage
+
     oe = _get_options_engine()
     q = query or {}
+
     def value(key, default):
         raw = q.get(key, default)
         return raw[0] if isinstance(raw, list) else raw
+
     store = ScanStore(oe.STATE_DIR)
-    page = coverage_page(scan_coverage(oe.read_proposals(), store), offset=int(value("offset", 0)),
-                         limit=int(value("limit", 100)), symbol=str(value("symbol", "")))
+    page = coverage_page(
+        scan_coverage(oe.read_proposals(), store),
+        offset=int(value("offset", 0)),
+        limit=int(value("limit", 100)),
+        symbol=str(value("symbol", "")),
+    )
     cfg = load_config(oe.PROJECT_ROOT)
     runs = ScanStore(oe.STATE_DIR).runs(summaries=True)
     page["scan_enabled"] = cfg.get("enabled", False)
-    page["runs"] = [{"run_id": r["id"], "status": r["status"], "profile": r["profile"],
-                     "updated_at": r["updated_at"], "completed": r["payload"].get("completed_count", 0),
-                     "inventory_count": r["payload"].get("inventory_count", 0)} for r in runs[:10]]
+    page["runs"] = [
+        {
+            "run_id": r["id"],
+            "status": r["status"],
+            "profile": r["profile"],
+            "updated_at": r["updated_at"],
+            "completed": r["payload"].get("completed_count", 0),
+            "inventory_count": r["payload"].get("inventory_count", 0),
+        }
+        for r in runs[:10]
+    ]
     return _json_clean(page)
 
 
 def _options_request_scan(body=None):
     from lib.options_scan import ScanStore, load_config
+
     oe = _get_options_engine()
     cfg = load_config(oe.PROJECT_ROOT)
     if not cfg.get("enabled"):
-        return {"ok": False, "status": "CONFIG_REQUIRED",
-                "error": "Expanded scan requires provider capacity approval and worker activation"}
+        return {
+            "ok": False,
+            "status": "CONFIG_REQUIRED",
+            "error": "Expanded scan requires provider capacity approval and worker activation",
+        }
     b = body or {}
     import uuid
+
     run = ScanStore(oe.STATE_DIR).request(
-        str(b.get("profile") or "priority"), str(b.get("request_key") or uuid.uuid4()))
+        str(b.get("profile") or "priority"), str(b.get("request_key") or uuid.uuid4())
+    )
     return {"ok": True, **{key: run.get(key) for key in ("id", "profile", "status", "created_at", "deduplicated")}}
 
 
@@ -40383,9 +40406,6 @@ def _options_proposals(query=None):
     desk_queue = g("desk_queue") or ""
     if desk_queue:
         filtered = [p for p in filtered if p.get("desk_queue") == desk_queue]
-    filtered_count = len(filtered)
-    offset, limit = max(0, int(g("offset", 0))), min(250, max(1, int(g("limit", 50))))
-    filtered = filtered[offset:offset + limit]
     schwab_armed = None
     try:
         import options_pilot_arm as opa
@@ -40399,6 +40419,19 @@ def _options_proposals(query=None):
         filtered = apply_card_semantics_batch(filtered, schwab_armed=schwab_armed)
     except Exception:
         pass
+    if str(g("show_blocked", "1")).lower() in {"0", "false", "no"}:
+        filtered = [
+            p
+            for p in filtered
+            if p.get("approvable") is True
+            and (p.get("enterprise") or {}).get("live_eligible") is True
+            and not (p.get("enterprise") or {}).get("blocks")
+        ]
+    if g("flag"):
+        filtered = [p for p in filtered if any(f.get("key") == g("flag") for f in p.get("flags") or [])]
+    filtered_count = len(filtered)
+    offset, limit = max(0, int(g("offset", 0))), min(250, max(1, int(g("limit", 50))))
+    filtered = filtered[offset : offset + limit]
     try:
         from lib.recommendation_comparison import build_recommendation_comparison
         from lib.options_decision_packet import build_options_decision_packet
@@ -40458,10 +40491,16 @@ def _options_proposals(query=None):
             **data,
             "proposals": filtered,
             "filtered_count": filtered_count,
-            "offset": offset, "limit": limit,
-            "ready_count": sum(p.get("approvable") is True and (p.get("enterprise") or {}).get("live_eligible") is True for p in proposals),
-            "queue_counts": {key: sum(p.get("desk_queue") == key for p in proposals)
-                             for key in ("income", "protection", "watch_reentry", "discovery")},
+            "offset": offset,
+            "limit": limit,
+            "ready_count": sum(
+                p.get("approvable") is True and (p.get("enterprise") or {}).get("live_eligible") is True
+                for p in proposals
+            ),
+            "queue_counts": {
+                key: sum(p.get("desk_queue") == key for p in proposals)
+                for key in ("income", "protection", "watch_reentry", "discovery")
+            },
             "coverage": {k: v for k, v in (data.get("coverage") or {}).items() if k != "rows"},
             "paper_model_count": len(paper_rows),
             "filter_facets": oe.proposal_filter_facets(proposals),

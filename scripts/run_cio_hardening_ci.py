@@ -2656,6 +2656,8 @@ GATES = [
             "tests/test_options_decision_stages_20260925.py",
             "tests/test_options_universe_census_20260925.py",
             "tests/test_options_research_universe_v2.py",
+            "tests/test_options_desk_complete.py",
+            "tests/test_options_full_chain.py",
         ],
     ),
     (
