@@ -217,3 +217,7 @@ button.at-motion-rail__row:focus-visible{outline:2px solid var(--at-blue);outlin
 .at-kpi--click:hover{border-color:var(--at-muted)}
 .at-kpi--click.is-on{outline:2px solid var(--at-blue);outline-offset:-2px}
 .at-kpi--click:focus-visible{outline:2px solid var(--at-blue);outline-offset:2px}
+.at-alerts__replay{margin-top:6px}
+.at-alerts__replay summary{cursor:pointer;color:var(--at-blue);font-size:13px}
+.at-alerts__replay summary:focus-visible{outline:2px solid var(--at-blue);outline-offset:2px}
+.at-alerts__replay-point{display:flex;flex-direction:column;gap:3px;margin-top:8px;padding:8px 10px;border-radius:var(--radius-md);background:var(--at-panel2)}
