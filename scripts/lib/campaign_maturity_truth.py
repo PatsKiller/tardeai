@@ -357,17 +357,10 @@ def build_maturity_truth(*, root: Path | None = None) -> dict[str, Any]:
         and flags.get("PERSISTENT_WAKE_SCHEDULE_ENABLED") == "1"
     )
 
-    # Historical body — supersede, do not rewrite.
-    hist_path = Path("/home/johnclaw/trade-ai-releases/persistent-state") / HISTORICAL_SUPERSEDED
-    if not hist_path.exists():
-        hist_path = root / "data/runtime/maturity_score_latest.json"
-    hist_generated = None
-    if hist_path.exists():
-        try:
-            hist = json.loads(hist_path.read_text())
-            hist_generated = hist.get("generated_at")
-        except Exception:
-            hist_generated = None
+    # Historical body — stamp, do not rewrite the file or invent a score.
+    from scripts.lib.maturity_score_latest_reader import historical_maturity_body
+
+    hist_body = historical_maturity_body(root)
 
     items = [
         _dimension(
@@ -533,13 +526,7 @@ def build_maturity_truth(*, root: Path | None = None) -> dict[str, Any]:
         "staleness_hours": 0.0,
         "overall_is_not_a_certification": True,
         "computes_maturity": False,
-        "historical_body_superseded": {
-            "path": str(hist_path) if hist_path.exists() else HISTORICAL_SUPERSEDED,
-            "generated_at": hist_generated,
-            "staleness_hours": _iso_age_hours(hist_generated),
-            "disposition": "SUPERSEDED_NOT_DELETED",
-            "reason": "Stale 2026-06 score body must not be served as live maturity truth",
-        },
+        "historical_body_superseded": hist_body,
         "items": items,
         "limiting_dimension": next(
             (i["dimension"] for i in items if i["count"] == 0 and i["dimension"] in {
