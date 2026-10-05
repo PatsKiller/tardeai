@@ -462,11 +462,11 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/architecture/TRADEAI_SYSTEM_STATE_AND_AUTONOMY_2026-08-20.md` | TradeAI System State & Autonomy Record — 2026-08-20 (updated 2026-08-21 evening) | review_required | OK | `d9303c3e9930` |
 | `docs/architecture/TRADE_AI_AS_IS_2026-09-14.md` | Trade AI Platform — AS-IS: Deployed & Tested Environment | review_required | OK | `4272eddf89f6` |
 | `docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-09-14.md` | Trade AI Platform — AS-IS Lifecycles: the complete end-to-end picture | review_required | OK | `cf4cbeb78077` |
-| `docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-10-04.md` | Trade AI Platform — AS-IS Lifecycles, 2026-10-04 (re-measurement) | review_required | OK | `0fed7736cecd` |
+| `docs/architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-10-04.md` | Trade AI Platform — AS-IS Lifecycles, 2026-10-04 (re-measurement) | review_required | OK | `5144b9a2084e` |
 | `docs/architecture/TRADE_AI_BITEMPORAL_MEMORY_DATA_MODEL_2026-08-24.md` | Bitemporal memory data model | review_required | OK | `8491cfb5a15b` |
 | `docs/architecture/TRADE_AI_FUTURE_STATE_2026-09-14.md` | Trade AI Platform — FUTURE STATE: Target Architecture & Build Recommendation | review_required | OK | `0b8d8c77a12c` |
 | `docs/architecture/TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-09-14.md` | Trade AI Platform — FUTURE STATE Lifecycles: target lifecycles, lifecycle contract and build roadmap | review_required | OK | `0705cb774b73` |
-| `docs/architecture/TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-10-04.md` | Trade AI Platform — FUTURE STATE Lifecycles, 2026-10-04: targets, contract status and roadmap | review_required | OK | `e564a9153098` |
+| `docs/architecture/TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-10-04.md` | Trade AI Platform — FUTURE STATE Lifecycles, 2026-10-04: targets, contract status and roadmap | review_required | OK | `8d46d074cca4` |
 | `docs/architecture/TRADE_AI_INSTITUTIONAL_MEMORY_AND_AUTONOMOUS_AGENT_ARCHITECTURE_2026-08-24.md` | Trade AI Institutional Memory + Autonomous Agent Architecture | review_required | OK | `b8f0727bdc82` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_0.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.0 | archive_superseded | OK | `513271e8544b` |
 | `docs/architecture/TRADE_AI_MASTER_AGENTIC_FINANCIAL_SYSTEM_ARCHITECTURE_v3_1.md` | TRADE AI MASTER AGENTIC FINANCIAL SYSTEM ARCHITECTURE v3.1 | archive_superseded | OK | `cafe3fa26a8c` |
@@ -1751,7 +1751,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/DRIVE_ARCHIVE_2026-09-01.md` | Drive archive — 2026-09-01 | review_required | OK | `3490029f050c` |
 | `docs/ops/DRIVE_MUTATION_SAFETY.md` | Drive mutation safety (gog v0.12.x) | review_required | OK | `9b701b444eb7` |
 | `docs/ops/F6_UTC_CRON_PROPOSALS.md` | F6 — UTC scheduling proposals for LLM-heavy jobs | review_required | OK | `991bedac8b13` |
-| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `52ba1afac7b0` |
+| `docs/ops/FEATURE_TO_LIVE_DEPLOY_RUNBOOK.md` | Feature-to-live deploy runbook (single-approval) | review_required | OK | `1c91968a72e4` |
 | `docs/ops/FLASH_ACTIVATION_AND_THESIS_CANARY_2026-08-20.md` | Flash activation + thesis canary — 2026-08-20 | review_required | OK | `2423165b9ce4` |
 | `docs/ops/GITHUB_ACTIONS_COST_REDUCTION_PLAN.md` | GitHub Actions cost-reduction plan | review_required | OK | `820bad46ce5f` |
 | `docs/ops/GITHUB_ACTIONS_QUOTA_INCIDENT_2026-08-27.md` | GitHub Actions outage — repo visibility flip exhausted the private-repo minute quota | review_required | OK | `1d1b620b91db` |
@@ -1832,7 +1832,7 @@ This file is the regenerable tree listing from `report_docs_inventory.py`.
 | `docs/ops/TRADE_AI_R10_MEMORY_AUTONOMOUS_AGENT_CLOSEOUT_2026-08-24.md` | R10.2 closeout (in progress) | review_required | OK | `67a250882df4` |
 | `docs/ops/TRANSFERSON_UNIVERSE_CANONICAL_CLOSEOUT_2026-08-25.md` | Transferson canonical universe — local closeout | review_required | OK | `de74cfb4197d` |
 | `docs/ops/TRANSFERSON_UNIVERSE_LIVE_ACCEPTANCE_GATE_2026-08-25.md` | Transferson canonical universe — live CURRENT/DB acceptance gate | review_required | OK | `fd4a9e063ef7` |
-| `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations | review_required | OK | `8ec7e9862adb` |
+| `docs/ops/VALIDATED_LEARNING_REMEDIATION.md` | Validated learning remediation: release and operations | review_required | OK | `75d48ab1eaa6` |
 | `docs/ops/WEEKLY_OVERSIGHT_CHATGPT_OAUTH.md` | Weekly oversight — ChatGPT OAuth auto, paid manual | review_required | OK | `952b623d11ae` |
 | `docs/ops/YEDAS_EYE_INSTITUTIONAL_BRAIN_MATURITY_2026-08-24.md` | Yeda's Eye — first institutional-brain audit | review_required | OK | `156812edbf91` |
 | `docs/ops/alerts/PHASE126_TELEGRAM_ENFORCEMENT_REPORT.md` | Phase 126 — Telegram Actionable-Only Enforcement Report | review_required | OK | `105a8d6bbf0d` |

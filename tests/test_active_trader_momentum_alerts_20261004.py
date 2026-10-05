@@ -219,9 +219,11 @@ def test_score_pending_waits_for_window_and_is_idempotent(_journal_dir):
     _pass([cand()])
     bars_fn = lambda s, d: _bars(NOW, [5.0 + 0.01 * i for i in range(20)])  # noqa: E731
     assert ms.score_pending(bars_fn, now=NOW + 60) == []
-    first = ms.score_pending(bars_fn, now=NOW + 20 * 60)
+    # v2 (2026-10-05) waits for the 30-min outcome horizon, not just the 15-min windows
+    assert ms.score_pending(bars_fn, now=NOW + 20 * 60) == []
+    first = ms.score_pending(bars_fn, now=NOW + 35 * 60)
     assert len(first) == 1 and first[0]["status"] == "SCORED"
-    assert ms.score_pending(bars_fn, now=NOW + 30 * 60) == []
+    assert ms.score_pending(bars_fn, now=NOW + 40 * 60) == []
     summary = ms.precision_summary(first, window="15m", hit_r=1.0)
     assert summary["TRIGGERED:ALERT"]["n"] == 1
 

@@ -236,3 +236,14 @@ refit:
 #    operator ratification. ──
 active_trader_alerts:
   mode: send
+
+# ── Active Trader premarket watch (operator 2026-10-05: "pick up premarket"). Heads-up only,
+#    07:00–09:29 ET, with PM high (break level) and PM VWAP (stop reference) for the open.
+#    mode: shadow → journal only (default until the operator ratifies send). Thresholds default in
+#    scripts/active_trader/premarket_watch.PremarketConfig; override here only with ratification. ──
+active_trader_premarket:
+  # operator 2026-10-05: "has to run from 6am" — premarket heads-ups 06:00–09:29 ET, then the RTH
+  # engine takes over 09:30–11:55. Heads-up only (PREMARKET_WATCH), throttled 1/symbol/30 min.
+  mode: send
+  window_start: "06:00"
+  window_end: "09:29"

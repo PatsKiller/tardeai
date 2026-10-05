@@ -1,16 +1,17 @@
 # Validated learning remediation: release and operations
 
 Status:      ACTIVE (operating procedure; deployment status requires the release receipt)
-as_of:       2026-10-05T15:58:00Z
-Measured at: implementation 61840b2add2c495d44f2c06e5ce0ca3da0fa2005; baseline served 60363378d-main-exact-phase2-20261005-093147
+as_of:       2026-10-05T18:58:00Z
+Measured at: verified release 8da0bd92b19519f4815c2b20ced2f1dfbd1eae96; natural receipts through 18:45:47Z
+             CURRENT later observed at c91fa6a32126b4cfc09a868d529365933d630f43; see verification scope
 Owner:       platform / CIO advisory lifecycle
 
 The implementation closes evidence and consumption gaps without granting broker authority,
 enabling disabled agents, changing memory influence, or manufacturing learning outcomes.
-This document describes the implemented contracts and release procedure. It does not certify
-that a particular release is live or that an unattended cycle has exercised every path.
+This document describes implemented contracts, release procedure and timestamped verification.
+The observations below do not establish that every path ran or that investment performance improved.
 
-## Implemented behavior [CODE-ONLY until verified on the served release]
+## Implemented behavior [DEPLOYED; runtime evidence scoped below]
 
 | Area | Behavior and owner |
 |---|---|
@@ -29,10 +30,12 @@ that a particular release is live or that an unattended cycle has exercised ever
 
 ## Local validation [OBSERVED, ISOLATED]
 
-`PATH=.venv/bin:$PATH bash scripts/ai_local_acceptance.sh` exited zero for implementation
-commit `61840b2add2c495d44f2c06e5ce0ca3da0fa2005`. Its final report marked targeted,
-regression, release-equivalent and authority checks green. The 79 new regression tests are
-registered in `scripts/run_cio_hardening_ci.py`:
+`PATH=.venv/bin:$PATH bash scripts/ai_local_acceptance.sh` passed on implementation
+`61840b2add2c495d44f2c06e5ce0ca3da0fa2005`, integrated candidate
+`aeae8acab2ed589727948b7fb2acdc16e8178631` and CLI compatibility correction
+`eb71472c4b28ea62702b0094c390cf317ca9169e`. Targeted, regression, release-equivalent and
+authority checks were green. **85 new regression tests** comprise the original 79 plus six
+malformed/paginated CLI-response cases, registered in `scripts/run_cio_hardening_ci.py`:
 
 - `tests/test_learning_operational_remediation.py`: promotion refusal, scheduling skip/failure,
   exit evidence and separate deployment contracts.
@@ -41,10 +44,57 @@ registered in `scripts/run_cio_hardening_ci.py`:
   expiry, subject/request mismatch, duplicates, retry lineage, reuse and question lifecycles.
 - `tests/test_learning_outcome_governance.py`: honest scoring, conservative migration and preserved authority.
 
-These are fixtures, not organic learning. The integrated release candidate must pass acceptance
-again after merging a newer main. Remote CI must pass on the exact PR head and merged SHA.
+These are fixtures, not organic learning. PRs [#1442](https://github.com/PatsKiller/tardeai/pull/1442)
+and [#1443](https://github.com/PatsKiller/tardeai/pull/1443) passed their exact-head checks.
+The correction decodes `gh api --paginate` without `--slurp`, unsupported by the host's
+`gh 2.46.0`; a real host API read verified compatibility. Future candidates must pass
+their own local acceptance and exact-SHA remote checks.
 
-## Baseline corrections [OBSERVED, READ-ONLY]
+## Release verification [OBSERVED, 2026-10-05]
+
+The archived receipt records successful promotion at `18:18:56.651576Z` of
+`8da0bd92b19519f4815c2b20ced2f1dfbd1eae96`, with eight completed successful push/main
+workflows for that exact SHA, no rollback and a full frontend build. The release was
+`8da0bd92b-main-exact-phase2-20261005-134557`. CURRENT and the process directories of
+`portfolio-server`, `tradeai-health-agent`, `cio-governed-bridge` and `tradeai-cio-telegram`
+matched it. Separate deployments were preserved. The gate also refused a real pending-CI
+candidate before activation; PR success was not substituted for post-merge evidence.
+
+| Observation window | Evidence and limit |
+|---|---|
+| 18:18:57–18:45:47Z | Eight research reassessments: six `BLOCKED`, two `NO_CHANGE`; two Hermes completions: one of each. Stale/incomplete evidence stayed blocked; no changed recommendation was manufactured. |
+| Scheduled 18:20:02Z | Topic gate recorded `SKIPPED / prohibited_session / regular` using the configured canonical interpreter. This proves a legitimate skip, not successful permitted-session ingestion. |
+| 18:18:57–18:45:47Z | 200 questions naturally checked: 48 `PARTIALLY_ANSWERED`, 152 `UNRESOLVED`. This does not establish closure of every question store. |
+| Natural wake at 18:00:02Z | A prior directory of the identical SHA produced wake `46acc127-10b4-5a1c-9963-58d375f27a13`, selected by `organic_from_memory`. Turn 115 remained loaded as history but was already consumed for its subject. Selected research `4518cbb1-69b6-5c03-b7ca-473f0a679497` received a `wake_selection` receipt despite the memory branch winning. Relevant source hashes matched. This wake preceded this task's 18:18 promotion; no wake was manually triggered. |
+| 18:46Z health read | API liveness was true; overall health was degraded, 83/100, with one critical SIEM finding (11 distinct P0/P1 issues open). Liveness is not overall health. |
+
+Authorized migrations completed: the DDQ owner added `expires_at`, `lifecycle_checked_at`
+and `lifecycle_events` at 16:18Z, preserving all 2,392 rows and dispatching no research.
+At 17:34Z the checkpoint owner appended 10,137 `MIGRATION_REVIEW_REQUIRED` events, derived
+zero deadlines, preserved the original ledger prefix and produced zero proposals on repeat
+preview. All 883 historical `INSUFFICIENT_EVIDENCE` outcomes remain. No lesson was ratified.
+
+Around 18:58Z, another session's CURRENT was
+`c91fa6a32-main-exact-phase2-20261005-144256` (`c91fa6a32126b4cfc09a868d529365933d630f43`).
+Nine source files (release preflight/deploy script, topic gate, three wake/consumption modules,
+product reassessment, outcome sweep and checkpoint resolver) matched `8da0bd92b` byte-for-byte.
+This establishes source continuity; the observations above retain their original time window.
+
+Evidence is archived locally under `/home/johnclaw/tradeai-remediation-evidence-20261005/`:
+`implementation-report.json`, `deploy_receipt.json`, `post_merge_ci.json`,
+`correction-local-acceptance.log`, `live-receipts-20261005T184547Z.json`,
+`operator-natural-verification.json`, `question-lifecycle-schema-applied.json` and
+`checkpoint-review-migration-applied.json`. Use the archived receipt for this release; later
+deployments overwrite the global receipt. Private backups are not documentation artifacts.
+
+Open acceptance: successful ingestion during a permitted session; sustained disposition and
+lineage coverage; a verified advisory transition and policy-governed notification when evidence
+warrants it; new-turn eligibility and duplicate/recovery behavior across natural cycles; valid
+observed outcomes and later ratified lesson use. `NO_CHANGE` remains a valid result.
+See the [As-Is](../architecture/TRADE_AI_AS_IS_LIFECYCLES_2026-10-04.md) and
+[Future-State](../architecture/TRADE_AI_FUTURE_STATE_LIFECYCLES_2026-10-04.md).
+
+## Baseline corrections [OBSERVED, READ-ONLY; before deployment and migrations]
 
 The audit at `2026-10-05T15:24:04Z` read persistent ledgers and aggregate database queries;
 it wrote no production state and made no paid research calls. Its local evidence bundle is

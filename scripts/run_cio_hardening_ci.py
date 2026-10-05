@@ -1008,6 +1008,12 @@ GATES = [
         "health_make_interval_20261004",
         ["tests/test_health_make_interval_20261004.py"],
     ),
+    # Active Trader premarket watch: heads-up 07:00-09:29 with PM high / PM VWAP for the open; replay-safe,
+    # fail-closed float, shadow by default, AT alert path only, no trade context (2026-10-05).
+    (
+        "at_premarket_watch_20261005",
+        ["tests/test_at_premarket_watch_20261005.py"],
+    ),
     # Policy apply script ratifies into production state, not the running tree (2026-10-04).
     (
         "apply_policy_default_store_20261004",
@@ -1043,6 +1049,12 @@ GATES = [
     (
         "alpha_vantage_pacing_20261004",
         ["tests/test_alpha_vantage_pacing_20261004.py"],
+    ),
+    # Active Trader alert audit: outcomes from the price you could pay, stop-first is a miss, exits,
+    # below-stop veto, supply evidence, your fills tagged to the alert before them (2026-10-05).
+    (
+        "at_alert_outcomes_20261005",
+        ["tests/test_at_alert_outcomes_20261005.py"],
     ),
     # Secrets: one write path (render reported, never silently skipped), drift check, Finviz cookie tool (2026-10-05).
     (
