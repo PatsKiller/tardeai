@@ -237,6 +237,50 @@ refit:
 active_trader_alerts:
   mode: send
 
+# ── Active Trader microstructure + learning (operator-approved 2026-10-05) ──
+# Recorder: moomoo QUOTE context only; writes <persistent>/data/active_trader/micro/<day>/<SYM>.jsonl
+microstructure_recorder:
+  interval_s: 5
+  max_symbols: 10              # your fills today first, then today's alerted names, then the universe
+  book_levels: 10
+  tape_prints: 100
+  window_et: ["09:28", "12:00"]
+  premarket_window_et: ["06:00", "09:28"]   # operator 2026-10-05: premarket from 6am
+  universe_refresh_s: 300
+
+# Entry/exit signals (v1 priors; signal_calibration.py PROPOSES changes, operator ratifies)
+microstructure_signals:
+  window_s: 60
+  near_pct: 1.0
+  thin_ratio: 0.6
+  refill_mult: 2.0
+  pull_pct: 50
+  accel_mult: 2.0
+  accel_lookback: 5
+  extended_vwap_pct: 3.0
+  tape_prints: 50
+  tape_flip_ratio: 0.45
+  climax_mult: 3.0
+  climax_lookback: 10
+  climax_wick_frac: 0.5
+  wall_x_median: 4.0
+  schwab_mm_stack: 4
+
+# Exit signals on YOUR open alert-tagged scalps. shadow = journal only; send = also Telegram (operator decides)
+active_trader_exit_watch:
+  mode: shadow
+  eval_s: 60
+  lookback_s: 900
+  min_signals: 1
+  cooldown_s: 300
+
+# Learning memory + calibration report (proposals only)
+active_trader_learning:
+  sessions: 20
+  min_sample: 30
+  min_bucket: 8
+  min_edge: 0.15
+
 # ── Active Trader premarket watch (operator 2026-10-05: "pick up premarket"). Heads-up only,
 #    07:00–09:29 ET, with PM high (break level) and PM VWAP (stop reference) for the open.
 #    mode: shadow → journal only (default until the operator ratifies send). Thresholds default in
@@ -247,3 +291,63 @@ active_trader_premarket:
   mode: send
   window_start: "06:00"
   window_end: "09:29"
+
+# ── Active Trader doctrine: session review + automated mode (SIMULATION ONLY) ──
+# operator 2026-10-05: "build this methodology in as a soul and its foundation … both the option for
+# manual and automated". See docs/active_trader/ACTIVE_TRADER_SOUL.md.
+# manual  = you trade; the simulator runs as a comparison only (no ledger).
+# auto_sim = the simulator also writes data/active_trader/auto_sim/ledger.jsonl — the track record
+#            automation must earn. There is NO live mode in code.
+active_trader_mode: manual
+
+active_trader_review:
+  mode: shadow                 # shadow = persist the review; send = also a short Telegram summary
+  base_min_bars: 3
+  base_max_bars: 8
+  base_max_range_pct: 1.0
+  break_vol_mult: 1.5
+  zone_lo_retrace: 0.382
+  zone_hi_retrace: 0.618
+  zone_tolerance: 0.01
+  pullback_max_bars: 15
+  min_leg_pct: 1.0
+  min_stop_pct: 0.5
+  climax_mult: 3.0
+  climax_lookback: 10
+  climax_wick_frac: 0.5
+  time_stop_bars: 20
+  horizon_bars: 30
+  heads_up_lead_s: 300
+  late_s: 60
+  chase_pct: 1.0
+  chase_r: 1.0
+  missed_window_s: 120
+  top_symbols: 5
+  window_et: ["09:30", "11:55"]
+  link_max_s: 600
+
+active_trader_auto_sim:
+  size_shares: 500            # used only when size_notional_usd is 0
+  size_notional_usd: 2000     # shares = floor($2,000 / price) so every symbol compares on the same dollars
+  max_take_pct: 25.0           # refuse when size > this % of ask supply near the inside
+  near_pct: 1.0
+  book_max_age_s: 600
+  min_stop_pct: 1.0
+  sec_fee_rate: 0.0000278
+  taf_per_share: 0.000166
+  taf_cap: 8.30
+  commission: 0.0
+
+# ── Active Trader alert sync (operator 2026-10-05: "the optimum time to get in was 10 a.m. We need
+#    to synchronize and coordinate"). Sub-minute evaluation of the recorder's live names on every
+#    recorder tick (~5 s): APPROACHING / intrabar TRIGGERED (confirmed or cancelled at the close) /
+#    EXTENDED + buy zone / PULLBACK_ZONE. Reads ONLY the Command Center microstructure store
+#    (operator rule: no process fetches its own data). Mode follows active_trader_alerts.mode. ──
+active_trader_fast_loop:
+  enabled: true
+  window_et: ["09:30", "11:55"]
+  max_symbols: 10
+  max_store_age_s: 15          # freshness contract on the recorder store; older → skip, marked stale
+  near_trigger_pct: 0.5        # APPROACHING within 0.5 % (or 3 ticks) below the break level
+  near_trigger_ticks: 3
+  tick_size: 0.01

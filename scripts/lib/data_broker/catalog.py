@@ -14,6 +14,17 @@ from typing import Any
 # Existing + new projections. Keep paths stable; UI and other apps discover from here.
 PROJECTIONS: list[dict[str, Any]] = [
     {
+        "id": "active_trader_microstructure",
+        "module": "lib.data_broker.microstructure",
+        "entrypoints": ["latest", "book", "tape", "quote", "bars", "live_symbols"],
+        "http": [],
+        "domain": "active_trader_microstructure",
+        "description": "Live book / prints / last / 1-min bars for the scalp names, as published by the "
+                       "microstructure recorder (single writer); 15 s freshness contract, fails closed",
+        "read_only": True,
+        "provider_calls": 0,
+    },
+    {
         "id": "market_quote",
         "module": "lib.data_broker.market_quote",
         "entrypoints": ["get_price_batch"],

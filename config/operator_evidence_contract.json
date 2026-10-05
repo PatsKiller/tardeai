@@ -22,12 +22,13 @@
     }
   },
   "broker_projections_observed": {
-    "_source": "scripts/lib/data_broker/catalog.py PROJECTIONS ids (23)",
+    "_source": "scripts/lib/data_broker/catalog.py PROJECTIONS ids (24)",
     "ids": [
       "market_quote", "quote_batch", "symbol_profile", "analyst_rollup", "analyst_detail", "catalyst_record",
       "indicator_snapshot", "portfolio_snapshot", "entry_plan", "reentry_decision_desk", "watch_intelligence",
       "watch_decision_desk", "sector_momentum", "risk_snapshot", "research_card", "desk_feeds", "cio_portfolio",
-      "market_regime", "daily_bars", "subject_research", "agent_opinion", "option_chain", "watch_discovery"
+      "market_regime", "daily_bars", "subject_research", "agent_opinion", "option_chain", "watch_discovery",
+      "active_trader_microstructure"
     ]
   },
   "fact_spec_format": {
@@ -166,6 +167,7 @@
     "broker_projections": {
       "watch_decision_desk": "catalog status 'legacy'; watch_intelligence supersedes it and is claimed by reentry/attention.",
       "option_chain": "LIVE Schwab chain pulls stay on the Options Hub (2FA-gated Path B). CIO Telegram options_strategy intent reads options_desk_latest house facts only — never this projection at reply time.",
+      "active_trader_microstructure": "Live ~5 s book / prints / 1-min bars for the Active Trader alert engine (2026-10-05). Operator-desk intents never quote it: scalp questions read the alert journal / Active Trader feed, which already carry the evidence that decided each alert.",
       "watch_discovery": "registry class dead_feed (declared_gap_no_producer); reading it would render a dead desk as today's activity."
     }
   }

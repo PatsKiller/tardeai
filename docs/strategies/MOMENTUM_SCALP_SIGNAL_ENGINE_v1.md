@@ -1,5 +1,7 @@
 # Momentum Scalp Signal Engine — Design Document v1 (DRAFT FOR REVIEW)
 
+> **Doctrine:** the Active Trader soul — be early, never chase, enter at a zone, exit by evidence, grade every session against "should have been", one brain for manual and simulated-automated — is in [`docs/active_trader/ACTIVE_TRADER_SOUL.md`](../active_trader/ACTIVE_TRADER_SOUL.md).
+
 **Status:** v1 — **M3-S0 through M3-S5 BUILT, SHIPPED to main, and running in SHADOW** (2026-07-27).
 No execution: engine flag OFF, no alerts, no proposals, no order path. See the §13 phase-plan status
 column and the §16 Change Log for per-stage PRs/commits. M3-S6+ remain for operator authorization.

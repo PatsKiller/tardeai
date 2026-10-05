@@ -26,6 +26,14 @@ NEAR_PCT = 3.0
 MAX_QUOTE_AGE_H = 4.0
 EARNINGS_BLACKOUT_DAYS = 2
 BLOCKING_CIO_ACTIONS = {"AVOID", "SELL", "EXIT", "TRIM", "TRIM_REVIEW", "REDUCE"}
+# Plan sanity (operator 2026-10-05, VCIG): a strategy card rewritten every run to the current
+# price made a single-price "zone" that price is always "inside" — BUY READY on a −41.8% day,
+# stop 44 % below entry, plan from 7 h after the crash, unreviewed. These refuse that call.
+PLAN_MAX_AGE_H = 7 * 24.0          # a plan older than this is not a plan for today
+DEGENERATE_ZONE_PCT = 0.1          # zone width below this % of the zone top = a single price
+TRACKS_QUOTE_PCT = 0.5             # a single-price entry this close to the quote follows the quote
+MAX_STOP_PCT = 25.0                # stop further than this below entry is not an actionable plan
+GAP_REPLAN_PCT = 15.0              # a day move this large needs a plan made after the move
 ACTIONABLE = ("BUY_READY", "ENTRY_NEAR")
 
 
@@ -45,6 +53,25 @@ def _days_until(d: Any, today: date) -> int | None:
     except ValueError:
         return None
     return (day - today).days
+
+
+def plan_sanity(ev: dict, *, price: float | None, lo: float | None, hi: float | None,
+                stop: float | None) -> list[str]:
+    """Reasons the plan itself cannot back an entry call. Only inputs that are present are judged."""
+    out: list[str] = []
+    age = _f(ev.get("plan_age_h"))
+    if age is not None and age > PLAN_MAX_AGE_H:
+        out.append(f"plan is {age / 24:.0f} days old")
+    if lo is not None and hi is not None and hi > 0 and (hi - lo) / hi * 100.0 < DEGENERATE_ZONE_PCT:
+        if price is not None and abs(price - hi) / hi * 100.0 <= TRACKS_QUOTE_PCT:
+            out.append("plan entry is today's price (the plan follows the quote, not a level)")
+    ref = hi if hi is not None else lo
+    if ref and stop is not None and ref > stop and (ref - stop) / ref * 100.0 > MAX_STOP_PCT:
+        out.append(f"stop is {(ref - stop) / ref * 100.0:.0f}% below entry")
+    chg = _f(ev.get("change_pct"))
+    if chg is not None and abs(chg) >= GAP_REPLAN_PCT and not ev.get("plan_after_move"):
+        out.append(f"moved {chg:+.1f}% today; re-plan before entering")
+    return out
 
 
 def evaluate(ev: dict, *, today: date | None = None) -> dict:
@@ -88,6 +115,7 @@ def evaluate(ev: dict, *, today: date | None = None) -> dict:
     earn_days = _days_until(ev.get("earnings_date"), today)
     if earn_days is not None and 0 <= earn_days <= EARNINGS_BLACKOUT_DAYS:
         blocked.append(f"earnings in {earn_days} day(s)")
+    blocked += plan_sanity(ev, price=price, lo=lo, hi=hi, stop=stop)
 
     distance_pct = None
     if price is not None and hi is not None and hi > 0:
