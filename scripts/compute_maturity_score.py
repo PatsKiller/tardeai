@@ -199,6 +199,10 @@ def compute() -> dict:
     return {
         "ok": True,
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+        "superseded": True,
+        "superseded_by": "campaign_maturity_truth",
+        "measurement": "legacy_installation_and_validation_coverage",
+        "demonstrated_learning": False,
         "raw_weighted_score_of_5": round(raw, 3),
         "final_maturity_score_of_5": round(final, 3),
         "meets_4_5": round(final, 3) >= 4.5,
@@ -218,8 +222,8 @@ def to_markdown(report: dict) -> str:
     caps = report["caps_applied"]
     caps_md = ("\n".join(f"- Capped to **{c['cap']}** (from {c['lowered_from']}): {c['reason']}" for c in caps)
                if caps else "- None — no caps triggered.")
-    verdict = "✅ **4.5 MET**" if report["meets_4_5"] else "⛔ **4.5 NOT YET MET**"
-    return f"""# Trade AI — Maturity Score
+    verdict = "**SUPERSEDED coverage rubric; not evidence of demonstrated learning.**"
+    return f"""# Trade AI — Superseded Coverage Rubric
 
 _Generated: {report['generated_at']}_
 _Source: `python3 scripts/compute_maturity_score.py --json`_
@@ -227,11 +231,12 @@ _Source: `python3 scripts/compute_maturity_score.py --json`_
 ## Result
 
 - Raw weighted score: **{report['raw_weighted_score_of_5']} / 5**
-- Final maturity (after caps): **{report['final_maturity_score_of_5']} / 5**
+- Legacy coverage score (after caps): **{report['final_maturity_score_of_5']} / 5**
 - {verdict}
 
-The score is earned from machine-derived evidence and bounded by hard caps below — it is
-never asserted. LLMs are advisory only and cannot affect any gate.
+This historical rubric measures installation and validation coverage. Current evidence and
+freshness are served by `campaign_maturity_truth` on the control-plane maturity route.
+This coverage score does not measure demonstrated learning.
 
 ## Weighted breakdown
 
@@ -270,13 +275,7 @@ def main() -> int:
     ap.add_argument("--markdown", action="store_true")
     args = ap.parse_args()
     report = compute()
-    # Always persist the JSON artifact for downstream consumers.
-    try:
-        out = ROOT / "data" / "runtime" / "maturity_score_latest.json"
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    except Exception:
-        pass
+    # Preserve the historical artifact; this superseded rubric is stdout-only.
     if args.markdown:
         print(to_markdown(report))
     else:

@@ -38,21 +38,23 @@ _CLAIM_WORD = re.compile(r"\b(BULLISH|BEARISH|TRIM|SELL|REDUCE|BUY|ADD|ACCUMULAT
 
 
 def direction_of(commitment: Mapping[str, Any]) -> Optional[str]:
-    """'UP' / 'DOWN' from the stance, else from a directional word in the claim; None otherwise."""
-    stance = str(commitment.get("author_stance") or commitment.get("stance") or "").strip().upper()
-    if stance in BULLISH:
-        return "UP"
-    if stance in BEARISH:
-        return "DOWN"
-    if stance and stance not in UNSCORED:
+    """Only a recorded price-return claim can be scored by this provider.
+
+    A bullish opinion, a revenue forecast or a BUY word is not a price prediction.
+    More complex falsifiers need their own deterministic observation provider.
+    """
+    spec = commitment.get("observation_spec") or {}
+    if not isinstance(spec, Mapping) or spec.get("metric") != "close_return_pct" or spec.get("source") != "ticker_prices":
         return None
-    if stance in UNSCORED and stance:
+    if spec.get("operator") not in {">", "<"}:
         return None
-    m = _CLAIM_WORD.search(str(commitment.get("claim") or ""))
-    if not m:
+    try:
+        from math import isfinite
+        if not isfinite(float(spec["threshold"])):
+            return None
+    except (KeyError, ValueError, TypeError):
         return None
-    word = m.group(1).upper()
-    return "UP" if word in BULLISH else "DOWN"
+    return "UP" if spec["operator"] == ">" else "DOWN"
 
 
 def _parse(value: Any) -> Optional[datetime]:
@@ -100,16 +102,19 @@ def make_price_observation_provider(
         if start is None or end is None:
             return {}
         if end > at:
-            end = at  # never read a price from the future
+            return {}  # the forecast horizon has not closed
         p0 = price_lookup(symbol, start.date().isoformat())
         p1 = price_lookup(symbol, end.date().isoformat())
         if not p0 or not p1 or not p0[0]:
             return {}
         change_pct = round((float(p1[0]) / float(p0[0]) - 1.0) * 100.0, 4)
-        confirmed = change_pct > 0 if direction == "UP" else change_pct < 0
+        threshold = float(commitment["observation_spec"]["threshold"])
+        confirmed = change_pct > threshold if direction == "UP" else change_pct < threshold
         return {
             "schema": SCHEMA,
             "observed": True,
+            "commitment_id": commitment.get("commitment_id"),
+            "source_refs": [f"ticker_prices:{symbol}:{p0[1]}", f"ticker_prices:{symbol}:{p1[1]}"],
             "symbol": symbol,
             "direction": direction,
             "price_t0": float(p0[0]), "price_t0_date": p0[1],

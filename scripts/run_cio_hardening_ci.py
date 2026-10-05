@@ -23,6 +23,10 @@ REPO = Path(__file__).resolve().parents[1]
 
 # Ordered, explicit suite list (Phase 10.2)
 GATES = [
+    ("learning_outcome_governance", ["tests/test_learning_outcome_governance.py"]),
+    ("learning_research_remediation", ["tests/test_learning_research_remediation.py"]),
+    ("learning_operator_remediation", ["tests/test_learning_operator_remediation.py"]),
+    ("learning_operational_remediation", ["tests/test_learning_operational_remediation.py"]),
     # Campaign m2-canary-20260907 — persistent wake, communications consumption,
     # research transport and shadow outcomes. Registered by the integration owner
     # at INTEGRATION_ORDER.md step 10 (SFR-A-003).
@@ -1023,6 +1027,11 @@ GATES = [
         "repair_cio_event_bus_fork_20261004",
         ["tests/test_repair_cio_event_bus_fork_20261004.py"],
     ),
+    # Momentum-scalp universe fails closed on unknown float/price (looked up first); min stop distance (2026-10-05).
+    (
+        "scalp_universe_failclosed_20261005",
+        ["tests/test_scalp_universe_failclosed_20261005.py"],
+    ),
     # Alpha Vantage fundamentals paced (1 req/s free tier), fund exclusion; ET/API chrome not tickers.
     (
         "alpha_vantage_pacing_20261004",
@@ -1038,6 +1047,12 @@ GATES = [
     (
         "secret_single_path_20261005",
         ["tests/test_secret_single_path_20261005.py"],
+    ),
+    # Social scanner: Reddit via official OAuth (loud when not configured), Hermes/Aegis merged as named
+    # sources (scalp-universe rows only create candidates), catalyst research on scouts first (2026-10-05).
+    (
+        "social_multisource_20261005",
+        ["tests/test_social_multisource_20261005.py"],
     ),
     # Ratified investment policy drives capital-plan sizing; 12% cap; required-only CONFIRMED (2026-10-03).
     (

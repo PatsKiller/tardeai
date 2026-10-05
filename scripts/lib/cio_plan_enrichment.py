@@ -2471,7 +2471,11 @@ def maybe_notify_plan(
                 plan["catalyst_telegram_elevated"] = True
         except Exception:
             pass
-        text = why + cat_line + format_structured_reply(
+        evaluation = (plan.get("extra") or {}).get("research_evaluation") or {}
+        review_line = ""
+        if evaluation.get("disposition") == "REVIEW_REQUIRED":
+            review_line = "Research review required: cited evidence conflicts with a recorded thesis premise.\n"
+        text = review_line + why + cat_line + format_structured_reply(
             summary=plan.get("summary") or plan.get("title") or "",
             evidence_refs=plan.get("evidence_refs"),
             options=plan.get("options"),
@@ -2520,9 +2524,12 @@ def maybe_notify_plan(
         if not chats:
             return False
         ok_any = False
+        plan["telegram_notification_ids"] = []
         for cid in chats:
             r = send_cio_message(cid, text)
             ok_any = ok_any or bool(r.get("ok"))
+            if r.get("ok") and r.get("message_id") is not None:
+                plan["telegram_notification_ids"].append(f"telegram:{cid}:{r['message_id']}")
         if ok_any:
             record_notify(plan, ok=True, ledger_path=ledger_path)
             # best-effort plan meta so operators can see notify state

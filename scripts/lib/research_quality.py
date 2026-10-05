@@ -157,3 +157,105 @@ def _critique_lint(result: dict[str, Any]) -> dict[str, Any]:
         "research_id": result.get("research_id") or result.get("result_id"),
         "symbol": symbol,
     }
+
+
+def evidence_eligibility(request: dict, result: dict, critique: dict | None, *, now=None) -> dict:
+    """Validate subject and freshness before research may change advisory state."""
+    from scripts.lib.intelligence_client import DEFAULT_ANSWER_SLA_HOURS, EVIDENCE_SLA_HOURS
+
+    now = now or datetime.now(timezone.utc)
+    reasons = []
+    meta = request.get("metadata") or {}
+    identities = {}
+    for field in ("symbol", "subject_guid", "issuer_guid"):
+        expected = request.get(field) or meta.get(field)
+        actual = result.get(field)
+        if field == "symbol":
+            expected, actual = str(expected or "").upper(), str(actual or "").upper()
+        if expected and actual and str(expected) != str(actual):
+            reasons.append("subject_mismatch:" + field)
+        identities[field] = actual or expected or None
+    if not (result.get("result_id") or result.get("research_id")):
+        reasons.append("research_identity_missing")
+    expected_research = request.get("research_id") or meta.get("research_id")
+    if expected_research and result.get("research_id") and str(expected_research) != str(result["research_id"]):
+        reasons.append("research_request_mismatch")
+    if str(result.get("status") or "completed").lower() not in {"completed", "sent", "success", "succeeded", "ok"}:
+        reasons.append("research_not_completed")
+    if not (identities["symbol"] or identities["subject_guid"]):
+        reasons.append("subject_missing")
+    verdict = str((critique or {}).get("verdict") or "").upper()
+    if verdict not in {"VALID", "PARTIAL", "CONFLICTED"}:
+        reasons.append("quality_" + (verdict.lower() or "unvalidated"))
+    sources = result.get("sources") or result.get("source_urls") or result.get("source_refs") or []
+    if isinstance(sources, str):
+        sources = [sources]
+    refs = []
+    for source in sources:
+        ref = (source.get("evidence_id") or source.get("source_id") or source.get("url") or source.get("id")) if isinstance(source, dict) else source
+        if ref:
+            refs.append(str(ref))
+    if not refs:
+        reasons.append("insufficient_sources")
+    freshness = result.get("freshness") if isinstance(result.get("freshness"), dict) else {}
+    raw = result.get("evidence_as_of") or freshness.get("evidence_as_of") or result.get("as_of") or result.get("completed_ts")
+    def parse(value):
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+            return dt if dt.tzinfo else None
+        except (ValueError, TypeError):
+            return None
+    at = parse(raw)
+    qclass = str(request.get("question_class") or "thesis").lower()
+    sla = DEFAULT_ANSWER_SLA_HOURS.get(qclass, EVIDENCE_SLA_HOURS)
+    if at is None:
+        reasons.append("evidence_time_missing_or_ambiguous")
+    elif at > now:
+        reasons.append("evidence_from_future")
+    elif (now - at).total_seconds() > sla * 3600:
+        reasons.append("stale_evidence")
+    expiry = result.get("expires_at") or result.get("valid_until") or freshness.get("expires_at")
+    if expiry and (parse(expiry) is None or parse(expiry) <= now):
+        reasons.append("expired_evidence")
+    if str(freshness.get("state") or "").upper() in {"STALE", "EXPIRED", "UNKNOWN"}:
+        reasons.append("freshness_" + freshness["state"].lower())
+    return {"eligible": not reasons, "reasons": reasons, "evidence_refs": sorted(set(refs)),
+            "evidence_as_of": raw, "freshness_sla_hours": sla, **identities}
+
+
+def grounded_premise_conflicts(result: dict, prior_thesis: dict, *, evidence_refs: list[str]) -> list[dict]:
+    """Only cited conflicts against an identified prior premise require review.
+
+    A model classification or a generic bear case is not a verified transition.
+    Existing evidence identities must support the cited claim and the prior premise.
+    """
+    premises = prior_thesis.get("invalidation_conditions") or prior_thesis.get("premises") or []
+    known = set()
+    if not isinstance(premises, list):
+        premises = [premises]
+    for premise in premises:
+        if isinstance(premise, dict):
+            known.update(str(premise[k]) for k in ("premise_id", "id", "text") if premise.get(k))
+        else:
+            known.add(str(premise))
+    known.update(str(prior_thesis[k]) for k in ("summary", "thesis", "recommendation") if prior_thesis.get(k))
+    refs = set(evidence_refs)
+    out = []
+    rows = []
+    for key in ("contradictory_evidence", "invalidation_evidence"):
+        values = result.get(key) or []
+        rows.extend(values if isinstance(values, list) else [values])
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        premise = str(row.get("premise_id") or row.get("premise") or "")
+        cited = row.get("evidence_refs") or row.get("source_refs") or [row.get("source_id") or row.get("url")]
+        if isinstance(cited, str):
+            cited = [cited]
+        cited = [str(r) for r in cited if r]
+        # Verify the premise and source join, not the truth of a model label.
+        # This opens a review; it never ratifies an invalidation or changes stance.
+        if row.get("validated") is not False and premise in known and cited and set(cited) <= refs:
+            out.append({"premise": premise, "evidence_refs": cited,
+                        "kind": "INVALIDATION" if row.get("invalidates") is True else "CONFLICT"})
+    return out

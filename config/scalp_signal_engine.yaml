@@ -55,6 +55,32 @@ universe:
   float_column: float_mm
   float_mm_max: 30            # operator decision 2026-07-27 for momentum_scalp_intraday
   lookback_days: 21           # distinct symbols seen in this window
+  # Fail closed (operator 2026-10-05): a symbol needs a KNOWN float <= float_mm_max and a KNOWN
+  # price inside the scalp band. Bare social rows with no float (HPE, DELL, CHPT) used to leak in
+  # under "float IS NULL OR ...". Float = latest non-null from any scan, else float_lookup below.
+  require_known_float: true
+  price_column: price
+  price_min: 1.0              # momentum_scalp screen's own band
+  price_max: 25.0
+  price_lookback_days: 30     # reference price = latest non-null scan price in this window
+  require_reference_price: false  # unknown reference price → the live bar price decides (fail closed there)
+  excluded_routes: [reject, large_float_social_scout]   # scanner routes that are not scalps
+  float_lookup:               # floats the scanner never recorded, looked up before excluding
+    enabled: true
+    sources: [finviz, alpha_vantage]   # Finviz v=131 Shares Float (header-keyed), then AV SharesFloat
+    max_lookups_per_run: 20   # one Finviz export request covers 20 tickers
+    av_max_lookups_per_run: 2 # AV free tier is 25/day
+    ttl_hours: 24             # found floats
+    negative_ttl_hours: 6     # still-unknown symbols are not retried every 5 minutes
+
+# Minimum stop distance (operator 2026-10-05): stop distance >= max(atr_mult*ATR_1m,
+# spread_mult*spread, pct_of_price*price). XNDU fired with R = $0.01-0.02 on a $4.40 name, so one
+# tick read as several R. Widens only; never tightens a stop. Applied to row and trigger stops.
+min_stop:
+  enabled: true
+  atr_mult: 1.0
+  spread_mult: 3.0
+  pct_of_price: 0.01
 
 # ── M3-S3 IGN scorer (design §3.2/§3.3). Weights are v1 PRIORS, refit once on shadow data
 #    at M3-S8 (§12) — do NOT hand-tune mid-shadow. All sub-scores normalize to [0,1]. ──

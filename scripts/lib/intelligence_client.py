@@ -798,6 +798,33 @@ def run_ladder(ctx: dict, question: dict, loaders: Loaders, *, now: _dt.datetime
     return ladder, decision, [r for r in reused if r]
 
 
+def evidence_stages(ctx: dict, ladder: list[dict], *, used_refs=(), rejected_refs=(), changed_refs=()) -> dict:
+    """Do not promote a retrieval into a usage or judgment-change claim."""
+    retrieved = sorted({str(ref) for step in ladder for ref in step.get("refs", []) if ref})
+    # Graph references must be supplied by an actual traversal, never inferred from node counts.
+    edges = list(ctx.get("traversed_graph_edge_refs") or [])
+    return {"available_refs": retrieved, "retrieved_refs": retrieved,
+            "available_scope": "observed_retrieval_ladder_only",
+            "used_refs": sorted(set(map(str, used_refs))),
+            "rejected_refs": list(rejected_refs),
+            "judgment_changing_refs": sorted(set(map(str, changed_refs))),
+            "graph_edge_refs": edges}
+
+
+def reported_evidence_usage(ctx: dict, outcome: dict) -> dict:
+    """Keep reported use joined to actual retrieval; unmatched claims stay visible."""
+    stages = dict(ctx.get("retrieval_evidence_stages") or {})
+    retrieved = set(stages.get("retrieved_refs") or [])
+    used = set(map(str, outcome.get("used_evidence_refs") or []))
+    rejected = set(map(str, outcome.get("rejected_evidence_refs") or []))
+    changed = set(map(str, outcome.get("judgment_changing_evidence_refs") or []))
+    stages.update(used_refs=sorted((used & retrieved) - rejected), rejected_refs=sorted(rejected & retrieved),
+                  judgment_changing_refs=sorted(changed & used & retrieved - rejected),
+                  unjoined_reported_refs=sorted((used | rejected | changed) - retrieved),
+                  usage_status="REPORTED" if "used_evidence_refs" in outcome else "NOT_REPORTED")
+    return stages
+
+
 def retrieve_or_generate(ctx: dict, question: dict, generator: Callable[[dict, dict, dict], Any] | None = None, *,
                          loaders: Loaders | None = None, root: Path | None = None, env: dict | None = None,
                          write_receipt: bool = True) -> dict:
@@ -834,6 +861,7 @@ def retrieve_or_generate(ctx: dict, question: dict, generator: Callable[[dict, d
         "ladder": ladder,
         "decision": decision,
         "reused_refs": reused,
+        "evidence_stages": evidence_stages(ctx, ladder),
         "generated": generator is not None and answer is None,
         "generation_reason": reason,
         "mode": mode,
@@ -844,6 +872,7 @@ def retrieve_or_generate(ctx: dict, question: dict, generator: Callable[[dict, d
     if write_receipt:
         _append(retrieval_receipts_path(root, env), receipt)
     ctx["retrieval_receipt"] = receipt["receipt_id"]
+    ctx["retrieval_evidence_stages"] = receipt["evidence_stages"]
     if generator is not None and answer is None:
         answer = generator(ctx, question, receipt)
         generated = True
@@ -894,6 +923,8 @@ def commit(ctx: dict, outcome: dict, *, deltas: Iterable[dict] = (), confidence_
         "schema": SCHEMA_COMMIT, "event": "COMMITTED", "context_id": ctx.get("context_id"),
         "lane_id": (ctx.get("actor") or {}).get("lane_id"), "purpose": ctx.get("purpose"),
         "committed_at": _iso(_now()), "influence": infl, "delta_count": len(deltas),
+        "retrieval_receipt_id": ctx.get("retrieval_receipt"),
+        "evidence_stages": reported_evidence_usage(ctx, outcome),
         "deltas_applied": False, "deltas_note": "recorded on the receipt only; the write path is Wave 2",
         "payload_sha256": hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest(),
         **payload,
@@ -999,10 +1030,12 @@ def observe_generation(ctx: dict, question: dict, *, root: Path | None = None, e
             "symbol": next((s.get("symbol") for s in ctx.get("subjects", []) if s.get("symbol")), None),
             "question": {"text": (question.get("text") or "")[:500], "question_class": question.get("question_class"), "horizon": question.get("horizon") or "default"},
             "ladder": ladder, "decision": decision, "reused_refs": reused, "generated": True, "generation_reason": "SHADOW_CALLER",
+            "evidence_stages": evidence_stages(ctx, ladder),
             "mode": "SHADOW", "release_sha": (ctx.get("actor") or {}).get("release_sha"), "created_at": _iso(loaders.now()), "authority": "READ_ONLY_ADVISORY",
         }
         _append(retrieval_receipts_path(root, env), receipt)
         ctx["retrieval_receipt"] = receipt["receipt_id"]
+        ctx["retrieval_evidence_stages"] = receipt["evidence_stages"]
         return receipt
     except Exception:  # noqa: BLE001
         return None

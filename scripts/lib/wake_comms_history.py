@@ -26,13 +26,25 @@ AUTHORITY: READ_ONLY_ADVISORY. Lane A reads Lane B; it never writes comms tables
 """
 from __future__ import annotations
 
+import re
+
 from typing import Any
 
 AUTHORITY = "READ_ONLY_ADVISORY"
 MBI = 0
 
 #: An operator turn is inbound; anything else the desk said is an outbound event.
-_OPERATOR_TYPES = ("operator_turn", "telegram_command", "callback_query")
+_OPERATOR_TYPES = ("operator_turn", "telegram_command")
+
+
+def is_approval_callback(turn: dict) -> bool:
+    """Approval controls are never fresh advisory questions."""
+    if turn.get("callback_query") or turn.get("event_type") == "callback_query":
+        return True
+    if str(turn.get("channel") or "").lower() in {"callback", "telegram_callback"}:
+        return True
+    text = str(turn.get("sanitized_body") or turn.get("text") or "").strip()
+    return bool(re.match(r"^(?:/(?:approve|deny)(?:\s|$)|(?:guard|approve|deny):)", text, re.I))
 
 
 class DbCommsHistory:
@@ -106,11 +118,17 @@ class DbCommsHistory:
         into one receipt naming a source that does not exist, silently.
         """
         return self._rows(
-            """SELECT id, role, text AS sanitized_body, symbol, subject_guid,
-                      occurred_at AS created_at
-                 FROM operator_conversation_turns
-                WHERE subject_guid = %s AND role = 'operator'
-                ORDER BY occurred_at DESC LIMIT %s""",
+            """SELECT t.id, t.role, t.text AS sanitized_body, t.symbol, t.subject_guid,
+                      t.occurred_at AS created_at, t.channel,
+                      EXISTS (SELECT 1 FROM operator_conversation_turns a
+                               WHERE a.role = 'agent' AND a.chat_id = t.chat_id
+                                 AND a.reply_to_message_id = t.message_id
+                                 AND a.subject_guid = t.subject_guid
+                                 AND a.message_id IS NOT NULL
+                                 AND a.occurred_at >= t.occurred_at) AS answered
+                 FROM operator_conversation_turns t
+                WHERE t.subject_guid = %s AND t.role = 'operator'
+                ORDER BY t.occurred_at DESC, t.id DESC LIMIT %s""",
             (str(subject_guid), int(limit)))
 
 

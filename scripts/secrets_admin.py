@@ -49,7 +49,10 @@ KNOWN = ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY",
 KNOWN_CONFIG = ["SCHWAB_CALLBACK_URL", "SNAPTRADE_CLIENT_ID", "SNAPTRADE_USER_ID",
                 # moomoo login id/email — an identifier, not a secret; the credential
                 # is MOOMOO_OPEND_LOGIN_PWD_MD5.
-                "MOOMOO_OPEND_LOGIN_ACCOUNT"]
+                "MOOMOO_OPEND_LOGIN_ACCOUNT",
+                # Reddit "script" app client id — an identifier paired with REDDIT_CLIENT_SECRET
+                # (official Data API for the social scanner, 2026-10-05).
+                "REDDIT_CLIENT_ID"]
 # READ-ONLY status rows: shown (present + masked) but NOT settable here.
 KNOWN_READONLY = []
 

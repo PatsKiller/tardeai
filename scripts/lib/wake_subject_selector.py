@@ -104,10 +104,10 @@ def research_is_consumed(
     research_object_id: str,
     receipts: Iterable[dict],
 ) -> bool:
-    """True iff this agent has a non-none effect receipt for the research object.
+    """Whether this agent has processed this version for scheduling purposes.
 
-    INTERFACE_CONTRACTS.md §6: effect_kind='none' is legal and is NOT evidence of
-    consumption maturity. Only effect_kind != 'none' counts.
+    A PROCESSED selection receipt suppresses replay even when another branch won.
+    It retains effect_kind='none' and is never evidence of consumption maturity.
     """
     for r in receipts:
         if str(r.get("agent_id")) != str(agent_id):
@@ -118,6 +118,8 @@ def research_is_consumed(
             continue
         if str(r.get("effect_kind") or "none") != "none":
             return True
+        if r.get("purpose") == "wake_selection" and r.get("processing_disposition") == "PROCESSED":
+            return True  # scheduling completion only; not judgment-changing influence
     return False
 
 
@@ -286,10 +288,17 @@ def select_subjects(
     seen_research_subjects: set[str] = set()
     # Sort research objects for determinism before filtering
     def _ro_key(ro: dict) -> tuple:
-        return (
-            str(ro.get("subject_guid") or ""),
-            str(ro.get("research_object_id") or ro.get("id") or ""),
-        )
+        raw = ro.get("priority", 0)
+        priority = {"urgent": 100, "high": 80, "normal": 50, "low": 10}.get(str(raw).lower())
+        if priority is None:
+            try:
+                priority = float(raw)
+            except (TypeError, ValueError):
+                priority = 0
+        at = _parse_ts(ro.get("published_at") or ro.get("produced_at") or ro.get("created_at"))
+        age_hours = max(0, (now - at).total_seconds() / 3600) if at else 0
+        return (-(priority + age_hours), at or now, str(ro.get("subject_guid") or ""),
+                str(ro.get("research_object_id") or ro.get("id") or ""))
 
     for ro in sorted(research_objects, key=_ro_key):
         sg = str(ro.get("subject_guid") or "")
@@ -311,7 +320,7 @@ def select_subjects(
             )
         )
 
-    research_candidates.sort(key=lambda c: (c.subject_guid, c.source_id))
+    # Already priority/age ordered above. Re-sorting by GUID would undo fairness.
 
     # --- priority b: cadence-due InstrumentRecords (M2 bridge) ---
     ir_candidates = [

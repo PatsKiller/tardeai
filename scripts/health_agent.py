@@ -1234,9 +1234,21 @@ def collect_research_heartbeat() -> list[dict]:
     """
     out = []
     try:
+        from lib.persistent_state_root import resolve_durable_dir
+        gate_path = resolve_durable_dir("data/health", PROJECT_ROOT) / "non_trading_hours_gate.json"
+        if gate_path.exists():
+            gate = json.loads(gate_path.read_text(encoding="utf-8"))
+            if gate.get("status") == "FAILED":
+                out.append(_f("intelligence_quality", "research_session_gate_failed", "warning",
+                              "Research session gate failed: " + str(gate.get("reason")),
+                              evidence=gate, path=str(gate_path)))
+    except (OSError, ValueError) as exc:
+        out.append(_f("intelligence_quality", "research_session_gate_unreadable", "warning",
+                      "Cannot read research session gate health: " + type(exc).__name__))
+    try:
         age_h = _file_age_h(RESEARCH_LANE_STATUS)
         if age_h is None:
-            return [_f("intelligence_quality", "research_heartbeat_unmonitored", "critical",
+            return out + [_f("intelligence_quality", "research_heartbeat_unmonitored", "critical",
                        "research lane monitor has never written its status file", path=str(RESEARCH_LANE_STATUS))]
         if age_h > 1.0:
             out.append(_f("intelligence_quality", "research_heartbeat_monitor_stale", "critical",
@@ -3706,6 +3718,20 @@ def collect_cron_sanity() -> list[dict]:
                    f"Cron sanity check failed: {str(e)[:100]}")]
 
 
+def collect_agent_configuration_drift() -> list[dict]:
+    """Surface deployment disagreements without changing any agent definition."""
+    try:
+        from scripts.lib.agent_registry import runtime_truth
+        truth = runtime_truth()
+    except Exception as exc:
+        return [_f("intelligence_quality", "agent_registry_unavailable", "warning", type(exc).__name__)]
+    return [_f("intelligence_quality", "agent_configuration_drift", "warning",
+               f"{r['agent_id']}: registry {r['registry_status']}, runtime {r['deployment_state']}, enabled={r['runtime_enabled']}",
+               agent_id=r["agent_id"], deployment_truth=r,
+               recommended_action="Review deployment intent; registry status does not authorize activation")
+            for r in truth["agents"] if r["configuration_disagreement"]]
+
+
 def collect_queue_health() -> list[dict]:
     """Inspect the escalation queue for stuck, orphaned, or oversized items.
 
@@ -3953,6 +3979,7 @@ COLLECTORS = [
     # Phase 4 prevention collectors
     collect_cron_sanity,
     collect_queue_health,
+    collect_agent_configuration_drift,
 ]
 
 
