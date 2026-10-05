@@ -69,6 +69,19 @@ def _db_write(sql, params=None) -> bool:
         return False
 
 
+UNIVERSE = "tracked"   # stamped in provenance so the scalp scanner can tell scalp-universe rows apart
+
+
+def resolve_scalp_universe(limit: int = 25) -> list[str]:
+    """Today's social-scalp candidates (awaiting-catalyst scouts first, then GO/WAIT by score)."""
+    try:
+        from hermes_momentum_catalyst_researcher import get_scalp_candidates
+        return list(get_scalp_candidates(max_tickers=limit))
+    except Exception as e:  # noqa: BLE001
+        print(f"  [hermes-social] scalp universe unavailable ({e})")
+        return []
+
+
 def resolve_universe() -> list[str]:
     """Tracked symbols. Reuse aegis universe; fall back to a small watchlist-safe set."""
     try:
@@ -200,7 +213,8 @@ def persist(symbol: str, sentiment: dict) -> bool:
          sentiment["sentiment_score"], None, sentiment["mention_count"] >= 5,
          sentiment["theme_tags"], sentiment["top_posts_summary"],
          sentiment["confidence"],
-         json.dumps({"run_id": RUN_ID, "agent": "hermes", "source": "hermes:searxng_social"}, default=str))
+         json.dumps({"run_id": RUN_ID, "agent": "hermes", "source": "hermes:searxng_social",
+                     "universe": UNIVERSE}, default=str))
     )
 
 
@@ -208,10 +222,15 @@ def main() -> dict:
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--max-symbols", type=int, default=25)
+    ap.add_argument("--universe", choices=["tracked", "scalp"], default="tracked",
+                    help="tracked = portfolio/watch universe (default); scalp = today's social-scalp "
+                         "candidates, so the scalp scanner sees Hermes forum mentions pre-market")
     args = ap.parse_args()
 
-    print(f"[hermes-social] starting — {RUN_ID}")
-    symbols = resolve_universe()
+    print(f"[hermes-social] starting — {RUN_ID} (universe={args.universe})")
+    global UNIVERSE
+    UNIVERSE = args.universe
+    symbols = resolve_scalp_universe(args.max_symbols) if args.universe == "scalp" else resolve_universe()
     if not symbols:
         print("  [hermes-social] empty universe — nothing to do")
         return {"universe": 0, "written": 0, "dry_run": not args.apply}
